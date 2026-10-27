@@ -25,6 +25,7 @@ import states from "./states.json";
 import trend from "./trend.json";
 import ui from "./ui.json";
 import units from "./units.json";
+import waf from "./waf.json";
 import widgets from "./widgets.json";
 
 const messages = {
@@ -49,6 +50,7 @@ const messages = {
   trend,
   ui,
   units,
+  waf,
   widgets,
 };
 

@@ -71,7 +71,7 @@ function detectorName(text: string, i18n: BehaviorI18n): string {
   if (isIpsType(text)) return ipsTypeLabel(text);
   if (isPwType(text)) return pwTypeLabel(text);
   if (DETECTOR_TYPES.includes(text)) return detectorLabel(text, i18n);
-  return anomalyTypeLabel(text);
+  return anomalyTypeLabel(text, i18n);
 }
 
 /** Human labels for the active-filter chips. */
@@ -240,7 +240,7 @@ export function AnomalyFilters({
           <optgroup label={t("groupWaf")}>
             {WAF_TYPES.map((type) => (
               <option key={type} value={type}>
-                {anomalyTypeLabel(type)}
+                {anomalyTypeLabel(type, i18n)}
               </option>
             ))}
           </optgroup>

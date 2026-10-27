@@ -4,12 +4,14 @@
 // state column is the worst detector state; `null` means no detector has
 // evaluated the endpoint, which is said in words and never drawn as NORMAL.
 
+import { useTranslations } from "next-intl";
 import { Fragment } from "react";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { WafEndpointInventory } from "@/lib/api";
 import { formatCount, stateTone } from "@/lib/behavior";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { endpointLabel, statePillText } from "./wafLabels";
 
@@ -41,55 +43,54 @@ function PathLabel({ text }: { text: string }) {
 }
 
 function BaselineCell({ e }: { e: WafEndpointInventory }) {
+  const t = useTranslations("waf.endpoints");
+  const { locale } = useBehaviorI18n();
   const { cells_total: total, reliable_cells: reliable } = e.baseline;
   return (
     <>
       {total === 0 ? (
-        <span>No cells</span>
+        <span>{t("noCells")}</span>
       ) : (
-        <>
-          {formatCount(reliable)} / {formatCount(total)}
-        </>
+        <>{t("reliableOfTotal", { reliable: formatCount(reliable, locale), total: formatCount(total, locale) })}</>
       )}
       <span className="cell-sub">
         {total === 0
-          ? "No baseline built"
+          ? t("noBaseline")
           : reliable === 0
-            ? "None reliable yet"
-            : "reliable cells"}
+            ? t("noneReliable")
+            : t("reliableCells")}
       </span>
       {e.baseline_rebuilt_at ? (
         <span className="cell-sub">
-          Rebuilt <Utc value={e.baseline_rebuilt_at} />
+          {t.rich("rebuilt", { time: () => <Utc value={e.baseline_rebuilt_at as string} /> })}
         </span>
       ) : (
-        <span className="cell-sub">Never rebuilt</span>
+        <span className="cell-sub">{t("neverRebuilt")}</span>
       )}
     </>
   );
 }
 
 export function WafEndpointsTable({ endpoints }: { endpoints: WafEndpointInventory[] }) {
+  const t = useTranslations("waf.endpoints");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
   return (
-    <TableScroll label="Tracked endpoints">
+    <TableScroll label={t("tableLabel")}>
       <table className="table-dense">
-        <caption className="sr-only">
-          Endpoints of this WAF source with baseline adequacy, when each was last seen, whether it
-          is retired, and its worst detector state. An endpoint no detector has evaluated says so.
-          Times are UTC.
-        </caption>
+        <caption className="sr-only">{t("caption")}</caption>
         <thead>
           <tr>
-            <th scope="col">Endpoint</th>
+            <th scope="col">{t("endpoint")}</th>
             <th scope="col" className="num">
-              Baseline cells
-              <span className="cell-sub">reliable / total</span>
+              {t("baselineCells")}
+              <span className="cell-sub">{t("reliableTotal")}</span>
             </th>
             <th scope="col" className="num">
-              Last seen (UTC)
+              {t("lastSeen")}
             </th>
-            <th scope="col">Tracking</th>
-            <th scope="col">State</th>
+            <th scope="col">{t("tracking")}</th>
+            <th scope="col">{t("state")}</th>
           </tr>
         </thead>
         <tbody>
@@ -97,8 +98,12 @@ export function WafEndpointsTable({ endpoints }: { endpoints: WafEndpointInvento
             <tr key={e.id}>
               <td className="cell-name">
                 <span className="waf-endpoint"><PathLabel text={endpointLabel(e)} /></span>
-                {e.virtual_host && <span className="cell-sub">Virtual host {e.virtual_host}</span>}
-                <span className="cell-sub">Normalizer v{e.normalizer_version}</span>
+                {e.virtual_host && (
+                  <span className="cell-sub">{t("virtualHost", { host: e.virtual_host })}</span>
+                )}
+                <span className="cell-sub">
+                  {t("normalizer", { version: String(e.normalizer_version) })}
+                </span>
               </td>
               <td className="num">
                 <BaselineCell e={e} />
@@ -106,40 +111,44 @@ export function WafEndpointsTable({ endpoints }: { endpoints: WafEndpointInvento
               <td className="num">
                 <Utc value={e.last_seen_at} bare />
                 <span className="cell-sub">
-                  First <Utc value={e.first_seen_at} bare />
+                  {t.rich("first", { time: () => <Utc value={e.first_seen_at} bare /> })}
                 </span>
               </td>
               <td>
                 {e.retired_at ? (
                   <>
-                    <span className="pill pill-quiet warn">Retired</span>
+                    <span className="pill pill-quiet warn">{t("retired")}</span>
                     <span className="cell-sub">
                       <Utc value={e.retired_at} />
                     </span>
                   </>
                 ) : e.is_active ? (
-                  "Active"
+                  t("active")
                 ) : (
                   // Inactive without a retirement time: not tracked, reason not recorded.
                   <>
-                    <span className="pill pill-quiet">Inactive</span>
-                    <span className="cell-sub">Retirement time not recorded</span>
+                    <span className="pill pill-quiet">{t("inactive")}</span>
+                    <span className="cell-sub">{t("retirementNotRecorded")}</span>
                   </>
                 )}
               </td>
               <td>
                 {e.state ? (
-                  <span className={`pill pill-quiet ${stateTone(e.state)}`}>{statePillText(e.state)}</span>
+                  <span className={`pill pill-quiet ${stateTone(e.state)}`}>
+                    {statePillText(e.state, i18n)}
+                  </span>
                 ) : (
                   <>
-                    <span className="muted">Not evaluated</span>
-                    <span className="cell-sub">No detector has judged this endpoint</span>
+                    <span className="muted">{t("notEvaluated")}</span>
+                    <span className="cell-sub">{t("noDetector")}</span>
                   </>
                 )}
                 {e.active_anomaly_count > 0 && (
                   <span className="cell-sub">
-                    {formatCount(e.active_anomaly_count)} active{" "}
-                    {e.active_anomaly_count === 1 ? "anomaly" : "anomalies"}
+                    {t("activeAnomalies", {
+                      count: e.active_anomaly_count,
+                      shown: formatCount(e.active_anomaly_count, locale),
+                    })}
                   </span>
                 )}
               </td>

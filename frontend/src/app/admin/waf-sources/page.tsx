@@ -1,24 +1,29 @@
 // Which WAF sources are collected, and which need attention.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 
 import { AddSourcePicker } from "@/app/admin/waf-sources/AddSourcePicker";
 import { WafSourceTable } from "@/app/admin/waf-sources/WafSourceTable";
 import { readError } from "@/app/admin/waf-sources/readError";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { api, type MappingSchemaOut, type WafSourceStatus } from "@/lib/api";
+import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 
-export const metadata: Metadata = {
-  title: "WAF sources",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("waf.meta");
+  return { title: t("admin") };
+}
 
 export default async function WafSourcesPage() {
+  const t = await getTranslations("waf.admin");
+  const i18n = await getBehaviorI18n();
   let sources: WafSourceStatus[] = [];
   let error: string | null = null;
   try {
     sources = await api.wafSources();
   } catch (err) {
-    error = readError(err, "WAF sources");
+    error = readError(err, t("read.whatSources"), i18n);
   }
 
   // The schema only supplies labels for the reason after "Invalid:". Without
@@ -35,14 +40,14 @@ export default async function WafSourcesPage() {
   return (
     <>
       <PageHeader
-        title="WAF sources"
-        description="Which WAF sources are collected, and which need attention. Times are UTC."
+        title={t("title")}
+        description={t("description")}
       />
 
       {error ? (
         <div className="notice" role="alert">
           <p>
-            <strong>WAF sources could not be shown.</strong>
+            <strong>{t("errorTitle")}</strong>
           </p>
           <p>{error}</p>
         </div>
@@ -50,9 +55,9 @@ export default async function WafSourcesPage() {
         <>
           <div className="notice" role="status">
             <p>
-              <strong>No log source is configured as a WAF source.</strong>
+              <strong>{t("emptyTitle")}</strong>
             </p>
-            <p>A log source becomes one when its fields are mapped.</p>
+            <p>{t("emptyText")}</p>
           </div>
           <AddSourcePicker />
         </>

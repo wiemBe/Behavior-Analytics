@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 // One row per WAF source: can it be judged, how whole is its latest bucket, how
 // close is it to the endpoint ceiling, and is admission overflowing.
@@ -9,15 +10,14 @@ import Link from "next/link";
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { WafSourceBehavior } from "@/lib/api";
 import { NOT_MEASURED, formatCount } from "@/lib/behavior";
+import { completenessCode, versionLabel } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { UtcTime } from "@/components/ui/UtcTime";
 
 import { formatPercent } from "@/lib/format";
 import { atCeiling, isOverflowing, sortByAttention, validationView } from "./wafSourceHealth";
 
 import "@/components/ui/controls.css";
-
-const KEY_BUCKETS_MEANING =
-  "Counted per bucket: an endpoint key refused in several buckets of the range counts once for each of them.";
 
 function Unmeasured({ meaning }: { meaning: string }) {
   return (
@@ -29,60 +29,78 @@ function Unmeasured({ meaning }: { meaning: string }) {
 }
 
 /** A count line. An unmeasured count is a bare dash: no unit or label follows a missing value. */
-function CountLine({ value, label }: { value: number | null; label: React.ReactNode }) {
+function CountLine({
+  value,
+  label,
+  locale,
+}: {
+  value: number | null;
+  label: React.ReactNode;
+  locale: "en" | "tr";
+}) {
+  const t = useTranslations("waf.sources");
   if (value == null) {
     return (
       <span className="cell-sub muted">
         {NOT_MEASURED}
-        <span className="sr-only"> not measured</span>
+        <span className="sr-only"> {t("notMeasured")}</span>
       </span>
     );
   }
   return (
     <span className="cell-sub">
-      {formatCount(value)} {label}
+      {formatCount(value, locale)} {label}
     </span>
   );
 }
 
 function KeyBuckets() {
+  const t = useTranslations("waf.sources");
   return (
-    <span className="muted key-buckets" title={KEY_BUCKETS_MEANING}>
+    <span className="muted key-buckets" title={t("keyBucketsMeaning")}>
       {" "}
-      (key-buckets)
+      {t("keyBuckets")}
     </span>
   );
 }
 
 function CoverageCell({ s }: { s: WafSourceBehavior }) {
+  const t = useTranslations("waf.sources");
+  const i18n = useBehaviorI18n();
   const b = s.latest_bucket;
   if (!b) {
     return (
       <>
-        <Unmeasured meaning="no bucket has been collected" />
-        <span className="cell-sub">No bucket collected yet</span>
+        <Unmeasured meaning={t("noBucketMeaning")} />
+        <span className="cell-sub">{t("noBucketYet")}</span>
       </>
     );
   }
   return (
     <>
-      {formatPercent(b.endpoint_coverage_ratio, b.coverage_measurement)}
+      {formatPercent(b.endpoint_coverage_ratio, b.coverage_measurement, 1, i18n.locale)}
       <span className="cell-sub">
         <UtcTime value={b.bucket_start} variant="compact" />
       </span>
-      {b.completeness !== "COMPLETE" && <span className="cell-sub">{b.completeness} bucket</span>}
-      {b.in_maintenance && <span className="cell-sub">In maintenance</span>}
+      {b.completeness !== "COMPLETE" && (
+        <span className="cell-sub">
+          {t("bucketCompleteness", { completeness: completenessCode(i18n, b.completeness) })}
+        </span>
+      )}
+      {b.in_maintenance && <span className="cell-sub">{t("inMaintenance")}</span>}
     </>
   );
 }
 
 function OverflowCell({ s }: { s: WafSourceBehavior }) {
+  const t = useTranslations("waf.sources");
+  const { locale } = useBehaviorI18n();
   const a = s.admission;
   if (a.buckets_in_range === 0) {
     return (
       <>
-        <Unmeasured meaning="no bucket was collected in this range" />
-        <span className="cell-sub">No bucket collected in range</span>
+        <Unmeasured meaning={t("noBucketInRangeMeaning")} />
+        <span className="cell-sub">{t("noBucketInRange")}</span>
       </>
     );
   }
@@ -90,79 +108,82 @@ function OverflowCell({ s }: { s: WafSourceBehavior }) {
   return (
     <>
       {isOverflowing(s) ? (
-        <span className="pill pill-quiet warn">Overflowing</span>
+        <span className="pill pill-quiet warn">{t("overflowing")}</span>
       ) : (
-        <span>None</span>
+        <span>{t("none")}</span>
       )}
       <span className="cell-sub">
         {truncated == null ? (
           <>
             {NOT_MEASURED}
-            <span className="sr-only"> truncated buckets not measured</span>
+            <span className="sr-only"> {t("truncatedNotMeasured")}</span>
           </>
         ) : (
           <>
-            {formatCount(truncated)} of {formatCount(a.buckets_in_range)} buckets truncated
+            {t("truncatedBuckets", {
+              truncated: formatCount(truncated, locale),
+              total: formatCount(a.buckets_in_range, locale),
+            })}
           </>
         )}
       </span>
       <CountLine
         value={a.rejected_over_quota}
+        locale={locale}
         label={
           <>
-            refused over quota
+            {t("refusedOverQuota")}
             <KeyBuckets />
           </>
         }
       />
       <CountLine
         value={a.below_admission_threshold}
+        locale={locale}
         label={
           <>
-            below admission threshold
+            {t("belowThreshold")}
             <KeyBuckets />
           </>
         }
       />
-      <CountLine value={a.untracked_requests} label="untracked requests" />
+      <CountLine value={a.untracked_requests} locale={locale} label={t("untracked")} />
     </>
   );
 }
 
 export function WafSourcesTable({ sources }: { sources: WafSourceBehavior[] }) {
+  const t = useTranslations("waf.sources");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
   const rows = sortByAttention(sources);
   return (
     <>
-    <TableScroll label="WAF sources">
+    <TableScroll label={t("tableLabel")}>
       <table className="table-dense">
-        <caption className="sr-only">
-          WAF sources with profile and validation status for the current profile version, endpoint
-          coverage of the latest collected bucket, active endpoints against the ceiling, and
-          admission overflow in the selected range. Sources that need attention are listed first.
-          Times are UTC.
-        </caption>
+        <caption className="sr-only">{t("caption")}</caption>
         <thead>
           <tr>
-            <th scope="col">Source</th>
-            <th scope="col">Profile</th>
-            <th scope="col">Validation</th>
+            <th scope="col">{t("source")}</th>
+            <th scope="col">{t("profile")}</th>
+            <th scope="col">{t("validation")}</th>
             <th scope="col" className="num">
-              Endpoint coverage
-              <span className="cell-sub">latest bucket, % of events</span>
+              {t("coverage")}
+              <span className="cell-sub">{t("coverageSub")}</span>
             </th>
             <th scope="col" className="num">
-              Active endpoints
-              <span className="cell-sub">of ceiling</span>
+              {t("activeEndpoints")}
+              <span className="cell-sub">{t("ofCeiling")}</span>
             </th>
             <th scope="col">
-              Admission overflow
-              <span className="cell-sub">in range, endpoint keys</span>
+              {t("overflow")}
+              <span className="cell-sub">{t("overflowSub")}</span>
             </th>
           </tr>
         </thead>
         <tbody>
           {rows.map((s) => {
-            const v = validationView(s);
+            const v = validationView(s, i18n);
             return (
               <tr key={s.log_source_id}>
                 <td className="cell-name">
@@ -170,26 +191,35 @@ export function WafSourcesTable({ sources }: { sources: WafSourceBehavior[] }) {
                   {s.product_label && <span className="cell-sub">{s.product_label}</span>}
                 </td>
                 <td>
-                  {s.enabled ? "Enabled" : <span className="pill pill-quiet warn">Disabled</span>}
-                  <span className="cell-sub">v{s.profile_version}</span>
+                  {s.enabled ? (
+                    t("enabled")
+                  ) : (
+                    <span className="pill pill-quiet warn">{t("disabled")}</span>
+                  )}
+                  <span className="cell-sub">{versionLabel(formatCount(s.profile_version, locale))}</span>
                   <span className="cell-sub">
-                    <Link href={`/admin/waf-sources/${s.log_source_id}`}>Profile settings</Link>
+                    <Link href={`/admin/waf-sources/${s.log_source_id}`}>{t("profileSettings")}</Link>
                   </span>
                 </td>
                 <td>
                   <span className={`pill pill-quiet ${v.tone}`}>{v.label}</span>
                   <span className="cell-sub">{v.detail}</span>
                   {s.enabled && !s.validation_current && (
-                    <span className="cell-sub">Not collected</span>
+                    <span className="cell-sub">{t("notCollected")}</span>
                   )}
                 </td>
                 <td className="num">
                   <CoverageCell s={s} />
                 </td>
                 <td className="num">
-                  {formatCount(s.active_endpoints)} / {formatCount(s.active_endpoint_ceiling)}
-                  <span className="cell-sub">{formatCount(s.total_endpoints)} tracked, retired included</span>
-                  {atCeiling(s) && <span className="cell-sub">At the ceiling</span>}
+                  {t("endpointsOfCeiling", {
+                    active: formatCount(s.active_endpoints, locale),
+                    ceiling: formatCount(s.active_endpoint_ceiling, locale),
+                  })}
+                  <span className="cell-sub">
+                    {t("trackedRetired", { count: formatCount(s.total_endpoints, locale) })}
+                  </span>
+                  {atCeiling(s) && <span className="cell-sub">{t("atCeiling")}</span>}
                 </td>
                 <td>
                   <OverflowCell s={s} />
@@ -200,12 +230,7 @@ export function WafSourcesTable({ sources }: { sources: WafSourceBehavior[] }) {
         </tbody>
       </table>
     </TableScroll>
-    <p className="subtitle">
-      A key-bucket is one endpoint key in one collected bucket, so a key refused in several
-      buckets counts once for each. Refused over quota means the key met the volume threshold but
-      the per-bucket quota for new endpoints, or the source&apos;s active ceiling, was full. Below
-      admission threshold is ordinary low-volume noise, not overflow.
-    </p>
+    <p className="subtitle">{t("note")}</p>
     </>
   );
 }

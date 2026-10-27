@@ -110,7 +110,36 @@
         "src/components/behavior/SourceRowQualifier.tsx",
         "src/components/behavior/TechnicalDetails.tsx",
         "src/components/behavior/TopContributors.tsx",
-        "src/components/behavior/VolumeChart.tsx"
+        "src/components/behavior/VolumeChart.tsx",
+        "src/app/behavior/waf/error.tsx",
+        "src/app/behavior/waf/loading.tsx",
+        "src/app/behavior/waf/page.tsx",
+        "src/app/admin/waf-sources/AddSourcePicker.tsx",
+        "src/app/admin/waf-sources/ProfileEditor.tsx",
+        "src/app/admin/waf-sources/WafSourceTable.tsx",
+        "src/app/admin/waf-sources/error.tsx",
+        "src/app/admin/waf-sources/loading.tsx",
+        "src/app/admin/waf-sources/page.tsx",
+        "src/app/admin/waf-sources/readError.ts",
+        "src/components/catalog/RecentWafAnomalies.tsx",
+        "src/components/catalog/WafEndpointTraffic.tsx",
+        "src/components/catalog/WafSources.tsx",
+        "src/components/waf/WafDetectionBlock.tsx",
+        "src/components/waf/WafEndpointsTable.tsx",
+        "src/components/waf/WafIncidentHeader.tsx",
+        "src/components/waf/WafIncidentMetrics.tsx",
+        "src/components/waf/WafInvestigation.tsx",
+        "src/components/waf/WafRangeSelector.tsx",
+        "src/components/waf/WafRequestChart.tsx",
+        "src/components/waf/WafSourcesTable.tsx",
+        "src/components/waf/wafBaseline.ts",
+        "src/components/waf/wafFormat.ts",
+        "src/components/waf/wafI18n.ts",
+        "src/components/waf/wafLabels.ts",
+        "src/components/waf/wafRange.ts",
+        "src/components/waf/wafSeries.ts",
+        "src/components/waf/wafSourceHealth.ts",
+        "src/components/waf/wafSummary.ts"
       ],
       "rules": {
         "react/jsx-no-literals": [
@@ -126,7 +155,13 @@
     {
       "files": [
         "src/app/anomalies/\\[id\\]/page.tsx",
-        "src/app/behavior/sources/\\[id\\]/page.tsx"
+        "src/app/behavior/sources/\\[id\\]/page.tsx",
+        "src/app/behavior/waf/sources/\\[id\\]/error.tsx",
+        "src/app/behavior/waf/sources/\\[id\\]/loading.tsx",
+        "src/app/behavior/waf/sources/\\[id\\]/page.tsx",
+        "src/app/admin/waf-sources/\\[logSourceId\\]/error.tsx",
+        "src/app/admin/waf-sources/\\[logSourceId\\]/loading.tsx",
+        "src/app/admin/waf-sources/\\[logSourceId\\]/page.tsx"
       ],
       "rules": {
         "react/jsx-no-literals": [

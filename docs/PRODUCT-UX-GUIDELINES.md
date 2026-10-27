@@ -527,6 +527,15 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | property watch | özellik izleme |
 | scheduled search | zamanlanmış arama |
 | hour, day, second (units) | sa, gün, sn |
+| request | istek |
+| endpoint | endpoint |
+| coverage | kapsam |
+| profile | profil |
+| mapping | eşleme |
+| validation | doğrulama |
+| virtual host | virtual host |
+| admission | kabul |
+| ratio | oran |
 
 ---
 
