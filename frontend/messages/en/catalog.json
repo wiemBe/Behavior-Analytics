@@ -141,12 +141,6 @@
     "noBaseline": "Expected range: no reliable baseline for this weekday and hour",
     "collection": "Collection: {kind}",
     "xAxis": "Time (UTC)",
-    "yAxis": "Events per second (EPS)",
-    "kind": {
-      "COMPLETE": "whole interval observed",
-      "PARTIAL": "partially collected — the reported volume is an undercount, not a measurement",
-      "MISSING": "interval not collected — this is not evidence of silence",
-      "GAP": "no bucket was stored for this interval at all"
-    }
+    "yAxis": "Events per second (EPS)"
   }
 }

@@ -22,6 +22,8 @@ import { sourceDrillHref } from "@/lib/sourceDetail";
 import { useWidgetCopy } from "@/widgets/copy";
 import { useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 
+import "@/components/home/charts.css";
+
 import { ConfigNotice } from "./ConfigNotice";
 import { SourceEpsChart } from "./SourceEpsChart";
 import { hasMeasured, mapResource, seriesQualifiers, sourceCellLookup } from "./subject";

@@ -304,6 +304,19 @@ describe("the volume view in Turkish", () => {
     expect(within(panel).getByRole("table", { name: /en yoğun izlenen gönderenleri, en çok 20/ })).toBeInTheDocument();
   });
 
+  it("words a history bucket's key and selected-bucket origin in Turkish", async () => {
+    vi.spyOn(catchallApi, "buckets").mockResolvedValue(
+      list([bucket(20, { origin: "HISTORY" })]),
+    );
+    render(<SourceVolume sources={sources()} now={NOW} />);
+    const words = await screen.findAllByText(
+      "QRadar geçmişinden okundu, değerlendirilmedi",
+    );
+    expect(words).toHaveLength(2);
+    expect(words.some((node) => node.closest(".chart-legend"))).toBe(true);
+    expect(words.some((node) => node.closest(".bucket-facts"))).toBe(true);
+  });
+
   it("marks a lower-bound bucket as at least, and walks between buckets in words", async () => {
     vi.spyOn(catchallApi, "buckets").mockResolvedValue(list());
     render(<SourceVolume sources={sources()} now={NOW} />);

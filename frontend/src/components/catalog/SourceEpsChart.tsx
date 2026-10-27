@@ -31,6 +31,7 @@ import {
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import { useEChart } from "@/components/home/useEChart";
 import { formatEps } from "@/i18n/measures";
+import { grouped } from "@/lib/figureText";
 import type { MetricBucket } from "@/lib/api";
 import { useFleetText, type FleetText } from "@/lib/fleetText";
 import type { HomePalette } from "@/lib/home/chartPalette";
@@ -58,12 +59,6 @@ echarts.use([
 ]);
 
 const UNIT = "EPS";
-
-/** The meaning of a point's collection kind; the catalog's words, `kindMeaning` for an unknown one. */
-function kindText(text: FleetText, kind: Parameters<typeof kindMeaning>[0]): string {
-  const key = `catalog.chart.kind.${kind}`;
-  return text.say.has?.(key) ? text.say(key) : kindMeaning(kind);
-}
 
 type MarkAreaPair = [{ xAxis: number; itemStyle?: { color: string }; name?: string }, { xAxis: number }];
 
@@ -127,7 +122,7 @@ export function buildSourceEpsOption(
       { xAxis: g.end },
     ],
   );
-  const historyAreas = historyMarkAreas(m.history, readHistoryShade(), m.labelled);
+  const historyAreas = historyMarkAreas(m.history, readHistoryShade(), m.labelled, say("behavior.history.text"));
   const lone = isolatedPoints(points);
   const fmt = (v: number) => (locale === "en" ? v.toFixed(2) : formatEps(v, locale));
 
@@ -154,7 +149,7 @@ export function buildSourceEpsOption(
           utcTimeHtml(new Date(p.t).toISOString()),
           p.observed != null
             ? say("catalog.chart.observedTip", { value: fmt(p.observed), unit })
-            : say("catalog.chart.observedNone", { kind: kindText(words, p.kind) }),
+            : say("catalog.chart.observedNone", { kind: kindMeaning(p.kind, { t: say, locale }) }),
           p.observed == null && p.reported != null
             ? say("catalog.chart.reported", { value: fmt(p.reported), unit })
             : "",
@@ -162,8 +157,8 @@ export function buildSourceEpsOption(
           cell?.low != null && cell.high != null
             ? say("catalog.chart.range", { low: fmt(cell.low), high: fmt(cell.high), unit })
             : say("catalog.chart.noBaseline"),
-          say("catalog.chart.collection", { kind: kindText(words, p.kind) }),
-          originText(m.origins.get(p.t)),
+          say("catalog.chart.collection", { kind: kindMeaning(p.kind, { t: say, locale }) }),
+          originText(m.origins.get(p.t), words),
         ]
           .filter(Boolean)
           .join("<br/>");
@@ -184,6 +179,8 @@ export function buildSourceEpsOption(
       min: 0,
       splitLine: { lineStyle: { color: c.grid } },
       ...axisCommon,
+      axisLabel:
+        locale === "tr" ? { ...text, formatter: (value: number) => grouped(value, locale) } : text,
     },
     series: [
       {

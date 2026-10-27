@@ -308,11 +308,11 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
                         )}
                       </dd>
                     </div>
-                    {originMarker(slot.bucket.origin) && (
+                    {originMarker(slot.bucket.origin, text) && (
                       <div>
                         <dt>{t("origin")}</dt>
                         <dd>
-                          <span className="pill">{originMarker(slot.bucket.origin)}</span>
+                          <span className="pill">{originMarker(slot.bucket.origin, text)}</span>
                         </dd>
                       </div>
                     )}

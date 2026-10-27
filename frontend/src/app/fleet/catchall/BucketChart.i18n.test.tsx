@@ -81,11 +81,27 @@ describe("BucketChart in Turkish", () => {
     expect(tip(5)).toContain("Henüz toplanmadı (ölçülen son zaman diliminden sonra)");
   });
 
+  it("groups the value axis in the Turkish form (2.000, never 2,000)", () => {
+    draw();
+    const formatter = option().yAxis.axisLabel.formatter as (v: number) => string;
+    expect(formatter(2000)).toBe("2.000");
+    expect(formatter(1500)).toBe("1.500");
+    expect(formatter(500)).toBe("500");
+  });
+
+  it("words a history bucket's tooltip line and its span label in Turkish", () => {
+    const s = buildSlots([bucket(0, { origin: "HISTORY" }), bucket(5)], T(0), T(10));
+    render(<BucketChart slots={s.slots} bucketSeconds={300} selected={null} onSelect={vi.fn()} ariaLabel="c" textSummary="t" />);
+    expect(option().tooltip.formatter({ dataIndex: 0 })).toContain("QRadar geçmişinden okundu, değerlendirilmedi");
+    expect(option().series[0].markArea.data[0][0].name).toBe("QRadar geçmişinden okundu, değerlendirilmedi");
+  });
+
   it("keeps the English tooltips when the session is English", () => {
     setTestLocale("en");
     const tip = draw();
     expect(tip(3)).toContain("Events: at least 900 events / 5 min");
     expect(tip(1)).toContain("Not measured (no row was stored for this bucket)");
     expect(option().yAxis.name).toBe("Volume (events / 5 min)");
+    expect(option().yAxis.axisLabel.formatter).toBeUndefined();
   });
 });

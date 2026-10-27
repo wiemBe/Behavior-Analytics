@@ -257,7 +257,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     category: "Health",
     requires: ["read:search_cadence"],
     sources: ["/admin/search-cadence"],
-    size: { w: 6, h: 15, minW: 4, minH: 10 },
+    size: { w: 6, h: 18, minW: 4, minH: 10 },
     drillDown: "/admin/search-cadence",
     loader: () => import("@/components/catalog/HealthCollection").then((m) => m.HealthCollection),
   }),

@@ -95,9 +95,6 @@
         "src/app/log-sources/loading.tsx",
         "src/app/log-sources/error.tsx",
         "src/app/log-sources/qradarStatus.ts",
-        "src/app/log-sources/[id]/page.tsx",
-        "src/app/log-sources/[id]/loading.tsx",
-        "src/app/log-sources/[id]/error.tsx",
         "src/app/coverage/page.tsx",
         "src/app/coverage/loading.tsx",
         "src/app/coverage/error.tsx",
@@ -165,7 +162,10 @@
     {
       "files": [
         "src/app/anomalies/\\[id\\]/page.tsx",
-        "src/app/behavior/sources/\\[id\\]/page.tsx"
+        "src/app/behavior/sources/\\[id\\]/page.tsx",
+        "src/app/log-sources/\\[id\\]/page.tsx",
+        "src/app/log-sources/\\[id\\]/loading.tsx",
+        "src/app/log-sources/\\[id\\]/error.tsx"
       ],
       "rules": {
         "react/jsx-no-literals": [

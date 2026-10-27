@@ -125,6 +125,7 @@ describe("/coverage in Turkish", () => {
     expect(within(covered).getByText("KAPSANDI")).toHaveClass("ok");
     expect(covered).toHaveTextContent("1.204");
     expect(covered).toHaveTextContent("%90,5");
+    expect(covered).toHaveTextContent("Bu tekniğe eşlenen en az bir sağlıklı, etkin kural var.");
     expect(within(unevaluated).getByText("DEĞERLENDİRİLMEDİ")).not.toHaveClass("ok", "crit", "warn");
     expect(unevaluated).toHaveTextContent("Backend reason, as sent.");
     expect(unevaluated.textContent).toContain("—");

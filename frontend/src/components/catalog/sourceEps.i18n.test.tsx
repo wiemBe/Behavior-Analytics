@@ -14,7 +14,6 @@ import { fleetTextOf } from "@/lib/fleetText";
 import { kindMeaning } from "@/lib/timeseries";
 import { WidgetRuntimeContext, type WidgetRuntime } from "@/widgets/runtime";
 
-import en from "../../../messages/en";
 import tr from "../../../messages/tr";
 import { SourceEps } from "./SourceEps";
 import { buildSourceEpsOption, sourceEpsModel } from "./SourceEpsChart";
@@ -219,7 +218,7 @@ describe("the EPS chart in Turkish", () => {
 
   it("says a partial bucket is not a measurement, and what the partial collection reported", () => {
     const { text } = tip(turkish, 1);
-    expect(text).toContain("Gözlenen: ölçülmedi (kısmen toplandı — bildirilen hacim eksik sayımdır, ölçüm değildir)");
+    expect(text).toContain("Gözlenen: ölçülmedi (kısmen toplandı — bildirilen hacim bir ölçüm değil, eksik sayımdır)");
     expect(text).toContain(`Kısmi toplamanın bildirdiği: 12,25${NB}EPS`);
     expect(text).toContain("Beklenen aralık: bu hafta günü ve saat için güvenilir baseline yok");
     expect(text).not.toContain("Beklenen medyan");
@@ -227,7 +226,7 @@ describe("the EPS chart in Turkish", () => {
 
   it("says a missing bucket is not evidence of silence, never a zero", () => {
     const { text } = tip(turkish, 2);
-    expect(text).toContain("Gözlenen: ölçülmedi (aralık toplanmadı — bu sessizliğin kanıtı değildir)");
+    expect(text).toContain("Gözlenen: ölçülmedi (aralık toplanmadı — bu, sessizliğin kanıtı değildir)");
     expect(text).not.toContain("Gözlenen: 0");
   });
 
@@ -243,8 +242,41 @@ describe("the EPS chart in Turkish", () => {
 
   it("has a Turkish meaning for every collection kind, and the English is the timeseries' own", () => {
     for (const kind of ["COMPLETE", "PARTIAL", "MISSING", "GAP"] as const) {
-      expect(en.catalog.chart.kind[kind]).toBe(kindMeaning(kind));
-      expect(tr.catalog.chart.kind[kind]).not.toBe(kindMeaning(kind));
+      expect(kindMeaning(kind, { t: turkish.say, locale: "tr" })).not.toBe(kindMeaning(kind));
     }
+  });
+
+  it("groups the y axis in the Turkish form and leaves the English axis to ECharts", () => {
+    const axis = (words?: Parameters<typeof buildSourceEpsOption>[2]) =>
+      (buildSourceEpsOption(sourceEpsModel(buckets, lookup), palette, words) as {
+        yAxis: { axisLabel: { formatter?: (v: number) => string } };
+      }).yAxis.axisLabel;
+    expect(axis(turkish).formatter?.(2000)).toBe("2.000");
+    expect(axis(turkish).formatter?.(1500000)).toBe("1.500.000");
+    expect(axis(turkish).formatter?.(300)).toBe("300");
+    expect(axis().formatter).toBeUndefined();
+  });
+
+  it("words the history span label and the origin line in Turkish", () => {
+    const history = [eps(0, { origin: "HISTORY" } as never), eps(5)];
+    const option = buildSourceEpsOption(sourceEpsModel(history, null, true), palette, turkish) as {
+      series: Array<{ markArea?: { data: Array<[{ name?: string }]> } }>;
+      tooltip: { formatter: (p: unknown) => string };
+    };
+    expect(option.series[0].markArea?.data[0][0].name).toBe("QRadar geçmişinden okundu, değerlendirilmedi");
+    expect(option.tooltip.formatter({ dataIndex: 0 })).toContain("QRadar geçmişinden okundu, değerlendirilmedi");
+  });
+
+  it("words the rendered history key and text alternative in Turkish", () => {
+    set({
+      [SER()]: ok(
+        series([eps(0, { origin: "HISTORY" } as never), eps(5)]),
+      ),
+    });
+    render(<SourceEps config={cfg} />);
+    expect(screen.getByRole("list", { name: "Grafik anahtarı" })).toHaveTextContent(
+      "QRadar geçmişinden okundu, değerlendirilmedi",
+    );
+    expect(screen.getByText(/1.\/.2 zaman dilimi QRadar geçmişinden okundu/)).toBeInTheDocument();
   });
 });

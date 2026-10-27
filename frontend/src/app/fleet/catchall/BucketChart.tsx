@@ -28,6 +28,7 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
+import { grouped } from "@/lib/figureText";
 import { useFleetText } from "@/lib/fleetText";
 
 import { HistoryText } from "@/components/behavior/HistoryKey";
@@ -94,7 +95,7 @@ export function BucketChart({
       const shade = readHistoryShade();
       // One span per run of contiguous history buckets, on the shading series, behind the bars.
       const pastAreas = historySpans(slots).map(([first, last], i) =>
-        historyMarkArea(first, last, shade, i === 0),
+        historyMarkArea(first, last, shade, i === 0, say("behavior.history.text")),
       );
       const reduceMotion =
         typeof window !== "undefined" &&
@@ -138,7 +139,7 @@ export function BucketChart({
                 count: formatCount(b.distinct_senders, locale),
               }),
               atLeast ? say("catchall.chart.truncated") : "",
-              originText(b.origin),
+              originText(b.origin, { say, locale }),
             ]
               .filter(Boolean)
               .join("<br/>");
@@ -163,7 +164,7 @@ export function BucketChart({
           max: yMax,
           splitLine: { lineStyle: { color: c.grid } },
           axisLine: { lineStyle: { color: c.axis } },
-          axisLabel: text,
+          axisLabel: locale === "tr" ? { ...text, formatter: (value: number) => grouped(value, locale) } : text,
         },
         series: [
           {

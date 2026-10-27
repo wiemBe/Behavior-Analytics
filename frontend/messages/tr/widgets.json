@@ -57,8 +57,8 @@
       "description": "Kanıtı bekleyen veya toplanamayan anomaliler."
     },
     "table_catchall_senders": {
-      "title": "İncelenecek catch-all kaynakları",
-      "description": "Catch-all kaynaklarını besleyen, henüz incelenmemiş en yeni göndericiler."
+      "title": "İncelenecek catch-all gönderenleri",
+      "description": "Catch-all kaynaklarını besleyen, henüz incelenmemiş en yeni gönderenler."
     },
     "table_fleet_classes": {
       "title": "Kaynak sınıfları",
@@ -139,7 +139,7 @@
     },
     "log_source_monitoring": {
       "name": "Log Source İzleme",
-      "description": "Kaynak kararları, trafik dağılımı, kaynak sınıfları ve incelenmesi gereken catch-all göndericileri."
+      "description": "Kaynak kararları, trafik dağılımı, kaynak sınıfları ve incelenmesi gereken catch-all gönderenleri."
     },
     "waf_ips_monitoring": {
       "name": "WAF / IPS İzleme",

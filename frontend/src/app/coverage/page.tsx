@@ -152,7 +152,7 @@ export default async function CoveragePage({
                       <td className="num">
                         {formatShare(tq.coverage_score, locale)}
                       </td>
-                      <td className="muted">{tq.reason ?? healthMeaning(tq.status)}</td>
+                      <td className="muted">{tq.reason ?? healthMeaning(tq.status, say)}</td>
                     </tr>
                   ))}
                 </tbody>

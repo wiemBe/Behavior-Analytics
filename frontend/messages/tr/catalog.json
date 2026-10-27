@@ -141,12 +141,6 @@
     "noBaseline": "Beklenen aralık: bu hafta günü ve saat için güvenilir baseline yok",
     "collection": "Toplama: {kind}",
     "xAxis": "Zaman (UTC)",
-    "yAxis": "Saniyedeki olay sayısı (EPS)",
-    "kind": {
-      "COMPLETE": "aralığın tamamı gözlendi",
-      "PARTIAL": "kısmen toplandı — bildirilen hacim eksik sayımdır, ölçüm değildir",
-      "MISSING": "aralık toplanmadı — bu sessizliğin kanıtı değildir",
-      "GAP": "bu aralık için hiç zaman dilimi saklanmadı"
-    }
+    "yAxis": "Saniyedeki olay sayısı (EPS)"
   }
 }
