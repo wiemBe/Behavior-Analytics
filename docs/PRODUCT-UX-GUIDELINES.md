@@ -544,6 +544,14 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | silence grace | sessizlik toleransı |
 | coverage | kapsam |
 | technique, tactic (ATT&CK) | teknik, taktik |
+| request | istek |
+| endpoint | endpoint |
+| profile | profil |
+| mapping | eşleme |
+| validation | doğrulama |
+| virtual host | virtual host |
+| admission | kabul |
+| ratio | oran |
 
 ---
 

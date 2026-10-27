@@ -73,6 +73,20 @@ const IDENTICAL_ALLOWLIST = new Set([
   "units.eps",
   // I18N-5: punctuation around a placeholder, the same in both languages.
   "customRules.latency.tail",
+  // I18N-9: the glossary keeps these product and technical terms English (WAF, endpoint, virtual
+  // host, Normalizer, robust z); "QRadar id" matches QRadar's own screens; "WAF" alone is the
+  // product name; "{label} (%)" is punctuation and a placeholder only.
+  "waf.admin.picker.qradarId",
+  "waf.admin.table.qradarId",
+  "waf.chart.axisRatio",
+  "waf.detection.robustZ",
+  "waf.editor.qradarId",
+  "waf.endpoints.endpoint",
+  "waf.endpoints.normalizer",
+  "waf.incident.virtualHost",
+  "waf.sourcesWidget.linkWaf",
+  "waf.state.NORMAL",
+  "waf.traffic.linkWaf",
 ]);
 
 describe("message catalog contract", () => {

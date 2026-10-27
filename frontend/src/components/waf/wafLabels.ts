@@ -8,6 +8,9 @@
 
 import type { AnomalySummary, MeasurementKind, WafEndpointRef } from "@/lib/api";
 import { detectorLabel } from "@/lib/behavior";
+import { wordOrValue } from "@/lib/behaviorI18n";
+
+import { ENGLISH_WAF, type BehaviorI18n } from "./wafI18n";
 
 const WAF_TYPE_LABELS: Record<string, string> = {
   WAF_REQUEST_RATE_SPIKE: "Request-rate spike",
@@ -26,9 +29,13 @@ export function isWafType(type: string | null | undefined): boolean {
   return type != null && type in WAF_TYPE_LABELS;
 }
 
-/** A detector's name for display, Phase A or WAF. Unknown types show as sent. */
-export function anomalyTypeLabel(type: string): string {
-  return WAF_TYPE_LABELS[type] ?? detectorLabel(type);
+/**
+ * A detector's name for display, Phase A or WAF. Unknown types show as sent. The WAF names come
+ * from the `enums.anomalyType` table (the English table equals `WAF_TYPE_LABELS`, which stays the
+ * list of the types this build knows).
+ */
+export function anomalyTypeLabel(type: string, i18n: BehaviorI18n = ENGLISH_WAF): string {
+  return isWafType(type) ? wordOrValue(i18n, "enums.anomalyType", type) : detectorLabel(type, i18n);
 }
 
 /** `GET /portal/login`: the method and the normalized path, nothing else. */
@@ -47,8 +54,9 @@ export function isWafRow(a: Pick<AnomalySummary, "subject_kind" | "waf_endpoint"
  * its source name. A source whose row is gone falls back to the id so the cell
  * is never blank.
  */
-export function subjectText(a: AnomalySummary): string {
-  const source = a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? "Unnamed subject";
+export function subjectText(a: AnomalySummary, i18n: BehaviorI18n = ENGLISH_WAF): string {
+  const source =
+    a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? i18n.t("waf.subject.unnamed");
   return a.waf_endpoint && isWafRow(a) ? `${endpointLabel(a.waf_endpoint)} · ${source}` : source;
 }
 
@@ -67,8 +75,8 @@ const STATE_LABELS: Record<string, string> = {
 };
 
 /** A lifecycle state as a word: "Insufficient data", never `INSUFFICIENT_DATA`. */
-export function stateLabel(state: string): string {
-  return STATE_LABELS[state] ?? state;
+export function stateLabel(state: string, i18n: BehaviorI18n = ENGLISH_WAF): string {
+  return Object.hasOwn(STATE_LABELS, state) ? i18n.t(`waf.state.${state}`) : state;
 }
 
 /**
@@ -76,8 +84,12 @@ export function stateLabel(state: string): string {
  * ("OPEN", "INSUFFICIENT_DATA"). The anomaly list renders that string as it arrives; this is
  * the same string for every investigation pill.
  */
-export function statePillText(state: string): string {
-  return state.toUpperCase();
+export function statePillText(state: string, i18n?: BehaviorI18n): string {
+  if (!i18n) return state.toUpperCase();
+  // The `enums.anomalyState` table: the code in English, the capitals of the word in Turkish
+  // (`YETERSİZ VERİ`); a state the catalog lacks stays its code.
+  const word = wordOrValue(i18n, "enums.anomalyState", state);
+  return word === state ? state.toUpperCase() : word;
 }
 
 const EVIDENCE_LABELS: Record<string, string> = {
@@ -90,6 +102,6 @@ const EVIDENCE_LABELS: Record<string, string> = {
 };
 
 /** An evidence status as a word. */
-export function evidenceLabel(status: string): string {
-  return EVIDENCE_LABELS[status] ?? status;
+export function evidenceLabel(status: string, i18n: BehaviorI18n = ENGLISH_WAF): string {
+  return Object.hasOwn(EVIDENCE_LABELS, status) ? wordOrValue(i18n, "behavior.evidenceWord", status) : status;
 }
