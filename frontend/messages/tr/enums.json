@@ -104,5 +104,11 @@
     "DEPENDENCY_DEGRADED": "Bağımlılık bozulmuş",
     "INSUFFICIENT_DATA": "Yetersiz veri",
     "UNKNOWN": "Bilinmiyor"
+  },
+  "role": {
+    "admin": "Yönetici (admin)",
+    "analyst": "Analist (analyst)",
+    "viewer": "Görüntüleyici (viewer)",
+    "detection_engineer": "Tespit mühendisi (detection_engineer)"
   }
 }

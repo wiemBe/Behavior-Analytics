@@ -7,10 +7,13 @@
 // page that holds fewer rows than matched says how many matched in total.
 
 import { useEffect, useId, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import { actionErrorMessage, fleetApi, type FleetSource } from "@/lib/api";
 import { classLabel } from "@/lib/fleet";
+import { plainCount } from "@/lib/figureText";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import "@/components/ui/controls.css";
 
@@ -35,6 +38,8 @@ export function SourcePicker({
   onEdit: (sourceId: string) => void;
   onClose: () => void;
 }) {
+  const t = useTranslations("outage.picker");
+  const i18n = useBehaviorI18n();
   const [state, setState] = useState<State>({ kind: "loading" });
   const [q, setQ] = useState("");
   const searchId = useId();
@@ -53,7 +58,7 @@ export function SourcePicker({
             if (!cancelled) {
               setState({
                 kind: "error",
-                text: `The log sources could not be listed. ${actionErrorMessage(err)}`,
+                text: t("listFailed", { reason: actionErrorMessage(err, i18n.t) }),
               });
             }
           });
@@ -64,12 +69,14 @@ export function SourcePicker({
       cancelled = true;
       clearTimeout(timer);
     };
+    // The translator is stable per locale; a changed locale re-reads nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
   return (
-    <div className="fm-picker panel" role="region" aria-label="Choose a log source">
+    <div className="fm-picker panel" role="region" aria-label={t("region")}>
       <div className="fm-picker-search">
-        <label htmlFor={searchId}>Search by name or QRadar type</label>
+        <label htmlFor={searchId}>{t("search")}</label>
         <input
           id={searchId}
           type="search"
@@ -82,7 +89,7 @@ export function SourcePicker({
       </div>
       {state.kind === "loading" && (
         <p className="fm-note" role="status">
-          Searching log sources…
+          {t("searching")}
         </p>
       )}
       {state.kind === "error" && (
@@ -92,24 +99,20 @@ export function SourcePicker({
       )}
       {state.kind === "ready" && state.items.length === 0 && (
         <p className="fm-empty" role="status">
-          {q.trim()
-            ? `No log source has a name or type containing “${q.trim()}”.`
-            : "The inventory lists no log source."}
+          {q.trim() ? t("emptyQuery", { query: q.trim() }) : t("empty")}
         </p>
       )}
       {state.kind === "ready" && state.items.length > 0 && (
-        <TableScroll label="Log sources">
+        <TableScroll label={t("tableLabel")}>
           <table className="fleet-table outage-pick">
-            <caption className="sr-only">
-              Log sources matching the search, with their class and QRadar type.
-            </caption>
+            <caption className="sr-only">{t("caption")}</caption>
             <thead>
               <tr>
-                <th scope="col">Source</th>
-                <th scope="col">Class</th>
-                <th scope="col">QRadar type</th>
+                <th scope="col">{t("source")}</th>
+                <th scope="col">{t("class")}</th>
+                <th scope="col">{t("type")}</th>
                 <th scope="col" className="cell-end">
-                  Override
+                  {t("override")}
                 </th>
               </tr>
             </thead>
@@ -118,30 +121,30 @@ export function SourcePicker({
                 <tr key={s.id}>
                   <th scope="row" className="cell-source">
                     {s.name}
-                    {!s.enabled && <span className="cell-sub">Disabled</span>}
+                    {!s.enabled && <span className="cell-sub">{t("disabled")}</span>}
                   </th>
-                  <td>{classLabel(s.source_class)}</td>
+                  <td>{classLabel(s.source_class, { say: i18n.t, locale: i18n.locale })}</td>
                   <td>{s.type_name ?? <span className="muted">—</span>}</td>
                   <td className="cell-end">
                     {overridden.has(s.id) ? (
                       <a
                         href={`#override-${s.id}`}
-                        aria-label={`Has override: edit ${s.name}`}
+                        aria-label={t("hasOverrideAria", { name: s.name })}
                         onClick={(e) => {
                           e.preventDefault();
                           onEdit(s.id);
                         }}
                       >
-                        Has override
+                        {t("hasOverride")}
                       </a>
                     ) : (
                       <button
                         type="button"
                         className="action secondary"
-                        aria-label={`Override ${s.name}`}
+                        aria-label={t("overrideAria", { name: s.name })}
                         onClick={() => onChoose(s)}
                       >
-                        Override
+                        {t("override")}
                       </button>
                     )}
                   </td>
@@ -153,13 +156,15 @@ export function SourcePicker({
       )}
       {state.kind === "ready" && state.total > state.items.length && (
         <p className="fm-note">
-          {state.total} log sources match; showing the first {state.items.length}. Narrow the search
-          to see others.
+          {t("capped", {
+            total: plainCount(state.total, i18n.locale),
+            shown: plainCount(state.items.length, i18n.locale),
+          })}
         </p>
       )}
       <div className="actions">
         <button type="button" className="action secondary" onClick={onClose}>
-          Close
+          {t("close")}
         </button>
       </div>
     </div>

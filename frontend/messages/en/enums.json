@@ -104,5 +104,11 @@
     "DEPENDENCY_DEGRADED": "DEPENDENCY DEGRADED",
     "INSUFFICIENT_DATA": "INSUFFICIENT DATA",
     "UNKNOWN": "UNKNOWN"
+  },
+  "role": {
+    "admin": "admin",
+    "analyst": "analyst",
+    "viewer": "viewer",
+    "detection_engineer": "detection_engineer"
   }
 }

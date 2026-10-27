@@ -12,9 +12,12 @@
 // the catalog serves names that fail the pattern ("not selectable").
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import type { CatalogProperty } from "@/lib/api";
 import { matchProperty } from "@/lib/fieldMapping";
+import { plainCount } from "@/lib/figureText";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 interface Item {
   key: string;
@@ -32,16 +35,20 @@ interface Section {
   items: Item[];
 }
 
+// `title` is the catalog key of the group's heading (`fieldMapping.input.<title>`).
 const GROUPS: { key: string; title: string; applies: boolean | null }[] = [
-  { key: "applies", title: "Applies to this source type", applies: true },
-  { key: "other", title: "Other source types", applies: false },
-  { key: "unknown", title: "Type unknown", applies: null },
+  { key: "applies", title: "groupApplies", applies: true },
+  { key: "other", title: "groupOther", applies: false },
+  { key: "unknown", title: "groupUnknown", applies: null },
 ];
+
+type Say = (key: string) => string;
 
 function build(
   normalized: string[],
   properties: CatalogProperty[],
   query: string,
+  say: Say,
 ): { sections: Section[]; flat: Item[]; total: number } {
   const sections: Section[] = [];
   const flat: Item[] = [];
@@ -74,20 +81,20 @@ function build(
 
   add(
     "normalized",
-    "QRadar normalized fields",
+    say("normalized"),
     normalized.map((name) => ({ name, hint: "", selectable: true })),
   );
   for (const g of GROUPS) {
     add(
       g.key,
-      g.title,
+      say(g.title),
       properties
         .filter((p) => p.applies_to_source_type === g.applies)
         .map((p) => ({
           name: p.name,
           hint: p.name_allowed
             ? (p.property_type ?? "").toLowerCase()
-            : "not selectable: name not allowed",
+            : say("notSelectable"),
           selectable: p.name_allowed,
         })),
     );
@@ -138,6 +145,8 @@ export function PropertyInput({
   disabled?: boolean;
   onChange: (next: string) => void;
 }) {
+  const t = useTranslations("fieldMapping.input");
+  const i18n = useBehaviorI18n();
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
@@ -150,8 +159,8 @@ export function PropertyInput({
 
   const usable = normalized.length + suggestions.length > 0;
   const { sections, flat, total } = useMemo(
-    () => build(normalized, suggestions, query ?? ""),
-    [normalized, suggestions, query],
+    () => build(normalized, suggestions, query ?? "", (key) => t(key as "normalized")),
+    [normalized, suggestions, query, t],
   );
   const visible = open && usable;
   const optionId = (i: number) => `${listId}-o${i}`;
@@ -238,7 +247,12 @@ export function PropertyInput({
   }
 
   const q = (query ?? "").trim();
-  const count = filtering ? `${flat.length} of ${total} properties match` : `${total} properties`;
+  const count = filtering
+    ? t("countFiltered", {
+        shown: plainCount(flat.length, i18n.locale),
+        total: plainCount(total, i18n.locale),
+      })
+    : t("count", { total: plainCount(total, i18n.locale) });
 
   return (
     <div className="fm-combo">
@@ -291,8 +305,7 @@ export function PropertyInput({
             <span className="fm-count-n">{count}</span>
             {flat.length === 0 && (
               <span className="fm-count-note">
-                {" "}
-                for “{q}”. The name you typed can still be used; validation will check it.
+                {t("countNote", { query: q })}
               </span>
             )}
           </p>
@@ -300,7 +313,7 @@ export function PropertyInput({
             id={listId}
             ref={listRef}
             role="listbox"
-            aria-label={`Properties for ${label}`}
+            aria-label={t("listLabel", { label })}
             className="fm-list"
             hidden={flat.length === 0}
           >
@@ -318,7 +331,7 @@ export function PropertyInput({
                       id={optionId(it.index)}
                       role="option"
                       // Whole-name label: the emphasis marks would split it.
-                      aria-label={[it.name, isCurrent ? "current" : "", it.hint]
+                      aria-label={[it.name, isCurrent ? t("current") : "", it.hint]
                         .filter(Boolean)
                         .join(", ")}
                       aria-selected={isCurrent}
@@ -331,7 +344,7 @@ export function PropertyInput({
                       <span className="fm-option-name">
                         <Highlighted text={it.name} ranges={it.ranges} />
                       </span>
-                      {isCurrent && <span className="fm-option-current">current</span>}
+                      {isCurrent && <span className="fm-option-current">{t("current")}</span>}
                       {it.hint && <span className="fm-option-hint">{it.hint}</span>}
                     </div>
                   );

@@ -12,6 +12,7 @@ import type { FormatLocale } from "@/lib/format";
 import { formatCount } from "@/lib/format";
 
 import catchall from "../../messages/en/catchall.json";
+import classification from "../../messages/en/classification.json";
 import enums from "../../messages/en/enums.json";
 import errors from "../../messages/en/errors.json";
 import fleet from "../../messages/en/fleet.json";
@@ -25,7 +26,7 @@ export interface FleetText {
 
 /** English from the catalog of this area only; the chunk of the fleet routes carries it. */
 export const englishFleetText: FleetText = {
-  say: createTextTranslator("en", { catchall, enums, errors, fleet, units }),
+  say: createTextTranslator("en", { catchall, classification, enums, errors, fleet, units }),
   locale: "en",
 };
 

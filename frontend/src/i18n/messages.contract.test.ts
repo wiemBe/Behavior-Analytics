@@ -87,6 +87,12 @@ const IDENTICAL_ALLOWLIST = new Set([
   "waf.sourcesWidget.linkWaf",
   "waf.state.NORMAL",
   "waf.traffic.linkWaf",
+  // I18N-8: protocol and unit names the product keeps as QRadar and the directory show them
+  // (StartTLS, TLS, Bind, the millisecond unit); the Turkish auth messages already say "bind".
+  "directory.form.startTls",
+  "directory.test.bind",
+  "directory.test.tls",
+  "directory.test.ms",
 ]);
 
 describe("message catalog contract", () => {

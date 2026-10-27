@@ -19,7 +19,24 @@ import {
   type WafProfileIn,
   type WafValidationStatus,
 } from "@/lib/api";
+import fieldMapping from "../../messages/en/fieldMapping.json";
+import { createTextTranslator } from "@/i18n/textTranslator";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { plainCount } from "@/lib/figureText";
 import { formatShare } from "@/lib/format";
+
+// Every helper that builds visible text takes a `BehaviorI18n` (a translator over the whole
+// catalog, and the locale) as its LAST optional argument and defaults to English, so the IPS
+// editor, which is converted by its own wave, and every existing test keep today's text. Route code
+// passes its own (`useBehaviorI18n()` in a component). Nothing translates by matching text.
+
+/** The English of this area, for the helpers' defaults. */
+export const ENGLISH_FM: BehaviorI18n = {
+  t: createTextTranslator("en", { fieldMapping }),
+  locale: "en",
+};
+
+const k = (key: string) => `fieldMapping.${key}`;
 
 export const MISSING = "—";
 
@@ -105,7 +122,11 @@ export function draftToInput(
  * served in the schema; if this browser cannot compile it, no client check is
  * made and the server's answer decides.
  */
-export function checkPropertyName(name: string, pattern: string): string | null {
+export function checkPropertyName(
+  name: string,
+  pattern: string,
+  i18n: BehaviorI18n = ENGLISH_FM,
+): string | null {
   const value = name.trim();
   if (value === "") return null;
   let re: RegExp;
@@ -114,35 +135,36 @@ export function checkPropertyName(name: string, pattern: string): string | null 
   } catch {
     return null;
   }
-  return re.test(value)
-    ? null
-    : `Not an allowed property name. Names match ${pattern} and are never sent to QRadar otherwise.`;
+  return re.test(value) ? null : i18n.t(k("draft.badName"), { pattern });
 }
 
 /** Field key to the message shown beside it. `@values` is the action value map. */
-export function draftErrors(schema: MappingSchemaOut, draft: MappingDraft): Record<string, string> {
+export function draftErrors(
+  schema: MappingSchemaOut,
+  draft: MappingDraft,
+  i18n: BehaviorI18n = ENGLISH_FM,
+): Record<string, string> {
   const errors: Record<string, string> = {};
   for (const f of schema.fields) {
     const value = (draft.mapping[f.key] ?? "").trim();
     if (value === "") {
-      if (f.required) errors[f.key] = "Required: collection cannot run without it.";
+      if (f.required) errors[f.key] = i18n.t(k("draft.required"));
       continue;
     }
-    const bad = checkPropertyName(value, schema.property_name_pattern);
+    const bad = checkPropertyName(value, schema.property_name_pattern, i18n);
     if (bad) errors[f.key] = bad;
   }
   for (const vm of schema.value_maps) {
     const mapped = vm.outcomes.some((o) => (draft.actionMap[o] ?? []).length > 0);
     if (mapped && (draft.mapping[vm.field] ?? "").trim() === "") {
-      errors["@values"] =
-        "Values are assigned but no property is mapped for this field. Map the property first.";
+      errors["@values"] = i18n.t(k("draft.valuesNoProperty"));
     }
     const seen = new Map<string, string>();
     for (const o of vm.outcomes) {
       for (const v of draft.actionMap[o] ?? []) {
         const prior = seen.get(v);
         if (prior && prior !== o) {
-          errors["@values"] = `The value “${v}” is in both lists. Assign it to one.`;
+          errors["@values"] = i18n.t(k("draft.valueInBoth"), { value: v });
         }
         seen.set(v, o);
       }
@@ -243,22 +265,20 @@ export function catalogNote(
   name: string,
   catalog: PropertyCatalogOut | null,
   typeName: string | null,
+  i18n: BehaviorI18n = ENGLISH_FM,
 ): CatalogNote | null {
   const value = name.trim();
   if (value === "" || catalog === null || catalog.status !== "AVAILABLE") return null;
   const hit = catalog.properties.find((p) => p.name === value);
   if (!hit) {
-    return {
-      kind: "not-listed",
-      text: "Not in this console’s property list. Validation will check it.",
-    };
+    return { kind: "not-listed", text: i18n.t(k("catalogNote.notListed")) };
   }
   if (hit.applies_to_source_type === false) {
     return {
       kind: "wrong-type",
-      text: `This property has no parsing expression for this source’s log-source type${
-        typeName ? ` (${typeName})` : ""
-      }.`,
+      text: typeName
+        ? i18n.t(k("catalogNote.wrongTypeNamed"), { type: typeName })
+        : i18n.t(k("catalogNote.wrongType")),
     };
   }
   return null;
@@ -360,76 +380,53 @@ export function fieldStatusInfo(
     usedByCollection: boolean;
     detail?: string | null;
   },
+  i18n: BehaviorI18n = ENGLISH_FM,
 ): FieldStatusInfo {
   const fail: Tone = ctx.usedByCollection ? "crit" : "warn";
+  const say = (key: string, values?: Record<string, string>) => i18n.t(k(`fieldStatus.${key}`), values);
+  const known = (label: string, sentence: string, tone: Tone, silent = false): FieldStatusInfo => ({
+    label,
+    tone,
+    sentence,
+    silent,
+  });
   switch (status) {
     case "AVAILABLE":
-      return { label: "Usable", tone: "ok", sentence: "Populated, and the values look right.", silent: false };
+      return known(say("AVAILABLE.label"), say("AVAILABLE.sentence"), "ok");
     case "NOT_MAPPED":
-      return {
-        label: "Not mapped",
-        tone: ctx.usedByCollection ? "crit" : "neutral",
-        sentence: "No property is mapped to this field.",
-        silent: false,
-      };
+      return known(
+        say("NOT_MAPPED.label"),
+        say("NOT_MAPPED.sentence"),
+        ctx.usedByCollection ? "crit" : "neutral",
+      );
     case "PROPERTY_REJECTED":
-      return {
-        label: "Property rejected",
-        tone: fail,
-        sentence: "QRadar does not know a property with this name.",
-        silent: false,
-      };
+      return known(say("PROPERTY_REJECTED.label"), say("PROPERTY_REJECTED.sentence"), fail);
     case "UNPOPULATED":
-      return {
-        label: "Not populated",
-        tone: fail,
-        sentence: "The property exists but no event in the window carried it.",
-        silent: false,
-      };
+      return known(say("UNPOPULATED.label"), say("UNPOPULATED.sentence"), fail);
     case "INSUFFICIENT_COVERAGE": {
-      const got = formatShare(ctx.populatedRatio);
-      const need = ctx.requiredCoverage == null ? null : formatShare(ctx.requiredCoverage);
-      const head = got === MISSING ? "Too few events carry it" : `Only ${got} of events carry it`;
-      return {
-        label: "Low coverage",
-        tone: fail,
-        sentence: need ? `${head}; collection needs ${need}.` : `${head}.`,
-        silent: false,
-      };
+      const got = formatShare(ctx.populatedRatio, i18n.locale);
+      const need = ctx.requiredCoverage == null ? null : formatShare(ctx.requiredCoverage, i18n.locale);
+      const head = got === MISSING ? say("coverageHeadMissing") : say("coverageHead", { share: got });
+      return known(
+        say("INSUFFICIENT_COVERAGE.label"),
+        need ? say("coverageNeeds", { head, need }) : `${head}.`,
+        fail,
+      );
     }
     case "IMPLAUSIBLE": {
-      const share = formatShare(ctx.plausibleRatio);
-      return {
-        label: "Values look wrong",
-        tone: fail,
-        sentence:
-          share === MISSING
-            ? "The property is populated but its values do not look like this field."
-            : `The property is populated but only ${share} of sampled values look like this field.`,
-        silent: false,
-      };
+      const share = formatShare(ctx.plausibleRatio, i18n.locale);
+      return known(
+        say("IMPLAUSIBLE.label"),
+        share === MISSING ? say("implausibleMissing") : say("implausibleShare", { share }),
+        fail,
+      );
     }
     case "NO_EVENTS":
-      return {
-        label: "No verdict",
-        tone: "neutral",
-        sentence: "The source sent no events in the window. This says nothing about the field.",
-        silent: true,
-      };
+      return known(say("NO_EVENTS.label"), say("NO_EVENTS.sentence"), "neutral", true);
     case "QUERY_FAILED":
-      return {
-        label: "No verdict",
-        tone: "neutral",
-        sentence: "The check could not run. This says nothing about the field.",
-        silent: true,
-      };
+      return known(say("QUERY_FAILED.label"), say("QUERY_FAILED.sentence"), "neutral", true);
     default:
-      return {
-        label: status,
-        tone: "neutral",
-        sentence: "This build does not recognise this status; it is shown as recorded.",
-        silent: false,
-      };
+      return known(status, say("unknownSentence"), "neutral");
   }
 }
 
@@ -474,29 +471,30 @@ export function validationReason(
   fields: ProfileStateInput["fields"],
   schema: MappingSchemaOut | null,
   inconclusive: boolean,
+  i18n: BehaviorI18n = ENGLISH_FM,
 ): string | null {
   if (!fields || fields.length === 0) return null;
   const label = (key: string) => schema?.fields.find((f) => f.key === key)?.label ?? key;
   if (inconclusive) {
-    if (fields.some((f) => f.status === "NO_EVENTS")) return "no events in the window";
-    if (fields.some((f) => f.status === "QUERY_FAILED")) return "a check could not run";
+    if (fields.some((f) => f.status === "NO_EVENTS")) return i18n.t(k("reason.noEvents"));
+    if (fields.some((f) => f.status === "QUERY_FAILED")) return i18n.t(k("reason.checkFailed"));
     return null;
   }
   for (const status of FAILING_ORDER) {
     const hit = fields.find((f) => f.status === status);
     if (!hit) continue;
-    const who = `${label(hit.field)} property`;
+    const values = { label: label(hit.field) };
     switch (status) {
       case "PROPERTY_REJECTED":
-        return `${who} does not exist`;
+        return i18n.t(k("reason.rejected"), values);
       case "NOT_MAPPED":
-        return `${label(hit.field)} is not mapped`;
+        return i18n.t(k("reason.notMapped"), values);
       case "UNPOPULATED":
-        return `${who} carries no values`;
+        return i18n.t(k("reason.unpopulated"), values);
       case "INSUFFICIENT_COVERAGE":
-        return `${who} is rarely populated`;
+        return i18n.t(k("reason.rarely"), values);
       default:
-        return `${who} values look wrong`;
+        return i18n.t(k("reason.wrong"), values);
     }
   }
   return null;
@@ -510,33 +508,43 @@ export function validationReason(
 export function validationState(
   p: ProfileStateInput,
   schema: MappingSchemaOut | null = null,
+  i18n: BehaviorI18n = ENGLISH_FM,
 ): ValidationState {
   const v = p.profile_version;
-  if (p.validation_pending) return { kind: "pending", label: `Validating v${v}…`, tone: "info" };
+  const version = plainCount(v, i18n.locale);
+  const say = (key: string, values?: Record<string, string>) => i18n.t(k(`state.${key}`), values);
+  if (p.validation_pending) return { kind: "pending", label: say("pending", { version }), tone: "info" };
   const current = p.validated_profile_version === v;
   if (p.validation_status === "VALID" && current) {
-    return { kind: "valid", label: `Valid (v${v})`, tone: "ok" };
+    return { kind: "valid", label: say("valid", { version }), tone: "ok" };
   }
   if (p.validation_status === "INVALID" && current) {
-    const why = validationReason(p.fields, schema, false);
-    return { kind: "invalid", label: why ? `Invalid: ${why}` : "Invalid", tone: "crit" };
+    const why = validationReason(p.fields, schema, false, i18n);
+    return { kind: "invalid", label: why ? say("invalidWhy", { why }) : say("invalid"), tone: "crit" };
   }
   if (p.validation_status === "INCONCLUSIVE" && current) {
-    const why = validationReason(p.fields, schema, true);
+    const why = validationReason(p.fields, schema, true, i18n);
     return {
       kind: "inconclusive",
-      label: why ? `Inconclusive: ${why}` : "Inconclusive",
+      label: why ? say("inconclusiveWhy", { why }) : say("inconclusive"),
       tone: "warn",
     };
   }
-  return { kind: "unvalidated", label: `Version ${v} not validated`, tone: "warn" };
+  return { kind: "unvalidated", label: say("unvalidated", { version }), tone: "warn" };
 }
 
-export function collectionState(p: ProfileStateInput): { collecting: boolean; label: string } {
-  if (p.collection_eligible && p.enabled) return { collecting: true, label: "Collecting" };
+export function collectionState(
+  p: ProfileStateInput,
+  i18n: BehaviorI18n = ENGLISH_FM,
+): { collecting: boolean; label: string } {
+  if (p.collection_eligible && p.enabled) {
+    return { collecting: true, label: i18n.t(k("state.collecting")) };
+  }
   return {
     collecting: false,
-    label: p.ineligible_reason ? `Paused — ${p.ineligible_reason}` : "Paused",
+    label: p.ineligible_reason
+      ? i18n.t(k("state.pausedWhy"), { reason: p.ineligible_reason })
+      : i18n.t(k("state.paused")),
   };
 }
 
@@ -563,19 +571,23 @@ export function sortByAttention<T extends ProfileStateInput & { log_source_name:
 }
 
 /** Why Enable is unavailable, in words; null when it may be pressed. */
-export function enableBlockReason(p: ProfileStateInput): string | null {
+export function enableBlockReason(
+  p: ProfileStateInput,
+  i18n: BehaviorI18n = ENGLISH_FM,
+): string | null {
   const state = validationState(p);
+  const version = plainCount(p.profile_version, i18n.locale);
   switch (state.kind) {
     case "valid":
       return null;
     case "pending":
-      return `Version ${p.profile_version} is still being validated. Enable becomes available when it validates as valid.`;
+      return i18n.t(k("block.pending"), { version });
     case "invalid":
-      return `Version ${p.profile_version} validated as invalid. Fix the mapping and validate again.`;
+      return i18n.t(k("block.invalid"), { version });
     case "inconclusive":
-      return `Version ${p.profile_version} validated as inconclusive. Validate again when the source has events.`;
+      return i18n.t(k("block.inconclusive"), { version });
     default:
-      return `Version ${p.profile_version} has not been validated. Validate it first.`;
+      return i18n.t(k("block.unvalidated"), { version });
   }
 }
 
@@ -606,12 +618,15 @@ export function conflictInfo(err: unknown): ConflictInfo {
   };
 }
 
-export function conflictMessage(info: ConflictInfo): string {
-  const keep = "Your edits are kept below; reload to see theirs.";
+export function conflictMessage(info: ConflictInfo, i18n: BehaviorI18n = ENGLISH_FM): string {
+  const keep = i18n.t(k("conflict.keep"));
   if (info.message) return `${info.message} ${keep}`;
-  const to = info.version == null ? "a newer version" : `version ${info.version}`;
-  const by = info.by ? ` (by ${info.by})` : "";
-  return `This mapping changed to ${to} while you were editing${by}. ${keep}`;
+  const to =
+    info.version == null
+      ? i18n.t(k("conflict.newer"))
+      : i18n.t(k("conflict.version"), { version: plainCount(info.version, i18n.locale) });
+  const by = info.by ? i18n.t(k("conflict.by"), { name: info.by }) : "";
+  return i18n.t(k("conflict.changed"), { to, by, keep });
 }
 
 /** The server's message for an error: `detail.message`, else the plain detail. */
@@ -643,18 +658,23 @@ export function reasonText(
   schema: MappingSchemaOut,
   requiredCoverage: number | null,
   populatedRatio: (field: string) => number | null = () => null,
+  i18n: BehaviorI18n = ENGLISH_FM,
 ): string {
   const m = REASON_RE.exec(reason);
   if (!m) return reason;
   const [, key, st] = m;
   const field = schema.fields.find((f) => f.key === key);
   if (!field || !KNOWN_FIELD_STATUS.has(st)) return reason;
-  const info = fieldStatusInfo(st, {
-    populatedRatio: populatedRatio(key),
-    plausibleRatio: null,
-    requiredCoverage,
-    usedByCollection: field.used_by_collection,
-  });
+  const info = fieldStatusInfo(
+    st,
+    {
+      populatedRatio: populatedRatio(key),
+      plausibleRatio: null,
+      requiredCoverage,
+      usedByCollection: field.used_by_collection,
+    },
+    i18n,
+  );
   return `${field.label}: ${info.sentence}`;
 }
 
@@ -711,18 +731,22 @@ export function valueRows(
 
 // --- history ----------------------------------------------------------------
 
+/** The audit action codes the default covers, and the catalog key of each one's words. */
 const HISTORY_ACTIONS: Record<string, string> = {
-  "waf.profile.created": "Created",
-  "waf.profile.mapping_changed": "Mapping changed",
-  "waf.profile.relabelled": "Label changed",
-  "waf.profile.validation_requested": "Validation requested",
-  "waf.profile.validated": "Validated",
-  "waf.profile.enabled": "Collection enabled",
-  "waf.profile.disabled": "Collection disabled",
+  "waf.profile.created": "created",
+  "waf.profile.mapping_changed": "mapping_changed",
+  "waf.profile.relabelled": "relabelled",
+  "waf.profile.validation_requested": "validation_requested",
+  "waf.profile.validated": "validated",
+  "waf.profile.enabled": "enabled",
+  "waf.profile.disabled": "disabled",
 };
 
-export function historyActionLabel(action: string): string {
-  return HISTORY_ACTIONS[action] ?? action;
+export function historyActionLabel(action: string, i18n: BehaviorI18n = ENGLISH_FM): string {
+  const key = Object.prototype.hasOwnProperty.call(HISTORY_ACTIONS, action)
+    ? HISTORY_ACTIONS[action]
+    : undefined;
+  return key ? i18n.t(k(`history.${key}`)) : action;
 }
 
 /** The mapping differences an entry recorded, for its "what changed" cell. */

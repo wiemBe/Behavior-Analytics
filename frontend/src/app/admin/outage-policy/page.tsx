@@ -1,6 +1,7 @@
 // Which silent sources page someone, and which are only recorded.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
@@ -10,14 +11,19 @@ import {
   type OutagePolicyRow,
 } from "@/lib/api";
 
+import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+
 import { OutagePolicyManager } from "./OutagePolicyManager";
 import { readError } from "./outage";
 
-export const metadata: Metadata = {
-  title: "Outage alerts",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("outage.meta");
+  return { title: t("title") };
+}
 
 export default async function OutagePolicyPage() {
+  const t = await getTranslations("outage.page");
+  const i18n = await getBehaviorI18n();
   let rows: OutagePolicyRow[] = [];
   let summary: OutageFleetSummary | null = null;
   let summaryNote: string | null = null;
@@ -30,31 +36,29 @@ export default async function OutagePolicyPage() {
   if (policy.status === "fulfilled") {
     rows = policy.value;
   } else {
-    failure = readError(policy.reason);
+    failure = readError(policy.reason, i18n);
   }
   if (fleet.status === "fulfilled") {
     summary = fleet.value;
   } else {
     summaryNote =
       fleet.reason instanceof ApiError && fleet.reason.status === 403
-        ? "Monitored sources covered and Source overrides in the class table come from the fleet summary, which your role cannot read (permission read:fleet); those two columns are left blank. The policy below is complete."
-        : "The source counts are not shown: the fleet summary could not be loaded. The policy below is complete; grace is given in buckets only.";
+        ? t("summaryForbidden")
+        : t("summaryFailed");
   }
 
   return (
     <>
       <PageHeader
-        title="Outage alerts"
-        description="Which silent sources page someone, and which are only recorded. Times are UTC."
+        title={t("title")}
+        description={t("description")}
       />
 
       {failure ? (
         <div className="notice" role="alert">
           <p>
             <strong>
-              {failure.forbidden
-                ? "The outage alert policy cannot be shown to your role."
-                : "The outage alert policy could not be shown."}
+              {failure.forbidden ? t("failureForbidden") : t("failureFailed")}
             </strong>
           </p>
           <p>{failure.text}</p>
@@ -63,11 +67,10 @@ export default async function OutagePolicyPage() {
         <>
           <div className="banner outage-note">
             <p>
-              <strong>Record only</strong> still records the outage: the silence is detected, stays
-              on the source and on <code>/behavior</code>, and follows its normal lifecycle. It
-              only stops that anomaly from raising an alert. An alert that is already open
-              resolves normally. Only <code>NO_EVENTS</code> is affected; volume drops and spikes
-              still alert.
+              {t.rich("note", {
+                strong: (chunks) => <strong>{chunks}</strong>,
+                code: (chunks) => <code>{chunks}</code>,
+              })}
             </p>
           </div>
           <OutagePolicyManager

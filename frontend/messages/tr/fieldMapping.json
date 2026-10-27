@@ -1,0 +1,194 @@
+{
+  "draft": {
+    "badName": "İzin verilen bir özellik adı değil. Adlar {pattern} desenine uyar ve aksi halde QRadar'a hiçbir zaman gönderilmez.",
+    "required": "Zorunlu: toplama bu olmadan çalışamaz.",
+    "valuesNoProperty": "Değerler atanmış ama bu alan için eşlenmiş bir özellik yok. Önce özelliği eşleyin.",
+    "valueInBoth": "“{value}” değeri iki listede de var. Birine atayın."
+  },
+  "catalogNote": {
+    "notListed": "Bu konsolun özellik listesinde yok. Doğrulama bunu denetleyecek.",
+    "wrongType": "Bu özelliğin, bu kaynağın log source türü için bir ayrıştırma ifadesi yok.",
+    "wrongTypeNamed": "Bu özelliğin, bu kaynağın log source türü ({type}) için bir ayrıştırma ifadesi yok."
+  },
+  "fieldStatus": {
+    "AVAILABLE": {
+      "label": "Kullanılabilir",
+      "sentence": "Dolu ve değerler doğru görünüyor."
+    },
+    "NOT_MAPPED": {
+      "label": "Eşlenmedi",
+      "sentence": "Bu alana eşlenmiş bir özellik yok."
+    },
+    "PROPERTY_REJECTED": {
+      "label": "Özellik reddedildi",
+      "sentence": "QRadar bu adda bir özellik tanımıyor."
+    },
+    "UNPOPULATED": {
+      "label": "Dolu değil",
+      "sentence": "Özellik var ama penceredeki hiçbir olay onu taşımadı."
+    },
+    "INSUFFICIENT_COVERAGE": {
+      "label": "Düşük kapsam"
+    },
+    "IMPLAUSIBLE": {
+      "label": "Değerler hatalı görünüyor"
+    },
+    "NO_EVENTS": {
+      "label": "Karar yok",
+      "sentence": "Kaynak pencerede hiç olay göndermedi. Bu, alan hakkında bir şey söylemez."
+    },
+    "QUERY_FAILED": {
+      "label": "Karar yok",
+      "sentence": "Denetim çalıştırılamadı. Bu, alan hakkında bir şey söylemez."
+    },
+    "unknownSentence": "Bu sürüm bu durumu tanımıyor; kaydedildiği gibi gösteriliyor.",
+    "coverageHeadMissing": "Çok az olay onu taşıyor",
+    "coverageHead": "Olayların yalnızca {share} kadarı onu taşıyor",
+    "coverageNeeds": "{head}; toplama için {need} gerekiyor.",
+    "implausibleMissing": "Özellik dolu ama değerleri bu alana benzemiyor.",
+    "implausibleShare": "Özellik dolu ama örneklenen değerlerin yalnızca {share} kadarı bu alana benziyor."
+  },
+  "reason": {
+    "noEvents": "pencerede olay yok",
+    "checkFailed": "bir denetim çalıştırılamadı",
+    "rejected": "{label} özelliği yok",
+    "notMapped": "{label} eşlenmedi",
+    "unpopulated": "{label} özelliği hiç değer taşımıyor",
+    "rarely": "{label} özelliği nadiren dolu",
+    "wrong": "{label} özelliğinin değerleri hatalı görünüyor"
+  },
+  "state": {
+    "pending": "Doğrulanıyor: v{version}…",
+    "valid": "Geçerli (v{version})",
+    "invalid": "Geçersiz",
+    "invalidWhy": "Geçersiz: {why}",
+    "inconclusive": "Sonuçsuz",
+    "inconclusiveWhy": "Sonuçsuz: {why}",
+    "unvalidated": "Sürüm {version} doğrulanmadı",
+    "collecting": "Toplanıyor",
+    "paused": "Duraklatıldı",
+    "pausedWhy": "Duraklatıldı — {reason}"
+  },
+  "block": {
+    "pending": "Sürüm {version} hâlâ doğrulanıyor. Geçerli olarak doğrulandığında etkinleştirme kullanılabilir olur.",
+    "invalid": "Sürüm {version} geçersiz olarak doğrulandı. Eşlemeyi düzeltip yeniden doğrulayın.",
+    "inconclusive": "Sürüm {version} sonuçsuz olarak doğrulandı. Kaynakta olay olduğunda yeniden doğrulayın.",
+    "unvalidated": "Sürüm {version} doğrulanmadı. Önce doğrulayın."
+  },
+  "conflict": {
+    "keep": "Düzenlemeleriniz aşağıda duruyor; onlarınkini görmek için yeniden yükleyin.",
+    "newer": "daha yeni bir sürüm",
+    "version": "sürüm {version}",
+    "by": " ({name} tarafından)",
+    "changed": "Siz düzenlerken bu eşleme değişti: {to}{by}. {keep}"
+  },
+  "history": {
+    "created": "Oluşturuldu",
+    "mapping_changed": "Eşleme değişti",
+    "relabelled": "Etiket değişti",
+    "validation_requested": "Doğrulama istendi",
+    "validated": "Doğrulandı",
+    "enabled": "Toplama etkinleştirildi",
+    "disabled": "Toplama devre dışı bırakıldı",
+    "notMapped": "eşlenmedi",
+    "empty": "Bu profil için henüz değişiklik kaydedilmedi. Profili oluşturmak, eşlemesini değiştirmek, doğrulamak ve etkinleştirmek burada birer satır ekler.",
+    "tableLabel": "Profil geçmişi",
+    "caption": "Bu profildeki değişiklikler, en yenisi üstte. Saatler UTC.",
+    "time": "Zaman (UTC)",
+    "actor": "Yapan",
+    "what": "Ne değişti",
+    "outcome": "Sonuç: {outcome}",
+    "changesLabel": "Eşleme değişiklikleri",
+    "reasonsLabel": "Nedenler"
+  },
+  "form": {
+    "kindNORMALIZED": "QRadar alanı",
+    "kindCUSTOM_PROPERTY": "Özel özellik",
+    "copyLabel": "Eşlemeyi şuradan kopyala…",
+    "copyNone": "Eşlemesi olan başka kaynak yok",
+    "copyChoose": "Bir kaynak seçin",
+    "copying": "Kopyalanıyor…",
+    "copy": "Kopyala",
+    "copyFailed": "Eşleme kopyalanamadı.",
+    "catalogFetched": "Bu konsolun özellik listesi, <time></time> tarihinde alındı.",
+    "catalogApplies": "{type} için geçerli özellikler önce gelir.",
+    "catalogThisType": "bu kaynağın türü",
+    "catalogUnfiltered": "Log source türüne göre filtrelenmemiştir.",
+    "catalogDown": "Özellik listesi kullanılamıyor",
+    "catalogDownTail": "{lead} Her adı QRadar'ın gösterdiği gibi yazın; doğrulama onu denetler.",
+    "refreshing": "Yenileniyor…",
+    "refresh": "Listeyi yenile",
+    "required": "Zorunlu",
+    "optional": "İsteğe bağlı",
+    "kindLegend": "{field} başvuru türü",
+    "fieldAria": "{field} QRadar alanı",
+    "chooseField": "Bir alan seçin",
+    "notMapped": "Eşlenmedi",
+    "notAllowed": "{value} (izin verilen bir alan değil)",
+    "propertyLabel": "{field} özelliği",
+    "propertyPlaceholder": "Özellik adı",
+    "unmapAria": "{field} alanının eşlemesini kaldır",
+    "unmap": "Eşlemeyi kaldır"
+  },
+  "input": {
+    "groupApplies": "Bu kaynak türü için geçerli",
+    "groupOther": "Diğer kaynak türleri",
+    "groupUnknown": "Tür bilinmiyor",
+    "normalized": "QRadar normalize alanları",
+    "notSelectable": "seçilemez: ad izin verilmiyor",
+    "countFiltered": "{shown} / {total} özellik eşleşiyor",
+    "count": "{total} özellik",
+    "countNote": " “{query}” için. Yazdığınız ad yine de kullanılabilir; doğrulama onu denetler.",
+    "listLabel": "{label} için özellikler",
+    "current": "geçerli"
+  },
+  "report": {
+    "pendingSince": "Sürüm {version}, <time></time> saatinden beri doğrulanıyor. Bu sayfa her 5 saniyede bir denetler.",
+    "pendingNoSince": "Sürüm {version} doğrulanıyor. Bu sayfa her 5 saniyede bir denetler.",
+    "none": "Sürüm {version} doğrulanmadı; bu yüzden rapor yok. Doğrulama, bu kaynağın olaylarından QRadar'dan sınırlı bir örnek okur.",
+    "stale": "Bu rapor {reportVersion} sürümüne ait; sürüm {version} doğrulanmadı.",
+    "VALID": "Geçerli",
+    "INVALID": "Geçersiz",
+    "INCONCLUSIVE": "Sonuçsuz",
+    "UNVALIDATED": "Doğrulanmadı",
+    "result": "Sonuç",
+    "window": "Pencere (UTC)",
+    "to": " – ",
+    "events": "Penceredeki olaylar",
+    "versionChecked": "Doğrulanan sürüm",
+    "reasonsLabel": "Sonucun nedenleri",
+    "tableLabel": "Alan başına doğrulama sonucu",
+    "caption": "Doğrulamanın eşlenen her alan için bulduğu. Paylar, penceredeki olayların yüzdesidir.",
+    "field": "Alan",
+    "populated": "Dolu",
+    "ofEvents": "olayların yüzdesi",
+    "distinct": "Benzersiz değerler",
+    "plausible": "Makul",
+    "ofSampled": "örneklenenlerin yüzdesi",
+    "noProperty": "eşlenmiş özellik yok",
+    "needed": "toplama buna ihtiyaç duyuyor",
+    "informational": "bilgi amaçlı",
+    "notMeasured": "Ölçülmedi",
+    "notMeasuredSr": " ölçülmedi"
+  },
+  "values": {
+    "BLOCKED": "Engellendi",
+    "ALLOWED": "İzin verildi",
+    "notSeen": "son doğrulamada görülmedi",
+    "inBoth": "iki listede de var; birini seçin",
+    "notInList": "Son doğrulamanın listesinde yok",
+    "notCounted": " sayılmadı",
+    "legend": "{field} değeri {value}",
+    "notMapped": "Eşlenmedi",
+    "empty": "Son doğrulama hiç {field} değeri listelemedi. Değerleri keşfetmek için kaynakta olay varken doğrulayın; o zamana kadar her değer eşlenmemiş sayılır.",
+    "truncated": "Bu liste kırpılmış: yalnızca en sık görülen {field} değerleri döndürüldü. Listede olmayan değerler eşlenmemiş sayılır, hiçbir zaman izin verilmiş sayılmaz.",
+    "tableLabel": "{field} değer sonuçları",
+    "caption": "{field} değerleri, son doğrulama penceresindeki olay sayıları ve her birinin atandığı sonuçla.",
+    "value": "Değer",
+    "events": "Olaylar",
+    "inWindow": "pencerede",
+    "outcome": "Sonuç",
+    "addLabel": "Listede olmayan bir değer ekle",
+    "addAs": "Ekle: {outcome}"
+  }
+}

@@ -5,6 +5,8 @@
 // its meaning; a result that "says nothing about the field" is worded as such
 // and never as the field failing.
 
+import { useTranslations } from "next-intl";
+
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { FieldValidationOut, MappingSchemaOut, ValidationReportOut } from "@/lib/api";
 import {
@@ -16,24 +18,28 @@ import {
   formatShare,
   reasonText,
 } from "@/lib/fieldMapping";
+import { plainCount } from "@/lib/figureText";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import "@/components/ui/controls.css";
 
-const REPORT_STATUS: Record<string, { label: string; tone: string }> = {
-  VALID: { label: "Valid", tone: "ok" },
-  INVALID: { label: "Invalid", tone: "crit" },
-  INCONCLUSIVE: { label: "Inconclusive", tone: "warn" },
-  UNVALIDATED: { label: "Not validated", tone: "" },
+// The label of each report status is `fieldMapping.report.<status>`.
+const REPORT_STATUS: Record<string, { tone: string }> = {
+  VALID: { tone: "ok" },
+  INVALID: { tone: "crit" },
+  INCONCLUSIVE: { tone: "warn" },
+  UNVALIDATED: { tone: "" },
 };
 
 /** A figure that may be missing: the number, or a dash that says why. */
 function Measure({ text, missing }: { text: string; missing: boolean }) {
+  const t = useTranslations("fieldMapping.report");
   if (!missing) return <>{text}</>;
   return (
-    <span title="Not measured">
+    <span title={t("notMeasured")}>
       {MISSING}
-      <span className="sr-only"> not measured</span>
+      <span className="sr-only">{t("notMeasuredSr")}</span>
     </span>
   );
 }
@@ -69,73 +75,82 @@ export function ValidationReport({
   /** What follows the property name in the field cell, for example its reference kind. */
   describeReference?: (field: FieldValidationOut) => string | null;
 }) {
+  const t = useTranslations("fieldMapping.report");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
   const showDistinct = !hideColumns.includes("distinct");
   const showPlausible = !hideColumns.includes("plausible");
-  const infoFor = statusInfo ?? fieldStatusInfo;
+  const infoFor =
+    statusInfo ??
+    ((status: string, ctx: Parameters<typeof fieldStatusInfo>[1]) =>
+      fieldStatusInfo(status, ctx, i18n));
   const stale = report !== null && report.profile_version !== profileVersion;
-  const status = report ? (REPORT_STATUS[report.status] ?? { label: report.status, tone: "" }) : null;
+  const known = report !== null && Object.prototype.hasOwnProperty.call(REPORT_STATUS, report.status);
+  const status = report
+    ? {
+        label: known ? t(report.status as "VALID") : report.status,
+        tone: known ? REPORT_STATUS[report.status].tone : "",
+      }
+    : null;
+  const version = plainCount(profileVersion, locale);
 
   return (
     <div className="fm-report">
       {pending && (
         <p className="fm-banner is-info" role="status">
-          Validating version {profileVersion}
-          {pending.since ? (
-            <>
-              {" "}
-              since{" "}
-              <UtcTime value={pending.since}>{formatClock(pending.since)}</UtcTime>
-            </>
-          ) : null}
-          . This page checks every 5 seconds.
+          {pending.since
+            ? t.rich("pendingSince", {
+                version,
+                time: () => <UtcTime value={pending.since}>{formatClock(pending.since)}</UtcTime>,
+              })
+            : t("pendingNoSince", { version })}
         </p>
       )}
 
       {report === null ? (
-        <p className="fm-empty">
-          Version {profileVersion} has not been validated, so there is no report. Validation reads
-          a bounded sample of this source’s events from QRadar.
-        </p>
+        <p className="fm-empty">{t("none", { version })}</p>
       ) : (
         <>
           {stale && (
             <p className="fm-banner is-warn" role="status">
-              This report is for version {report.profile_version}; version {profileVersion} has not
-              been validated.
+              {t("stale", { reportVersion: plainCount(report.profile_version, locale), version })}
             </p>
           )}
           <dl className="fm-facts">
             <div>
-              <dt>Result</dt>
+              <dt>{t("result")}</dt>
               <dd>
                 <span className={`pill ${status?.tone ?? ""}`}>{status?.label}</span>
               </dd>
             </div>
             <div>
-              <dt>Window (UTC)</dt>
+              <dt>{t("window")}</dt>
               <dd className="num">
                 <UtcTime value={report.window_start} />
-                {" to "}
+                {t("to")}
                 <UtcTime value={report.window_end} />
               </dd>
             </div>
             <div>
-              <dt>Events in window</dt>
+              <dt>{t("events")}</dt>
               <dd className="num">
-                <Measure text={formatCount(report.total_events)} missing={report.total_events == null} />
+                <Measure text={formatCount(report.total_events, locale)} missing={report.total_events == null} />
               </dd>
             </div>
             <div>
-              <dt>Version checked</dt>
-              <dd className="num">{report.profile_version}</dd>
+              <dt>{t("versionChecked")}</dt>
+              <dd className="num">{plainCount(report.profile_version, locale)}</dd>
             </div>
           </dl>
 
           {report.reasons.length > 0 && (
-            <ul className="fm-reasons" aria-label="Reasons for the result">
+            <ul className="fm-reasons" aria-label={t("reasonsLabel")}>
               {report.reasons.map((r) => (
                 <li key={r}>
-                  {(formatReason ?? ((x, ratio) => reasonText(x, schema, requiredCoverage, ratio)))(
+                  {(
+                    formatReason ??
+                    ((x, ratio) => reasonText(x, schema, requiredCoverage, ratio, i18n))
+                  )(
                     r,
                     (k) => report.fields.find((x) => x.field === k)?.populated_ratio ?? null,
                   )}
@@ -150,29 +165,26 @@ export function ValidationReport({
             </p>
           ))}
 
-          <TableScroll label="Validation result per field">
+          <TableScroll label={t("tableLabel")}>
             <table className="table-dense">
-              <caption className="sr-only">
-                What validation found for each mapped field. Shares are percentages of the events
-                in the window.
-              </caption>
+              <caption className="sr-only">{t("caption")}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Field</th>
-                  <th scope="col">Result</th>
+                  <th scope="col">{t("field")}</th>
+                  <th scope="col">{t("result")}</th>
                   <th scope="col" className="num">
-                    Populated
-                    <span className="cell-sub">% of events</span>
+                    {t("populated")}
+                    <span className="cell-sub">{t("ofEvents")}</span>
                   </th>
                   {showDistinct && (
                     <th scope="col" className="num">
-                      Distinct values
+                      {t("distinct")}
                     </th>
                   )}
                   {showPlausible && (
                     <th scope="col" className="num">
-                      Plausible
-                      <span className="cell-sub">% of sampled</span>
+                      {t("plausible")}
+                      <span className="cell-sub">{t("ofSampled")}</span>
                     </th>
                   )}
                 </tr>
@@ -191,10 +203,10 @@ export function ValidationReport({
                       <th scope="row" className="fm-field-cell">
                         {def?.label ?? f.field}
                         <span className="cell-sub">
-                          {f.property_name ? <code>{f.property_name}</code> : "no property mapped"}
+                          {f.property_name ? <code>{f.property_name}</code> : t("noProperty")}
                           {describeReference?.(f) ? ` · ${describeReference(f)}` : ""}
                           {" · "}
-                          {f.used_by_collection ? "collection needs it" : "informational"}
+                          {f.used_by_collection ? t("needed") : t("informational")}
                         </span>
                       </th>
                       <td className="fm-result-cell">
@@ -206,14 +218,14 @@ export function ValidationReport({
                       </td>
                       <td className="num">
                         <Measure
-                          text={formatShare(f.populated_ratio)}
+                          text={formatShare(f.populated_ratio, locale)}
                           missing={f.populated_ratio == null}
                         />
                       </td>
                       {showDistinct && (
                         <td className="num">
                           <Measure
-                            text={formatCount(f.distinct_values)}
+                            text={formatCount(f.distinct_values, locale)}
                             missing={f.distinct_values == null}
                           />
                         </td>
@@ -221,7 +233,7 @@ export function ValidationReport({
                       {showPlausible && (
                         <td className="num">
                           <Measure
-                            text={formatShare(f.plausible_ratio)}
+                            text={formatShare(f.plausible_ratio, locale)}
                             missing={f.plausible_ratio == null}
                           />
                         </td>

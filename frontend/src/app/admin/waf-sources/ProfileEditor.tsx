@@ -166,7 +166,7 @@ export function ProfileEditor({
   const confirmTrigger = useRef<HTMLButtonElement | null>(null);
 
   const changes = useMemo(() => draftChanges(schema, baseDraft, draft), [schema, baseDraft, draft]);
-  const errors = useMemo(() => draftErrors(schema, draft), [schema, draft]);
+  const errors = useMemo(() => draftErrors(schema, draft, i18n), [schema, draft, i18n]);
   const dirty = changes.total > 0;
 
   const typeName = profile?.log_source_type_name ?? source.typeName;
@@ -418,8 +418,8 @@ export function ProfileEditor({
 
   // --- header ---------------------------------------------------------------
   const stateInput = profile ? { ...profile, fields: profile.validation?.fields } : null;
-  const vState = stateInput ? validationState(stateInput, schema) : null;
-  const cState = stateInput ? collectionState(stateInput) : null;
+  const vState = stateInput ? validationState(stateInput, schema, i18n) : null;
+  const cState = stateInput ? collectionState(stateInput, i18n) : null;
 
   const meta = (
     <>
@@ -489,7 +489,7 @@ export function ProfileEditor({
           <ul className="fm-changes" aria-label={t("changedValues")}>
             {changes.values.map((v) => (
               <li key={v.outcome}>
-                {t("valuesLine", { outcome: outcomeLabel(v.outcome) })}
+                {t("valuesLine", { outcome: outcomeLabel(v.outcome, i18n) })}
                 {v.added.map((a) => (
                   <span key={`a-${a}`}>
                     {ADD_MARK} <code>{a}</code>{" "}
@@ -573,7 +573,7 @@ export function ProfileEditor({
     </div>
   );
 
-  const block = profile ? enableBlockReason(profile) : null;
+  const block = profile ? enableBlockReason(profile, i18n) : null;
   const prefillOrigin =
     typeof prefill?.origin === "string"
       ? prefill.origin
@@ -600,7 +600,7 @@ export function ProfileEditor({
 
       {conflict && (
         <div className="fm-banner is-warn" role="alert">
-          <span>{conflictMessage(conflict)}</span>
+          <span>{conflictMessage(conflict, i18n)}</span>
           <button
             type="button"
             className="action secondary"
@@ -704,7 +704,7 @@ export function ProfileEditor({
                 label: label.toLocaleLowerCase(i18n.locale === "tr" ? "tr-TR" : "en-US"),
                 outcomes: vm.outcomes
                   .map((o) =>
-                    outcomeLabel(o).toLocaleLowerCase(i18n.locale === "tr" ? "tr-TR" : "en-US"),
+                    outcomeLabel(o, i18n).toLocaleLowerCase(i18n.locale === "tr" ? "tr-TR" : "en-US"),
                   )
                   .join(i18n.locale === "tr" ? " ve " : " and "),
               })}
