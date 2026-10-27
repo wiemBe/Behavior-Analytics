@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+
+import { formatCount, type FormatLocale } from "@/lib/format";
 
 // Offset pagination control.
 //
@@ -34,6 +36,7 @@ export function Pagination({
   params?: Record<string, string | undefined>;
 }) {
   const t = useTranslations("ui");
+  const locale = (useLocale() === "tr" ? "tr" : "en") as FormatLocale;
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + limit, total);
   const hasPrev = offset > 0;
@@ -42,7 +45,11 @@ export function Pagination({
   return (
     <nav className="pagination" aria-label={t("pagination")}>
       <span className="muted">
-        {t("pageRange", { from, to, total })}
+        {t("pageRange", {
+          from: formatCount(from, locale),
+          to: formatCount(to, locale),
+          total: formatCount(total, locale),
+        })}
       </span>
       <span className="pagination-links">
         {hasPrev ? (

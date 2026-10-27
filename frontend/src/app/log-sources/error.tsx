@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function LogSourcesError({
@@ -9,5 +11,8 @@ export default function LogSourcesError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <BoundaryError title="Log Sources" what="Log sources" digest={error.digest} onRetry={reset} />;
+  const t = useTranslations("logSources");
+  return (
+    <BoundaryError title={t("title")} what={t("errorWhat")} digest={error.digest} onRetry={reset} />
+  );
 }

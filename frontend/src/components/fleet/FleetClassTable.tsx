@@ -6,11 +6,11 @@
 // for an expectation with no baseline. Completeness sits in the row beside the
 // figures it qualifies, not in a footnote.
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 
 import "@/components/ui/controls.css";
 
-import { HISTORY_TEXT } from "@/components/behavior/historyOrigin";
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { FleetClassSummary } from "@/lib/api";
 import {
@@ -20,15 +20,18 @@ import {
   formatEpsValue,
   formatEventCount,
   hasSources,
-  NOT_MEASURED_TEXT,
   openIncidentList,
 } from "@/lib/fleet";
+import { plainCount, useFleetText } from "@/lib/fleetText";
+import { formatCount } from "@/lib/format";
+import { unitGap } from "@/i18n/measures";
 
 function Figure({ value, unit, why }: { value: string | null; unit?: string; why: string | null }) {
+  const text = useFleetText();
   if (value === null) {
     return (
       <>
-        <span className="muted">{NOT_MEASURED_TEXT}</span>
+        <span className="muted">{text.say("fleet.notMeasured")}</span>
         {why && <span className="cell-sub">{why}</span>}
       </>
     );
@@ -36,45 +39,58 @@ function Figure({ value, unit, why }: { value: string | null; unit?: string; why
   return (
     <>
       {value}
-      {unit && <span className="unit"> {unit}</span>}
+      {unit && (
+        <span className="unit">
+          {unitGap(text.locale)}
+          {unit}
+        </span>
+      )}
     </>
   );
 }
 
 function ClassRows({ c }: { c: FleetClassSummary }) {
-  const completeness = completenessInfo(c.buckets);
-  const expected = expectedInfo(c);
-  const events = formatEventCount(c.events);
-  const mean = formatEpsValue(c.mean_eps);
-  const incidents = openIncidentList(c);
-  const noComplete =
-    completeness.state === "none" ? completeness.text : "No complete bucket in the window.";
+  const t = useTranslations("fleet.classTable");
+  const text = useFleetText();
+  const { locale } = text;
+  const eps = useTranslations("units")("eps");
+  const completeness = completenessInfo(c.buckets, text);
+  const expected = expectedInfo(c, text);
+  const events = formatEventCount(c.events, locale);
+  const mean = formatEpsValue(c.mean_eps, locale);
+  const incidents = openIncidentList(c, text);
+  const noComplete = completeness.state === "none" ? completeness.text : t("noCompleteBucket");
   const hasTop = c.top_sources.length > 0;
 
   return (
     <>
       <tr className={hasTop ? "fleet-main" : undefined}>
         <th scope="row" className="cell-class">
-          <Link href={`/fleet/sources?class=${c.source_class}`}>{classLabel(c.source_class)}</Link>
+          <Link href={`/fleet/sources?class=${c.source_class}`}>
+            {classLabel(c.source_class, text)}
+          </Link>
           <span className="cell-sub">
             {hasSources(c)
-              ? `${c.sources.enabled} enabled, ${c.sources.disabled} disabled`
-              : "No sources"}
+              ? t("enabledDisabled", {
+                  enabled: plainCount(c.sources.enabled, locale),
+                  disabled: plainCount(c.sources.disabled, locale),
+                })
+              : t("noSources")}
           </span>
         </th>
         <td className="num">
           <Figure value={events} why={noComplete} />
           {events !== null && completeness.state === "incomplete" && (
-            <span className="cell-sub">complete buckets only</span>
+            <span className="cell-sub">{t("completeOnly")}</span>
           )}
         </td>
         <td className="num">
-          <Figure value={mean} unit="EPS" why={null} />
+          <Figure value={mean} unit={eps} why={null} />
         </td>
         <td className="num">
           {expected.value === null ? (
             <>
-              <span className="muted" aria-label="No expectation">
+              <span className="muted" aria-label={t("noExpectation")}>
                 —
               </span>
               <span className="cell-sub">{expected.note}</span>
@@ -82,15 +98,18 @@ function ClassRows({ c }: { c: FleetClassSummary }) {
           ) : (
             <>
               {expected.value}
-              <span className="unit"> EPS</span>
+              <span className="unit">
+                {unitGap(locale)}
+                {eps}
+              </span>
               <span className="cell-sub">{expected.note}</span>
-              {expected.partial && <span className="cell-sub">Covers part of the class only.</span>}
+              {expected.partial && <span className="cell-sub">{t("coversPart")}</span>}
             </>
           )}
         </td>
         <td className="cell-completeness">
           {completeness.state === "incomplete" && (
-            <span className="pill pill-quiet warn">Incomplete</span>
+            <span className="pill pill-quiet warn">{t("incomplete")}</span>
           )}
           <span className={completeness.state === "none" ? "muted" : undefined}>
             {completeness.text}
@@ -98,19 +117,21 @@ function ClassRows({ c }: { c: FleetClassSummary }) {
           {completeness.detail && <span className="cell-sub">{completeness.detail}</span>}
           {c.buckets.complete_from_history > 0 && (
             <span className="cell-sub">
-              {c.buckets.complete_from_history.toLocaleString("en-US")} of{" "}
-              {c.buckets.complete.toLocaleString("en-US")} complete buckets were {HISTORY_TEXT}.
+              {t("historyBuckets", {
+                from: formatCount(c.buckets.complete_from_history, locale),
+                complete: formatCount(c.buckets.complete, locale),
+              })}
             </span>
           )}
         </td>
         <td>
           {incidents.length === 0 ? (
-            <span className="muted">None open</span>
+            <span className="muted">{t("noneOpen")}</span>
           ) : (
             <ul className="plain-list">
               {incidents.map(([label, n]) => (
                 <li key={label}>
-                  {label} <span className="num">{n}</span>
+                  {label} <span className="num">{plainCount(n, locale)}</span>
                 </li>
               ))}
             </ul>
@@ -120,12 +141,12 @@ function ClassRows({ c }: { c: FleetClassSummary }) {
       {hasTop && (
         <tr className="fleet-top">
           <td colSpan={6}>
-            <span className="fleet-top-label">Top sources by events</span>
+            <span className="fleet-top-label">{t("topSources")}</span>
             <ul className="fleet-top-list">
               {c.top_sources.map((s) => (
                 <li key={s.id}>
                   <Link href={`/behavior/sources/${s.id}`}>{s.name}</Link>{" "}
-                  <span className="num">{s.events.toLocaleString("en-US")}</span>
+                  <span className="num">{formatCount(s.events, locale)}</span>
                 </li>
               ))}
             </ul>
@@ -143,27 +164,25 @@ export function FleetClassTable({
   classes: FleetClassSummary[];
   windowName: string;
 }) {
+  const t = useTranslations("fleet.classTable");
   return (
-    <TableScroll label="Log-source classes">
+    <TableScroll label={t("label")}>
       <table className="fleet-table">
-        <caption className="sr-only">
-          Log-source classes: volume over the last {windowName} against the expected volume,
-          the completeness of the window and open incidents, with the busiest sources under each class.
-        </caption>
+        <caption className="sr-only">{t("caption", { window: windowName })}</caption>
         <thead>
           <tr>
-            <th scope="col">Class</th>
+            <th scope="col">{t("class")}</th>
             <th scope="col" className="num">
-              Events
+              {t("events")}
             </th>
             <th scope="col" className="num">
-              Mean EPS
+              {t("meanEps")}
             </th>
             <th scope="col" className="num">
-              Expected EPS
+              {t("expectedEps")}
             </th>
-            <th scope="col">Window completeness</th>
-            <th scope="col">Open incidents</th>
+            <th scope="col">{t("completeness")}</th>
+            <th scope="col">{t("incidents")}</th>
           </tr>
         </thead>
         <tbody>

@@ -1,0 +1,48 @@
+{
+  "title": "Log source'lar",
+  "loadingWhat": "Log source'lar",
+  "errorWhat": "Log source'lar",
+  "countLead": "{count} kaynak.",
+  "description": "QRadar'a ait alanlar eşitlemede yenilenir; kritiklik, sahip ve bakım SOC'a aittir ve korunur.",
+  "empty": "Henüz log source yok. Yapılandırılmış sağlayıcıdan almak için bir envanter eşitlemesi başlatın.",
+  "table": {
+    "label": "Log source'lar",
+    "name": "Ad",
+    "type": "Tür",
+    "criticality": "Kritiklik",
+    "status": "Durum",
+    "anomalies": "Anomaliler",
+    "lastEvent": "Son olay",
+    "maint": "bakım",
+    "never": "hiç"
+  },
+  "status": {
+    "unknown": "bilinmiyor",
+    "SUCCESS": "BAŞARILI",
+    "WARNING": "UYARI",
+    "ERROR": "HATA",
+    "DISABLED": "DEVRE DIŞI",
+    "NA": "YOK"
+  },
+  "detail": {
+    "title": "Log source ayrıntısı",
+    "loadingWhat": "Bu log source",
+    "errorWhat": "Bu log source",
+    "forbidden": "Bu log source'u görüntüleme izniniz yok. Bir yöneticiden read:log_sources iznini isteyin.",
+    "notFound": "Envanterde {id} kimlikli log source yok.",
+    "unreachable": "Backend'e erişilemedi. Tekrar denemek için sayfayı yeniden yükleyin.",
+    "summary": "{type} · kritiklik {criticality} · sahip {owner}",
+    "unknownType": "bilinmeyen tür",
+    "configuration": "Yapılandırma",
+    "description": "Açıklama: {value}",
+    "businessHours": "Yalnızca mesai saatleri: {value}",
+    "yes": "evet",
+    "no": "hayır",
+    "seconds": "{count} sn",
+    "interval": "Beklenen aralık: {value}",
+    "lastEvent": "Son olay: <time></time>",
+    "lastEventNever": "Son olay: hiç",
+    "qradarStatus": "QRadar durumu:",
+    "note": "EPS eğilimi, anomali zaman çizelgesi ve baseline katmanı: <link>kaynak davranışı</link>."
+  }
+}

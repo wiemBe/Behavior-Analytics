@@ -5,15 +5,21 @@ import alerts from "./alerts.json";
 import anomalies from "./anomalies.json";
 import auth from "./auth.json";
 import behavior from "./behavior.json";
+import catalog from "./catalog.json";
+import catchall from "./catchall.json";
 import common from "./common.json";
+import configChanges from "./configChanges.json";
+import coverage from "./coverage.json";
 import customRules from "./customRules.json";
 import dashboard from "./dashboard.json";
 import dashboardBoundary from "./dashboardBoundary.json";
 import enums from "./enums.json";
 import errors from "./errors.json";
 import evidence from "./evidence.json";
+import fleet from "./fleet.json";
 import format from "./format.json";
 import home from "./home.json";
+import logSources from "./logSources.json";
 import login from "./login.json";
 import meta from "./meta.json";
 import offenses from "./offenses.json";
@@ -33,15 +39,21 @@ const messages = {
   anomalies,
   auth,
   behavior,
+  catalog,
+  catchall,
   common,
+  configChanges,
+  coverage,
   customRules,
   dashboard,
   dashboardBoundary,
   enums,
   errors,
   evidence,
+  fleet,
   format,
   home,
+  logSources,
   login,
   meta,
   offenses,

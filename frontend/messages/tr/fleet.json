@@ -1,0 +1,166 @@
+{
+  "meta": {
+    "fleet": "Filo",
+    "sources": "Filo kaynakları"
+  },
+  "errors": {
+    "forbidden": "Rolünüz filoyu okuyamıyor (izin: read:fleet). Hiçbir şey değiştirilmedi."
+  },
+  "page": {
+    "title": "Log source filosu",
+    "description": "Log source sınıfı başına hacim ve baseline karşılaştırması ile inceleme bekleyen kaynaklar. Saatler UTC.",
+    "loadingWhat": "Log source filosu",
+    "errorWhat": "Log source filosu",
+    "noticeHeading": "Filo özeti gösterilemedi.",
+    "loadFailed": "Filo özeti yüklenemedi.",
+    "forbidden": "Rolünüz filo özetini okuyamıyor (izin: read:fleet). Hiçbir şey değiştirilmedi.",
+    "unreachable": "Filo özeti yüklenemedi. Backend'e erişilemiyor olabilir; çalıştığını denetleyin, sonra sayfayı yeniden yükleyin.",
+    "queueLabel": "İnceleme kuyruğu",
+    "queueLead": "İnceleme kuyruğu:",
+    "windowLine": "Son {window}: <start></start> ile <end></end> arası, {minutes} dakikalık zaman dilimlerinde.",
+    "noClassesHeading": "Hiçbir sınıf döndürülmedi.",
+    "noClassesBody": "Özet, en az bir kaynağı olan her sınıfı listeler. Log source'lar sayfasından bir envanter eşitlemesi çalıştırın, sonra sayfayı yeniden yükleyin.",
+    "noteEvents": "Olay sayısı ve ortalama EPS yalnızca tamamlanmış zaman dilimlerini sayar. Pencere eksikse satır, kaç zaman diliminin kısmi ya da eksik olduğunu söyler.",
+    "noteExpected": "Beklenen EPS, baseline'ı olan kaynaklar üzerinden, her kaynağın pencerenin kapsadığı tüm UTC hafta günü ve saat hücrelerindeki ortalama baseline medyanının toplamıdır. Bir kaynak yalnızca bu hücrelerin hepsi güvenilir olduğunda sayılır.",
+    "internalHeading": "QRadar dahili kaynakları",
+    "internalCounts": "{enabled} etkin, {disabled} devre dışı. Yukarıdaki sınıflardan ayrı sayılırlar ve burada hacim değeri taşımazlar."
+  },
+  "queue": {
+    "newSources": "{count, number} yeni kaynak",
+    "conflictSources": "Sınıfı çakışan {count, number} kaynak",
+    "unclassifiedSources": "{count, number} sınıflanmamış kaynak"
+  },
+  "window": {
+    "nav": "Filo penceresi",
+    "label": "Pencere",
+    "name": {
+      "1h": "1 saat",
+      "24h": "24 saat",
+      "7d": "7 gün"
+    }
+  },
+  "notMeasured": "Ölçülmedi",
+  "completeness": {
+    "none": "İzlenen kaynak yok",
+    "text": "{complete} / {expected} zaman dilimi tamamlandı",
+    "detail": "{partial} kısmi, {missing} eksik"
+  },
+  "expected": {
+    "noBaseline": "Henüz hiçbir kaynağın baseline'ı yok.",
+    "from": "Baseline'ı olan {count} kaynaktan.",
+    "fromOf": "Baseline'ı olan kaynaklar: {count} / {total}."
+  },
+  "basis": {
+    "OVERRIDE": "Operatör geçersiz kılması",
+    "INTERNAL": "QRadar dahili",
+    "UNCLASSIFIED": "Hiçbir kural eşleşmedi",
+    "GROUP": "Grup kuralı",
+    "TYPE": "Tür kuralı",
+    "TYPE_NAME_REGEX": "Tür adı kuralı",
+    "NAME_REGEX": "Ad kuralı",
+    "IDENTIFIER_REGEX": "Tanımlayıcı kuralı"
+  },
+  "conflict": {
+    "subject": {
+      "OVERRIDE": "geçersiz kılma",
+      "INTERNAL": "QRadar dahili",
+      "GROUP": "grup",
+      "TYPE": "tür",
+      "TYPE_NAME_REGEX": "tür",
+      "NAME_REGEX": "ad",
+      "IDENTIFIER_REGEX": "tanımlayıcı"
+    },
+    "says": "{subject}: {class}"
+  },
+  "review": {
+    "NEW": "Yeni",
+    "REVIEWED": "İncelendi",
+    "notRecorded": "Kaydedilmedi"
+  },
+  "origin": {
+    "notRecorded": "Köken kaydedilmedi",
+    "auto": "Otomatik keşfedildi",
+    "configured": "Yapılandırıldı"
+  },
+  "chips": {
+    "class": "Sınıf: {value}",
+    "review": "İnceleme: {value}",
+    "conflicting": "Yalnızca çakışanlar",
+    "noConflict": "Çakışma yok",
+    "basis": "Dayanak: {value}"
+  },
+  "failure": {
+    "sourceForbidden": "Rolünüz bir kaynağın sınıflandırmasını değiştiremiyor (izin: log_source:write). Hiçbir şey değiştirilmedi.",
+    "notChanged": "Değiştirilmedi. {reason}"
+  },
+  "classTable": {
+    "label": "Log source sınıfları",
+    "caption": "Log source sınıfları: son {window} içindeki hacim, beklenen hacim, pencerenin bütünlüğü ve açık vakalar; her sınıfın altında en yoğun kaynaklar.",
+    "class": "Sınıf",
+    "events": "Olaylar",
+    "meanEps": "Ortalama EPS",
+    "expectedEps": "Beklenen EPS",
+    "completeness": "Pencere bütünlüğü",
+    "incidents": "Açık vakalar",
+    "enabledDisabled": "{enabled} etkin, {disabled} devre dışı",
+    "noSources": "Kaynak yok",
+    "noCompleteBucket": "Pencerede tamamlanmış zaman dilimi yok.",
+    "completeOnly": "yalnızca tamamlanmış zaman dilimleri",
+    "noExpectation": "Beklenti yok",
+    "coversPart": "Sınıfın yalnızca bir bölümünü kapsar.",
+    "incomplete": "Eksik",
+    "noneOpen": "Açık yok",
+    "topSources": "Olay sayısına göre en yoğun kaynaklar",
+    "historyBuckets": "Tamamlanmış {from} / {complete} zaman dilimi QRadar geçmişinden okundu, değerlendirilmedi."
+  },
+  "filters": {
+    "class": "Sınıf",
+    "anyClass": "Tüm sınıflar",
+    "review": "İnceleme durumu",
+    "anyReview": "Tüm inceleme durumları",
+    "conflicts": "Çakışmalar",
+    "conflictOrNot": "Çakışmalı veya çakışmasız",
+    "conflictOnly": "Yalnızca sınıfı çakışanlar",
+    "noConflict": "Çakışma yok",
+    "basis": "Sınıflandırma dayanağı",
+    "anyBasis": "Tüm dayanaklar",
+    "filter": "Filtrele",
+    "clear": "Temizle"
+  },
+  "sourcesPage": {
+    "title": "Filo kaynakları",
+    "description": "Yeni ve sınıfı belirsiz log source'lar; her birine verilen sınıf ve nedeni. Saatler UTC.",
+    "activeFilters": "Etkin filtreler",
+    "noticeHeading": "Kaynak listesi gösterilemedi.",
+    "unreachable": "Kaynak listesi yüklenemedi. Backend'e erişilemiyor olabilir; çalıştığını denetleyin, sonra sayfayı yeniden yükleyin.",
+    "emptyFiltered": "Bu filtrelere uyan kaynak yok.",
+    "emptyInventory": "Envanterde log source yok.",
+    "emptyFilteredHint": "Daha fazla kaynak görmek için filtreleri genişletin veya temizleyin.",
+    "emptyInventoryHint": "Log source'lar sayfasından bir envanter eşitlemesi çalıştırın; kaynaklar eşitlendikten sonra burada görünür."
+  },
+  "sourcesTable": {
+    "label": "Log source'lar ve sınıflandırmaları",
+    "caption": "Log source'lar: sınıfları, dayanakları, kurallar arasındaki çakışmalar, platformun onları ilk gördüğü zaman ve inceleme durumları.",
+    "source": "Kaynak",
+    "classBasis": "Sınıf ve dayanak",
+    "firstSeen": "İlk görülme",
+    "review": "İnceleme",
+    "actions": "İşlemler",
+    "typeNotRecorded": "Tür kaydedilmedi",
+    "disabledSuffix": " · devre dışı",
+    "setBy": " · atayan: {name}",
+    "conflict": "Çakışma:",
+    "classFor": "{name} için sınıf",
+    "apply": "Uygula",
+    "cancel": "İptal",
+    "setClass": "Sınıf ata",
+    "setClassFor": "{name} için sınıf ata",
+    "clearOverride": "Atamayı kaldır",
+    "clearOverrideFor": "{name} için atamayı kaldır",
+    "markReviewed": "İncelendi olarak işaretle",
+    "markReviewedFor": "{name} kaynağını incelendi olarak işaretle",
+    "overrideCleared": "Atama kaldırıldı. Sınıf artık {class} ({basis}).",
+    "saved": "Kaydedildi. Sınıf artık {class}.",
+    "markedReviewed": "İncelendi olarak işaretlendi."
+  }
+}

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function FleetError({
@@ -9,10 +11,11 @@ export default function FleetError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("fleet.page");
   return (
     <BoundaryError
-      title="Log-source fleet"
-      what="The log-source fleet"
+      title={t("title")}
+      what={t("errorWhat")}
       digest={error.digest}
       onRetry={reset}
     />

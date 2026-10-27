@@ -1,7 +1,8 @@
+import { useTranslations } from "next-intl";
+
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return (
-    <BoundaryLoading title="Detection Coverage" what="detection coverage" offset="small" />
-  );
+  const t = useTranslations("coverage");
+  return <BoundaryLoading title={t("title")} what={t("loadingWhat")} offset="small" />;
 }

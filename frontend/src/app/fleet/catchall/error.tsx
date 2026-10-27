@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function CatchallError({
@@ -9,10 +11,11 @@ export default function CatchallError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("catchall.page");
   return (
     <BoundaryError
-      title="Catch-all senders"
-      what="The catch-all senders page"
+      title={t("title")}
+      what={t("errorWhat")}
       digest={error.digest}
       onRetry={reset}
     />

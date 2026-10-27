@@ -1,0 +1,67 @@
+{
+  "title": "Detection Coverage",
+  "loadingWhat": "detection coverage",
+  "errorWhat": "Detection coverage",
+  "description": "MITRE ATT&CK technique coverage, derived from mapped rules and their observed health. Coverage is never inferred from a rule merely existing.",
+  "status": {
+    "COVERED": "COVERED",
+    "PARTIAL": "PARTIAL",
+    "DEGRADED": "DEGRADED",
+    "MISSING": "MISSING",
+    "NOT_COVERED": "NOT COVERED",
+    "NOT_EVALUATED": "NOT EVALUATED",
+    "HEALTHY": "HEALTHY",
+    "NOISY": "NOISY",
+    "INACTIVE": "INACTIVE",
+    "NEVER_OBSERVED": "NEVER OBSERVED",
+    "DEPENDENCY_DEGRADED": "DEPENDENCY DEGRADED",
+    "DISABLED": "DISABLED",
+    "INSUFFICIENT_DATA": "INSUFFICIENT DATA",
+    "UNKNOWN": "UNKNOWN"
+  },
+  "kind": {
+    "BUILDING_BLOCK": "BUILDING BLOCK",
+    "LOG_SOURCE_TYPE": "LOG SOURCE TYPE",
+    "LOG_SOURCE": "LOG SOURCE"
+  },
+  "source": {
+    "explicit": "explicit",
+    "inferred": "inferred"
+  },
+  "notEvaluatedHeading": "Coverage has not been evaluated.",
+  "notEvaluatedBody": "No ATT&CK technique mappings are configured, so coverage cannot be measured. An administrator adds them. This is not a finding of zero coverage.",
+  "summary": "{total} techniques evaluated · {covered} covered · {explicit} explicit / {inferred} inferred mappings · generated <time></time>",
+  "noTechniques": "No techniques on this page.",
+  "techniques": {
+    "label": "Techniques",
+    "technique": "Technique",
+    "name": "Name",
+    "tactic": "Tactic",
+    "status": "Status",
+    "rules": "Rules",
+    "score": "Score",
+    "evidence": "Evidence"
+  },
+  "byRule": {
+    "heading": "Rule-centric view",
+    "empty": "No rules have ATT&CK technique mappings yet.",
+    "label": "Coverage by rule",
+    "rule": "Rule",
+    "enabled": "Enabled",
+    "health": "Health",
+    "techniques": "Techniques",
+    "evidence": "Evidence",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "byDataSource": {
+    "heading": "Data-source-centric view",
+    "empty": "No rule-to-log-source dependencies are available from this QRadar inventory.",
+    "label": "Coverage by data source",
+    "dataSource": "Data source",
+    "kind": "Kind",
+    "rules": "Rules",
+    "techniques": "Techniques",
+    "evidence": "Evidence"
+  }
+}

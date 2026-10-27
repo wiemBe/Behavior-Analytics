@@ -1,0 +1,166 @@
+{
+  "meta": {
+    "fleet": "Fleet",
+    "sources": "Fleet sources"
+  },
+  "errors": {
+    "forbidden": "Your role cannot read the fleet (permission read:fleet). Nothing was changed."
+  },
+  "page": {
+    "title": "Log-source fleet",
+    "description": "Volume per class of log source against its baseline, and the sources waiting for review. Times are UTC.",
+    "loadingWhat": "the log-source fleet",
+    "errorWhat": "The log-source fleet",
+    "noticeHeading": "The fleet summary could not be shown.",
+    "loadFailed": "The fleet summary could not be loaded.",
+    "forbidden": "Your role cannot read the fleet summary (permission read:fleet). Nothing was changed.",
+    "unreachable": "The fleet summary could not be loaded. The backend may be unreachable; check that it is running, then reload the page.",
+    "queueLabel": "Review queue",
+    "queueLead": "Review queue:",
+    "windowLine": "Last {window}: <start></start> to <end></end>, in {minutes}-minute buckets.",
+    "noClassesHeading": "No classes were returned.",
+    "noClassesBody": "The summary lists every class that has at least one source. Run an inventory sync from the Log Sources page, then reload.",
+    "noteEvents": "Events and mean EPS count complete buckets only. Where the window is incomplete, the row says how many buckets are partial or missing.",
+    "noteExpected": "Expected EPS is the sum, over the sources that have a baseline, of each source's mean baseline median across every UTC weekday and hour cell the window spans. A source counts only when all of those cells are reliable.",
+    "internalHeading": "QRadar internal sources",
+    "internalCounts": "{enabled} enabled, {disabled} disabled. They are counted apart from the classes above and carry no volume figure here."
+  },
+  "queue": {
+    "newSources": "{count, plural, one {# new source} other {# new sources}}",
+    "conflictSources": "{count, plural, one {# source with a conflicting class} other {# sources with a conflicting class}}",
+    "unclassifiedSources": "{count, plural, one {# unclassified source} other {# unclassified sources}}"
+  },
+  "window": {
+    "nav": "Fleet window",
+    "label": "Window",
+    "name": {
+      "1h": "1 hour",
+      "24h": "24 hours",
+      "7d": "7 days"
+    }
+  },
+  "notMeasured": "Not measured",
+  "completeness": {
+    "none": "No monitored sources",
+    "text": "{complete} of {expected} buckets complete",
+    "detail": "{partial} partial, {missing} missing"
+  },
+  "expected": {
+    "noBaseline": "No source has a baseline yet.",
+    "from": "From {count} sources with a baseline.",
+    "fromOf": "From {count} of {total} sources with a baseline."
+  },
+  "basis": {
+    "OVERRIDE": "Operator override",
+    "INTERNAL": "QRadar internal",
+    "UNCLASSIFIED": "No rule matched",
+    "GROUP": "Group rule",
+    "TYPE": "Type rule",
+    "TYPE_NAME_REGEX": "Type-name rule",
+    "NAME_REGEX": "Name rule",
+    "IDENTIFIER_REGEX": "Identifier rule"
+  },
+  "conflict": {
+    "subject": {
+      "OVERRIDE": "override",
+      "INTERNAL": "QRadar",
+      "GROUP": "group",
+      "TYPE": "type",
+      "TYPE_NAME_REGEX": "type",
+      "NAME_REGEX": "name",
+      "IDENTIFIER_REGEX": "identifier"
+    },
+    "says": "{subject} says {class}"
+  },
+  "review": {
+    "NEW": "New",
+    "REVIEWED": "Reviewed",
+    "notRecorded": "Not recorded"
+  },
+  "origin": {
+    "notRecorded": "Origin not recorded",
+    "auto": "Auto-discovered",
+    "configured": "Configured"
+  },
+  "chips": {
+    "class": "Class: {value}",
+    "review": "Review: {value}",
+    "conflicting": "Conflicting only",
+    "noConflict": "No conflict",
+    "basis": "Basis: {value}"
+  },
+  "failure": {
+    "sourceForbidden": "Your role cannot change a source's classification (permission log_source:write). Nothing was changed.",
+    "notChanged": "Not changed. {reason}"
+  },
+  "classTable": {
+    "label": "Log-source classes",
+    "caption": "Log-source classes: volume over the last {window} against the expected volume, the completeness of the window and open incidents, with the busiest sources under each class.",
+    "class": "Class",
+    "events": "Events",
+    "meanEps": "Mean EPS",
+    "expectedEps": "Expected EPS",
+    "completeness": "Window completeness",
+    "incidents": "Open incidents",
+    "enabledDisabled": "{enabled} enabled, {disabled} disabled",
+    "noSources": "No sources",
+    "noCompleteBucket": "No complete bucket in the window.",
+    "completeOnly": "complete buckets only",
+    "noExpectation": "No expectation",
+    "coversPart": "Covers part of the class only.",
+    "incomplete": "Incomplete",
+    "noneOpen": "None open",
+    "topSources": "Top sources by events",
+    "historyBuckets": "{from} of {complete} complete buckets were read from QRadar history, not judged."
+  },
+  "filters": {
+    "class": "Class",
+    "anyClass": "Any class",
+    "review": "Review status",
+    "anyReview": "Any review status",
+    "conflicts": "Conflicts",
+    "conflictOrNot": "Conflict or not",
+    "conflictOnly": "Conflicting class only",
+    "noConflict": "No conflict",
+    "basis": "Classification basis",
+    "anyBasis": "Any basis",
+    "filter": "Filter",
+    "clear": "Clear"
+  },
+  "sourcesPage": {
+    "title": "Fleet sources",
+    "description": "New and ambiguously classified log sources, with the class each one was given and why. Times are UTC.",
+    "activeFilters": "Active filters",
+    "noticeHeading": "The source list could not be shown.",
+    "unreachable": "The source list could not be loaded. The backend may be unreachable; check that it is running, then reload the page.",
+    "emptyFiltered": "No source matches these filters.",
+    "emptyInventory": "No log sources are in the inventory.",
+    "emptyFilteredHint": "Widen or clear the filters to see more sources.",
+    "emptyInventoryHint": "Run an inventory sync from the Log Sources page; sources appear here once they are synced."
+  },
+  "sourcesTable": {
+    "label": "Log sources and their classification",
+    "caption": "Log sources with their class, the basis for it, any conflict between rules, when the platform first saw them and their review status.",
+    "source": "Source",
+    "classBasis": "Class and basis",
+    "firstSeen": "First seen",
+    "review": "Review",
+    "actions": "Actions",
+    "typeNotRecorded": "Type not recorded",
+    "disabledSuffix": " · disabled",
+    "setBy": " · set by {name}",
+    "conflict": "Conflict:",
+    "classFor": "Class for {name}",
+    "apply": "Apply",
+    "cancel": "Cancel",
+    "setClass": "Set class",
+    "setClassFor": "Set class for {name}",
+    "clearOverride": "Clear override",
+    "clearOverrideFor": "Clear override for {name}",
+    "markReviewed": "Mark reviewed",
+    "markReviewedFor": "Mark {name} reviewed",
+    "overrideCleared": "Override cleared. Class is now {class} ({basis}).",
+    "saved": "Saved. Class is now {class}.",
+    "markedReviewed": "Marked reviewed."
+  }
+}

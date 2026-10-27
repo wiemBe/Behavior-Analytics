@@ -9,6 +9,7 @@
 // The row stays in the list after a change so it does not jump from under the
 // pointer; "Reload list" applies the filter again.
 
+import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
@@ -22,23 +23,24 @@ import {
   type Page,
 } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { useFleetText, type FleetText } from "@/lib/fleetText";
 
 import { SenderId } from "./SenderId";
 import {
-  DENIED_NOTE,
-  EVENTS_24H_NOTE,
   STATUS_FILTERS,
-  STATUS_LABELS,
   WRITE_PERMISSION,
+  deniedNote,
   emptyKind,
   formatCount,
   formatEvents24h,
   reviewedBy,
   senderFailure,
   statusFilterLabel,
+  statusLabel,
   statusTone,
   type StatusFilter,
 } from "./catchall";
+import { unitGap } from "@/i18n/measures";
 
 import "@/components/ui/controls.css";
 
@@ -50,20 +52,14 @@ type View =
   | { kind: "loading"; items: CatchallSender[]; total: number }
   | { kind: "error"; text: string; forbidden: boolean };
 
-function readFailure(err: unknown): { text: string; forbidden: boolean } {
+function readFailure(err: unknown, text: FleetText): { text: string; forbidden: boolean } {
   if (err instanceof ApiError && err.status === 403) {
-    return {
-      forbidden: true,
-      text: "Your role cannot read the fleet (permission read:fleet). Nothing was changed.",
-    };
+    return { forbidden: true, text: text.say("fleet.errors.forbidden") };
   }
   if (err instanceof ApiError && err.status === 401) {
-    return { forbidden: false, text: "Your session has expired. Sign in again to continue." };
+    return { forbidden: false, text: text.say("errors.sessionExpired") };
   }
-  return {
-    forbidden: false,
-    text: "The senders could not be loaded. The backend may be unreachable; check that it is running, then try again. Your filters are kept.",
-  };
+  return { forbidden: false, text: text.say("catchall.queue.unreachable") };
 }
 
 /** `bare` drops the zone from the text where the column header names it; the title keeps it. */
@@ -84,6 +80,8 @@ function SenderRow({
   onDenied: () => void;
   onChanged: () => void;
 }) {
+  const t = useTranslations("catchall.queue");
+  const text = useFleetText();
   const [sender, setSender] = useState(initial);
   const [pending, setPending] = useState<"review" | "dismiss" | null>(null);
   const [outcome, setOutcome] = useState<ChangeOutcome>({ kind: "idle" });
@@ -104,14 +102,11 @@ function SenderRow({
       setSender(updated);
       setOutcome({
         kind: "ok",
-        text:
-          kind === "review"
-            ? "Marked reviewed. It leaves the New queue when the list is reloaded."
-            : "Dismissed. It leaves the New queue when the list is reloaded.",
+        text: kind === "review" ? t("markedReviewed") : t("dismissed"),
       });
       onChanged();
     } catch (err) {
-      const failure = senderFailure(err);
+      const failure = senderFailure(err, text);
       if (failure.kind === "forbidden") onDenied();
       setOutcome(failure);
     } finally {
@@ -122,45 +117,49 @@ function SenderRow({
 
   const by = reviewedBy(sender);
   const disabled = pending !== null || denied;
-  const reason = denied ? DENIED_NOTE : undefined;
+  const reason = denied ? deniedNote(text) : undefined;
 
   return (
     <tr>
       <th scope="row" className="cell-sender">
         <SenderId value={sender.identifier} />
-        {!sender.active && <span className="cell-sub">Not seen recently</span>}
+        {!sender.active && <span className="cell-sub">{t("notSeen")}</span>}
       </th>
       <td className="cell-source">{sender.catchall_log_source_name}</td>
       <td>
         <span className="seen">
-          <span className="seen-label">First</span> <Time value={sender.first_seen_at} bare />
+          <span className="seen-label">{t("first")}</span> <Time value={sender.first_seen_at} bare />
         </span>
         <span className="seen">
-          <span className="seen-label">Last</span> <Time value={sender.last_seen_at} bare />
+          <span className="seen-label">{t("last")}</span> <Time value={sender.last_seen_at} bare />
         </span>
       </td>
-      <td className="num" title={EVENTS_24H_NOTE}>
+      <td className="num" title={text.say("catchall.events24hNote")}>
         {sender.events_24h == null ? (
-          <span className="muted">{formatEvents24h(null)}</span>
+          <span className="muted">{formatEvents24h(null, text)}</span>
         ) : (
           <>
-            {formatEvents24h(sender.events_24h)}
-            <span className="unit"> events</span>
+            {formatEvents24h(sender.events_24h, text)}
+            <span className="unit">
+              {unitGap(text.locale)}
+              {t("eventsUnit")}
+            </span>
           </>
         )}
       </td>
       <td>
         <span className={`pill ${statusTone(sender.review_status)}`}>
-          {STATUS_LABELS[sender.review_status]}
+          {statusLabel(sender.review_status, text)}
         </span>
         {sender.review_status !== "NEW" && (
           <span className="cell-sub">
             {by && sender.reviewed_at ? (
-              <>
-                by {by} · <Time value={sender.reviewed_at} />
-              </>
+              t.rich("by", {
+                name: by,
+                time: () => <Time value={sender.reviewed_at as string} />,
+              })
             ) : (
-              "Reviewer not recorded"
+              t("reviewerNotRecorded")
             )}
           </span>
         )}
@@ -171,26 +170,26 @@ function SenderRow({
             <button
               type="button"
               className="action secondary"
-              aria-label={`Review ${sender.identifier}`}
+              aria-label={t("reviewFor", { name: sender.identifier })}
               aria-describedby={denied ? denialId : undefined}
               title={reason}
               disabled={disabled}
               onClick={() => void act("review")}
             >
-              Review
+              {t("review")}
             </button>
           )}
           {sender.review_status !== "DISMISSED" && (
             <button
               type="button"
               className="action secondary"
-              aria-label={`Dismiss ${sender.identifier}`}
+              aria-label={t("dismissFor", { name: sender.identifier })}
               aria-describedby={denied ? denialId : undefined}
               title={reason}
               disabled={disabled}
               onClick={() => void act("dismiss")}
             >
-              Dismiss
+              {t("dismiss")}
             </button>
           )}
         </div>
@@ -209,16 +208,15 @@ function EmptyQueue({
   status: StatusFilter;
   latest: string | null;
 }) {
+  const t = useTranslations("catchall.queue");
+  const text = useFleetText();
   if (kind === "never-collected") {
     return (
       <div className="notice">
         <p>
-          <strong>Nothing has been collected yet.</strong>
+          <strong>{t("neverHeading")}</strong>
         </p>
-        <p>
-          No catch-all bucket has been measured for any source, so an empty list says nothing
-          about who is sending. Senders appear after the first catch-all collection runs.
-        </p>
+        <p>{t("neverBody")}</p>
       </div>
     );
   }
@@ -226,9 +224,9 @@ function EmptyQueue({
     return (
       <div className="notice">
         <p>
-          <strong>No sender matches these filters.</strong>
+          <strong>{t("filteredHeading")}</strong>
         </p>
-        <p>Widen the status, choose all sources or clear the search to see more senders.</p>
+        <p>{t("filteredBody")}</p>
       </div>
     );
   }
@@ -236,14 +234,14 @@ function EmptyQueue({
     return (
       <div className="notice">
         <p>
-          <strong>The queue is clear.</strong>
+          <strong>{t("clearHeading")}</strong>
         </p>
         <p>
-          No sender is waiting for review.
+          {t("clearBody")}
           {latest ? (
             <>
               {" "}
-              The latest measured bucket starts <UtcTime value={latest} />.
+              {t.rich("clearLatest", { time: () => <UtcTime value={latest} /> })}
             </>
           ) : (
             ""
@@ -256,10 +254,16 @@ function EmptyQueue({
     <div className="notice">
       <p>
         <strong>
-          No sender is {status === "ALL" ? "tracked" : statusFilterLabel(status).toLowerCase()}.
+          {status === "ALL"
+            ? t("noneAll")
+            : t("noneStatus", {
+                status: statusFilterLabel(status, text).toLocaleLowerCase(
+                  text.locale === "tr" ? "tr-TR" : "en-US",
+                ),
+              })}
         </strong>
       </p>
-      <p>Choose another status to see the other senders.</p>
+      <p>{t("noneBody")}</p>
     </div>
   );
 }
@@ -271,6 +275,9 @@ export function SendersQueue({
   sources: CatchallSourceList;
   initial: Page<CatchallSender>;
 }) {
+  const t = useTranslations("catchall.queue");
+  const common = useTranslations("common");
+  const text = useFleetText();
   const [status, setStatus] = useState<StatusFilter>("NEW");
   const [sourceId, setSourceId] = useState("");
   const [typed, setTyped] = useState("");
@@ -288,6 +295,9 @@ export function SendersQueue({
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<string | null>(null);
   const firstRun = useRef(true);
+  // The effect below must not restart when the translator object changes identity.
+  const textRef = useRef(text);
+  textRef.current = text;
   const ids = useId();
   const denialId = `${ids}-denied`;
 
@@ -321,7 +331,7 @@ export function SendersQueue({
         if (!cancelled) setView({ kind: "ready", items: page.items, total: page.total });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setView({ kind: "error", ...readFailure(err) });
+        if (!cancelled) setView({ kind: "error", ...readFailure(err, textRef.current) });
       });
     return () => {
       cancelled = true;
@@ -351,7 +361,7 @@ export function SendersQueue({
       });
       setView({ kind: "ready", items: [...view.items, ...page.items], total: page.total });
     } catch {
-      setMoreError("The next senders could not be loaded. The ones shown are unchanged; try again.");
+      setMoreError(t("moreError"));
     } finally {
       setLoadingMore(false);
     }
@@ -371,12 +381,12 @@ export function SendersQueue({
   return (
     <section aria-labelledby={`${ids}-h`} className="catchall-queue">
       <h2 id={`${ids}-h`} className="section-title">
-        Senders queue
+        {t("heading")}
       </h2>
 
-      <div className="filters" role="search" aria-label="Filter senders">
+      <div className="filters" role="search" aria-label={t("filterLabel")}>
         <label className="sr-only" htmlFor={`${ids}-status`}>
-          Review status
+          {t("reviewStatus")}
         </label>
         <select
           id={`${ids}-status`}
@@ -385,21 +395,21 @@ export function SendersQueue({
         >
           {STATUS_FILTERS.map((s) => (
             <option key={s} value={s}>
-              {statusFilterLabel(s)}
-              {s === "NEW" ? ` (${formatCount(newCount)})` : ""}
+              {statusFilterLabel(s, text)}
+              {s === "NEW" ? ` (${formatCount(newCount, text.locale)})` : ""}
             </option>
           ))}
         </select>
 
         <label className="sr-only" htmlFor={`${ids}-source`}>
-          Catch-all source
+          {t("catchallSource")}
         </label>
         <select
           id={`${ids}-source`}
           value={sourceId}
           onChange={(e) => setSourceId(e.target.value)}
         >
-          <option value="">All catch-all sources</option>
+          <option value="">{t("allSources")}</option>
           {sources.items.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -408,25 +418,26 @@ export function SendersQueue({
         </select>
 
         <label className="sr-only" htmlFor={`${ids}-q`}>
-          Search sender
+          {t("searchLabel")}
         </label>
         <input
           id={`${ids}-q`}
           type="search"
-          placeholder="Search sender, e.g. fw-edge"
+          placeholder={t("searchPlaceholder")}
           value={typed}
           maxLength={255}
           onChange={(e) => setTyped(e.target.value)}
         />
         <button type="button" className="action secondary" onClick={() => setTick((n) => n + 1)}>
-          Reload list
+          {t("reloadList")}
         </button>
       </div>
 
       {denied && (
         <p id={denialId} className="subtitle denied-note" role="status">
-          Review and Dismiss are disabled: they need the permission{" "}
-          <code className="perm">{WRITE_PERMISSION}</code>, which your role does not have.
+          {t.rich("deniedNote", {
+            perm: () => <code className="perm">{WRITE_PERMISSION}</code>,
+          })}
         </p>
       )}
 
@@ -434,14 +445,14 @@ export function SendersQueue({
         <div className="notice" role="alert">
           <p>
             <strong>
-              {view.forbidden ? "The senders cannot be shown." : "The senders could not be loaded."}
+              {view.forbidden ? t("errorForbidden") : t("errorFailed")}
             </strong>
           </p>
           <p>{view.text}</p>
           {!view.forbidden && (
             <p>
               <button type="button" className="action secondary" onClick={() => setTick((n) => n + 1)}>
-                Try again
+                {common("tryAgain")}
               </button>
             </p>
           )}
@@ -450,7 +461,7 @@ export function SendersQueue({
         <div aria-busy={view.kind === "loading"}>
           {view.kind === "loading" && (
             <p className="subtitle" role="status">
-              Loading senders…
+              {t("loading")}
             </p>
           )}
           {view.kind === "ready" && rows.length === 0 ? (
@@ -460,26 +471,25 @@ export function SendersQueue({
               <>
                 {view.kind === "ready" && (
                   <p className="subtitle queue-count" role="status">
-                    Showing {formatCount(rows.length)} of {formatCount(total)}{" "}
-                    {total === 1 ? "sender" : "senders"}.
+                    {t("showing", {
+                      shown: formatCount(rows.length, text.locale),
+                      total: formatCount(total, text.locale),
+                    })}
                   </p>
                 )}
-                <TableScroll label="Catch-all senders">
+                <TableScroll label={t("tableLabel")}>
                   <table className="fleet-table catchall-table">
-                    <caption className="sr-only">
-                      Senders feeding the catch-all sources, New first and then by 24 hour events,
-                      busiest first. Senders with unknown events come last.
-                    </caption>
+                    <caption className="sr-only">{t("caption")}</caption>
                     <thead>
                       <tr>
-                        <th scope="col">Sender</th>
-                        <th scope="col">Catch-all source</th>
-                        <th scope="col">Seen (UTC)</th>
-                        <th scope="col" className="num" title={EVENTS_24H_NOTE}>
-                          24 h events
+                        <th scope="col">{t("thSender")}</th>
+                        <th scope="col">{t("thSource")}</th>
+                        <th scope="col">{t("thSeen")}</th>
+                        <th scope="col" className="num" title={text.say("catchall.events24hNote")}>
+                          {t("thEvents")}
                         </th>
-                        <th scope="col">Review</th>
-                        <th scope="col">Actions</th>
+                        <th scope="col">{t("thReview")}</th>
+                        <th scope="col">{t("thActions")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -498,9 +508,10 @@ export function SendersQueue({
                 </TableScroll>
                 <ul className="table-notes">
                   <li>
-                    <strong>24 h events</strong> is a lower bound, the sum of the stored top-sender
-                    lists that name the sender. <em>unknown</em> means no stored list named it; it
-                    is not zero.
+                    {t.rich("note", {
+                      b: (chunks) => <strong>{chunks}</strong>,
+                      i: (chunks) => <em>{chunks}</em>,
+                    })}
                   </li>
                 </ul>
                 {rows.length < total && (
@@ -511,7 +522,7 @@ export function SendersQueue({
                       disabled={loadingMore || view.kind !== "ready"}
                       onClick={() => void loadMore()}
                     >
-                      {loadingMore ? "Loading…" : "Show more senders"}
+                      {loadingMore ? t("loadingMore") : t("loadMore")}
                     </button>
                     {moreError && (
                       <p className="change-status crit" role="alert">

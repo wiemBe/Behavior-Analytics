@@ -533,6 +533,17 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | capacity | kapasite |
 | match | eşleşme |
 | hour, day, second (units) | sa, gün, sn |
+| fleet | filo |
+| window (the time span of a view) | pencere |
+| incident (an open anomaly of a class) | vaka |
+| sender (catch-all) | gönderen |
+| queue | kuyruk |
+| dismiss | yoksay |
+| override (an operator's class for one source) | geçersiz kılma |
+| search family | arama ailesi |
+| silence grace | sessizlik toleransı |
+| coverage | kapsam |
+| technique, tactic (ATT&CK) | teknik, taktik |
 
 ---
 

@@ -4,12 +4,16 @@
 // newest unreviewed ones, five at most. The 24 h count is a lower bound named by stored top
 // lists; a sender no list named has "unknown", which is not zero.
 
+import { useTranslations } from "next-intl";
+
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
+import { plainCount, useFleetText } from "@/lib/fleetText";
+import { formatCount } from "@/lib/format";
 import { WidgetFrame, WidgetQualifiers } from "@/components/home/WidgetFrame";
 import { When } from "@/components/home/WidgetParts";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { EVENTS_24H_NOTE, formatEvents24h } from "@/app/fleet/catchall/catchall";
+import { formatEvents24h } from "@/app/fleet/catchall/catchall";
 
 import { useExpanded } from "@/widgets/runtime";
 
@@ -19,37 +23,43 @@ import "./catalog.css";
 
 const SENDERS_READ = 200;
 
+/** A lower bound; the sign is the same in both languages. */
+const AT_LEAST = "≥";
+
 export function CatchallSenders() {
+  const t = useTranslations("catalog.catchall");
+  const text = useFleetText();
+  const note = text.say("catchall.events24hNote");
   const expanded = useExpanded();
   const read = homeReads.newCatchallSenders(SENDERS_READ);
   const state = useApiResource(read.key, read.fetch);
-  const badge = state.status === "ok" ? `${state.data.total.toLocaleString("en-US")} new` : undefined;
+  const badge =
+    state.status === "ok"
+      ? t("badge", { count: formatCount(state.data.total, text.locale) })
+      : undefined;
 
   return (
     <WidgetFrame
       id="catchall-senders"
-      title="Catch-all senders to review"
-      windowText="new"
+      title={t("title")}
+      windowText={t("windowText")}
       badge={badge}
-      link={{ href: "/fleet/catchall", label: "Review" }}
+      link={{ href: "/fleet/catchall", label: t("link") }}
       state={state}
-      what="the catch-all senders"
+      what={t("what")}
       permission="read:fleet"
     >
       {({ data }) => {
         if (data.items.length === 0 && data.total === 0) {
           return (
-            <p className="tw-state">
-              No unreviewed senders. Every sender seen feeding the catch-all sources has been
-              reviewed or dismissed.
-            </p>
+            <p className="tw-state">{t("empty")}</p>
           );
         }
         const { rows, qualifiers } = newestSenders(data.items, data.total, expanded ? Infinity : undefined);
         return (
           <>
-            <TableScroll label="Newest unreviewed catch-all senders">
-              <table className="tw-table cw-table" aria-label="Newest unreviewed catch-all senders">
+            <TableScroll label={t("label")}>
+              <table className="tw-table cw-table" aria-label={t("label")}>
                 <colgroup>
                   <col />
                   <col className="tw-col-time" />
@@ -57,10 +67,10 @@ export function CatchallSenders() {
                 </colgroup>
                 <thead>
                   <tr>
-                    <th scope="col">Sender</th>
-                    <th scope="col">First seen</th>
-                    <th scope="col" className="num" title={EVENTS_24H_NOTE}>
-                      Events, 24 h
+                    <th scope="col">{t("sender")}</th>
+                    <th scope="col">{t("firstSeen")}</th>
+                    <th scope="col" className="num" title={note}>
+                      {t("events")}
                     </th>
                   </tr>
                 </thead>
@@ -78,11 +88,11 @@ export function CatchallSenders() {
                       </td>
                       <td className="num">
                         {r.events_24h === null ? (
-                          <span className="muted" title={EVENTS_24H_NOTE}>
-                            unknown
+                          <span className="muted" title={note}>
+                            {text.say("catchall.unknown")}
                           </span>
                         ) : (
-                          <>≥ {formatEvents24h(r.events_24h)}</>
+                          <>{AT_LEAST} {formatEvents24h(r.events_24h, text)}</>
                         )}
                       </td>
                     </tr>
@@ -93,7 +103,10 @@ export function CatchallSenders() {
             <WidgetQualifiers qualifiers={qualifiers} />
             {expanded || data.total > rows.length ? (
               <p className="tw-note">
-                Showing the newest {rows.length} of {data.total.toLocaleString("en-US")}.
+                {t("showing", {
+                  shown: plainCount(rows.length, text.locale),
+                  total: formatCount(data.total, text.locale),
+                })}
               </p>
             ) : null}
           </>
