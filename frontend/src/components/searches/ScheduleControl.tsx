@@ -7,6 +7,7 @@
 // answer decides, and on a refusal the picker reverts.
 
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 
 import { ScheduleLabel } from "@/components/searches/ScheduleLabel";
@@ -16,8 +17,10 @@ import {
   SCHEDULE_PRESETS,
   changeFailure,
   cronToPreset,
+  everyLabel,
   presetToCron,
 } from "@/lib/searchCadence";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import "@/components/ui/controls.css";
 
@@ -26,6 +29,8 @@ const KEEP_CUSTOM = "custom";
 
 export function ScheduleControl({ searchId, cron }: { searchId: string; cron: string }) {
   const router = useRouter();
+  const t = useTranslations("searches.schedule");
+  const i18n = useBehaviorI18n();
   const selectId = useId();
   const [current, setCurrent] = useState(cron);
   const [pending, setPending] = useState<string | null>(null);
@@ -43,13 +48,11 @@ export function ScheduleControl({ searchId, cron }: { searchId: string; cron: st
     try {
       const updated = await api.setSearchSchedule(searchId, next);
       setCurrent(updated.schedule_cron);
-      setOutcome({ kind: "ok", text: "Saved. The next run follows the new schedule." });
+      setOutcome({ kind: "ok", text: t("saved") });
       // Bring the recomputed next-run time into the header.
       router.refresh();
     } catch (err) {
-      setOutcome(
-        changeFailure(err, "Your role cannot change this schedule (permission search:write)."),
-      );
+      setOutcome(changeFailure(err, t("forbidden"), i18n));
     } finally {
       setPending(null);
     }
@@ -62,7 +65,7 @@ export function ScheduleControl({ searchId, cron }: { searchId: string; cron: st
           <strong><ScheduleLabel cron={current} /></strong>
         </span>
         <label htmlFor={selectId} className="muted">
-          Change to
+          {t("changeTo")}
         </label>
         <select
           id={selectId}
@@ -73,11 +76,11 @@ export function ScheduleControl({ searchId, cron }: { searchId: string; cron: st
           onChange={(e) => void change(e.target.value)}
         >
           {!preset && (
-            <option value={KEEP_CUSTOM}>Custom (keep current)</option>
+            <option value={KEEP_CUSTOM}>{t("customKeep")}</option>
           )}
           {SCHEDULE_PRESETS.map((p) => (
             <option key={p.seconds} value={p.seconds}>
-              Every {p.label}
+              {everyLabel(p.seconds, i18n)}
             </option>
           ))}
         </select>

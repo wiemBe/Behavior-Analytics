@@ -73,6 +73,15 @@ const IDENTICAL_ALLOWLIST = new Set([
   "units.eps",
   // I18N-5: punctuation around a placeholder, the same in both languages.
   "customRules.latency.tail",
+  // I18N-7: punctuation around a placeholder, and technical terms the glossary keeps in English.
+  "cadence.latency.tail",
+  "searches.list.mitre",
+  "searches.editor.aql",
+  "history.page.consoleLabel",
+  "history.family.WAF",
+  "history.family.IPS",
+  "history.table.utc",
+  "history.scope.logSource",
 ]);
 
 describe("message catalog contract", () => {

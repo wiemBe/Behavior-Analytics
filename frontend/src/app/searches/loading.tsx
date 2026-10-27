@@ -1,7 +1,8 @@
+import { useTranslations } from "next-intl";
+
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return (
-    <BoundaryLoading title="Search Catalog" what="scheduled searches" offset="small" />
-  );
+  const t = useTranslations("searches.list");
+  return <BoundaryLoading title={t("title")} what={t("loadingWhat")} offset="small" />;
 }

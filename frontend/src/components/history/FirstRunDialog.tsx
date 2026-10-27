@@ -5,9 +5,12 @@
 // and Expand dialogs: focus moves to the first control on open, Escape closes it, and focus
 // returns to where it was. Closing without choosing does not decide.
 
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { ApiError, api, type HistoryConsole, type HistoryConsoleEstimate } from "@/lib/api";
+import { plainCount } from "@/lib/figureText";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { DecisionLine } from "./DecisionLine";
 import {
@@ -36,8 +39,6 @@ type RowState =
   | { phase: "refused"; text: ReactNode }
   | { phase: "error"; text: ReactNode };
 
-const LEFT_OUT = [{ family: "Geography", why: "No baseline to fill." }] as const;
-
 function ConsoleEstimateTable({
   console: consoleState,
   estimate,
@@ -48,32 +49,32 @@ function ConsoleEstimateTable({
   /** False while the estimate is being read or could not be: no figure is claimed missing. */
   settled: boolean;
 }) {
+  const t = useTranslations("history.dialog");
+  const i18n = useBehaviorI18n();
   return (
     <table className="hb-families">
-      <caption className="sr-only">
-        Families read from {consoleState.name}, their state, and the estimate for each.
-      </caption>
+      <caption className="sr-only">{t("caption", { name: consoleState.name })}</caption>
       <thead>
         <tr>
-          <th scope="col">Family</th>
-          <th scope="col">State</th>
-          <th scope="col">Estimate</th>
+          <th scope="col">{t("family")}</th>
+          <th scope="col">{t("state")}</th>
+          <th scope="col">{t("estimate")}</th>
         </tr>
       </thead>
       <tbody>
         {consoleState.families.map((family) => {
           const est = settled
-            ? estimateText(estimate?.families.find((f) => f.family === family.family))
+            ? estimateText(estimate?.families.find((f) => f.family === family.family), i18n)
             : { figures: "—", note: null };
           return (
             <tr key={family.family}>
-              <th scope="row">{familyName(family.family)}</th>
-              <td>{familyStateText(family)}</td>
+              <th scope="row">{familyName(family.family, i18n)}</th>
+              <td>{familyStateText(family, i18n)}</td>
               <td className="hb-est">
                 {est.figures}
                 {est.note && <span className="cell-sub">{est.note}</span>}
                 {settled && (
-                  <ul className="hb-assumptions" aria-label={`Assumptions for ${familyName(family.family)}`}>
+                  <ul className="hb-assumptions" aria-label={t("assumptionsFor", { name: familyName(family.family, i18n) })}>
                     {[...new Set(estimate?.families.find((f) => f.family === family.family)?.assumptions ?? [])].map(
                       (a) => (
                         <li key={a}>{a}</li>
@@ -85,13 +86,11 @@ function ConsoleEstimateTable({
             </tr>
           );
         })}
-        {LEFT_OUT.map((left) => (
-          <tr key={left.family}>
-            <th scope="row">{left.family}</th>
-            <td>Left out. {left.why}</td>
-            <td className="muted">—</td>
-          </tr>
-        ))}
+        <tr>
+          <th scope="row">{t("geography")}</th>
+          <td>{t("leftOut", { why: t("noBaseline") })}</td>
+          <td className="muted">—</td>
+        </tr>
       </tbody>
     </table>
   );
@@ -105,6 +104,9 @@ export function FirstRunDialog({
   onClose: () => void;
 }) {
   const id = useId();
+  const t = useTranslations("history.dialog");
+  const common = useTranslations("common");
+  const i18n = useBehaviorI18n();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [estimates, setEstimates] = useState<Estimates>({ status: "loading" });
@@ -164,7 +166,7 @@ export function FirstRunDialog({
             phase: "refused",
             text: (
               <>
-                Your answer was not recorded. A decision was recorded in the meantime.{" "}
+                {t("meantime")}
                 <DecisionLine console={now} />
               </>
             ),
@@ -175,7 +177,7 @@ export function FirstRunDialog({
           ...r,
           [key]: {
             phase: "error",
-            text: `Nothing was changed. Your role cannot record the answer (permission ${ADMIN_PERMISSION}).`,
+            text: t("forbidden", { permission: ADMIN_PERMISSION }),
           },
         }));
       } else {
@@ -183,7 +185,7 @@ export function FirstRunDialog({
           ...r,
           [key]: {
             phase: "error",
-            text: "Nothing was changed. The answer could not be recorded. Check that the backend is reachable, then try again.",
+            text: t("failed"),
           },
         }));
       }
@@ -205,7 +207,7 @@ export function FirstRunDialog({
     >
       <header className="hb-dialog-head">
         <h2 id={`${id}-title`} className="hb-dialog-title">
-          {questionText(days)}
+          {questionText(days, i18n)}
         </h2>
         <button
           type="button"
@@ -214,29 +216,26 @@ export function FirstRunDialog({
           disabled={saving}
           onClick={onClose}
         >
-          {open.length > 0 ? "Decide later" : "Close"}
+          {open.length > 0 ? t("decideLater") : t("close")}
         </button>
       </header>
 
-      <div className="hb-dialog-body" role="region" aria-label="What would be read, and what it costs" tabIndex={0}>
+      <div className="hb-dialog-body" role="region" aria-label={t("region")} tabIndex={0}>
       {estimates.status === "loading" && (
         <p className="hb-dialog-note" role="status">
-          Loading the history backfill status…
+          {t("loading")}
         </p>
       )}
 
       {estimates.status === "error" && (
         <div className="notice" role="alert">
           <p>
-            <strong>The estimate could not be loaded.</strong>
+            <strong>{t("estimateFailed")}</strong>
           </p>
-          <p>
-            Nothing was changed, and no answer can be recorded without it. Check that the backend
-            is reachable, then try again, or decide later from History backfill in Administration.
-          </p>
+          <p>{t("estimateFailedHelp")}</p>
           <p>
             <button type="button" className="action secondary" onClick={() => void loadEstimates()}>
-              Try again
+              {common("tryAgain")}
             </button>
           </p>
         </div>
@@ -255,17 +254,14 @@ export function FirstRunDialog({
             settled={ready}
           />
           {ready && (
-            <p className="hb-assumptions-title">
-              These are estimates from a model, not measurements. Each family lists what it assumes.
-            </p>
+            <p className="hb-assumptions-title">{t("modelNote")}</p>
           )}
         </section>
       ))}
 
       <div className="hb-dialog-section">
         <p className="hb-dialog-lead">
-          <strong>Nothing old raises an alert.</strong> Old data is used for learning only; it is
-          never judged.
+          {t.rich("nothingOld", { strong: (chunks) => <strong>{chunks}</strong> })}
         </p>
         {consoles.map((c) => {
           const hours = costHours(byConsole?.find((e) => e.instance_id === c.instance_id));
@@ -274,19 +270,16 @@ export function FirstRunDialog({
             <p key={c.instance_id} className="hb-dialog-lead">
               {prefix}
               {hours === null
-                ? "This sends read-only searches to QRadar; how long it takes is not estimated. The schedule you set in Search cadence still applies."
-                : `This sends read-only searches to QRadar for about ${hours} hours; the schedule you set in Search cadence still applies.`}
+                ? t("costUnknown")
+                : t("cost", { hours: plainCount(hours, i18n.locale) })}
             </p>
           );
         })}
-        <p className="hb-dialog-note">
-          WAF and IPS sources that already collected cannot read history; sources you enable from
-          now on will. Property watches ask for history when you create the watch.
-        </p>
+        <p className="hb-dialog-note">{t("alreadyCollected")}</p>
       </div>
       </div>
 
-      <div className="hb-decisions" role="group" aria-label="Your answer">
+      <div className="hb-decisions" role="group" aria-label={t("answer")}>
         {consoles.map((c) => {
           const row = rows[c.instance_id] ?? { phase: "idle" as const };
           const finished = row.phase === "done" || row.phase === "refused";
@@ -304,7 +297,7 @@ export function FirstRunDialog({
                     disabled={!ready || row.phase === "saving"}
                     onClick={() => void answer(c, "NO")}
                   >
-                    No
+                    {t("no")}
                   </button>
                   <button
                     type="button"
@@ -313,18 +306,19 @@ export function FirstRunDialog({
                     disabled={!ready || row.phase === "saving"}
                     onClick={() => void answer(c, "YES")}
                   >
-                    Yes
+                    {t("yes")}
                   </button>
                 </div>
               )}
               {row.phase === "saving" && (
                 <p className="hb-row-status" role="status">
-                  Saving…
+                  {common("saving")}
                 </p>
               )}
               {row.phase === "done" && (
                 <p className="hb-row-status ok" role="status">
-                  Recorded. {row.text}
+                  {t("done")}
+                  {row.text}
                 </p>
               )}
               {row.phase === "refused" && (
@@ -354,6 +348,8 @@ export function FirstRunErrorDialog({
   onRetry: () => void;
 }) {
   const id = useId();
+  const t = useTranslations("history.dialog");
+  const common = useTranslations("common");
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -382,23 +378,20 @@ export function FirstRunErrorDialog({
     >
       <header className="hb-dialog-head">
         <h2 id={`${id}-title`} className="hb-dialog-title">
-          The history backfill status could not be loaded
+          {t("errorTitle")}
         </h2>
         <button type="button" ref={closeRef} className="action secondary" onClick={onClose}>
-          Close
+          {t("close")}
         </button>
       </header>
       <div className="notice" role="alert">
         <p>
-          <strong>Whether QRadar&apos;s past should be read is not known yet.</strong>
+          <strong>{t("errorLead")}</strong>
         </p>
-        <p>
-          Nothing was changed. Check that the backend is reachable, then try again. The question is
-          asked again at your next page load.
-        </p>
+        <p>{t("errorHelp")}</p>
         <p>
           <button type="button" className="action secondary" onClick={onRetry}>
-            Try again
+            {common("tryAgain")}
           </button>
         </p>
       </div>

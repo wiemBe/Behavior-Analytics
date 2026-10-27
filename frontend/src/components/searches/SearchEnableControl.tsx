@@ -5,15 +5,20 @@
 // cap; the control adds what to do and does not rewrite the limit.
 
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { api } from "@/lib/api";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { capMessage, classifySaveError } from "@/components/searches/authoring";
 
 import "./searches.css";
 
 export function SearchEnableControl({ id, enabled }: { id: string; enabled: boolean }) {
   const router = useRouter();
+  const t = useTranslations("searches.enable");
+  const common = useTranslations("common");
+  const i18n = useBehaviorI18n();
   const [pending, setPending] = useState(false);
   const [cap, setCap] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,8 +32,8 @@ export function SearchEnableControl({ id, enabled }: { id: string; enabled: bool
       await api.setSearchEnabled(id, !enabled);
       router.refresh();
     } catch (err) {
-      const refusal = classifySaveError(err);
-      if (refusal.kind === "cap") setCap(capMessage(refusal.detail));
+      const refusal = classifySaveError(err, i18n);
+      if (refusal.kind === "cap") setCap(capMessage(refusal.detail, i18n));
       else setError(refusal.kind === "reasons" ? refusal.reasons.join(" ") : refusal.detail);
     } finally {
       setPending(false);
@@ -44,7 +49,7 @@ export function SearchEnableControl({ id, enabled }: { id: string; enabled: bool
         disabled={pending}
         aria-busy={pending}
       >
-        {pending ? "Saving…" : enabled ? "Disable search" : "Enable search"}
+        {pending ? common("saving") : enabled ? t("disable") : t("enable")}
       </button>
       {cap && (
         <p className="banner crit" role="alert">

@@ -5,13 +5,15 @@
 // a family, and a scheduled search shows anything else as "Custom".
 
 import { ApiError, actionErrorMessage, type SearchFamily } from "@/lib/api";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { ENGLISH_CADENCE, cadenceDuration } from "@/lib/cadenceText";
 import { formatDuration } from "@/lib/time";
 
 export { formatDuration };
 
 /** A bucket width. Null means the family has no buckets, which is not zero. */
-export function formatBucket(seconds: number | null): string {
-  return seconds == null ? "—" : formatDuration(seconds);
+export function formatBucket(seconds: number | null, i18n?: BehaviorI18n): string {
+  return seconds == null ? "—" : i18n ? cadenceDuration(seconds, i18n) : formatDuration(seconds);
 }
 
 export interface WorstCaseDelay {
@@ -32,11 +34,16 @@ export function worstCaseDelay(
   cadenceSeconds: number,
   bucketSeconds: number | null,
   settleSeconds: number,
+  i18n: BehaviorI18n = ENGLISH_CADENCE,
 ): WorstCaseDelay {
   const evidenceOnly = bucketSeconds == null;
   const seconds = cadenceSeconds + (bucketSeconds ?? 0) + settleSeconds;
-  const span = formatDuration(seconds);
-  return { seconds, evidenceOnly, text: evidenceOnly ? `evidence up to ${span}` : `up to ${span}` };
+  const duration = cadenceDuration(seconds, i18n);
+  return {
+    seconds,
+    evidenceOnly,
+    text: i18n.t(evidenceOnly ? "cadence.delay.evidenceUpTo" : "cadence.delay.upTo", { duration }),
+  };
 }
 
 export const FAMILY_INFO: Record<SearchFamily, { name: string; scope: string }> = {
@@ -74,9 +81,25 @@ export const FAMILY_INFO: Record<SearchFamily, { name: string; scope: string }> 
   },
 };
 
-/** Name and scope for a family. An unknown family keeps its raw key. */
-export function familyInfo(family: string): { name: string; scope: string | null } {
-  return FAMILY_INFO[family as SearchFamily] ?? { name: family, scope: null };
+/**
+ * Name and scope for a family. An unknown family keeps its raw key. With a translator the words
+ * come from the `cadence.family` messages (the English of those equals `FAMILY_INFO`).
+ */
+export function familyInfo(
+  family: string,
+  i18n?: BehaviorI18n,
+): { name: string; scope: string | null } {
+  // `has` follows the prototype chain of the catalog objects, so a raw key such as "constructor"
+  // is excluded first.
+  if (i18n && !(family in Object.prototype) && i18n.t.has?.(`cadence.family.${family}.name`)) {
+    return {
+      name: i18n.t(`cadence.family.${family}.name`),
+      scope: i18n.t(`cadence.family.${family}.scope`),
+    };
+  }
+  return Object.prototype.hasOwnProperty.call(FAMILY_INFO, family)
+    ? FAMILY_INFO[family as SearchFamily]
+    : { name: family, scope: null };
 }
 
 export interface SchedulePreset {
@@ -108,8 +131,13 @@ export function presetToCron(seconds: number): string | null {
 }
 
 /** A cadence option label from the API's allowed values. */
-export function cadenceLabel(seconds: number): string {
-  return formatDuration(seconds);
+export function cadenceLabel(seconds: number, i18n?: BehaviorI18n): string {
+  return i18n ? cadenceDuration(seconds, i18n) : formatDuration(seconds);
+}
+
+/** `Every 5 min` / `Her 5 dk`: a preset (or an allowed cadence) as an option or schedule reads. */
+export function everyLabel(seconds: number, i18n: BehaviorI18n = ENGLISH_CADENCE): string {
+  return i18n.t("cadence.schedule.every", { duration: cadenceDuration(seconds, i18n) });
 }
 
 export type OutcomeTone = "ok" | "warn" | "crit" | "neutral";
@@ -121,24 +149,20 @@ export type OutcomeTone = "ok" | "warn" | "crit" | "neutral";
  */
 export function outcomeInfo(
   outcome: string,
+  i18n: BehaviorI18n = ENGLISH_CADENCE,
 ): { label: string; tone: OutcomeTone } | null {
-  switch (outcome) {
-    case "ok":
-      return { label: "Complete", tone: "ok" };
-    case "partial":
-      return { label: "Partial", tone: "warn" };
-    case "failed":
-      return { label: "Failed", tone: "crit" };
-    case "no-instance":
-      return { label: "No enabled instance", tone: "neutral" };
-    case "no-sources":
-      return { label: "No eligible WAF source", tone: "neutral" };
-    case "dispatched":
-      return { label: "Dispatched", tone: "ok" };
-    default:
-      return null;
-  }
+  if (!Object.prototype.hasOwnProperty.call(OUTCOME_TONE, outcome)) return null;
+  return { label: i18n.t(`cadence.outcome.${outcome}`), tone: OUTCOME_TONE[outcome] };
 }
+
+const OUTCOME_TONE: Record<string, OutcomeTone> = {
+  ok: "ok",
+  partial: "warn",
+  failed: "crit",
+  "no-instance": "neutral",
+  "no-sources": "neutral",
+  dispatched: "ok",
+};
 
 /**
  * The line shown when a settings change is refused or fails.
@@ -151,9 +175,13 @@ export function outcomeInfo(
 export function changeFailure(
   err: unknown,
   forbidden: string,
+  i18n: BehaviorI18n = ENGLISH_CADENCE,
 ): { kind: "forbidden" | "error"; text: string } {
   if (err instanceof ApiError && err.status === 403) {
-    return { kind: "forbidden", text: `${forbidden} Nothing was changed.` };
+    return { kind: "forbidden", text: i18n.t("cadence.change.nothingChanged", { forbidden }) };
   }
-  return { kind: "error", text: `Not changed. ${actionErrorMessage(err)}` };
+  return {
+    kind: "error",
+    text: i18n.t("cadence.change.notChanged", { reason: actionErrorMessage(err, i18n.t) }),
+  };
 }

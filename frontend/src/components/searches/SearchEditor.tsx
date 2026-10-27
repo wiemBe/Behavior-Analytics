@@ -4,13 +4,13 @@
 // page, executes that stored version — this form never sends the text to a run.
 
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 
 import { ScheduleLabel } from "@/components/searches/ScheduleLabel";
 import {
   CUSTOM_SCHEDULE,
   SEARCH_CAPS,
-  SEARCH_LATENCY_STATEMENT,
   SEVERITIES,
   THRESHOLD_OPERATORS,
   capMessage,
@@ -27,8 +27,12 @@ import {
   type EditorDraft,
   type FieldName,
 } from "@/components/searches/authoring";
+import { enumLabel } from "@/i18n/enumLabels";
 import { api, type ScheduledSearch } from "@/lib/api";
+import { plainCount } from "@/lib/figureText";
 import { cronToPreset } from "@/lib/searchCadence";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
+
 
 import "./searches.css";
 
@@ -40,6 +44,9 @@ export function SearchEditor({
   search?: ScheduledSearch;
 }) {
   const router = useRouter();
+  const t = useTranslations("searches.editor");
+  const common = useTranslations("common");
+  const i18n = useBehaviorI18n();
   const nameId = useId();
   const descriptionId = useId();
   const aqlId = useId();
@@ -83,7 +90,7 @@ export function SearchEditor({
     setScheduleError(null);
     setFormError(null);
     setSaved(null);
-    const invalid = parseDraft(draft, mode);
+    const invalid = parseDraft(draft, mode, i18n);
     if (invalid) {
       setFieldError(invalid);
       return;
@@ -99,24 +106,24 @@ export function SearchEditor({
       const updated = await api.updateSearch(search.id, updateBody(draft));
       const versionNote =
         updated.query_version === search.query_version
-          ? "Saved. The query text is unchanged, so the version stayed the same."
-          : `Saved as v${updated.query_version}. Run now executes this stored version.`;
+          ? t("savedSame")
+          : t("savedNew", { version: updated.query_version });
       setSaved(versionNote);
       set("aql", updated.aql_query);
       set("cron", updated.schedule_cron);
       router.refresh();
     } catch (err) {
-      const refusal = classifySaveError(err);
+      const refusal = classifySaveError(err, i18n);
       if (refusal.kind === "reasons") setReasons(refusal.reasons);
       else if (refusal.kind === "schedule") setScheduleError(refusal.detail);
-      else if (refusal.kind === "cap") setFormError(capMessage(refusal.detail));
+      else if (refusal.kind === "cap") setFormError(capMessage(refusal.detail, i18n));
       else setFormError(refusal.detail);
     } finally {
       setPending(false);
     }
   }
 
-  const options = scheduleOptions(draft.cron, originalCron);
+  const options = scheduleOptions(draft.cron, originalCron, i18n);
   const selectValue = scheduleSelectValue(draft.cron);
   const charts = visualizationChoices(search?.visualization_type ?? null);
   const storedChart = search?.visualization_type;
@@ -130,11 +137,11 @@ export function SearchEditor({
         void save();
       }}
     >
-      <p className="search-latency">{SEARCH_LATENCY_STATEMENT}</p>
+      <p className="search-latency">{t("latency")}</p>
 
       {mode === "create" && (
         <div className="rule-form-grid">
-          <label htmlFor={nameId}>Name</label>
+          <label htmlFor={nameId}>{t("name")}</label>
           <div>
             <input
               id={nameId}
@@ -155,7 +162,7 @@ export function SearchEditor({
       )}
 
       <div className="rule-form-grid">
-        <label htmlFor={descriptionId}>Description</label>
+        <label htmlFor={descriptionId}>{t("description")}</label>
         <div>
           <input
             id={descriptionId}
@@ -175,7 +182,7 @@ export function SearchEditor({
       </div>
 
       <div>
-        <label htmlFor={aqlId}>AQL</label>
+        <label htmlFor={aqlId}>{t("aql")}</label>
         <textarea
           id={aqlId}
           className="aql-input"
@@ -192,7 +199,7 @@ export function SearchEditor({
           </p>
         )}
         {reasons.length > 0 && (
-          <ul id={reasonsId} className="search-reasons" aria-label="Validation reasons" aria-live="polite">
+          <ul id={reasonsId} className="search-reasons" aria-label={t("validationReasons")} aria-live="polite">
             {reasons.map((reason, index) => (
               <li key={`${index}-${reason}`}>{reason}</li>
             ))}
@@ -201,10 +208,10 @@ export function SearchEditor({
       </div>
 
       <div className="rule-form-grid">
-        <label htmlFor={scheduleId}>Schedule</label>
+        <label htmlFor={scheduleId}>{t("schedule")}</label>
         <div>
           <p className="field-hint">
-            {mode === "create" ? "Default: " : "Current: "}
+            {mode === "create" ? t("scheduleDefault") : t("scheduleCurrent")}
             <ScheduleLabel cron={draft.cron} />
           </p>
           <select
@@ -223,7 +230,9 @@ export function SearchEditor({
           </select>
           {selectValue === CUSTOM_SCHEDULE && (
             <p className="field-hint">
-              Custom cron <code className="search-cron">{draft.cron}</code> is kept as stored.
+              {t.rich("customCron", {
+                code: () => <code className="search-cron">{draft.cron}</code>,
+              })}
             </p>
           )}
           {scheduleError && (
@@ -235,10 +244,10 @@ export function SearchEditor({
       </div>
 
       <div className="rule-form-grid">
-        <span id={`${operatorId}-label`}>Threshold</span>
+        <span id={`${operatorId}-label`}>{t("threshold")}</span>
         <div className="search-guard" role="group" aria-labelledby={`${operatorId}-label`}>
           <label htmlFor={operatorId}>
-            Operator
+            {t("operator")}
             <select
               id={operatorId}
               className="select-control"
@@ -256,7 +265,7 @@ export function SearchEditor({
             </select>
           </label>
           <label htmlFor={thresholdId}>
-            Value
+            {t("value")}
             <input
               id={thresholdId}
               className="field"
@@ -273,10 +282,10 @@ export function SearchEditor({
           {fieldError.text}
         </p>
       )}
-      <p className="field-hint">Leave the value empty when this search has no threshold.</p>
+      <p className="field-hint">{t("thresholdHint")}</p>
 
       <div className="rule-form-grid">
-        <label htmlFor={severityId}>Severity</label>
+        <label htmlFor={severityId}>{t("severity")}</label>
         <select
           id={severityId}
           className="select-control"
@@ -285,16 +294,16 @@ export function SearchEditor({
         >
           {SEVERITIES.map((severity) => (
             <option key={severity} value={severity}>
-              {severity}
+              {enumLabel(i18n.t, "severityPill", severity)}
             </option>
           ))}
         </select>
       </div>
 
       <fieldset className="search-guard">
-        <legend className="field-hint">Guardrails, within the platform caps</legend>
+        <legend className="field-hint">{t("guardrails")}</legend>
         <label htmlFor={timeoutId}>
-          Timeout (seconds)
+          {t("timeout")}
           <input
             id={timeoutId}
             className="field"
@@ -303,10 +312,12 @@ export function SearchEditor({
             aria-invalid={fieldError?.field === "timeout"}
             onChange={(event) => set("timeout", event.target.value)}
           />
-          <span className="field-hint">1 to {SEARCH_CAPS.timeoutSeconds.max} seconds</span>
+          <span className="field-hint">
+            {t("timeoutHint", { max: plainCount(SEARCH_CAPS.timeoutSeconds.max, i18n.locale) })}
+          </span>
         </label>
         <label htmlFor={windowId}>
-          Window (hours)
+          {t("window")}
           <input
             id={windowId}
             className="field"
@@ -315,10 +326,12 @@ export function SearchEditor({
             aria-invalid={fieldError?.field === "window"}
             onChange={(event) => set("windowHours", event.target.value)}
           />
-          <span className="field-hint">1 to {SEARCH_CAPS.windowHours.max} hours</span>
+          <span className="field-hint">
+            {t("windowHint", { max: plainCount(SEARCH_CAPS.windowHours.max, i18n.locale) })}
+          </span>
         </label>
         <label htmlFor={rowsId}>
-          Max rows
+          {t("rows")}
           <input
             id={rowsId}
             className="field"
@@ -327,7 +340,9 @@ export function SearchEditor({
             aria-invalid={fieldError?.field === "rows"}
             onChange={(event) => set("rows", event.target.value)}
           />
-          <span className="field-hint">1 to {SEARCH_CAPS.resultRows.max} rows</span>
+          <span className="field-hint">
+            {t("rowsHint", { max: plainCount(SEARCH_CAPS.resultRows.max, i18n.locale) })}
+          </span>
         </label>
       </fieldset>
       {fieldError && (fieldError.field === "timeout" || fieldError.field === "window" || fieldError.field === "rows") && (
@@ -337,7 +352,7 @@ export function SearchEditor({
       )}
 
       <div className="rule-form-grid">
-        <label htmlFor={visualizationId}>Visualization</label>
+        <label htmlFor={visualizationId}>{t("visualization")}</label>
         <div>
           <select
             id={visualizationId}
@@ -347,14 +362,13 @@ export function SearchEditor({
           >
             {charts.map((value) => (
               <option key={value} value={value}>
-                {visualizationLabel(value)}
+                {visualizationLabel(value, i18n)}
               </option>
             ))}
           </select>
           {unusualChart && draft.visualization === storedChart && (
             <p className="field-hint">
-              Stored as {storedChart}. Pie and heatmap are not offered for a new search. Leave this
-              value, or choose table, line, bar, or single value.
+              {t("storedAs", { stored: storedChart ?? "" })}
             </p>
           )}
         </div>
@@ -362,7 +376,7 @@ export function SearchEditor({
 
       {mode === "edit" && (
         <div className="rule-form-grid">
-          <label htmlFor={noteId}>Change note</label>
+          <label htmlFor={noteId}>{t("changeNote")}</label>
           <div>
             <input
               id={noteId}
@@ -372,7 +386,7 @@ export function SearchEditor({
               aria-invalid={fieldError?.field === "note"}
               onChange={(event) => set("changeNote", event.target.value)}
             />
-            <p className="field-hint">Recorded when the query text changes and a new version is stored.</p>
+            <p className="field-hint">{t("changeNoteHint")}</p>
             {fieldError?.field === "note" && (
               <p className="field-error" role="alert">
                 {fieldError.text}
@@ -395,7 +409,7 @@ export function SearchEditor({
 
       <div className="actions">
         <button type="submit" className="action" disabled={pending} aria-busy={pending}>
-          {pending ? "Saving…" : mode === "create" ? "Save as disabled" : "Save changes"}
+          {pending ? common("saving") : mode === "create" ? t("saveCreate") : t("saveEdit")}
         </button>
       </div>
     </form>

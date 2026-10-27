@@ -2,23 +2,24 @@
 // the browser: the decision block changes it in place.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
+import { useTranslations } from "next-intl";
 
 import { HistoryBackfillPage } from "@/components/history/HistoryBackfillPage";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 import "@/components/ui/controls.css";
 
-export const metadata: Metadata = {
-  title: "History backfill",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("history.meta");
+  return { title: t("title") };
+}
 
 export default function Page() {
+  const t = useTranslations("history.page");
   return (
     <>
-      <PageHeader
-        title="History backfill"
-        description="QRadar's past, read once so baselines can learn at once; the window is the history backfill setting. Old data is used for learning only, never judged. Times are UTC."
-      />
+      <PageHeader title={t("title")} description={t("description")} />
       <HistoryBackfillPage />
     </>
   );
