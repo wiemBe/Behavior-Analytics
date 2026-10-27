@@ -560,6 +560,16 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | trigger (of a run: scheduled, manual) | tetikleyici (zamanlanmış, elle) |
 | guardrails (a search's timeout, window and row caps) | koruma sınırları |
 | settle (the margin before a bucket is read) | yerleşme payı |
+| role | rol (a role is shown as "Label (code)"; the code stays) |
+| account | hesap |
+| directory (LDAP) | dizin |
+| outage | kesinti |
+| permission | izin (the key stays a code) |
+| pattern | desen |
+| built-in, custom (rule) | yerleşik, özel |
+| property (QRadar) | özellik |
+| instance | instance (kept English) |
+| precedence, order of decision | karar sırası |
 
 ---
 

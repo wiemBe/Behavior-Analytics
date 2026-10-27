@@ -376,7 +376,7 @@ export function activeFilterLabels(q: FleetSourceQuery, text: FleetText = englis
 
 // --- classification rules ----------------------------------------------------------------
 
-/** The precedence, highest first. Stated once on the rules page (design C.3). */
+/** The precedence, highest first. Stated once on the rules page (design C.3). English; see `precedenceSteps`. */
 export const PRECEDENCE: { title: string; detail: string }[] = [
   { title: "Operator override", detail: "the class chosen for one source" },
   { title: "QRadar internal", detail: "the type is internal, or the identifier is 127.0.0.1" },
@@ -385,6 +385,20 @@ export const PRECEDENCE: { title: string; detail: string }[] = [
   { title: "Name rules", detail: "a pattern on the source name or its identifier" },
   { title: "Unclassified", detail: "nothing matched" },
 ];
+
+/** The catalog key (`classification.precedence.<key>`) of each step of `PRECEDENCE`, in order. */
+const PRECEDENCE_KEYS = ["override", "internal", "group", "type", "name", "unclassified"];
+
+/** `PRECEDENCE` in the interface language: the same steps, the same order. */
+export function precedenceSteps(
+  text: FleetText = englishFleetText,
+): { key: string; title: string; detail: string }[] {
+  return PRECEDENCE_KEYS.map((key) => ({
+    key,
+    title: text.say(`classification.precedence.${key}.title`),
+    detail: text.say(`classification.precedence.${key}.detail`),
+  }));
+}
 
 export interface RuleLevel {
   id: "group" | "type" | "name";
@@ -408,14 +422,25 @@ export const RULE_KIND_LABELS: Record<ClassificationRuleKind, string> = {
 
 export const RULE_KINDS = Object.keys(RULE_KIND_LABELS) as ClassificationRuleKind[];
 
+/** A rule level's title in the interface language (`RuleLevel.title` is the English one). */
+export function ruleLevelTitle(level: RuleLevel, text: FleetText = englishFleetText): string {
+  return text.say(`classification.level.${level.id}`);
+}
+
+/** A rule kind's words; a kind this build does not know is shown as sent. */
+export function ruleKindLabel(kind: string, text: FleetText = englishFleetText): string {
+  return labelOf(text, "classification.kind", kind, RULE_KIND_LABELS[kind as ClassificationRuleKind] ?? kind);
+}
+
 export function isRegexKind(kind: ClassificationRuleKind): boolean {
   return kind !== "GROUP" && kind !== "TYPE";
 }
 
-export function patternHint(kind: ClassificationRuleKind): string {
-  return isRegexKind(kind)
-    ? "A regular expression, at most 256 characters."
-    : "A numeric id.";
+export function patternHint(
+  kind: ClassificationRuleKind,
+  text: FleetText = englishFleetText,
+): string {
+  return text.say(isRegexKind(kind) ? "classification.hint.regex" : "classification.hint.numeric");
 }
 
 /** The order the API lists rules in: priority descending, then kind, then pattern. */
@@ -450,14 +475,10 @@ export function concernsPattern(message: string): boolean {
  * sentence, which says what to correct, so it is shown as sent; a 403 names the
  * permission; anything else degrades to the shared safe messages.
  */
-export function ruleFailure(err: unknown): RuleFailure {
+export function ruleFailure(err: unknown, text: FleetText = englishFleetText): RuleFailure {
   if (err instanceof ApiError) {
     if (err.status === 403) {
-      return {
-        kind: "forbidden",
-        text: "Your role cannot change classification rules (permission admin:classification). Nothing was changed.",
-        field: null,
-      };
+      return { kind: "forbidden", text: text.say("classification.failure.forbidden"), field: null };
     }
     if ((err.status === 422 || err.status === 409) && err.message) {
       return {
@@ -467,7 +488,13 @@ export function ruleFailure(err: unknown): RuleFailure {
       };
     }
   }
-  return { kind: "error", text: `Not changed. ${actionErrorMessage(err)}`, field: null };
+  return {
+    kind: "error",
+    text: text.say("classification.failure.notChanged", {
+      reason: actionErrorMessage(err, text.say),
+    }),
+    field: null,
+  };
 }
 
 /** The same for a source write (override, review). */

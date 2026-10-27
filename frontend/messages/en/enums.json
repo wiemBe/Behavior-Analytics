@@ -117,5 +117,11 @@
   "executionTrigger": {
     "SCHEDULED": "SCHEDULED",
     "MANUAL": "MANUAL"
+  },
+  "role": {
+    "admin": "admin",
+    "analyst": "analyst",
+    "viewer": "viewer",
+    "detection_engineer": "detection_engineer"
   }
 }

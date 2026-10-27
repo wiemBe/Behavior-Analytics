@@ -117,5 +117,11 @@
   "executionTrigger": {
     "SCHEDULED": "Zamanlanmış",
     "MANUAL": "Elle"
+  },
+  "role": {
+    "admin": "Yönetici (admin)",
+    "analyst": "Analist (analyst)",
+    "viewer": "Görüntüleyici (viewer)",
+    "detection_engineer": "Tespit mühendisi (detection_engineer)"
   }
 }

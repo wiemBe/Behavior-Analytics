@@ -22,7 +22,8 @@ export function WafSourceTable({
   schema: MappingSchemaOut | null;
 }) {
   const t = useTranslations("waf.admin.table");
-  const { locale } = useBehaviorI18n();
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
   const rows = sortByAttention(sources);
   return (
     <>
@@ -47,8 +48,8 @@ export function WafSourceTable({
           <tbody>
             {rows.map((s) => {
               const state = { ...s, fields: s.validation_fields };
-              const v = validationState(state, schema);
-              const c = collectionState(state);
+              const v = validationState(state, schema, i18n);
+              const c = collectionState(state, i18n);
               return (
                 <tr key={s.profile_id}>
                   <td className="cell-name">

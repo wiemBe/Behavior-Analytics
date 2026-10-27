@@ -1,0 +1,44 @@
+{
+  "meta": {
+    "title": "Administration"
+  },
+  "page": {
+    "title": "Administration",
+    "description": "Settings that control collection, source classification and outage alerting."
+  },
+  "index": {
+    "label": "Administration sections",
+    "searchCadence": {
+      "name": "Search cadence",
+      "description": "How often each search family queries QRadar"
+    },
+    "classification": {
+      "name": "Classification rules",
+      "description": "Which rules decide a log source's class, and in what order"
+    },
+    "outage": {
+      "name": "Outage alerts",
+      "description": "Which silent sources raise an alert, and which are only recorded"
+    },
+    "waf": {
+      "name": "WAF sources",
+      "description": "Which QRadar properties each WAF source is read from"
+    },
+    "ips": {
+      "name": "IPS sources",
+      "description": "Which QRadar properties each IPS source is read from"
+    },
+    "history": {
+      "name": "History backfill",
+      "description": "What has been read from QRadar's past for the baselines, and what can still be"
+    },
+    "users": {
+      "name": "Users",
+      "description": "Who can sign in, and the roles an administrator assigned"
+    },
+    "directory": {
+      "name": "Directory",
+      "description": "Where directory accounts bind, and a connection test that stores nothing"
+    }
+  }
+}

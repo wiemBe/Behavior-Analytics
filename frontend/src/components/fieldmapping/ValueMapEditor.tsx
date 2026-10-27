@@ -8,6 +8,7 @@
 // component is controlled and does not save.
 
 import { useId, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { ActionValueMap, DiscoveredValue } from "@/lib/api";
@@ -18,6 +19,8 @@ import {
   formatCount,
   valueRows,
 } from "@/lib/fieldMapping";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
 
 import "@/components/ui/controls.css";
 
@@ -26,8 +29,10 @@ const OUTCOME_LABEL: Record<string, string> = {
   ALLOWED: "Allowed",
 };
 
-export function outcomeLabel(outcome: string): string {
-  return OUTCOME_LABEL[outcome] ?? outcome;
+/** An outcome's words: English without a translator, the catalog's with one; an unknown code as is. */
+export function outcomeLabel(outcome: string, i18n?: BehaviorI18n): string {
+  if (!Object.prototype.hasOwnProperty.call(OUTCOME_LABEL, outcome)) return outcome;
+  return i18n ? i18n.t(`fieldMapping.values.${outcome}`) : OUTCOME_LABEL[outcome];
 }
 
 function Row({
@@ -45,30 +50,30 @@ function Row({
   disabled: boolean;
   onChange: (next: ActionValueMap) => void;
 }) {
+  const t = useTranslations("fieldMapping.values");
+  const i18n = useBehaviorI18n();
   const name = useId();
   const current = assignmentOf(map, outcomes, row.value);
   return (
     <tr>
       <th scope="row" className="fm-value-cell">
         <code>{row.value}</code>
-        {!row.seen && <span className="cell-sub">not seen in the last validation</span>}
-        {current === "BOTH" && <span className="cell-sub">in both lists; choose one</span>}
+        {!row.seen && <span className="cell-sub">{t("notSeen")}</span>}
+        {current === "BOTH" && <span className="cell-sub">{t("inBoth")}</span>}
       </th>
       <td className="num">
         {row.events == null ? (
-          <span title="Not in the last validation's list">
+          <span title={t("notInList")}>
             {MISSING}
-            <span className="sr-only"> not counted</span>
+            <span className="sr-only">{t("notCounted")}</span>
           </span>
         ) : (
-          formatCount(row.events)
+          formatCount(row.events, i18n.locale)
         )}
       </td>
       <td>
         <fieldset className="fm-radios">
-          <legend className="sr-only">
-            {fieldLabel} value {row.value}
-          </legend>
+          <legend className="sr-only">{t("legend", { field: fieldLabel, value: row.value })}</legend>
           {outcomes.map((o) => (
             <label key={o} className="fm-radio">
               <input
@@ -78,7 +83,7 @@ function Row({
                 disabled={disabled}
                 onChange={() => onChange(assignValue(map, outcomes, row.value, o))}
               />
-              {outcomeLabel(o)}
+              {outcomeLabel(o, i18n)}
             </label>
           ))}
           <label className="fm-radio">
@@ -89,7 +94,7 @@ function Row({
               disabled={disabled}
               onChange={() => onChange(assignValue(map, outcomes, row.value, null))}
             />
-            Not mapped
+            {t("notMapped")}
           </label>
         </fieldset>
       </td>
@@ -124,6 +129,9 @@ export function ValueMapEditor({
   truncatedNote?: string | null;
   disabled?: boolean;
 }) {
+  const t = useTranslations("fieldMapping.values");
+  const i18n = useBehaviorI18n();
+  const lowered = fieldLabel.toLocaleLowerCase(i18n.locale === "tr" ? "tr-TR" : "en-US");
   const addId = useId();
   const [extra, setExtra] = useState("");
   const rows = valueRows(discovered ?? [], map, outcomes);
@@ -144,37 +152,26 @@ export function ValueMapEditor({
       )}
       {discoveredNote && <p className="fm-note">{discoveredNote}</p>}
       {discovered === null || discovered.length === 0 ? (
-        <p className="fm-empty">
-          The last validation listed no {fieldLabel.toLowerCase()} values. Validate the source
-          while it has events to discover them; until then every value is unmapped.
-        </p>
+        <p className="fm-empty">{t("empty", { field: lowered })}</p>
       ) : null}
       {truncated && (
         <p className="fm-banner is-warn" role="status">
-          {truncatedNote ?? (
-            <>
-              This list is truncated: only the most frequent {fieldLabel.toLowerCase()} values were
-              returned. Values not listed count as unmapped, never as allowed.
-            </>
-          )}
+          {truncatedNote ?? t("truncated", { field: lowered })}
         </p>
       )}
 
       {rows.length > 0 && (
-        <TableScroll label={`${fieldLabel} value outcomes`}>
+        <TableScroll label={t("tableLabel", { field: fieldLabel })}>
           <table className="table-dense">
-            <caption className="sr-only">
-              {fieldLabel} values with their event counts in the last validation window, and the
-              outcome each is assigned to.
-            </caption>
+            <caption className="sr-only">{t("caption", { field: fieldLabel })}</caption>
             <thead>
               <tr>
-                <th scope="col">Value</th>
+                <th scope="col">{t("value")}</th>
                 <th scope="col" className="num">
-                  Events
-                  <span className="cell-sub">in the window</span>
+                  {t("events")}
+                  <span className="cell-sub">{t("inWindow")}</span>
                 </th>
-                <th scope="col">Outcome</th>
+                <th scope="col">{t("outcome")}</th>
               </tr>
             </thead>
             <tbody>
@@ -195,7 +192,7 @@ export function ValueMapEditor({
       )}
 
       <div className="fm-add-value">
-        <label htmlFor={addId}>Add a value that was not listed</label>
+        <label htmlFor={addId}>{t("addLabel")}</label>
         <input
           id={addId}
           className="field fm-input"
@@ -217,7 +214,11 @@ export function ValueMapEditor({
             disabled={disabled || trimmed === ""}
             onClick={() => addValue(o)}
           >
-            Add as {outcomeLabel(o).toLowerCase()}
+            {t("addAs", {
+              outcome: outcomeLabel(o, i18n).toLocaleLowerCase(
+                i18n.locale === "tr" ? "tr-TR" : "en-US",
+              ),
+            })}
           </button>
         ))}
       </div>
