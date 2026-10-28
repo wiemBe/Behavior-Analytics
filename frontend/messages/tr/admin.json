@@ -1,0 +1,44 @@
+{
+  "meta": {
+    "title": "Yönetim"
+  },
+  "page": {
+    "title": "Yönetim",
+    "description": "Toplamayı, kaynak sınıflamasını ve kesinti uyarılarını denetleyen ayarlar."
+  },
+  "index": {
+    "label": "Yönetim bölümleri",
+    "searchCadence": {
+      "name": "Arama sıklığı",
+      "description": "Her arama ailesinin QRadar'ı ne sıklıkla sorguladığı"
+    },
+    "classification": {
+      "name": "Sınıflama kuralları",
+      "description": "Bir log source'un sınıfını hangi kuralların, hangi sırayla belirlediği"
+    },
+    "outage": {
+      "name": "Kesinti uyarıları",
+      "description": "Hangi sessiz kaynakların uyarı ürettiği ve hangilerinin yalnızca kaydedildiği"
+    },
+    "waf": {
+      "name": "WAF kaynakları",
+      "description": "Her WAF kaynağının hangi QRadar özelliklerinden okunduğu"
+    },
+    "ips": {
+      "name": "IPS kaynakları",
+      "description": "Her IPS kaynağının hangi QRadar özelliklerinden okunduğu"
+    },
+    "history": {
+      "name": "Geçmiş veri okuma",
+      "description": "Baseline'lar için QRadar'ın geçmişinden nelerin okunduğu ve nelerin hâlâ okunabileceği"
+    },
+    "users": {
+      "name": "Kullanıcılar",
+      "description": "Kimlerin oturum açabildiği ve yöneticinin atadığı roller"
+    },
+    "directory": {
+      "name": "Dizin",
+      "description": "Dizin hesaplarının nereye bağlandığı ve hiçbir şey saklamayan bir bağlantı testi"
+    }
+  }
+}

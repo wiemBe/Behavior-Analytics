@@ -1,0 +1,100 @@
+{
+  "meta": {
+    "title": "Users"
+  },
+  "boundary": {
+    "title": "Users",
+    "errorWhat": "Users",
+    "loadingWhat": "users"
+  },
+  "page": {
+    "title": "Users",
+    "description": "Accounts that can sign in, and the roles an administrator assigned. Last login is UTC.",
+    "forbidden": "Your role cannot administer users (permission admin:users).",
+    "loadFailed": "Users could not be loaded.",
+    "tryAgain": "Try again"
+  },
+  "theAccount": "the account",
+  "once": {
+    "initial": "The initial password for {name} is shown once. The account must change it at the next sign-in.",
+    "reset": "The new password for {name} is shown once. The account must change it at the next sign-in.",
+    "dismiss": "Dismiss the password"
+  },
+  "outcome": {
+    "createdLocal": "Created local user {name}. The account must change the password at the next sign-in.",
+    "createdLdap": "Pre-created LDAP user {name}. The account has no password here.",
+    "createFailed": "The account was not created.",
+    "rolesNow": "Roles for {name} are now {roles}.",
+    "rolesCleared": "Roles for {name} were cleared.",
+    "rolesFailed": "The roles were not changed.",
+    "disabled": "Disabled {name}.",
+    "enabled": "Enabled {name}.",
+    "notChanged": "The account was not changed.",
+    "unlocked": "Unlocked {name}.",
+    "notUnlocked": "The account was not unlocked.",
+    "mismatch": "The new password and the confirmation do not match.",
+    "notReset": "The password was not reset.",
+    "resetDone": "Reset the password for {name}. The account must change it at the next sign-in."
+  },
+  "empty": {
+    "title": "No accounts are stored.",
+    "text": "Create a local account below, or pre-create a directory account so a role is in place before the first sign-in."
+  },
+  "table": {
+    "label": "Accounts",
+    "caption": "Accounts with source, display name, roles, status and last login. Times are UTC.",
+    "username": "Username",
+    "source": "Source",
+    "displayName": "Display name",
+    "roles": "Roles",
+    "status": "Status",
+    "lastLogin": "Last login (UTC)",
+    "actions": "Actions",
+    "manageAria": "Manage {name}",
+    "manage": "Manage"
+  },
+  "actions": {
+    "title": "Actions for {name}",
+    "email": "Email",
+    "passwordChange": "Password change",
+    "required": "Required at the next sign-in.",
+    "notRequired": "Not required.",
+    "rolesForm": "Roles",
+    "rolesLegend": "Roles",
+    "rolesProblemEdit": "Roles could not be loaded. Saving can keep the roles already on this account, not add one that is missing from the list.",
+    "savingRoles": "Saving roles",
+    "saveRoles": "Save roles for {name}",
+    "enabling": "Enabling",
+    "enable": "Enable {name}",
+    "disabling": "Disabling",
+    "disable": "Disable {name}",
+    "unlocking": "Unlocking",
+    "unlock": "Unlock {name}",
+    "notLocked": "Not locked.",
+    "resetTitle": "Reset password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "resetting": "Resetting password",
+    "reset": "Reset password for {name}",
+    "ldapNoPassword": "An LDAP account has no password here.",
+    "select": "Select an account to change its roles, status, or local password."
+  },
+  "create": {
+    "title": "Create an account",
+    "source": "Source",
+    "username": "Username",
+    "displayName": "Display name",
+    "email": "Email",
+    "initialPassword": "Initial password",
+    "initialHint": "Shown once after the account is created. The account must change it at the next sign-in.",
+    "ldapHint": "The directory checks the password. This account is created here so a role can be assigned before the first sign-in.",
+    "rolesProblem": "Roles could not be loaded. Creating now assigns no role.",
+    "creating": "Creating account",
+    "submit": "Create account"
+  },
+  "roles": {
+    "none": "No roles are defined.",
+    "noPermissions": "No permissions",
+    "notInList": "Not in the role list. Left selected so a save does not drop it."
+  }
+}

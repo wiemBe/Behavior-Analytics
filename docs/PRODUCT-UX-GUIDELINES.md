@@ -552,6 +552,32 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | materiality floor | önemlilik eşiği |
 | block ratio | engelleme oranı |
 | destination port | hedef port |
+| request | istek |
+| endpoint | endpoint |
+| profile | profil |
+| mapping | eşleme |
+| validation | doğrulama |
+| virtual host | virtual host |
+| admission | kabul |
+| ratio | oran |
+| history backfill | geçmiş veri okuma |
+| scope (of a history backfill row: a console or one log source) | hedef |
+| console (QRadar) | console (stays English, like log source) |
+| schedule | zamanlama |
+| execution, run (of a stored search) | çalıştırma |
+| trigger (of a run: scheduled, manual) | tetikleyici (zamanlanmış, elle) |
+| guardrails (a search's timeout, window and row caps) | koruma sınırları |
+| settle (the margin before a bucket is read) | yerleşme payı |
+| role | rol (a role is shown as "Label (code)"; the code stays) |
+| account | hesap |
+| directory (LDAP) | dizin |
+| outage | kesinti |
+| permission | izin (the key stays a code) |
+| pattern | desen |
+| built-in, custom (rule) | yerleşik, özel |
+| property (QRadar) | özellik |
+| instance | instance (kept English) |
+| precedence, order of decision | karar sırası |
 
 ---
 

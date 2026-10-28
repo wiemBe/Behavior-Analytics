@@ -23,7 +23,10 @@ type ExtendedEnumGroup =
   | "notificationChannel"
   | "notificationStatus"
   | "alertTransition"
-  | "ruleHealth";
+  | "ruleHealth"
+  | "executionStatus"
+  | "executionTrigger"
+  | "role";
 
 /** The part of a translator this module needs: next-intl's `t` and its `has`. */
 export interface EnumTranslator {

@@ -17,6 +17,8 @@
 import type { WafMetricBucket } from "@/lib/api";
 import { isolatedPoints, kindMeaning, type PointKind, type SeriesPoint } from "@/lib/timeseries";
 
+import { ENGLISH_WAF, type BehaviorI18n } from "./wafI18n";
+
 export { isolatedPoints, kindMeaning };
 
 export interface WafPoint extends SeriesPoint {
@@ -106,8 +108,10 @@ export interface RatioSpec {
   measurement: "action_measurement" | "response_code_measurement" | "client_measurement";
   numerator: "blocked_count" | "server_error_count" | "client_error_count" | "top1_client_requests";
   denominator: "action_events" | "response_code_events" | "client_events";
-  /** The proportion in words, for the axis and the tooltip. */
+  /** The proportion in words, for the axis and the tooltip (English; see `ratioLabel`). */
   label: string;
+  /** The catalog key (`waf.ratio.<key>`) of the same words in the interface language. */
+  labelKey: string;
 }
 
 export const RATIO_SPECS: Record<string, RatioSpec> = {
@@ -117,6 +121,7 @@ export const RATIO_SPECS: Record<string, RatioSpec> = {
     numerator: "blocked_count",
     denominator: "action_events",
     label: "Blocked share of requests",
+    labelKey: "blockShare",
   },
   WAF_ERROR_RATIO_SPIKE: {
     baselineMetric: "server_error_ratio",
@@ -124,6 +129,7 @@ export const RATIO_SPECS: Record<string, RatioSpec> = {
     numerator: "server_error_count",
     denominator: "response_code_events",
     label: "HTTP 5xx share of responses",
+    labelKey: "serverErrorShare",
   },
   WAF_CLIENT_ERROR_RATIO_SPIKE: {
     baselineMetric: "client_error_ratio",
@@ -131,6 +137,7 @@ export const RATIO_SPECS: Record<string, RatioSpec> = {
     numerator: "client_error_count",
     denominator: "response_code_events",
     label: "HTTP 4xx share of responses",
+    labelKey: "clientErrorShare",
   },
   WAF_CLIENT_CONCENTRATION_SPIKE: {
     baselineMetric: "top1_client_share",
@@ -138,11 +145,17 @@ export const RATIO_SPECS: Record<string, RatioSpec> = {
     numerator: "top1_client_requests",
     denominator: "client_events",
     label: "Largest source's share of requests",
+    labelKey: "topClientShare",
   },
 };
 
 export function ratioSpecFor(type: string): RatioSpec | null {
   return RATIO_SPECS[type] ?? null;
+}
+
+/** A proportion's name in the interface language, for the axis, the key and the tooltip. */
+export function ratioLabel(spec: RatioSpec, i18n: BehaviorI18n = ENGLISH_WAF): string {
+  return i18n.t(`waf.ratio.${spec.labelKey}`);
 }
 
 /**

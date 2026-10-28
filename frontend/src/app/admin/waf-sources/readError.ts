@@ -2,13 +2,19 @@
 // it can carry an upstream URL, and this text goes into the DOM.
 
 import { ApiError } from "@/lib/api";
+import { ENGLISH_WAF, type BehaviorI18n } from "@/components/waf/wafI18n";
 
-export function readError(err: unknown, what: string): string {
+export function readError(
+  err: unknown,
+  what: string,
+  i18n: BehaviorI18n = ENGLISH_WAF,
+): string {
   if (err instanceof ApiError && err.status === 403) {
-    return `Your role cannot read ${what} (permission admin:waf). Nothing was changed.`;
+    return i18n.t("waf.admin.read.forbidden", { what });
   }
   if (err instanceof ApiError && err.status === 401) {
-    return "Your session has expired. Sign in again to continue.";
+    return i18n.t("waf.admin.read.expired");
   }
-  return `${what[0].toUpperCase()}${what.slice(1)} could not be loaded, so nothing is shown here. The backend may be unreachable; check that it is running, then reload the page. Nothing was changed.`;
+  const subject = i18n.locale === "en" ? `${what[0].toUpperCase()}${what.slice(1)}` : what;
+  return i18n.t("waf.admin.read.failed", { what: subject });
 }

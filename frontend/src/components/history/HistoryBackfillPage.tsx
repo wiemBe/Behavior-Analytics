@@ -3,6 +3,7 @@
 // The admin page's body: what has been read from QRadar's past, and what can still be. One
 // section per enabled console, its decision block first, then its table. No chart.
 
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 
 import { holds } from "@/components/auth/access";
@@ -11,7 +12,7 @@ import { LoadingState } from "@/components/ui/RouteState";
 import { ApiError, api, type HistoryConsole } from "@/lib/api";
 
 import { DecisionBlock } from "./DecisionBlock";
-import { ADMIN_PERMISSION, READ_PERMISSION } from "./historyFormat";
+import { ADMIN_PERMISSION } from "./historyFormat";
 import { HistoryTable } from "./HistoryTable";
 
 import "./history.css";
@@ -24,6 +25,9 @@ type Load =
   | { status: "error" };
 
 export function HistoryBackfillPage() {
+  const t = useTranslations("history.page");
+  const common = useTranslations("common");
+  const errors = useTranslations("errors");
   const session = useSession();
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [now] = useState(() => new Date());
@@ -46,17 +50,16 @@ export function HistoryBackfillPage() {
   const granted = session.status === "ready" && session.me ? session.me.permissions : [];
   const canAdmin = session.status === "ready" && holds(granted, ADMIN_PERMISSION);
 
-  if (load.status === "loading") return <LoadingState what="the history backfill status" />;
+  if (load.status === "loading") return <LoadingState what={t("loadingWhat")} />;
 
   if (load.status === "forbidden") {
     return (
       <div className="notice" role="alert">
         <p>
-          <strong>The history backfill could not be shown.</strong>
+          <strong>{t("couldNotShow")}</strong>
         </p>
         <p>
-          Your role cannot read it (permission <code className="perm">{READ_PERMISSION}</code>).
-          Nothing was changed.
+          {t.rich("forbidden", { perm: (chunks) => <code className="perm">{chunks}</code> })}
         </p>
       </div>
     );
@@ -65,9 +68,9 @@ export function HistoryBackfillPage() {
     return (
       <div className="notice" role="alert">
         <p>
-          <strong>The history backfill could not be shown.</strong>
+          <strong>{t("couldNotShow")}</strong>
         </p>
-        <p>Your session has expired. Sign in again to continue.</p>
+        <p>{errors("sessionExpired")}</p>
       </div>
     );
   }
@@ -75,15 +78,12 @@ export function HistoryBackfillPage() {
     return (
       <div className="notice" role="alert">
         <p>
-          <strong>The history backfill could not be loaded.</strong>
+          <strong>{t("couldNotLoad")}</strong>
         </p>
-        <p>
-          The backend may be unreachable. Nothing was changed. Check that it is running, then try
-          again.
-        </p>
+        <p>{t("unreachable")}</p>
         <p>
           <button type="button" className="action secondary" onClick={() => void read()}>
-            Try again
+            {common("tryAgain")}
           </button>
         </p>
       </div>
@@ -93,12 +93,9 @@ export function HistoryBackfillPage() {
     return (
       <div className="notice" role="status">
         <p>
-          <strong>No QRadar console is enabled.</strong>
+          <strong>{t("noConsole")}</strong>
         </p>
-        <p>
-          The history backfill is decided and read per enabled console, so there is nothing to
-          show. Register and enable a console, then reload this page.
-        </p>
+        <p>{t("noConsoleHelp")}</p>
       </div>
     );
   }
@@ -118,7 +115,7 @@ export function HistoryBackfillPage() {
   return (
     <>
       {load.consoles.map((console) => (
-        <section key={console.instance_id} className="hb-console" aria-label={`Console ${console.name}`}>
+        <section key={console.instance_id} className="hb-console" aria-label={t("consoleLabel", { name: console.name })}>
           <h2 className="hb-console-name">{console.name}</h2>
           <DecisionBlock
             console={console}

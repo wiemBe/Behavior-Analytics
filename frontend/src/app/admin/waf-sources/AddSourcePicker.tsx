@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 
 
@@ -12,6 +13,8 @@ import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 
 import { actionErrorMessage, api, type WafCandidateOut } from "@/lib/api";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
+import { formatCount } from "@/lib/format";
 
 import "@/components/ui/controls.css";
 
@@ -23,6 +26,8 @@ type State =
 const LIMIT = 50;
 
 export function AddSourcePicker({ defaultOpen = false }: { defaultOpen?: boolean }) {
+  const t = useTranslations("waf.admin.picker");
+  const i18n = useBehaviorI18n();
   const [open, setOpen] = useState(defaultOpen);
   const [q, setQ] = useState("");
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -42,7 +47,7 @@ export function AddSourcePicker({ defaultOpen = false }: { defaultOpen?: boolean
           if (!cancelled) {
             setState({
               kind: "error",
-              text: `The log sources could not be listed. ${actionErrorMessage(err)}`,
+              text: t("failed", { message: actionErrorMessage(err, i18n.t) }),
             });
           }
         });
@@ -51,7 +56,7 @@ export function AddSourcePicker({ defaultOpen = false }: { defaultOpen?: boolean
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [open, q]);
+  }, [open, q, t, i18n.t]);
 
   return (
     <div className="fm-add">
@@ -62,12 +67,12 @@ export function AddSourcePicker({ defaultOpen = false }: { defaultOpen?: boolean
         aria-controls="fm-picker"
         onClick={() => setOpen((o) => !o)}
       >
-        Add WAF source
+        {t("add")}
       </button>
       {open && (
-        <div id="fm-picker" className="fm-picker panel" role="region" aria-label="Choose a log source">
+        <div id="fm-picker" className="fm-picker panel" role="region" aria-label={t("region")}>
           <div className="fm-picker-search">
-            <label htmlFor={searchId}>Search log sources by name</label>
+            <label htmlFor={searchId}>{t("searchLabel")}</label>
             <input
               id={searchId}
               type="search"
@@ -79,7 +84,7 @@ export function AddSourcePicker({ defaultOpen = false }: { defaultOpen?: boolean
           </div>
           {state.kind === "loading" && (
             <p className="fm-note" role="status">
-              Searching log sources…
+              {t("searching")}
             </p>
           )}
           {state.kind === "error" && (
@@ -89,28 +94,28 @@ export function AddSourcePicker({ defaultOpen = false }: { defaultOpen?: boolean
           )}
           {state.kind === "ready" && state.items.length === 0 && (
             <p className="fm-empty" role="status">
-              {q.trim()
-                ? `No log source without a WAF profile has a name containing “${q.trim()}”.`
-                : "Every known log source already has a WAF profile."}
+              {q.trim() ? t("emptyQuery", { q: q.trim() }) : t("empty")}
             </p>
           )}
           {state.kind === "ready" && state.items.length > 0 && (
             <>
-              <ul className="fm-candidates" aria-label="Log sources without a WAF profile">
+              <ul className="fm-candidates" aria-label={t("listLabel")}>
                 {state.items.map((c) => (
                   <li key={c.log_source_id}>
                     <Link href={`/admin/waf-sources/${c.log_source_id}?instance=${encodeURIComponent(c.instance_id)}`}>{c.name}</Link>
                     <span className="muted">
-                      QRadar id {c.qradar_id}
+                      {t("qradarId", { id: formatCount(c.qradar_id, i18n.locale) })}
                       {c.type_name ? ` · ${c.type_name}` : ""}
                     </span>
-                    {c.source_class === "WAF" && <span className="pill info">Classed as WAF</span>}
+                    {c.source_class === "WAF" && (
+                      <span className="pill info">{t("classedAsWaf")}</span>
+                    )}
                   </li>
                 ))}
               </ul>
               {state.items.length >= LIMIT && (
                 <p className="fm-note">
-                  Showing the first {LIMIT}. Narrow the search to see others.
+                  {t("capped", { limit: formatCount(LIMIT, i18n.locale) })}
                 </p>
               )}
             </>

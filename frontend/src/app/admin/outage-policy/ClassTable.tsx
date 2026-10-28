@@ -8,6 +8,7 @@
 // sources and only a class row knows how many are monitored.
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -18,6 +19,9 @@ import {
   type OutagePolicyRow,
 } from "@/lib/api";
 import { classLabel } from "@/lib/fleet";
+import { plainCount } from "@/lib/figureText";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import {
   classImpact,
@@ -37,8 +41,12 @@ import { ImpactNote, PolicyForm, type PolicyBody } from "./PolicyForm";
 import "@/components/ui/controls.css";
 
 function ModePill({ mode }: { mode: OutageMode | null }) {
-  if (mode === null) return <span className="muted">Not reported</span>;
-  return <span className={mode === "ALERT" ? "pill info" : "pill warn"}>{modeLabel(mode)}</span>;
+  const t = useTranslations("outage.classes");
+  const i18n = useBehaviorI18n();
+  if (mode === null) return <span className="muted">{t("notReported")}</span>;
+  return (
+    <span className={mode === "ALERT" ? "pill info" : "pill warn"}>{modeLabel(mode, i18n)}</span>
+  );
 }
 
 function changeFor(
@@ -47,21 +55,25 @@ function changeFor(
   summary: OutageFleetSummary | null,
   bucketSeconds: number | null,
   to: { mode: OutageMode | null; grace: number | null; removal: boolean },
+  i18n: BehaviorI18n,
 ) {
   const split = overrideSplit(rows, line.source_class);
-  return classImpact({
-    source_class: line.source_class,
-    fromMode: line.mode,
-    fromGrace: line.grace,
-    toMode: to.mode,
-    toGrace: to.grace,
-    covered: line.covered,
-    defaultGrace: defaultGraceText(summary),
-    alertingOverrides: split.alerting,
-    recordOnlyOverrides: split.recordOnly,
-    removal: to.removal,
-    bucketSeconds,
-  });
+  return classImpact(
+    {
+      source_class: line.source_class,
+      fromMode: line.mode,
+      fromGrace: line.grace,
+      toMode: to.mode,
+      toGrace: to.grace,
+      covered: line.covered,
+      defaultGrace: defaultGraceText(summary, i18n),
+      alertingOverrides: split.alerting,
+      recordOnlyOverrides: split.recordOnly,
+      removal: to.removal,
+      bucketSeconds,
+    },
+    i18n,
+  );
 }
 
 function ClassRow({
@@ -87,10 +99,12 @@ function ClassRow({
   onChanged: (text: string) => Promise<void>;
   onGone: (text: string) => Promise<void>;
 }) {
+  const t = useTranslations("outage.classes");
+  const i18n = useBehaviorI18n();
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<ChangeOutcome>({ kind: "idle" });
   const cls = line.source_class;
-  const name = classLabel(cls);
+  const name = classLabel(cls, { say: i18n.t, locale: i18n.locale });
   const instanceRow = line.row !== undefined && line.row.instance_id !== null;
   const fallback = defaultMode(summary);
 
@@ -101,9 +115,9 @@ function ClassRow({
     try {
       await outagePolicyApi.deleteClass(cls, line.row.instance_id);
       setRemoving(false);
-      await onChanged(`${name} uses the default again.`);
+      await onChanged(t("usesDefault", { name }));
     } catch (err) {
-      const failure = removeFailure(err);
+      const failure = removeFailure(err, i18n);
       if (failure.gone) {
         setRemoving(false);
         await onGone(failure.text);
@@ -117,9 +131,10 @@ function ClassRow({
 
   const sub = line.row
     ? instanceRow
-      ? "A row for one instance"
-      : "From the class row"
-    : "From the default";
+      ? t("fromInstance")
+      : t("fromClass")
+    : t("fromDefault");
+  const defaultGrace = defaultGraceText(summary, i18n);
 
   return (
     <>
@@ -129,7 +144,9 @@ function ClassRow({
           {instanceRow && line.row && (
             <span className="cell-sub">
               <span className="pill">
-                Instance: {line.row.instance_name ?? shortId(line.row.instance_id as string)}
+                {t("instance", {
+                  name: line.row.instance_name ?? shortId(line.row.instance_id as string),
+                })}
               </span>
             </span>
           )}
@@ -141,14 +158,15 @@ function ClassRow({
         <td className="nowrap">
           {line.grace === null ? (
             <span className="muted">
-              Default
-              {defaultGraceText(summary) && ` · ${defaultGraceText(summary)}`}
+              {defaultGrace ? t("defaultWith", { default: defaultGrace }) : t("default")}
             </span>
           ) : (
             <>
-              {graceParts(line.grace, bucketSeconds).buckets}
-              {graceParts(line.grace, bucketSeconds).minutes && (
-                <span className="cell-sub">{graceParts(line.grace, bucketSeconds).minutes}</span>
+              {graceParts(line.grace, bucketSeconds, i18n).buckets}
+              {graceParts(line.grace, bucketSeconds, i18n).minutes && (
+                <span className="cell-sub">
+                  {graceParts(line.grace, bucketSeconds, i18n).minutes}
+                </span>
               )}
             </>
           )}
@@ -156,24 +174,24 @@ function ClassRow({
         <td className="num">
           {line.covered === null ? (
             <>
-              <span className="muted" aria-label="Not available">
+              <span className="muted" aria-label={t("notAvailable")}>
                 —
               </span>
               <span className="cell-sub">
-                {instanceRow ? "Not counted per instance" : "Fleet summary unavailable"}
+                {instanceRow ? t("notCountedInstance") : t("summaryUnavailable")}
               </span>
             </>
           ) : (
-            line.covered
+            plainCount(line.covered, i18n.locale)
           )}
         </td>
         <td className="num">
           {line.overrides === null ? (
-            <span className="muted" aria-label="Not available">
+            <span className="muted" aria-label={t("notAvailable")}>
               —
             </span>
           ) : (
-            line.overrides
+            plainCount(line.overrides, i18n.locale)
           )}
         </td>
         <td className="cell-actions">
@@ -182,21 +200,23 @@ function ClassRow({
               <button
                 type="button"
                 className="action secondary"
-                aria-label={`${line.row ? "Edit" : "Set policy for"} ${name}`}
+                aria-label={line.row ? t("editAria", { name }) : t("setAria", { name })}
                 disabled={pending}
                 onClick={() => {
                   setRemoving(false);
                   setEditing(!editing);
                 }}
               >
-                {line.row ? "Edit" : "Set policy"}
+                {line.row ? t("edit") : t("set")}
               </button>
             )}
             {line.row && (
               <button
                 type="button"
                 className="action secondary"
-                aria-label={`Use the default for ${name}${instanceRow ? " (instance row)" : ""}`}
+                aria-label={
+                  instanceRow ? t("useDefaultInstanceAria", { name }) : t("useDefaultAria", { name })
+                }
                 disabled={pending}
                 onClick={() => {
                   setEditing(false);
@@ -204,7 +224,7 @@ function ClassRow({
                   setRemoving(!removing);
                 }}
               >
-                Use default
+                {t("useDefault")}
               </button>
             )}
           </div>
@@ -215,12 +235,12 @@ function ClassRow({
           <td colSpan={6}>
             {editing && (
               <PolicyForm
-                label={`${line.row ? "Edit" : "Set policy for"} ${name}`}
+                label={line.row ? t("editAria", { name }) : t("setAria", { name })}
                 initialMode={line.mode ?? "ALERT"}
                 initialGrace={line.grace}
                 bucketSeconds={bucketSeconds}
                 impactFor={(mode, grace) =>
-                  changeFor(line, rows, summary, bucketSeconds, { mode, grace, removal: false })
+                  changeFor(line, rows, summary, bucketSeconds, { mode, grace, removal: false }, i18n)
                 }
                 isUnchanged={(mode, grace) =>
                   line.mode !== null && mode === line.mode && grace === line.grace
@@ -229,11 +249,13 @@ function ClassRow({
                   await outagePolicyApi.putClass(cls, body);
                   setEditing(false);
                   await onChanged(
-                    `Saved. ${name} is now ${modeLabel(body.mode)}${
-                      body.silence_grace_buckets === null
-                        ? " with the default grace"
-                        : `, grace ${formatGrace(body.silence_grace_buckets, bucketSeconds)}`
-                    }.`,
+                    body.silence_grace_buckets === null
+                      ? t("savedDefaultGrace", { name, mode: modeLabel(body.mode, i18n) })
+                      : t("savedGrace", {
+                          name,
+                          mode: modeLabel(body.mode, i18n),
+                          grace: formatGrace(body.silence_grace_buckets, bucketSeconds, i18n),
+                        }),
                   );
                 }}
                 onCancel={() => setEditing(false)}
@@ -242,12 +264,19 @@ function ClassRow({
             {removing && (
               <div className="rule-form outage-form">
                 <ImpactNote
-                  title="Before you use the default"
-                  impact={changeFor(line, rows, summary, bucketSeconds, {
-                    mode: instanceRow ? (classRow(rows, cls)?.mode ?? fallback) : fallback,
-                    grace: null,
-                    removal: true,
-                  })}
+                  title={t("beforeDefault")}
+                  impact={changeFor(
+                    line,
+                    rows,
+                    summary,
+                    bucketSeconds,
+                    {
+                      mode: instanceRow ? (classRow(rows, cls)?.mode ?? fallback) : fallback,
+                      grace: null,
+                      removal: true,
+                    },
+                    i18n,
+                  )}
                 />
                 <div className="actions">
                   <button
@@ -256,7 +285,7 @@ function ClassRow({
                     disabled={pending}
                     onClick={() => void remove()}
                   >
-                    {pending ? "Saving…" : "Use default"}
+                    {pending ? t("saving") : t("useDefault")}
                   </button>
                   <button
                     type="button"
@@ -264,7 +293,7 @@ function ClassRow({
                     disabled={pending}
                     onClick={() => setRemoving(false)}
                   >
-                    Keep
+                    {t("keep")}
                   </button>
                 </div>
                 <ChangeStatus outcome={outcome} />
@@ -296,38 +325,33 @@ export function ClassTable({
   onChanged: (text: string) => Promise<void>;
   onGone: (text: string) => Promise<void>;
 }) {
+  const t = useTranslations("outage.classes");
   if (lines.length === 0) {
     return (
       <div className="notice" role="status">
         <p>
-          <strong>No class has a monitored source.</strong>
+          <strong>{t("emptyTitle")}</strong>
         </p>
-        <p>
-          The fleet summary lists no enabled source and no class row exists, so there is nothing to
-          decide here yet.
-        </p>
+        <p>{t("emptyText")}</p>
       </div>
     );
   }
   return (
-    <TableScroll label="Outage policy by class">
+    <TableScroll label={t("tableLabel")}>
       <table className="fleet-table outage-table">
-        <caption className="sr-only">
-          One row per class: the mode its silent sources resolve to, where that comes from, the
-          grace, and how many sources it covers.
-        </caption>
+        <caption className="sr-only">{t("caption")}</caption>
         <thead>
           <tr>
-            <th scope="col">Class</th>
-            <th scope="col">Outage mode</th>
-            <th scope="col">Grace</th>
+            <th scope="col">{t("class")}</th>
+            <th scope="col">{t("mode")}</th>
+            <th scope="col">{t("grace")}</th>
             <th scope="col" className="num">
-              Monitored sources covered
+              {t("covered")}
             </th>
             <th scope="col" className="num">
-              Source overrides
+              {t("overrides")}
             </th>
-            <th scope="col">Actions</th>
+            <th scope="col">{t("actions")}</th>
           </tr>
         </thead>
         <tbody>

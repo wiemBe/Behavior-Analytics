@@ -5,11 +5,16 @@
 // summary, the measurements, the timeline, then the working. Sections that only
 // exist for log-source volume -- the contributor headline, the AQL provenance --
 // are absent here, not rendered empty.
+//
+// The page passes its `BehaviorI18n` down: the summary, the state words and the
+// chart's prose are built by the helpers in the interface language.
 
 import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
 import type { WafAnomalyDetail, WafBaselineCell, WafMetricBucket } from "@/lib/api";
-import { stateMeaning } from "@/lib/behavior";
-import { formatShare } from "@/lib/format";
+import { stateMeaningIn } from "@/lib/behavior";
+import { fixed, type BehaviorI18n } from "@/lib/behaviorI18n";
+import { formatCount, formatShare } from "@/lib/format";
+import { useTranslations } from "next-intl";
 
 import { WafDetectionBlock } from "./WafDetectionBlock";
 import { WafIncidentHeader } from "./WafIncidentHeader";
@@ -17,14 +22,17 @@ import { WafIncidentMetrics } from "./WafIncidentMetrics";
 import { WafRequestChart } from "./WafRequestChart";
 import type { BaselineSource } from "./wafBaseline";
 import { stateLabel, statePillText } from "./wafLabels";
-import { buildWafRatioSeries, buildWafSeries, ratioSpecFor } from "./wafSeries";
+import { buildWafRatioSeries, buildWafSeries, ratioLabel, ratioSpecFor } from "./wafSeries";
 import { isNewEndpointType, summarizeWafAnomaly } from "./wafSummary";
+import { ENGLISH_WAF } from "./wafI18n";
 
 /** The chart as prose: what a reader of the canvas would see. */
 export function wafChartSummary(
   anomaly: WafAnomalyDetail,
   buckets: WafMetricBucket[],
+  i18n: BehaviorI18n,
 ): string {
+  const { t, locale } = i18n;
   const spec = ratioSpecFor(anomaly.anomaly_type);
   const points = spec ? buildWafRatioSeries(buckets, spec) : buildWafSeries(buckets);
   const unobserved = points.filter((p) => p.observed == null).length;
@@ -32,27 +40,43 @@ export function wafChartSummary(
   const endpoint = `${anomaly.waf_endpoint.http_method} ${anomaly.waf_endpoint.normalized_endpoint}`;
   const parts = [
     spec
-      ? `${spec.label} for ${endpoint} across ${buckets.length} stored buckets.`
-      : `Requests to ${endpoint} across ${buckets.length} stored buckets.`,
+      ? t("waf.investigation.ratioLead", {
+          label: ratioLabel(spec, i18n),
+          endpoint,
+          count: formatCount(buckets.length, locale),
+        })
+      : t("waf.investigation.volumeLead", {
+          endpoint,
+          count: formatCount(buckets.length, locale),
+        }),
   ];
   const d = anomaly.detection;
   if (spec) {
     if (d?.expected_proportion != null) {
-      parts.push(`The expected proportion at detection was ${formatShare(d.expected_proportion)}.`);
+      parts.push(
+        t("waf.investigation.expectedProportion", { share: formatShare(d.expected_proportion, locale) }),
+      );
     }
   } else if (d?.expected_low != null && d.expected_high != null) {
     parts.push(
-      `The expected range at detection was ${d.expected_low.toFixed(1)} to ${d.expected_high.toFixed(1)} requests per bucket.`,
+      t("waf.investigation.expectedRange", {
+        // The English page historically stated both bounds to one decimal. Keep that precision
+        // while changing only the decimal punctuation with the interface locale.
+        low: fixed(d.expected_low, 1, locale),
+        high: fixed(d.expected_high, 1, locale),
+      }),
     );
   }
   if (unobserved > 0) {
     parts.push(
       spec
-        ? `${unobserved} intervals had no measured proportion (not collected, failed, partial, not stored or no requests to divide) and are drawn as gaps, not as 0 %.`
-        : `${unobserved} intervals were partial, missing or not stored and are drawn as gaps, not as zero requests.`,
+        ? t("waf.investigation.gapsRatio", { count: formatCount(unobserved, locale) })
+        : t("waf.investigation.gapsVolume", { count: formatCount(unobserved, locale) }),
     );
   }
-  if (lower > 0) parts.push(`${lower} buckets are lower bounds.`);
+  if (lower > 0) {
+    parts.push(t("waf.investigation.lowerBounds", { count: formatCount(lower, locale) }));
+  }
   return parts.join(" ");
 }
 
@@ -60,15 +84,19 @@ export function WafInvestigation({
   anomaly,
   buckets,
   baselines = null,
+  i18n = ENGLISH_WAF,
 }: {
   anomaly: WafAnomalyDetail;
   /** Stored buckets around the incident, or null when they could not be loaded. */
   buckets: WafMetricBucket[] | null;
   /** The endpoint's seasonal cells, or null when they could not be loaded. */
   baselines?: WafBaselineCell[] | null;
+  /** The interface language of the summary, the state words and the chart's prose. */
+  i18n?: BehaviorI18n;
 }) {
+  const t = useTranslations("waf.investigation");
   const bucketSeconds = buckets?.[0]?.bucket_seconds ?? null;
-  const summary = summarizeWafAnomaly(anomaly, bucketSeconds);
+  const summary = summarizeWafAnomaly(anomaly, bucketSeconds, i18n);
   const d = anomaly.detection;
   // A proportion detector charts its own proportion; volume and novelty
   // detectors chart requests.
@@ -99,16 +127,15 @@ export function WafInvestigation({
 
       <p className="incident-summary">{summary.text}</p>
       {summary.caveat && <p className="subtitle">{summary.caveat}</p>}
-      <p className="subtitle">{stateMeaning(anomaly.state)}</p>
+      <p className="subtitle">{stateMeaningIn(anomaly.state, i18n)}</p>
 
       <WafIncidentMetrics anomaly={anomaly} bucketSeconds={bucketSeconds} />
 
       <section>
-        <h2 className="section-title">Timeline</h2>
+        <h2 className="section-title">{t("timeline")}</h2>
         {buckets == null ? (
           <div className="notice" role="alert">
-            Request history for this endpoint could not be loaded. The rest of this investigation
-            is unaffected, but the timeline is absent rather than empty.
+            {t("timelineFailed")}
           </div>
         ) : (
           <WafRequestChart
@@ -123,26 +150,26 @@ export function WafInvestigation({
                 ? [{ start: anomaly.anomaly_start, end: anomaly.anomaly_end }]
                 : []
             }
-            transitions={anomaly.transitions.map((t) => ({
-              at: t.occurred_at,
-              label: stateLabel(t.to_state),
+            transitions={anomaly.transitions.map((tr) => ({
+              at: tr.occurred_at,
+              label: stateLabel(tr.to_state, i18n),
             }))}
-            textSummary={wafChartSummary(anomaly, buckets)}
+            textSummary={wafChartSummary(anomaly, buckets, i18n)}
           />
         )}
       </section>
 
       <section>
-        <h2 className="section-title">Against what normal</h2>
+        <h2 className="section-title">{t("against")}</h2>
         <WafDetectionBlock anomaly={anomaly} bucketSeconds={bucketSeconds} />
       </section>
 
       <section>
-        <h2 className="section-title">Lifecycle</h2>
+        <h2 className="section-title">{t("lifecycle")}</h2>
         <LifecycleTimeline
           transitions={anomaly.transitions}
           policyVersion={anomaly.policy_version}
-          stateLabel={statePillText}
+          stateLabel={(state) => statePillText(state, i18n)}
         />
       </section>
     </>

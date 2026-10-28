@@ -1,0 +1,72 @@
+{
+  "meta": {
+    "title": "Dizin"
+  },
+  "boundary": {
+    "title": "Dizin",
+    "errorWhat": "Dizin",
+    "loadingWhat": "dizin yapılandırması",
+    "description": "Dizin hesaplarının nereye bağlandığı ve hiçbir şey saklamayan bir bağlantı testi."
+  },
+  "page": {
+    "title": "Dizin",
+    "description": "Dizin hesaplarının nereye bağlandığı ve hiçbir şey saklamayan bir bağlantı testi.",
+    "forbidden": "Rolünüz dizini değiştiremiyor (izin: admin:auth).",
+    "loadFailed": "Dizin yapılandırması yüklenemedi.",
+    "tryAgain": "Tekrar dene"
+  },
+  "outcome": {
+    "saved": "Dizin yapılandırması sürüm {version} olarak kaydedildi.",
+    "conflict": "Dizin yapılandırmasını başka biri değiştirdi.",
+    "notSaved": "Dizin yapılandırması kaydedilmedi.",
+    "reloaded": "Dizin yapılandırması yeniden yüklendi.",
+    "notReloaded": "Dizin yapılandırması yeniden yüklenemedi."
+  },
+  "unsaved": {
+    "title": "Henüz kaydedilmiş bir dizin yapılandırması yok.",
+    "text": "Kaydetmek ilkini oluşturur. Sürüm, o kayda kadar 0'dır."
+  },
+  "version": {
+    "line": "Sürüm {version}{hasSaved, select, yes {, son kayıt <time></time>} other {}}{hasBy, select, yes {, kaydeden {name}} other {}}."
+  },
+  "reload": "Yeniden yükle",
+  "reloading": "Yükleniyor",
+  "form": {
+    "label": "Dizin yapılandırması",
+    "enabled": "Dizin ile oturum açma etkin",
+    "urls": "URL'ler, bind sırasıyla",
+    "url": "{n}. URL",
+    "removeUrl": "{n}. URL'yi kaldır",
+    "addUrl": "URL ekle",
+    "startTls": "StartTLS",
+    "caPem": "CA sertifikası (PEM)",
+    "caPemHint": "Boş bırakılırsa sistem güven deposu kullanılır.",
+    "bindTemplate": "Bind şablonu",
+    "previewUser": "Önizleme kullanıcı adı",
+    "bindName": "Bind adı: {name}",
+    "timeout": "Zaman aşımı (saniye)",
+    "searchBase": "Kullanıcı arama tabanı",
+    "searchBaseHint": "İsteğe bağlı. Boş bırakılırsa arama tabanı gönderilmez.",
+    "saving": "Kaydediliyor",
+    "save": "Dizini kaydet"
+  },
+  "test": {
+    "title": "Bağlantıyı test et",
+    "note": "Kullanıcı adı ve parola yukarıdaki formla birlikte gönderilir, sonra temizlenir. Kaydedilmez.",
+    "username": "Test kullanıcı adı",
+    "password": "Test parolası",
+    "testing": "Bağlantı test ediliyor",
+    "submit": "Bağlantıyı test et",
+    "failed": "Bağlantı testi başarısız oldu.",
+    "tls": "TLS",
+    "trust": "Güven",
+    "subject": "Sertifika konusu",
+    "issuer": "Sertifika veren",
+    "expiry": "Sertifika bitiş tarihi (UTC)",
+    "certificate": "Sertifika",
+    "noCertificate": "Sertifika döndürülmedi.",
+    "bind": "Bind",
+    "latency": "Gecikme",
+    "ms": "{ms} ms"
+  }
+}

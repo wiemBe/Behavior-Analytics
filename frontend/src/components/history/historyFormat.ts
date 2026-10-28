@@ -10,23 +10,18 @@ import {
   type HistoryFamily,
   type HistoryFamilyEstimate,
 } from "@/lib/api";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { fixed, plainCount } from "@/lib/figureText";
 import { formatCount } from "@/lib/format";
 
+import { ENGLISH_HISTORY, historyWord } from "./historyText";
 
 export const READ_PERMISSION = "read:history_backfill";
 export const ADMIN_PERMISSION = "admin:history_backfill";
 
-const FAMILY_NAMES: Record<string, string> = {
-  PHASE_A: "Source volume",
-  WAF: "WAF",
-  IPS: "IPS",
-  CATCHALL: "Catch-all senders",
-  RULE_MATCH: "Rule matches",
-};
-
 /** The family as the analyst reads it. A family this build does not know is shown as recorded. */
-export function familyName(family: string): string {
-  return FAMILY_NAMES[family] ?? family;
+export function familyName(family: string, i18n: BehaviorI18n = ENGLISH_HISTORY): string {
+  return historyWord(i18n, "family", family);
 }
 
 export type Tone = "neutral" | "ok" | "warn" | "crit" | "info";
@@ -36,26 +31,28 @@ export interface StateInfo {
   tone: Tone;
 }
 
-const STATES: Record<string, StateInfo> = {
-  NOT_REQUESTED: { label: "Not requested", tone: "neutral" },
-  WAITING: { label: "Waiting", tone: "neutral" },
-  READING: { label: "Reading", tone: "info" },
-  COMPLETE: { label: "Complete", tone: "ok" },
-  PARTIAL: { label: "Partial", tone: "warn" },
-  UNAVAILABLE: { label: "Unavailable", tone: "neutral" },
-  NOT_ELIGIBLE: { label: "Not eligible", tone: "neutral" },
+const TONES: Record<string, Tone> = {
+  NOT_REQUESTED: "neutral",
+  WAITING: "neutral",
+  READING: "info",
+  COMPLETE: "ok",
+  PARTIAL: "warn",
+  UNAVAILABLE: "neutral",
+  NOT_ELIGIBLE: "neutral",
 };
 
-/** The two states of a row that has no scope row yet; they are not stored states. */
-export const SWITCHED_OFF: StateInfo = { label: "Switched off", tone: "neutral" };
-export const NOT_STARTED: StateInfo = { label: "Not started", tone: "neutral" };
-export const NOT_READ: StateInfo = { label: "Not read", tone: "neutral" };
-
-export function stateInfo(state: string): StateInfo {
-  return STATES[state] ?? { label: state, tone: "neutral" };
+/** The stored state (or one of the rows' own: SWITCHED_OFF, NOT_STARTED, NOT_READ) as a pill reads it. */
+export function stateInfo(state: string, i18n: BehaviorI18n = ENGLISH_HISTORY): StateInfo {
+  const tone = Object.prototype.hasOwnProperty.call(TONES, state) ? TONES[state] : "neutral";
+  return { label: historyWord(i18n, "state", state), tone };
 }
 
-/** What each console mode means, in the words the decision block opens with. */
+/** The two states of a row that has no scope row yet; they are not stored states. */
+export const SWITCHED_OFF: StateInfo = stateInfo("SWITCHED_OFF");
+export const NOT_STARTED: StateInfo = stateInfo("NOT_STARTED");
+export const NOT_READ: StateInfo = stateInfo("NOT_READ");
+
+/** What each console mode means, in the words the decision block opens with (English). */
 export const MODE_TEXT: Record<HistoryConsoleMode, string> = {
   UNDECIDED: "Not decided",
   NO: "No: history is not read",
@@ -63,18 +60,23 @@ export const MODE_TEXT: Record<HistoryConsoleMode, string> = {
   STOPPED: "Yes: reading was stopped",
 };
 
-export function modeText(mode: string): string {
-  return (MODE_TEXT as Record<string, string>)[mode] ?? mode;
+export function modeText(mode: string, i18n: BehaviorI18n = ENGLISH_HISTORY): string {
+  return historyWord(i18n, "mode", mode);
 }
 
 /** "the installer", or the person who answered in the UI. */
-export function decidedBy(decision: { source: string; decided_by: string }): string {
-  return decision.source === "INSTALLER" ? "the installer" : decision.decided_by;
+export function decidedBy(
+  decision: { source: string; decided_by: string },
+  i18n: BehaviorI18n = ENGLISH_HISTORY,
+): string {
+  return decision.source === "INSTALLER"
+    ? i18n.t("history.decidedBy.installer")
+    : decision.decided_by;
 }
 
 /** A figure of days read: whole days without a decimal, anything else with one, 0.0 as 0.0. */
-export function formatDays(value: number): string {
-  return Number.isInteger(value) && value > 0 ? String(value) : value.toFixed(1);
+export function formatDays(value: number, locale: "en" | "tr" = "en"): string {
+  return Number.isInteger(value) && value > 0 ? plainCount(value, locale) : fixed(value, 1, locale);
 }
 
 export { formatCount } from "@/lib/format";
@@ -97,52 +99,65 @@ export function requestedDays(
   return null;
 }
 
-export function questionText(days: number | null): string {
-  return days === null ? "Read QRadar's past?" : `Read the last ${days} days from QRadar?`;
+export function questionText(days: number | null, i18n: BehaviorI18n = ENGLISH_HISTORY): string {
+  return days === null
+    ? i18n.t("history.dialog.question")
+    : i18n.t("history.dialog.questionDays", { days: plainCount(days, i18n.locale) });
 }
 
 /** What the family is, before any estimate: its state in the dialog's "families" column. */
-export function familyStateText(family: HistoryFamily): string {
+export function familyStateText(family: HistoryFamily, i18n: BehaviorI18n = ENGLISH_HISTORY): string {
   if (!family.collection_enabled) {
-    return `Switched off. ${family.collection_reason}.`;
+    return i18n.t("history.familyState.switchedOff", { reason: family.collection_reason });
   }
   if (!family.window.available) {
-    return `Unavailable. ${family.window.reason ?? "The window could not be fitted."}`;
+    return i18n.t("history.familyState.unavailable", {
+      reason: family.window.reason ?? i18n.t("history.familyState.windowNotFitted"),
+    });
   }
   if (family.sources !== null) {
     const waiting = family.sources.length;
     const collected = family.sources.filter((s) => s.later_yes !== "possible").length;
-    const head = `${waiting} ${waiting === 1 ? "source" : "sources"} enabled`;
     const rest =
       collected > 0
-        ? `${collected} already collected and cannot read history; sources you enable later do`
-        : "sources you enable later are read when you enable them";
-    return `${head}; ${rest}.`;
+        ? i18n.t("history.familyState.collected", {
+            collected: plainCount(collected, i18n.locale),
+          })
+        : i18n.t("history.familyState.later");
+    return i18n.t("history.familyState.sources", { count: waiting, rest });
   }
-  return "Will be read.";
+  return i18n.t("history.familyState.willRead");
 }
 
 /** The estimate of one family in words. A missing figure shows its reason, never a zero. */
-export function estimateText(estimate: HistoryFamilyEstimate | undefined): {
+export function estimateText(
+  estimate: HistoryFamilyEstimate | undefined,
+  i18n: BehaviorI18n = ENGLISH_HISTORY,
+): {
   figures: string;
   note: string | null;
 } {
   if (estimate === undefined) {
-    return { figures: "—", note: "No estimate was returned for this family." };
+    return { figures: "—", note: i18n.t("history.estimate.none") };
   }
   if (estimate.refused) {
-    return { figures: "Refused", note: estimate.reason };
+    return { figures: i18n.t("history.estimate.refused"), note: estimate.reason };
   }
   if (estimate.searches === null) {
     return { figures: "—", note: estimate.reason };
   }
-  const hours =
-    estimate.hours === null ? "time not estimated" : `about ${estimate.hours} hours`;
-  const figures = `${formatCount(estimate.searches)} searches, ${hours}`;
+  const time =
+    estimate.hours === null
+      ? i18n.t("history.estimate.notEstimated")
+      : i18n.t("history.estimate.about", { hours: plainCount(estimate.hours, i18n.locale) });
+  const figures = i18n.t("history.estimate.figures", {
+    searches: formatCount(estimate.searches, i18n.locale),
+    time,
+  });
   if (estimate.reduced) {
     return {
       figures,
-      note: `Reduced: ${estimate.reason}`,
+      note: i18n.t("history.estimate.reduced", { reason: estimate.reason }),
     };
   }
   return { figures, note: null };
@@ -172,6 +187,10 @@ export function conflictConsole(err: unknown): HistoryConsole | null {
 
 // --- what each action does (HISTORY-BACKFILL §B.5) ---------------------------
 
+/**
+ * The English of what each action does. The dialog and the decision block read the same sentences
+ * from the `history.confirm` messages (`confirmText`); a test pins that the English is equal.
+ */
 export const CONFIRM_TEXT = {
   yes: (days: number | null) =>
     `This records Yes${days === null ? "" : ` for ${days} days`}. At its next collection each family reads the days before its first live data: source volume, catch-all senders and rule matches always, a WAF or IPS source only if it has not been collected yet. Nothing old raises an alert. A Yes is never reversed; reading can be stopped.`,
@@ -180,3 +199,19 @@ export const CONFIRM_TEXT = {
     "This asks every family to read history again at its next collection: source volume, catch-all senders and rule matches, including sources added since, and a WAF or IPS source only if it has not been collected yet. Nothing is read at once and nothing old raises an alert.",
   stop: "This ends every scope that is reading as Partial, with the reason \"stopped by\" and your name. What was read stays and is used for learning. Nothing is deleted. Read history now starts it again.",
 } as const;
+
+/** What the action does, in the interface language (the `history.confirm` messages). */
+export function confirmText(
+  action: "yes" | "no" | "start" | "stop",
+  days: number | null,
+  i18n: BehaviorI18n = ENGLISH_HISTORY,
+): string {
+  if (action === "yes") {
+    const clause =
+      days === null
+        ? ""
+        : i18n.t("history.confirm.yesDays", { days: plainCount(days, i18n.locale) });
+    return i18n.t("history.confirm.yes", { days: clause });
+  }
+  return i18n.t(`history.confirm.${action}`);
+}

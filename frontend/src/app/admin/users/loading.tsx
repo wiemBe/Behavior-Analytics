@@ -1,11 +1,16 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
+  const t = useTranslations("users");
   return (
     <BoundaryLoading
-      title="Users"
-      what="users"
-      description="Accounts that can sign in, and the roles an administrator assigned. Last login is UTC."
+      title={t("boundary.title")}
+      what={t("boundary.loadingWhat")}
+      description={t("page.description")}
     />
   );
 }

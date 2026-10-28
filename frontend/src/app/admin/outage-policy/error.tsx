@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function OutagePolicyError({
@@ -9,10 +11,11 @@ export default function OutagePolicyError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("outage.boundary");
   return (
     <BoundaryError
-      title="Outage alerts"
-      what="The outage alert policy"
+      title={t("title")}
+      what={t("errorWhat")}
       digest={error.digest}
       onRetry={reset}
     />
