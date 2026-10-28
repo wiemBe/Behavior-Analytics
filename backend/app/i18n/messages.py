@@ -5,10 +5,11 @@ parameters. English clients keep the sentence byte for byte; another locale
 may render the code and parameters through its catalog.
 
 Formatting styles are deliberately closed. Counts accept ``grouped`` (the
-default) or ``plain``; numbers accept ``general`` (the default), ``grouped`` or
-``fixed``; points accept ``signed`` (the default) or ``unsigned``; lists accept
-``comma`` (the default) or ``and``. Percent precision, fixed-number precision,
-and point precision are declared separately. Duration, timestamp, enum, ref,
+default) or ``plain`` (no grouping; it shapes the backend's English render only, the
+frontend groups every count in the reader's locale); numbers accept ``general`` (the
+default), ``grouped`` or ``fixed``; points accept ``signed`` (the default) or
+``unsigned``; lists accept ``comma`` (the default) or ``and``. Percent precision,
+fixed-number precision, and point precision are declared separately. Duration, timestamp, enum, ref,
 and text params have one spelling and therefore no alternate style.
 """
 
@@ -99,6 +100,175 @@ REGISTRY: tuple[MessageSpec, ...] = (
         params={},
         sample={},
     ),
+    # --- MSG-2: rule statistics (Family 9) and detection coverage (Family 10) ----------------
+    MessageSpec(
+        code="rule_statistics.window.none",
+        template=(
+            "No rule-match window has been collected for this instance: collection is disabled "
+            "or has not run yet, so nothing is measured."
+        ),
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="rule_statistics.window.unsettled",
+        template="No rule-match window in the requested span has settled yet.",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="rule_statistics.window.incomplete",
+        template=(
+            "Only {complete} of {expected} windows in the span are complete "
+            "({missing} missing, {truncated} truncated, {failed} failed)."
+            " Absence from an incomplete window proves nothing."
+        ),
+        params={
+            "complete": ParamSpec(ParamKind.COUNT, style="plain"),
+            "expected": ParamSpec(ParamKind.COUNT, style="plain"),
+            "missing": ParamSpec(ParamKind.COUNT, style="plain"),
+            "truncated": ParamSpec(ParamKind.COUNT, style="plain"),
+            "failed": ParamSpec(ParamKind.COUNT, style="plain"),
+        },
+        sample={"complete": 23, "expected": 24, "missing": 1, "truncated": 0, "failed": 0},
+    ),
+    MessageSpec(
+        code="rule_statistics.top.no_complete_window",
+        template="No complete window to measure.",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="rule_statistics.silent.excluded",
+        template=(
+            "Only EVENT rules and EVENT building blocks are judged: an event search sees every "
+            "one of their matches. COMMON rules also match on flows, which are not searched, so "
+            "their silence is unknown. FLOW and OFFENSE rules are not searched at all."
+        ),
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="rule_statistics.cost.label",
+        template=(
+            "QRadar capacity benchmark: how fast the rule could be evaluated. "
+            "Lower is costlier to evaluate. This is not a firing rate."
+        ),
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="rule_statistics.cost.unit",
+        template="millions of events per second (QRadar's unit)",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="coverage.rollup.unmapped",
+        template="No rule is mapped to this technique.",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="coverage.rollup.all_excluded",
+        template=(
+            "Every rule mapped to this technique is disabled or discounted, "
+            "so there is no active detection."
+        ),
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="coverage.rollup.none_detecting",
+        template="{degraded} of {enabled} enabled rules are not currently detecting.",
+        params={
+            "degraded": ParamSpec(ParamKind.COUNT, style="plain"),
+            "enabled": ParamSpec(ParamKind.COUNT, style="plain"),
+        },
+        sample={"degraded": 2, "enabled": 3},
+    ),
+    MessageSpec(
+        code="coverage.rollup.not_established",
+        template="Rule health has not been established for the mapped rules.",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="coverage.rollup.some_degraded",
+        template="{working} of {enabled} enabled rules are detecting; {degraded} are degraded.",
+        params={
+            "working": ParamSpec(ParamKind.COUNT, style="plain"),
+            "enabled": ParamSpec(ParamKind.COUNT, style="plain"),
+            "degraded": ParamSpec(ParamKind.COUNT, style="plain"),
+        },
+        sample={"working": 1, "enabled": 3, "degraded": 2},
+    ),
+    MessageSpec(
+        code="coverage.rollup.some_unestablished",
+        template=(
+            "{working} of {enabled} enabled rules are detecting; the rest are not yet established."
+        ),
+        params={
+            "working": ParamSpec(ParamKind.COUNT, style="plain"),
+            "enabled": ParamSpec(ParamKind.COUNT, style="plain"),
+        },
+        sample={"working": 2, "enabled": 3},
+    ),
+    MessageSpec(
+        code="coverage.rollup.all_detecting",
+        template="All {enabled} enabled rules mapped to this technique are detecting.",
+        params={"enabled": ParamSpec(ParamKind.COUNT, style="plain")},
+        sample={"enabled": 4},
+    ),
+    MessageSpec(
+        code="coverage.evidence.below_floor",
+        template=(
+            "Mapping confidence {confidence} is below the {floor} floor; recorded "
+            "but not counted toward coverage."
+        ),
+        params={
+            "confidence": ParamSpec(ParamKind.NUMBER, style="fixed", precision=2),
+            "floor": ParamSpec(ParamKind.NUMBER, style="fixed", precision=2),
+        },
+        sample={"confidence": 0.3, "floor": 0.5},
+    ),
+    MessageSpec(
+        code="coverage.evidence.disabled",
+        template="The rule is disabled, so it provides no active coverage.",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="coverage.evidence.acceptable",
+        template="The rule is enabled and its health is acceptable.",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="coverage.evidence.dependency_degraded",
+        template="The rule's required telemetry is unavailable, so it cannot fire.",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="coverage.evidence.never_observed",
+        template="The rule has never been observed firing.",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="coverage.evidence.inactive",
+        template="The rule has not fired within the inactivity window.",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="coverage.evidence.not_established",
+        template="The rule's health has not been established yet.",
+        params={},
+        sample={},
+    ),
+    # --- end MSG-2 ---------------------------------------------------------------------------
 )
 
 

@@ -38,6 +38,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef, render
 from app.models.enums import CoverageStatus, MappingSource, RuleHealthStatus
 from app.models.instance import QRadarInstance
 from app.models.rule import (
@@ -64,6 +65,11 @@ _DEGRADED_HEALTH = frozenset(
 )
 
 
+_DISABLED = MessageRef("coverage.evidence.disabled")
+_ACCEPTABLE = MessageRef("coverage.evidence.acceptable")
+_NOT_ESTABLISHED = MessageRef("coverage.evidence.not_established")
+
+
 @dataclass
 class RuleCoverageEvidence:
     """Why one rule did or did not contribute coverage for a technique."""
@@ -76,6 +82,8 @@ class RuleCoverageEvidence:
     mapping_confidence: float
     contributes: bool
     reason: str
+    #: The code and raw values `reason` was rendered from (stored beside it in the evidence).
+    reason_message: MessageRef
 
 
 @dataclass
@@ -85,6 +93,7 @@ class TechniqueVerdict:
     tactic: str | None
     status: CoverageStatus
     reason: str
+    reason_message: MessageRef
     coverage_score: float
     confidence: float
     mapped_rule_count: int = 0
@@ -160,12 +169,14 @@ class DetectionCoverageEvaluator:
         self, technique_id: str, pairs: list[tuple[TechniqueMapping, AnalyticsRule]]
     ) -> TechniqueVerdict:
         if not pairs:
+            unmapped = MessageRef("coverage.rollup.unmapped")
             return TechniqueVerdict(
                 technique_id=technique_id,
                 technique_name=None,
                 tactic=None,
                 status=CoverageStatus.MISSING,
-                reason="No rule is mapped to this technique.",
+                reason=render(unmapped),
+                reason_message=unmapped,
                 coverage_score=0.0,
                 confidence=1.0,
             )
@@ -187,6 +198,13 @@ class DetectionCoverageEvaluator:
                 inferred += 1
 
             if below_floor:
+                floor_message = MessageRef(
+                    "coverage.evidence.below_floor",
+                    {
+                        "confidence": mapping.confidence,
+                        "floor": self.settings.coverage_min_confidence,
+                    },
+                )
                 evidence.append(
                     RuleCoverageEvidence(
                         rule_qradar_id=rule.qradar_id,
@@ -196,11 +214,8 @@ class DetectionCoverageEvaluator:
                         mapping_source=str(mapping.source),
                         mapping_confidence=mapping.confidence,
                         contributes=False,
-                        reason=(
-                            f"Mapping confidence {mapping.confidence:.2f} is below the "
-                            f"{self.settings.coverage_min_confidence:.2f} floor; recorded "
-                            "but not counted toward coverage."
-                        ),
+                        reason=render(floor_message),
+                        reason_message=floor_message,
                     )
                 )
                 continue
@@ -217,7 +232,8 @@ class DetectionCoverageEvaluator:
                         mapping_source=str(mapping.source),
                         mapping_confidence=mapping.confidence,
                         contributes=False,
-                        reason="The rule is disabled, so it provides no active coverage.",
+                        reason=render(_DISABLED),
+                        reason_message=_DISABLED,
                     )
                 )
                 continue
@@ -238,11 +254,13 @@ class DetectionCoverageEvaluator:
                         mapping_source=str(mapping.source),
                         mapping_confidence=mapping.confidence,
                         contributes=True,
-                        reason="The rule is enabled and its health is acceptable.",
+                        reason=render(_ACCEPTABLE),
+                        reason_message=_ACCEPTABLE,
                     )
                 )
             elif health in _DEGRADED_HEALTH:
                 degraded += 1
+                degraded_message = self._degraded_message(health)
                 min_confidence = min(min_confidence, mapping.confidence)
                 evidence.append(
                     RuleCoverageEvidence(
@@ -253,7 +271,8 @@ class DetectionCoverageEvaluator:
                         mapping_source=str(mapping.source),
                         mapping_confidence=mapping.confidence,
                         contributes=False,
-                        reason=self._degraded_reason(health),
+                        reason=render(degraded_message),
+                        reason_message=degraded_message,
                     )
                 )
             else:
@@ -268,11 +287,12 @@ class DetectionCoverageEvaluator:
                         mapping_source=str(mapping.source),
                         mapping_confidence=mapping.confidence,
                         contributes=False,
-                        reason="The rule's health has not been established yet.",
+                        reason=render(_NOT_ESTABLISHED),
+                        reason_message=_NOT_ESTABLISHED,
                     )
                 )
 
-        status, reason, score = self._roll_up(
+        status, reason_message, score = self._roll_up(
             total=len(pairs), enabled=enabled, working=working, degraded=degraded
         )
         confidence = min(confidences) if confidences else min_confidence
@@ -282,7 +302,8 @@ class DetectionCoverageEvaluator:
             technique_name=name,
             tactic=tactic,
             status=status,
-            reason=reason,
+            reason=render(reason_message),
+            reason_message=reason_message,
             coverage_score=score,
             confidence=confidence,
             mapped_rule_count=len(pairs),
@@ -294,36 +315,38 @@ class DetectionCoverageEvaluator:
         )
 
     @staticmethod
-    def _degraded_reason(health: RuleHealthStatus) -> str:
+    def _degraded_message(health: RuleHealthStatus) -> MessageRef:
         if health == RuleHealthStatus.DEPENDENCY_DEGRADED:
-            return "The rule's required telemetry is unavailable, so it cannot fire."
+            return MessageRef("coverage.evidence.dependency_degraded")
         if health == RuleHealthStatus.NEVER_OBSERVED:
-            return "The rule has never been observed firing."
-        return "The rule has not fired within the inactivity window."
+            return MessageRef("coverage.evidence.never_observed")
+        return MessageRef("coverage.evidence.inactive")
 
     def _roll_up(
         self, *, total: int, enabled: int, working: int, degraded: int
-    ) -> tuple[CoverageStatus, str, float]:
+    ) -> tuple[CoverageStatus, MessageRef, float]:
         if enabled == 0:
             if total > 0:
                 return (
                     CoverageStatus.MISSING,
-                    "Every rule mapped to this technique is disabled or discounted, "
-                    "so there is no active detection.",
+                    MessageRef("coverage.rollup.all_excluded"),
                     0.0,
                 )
-            return CoverageStatus.MISSING, "No rule is mapped to this technique.", 0.0
+            return CoverageStatus.MISSING, MessageRef("coverage.rollup.unmapped"), 0.0
 
         if working == 0:
             if degraded > 0:
                 return (
                     CoverageStatus.DEGRADED,
-                    f"{degraded} of {enabled} enabled rules are not currently detecting.",
+                    MessageRef(
+                        "coverage.rollup.none_detecting",
+                        {"degraded": degraded, "enabled": enabled},
+                    ),
                     0.0,
                 )
             return (
                 CoverageStatus.NOT_EVALUATED,
-                "Rule health has not been established for the mapped rules.",
+                MessageRef("coverage.rollup.not_established"),
                 0.0,
             )
 
@@ -331,20 +354,24 @@ class DetectionCoverageEvaluator:
         if degraded > 0:
             return (
                 CoverageStatus.DEGRADED,
-                f"{working} of {enabled} enabled rules are detecting; "
-                f"{degraded} are degraded.",
+                MessageRef(
+                    "coverage.rollup.some_degraded",
+                    {"working": working, "enabled": enabled, "degraded": degraded},
+                ),
                 score,
             )
         if working < enabled:
             return (
                 CoverageStatus.PARTIAL,
-                f"{working} of {enabled} enabled rules are detecting; the rest are "
-                "not yet established.",
+                MessageRef(
+                    "coverage.rollup.some_unestablished",
+                    {"working": working, "enabled": enabled},
+                ),
                 score,
             )
         return (
             CoverageStatus.COVERED,
-            f"All {enabled} enabled rules mapped to this technique are detecting.",
+            MessageRef("coverage.rollup.all_detecting", {"enabled": enabled}),
             1.0,
         )
 
@@ -362,6 +389,8 @@ class DetectionCoverageEvaluator:
                     "mapping_confidence": e.mapping_confidence,
                     "contributes": e.contributes,
                     "reason": e.reason,
+                    "reason_code": e.reason_message.code,
+                    "reason_params": e.reason_message.to_wire()["params"],
                 }
                 for e in verdict.evidence
             ],
@@ -384,6 +413,7 @@ class DetectionCoverageEvaluator:
             "last_evaluated_at": now,
             "logic_version": self.logic_version,
             "reason": verdict.reason,
+            "reason_i18n": verdict.reason_message.to_wire(),
             "evidence": evidence_payload,
         }
         stmt = pg_insert(DetectionCoverage).values(**current, id=uuid.uuid4())
@@ -410,6 +440,7 @@ class DetectionCoverageEvaluator:
             "degraded_rule_count": verdict.degraded_rule_count,
             "logic_version": self.logic_version,
             "reason": verdict.reason,
+            "reason_i18n": verdict.reason_message.to_wire(),
         }
         snap_stmt = pg_insert(DetectionCoverageSnapshot).values(snapshot)
         snap_stmt = snap_stmt.on_conflict_do_update(

@@ -11,6 +11,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.messages import MessageParamValue
 from app.schemas.offense import _Sanitized
 
 
@@ -44,6 +45,8 @@ class StatisticsWindow(BaseModel):
     complete: bool
     #: Why the measured sections are absent or partial; None when complete.
     reason: str | None = None
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
 
 
 class SilentRule(_Sanitized):
@@ -74,6 +77,8 @@ class SilentSection(BaseModel):
     excluded: list[SilentExclusion]
     excluded_count: int
     excluded_reason: str
+    excluded_reason_code: str | None = None
+    excluded_reason_params: dict[str, MessageParamValue] | None = None
 
 
 class MatchRankRow(_Sanitized):
@@ -104,7 +109,11 @@ class CostSection(BaseModel):
     """QRadar's capacity benchmark. Lower = costlier to evaluate. NOT a firing rate."""
 
     label: str
+    label_code: str | None = None
+    label_params: dict[str, MessageParamValue] | None = None
     unit: str
+    unit_code: str | None = None
+    unit_params: dict[str, MessageParamValue] | None = None
     items: list[CostRow]
     #: Enabled rules whose benchmark is zero or missing, left out of the ranking.
     no_benchmark_count: int
@@ -116,9 +125,13 @@ class RuleStatistics(BaseModel):
     window: StatisticsWindow
     silent: SilentSection | None
     silent_reason: str | None
+    silent_reason_code: str | None = None
+    silent_reason_params: dict[str, MessageParamValue] | None = None
     top_by_matches: list[MatchRankRow] | None
     top_by_events: list[MatchRankRow] | None
     top_reason: str | None
+    top_reason_code: str | None = None
+    top_reason_params: dict[str, MessageParamValue] | None = None
     costliest_by_benchmark: CostSection
 
 

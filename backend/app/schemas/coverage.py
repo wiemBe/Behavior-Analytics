@@ -8,6 +8,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import CoverageStatus, MappingSource
+from app.schemas.messages import MessageParamValue
 from app.schemas.offense import _Sanitized
 
 
@@ -27,11 +28,16 @@ class TechniqueCoverage(_Sanitized):
     last_evaluated_at: datetime | None = None
     logic_version: int
     reason: str | None = None
+    #: Stable code and raw values for a non-English client; null on rows stored before them.
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
 
 
 class TechniqueCoverageDetail(TechniqueCoverage):
     # The full rule -> health -> dependency chain behind the verdict, so an
-    # operator can see why a technique is degraded without re-deriving it.
+    # operator can see why a technique is degraded without re-deriving it. Each
+    # rule entry carries `reason_code`/`reason_params` beside its `reason`; an
+    # entry stored before them has neither.
     evidence: dict = Field(default_factory=dict)
     notes: str | None = None
 
@@ -56,6 +62,8 @@ class CoverageSnapshotOut(BaseModel):
     degraded_rule_count: int
     logic_version: int
     reason: str | None = None
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
 
 
 class CoverageSummary(BaseModel):

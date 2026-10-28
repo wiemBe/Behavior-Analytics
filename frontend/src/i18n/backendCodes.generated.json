@@ -1,9 +1,266 @@
 {
+  "coverage.evidence.acceptable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The rule is enabled and its health is acceptable.",
+    "sample_english_params": {},
+    "template": "The rule is enabled and its health is acceptable."
+  },
+  "coverage.evidence.below_floor": {
+    "params": {
+      "confidence": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "floor": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "confidence": 0.3,
+      "floor": 0.5
+    },
+    "sample_english": "Mapping confidence 0.30 is below the 0.50 floor; recorded but not counted toward coverage.",
+    "sample_english_params": {
+      "confidence": "0.30",
+      "floor": "0.50"
+    },
+    "template": "Mapping confidence {confidence} is below the {floor} floor; recorded but not counted toward coverage."
+  },
+  "coverage.evidence.dependency_degraded": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The rule's required telemetry is unavailable, so it cannot fire.",
+    "sample_english_params": {},
+    "template": "The rule's required telemetry is unavailable, so it cannot fire."
+  },
+  "coverage.evidence.disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The rule is disabled, so it provides no active coverage.",
+    "sample_english_params": {},
+    "template": "The rule is disabled, so it provides no active coverage."
+  },
+  "coverage.evidence.inactive": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The rule has not fired within the inactivity window.",
+    "sample_english_params": {},
+    "template": "The rule has not fired within the inactivity window."
+  },
+  "coverage.evidence.never_observed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The rule has never been observed firing.",
+    "sample_english_params": {},
+    "template": "The rule has never been observed firing."
+  },
+  "coverage.evidence.not_established": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The rule's health has not been established yet.",
+    "sample_english_params": {},
+    "template": "The rule's health has not been established yet."
+  },
+  "coverage.rollup.all_detecting": {
+    "params": {
+      "enabled": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "enabled": 4
+    },
+    "sample_english": "All 4 enabled rules mapped to this technique are detecting.",
+    "sample_english_params": {
+      "enabled": "4"
+    },
+    "template": "All {enabled} enabled rules mapped to this technique are detecting."
+  },
+  "coverage.rollup.all_excluded": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Every rule mapped to this technique is disabled or discounted, so there is no active detection.",
+    "sample_english_params": {},
+    "template": "Every rule mapped to this technique is disabled or discounted, so there is no active detection."
+  },
+  "coverage.rollup.none_detecting": {
+    "params": {
+      "degraded": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "enabled": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "degraded": 2,
+      "enabled": 3
+    },
+    "sample_english": "2 of 3 enabled rules are not currently detecting.",
+    "sample_english_params": {
+      "degraded": "2",
+      "enabled": "3"
+    },
+    "template": "{degraded} of {enabled} enabled rules are not currently detecting."
+  },
+  "coverage.rollup.not_established": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Rule health has not been established for the mapped rules.",
+    "sample_english_params": {},
+    "template": "Rule health has not been established for the mapped rules."
+  },
+  "coverage.rollup.some_degraded": {
+    "params": {
+      "degraded": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "enabled": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "working": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "degraded": 2,
+      "enabled": 3,
+      "working": 1
+    },
+    "sample_english": "1 of 3 enabled rules are detecting; 2 are degraded.",
+    "sample_english_params": {
+      "degraded": "2",
+      "enabled": "3",
+      "working": "1"
+    },
+    "template": "{working} of {enabled} enabled rules are detecting; {degraded} are degraded."
+  },
+  "coverage.rollup.some_unestablished": {
+    "params": {
+      "enabled": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "working": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "enabled": 3,
+      "working": 2
+    },
+    "sample_english": "2 of 3 enabled rules are detecting; the rest are not yet established.",
+    "sample_english_params": {
+      "enabled": "3",
+      "working": "2"
+    },
+    "template": "{working} of {enabled} enabled rules are detecting; the rest are not yet established."
+  },
+  "coverage.rollup.unmapped": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No rule is mapped to this technique.",
+    "sample_english_params": {},
+    "template": "No rule is mapped to this technique."
+  },
   "explanation.dimension.unpopulated": {
     "params": {},
     "sample": {},
     "sample_english": "field is not populated for this log source",
     "sample_english_params": {},
     "template": "field is not populated for this log source"
+  },
+  "rule_statistics.cost.label": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar capacity benchmark: how fast the rule could be evaluated. Lower is costlier to evaluate. This is not a firing rate.",
+    "sample_english_params": {},
+    "template": "QRadar capacity benchmark: how fast the rule could be evaluated. Lower is costlier to evaluate. This is not a firing rate."
+  },
+  "rule_statistics.cost.unit": {
+    "params": {},
+    "sample": {},
+    "sample_english": "millions of events per second (QRadar's unit)",
+    "sample_english_params": {},
+    "template": "millions of events per second (QRadar's unit)"
+  },
+  "rule_statistics.silent.excluded": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Only EVENT rules and EVENT building blocks are judged: an event search sees every one of their matches. COMMON rules also match on flows, which are not searched, so their silence is unknown. FLOW and OFFENSE rules are not searched at all.",
+    "sample_english_params": {},
+    "template": "Only EVENT rules and EVENT building blocks are judged: an event search sees every one of their matches. COMMON rules also match on flows, which are not searched, so their silence is unknown. FLOW and OFFENSE rules are not searched at all."
+  },
+  "rule_statistics.top.no_complete_window": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No complete window to measure.",
+    "sample_english_params": {},
+    "template": "No complete window to measure."
+  },
+  "rule_statistics.window.incomplete": {
+    "params": {
+      "complete": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "failed": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "missing": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "truncated": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "complete": 23,
+      "expected": 24,
+      "failed": 0,
+      "missing": 1,
+      "truncated": 0
+    },
+    "sample_english": "Only 23 of 24 windows in the span are complete (1 missing, 0 truncated, 0 failed). Absence from an incomplete window proves nothing.",
+    "sample_english_params": {
+      "complete": "23",
+      "expected": "24",
+      "failed": "0",
+      "missing": "1",
+      "truncated": "0"
+    },
+    "template": "Only {complete} of {expected} windows in the span are complete ({missing} missing, {truncated} truncated, {failed} failed). Absence from an incomplete window proves nothing."
+  },
+  "rule_statistics.window.none": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No rule-match window has been collected for this instance: collection is disabled or has not run yet, so nothing is measured.",
+    "sample_english_params": {},
+    "template": "No rule-match window has been collected for this instance: collection is disabled or has not run yet, so nothing is measured."
+  },
+  "rule_statistics.window.unsettled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No rule-match window in the requested span has settled yet.",
+    "sample_english_params": {},
+    "template": "No rule-match window in the requested span has settled yet."
   }
 }
