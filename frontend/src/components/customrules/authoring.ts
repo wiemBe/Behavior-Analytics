@@ -159,11 +159,11 @@ const OPERATOR_SIGNS: Record<string, string> = {
 };
 
 export function metricLabel(metric: string, t: TextTranslator = customRulesEnglishText): string {
-  return metric in METRIC_LABELS ? t(`customRules.authoring.metrics.${metric}`) : metric;
+  return Object.hasOwn(METRIC_LABELS, metric) ? t(`customRules.authoring.metrics.${metric}`) : metric;
 }
 
 export function operatorWord(operator: string, t: TextTranslator = customRulesEnglishText): string {
-  return operator in OPERATOR_WORDS ? t(`customRules.authoring.operators.${operator}`) : operator;
+  return Object.hasOwn(OPERATOR_WORDS, operator) ? t(`customRules.authoring.operators.${operator}`) : operator;
 }
 
 export function operatorSign(operator: string): string {
@@ -408,7 +408,7 @@ export function statusLabel(
   t: TextTranslator = customRulesEnglishText,
 ): string {
   if (status === null) return t("customRules.authoring.status.null");
-  return status in STATUS_WORDS ? t(`customRules.authoring.status.${status}`) : status;
+  return Object.hasOwn(STATUS_WORDS, status) ? t(`customRules.authoring.status.${status}`) : status;
 }
 
 /** The engine's reason, unchanged. Null means the engine recorded none, so the UI shows none. */

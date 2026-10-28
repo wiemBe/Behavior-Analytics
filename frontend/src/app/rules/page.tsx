@@ -185,7 +185,7 @@ export default async function RulesPage({
                       {r.health_status ? enumLabel(say, "ruleHealth", r.health_status) : "—"}
                     </span>
                   </td>
-                  <td className="muted cell-meaning">{healthMeaning(r.health_status)}</td>
+                  <td className="muted cell-meaning">{healthMeaning(r.health_status, say)}</td>
                   <td>
                     {r.last_fired_at ? (
                       <UtcTime value={r.last_fired_at} wrapZone />

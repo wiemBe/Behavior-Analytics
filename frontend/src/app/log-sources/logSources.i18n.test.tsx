@@ -128,7 +128,7 @@ describe("a log source's detail in Turkish", () => {
     vi.spyOn(api, "logSource").mockResolvedValue(detail());
     await renderDetail();
     expect(screen.getByRole("heading", { level: 1, name: "Core Firewall" })).toBeInTheDocument();
-    expect(screen.getByText("Check Point Firewall · kritiklik HIGH · sahip SOC")).toBeInTheDocument();
+    expect(screen.getByText("Check Point Firewall · kritiklik YÜKSEK · sahip SOC")).toBeInTheDocument();
     expect(screen.getByText("Yapılandırma")).toBeInTheDocument();
     expect(screen.getByText("Açıklama: Perimeter firewall")).toBeInTheDocument();
     expect(screen.getByText("Yalnızca mesai saatleri: hayır")).toBeInTheDocument();
@@ -144,7 +144,7 @@ describe("a log source's detail in Turkish", () => {
       detail({ type_name: null, owner: null, description: null, expected_interval_seconds: null, last_event_time: null, qradar_status: null, business_hours_only: true }),
     );
     await renderDetail();
-    expect(screen.getByText("bilinmeyen tür · kritiklik HIGH · sahip —")).toBeInTheDocument();
+    expect(screen.getByText("bilinmeyen tür · kritiklik YÜKSEK · sahip —")).toBeInTheDocument();
     expect(screen.getByText("Açıklama: —")).toBeInTheDocument();
     expect(screen.getByText("Yalnızca mesai saatleri: evet")).toBeInTheDocument();
     expect(screen.getByText("Beklenen aralık: —")).toBeInTheDocument();

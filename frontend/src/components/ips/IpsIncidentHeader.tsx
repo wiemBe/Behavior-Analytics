@@ -82,7 +82,7 @@ export function IpsIncidentHeader({
           <span className={`pill pill-strong ${stateTone(anomaly.state)}`}>
             {wordOrValue(i18n, "enums.anomalyState", anomaly.state)}
           </span>
-          <span className={`pill pill-quiet ${sevTone(anomaly.severity)}`}>{anomaly.severity}</span>
+          <span className={`pill pill-quiet ${sevTone(anomaly.severity)}`}>{wordOrValue(i18n, "enums.severityPill", anomaly.severity)}</span>
           {anomaly.suppressed && <span className="pill pill-quiet warn">{t("suppressed")}</span>}
           <span className="incident-interval">
             <Interval anomaly={anomaly} />

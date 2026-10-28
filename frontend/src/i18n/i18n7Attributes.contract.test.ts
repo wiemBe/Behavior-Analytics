@@ -1,9 +1,10 @@
-// The I18N-7 `[id]` route files sit in ESLint's escaped-glob override. The general attribute
-// contract reads the first override as plain paths, so these files need the same check here.
+// The I18N-7 `[id]` route files: their attributes carry no literal text, and ESLint resolves the
+// literal guard for them (I18N-12 turned the escaped file list into globs).
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { literalRuleFor } from "./guardedFiles";
 
 const FILES = [
   "src/app/searches/[id]/page.tsx",
@@ -42,17 +43,9 @@ describe("I18N-7 [id] routes translated attribute contract", () => {
     expect(failures).toEqual([]);
   });
 
-  it("lists each bracketed route file with its brackets escaped, so ESLint reads a path and not a class", () => {
-    const root = resolve(__dirname, "../..");
-    const config = JSON.parse(readFileSync(resolve(root, ".eslintrc.json"), "utf8")) as {
-      overrides: { files: string[]; rules?: Record<string, unknown> }[];
-    };
-    const listed = config.overrides
-      .filter((entry) => entry.rules?.["react/jsx-no-literals"] != null)
-      .flatMap((entry) => entry.files);
+  it("has ESLint resolve the literal rule for each bracketed route file (the guard is a glob now)", async () => {
     for (const relative of FILES) {
-      expect(listed, relative).toContain(relative.replaceAll("[", "\\[").replaceAll("]", "\\]"));
-      expect(listed, relative).not.toContain(relative);
+      expect(((await literalRuleFor(relative)) as unknown[] | undefined)?.[0], relative).toBe("error");
     }
   });
 });

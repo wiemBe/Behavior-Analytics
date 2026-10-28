@@ -4,7 +4,7 @@
 // default to this, so a caller without a translator (the existing tests, the routes not converted
 // yet) keeps today's English.
 //
-// It holds only this area's namespaces and lives in this area's chunk. It is not `i18n/fallback`:
+// It holds only this area's namespaces and lives in this area's chunk. It is not a shared bundle:
 // that file serves the shell, which is on every page, and must not grow with each wave. The
 // catalog a component sees comes from the provider; this copy exists for the defaults only.
 

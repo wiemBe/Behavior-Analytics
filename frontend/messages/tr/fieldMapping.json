@@ -28,7 +28,7 @@
       "sentence": "Özellik var ama penceredeki hiçbir olay onu taşımadı."
     },
     "INSUFFICIENT_COVERAGE": {
-      "label": "Düşük kapsam"
+      "label": "Düşük coverage"
     },
     "IMPLAUSIBLE": {
       "label": "Değerler hatalı görünüyor"
@@ -98,6 +98,7 @@
     "actor": "Yapan",
     "what": "Ne değişti",
     "outcome": "Sonuç: {outcome}",
+    "outcomes": { "SUCCESS": "Başarılı", "SOURCE_BUSY": "Kaynak meşgul", "FAILURE": "Başarısız" },
     "changesLabel": "Eşleme değişiklikleri",
     "reasonsLabel": "Nedenler"
   },

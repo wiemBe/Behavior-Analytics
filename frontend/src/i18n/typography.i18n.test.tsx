@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { WidgetLoading } from "@/components/home/WidgetFrame";
 import { buildEpsOption } from "@/components/home/chartOptions";
-import { createLocaleTranslator } from "@/i18n/fallback";
+import { createLocaleTranslator } from "@/i18n/testTranslator";
 import { unitGap, upperFirst } from "@/i18n/measures";
 import { SOC_OVERVIEW } from "@/widgets/templates";
 import { widgetDef } from "@/widgets/registry";

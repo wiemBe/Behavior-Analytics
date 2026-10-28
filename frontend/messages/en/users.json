@@ -40,6 +40,7 @@
     "title": "No accounts are stored.",
     "text": "Create a local account below, or pre-create a directory account so a role is in place before the first sign-in."
   },
+  "authSources": { "LOCAL": "LOCAL", "LDAP": "LDAP" },
   "table": {
     "label": "Accounts",
     "caption": "Accounts with source, display name, roles, status and last login. Times are UTC.",

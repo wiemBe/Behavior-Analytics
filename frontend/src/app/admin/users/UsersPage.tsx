@@ -33,9 +33,12 @@ import { enumLabel, type EnumTranslator } from "@/i18n/enumLabels";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 
-// The two account sources are codes the backend names; they read the same in both languages.
-const SOURCE_LOCAL = "LOCAL";
-const SOURCE_LDAP = "LDAP";
+// The two account sources are codes the backend names; the table words them (`users.authSources`:
+// LOCAL reads "Yerel" in Turkish, LDAP stays LDAP), and a source it does not know is shown as sent.
+const SOURCE_LOCAL = "LOCAL" as const;
+const SOURCE_LDAP = "LDAP" as const;
+
+const AUTH_SOURCES: Record<string, "LOCAL" | "LDAP"> = { LOCAL: "LOCAL", LDAP: "LDAP" };
 
 type Load = "loading" | "ready" | "error" | "forbidden";
 type Outcome = { tone: "ok" | "warn"; heading?: string; lines: string[] };
@@ -342,7 +345,7 @@ export function UsersPage() {
                     return (
                       <tr key={user.id}>
                         <th scope="row">{name}</th>
-                        <td>{user.auth_source}</td>
+                        <td>{Object.hasOwn(AUTH_SOURCES, user.auth_source) ? t(`authSources.${AUTH_SOURCES[user.auth_source]}`) : user.auth_source}</td>
                         <td>{user.display_name?.trim() || "—"}</td>
                         <td>{user.roles.length > 0 ? user.roles.map(roleName).join(", ") : "—"}</td>
                         <td>
@@ -514,7 +517,7 @@ export function UsersPage() {
                     checked={source === "LOCAL"}
                     onChange={() => setSource("LOCAL")}
                   />
-                  <span>{SOURCE_LOCAL}</span>
+                  <span>{t(`authSources.${SOURCE_LOCAL}`)}</span>
                 </label>
                 <label className={styles.check}>
                   <input
@@ -526,7 +529,7 @@ export function UsersPage() {
                       setPassword("");
                     }}
                   />
-                  <span>{SOURCE_LDAP}</span>
+                  <span>{t(`authSources.${SOURCE_LDAP}`)}</span>
                 </label>
               </fieldset>
               <label className={styles.field}>

@@ -1,5 +1,6 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import Link from "next/link";
+import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { plainCount } from "@/lib/fleetText";
 import type { FormatLocale } from "@/lib/format";
@@ -53,7 +54,7 @@ export default async function LogSourceDetailPage({
         description={
           t("summary", {
             type: d.type_name ?? t("unknownType"),
-            criticality: d.criticality,
+            criticality: enumLabel(say, "severityPill", d.criticality),
             owner: d.owner ?? "—",
           })
         }

@@ -1,7 +1,8 @@
 // Words for a directory connection test. The reason text stays as the backend
 // sent it. The status codes do not.
 
-import { englishText, type TextTranslator } from "@/i18n/fallback";
+import { englishText } from "./englishText";
+import type { TextTranslator } from "@/i18n/textTranslator";
 
 export type OutcomeTone = "ok" | "crit" | "neutral";
 

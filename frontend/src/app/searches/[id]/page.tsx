@@ -22,10 +22,8 @@ import { UtcTime } from "@/components/ui/UtcTime";
 
 import "./search-detail.css";
 
-// The trend is ResultTrend (from "@/components/ResultTrend"), mounted as <ResultTrend ... /> by
-// SearchResultTrend: a server page cannot hand a translator function to a client component, so the
-// client wrapper reads the interface language and passes it. (An existing test reads this file for
-// the import and the element; this comment keeps that pin true without a second mount.)
+// The trend is ResultTrend, mounted by SearchResultTrend: a server page cannot hand a translator
+// function to a client component, so the client wrapper reads the interface language and passes it.
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("searches.meta");

@@ -45,6 +45,22 @@ function argumentsOf(message: string): string[] {
 // Identical values are limited to product/technical terms, punctuation-only text, and the two
 // language names, which the selector deliberately presents in each language's own spelling.
 const IDENTICAL_ALLOWLIST = new Set([
+  // I18N-12 (D-39): "coverage" and "scope" stay English in Turkish, like log source.
+  "catalog.detection.link",
+  "history.table.scope",
+  "propertyWatch.common.scope",
+  "propertyWatch.editor.scopeLegend",
+  "propertyWatch.investigation.scope",
+  "propertyWatch.list.scope",
+  "propertyWatch.preview.coverage",
+  "shell.nav.coverage",
+  "waf.chart.axisCoverage",
+  "waf.chart.coverageLine",
+  "waf.chart.keyCoverage",
+  "waf.metrics.coverage",
+  "waf.sources.coverage",
+  "waf.sourcesWidget.coverage",
+  "widgets.propertyWatch.coverageBadge",
   "common.product",
   "common.missing",
   "meta.title",
@@ -52,6 +68,7 @@ const IDENTICAL_ALLOWLIST = new Set([
   "shell.connection.ageSuffix",
   "shell.search.offenseId",
   "shell.search.shortcut",
+  "users.authSources.LDAP",
   "account.english",
   "account.turkish",
   // I18N-3: QRadar object names and product terms the glossary keeps in English.

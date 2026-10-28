@@ -18,6 +18,7 @@ import { truncated, type Qualifier } from "@/lib/home/qualifiers";
 import { familyInfo } from "@/lib/searchCadence";
 
 import { englishCatalogText } from "./catalogText";
+import { isPlainKey } from "@/i18n/ownKey";
 
 /** A run later than this beyond its due time is "late"; the scheduler ticks every 60 s. */
 export const LATE_TOLERANCE_SECONDS = 60;
@@ -111,7 +112,7 @@ export function cadenceRows(
  */
 export function familyName(family: string, text: FleetText = englishCatalogText): string {
   const key = `catalog.family.${family}`;
-  return text.say.has?.(key) ? text.say(key) : familyInfo(family).name;
+  return isPlainKey(family) && text.say.has?.(key) ? text.say(key) : familyInfo(family).name;
 }
 
 export function lateText(row: CadenceRow, text: FleetText = englishCatalogText): string | null {

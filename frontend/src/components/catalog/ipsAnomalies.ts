@@ -13,6 +13,7 @@ import { ENGLISH_IPS } from "@/components/ips/ipsI18n";
 import { formatFigure } from "@/components/ips/ipsFormat";
 import { ipsSubjectText, rowTypeLabel } from "@/components/ips/ipsLabels";
 import { formatCount } from "@/lib/format";
+import { own } from "@/i18n/ownKey";
 
 export const IPS_ANOMALIES_LIMIT = 5;
 
@@ -68,7 +69,7 @@ function row(a: AnomalySummary, i18n: BehaviorI18n): IpsAnomalyRow {
         : none
           ? i18n.t("common.none")
           : formatFigure(f.unit, f.expected, undefined, i18n),
-    unitWords: f.unit == null ? "" : UNIT_KEYS[f.unit] ? i18n.t(UNIT_KEYS[f.unit]) : "",
+    unitWords: f.unit == null ? "" : own(UNIT_KEYS, f.unit) ? i18n.t(UNIT_KEYS[f.unit]) : "",
     href: `/anomalies/${a.id}`,
   };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createLocaleTranslator } from "./fallback";
+import { createLocaleTranslator } from "./testTranslator";
 import { enumLabel } from "./enumLabels";
 
 const tr = createLocaleTranslator("tr");

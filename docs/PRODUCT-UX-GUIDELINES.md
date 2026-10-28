@@ -461,9 +461,11 @@ the backend exposes message codes. Frontend code must never translate those sent
 their text.
 
 The following technical terms remain English in Turkish: offense, log source, EPS, WAF, IPS, AQL,
-baseline, MCP, LDAP, QRadar, DSM, QID, ATT&CK, CIDR, HTTP and UTC, along with product-object names
-that match QRadar's screens. A Turkish suffix attached to an English term takes an apostrophe, for
-example `offense'lar` and `log source'un`.
+baseline, MCP, LDAP, QRadar, DSM, QID, ATT&CK, CIDR, HTTP, UTC, coverage and scope (decision D-39,
+2026-10-28), along with product-object names that match QRadar's screens. A Turkish suffix attached
+to an English term takes an apostrophe, for example `offense'lar`, `log source'un`, `coverage'ı` and
+`scope'taki`. The verb "to cover" is not the term: `kapsandı` (covered) and `kapsadığı` (spans) stay
+Turkish.
 
 Turkish numbers use a dot for digit groups and a comma for decimals: `1.204` and `31,8`. The percent
 sign precedes the number without a space: `%31,8`, `≥ %12,5` and `<%0,1`. English retains `1,204`,
@@ -527,7 +529,7 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | property watch | özellik izleme |
 | property | özellik |
 | value | değer |
-| scope | kapsam |
+| scope | scope (stays English, D-39) |
 | pinned value | sabitlenmiş değer |
 | history | geçmiş |
 | preview | önizleme |
@@ -550,7 +552,7 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | override (an operator's class for one source) | geçersiz kılma |
 | search family | arama ailesi |
 | silence grace | sessizlik toleransı |
-| coverage | kapsam |
+| coverage | coverage (stays English, D-39) |
 | technique, tactic (ATT&CK) | teknik, taktik |
 | entity (an IPS destination port, destination or signature) | varlık |
 | signature (IPS) | imza |
@@ -569,7 +571,7 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | admission | kabul |
 | ratio | oran |
 | history backfill | geçmiş veri okuma |
-| scope (of a history backfill row: a console or one log source) | hedef |
+| scope (of a history backfill row: a console or one log source) | scope (stays English, D-39; `destination port` stays `hedef port`) |
 | console (QRadar) | console (stays English, like log source) |
 | schedule | zamanlama |
 | execution, run (of a stored search) | çalıştırma |

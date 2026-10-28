@@ -2,7 +2,8 @@
 // is shown as sent. Nothing here rewrites a reason into a friendlier guess.
 
 import { ApiError } from "@/lib/api";
-import { englishText, type TextTranslator } from "@/i18n/fallback";
+import { englishText } from "./englishText";
+import type { TextTranslator } from "@/i18n/textTranslator";
 
 function textOf(item: unknown): string {
   if (typeof item === "string") return item;

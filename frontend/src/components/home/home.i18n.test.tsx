@@ -271,7 +271,7 @@ describe("EpsChart in Turkish", () => {
     res.byKey[homeReads.epsSeries("24h", "none").key] = ok(epsSeries(pts(null, null), { window: "24h" }));
     render(<EpsChart />);
     expect(screen.getByText(/Toplanmadı/)).toBeInTheDocument();
-    expect(screen.getByText(/2 adımın hiçbirinde kapsamdaki tüm kaynak aralıkları tamamlanmış değil\./)).toBeInTheDocument();
+    expect(screen.getByText(/2 adımın hiçbirinde scope'taki tüm kaynak aralıkları tamamlanmış değil\./)).toBeInTheDocument();
     expect(screen.getByText(/Çizgi çizilmedi; ölçülmeyen bir adım sıfır trafik demek değildir\./)).toBeInTheDocument();
     expect(init).not.toHaveBeenCalled();
   });

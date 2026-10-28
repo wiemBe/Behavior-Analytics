@@ -230,10 +230,10 @@ describe("the history table in Turkish", () => {
   it("words the headers, the states, the figures and the details of every row kind", () => {
     render(<HistoryTable console={reading()} now={NOW} />);
     const table = screen.getByRole("table", { name: undefined });
-    for (const name of ["Aile", "Hedef", "Durum", /İstenen pencere/, /Kanıtlanan pencere/, "Okunan", "Arama", /Okunan son zaman/]) {
+    for (const name of ["Aile", "Scope", "Durum", /İstenen pencere/, /Kanıtlanan pencere/, "Okunan", "Arama", /Okunan son zaman/]) {
       expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
     }
-    expect(screen.getByLabelText("Aile ve hedefe göre geçmiş veri okuma, lab-console")).toBeInTheDocument();
+    expect(screen.getByLabelText("Aile ve scope'a göre geçmiş veri okuma, lab-console")).toBeInTheDocument();
     const rowOf = (name: string, text?: string) =>
       screen
         .getAllByRole("rowheader", { name })
@@ -275,7 +275,7 @@ describe("the history table in Turkish", () => {
     expect(off.textContent).toContain("RULE_MATCH_COLLECTION_ENABLED is off");
     expect(rowOf("IPS").textContent).toContain("Yapılandırılmış kaynak yok");
     expect(rowOf("IPS").textContent).toContain("Yapılandırılmış kaynak yok; bir kaynak, profilini etkinleştirdiğinizde okunur.");
-    expect(table.textContent).not.toMatch(/Family|Scope|Reason|Later Yes|searches|sources/);
+    expect(table.textContent).not.toMatch(/Family|Reason|Later Yes|searches|sources/);
   });
 
   it("keeps English in English, with the English number form", () => {

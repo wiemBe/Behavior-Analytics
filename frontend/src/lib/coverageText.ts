@@ -6,10 +6,11 @@
 // mapping source in lower case). It is never an empty string.
 
 import type { TextTranslator } from "@/i18n/textTranslator";
+import { isPlainKey } from "@/i18n/ownKey";
 
 function lookup(say: TextTranslator, group: string, value: string): string | null {
   const key = `coverage.${group}.${value}`;
-  return value !== "" && !value.includes(".") && say.has?.(key) ? say(key) : null;
+  return isPlainKey(value) && say.has?.(key) ? say(key) : null;
 }
 
 /** `NOT_EVALUATED` is "NOT EVALUATED" in English; also the rule-health verdicts. */

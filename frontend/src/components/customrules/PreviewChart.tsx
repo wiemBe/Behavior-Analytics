@@ -25,6 +25,7 @@ import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
 
 import type { EChartsOption } from "echarts";
 import { utcTimeHtml } from "@/components/ui/UtcTime";
+import { isPlainKey } from "@/i18n/ownKey";
 
 
 echarts.use([
@@ -63,7 +64,7 @@ export function previewTooltip(
   const completenessKey = bucket.completeness
     ? `customRules.preview.completenessKinds.${bucket.completeness}`
     : null;
-  const completeness = completenessKey && t.has?.(completenessKey)
+  const completeness = completenessKey && isPlainKey(bucket.completeness ?? "") && t.has?.(completenessKey)
     ? t(completenessKey)
     : bucket.completeness;
   return [

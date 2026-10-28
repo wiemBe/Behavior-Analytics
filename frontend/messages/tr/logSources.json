@@ -2,6 +2,7 @@
   "title": "Log source'lar",
   "loadingWhat": "Log source'lar",
   "errorWhat": "Log source'lar",
+  "loadNoun": "log source'lar",
   "countLead": "{count} kaynak.",
   "description": "QRadar'a ait alanlar eşitlemede yenilenir; kritiklik, sahip ve bakım SOC'a aittir ve korunur.",
   "empty": "Henüz log source yok. Yapılandırılmış sağlayıcıdan almak için bir envanter eşitlemesi başlatın.",

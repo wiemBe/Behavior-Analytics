@@ -16,7 +16,7 @@ import { useSession } from "@/components/auth/session";
 import styles from "@/components/auth/auth.module.css";
 import { ApiError, destinationAfterLogin } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { asTextTranslator } from "@/i18n/fallback";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 type Problem = { heading?: string; lines: string[]; alert?: boolean };
 

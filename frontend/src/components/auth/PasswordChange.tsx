@@ -16,7 +16,7 @@ import { useSession } from "./session";
 import styles from "./auth.module.css";
 import { destinationAfterPasswordChange } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { asTextTranslator } from "@/i18n/fallback";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 export function PasswordChange({
   required = false,

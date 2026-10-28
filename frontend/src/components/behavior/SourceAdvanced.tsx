@@ -30,6 +30,7 @@ import {
 } from "@/lib/behaviorI18n";
 import { plainCount } from "@/lib/figureText";
 import { formatCount, formatShare } from "@/lib/format";
+import { qradarStatusLabel } from "@/app/log-sources/qradarStatus";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { OriginMarker } from "./HistoryKey";
@@ -304,7 +305,13 @@ export function SourceAdvanced({
             </div>
             <div>
               <dt>{t("qradarStatus")}</dt>
-              <dd>{meta.qradar_status ?? <span className="muted">—</span>}</dd>
+              <dd>
+                {meta.qradar_status != null ? (
+                  qradarStatusLabel(meta.qradar_status, i18n.t)
+                ) : (
+                  <span className="muted">—</span>
+                )}
+              </dd>
             </div>
             <div>
               <dt>{t("timezone")}</dt>

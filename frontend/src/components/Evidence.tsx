@@ -13,6 +13,7 @@ import { useLocale, useTranslations } from "next-intl";
 
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { formatShare, type FormatLocale } from "@/lib/format";
+import { own } from "@/i18n/ownKey";
 
 import "./Evidence.css";
 
@@ -127,7 +128,7 @@ export function Evidence({ data }: { data: Record<string, unknown> }) {
   if (!data || Object.keys(data).length === 0) {
     return <span className="subtitle">{t("none")}</span>;
   }
-  const spec = (typeof data.anomaly_type === "string" && SPECS[data.anomaly_type]) || NONE;
+  const spec = (typeof data.anomaly_type === "string" && own(SPECS, data.anomaly_type)) || NONE;
 
   const rows: [string, string, Measure | null][] = [
     ["observed", "observed_value", spec.value],

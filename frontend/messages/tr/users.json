@@ -40,6 +40,7 @@
     "title": "Kayıtlı hesap yok.",
     "text": "Aşağıdan yerel bir hesap oluşturun ya da ilk oturum açmadan önce rolün hazır olması için bir dizin hesabını önceden oluşturun."
   },
+  "authSources": { "LOCAL": "Yerel", "LDAP": "LDAP" },
   "table": {
     "label": "Hesaplar",
     "caption": "Kaynak, görünen ad, roller, durum ve son oturum açmayla hesaplar. Saatler UTC.",

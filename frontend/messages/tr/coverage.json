@@ -1,8 +1,9 @@
 {
-  "title": "Algılama kapsamı",
-  "loadingWhat": "Algılama kapsamı",
-  "errorWhat": "Algılama kapsamı",
-  "description": "Eşlenen kurallardan ve gözlenen sağlıklarından türetilen MITRE ATT&CK teknik kapsamı. Kapsam, bir kuralın yalnızca var olmasından çıkarılmaz.",
+  "title": "Algılama coverage'ı",
+  "loadingWhat": "Algılama coverage'ı",
+  "errorWhat": "Algılama coverage'ı",
+  "loadNoun": "algılama coverage'ı",
+  "description": "Eşlenen kurallardan ve gözlenen sağlıklarından türetilen MITRE ATT&CK teknik coverage'ı. Coverage, bir kuralın yalnızca var olmasından çıkarılmaz.",
   "status": {
     "COVERED": "KAPSANDI",
     "PARTIAL": "KISMİ",
@@ -28,8 +29,8 @@
     "explicit": "açık",
     "inferred": "çıkarımsal"
   },
-  "notEvaluatedHeading": "Kapsam değerlendirilmedi.",
-  "notEvaluatedBody": "Hiçbir ATT&CK teknik eşlemesi yapılandırılmamış; bu yüzden kapsam ölçülemez. Eşlemeleri bir yönetici ekler. Bu, sıfır kapsam bulgusu değildir.",
+  "notEvaluatedHeading": "Coverage değerlendirilmedi.",
+  "notEvaluatedBody": "Hiçbir ATT&CK teknik eşlemesi yapılandırılmamış; bu yüzden coverage ölçülemez. Eşlemeleri bir yönetici ekler. Bu, sıfır coverage bulgusu değildir.",
   "summary": "{total} teknik değerlendirildi · {covered} kapsandı · {explicit} açık / {inferred} çıkarımsal eşleme · oluşturulma: <time></time>",
   "noTechniques": "Bu sayfada teknik yok.",
   "techniques": {
@@ -45,7 +46,7 @@
   "byRule": {
     "heading": "Kural odaklı görünüm",
     "empty": "Henüz hiçbir kuralın ATT&CK teknik eşlemesi yok.",
-    "label": "Kurala göre kapsam",
+    "label": "Kurala göre coverage",
     "rule": "Kural",
     "enabled": "Etkin",
     "health": "Sağlık",
@@ -57,7 +58,7 @@
   "byDataSource": {
     "heading": "Veri kaynağı odaklı görünüm",
     "empty": "Bu QRadar envanterinde kuraldan log source'a bağımlılık bilgisi yok.",
-    "label": "Veri kaynağına göre kapsam",
+    "label": "Veri kaynağına göre coverage",
     "dataSource": "Veri kaynağı",
     "kind": "Tür",
     "rules": "Kurallar",

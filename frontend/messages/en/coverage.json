@@ -2,6 +2,7 @@
   "title": "Detection Coverage",
   "loadingWhat": "detection coverage",
   "errorWhat": "Detection coverage",
+  "loadNoun": "detection coverage",
   "description": "MITRE ATT&CK technique coverage, derived from mapped rules and their observed health. Coverage is never inferred from a rule merely existing.",
   "status": {
     "COVERED": "COVERED",
