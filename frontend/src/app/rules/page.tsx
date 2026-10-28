@@ -16,7 +16,8 @@ import {
 } from "@/lib/health";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { enumLabel } from "@/i18n/enumLabels";
-import { asTextTranslator } from "@/i18n/textTranslator";
+import { renderBackendMessage } from "@/i18n/backendMessage";
+import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
 import { formatCount } from "@/lib/format";
 import { withRouteMessages } from "@/i18n/RouteMessages";
@@ -27,12 +28,24 @@ import "./rules.css";
 const PAGE_SIZE = 25;
 
 /** The sentence under a rule name: why the verdict is not HEALTHY. Null shows nothing. */
-function rowReason(r: RuleSummary, fallback: string): string | null {
+function rowReason(
+  r: RuleSummary,
+  fallback: string,
+  locale: Locale,
+  say: TextTranslator,
+): string | null {
   // A healthy rule needs no explanation, and a rule never evaluated has no verdict to explain.
   if (r.health_status == null || r.health_status === "HEALTHY" || r.health_status === "UNKNOWN") {
     return null;
   }
-  return r.health_reason?.trim() || fallback;
+  const text = r.health_reason?.trim();
+  if (!text) return fallback;
+  // The reader falls back to the API text when the code is absent or unknown.
+  return renderBackendMessage(
+    { text, code: r.health_reason_code, params: r.health_reason_params },
+    locale,
+    say,
+  );
 }
 
 export async function generateMetadata() {
@@ -163,7 +176,7 @@ async function RulesPage({
             </thead>
             <tbody>
               {items.map((r) => {
-                const reason = rowReason(r, t("noReason"));
+                const reason = rowReason(r, t("noReason"), locale, say);
                 return (
                 <tr key={r.id}>
                   <td className="cell-rule-name">

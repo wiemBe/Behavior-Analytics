@@ -30,6 +30,18 @@ SORTABLE = {
 }
 
 
+@dataclass(frozen=True)
+class HealthReason:
+    """The reason of one snapshot: its English text and the `{code, params}` it came from.
+
+    Both come from the same row, so a code is never paired with another verdict's text.
+    `message` is NULL on a snapshot written before 0036.
+    """
+
+    text: str | None
+    message: dict[str, object] | None
+
+
 @dataclass
 class RuleFilters:
     instance_id: uuid.UUID | None = None
@@ -97,12 +109,13 @@ class RuleRepository:
 
     async def health_reasons(
         self, rules: Sequence[AnalyticsRule]
-    ) -> dict[uuid.UUID, str | None]:
+    ) -> dict[uuid.UUID, HealthReason]:
         """The reason of each rule's snapshot at its own `health_evaluated_at`.
 
         One statement for the whole page, whatever its size. A rule whose snapshot is
         absent (aged out by retention, or never written) is simply not in the result, so
-        a reason is never borrowed from an older or newer verdict.
+        a reason is never borrowed from an older or newer verdict. The message code and
+        params are read in the same statement, from the same row as the text.
         """
         keys = [
             (r.id, r.health_evaluated_at) for r in rules if r.health_evaluated_at is not None
@@ -110,11 +123,13 @@ class RuleRepository:
         if not keys:
             return {}
         rows = await self.session.execute(
-            select(RuleHealthSnapshot.rule_id, RuleHealthSnapshot.reason).where(
-                tuple_(RuleHealthSnapshot.rule_id, RuleHealthSnapshot.evaluated_at).in_(keys)
-            )
+            select(
+                RuleHealthSnapshot.rule_id,
+                RuleHealthSnapshot.reason,
+                RuleHealthSnapshot.reason_i18n,
+            ).where(tuple_(RuleHealthSnapshot.rule_id, RuleHealthSnapshot.evaluated_at).in_(keys))
         )
-        return {row.rule_id: row.reason for row in rows}
+        return {row.rule_id: HealthReason(row.reason, row.reason_i18n) for row in rows}
 
     async def get(self, rule_id: uuid.UUID) -> AnalyticsRule | None:
         return await self.session.scalar(

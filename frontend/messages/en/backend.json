@@ -118,6 +118,49 @@
     },
     "name_exists": "a property watch named ''{name}'' already exists"
   },
+  "rule_health": {
+    "age_unknown": "The rule''s age is unknown, so inactivity cannot be assessed.",
+    "dependency": {
+      "disabled": "{label} is disabled",
+      "not_delivering": "{label} is not delivering events",
+      "not_observed": "{label} has not been observed"
+    },
+    "dependency_degraded": "The rule cannot fire reliably: {dependencies}. Its silence is not evidence about the rule itself.",
+    "dependency_unobserved": "A dependency has not been observed, so the rule cannot be judged: {dependencies}.",
+    "disabled": "The rule is disabled in QRadar, so it cannot produce detections.",
+    "grace": "The rule is {age_days} days old, inside the {grace_days}-day grace period.",
+    "healthy": {
+      "direct": "The rule fired {count} times in the evaluation window with healthy dependencies.",
+      "inferred": "At least {count} offense-contributing firings were observed in the evaluation window with healthy dependencies.",
+      "lower_bound": "At least {count} matching events were measured in the evaluation window with healthy dependencies."
+    },
+    "inactive": "The rule last fired {quiet_days} days ago, beyond the {inactivity_days}-day inactivity window.",
+    "incomplete": {
+      "cause": {
+        "failed_many": "{count} windows failed to collect",
+        "failed_many_class": "{count} windows failed to collect (latest error class: {error_class})",
+        "failed_one": "1 window failed to collect",
+        "failed_one_class": "1 window failed to collect (latest error class: {error_class})",
+        "skipped_many": "{count} windows were skipped beyond the catch-up horizon and never searched",
+        "skipped_one": "1 window was skipped beyond the catch-up horizon and never searched"
+      },
+      "detail_many": "Measured rule-match coverage of the evaluation window is incomplete ({complete} of {expected} windows are COMPLETE): {causes}. Affected windows: {first_start} to {last_start}. The absence of measured matches is not evidence that the rule has never fired. The evaluation window stops holding the last affected window at {until}.",
+      "detail_one": "Measured rule-match coverage of the evaluation window is incomplete ({complete} of {expected} windows are COMPLETE): {causes}. Affected window: {first_start}. The absence of measured matches is not evidence that the rule has never fired. The evaluation window stops holding the last affected window at {until}.",
+      "head": "Measured rule-match coverage of the evaluation window is incomplete ({complete} of {expected} windows are COMPLETE), so the absence of measured matches is not evidence that the rule has never fired.",
+      "no_collection": "No completed rule-metric collection covers the evaluation window, so the absence of observed firings is not evidence that the rule has never fired."
+    },
+    "label": {
+      "building_block": "building block {ref}",
+      "log_source_type": "log source type {ref}",
+      "named": "{name}"
+    },
+    "min_history": "Not enough observed history to classify this rule.",
+    "never_observed": {
+      "measured": "The rule is enabled and its dependencies are healthy, but no matching event was measured in any of the {expected} COMPLETE windows of the evaluation span.",
+      "unmeasured": "The rule is enabled and its dependencies are healthy, but it has never been observed firing in {age_days} days."
+    },
+    "noisy": "The rule fired {per_day} times a day over the last {window_days} days, above the expected {threshold}."
+  },
   "rule_statistics": {
     "cost": {
       "label": "QRadar capacity benchmark: how fast the rule could be evaluated. Lower is costlier to evaluate. This is not a firing rate.",

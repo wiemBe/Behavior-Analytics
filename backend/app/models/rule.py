@@ -188,6 +188,8 @@ class RuleHealthSnapshot(Base):
     logic_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
+    # The code and raw params `reason` was rendered from; rows from before stay NULL.
+    reason_i18n: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 
     # --- evidence ------------------------------------------------------------
     window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -201,6 +203,20 @@ class RuleHealthSnapshot(Base):
     required_log_sources_healthy: Mapped[bool | None] = mapped_column(Boolean)
     missing_dependencies: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
     evidence: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+    @property
+    def reason_code(self) -> str | None:
+        if not isinstance(self.reason_i18n, dict):
+            return None
+        code = self.reason_i18n.get("code")
+        return code if isinstance(code, str) else None
+
+    @property
+    def reason_params(self) -> dict[str, object] | None:
+        if not isinstance(self.reason_i18n, dict):
+            return None
+        params = self.reason_i18n.get("params")
+        return params if isinstance(params, dict) else None
 
 
 class RuleMetric(Base):

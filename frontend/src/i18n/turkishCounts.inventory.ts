@@ -66,6 +66,13 @@ export const PLAIN: Readonly<Record<string, Readonly<Record<string, PlainReason>
   // The server's own constants, words and their sentence: the dashboard limit (20) and the URL cap (8).
   "backend.auth.directory.urls_max": { max: "bounded" },
   "backend.dashboard.owner_limit": { limit: "bounded" },
+  // MSG-3: the backend reader passes every count through formatCount (already a grouped string).
+  "backend.rule_health.healthy.direct": { count: "string" },
+  "backend.rule_health.healthy.inferred": { count: "string" },
+  "backend.rule_health.healthy.lower_bound": { count: "string" },
+  "backend.rule_health.incomplete.cause.failed_many": { count: "string" },
+  "backend.rule_health.incomplete.cause.failed_many_class": { count: "string" },
+  "backend.rule_health.incomplete.cause.skipped_many": { count: "string" },
   "behavior.advanced.cellsNote": { count: "string" },
   "behavior.advanced.clearedFailed.times": { count: "string" },
   "behavior.advanced.mostRecent": { count: "string" },

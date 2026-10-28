@@ -118,6 +118,49 @@
       "not_established": "Kuralın sağlığı henüz belirlenmedi."
     }
   },
+  "rule_health": {
+    "age_unknown": "Kuralın yaşı bilinmediği için hareketsizlik değerlendirilemez.",
+    "dependency": {
+      "disabled": "{label} devre dışı",
+      "not_delivering": "{label} olay göndermiyor",
+      "not_observed": "{label} gözlenmedi"
+    },
+    "dependency_degraded": "Kural güvenilir biçimde tetiklenemez: {dependencies}. Kuralın sessizliği, kuralın kendisi hakkında kanıt değildir.",
+    "dependency_unobserved": "Bir bağımlılık gözlenmediği için kural hakkında karar verilemiyor: {dependencies}.",
+    "disabled": "Kural QRadar'da devre dışı olduğu için tespit üretmez.",
+    "grace": "Kural {age_days} gün yaşında; {grace_days} günlük değerlendirme muafiyeti içinde.",
+    "healthy": {
+      "direct": "Kural, bağımlılıkların sağlıklı olduğu değerlendirme penceresinde {count} kez tetiklendi.",
+      "inferred": "Değerlendirme penceresinde, bağımlılıklar sağlıklıyken offense'e katkı veren en az {count} tetiklenme gözlendi.",
+      "lower_bound": "Değerlendirme penceresinde, bağımlılıklar sağlıklıyken en az {count} eşleşen olay ölçüldü."
+    },
+    "inactive": "Kuralın son tetiklenmesi {quiet_days} gün önceydi; {inactivity_days} günlük hareketsizlik penceresinin dışında.",
+    "incomplete": {
+      "cause": {
+        "failed_many": "{count} pencere toplanamadı",
+        "failed_many_class": "{count} pencere toplanamadı (son hata sınıfı: {error_class})",
+        "failed_one": "1 pencere toplanamadı",
+        "failed_one_class": "1 pencere toplanamadı (son hata sınıfı: {error_class})",
+        "skipped_many": "{count} pencere, yakalama ufkunun ötesinde bırakıldığı için hiç aranmadı",
+        "skipped_one": "1 pencere, yakalama ufkunun ötesinde bırakıldığı için hiç aranmadı"
+      },
+      "detail_many": "Değerlendirme penceresinin ölçülen kural eşleşmesi coverage'ı eksiksiz değil ({complete} / {expected} pencere eksiksiz): {causes}. Etkilenen pencereler: {first_start} ile {last_start} arasında. Ölçülen eşleşmelerin yokluğu, kuralın hiç tetiklenmediğinin kanıtı değildir. Değerlendirme penceresi, etkilenen son pencereyi {until} tarihine kadar tutuyor.",
+      "detail_one": "Değerlendirme penceresinin ölçülen kural eşleşmesi coverage'ı eksiksiz değil ({complete} / {expected} pencere eksiksiz): {causes}. Etkilenen pencere: {first_start}. Ölçülen eşleşmelerin yokluğu, kuralın hiç tetiklenmediğinin kanıtı değildir. Değerlendirme penceresi, etkilenen son pencereyi {until} tarihine kadar tutuyor.",
+      "head": "Değerlendirme penceresinin ölçülen kural eşleşmesi coverage'ı eksiksiz değil ({complete} / {expected} pencere eksiksiz); bu yüzden ölçülen eşleşmelerin yokluğu, kuralın hiç tetiklenmediğinin kanıtı değildir.",
+      "no_collection": "Değerlendirme penceresini kapsayan tamamlanmış bir kural metriği toplaması yok; bu yüzden gözlenen tetiklenmelerin yokluğu, kuralın hiç tetiklenmediğinin kanıtı değildir."
+    },
+    "label": {
+      "building_block": "yapı taşı {ref}",
+      "log_source_type": "log source türü {ref}",
+      "named": "{name}"
+    },
+    "min_history": "Bu kuralı sınıflandırmak için yeterli gözlenmiş geçmiş yok.",
+    "never_observed": {
+      "measured": "Kural etkin ve bağımlılıkları sağlıklı; ancak değerlendirme aralığındaki {expected} eksiksiz pencerenin hiçbirinde eşleşen olay ölçülmedi.",
+      "unmeasured": "Kural etkin ve bağımlılıkları sağlıklı; ancak {age_days} gündür tetiklendiği hiç gözlenmedi."
+    },
+    "noisy": "Kural günde {per_day} kez tetiklendi (son {window_days} gün); bu, beklenen {threshold} değerinin üzerinde."
+  },
   "rule_statistics": {
     "window": {
       "none": "Bu instance için hiçbir kural eşleşmesi penceresi toplanmadı: toplama devre dışı ya da henüz çalışmadı; bu yüzden hiçbir şey ölçülmüyor.",

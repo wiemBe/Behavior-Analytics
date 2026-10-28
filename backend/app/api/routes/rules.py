@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,9 +24,10 @@ from app.core.config import Settings
 from app.i18n.refusal import permission_refusal
 from app.models.enums import RuleHealthStatus
 from app.models.instance import QRadarInstance
-from app.models.rule import AnalyticsRule, RuleCapacitySample
+from app.models.rule import AnalyticsRule, RuleCapacitySample, RuleHealthSnapshot
 from app.repositories.audit import record_audit
-from app.repositories.rule import SORTABLE, RuleFilters, RuleRepository
+from app.repositories.rule import SORTABLE, HealthReason, RuleFilters, RuleRepository
+from app.schemas.messages import MessageParamValue, MessageValue
 from app.schemas.rule import (
     RuleDetail,
     RuleHealthSnapshotOut,
@@ -43,7 +45,7 @@ from app.security.rbac import (
     Principal,
     require_permission,
 )
-from app.security.sanitizer import sanitize_text
+from app.security.sanitizer import sanitize_mapping, sanitize_text
 from app.services.rule_statistics import RuleStatisticsService
 
 router = APIRouter(prefix="/rules", tags=["rules"])
@@ -68,14 +70,64 @@ async def _resolve_instance(
     return await session.scalar(select(QRadarInstance.id).limit(1))
 
 
-def _with_reason[T: RuleSummary](view: T, reason: str | None) -> T:
+def _coded_reason(
+    message: object,
+) -> tuple[str | None, dict[str, MessageParamValue] | None]:
+    """`(code, params)` of a stored `reason_i18n` value, sanitised and validated.
+
+    The params can carry a QRadar name (a dependency's), so every string leaf goes through
+    the same sanitiser as the reason text, the nested references included; the sanitised
+    value is then validated into the wire models. Anything malformed fails closed to None:
+    a code is never paired with params it cannot declare, and never with another row's text.
+    """
+    if not isinstance(message, dict) or not isinstance(message.get("code"), str):
+        return None, None
+    raw = message.get("params")
+    if not isinstance(raw, dict):
+        return None, None
+    try:
+        params = MessageValue.model_validate(
+            {"code": message["code"], "params": sanitize_mapping(raw)}
+        ).params
+    except ValidationError:
+        return None, None
+    return str(message["code"]), params
+
+
+def _with_reason[T: RuleSummary](view: T, reason: HealthReason | None) -> T:
     """`view` with the reason read for it; the ORM row has no such column.
 
     `model_copy` skips the schema's validators, so the text is sanitised here, as every
-    other string on these schemas is.
+    other string on these schemas is; the coded fields go through `_coded_reason`.
     """
-    clean = sanitize_text(reason) if reason is not None else None
-    return view.model_copy(update={"health_reason": clean})
+    if reason is None or reason.text is None:
+        return view.model_copy(
+            update={
+                "health_reason": None,
+                "health_reason_code": None,
+                "health_reason_params": None,
+            }
+        )
+    code, params = _coded_reason(reason.message)
+    return view.model_copy(
+        update={
+            "health_reason": sanitize_text(reason.text),
+            "health_reason_code": code,
+            "health_reason_params": params,
+        }
+    )
+
+
+def _history_row(row: RuleHealthSnapshot) -> RuleHealthSnapshotOut:
+    """One history row, with the coded reason beside its text.
+
+    `model_validate` sanitises the schema's strings (`reason` included) but a dict is opaque
+    to its validator, so the coded fields go through `_coded_reason` instead of the model's
+    plain properties.
+    """
+    view = RuleHealthSnapshotOut.model_validate(row)
+    code, params = _coded_reason(row.reason_i18n)
+    return view.model_copy(update={"reason_code": code, "reason_params": params})
 
 
 async def _detail(repo: RuleRepository, rule: AnalyticsRule) -> RuleDetail:
@@ -243,7 +295,7 @@ async def rule_health_history(
     rows = await repo.health_history(
         rule_id, limit=max(1, min(limit, settings.api_max_page_size)), since=since
     )
-    return [RuleHealthSnapshotOut.model_validate(r) for r in rows]
+    return [_history_row(r) for r in rows]
 
 
 @router.get("/{rule_id}/capacity-history", response_model=list[CapacitySampleOut])

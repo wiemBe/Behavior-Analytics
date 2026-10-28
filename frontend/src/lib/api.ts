@@ -906,6 +906,10 @@ export interface RuleSummary {
   health_evaluated_at: string | null;
   // The reason stored with the verdict above; null when that evaluation recorded none.
   health_reason: string | null;
+  // The code and raw values `health_reason` was rendered from; null on a snapshot written
+  // before they were stored.
+  health_reason_code?: string | null;
+  health_reason_params?: Record<string, unknown> | null;
   last_fired_at: string | null;
   offense_contribution_count: number;
   event_contribution_count: number;
@@ -942,6 +946,8 @@ export interface RuleHealthSnapshot {
   logic_version: number;
   confidence: number;
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   window_start: string | null;
   window_end: string | null;
   last_triggered_at: string | null;

@@ -830,6 +830,598 @@
     },
     "template": "a property watch named '{name}' already exists"
   },
+  "rule_health.age_unknown": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The rule's age is unknown, so inactivity cannot be assessed.",
+    "sample_english_params": {},
+    "template": "The rule's age is unknown, so inactivity cannot be assessed."
+  },
+  "rule_health.dependency.disabled": {
+    "params": {
+      "label": {
+        "kind": "ref",
+        "ref_codes": [
+          "rule_health.label.named",
+          "rule_health.label.building_block",
+          "rule_health.label.log_source_type"
+        ]
+      }
+    },
+    "sample": {
+      "label": {
+        "code": "rule_health.label.named",
+        "params": {
+          "name": "Failed Logins BB"
+        }
+      }
+    },
+    "sample_english": "Failed Logins BB is disabled",
+    "sample_english_params": {
+      "label": "Failed Logins BB"
+    },
+    "template": "{label} is disabled"
+  },
+  "rule_health.dependency.not_delivering": {
+    "params": {
+      "label": {
+        "kind": "ref",
+        "ref_codes": [
+          "rule_health.label.named",
+          "rule_health.label.building_block",
+          "rule_health.label.log_source_type"
+        ]
+      }
+    },
+    "sample": {
+      "label": {
+        "code": "rule_health.label.log_source_type",
+        "params": {
+          "ref": "12"
+        }
+      }
+    },
+    "sample_english": "log source type 12 is not delivering events",
+    "sample_english_params": {
+      "label": "log source type 12"
+    },
+    "template": "{label} is not delivering events"
+  },
+  "rule_health.dependency.not_observed": {
+    "params": {
+      "label": {
+        "kind": "ref",
+        "ref_codes": [
+          "rule_health.label.named",
+          "rule_health.label.building_block",
+          "rule_health.label.log_source_type"
+        ]
+      }
+    },
+    "sample": {
+      "label": {
+        "code": "rule_health.label.building_block",
+        "params": {
+          "ref": "bb-42"
+        }
+      }
+    },
+    "sample_english": "building block bb-42 has not been observed",
+    "sample_english_params": {
+      "label": "building block bb-42"
+    },
+    "template": "{label} has not been observed"
+  },
+  "rule_health.dependency_degraded": {
+    "params": {
+      "dependencies": {
+        "kind": "list",
+        "style": "semicolon"
+      }
+    },
+    "sample": {
+      "dependencies": {
+        "items": [
+          {
+            "code": "rule_health.dependency.disabled",
+            "params": {
+              "label": {
+                "code": "rule_health.label.named",
+                "params": {
+                  "name": "Failed Logins BB"
+                }
+              }
+            }
+          },
+          {
+            "code": "rule_health.dependency.not_delivering",
+            "params": {
+              "label": {
+                "code": "rule_health.label.log_source_type",
+                "params": {
+                  "ref": "12"
+                }
+              }
+            }
+          }
+        ],
+        "kind": "list"
+      }
+    },
+    "sample_english": "The rule cannot fire reliably: Failed Logins BB is disabled; log source type 12 is not delivering events. Its silence is not evidence about the rule itself.",
+    "sample_english_params": {
+      "dependencies": "Failed Logins BB is disabled; log source type 12 is not delivering events"
+    },
+    "template": "The rule cannot fire reliably: {dependencies}. Its silence is not evidence about the rule itself."
+  },
+  "rule_health.dependency_unobserved": {
+    "params": {
+      "dependencies": {
+        "kind": "list",
+        "style": "semicolon"
+      }
+    },
+    "sample": {
+      "dependencies": {
+        "items": [
+          {
+            "code": "rule_health.dependency.not_observed",
+            "params": {
+              "label": {
+                "code": "rule_health.label.building_block",
+                "params": {
+                  "ref": "bb-42"
+                }
+              }
+            }
+          }
+        ],
+        "kind": "list"
+      }
+    },
+    "sample_english": "A dependency has not been observed, so the rule cannot be judged: building block bb-42 has not been observed.",
+    "sample_english_params": {
+      "dependencies": "building block bb-42 has not been observed"
+    },
+    "template": "A dependency has not been observed, so the rule cannot be judged: {dependencies}."
+  },
+  "rule_health.disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The rule is disabled in QRadar, so it cannot produce detections.",
+    "sample_english_params": {},
+    "template": "The rule is disabled in QRadar, so it cannot produce detections."
+  },
+  "rule_health.grace": {
+    "params": {
+      "age_days": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "grace_days": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "age_days": 2.5,
+      "grace_days": 7
+    },
+    "sample_english": "The rule is 2.5 days old, inside the 7-day grace period.",
+    "sample_english_params": {
+      "age_days": "2.5",
+      "grace_days": "7"
+    },
+    "template": "The rule is {age_days} days old, inside the {grace_days}-day grace period."
+  },
+  "rule_health.healthy.direct": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 87
+    },
+    "sample_english": "The rule fired 87 times in the evaluation window with healthy dependencies.",
+    "sample_english_params": {
+      "count": "87"
+    },
+    "template": "The rule fired {count} times in the evaluation window with healthy dependencies."
+  },
+  "rule_health.healthy.inferred": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 3
+    },
+    "sample_english": "At least 3 offense-contributing firings were observed in the evaluation window with healthy dependencies.",
+    "sample_english_params": {
+      "count": "3"
+    },
+    "template": "At least {count} offense-contributing firings were observed in the evaluation window with healthy dependencies."
+  },
+  "rule_health.healthy.lower_bound": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 12
+    },
+    "sample_english": "At least 12 matching events were measured in the evaluation window with healthy dependencies.",
+    "sample_english_params": {
+      "count": "12"
+    },
+    "template": "At least {count} matching events were measured in the evaluation window with healthy dependencies."
+  },
+  "rule_health.inactive": {
+    "params": {
+      "inactivity_days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "quiet_days": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "inactivity_days": 14,
+      "quiet_days": 20.0
+    },
+    "sample_english": "The rule last fired 20 days ago, beyond the 14-day inactivity window.",
+    "sample_english_params": {
+      "inactivity_days": "14",
+      "quiet_days": "20"
+    },
+    "template": "The rule last fired {quiet_days} days ago, beyond the {inactivity_days}-day inactivity window."
+  },
+  "rule_health.incomplete.cause.failed_many": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 3
+    },
+    "sample_english": "3 windows failed to collect",
+    "sample_english_params": {
+      "count": "3"
+    },
+    "template": "{count} windows failed to collect"
+  },
+  "rule_health.incomplete.cause.failed_many_class": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "error_class": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "count": 3,
+      "error_class": "TimeoutError"
+    },
+    "sample_english": "3 windows failed to collect (latest error class: TimeoutError)",
+    "sample_english_params": {
+      "count": "3",
+      "error_class": "TimeoutError"
+    },
+    "template": "{count} windows failed to collect (latest error class: {error_class})"
+  },
+  "rule_health.incomplete.cause.failed_one": {
+    "params": {},
+    "sample": {},
+    "sample_english": "1 window failed to collect",
+    "sample_english_params": {},
+    "template": "1 window failed to collect"
+  },
+  "rule_health.incomplete.cause.failed_one_class": {
+    "params": {
+      "error_class": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "error_class": "TimeoutError"
+    },
+    "sample_english": "1 window failed to collect (latest error class: TimeoutError)",
+    "sample_english_params": {
+      "error_class": "TimeoutError"
+    },
+    "template": "1 window failed to collect (latest error class: {error_class})"
+  },
+  "rule_health.incomplete.cause.skipped_many": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 4
+    },
+    "sample_english": "4 windows were skipped beyond the catch-up horizon and never searched",
+    "sample_english_params": {
+      "count": "4"
+    },
+    "template": "{count} windows were skipped beyond the catch-up horizon and never searched"
+  },
+  "rule_health.incomplete.cause.skipped_one": {
+    "params": {},
+    "sample": {},
+    "sample_english": "1 window was skipped beyond the catch-up horizon and never searched",
+    "sample_english_params": {},
+    "template": "1 window was skipped beyond the catch-up horizon and never searched"
+  },
+  "rule_health.incomplete.detail_many": {
+    "params": {
+      "causes": {
+        "kind": "list",
+        "style": "semicolon"
+      },
+      "complete": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "first_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "last_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "until": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "causes": {
+        "items": [
+          {
+            "code": "rule_health.incomplete.cause.failed_many_class",
+            "params": {
+              "count": 3,
+              "error_class": "TimeoutError"
+            }
+          },
+          {
+            "code": "rule_health.incomplete.cause.skipped_one",
+            "params": {}
+          }
+        ],
+        "kind": "list"
+      },
+      "complete": 20,
+      "expected": 24,
+      "first_start": "2026-10-27T09:00:00+00:00",
+      "last_start": "2026-10-27T12:00:00+00:00",
+      "until": "2026-10-28T12:00:00+00:00"
+    },
+    "sample_english": "Measured rule-match coverage of the evaluation window is incomplete (20 of 24 windows are COMPLETE): 3 windows failed to collect (latest error class: TimeoutError); 1 window was skipped beyond the catch-up horizon and never searched. Affected windows: 2026-10-27 09:00 UTC to 2026-10-27 12:00 UTC. The absence of measured matches is not evidence that the rule has never fired. The evaluation window stops holding the last affected window at 2026-10-28 12:00 UTC.",
+    "sample_english_params": {
+      "causes": "3 windows failed to collect (latest error class: TimeoutError); 1 window was skipped beyond the catch-up horizon and never searched",
+      "complete": "20",
+      "expected": "24",
+      "first_start": "2026-10-27 09:00 UTC",
+      "last_start": "2026-10-27 12:00 UTC",
+      "until": "2026-10-28 12:00 UTC"
+    },
+    "template": "Measured rule-match coverage of the evaluation window is incomplete ({complete} of {expected} windows are COMPLETE): {causes}. Affected windows: {first_start} to {last_start}. The absence of measured matches is not evidence that the rule has never fired. The evaluation window stops holding the last affected window at {until}."
+  },
+  "rule_health.incomplete.detail_one": {
+    "params": {
+      "causes": {
+        "kind": "list",
+        "style": "semicolon"
+      },
+      "complete": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "first_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "until": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "causes": {
+        "items": [
+          {
+            "code": "rule_health.incomplete.cause.failed_one",
+            "params": {}
+          }
+        ],
+        "kind": "list"
+      },
+      "complete": 23,
+      "expected": 24,
+      "first_start": "2026-10-27T09:00:00+00:00",
+      "until": "2026-10-28T09:00:00+00:00"
+    },
+    "sample_english": "Measured rule-match coverage of the evaluation window is incomplete (23 of 24 windows are COMPLETE): 1 window failed to collect. Affected window: 2026-10-27 09:00 UTC. The absence of measured matches is not evidence that the rule has never fired. The evaluation window stops holding the last affected window at 2026-10-28 09:00 UTC.",
+    "sample_english_params": {
+      "causes": "1 window failed to collect",
+      "complete": "23",
+      "expected": "24",
+      "first_start": "2026-10-27 09:00 UTC",
+      "until": "2026-10-28 09:00 UTC"
+    },
+    "template": "Measured rule-match coverage of the evaluation window is incomplete ({complete} of {expected} windows are COMPLETE): {causes}. Affected window: {first_start}. The absence of measured matches is not evidence that the rule has never fired. The evaluation window stops holding the last affected window at {until}."
+  },
+  "rule_health.incomplete.head": {
+    "params": {
+      "complete": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "complete": 22,
+      "expected": 24
+    },
+    "sample_english": "Measured rule-match coverage of the evaluation window is incomplete (22 of 24 windows are COMPLETE), so the absence of measured matches is not evidence that the rule has never fired.",
+    "sample_english_params": {
+      "complete": "22",
+      "expected": "24"
+    },
+    "template": "Measured rule-match coverage of the evaluation window is incomplete ({complete} of {expected} windows are COMPLETE), so the absence of measured matches is not evidence that the rule has never fired."
+  },
+  "rule_health.incomplete.no_collection": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No completed rule-metric collection covers the evaluation window, so the absence of observed firings is not evidence that the rule has never fired.",
+    "sample_english_params": {},
+    "template": "No completed rule-metric collection covers the evaluation window, so the absence of observed firings is not evidence that the rule has never fired."
+  },
+  "rule_health.label.building_block": {
+    "params": {
+      "ref": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "ref": "bb-42"
+    },
+    "sample_english": "building block bb-42",
+    "sample_english_params": {
+      "ref": "bb-42"
+    },
+    "template": "building block {ref}"
+  },
+  "rule_health.label.log_source_type": {
+    "params": {
+      "ref": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "ref": "12"
+    },
+    "sample_english": "log source type 12",
+    "sample_english_params": {
+      "ref": "12"
+    },
+    "template": "log source type {ref}"
+  },
+  "rule_health.label.named": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "Failed Logins BB"
+    },
+    "sample_english": "Failed Logins BB",
+    "sample_english_params": {
+      "name": "Failed Logins BB"
+    },
+    "template": "{name}"
+  },
+  "rule_health.min_history": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Not enough observed history to classify this rule.",
+    "sample_english_params": {},
+    "template": "Not enough observed history to classify this rule."
+  },
+  "rule_health.never_observed.measured": {
+    "params": {
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "expected": 24
+    },
+    "sample_english": "The rule is enabled and its dependencies are healthy, but no matching event was measured in any of the 24 COMPLETE windows of the evaluation span.",
+    "sample_english_params": {
+      "expected": "24"
+    },
+    "template": "The rule is enabled and its dependencies are healthy, but no matching event was measured in any of the {expected} COMPLETE windows of the evaluation span."
+  },
+  "rule_health.never_observed.unmeasured": {
+    "params": {
+      "age_days": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "age_days": 45.0
+    },
+    "sample_english": "The rule is enabled and its dependencies are healthy, but it has never been observed firing in 45 days.",
+    "sample_english_params": {
+      "age_days": "45"
+    },
+    "template": "The rule is enabled and its dependencies are healthy, but it has never been observed firing in {age_days} days."
+  },
+  "rule_health.noisy": {
+    "params": {
+      "per_day": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "window_days": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "per_day": 812.4,
+      "threshold": 500.0,
+      "window_days": 30.0
+    },
+    "sample_english": "The rule fired 812.4 times a day over the last 30 days, above the expected 500.0.",
+    "sample_english_params": {
+      "per_day": "812.4",
+      "threshold": "500.0",
+      "window_days": "30"
+    },
+    "template": "The rule fired {per_day} times a day over the last {window_days} days, above the expected {threshold}."
+  },
   "rule_statistics.cost.label": {
     "params": {},
     "sample": {},

@@ -15,6 +15,7 @@ import { formatShare } from "@/lib/format";
 import { healthMeaning, healthTone, isUnestablished } from "@/lib/health";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { enumLabel } from "@/i18n/enumLabels";
+import { renderBackendMessage } from "@/i18n/backendMessage";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
 import { formatCount } from "@/lib/format";
@@ -77,8 +78,17 @@ async function RuleDetailPage({
 
   const r = rule;
   // The reason stored with the verdict on the card above, not the newest history row: the two
-  // can differ, and a reason must belong to the verdict it sits beside.
-  const reason = r.health_reason?.trim() || null;
+  // can differ, and a reason must belong to the verdict it sits beside. The reader falls back
+  // to the API text when the code is absent or unknown (a snapshot written before 0036).
+  const reasonText = r.health_reason?.trim() || null;
+  const reason =
+    reasonText === null
+      ? null
+      : renderBackendMessage(
+          { text: reasonText, code: r.health_reason_code, params: r.health_reason_params },
+          locale,
+          say,
+        );
   const buildingBlocks = r.dependencies.filter((d) => d.kind === "BUILDING_BLOCK");
   const telemetry = r.dependencies.filter((d) => d.kind !== "BUILDING_BLOCK");
   const dependencyLabel = (group: "mappingSources" | "dependencyKinds", value: string) =>
@@ -260,7 +270,15 @@ async function RuleDetailPage({
                 <td className="num">{formatShare(h.confidence, locale)}</td>
                 <td className="num">{formatCount(h.trigger_count, locale)}</td>
                 <td className="num">{formatCount(h.offense_contribution_count, locale)}</td>
-                <td className="muted cell-reason">{h.reason ?? "—"}</td>
+                <td className="muted cell-reason">
+                  {h.reason
+                    ? renderBackendMessage(
+                        { text: h.reason, code: h.reason_code, params: h.reason_params },
+                        locale,
+                        say,
+                      )
+                    : "—"}
+                </td>
               </tr>
             ))}
           </tbody>

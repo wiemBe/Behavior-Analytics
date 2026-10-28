@@ -8,9 +8,11 @@ Formatting styles are deliberately closed. Counts accept ``grouped`` (the
 default) or ``plain`` (no grouping; it shapes the backend's English render only, the
 frontend groups every count in the reader's locale); numbers accept ``general`` (the
 default), ``grouped`` or ``fixed``; points accept ``signed`` (the default) or
-``unsigned``; lists accept ``comma`` (the default) or ``and``. Percent precision,
-fixed-number precision, and point precision are declared separately. Duration, timestamp, enum, ref,
-and text params have one spelling and therefore no alternate style.
+``unsigned``; lists accept ``comma`` (the default), ``and`` or ``semicolon`` (``"; "``, for a
+list of clauses that carry commas); timestamps accept the default (date, second, ``UTC``) or
+``minute`` (date, minute, ``UTC``). Percent precision, fixed-number precision, and point precision
+are declared separately. Duration, enum, ref, and text params have one spelling and therefore no
+alternate style.
 """
 
 from __future__ import annotations
@@ -113,6 +115,12 @@ _PW_ACTIONS = (
     "propertywatch.action.change_scope",
     "propertywatch.action.unpin",
     "propertywatch.action.delete",
+)
+
+_RH_LABELS = (
+    "rule_health.label.named",
+    "rule_health.label.building_block",
+    "rule_health.label.log_source_type",
 )
 
 REGISTRY: tuple[MessageSpec, ...] = (
@@ -485,6 +493,274 @@ REGISTRY: tuple[MessageSpec, ...] = (
         sample={},
     ),
     # --- end MSG-2 ---------------------------------------------------------------------------
+    # --- MSG-3: rule-health verdict reasons (Family 8) -- keep contiguous ---------------------
+    _fixed(
+        "rule_health.disabled",
+        "The rule is disabled in QRadar, so it cannot produce detections.",
+    ),
+    _fixed(
+        "rule_health.age_unknown",
+        "The rule's age is unknown, so inactivity cannot be assessed.",
+    ),
+    MessageSpec(
+        code="rule_health.grace",
+        template="The rule is {age_days} days old, inside the {grace_days}-day grace period.",
+        params={
+            "age_days": ParamSpec(ParamKind.NUMBER, style="fixed", precision=1),
+            "grace_days": ParamSpec(ParamKind.COUNT, style="plain"),
+        },
+        sample={"age_days": 2.5, "grace_days": 7},
+    ),
+    _fixed("rule_health.min_history", "Not enough observed history to classify this rule."),
+    # A dependency is named by its QRadar name, or, when it has none, by a coded fallback.
+    _text("rule_health.label.named", "{name}", name="Failed Logins BB"),
+    _text("rule_health.label.building_block", "building block {ref}", ref="bb-42"),
+    _text("rule_health.label.log_source_type", "log source type {ref}", ref="12"),
+    MessageSpec(
+        code="rule_health.dependency.disabled",
+        template="{label} is disabled",
+        params={"label": ParamSpec(ParamKind.REF, ref_codes=_RH_LABELS)},
+        sample={"label": MessageRef("rule_health.label.named", {"name": "Failed Logins BB"})},
+    ),
+    MessageSpec(
+        code="rule_health.dependency.not_delivering",
+        template="{label} is not delivering events",
+        params={"label": ParamSpec(ParamKind.REF, ref_codes=_RH_LABELS)},
+        sample={
+            "label": MessageRef("rule_health.label.log_source_type", {"ref": "12"}),
+        },
+    ),
+    MessageSpec(
+        code="rule_health.dependency.not_observed",
+        template="{label} has not been observed",
+        params={"label": ParamSpec(ParamKind.REF, ref_codes=_RH_LABELS)},
+        sample={
+            "label": MessageRef("rule_health.label.building_block", {"ref": "bb-42"}),
+        },
+    ),
+    MessageSpec(
+        code="rule_health.dependency_degraded",
+        template=(
+            "The rule cannot fire reliably: {dependencies}. "
+            "Its silence is not evidence about the rule itself."
+        ),
+        params={"dependencies": ParamSpec(ParamKind.LIST, style="semicolon")},
+        sample={
+            "dependencies": [
+                MessageRef(
+                    "rule_health.dependency.disabled",
+                    {"label": MessageRef("rule_health.label.named", {"name": "Failed Logins BB"})},
+                ),
+                MessageRef(
+                    "rule_health.dependency.not_delivering",
+                    {
+                        "label": MessageRef(
+                            "rule_health.label.log_source_type", {"ref": "12"}
+                        )
+                    },
+                ),
+            ]
+        },
+    ),
+    MessageSpec(
+        code="rule_health.dependency_unobserved",
+        template=(
+            "A dependency has not been observed, so the rule cannot be judged: {dependencies}."
+        ),
+        params={"dependencies": ParamSpec(ParamKind.LIST, style="semicolon")},
+        sample={
+            "dependencies": [
+                MessageRef(
+                    "rule_health.dependency.not_observed",
+                    {"label": MessageRef("rule_health.label.building_block", {"ref": "bb-42"})},
+                ),
+            ]
+        },
+    ),
+    MessageSpec(
+        code="rule_health.noisy",
+        template=(
+            "The rule fired {per_day} times a day over the last {window_days} days, "
+            "above the expected {threshold}."
+        ),
+        params={
+            "per_day": ParamSpec(ParamKind.NUMBER, style="fixed", precision=1),
+            "window_days": ParamSpec(ParamKind.NUMBER, style="fixed", precision=0),
+            "threshold": ParamSpec(ParamKind.NUMBER, style="fixed", precision=1),
+        },
+        sample={"per_day": 812.4, "window_days": 30.0, "threshold": 500.0},
+    ),
+    MessageSpec(
+        code="rule_health.never_observed.measured",
+        template=(
+            "The rule is enabled and its dependencies are healthy, but no matching event was "
+            "measured in any of the {expected} COMPLETE windows of the evaluation span."
+        ),
+        params={"expected": ParamSpec(ParamKind.COUNT, style="plain")},
+        sample={"expected": 24},
+    ),
+    MessageSpec(
+        code="rule_health.never_observed.unmeasured",
+        template=(
+            "The rule is enabled and its dependencies are healthy, but it has never been "
+            "observed firing in {age_days} days."
+        ),
+        params={"age_days": ParamSpec(ParamKind.NUMBER, style="fixed", precision=0)},
+        sample={"age_days": 45.0},
+    ),
+    MessageSpec(
+        code="rule_health.inactive",
+        template=(
+            "The rule last fired {quiet_days} days ago, beyond the "
+            "{inactivity_days}-day inactivity window."
+        ),
+        params={
+            "quiet_days": ParamSpec(ParamKind.NUMBER, style="fixed", precision=0),
+            "inactivity_days": ParamSpec(ParamKind.COUNT, style="plain"),
+        },
+        sample={"quiet_days": 20.0, "inactivity_days": 14},
+    ),
+    MessageSpec(
+        code="rule_health.healthy.lower_bound",
+        template=(
+            "At least {count} matching events were measured in the evaluation window with "
+            "healthy dependencies."
+        ),
+        params={"count": ParamSpec(ParamKind.COUNT, style="plain")},
+        sample={"count": 12},
+    ),
+    MessageSpec(
+        code="rule_health.healthy.inferred",
+        template=(
+            "At least {count} offense-contributing firings were observed in the evaluation "
+            "window with healthy dependencies."
+        ),
+        params={"count": ParamSpec(ParamKind.COUNT, style="plain")},
+        sample={"count": 3},
+    ),
+    MessageSpec(
+        code="rule_health.healthy.direct",
+        template="The rule fired {count} times in the evaluation window with healthy dependencies.",
+        params={"count": ParamSpec(ParamKind.COUNT, style="plain")},
+        sample={"count": 87},
+    ),
+    # The incomplete-coverage sentence. English decides singular and plural, so every English
+    # variant has its own code: the reader formats a count to a string before the catalog sees
+    # it (no ICU plural is possible), and Turkish does not inflect a noun after a numeral.
+    _fixed(
+        "rule_health.incomplete.no_collection",
+        "No completed rule-metric collection covers the evaluation window, so the absence of "
+        "observed firings is not evidence that the rule has never fired.",
+    ),
+    MessageSpec(
+        code="rule_health.incomplete.head",
+        template=(
+            "Measured rule-match coverage of the evaluation window is incomplete "
+            "({complete} of {expected} windows are COMPLETE), so the absence of measured "
+            "matches is not evidence that the rule has never fired."
+        ),
+        params={
+            "complete": ParamSpec(ParamKind.COUNT, style="plain"),
+            "expected": ParamSpec(ParamKind.COUNT, style="plain"),
+        },
+        sample={"complete": 22, "expected": 24},
+    ),
+    MessageSpec(
+        code="rule_health.incomplete.cause.failed_one",
+        template="1 window failed to collect",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="rule_health.incomplete.cause.failed_many",
+        template="{count} windows failed to collect",
+        params={"count": ParamSpec(ParamKind.COUNT, style="plain")},
+        sample={"count": 3},
+    ),
+    MessageSpec(
+        code="rule_health.incomplete.cause.failed_one_class",
+        template="1 window failed to collect (latest error class: {error_class})",
+        params={"error_class": ParamSpec(ParamKind.TEXT)},
+        sample={"error_class": "TimeoutError"},
+    ),
+    MessageSpec(
+        code="rule_health.incomplete.cause.failed_many_class",
+        template="{count} windows failed to collect (latest error class: {error_class})",
+        params={
+            "count": ParamSpec(ParamKind.COUNT, style="plain"),
+            "error_class": ParamSpec(ParamKind.TEXT),
+        },
+        sample={"count": 3, "error_class": "TimeoutError"},
+    ),
+    MessageSpec(
+        code="rule_health.incomplete.cause.skipped_one",
+        template="1 window was skipped beyond the catch-up horizon and never searched",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="rule_health.incomplete.cause.skipped_many",
+        template="{count} windows were skipped beyond the catch-up horizon and never searched",
+        params={"count": ParamSpec(ParamKind.COUNT, style="plain")},
+        sample={"count": 4},
+    ),
+    MessageSpec(
+        code="rule_health.incomplete.detail_one",
+        template=(
+            "Measured rule-match coverage of the evaluation window is incomplete "
+            "({complete} of {expected} windows are COMPLETE): {causes}. "
+            "Affected window: {first_start}. "
+            "The absence of measured matches is not evidence that the rule has never fired. "
+            "The evaluation window stops holding the last affected window at {until}."
+        ),
+        params={
+            "complete": ParamSpec(ParamKind.COUNT, style="plain"),
+            "expected": ParamSpec(ParamKind.COUNT, style="plain"),
+            "causes": ParamSpec(ParamKind.LIST, style="semicolon"),
+            "first_start": ParamSpec(ParamKind.TIMESTAMP, style="minute"),
+            "until": ParamSpec(ParamKind.TIMESTAMP, style="minute"),
+        },
+        sample={
+            "complete": 23,
+            "expected": 24,
+            "causes": [MessageRef("rule_health.incomplete.cause.failed_one")],
+            "first_start": "2026-10-27T09:00:00+00:00",
+            "until": "2026-10-28T09:00:00+00:00",
+        },
+    ),
+    MessageSpec(
+        code="rule_health.incomplete.detail_many",
+        template=(
+            "Measured rule-match coverage of the evaluation window is incomplete "
+            "({complete} of {expected} windows are COMPLETE): {causes}. "
+            "Affected windows: {first_start} to {last_start}. "
+            "The absence of measured matches is not evidence that the rule has never fired. "
+            "The evaluation window stops holding the last affected window at {until}."
+        ),
+        params={
+            "complete": ParamSpec(ParamKind.COUNT, style="plain"),
+            "expected": ParamSpec(ParamKind.COUNT, style="plain"),
+            "causes": ParamSpec(ParamKind.LIST, style="semicolon"),
+            "first_start": ParamSpec(ParamKind.TIMESTAMP, style="minute"),
+            "last_start": ParamSpec(ParamKind.TIMESTAMP, style="minute"),
+            "until": ParamSpec(ParamKind.TIMESTAMP, style="minute"),
+        },
+        sample={
+            "complete": 20,
+            "expected": 24,
+            "causes": [
+                MessageRef(
+                    "rule_health.incomplete.cause.failed_many_class",
+                    {"count": 3, "error_class": "TimeoutError"},
+                ),
+                MessageRef("rule_health.incomplete.cause.skipped_one"),
+            ],
+            "first_start": "2026-10-27T09:00:00+00:00",
+            "last_start": "2026-10-27T12:00:00+00:00",
+            "until": "2026-10-28T12:00:00+00:00",
+        },
+    ),
+    # --- end MSG-3 ---------------------------------------------------------------------------
 )
 
 
@@ -494,9 +770,9 @@ _STYLES: dict[ParamKind, set[str | None]] = {
     ParamKind.PERCENT: {None},
     ParamKind.POINTS: {None, "signed", "unsigned"},
     ParamKind.DURATION: {None},
-    ParamKind.TIMESTAMP: {None},
+    ParamKind.TIMESTAMP: {None, "minute"},
     ParamKind.ENUM: {None},
-    ParamKind.LIST: {None, "comma", "and"},
+    ParamKind.LIST: {None, "comma", "and", "semicolon"},
     ParamKind.REF: {None},
     ParamKind.TEXT: {None},
 }
@@ -640,7 +916,7 @@ def _duration(value: object, *, name: str) -> str:
     return " ".join(parts)
 
 
-def _timestamp(value: object, *, name: str) -> str:
+def _timestamp(value: object, *, name: str, style: str | None = None) -> str:
     instant: datetime
     if isinstance(value, datetime):
         instant = value
@@ -654,7 +930,7 @@ def _timestamp(value: object, *, name: str) -> str:
     if instant.tzinfo is None:
         raise MessageRenderError(f"{name} must include a timezone")
     instant = instant.astimezone(UTC)
-    return instant.strftime("%Y-%m-%d %H:%M:%S UTC")
+    return instant.strftime("%Y-%m-%d %H:%M UTC" if style == "minute" else "%Y-%m-%d %H:%M:%S UTC")
 
 
 def _format_param(
@@ -688,7 +964,7 @@ def _format_param(
     if spec.kind is ParamKind.DURATION:
         return _duration(value, name=name)
     if spec.kind is ParamKind.TIMESTAMP:
-        return _timestamp(value, name=name)
+        return _timestamp(value, name=name, style=spec.style)
     if spec.kind in (ParamKind.ENUM, ParamKind.TEXT):
         if not isinstance(value, str):
             raise MessageRenderError(f"{name} must be text")
@@ -700,6 +976,8 @@ def _format_param(
             render(item, registry=registry) if isinstance(item, MessageRef) else str(item)
             for item in value
         ]
+        if spec.style == "semicolon":
+            return "; ".join(rendered)
         if spec.style == "and" and len(rendered) > 1:
             return f"{', '.join(rendered[:-1])} and {rendered[-1]}"
         return ", ".join(rendered)
