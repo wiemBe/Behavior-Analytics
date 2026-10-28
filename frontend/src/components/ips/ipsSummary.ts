@@ -6,10 +6,11 @@
 // headline figures in the detector's own unit.
 
 import type { IpsAnomalyDetail } from "@/lib/api";
-
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { formatPercent } from "@/lib/format";
 
-import { detectorSpec, ipsFigures } from "./ipsDetectors";
+import { detectorSpec, ipsFigures, quantityText } from "./ipsDetectors";
+import { ENGLISH_IPS } from "./ipsI18n";
 import { bucketWidth, formatFigure, unitText } from "./ipsFormat";
 import { entityLabel, ipsTypeLabel } from "./ipsLabels";
 
@@ -22,6 +23,7 @@ export interface IpsSummary {
 export function summarizeIpsAnomaly(
   anomaly: IpsAnomalyDetail,
   bucketSeconds: number | null,
+  i18n: BehaviorI18n = ENGLISH_IPS,
 ): IpsSummary {
   const d = anomaly.detection;
   const type = anomaly.anomaly_type;
@@ -29,48 +31,62 @@ export function summarizeIpsAnomaly(
   const f = ipsFigures(anomaly, d);
   const lower = d?.observed_measurement === "LOWER_BOUND";
   const m = lower ? "LOWER_BOUND" : null;
-  const caveat = lower ? "The observed figure is a lower bound: the true value is at least this." : null;
-  const unit = unitText(f.unit, bucketWidth(bucketSeconds));
+  const caveat = lower ? i18n.t("ips.summary.lowerBound") : null;
+  const unit = unitText(f.unit, bucketWidth(bucketSeconds), i18n);
+  const say = (key: string, values: Record<string, string>) => i18n.t(`ips.summary.${key}`, values);
+  const against = (text: string) =>
+    f.expected == null ? say("noExpected", {}) : say("against", { value: text });
 
   // A type this build has no phrasing for: the server's own sentence, or the type
   // as sent. Never a guessed figure and never a Phase A sentence.
-  if (!spec) return { text: anomaly.explanation ?? `Flagged by ${type}.`, caveat };
+  if (!spec) return { text: anomaly.explanation ?? say("flaggedBy", { type }), caveat };
 
-  const observed = formatFigure(f.unit, f.observed, m);
-  const against = (text: string) =>
-    f.expected == null ? ", with no expected value recorded" : `, against an expected ${text}`;
+  const observed = formatFigure(f.unit, f.observed, m, i18n);
 
   if (type === "IPS_NEW_DESTINATION_PORT") {
     return {
-      text:
-        `A destination port with no verified history carried ${observed} ${unit}; none were ` +
-        `expected.`,
+      text: say("newPort", { observed, unit }),
       caveat,
     };
   }
   if (spec.unit === "ports") {
     return {
-      text:
-        `One source IP reached ${observed} distinct destination ports in a bucket` +
-        `${against(formatFigure(f.unit, f.expected))}.`,
+      text: say("fanout", {
+        observed,
+        against: against(formatFigure(f.unit, f.expected, undefined, i18n)),
+      }),
       caveat,
     };
   }
   if (spec.unit === "share") {
     const counts =
       f.numerator != null && f.denominator != null
-        ? ` (${formatFigure("events", f.numerator, m)} of ${formatFigure("events", f.denominator)} events)`
+        ? say("counts", {
+            num: formatFigure("events", f.numerator, m, i18n),
+            den: formatFigure("events", f.denominator, undefined, i18n),
+          })
         : "";
     return {
       text:
-        `${spec.quantity} was ${formatPercent(f.observed, m)}${counts}` +
-        `${against(formatPercent(f.expected))}.`,
+        say("share", {
+          quantity: quantityText(type, i18n),
+          share: formatPercent(f.observed, m, 1, i18n.locale),
+          counts,
+          against: against(formatPercent(f.expected, undefined, 1, i18n.locale)),
+        }),
       caveat,
     };
   }
-  const subject = anomaly.ips_entity ? entityLabel(anomaly.ips_entity) : ipsTypeLabel(type);
+  const subject = anomaly.ips_entity
+    ? entityLabel(anomaly.ips_entity, i18n)
+    : ipsTypeLabel(type, i18n);
   return {
-    text: `${subject} reached ${observed} ${unit}${against(`${formatFigure(f.unit, f.expected)} ${unit}`)}.`,
+    text: say("events", {
+      subject,
+      observed,
+      unit,
+      against: against(`${formatFigure(f.unit, f.expected, undefined, i18n)} ${unit}`),
+    }),
     caveat,
   };
 }

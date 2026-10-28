@@ -5,6 +5,8 @@
 // the detector did not compute is an em dash with its reason, which is not a zero.
 // There is no contributor list here: the API serves none for IPS, by design.
 
+import { useTranslations } from "next-intl";
+
 import type { IpsAnomalyDetail } from "@/lib/api";
 import {
   formatCount,
@@ -13,10 +15,15 @@ import {
   robustScoreMeaning,
 } from "@/lib/behavior";
 
+import { scoreStatusCode } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { detectorSpec, expectsNone, ipsFigures } from "./ipsDetectors";
 import { bucketWidth, formatFigure, unitText } from "./ipsFormat";
 
 import "./ips.css";
+
+/** The dash between the two ends of an expected range. */
+const RANGE_DASH = "–";
 
 function Missing({ reason }: { reason: string }) {
   return (
@@ -43,36 +50,37 @@ export function IpsDetectionBlock({
   /** Bucket width from the stored buckets, for the unit; null when unknown. */
   bucketSeconds?: number | null;
 }) {
+  const t = useTranslations("ips.detection");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
   const d = anomaly.detection;
   if (!d) {
-    return (
-      <div className="notice">
-        No detector working was recorded for this incident, so its expected range and baseline
-        cannot be shown. This is a missing record, not a normal baseline.
-      </div>
-    );
+    return <div className="notice">{t("noWorking")}</div>;
   }
 
   const reason = d.reason ?? anomaly.explanation;
   const spec = detectorSpec(anomaly.anomaly_type);
   const f = ipsFigures(anomaly, d);
-  const unit = unitText(f.unit, bucketWidth(bucketSeconds));
+  const unit = unitText(f.unit, bucketWidth(bucketSeconds), i18n);
   const robustZ =
     d.robust_score_status === "DEGENERATE" ? (
-      <Missing reason="not used: MAD was zero" />
+      <Missing reason={t("missing.madZero")} />
     ) : d.robust_score_status === "UNAVAILABLE" ? (
-      <Missing reason="not computed" />
+      <Missing reason={t("missing.notComputed")} />
     ) : d.robust_z != null ? (
-      formatMetric(d.robust_z)
+      formatMetric(d.robust_z, 2, locale)
     ) : (
-      <Missing reason="no robust score was computed" />
+      <Missing reason={t("missing.noScore")} />
     );
   const hasRange = d.expected_low != null && d.expected_high != null;
   const range = !hasRange ? (
-    <Missing reason={spec?.baselineMetric ? "not recorded for this incident" : "no seasonal baseline applies to this detector"} />
+    <Missing
+      reason={spec?.baselineMetric ? t("missing.notRecorded") : t("missing.noSeasonal")}
+    />
   ) : (
     <>
-      {formatFigure(f.unit, d.expected_low)} – {formatFigure(f.unit, d.expected_high)}
+      {formatFigure(f.unit, d.expected_low, undefined, i18n)} {RANGE_DASH}{" "}
+      {formatFigure(f.unit, d.expected_high, undefined, i18n)}
       {unit && <span className="muted"> {unit}</span>}
     </>
   );
@@ -85,31 +93,32 @@ export function IpsDetectionBlock({
         {reason && <p className="ips-reason">{reason}</p>}
         <dl className="dimension-meta">
           <Row
-            label="Materiality floor"
+            label={t("floor")}
             value={
               d.threshold != null ? (
-                <>
-                  material at ≥ {formatCount(d.threshold)} events
-                </>
+                t("materialAt", { count: formatCount(d.threshold, locale) })
               ) : (
-                <Missing reason="no materiality floor was recorded" />
+                <Missing reason={t("missing.noFloor")} />
               )
             }
           />
           <Row
-            label="Verified history"
+            label={t("verifiedHistory")}
             value={
               d.baseline_sample_count != null ? (
                 <>
-                  {formatCount(d.baseline_sample_count)} buckets
-                  <span className="muted"> below the admission threshold</span>
+                  {t("buckets", { count: formatCount(d.baseline_sample_count, locale) })}
+                  <span className="muted"> {t("belowAdmission")}</span>
                 </>
               ) : (
-                <Missing reason="no history length was recorded" />
+                <Missing reason={t("missing.noHistory")} />
               )
             }
           />
-          <Row label="Consecutive abnormal buckets" value={formatCount(anomaly.consecutive_buckets)} />
+          <Row
+            label={t("consecutive")}
+            value={formatCount(anomaly.consecutive_buckets, locale)}
+          />
         </dl>
         {d.caveat && <p className="subtitle">{d.caveat}</p>}
       </div>
@@ -121,62 +130,59 @@ export function IpsDetectionBlock({
       {reason && <p className="ips-reason">{reason}</p>}
 
       <dl className="dimension-meta">
+        <Row label={f.unit === "share" ? t("rangeSeasonal") : t("rangeDetection")} value={range} />
         <Row
-          label={f.unit === "share" ? "Seasonal p05–p95 at detection" : "Expected range at detection"}
-          value={range}
-        />
-        <Row
-          label="Robust z threshold"
+          label={t("robustThreshold")}
           value={
             d.threshold != null ? (
               // One-sided: the detectors fire on an increase only.
-              `+${formatMetric(d.threshold)}`
+              `+${formatMetric(d.threshold, 2, locale)}`
             ) : (
-              <Missing reason="no threshold was recorded" />
+              <Missing reason={t("missing.noThreshold")} />
             )
           }
         />
         <Row
-          label="Baseline samples"
+          label={t("baselineSamples")}
           value={
             d.baseline_sample_count != null ? (
-              formatCount(d.baseline_sample_count)
+              formatCount(d.baseline_sample_count, locale)
             ) : (
-              <Missing reason="no baseline sample count was recorded" />
+              <Missing reason={t("missing.noSamples")} />
             )
           }
         />
         <Row
-          label="Baseline completeness"
+          label={t("baselineCompleteness")}
           value={
             d.baseline_completeness != null ? (
-              formatShare(d.baseline_completeness)
+              formatShare(d.baseline_completeness, locale)
             ) : (
-              <Missing reason="no baseline completeness was recorded" />
+              <Missing reason={t("missing.noCompleteness")} />
             )
           }
         />
         <Row
-          label="Baseline version"
+          label={t("baselineVersion")}
           value={
             d.baseline_version != null ? (
               `v${d.baseline_version}`
             ) : (
-              <Missing reason="no baseline version was recorded" />
+              <Missing reason={t("missing.noVersion")} />
             )
           }
         />
+        <Row label={t("robustZ")} value={robustZ} />
         <Row
-          label="Robust z"
-          value={robustZ}
+          label={t("consecutive")}
+          value={formatCount(anomaly.consecutive_buckets, locale)}
         />
-        <Row label="Consecutive abnormal buckets" value={formatCount(anomaly.consecutive_buckets)} />
       </dl>
 
       {d.robust_score_status && (
         <p className="subtitle">
-          <strong>Robust score {d.robust_score_status}.</strong>{" "}
-          {robustScoreMeaning(d.robust_score_status)}
+          <strong>{t("scoreStatus", { status: scoreStatusCode(i18n, d.robust_score_status) })}</strong>{" "}
+          {robustScoreMeaning(d.robust_score_status, i18n)}
         </p>
       )}
       {d.caveat && <p className="subtitle">{d.caveat}</p>}

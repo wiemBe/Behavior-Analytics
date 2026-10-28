@@ -65,6 +65,7 @@ import "@/components/ui/controls.css";
  */
 function SubjectCell({ a }: { a: AnomalySummary }) {
   const t = useTranslations("anomalies.rows");
+  const ipsI18n = useBehaviorI18n();
   // A property-watch row has no source of its own: its watch names it.
   const source = a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? t("unnamed");
   // Below 1100 px the Started column folds under the subject.
@@ -98,7 +99,7 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
     // the page that administers it needs a grant the list cannot know the caller has.
     return (
       <td className="cell-name cell-subject">
-        <span className="subject-endpoint ips-subject-name">{ipsSubjectText(a)}</span>
+        <span className="subject-endpoint ips-subject-name">{ipsSubjectText(a, ipsI18n)}</span>
         <span className="sr-only"> · </span>
         <span className="subject-source" title={source}>
           {source}
@@ -207,9 +208,9 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
     return (
       <>
         <span className="ips-figures">
-          {formatFigure(f.unit, f.observed, m)}
+          {formatFigure(f.unit, f.observed, m, i18n)}
           <span className="muted"> {ARROW} </span>
-          {expectsNone(a.anomaly_type) ? common("none") : formatFigure(f.unit, f.expected)}
+          {expectsNone(a.anomaly_type) ? common("none") : formatFigure(f.unit, f.expected, undefined, i18n)}
         </span>
         {unitWords && <span className="cell-sub ips-unit">{unitWords}</span>}
       </>
@@ -295,7 +296,7 @@ function typeText(a: AnomalySummary, i18n: BehaviorI18n): string {
   if (isPwRow(a)) return pwTypeLabel(a.anomaly_type);
   if (isWafRow(a)) return anomalyTypeLabel(a.anomaly_type, i18n);
   if (!isIpsRow(a)) return detectorLabel(a.anomaly_type, i18n);
-  return rowTypeLabel(a);
+  return rowTypeLabel(a, i18n);
 }
 
 export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
@@ -364,7 +365,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                         isPwRow(a) && a.pw_value
                           ? `${valueText(a.pw_value)} · ${a.pw_value.watch_name}`
                           : isIpsRow(a)
-                            ? `${ipsSubjectText(a)} · ${a.log_source_name ?? a.log_source_id}`
+                            ? `${ipsSubjectText(a, i18n)} · ${a.log_source_name ?? a.log_source_id}`
                             : subjectText(a, i18n),
                     })}
                     onClick={() => setExpanded(open ? null : a.id)}

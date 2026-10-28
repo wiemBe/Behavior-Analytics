@@ -544,6 +544,14 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | silence grace | sessizlik toleransı |
 | coverage | kapsam |
 | technique, tactic (ATT&CK) | teknik, taktik |
+| entity (an IPS destination port, destination or signature) | varlık |
+| signature (IPS) | imza |
+| source-level (an IPS source's whole traffic) | kaynak düzeyi |
+| observed, expected | gözlenen, beklenen |
+| deviation | sapma |
+| materiality floor | önemlilik eşiği |
+| block ratio | engelleme oranı |
+| destination port | hedef port |
 | request | istek |
 | endpoint | endpoint |
 | profile | profil |

@@ -5,25 +5,30 @@
 // components, as the WAF names live beside the WAF ones, so the Phase A
 // vocabulary stays untouched. An IPS row never takes a Phase A label: a type or
 // a dimension this build does not know renders as the raw value it was sent as.
+//
+// The names come from the `enums.anomalyType` table (shared with the anomaly
+// list) and the `ips` namespace; a helper without a `BehaviorI18n` keeps the
+// English every unconverted caller and test shows today.
 
 import type { AnomalySummary, IpsEntityRef } from "@/lib/api";
+import { wordOrValue, type BehaviorI18n } from "@/lib/behaviorI18n";
 import { anomalyTypeLabel } from "@/components/waf/wafLabels";
 
-const IPS_TYPE_LABELS: Record<string, string> = {
-  IPS_PORT_RATE_SPIKE: "Destination-port rate spike",
-  IPS_DESTINATION_RATE_SPIKE: "Destination rate spike",
-  IPS_SIGNATURE_BURST: "Signature burst",
-  IPS_NEW_DESTINATION_PORT: "New destination port",
-  IPS_SOURCE_CONCENTRATION_SPIKE: "Source concentration spike",
-  IPS_PORT_FANOUT_SPIKE: "Port fan-out spike",
-  IPS_BLOCK_RATIO_SHIFT: "Block-ratio shift",
-};
+import { ENGLISH_IPS } from "./ipsI18n";
 
 /** The IPS detector types the list filter offers, in the order shown. */
-export const IPS_TYPES = Object.keys(IPS_TYPE_LABELS);
+export const IPS_TYPES = [
+  "IPS_PORT_RATE_SPIKE",
+  "IPS_DESTINATION_RATE_SPIKE",
+  "IPS_SIGNATURE_BURST",
+  "IPS_NEW_DESTINATION_PORT",
+  "IPS_SOURCE_CONCENTRATION_SPIKE",
+  "IPS_PORT_FANOUT_SPIKE",
+  "IPS_BLOCK_RATIO_SHIFT",
+];
 
 export function isIpsType(type: string | null | undefined): boolean {
-  return type != null && type in IPS_TYPE_LABELS;
+  return type != null && IPS_TYPES.includes(type);
 }
 
 export function isIpsRow(a: Pick<AnomalySummary, "subject_kind">): boolean {
@@ -31,8 +36,10 @@ export function isIpsRow(a: Pick<AnomalySummary, "subject_kind">): boolean {
 }
 
 /** An IPS detector's name; a type this build does not know shows as sent. */
-export function ipsTypeLabel(type: string): string {
-  return IPS_TYPE_LABELS[type] ?? type;
+export function ipsTypeLabel(type: string, i18n: BehaviorI18n = ENGLISH_IPS): string {
+  // Only the IPS types: a Phase A or WAF type on an IPS row must not borrow
+  // their names, so it is shown raw even though the enum table knows it.
+  return isIpsType(type) ? i18n.t(`enums.anomalyType.${type}`) : type;
 }
 
 /**
@@ -40,19 +47,31 @@ export function ipsTypeLabel(type: string): string {
  * the IPS table, so an unknown type is shown raw rather than borrowing the name
  * of a Phase A or WAF detector.
  */
-export function rowTypeLabel(a: Pick<AnomalySummary, "subject_kind" | "anomaly_type">): string {
-  return isIpsRow(a) ? ipsTypeLabel(a.anomaly_type) : anomalyTypeLabel(a.anomaly_type);
+export function rowTypeLabel(
+  a: Pick<AnomalySummary, "subject_kind" | "anomaly_type">,
+  i18n: BehaviorI18n = ENGLISH_IPS,
+): string {
+  return isIpsRow(a) ? ipsTypeLabel(a.anomaly_type, i18n) : anomalyTypeLabel(a.anomaly_type);
 }
 
-const DIMENSION_LABELS: Record<string, string> = {
-  DESTINATION_PORT: "Destination port",
-  DESTINATION_IP: "Destination",
-  SIGNATURE: "Signature",
-};
+const IPS_DIMENSIONS = ["DESTINATION_PORT", "DESTINATION_IP", "SIGNATURE"];
+const IPS_STATES = [
+  "INSUFFICIENT_DATA",
+  "NORMAL",
+  "CANDIDATE",
+  "OPEN",
+  "RECOVERING",
+  "RESOLVED",
+  "SUPPRESSED",
+];
 
 /** An entity dimension as a noun; an unknown dimension shows as sent. */
-export function dimensionNoun(dimension: string): string {
-  return DIMENSION_LABELS[dimension] ?? dimension;
+export function dimensionNoun(
+  dimension: string,
+  i18n: BehaviorI18n = ENGLISH_IPS,
+): string {
+  // A raw backend value is looked up only if it is one of ours: `has()` follows the prototype chain.
+  return IPS_DIMENSIONS.includes(dimension) ? wordOrValue(i18n, "ips.dimension", dimension) : dimension;
 }
 
 const QID_KEY = /^qid:(\d+)$/;
@@ -65,25 +84,28 @@ const QID_KEY = /^qid:(\d+)$/;
  */
 export function entityLabel(
   ref: Pick<IpsEntityRef, "dimension" | "value_key" | "display_name">,
+  i18n: BehaviorI18n = ENGLISH_IPS,
 ): string {
   if (ref.dimension === "SIGNATURE") {
     const qid = QID_KEY.exec(ref.value_key)?.[1];
     const id = qid != null ? `QID ${qid}` : ref.value_key;
-    return ref.display_name ? `${ref.display_name} (${id})` : `Signature ${id}`;
+    return ref.display_name
+      ? `${ref.display_name} (${id})`
+      : i18n.t("ips.entity.signatureId", { id });
   }
-  return `${dimensionNoun(ref.dimension)} ${ref.value_key}`;
+  return `${dimensionNoun(ref.dimension, i18n)} ${ref.value_key}`;
 }
-
-/** The source-level subject of an IPS_SOURCE incident. */
-export const SOURCE_LEVEL = "Source-level";
 
 /**
  * What an IPS list row is about: the entity, or "Source-level". An entity row
  * whose reference is missing says so rather than borrowing the source's name.
  */
-export function ipsSubjectText(a: Pick<AnomalySummary, "subject_kind" | "ips_entity">): string {
-  if (a.subject_kind === "IPS_SOURCE") return SOURCE_LEVEL;
-  return a.ips_entity ? entityLabel(a.ips_entity) : "Entity not recorded";
+export function ipsSubjectText(
+  a: Pick<AnomalySummary, "subject_kind" | "ips_entity">,
+  i18n: BehaviorI18n = ENGLISH_IPS,
+): string {
+  if (a.subject_kind === "IPS_SOURCE") return i18n.t("ips.subject.sourceLevel");
+  return a.ips_entity ? entityLabel(a.ips_entity, i18n) : i18n.t("ips.subject.entityNotRecorded");
 }
 
 /**
@@ -91,24 +113,17 @@ export function ipsSubjectText(a: Pick<AnomalySummary, "subject_kind" | "ips_ent
  * log source's volume; this one names the subject the detector judged and claims
  * nothing about EPS.
  */
-export function ipsStateMeaning(state: string, subject: "entity" | "source"): string {
-  const what = subject === "entity" ? "this entity" : "this IPS source";
-  switch (state) {
-    case "INSUFFICIENT_DATA":
-      return `No adequate baseline for this seasonal cell yet, so ${what} is not being judged. That is not the same as being healthy.`;
-    case "NORMAL":
-      return "The measurement is within the expected range for this weekday and hour.";
-    case "CANDIDATE":
-      return "One abnormal interval recorded. Not yet an incident: promotion requires consecutive abnormal intervals.";
-    case "OPEN":
-      return "Confirmed incident: enough consecutive abnormal intervals to rule out a single-bucket artefact.";
-    case "RECOVERING":
-      return "Back inside the expected range, but held open until enough consecutive normal intervals confirm it.";
-    case "RESOLVED":
-      return "Closed after sustained normal behavior.";
-    case "SUPPRESSED":
-      return "Detected while the source was in maintenance. Recorded for history, never notified.";
-    default:
-      return "";
-  }
+export function ipsStateMeaning(
+  state: string,
+  subject: "entity" | "source",
+  i18n: BehaviorI18n = ENGLISH_IPS,
+): string {
+  if (!IPS_STATES.includes(state)) return "";
+  const what = i18n.t(subject === "entity" ? "ips.stateMeaning.whatEntity" : "ips.stateMeaning.whatSource");
+  return i18n.t(`ips.stateMeaning.${state}`, { what });
+}
+
+/** A lifecycle state as the timeline words it; an unknown state shows as sent. */
+export function ipsStateWord(state: string, i18n: BehaviorI18n = ENGLISH_IPS): string {
+  return IPS_STATES.includes(state) ? wordOrValue(i18n, "ips.stateWord", state) : state;
 }

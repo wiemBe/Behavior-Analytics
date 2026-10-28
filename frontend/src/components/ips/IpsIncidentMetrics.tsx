@@ -7,6 +7,8 @@
 // ports for fan-out, a share for concentration and block ratio. A LOWER_BOUND
 // reads "at least n", and a missing value is an em dash with its reason.
 
+import { useTranslations } from "next-intl";
+
 import type { IpsAnomalyDetail } from "@/lib/api";
 import {
   formatDelta,
@@ -15,8 +17,9 @@ import {
   formatRatio,
   hasConfidenceLimitation,
 } from "@/lib/behavior";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
-import { detectorSpec, expectsNone, ipsFigures } from "./ipsDetectors";
+import { expectsNone, ipsFigures, ofText } from "./ipsDetectors";
 import {
   bucketWidth,
   formatEvents,
@@ -41,77 +44,80 @@ export function IpsIncidentMetrics({
   /** Bucket width from the stored buckets; null when they could not be loaded. */
   bucketSeconds: number | null;
 }) {
+  const t = useTranslations("ips.metrics");
+  const common = useTranslations("common");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
   const d = anomaly.detection;
-  const spec = detectorSpec(anomaly.anomaly_type);
   const f = ipsFigures(anomaly, d);
   const share = f.unit === "share";
   const lower = d?.observed_measurement === "LOWER_BOUND";
   const m = lower ? "LOWER_BOUND" : null;
   const running = anomaly.anomaly_end == null;
-  const unit = unitText(f.unit, bucketWidth(bucketSeconds));
+  const unit = unitText(f.unit, bucketWidth(bucketSeconds), i18n);
   const noneExpected = expectsNone(anomaly.anomaly_type);
   const band =
     d?.expected_low != null && d.expected_high != null
-      ? `${formatFigure(f.unit, d.expected_low)} – ${formatFigure(f.unit, d.expected_high)}`
+      ? `${formatFigure(f.unit, d.expected_low, undefined, i18n)} – ${formatFigure(f.unit, d.expected_high, undefined, i18n)}`
       : null;
-  const deltaUnit = f.unit === "ports" ? "ports" : "events";
+  const deltaUnit = f.unit === "ports" ? t("deltaPorts") : t("deltaEvents");
   const unitLabel = (
-    <span className="measure-unit">{share ? `of ${spec?.of ?? "events"}` : unit}</span>
+    <span className="measure-unit">
+      {share ? t("ofWhat", { what: ofText(anomaly.anomaly_type, i18n) ?? t("ofEvents") }) : unit}
+    </span>
   );
 
   return (
-    <section className="measure" aria-label="Incident measurements">
+    <section className="measure" aria-label={t("aria")}>
       <dl className="measure-grid">
         <div className="measure-item measure-lead">
-          <dt>Observed</dt>
+          <dt>{t("observed")}</dt>
           <dd className="measure-value">
             {f.observed == null ? (
-              <Missing reason="not recorded for this incident" />
+              <Missing reason={t("missing.observed")} />
             ) : (
-              formatFigure(f.unit, f.observed, m)
+              formatFigure(f.unit, f.observed, m, i18n)
             )}
             {unitLabel}
           </dd>
           <dd className="measure-note">
-            {lower
-              ? "At least this; the true value may be higher"
-              : noneExpected
-                ? "Cumulative since the port first appeared, not a per-bucket rate"
-                : "During the anomalous interval"}
+            {lower ? t("lowerNote") : noneExpected ? t("sinceNote") : t("duringNote")}
             {share && f.numerator != null && f.denominator != null && (
               <>
                 {" · "}
                 <span className="num">
-                  {formatEvents(f.numerator, m)} of {formatEvents(f.denominator)}
-                </span>{" "}
-                events
+                  {t("counts", {
+                    num: formatEvents(f.numerator, m, locale),
+                    den: formatEvents(f.denominator, undefined, locale),
+                  })}
+                </span>
               </>
             )}
           </dd>
         </div>
 
         <div className="measure-item">
-          <dt>Expected</dt>
+          <dt>{t("expected")}</dt>
           <dd className="measure-value">
             {noneExpected ? (
-              "none"
+              common("none")
             ) : f.expected == null ? (
-              <Missing reason="no expected value was recorded" />
+              <Missing reason={t("missing.expected")} />
             ) : (
-              formatFigure(f.unit, f.expected)
+              formatFigure(f.unit, f.expected, undefined, i18n)
             )}
             {!noneExpected && unitLabel}
           </dd>
           <dd className="measure-note">
             {noneExpected ? (
-              "The port has no verified history, so no seasonal baseline applies"
+              t("noneNote")
             ) : (
               <>
-                Seasonal baseline, this weekday and hour
+                {t("seasonalNote")}
                 {band && (
                   <>
-                    {" · range "}
-                    <span className="num">{band}</span>
+                    {" · "}
+                    <span className="num">{t("range", { band })}</span>
                     {!share && <span className="muted"> {unit}</span>}
                   </>
                 )}
@@ -121,46 +127,50 @@ export function IpsIncidentMetrics({
         </div>
 
         <div className="measure-item">
-          <dt>Deviation</dt>
+          <dt>{t("deviation")}</dt>
           <dd className="measure-value">
             {share
-              ? formatPointChange(d?.percentage_point_change)
-              : formatRatio(anomaly.deviation_ratio)}
+              ? formatPointChange(d?.percentage_point_change, i18n)
+              : formatRatio(anomaly.deviation_ratio, locale)}
           </dd>
           <dd className="measure-note">
             {noneExpected ? (
-              "Not defined: nothing was expected"
+              t("notDefinedNote")
             ) : share ? (
               <>
-                <span className="num">{formatRatio(d?.ratio ?? anomaly.deviation_ratio)}</span>{" "}
-                expected
+                <span className="num">{formatRatio(d?.ratio ?? anomaly.deviation_ratio, locale)}</span>{" "}
+                {t("expectedWord")}
               </>
             ) : (
-              <>
-                <span className="num">{formatDelta(d?.absolute_delta ?? anomaly.absolute_delta)}</span>{" "}
-                {deltaUnit} against expected
-              </>
+              t.rich("deltaAgainst", {
+                value: () => (
+                  <span className="num">
+                    {formatDelta(d?.absolute_delta ?? anomaly.absolute_delta, locale)}
+                  </span>
+                ),
+                unit: deltaUnit,
+              })
             )}
           </dd>
         </div>
 
         <div className="measure-item measure-item-minor">
-          <dt>Duration</dt>
-          <dd className="measure-value">{formatDuration(anomaly.duration_seconds)}</dd>
-          <dd className="measure-note">{running ? "Still running" : "Interval length"}</dd>
+          <dt>{t("duration")}</dt>
+          <dd className="measure-value">{formatDuration(anomaly.duration_seconds, i18n)}</dd>
+          <dd className="measure-note">{running ? t("running") : t("intervalLength")}</dd>
         </div>
       </dl>
 
       <dl className="measure-foot measure-foot-waf">
         <div>
-          <dt>Detector confidence</dt>
-          <dd className="num">{formatMetric(anomaly.confidence)}</dd>
+          <dt>{t("confidence")}</dt>
+          <dd className="num">{formatMetric(anomaly.confidence, 2, locale)}</dd>
           <dd className="muted">
             {" "}
-            (0 to 1)
+            {t("confidenceRange")}
             {!noneExpected &&
               hasConfidenceLimitation(d?.robust_score_status) &&
-              " · limited because baseline variability is zero"}
+              ` · ${t("limitedTail")}`}
           </dd>
         </div>
       </dl>

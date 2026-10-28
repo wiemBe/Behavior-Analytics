@@ -34,6 +34,9 @@ import {
   reasonText,
   valueMapChanges,
 } from "@/lib/fieldMapping";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+
+import { ENGLISH_IPS } from "@/components/ips/ipsI18n";
 
 export interface IpsDraft extends MappingDraft {
   /** The reference kind per field key. Meaningful only while the field is mapped. */
@@ -185,22 +188,23 @@ export function ipsDraftChanges(
 export function ipsFieldStatusInfo(
   status: string,
   ctx: Parameters<typeof fieldStatusInfo>[1],
+  i18n: BehaviorI18n = ENGLISH_IPS,
 ): FieldStatusInfo {
   if (status === "FIELD_REJECTED") {
     return {
-      label: "Field rejected",
+      label: i18n.t("ips.validation.fieldRejected"),
       tone: ctx.usedByCollection ? "crit" : "warn",
-      sentence: "QRadar does not accept this field as named.",
+      sentence: i18n.t("ips.validation.fieldRejectedSentence"),
       silent: false,
     };
   }
   if (status === "UNPOPULATED") {
     return {
-      ...fieldStatusInfo(status, ctx),
-      sentence: "The field exists but no event in the window carried a usable value.",
+      ...fieldStatusInfo(status, ctx, i18n),
+      sentence: i18n.t("ips.validation.unpopulatedSentence"),
     };
   }
-  return fieldStatusInfo(status, ctx);
+  return fieldStatusInfo(status, ctx, i18n);
 }
 
 function capitalise(text: string): string {
@@ -212,27 +216,40 @@ export function ipsReasonText(
   reason: string,
   schema: IpsMappingSchemaOut,
   populatedRatio: (field: string) => number | null,
+  i18n: BehaviorI18n = ENGLISH_IPS,
 ): string {
   const rejected = /^([A-Z][A-Z_]*): FIELD_REJECTED\b/.exec(reason);
   if (rejected) {
     const field = schema.fields.find((f) => f.key === rejected[1]);
-    if (field) return `${field.label}: ${ipsFieldStatusInfo("FIELD_REJECTED", { populatedRatio: null, plausibleRatio: null, requiredCoverage: null, usedByCollection: field.used_by_collection }).sentence}`;
+    if (field) {
+      const sentence = ipsFieldStatusInfo(
+        "FIELD_REJECTED",
+        { populatedRatio: null, plausibleRatio: null, requiredCoverage: null, usedByCollection: field.used_by_collection },
+        i18n,
+      ).sentence;
+      return `${field.label}: ${sentence}`;
+    }
   }
   if (reason === "the bounded validation probe was truncated") {
-    return "The bounded validation probe was truncated, so the result is inconclusive rather than valid.";
+    return i18n.t("ips.validation.probeTruncated");
   }
-  const asWaf = reasonText(reason, formSchema(schema), schema.min_coverage_ratio, populatedRatio);
+  const asWaf = reasonText(reason, formSchema(schema), schema.min_coverage_ratio, populatedRatio, i18n);
   return asWaf === reason ? capitalise(reason) : asWaf;
 }
 
 /** One warning per field whose events carry a generic "Unknown …" signature name. */
-export function genericNameNotes(report: IpsValidationReportOut): { key: string; text: string }[] {
+export function genericNameNotes(
+  report: IpsValidationReportOut,
+  i18n: BehaviorI18n = ENGLISH_IPS,
+): { key: string; text: string }[] {
   const notes: { key: string; text: string }[] = [];
   for (const f of report.fields) {
     if (f.generic_name_ratio != null && f.generic_name_ratio > 0) {
       notes.push({
         key: `generic-${f.field}`,
-        text: `${formatShare(f.generic_name_ratio)} of events carry a generic “Unknown …” signature name. Those events cannot be told apart by signature. This is a warning; it does not stop collection.`,
+        text: i18n.t("ips.validation.genericName", {
+          share: formatShare(f.generic_name_ratio, i18n.locale),
+        }),
       });
     }
   }
@@ -281,18 +298,22 @@ export function referenceKindOf(
 
 // --- history -----------------------------------------------------------------
 
-const HISTORY_ACTIONS: Record<string, string> = {
-  "ips.profile.created": "Created",
-  "ips.profile.mapping_changed": "Mapping changed",
-  "ips.profile.relabelled": "Label changed",
-  "ips.profile.validation_requested": "Validation requested",
-  "ips.profile.validated": "Validated",
-  "ips.profile.enabled": "Collection enabled",
-  "ips.profile.disabled": "Collection disabled",
+/** The API's action codes and the message keys they word. An action this build does not know is
+ *  shown as recorded. */
+const HISTORY_ACTION_KEYS: Record<string, string> = {
+  "ips.profile.created": "created",
+  "ips.profile.mapping_changed": "mappingChanged",
+  "ips.profile.relabelled": "relabelled",
+  "ips.profile.validation_requested": "validationRequested",
+  "ips.profile.validated": "validated",
+  "ips.profile.enabled": "enabled",
+  "ips.profile.disabled": "disabled",
 };
 
-export function ipsHistoryActionLabel(action: string): string {
-  return HISTORY_ACTIONS[action] ?? action;
+/** The history actions this build has a word for, in the interface language. */
+export function ipsHistoryActionLabel(action: string, i18n: BehaviorI18n = ENGLISH_IPS): string {
+  const key = Object.hasOwn(HISTORY_ACTION_KEYS, action) ? HISTORY_ACTION_KEYS[action] : undefined;
+  return key ? i18n.t(`ips.historyAction.${key}`) : action;
 }
 
 function flatten(map: Record<string, unknown> | null): Record<string, string | null> | null {
@@ -324,12 +345,15 @@ export function historyForTable(entries: IpsProfileHistoryEntryOut[]): WafProfil
 }
 
 /** The sentence for an outcome that is more than "success" or "failure". */
-export function ipsOutcomeNote(entry: WafProfileHistoryEntryOut): string | null {
+export function ipsOutcomeNote(
+  entry: WafProfileHistoryEntryOut,
+  i18n: BehaviorI18n = ENGLISH_IPS,
+): string | null {
   if (entry.action === "ips.profile.validated" && entry.outcome === "SOURCE_BUSY") {
-    return "Validation could not take the source lock, so it did not run. The previous result is kept.";
+    return i18n.t("ips.validation.busyOutcome");
   }
   if (entry.action === "ips.profile.validated" && entry.outcome === "FAILURE") {
-    return "Validation failed to complete. The previous result is kept.";
+    return i18n.t("ips.validation.failedOutcome");
   }
   return null;
 }
