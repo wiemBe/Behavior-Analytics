@@ -23,6 +23,7 @@ import evidence from "./evidence.json";
 import fleet from "./fleet.json";
 import format from "./format.json";
 import home from "./home.json";
+import ips from "./ips.json";
 import logSources from "./logSources.json";
 import login from "./login.json";
 import meta from "./meta.json";
@@ -57,6 +58,7 @@ const messages = {
   fleet,
   format,
   home,
+  ips,
   logSources,
   login,
   meta,

@@ -68,7 +68,7 @@ export interface AnomalyFilterValues {
 
 /** The detector's name in a chip: the IPS, property-watch and WAF names stay as their helpers write them. */
 function detectorName(text: string, i18n: BehaviorI18n): string {
-  if (isIpsType(text)) return ipsTypeLabel(text);
+  if (isIpsType(text)) return ipsTypeLabel(text, i18n);
   if (isPwType(text)) return pwTypeLabel(text);
   if (DETECTOR_TYPES.includes(text)) return detectorLabel(text, i18n);
   return anomalyTypeLabel(text);
@@ -247,7 +247,7 @@ export function AnomalyFilters({
           <optgroup label={t("groupIps")}>
             {IPS_TYPES.map((type) => (
               <option key={type} value={type}>
-                {ipsTypeLabel(type)}
+                {ipsTypeLabel(type, i18n)}
               </option>
             ))}
           </optgroup>

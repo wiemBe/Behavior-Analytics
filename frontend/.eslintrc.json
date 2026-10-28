@@ -180,7 +180,27 @@
         "src/components/rules/MeasurementWindow.tsx",
         "src/components/rules/MostMatched.tsx",
         "src/components/rules/RuleComposition.tsx",
-        "src/components/rules/SilentRules.tsx"
+        "src/components/rules/SilentRules.tsx",
+        "src/components/ips/ipsI18n.ts",
+        "src/components/ips/ipsLabels.ts",
+        "src/components/ips/ipsFormat.ts",
+        "src/components/ips/ipsDetectors.ts",
+        "src/components/ips/ipsSummary.ts",
+        "src/components/ips/IpsDetectionBlock.tsx",
+        "src/components/ips/IpsIncidentHeader.tsx",
+        "src/components/ips/IpsIncidentMetrics.tsx",
+        "src/components/ips/IpsInvestigation.tsx",
+        "src/components/ips/IpsSeriesChart.tsx",
+        "src/components/catalog/RecentIpsAnomalies.tsx",
+        "src/components/catalog/ipsAnomalies.ts",
+        "src/app/admin/ips-sources/page.tsx",
+        "src/app/admin/ips-sources/loading.tsx",
+        "src/app/admin/ips-sources/error.tsx",
+        "src/app/admin/ips-sources/AddIpsSourcePicker.tsx",
+        "src/app/admin/ips-sources/IpsProfileEditor.tsx",
+        "src/app/admin/ips-sources/IpsSourceTable.tsx",
+        "src/app/admin/ips-sources/ips.ts",
+        "src/app/admin/ips-sources/readError.ts"
       ],
       "rules": {
         "react/jsx-no-literals": [
@@ -211,7 +231,10 @@
         "src/app/rules/\\[id\\]/page.tsx",
         "src/app/log-sources/\\[id\\]/page.tsx",
         "src/app/log-sources/\\[id\\]/loading.tsx",
-        "src/app/log-sources/\\[id\\]/error.tsx"
+        "src/app/log-sources/\\[id\\]/error.tsx",
+        "src/app/admin/ips-sources/\\[logSourceId\\]/page.tsx",
+        "src/app/admin/ips-sources/\\[logSourceId\\]/loading.tsx",
+        "src/app/admin/ips-sources/\\[logSourceId\\]/error.tsx"
       ],
       "rules": {
         "react/jsx-no-literals": [

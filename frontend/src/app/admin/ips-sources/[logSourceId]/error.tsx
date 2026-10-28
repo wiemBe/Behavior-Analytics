@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function IpsSourceError({
@@ -9,5 +11,6 @@ export default function IpsSourceError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <BoundaryError title="IPS source" what="This IPS source" digest={error.digest} onRetry={reset} />;
+  const t = useTranslations("ips.detail");
+  return <BoundaryError title={t("title")} what={t("errorWhat")} digest={error.digest} onRetry={reset} />;
 }

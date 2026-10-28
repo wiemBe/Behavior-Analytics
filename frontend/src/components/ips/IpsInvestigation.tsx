@@ -8,19 +8,24 @@
 // "what changed" section: the evidence section says so in one line instead of
 // rendering an empty table.
 
+import { useTranslations } from "next-intl";
+
 import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
-import { stateLabel, statePillText } from "@/components/waf/wafLabels";
 import type {
   IpsAnomalyDetail,
   IpsBaselineCell,
   IpsEntityMetricBucket,
   IpsSourceMetricBucket,
 } from "@/lib/api";
+import { wordOrValue, type BehaviorI18n } from "@/lib/behaviorI18n";
+import { formatShare } from "@/lib/format";
+import { fixed, grouped } from "@/lib/figureText";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { reliableCellCount, type IpsBaselineSource } from "./ipsBaseline";
-import { detectorSpec, ipsFigures } from "./ipsDetectors";
-import { formatShare } from "@/lib/format";
-import { ipsStateMeaning, ipsSubjectText, ipsTypeLabel } from "./ipsLabels";
+import { detectorSpec, ipsFigures, quantityText } from "./ipsDetectors";
+import { ENGLISH_IPS } from "./ipsI18n";
+import { ipsStateMeaning, ipsStateWord, ipsSubjectText, ipsTypeLabel } from "./ipsLabels";
 import {
   buildIpsEntitySeries,
   buildIpsSourceSeries,
@@ -52,29 +57,26 @@ interface Plan {
  * Decided by the subject kind and the detector together, so a pairing the API
  * should not produce is stated rather than drawn from the wrong data.
  */
-function plan(
-  anomaly: IpsAnomalyDetail,
-  series: IpsSeriesData,
-): { plan: Plan } | { why: string } {
+function plan(anomaly: IpsAnomalyDetail, series: IpsSeriesData, i18n: BehaviorI18n): { plan: Plan } | { why: string } {
   const type = anomaly.anomaly_type;
   const spec = detectorSpec(type);
   if (!spec) {
     return {
-      why: `This build has no series for the detector ${type}, so none is drawn rather than a guess.`,
+      why: i18n.t("ips.plan.noSeries", { type }),
     };
   }
   if (anomaly.subject_kind === "IPS_ENTITY") {
     if (!anomaly.ips_entity) {
-      return { why: "This incident names no entity, so there is no entity series to read." };
+      return { why: i18n.t("ips.plan.noEntity") };
     }
     if (spec.scope !== "entity" || series.kind !== "entity") {
-      return { why: `The detector ${ipsTypeLabel(type)} does not judge an entity series.` };
+      return { why: i18n.t("ips.plan.notEntity", { name: ipsTypeLabel(type, i18n) }) };
     }
     return { plan: { points: buildIpsEntitySeries(series.buckets), rows: series.buckets } };
   }
   const kind = SOURCE_SERIES[type];
   if (!kind || series.kind !== "source") {
-    return { why: `The detector ${ipsTypeLabel(type)} does not judge a source-level series.` };
+    return { why: i18n.t("ips.plan.notSource", { name: ipsTypeLabel(type, i18n) }) };
   }
   return { plan: { points: buildIpsSourceSeries(series.buckets, kind), rows: series.buckets } };
 }
@@ -84,24 +86,39 @@ export function ipsChartSummary(
   anomaly: IpsAnomalyDetail,
   points: IpsPoint[],
   quantity: string,
+  i18n: BehaviorI18n = ENGLISH_IPS,
 ): string {
   const c = ipsSeriesCounts(points);
   const d = anomaly.detection;
-  const parts = [`${quantity} for ${ipsSubjectText(anomaly)} across ${c.stored} stored buckets.`];
+  const n = (v: number) => grouped(v, i18n.locale);
+  const t = i18n.t;
+  const parts = [
+    t("ips.chartSummary.lead", {
+      quantity,
+      subject: ipsSubjectText(anomaly, i18n),
+      count: n(c.stored),
+    }),
+  ];
   if (d?.expected_low != null && d.expected_high != null) {
     const f = ipsFigures(anomaly, d);
     const range =
       f.unit === "share"
-        ? `${formatShare(d.expected_low)} to ${formatShare(d.expected_high)}`
-        : `${d.expected_low.toFixed(1)} to ${d.expected_high.toFixed(1)}${f.unit === "ports" ? " distinct ports" : " events per bucket"}`;
-    parts.push(`The expected range at detection was ${range}.`);
+        ? t("ips.chartSummary.rangeShare", {
+            low: formatShare(d.expected_low, i18n.locale),
+            high: formatShare(d.expected_high, i18n.locale),
+          })
+        : t(f.unit === "ports" ? "ips.chartSummary.rangePorts" : "ips.chartSummary.rangeEvents", {
+            low: fixed(d.expected_low, 1, i18n.locale),
+            high: fixed(d.expected_high, 1, i18n.locale),
+          });
+    parts.push(t("ips.chartSummary.rangeAt", { range }));
   }
-  if (c.gaps > 0) parts.push(`${c.gaps} intervals had no stored bucket and are drawn as gaps.`);
+  if (c.gaps > 0) parts.push(t("ips.chartSummary.gaps", { count: n(c.gaps) }));
   if (c.notMeasured > 0) {
-    parts.push(`${c.notMeasured} stored buckets were not measured and are drawn as gaps, not as zero.`);
+    parts.push(t("ips.chartSummary.notMeasured", { count: n(c.notMeasured) }));
   }
-  if (c.lowerBound > 0) parts.push(`${c.lowerBound} buckets are lower bounds.`);
-  if (c.maintenance > 0) parts.push(`${c.maintenance} buckets were in maintenance.`);
+  if (c.lowerBound > 0) parts.push(t("ips.chartSummary.lowerBounds", { count: n(c.lowerBound) }));
+  if (c.maintenance > 0) parts.push(t("ips.chartSummary.maintenance", { count: n(c.maintenance) }));
   return parts.join(" ");
 }
 
@@ -129,16 +146,20 @@ export function IpsInvestigation({
   /** Whether the caller may read the IPS source's administration page. */
   canOpenSource?: boolean;
 }) {
+  const t = useTranslations("ips");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
   const spec = detectorSpec(anomaly.anomaly_type);
   const d = anomaly.detection;
   const f = ipsFigures(anomaly, d);
   const subject = anomaly.subject_kind === "IPS_ENTITY" ? "entity" : "source";
+  const subjectNoun = t(subject === "entity" ? "subject.entityNoun" : "subject.ipsSourceNoun");
 
-  const planned = series ? plan(anomaly, series) : null;
+  const planned = series ? plan(anomaly, series, i18n) : null;
   const points = planned && "plan" in planned ? planned.plan.points : null;
   const bucketSeconds = series?.buckets[0]?.bucket_seconds ?? null;
   const counts = points ? ipsSeriesCounts(points) : null;
-  const summary = summarizeIpsAnomaly(anomaly, bucketSeconds);
+  const summary = summarizeIpsAnomaly(anomaly, bucketSeconds, i18n);
 
   // Only a detector judged against a seasonal cell has a seasonal band.
   const metric = spec?.baselineMetric ?? null;
@@ -150,7 +171,7 @@ export function IpsInvestigation({
   const chartBaseline = noReliableCell ? null : baseline;
 
   const expected = f.expected;
-  const quantity = spec?.quantity ?? "";
+  const quantity = quantityText(anomaly.anomaly_type, i18n);
 
   return (
     <>
@@ -158,26 +179,29 @@ export function IpsInvestigation({
 
       <p className="incident-summary">{summary.text}</p>
       {summary.caveat && <p className="subtitle">{summary.caveat}</p>}
-      <p className="subtitle">{ipsStateMeaning(anomaly.state, subject)}</p>
+      <p className="subtitle">{ipsStateMeaning(anomaly.state, subject, i18n)}</p>
 
       <IpsIncidentMetrics anomaly={anomaly} bucketSeconds={bucketSeconds} />
 
       <section>
-        <h2 className="section-title">Timeline</h2>
+        <h2 className="section-title">{t("section.timeline")}</h2>
         {series == null ? (
           <div className="notice" role="alert">
-            The measurement history for this {subject === "entity" ? "entity" : "IPS source"} could
-            not be loaded. The rest of this investigation is unaffected, but the series is absent
-            rather than empty. Reload the page; if it keeps failing, check that the backend is
-            reachable.
+            {t("plan.seriesFailed", { subject: subjectNoun })}
           </div>
         ) : planned && "why" in planned ? (
           <div className="notice">{planned.why}</div>
         ) : points && points.length === 0 ? (
           <div className="notice">
-            No buckets were stored for this {subject === "entity" ? "entity" : "IPS source"} in
-            this window. This is an absence of collection, not an observation of zero{" "}
-            {f.unit === "share" ? "share" : f.unit === "ports" ? "ports" : "events"}.
+            {t("plan.noBuckets", {
+              subject: subjectNoun,
+              what:
+                f.unit === "share"
+                  ? t("plan.shareWord")
+                  : f.unit === "ports"
+                    ? t("plan.portsWord")
+                    : t("plan.eventsWord"),
+            })}
           </div>
         ) : (
           points &&
@@ -186,41 +210,41 @@ export function IpsInvestigation({
           f.unit != null && (
             <>
               {counts && counts.notExact > 0 && (
-                <Banner word="PARTIAL">
-                  {counts.notExact} of {counts.stored} stored buckets were not measured exactly
-                  {counts.notMeasured > 0 &&
-                    `; ${counts.notMeasured} of them carry no usable value and are drawn as gaps`}
-                  {counts.lowerBound > 0 && `; ${counts.lowerBound} are plotted as lower bounds`}.
-                  A figure from those buckets does not support a claim of exact volume or exact
-                  normality.
+                <Banner word={t("banner.partial")}>
+                  {t("banner.partialBody", {
+                    notExact: grouped(counts.notExact, locale),
+                    stored: grouped(counts.stored, locale),
+                    extra:
+                      (counts.notMeasured > 0
+                        ? t("banner.partialNotMeasured", { count: grouped(counts.notMeasured, locale) })
+                        : "") +
+                      (counts.lowerBound > 0
+                        ? t("banner.partialLowerBound", { count: grouped(counts.lowerBound, locale) })
+                        : ""),
+                  })}
                 </Banner>
               )}
               {counts && counts.admissionTruncated > 0 && (
-                <Banner word="TRUNCATED">
-                  Entity admission lost entities to the quota, ceiling or top-N cut in{" "}
-                  {counts.admissionTruncated} of {counts.stored} buckets, so the inventory for those
-                  buckets is incomplete. This entity&apos;s own counts are shown; nothing is implied about
-                  entities that were not admitted.
+                <Banner word={t("banner.truncated")}>
+                  {t("banner.truncatedBody", {
+                    count: grouped(counts.admissionTruncated, locale),
+                    stored: grouped(counts.stored, locale),
+                  })}
                 </Banner>
               )}
               {counts && counts.maintenance > 0 && (
                 <p className="subtitle">
-                  {counts.maintenance} bucket{counts.maintenance === 1 ? " was" : "s were"} in
-                  maintenance and {counts.maintenance === 1 ? "is" : "are"} outlined on the chart: the
-                  engine does not judge them.
+                  {t("banner.maintenanceBody", { count: counts.maintenance })}
                 </p>
               )}
               {baselines == null && metric && (
-                <Banner word="BASELINE UNAVAILABLE">
-                  The seasonal cells could not be loaded, so the band is the range recorded at
-                  detection, not a per-bucket one.
+                <Banner word={t("banner.baselineUnavailable")}>
+                  {t("banner.baselineUnavailableBody")}
                 </Banner>
               )}
               {noReliableCell && (
-                <Banner word="INSUFFICIENT_DATA">
-                  No seasonal cell of this metric is reliable yet, so no expected band is drawn
-                  for any bucket. The recorded range at detection, if any, is shown instead. That
-                  is not the same as a normal baseline.
+                <Banner word={wordOrValue(i18n, "enums.anomalyState", "INSUFFICIENT_DATA")}>
+                  {t("banner.insufficientBody")}
                 </Banner>
               )}
               <IpsSeriesChart
@@ -238,12 +262,12 @@ export function IpsInvestigation({
                     ? [{ start: anomaly.anomaly_start, end: anomaly.anomaly_end }]
                     : []
                 }
-                transitions={anomaly.transitions.map((t) => ({
-                  at: t.occurred_at,
-                  label: stateLabel(t.to_state),
+                transitions={anomaly.transitions.map((tr) => ({
+                  at: tr.occurred_at,
+                  label: ipsStateWord(tr.to_state, i18n),
                 }))}
-                ariaLabel={`${quantity} against the expected range`}
-                textSummary={ipsChartSummary(anomaly, planned.plan.points, quantity)}
+                ariaLabel={t("chart.aria", { quantity })}
+                textSummary={ipsChartSummary(anomaly, planned.plan.points, quantity, i18n)}
               />
             </>
           )
@@ -251,25 +275,20 @@ export function IpsInvestigation({
       </section>
 
       <section>
-        <h2 className="section-title">What was judged</h2>
+        <h2 className="section-title">{t("section.judged")}</h2>
         <IpsDetectionBlock anomaly={anomaly} bucketSeconds={bucketSeconds} />
       </section>
 
       <section>
-        <h2 className="section-title">Evidence</h2>
-        <p className="subtitle">
-          An IPS incident has no evidence package and no list of contributing values. The series
-          above and what was judged are what the detector recorded; source addresses are not
-          served for IPS.
-        </p>
+        <h2 className="section-title">{t("section.evidence")}</h2>
+        <p className="subtitle">{t("section.evidenceBody")}</p>
       </section>
 
       <section>
-        <h2 className="section-title">Lifecycle</h2>
+        <h2 className="section-title">{t("section.lifecycle")}</h2>
         <LifecycleTimeline
           transitions={anomaly.transitions}
           policyVersion={anomaly.policy_version}
-          stateLabel={statePillText}
         />
       </section>
     </>

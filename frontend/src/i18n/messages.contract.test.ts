@@ -73,6 +73,13 @@ const IDENTICAL_ALLOWLIST = new Set([
   "units.eps",
   // I18N-5: punctuation around a placeholder, the same in both languages.
   "customRules.latency.tail",
+  // I18N-10: "Normal" is the same word in Turkish; "Robust z" and "QRadar id" are technical terms
+  // (the robust z-score, a QRadar object label) the glossary keeps in English.
+  "ips.stateWord.NORMAL",
+  "ips.detection.robustZ",
+  "ips.editor.qradarId",
+  "ips.table.qradarId",
+  "ips.picker.qradarId",
 ]);
 
 describe("message catalog contract", () => {
