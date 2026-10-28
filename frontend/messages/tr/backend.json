@@ -3,5 +3,49 @@
     "dimension": {
       "unpopulated": "Bu alan, bu log source'un olaylarında dolu değil"
     }
+  },
+  "validation": {
+    "field": {
+      "insufficient_coverage": "Olayların {populated} oranında doldurulmuş; gerekli {required} oranının altında",
+      "no_events": "Kaynak pencerede olay üretmedi; bir sonuca varılamaz",
+      "population_not_measured": "Doldurulma ölçülmedi",
+      "total_not_measured": "Kaynağın toplam olay hacmi ölçülmedi"
+    },
+    "ips": {
+      "field": {
+        "not_mapped": "Bu mantıksal alana hiçbir QRadar alanı eşlenmemiş",
+        "rejected": "QRadar eşlenen alanı belirtilen adıyla reddetti",
+        "unpopulated": "Alan mevcut ancak penceredeki hiçbir olay kullanılabilir bir değer taşımadı"
+      },
+      "profile": {
+        "truncated": "Sınırlı doğrulama yoklaması kırpıldı"
+      }
+    },
+    "profile": {
+      "field_reason": "Alan {field}: {status} ({detail})",
+      "ineligible": {
+        "disabled": "Profil devre dışı",
+        "status": "Profil doğrulama durumu: {validation_status}",
+        "version_never_validated": "Profil sürümü {profile_version} hiç doğrulanmadı",
+        "version_not_validated": "Profil sürümü {profile_version} doğrulanmadı (son doğrulanan: {validated_profile_version})"
+      },
+      "lookup_failed": "Log source araması başarısız oldu ({error})",
+      "source_missing": "Bu log source QRadar'da mevcut değil",
+      "total_not_measured": "Toplam olay hacmi ölçülmedi ({error})"
+    },
+    "waf": {
+      "field": {
+        "implausible_no_values": "Örneklenen hiçbir olay makul bir {logical} değeri taşımıyor; gerekli {required} oranının altında",
+        "implausible_ratio": "Örneklenen olayların {plausible} oranı makul bir {logical} değeri taşıyor; gerekli {required} oranının altında",
+        "not_mapped": "Bu alana hiçbir QRadar özelliği eşlenmemiş",
+        "property_rejected": "QRadar bu özelliği adıyla kullanan sorguyu reddetti; bu adla mevcut değil",
+        "unpopulated": "Özellik mevcut ancak penceredeki hiçbir olay değer taşımadı"
+      },
+      "ineligible": {
+        "collection_disabled": "WAF toplaması devre dışı (WAF_COLLECTION_ENABLED=false)",
+        "monitoring_disabled": "Log source için izleme devre dışı",
+        "source_missing": "Profilin log source'u artık mevcut değil"
+      }
+    }
   }
 }

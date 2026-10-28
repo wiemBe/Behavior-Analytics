@@ -13,6 +13,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.history.origin import HistoryOrigin
+from app.schemas.messages import MessageParamValue, MessageValue
 
 
 class MappingFieldOut(BaseModel):
@@ -78,11 +79,14 @@ class WafValidationFieldOut(BaseModel):
     values_truncated: bool
     discovered_values: list[dict[str, Any]] = Field(default_factory=list)
     detail: str | None = None
+    detail_code: str | None = None
+    detail_params: dict[str, MessageParamValue] | None = None
 
 
 class WafValidationReportOut(BaseModel):
     status: str
     reasons: list[str]
+    reason_codes: list[MessageValue | None] | None = None
     total_events: int | None = None
     window_start: datetime
     window_end: datetime
@@ -111,6 +115,8 @@ class WafProfileOut(BaseModel):
     validation_requested_by: str | None = None
     collection_eligible: bool
     ineligible_reason: str | None = None
+    ineligible_reason_code: str | None = None
+    ineligible_reason_params: dict[str, MessageParamValue] | None = None
     updated_by: str | None = None
     updated_at: datetime
 
@@ -133,6 +139,7 @@ class WafProfileHistoryEntryOut(BaseModel):
     mapping_after: dict[str, Any] | None = None
     outcome: str
     reasons: list[str] | None = None
+    reason_codes: list[MessageValue | None] | None = None
 
 
 class WafFieldStatusOut(BaseModel):
@@ -191,6 +198,8 @@ class WafSourceStatusOut(BaseModel):
     #: Whether scheduled runs will process this source, and if not, why not.
     collection_eligible: bool
     ineligible_reason: str | None = None
+    ineligible_reason_code: str | None = None
+    ineligible_reason_params: dict[str, MessageParamValue] | None = None
 
     collection_watermark_at: datetime | None = None
     last_run_at: datetime | None = None

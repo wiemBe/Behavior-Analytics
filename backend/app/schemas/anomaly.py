@@ -38,7 +38,7 @@ from app.models.enums import (
     Severity,
     WafAnomalyType,
 )
-from app.schemas.messages import MessageParamValue
+from app.schemas.messages import MessageParamValue, MessageValue
 
 
 class SubjectKind(StrEnum):
@@ -946,6 +946,8 @@ class WafValidationFieldOut(BaseModel):
     #: How many bounded sample values the report holds. The values are not served.
     discovered_value_count: int | None = None
     detail: str | None = None
+    detail_code: str | None = None
+    detail_params: dict[str, MessageParamValue] | None = None
 
 
 class WafValidationReportOut(BaseModel):
@@ -953,6 +955,7 @@ class WafValidationReportOut(BaseModel):
 
     status: str | None = None
     reasons: list[str] = Field(default_factory=list)
+    reason_codes: list[MessageValue | None] | None = None
     log_source_found: bool | None = None
     total_events: int | None = None
     window_start: str | None = None

@@ -440,6 +440,13 @@ export interface ProfileStateInput {
   validated_profile_version: number | null;
   collection_eligible: boolean;
   ineligible_reason: string | null;
+  ineligible_reason_code?: string | null;
+  ineligible_reason_params?: Record<string, unknown> | null;
+  renderBackendMessage?: (sentence: {
+    text: string;
+    code?: string | null;
+    params?: Record<string, unknown> | null;
+  }) => string;
   validation_pending?: boolean;
   /** Per-field outcomes, for the reason after "Invalid:". */
   fields?: { field: string; property_name: string | null; status: string }[];
@@ -543,7 +550,14 @@ export function collectionState(
   return {
     collecting: false,
     label: p.ineligible_reason
-      ? i18n.t(k("state.pausedWhy"), { reason: p.ineligible_reason })
+      ? i18n.t(k("state.pausedWhy"), {
+          reason:
+            p.renderBackendMessage?.({
+              text: p.ineligible_reason,
+              code: p.ineligible_reason_code,
+              params: p.ineligible_reason_params,
+            }) ?? p.ineligible_reason,
+        })
       : i18n.t(k("state.paused")),
   };
 }

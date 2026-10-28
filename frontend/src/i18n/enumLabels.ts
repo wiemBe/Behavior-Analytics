@@ -29,6 +29,7 @@ type ExtendedEnumGroup =
   | "propertyWatchStatus"
   | "propertyWatchHistoryState"
   | "propertyWatchPreviewOutcome"
+  | "profileValidationStatus"
   | "executionStatus"
   | "executionTrigger"
   | "role";

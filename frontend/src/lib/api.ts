@@ -575,6 +575,11 @@ export interface DiscoveredValue {
   events: number;
 }
 
+export interface BackendMessageRef {
+  code: string;
+  params: Record<string, unknown>;
+}
+
 export interface FieldValidationOut {
   field: string;
   property_name: string | null;
@@ -591,11 +596,14 @@ export interface FieldValidationOut {
   values_truncated: boolean;
   discovered_values: DiscoveredValue[];
   detail: string | null;
+  detail_code?: string | null;
+  detail_params?: Record<string, unknown> | null;
 }
 
 export interface ValidationReportOut {
   status: WafValidationStatus;
   reasons: string[];
+  reason_codes?: (BackendMessageRef | null)[] | null;
   total_events: number | null;
   window_start: string;
   window_end: string;
@@ -632,6 +640,8 @@ export interface WafProfileOut {
   validation_requested_by: string | null;
   collection_eligible: boolean;
   ineligible_reason: string | null;
+  ineligible_reason_code?: string | null;
+  ineligible_reason_params?: Record<string, unknown> | null;
   updated_by: string | null;
   updated_at: string;
 }
@@ -647,6 +657,7 @@ export interface WafProfileHistoryEntryOut {
   mapping_after: FieldMapping | null;
   outcome: string | null;
   reasons: string[] | null;
+  reason_codes?: (BackendMessageRef | null)[] | null;
 }
 
 export interface WafCandidateOut {
@@ -689,6 +700,8 @@ export interface WafSourceStatus {
   validation_fields: { field: string; property_name: string | null; status: string }[];
   collection_eligible: boolean;
   ineligible_reason: string | null;
+  ineligible_reason_code?: string | null;
+  ineligible_reason_params?: Record<string, unknown> | null;
   validation_pending: boolean;
   validation_requested_at: string | null;
   validation_requested_by: string | null;
@@ -1502,7 +1515,39 @@ export interface WafSourceBehavior {
   admission: WafAdmissionOverflow;
 }
 
-export type WafSourceDetail = WafSourceBehavior;
+export interface WafAnalystValidationField {
+  field: string;
+  property_name: string | null;
+  status: string;
+  used_by_collection: boolean;
+  populated_events: number | null;
+  populated_ratio: number | null;
+  distinct_values: number | null;
+  plausible_ratio: number | null;
+  sampled_events: number | null;
+  values_truncated: boolean | null;
+  discovered_value_count: number | null;
+  detail: string | null;
+  detail_code?: string | null;
+  detail_params?: Record<string, unknown> | null;
+}
+
+export interface WafAnalystValidationReport {
+  status: string | null;
+  reasons: string[];
+  reason_codes?: (BackendMessageRef | null)[] | null;
+  log_source_found: boolean | null;
+  total_events: number | null;
+  window_start: string | null;
+  window_end: string | null;
+  profile_version: number | null;
+  validated_at: string | null;
+  fields: WafAnalystValidationField[];
+}
+
+export interface WafSourceDetail extends WafSourceBehavior {
+  validation_report?: WafAnalystValidationReport | null;
+}
 
 export interface PagedWafSources {
   items: WafSourceBehavior[];
@@ -3321,12 +3366,15 @@ export interface IpsValidationFieldOut {
   values_truncated: boolean;
   discovered_values: DiscoveredValue[];
   detail: string | null;
+  detail_code?: string | null;
+  detail_params?: Record<string, unknown> | null;
   warnings: string[];
 }
 
 export interface IpsValidationReportOut {
   status: WafValidationStatus;
   reasons: string[];
+  reason_codes?: (BackendMessageRef | null)[] | null;
   warnings: string[];
   total_events: number | null;
   window_start: string;
@@ -3359,6 +3407,8 @@ export interface IpsProfileOut {
   validation_requested_by: string | null;
   collection_eligible: boolean;
   ineligible_reason: string | null;
+  ineligible_reason_code?: string | null;
+  ineligible_reason_params?: Record<string, unknown> | null;
   updated_by: string | null;
   updated_at: string;
 }
@@ -3383,6 +3433,17 @@ export interface IpsSourceStatus {
   validation_requested_by: string | null;
   collection_eligible: boolean;
   ineligible_reason: string | null;
+  ineligible_reason_code?: string | null;
+  ineligible_reason_params?: Record<string, unknown> | null;
+  validation_fields?: {
+    field: string;
+    status: string;
+    detail: string | null;
+    detail_code?: string | null;
+    detail_params?: Record<string, unknown> | null;
+  }[];
+  validation_reasons?: string[];
+  validation_reason_codes?: (BackendMessageRef | null)[] | null;
   updated_by: string | null;
   updated_at: string;
 }
@@ -3408,6 +3469,7 @@ export interface IpsProfileHistoryEntryOut {
   /** SUCCESS, FAILURE, SOURCE_BUSY, ... */
   outcome: string;
   reasons: string[] | null;
+  reason_codes?: (BackendMessageRef | null)[] | null;
 }
 
 export const ipsApi = {

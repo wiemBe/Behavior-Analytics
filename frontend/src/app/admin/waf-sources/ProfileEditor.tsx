@@ -15,6 +15,7 @@ import { useTranslations } from "next-intl";
 import { FieldMappingForm } from "@/components/fieldmapping/FieldMappingForm";
 import { MappingHistory } from "@/components/fieldmapping/MappingHistory";
 import { ValidationReport } from "@/components/fieldmapping/ValidationReport";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { ValueMapEditor, outcomeLabel } from "@/components/fieldmapping/ValueMapEditor";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
@@ -132,6 +133,7 @@ export function ProfileEditor({
   const pageT = useTranslations("waf.admin.page");
   const common = useTranslations("common");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const { locale } = i18n;
   const count = (value: number) => formatCount(value, locale);
   const [profile, setProfile] = useState<WafProfileOut | null>(initialProfile);
@@ -418,7 +420,13 @@ export function ProfileEditor({
   }
 
   // --- header ---------------------------------------------------------------
-  const stateInput = profile ? { ...profile, fields: profile.validation?.fields } : null;
+  const stateInput = profile
+    ? {
+        ...profile,
+        fields: profile.validation?.fields,
+        renderBackendMessage: backendMessage,
+      }
+    : null;
   const vState = stateInput ? validationState(stateInput, schema, i18n) : null;
   const cState = stateInput ? collectionState(stateInput, i18n) : null;
 

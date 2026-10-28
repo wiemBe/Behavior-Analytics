@@ -99,6 +99,204 @@ REGISTRY: tuple[MessageSpec, ...] = (
         params={},
         sample={},
     ),
+    MessageSpec(
+        code="validation.field.population_not_measured",
+        template="population was not measured",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.field.total_not_measured",
+        template="the source's total event volume was not measured",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.field.no_events",
+        template="the source produced no events in the window; nothing can be concluded",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.field.insufficient_coverage",
+        template="populated on {populated} of events, below the required {required}",
+        params={
+            "populated": ParamSpec(ParamKind.PERCENT, precision=1),
+            "required": ParamSpec(ParamKind.PERCENT),
+        },
+        sample={"populated": 0.318, "required": 0.9},
+    ),
+    MessageSpec(
+        code="validation.waf.field.not_mapped",
+        template="no QRadar property is mapped to this field",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.waf.field.property_rejected",
+        template="QRadar rejected a query naming this property; it does not exist as named",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.waf.field.unpopulated",
+        template="the property exists but no event in the window carried a value",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.waf.field.implausible_ratio",
+        template=(
+            "{plausible} of sampled events carry a plausible {logical} value, "
+            "below the required {required}"
+        ),
+        params={
+            "plausible": ParamSpec(ParamKind.PERCENT, precision=1),
+            "logical": ParamSpec(ParamKind.TEXT),
+            "required": ParamSpec(ParamKind.PERCENT),
+        },
+        sample={"plausible": 0.125, "logical": "method", "required": 0.9},
+    ),
+    MessageSpec(
+        code="validation.waf.field.implausible_no_values",
+        template=(
+            "no values of sampled events carry a plausible {logical} value, "
+            "below the required {required}"
+        ),
+        params={
+            "logical": ParamSpec(ParamKind.TEXT),
+            "required": ParamSpec(ParamKind.PERCENT),
+        },
+        sample={"logical": "method", "required": 0.9},
+    ),
+    MessageSpec(
+        code="validation.ips.field.not_mapped",
+        template="no QRadar field is mapped to this logical field",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.ips.field.rejected",
+        template="QRadar rejected the mapped field as named",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.ips.field.unpopulated",
+        template="the field exists but no event in the window carried a usable value",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.profile.lookup_failed",
+        template="the log source lookup failed ({error})",
+        params={"error": ParamSpec(ParamKind.TEXT)},
+        sample={"error": "ProviderUnavailableError: timeout"},
+    ),
+    MessageSpec(
+        code="validation.profile.source_missing",
+        template="the log source does not exist in QRadar",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.profile.total_not_measured",
+        template="total event volume was not measured ({error})",
+        params={"error": ParamSpec(ParamKind.TEXT)},
+        sample={"error": "ProviderUnavailableError: timeout"},
+    ),
+    MessageSpec(
+        code="validation.ips.profile.truncated",
+        template="the bounded validation probe was truncated",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.profile.field_reason",
+        template="{field}: {status} ({detail})",
+        params={
+            "field": ParamSpec(ParamKind.TEXT),
+            "status": ParamSpec(ParamKind.TEXT),
+            "detail": ParamSpec(
+                ParamKind.REF,
+                ref_codes=(
+                    "validation.field.population_not_measured",
+                    "validation.field.total_not_measured",
+                    "validation.field.no_events",
+                    "validation.field.insufficient_coverage",
+                    "validation.waf.field.not_mapped",
+                    "validation.waf.field.property_rejected",
+                    "validation.waf.field.unpopulated",
+                    "validation.waf.field.implausible_ratio",
+                    "validation.waf.field.implausible_no_values",
+                    "validation.ips.field.not_mapped",
+                    "validation.ips.field.rejected",
+                    "validation.ips.field.unpopulated",
+                ),
+            ),
+        },
+        sample={
+            "field": "URL",
+            "status": "INSUFFICIENT_COVERAGE",
+            "detail": MessageRef(
+                "validation.field.insufficient_coverage",
+                {"populated": 0.318, "required": 0.9},
+            ),
+        },
+    ),
+    MessageSpec(
+        code="validation.waf.ineligible.collection_disabled",
+        template="WAF collection is disabled (WAF_COLLECTION_ENABLED=false)",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.waf.ineligible.source_missing",
+        template="the profile's log source no longer exists",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.profile.ineligible.disabled",
+        template="the profile is disabled",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.waf.ineligible.monitoring_disabled",
+        template="monitoring is disabled for the log source",
+        params={},
+        sample={},
+    ),
+    MessageSpec(
+        code="validation.profile.ineligible.version_never_validated",
+        template="profile version {profile_version} has never been validated",
+        params={"profile_version": ParamSpec(ParamKind.COUNT, style="plain")},
+        sample={"profile_version": 12000},
+    ),
+    MessageSpec(
+        code="validation.profile.ineligible.version_not_validated",
+        template=(
+            "profile version {profile_version} has not been validated "
+            "(last validated: {validated_profile_version})"
+        ),
+        params={
+            "profile_version": ParamSpec(ParamKind.COUNT, style="plain"),
+            "validated_profile_version": ParamSpec(ParamKind.COUNT, style="plain"),
+        },
+        sample={"profile_version": 12000, "validated_profile_version": 9999},
+    ),
+    MessageSpec(
+        code="validation.profile.ineligible.status",
+        template="profile validation is {validation_status}",
+        params={
+            "validation_status": ParamSpec(
+                ParamKind.ENUM,
+                enum_group="profileValidationStatus",
+            )
+        },
+        sample={"validation_status": "INVALID"},
+    ),
 )
 
 
@@ -311,8 +509,10 @@ def _format_param(
             return f"{', '.join(rendered[:-1])} and {rendered[-1]}"
         return ", ".join(rendered)
     if spec.kind is ParamKind.REF:
+        if isinstance(value, str):
+            return value
         if not isinstance(value, MessageRef):
-            raise MessageRenderError(f"{name} must be a message reference")
+            raise MessageRenderError(f"{name} must be a message reference or text")
         if value.code not in spec.ref_codes:
             raise MessageRenderError(f"{name} does not allow ref code {value.code}")
         return render(value, registry=registry)
@@ -376,8 +576,7 @@ def _wire_param(
             ],
         }
     if spec.kind is ParamKind.REF:
-        assert isinstance(value, MessageRef)
-        return _to_wire(value, registry)
+        return _to_wire(value, registry) if isinstance(value, MessageRef) else value
     if spec.kind is ParamKind.TIMESTAMP and isinstance(value, datetime):
         return value.isoformat()
     return value

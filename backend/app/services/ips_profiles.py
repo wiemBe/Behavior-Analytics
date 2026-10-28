@@ -250,6 +250,10 @@ class IpsProfileService:
                 "profile_version": profile.profile_version,
                 "status": result.status.value,
                 "reasons": result.reasons,
+                "reason_codes": [
+                    message.to_wire() if message is not None else None
+                    for message in result.reason_messages
+                ],
             },
         )
 

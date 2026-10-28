@@ -16,6 +16,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import SessionDep, SettingsDep
+from app.i18n.messages import render
 from app.models.enums import SourceClass, WafLogicalField
 from app.models.fleet import LogSourceClassification
 from app.models.identity import AuditLog
@@ -23,6 +24,7 @@ from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.waf import WafSourceProfile
 from app.providers.base import PROPERTY_NAME_PATTERN
+from app.schemas.messages import stored_message_list, validation_report_messages
 from app.schemas.waf import (
     MappingFieldOut,
     MappingSchemaOut,
@@ -40,16 +42,13 @@ from app.schemas.waf import (
 from app.security.auth import get_principal
 from app.security.rbac import Principal
 from app.services.waf_profiles import AUDIT_OBJECT, WafProfileService
-from app.services.waf_status import (
-    collection_ineligibility,
-    waf_ariel_budget_status,
-    waf_source_statuses,
-)
+from app.services.waf_status import waf_ariel_budget_status, waf_source_statuses
 from app.waf.profile import (
     ACTION_OUTCOMES,
     WAF_MAPPING_FIELDS,
     WafFieldMapping,
     WafProfileError,
+    collection_ineligibility_message,
 )
 
 router = APIRouter(prefix="/waf", tags=["waf"])
@@ -82,7 +81,7 @@ def _validation_out(profile: WafSourceProfile) -> WafValidationReportOut | None:
     if not report:
         return None
     # Typed projection deliberately drops total_query and every field's queries.
-    return WafValidationReportOut.model_validate(report)
+    return WafValidationReportOut.model_validate(validation_report_messages(report))
 
 
 def _profile_out(
@@ -90,7 +89,9 @@ def _profile_out(
     log_source: LogSource,
     settings: SettingsDep,
 ) -> WafProfileOut:
-    reason = collection_ineligibility(profile, log_source, settings)
+    reason_message = collection_ineligibility_message(profile, log_source, settings)
+    reason = render(reason_message) if reason_message is not None else None
+    reason_wire = reason_message.to_wire() if reason_message is not None else None
     return WafProfileOut(
         profile_id=profile.id,
         instance_id=profile.instance_id,
@@ -112,6 +113,8 @@ def _profile_out(
         validation_requested_by=profile.validation_requested_by,
         collection_eligible=reason is None,
         ineligible_reason=reason,
+        ineligible_reason_code=reason_wire["code"] if reason_wire is not None else None,
+        ineligible_reason_params=reason_wire["params"] if reason_wire is not None else None,
         updated_by=profile.updated_by,
         updated_at=profile.updated_at,
     )
@@ -438,6 +441,7 @@ async def get_waf_profile_history(
                 if isinstance(row.detail.get("reasons"), list)
                 else None
             ),
+            reason_codes=stored_message_list(row.detail.get("reason_codes")),
         )
         for row in rows
     ]

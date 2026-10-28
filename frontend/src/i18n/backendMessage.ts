@@ -210,6 +210,7 @@ function formatParam(
     case "list":
       return taggedKind(value, "list") ? formatUntyped(value, context, depth) : undefined;
     case "ref":
+      if (typeof value === "string") return value;
       if (!isRecord(value) || typeof value.code !== "string" || !isRecord(value.params)) {
         return undefined;
       }

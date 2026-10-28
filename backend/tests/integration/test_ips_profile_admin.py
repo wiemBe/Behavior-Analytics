@@ -377,11 +377,19 @@ async def test_sources_row_carries_the_field_results_and_the_report_reasons(
     assert response.status_code == 200
     (row,) = response.json()
     assert row["validation_fields"] == [
-        {"field": "SOURCE_IP", "status": "AVAILABLE", "detail": None},
+        {
+            "field": "SOURCE_IP",
+            "status": "AVAILABLE",
+            "detail": None,
+            "detail_code": None,
+            "detail_params": None,
+        },
         {
             "field": "ACTION",
             "status": "MISSING",
             "detail": "no QRadar field is mapped to the logical field",
+            "detail_code": None,
+            "detail_params": None,
         },
     ]
     assert row["validation_reasons"] == reasons
@@ -451,8 +459,20 @@ async def test_sources_row_skips_report_items_that_are_not_dicts_or_strings(
     assert response.status_code == 200
     (row,) = response.json()
     assert row["validation_fields"] == [
-        {"field": "SOURCE_IP", "status": "AVAILABLE", "detail": "values were seen"},
-        {"field": "ACTION", "status": "MISSING", "detail": "no mapping"},
+        {
+            "field": "SOURCE_IP",
+            "status": "AVAILABLE",
+            "detail": "values were seen",
+            "detail_code": None,
+            "detail_params": None,
+        },
+        {
+            "field": "ACTION",
+            "status": "MISSING",
+            "detail": "no mapping",
+            "detail_code": None,
+            "detail_params": None,
+        },
     ]
     assert row["validation_reasons"] == ["the bounded validation probe was truncated"]
 
@@ -512,15 +532,27 @@ async def test_sources_row_carries_no_discovered_values(db_session, db_schema) -
         "validation_requested_by",
         "validation_fields",
         "validation_reasons",
+        "validation_reason_codes",
         "collection_eligible",
         "ineligible_reason",
+        "ineligible_reason_code",
+        "ineligible_reason_params",
         "updated_by",
         "updated_at",
     }
     assert row["validation_fields"] == [
-        {"field": "SOURCE_IP", "status": "AVAILABLE", "detail": None}
+        {
+            "field": "SOURCE_IP",
+            "status": "AVAILABLE",
+            "detail": None,
+            "detail_code": None,
+            "detail_params": None,
+        }
     ]
+    assert row["validation_reason_codes"] is None
     assert row["ineligible_reason"] is None
+    assert row["ineligible_reason_code"] is None
+    assert row["ineligible_reason_params"] is None
 
 
 async def test_sources_list_statement_count_is_the_same_for_two_and_five(

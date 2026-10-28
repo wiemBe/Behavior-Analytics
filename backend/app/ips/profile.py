@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     IpsLogicalField,
     IpsPreset,
@@ -276,17 +277,32 @@ IPS_PRESETS: dict[IpsPreset, IpsFieldMapping] = {
 }
 
 
-def profile_ineligibility(profile: IpsSourceProfile) -> str | None:
-    """Why a later IPS collection run must not use this profile."""
+def profile_ineligibility_message(profile: IpsSourceProfile) -> MessageRef | None:
+    """Code for why a later IPS collection run must not use this profile."""
     if not profile.enabled:
-        return "the profile is disabled"
+        return MessageRef("validation.profile.ineligible.disabled")
     if profile.validated_profile_version != profile.profile_version:
         if profile.validated_profile_version is None:
-            return f"profile version {profile.profile_version} has never been validated"
-        return (
-            f"profile version {profile.profile_version} has not been validated "
-            f"(last validated: {profile.validated_profile_version})"
+            return MessageRef(
+                "validation.profile.ineligible.version_never_validated",
+                {"profile_version": profile.profile_version},
+            )
+        return MessageRef(
+            "validation.profile.ineligible.version_not_validated",
+            {
+                "profile_version": profile.profile_version,
+                "validated_profile_version": profile.validated_profile_version,
+            },
         )
     if profile.validation_status != IpsProfileValidationStatus.VALID:
-        return f"profile validation is {profile.validation_status}"
+        return MessageRef(
+            "validation.profile.ineligible.status",
+            {"validation_status": str(profile.validation_status)},
+        )
     return None
+
+
+def profile_ineligibility(profile: IpsSourceProfile) -> str | None:
+    """Why a later IPS collection run must not use this profile."""
+    message = profile_ineligibility_message(profile)
+    return render(message) if message is not None else None

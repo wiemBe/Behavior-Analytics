@@ -10,6 +10,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import SessionDep, SettingsDep
+from app.i18n.messages import render
 from app.ips.profile import (
     ACTION_OUTCOMES,
     IPS_MAPPING_FIELDS,
@@ -18,7 +19,7 @@ from app.ips.profile import (
     IpsFieldMapping,
     IpsFieldReference,
     IpsProfileError,
-    profile_ineligibility,
+    profile_ineligibility_message,
 )
 from app.models.enums import IpsLogicalField, IpsPreset, IpsReferenceKind, SourceClass
 from app.models.fleet import LogSourceClassification
@@ -43,6 +44,12 @@ from app.schemas.ips import (
     IpsSourceStatusOut,
     IpsValidationReportOut,
     IpsValueMapSchemaOut,
+)
+from app.schemas.messages import (
+    stored_message_list,
+    stored_message_parts,
+    stored_reasons,
+    validation_report_messages,
 )
 from app.schemas.property_catalog import PropertyCatalogOut
 from app.security.auth import get_principal
@@ -90,14 +97,20 @@ def _action_map_input(profile: IpsSourceProfile) -> IpsActionValueMapIn:
 
 def _validation_out(profile: IpsSourceProfile) -> IpsValidationReportOut | None:
     report = profile.validation_report or {}
-    return IpsValidationReportOut.model_validate(report) if report else None
+    return (
+        IpsValidationReportOut.model_validate(validation_report_messages(report))
+        if report
+        else None
+    )
 
 
 def _profile_out(
     profile: IpsSourceProfile, source: LogSource, settings: SettingsDep
 ) -> IpsProfileOut:
     del settings  # reserved for T-050's global IPS collection gate
-    reason = profile_ineligibility(profile)
+    reason_message = profile_ineligibility_message(profile)
+    reason = render(reason_message) if reason_message is not None else None
+    reason_wire = reason_message.to_wire() if reason_message is not None else None
     return IpsProfileOut(
         profile_id=profile.id,
         instance_id=profile.instance_id,
@@ -120,18 +133,23 @@ def _profile_out(
         validation_requested_by=profile.validation_requested_by,
         collection_eligible=reason is None,
         ineligible_reason=reason,
+        ineligible_reason_code=reason_wire["code"] if reason_wire is not None else None,
+        ineligible_reason_params=reason_wire["params"] if reason_wire is not None else None,
         updated_by=profile.updated_by,
         updated_at=profile.updated_at,
     )
 
 
 def _source_status(profile: IpsSourceProfile, source: LogSource) -> IpsSourceStatusOut:
-    reason = profile_ineligibility(profile)
+    reason_message = profile_ineligibility_message(profile)
+    reason = render(reason_message) if reason_message is not None else None
+    reason_wire = reason_message.to_wire() if reason_message is not None else None
     report = profile.validation_report or {}
     raw_fields = report.get("fields")
     raw_reasons = report.get("reasons")
     report_fields = raw_fields if isinstance(raw_fields, list) else []
     report_reasons = raw_reasons if isinstance(raw_reasons, list) else []
+    reason_texts, reason_codes = stored_reasons(report_reasons, report.get("reason_codes"))
     return IpsSourceStatusOut(
         profile_id=profile.id,
         instance_id=profile.instance_id,
@@ -152,19 +170,32 @@ def _source_status(profile: IpsSourceProfile, source: LogSource) -> IpsSourceSta
         # Only these leaf values leave the report: discovered raw values, counts
         # and references stay behind the per-profile editor view (AGENTS.md rule 3).
         validation_fields=[
-            IpsFieldStatusOut(
-                field=str(entry.get("field")),
-                status=str(entry.get("status")),
-                detail=entry.get("detail"),
-            )
+            _field_status_out(entry)
             for entry in report_fields
             if isinstance(entry, dict)
         ],
-        validation_reasons=[item for item in report_reasons if isinstance(item, str)],
+        validation_reasons=reason_texts,
+        validation_reason_codes=reason_codes,
         collection_eligible=reason is None,
         ineligible_reason=reason,
+        ineligible_reason_code=reason_wire["code"] if reason_wire is not None else None,
+        ineligible_reason_params=reason_wire["params"] if reason_wire is not None else None,
         updated_by=profile.updated_by,
         updated_at=profile.updated_at,
+    )
+
+
+def _field_status_out(entry: dict[str, object]) -> IpsFieldStatusOut:
+    code, params = stored_message_parts(
+        entry.get("detail_code"), entry.get("detail_params")
+    )
+    detail = entry.get("detail")
+    return IpsFieldStatusOut(
+        field=str(entry.get("field")),
+        status=str(entry.get("status")),
+        detail=detail if isinstance(detail, str) else None,
+        detail_code=code,
+        detail_params=params,
     )
 
 
@@ -479,6 +510,7 @@ async def get_ips_profile_history(
                 if isinstance(row.detail.get("reasons"), list)
                 else None
             ),
+            reason_codes=stored_message_list(row.detail.get("reason_codes")),
         )
         for row in rows
     ]

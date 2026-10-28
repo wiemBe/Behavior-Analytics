@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import Settings
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     WafBreakdown,
     WafFieldStatus,
@@ -238,32 +239,49 @@ class WafFieldMapping:
         return out
 
 
-def collection_ineligibility(
+def collection_ineligibility_message(
     profile: WafSourceProfile, log_source: LogSource | None, settings: Settings
-) -> str | None:
-    """Why this source must not be collected now, or None when it may be.
+) -> MessageRef | None:
+    """Code for why this source must not be collected now, or None when it may be.
 
     Every condition fails closed. In particular a profile whose mapping changed
     after its last validation does not run on the unvalidated mapping.
     """
     if not settings.waf_collection_enabled:
-        return "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)"
+        return MessageRef("validation.waf.ineligible.collection_disabled")
     if log_source is None:
-        return "the profile's log source no longer exists"
+        return MessageRef("validation.waf.ineligible.source_missing")
     if not profile.enabled:
-        return "the profile is disabled"
+        return MessageRef("validation.profile.ineligible.disabled")
     if not log_source.monitoring_enabled:
-        return "monitoring is disabled for the log source"
+        return MessageRef("validation.waf.ineligible.monitoring_disabled")
     if profile.validated_profile_version != profile.profile_version:
         if profile.validated_profile_version is None:
-            return f"profile version {profile.profile_version} has never been validated"
-        return (
-            f"profile version {profile.profile_version} has not been validated "
-            f"(last validated: {profile.validated_profile_version})"
+            return MessageRef(
+                "validation.profile.ineligible.version_never_validated",
+                {"profile_version": profile.profile_version},
+            )
+        return MessageRef(
+            "validation.profile.ineligible.version_not_validated",
+            {
+                "profile_version": profile.profile_version,
+                "validated_profile_version": profile.validated_profile_version,
+            },
         )
     if profile.validation_status != WafProfileValidationStatus.VALID:
-        return f"profile validation is {profile.validation_status}"
+        return MessageRef(
+            "validation.profile.ineligible.status",
+            {"validation_status": str(profile.validation_status)},
+        )
     return None
+
+
+def collection_ineligibility(
+    profile: WafSourceProfile, log_source: LogSource | None, settings: Settings
+) -> str | None:
+    """Why this source must not be collected now, or None when it may be."""
+    message = collection_ineligibility_message(profile, log_source, settings)
+    return render(message) if message is not None else None
 
 
 @dataclass(frozen=True)

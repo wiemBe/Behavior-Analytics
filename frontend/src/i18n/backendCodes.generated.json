@@ -5,5 +5,334 @@
     "sample_english": "field is not populated for this log source",
     "sample_english_params": {},
     "template": "field is not populated for this log source"
+  },
+  "validation.field.insufficient_coverage": {
+    "params": {
+      "populated": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "required": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "populated": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.318
+      },
+      "required": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      }
+    },
+    "sample_english": "populated on 31.8 % of events, below the required 90 %",
+    "sample_english_params": {
+      "populated": "31.8 %",
+      "required": "90 %"
+    },
+    "template": "populated on {populated} of events, below the required {required}"
+  },
+  "validation.field.no_events": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the source produced no events in the window; nothing can be concluded",
+    "sample_english_params": {},
+    "template": "the source produced no events in the window; nothing can be concluded"
+  },
+  "validation.field.population_not_measured": {
+    "params": {},
+    "sample": {},
+    "sample_english": "population was not measured",
+    "sample_english_params": {},
+    "template": "population was not measured"
+  },
+  "validation.field.total_not_measured": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the source's total event volume was not measured",
+    "sample_english_params": {},
+    "template": "the source's total event volume was not measured"
+  },
+  "validation.ips.field.not_mapped": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no QRadar field is mapped to this logical field",
+    "sample_english_params": {},
+    "template": "no QRadar field is mapped to this logical field"
+  },
+  "validation.ips.field.rejected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar rejected the mapped field as named",
+    "sample_english_params": {},
+    "template": "QRadar rejected the mapped field as named"
+  },
+  "validation.ips.field.unpopulated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the field exists but no event in the window carried a usable value",
+    "sample_english_params": {},
+    "template": "the field exists but no event in the window carried a usable value"
+  },
+  "validation.ips.profile.truncated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bounded validation probe was truncated",
+    "sample_english_params": {},
+    "template": "the bounded validation probe was truncated"
+  },
+  "validation.profile.field_reason": {
+    "params": {
+      "detail": {
+        "kind": "ref",
+        "ref_codes": [
+          "validation.field.population_not_measured",
+          "validation.field.total_not_measured",
+          "validation.field.no_events",
+          "validation.field.insufficient_coverage",
+          "validation.waf.field.not_mapped",
+          "validation.waf.field.property_rejected",
+          "validation.waf.field.unpopulated",
+          "validation.waf.field.implausible_ratio",
+          "validation.waf.field.implausible_no_values",
+          "validation.ips.field.not_mapped",
+          "validation.ips.field.rejected",
+          "validation.ips.field.unpopulated"
+        ]
+      },
+      "field": {
+        "kind": "text"
+      },
+      "status": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "detail": {
+        "code": "validation.field.insufficient_coverage",
+        "params": {
+          "populated": {
+            "kind": "percent",
+            "precision": 1,
+            "ratio": 0.318
+          },
+          "required": {
+            "kind": "percent",
+            "precision": 0,
+            "ratio": 0.9
+          }
+        }
+      },
+      "field": "URL",
+      "status": "INSUFFICIENT_COVERAGE"
+    },
+    "sample_english": "URL: INSUFFICIENT_COVERAGE (populated on 31.8 % of events, below the required 90 %)",
+    "sample_english_params": {
+      "detail": "populated on 31.8 % of events, below the required 90 %",
+      "field": "URL",
+      "status": "INSUFFICIENT_COVERAGE"
+    },
+    "template": "{field}: {status} ({detail})"
+  },
+  "validation.profile.ineligible.disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the profile is disabled",
+    "sample_english_params": {},
+    "template": "the profile is disabled"
+  },
+  "validation.profile.ineligible.status": {
+    "params": {
+      "validation_status": {
+        "enum_group": "profileValidationStatus",
+        "kind": "enum"
+      }
+    },
+    "sample": {
+      "validation_status": "INVALID"
+    },
+    "sample_english": "profile validation is INVALID",
+    "sample_english_params": {
+      "validation_status": "INVALID"
+    },
+    "template": "profile validation is {validation_status}"
+  },
+  "validation.profile.ineligible.version_never_validated": {
+    "params": {
+      "profile_version": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "profile_version": 12000
+    },
+    "sample_english": "profile version 12000 has never been validated",
+    "sample_english_params": {
+      "profile_version": "12000"
+    },
+    "template": "profile version {profile_version} has never been validated"
+  },
+  "validation.profile.ineligible.version_not_validated": {
+    "params": {
+      "profile_version": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "validated_profile_version": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "profile_version": 12000,
+      "validated_profile_version": 9999
+    },
+    "sample_english": "profile version 12000 has not been validated (last validated: 9999)",
+    "sample_english_params": {
+      "profile_version": "12000",
+      "validated_profile_version": "9999"
+    },
+    "template": "profile version {profile_version} has not been validated (last validated: {validated_profile_version})"
+  },
+  "validation.profile.lookup_failed": {
+    "params": {
+      "error": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "error": "ProviderUnavailableError: timeout"
+    },
+    "sample_english": "the log source lookup failed (ProviderUnavailableError: timeout)",
+    "sample_english_params": {
+      "error": "ProviderUnavailableError: timeout"
+    },
+    "template": "the log source lookup failed ({error})"
+  },
+  "validation.profile.source_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the log source does not exist in QRadar",
+    "sample_english_params": {},
+    "template": "the log source does not exist in QRadar"
+  },
+  "validation.profile.total_not_measured": {
+    "params": {
+      "error": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "error": "ProviderUnavailableError: timeout"
+    },
+    "sample_english": "total event volume was not measured (ProviderUnavailableError: timeout)",
+    "sample_english_params": {
+      "error": "ProviderUnavailableError: timeout"
+    },
+    "template": "total event volume was not measured ({error})"
+  },
+  "validation.waf.field.implausible_no_values": {
+    "params": {
+      "logical": {
+        "kind": "text"
+      },
+      "required": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "logical": "method",
+      "required": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      }
+    },
+    "sample_english": "no values of sampled events carry a plausible method value, below the required 90 %",
+    "sample_english_params": {
+      "logical": "method",
+      "required": "90 %"
+    },
+    "template": "no values of sampled events carry a plausible {logical} value, below the required {required}"
+  },
+  "validation.waf.field.implausible_ratio": {
+    "params": {
+      "logical": {
+        "kind": "text"
+      },
+      "plausible": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "required": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "logical": "method",
+      "plausible": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.125
+      },
+      "required": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      }
+    },
+    "sample_english": "12.5 % of sampled events carry a plausible method value, below the required 90 %",
+    "sample_english_params": {
+      "logical": "method",
+      "plausible": "12.5 %",
+      "required": "90 %"
+    },
+    "template": "{plausible} of sampled events carry a plausible {logical} value, below the required {required}"
+  },
+  "validation.waf.field.not_mapped": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no QRadar property is mapped to this field",
+    "sample_english_params": {},
+    "template": "no QRadar property is mapped to this field"
+  },
+  "validation.waf.field.property_rejected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar rejected a query naming this property; it does not exist as named",
+    "sample_english_params": {},
+    "template": "QRadar rejected a query naming this property; it does not exist as named"
+  },
+  "validation.waf.field.unpopulated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the property exists but no event in the window carried a value",
+    "sample_english_params": {},
+    "template": "the property exists but no event in the window carried a value"
+  },
+  "validation.waf.ineligible.collection_disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)",
+    "sample_english_params": {},
+    "template": "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)"
+  },
+  "validation.waf.ineligible.monitoring_disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "monitoring is disabled for the log source",
+    "sample_english_params": {},
+    "template": "monitoring is disabled for the log source"
+  },
+  "validation.waf.ineligible.source_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the profile's log source no longer exists",
+    "sample_english_params": {},
+    "template": "the profile's log source no longer exists"
   }
 }

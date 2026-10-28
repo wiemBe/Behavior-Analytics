@@ -25,7 +25,7 @@ import {
   ipsFieldStatusInfo,
   ipsHistoryActionLabel,
   ipsOutcomeNote,
-  ipsReasonText,
+  ipsCodedReasonText,
   lastValidationWasBusy,
   referenceKindOf,
   reportForTable,
@@ -36,6 +36,7 @@ import { MappingHistory } from "@/components/fieldmapping/MappingHistory";
 import { ValidationReport } from "@/components/fieldmapping/ValidationReport";
 import { ValueMapEditor, outcomeLabel } from "@/components/fieldmapping/ValueMapEditor";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { guideFor } from "@/lib/guideRoutes";
 import {
   ApiError,
@@ -111,6 +112,7 @@ export function IpsProfileEditor({
 }) {
   const t = useTranslations("ips.editor");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const formSch = useMemo(() => formSchema(schema), [schema]);
   const [profile, setProfile] = useState<IpsProfileOut | null>(initialProfile);
   const [catalog, setCatalog] = useState<PropertyCatalogOut | null>(initialCatalog);
@@ -400,7 +402,7 @@ export function IpsProfileEditor({
   }
 
   // --- header ---------------------------------------------------------------
-  const stateInput = profile ?? null;
+  const stateInput = profile ? { ...profile, renderBackendMessage: backendMessage } : null;
   const vState = stateInput ? validationState(stateInput, null, i18n) : null;
   const cState = stateInput ? collectionState(stateInput, i18n) : null;
 
@@ -727,7 +729,9 @@ export function IpsProfileEditor({
             notes={notes}
             hideColumns={["distinct", "plausible"]}
             statusInfo={(status, ctx) => ipsFieldStatusInfo(status, ctx, i18n)}
-            formatReason={(reason, ratio) => ipsReasonText(reason, schema, ratio, i18n)}
+            formatReason={(reason, ratio, sentence) =>
+              ipsCodedReasonText(reason, schema, ratio, sentence, i18n)
+            }
             describeReference={(f) => {
               const kind = referenceKindOf(report, f.field);
               return kind ? referenceKindLabel(kind, i18n) : null;

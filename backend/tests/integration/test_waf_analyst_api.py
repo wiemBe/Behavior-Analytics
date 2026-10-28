@@ -606,14 +606,17 @@ def test_waf_source_detail_serves_counts_only(db_schema) -> None:
     assert set(body) == SOURCE_KEYS | {"validation_report"}
     report = body["validation_report"]
     assert set(report) == {
-        "status", "reasons", "log_source_found", "total_events", "window_start", "window_end",
-        "profile_version", "validated_at", "fields",
+        "status", "reasons", "reason_codes", "log_source_found", "total_events",
+        "window_start", "window_end", "profile_version", "validated_at", "fields",
     }
     assert set(report["fields"][0]) == {
         "field", "property_name", "status", "used_by_collection", "populated_events",
         "populated_ratio", "distinct_values", "plausible_ratio", "sampled_events",
-        "values_truncated", "discovered_value_count", "detail",
+        "values_truncated", "discovered_value_count", "detail", "detail_code", "detail_params",
     }
+    assert report["reason_codes"] is None
+    assert report["fields"][0]["detail_code"] is None
+    assert report["fields"][0]["detail_params"] is None
     assert report["fields"][0]["discovered_value_count"] == 2
     assert report["total_events"] == 9000
     for forbidden in ("queries", "SELECT", "total_query", "discovered_values", "GET"):

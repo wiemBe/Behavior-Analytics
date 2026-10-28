@@ -3,5 +3,49 @@
     "dimension": {
       "unpopulated": "field is not populated for this log source"
     }
+  },
+  "validation": {
+    "field": {
+      "insufficient_coverage": "populated on {populated} of events, below the required {required}",
+      "no_events": "the source produced no events in the window; nothing can be concluded",
+      "population_not_measured": "population was not measured",
+      "total_not_measured": "the source''s total event volume was not measured"
+    },
+    "ips": {
+      "field": {
+        "not_mapped": "no QRadar field is mapped to this logical field",
+        "rejected": "QRadar rejected the mapped field as named",
+        "unpopulated": "the field exists but no event in the window carried a usable value"
+      },
+      "profile": {
+        "truncated": "the bounded validation probe was truncated"
+      }
+    },
+    "profile": {
+      "field_reason": "{field}: {status} ({detail})",
+      "ineligible": {
+        "disabled": "the profile is disabled",
+        "status": "profile validation is {validation_status}",
+        "version_never_validated": "profile version {profile_version} has never been validated",
+        "version_not_validated": "profile version {profile_version} has not been validated (last validated: {validated_profile_version})"
+      },
+      "lookup_failed": "the log source lookup failed ({error})",
+      "source_missing": "the log source does not exist in QRadar",
+      "total_not_measured": "total event volume was not measured ({error})"
+    },
+    "waf": {
+      "field": {
+        "implausible_no_values": "no values of sampled events carry a plausible {logical} value, below the required {required}",
+        "implausible_ratio": "{plausible} of sampled events carry a plausible {logical} value, below the required {required}",
+        "not_mapped": "no QRadar property is mapped to this field",
+        "property_rejected": "QRadar rejected a query naming this property; it does not exist as named",
+        "unpopulated": "the property exists but no event in the window carried a value"
+      },
+      "ineligible": {
+        "collection_disabled": "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)",
+        "monitoring_disabled": "monitoring is disabled for the log source",
+        "source_missing": "the profile''s log source no longer exists"
+      }
+    }
   }
 }

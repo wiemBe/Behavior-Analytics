@@ -21,6 +21,7 @@ import {
 import { plainCount } from "@/lib/figureText";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
+import { useBackendMessage, type BackendSentence } from "@/i18n/backendMessage";
 
 import "@/components/ui/controls.css";
 
@@ -71,12 +72,17 @@ export function ValidationReport({
   /** A domain's own status words; the default covers the WAF statuses. */
   statusInfo?: (status: string, ctx: Parameters<typeof fieldStatusInfo>[1]) => FieldStatusInfo;
   /** A domain's own sentence for a reason; the default covers the WAF reasons. */
-  formatReason?: (reason: string, populatedRatio: (field: string) => number | null) => string;
+  formatReason?: (
+    reason: string,
+    populatedRatio: (field: string) => number | null,
+    sentence: BackendSentence,
+  ) => string;
   /** What follows the property name in the field cell, for example its reference kind. */
   describeReference?: (field: FieldValidationOut) => string | null;
 }) {
   const t = useTranslations("fieldMapping.report");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const { locale } = i18n;
   const showDistinct = !hideColumns.includes("distinct");
   const showPlausible = !hideColumns.includes("plausible");
@@ -145,17 +151,29 @@ export function ValidationReport({
 
           {report.reasons.length > 0 && (
             <ul className="fm-reasons" aria-label={t("reasonsLabel")}>
-              {report.reasons.map((r) => (
-                <li key={r}>
-                  {(
-                    formatReason ??
-                    ((x, ratio) => reasonText(x, schema, requiredCoverage, ratio, i18n))
-                  )(
-                    r,
-                    (k) => report.fields.find((x) => x.field === k)?.populated_ratio ?? null,
-                  )}
-                </li>
-              ))}
+              {report.reasons.map((r, index) => {
+                const coded = report.reason_codes?.[index];
+                const sentence = {
+                  text: r,
+                  code: coded?.code,
+                  params: coded?.params,
+                };
+                return (
+                  <li key={`${r}-${index}`}>
+                    {(
+                      formatReason ??
+                      ((x, ratio, backend) => {
+                        const existing = reasonText(x, schema, requiredCoverage, ratio, i18n);
+                        return existing === x ? backendMessage(backend) : existing;
+                      })
+                    )(
+                      r,
+                      (k) => report.fields.find((x) => x.field === k)?.populated_ratio ?? null,
+                      sentence,
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
 
@@ -214,7 +232,15 @@ export function ValidationReport({
                           {info.label}
                         </span>
                         <span className="cell-sub fm-sentence">{info.sentence}</span>
-                        {f.detail && <span className="cell-sub fm-sentence">{f.detail}</span>}
+                        {f.detail && (
+                          <span className="cell-sub fm-sentence">
+                            {backendMessage({
+                              text: f.detail,
+                              code: f.detail_code,
+                              params: f.detail_params,
+                            })}
+                          </span>
+                        )}
                       </td>
                       <td className="num">
                         <Measure
