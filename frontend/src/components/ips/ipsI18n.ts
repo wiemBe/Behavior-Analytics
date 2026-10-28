@@ -11,12 +11,13 @@
 import behavior from "../../../messages/en/behavior.json";
 import common from "../../../messages/en/common.json";
 import enums from "../../../messages/en/enums.json";
+import fieldMapping from "../../../messages/en/fieldMapping.json";
 import ips from "../../../messages/en/ips.json";
 import { createTextTranslator } from "@/i18n/textTranslator";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 
 /** The English of this area, for the helpers' defaults. */
 export const ENGLISH_IPS: BehaviorI18n = {
-  t: createTextTranslator("en", { behavior, common, enums, ips }),
+  t: createTextTranslator("en", { behavior, common, enums, fieldMapping, ips }),
   locale: "en",
 };

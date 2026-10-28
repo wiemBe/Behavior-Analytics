@@ -200,11 +200,11 @@ export function ipsFieldStatusInfo(
   }
   if (status === "UNPOPULATED") {
     return {
-      ...fieldStatusInfo(status, ctx),
+      ...fieldStatusInfo(status, ctx, i18n),
       sentence: i18n.t("ips.validation.unpopulatedSentence"),
     };
   }
-  return fieldStatusInfo(status, ctx);
+  return fieldStatusInfo(status, ctx, i18n);
 }
 
 function capitalise(text: string): string {
@@ -233,7 +233,7 @@ export function ipsReasonText(
   if (reason === "the bounded validation probe was truncated") {
     return i18n.t("ips.validation.probeTruncated");
   }
-  const asWaf = reasonText(reason, formSchema(schema), schema.min_coverage_ratio, populatedRatio);
+  const asWaf = reasonText(reason, formSchema(schema), schema.min_coverage_ratio, populatedRatio, i18n);
   return asWaf === reason ? capitalise(reason) : asWaf;
 }
 

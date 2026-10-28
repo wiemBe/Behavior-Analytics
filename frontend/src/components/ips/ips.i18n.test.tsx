@@ -18,9 +18,11 @@ import AdminLoading from "@/app/admin/ips-sources/loading";
 import AdminError from "@/app/admin/ips-sources/error";
 import IpsSourcesPage from "@/app/admin/ips-sources/page";
 import { AddIpsSourcePicker } from "@/app/admin/ips-sources/AddIpsSourcePicker";
-import { candidate, IPS_SCHEMA, status } from "@/app/admin/ips-sources/fixtures";
+import { IpsProfileEditor } from "@/app/admin/ips-sources/IpsProfileEditor";
+import { candidate, catalog, HISTORY, IPS_SCHEMA, profile, status } from "@/app/admin/ips-sources/fixtures";
 import {
   genericNameNotes,
+  ipsFieldStatusInfo,
   ipsHistoryActionLabel,
   ipsOutcomeNote,
   ipsReasonText,
@@ -462,5 +464,58 @@ describe("IPS sources administration in Turkish", () => {
     expect(
       ipsReasonText("the bounded validation probe was truncated", IPS_SCHEMA, () => null, turkish),
     ).toContain("sonuçsuz");
+  });
+});
+
+describe("IPS profile editor in Turkish", () => {
+  const SOURCE = {
+    id: "ls-413",
+    name: "CiscoFirepowerThreatDefense @ ftd-01",
+    qradarId: 413,
+    typeName: "Cisco Firepower Threat Defense",
+  };
+  const renderEditor = () =>
+    render(
+      <IpsProfileEditor
+        schema={IPS_SCHEMA}
+        source={SOURCE}
+        profile={profile()}
+        catalog={catalog()}
+        history={HISTORY}
+      />,
+    );
+
+  it("words the editor header states through the I18N-8 helpers", () => {
+    renderEditor();
+    expect(screen.getByText("Geçerli (v2)")).toBeInTheDocument();
+    expect(screen.getAllByText("Toplanıyor").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Collecting")).not.toBeInTheDocument();
+  });
+
+  it("builds the values sentence without lowercasing a Turkish outcome label", () => {
+    const view = renderEditor();
+    const subtitle = view.container.querySelector("#fm-values-h + .subtitle");
+    expect(subtitle?.textContent).toMatch(/^Ham /);
+    expect(subtitle?.textContent).toContain("hangi sonuca eşleneceği: Engellendi ve İzin verildi.");
+    expect(subtitle?.textContent).not.toContain("izin verildi ve");
+  });
+
+  it("keeps the English values sentence lower case", () => {
+    setTestLocale("en");
+    const view = renderEditor();
+    expect(view.container.querySelector("#fm-values-h + .subtitle")?.textContent).toContain(
+      "count as blocked and allowed.",
+    );
+  });
+
+  it("words the field statuses of the shared table in Turkish, not only the IPS-specific one", () => {
+    const ctx = { populatedRatio: 0.9, plausibleRatio: null, requiredCoverage: 0.95, usedByCollection: true };
+    expect(ipsFieldStatusInfo("AVAILABLE", ctx, turkish).label).toBe("Kullanılabilir");
+    expect(ipsFieldStatusInfo("NOT_MAPPED", ctx, turkish).label).toBe("Eşlenmedi");
+    expect(ipsFieldStatusInfo("UNPOPULATED", ctx, turkish).label).not.toBe("Unpopulated");
+    expect(ipsFieldStatusInfo("AVAILABLE", ctx).label).toBe("Usable");
+    expect(
+      ipsReasonText("SOURCE_IP: NOT_MAPPED (no field)", IPS_SCHEMA, () => null, turkish),
+    ).not.toMatch(/mapped/i);
   });
 });

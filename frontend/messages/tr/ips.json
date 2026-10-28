@@ -333,7 +333,7 @@
     "validatesSaved": "Kayıtlı sürüm {version} doğrulanır; kaydedilmemiş düzenlemeleriniz değil.",
     "busyBefore": "Sürüm {version} için son doğrulama çalışmadı: başka bir iş bu kaynağı tutuyordu. Aşağıdaki sonuç önceki sonucun kendisidir ve hiçbir şey değiştirilmedi. Yeniden doğrulayın.",
     "valuesTitle": "{action} değerleri",
-    "valuesSubtitle": "Hangi ham {action} değerlerinin {outcomes} olarak sayıldığı. Bu değer eşlemesinin kaydedilmesi bir eşleme değişikliğidir: sürümü artırır ve yeniden doğrulanır.",
+    "valuesSubtitle": "Ham {action} değerlerinin hangi sonuca eşleneceği: {outcomes}. Bu değer eşlemesinin kaydedilmesi bir eşleme değişikliğidir: sürümü artırır ve yeniden doğrulanır.",
     "actionUnmappedStrong": "{action} eşlenmedi.",
     "actionUnmappedBody": "Cisco Firepower Threat Defense de Palo Alto THREAT de bir eylemi QRadar alanında sunmaz; bu yüzden bir site QRadar'da ona bir custom property yazar ve burada eşler. Eşlenene kadar engelleme oranı değerlendirilemez: yetersiz veri olarak bildirilir, asla engelleme yok olarak değil.",
     "truncatedNote": "Araştırma en fazla 20 {action} değerini listeler ve bu alanda daha fazlası var; bu yüzden son doğrulama sonuçsuz kaldı. Listede olmayan değerler eşlenmemiş sayılır, asla izinli sayılmaz.",

@@ -167,7 +167,7 @@ export function IpsProfileEditor({
   }
 
   const changes = useMemo(() => ipsDraftChanges(schema, baseDraft, draft), [schema, baseDraft, draft]);
-  const errors = useMemo(() => draftErrors(formSch, draft), [formSch, draft]);
+  const errors = useMemo(() => draftErrors(formSch, draft, i18n), [formSch, draft, i18n]);
   const dirty = changes.total > 0;
   const typeName = profile?.log_source_type_name ?? source.typeName;
 
@@ -400,8 +400,8 @@ export function IpsProfileEditor({
 
   // --- header ---------------------------------------------------------------
   const stateInput = profile ?? null;
-  const vState = stateInput ? validationState(stateInput) : null;
-  const cState = stateInput ? collectionState(stateInput) : null;
+  const vState = stateInput ? validationState(stateInput, null, i18n) : null;
+  const cState = stateInput ? collectionState(stateInput, i18n) : null;
 
   const meta = (
     <>
@@ -438,9 +438,10 @@ export function IpsProfileEditor({
   const tableReport = useMemo(() => reportForTable(report), [report]);
   const notes = useMemo(() => (report ? genericNameNotes(report, i18n) : []), [report, i18n]);
 
+  const lower = (text: string) => text.toLocaleLowerCase(i18n.locale === "tr" ? "tr-TR" : "en-US");
   const truncatedNote =
     actionTruncated && report?.status === "INCONCLUSIVE" && currentReport
-      ? t("truncatedNote", { action: actionLabel.toLowerCase() })
+      ? t("truncatedNote", { action: lower(actionLabel) })
       : null;
 
   const actionUnmappedNote = (
@@ -504,7 +505,7 @@ export function IpsProfileEditor({
           <ul className="fm-changes" aria-label={t("changedValues")}>
             {changes.values.map((v) => (
               <li key={v.outcome}>
-                {t("valuesLine", { outcome: outcomeLabel(v.outcome) })}{" "}
+                {t("valuesLine", { outcome: outcomeLabel(v.outcome, i18n) })}{" "}
                 {v.added.map((a) => (
                   <span key={`a-${a}`}>
                     {PLUS} <code>{a}</code>{" "}
@@ -588,7 +589,7 @@ export function IpsProfileEditor({
     </div>
   );
 
-  const block = profile ? enableBlockReason(profile) : null;
+  const block = profile ? enableBlockReason(profile, i18n) : null;
   const presetValue = draft.preset ?? NO_PRESET;
 
   return (
@@ -605,7 +606,7 @@ export function IpsProfileEditor({
 
       {conflict && (
         <div className="fm-banner is-warn" role="alert">
-          <span>{conflictMessage(conflict)}</span>
+          <span>{conflictMessage(conflict, i18n)}</span>
           <button
             type="button"
             className="action secondary"
@@ -728,7 +729,7 @@ export function IpsProfileEditor({
             formatReason={(reason, ratio) => ipsReasonText(reason, schema, ratio, i18n)}
             describeReference={(f) => {
               const kind = referenceKindOf(report, f.field);
-              return kind ? referenceKindLabel(kind) : null;
+              return kind ? referenceKindLabel(kind, i18n) : null;
             }}
           />
         </section>
@@ -739,9 +740,11 @@ export function IpsProfileEditor({
           <h2 id="fm-values-h">{t("valuesTitle", { action: actionLabel })}</h2>
           <p className="subtitle">
             {t("valuesSubtitle", {
-              action: actionLabel.toLowerCase(),
+              action: lower(actionLabel),
+              // The Turkish sentence puts the outcomes after a colon, so their labels keep
+              // their capital; the English one runs them into the sentence in lower case.
               outcomes: valueMap.outcomes
-                .map((o) => outcomeLabel(o).toLowerCase())
+                .map((o) => (i18n.locale === "tr" ? outcomeLabel(o, i18n) : lower(outcomeLabel(o))))
                 .join(` ${t("and")} `),
             })}
           </p>
