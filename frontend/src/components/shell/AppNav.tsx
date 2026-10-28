@@ -113,6 +113,7 @@ function itemLabel(href: string, fallback: string, t: NavTranslator): string {
     case "/admin/history-backfill": return t("historyBackfill");
     case "/admin/users": return t("users");
     case "/admin/directory": return t("directory");
+    case "/guide": return t("guide");
     default: return fallback;
   }
 }

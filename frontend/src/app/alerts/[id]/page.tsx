@@ -2,6 +2,7 @@ import { AlertActions } from "@/components/AlertActions";
 import { getLocale, getTranslations } from "next-intl/server";
 import { Evidence } from "@/components/Evidence";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type Notification } from "@/lib/api";
 import { formatCount } from "@/lib/format";
@@ -42,7 +43,7 @@ export default async function AlertDetailPage({
   } catch {
     return (
       <>
-        <PageHeader title={t("title")} />
+        <PageHeader guide={guideFor("/alerts/[id]")} title={t("title")} />
         <div className="notice" role="alert">
           <p>
             <strong>{t("failedTitle", { id })}</strong>
@@ -58,6 +59,7 @@ export default async function AlertDetailPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/alerts/[id]")}
         title={alert.title}
         description={
           <>

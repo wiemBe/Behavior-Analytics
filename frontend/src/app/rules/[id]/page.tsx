@@ -9,6 +9,7 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { CapacityHistory } from "@/components/rules/CapacityHistory";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { formatShare } from "@/lib/format";
 import { healthMeaning, healthTone, isUnestablished } from "@/lib/health";
@@ -58,7 +59,7 @@ export default async function RuleDetailPage({
   if (missing || error || !rule) {
     return (
       <>
-        <PageHeader title={t("title")} />
+        <PageHeader guide={guideFor("/rules/[id]")} title={t("title")} />
         <div className="notice" role={missing ? "status" : "alert"}>
           <p>
             {missing
@@ -88,6 +89,7 @@ export default async function RuleDetailPage({
         <Link href="/rules">{t("crumb")}</Link>
       </p>
       <PageHeader
+        guide={guideFor("/rules/[id]")}
         title={r.name}
         description={t("description", {
           id: r.qradar_id,

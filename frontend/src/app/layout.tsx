@@ -6,6 +6,7 @@ import { getTranslations } from "next-intl/server";
 import { AppFrame } from "@/components/auth/AppFrame";
 import { SessionProvider } from "@/components/auth/session";
 import { DataAgeProvider } from "@/components/shell/AutoRefresh";
+import { clientMessages } from "@/i18n/clientMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("meta");
@@ -17,7 +18,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = useLocale();
-  const messages = useMessages();
+  // The guide's text is rendered on the server only; the browser does not receive it.
+  const messages = clientMessages(useMessages());
   return (
     <html lang={locale}>
       <body>

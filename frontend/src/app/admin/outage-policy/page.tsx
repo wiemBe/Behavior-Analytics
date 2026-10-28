@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import {
   ApiError,
   outagePolicyApi,
@@ -50,6 +51,7 @@ export default async function OutagePolicyPage() {
   return (
     <>
       <PageHeader
+        guide={guideFor("/admin/outage-policy")}
         title={t("title")}
         description={t("description")}
       />

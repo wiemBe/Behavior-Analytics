@@ -13,6 +13,7 @@ import styles from "@/components/auth/auth.module.css";
 import { writeLocaleCookie, type Locale } from "@/i18n/locale";
 import { ApiError, updateUiLanguage } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { LoadingState } from "@/components/ui/RouteState";
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 
@@ -84,7 +85,7 @@ export function AccountHome() {
 
   return (
     <div className={styles.accountSettings}>
-      <PageHeader title={t("title")} />
+      <PageHeader guide={guideFor("/account")} title={t("title")} />
       <section className={styles.settingsSection}>
         <h2>{t("language")}</h2>
         <p className={styles.sectionNote}>{t("languageDescription")}</p>

@@ -7,6 +7,7 @@ import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
   healthMeaning,
@@ -68,6 +69,7 @@ export default async function RulesPage({
     return (
       <>
         <PageHeader
+          guide={guideFor("/rules")}
           title={t("title")}
           actions={<Link href="/rules/statistics">{t("statisticsLink")}</Link>}
         />
@@ -87,6 +89,7 @@ export default async function RulesPage({
     <>
       <ReportDataAge iso={rulesAsOf(items)} />
       <PageHeader
+        guide={guideFor("/rules")}
         title={t("title")}
         description={t("description")}
         actions={<Link href="/rules/statistics">{t("statisticsLink")}</Link>}

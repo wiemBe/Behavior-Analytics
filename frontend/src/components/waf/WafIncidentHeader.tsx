@@ -18,6 +18,8 @@ import { UtcTime } from "@/components/ui/UtcTime";
 
 import { ARROW_SEP, MID } from "./wafI18n";
 import { anomalyTypeLabel, endpointLabel, statePillText } from "./wafLabels";
+import { GuideLink } from "@/components/guide/GuideLink";
+import { guideFor } from "@/lib/guideRoutes";
 
 /** Design §27.15, verbatim. */
 export const NO_VIRTUAL_HOST_SENTENCE =
@@ -93,6 +95,7 @@ export function WafIncidentHeader({ anomaly }: { anomaly: WafAnomalyDetail }) {
           <Link href={sourceHref} className="action secondary button-link">
             {t("viewSource")}
           </Link>
+          <GuideLink section={guideFor("/anomalies/[id]")} />
         </div>
       </header>
 

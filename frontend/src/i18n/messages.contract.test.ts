@@ -4,11 +4,8 @@ import { describe, expect, it } from "vitest";
 import en from "../../messages/en";
 import tr from "../../messages/tr";
 
-interface Catalog {
-  [key: string]: string | Catalog;
-}
-
-function flatten(catalog: Catalog, prefix = "", out: Record<string, string> = {}) {
+// A catalog value is text, an object, or (the guide's blocks, GUIDE-2) a list: lists flatten by index.
+function flatten(catalog: object, prefix = "", out: Record<string, string> = {}) {
   for (const [key, value] of Object.entries(catalog)) {
     const path = prefix ? `${prefix}.${key}` : key;
     if (typeof value === "string") out[path] = value;
@@ -131,6 +128,9 @@ const IDENTICAL_ALLOWLIST = new Set([
   "directory.test.bind",
   "directory.test.tls",
   "directory.test.ms",
+  // GUIDE-2: the guide's "Coverage" section title is the product term, English in both languages.
+  "guide.sections.coverage.title",
+  "guideLinks.titles.coverage",
 ]);
 
 describe("message catalog contract", () => {

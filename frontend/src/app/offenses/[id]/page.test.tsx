@@ -138,7 +138,7 @@ describe("offense detail contents", () => {
     await renderPage();
     expect(screen.getByRole("heading", { name: "Offense 42", level: 1 })).toBeInTheDocument();
     expect(screen.getByText("Repeated authentication failures")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Offenses/ })).toHaveAttribute("href", "/offenses");
+    expect(screen.getByRole("link", { name: /^← Offenses/ })).toHaveAttribute("href", "/offenses");
   });
 
   it("shows the six summary scores with their tones", async () => {

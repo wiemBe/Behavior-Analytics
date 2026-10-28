@@ -90,6 +90,12 @@ export const NAV: NavGroup[] = [
       { href: "/admin/directory", label: "Directory", permission: "admin:auth" },
     ],
   },
+  {
+    // The in-app guide (decision D-38): last, outside Administration, and open to every signed-in
+    // user, so it carries no permission.
+    label: null,
+    items: [{ href: "/guide", label: "Guide" }],
+  },
 ];
 
 /**

@@ -10,11 +10,14 @@
 
 import type { ReactNode } from "react";
 
+import { GuideLink } from "@/components/guide/GuideLink";
+
 export function PageHeader({
   title,
   description,
   meta,
   actions,
+  guide,
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -22,6 +25,8 @@ export function PageHeader({
   meta?: ReactNode;
   /** Trailing controls, right-aligned on wide viewports. */
   actions?: ReactNode;
+  /** A guide section id (from `guideFor`): adds a text link to that section after the actions. */
+  guide?: string;
 }) {
   return (
     <header className="page-header">
@@ -30,7 +35,12 @@ export function PageHeader({
         {meta && <div className="row page-meta">{meta}</div>}
         {description && <p className="page-desc">{description}</p>}
       </div>
-      {actions && <div className="page-header-actions">{actions}</div>}
+      {(actions || guide) && (
+        <div className="page-header-actions">
+          {actions}
+          {guide && <GuideLink section={guide} />}
+        </div>
+      )}
     </header>
   );
 }

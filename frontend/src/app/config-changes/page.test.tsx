@@ -25,7 +25,8 @@ describe("configuration changes scaffold", () => {
     render(<ConfigChangesPage />);
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByRole("link")).toBeNull();
+    // GUIDE-2: the page header's guide link is the only link.
+    expect(screen.queryAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(["/guide/config-changes"]);
     expect(screen.queryByRole("button")).toBeNull();
   });
 

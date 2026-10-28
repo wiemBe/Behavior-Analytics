@@ -16,6 +16,8 @@ import { ARROW } from "@/lib/behaviorI18n";
 import { detectorLabel, stateTone } from "@/lib/behavior";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { GuideLink } from "@/components/guide/GuideLink";
+import { guideFor } from "@/lib/guideRoutes";
 
 
 export { detectorLabel };
@@ -88,6 +90,7 @@ export function IncidentHeader({ anomaly }: { anomaly: AnomalyDetail }) {
         >
           {t("viewSource")}
         </Link>
+        <GuideLink section={guideFor("/anomalies/[id]")} />
       </div>
     </header>
   );

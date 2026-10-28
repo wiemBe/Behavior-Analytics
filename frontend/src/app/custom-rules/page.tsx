@@ -12,6 +12,7 @@ import {
 } from "@/components/customrules/authoring";
 import { resolveRuleSubjects } from "@/components/customrules/subjects";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { ApiError, api, sevTone, type CallerInfo, type CustomRule, type CustomRuleCatalog } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
@@ -63,6 +64,7 @@ export default async function CustomRulesPage() {
   return (
     <>
       <PageHeader
+        guide={guideFor("/custom-rules")}
         title={t("title")}
         actions={access === "writer" && !forbidden ? <Link className="action secondary" href="/custom-rules/new">{t("newRule")}</Link> : null}
       />

@@ -13,6 +13,8 @@ import type { LogSourceDetail, SourceBehavior } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
 import { evaluationOf, windowIsPartial } from "@/lib/evaluationFault";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { GuideLink } from "@/components/guide/GuideLink";
+import { guideFor } from "@/lib/guideRoutes";
 
 export function SourceHeader({
   behavior,
@@ -75,6 +77,7 @@ export function SourceHeader({
         >
           {t("inventoryDetail")}
         </Link>
+        <GuideLink section={guideFor("/behavior/sources/[id]")} />
       </div>
     </header>
   );

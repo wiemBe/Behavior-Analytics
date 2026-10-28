@@ -17,6 +17,7 @@ import {
 } from "@/components/customrules/authoring";
 import { resolveRuleSubjects, type RuleSubject } from "@/components/customrules/subjects";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
   ApiError,
@@ -80,7 +81,7 @@ export default async function CustomRuleDetailPage({ params }: { params: Promise
   if (forbidden) {
     return (
       <>
-        <PageHeader title={t("title")} />
+        <PageHeader guide={guideFor("/custom-rules/[id]")} title={t("title")} />
         <div className="notice" role="alert">
           <p><strong>{t("forbiddenTitle")}</strong></p>
           <p>{t("forbiddenHelp")}</p>
@@ -91,7 +92,7 @@ export default async function CustomRuleDetailPage({ params }: { params: Promise
   if (failed || rule === null || catalog === null || preview === null) {
     return (
       <>
-        <PageHeader title={t("title")} />
+        <PageHeader guide={guideFor("/custom-rules/[id]")} title={t("title")} />
         <div className="notice" role="alert">
           <p><strong>{t("failedTitle", { id })}</strong></p>
           <p>{t("failedHelp")}</p>
@@ -111,6 +112,7 @@ export default async function CustomRuleDetailPage({ params }: { params: Promise
   return (
     <>
       <PageHeader
+        guide={guideFor("/custom-rules/[id]")}
         title={rule.name}
         meta={
           <>

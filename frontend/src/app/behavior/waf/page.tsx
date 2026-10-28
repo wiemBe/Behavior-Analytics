@@ -10,6 +10,7 @@ import { getTranslations } from "next-intl/server";
 
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { WafRangeSelector } from "@/components/waf/WafRangeSelector";
 import { WafSourcesTable } from "@/components/waf/WafSourcesTable";
 import { isJudged } from "@/components/waf/wafSourceHealth";
@@ -73,6 +74,7 @@ export default async function WafBehaviorPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/behavior/waf")}
         title={t("title")}
         description={t("description")}
       />

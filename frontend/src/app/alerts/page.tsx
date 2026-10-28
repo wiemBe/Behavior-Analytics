@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type Alert, type Page } from "@/lib/api";
 import { formatCount } from "@/lib/format";
@@ -58,6 +59,7 @@ export default async function AlertsPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/alerts")}
         title={t("title")}
         description={t("description")}
       />

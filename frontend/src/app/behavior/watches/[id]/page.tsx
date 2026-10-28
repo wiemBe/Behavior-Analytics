@@ -28,6 +28,7 @@ import {
 } from "@/components/propertywatch/pwRange";
 import { customRuleAccessFrom } from "@/components/customrules/authoring";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import {
   ApiError,
   api,
@@ -54,7 +55,7 @@ const INCIDENT_DAYS = 30;
 function Problem({ title, pageTitle, children }: { title: string; pageTitle: string; children: React.ReactNode }) {
   return (
     <>
-      <PageHeader title={pageTitle} />
+      <PageHeader guide={guideFor("/behavior/watches/[id]")} title={pageTitle} />
       <div className="notice" role="alert">
         <p>
           <strong>{title}</strong>
@@ -158,6 +159,7 @@ export default async function PropertyWatchPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/behavior/watches/[id]")}
         title={watch.name}
         actions={access === "writer" ? <WatchActions watch={watch} catalog={catalog} /> : null}
         meta={

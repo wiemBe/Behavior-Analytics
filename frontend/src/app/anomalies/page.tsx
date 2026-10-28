@@ -21,6 +21,7 @@ import { isPwRow } from "@/components/propertywatch/pwFormat";
 import { isWafRow } from "@/components/waf/wafLabels";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
   ApiError,
@@ -133,6 +134,7 @@ export default async function AnomaliesPage({
     <>
       <ReportDataAge iso={dataTo} />
       <PageHeader
+        guide={guideFor("/anomalies")}
         title={t("title")}
         description={t("description")}
       />

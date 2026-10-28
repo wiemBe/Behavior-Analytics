@@ -6,6 +6,7 @@ import { getTranslations } from "next-intl/server";
 
 import { SearchCadenceTable } from "@/components/cadence/SearchCadenceTable";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, api, type SearchCadenceItem } from "@/lib/api";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -31,7 +32,7 @@ export default async function SearchCadencePage() {
 
   return (
     <>
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader guide={guideFor("/admin/search-cadence")} title={t("title")} description={t("description")} />
 
       {error ? (
         <div className="notice" role="alert">

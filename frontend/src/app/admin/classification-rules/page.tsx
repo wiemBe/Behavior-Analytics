@@ -5,6 +5,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 
 import { RulesManager } from "@/components/fleet/RulesManager";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, fleetApi, type ClassificationRule } from "@/lib/api";
 import { precedenceSteps } from "@/lib/fleet";
 import { fleetTextOf, plainCount } from "@/lib/fleetText";
@@ -35,6 +36,7 @@ export default async function ClassificationRulesPage() {
   return (
     <>
       <PageHeader
+        guide={guideFor("/admin/classification-rules")}
         title={t("title")}
         description={
           error

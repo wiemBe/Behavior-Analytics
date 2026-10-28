@@ -5,6 +5,7 @@ import { asTextTranslator } from "@/i18n/textTranslator";
 import { plainCount } from "@/lib/fleetText";
 import type { FormatLocale } from "@/lib/format";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, type LogSourceSummary } from "@/lib/api";
 import { loadErrorMessage } from "@/lib/loadError";
@@ -29,6 +30,7 @@ export default async function LogSourcesPage() {
   return (
     <>
       <PageHeader
+        guide={guideFor("/log-sources")}
         title={t("title")}
         description={
           // A failed read has no count: "0 sources" would claim an empty inventory.

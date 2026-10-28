@@ -9,6 +9,7 @@ import { getTranslations } from "next-intl/server";
 import { IpsProfileEditor } from "@/app/admin/ips-sources/IpsProfileEditor";
 import { readError } from "@/app/admin/ips-sources/readError";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import {
   ApiError,
@@ -29,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
 function Problem({ header, title, text }: { header: string; title: string; text: string }) {
   return (
     <>
-      <PageHeader title={header} />
+      <PageHeader guide={guideFor("/admin/ips-sources/[logSourceId]")} title={header} />
       <div className="notice" role="alert">
         <p>
           <strong>{title}</strong>
