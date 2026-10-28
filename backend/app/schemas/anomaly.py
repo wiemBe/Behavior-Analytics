@@ -38,6 +38,7 @@ from app.models.enums import (
     Severity,
     WafAnomalyType,
 )
+from app.schemas.messages import MessageParamValue
 
 
 class SubjectKind(StrEnum):
@@ -352,6 +353,9 @@ class ExplanationDimensionOut(BaseModel):
     availability: DimensionAvailability
     #: Why a dimension is UNAVAILABLE or FAILED. Sanitized.
     detail: str | None = None
+    #: Stable code and raw values for a non-English client. Both are null on old rows.
+    detail_code: str | None = None
+    detail_params: dict[str, MessageParamValue] | None = None
     baseline_distinct_count: int | None = None
     anomaly_distinct_count: int | None = None
     cardinality_ratio: float | None = None

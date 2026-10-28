@@ -1204,6 +1204,8 @@ export interface ExplanationDimension {
   dimension: string;
   availability: DimensionAvailability;
   detail: string | null;
+  detail_code?: string | null;
+  detail_params?: Record<string, unknown> | null;
   baseline_distinct_count: number | null;
   anomaly_distinct_count: number | null;
   cardinality_ratio: number | null;

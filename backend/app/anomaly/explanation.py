@@ -19,8 +19,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import DimensionAvailability
 from app.providers.dto import DimensionAggregate
+
+_UNPOPULATED_DETAIL = MessageRef("explanation.dimension.unpopulated")
 
 
 @dataclass
@@ -54,6 +57,7 @@ class DimensionComparison:
     dimension: str
     availability: DimensionAvailability
     detail: str | None = None
+    detail_message: MessageRef | None = None
     baseline_distinct_count: int | None = None
     anomaly_distinct_count: int | None = None
     cardinality_ratio: float | None = None
@@ -108,7 +112,8 @@ def compare_dimension(
         return DimensionComparison(
             dimension=anomaly.dimension,
             availability=DimensionAvailability.UNAVAILABLE,
-            detail="field is not populated for this log source",
+            detail=render(_UNPOPULATED_DETAIL),
+            detail_message=_UNPOPULATED_DETAIL,
         )
 
     base_counts = {v.value: v.count * scale for v in baseline.values}

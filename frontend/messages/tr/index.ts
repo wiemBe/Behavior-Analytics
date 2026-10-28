@@ -5,6 +5,7 @@ import admin from "./admin.json";
 import alerts from "./alerts.json";
 import anomalies from "./anomalies.json";
 import auth from "./auth.json";
+import backend from "./backend.json";
 import behavior from "./behavior.json";
 import cadence from "./cadence.json";
 import catalog from "./catalog.json";
@@ -53,6 +54,7 @@ const messages = {
   alerts,
   anomalies,
   auth,
+  backend,
   behavior,
   cadence,
   catalog,

@@ -33,11 +33,13 @@ import {
 } from "@/lib/behavior";
 import { ARROW, availabilityCode } from "@/lib/behaviorI18n";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
+import { useBackendMessage } from "@/i18n/backendMessage";
 
 export function ContributorTable({ dimension }: { dimension: ExplanationDimension }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const t = useTranslations("anomalies.contributors");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const { locale } = i18n;
 
   const label = dimensionLabel(dimension.dimension, i18n);
@@ -68,7 +70,12 @@ export function ContributorTable({ dimension }: { dimension: ExplanationDimensio
       {dimension.detail && (
         <p className="subtitle">
           {/* Backend-sanitized: a reason, never a stack trace. */}
-          <strong>{t("reason")}</strong> {dimension.detail}
+          <strong>{t("reason")}</strong>{" "}
+          {backendMessage({
+            text: dimension.detail,
+            code: dimension.detail_code,
+            params: dimension.detail_params,
+          })}
         </p>
       )}
 

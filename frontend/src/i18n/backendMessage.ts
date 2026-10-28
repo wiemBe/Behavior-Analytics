@@ -1,0 +1,284 @@
+// Reader for backend-authored sentences with additive message codes.
+//
+// English always shows the API's text verbatim. Turkish may render a known code
+// from the backend namespace, after formatting raw semantic params for the
+// locale. Any absent, inherited, malformed, unknown, untranslated, or too-deep
+// reference falls back to that same API text; a code is never interface copy.
+
+import { useLocale, useTranslations } from "next-intl";
+
+import { formatPoints } from "@/components/waf/wafFormat";
+import { utcTimeText } from "@/components/ui/UtcTime";
+import { formatCount, formatPercent, type FormatLocale } from "@/lib/format";
+
+import codesJson from "./backendCodes.generated.json";
+import { enumLabel, type EnumTranslator } from "./enumLabels";
+import type { Locale } from "./locale";
+import { durationText } from "./measures";
+import { own } from "./ownKey";
+import { asTextTranslator, type TextTranslator } from "./textTranslator";
+
+export interface BackendSentence {
+  text: string;
+  code?: string | null;
+  params?: Record<string, unknown> | null;
+}
+
+export interface BackendParamSpec {
+  kind:
+    | "count"
+    | "number"
+    | "percent"
+    | "points"
+    | "duration"
+    | "timestamp"
+    | "enum"
+    | "list"
+    | "ref"
+    | "text";
+  enum_group?: string;
+  ref_codes?: string[];
+  style?: string;
+  precision?: number;
+}
+
+export interface BackendCodeSpec {
+  template: string;
+  params: Record<string, BackendParamSpec>;
+  sample: Record<string, unknown>;
+  sample_english: string;
+  sample_english_params: Record<string, string>;
+}
+
+export type BackendCodeArtifact = Record<string, BackendCodeSpec>;
+
+const CODES = codesJson as BackendCodeArtifact;
+const MAX_REF_DEPTH = 8;
+
+interface NestedRef {
+  code: string;
+  params: Record<string, unknown>;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const finite = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+function precision(value: unknown, fallback: number): number {
+  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 6
+    ? (value as number)
+    : fallback;
+}
+
+function numberText(value: number, spec: BackendParamSpec, locale: FormatLocale): string {
+  const tag = locale === "tr" ? "tr-TR" : "en-US";
+  if (spec.style === "fixed") {
+    const precision = spec.precision ?? 1;
+    return value.toLocaleString(tag, {
+      minimumFractionDigits: precision,
+      maximumFractionDigits: precision,
+      useGrouping: false,
+    });
+  }
+  // The backend's "general" style is Python's `:g`: six significant digits, no grouping.
+  return value.toLocaleString(tag, {
+    ...(spec.precision === undefined
+      ? { maximumSignificantDigits: 6 }
+      : { maximumFractionDigits: spec.precision }),
+    useGrouping: spec.style === "grouped",
+  });
+}
+
+function taggedKind(value: unknown, kind: string): value is Record<string, unknown> {
+  return isRecord(value) && value.kind === kind;
+}
+
+function pointsText(
+  value: number,
+  digits: number,
+  signed: boolean,
+  context: RenderContext,
+): string {
+  if (digits === 1) {
+    const formatted = formatPoints(value, { locale: context.locale, t: context.say });
+    return signed ? formatted : formatted.replace(/^\+/, "");
+  }
+  const tag = context.locale === "tr" ? "tr-TR" : "en-US";
+  const number = Math.abs(value).toLocaleString(tag, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: false,
+  });
+  const sign = value < 0 ? "-" : signed && value > 0 ? "+" : "";
+  return `${sign}${number}\u00a0${context.say("waf.units.points")}`;
+}
+
+function formatUntyped(
+  value: unknown,
+  context: RenderContext,
+  depth: number,
+): string | undefined {
+  if (typeof value === "string") return value;
+  if (finite(value)) {
+    return Number.isInteger(value)
+      ? formatCount(value, context.locale)
+      : numberText(value, { kind: "number" }, context.locale);
+  }
+  if (typeof value === "boolean") return String(value);
+  if (taggedKind(value, "duration") && finite(value.seconds)) {
+    return durationText(context.units, value.seconds);
+  }
+  if (taggedKind(value, "percent") && finite(value.ratio)) {
+    return formatPercent(value.ratio, null, precision(value.precision, 0), context.locale);
+  }
+  if (taggedKind(value, "points") && finite(value.points)) {
+    return pointsText(
+      value.points,
+      precision(value.precision, 1),
+      value.signed !== false,
+      context,
+    );
+  }
+  if (taggedKind(value, "list") && Array.isArray(value.items)) {
+    const items = value.items.map((item) => formatUntyped(item, context, depth));
+    if (items.some((item) => item === undefined)) return undefined;
+    return new Intl.ListFormat(context.locale === "tr" ? "tr-TR" : "en-US").format(
+      items as string[],
+    );
+  }
+  if (isRecord(value) && typeof value.code === "string" && isRecord(value.params)) {
+    return translateCode(value as unknown as NestedRef, context, depth + 1);
+  }
+  return undefined;
+}
+
+interface RenderContext {
+  locale: Locale;
+  say: TextTranslator;
+  artifact: BackendCodeArtifact;
+  units: (key: string, values?: Record<string, string | number>) => string;
+}
+
+function formatParam(
+  value: unknown,
+  spec: BackendParamSpec,
+  context: RenderContext,
+  depth: number,
+): string | undefined {
+  switch (spec.kind) {
+    case "count":
+      if (!Number.isInteger(value)) return undefined;
+      return spec.style === "plain"
+        ? (value as number).toLocaleString(context.locale === "tr" ? "tr-TR" : "en-US", {
+            useGrouping: false,
+          })
+        : formatCount(value as number, context.locale);
+    case "number":
+      return finite(value) ? numberText(value, spec, context.locale) : undefined;
+    case "percent":
+      return taggedKind(value, "percent") && finite(value.ratio)
+        ? formatPercent(
+            value.ratio,
+            null,
+            precision(value.precision, spec.precision ?? 0),
+            context.locale,
+          )
+        : undefined;
+    case "points":
+      return taggedKind(value, "points") && finite(value.points)
+        ? pointsText(
+            value.points,
+            precision(value.precision, spec.precision ?? 1),
+            value.signed !== false,
+            context,
+          )
+        : undefined;
+    case "duration":
+      return taggedKind(value, "duration") && finite(value.seconds)
+        ? durationText(context.units, value.seconds)
+        : undefined;
+    case "timestamp":
+      return typeof value === "string" && utcTimeText(value) !== "—"
+        ? utcTimeText(value)
+        : undefined;
+    case "enum":
+      return typeof value === "string" && spec.enum_group
+        ? enumLabel(context.say as EnumTranslator, spec.enum_group as never, value)
+        : undefined;
+    case "list":
+      return taggedKind(value, "list") ? formatUntyped(value, context, depth) : undefined;
+    case "ref":
+      if (!isRecord(value) || typeof value.code !== "string" || !isRecord(value.params)) {
+        return undefined;
+      }
+      if (!spec.ref_codes?.includes(value.code)) return undefined;
+      return translateCode(value as unknown as NestedRef, context, depth + 1);
+    case "text":
+      return typeof value === "string" ? value : undefined;
+  }
+}
+
+function translateCode(
+  ref: NestedRef,
+  context: RenderContext,
+  depth: number,
+): string | undefined {
+  if (depth > MAX_REF_DEPTH) return undefined;
+  const spec = own(context.artifact, ref.code);
+  if (!spec) return undefined;
+  const key = `backend.${ref.code}`;
+  if (!context.say.has?.(key)) return undefined;
+  const expected = Object.keys(spec.params);
+  if (
+    Object.keys(ref.params).length !== expected.length ||
+    expected.some((name) => !Object.hasOwn(ref.params, name))
+  ) {
+    return undefined;
+  }
+  const formatted: Record<string, string> = {};
+  for (const name of expected) {
+    const value = formatParam(ref.params[name], spec.params[name], context, depth);
+    if (value === undefined) return undefined;
+    formatted[name] = value;
+  }
+  try {
+    const translated = context.say(key, formatted);
+    return translated === key ? undefined : translated;
+  } catch {
+    return undefined;
+  }
+}
+
+export function renderBackendMessage(
+  sentence: BackendSentence,
+  locale: Locale,
+  say: TextTranslator,
+  artifact: BackendCodeArtifact = CODES,
+): string {
+  if (locale === "en" || !sentence.code || !sentence.params) return sentence.text;
+  return renderBackendCode(
+    { code: sentence.code, params: sentence.params },
+    locale,
+    say,
+    artifact,
+  ) ?? sentence.text;
+}
+
+/** Render a known code directly; exported so the artifact contract can pin both locales. */
+export function renderBackendCode(
+  ref: NestedRef,
+  locale: Locale,
+  say: TextTranslator,
+  artifact: BackendCodeArtifact = CODES,
+): string | undefined {
+  const units = (key: string, values?: Record<string, string | number>) => say(`units.${key}`, values);
+  return translateCode(ref, { locale, say, artifact, units }, 0);
+}
+
+export function useBackendMessage() {
+  const locale = useLocale() as Locale;
+  const say = asTextTranslator(useTranslations());
+  return (sentence: BackendSentence) => renderBackendMessage(sentence, locale, say);
+}

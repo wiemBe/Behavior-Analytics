@@ -380,7 +380,15 @@ class TestExplanationPackage:
     async def test_unpopulated_dimensions_are_recorded_unavailable(
         self, db_session
     ) -> None:
-        """The mock DSM omits username and category, as a firewall would."""
+        """A no-error DSM absence stores the pilot code beside its English text."""
+        class UnpopulatedWithoutErrorProvider(MockQRadarProvider):
+            async def get_dimension_aggregates(self, **kwargs):
+                rows = await super().get_dimension_aggregates(**kwargs)
+                return [
+                    row.model_copy(update={"error": None}) if not row.available else row
+                    for row in rows
+                ]
+
         inst = await make_instance(db_session)
         ls = await make_log_source(db_session, inst)
         await _baseline(db_session, ls, median=BASELINE_EPS)
@@ -394,7 +402,7 @@ class TestExplanationPackage:
             )
         )
         await ExplanationCollector(
-            db_session, MockQRadarProvider(), settings=settings
+            db_session, UnpopulatedWithoutErrorProvider(), settings=settings
         ).collect(anomaly)
 
         rows = list(
@@ -411,6 +419,11 @@ class TestExplanationPackage:
         assert rows, "an unavailable dimension must still be recorded"
         for row in rows:
             assert str(row.availability) == DimensionAvailability.UNAVAILABLE
+            assert row.detail == "field is not populated for this log source"
+            assert row.detail_i18n == {
+                "code": "explanation.dimension.unpopulated",
+                "params": {},
+            }
             # Never a fabricated zero.
             assert row.baseline_distinct_count is None
 

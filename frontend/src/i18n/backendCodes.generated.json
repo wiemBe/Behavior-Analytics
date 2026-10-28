@@ -1,0 +1,9 @@
+{
+  "explanation.dimension.unpopulated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "field is not populated for this log source",
+    "sample_english_params": {},
+    "template": "field is not populated for this log source"
+  }
+}
