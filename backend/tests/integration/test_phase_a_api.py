@@ -222,6 +222,10 @@ async def _seed(session) -> dict:
             explanation_id=package.id, dimension="username",
             availability=DimensionAvailability.UNAVAILABLE,
             detail="field is not populated for this log source",
+            detail_i18n={
+                "code": "explanation.dimension.unpopulated",
+                "params": {},
+            },
         )
     )
     session.add(
@@ -433,6 +437,15 @@ class TestInvestigationDetail:
         by_dim = {d["dimension"]: d for d in body["explanation_package"]["dimensions"]}
         assert by_dim["username"]["availability"] == "UNAVAILABLE"
         assert by_dim["username"]["contributors"] == []
+        assert by_dim["username"]["detail"] == (
+            "field is not populated for this log source"
+        )
+        assert by_dim["username"]["detail_code"] == (
+            "explanation.dimension.unpopulated"
+        )
+        assert by_dim["username"]["detail_params"] == {}
+        assert by_dim["source_ip"]["detail_code"] is None
+        assert by_dim["source_ip"]["detail_params"] is None
         # Never a fabricated zero.
         assert by_dim["username"]["baseline_distinct_count"] is None
 

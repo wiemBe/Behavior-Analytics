@@ -112,6 +112,19 @@ class TestNothingIsInvented:
 
 
 class TestAvailability:
+    def test_unpopulated_field_without_provider_error_gets_the_pilot_code(self) -> None:
+        base = _agg("username", {})
+        anomaly = _agg("username", {}, available=False)
+
+        result = compare_dimension(base, anomaly)
+
+        assert result.detail == "field is not populated for this log source"
+        assert result.detail_message is not None
+        assert result.detail_message.to_wire() == {
+            "code": "explanation.dimension.unpopulated",
+            "params": {},
+        }
+
     def test_unpopulated_field_is_unavailable_not_zero(self) -> None:
         base = _agg("username", {})
         anom = _agg(
@@ -120,6 +133,7 @@ class TestAvailability:
         result = compare_dimension(base, anom)
         assert result.availability is DimensionAvailability.UNAVAILABLE
         assert result.contributors == []
+        assert result.detail_message is None
         # Critically: no fabricated counts.
         assert result.anomaly_distinct_count is None
 

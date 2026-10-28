@@ -148,6 +148,8 @@ class AnomalyExplanationDimension(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     # Sanitized reason when availability is UNAVAILABLE or FAILED.
     detail: Mapped[str | None] = mapped_column(Text)
+    # The code and raw params for `detail`; old rows intentionally stay NULL.
+    detail_i18n: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 
     # --- cardinality --------------------------------------------------------
     baseline_distinct_count: Mapped[int | None] = mapped_column(Integer)
@@ -170,6 +172,20 @@ class AnomalyExplanationDimension(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     truncated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     explanation: Mapped[AnomalyExplanation] = relationship(back_populates="dimensions")
+
+    @property
+    def detail_code(self) -> str | None:
+        if not isinstance(self.detail_i18n, dict):
+            return None
+        code = self.detail_i18n.get("code")
+        return code if isinstance(code, str) else None
+
+    @property
+    def detail_params(self) -> dict[str, object] | None:
+        if not isinstance(self.detail_i18n, dict):
+            return None
+        params = self.detail_i18n.get("params")
+        return params if isinstance(params, dict) else None
 
 
 class AnomalyExplanationContributor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
