@@ -181,9 +181,9 @@ describe("WidgetFrame states in Turkish", () => {
       </WidgetRuntimeContext.Provider>,
     );
     expect(screen.getByRole("button", { name: "Filo EPS bileşenini büyüt" })).toHaveTextContent("Büyüt");
-    const group = screen.getByRole("group", { name: "Zaman aralığı" });
+    const group = screen.getByRole("group", { name: "Pencere" });
     expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["1\u00a0sa", "24\u00a0sa", "7\u00a0gün"]);
-    expect(screen.getByLabelText("Filo EPS için zaman aralığı")).toBeInTheDocument();
+    expect(screen.getByLabelText("Filo EPS için pencere")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Filo EPS bileşenini büyüt" }));
     expect(runtime.onExpand).toHaveBeenCalled();
   });

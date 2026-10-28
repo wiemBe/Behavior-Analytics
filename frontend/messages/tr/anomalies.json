@@ -205,7 +205,7 @@
     "noQueries": "Bu paket için sorgu kaydedilmedi.",
     "query": "Sorgu",
     "window": "pencere",
-    "rows": "{count} satır",
+    "rows": "{count, number} satır",
     "truncated": "kırpıldı",
     "noStatement": "İfade kaydedilmedi.",
     "versions": "Sürümler ve toplama üst verisi",

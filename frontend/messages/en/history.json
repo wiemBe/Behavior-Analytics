@@ -127,7 +127,7 @@
     "refused": "Refused",
     "notEstimated": "time not estimated",
     "about": "about {hours} hours",
-    "figures": "{searches} searches, {time}",
+    "figures": "{searches, plural, one {# search} other {# searches}}, {time}",
     "reduced": "Reduced: {reason}"
   },
   "table": {
