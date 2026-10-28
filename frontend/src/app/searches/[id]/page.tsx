@@ -19,6 +19,7 @@ import { asTextTranslator } from "@/i18n/textTranslator";
 import { api, type SearchExecution, type SearchVersion } from "@/lib/api";
 import { axisTimeLabel, truncatedRunTimes } from "@/lib/searchRuns";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "./search-detail.css";
@@ -31,7 +32,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("detail") };
 }
 
-export default async function SearchDetailPage({
+async function SearchDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -208,3 +209,5 @@ export default async function SearchDetailPage({
     </>
   );
 }
+
+export default withRouteMessages("/searches/[id]", SearchDetailPage);

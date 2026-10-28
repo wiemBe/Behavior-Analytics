@@ -19,6 +19,7 @@ import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
 import { formatCount } from "@/lib/format";
 import { dependencyWord } from "@/components/rules/dependencyWord";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "@/components/ui/controls.css";
 
@@ -29,7 +30,7 @@ export async function generateMetadata() {
   return { title: t("detail") };
 }
 
-export default async function RuleDetailPage({
+async function RuleDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -269,3 +270,5 @@ export default async function RuleDetailPage({
     </>
   );
 }
+
+export default withRouteMessages("/rules/[id]", RuleDetailPage);

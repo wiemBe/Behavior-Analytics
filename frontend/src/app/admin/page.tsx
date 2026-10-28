@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 
 import { UndecidedNotice } from "@/components/history/UndecidedNotice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import { AdminIndex } from "./AdminIndex";
 
@@ -14,7 +15,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title") };
 }
 
-export default function Page() {
+function Page() {
   const t = useTranslations("admin.page");
   return (
     <>
@@ -24,3 +25,5 @@ export default function Page() {
     </>
   );
 }
+
+export default withRouteMessages("/admin", Page);

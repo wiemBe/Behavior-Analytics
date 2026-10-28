@@ -20,13 +20,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, ruleStatisticsApi, type RuleStatistics } from "@/lib/api";
 import type { Locale } from "@/i18n/locale";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata() {
   const t = await getTranslations("rules.meta");
   return { title: t("statistics") };
 }
 
-export default async function RuleStatisticsPage({
+async function RuleStatisticsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -113,3 +114,5 @@ export default async function RuleStatisticsPage({
     </>
   );
 }
+
+export default withRouteMessages("/rules/statistics", RuleStatisticsPage);

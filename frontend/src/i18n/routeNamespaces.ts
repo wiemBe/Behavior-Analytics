@@ -1,0 +1,208 @@
+// Which catalog namespaces each part of the application sends to the browser (I18N-12b).
+//
+// The root layout sends the SHELL (the top bar, navigation, account menu, connection status, the
+// guide links and what every page's client code shares) plus BOUNDARY_KEYS: the single strings that a
+// route's `error.tsx` / `loading.tsx` read, because those render outside the page. Each page then
+// wraps its content in a provider holding the shell plus ROUTE_NAMESPACES for its route
+// (`withRouteMessages`, `./RouteMessages.tsx`). The nested provider replaces the root one, so a
+// route's set is the shell plus its own. Server components read the whole catalog through
+// `getTranslations` and are not listed.
+//
+// `routeNamespaces.contract.test.ts` walks each route's import graph and fails when a table here
+// differs from what the route's browser code reads; its failure message prints the new table.
+// A key assembled at run time lists its namespace in `export const I18N_NAMESPACES = [...]` in the
+// module that builds it.
+
+export const BOUNDARY_KEYS = [
+  "alerts.boundary.detailTitle",
+  "alerts.boundary.detailWhatError",
+  "alerts.boundary.listWhatError",
+  "alerts.title",
+  "anomalies.boundary.errorWhat",
+  "anomalies.boundary.loadingWhat",
+  "anomalies.boundary.title",
+  "catchall.page.errorWhat",
+  "catchall.page.title",
+  "classification.boundary.errorWhat",
+  "classification.boundary.loadingWhat",
+  "classification.boundary.title",
+  "coverage.errorWhat",
+  "coverage.title",
+  "customRules.boundary.detailTitle",
+  "customRules.boundary.detailWhatError",
+  "customRules.boundary.listWhatError",
+  "customRules.boundary.newTitle",
+  "customRules.boundary.newWhatError",
+  "customRules.title",
+  "dashboardBoundary.error",
+  "dashboardBoundary.loading",
+  "dashboardBoundary.title",
+  "directory.boundary.description",
+  "directory.boundary.errorWhat",
+  "directory.boundary.loadingWhat",
+  "directory.boundary.title",
+  "fleet.page.errorWhat",
+  "fleet.page.title",
+  "ips.detail.errorWhat",
+  "ips.detail.title",
+  "ips.page.boundaryWhat",
+  "ips.page.title",
+  "logSources.detail.errorWhat",
+  "logSources.detail.title",
+  "logSources.errorWhat",
+  "logSources.title",
+  "login.loading",
+  "login.title",
+  "offenses.boundary.back",
+  "offenses.boundary.detailTitle",
+  "offenses.boundary.detailWhatError",
+  "offenses.boundary.listWhatError",
+  "offenses.title",
+  "outage.boundary.errorWhat",
+  "outage.boundary.loadingWhat",
+  "outage.boundary.title",
+  "propertyWatch.boundary.detailWhat",
+  "propertyWatch.boundary.detailWhatError",
+  "propertyWatch.boundary.listWhat",
+  "propertyWatch.boundary.listWhatError",
+  "propertyWatch.boundary.newWhat",
+  "propertyWatch.boundary.newWhatError",
+  "propertyWatch.meta.detail",
+  "propertyWatch.meta.list",
+  "propertyWatch.meta.new",
+  "rules.boundary.detailBack",
+  "rules.boundary.detailTitle",
+  "rules.boundary.detailWhatError",
+  "rules.boundary.listWhatError",
+  "rules.boundary.statisticsWhatError",
+  "rules.statistics.title",
+  "rules.title",
+  "searches.detail.errorWhat",
+  "searches.detail.title",
+  "searches.list.errorWhat",
+  "searches.list.title",
+  "searches.new.errorWhat",
+  "searches.new.title",
+  "users.boundary.errorWhat",
+  "users.boundary.loadingWhat",
+  "users.boundary.title",
+  "users.page.description",
+  "waf.boundary.adminError",
+  "waf.boundary.adminLoading",
+  "waf.boundary.adminSourceError",
+  "waf.boundary.adminSourceLoading",
+  "waf.boundary.adminSourceTitle",
+  "waf.boundary.adminTitle",
+  "waf.boundary.behaviorError",
+  "waf.boundary.behaviorLoading",
+  "waf.boundary.behaviorTitle",
+  "waf.boundary.endpointsError",
+  "waf.boundary.endpointsLoading",
+  "waf.boundary.endpointsTitle",
+] as const;
+
+export const SHELL_NAMESPACES = [
+  "auth",
+  "behavior",
+  "cadence",
+  "common",
+  "errors",
+  "format",
+  "guideLinks",
+  "history",
+  "password",
+  "shell",
+  "states",
+  "units",
+] as const;
+
+export const ROUTE_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
+  "/account": ["account"],
+  "/account/password": [],
+  "/admin/classification-rules": ["classification", "enums", "fleet"],
+  "/admin/directory": ["directory"],
+  "/admin/history-backfill": [],
+  "/admin/ips-sources/[logSourceId]": ["fieldMapping", "ips", "waf"],
+  "/admin/ips-sources": ["fieldMapping", "ips", "waf"],
+  "/admin/outage-policy": ["classification", "enums", "fleet", "outage"],
+  "/admin": ["admin", "users"],
+  "/admin/search-cadence": [],
+  "/admin/users": ["enums", "users"],
+  "/admin/waf-sources/[logSourceId]": ["fieldMapping", "waf"],
+  "/admin/waf-sources": ["fieldMapping", "waf"],
+  "/alerts/[id]": ["alerts"],
+  "/alerts": [],
+  "/anomalies/[id]": ["anomalies", "classification", "enums", "fleet", "home", "ips", "propertyWatch", "pwchart", "ui", "waf"],
+  "/anomalies": ["anomalies", "enums", "ips", "propertyWatch", "pwchart", "waf"],
+  "/behavior": [],
+  "/behavior/sources/[id]": [],
+  "/behavior/sources": [],
+  "/behavior/waf": [],
+  "/behavior/waf/sources/[id]": [],
+  "/behavior/watches/[id]": ["classification", "enums", "fleet", "home", "propertyWatch", "pwchart", "ui"],
+  "/behavior/watches/new": ["enums", "propertyWatch", "pwchart", "ui"],
+  "/behavior/watches": [],
+  "/config-changes": [],
+  "/coverage": [],
+  "/custom-rules/[id]": ["customRules", "enums"],
+  "/custom-rules/new": ["customRules", "enums"],
+  "/custom-rules": [],
+  "/fleet/catchall": ["catchall", "fleet"],
+  "/fleet": [],
+  "/fleet/sources": ["classification", "enums", "fleet"],
+  "/guide": [],
+  "/guide/[section]": [],
+  "/login": ["login"],
+  "/log-sources/[id]": [],
+  "/log-sources": [],
+  "/offenses/[id]": [],
+  "/offenses": [],
+  "/": ["catalog", "catchall", "classification", "coverage", "dashboard", "enums", "fieldMapping", "fleet", "home", "ips", "propertyWatch", "pwchart", "searches", "trend", "waf", "widgets"],
+  "/rules/[id]": [],
+  "/rules": [],
+  "/rules/statistics": [],
+  "/searches/[id]": ["enums", "searches", "trend", "ui", "widgets"],
+  "/searches/new": ["enums", "searches", "trend"],
+  "/searches": [],
+};
+
+/** The namespaces and key paths of `messages` named, whole namespaces and single keys alike. */
+export function pickMessages(
+  messages: Readonly<Record<string, unknown>>,
+  namespaces: readonly string[],
+  keys: readonly string[] = [],
+): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  for (const namespace of namespaces) {
+    if (Object.hasOwn(messages, namespace)) picked[namespace] = messages[namespace];
+  }
+  for (const key of keys) {
+    const path = key.split(".");
+    let from: unknown = messages;
+    let into = picked;
+    for (let at = 0; at < path.length; at += 1) {
+      if (typeof from !== "object" || from === null || !Object.hasOwn(from, path[at])) break;
+      from = (from as Record<string, unknown>)[path[at]];
+      if (at === path.length - 1) into[path[at]] = from;
+      else {
+        if (!Object.hasOwn(into, path[at])) into[path[at]] = {};
+        into = into[path[at]] as Record<string, unknown>;
+      }
+    }
+  }
+  return picked;
+}
+
+/** What the browser gets for a route: the shell plus the route's own namespaces. */
+export function routeMessages(
+  route: string,
+  messages: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  if (!Object.hasOwn(ROUTE_NAMESPACES, route)) throw new Error(`No message set for route ${route}`);
+  return pickMessages(messages, [...SHELL_NAMESPACES, ...ROUTE_NAMESPACES[route]]);
+}
+
+/** What the browser gets before a page's provider: the shell and the boundary strings. */
+export function shellMessages(messages: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return pickMessages(messages, SHELL_NAMESPACES, BOUNDARY_KEYS);
+}

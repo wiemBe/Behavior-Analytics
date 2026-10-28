@@ -55,6 +55,7 @@ import {
 } from "@/lib/sourceDetail";
 import { buildSeries } from "@/lib/timeseries";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "../sources.css";
@@ -64,7 +65,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("metaTitle") };
 }
 
-export default async function SourceBehaviorPage({
+async function SourceBehaviorPage({
   params,
   searchParams,
 }: {
@@ -333,3 +334,5 @@ export default async function SourceBehaviorPage({
     </>
   );
 }
+
+export default withRouteMessages("/behavior/sources/[id]", SourceBehaviorPage);

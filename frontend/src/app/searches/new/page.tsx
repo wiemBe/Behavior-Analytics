@@ -8,13 +8,14 @@ import { searchAccessFrom, type SearchAccess } from "@/components/searches/autho
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { api } from "@/lib/api";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("searches.meta");
   return { title: t("new") };
 }
 
-export default async function NewSearchPage() {
+async function NewSearchPage() {
   const t = await getTranslations("searches.new");
   let access: SearchAccess = "unknown";
   try {
@@ -39,3 +40,5 @@ export default async function NewSearchPage() {
     </>
   );
 }
+
+export default withRouteMessages("/searches/new", NewSearchPage);

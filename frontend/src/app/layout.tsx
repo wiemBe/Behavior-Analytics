@@ -7,6 +7,7 @@ import { AppFrame } from "@/components/auth/AppFrame";
 import { SessionProvider } from "@/components/auth/session";
 import { DataAgeProvider } from "@/components/shell/AutoRefresh";
 import { clientMessages } from "@/i18n/clientMessages";
+import { shellMessages } from "@/i18n/routeNamespaces";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("meta");
@@ -18,8 +19,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = useLocale();
-  // The guide's text is rendered on the server only; the browser does not receive it.
-  const messages = clientMessages(useMessages());
+  // The browser gets the shell here and each page adds its own namespaces (`withRouteMessages`);
+  // the guide's text is rendered on the server only.
+  const messages = shellMessages(clientMessages(useMessages()));
   return (
     <html lang={locale}>
       <body>

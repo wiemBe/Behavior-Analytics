@@ -8,13 +8,14 @@ import { getTranslations } from "next-intl/server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { GUIDE_GROUPS, GUIDE_SECTIONS } from "@/lib/guideSections";
 import { rawMessage, readGuideSection } from "@/lib/guideText";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("guide");
   return { title: t("title") };
 }
 
-export default async function GuidePage() {
+async function GuidePage() {
   const t = await getTranslations("guide");
   const sections = rawMessage(t, "sections");
   return (
@@ -41,3 +42,5 @@ export default async function GuidePage() {
     </>
   );
 }
+
+export default withRouteMessages("/guide", GuidePage);

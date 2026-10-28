@@ -17,6 +17,7 @@ import {
 } from "@/lib/api";
 import { formatCount } from "@/lib/behavior";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 import Link from "next/link";
 
 import "../../waf.css";
@@ -42,7 +43,7 @@ function Problem({ title, text, pageTitle }: { title: string; text: React.ReactN
   );
 }
 
-export default async function WafSourceEndpointsPage({
+async function WafSourceEndpointsPage({
   params,
   searchParams,
 }: {
@@ -199,3 +200,5 @@ export default async function WafSourceEndpointsPage({
     </>
   );
 }
+
+export default withRouteMessages("/behavior/waf/sources/[id]", WafSourceEndpointsPage);

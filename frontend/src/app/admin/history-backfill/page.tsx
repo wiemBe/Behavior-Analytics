@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { HistoryBackfillPage } from "@/components/history/HistoryBackfillPage";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "@/components/ui/controls.css";
 
@@ -16,7 +17,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title") };
 }
 
-export default function Page() {
+function Page() {
   const t = useTranslations("history.page");
   return (
     <>
@@ -25,3 +26,5 @@ export default function Page() {
     </>
   );
 }
+
+export default withRouteMessages("/admin/history-backfill", Page);

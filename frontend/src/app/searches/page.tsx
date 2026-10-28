@@ -12,13 +12,14 @@ import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { api, sevTone, type ScheduledSearch } from "@/lib/api";
 import { loadErrorMessage } from "@/lib/loadError";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("searches.meta");
   return { title: t("list") };
 }
 
-export default async function SearchCatalogPage() {
+async function SearchCatalogPage() {
   const t = await getTranslations("searches.list");
   const say = asTextTranslator(await getTranslations());
   let searches: ScheduledSearch[] = [];
@@ -108,3 +109,5 @@ export default async function SearchCatalogPage() {
     </>
   );
 }
+
+export default withRouteMessages("/searches", SearchCatalogPage);

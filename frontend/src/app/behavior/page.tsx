@@ -47,6 +47,7 @@ import { getBehaviorI18n, getEnumLabels } from "@/lib/behaviorI18n.server";
 import { plainCount } from "@/lib/figureText";
 import { sourcesAsOf } from "@/lib/home/asOf";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "./overview.css";
@@ -63,7 +64,7 @@ const UNDERSCORE = "_";
 const ATTENTION_LIMIT = 8;
 const RECENT_LIMIT = 6;
 
-export default async function BehaviorPage() {
+async function BehaviorPage() {
   const t = await getTranslations("behavior.overview");
   const errors = await getTranslations("behavior.errors");
   const i18n = await getBehaviorI18n();
@@ -433,3 +434,5 @@ export default async function BehaviorPage() {
     </>
   );
 }
+
+export default withRouteMessages("/behavior", BehaviorPage);

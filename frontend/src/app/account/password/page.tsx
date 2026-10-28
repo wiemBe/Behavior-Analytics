@@ -4,13 +4,14 @@ import { Suspense } from "react";
 
 import { PasswordChange } from "@/components/auth/PasswordChange";
 import { LoadingState } from "@/components/ui/RouteState";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("password");
   return { title: t("title") };
 }
 
-export default async function PasswordPage() {
+async function PasswordPage() {
   const t = await getTranslations("password");
   return (
     <Suspense fallback={<LoadingState what={t("loading")} />}>
@@ -18,3 +19,5 @@ export default async function PasswordPage() {
     </Suspense>
   );
 }
+
+export default withRouteMessages("/account/password", PasswordPage);

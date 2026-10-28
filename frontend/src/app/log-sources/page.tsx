@@ -10,12 +10,13 @@ import { TableScroll } from "@/components/ui/TableScroll";
 import { api, type LogSourceSummary } from "@/lib/api";
 import { loadErrorMessage } from "@/lib/loadError";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "./log-sources.css";
 import { qradarStatusLabel, qradarStatusTone } from "./qradarStatus";
 
-export default async function LogSourcesPage() {
+async function LogSourcesPage() {
   const t = await getTranslations("logSources");
   const say = asTextTranslator(await getTranslations());
   const locale = (await getLocale()) as FormatLocale;
@@ -101,3 +102,5 @@ export default async function LogSourcesPage() {
     </>
   );
 }
+
+export default withRouteMessages("/log-sources", LogSourcesPage);

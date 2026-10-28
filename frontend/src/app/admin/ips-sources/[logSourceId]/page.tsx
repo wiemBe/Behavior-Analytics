@@ -21,6 +21,7 @@ import {
   type LogSourceDetail,
   type PropertyCatalogOut,
 } from "@/lib/api";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("ips.detail");
@@ -41,7 +42,7 @@ function Problem({ header, title, text }: { header: string; title: string; text:
   );
 }
 
-export default async function IpsSourcePage({
+async function IpsSourcePage({
   params,
 }: {
   params: Promise<{ logSourceId: string }>;
@@ -119,3 +120,5 @@ export default async function IpsSourcePage({
     />
   );
 }
+
+export default withRouteMessages("/admin/ips-sources/[logSourceId]", IpsSourcePage);

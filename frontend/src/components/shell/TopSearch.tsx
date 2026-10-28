@@ -35,6 +35,12 @@ import {
   type Page,
 } from "@/lib/api";
 
+/**
+ * Helpers called without a translator: the IPS subject and type read as their own English (checked by
+ * `src/i18n/routeNamespaces.contract.test.ts`), so the top bar needs none of their namespaces.
+ */
+export const I18N_ENGLISH_DEFAULT_CALLS = ["ipsSubjectText", "isIpsRow", "rowTypeLabel"] as const;
+
 export const DEBOUNCE_MS = 250;
 const PER_GROUP = 5;
 const MIN_CHARS = 2;

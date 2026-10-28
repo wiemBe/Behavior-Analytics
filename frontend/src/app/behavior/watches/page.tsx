@@ -33,6 +33,7 @@ import { ApiError, api, type PropertyWatch, type PropertyWatchCatalog } from "@/
 import { UtcTime } from "@/components/ui/UtcTime";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { formatCount } from "@/lib/format";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "@/components/ui/controls.css";
 
@@ -41,7 +42,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("list") };
 }
 
-export default async function PropertyWatchesPage() {
+async function PropertyWatchesPage() {
   const t = await getTranslations("propertyWatch");
   const i18n = await getBehaviorI18n();
   let watches: PropertyWatch[] = [];
@@ -199,3 +200,5 @@ export default async function PropertyWatchesPage() {
     </>
   );
 }
+
+export default withRouteMessages("/behavior/watches", PropertyWatchesPage);

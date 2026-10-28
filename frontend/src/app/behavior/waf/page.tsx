@@ -19,6 +19,7 @@ import { ApiError, api, type PagedWafSources } from "@/lib/api";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { plainCount } from "@/lib/figureText";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "./waf.css";
 
@@ -29,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 const PAGE_SIZE = 50;
 
-export default async function WafBehaviorPage({
+async function WafBehaviorPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -133,3 +134,5 @@ export default async function WafBehaviorPage({
     </>
   );
 }
+
+export default withRouteMessages("/behavior/waf", WafBehaviorPage);

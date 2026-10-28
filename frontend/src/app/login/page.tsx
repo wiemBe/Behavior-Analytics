@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 
 import { LoadingState } from "@/components/ui/RouteState";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import { LoginForm } from "./LoginForm";
 
@@ -11,7 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title") };
 }
 
-export default async function LoginPage() {
+async function LoginPage() {
   const t = await getTranslations("login");
   return (
     <Suspense fallback={<LoadingState what={t("loading")} />}>
@@ -19,3 +20,5 @@ export default async function LoginPage() {
     </Suspense>
   );
 }
+
+export default withRouteMessages("/login", LoginPage);

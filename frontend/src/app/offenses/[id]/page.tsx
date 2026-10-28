@@ -11,6 +11,7 @@ import { formatCount } from "@/lib/format";
 import type { Locale } from "@/i18n/locale";
 import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "../offenses.css";
@@ -52,7 +53,7 @@ export async function generateMetadata() {
   return { title: t("detail") };
 }
 
-export default async function OffenseDetailPage({
+async function OffenseDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -273,3 +274,5 @@ export default async function OffenseDetailPage({
     </>
   );
 }
+
+export default withRouteMessages("/offenses/[id]", OffenseDetailPage);

@@ -17,6 +17,7 @@ import {
   type CatchallSourceList,
   type Page,
 } from "@/lib/api";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import { SendersQueue } from "./SendersQueue";
 import { SourceVolume } from "./SourceVolume";
@@ -37,7 +38,7 @@ function failureText(err: unknown, text: FleetText): string {
   return text.say("catchall.page.unreachable");
 }
 
-export default async function CatchallPage() {
+async function CatchallPage() {
   const t = await getTranslations("catchall.page");
   const text = fleetTextOf(await getTranslations(), await getLocale());
   let sources: CatchallSourceList | null = null;
@@ -90,3 +91,5 @@ export default async function CatchallPage() {
     </>
   );
 }
+
+export default withRouteMessages("/fleet/catchall", CatchallPage);

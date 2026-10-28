@@ -56,6 +56,7 @@ import { getBehaviorI18n, getEnumLabels } from "@/lib/behaviorI18n.server";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { summarizeAnomaly, summarizeTimeline } from "@/lib/summarize";
 import { buildSeries } from "@/lib/timeseries";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "./incident.css";
 
@@ -240,7 +241,7 @@ async function pwData(anomaly: PwAnomalyDetail, i18n: BehaviorI18n): Promise<PwI
   };
 }
 
-export default async function AnomalyDetailPage({
+async function AnomalyDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -448,3 +449,5 @@ export default async function AnomalyDetailPage({
     </>
   );
 }
+
+export default withRouteMessages("/anomalies/[id]", AnomalyDetailPage);

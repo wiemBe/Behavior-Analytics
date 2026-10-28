@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import { OutagePolicyManager } from "./OutagePolicyManager";
 import { readError } from "./outage";
@@ -22,7 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title") };
 }
 
-export default async function OutagePolicyPage() {
+async function OutagePolicyPage() {
   const t = await getTranslations("outage.page");
   const i18n = await getBehaviorI18n();
   let rows: OutagePolicyRow[] = [];
@@ -85,3 +86,5 @@ export default async function OutagePolicyPage() {
     </>
   );
 }
+
+export default withRouteMessages("/admin/outage-policy", OutagePolicyPage);

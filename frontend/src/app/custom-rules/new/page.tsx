@@ -9,13 +9,14 @@ import { customRuleAccessFrom, type CustomRuleAccess } from "@/components/custom
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, api, type CallerInfo, type CustomRuleCatalog } from "@/lib/api";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata() {
   const t = await getTranslations("customRules.meta");
   return { title: t("new") };
 }
 
-export default async function NewCustomRulePage() {
+async function NewCustomRulePage() {
   const t = await getTranslations("customRules.new");
   let catalog: CustomRuleCatalog | null = null;
   let access: CustomRuleAccess = "unknown";
@@ -62,3 +63,5 @@ export default async function NewCustomRulePage() {
     </>
   );
 }
+
+export default withRouteMessages("/custom-rules/new", NewCustomRulePage);

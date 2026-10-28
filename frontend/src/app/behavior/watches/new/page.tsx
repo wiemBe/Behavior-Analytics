@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, api, type CallerInfo, type PropertyWatchCatalog } from "@/lib/api";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "@/components/ui/controls.css";
 
@@ -22,7 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("new") };
 }
 
-export default async function NewPropertyWatchPage() {
+async function NewPropertyWatchPage() {
   const t = await getTranslations("propertyWatch");
   const i18n = await getBehaviorI18n();
   let catalog: PropertyWatchCatalog | null = null;
@@ -74,3 +75,5 @@ export default async function NewPropertyWatchPage() {
     </>
   );
 }
+
+export default withRouteMessages("/behavior/watches/new", NewPropertyWatchPage);
