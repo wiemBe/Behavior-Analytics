@@ -97,5 +97,42 @@
   "customrule": {
     "name_exists": "''{name}'' adlı bir özel kural zaten var",
     "watch_value_gone": "Özellik izleme değeri artık yok (kural kaydedilirken izleme değişti veya silindi); yeniden yükleyip bir değer seçin"
+  },
+  "coverage": {
+    "rollup": {
+      "unmapped": "Bu tekniğe eşlenmiş kural yok.",
+      "all_excluded": "Bu tekniğe eşlenen her kural devre dışı ya da sayım dışı bırakılmış; bu yüzden etkin algılama yok.",
+      "none_detecting": "{degraded} / {enabled} etkin kural şu anda algılama yapmıyor.",
+      "not_established": "Eşlenen kurallar için kural sağlığı henüz belirlenmedi.",
+      "some_degraded": "{working} / {enabled} etkin kural algılıyor; {degraded} kural bozulmuş.",
+      "some_unestablished": "{working} / {enabled} etkin kural algılıyor; geri kalanların durumu henüz belirlenmedi.",
+      "all_detecting": "Bu tekniğe eşlenen {enabled} etkin kuralın tümü algılıyor."
+    },
+    "evidence": {
+      "below_floor": "Eşleme güveni {confidence}, {floor} tabanının altında; kaydedildi ancak coverage'a sayılmadı.",
+      "disabled": "Kural devre dışı olduğu için etkin coverage sağlamıyor.",
+      "acceptable": "Kural etkin ve sağlığı kabul edilebilir.",
+      "dependency_degraded": "Kuralın gerektirdiği telemetri kullanılamıyor; bu yüzden tetiklenemez.",
+      "never_observed": "Kuralın hiç tetiklendiği gözlenmedi.",
+      "inactive": "Kural, hareketsizlik penceresi içinde tetiklenmedi.",
+      "not_established": "Kuralın sağlığı henüz belirlenmedi."
+    }
+  },
+  "rule_statistics": {
+    "window": {
+      "none": "Bu instance için hiçbir kural eşleşmesi penceresi toplanmadı: toplama devre dışı ya da henüz çalışmadı; bu yüzden hiçbir şey ölçülmüyor.",
+      "unsettled": "İstenen aralıkta henüz kesinleşmiş bir kural eşleşmesi penceresi yok.",
+      "incomplete": "Aralıkta {complete} / {expected} pencere eksiksiz ({missing} eksik, {truncated} kırpılmış, {failed} başarısız). Eksiksiz olmayan bir penceredeki yokluk hiçbir şeyi kanıtlamaz."
+    },
+    "top": {
+      "no_complete_window": "Ölçülecek eksiksiz pencere yok."
+    },
+    "silent": {
+      "excluded": "EVENT kuralları ve EVENT yapı taşları değerlendirilen tek türdür: olay araması bunların her eşleşmesini görür. COMMON kuralları akışlarda da eşleşir, ancak akışlar aranmaz; bu yüzden sessizlikleri bilinmez. FLOW ve OFFENSE kuralları hiç aranmaz."
+    },
+    "cost": {
+      "label": "QRadar kapasite ölçütü: kuralın ne kadar hızlı değerlendirilebileceği. Düşük değer, değerlendirmenin daha maliyetli olduğunu gösterir. Bu bir tetiklenme hızı değildir.",
+      "unit": "saniyede milyon olay (QRadar birimi)"
+    }
   }
 }

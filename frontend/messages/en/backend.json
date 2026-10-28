@@ -68,6 +68,26 @@
       "shape": "username must be 1 to 255 characters without spaces or control characters"
     }
   },
+  "coverage": {
+    "evidence": {
+      "acceptable": "The rule is enabled and its health is acceptable.",
+      "below_floor": "Mapping confidence {confidence} is below the {floor} floor; recorded but not counted toward coverage.",
+      "dependency_degraded": "The rule''s required telemetry is unavailable, so it cannot fire.",
+      "disabled": "The rule is disabled, so it provides no active coverage.",
+      "inactive": "The rule has not fired within the inactivity window.",
+      "never_observed": "The rule has never been observed firing.",
+      "not_established": "The rule''s health has not been established yet."
+    },
+    "rollup": {
+      "all_detecting": "All {enabled} enabled rules mapped to this technique are detecting.",
+      "all_excluded": "Every rule mapped to this technique is disabled or discounted, so there is no active detection.",
+      "none_detecting": "{degraded} of {enabled} enabled rules are not currently detecting.",
+      "not_established": "Rule health has not been established for the mapped rules.",
+      "some_degraded": "{working} of {enabled} enabled rules are detecting; {degraded} are degraded.",
+      "some_unestablished": "{working} of {enabled} enabled rules are detecting; the rest are not yet established.",
+      "unmapped": "No rule is mapped to this technique."
+    }
+  },
   "customrule": {
     "name_exists": "a custom rule named ''{name}'' already exists",
     "watch_value_gone": "the property-watch value no longer exists (its watch changed or was deleted while the rule was saved); reload and choose a value again"
@@ -97,5 +117,22 @@
       "refused": "cannot {action}: custom rule(s) {names} pin a value of this watch; detach or delete the rule(s) first"
     },
     "name_exists": "a property watch named ''{name}'' already exists"
+  },
+  "rule_statistics": {
+    "cost": {
+      "label": "QRadar capacity benchmark: how fast the rule could be evaluated. Lower is costlier to evaluate. This is not a firing rate.",
+      "unit": "millions of events per second (QRadar''s unit)"
+    },
+    "silent": {
+      "excluded": "Only EVENT rules and EVENT building blocks are judged: an event search sees every one of their matches. COMMON rules also match on flows, which are not searched, so their silence is unknown. FLOW and OFFENSE rules are not searched at all."
+    },
+    "top": {
+      "no_complete_window": "No complete window to measure."
+    },
+    "window": {
+      "incomplete": "Only {complete} of {expected} windows in the span are complete ({missing} missing, {truncated} truncated, {failed} failed). Absence from an incomplete window proves nothing.",
+      "none": "No rule-match window has been collected for this instance: collection is disabled or has not run yet, so nothing is measured.",
+      "unsettled": "No rule-match window in the requested span has settled yet."
+    }
   }
 }

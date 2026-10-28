@@ -170,11 +170,10 @@ function formatParam(
   switch (spec.kind) {
     case "count":
       if (!Number.isInteger(value)) return undefined;
-      return spec.style === "plain"
-        ? (value as number).toLocaleString(context.locale === "tr" ? "tr-TR" : "en-US", {
-            useGrouping: false,
-          })
-        : formatCount(value as number, context.locale);
+      // Every count is grouped in the locale, whatever its style: the `plain` style only keeps
+      // the backend's English render byte for byte, and this reader never renders English from
+      // params (English shows the API text verbatim).
+      return formatCount(value as number, context.locale);
     case "number":
       return finite(value) ? numberText(value, spec, context.locale) : undefined;
     case "percent":

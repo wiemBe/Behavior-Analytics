@@ -105,9 +105,16 @@ async function RuleStatisticsPage({
           <MostMatched
             rows={rank === "events" ? statistics.top_by_events : statistics.top_by_matches}
             reason={statistics.top_reason}
+            reasonCode={statistics.top_reason_code}
+            reasonParams={statistics.top_reason_params}
             query={query}
           />
-          <SilentRules silent={statistics.silent} reason={statistics.silent_reason} />
+          <SilentRules
+            silent={statistics.silent}
+            reason={statistics.silent_reason}
+            reasonCode={statistics.silent_reason_code}
+            reasonParams={statistics.silent_reason_params}
+          />
           <CostliestRules cost={statistics.costliest_by_benchmark} />
         </>
       )}
