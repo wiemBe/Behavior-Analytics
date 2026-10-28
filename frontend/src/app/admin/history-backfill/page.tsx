@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 
 import { HistoryBackfillPage } from "@/components/history/HistoryBackfillPage";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 
 import "@/components/ui/controls.css";
 
@@ -19,7 +20,7 @@ export default function Page() {
   const t = useTranslations("history.page");
   return (
     <>
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader guide={guideFor("/admin/history-backfill")} title={t("title")} description={t("description")} />
       <HistoryBackfillPage />
     </>
   );

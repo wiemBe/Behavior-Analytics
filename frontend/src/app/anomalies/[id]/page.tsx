@@ -32,6 +32,7 @@ import { detectorSpec } from "@/components/ips/ipsDetectors";
 import { IpsInvestigation, type IpsSeriesData } from "@/components/ips/IpsInvestigation";
 import { PwInvestigation, type PwInvestigationData } from "@/components/propertywatch/PwInvestigation";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { WafInvestigation } from "@/components/waf/WafInvestigation";
 import {
   ApiError,
@@ -258,7 +259,7 @@ export default async function AnomalyDetailPage({
   if (!loaded) {
     return (
       <>
-        <PageHeader title={t("title")} />
+        <PageHeader guide={guideFor("/anomalies/[id]")} title={t("title")} />
         <div className="notice" role="alert">
           <p>
             {status === 404

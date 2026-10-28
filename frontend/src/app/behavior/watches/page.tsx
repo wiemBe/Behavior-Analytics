@@ -27,6 +27,7 @@ import {
   sortWatches,
 } from "@/components/propertywatch/pwFormat";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { ApiError, api, type PropertyWatch, type PropertyWatchCatalog } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
@@ -68,6 +69,7 @@ export default async function PropertyWatchesPage() {
   return (
     <>
       <PageHeader
+        guide={guideFor("/behavior/watches")}
         title={t("list.title")}
         actions={
           access === "writer" ? (

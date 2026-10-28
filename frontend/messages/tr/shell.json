@@ -31,7 +31,8 @@
     "ipsSources": "IPS kaynakları",
     "historyBackfill": "Geçmiş veri okuma",
     "users": "Kullanıcılar",
-    "directory": "Dizin"
+    "directory": "Dizin",
+    "guide": "Kılavuz"
   },
   "account": {
     "label": "Hesap: {name}",

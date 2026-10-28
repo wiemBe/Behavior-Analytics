@@ -22,6 +22,7 @@ import { SourceAnomalies } from "@/components/behavior/SourceAnomalies";
 import { SourceEvaluationNotice } from "@/components/behavior/SourceEvaluationNotice";
 import { SourceHeader } from "@/components/behavior/SourceHeader";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { SourceQuality } from "@/components/behavior/SourceQuality";
 import { VolumeChart } from "@/components/behavior/VolumeChart";
 import {
@@ -93,6 +94,7 @@ export default async function SourceBehaviorPage({
     return (
       <>
         <PageHeader
+          guide={guideFor("/behavior/sources/[id]")}
           title={t("title")}
           meta={<Link href="/behavior/sources">{t("allSources")}</Link>}
         />

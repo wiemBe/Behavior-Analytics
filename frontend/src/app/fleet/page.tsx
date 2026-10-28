@@ -13,6 +13,7 @@ import { FleetClassTable } from "@/components/fleet/FleetClassTable";
 import { WindowSwitch } from "@/components/fleet/WindowSwitch";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, fleetApi, type FleetSummary } from "@/lib/api";
 import { parseWindow, windowName } from "@/lib/fleet";
 import { fleetTextOf, plainCount } from "@/lib/fleetText";
@@ -59,6 +60,7 @@ export default async function FleetPage({
       {/* The summary's `window_end` is the request's own "now": the page has no data time. */}
       <ReportDataAge iso={null} />
       <PageHeader
+        guide={guideFor("/fleet")}
         title={t("title")}
         description={t("description")}
         actions={<WindowSwitch active={window} />}

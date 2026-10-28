@@ -11,6 +11,7 @@ import { FleetSourceFilters } from "@/components/fleet/FleetSourceFilters";
 import { FleetSourcesTable } from "@/components/fleet/FleetSourcesTable";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, fleetApi, type ClassificationRule, type FleetSource } from "@/lib/api";
 import {
   activeFilterLabels,
@@ -65,6 +66,7 @@ export default async function FleetSourcesPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/fleet/sources")}
         title={t("title")}
         description={t("description")}
       />

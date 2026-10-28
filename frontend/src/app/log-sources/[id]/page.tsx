@@ -5,6 +5,7 @@ import { asTextTranslator } from "@/i18n/textTranslator";
 import { plainCount } from "@/lib/fleetText";
 import type { FormatLocale } from "@/lib/format";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, api, type LogSourceDetail } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
 
@@ -39,7 +40,7 @@ export default async function LogSourceDetailPage({
             : t("unreachable");
     return (
       <>
-        <PageHeader title={t("title")} />
+        <PageHeader guide={guideFor("/log-sources/[id]")} title={t("title")} />
         <div className="notice" role="alert">
           <p>{message}</p>
         </div>
@@ -50,6 +51,7 @@ export default async function LogSourceDetailPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/log-sources/[id]")}
         title={d.name}
         description={
           t("summary", {

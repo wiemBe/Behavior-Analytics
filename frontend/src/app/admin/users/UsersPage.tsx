@@ -26,6 +26,7 @@ import { errorTexts } from "@/components/auth/reasons";
 import styles from "@/components/auth/auth.module.css";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { LoadingState } from "@/components/ui/RouteState";
 import { ApiError } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
@@ -280,7 +281,7 @@ export function UsersPage() {
 
   return (
     <div className={styles.stack}>
-      <PageHeader title={t("page.title")} description={t("page.description")} />
+      <PageHeader guide={guideFor("/admin/users")} title={t("page.title")} description={t("page.description")} />
       {load === "loading" ? <LoadingState what={t("boundary.loadingWhat")} /> : null}
       {load === "forbidden" ? (
         <ReasonList

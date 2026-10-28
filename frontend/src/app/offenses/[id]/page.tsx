@@ -2,6 +2,7 @@ import { api, type OffenseDetail, type OffenseHistoryPoint } from "@/lib/api";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { formatDuration } from "@/lib/behavior";
 import { magnitudeTone, offenseStatusTone } from "@/lib/health";
@@ -65,7 +66,7 @@ export default async function OffenseDetailPage({
   if (!Number.isFinite(offenseId)) {
     return (
       <>
-        <PageHeader title={t("title")} />
+        <PageHeader guide={guideFor("/offenses/[id]")} title={t("title")} />
         <div className="notice" role="alert">
           <p>{t("invalid")}</p>
           <p>{t("invalidHelp")}</p>
@@ -94,7 +95,7 @@ export default async function OffenseDetailPage({
   if (missing || error) {
     return (
       <>
-        <PageHeader title={t("detailTitle", { id: offenseId })} />
+        <PageHeader guide={guideFor("/offenses/[id]")} title={t("detailTitle", { id: offenseId })} />
         <div className="notice" role={missing ? "status" : "alert"}>
           <p>
             {missing
@@ -118,6 +119,7 @@ export default async function OffenseDetailPage({
       </p>
       {/* Text only. QRadar-sourced, sanitized server-side, escaped by React. */}
       <PageHeader
+        guide={guideFor("/offenses/[id]")}
         title={t("detailTitle", { id: o.qradar_offense_id })}
         description={o.description?.trim() || t("noDescription")}
       />

@@ -438,6 +438,13 @@ a {
   gap: var(--sp-2);
   flex-wrap: wrap;
 }
+/* The header's text link to the page's guide section (PageHeader `guide`). */
+.guide-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
+  font-size: var(--fs-sm);
+}
 
 /* --- sections --------------------------------------------------------------
    Whitespace between semantic sections is the primary hierarchy signal; inside

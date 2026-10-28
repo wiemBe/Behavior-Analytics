@@ -7,6 +7,7 @@ import { AddIpsSourcePicker } from "@/app/admin/ips-sources/AddIpsSourcePicker";
 import { IpsSourceTable } from "@/app/admin/ips-sources/IpsSourceTable";
 import { readError } from "@/app/admin/ips-sources/readError";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { fleetApi, ipsApi, type IpsSourceStatus } from "@/lib/api";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 
@@ -39,7 +40,7 @@ export default async function IpsSourcesPage() {
 
   return (
     <>
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader guide={guideFor("/admin/ips-sources")} title={t("title")} description={t("description")} />
 
       {error ? (
         <div className="notice" role="alert">

@@ -8,6 +8,7 @@ import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { fleetTextOf, type FleetText } from "@/lib/fleetText";
 import {
   ApiError,
@@ -55,6 +56,7 @@ export default async function CatchallPage() {
   return (
     <>
       <PageHeader
+        guide={guideFor("/fleet/catchall")}
         title={t("title")}
         description={t("description")}
       />

@@ -1,0 +1,847 @@
+{
+  "title": "Kılavuz",
+  "description": "Konuyu yanıtladığı soruya göre seçin.",
+  "groups": {
+    "concepts": "Kavramlar",
+    "pages": "Analist sayfaları",
+    "analystTasks": "Analist görevleri",
+    "adminTasks": "Yönetici görevleri"
+  },
+  "ui": {
+    "allTopics": "Tüm konular",
+    "steps": "Adımlar",
+    "states": "Görebileceğiniz durumlar",
+    "related": "İlgili",
+    "routes": "{count, plural, other {Rota}}",
+    "audience": "Kimin için",
+    "permission": "İzin",
+    "noPermission": "İzin gerekmez",
+    "audiences": {
+      "analyst": "Analistler",
+      "admin": "Yöneticiler",
+      "both": "Analistler ve yöneticiler"
+    },
+    "notFoundTitle": "Konu bulunamadı",
+    "notFoundBody": "Kılavuzda bu adreste bir konu yok. İçindekilerden birini seçin."
+  },
+  "sections": {
+    "how-it-works": {
+      "title": "Nasıl çalışır",
+      "answers": "Bu ürün ne yapar, ne yapmaz?",
+      "body": [
+        {
+          "p": "Platform QRadar'dan okur ve QRadar'a hiçbir şey yazmaz. Belirli bir sıklıkta toplar: bir arama ailesi kendi aralığında QRadar'ı sorgular, bulduğunu saklar ve saklanan zaman dilimlerini değerlendirir. Olayları akış olarak almaz."
+        },
+        {
+          "p": "Ham olayları değil, toplamları tutar. Hacim, istek sayıları, oranlar ve baseline'lar saklanır; toplulaştırma adımından çıkan tek ham değerler, inceleme için kullanılan sınırlı katkı sağlayan listeleridir. Bir katkı sağlayan listesi, değişimin ölçülmüş payıdır; nedeni belirtmez."
+        },
+        {
+          "p": "Baseline'lar mevsimseldir: her kaynak ve metrik için, UTC'ye göre haftanın her günü ve her saati için bir hücre vardır. Bir kaynak, gün boyu tek bir ortalamaya göre değil, haftanın o anki günü ve saatine ait hücreye göre değerlendirilir."
+        },
+        {
+          "p": "Platform güvenli tarafta kalır. Eksik, başarısız ya da kırpılmış girdi YETERSİZ VERİ sonucunu verir; hiçbir zaman sıfır ya da NORMAL vermez. Boş bir grafik ya da bir uzun çizgi, değerin ölçülmediği anlamına gelir; değerin sıfır olduğu anlamına gelmez."
+        },
+        {
+          "p": "Kurulum, yükseltme, yedekleme ve diğer operasyon işleri `docs/INSTALL.md` ve `docs/OPERATIONS.md` dosyalarındadır."
+        }
+      ]
+    },
+    "honesty-states": {
+      "title": "Dürüstlük durumları",
+      "answers": "Bir rakamı niteleyen durumlar ne anlama gelir ve onlar için ne yapabilirim?",
+      "body": [
+        {
+          "ul": [
+            "**YETERSİZ VERİ** (INSUFFICIENT_DATA) — karar için yeterli baseline ya da yeterli kullanılabilir veri yok. Kaynak ya da konu değerlendirilmiyor. Bu, sağlıklı olduğu anlamına gelmez ve başka bir yerdeki sıfır bunu karşılamaz.",
+            "**Kısmi** (PARTIAL) — gözlem eksik. Rakam kesin bir ölçüm değil, eksik sayımdır; kesin sıfır, kesin hacim ya da kesin normallik iddiasını desteklemez.",
+            "**Kırpılmış** (TRUNCATED) — sonuç yapılandırılmış bir üst sınıra ulaştı. Gösterilen satırlar listenin tamamı değil, en üst kısmıdır. Yeni, kaybolan ve kardinalite sayıları gösterilmez, çünkü bir değer diğer pencerede sınırın altına düşmüş olabilir.",
+            "**Toplanmadı** (NOT_COLLECTED) — o aralık ya da nesne için hiçbir şey toplanmadı. Bu, toplamanın yokluğudur; sıfırın gözlenmesi değildir."
+          ]
+        },
+        {
+          "p": "Bir Gösterge paneli bileşeninde iki durum daha görülür. **Güncel değil**, en son verinin arama ailesinin sıklığının iki katından eski olduğu anlamına gelir; bileşen yine de veriyi çizer ve ulaştığı zamanı belirtir. **İzin yok**, rolünüzde bileşenin adını verdiği izin olmadığı anlamına gelir; bileşen, verinin sahibi olan rotaya bağlanır."
+        },
+        {
+          "p": "Her durumda önce toplamayı denetleyin, sonra sayfayı yenileyin. Eksik bir değeri sıfır ya da normal diye okumayın."
+        }
+      ]
+    },
+    "expected-range": {
+      "title": "Beklenen aralık ve bir anomalideki rakamlar",
+      "answers": "Gözlenen, beklenen, sapma, robust z ve coverage ne anlama gelir?",
+      "body": [
+        {
+          "p": "**Gözlenen**, anormal aralıkta ölçülen değerdir ve algılayıcının birimindedir: hacim için saniyedeki olay, WAF için zaman dilimi başına istek ya da bir pay, IPS ve özellik izlemeler için algılayıcının kendi birimi. **Beklenen**, UTC'ye göre haftanın bu günü ve saati için mevsimsel baseline'dır."
+        },
+        {
+          "p": "**Beklenen aralık**, o gün ve saat için baseline örneklerinin 5. ve 95. yüzdelik değerleri arasındaki banttır. Bandın içindeki bir değer o saat için olağandır. Bandın dışındaki bir değer kendiliğinden bir vaka değildir; algılayıcı ayrıca hacim, oran ve mutlak fark korumaları uygular."
+        },
+        {
+          "p": "**Sapma**, gözlenen değeri beklenenle karşılaştırır: bir oran ve olay cinsinden mutlak bir fark olarak. **Robust z**, gözlenen değerin baseline medyanından robust sapma cinsinden ne kadar uzak olduğunu ölçer. Baseline'ın medyan mutlak sapması sıfırsa robust skor kullanılmaz; algılayıcı beklenen banda döner ve güvenini sınırlar. **Güven**, algılayıcının kararı için verdiği 0 ile 1 arasındaki kendi skorudur."
+        },
+        {
+          "p": "**Coverage**, ölçülen alanı taşıyan olayların payıdır; bir WAF endpoint'inde, kaynağın olaylarından ayrıştırılabilir endpoint'i olanların payıdır. Hacim için baseline tamlığı, hücrenin geçmişin ne kadarıyla kurulduğunu söyler. İkisi de bir rakamı niteler; hiçbiri bir karar değildir."
+        }
+      ]
+    },
+    "anomaly-lifecycle": {
+      "title": "Anomali yaşam döngüsü",
+      "answers": "Bir anomali ilk anormal zaman diliminden kapanmış bir vakaya nasıl ilerler ve bir uyarı onunla nasıl ilişkilidir?",
+      "body": [
+        {
+          "p": "YETERSİZ VERİ (INSUFFICIENT_DATA), baseline yeterli olunca NORMAL olur. NORMAL, ilk anormal zaman diliminde ADAY (CANDIDATE) olur. ADAY, yeterli sayıda ardışık anormal zaman diliminden sonra AÇIK (OPEN) olur; açılmadan düzelirse NORMAL'e döner. Varsayılan doğrulama sayısında tek zaman dilimlik bir sıçrama vaka değildir, ancak kritik bir kaynak tek zaman diliminden sonra açılır."
+        },
+        {
+          "p": "AÇIK, normal bir zaman diliminde DÜZELİYOR (RECOVERING) olur. DÜZELİYOR, nüksederse yeniden AÇIK olur; bu aynı vakadır. Yeterli sayıda ardışık normal zaman diliminden sonra ÇÖZÜLDÜ (RESOLVED) olur. Doğrulama ve düzelme sayıları algılayıcıya, kaynak hacmi için de kaynağın kritikliğine bağlıdır."
+        },
+        {
+          "p": "BASTIRILDI (SUPPRESSED), bir bakım penceresi ya da operatör bastırması için kullanılır. Anomali kaydedilir ama hiç bildirilmez. Kaynak ve algılayıcı başına aynı anda yalnızca bir vaka etkindir; ÇÖZÜLDÜ'den sonraki bir tekrar yeni bir vaka açar."
+        },
+        {
+          "p": "ADAY, AÇIK ve DÜZELİYOR etkin durumlardır. Uyarı, etkin bir anomalinin bildirim kaydıdır. Yinelenen tespitler, kopya oluşturmak yerine açık uyarıyı günceller ve oluşum sayısını artırır. Uyarı yaşam döngüsü AÇIK → ALINDI → ÇÖZÜLDÜ şeklindedir. Yalnızca kayıt tutan bir kesinti politikası yine de bir Olay yok (NO_EVENTS) anomalisi kaydeder; yalnızca bu anomalinin uyarı üretmesini engeller."
+        }
+      ]
+    },
+    "times-and-cadence": {
+      "title": "Zamanlar ve sıklık",
+      "answers": "Hangi zaman gösteriliyor, veri ne kadar eski ve yenileme denetimi ne yapar?",
+      "body": [
+        {
+          "p": "Tüm zamanlar UTC'dir. Mutlak bir zamanın ardından göreli bir yaş gelebilir, ama göreli yaş mutlak zamanın yerini hiçbir zaman almaz."
+        },
+        {
+          "p": "Toplama, arama ailesi başına bir sıklıkta çalışır. WAF toplama ve IPS toplama dışında her aile varsayılan olarak 5 dk sıklıkla çalışır; bu ikisi varsayılan olarak 15 dk sıklıkla çalışır. Bir aileyi operatör Arama sıklığı sayfasında değiştirir. Sıklık, ailenin QRadar'ı ne zaman aradığını değiştirir; saklanan zaman dilimi genişliğini değiştirmez."
+        },
+        {
+          "p": "Veri yaşı, toplanan verinin ne kadar yakın zamana ulaştığıdır. Üst çubuk bu zamanı **Son veri** olarak, yanında da bu tarayıcının sayfayı en son ne zaman yeniden okuduğunu gösteren **Yenilendi** zamanını gösterir. Yenileme yeni veri toplamaz; platformun zaten sakladığını yeniden okur."
+        },
+        {
+          "p": "**Yenileme** denetimi **Kapalı**, **1 dk** ve **5 dk** seçeneklerini sunar. Kapalı başlar. Sekme gizliyken ve bir iletişim kutusu açıkken zamanlayıcı durur. **Kapalı**, toplamayı ya da sunucu tarafındaki zamanlamayı durdurmaz."
+        }
+      ]
+    },
+    "roles": {
+      "title": "Roller ve izinler",
+      "answers": "Her rol neyi görebilir ve neyi yapabilir; \"izin yok\" durumu ne anlama gelir?",
+      "body": [
+        {
+          "p": "Bir kullanıcı, rollerinin izinlerinin birleşimine sahiptir."
+        },
+        {
+          "ul": [
+            "**Yönetici (admin)** her izne sahiptir; her okuma ve her yazma izni buna dahildir.",
+            "**Analist (analyst)** her okuma iznine sahiptir; ayrıca saklanmış bir aramayı çalıştırabilir, bir uyarıyı alındı olarak işaretleyip çözebilir, SOC'a ait log source alanlarını, kural meta verilerini ve coverage eşlemelerini yazabilir ve kendi gösterge panellerini kaydedebilir.",
+            "**Görüntüleyici (viewer)** her okuma iznine sahiptir, hiçbir yazma iznine sahip değildir.",
+            "**Tespit mühendisi (detection_engineer)** analistin sahip olduğu her şeye ek olarak arama yazma, özel kural yazma ve özellik izleme yazma izinlerine sahiptir."
+          ]
+        },
+        {
+          "p": "Okuma her rotada denetlenir. **İzin yok** durumu eksik izni adlandırır, hiçbir şeyin değişmediğini söyler ve bu izni içeren bir rol için yöneticiye başvurmanızı söyler. Reddin yerine hiçbir zaman kısmi veri göstermez."
+        },
+        {
+          "p": "Üst çubuktaki Hesap menüsü adınızı, oturum açma kaynağınızı ve rollerinizi gösterir. Hesap ayarları, aynı hesabın dil ve parola seçeneklerini gösterir."
+        }
+      ]
+    },
+    "dashboard": {
+      "title": "Gösterge paneli",
+      "answers": "Şu anda neye dikkat edilmesi gerekiyor ve görünümü nasıl düzenlerim?",
+      "body": [
+        {
+          "p": "Gösterge paneli başlangıç sayfasıdır. Varsayılan olarak işaretlediğiniz bir gösterge paneli varsa onu gösterir; yoksa **Şablon, kaydedilmedi** etiketiyle **SOC Genel Bakışı** şablonunu gösterir. Beş şablon vardır: **SOC Genel Bakışı** (filo hacmi, kaynak sağlığı, anomaliler, offense'lar), **QRadar Yönetimi** (toplama, algılama ve kanıt sağlığı, catch-all gönderenleri, filo sınıfları, kesinti politikası), **Davranış Analitiği** (etkin anomaliler ve kanıt sağlığı), **Log Source İzleme** (kaynak sağlığı ve trafik dağılımı) ve **WAF / IPS İzleme**. Her bileşen kendi durumunu belirtir (veri yok, toplanmadı, kısmi, kırpılmış, güncel değil ya da izin yok) ve verisinin sahibi olan rotaya bağlanır."
+        },
+        {
+          "p": "**Özelleştir** düzen düzenleyicisini açar. **Bileşen ekle** kataloğu açar; **Bitti** düzeni kaydeder, **Vazgeç** değişiklikleri bırakır. Bir gösterge paneli en fazla 24 bileşen içerir. Izgara, 900 px ve üzerinde 12 sütun, 600 px ve üzerinde 6 sütun, altında 1 sütundur; düzenleme yalnızca 12 sütunda yapılabilir, aksi halde sayfa **Özelleştirmek için pencereyi genişletin** der. Bileşen seçime izin veriyorsa aralığı 1 sa, 24 sa ya da 7 gündür."
+        },
+        {
+          "p": "**Gösterge panelleri** kayıtlı gösterge panellerinizi, paylaşılanları ve şablonları açar. **Yönet**; yeniden adlandırma, kopyalama, paylaşma, varsayılan yapma ve silme işlemlerini içerir."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Şablon, kaydedilmedi**; **Kaydedilmemiş değişiklikler var.**; **Bir gösterge paneli en fazla 24 bileşen içerebilir.**; **Özelleştirmek için pencereyi genişletin**; bir bileşenin güncel değil ya da izin yok durumu."
+        }
+      ]
+    },
+    "behavior": {
+      "title": "Genel bakış",
+      "answers": "İzlenen kaynaklardan hangileri şu anda anormal davranıyor?",
+      "body": [
+        {
+          "p": "Sayfa başlığı **Davranış genel bakışı**dır. Her izlenen kaynağı, UTC'ye göre haftanın o anki günü ve saati için kendi baseline'ıyla karşılaştırır. Üstteki rakamlar **Açık anomaliler**, **Sessiz kaynaklar**, **Yüksek sapma** ve **Yetersiz veri**dir. **Yüksek sapma**, beklenen hacmin iki katına eşit ya da üstünde, ya da yarısına eşit ya da altında olmak demektir. **Yetersiz veri**, değerlendirilmeyen kaynakları sayar; diğer rakamlardaki bir sıfır bu kaynakları kapsamaz."
+        },
+        {
+          "p": "Alttaki şerit **Ani artışlar**, **Ani düşüşler**, **Adaylar**, **Düzeliyor**, **Çözülenler, 24 sa**, **Kanıt bekliyor** ve **Kanıt başarısız** sayılarını verir."
+        },
+        {
+          "p": "**Dikkat gerekiyor** kaynakları yaşam döngüsü durumuna, önem derecesine, sapmaya ve yeniliğe göre sıralar; her satır **İncele** düğmesini açar. **Son çözülenler**, sürekli normal davranıştan sonra kapanan anomalileri listeler. **Kaynak sağlığı** her kaynağı karara göre gruplar."
+        },
+        {
+          "p": "İş listesinin üstündeki bant, yeterli baseline'ı olmayan kaynakları adlandırır. Bunlar değerlendirilmediği için bu sayfadaki hiçbir anomali sayısı onları içermez."
+        }
+      ],
+      "states": [
+        {
+          "p": "Yeterli baseline yok bandı; **Şu anda anormal olan, baseline'ından belirgin biçimde sapan ya da baseline bekleyen hiçbir şey yok.**; etkin listenin yüklenememesi."
+        }
+      ]
+    },
+    "anomalies": {
+      "title": "Anomaliler",
+      "answers": "Hangi anomaliler var ve hangileri hâlâ etkin?",
+      "body": [
+        {
+          "p": "Liste, etkin ya da kapanmış, algılanan her anomaliyi gösterir. **Yalnızca etkin** listeyi ADAY, AÇIK ve DÜZELİYOR durumlarıyla sınırlar. Diğer filtreler **Konu türü**, **Yaşam döngüsü durumu**, **Algılayıcı türü**, **Önem derecesi**, **Başlangıç zamanı (UTC)**, **Bitiş zamanı (UTC)** ve **Daha fazla filtre** altındaki **Log source seçimi**, **QRadar instance'ı** ve **Kanıt durumu**dur. **Filtrele** bunları uygular; uygulanan her filtre bir çip olarak görünür ve **Tümünü temizle** hepsini kaldırır."
+        },
+        {
+          "p": "Tablo sütunları **Konu**, **Algılayıcı**, **Durum**, **Gözlenen → Beklenen** (hacim için EPS cinsinden), **Sapma**, **Önem derecesi**, **Başlangıç**, **Kanıt** ve **İşlemler**dir. **Aç** incelemeyi açar. **Kanıt** sütunu İSTENMEDİ, BEKLİYOR, TAMAMLANDI, KISMİ, KULLANILAMIYOR ya da BAŞARISIZ değerini taşır."
+        },
+        {
+          "p": "Boş bir sonuç ya filtrelenmiş bir görünümdür ya da anomalisi olmayan bir filodur; sayfa hangisi olduğunu söyler. Yeterli baseline'ı olmayan kaynaklar değerlendirilmez ve temiz görünmez."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Bu filtrelerle eşleşen anomali yok. Bu filtrelenmiş bir görünümdür, filo hakkında bir açıklama değildir.**; **Hiç anomali algılanmadı.**; izin yok bildirimi."
+        }
+      ]
+    },
+    "anomaly-detail": {
+      "title": "Anomali incelemesi",
+      "answers": "Ne değişti, ne kadar değişti ve bunu ne açıklıyor?",
+      "body": [
+        {
+          "p": "Başlık; konuyu, algılayıcıyı, durumu, önem derecesini ve aralığı adlandırır. **Vaka ölçümleri**; **Gözlenen**, **Beklenen**, **Sapma**, **Süre** ve **Algılayıcı güveni** değerlerini, her biri kendi birimiyle taşır. **Süre** aralığın uzunluğudur; sürmekte olan bir vakada **Hâlâ sürüyor** yazar ve süre bulunmaz."
+        },
+        {
+          "p": "**Zaman çizelgesi**; gözlenen seriyi, beklenen aralığı bir bant olarak, anormal aralığı ve yaşam döngüsü geçişlerini çizer. Bir boşluk, tam toplanmamış bir aralıktır; sıfır trafik değildir."
+        },
+        {
+          "p": "**Ne değişti**, her boyuttan en çok bir tane olmak üzere en güçlü katkı sağlayanları listeler. Her biri değişimin ölçülmüş payıdır, bir neden değildir. **Kanıt**; hangi boyutların toplandığını, hangilerinin kullanılamadığını ya da başarısız olduğunu ve hangi sayıların bir sınır nedeniyle gösterilmediğini söyler. **Yaşam döngüsü** geçiş denetim kaydıdır. **Teknik ayrıntılar**; algılama anındaki beklenen aralığı, robust z değerini ve durumunu, eşikleri, baseline örneklerini ve tamlığını, baseline ile politika sürümlerini ve Ariel sorgularını içerir."
+        },
+        {
+          "p": "WAF, IPS ve özellik izleme vakaları kendi ölçüm bloklarını ekler; bir WAF vakası ayrıca **Endpoint coverage** ve istek sayılarını gösterir."
+        }
+      ],
+      "states": [
+        {
+          "p": "BEKLİYOR, KISMİ, KULLANILAMIYOR, BAŞARISIZ ya da İSTENMEDİ kanıt; kırpılmış bir katkı sağlayan listesi; yapılandırılmış algılayıcı kanıtının olmaması; izin yok bildirimi."
+        }
+      ]
+    },
+    "source-behavior": {
+      "title": "Kaynaklar",
+      "answers": "Bu kaynağın hacmi haftanın bu günü ve saati için normal mi ve toplaması sağlıklı mı?",
+      "body": [
+        {
+          "p": "Liste, izlenen kaynakları **Gözlenen (EPS)**, **Beklenen (EPS)**, **Sapma**, **Son olay**, **Anomaliler** ve **Durum** ile gösterir. Filtreler bir kaynak adı araması, **Davranış durumu**, **Anomali durumu** ve **Baseline yeterliliği**dir. Hâlâ öğrenmekte olan bir kaynak, beklenen değer göstermek yerine **öğreniyor** der."
+        },
+        {
+          "p": "Ayrıntı sayfası **Gözlenen EPS**, **Beklenen EPS**, **Sapma** ve **Son olay** değerlerini yineler, sonra **Gözlenen hacim**i beklenen bantla birlikte çizer. **Veri kalitesi**, **Baseline kalitesi** ve **Toplama sağlığı** bölümlerini içerir; ikincisi **Toplanan son aralık**, **Toplama gecikmesi**, **Penceredeki aralıklar** ve **QRadar log source durumu** değerlerini taşır. **Anomaliler**, etkin vakaları ve yakın zamanda kapananları listeler. **Teknik ayrıntı**, mevsimsel baseline hücrelerini ve metrik zaman dilimlerini içerir. **Envanter ayrıntısı** log source'u açar."
+        },
+        {
+          "p": "Başlık, ilgili olduğunda **İzleme devre dışı** ya da **Bakım modu** der. Baseline'ı olmayan bir kaynak değerlendirilmez ve sayfası bunu söyler."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Yakın zamanda toplama yok**, **Gecikmeli**, **Kısmi** ya da **Güncel** toplama; **Bu pencere için hiç metrik zaman dilimi toplanmadı. Bu, toplamanın yokluğudur; sıfır trafiğin gözlemi değildir.**; başarısız bir metrik ya da anomali okuması."
+        }
+      ]
+    },
+    "waf-behavior": {
+      "title": "WAF davranışı",
+      "answers": "Hangi WAF kaynakları toplanıyor ve değerlendiriliyor, hangi endpoint'ler dikkat gerektiriyor?",
+      "body": [
+        {
+          "p": "Liste, seçili aralıkta WAF kaynaklarını **Profil**, **Doğrulama**, **Endpoint coverage**, **Etkin endpoint'ler** ve **Kabul taşması** ile gösterir. **Kabul taşması aralığı** **24 saat**, **7 gün** ve **30 gün** seçeneklerini sunar. Bir kaynak yalnızca profili etkinse ve güncel sürümü için geçerliyse toplanır ve değerlendirilir; diğerleri karar üretmez. Dikkat gerektiren kaynaklar en başta listelenir. **Profil ayarları**, kaynağı WAF kaynakları yönetiminde açar."
+        },
+        {
+          "p": "Kaynak sayfası, **WAF kaynağı endpoint'leri**, izlenen endpoint'leri **Baseline hücreleri**, **Son görülme (UTC)**, **İzleme** ve **Durum** ile listeler; **Tüm endpoint'ler** ya da **Yalnızca etkin olanlar** seçeneğini sunar. Hiçbir algılayıcının değerlendirmediği bir endpoint **Değerlendirilmedi** der. **Etkin**, **Etkin değil** ve **Kullanım dışı**, sağlığı değil izlemeyi anlatır. Başlık **Profil etkin** ya da **Profil devre dışı** der ve etkin endpoint sayısını üst sınıra göre belirtir."
+        },
+        {
+          "p": "Endpoint coverage'ı coverage alt sınırının altına düşen bir zaman dilimi kesin sayı olarak değil, alt sınır olarak kaydedilir. Toplanmış zaman dilimi olmayan bir endpoint'in baseline'ı yoktur ve değerlendirilmez."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Hiçbir WAF kaynağının davranış profili yok.**; **Henüz zaman dilimi toplanmadı**; **Toplanmadı**; **Kurulmuş baseline yok**; **Henüz güveniliri yok**; izin yok bildirimi."
+        }
+      ]
+    },
+    "property-watches": {
+      "title": "Özellik izlemeleri",
+      "answers": "İzlenen özellik değerlerinden hangileri sayılıyor ve hangi izlemeler dikkat gerektiriyor?",
+      "body": [
+        {
+          "p": "Bir özellik izleme, her 5 dakikalık zaman diliminde bir ya da iki QRadar özelliğinin değerlerini sayar, her değer için neyin normal olduğunu öğrenir ve ortaya çıkan, kaybolan ya da değişen bir değeri bildirir. Liste **Ad**, **Durum ve neden**, **Scope**, **Özellikler**, **Coverage, son zaman dilimi**, **Açık vakalar**, **Son zaman dilimi (UTC)** ve **Etkin** sütunlarını gösterir. Analist gerektiren izlemeler önce sıralanır."
+        },
+        {
+          "p": "Ayrıntı sayfası, sabitlenmiş değerleri ve son zaman diliminin en yüksek değerlerini zaman dilimi başına olay cinsinden, scope'un coverage'ıyla birlikte çizer ve etkin vakaları listeler. **İzlemeyi düzenle** düzenleyiciyi açar. Başlık geçmiş durumunu, scope'u, özellikleri ve toplanan son zaman dilimini belirtir."
+        },
+        {
+          "p": "İki bant listeyi niteler: `PW_COLLECTION_ENABLED` false olduğunda **TOPLAMA KAPALI.**; bu durumda hiçbir izleme için arama gönderilmez. Vakalar kaydedilip `PW_ALERTING_ENABLED` açılana kadar hiçbir şey bildirilmediğinde **GÖLGE MODU.** Devre dışı bir izleme arama göndermez."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Bu izleme için henüz zaman dilimi toplanmadı.**; hiçbir olayda ayrıştırılamayan bir özellik; **Uygulanamaz**; kısmi zaman dilimleri ve alt sınırlar; süren bir geçmiş okuması."
+        }
+      ]
+    },
+    "fleet": {
+      "title": "Filo",
+      "answers": "Her log source sınıfı baseline'ına göre ne kadar gönderiyor ve neler inceleme bekliyor?",
+      "body": [
+        {
+          "p": "Sayfa başlığı **Log source filosu**dur. **Pencere** **1 saat**, **24 saat** ve **7 gün** seçeneklerini sunar. Sınıf tablosu **Sınıf**, **Olaylar**, **Ortalama EPS**, **Beklenen EPS**, **Pencere bütünlüğü**, **Açık vakalar** ve **Olay sayısına göre en yoğun kaynaklar** sütunlarını verir. Olaylar ve ortalama EPS yalnızca tamamlanmış zaman dilimlerini sayar. **Beklenen EPS**, güvenilir baseline'ı olan kaynakların toplamıdır; pencerenin kapsadığı her mevsimsel hücre güvenilir olduğunda bir kaynak sayılır. Pencere eksikse satır, kaç zaman diliminin kısmi ya da eksik olduğunu söyler."
+        },
+        {
+          "p": "**QRadar dahili kaynakları** sınıflardan ayrı sayılır ve hacim rakamı taşımaz. **İnceleme kuyruğu**; yeni kaynakları, sınıfı çakışan kaynakları ve sınıflandırılmamış kaynakları sayar ve **Filo kaynakları**nı açar. Sayfa notu, her hacim rakamının dayanağının tamamlanmış zaman dilimleri olduğunu açıklar."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Ölçülmedi**; **Henüz hiçbir kaynağın baseline'ı yok.**; **Eksik**; **Pencerede tamamlanmış zaman dilimi yok.**; izin yok bildirimi."
+        }
+      ]
+    },
+    "fleet-sources": {
+      "title": "Filo kaynakları",
+      "answers": "Yeni ya da sınıfı belirsiz hangi kaynaklar karar bekliyor ve her biri sınıfını neden aldı?",
+      "body": [
+        {
+          "p": "Filtreler **Sınıf**, **İnceleme durumu**, **Çakışmalar** ve **Sınıflandırma dayanağı**dır. Tablo **Kaynak**, **Sınıf ve dayanak**, **İlk görülme**, **İnceleme** ve **İşlemler** sütunlarını gösterir. Dayanak şunlardan biridir: **Operatör geçersiz kılması**, **QRadar dahili**, **Hiçbir kural eşleşmedi**, **Grup kuralı**, **Tür kuralı**, **Tür adı kuralı**, **Ad kuralı** ya da **Tanımlayıcı kuralı**."
+        },
+        {
+          "p": "**Sınıf ata** bir kaynak için operatör geçersiz kılması kaydeder; **Atamayı kaldır** kaynağı kurallarına geri döndürür; **İncelendi olarak işaretle** bir analistin kaynağı gördüğünü kaydeder. Yazmak için `log_source:write` gerekir. Bir çakışma, her düzeyin ne dediğini adlandırır; kararı veren ilk düzey geçerli olur ve bir düzey içinde eşit öncelikli bir anlaşmazlık o düzeyi karar vermemiş bırakır."
+        },
+        {
+          "p": "Boş bir liste ya filtrelenmiş bir görünümdür ya da kaynağı olmayan bir envanterdir; sayfa hangisi olduğunu ve envanter eşitlemesinin nerede çalıştırılacağını söyler."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Bu filtrelere uyan kaynak yok.**; **Envanterde log source yok.**; bir çakışma; devre dışı bir kaynak eki."
+        }
+      ]
+    },
+    "catch-all-senders": {
+      "title": "Catch-all gönderenleri",
+      "answers": "Hangi yapılandırılmamış cihazlar bir catch-all kaynağına olay gönderiyor?",
+      "body": [
+        {
+          "p": "Gönderen, bir catch-all kaynağına düşen olaylar için QRadar'ın kaydettiği syslog ana bilgisayar adıdır. Çoğu zaman bir relay'dir ve karar değil, yapılandırılmamış bir cihaz adayıdır. Kuyruk önce **Yeni** gönderenleri listeler, sonra 24 saatlik olaya göre, en yoğun olandan başlayarak sıralar. Sütunları **Gönderen**, **Catch-all kaynağı**, **Görülme (UTC)**, **24 sa olay**, **İnceleme** ve **İşlemler**dir."
+        },
+        {
+          "p": "**24 sa olay** bir alt sınırdır: göndereni adlandıran saklanmış en yoğun gönderen listelerini toplar. **bilinmiyor**, hiçbir saklanmış listenin onu adlandırmadığı anlamına gelir; sıfır değildir. **İncele** ve **Yoksay** için `log_source:write` gerekir."
+        },
+        {
+          "p": "**Kaynağa göre hacim**, bir kaynağı **6 saat**, **24 saat** ya da **7 gün** boyunca **Kabul aşamasında olanlar** ve **Bu zaman dilimindeki en yoğun gönderenler** ile çizer. Gölgeli zaman dilimleri ölçülmemiştir."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Henüz hiçbir şey toplanmadı.**; **Kuyruk boş.**; **Bu filtrelere uyan gönderen yok.**; alt sınır ya da ölçülmemiş bir rakam; yazma izni olmayan rol için salt okunur bildirimi."
+        }
+      ]
+    },
+    "offenses": {
+      "title": "Offense'lar",
+      "answers": "QRadar hangi offense'ları bildiriyor ve her biri neyi içeriyor?",
+      "body": [
+        {
+          "p": "Sayfa, QRadar'dan toplanan offense'ların salt okunur görünümüdür. Hiçbir şey yazmaz: offense'lar burada değil, QRadar'da değerlendirilir. Rakamlar, varsayılan eşiklerde **Etkin**, **Kritik (büyüklük 7+)** ve **24 sa SLA'yı aşan**, ayrıca **Atanmamış** ve **En eski**dir. Büyüklüğü ya da yaşı olmayan bir offense bu rakamlardan ayrı sayılır ve sıfır gibi ele alınmaz."
+        },
+        {
+          "p": "Filtreler açıklama, kaynak ve atanan üzerinde bir arama ile **Açık**, **Gizli** ve **Kapalı** seçeneklerini içeren bir durum filtresidir. Tablo sütunları **Kimlik**, **Açıklama**, **Büy.**, **Önem**, **Durum**, **Atanan**, **Olaylar**, **Başlangıç (UTC)** ve **Yaş**tır. Ayrıntı sayfası **Puanlar**, **Öznitelikler**, **Varlıklar**, **Kategoriler**, katkı sağlayan kural ve log source kimliklerini ve **Geçmiş**i ekler. Bir geçmiş girdisi yalnızca offense değiştiğinde yazılır; bu yüzden sabit bir offense'ın tek girdisi vardır."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Henüz offense kesiti toplanmadı.**; **Bu filtrelerle eşleşen offense yok.**; bulunmayan ya da henüz toplanmamış bir offense; başarısız bir geçmiş okuması."
+        }
+      ]
+    },
+    "alerts": {
+      "title": "Uyarılar",
+      "answers": "Hangi uyarılar açık ve onlar için ne yapıldı?",
+      "body": [
+        {
+          "p": "Yaşam döngüsü AÇIK → ALINDI → ÇÖZÜLDÜ şeklindedir. Yinelenen tespitler, kopya oluşturmak yerine açık uyarıyı günceller ve **Oluşumlar** sayısını artırır. **Uyarı durumu** filtresi **Tüm durumlar**, **Açık**, **Alındı** ve **Çözüldü** seçeneklerini sunar. Tablo **Başlık**, **Önem derecesi**, **Durum**, **Oluşumlar**, **İlk görülme** ve **Son görülme** sütunlarını gösterir."
+        },
+        {
+          "p": "Ayrıntı sayfası **Kanıt**, **Yaşam döngüsü**, **Kaynak anomalileri** ve **Bildirim teslim geçmişi** bölümlerini taşır. **Operatör işlemleri**, AÇIK bir uyarıyı ALINDI durumuna geçiren ve kimin ne zaman yaptığını kaydeden **Alındı olarak işaretle** düğmesini, ayrıca isteğe bağlı bir **Çözüm nedeni** alan **Çöz** düğmesini sunar. Onay **Bu uyarı çözülsün mü? Çözülen bir uyarı yeniden açılamaz.** der. Çözülmüş bir uyarı başka işlem sunmaz."
+        },
+        {
+          "p": "AÇIK olmayan bir uyarıyı alındı olarak işaretlemek hiçbir şeyi değiştirmez. AÇIK ya da ALINDI bir uyarıyı çözmek kimin, ne zaman ve hangi nedenle çözdüğünü kaydeder. Bildirim satırları Bekliyor, Gönderildi, Başarısız, Teslim edilemedi ya da Bastırıldı gösterir."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Açık uyarı yok.** ve durum başına diğer boş bildirimler; **Bu uyarı çözüldü. Başka işlem yapılamaz.**; **Bu uyarı için bildirim yok.**"
+        }
+      ]
+    },
+    "rules": {
+      "title": "Kurallar",
+      "answers": "Hangi analitik kurallar sağlıklı ve hangileri tetiklenmiyor?",
+      "body": [
+        {
+          "p": "Sayfa başlığı **Kural sağlığı**dır. Bir kuralın kararı, var olmasından değil gözlenenden gelir: **Sağlıklı**, **Gürültülü**, **Etkin değil**, **Hiç gözlemlenmedi**, **Devre dışı**, **Bağımlılık bozulmuş**, **Yetersiz veri** ya da **Bilinmiyor**. **Yetersiz veri**, kuralın değerlendirilemediği anlamına gelir; bir algılama boşluğu değildir. Kural adının altındaki neden, hangi sebebin geçerli olduğunu söyler."
+        },
+        {
+          "p": "Tablo **Kural**, **Tür**, **Etkin**, **Sağlık**, **Anlam**, **Son tetiklenme (UTC)** ve **Offense'lar** sütunlarını gösterir. Ayrıntı sayfası **Offense katkıları**, **Olay katkıları**, **Sağlık kanıtı**, **Yapı taşları**, **Telemetri gereksinimleri**, **Meta veriler** ve **Sağlık geçmişi**ni ekler. Eksik bir ölçüm kurulmamış olarak bildirilir, hiçbir zaman algılama boşluğu olarak bildirilmez."
+        },
+        {
+          "p": "**Kural istatistikleri**, bileşimin, eşleşme yükünün ve sessizliğin filo genelindeki görünümünü açar."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Henüz kural toplanmadı.**; **Bu filtrelerle eşleşen kural yok.**; sağlık kararı olmadığını söyleyen bildirim; başarısız bir sağlık geçmişi okuması."
+        }
+      ]
+    },
+    "rule-statistics": {
+      "title": "Kural istatistikleri",
+      "answers": "Kural envanteri nasıl oluşuyor, ne kadar eşleşiyor ve etkin kurallardan hangileri sessiz?",
+      "body": [
+        {
+          "p": "**Ölçüm günleri** 1, 7 ya da 30 gün sunar. **Kural bileşimi**, kuralları ve yapı taşlarını türe göre etkin ve devre dışı olarak, tüm kökenler ya da tek bir köken için ayırır. **Ölçüte göre en maliyetli**, etkin kuralları en düşük kapasite ölçütünden başlayarak sıralar; bu, değerlendirmesi en maliyetli olandır ve bir tetiklenme hızı değildir. **En çok eşleşenler**, kuralları ölçülen pencerelerde **Eşleşen olaylar** ya da **Eşleşme kayıtları**na göre sıralar. **Sessiz etkin kurallar**, eksiksiz bir zaman aralığında ölçülen sıfıra sahip kuralları listeler; yakın zamanda ilk kez görülen bir kuralın eşleşmek için az zamanı olmuştur."
+        },
+        {
+          "p": "Ölçüm satırı, pencerenin **Eksiksiz.**, **KISMİ.** ya da **YETERSİZ VERİ.** olduğunu belirtir. Eksik bir sıralama sıfır sayısı değildir ve sayfa bunu söyler."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Kayıtlı QRadar sistemi yok.**; **Kural eşleşmelerini ölçen eksiksiz pencere yok.**; **Sessizlik değerlendirilmedi.**; başarısız bir kapasite ya da istatistik okuması."
+        }
+      ]
+    },
+    "custom-rules": {
+      "title": "Özel kurallar",
+      "answers": "Saklanan toplamlar üzerinde hangi eşik kuralları var ve tetikleniyorlar mı?",
+      "body": [
+        {
+          "p": "Özel bir kural, tek bir konu için toplanmış bir metriği ardışık 5 dakikalık zaman dilimleri boyunca değerlendirir. Liste **Ad**, **Durum ve neden**, **Özne**, **Koşul**, **Önem derecesi**, **Etkin** ve **Son değerlendirme (UTC)** sütunlarını gösterir. Oluşturmak, düzenlemek, etkinleştirmek ve silmek için `custom_rule:write` gerekir."
+        },
+        {
+          "p": "İki bant her kuralı niteler: **CUSTOM_RULES_ENABLED false olduğu için kural değerlendirmesi kapalıdır. Etkin kurallar değerlendirilmiyor.** ve **CUSTOM_RULES_ALERTING_ENABLED açılana kadar ihlaller kaydedilir ancak bildirim gönderilmez.** İkincisi gölge modudur: ihlaller ve kural durumu yazılır, ancak hiçbir uyarı açılmaz, yenilenmez ya da çözülmez."
+        },
+        {
+          "p": "Ayrıntı sayfası geçerli durumu, etkin ihlali, kuralın okuduğunu, ihlal geçmişini ve kural tanımını gösterir. **Kuralı düzenle**, **Etkinleştir**, **Devre dışı bırak** ve **Sil** kural üzerinde işlem yapar; açık uyarısı olan bir kuralı silmek, kural ve geçmişi kaldırılmadan önce uyarıyı çözer. **Yeni kural** düzenleyiciyi açar."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Henüz özel kural yok.**; **Hiç değerlendirilmedi**; **Bu kural için kaydedilmiş etkin ihlal yok.**; **Yetersiz veri**; **Özne kullanımdan kaldırıldı**."
+        }
+      ]
+    },
+    "coverage": {
+      "title": "Coverage",
+      "answers": "Hangi ATT&CK tekniklerinde çalışan bir algılama var ve nerede eksik?",
+      "body": [
+        {
+          "p": "Coverage, eşlenen kurallardan ve gözlenen sağlıklarından türetilir. Bir kuralın yalnızca var olmasından hiçbir zaman çıkarılmaz. Durumlar **KAPSANDI**, **KISMİ**, **BOZULMUŞ**, **EKSİK**, **KAPSANMADI** ve **DEĞERLENDİRİLMEDİ**dir. Özet; değerlendirilen teknikleri, kapsanan olanları, açık ve çıkarsanmış eşlemelerin sayısını ve görünümün oluşturulma zamanını sayar."
+        },
+        {
+          "p": "**Teknikler**; **Teknik**, **Ad**, **Taktik**, **Durum**, **Kurallar**, **Puan** ve **Kanıt** sütunlarını gösterir. **Kural odaklı görünüm**, kuralları **Etkin**, **Sağlık**, **Teknikler** ve **Kanıt** ile listeler. **Veri kaynağı odaklı görünüm**; **Veri kaynağı**, **Tür**, **Kurallar**, **Teknikler** ve **Kanıt** sütunlarını listeler."
+        },
+        {
+          "p": "Değerlendirilmemiş bir sayfa, sıfır coverage bulgusu değildir: **Coverage değerlendirilmedi.** hiçbir ATT&CK eşlemesinin yapılandırılmadığı anlamına gelir."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Bu sayfada teknik yok.**; **Henüz hiçbir kuralın ATT&CK teknik eşlemesi yok.**; **Bu QRadar envanterinde kuraldan log source'a bağımlılık bilgisi yok.**; değerlendirilmedi bildirimi."
+        }
+      ]
+    },
+    "log-sources": {
+      "title": "Log source'lar",
+      "answers": "Envanterde hangi kaynaklar var ve QRadar her biri hakkında ne söylüyor?",
+      "body": [
+        {
+          "p": "QRadar'a ait alanlar eşitlemede yenilenir; kritiklik, sahip ve bakım SOC'a aittir ve korunur. Tablo **Ad**, **Tür**, **Kritiklik**, **Durum**, **Anomaliler**, **Son olay** ve **bakım** sütunlarını gösterir. Hiçbir olay kaydedilmemişse **Son olay** **hiç** der."
+        },
+        {
+          "p": "Ayrıntı sayfası, **Log source ayrıntısı**, türü, kritikliği ve sahibi gösterir; ardından **Yapılandırma**yı: açıklama, mesai saatleri, beklenen aralık, son olay ve QRadar durumu. EPS eğilimi, anomali zaman çizelgesi ve baseline katmanı için kaynağın davranış sayfasına bağlanır. Boş bir envanter, envanter eşitlemesinin çalıştırılmasını söyler; platform kaynak listesi uydurmaz."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Henüz log source yok.**; **Son olay: hiç**; bilinmeyen ya da kullanılamayan bir durum; izin yok bildirimi."
+        }
+      ]
+    },
+    "searches": {
+      "title": "Aramalar",
+      "answers": "Hangi saklanmış AQL aramaları çalışıyor ve ne döndürdüler?",
+      "body": [
+        {
+          "p": "Sayfa başlığı **Arama kataloğu**dur. Yalnızca saklanmış, doğrulanmış tanımlar zamanlanır ya da çalıştırılır; frontend hiçbir zaman ad hoc AQL çalıştırmaz. Tablo **Ad**, **Kategori**, **MITRE**, **Zamanlama**, **Önem derecesi**, **Sürüm** ve **Etkin** sütunlarını gösterir. **Yeni arama** için `search:write` gerekir ve devre dışı bir tanım açar: **Ad**, **Açıklama**, **AQL**, **Zamanlama** (5 dk ile 8 sa arası ya da saklanmış özel bir cron), **Eşik**, **Önem derecesi**, **Koruma sınırları (platform üst sınırları içinde)** (zaman aşımı, pencere, en çok satır), **Görselleştirme** ve düzenlerken **Değişiklik notu**. **Devre dışı olarak kaydet** bunu saklar."
+        },
+        {
+          "p": "Ayrıntı sayfası, saklanan sürümü çalıştıran **Şimdi çalıştır**ı, **Aramayı etkinleştir** ya da **Aramayı devre dışı bırak**ı, **Geçerli AQL**i, **Çalıştırma geçmişi**ni, **Sorgu sürüm geçmişi**ni ve **Sonuç eğilimi**ni gösterir. Değiştirilen bir sorgu metni yeni bir sürüm olarak saklanır; **Şimdi çalıştır** sayfaya yazılan metni değil, saklanan o sürümü çalıştırır."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Henüz tanımlanmış zamanlanmış arama yok.**; **Henüz çalıştırma yok.**; devre dışı bir arama; karşılanmamış bir eşik; kırpılmış bir çalıştırma; başarısız bir çalıştırma."
+        }
+      ]
+    },
+    "config-changes": {
+      "title": "Yapılandırma değişiklikleri",
+      "answers": "Bu sayfa neden boş?",
+      "body": [
+        {
+          "p": "**Yapılandırma değişiklikleri toplanmıyor.** Bunlar için bir veri modeli var, ancak onu dolduran ne bir toplayıcı ne de bir API var; bu yüzden sayfada gösterilecek bir şey yok. Bu, toplamanın yokluğudur; hiçbir yapılandırmanın değişmediğinin bulgusu değildir."
+        },
+        {
+          "p": "Rota gezinmede yer almaz."
+        }
+      ],
+      "states": [
+        {
+          "p": "Sayfanın tamamı bu bildirimdir."
+        }
+      ]
+    },
+    "account": {
+      "title": "Hesap ayarları",
+      "answers": "Arayüz dilimi ya da parolamı nasıl değiştirebilirim?",
+      "body": [
+        {
+          "p": "**Hesap ayarları** **Dil** ve **Parola** bölümlerini taşır. **Arayüz dili** **English** ve **Türkçe** seçeneklerini sunar; seçim hesapta saklanır. Oturumda bunu saklayacak bir hesap yoksa sayfa, dilin yalnızca bu tarayıcıda kaydedildiğini söyler."
+        },
+        {
+          "p": "**Parola**, yerel parolayı değiştirir. LDAP hesabı parolasını burada değil, dizinde değiştirir; yerel parolası olmayan bir hesap da bunu söyler. Üst çubuktaki hesap menüsü adınızı, oturum açma kaynağınızı ve rollerinizi gösterir."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Dil tercihi kaydedildi.**; **Dil tercihi kaydedilemedi.**; **Tarayıcı çerezi saklamadığı için dil tercihi uygulanamadı.**"
+        }
+      ]
+    },
+    "investigate-anomaly": {
+      "title": "Bir anomaliyi incelemek",
+      "answers": "Bu anomali gerçek mi, ne değişti ve sonra ne yapmalıyım?",
+      "body": [
+        {
+          "p": "İnceleme, konunun adıyla, algılayıcısı, yaşam döngüsü durumu, önem derecesi ve aralığıyla açılır. Sayfa, ilk ekranın değişimin gerçek olup olmadığını yanıtlayacağı, onu açıklayan kanıtın ardından geleceği biçimde sıralanmıştır."
+        }
+      ],
+      "steps": [
+        "Anomaliyi açın: **Genel bakış** sayfasında **Dikkat gerekiyor** altındaki bir satırda **İncele**, **Anomaliler** tablosunda **Aç**, bir gösterge paneli bileşeninin bağlantısı ya da bir uyarıdaki **Kaynak anomalileri**.",
+        "Özet satırını ve **Vaka ölçümleri**ni okuyun: **Gözlenen**, **Beklenen**, **Sapma** ve **Algılayıcı güveni**; yanlarında **Süre** ya da **Hâlâ sürüyor**. Her rakam kendi birimini taşır; bir tire (—) ölçülmemiş demektir, sıfır demek değildir.",
+        "**Zaman çizelgesi**ni okuyun. Bant, her zaman diliminin UTC'ye göre haftanın günü ve saati için beklenen aralıktır; işaretli aralık anomalidir; işaretler yaşam döngüsü geçişleridir ve bir boşluk, tam toplanmamış bir aralıktır, sıfır trafik değildir.",
+        "**Ne değişti** bölümünü okuyun. Her boyuttan en çok bir tane olmak üzere en güçlü katkı sağlayanları listeler. Her biri değişimin ölçülmüş payıdır, nedenin ifadesi değildir.",
+        "Kanıt bandını okuyun. BEKLİYOR bir birikimdir, KULLANILAMIYOR kaynağın istenen alanların hiçbirini sunmadığı anlamına gelir, BAŞARISIZ toplamanın başarısız olduğu ve yeniden denemeye değer olduğu anlamına gelir, KISMİ bazı boyutların denetlenmediği anlamına gelir ve İSTENMEDİ hiçbir şeye bakılmadığı anlamına gelir. Bunların hiçbiri normal davranışın kanıtı değildir.",
+        "**İnceleme ayrıntısı**nı ve sekmelerini açın: her boyut için **Kanıt**, her geçişi aktörü ve politika sürümüyle gösteren **Yaşam döngüsü**, algılama anındaki beklenen aralık, robust z ve durumu, eşikler, baseline örnekleri ve tamlığı, sürümler ve Ariel sorguları için **Teknik ayrıntılar**.",
+        "Karar verin. Bilinen bir dağıtımın, yeni bir beslemenin ya da bir kampanyanın açıkladığı değişim de gerçek bir değişimdir; eylem gerektirip gerektirmediği kaynak sahibinin kararıdır. Kritik bir kaynakta açıklanamayan ya da tekrar eden bir değişim hemen sahibini ilgilendirir. **Kaynak davranışını görüntüle** hacmin hâlâ bandın dışında olup olmadığını gösterir; varsa uyarı, alındı bilgisinin kaydedildiği yerdir.",
+        "**Tüm anomalilere dön** ile geri dönün."
+      ],
+      "states": [
+        {
+          "p": "BEKLİYOR, KISMİ, KULLANILAMIYOR, BAŞARISIZ ya da İSTENMEDİ kanıt; kırpılmış bir katkı sağlayan listesi; yapılandırılmış algılayıcı kanıtının olmaması; yüklenemeyen bir zaman çizelgesi, yani boş değil, hiç çizilmeyen bir grafik; bulunamadı ya da izin yok bildirimi."
+        }
+      ]
+    },
+    "work-an-alert": {
+      "title": "Bir uyarıyı işlemek",
+      "answers": "Bu uyarı ne söylüyor ve onu işlerken ne değiştiriyorum?",
+      "body": [
+        {
+          "p": "Uyarı, platformun izlediği bir durumun bildirim kaydıdır: bir log source anomalisi, bir WAF, IPS ya da özellik izleme vakası, bir özel kural ihlali, yeni bir log source ya da catch-all gönderen veya eşiğini aşmış saklanmış bir arama. Yinelenen tespitler açık uyarıyı günceller ve **Oluşumlar** sayısını artırır; kopya oluşturmaz. Durum **Açık**tan **Alındı**ya, oradan **Çözüldü**ye geçer."
+        }
+      ],
+      "steps": [
+        "**Uyarılar** sayfasını açın, **Uyarı durumu**nu **Açık**, **Alındı**, **Çözüldü** ya da **Tüm durumlar** olarak ayarlayın, sonra **Filtrele**yi seçin. Tablo **Başlık**, **Önem derecesi**, **Durum**, **Oluşumlar**, **İlk görülme** ve **Son görülme** sütunlarını gösterir.",
+        "Satırı açın. **Uyarı ayrıntısı** **Kanıt**, **Yaşam döngüsü**, **Kaynak anomalileri** ve **Bildirim teslim geçmişi** bölümlerini taşır.",
+        "**Kaynak anomalileri** bölümünü okuyun ve adlandırdığı anomaliyi inceleyin (bkz. `investigate-anomaly`). Uyarı bildirimdir; ölçümler anomalide durur.",
+        "Birisi kendisine haber verilmediğini söylediğinde **Bildirim teslim geçmişi**ni okuyun. Her satır Bekliyor, Gönderildi, Başarısız, Teslim edilemedi ya da Bastırıldı değerini kanalı, deneme sayısı ve sonraki denemesiyle birlikte gösterir.",
+        "Birisi uyarı üzerinde çalışırken **Operatör işlemleri** altında **Alındı olarak işaretle**yi seçin. **Açık** bir uyarı **Alındı** olur ve sayfa kimin ne zaman yaptığını kaydeder. Başka durumdaki bir uyarıyı alındı olarak işaretlemek hiçbir şeyi değiştirmez.",
+        "İş bittiğinde **Çöz**ü seçin, isteğe bağlı bir **Çözüm nedeni** ekleyin ve **Bu uyarı çözülsün mü? Çözülen bir uyarı yeniden açılamaz.** sorusunu onaylayın. **Açık** ya da **Alındı** bir uyarıyı çözmek kimin, ne zaman ve hangi nedenle yaptığını kaydeder.",
+        "Bir uyarı sizin müdahaleniz olmadan da çözülebilir: platform durumun düzeldiğini görürse uyarıyı kendisi çözer; neden olarak \"condition recovered\" yazar (backend metni, olduğu gibi İngilizce gösterilir). Sessiz görünen bir uyarıyı işlemeden önce **Çözüldü** durumunu denetleyin.",
+        "Çözülmüş bir uyarı **Bu uyarı çözüldü. Başka işlem yapılamaz.** der. Durum tekrar ederse yeni bir uyarı açılır; çözülmüş olan kayıt olarak kalır."
+      ],
+      "states": [
+        {
+          "p": "**Açık uyarı yok.** ve durum başına diğer boş bildirimler; **Bu uyarı için bildirim yok.**; izin yok bildirimi; başarısız olan ve hiçbir şeyi değiştirmeyen bir alındı işareti ya da çözme işlemi."
+        }
+      ]
+    },
+    "find-a-quiet-source": {
+      "title": "Göndermeyi bırakan bir kaynağı bulmak",
+      "answers": "Göndermesi gereken hangi kaynaklar sustu ve bunu nasıl doğrularım?",
+      "body": [
+        {
+          "p": "Sessizlik, eski bir zaman damgası değil, anomali motorunun kararıdır. Motor, tam bir zaman dilimi boştuysa, kaynağın o UTC haftanın günü ve saatinde etkin olması bekleniyorsa ve bir boş zaman diliminin toleransı geçtiyse **Olay yok** bulgusunu üretir. Yeterli baseline'ı olmayan bir kaynak değerlendirilmez; bu yüzden sessiz olarak bildirilemez."
+        }
+      ],
+      "steps": [
+        "**Davranış genel bakışı**nı açın ve **Sessiz kaynaklar**ı okuyun. Sayı; etkin, izlenen, bakım dışındaki ve açık, bastırılmamış bir **Olay yok** bulgusu olan kaynakları kapsar. Son olay zamanlarının karşılaştırması değil, motorun kararıdır.",
+        "Kaynağı **Dikkat gerekiyor** altında bulun; burada **Sorun ve önem** sütunu **Olay alınmadı** der. **Kaynak davranışı** için kaynak adını, anomali için **İncele**yi açın.",
+        "Ya da **Anomaliler**i filtreleyin: **Algılayıcı türü** → **Olay yok**, **Yaşam döngüsü durumu** → **AÇIK**. **Gözlenen → Beklenen (EPS)** sütunu boş aralığı baseline'ıyla karşılaştırarak gösterir.",
+        "Anomalide özet şöyle der: **Normalde yaklaşık {expected} EPS üreten bir kaynak için hiç olay gözlenmedi.** Sonuca varmadan önce kanıt bandını ve **Zaman çizelgesi**ni okuyun: bir boşluk tam toplanmamış bir aralıktır ve eksik bir zaman dilimi hiçbir zaman sessizlik olarak değerlendirilmez.",
+        "**Kaynak davranışı** sayfasında **Gözlenen EPS** ile **Beklenen EPS**i karşılaştırın, **Son olay**ı okuyun ve notları okuyun. **Kaynak şu anda sessiz**, toplanan en son aralıkta olay olmadığı anlamına gelir; **Bakım modu etkin** ve **İzleme devre dışı** kesinti olmayan bir yokluğu açıklar.",
+        "Kesinti saymadan önce zamanlamayı denetleyin. **Yalnızca mesai saatleri: evet** olan bir kaynağın yerel mesai saatleri dışında sessiz olması beklenir ve bu sessizlik **Olay yok** değildir.",
+        "Kaynağın kendi durumunu **Log source'lar** sayfasında doğrulayın: **Son olay**, **Durum** ve **Log source ayrıntısı** sayfasında **Beklenen aralık** ile **QRadar durumu**. Platform cihazın neden durduğunu söyleyemez; bu yanıt QRadar'da ve cihazdadır.",
+        "Bir kesinti uyarısı oluşturulduysa **Uyarılar** sayfasındadır ve başlığı kaynak adından önce **NO_EVENTS on** yazar (backend metni, İngilizce gösterilir); `work-an-alert` ile işleyin. Kesinti politikası **Yalnızca kayıt** diyorsa anomali kaydedilir ve uyarı açılmaz; bu durumda anomali sayfaları onun göründüğü tek yerdir."
+      ],
+      "states": [
+        {
+          "p": "Filo görünümünde **Ölçülmedi** ve **Henüz hiçbir kaynağın baseline'ı yok.**; **Bu filtrelerle eşleşen anomali yok.**; baseline'ın bir beklentisi olmadığında **Bu kaynak için hiç olay gözlenmedi.**; eksik bir zaman dilimi; toplayan bir kaynağın yanında **Kaynak şu anda sessiz**; **Son olay: hiç**; rolün okuma iznine sahip olmadığı bir sayfada izin yok bildirimi."
+        }
+      ],
+      "permission": "`read:anomalies` (`read:fleet` ve `read:log_sources` kendi sayfalarında)"
+    },
+    "waf-source-setup": {
+      "title": "Bir WAF kaynağı kurmak",
+      "answers": "Bir log source'tan WAF davranışını toplamaya nasıl başlarım ve toplamayı açmak ne zaman güvenlidir?",
+      "body": [
+        {
+          "p": "Bir WAF kaynağı bir profil üzerinden okunur: platformun mantıksal alanlarından, o kaynakta onları taşıyan QRadar özelliklerine bir eşleme. Profil kaynağın kendi olaylarına karşı doğrulanmadan ve siz toplamayı etkinleştirmeden hiçbir şey toplanmaz. Profil bir sürümdür; eşlemeyi değiştirmek yeni bir sürüm oluşturur ve o sürüm doğrulanana kadar toplamayı duraklatır."
+        }
+      ],
+      "steps": [
+        "**Yönetim** sayfasını, sonra **WAF kaynakları**nı açın. Tablo **Kaynak**, **Ürün**, **Eşleme**, **Doğrulama**, **Toplama** ve **Son doğrulama (UTC)** sütunlarını listeler; dikkat gerektiren kaynaklar en başta yer alır.",
+        "**WAF kaynağı ekle**yi seçin ve **WAF profili olmayan log source'lar** listesinden bir log source seçin. Ada göre arayın. **WAF olarak sınıflandırılmış**, filo sınıflandırmasının zaten WAF saydığı bir kaynağı işaretler.",
+        "**Alan eşleme** altında, her mantıksal alana okunacağı QRadar özelliğini verin (alan adları, backend'den geldiği için olduğu gibi İngilizce gösterilir): **URL path** ve **HTTP method** zorunludur; **Virtual host**, **Action**, **HTTP status**, **WAF rule id** ve **User agent** isteğe bağlıdır. **Virtual host** olmadan, yolu paylaşan endpoint'lerin trafiği birleşir. Özellik adları harf, rakam, alt çizgi, boşluk ve tireden oluşur ve en çok 64 karakterdir. **Eşlemeyi şuradan kopyala…** başka bir kaynağın eşlemesini yeniden kullanır.",
+        "Bir not istiyorsanız (örneğin WAF ürünü) **Ürün etiketi**ni ayarlayın. Hiçbir zaman ayrıştırılmaz ve sürümü değiştirmez.",
+        "**İncele ve oluştur**u seçin, **Değişen alanlar**ı okuyun, sonra **Profil oluştur**u seçin. Profil devre dışı, sürüm 1 olarak oluşturulur ve doğrulama hemen başlar.",
+        "Sonucu **Doğrulama** altında okuyun; sayfa çalışırken her 5 sn aralıkla denetler. Doğrulama, kaynağın yakın zamandaki olaylarından sınırlı bir örneği okur (varsayılan olarak son 15 dk). Toplamanın okuduğu bir alan, bu olayların en az %90 kadarında dolu ve makul değerli olmalıdır. Her alan tek bir durum alır: **Kullanılabilir**, **Eşlenmedi**, **Özellik reddedildi**, **Dolu değil**, **Düşük coverage** ya da **Değerler hatalı görünüyor**; kaynak olay göndermediyse ya da bir denetim çalışamadıysa **Karar yok**. Penceredeki olayı olmayan bir kaynak geçersiz değil, **Sonuçsuz**dur: trafiği varken **Yeniden doğrula**yı seçin.",
+        "**Action** eşlenmişse değerlerini **Action değerleri** altında atayın: görülen her değer **Engellendi** ya da **İzin verildi** olarak ayarlanır. Atamadığınız bir değer eşlenmemiş sayılır, hiçbir zaman izin verilmiş sayılmaz; kırpılmış bir listenin ötesindeki değer de öyledir. Bu haritayı kaydetmek bir eşleme değişikliğidir.",
+        "Sonuç güncel sürüm için **Geçerli** olduğunda **Toplama** altında **Toplamayı etkinleştir**i seçin. O zamana kadar sayfa nedenini söyler: doğrulama sürüyor, **Geçersiz**, **Sonuçsuz** ya da henüz doğrulanmadı.",
+        "Eşlemeyi sonra değiştirmek için düzenleyin, **İncele ve kaydet**i ve **Sürüm {n} olarak kaydet**i seçin. Toplama duraklar ve doğrulama istenir. **Toplamayı devre dışı bırak** her zaman kullanılabilir."
+      ],
+      "afterSteps": [
+        {
+          "p": "**\"Güncel sürüm için geçerli\" ne demektir:** doğrulama tek bir sürüme aittir. WAF davranışı sayfasında, eski bir sürüm için doğrulanmış bir profil **ESKİ** olarak görünür (\"v3 için GEÇERLİ; profil şimdi v4\"), hiç doğrulanmamış bir profil ise **DOĞRULANMAMIŞ** olarak görünür. İkisi de toplanmaz. \"Sürüm 5 doğrulanmadı\" diyen bir kaynak duraklatılmıştır, sağlıksız değildir."
+        }
+      ],
+      "states": [
+        {
+          "p": "Zaten süren bir doğrulama; başka bir yönetici önce kaydettiğinde **Onların sürümünü yeniden yükle** (düzenlemeleriniz formda kalır); yenilenemeyen bir özellik listesi, bu durumda adı QRadar'ın gösterdiği gibi yazarsınız ve doğrulama onu denetler; `admin:waf` iznini adlandıran izin yok bildirimi."
+        }
+      ]
+    },
+    "ips-source-setup": {
+      "title": "Bir IPS kaynağı kurmak",
+      "answers": "Bir log source'tan IPS davranışını toplamaya nasıl başlarım?",
+      "body": [
+        {
+          "p": "Akış `waf-source-setup` akışıyla aynıdır: alanları eşleyin, kayıtlı sürümü kaynağın olaylarına karşı doğrulayın, toplamayı etkinleştirin. IPS yönetimi ayrı bir izindir; bir WAF yöneticisi IPS toplamasını denetlemez."
+        }
+      ],
+      "steps": [
+        "**Yönetim** sayfasını, sonra **IPS kaynakları**nı açın ve seçiciden bir kaynak eklemeyi seçin.",
+        "Yeni bir profilde **Bir ön ayarla başla** altında **Cisco Firepower Threat Defense**, **Palo Alto THREAT** ya da **Ön ayar yok (şema varsayılanları)** seçeneğini belirleyin. Bir ön ayar yalnızca varsayılanları doldurur; profil yine de bu kaynağın olaylarına karşı doğrulanmalıdır.",
+        "**Alan eşleme** altında, zorunlu olan **Source IP**, **Destination IP**, **Destination port** ve **Signature** alanlarını, zorunlu olmayan **Protocol**, **Action** ve **Severity** alanlarını ayarlayın (alan adları olduğu gibi İngilizce gösterilir). Her alan, her ayrıştırıcının doldurduğu bir **QRadar alanı**ndan ya da bir **Özel özellik**ten okunur. **Action** engelleme oranını besler; **Severity** yalnızca sınırlı kanıt için tutulur.",
+        "**Ürün etiketi**ni (bir not) ayarlayın ve **Gözden geçir ve oluştur**u, sonra **Profil oluştur**u seçin. Profil devre dışı oluşturulur ve doğrulama başlar.",
+        "Eylem değerlerini **Engellendi** ya da **İzin verildi** olarak eşleyin. En çok 20 değer listelenebilir; alanın daha fazlası varsa doğrulama sonuçsuz kalır ve listelenmeyen değerler eşlenmemiş sayılır, hiçbir zaman izin verilmiş sayılmaz.",
+        "Güncel sürüm geçerli olarak doğrulandığında **Toplamayı etkinleştir**i seçin. Bir eşleme değişikliği yeni bir sürüm oluşturur, toplamayı duraklatır ve doğrulama ister."
+      ],
+      "states": [
+        {
+          "p": "Süren bir doğrulama; eşzamanlı bir kayıttan sonra **Onların sürümünü yükle**; olayı olmayan bir kaynak için sonuçsuz bir sonuç; `admin:ips` iznini adlandıran izin yok bildirimi."
+        }
+      ]
+    },
+    "property-watch-setup": {
+      "title": "Bir özellik izleme oluşturmak",
+      "answers": "Bir QRadar özelliğinin değerlerini zaman içinde nasıl saydırırım ve platformun değişiklikleri değerlendirmesini nasıl sağlarım?",
+      "body": [
+        {
+          "p": "Bir özellik izleme, bir scope içinde, 5 dakikalık zaman dilimi başına bir ya da iki QRadar özelliğinin her değerini kaç olayın taşıdığını sayar. Platform her değer için bir baseline öğrenir ve değişikliklerde vaka üretir. Değerler açık metin olarak saklanır. İzlemeleri okumak için `read:property_watches`; oluşturmak, düzenlemek, etkinleştirmek ve silmek için `property_watch:write` gerekir ve bu izne admin ve `detection_engineer` rolleri sahiptir."
+        }
+      ],
+      "steps": [
+        "**Özellik izlemeleri** sayfasını açın ve **Yeni izleme**yi seçin. **İzleme adı**nı (en çok 80 karakter) ve isteğe bağlı bir **Açıklama** girin.",
+        "**1. Scope** altında bir **Scope türü** seçin: **Log source**, **Log source türü** ya da **Log source grubu**; sonra scope'un kendisini. Sayfa kaç kaynağa çözümlendiğini belirtir.",
+        "**2. Özellikler** altında bir ya da iki özellik seçin. Sınır ikidir, çünkü eklenen her özellik bir baseline'ın öğrenmesi gereken birleşimleri çoğaltır. Özellik, normalleştirilmiş bir QRadar alanı ya da özel bir özelliktir.",
+        "**3. Değerler** altında isteğe bağlı olarak her zaman sayılması gereken değerleri sabitleyin (varsayılan olarak en çok 10; tırnak işaretleri ve ters eğik çizgiler sabitlenemez). Diğer sık değerler otomatik izlenir: varsayılan olarak zaman dilimi başına en çok 20 yeni değer ve toplamda 200 değer. Bir eşik kuralı yalnızca sabitlenmiş bir değeri kullanabilir.",
+        "**4. Algılama** altında algılayıcıları işaretleyin ve **Vaka önem derecesi**ni ayarlayın. **Değer ani artışı**, **Değer ani düşüşü**, **Değer kayboldu** ve **Yeni değer** yaklaşık bir haftalık baseline ya da geçmiş gerektirir; **Yeni birleşim** iki özellik gerektirir.",
+        "**5. Geçmiş** altında, toplama başlamadan önce **Geçmiş penceresi**ndeki pencereyi bir kez okumak için **QRadar geçmişini oku (yalnızca öğrenme için kullanılır)** işaretini açık bırakın; eski olaylar baseline'a öğretir ve hiçbir zaman değerlendirilmez. Sunucuda geçmiş okuma kapalıysa ya da sıklık adımı başına boş arama azsa bu seçenek kullanılamaz. Geçmiş ya da toplanmış zaman dilimleri varken istek değiştirilemez.",
+        "**Devre dışı olarak kaydet ve önizle**yi seçin. Platform tanımı devre dışı kaydeder ve son kapanmış saat üzerinde sınırlı sayıda arama harcar. **6. Önizleme**; **Toplam olaylar**, **Ayrıştırılan olaylar**, **Coverage** ve en yüksek değerleri gösterir. Olay olmamasını, hiçbir olayda ayrıştırılamayan bir özelliği ve ölçülmemiş bir aramayı birbirinden ayırır.",
+        "Önizleme sağlamsa izlemeyi açın, **Etkinleştir**i seçin ve **İzlemeyi etkinleştir**i onaylayın. Onay, kaç etkin izleme yerinin (varsayılan olarak 10) ve sıklık adımı başına aramanın zaten kullanıldığını gösterir; dolu bir bütçe etkinleştirmeyi reddeder ve sayıyı belirtir."
+      ],
+      "states": [
+        {
+          "p": "Aile anahtarı `PW_COLLECTION_ENABLED` false olduğunda (varsayılan) **TOPLAMA KAPALI**: etkinleştirme seçimi saklar ama hiçbir şey toplanmaz; `PW_ALERTING_ENABLED` false olduğunda (varsayılan) vakaların kaydedildiği ve hiçbir uyarının açılmadığı gölge modu; **Bu izleme etkin. Burada kaydetmek, yukarıdaki eylemlerden yeniden etkinleştirilene kadar izlemeyi devre dışı bırakır**; bir önizleme hız sınırı; bir özel kural değerlerinden birini sabitlediği sürece reddedilen **Sil**; rolün `property_watch:write` iznine sahip olmadığı durumda yazma bildirimi."
+        }
+      ]
+    },
+    "custom-rule-setup": {
+      "title": "Bir özel kural oluşturmak",
+      "answers": "Saklanan bir ölçüm bir eşiğin ötesinde kaldığında nasıl uyarı alırım?",
+      "body": [
+        {
+          "p": "Özel bir kural, platformun zaten sakladığı bir ölçüm üzerindeki bir eşiktir. QRadar'a karşı hiçbir zaman kendi sorgusunu çalıştırmaz: yalnızca saklanan toplamları okur; bu yüzden yalnızca platformun topladığı ve kabul ettiği bir konuyu kullanabilir. Platformun toplamadığı bir koşul özel bir aramaya aittir. Kuralları okumak için `read:custom_rules`; oluşturmak, düzenlemek, etkinleştirmek ve silmek için `custom_rule:write` gerekir ve bu izne admin ve `detection_engineer` rolleri sahiptir."
+        }
+      ],
+      "steps": [
+        "**Özel kurallar** sayfasını açın ve **Yeni kural**ı seçin. **Ad**ı (en çok 80 karakter) ve isteğe bağlı bir **Açıklama** girin.",
+        "**Özne türü**nü seçin: **Log source nesnesi**, **Filo sınıfı**, **WAF endpoint değeri**, **IPS varlığı**, **IPS kaynağı** ya da **Özellik izleme değeri**; sonra özneyi. Bir WAF endpoint'i ya da IPS varlığı kabul edilmiş olmalıdır; bir özellik izleme değeri önce kendi izlemesinde sabitlenmiş olmalıdır.",
+        "**Metrik**i seçin; liste özne türüne bağlıdır (örneğin olay sayısı, ortalama EPS, istek sayısı, engelleme oranı, 5xx oranı, 4xx oranı). Oran eşiği sıfırdan büyük ve birden küçük bir paydır.",
+        "**İşleç**i (üstünde, eşit veya üstünde, altında, eşit veya altında, eşit) ve birimini taşıyan **Eşik**i ayarlayın.",
+        "**Sürdürme (zaman dilimi)** alanını, kuralın tetiklenmeden önce kaç ardışık zaman diliminin ihlal etmesi gerektiğini, **Düzelme (zaman dilimi)** alanını da düzelmeden önce kaçının temizlenmesi gerektiğini ayarlayın. Her ikisinin de varsayılan değeri iki, en küçük değeri birdir. Özet satırı kuralı sözcüklerle yineler.",
+        "**Önem derecesi**ni ayarlayın (varsayılan Orta) ve test ederken **Etkin** işaretini kapalı bırakın; kural varsayılan olarak devre dışı oluşturulur.",
+        "**Taslak önizlemesi**ni okuyun: taslağı seçilen **Pencere** için (varsayılan olarak 24 saat ya da sunucunun önizleme sınırı daha kısaysa o) saklanan toplamlar üzerinde yeniden oynatır ve ne sıklıkta tetiklenebileceğini gösterir. Hiçbir şey saklamaz ve QRadar'a hiçbir şey göndermez. **Ölçülmedi** zaman dilimleri boşluktur, sıfır değildir; **Alt sınır** okuması gösterilen değerin en az o kadar olduğu anlamına gelir; bakım zaman dilimleri bir ihlali açmaz, yenilemez ya da çözmez. Zaman dilimlerinin çoğu ölçülmediyse önizleme dönemi anlatamayacağını söyler.",
+        "**Kural oluştur**u seçin, sonra önizleme sağlamsa kuralda **Etkinleştir**i seçin. Etkin kural sayısında bir sınır (varsayılan olarak 100) bu sınırın ötesindeki etkinleştirmeyi reddeder."
+      ],
+      "states": [
+        {
+          "p": "**CUSTOM_RULES_ENABLED false olduğu için kural değerlendirmesi kapalıdır**; bu durumda etkin kurallar değerlendirilmez (varsayılan); **CUSTOM_RULES_ALERTING_ENABLED açılana kadar ihlaller kaydedilir ancak bildirim gönderilmez**, yani gölge modu (o da varsayılan); kaydedilmiş bir kuralda **Güncel değil**, **Karar yok** ve **Özne kullanımdan kaldırıldı** durumları; rolün `custom_rule:write` iznine sahip olmadığı durumda yazma bildirimi; eşzamanlı bir değişiklikten sonra **Geçerli kuralı yeniden yükle**. Bir kuralı silmek önce açık uyarısını çözer."
+        }
+      ]
+    },
+    "outage-policy": {
+      "title": "Kesinti uyarıları",
+      "answers": "Hangi sessiz kaynaklar uyarı üretiyor ve hangileri yalnızca kaydediliyor?",
+      "body": [
+        {
+          "p": "Varsayılan olarak izlenen her kaynak sustuğunda bir uyarı üretir. Bu sayfa bunu bir kaynak sınıfı ya da tek bir kaynak için değiştirir. Sayfa yönetimseldir: okumak için de değiştirmek için gerekli izin aynıdır ve `read:*` bunu vermez."
+        },
+        {
+          "h": "Nasıl okunur"
+        },
+        {
+          "ul": [
+            "**Uyarı**, kesinti uyarısını üretir. **Yalnızca kayıt**, sessizliği yine kaynakta ve **Genel bakış** sayfasında olağan yaşam döngüsüyle kaydeder; yalnızca bu anomalinin uyarı üretmesini engeller. Zaten açık olan bir uyarı normal şekilde çözülür. Yalnızca **Olay yok** etkilenir; hacim düşüşleri ve artışları yine uyarı üretir.",
+            "**Tolerans**, sessizlik sayılmadan önce hoşgörülen boş zaman dilimi sayısıdır, 0 ile 48 arasında. Boş bırakılan tolerans varsayılan olan 1 zaman dilimini kullanır.",
+            "Bir kaynağa uygulanan mod şunlardan ilkinden gelir: kaynak geçersiz kılması, sınıfının satırı (bir instance satırı genel olanı geçer), varsayılan. **Sınıflar** tablosu her sınıfın modunun nereden geldiğini gösterir."
+          ]
+        }
+      ],
+      "steps": [
+        "**Yönetim** sayfasını, sonra **Kesinti uyarıları**nı açın.",
+        "**Sınıflar** içinde bir sınıf için **Politika ayarla**yı (ya da **Düzenle**yi) seçin. **Mod**u ve **Tolerans, zaman dilimi cinsinden** alanını ayarlayın. **Kaydetmeden önce** altında etkiyi okuyun: kaç kaynağın uyarı vermeyi bıraktığını ya da sürdürdüğünü ve kaçının kendi geçersiz kılmasını koruduğunu.",
+        "**Kaydet**i seçin. **Varsayılanı kullan** sınıf satırını kaldırır.",
+        "Tek bir kaynağa farklı davranmak için **Kaynak bazlı geçersiz kılmalar** altında **Geçersiz kılma ekle**yi seçin, ada ya da QRadar türüne göre arayın ve modunu ve toleransını ayarlayın. **Geçersiz kılmayı kaldır**, kaynağı sınıfına döndürür.",
+        "Geçersiz kılması sınıfıyla aynı şeyi söyleyen bir kaynak, sınıfta sonradan yapılacak bir değişikliğe karşı sabitlenmiş olur."
+      ],
+      "states": [
+        {
+          "p": "**Kesinti politikası ayarlanmadı.**; **Hiçbir sınıfın izlenen kaynağı yok.**; **Filo özeti kullanılamıyor**, bu durumda iki sayı sütunu boştur ve politika yine eksiksizdir; bir geçersiz kılmada **Kaynak artık envanterde yok**; `admin:outage` iznini adlandıran izin yok bildirimi. Her değişiklik denetim kaydına yazılır."
+        }
+      ]
+    },
+    "classification-rules": {
+      "title": "Sınıflama kuralları",
+      "answers": "Bir log source'un sınıfını hangi kurallar, hangi sırayla belirliyor?",
+      "body": [
+        {
+          "p": "Bir kaynağın sınıfı, hangi politikaya tabi olacağını belirler; örneğin kesinti modunu. Sayfa kuralları platformun karar verdiği sırayla listeler."
+        },
+        {
+          "h": "Nasıl okunur"
+        },
+        {
+          "p": "**Karar sırası:** **Operatör geçersiz kılması** (tek bir kaynak için seçilen sınıf), **QRadar dahili** (tür dahilidir ya da tanımlayıcı 127.0.0.1 ise), **Grup kuralları**, **Tür kuralları**, **Ad kuralları**, hiçbiri eşleşmediyse **Sınıflanmamış**. Kararı veren ilk düzey geçerli olur. Bir düzey içinde en yüksek öncelik kazanır; farklı sınıfları adlandıran iki eşit öncelikli kural düzeyi karar vermemiş bırakır, bir çakışma kaydeder ve sonraki düzey denenir."
+        },
+        {
+          "p": "Her düzeyin **Öncelik**, **Desen**, **Sınıf**, **Köken**, **Etkin** ve **İşlemler** sütunlu bir tablosu vardır. **Yerleşik** kurallar ürünle gelir ve yalnızca **Açık** ya da **Kapalı** yapılabilir. **Özel** kurallar düzenlenebilir ve silinebilir. Bir kural bir **Grup kimliği**, bir **Tür kimliği**, bir **Tür adı deseni**, bir **Kaynak adı deseni** ya da bir **Tanımlayıcı deseni** ile eşleşir; desen en çok 256 karakterlik bir düzenli ifadedir ve öncelik 0 ile 10000 arasındadır."
+        }
+      ],
+      "steps": [
+        "**Yönetim** sayfasını, sonra **Sınıflama kuralları**nı açın.",
+        "Yerleşik bir kuralın eşleştirdiğini değiştirmek için bunun yerine daha yüksek öncelikli özel bir kural ekleyin.",
+        "**Özel kural ekle** altında (yalnızca yönetici, denetim kaydı tutulur) neyle **Eşleşen** olduğunu seçin, **Desen**i, **Hedef sınıf**ı, **Öncelik**i ve isteğe bağlı bir **Açıklama**yı girin, sonra **Kural ekle**yi seçin. Bir kural Sınıflanmamış sınıfını hedefleyemez.",
+        "Mevcut kurallarda **Açık** ve **Kapalı**, **Düzenle** ve **Sil**i (**Silmeyi onayla** ile onaylanır) kullanın.",
+        "Her değişiklik, etkilediği kaynakları hemen yeniden sınıflandırır."
+      ],
+      "states": [
+        {
+          "p": "Boş bir düzey için **{level} yok.**; okumak için `read:fleet`, değiştirmek için `admin:classification` iznini adlandıran izin yok bildirimi."
+        }
+      ],
+      "permission": "`read:fleet` (açmak için); `admin:classification` (değiştirmek için)"
+    },
+    "search-cadence": {
+      "title": "Arama sıklığı",
+      "answers": "Her arama türü QRadar'ı ne sıklıkla sorguluyor ve bunun algılama gecikmesine maliyeti ne?",
+      "body": [
+        {
+          "p": "Her arama ailesi QRadar'ı kendi sıklığında sorgular. Sıklığı değiştirmek yalnızca QRadar'ın ne zaman arandığını değiştirir: zaman dilimi genişlikleri, kural eşleşme pencereleri ve öğrenme dönemleri değişmez. Daha yavaş bir sıklık daha az arama gönderir ve algılamayı geciktirir. Örneğin bir sessizlik uyarısı bir sıklık kadar geç gelebilir."
+        },
+        {
+          "h": "Nasıl okunur"
+        },
+        {
+          "p": "Tabloda aile başına bir satır vardır: **Aile**, **Sıklık**, **Zaman dilimi**, **En kötü durum algılama gecikmesi**, **Son çalıştırma (UTC)**, **Sonraki çalıştırma (UTC)** ve **Son çalıştırmadaki arama**. En kötü durum gecikmesi, sıklık artı zaman dilimi artı bir yerleşme payıdır (varsayılan olarak 120 sn). **Zaman dilimi** sütunundaki bir tire, ailenin zaman diliminin olmadığı anlamına gelir; anomali açıklamalarında gecikme, bir algılamanın değil kanıtın ne kadar geç geleceğini sınırlar. **Yükseltmeden beri çalışmadı** ve **sayılmadı** eksik ölçümlerdir, sıfır değildir."
+        },
+        {
+          "p": "Seçenekler şunlardır: her 5 dk, 15 dk, 30 dk, 1 sa, 2 sa, 4 sa ve 8 sa. Varsayılan olarak her aile 5 dk sıklıkla çalışır; kaynak başına en çok aramayı onlar harcadığı için **WAF toplama** ve **IPS toplama** 15 dk sıklıkla çalışır."
+        }
+      ],
+      "steps": [
+        "**Yönetim** sayfasını, sonra **Arama sıklığı**nı açın.",
+        "Ailenin satırındaki sıklık seçicisini değiştirin. Değişiklik yeniden başlatma gerektirmeden uygulanır.",
+        "**Kaydedildi. {user} tarafından … zamanında değiştirildi.** satırını ve yeni sonraki çalıştırmayı okuyun."
+      ],
+      "states": [
+        {
+          "p": "**Hiçbir arama ailesi döndürülmedi.**; **Henüz çalışmadı**; `admin:search_cadence` iznini adlandıran izin yok bildirimi. Her değişiklik denetim kaydına yazılır."
+        }
+      ],
+      "permission": "`read:search_cadence` (görüntülemek için); `admin:search_cadence` (değiştirmek için)"
+    },
+    "history-backfill": {
+      "title": "Geçmiş veri okuma",
+      "answers": "Platform baseline'lar hemen öğrenebilsin diye QRadar'ın geçmişini okumalı mı ve neler okundu?",
+      "body": [
+        {
+          "p": "Bir baseline normalde haftalarca toplanmış zaman dilimi gerektirir. Geçmiş veri okuma, QRadar'ın geçmişini bir kez, salt okunur olarak okur; böylece baseline'lar daha erken öğrenir. Pencere, geçmiş veri okuma ayarıdır; varsayılan olarak 28 gündür. Eski veri yalnızca öğrenme için kullanılır ve hiçbir zaman değerlendirilmez: eski hiçbir şey uyarı oluşturmaz. Karar, etkin her console için ayrı kaydedilir."
+        },
+        {
+          "h": "Nasıl okunur"
+        },
+        {
+          "p": "Her console'un en üstündeki satır **Geçmiş veri okuma: karar verilmedi**, **Hayır, geçmiş okunmuyor** ya da **Evet** der; kimin ne zaman kaydettiğini de belirtir. Tablo her ailenin (**Kaynak hacmi**, **WAF**, **IPS**, **Catch-all gönderenleri**, **Kural eşleşmeleri**) ve scope'un **Durum**unu gösterir: **İstenmedi**, **Bekliyor**, **Okunuyor**, **Tamamlandı**, **Kısmi**, **Kullanılamıyor**, **Uygun değil**, **Kapalı**, **Başlamadı**, **Okunmadı** ya da **Profil devre dışı**. **İstenen pencere** istenen penceredir; **Kanıtlanan pencere**, QRadar'ın olay tuttuğunun gösterildiği en eski noktadır (alt sınır, UTC) ve istenenden az olabilir. **Okunanlardaki boşluklar** listelenir. **Kısmi** bir scope öğrenme için kullanılabilir ve neden durduğunu söyler."
+        }
+      ],
+      "steps": [
+        "**Yönetim** sayfasını, sonra **Geçmiş veri okuma**yı açın. Bir console'un kayıtlı yanıtı yokken **Yönetim** bir bildirim gösterir ve **QRadar'ın geçmişi okunsun mu?** iletişim kutusu sorabilir; **Sonra karar ver** soruyu açık bırakır.",
+        "İletişim kutusundaki tahmini okuyun: her ailenin yaklaşık kaç saat ve kaç aramaya ihtiyaç duyduğu. Bunlar ölçüm değil, bir modelin tahminleridir. **Arama sıklığı** sayfasındaki zamanlama yine geçerlidir.",
+        "Evet'i kaydetmek için **Geçmişi şimdi oku**yu ya da **Hayır olarak kaydet**i seçin ve onaylayın. Bir Evet hiçbir zaman geri alınmaz.",
+        "Her ailenin bir sonraki toplamasında, toplanan ilk verisinden önceki günleri okur. Bir WAF ya da IPS kaynağı geçmişi yalnızca henüz toplanmamışsa okur; sonradan etkinleştirdiğiniz kaynaklar etkinleştirildiklerinde okur. Özellik izlemeler oluşturulurken geçmiş ister.",
+        "Bir okumayı bitirmek için **Okumayı durdur**u seçin. Okunanlar kalır ve öğrenme için kullanılır. **Geçmişi şimdi oku** okumayı yeniden başlatır; Hayır'dan sonra da daha sonra seçilebilir."
+      ],
+      "states": [
+        {
+          "p": "**Etkin bir QRadar console'u yok.**; **Okuma, bu başlamadan önce durduruldu.**; **Son adım … zamanında başarısız oldu (…). Sonraki toplama yeniden dener.**; okumak için `read:history_backfill`, değiştirmek için `admin:history_backfill` iznini adlandıran izin yok bildirimi. Sunucuda geçmiş veri okuma anahtarı kapalıysa yanıt yine kaydedilebilir, ancak hiçbir şey okunmaz."
+        }
+      ],
+      "permission": "`read:history_backfill` (görüntülemek için); `admin:history_backfill` (değiştirmek için)"
+    },
+    "users-and-directory": {
+      "title": "Kullanıcılar ve dizin ile oturum açma",
+      "answers": "Kimler hangi rollerle oturum açabilir ve dizin ile oturum açma platforma nasıl ulaşır?",
+      "body": [
+        {
+          "p": "Bir hesap ya yereldir, parolası burada saklanır; ya da LDAP'tir, parolası dizin tarafından denetlenir. Roller her zaman burada atanır; dizin hiçbir rol vermez. Dizin üzerinden oturum açan ve hesabı olmayan bir kişiye otomatik olarak, rolsüz bir hesap açılır; bir yönetici rol atayana kadar hiçbir izne sahip olmaz (bkz. `roles`)."
+        }
+      ],
+      "steps": [
+        "**Yönetim** sayfasını, sonra **Kullanıcılar**ı açın. Tablo **Kullanıcı adı**, **Kaynak**, **Görünen ad**, **Roller**, **Durum** (etkin, devre dışı ya da kilitli), **Son oturum açma (UTC)** ve **İşlemler** sütunlarını listeler.",
+        "**Hesap oluştur** altında **Kaynak**ı seçin. Yerel bir hesap için **İlk parola**yı girin (en az 12 karakter, kullanıcı adına eşit değil). Bir kez gösterilir ve hesap bir sonraki oturum açmada onu değiştirmek zorundadır. LDAP için, ilk oturum açmadan önce bir rol yerinde olsun diye hesabı önceden oluşturun; burada parolası yoktur. Rolleri atayın ve **Hesap oluştur**u seçin.",
+        "Bir satırda **Yönet**i seçin; roller değiştirilebilir (**{name} için rolleri kaydet**), hesap için **{name} hesabını devre dışı bırak** ya da **{name} hesabını etkinleştir** seçilebilir, kilidi **{name} hesabının kilidini aç** ile açılabilir ya da **Parolayı sıfırla** kullanılabilir (yalnızca yerel hesap; LDAP parolası dizinde değişir). Sıfırlanan parola bir kez gösterilir ve bir sonraki oturum açmada değiştirilmelidir.",
+        "Bir hesap, varsayılan olarak 5 başarısız oturum açmadan sonra 15 dk kilitlenir. Son etkin yönetici devre dışı bırakılamaz ve rolünü kaybedemez.",
+        "LDAP'i yapılandırmak için **Dizin** sayfasını açın: **Dizin ile oturum açma etkin**, **URL'ler, bind sırasıyla**, **StartTLS**, **CA sertifikası (PEM)** (boş bırakılırsa sistem güven deposu kullanılır), **Bind şablonu** ile **Önizleme kullanıcı adı**, **Zaman aşımı (saniye)** ve isteğe bağlı **Kullanıcı arama tabanı**. **Dizini kaydet**i seçin; her kayıt bir sürümdür.",
+        "**Bağlantıyı test et** altında bir test kullanıcı adı ve parolası girin ve **Bağlantıyı test et**i seçin. Sonuç **TLS**, **Güven**, **Sertifika konusu**, **Sertifika veren**, **Sertifika bitiş tarihi (UTC)**, **Bind** ve **Gecikme** alanlarını bildirir. Kimlik bilgileri formla birlikte gönderilir ve temizlenir; hiçbir şey kaydedilmez."
+      ],
+      "states": [
+        {
+          "p": "**Kayıtlı hesap yok.**; **Dizin yapılandırmasını başka biri değiştirdi.** (yeniden yükleyip gözden geçirin); **Henüz kaydedilmiş bir dizin yapılandırması yok.**; oturum açma sayfasında **Dizine erişilemedi. Yerel hesaplar kullanılabilir.**; `admin:users` ve `admin:auth` izinlerini adlandıran izin yok bildirimleri."
+        }
+      ],
+      "permission": "`admin:users` (kullanıcılar); `admin:auth` (dizin)"
+    }
+  }
+}

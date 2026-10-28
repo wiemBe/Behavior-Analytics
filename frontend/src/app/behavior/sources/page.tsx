@@ -19,6 +19,7 @@ import { SourceFilters } from "@/components/behavior/SourceFilters";
 import { SourceRowQualifier } from "@/components/behavior/SourceRowQualifier";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { ApiError, api, type SourceBehavior } from "@/lib/api";
 import { formatMetric, formatRatio, isUnjudged, stateTone } from "@/lib/behavior";
@@ -104,6 +105,7 @@ export default async function SourcesIndexPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/behavior/sources")}
         title={t("title")}
         description={t("description")}
       />

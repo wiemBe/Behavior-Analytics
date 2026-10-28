@@ -18,6 +18,8 @@ import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import "./ips.css";
 import { dimensionNoun, ipsSubjectText, ipsTypeLabel } from "./ipsLabels";
+import { GuideLink } from "@/components/guide/GuideLink";
+import { guideFor } from "@/lib/guideRoutes";
 
 function Interval({ anomaly }: { anomaly: IpsAnomalyDetail }) {
   const t = useTranslations("ips.header");
@@ -111,6 +113,9 @@ export function IpsIncidentHeader({
           <When label={t("opened")} iso={anomaly.opened_at} />
           <When label={t("resolved")} iso={anomaly.resolved_at} />
         </dl>
+      </div>
+      <div className="page-header-actions">
+        <GuideLink section={guideFor("/anomalies/[id]")} />
       </div>
     </header>
   );

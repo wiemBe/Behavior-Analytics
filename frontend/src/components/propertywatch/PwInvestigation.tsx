@@ -31,6 +31,8 @@ import {
 } from "./pwFormat";
 import { valueText } from "./WatchValuesTable";
 import { ENGLISH_PW, type PwI18n } from "./pwText";
+import { GuideLink } from "@/components/guide/GuideLink";
+import { guideFor } from "@/lib/guideRoutes";
 
 export interface PwInvestigationData {
   /** The value's series around the incident, or null when it could not be read. */
@@ -136,6 +138,7 @@ export function PwInvestigation({
           >
             {t(valueId ? "propertyWatch.investigation.openValue" : "propertyWatch.investigation.openWatch")}
           </Link>
+          <GuideLink section={guideFor("/anomalies/[id]")} />
         </div>
       </header>
 

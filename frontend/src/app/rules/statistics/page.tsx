@@ -17,6 +17,7 @@ import {
   formatCount,
 } from "@/components/rules/ruleStatistics";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, ruleStatisticsApi, type RuleStatistics } from "@/lib/api";
 import type { Locale } from "@/i18n/locale";
 
@@ -72,6 +73,7 @@ export default async function RuleStatisticsPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/rules/statistics")}
         title={t("title")}
         description={t("description")}
         actions={daySelector}

@@ -12,6 +12,7 @@ import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { kindLabel, mappingSourceLabel, statusLabel } from "@/lib/coverageText";
@@ -60,7 +61,7 @@ export default async function CoveragePage({
   if (error) {
     return (
       <>
-        <PageHeader title={t("title")} />
+        <PageHeader guide={guideFor("/coverage")} title={t("title")} />
         <div className="notice" role="alert">
           <p>{error}</p>
         </div>
@@ -76,6 +77,7 @@ export default async function CoveragePage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/coverage")}
         title={t("title")}
         description={t("description")}
       />

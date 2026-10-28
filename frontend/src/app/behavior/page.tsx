@@ -25,6 +25,7 @@ import { HealthDistribution } from "@/components/behavior/HealthDistribution";
 import { StatCard } from "@/components/StatCard";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
   ApiError,
@@ -106,7 +107,7 @@ export default async function BehaviorPage() {
   if (error || !summary) {
     return (
       <>
-        <PageHeader title={t("title")} />
+        <PageHeader guide={guideFor("/behavior")} title={t("title")} />
         <div className="notice" role="alert">
           {error ?? t("failedShort")}
         </div>
@@ -125,6 +126,7 @@ export default async function BehaviorPage() {
     <>
       <ReportDataAge iso={sourcesAsOf(sources, null)} />
       <PageHeader
+        guide={guideFor("/behavior")}
         title={t("title")}
         description={t.rich("description", {
           shown: count(summary.monitored_sources),

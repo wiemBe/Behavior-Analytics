@@ -6,6 +6,7 @@ import { getTranslations } from "next-intl/server";
 
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { WafEndpointsTable } from "@/components/waf/WafEndpointsTable";
 import { validationView } from "@/components/waf/wafSourceHealth";
 import {
@@ -30,7 +31,7 @@ const PAGE_SIZE = 50;
 function Problem({ title, text, pageTitle }: { title: string; text: React.ReactNode; pageTitle: string }) {
   return (
     <>
-      <PageHeader title={pageTitle} />
+      <PageHeader guide={guideFor("/behavior/waf/sources/[id]")} title={pageTitle} />
       <div className="notice" role="alert">
         <p>
           <strong>{title}</strong>
@@ -115,6 +116,7 @@ export default async function WafSourceEndpointsPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/behavior/waf/sources/[id]")}
         title={source.log_source_name}
         description={t("description")}
         meta={

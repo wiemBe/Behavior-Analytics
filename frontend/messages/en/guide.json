@@ -1,0 +1,847 @@
+{
+  "title": "Guide",
+  "description": "Pick a topic by the question it answers.",
+  "groups": {
+    "concepts": "Concepts",
+    "pages": "Analyst pages",
+    "analystTasks": "Analyst tasks",
+    "adminTasks": "Administrator tasks"
+  },
+  "ui": {
+    "allTopics": "All topics",
+    "steps": "Steps",
+    "states": "States you may see",
+    "related": "Related",
+    "routes": "{count, plural, one {Route} other {Routes}}",
+    "audience": "For",
+    "permission": "Permission",
+    "noPermission": "No permission needed",
+    "audiences": {
+      "analyst": "Analysts",
+      "admin": "Administrators",
+      "both": "Analysts and administrators"
+    },
+    "notFoundTitle": "Topic not found",
+    "notFoundBody": "The guide has no topic with this address. Choose one from the contents."
+  },
+  "sections": {
+    "how-it-works": {
+      "title": "How it works",
+      "answers": "What does this product do, and what does it not do?",
+      "body": [
+        {
+          "p": "The platform reads from QRadar and never writes to it. It collects on a cadence: a search family queries QRadar at its own interval, stores what it found, and judges the stored buckets. It does not stream events."
+        },
+        {
+          "p": "It keeps aggregates, not raw events. Volume, request counts, ratios and baselines are stored; the only raw values that leave a fold are the bounded top-contributor lists used for investigation. A contributor list is a measured share of a change, not a statement of cause."
+        },
+        {
+          "p": "Baselines are seasonal: one cell for each weekday and hour, in UTC, for each source and metric. A source is judged against the cell for the current weekday and hour, not against a single all-day average."
+        },
+        {
+          "p": "The platform fails closed. Missing, failed or truncated input yields INSUFFICIENT_DATA, never a zero and never NORMAL. An empty chart or an em dash means the value was not measured; it does not mean the value was zero."
+        },
+        {
+          "p": "Installation, upgrade, backup and other operations work are in `docs/INSTALL.md` and `docs/OPERATIONS.md`."
+        }
+      ]
+    },
+    "honesty-states": {
+      "title": "Honesty states",
+      "answers": "What do the states that qualify a figure mean, and what can I do about them?",
+      "body": [
+        {
+          "ul": [
+            "**INSUFFICIENT_DATA** — no adequate baseline or not enough usable data for a verdict. The source or subject is not being judged. This is not healthy, and a zero elsewhere does not cover it.",
+            "**PARTIAL** — the observation is incomplete. The figure is an undercount, not an exact measurement, and it does not support a claim of exact zero, exact volume or exact normality.",
+            "**TRUNCATED** — the result reached a configured cap. The rows shown are the top of the list, not the whole of it. New, disappeared and cardinality counts are withheld because a value can fall below the cap in the other window.",
+            "**NOT_COLLECTED** — nothing was collected for that interval or object. This is an absence of collection, not an observation of zero."
+          ]
+        },
+        {
+          "p": "On a Dashboard widget two more states occur. **Stale** means the latest data is older than twice the search family's cadence; the widget still draws it and states the time it reaches. **Forbidden** means your role lacks the permission the widget names; the widget links to the route that owns the data."
+        },
+        {
+          "p": "For each state, check collection first, then refresh the page. Do not read a missing value as zero or as normal."
+        }
+      ]
+    },
+    "expected-range": {
+      "title": "Expected range and the figures on an anomaly",
+      "answers": "What do observed, expected, deviation, robust z and coverage mean?",
+      "body": [
+        {
+          "p": "**Observed** is what was measured during the anomalous interval, in the detector's unit: events per second for volume, requests per bucket or a share for WAF, and the detector's own unit for IPS and property watches. **Expected** is the seasonal baseline for this UTC weekday and hour."
+        },
+        {
+          "p": "The **expected range** is the band between the 5th and 95th percentile of the baseline samples for that weekday and hour. A value inside the band is ordinary for that hour. A value outside it is not automatically an incident; the detector also applies volume, ratio and absolute-delta guards."
+        },
+        {
+          "p": "**Deviation** compares observed with expected, as a ratio and as an absolute delta in events. **Robust z** measures how far the observed value sits from the baseline median in robust deviations. When the baseline's median absolute deviation is zero, the robust score is not used; the detector falls back to the expected band and caps its confidence. **Confidence** is the detector's own score for the verdict, from 0 to 1."
+        },
+        {
+          "p": "**Coverage** is the share of events that carried the measured field; on a WAF endpoint it is the share of the source's events with a parseable endpoint. For volume, baseline completeness says how much of the history the cell was built from. Both qualify a figure; neither is a verdict."
+        }
+      ]
+    },
+    "anomaly-lifecycle": {
+      "title": "Anomaly lifecycle",
+      "answers": "How does an anomaly move from a first abnormal bucket to a closed incident, and how does an alert relate to it?",
+      "body": [
+        {
+          "p": "INSUFFICIENT_DATA becomes NORMAL when the baseline becomes adequate. NORMAL becomes CANDIDATE on the first abnormal bucket. CANDIDATE becomes OPEN after enough consecutive abnormal buckets, and returns to NORMAL if it recovers before opening; at the default confirmation count a single-bucket blip is not an incident, but a critical source opens after one bucket."
+        },
+        {
+          "p": "OPEN becomes RECOVERING on a normal bucket. RECOVERING returns to OPEN on a relapse, which is the same incident, and becomes RESOLVED after enough consecutive normal buckets. The confirmation and recovery counts depend on the detector and, for source volume, on the source's criticality."
+        },
+        {
+          "p": "SUPPRESSED is used for a maintenance window or an operator suppression. The anomaly is recorded but never notified. Only one incident is active per source and detector; a recurrence after RESOLVED opens a new incident."
+        },
+        {
+          "p": "CANDIDATE, OPEN and RECOVERING are the active states. An alert is the notification record for an active anomaly. Repeated detections update the open alert and increase its occurrence count rather than creating duplicates. The alert lifecycle is OPEN → ACKNOWLEDGED → RESOLVED. A record-only outage policy still records a NO_EVENTS anomaly; it only stops that anomaly from raising an alert."
+        }
+      ]
+    },
+    "times-and-cadence": {
+      "title": "Times and cadence",
+      "answers": "Which time is shown, how old is the data, and what does the refresh control do?",
+      "body": [
+        {
+          "p": "All times are UTC. A relative age may follow an absolute time, but it never replaces it."
+        },
+        {
+          "p": "Collection runs on a cadence, per search family. Every family defaults to 5 minutes except WAF collection and IPS collection, which default to 15 minutes. An operator changes a family on Search cadence. The cadence changes when the family searches QRadar; the bucket width it stores does not change."
+        },
+        {
+          "p": "Data age is how far the collected data reaches. The top bar shows **Data to** with that time, beside **Refreshed**, the time this browser last re-read the page. A refresh does not collect new data; it re-reads what the platform already stored."
+        },
+        {
+          "p": "The **Refresh** control offers **Off**, **1 min** and **5 min**. It starts at Off. The timer pauses while the tab is hidden and while a dialog is open. **Off** does not stop collection or the server-side schedule."
+        }
+      ]
+    },
+    "roles": {
+      "title": "Roles and permissions",
+      "answers": "What may each role see and do, and what does a forbidden state mean?",
+      "body": [
+        {
+          "p": "A user holds the union of the permissions of their roles."
+        },
+        {
+          "ul": [
+            "**admin** holds every permission, including every read and every write.",
+            "**analyst** holds every read permission, and may run a stored search, acknowledge and resolve an alert, write SOC-owned log-source fields, rule metadata and coverage mappings, and save their own dashboards.",
+            "**viewer** holds every read permission and no write.",
+            "**detection_engineer** holds everything an analyst holds, plus search authoring, custom-rule authoring and property-watch authoring."
+          ]
+        },
+        {
+          "p": "Reading is guarded on every route. A forbidden state names the missing permission, says that nothing was changed, and tells you to ask an administrator for a role that includes it. It never shows partial data in place of the refusal."
+        },
+        {
+          "p": "The Account menu in the top bar shows your name, sign-in source and roles. Account settings shows the same account's language and password options."
+        }
+      ]
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "answers": "What needs attention now, and how do I arrange the view?",
+      "body": [
+        {
+          "p": "The Dashboard is the start page. It shows the dashboard you marked default, if you set one; until then it shows the **SOC Overview** template, marked **Template, not saved**. Five templates exist: **SOC Overview** (fleet volume, source health, anomalies, offenses), **QRadar Administration** (collection, detection and evidence health, catch-all senders, fleet classes, outage policy), **Behavioral Analytics** (active anomalies and evidence health), **Log Source Monitoring** (source health and traffic mix) and **WAF / IPS Monitoring**. Each widget states its own condition — no data, not collected, partial, truncated, stale or forbidden — and links to the route that owns its data."
+        },
+        {
+          "p": "**Customize** opens the layout editor. **Add widget** opens the catalog; **Done** saves the layout and **Discard** drops the changes. A dashboard holds at most 24 widgets. The grid has 12 columns at 900 px or wider, 6 columns from 600 px and 1 below; editing is available only at 12 columns, otherwise the page says **Widen the window to customize**. A widget's range is 1 h, 24 h or 7 d where the widget allows a choice."
+        },
+        {
+          "p": "**Dashboards** opens your saved dashboards, the shared ones and the templates. **Manage** holds rename, duplicate, share, default and delete."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Template, not saved**; **Unsaved changes.**; **A dashboard holds at most 24 widgets.**; **Widen the window to customize**; a widget's stale or forbidden state."
+        }
+      ]
+    },
+    "behavior": {
+      "title": "Overview",
+      "answers": "Which monitored sources are behaving abnormally now?",
+      "body": [
+        {
+          "p": "The page heading is **Behavioral overview**. It compares each monitored source with its own baseline for the current UTC weekday and hour. The figures across the top are **Open anomalies**, **Silent sources**, **High deviation** and **Insufficient data**. **High deviation** means at or beyond twice, or at or below half, the expected volume. **Insufficient data** counts sources that are not being judged; a zero in the other figures does not cover them."
+        },
+        {
+          "p": "The strip below counts **Spikes**, **Drops**, **Candidates**, **Recovering**, **Resolved, 24 h**, **Evidence pending** and **Evidence failed**."
+        },
+        {
+          "p": "**Needs attention** ranks sources by lifecycle state, severity, deviation and recency; each row opens **Investigate**. **Recently resolved** lists anomalies that closed after sustained normal behaviour. **Source health** groups every source by verdict."
+        },
+        {
+          "p": "The banner above the worklist names sources with no adequate baseline. They are not judged, so no anomaly count on this page includes them."
+        }
+      ],
+      "states": [
+        {
+          "p": "The no-adequate-baseline banner; **Nothing is currently anomalous, deviating materially from its baseline, or waiting on a baseline.**; the active list failed to load."
+        }
+      ]
+    },
+    "anomalies": {
+      "title": "Anomalies",
+      "answers": "Which anomalies exist, and which are still active?",
+      "body": [
+        {
+          "p": "The list shows every detected anomaly, active or closed. **Active only** restricts it to CANDIDATE, OPEN and RECOVERING. The other filters are **Subject kind**, **Lifecycle state**, **Detector type**, **Severity**, **Start time (UTC)**, **End time (UTC)**, and, under **More filters**, **Log source**, **QRadar instance** and **Evidence status**. **Filter** applies them; each applied filter appears as a chip, and **Clear all** removes them."
+        },
+        {
+          "p": "The table columns are **Subject**, **Detector**, **State**, **Observed → Expected** (in EPS for volume), **Deviation**, **Severity**, **Started**, **Evidence** and **Actions**. **Open** opens the investigation. The **Evidence** column carries NOT_REQUESTED, PENDING, COMPLETE, PARTIAL, UNAVAILABLE or FAILED."
+        },
+        {
+          "p": "An empty result is either a filtered view or a fleet with no anomalies; the page says which. Sources without an adequate baseline are not judged and do not appear as clean."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No anomalies match these filters. This is a filtered view, not a statement about the fleet.**; **No anomalies have been detected.**; the forbidden notice."
+        }
+      ]
+    },
+    "anomaly-detail": {
+      "title": "Anomaly investigation",
+      "answers": "What changed, by how much, and what explains it?",
+      "body": [
+        {
+          "p": "The header names the subject, detector, state, severity and interval. **Incident measurements** carries **Observed**, **Expected**, **Deviation**, **Duration** and **Detector confidence**, each with its unit. **Duration** is the interval length; a running incident says **Still running** and has no duration."
+        },
+        {
+          "p": "The **Timeline** draws the observed series, the expected range as a band, the anomalous interval and lifecycle transitions. A gap is an interval that was not fully collected, not zero traffic."
+        },
+        {
+          "p": "**What changed** lists the strongest contributors, at most one per dimension. Each is a measured share of the change, not a cause. **Evidence** says which dimensions were collected, which were unavailable or failed, and which counts were withheld under a cap. **Lifecycle** is the transition audit trail. **Technical details** holds the expected range at detection, the robust z and its status, the thresholds, baseline samples and completeness, the baseline and policy versions, and the Ariel queries."
+        },
+        {
+          "p": "WAF, IPS and property-watch incidents add their own measurement blocks; a WAF incident also shows **Endpoint coverage** and request counts."
+        }
+      ],
+      "states": [
+        {
+          "p": "PENDING, PARTIAL, UNAVAILABLE, FAILED or NOT_REQUESTED evidence; a truncated contributor list; no structured detector evidence; the forbidden notice."
+        }
+      ]
+    },
+    "source-behavior": {
+      "title": "Sources",
+      "answers": "Is this source's volume normal for this weekday and hour, and is its collection healthy?",
+      "body": [
+        {
+          "p": "The list shows monitored sources with **Observed (EPS)**, **Expected (EPS)**, **Deviation**, **Last event**, **Anomalies** and **State**. The filters are a source-name search, **Behavior state**, **Anomaly status** and **Baseline adequacy**. A source that is still learning says **still learning** rather than showing an expectation."
+        },
+        {
+          "p": "The detail page repeats **Observed EPS**, **Expected EPS**, **Deviation** and **Last event**, then draws **Observed volume** against the expected band. **Data quality** holds **Baseline quality** and **Collection health**: **Latest collected interval**, **Collection lag**, **Intervals in window** and **QRadar log source status**. **Anomalies** lists the active incidents and the recently closed ones. **Technical detail** holds the seasonal baseline cells and the metric buckets. **Inventory detail** opens the log source."
+        },
+        {
+          "p": "The header states **Monitoring disabled** or **Maintenance mode** when either applies. A source with no baseline is not judged, and its page says so."
+        }
+      ],
+      "states": [
+        {
+          "p": "NONE, DELAYED, PARTIAL or CURRENT collection; **No metric buckets were collected for this window. This is an absence of collection, not an observation of zero traffic.**; a failed metric or anomaly read."
+        }
+      ]
+    },
+    "waf-behavior": {
+      "title": "WAF behavior",
+      "answers": "Which WAF sources are collected and judged, and which endpoints need attention?",
+      "body": [
+        {
+          "p": "The list covers WAF sources with **Profile**, **Validation**, **Endpoint coverage**, **Active endpoints** and **Admission overflow** in the selected range. **Admission overflow range** offers **24 hours**, **7 days** and **30 days**. A source is collected and judged only when its profile is enabled and valid for its current version; the others produce no verdicts. Sources that need attention are listed first. **Profile settings** opens the source in WAF sources administration."
+        },
+        {
+          "p": "The source page, **WAF source endpoints**, lists tracked endpoints with **Baseline cells**, **Last seen (UTC)**, **Tracking** and **State**, and offers **All endpoints** or **Active only**. An endpoint that no detector has evaluated says **Not evaluated**. **Active**, **Inactive** and **Retired** describe tracking, not health. The header states **Profile enabled** or **Profile disabled** and the count of active endpoints against the ceiling."
+        },
+        {
+          "p": "A bucket whose endpoint coverage falls below the coverage floor is recorded as a lower bound, not as an exact count. An endpoint with no collected bucket has no baseline and is not judged."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No WAF source has a behavior profile.**; **No bucket collected yet**; **Not collected**; **No baseline built**; **None reliable yet**; the forbidden notice."
+        }
+      ]
+    },
+    "property-watches": {
+      "title": "Property watches",
+      "answers": "Which watched property values are being counted, and which watches need attention?",
+      "body": [
+        {
+          "p": "A property watch counts the values of one or two QRadar properties in each 5-minute bucket, learns what is normal for each value, and reports a value that appears, disappears or changes. The list shows **Name**, **Status and reason**, **Scope**, **Properties**, **Coverage, last bucket**, **Open incidents**, **Last bucket (UTC)** and **Enabled**. Watches that need an analyst sort first."
+        },
+        {
+          "p": "The detail page draws the pinned values and the top values of the last bucket in events per bucket, with the scope's coverage, and lists the active incidents. **Edit watch** opens the editor. The header states the history state, the scope, the properties and the last collected bucket."
+        },
+        {
+          "p": "Two banners qualify the list: **COLLECTION OFF.** when `PW_COLLECTION_ENABLED` is false, so no search is sent for any watch, and **SHADOW MODE.** when incidents are recorded but nothing pages until `PW_ALERTING_ENABLED` is on. A watch that is disabled sends no search."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No bucket has been collected for this watch yet.**; a property that parsed on no event; **Not applicable**; partial buckets and lower bounds; a history reading in progress."
+        }
+      ]
+    },
+    "fleet": {
+      "title": "Fleet",
+      "answers": "How much is each class of log source sending against its baseline, and what is waiting for review?",
+      "body": [
+        {
+          "p": "The page heading is **Log-source fleet**. **Window** offers **1 hour**, **24 hours** and **7 days**. The class table gives **Class**, **Events**, **Mean EPS**, **Expected EPS**, **Window completeness**, **Open incidents** and **Top sources by events**. Events and mean EPS count complete buckets only. **Expected EPS** is the sum of the sources that have a reliable baseline; a source counts only when every seasonal cell the window spans is reliable. Where the window is incomplete, the row says how many buckets are partial or missing."
+        },
+        {
+          "p": "**QRadar internal sources** are counted apart from the classes and carry no volume figure. **Review queue** counts new sources, sources with a conflicting class and unclassified sources; it opens **Fleet sources**. The page note explains that complete buckets are the basis of every volume figure."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Not measured**; **No source has a baseline yet.**; **Incomplete**; **No complete bucket in the window.**; the forbidden notice."
+        }
+      ]
+    },
+    "fleet-sources": {
+      "title": "Fleet sources",
+      "answers": "Which new or ambiguously classified sources need a decision, and why did each get its class?",
+      "body": [
+        {
+          "p": "The filters are **Class**, **Review status**, **Conflicts** and **Classification basis**. The table shows **Source**, **Class and basis**, **First seen**, **Review** and **Actions**. The basis is one of **Operator override**, **QRadar internal**, **No rule matched**, **Group rule**, **Type rule**, **Type-name rule**, **Name rule** or **Identifier rule**."
+        },
+        {
+          "p": "**Set class** records an operator override for one source; **Clear override** returns the source to its rules; **Mark reviewed** records that an analyst has seen it. Writing needs `log_source:write`. A conflict names what each level says; the first level that decides wins, and an equal-priority disagreement inside a level leaves that level undecided."
+        },
+        {
+          "p": "An empty list is either a filtered view or an inventory with no sources; the page says which and where to run an inventory sync."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No source matches these filters.**; **No log sources are in the inventory.**; a conflict; a disabled source suffix."
+        }
+      ]
+    },
+    "catch-all-senders": {
+      "title": "Catch-all senders",
+      "answers": "Which unconfigured devices are sending events to a catch-all source?",
+      "body": [
+        {
+          "p": "A sender is the syslog hostname QRadar recorded for events that landed in a catch-all source. It is often a relay, and it is a candidate unconfigured device, not a verdict. The queue lists **New** senders first and then orders by 24-hour events, busiest first. Its columns are **Sender**, **Catch-all source**, **Seen (UTC)**, **24 h events**, **Review** and **Actions**."
+        },
+        {
+          "p": "**24 h events** is a lower bound: it sums the stored top-sender lists that name the sender. **unknown** means no stored list named it; it is not zero. **Review** and **Dismiss** need `log_source:write`."
+        },
+        {
+          "p": "**Volume by source** charts one source over **6 hours**, **24 hours** or **7 days**, with **What admission did** and **Top senders in this bucket**. Shaded buckets were not measured."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Nothing has been collected yet.**; **The queue is clear.**; **No sender matches these filters.**; a lower-bound or not-measured figure; the read-only notice for a role without the write permission."
+        }
+      ]
+    },
+    "offenses": {
+      "title": "Offenses",
+      "answers": "What offenses is QRadar reporting, and what does each contain?",
+      "body": [
+        {
+          "p": "The page is a read-only view of offenses collected from QRadar. It issues no writes: offenses are triaged in QRadar, not here. The figures are **Active**, **Critical (mag 7+)** and **Over 24h SLA** at the default thresholds, plus **Unassigned** and **Oldest**. An offense with no magnitude or no age is counted apart from those figures and is not treated as zero."
+        },
+        {
+          "p": "The filters are a search over description, source and assignee, and a status filter with **Open**, **Hidden** and **Closed**. The table columns are **ID**, **Description**, **Mag**, **Sev**, **Status**, **Assigned**, **Events**, **Started (UTC)** and **Age**. The detail page adds **Scores**, **Attributes**, **Entities**, **Categories**, contributing rule and log-source IDs, and **History**. A history entry is written only when the offense changes, so a stable offense has a single entry."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No offense snapshot has been collected yet.**; **No offenses match these filters.**; a missing or not-yet-collected offense; a failed history read."
+        }
+      ]
+    },
+    "alerts": {
+      "title": "Alerts",
+      "answers": "Which alerts are open, and what has been done about them?",
+      "body": [
+        {
+          "p": "The lifecycle is OPEN → ACKNOWLEDGED → RESOLVED. Repeated detections update the open alert and increase its **Occurrences** rather than creating duplicates. **Alert status** filters **All statuses**, **Open**, **Acknowledged** and **Resolved**. The table shows **Title**, **Severity**, **Status**, **Occurrences**, **First seen** and **Last seen**."
+        },
+        {
+          "p": "The detail page carries **Evidence**, **Lifecycle**, **Source anomalies** and **Notification Delivery History**. **Operator Actions** offers **Acknowledge**, which moves an OPEN alert to ACKNOWLEDGED and records who and when, and **Resolve**, with an optional **Resolution reason**. The confirmation says **Resolve this alert? A resolved alert cannot be reopened.** A resolved alert offers no further action."
+        },
+        {
+          "p": "Acknowledging an alert that is not OPEN changes nothing. Resolving an OPEN or ACKNOWLEDGED alert records who, when and the reason. Notification rows show PENDING, SENT, FAILED, DEAD_LETTER or SUPPRESSED."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No open alerts.** and the other per-status empty notices; **This alert is resolved. No further action is available.**; **No notifications for this alert.**"
+        }
+      ]
+    },
+    "rules": {
+      "title": "Rules",
+      "answers": "Which analytics rules are healthy, and which are not firing?",
+      "body": [
+        {
+          "p": "The page heading is **Rule health**. A rule's verdict comes from what has been observed, not from its existence: **HEALTHY**, **NOISY**, **INACTIVE**, **NEVER OBSERVED**, **DISABLED**, **DEPENDENCY DEGRADED**, **INSUFFICIENT DATA** or **UNKNOWN**. **INSUFFICIENT DATA** means the rule cannot be judged; it is not a detection gap. The reason under the rule name says which cause applies."
+        },
+        {
+          "p": "The table shows **Rule**, **Type**, **Enabled**, **Health**, **Meaning**, **Last fired (UTC)** and **Offenses**. The detail page adds **Offense contributions**, **Event contributions**, **Health evidence**, **Building blocks**, **Telemetry requirements**, **Metadata** and **Health history**. A missing measurement is reported as unestablished, never as a detection gap."
+        },
+        {
+          "p": "**Rule statistics** opens the fleet-wide view of composition, matching load and silence."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No rules collected yet.**; **No rules match these filters.**; the no-health-verdict notice; a failed health-history read."
+        }
+      ]
+    },
+    "rule-statistics": {
+      "title": "Rule statistics",
+      "answers": "How is the rule inventory composed, how much does it match, and which enabled rules are silent?",
+      "body": [
+        {
+          "p": "**Measurement days** offers 1, 7 or 30 days. **Rule composition** splits rules and building blocks by type into enabled and disabled, for all origins or one origin. **Costliest by benchmark** orders enabled rules from the lowest capacity benchmark, which is the costliest to evaluate; it is not a firing rate. **Most matched** ranks rules by **Matched events** or **Match records** over the measured windows. **Silent enabled rules** lists rules with a measured zero over a complete span; a rule first seen recently has had little time to match."
+        },
+        {
+          "p": "The measurement line states whether the window is **Complete.**, **PARTIAL.** or **INSUFFICIENT_DATA.**. A missing ranking is not a count of zero, and the page says so."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No QRadar instance is registered.**; **No complete window exists to measure rule matches.**; **Silence was not judged.**; a failed capacity or statistics read."
+        }
+      ]
+    },
+    "custom-rules": {
+      "title": "Custom rules",
+      "answers": "Which threshold rules over stored aggregates exist, and are they firing?",
+      "body": [
+        {
+          "p": "A custom rule judges one collected metric for one subject over consecutive 5-minute buckets. The list shows **Name**, **Status and reason**, **Subject**, **Condition**, **Severity**, **Enabled** and **Last evaluated (UTC)**. Creating, editing, enabling and deleting need `custom_rule:write`."
+        },
+        {
+          "p": "Two banners qualify every rule: **Rule evaluation is off because `CUSTOM_RULES_ENABLED` is false. Enabled rules are not being judged.** and **Breaches are recorded and nothing pages until `CUSTOM_RULES_ALERTING_ENABLED` is on.** The second is shadow mode: breaches and rule state are written, but nothing opens, refreshes or resolves an alert."
+        },
+        {
+          "p": "The detail page shows the current state, the active breach, what the rule read, the breach history and the rule definition. **Edit rule**, **Enable**, **Disable** and **Delete** act on the rule; deleting a rule with an open alert resolves the alert before the rule and its history are removed. **New rule** opens the editor."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No custom rules exist yet.**; **Never evaluated**; **No active breach is recorded for this rule.**; **Insufficient data**; **Subject retired**."
+        }
+      ]
+    },
+    "coverage": {
+      "title": "Coverage",
+      "answers": "Which ATT&CK techniques have working detection, and where is it missing?",
+      "body": [
+        {
+          "p": "Coverage is derived from mapped rules and their observed health. It is never inferred from a rule merely existing. The statuses are **COVERED**, **PARTIAL**, **DEGRADED**, **MISSING**, **NOT COVERED** and **NOT EVALUATED**. The summary counts the techniques evaluated, the covered ones, and the explicit and inferred mappings, with the time the view was generated."
+        },
+        {
+          "p": "**Techniques** shows **Technique**, **Name**, **Tactic**, **Status**, **Rules**, **Score** and **Evidence**. **Rule-centric view** lists rules with **Enabled**, **Health**, **Techniques** and **Evidence**. **Data-source-centric view** lists **Data source**, **Kind**, **Rules**, **Techniques** and **Evidence**."
+        },
+        {
+          "p": "An unevaluated page is not a finding of zero coverage: **Coverage has not been evaluated.** means no ATT&CK mappings are configured."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No techniques on this page.**; **No rules have ATT&CK technique mappings yet.**; **No rule-to-log-source dependencies are available from this QRadar inventory.**; the not-evaluated notice."
+        }
+      ]
+    },
+    "log-sources": {
+      "title": "Log Sources",
+      "answers": "What sources are in the inventory, and what does QRadar say about each?",
+      "body": [
+        {
+          "p": "QRadar-owned fields refresh on sync; criticality, owner and maintenance are SOC-owned and preserved. The table shows **Name**, **Type**, **Criticality**, **Status**, **Anomalies**, **Last Event** and **maint**. **Last Event** is **never** when no event has been recorded."
+        },
+        {
+          "p": "The detail page, **Log Source Detail**, shows the type, criticality and owner, then **Configuration**: description, business hours, expected interval, last event and QRadar status. It links to the source's behavior page for the EPS trend, anomaly timeline and baseline overlay. An empty inventory says to run an inventory sync; the platform does not invent a source list."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No log sources yet.**; **Last event: never**; an unknown or unavailable status; the forbidden notice."
+        }
+      ]
+    },
+    "searches": {
+      "title": "Searches",
+      "answers": "Which stored AQL searches run, and what did they return?",
+      "body": [
+        {
+          "p": "The page heading is **Search Catalog**. Only stored, validated definitions are scheduled or executed; the frontend never runs ad-hoc AQL. The table shows **Name**, **Category**, **MITRE**, **Schedule**, **Severity**, **Ver** and **Enabled**. **New search** needs `search:write` and opens a disabled definition: **Name**, **Description**, **AQL**, **Schedule** (5 min to 8 h, or a stored custom cron), **Threshold**, **Severity**, **Guardrails, within the platform caps** (timeout, window, max rows), **Visualization** and, on edit, **Change note**. **Save as disabled** stores it."
+        },
+        {
+          "p": "The detail page shows **Run now**, which executes the stored version, **Enable search** or **Disable search**, **Current AQL**, **Execution history**, **Query version history** and **Result trend**. A changed query text is stored as a new version; **Run now** executes that stored version, never text typed into the page."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No scheduled searches defined yet.**; **No executions yet.**; a disabled search; a threshold that was not met; a truncated run; a failed run."
+        }
+      ]
+    },
+    "config-changes": {
+      "title": "Configuration changes",
+      "answers": "Why is this page empty?",
+      "body": [
+        {
+          "p": "**Configuration changes are not collected.** A data model for them exists, but no collector or API fills it, so the page has nothing to show. This is an absence of collection, not a finding that no configuration changed."
+        },
+        {
+          "p": "The route is not in the navigation."
+        }
+      ],
+      "states": [
+        {
+          "p": "The notice is the whole page."
+        }
+      ]
+    },
+    "account": {
+      "title": "Account settings",
+      "answers": "How do I change my interface language or password?",
+      "body": [
+        {
+          "p": "**Account settings** carries **Language** and **Password**. **Interface language** offers **English** and **Türkçe**; the choice is saved on the account. When the session has no account to store it on, the page says the language is saved on this browser only."
+        },
+        {
+          "p": "**Password** changes the local password. An LDAP account changes its password in the directory, not here, and an account with no local password says so. The top bar's account menu shows your name, sign-in source and roles."
+        }
+      ],
+      "states": [
+        {
+          "p": "**The language preference was saved.**; **The language preference could not be saved.**; **The language preference was not applied because this browser did not keep the cookie.**"
+        }
+      ]
+    },
+    "investigate-anomaly": {
+      "title": "Investigate an anomaly",
+      "answers": "Is this anomaly real, what changed, and what should I do next?",
+      "body": [
+        {
+          "p": "An investigation opens on the subject's name, with its detector, lifecycle state, severity and interval. The page is ordered so that the first screen answers whether the change is real, and the evidence that explains it follows."
+        }
+      ],
+      "steps": [
+        "Open the anomaly: **Investigate** on a row under **Needs attention** on **Overview**, **Open** in the **Anomalies** table, a dashboard widget's link, or **Source anomalies** on an alert.",
+        "Read the summary line and **Incident measurements**: **Observed**, **Expected**, **Deviation** and **Detector confidence**, with **Duration** or **Still running**. Every figure carries its unit; a dash is unmeasured, not zero.",
+        "Read the **Timeline**. The band is the expected range for each bucket's UTC weekday and hour, the marked interval is the anomaly, the marks are lifecycle transitions, and a gap is an interval that was not fully collected, not zero traffic.",
+        "Read **What changed**. It lists the strongest contributors, at most one per dimension. Each is a measured share of the change, not a statement of cause.",
+        "Read the evidence banner. PENDING is a backlog, UNAVAILABLE means the source exposes none of the requested fields, FAILED means collection failed and is worth retrying, PARTIAL means some dimensions were not checked, and NOT_REQUESTED means nothing was looked at. None of these is evidence of normal behavior.",
+        "Open **Investigation detail** and its tabs: **Evidence** for each dimension, **Lifecycle** for every transition with its actor and policy version, **Technical details** for the expected range at detection, the robust z and its status, the thresholds, baseline samples and completeness, versions and the Ariel queries.",
+        "Decide. A change explained by a known deployment, a new feed or a campaign is still a real change; whether it needs action is the source owner's call. An unexplained change on a critical source, or one that recurs, is for the owner now. **View source behavior** shows whether the volume is still out of band; the alert, when one exists, is where acknowledgement is recorded.",
+        "Return with **Back to all anomalies**."
+      ],
+      "states": [
+        {
+          "p": "PENDING, PARTIAL, UNAVAILABLE, FAILED or NOT_REQUESTED evidence; a truncated contributor list; no structured detector evidence; a timeline that could not be loaded, which is an absent chart rather than an empty one; the not-found or forbidden notice."
+        }
+      ]
+    },
+    "work-an-alert": {
+      "title": "Work an alert",
+      "answers": "What does this alert say, and what do I change when I work it?",
+      "body": [
+        {
+          "p": "An alert is the notification record for a condition the platform watches: a log-source anomaly, a WAF, IPS or property-watch incident, a custom-rule breach, a new log source or catch-all sender, or a stored search that crossed its threshold. Repeated detections update the open alert and increase its **Occurrences**; they do not create duplicates. The status moves from **Open** to **Acknowledged** to **Resolved**."
+        }
+      ],
+      "steps": [
+        "Open **Alerts** and set **Alert status** to **Open**, **Acknowledged**, **Resolved** or **All statuses**, then choose **Filter**. The table shows **Title**, **Severity**, **Status**, **Occurrences**, **First seen** and **Last seen**.",
+        "Open the row. **Alert Detail** carries **Evidence**, **Lifecycle**, **Source anomalies** and **Notification Delivery History**.",
+        "Read **Source anomalies** and investigate what it names (see `investigate-anomaly`). The alert is the notification; the anomaly holds the measurements.",
+        "Read **Notification Delivery History** when someone says they were not told. Each row shows PENDING, SENT, FAILED, DEAD_LETTER or SUPPRESSED, with its channel, attempts and next attempt.",
+        "Choose **Acknowledge** under **Operator Actions** when someone is working the alert. An **Open** alert becomes **Acknowledged**, and the page records who and when. Acknowledging an alert in another status changes nothing.",
+        "Choose **Resolve** when the work is done, add an optional **Resolution reason**, and confirm **Resolve this alert? A resolved alert cannot be reopened.** Resolving an **Open** or **Acknowledged** alert records who, when and the reason.",
+        "An alert can also resolve without you: when the platform sees the condition recover, it resolves the alert itself, with the reason \"condition recovered\". Check **Resolved** before working an alert that looks quiet.",
+        "A resolved alert says **This alert is resolved. No further action is available.** If the condition recurs, a new alert is opened; the resolved one remains the record."
+      ],
+      "states": [
+        {
+          "p": "**No open alerts.** and the other per-status empty notices; **No notifications for this alert.**; the forbidden notice; an acknowledge or resolve that failed, which changes nothing."
+        }
+      ]
+    },
+    "find-a-quiet-source": {
+      "title": "Find a source that stopped sending",
+      "answers": "Which sources that should be sending have gone silent, and how do I confirm it?",
+      "body": [
+        {
+          "p": "Silence is the anomaly engine's verdict, not an old timestamp. The engine raises **No events** when a complete bucket is empty, the source is expected to be active at that UTC weekday and hour, and one empty bucket of grace has passed. A source with no adequate baseline is not judged, so it cannot be reported as silent."
+        }
+      ],
+      "steps": [
+        "Open **Behavioral overview** and read **Silent sources**. The count covers enabled, monitored sources outside maintenance with an open, unsuppressed **No events** finding. It is the engine's verdict, not a comparison of last-event times.",
+        "Find the source under **Needs attention**, where **Issue and severity** reads **No events received**. Open the source name for **Source behavior**, or **Investigate** for the anomaly.",
+        "Or filter **Anomalies**: **Detector type** → **No events**, **Lifecycle state** → **OPEN**. The **Observed → Expected (EPS)** column shows the empty interval against its baseline.",
+        "On the anomaly, the summary reads **No events were observed for a source that normally produces approximately {expected} EPS.** Read the evidence banner and **Timeline** before concluding: a gap is an interval that was not fully collected, and an incomplete bucket is never judged as silence.",
+        "On **Source behavior**, compare **Observed EPS** with **Expected EPS**, read **Last event**, and read the notes. **Source is currently silent** means the most recent collected interval had no events; **Maintenance mode active** and **Monitoring disabled** explain an absence that is not an outage.",
+        "Check the schedule before treating it as an outage. A source with **Business hours only: yes** is expected to be quiet outside its local business hours, and that silence is not **No events**.",
+        "Confirm the source's own state in **Log Sources**: **Last Event**, **Status**, and on **Log Source Detail** **Expected interval** and **QRadar status**. The platform cannot say why a device stopped; that answer is in QRadar and on the device.",
+        "If an outage alert was raised, it is in **Alerts**, titled **NO_EVENTS on** followed by the source name; work it with `work-an-alert`. Where the outage policy says **Record only**, the anomaly is recorded and no alert is opened, so the anomaly pages are the only place it appears."
+      ],
+      "states": [
+        {
+          "p": "**Not measured** and **No source has a baseline yet.** on the fleet view; **No anomalies match these filters.**; **No events were observed for this source.** when the baseline has no expectation; an incomplete bucket; **Source is currently silent** beside a collecting source; **Last event: never**; the forbidden notice on a page whose read permission the role lacks."
+        }
+      ],
+      "permission": "`read:anomalies` (`read:fleet` and `read:log_sources` on their pages)"
+    },
+    "waf-source-setup": {
+      "title": "Set up a WAF source",
+      "answers": "How do I start collecting WAF behavior from a log source, and when is it safe to switch collection on?",
+      "body": [
+        {
+          "p": "A WAF source is read through a profile: a mapping from the platform's logical fields to the QRadar properties that carry them on that source. Nothing is collected until the profile has been validated against the source's own events and you enable collection. The profile is a version; changing the mapping creates a new version and pauses collection until that version validates."
+        }
+      ],
+      "steps": [
+        "Open **Administration**, then **WAF sources**. The table lists **Source**, **Product**, **Mapping**, **Validation**, **Collection** and **Last validated (UTC)**, with the sources that need attention first.",
+        "Choose **Add WAF source** and pick a log source from **Log sources without a WAF profile**. Search by name. **Classed as WAF** marks a source the fleet classification already treats as a WAF.",
+        "Under **Field mapping**, give each logical field the QRadar property it is read from: **URL path** and **HTTP method** are required; **Virtual host**, **Action**, **HTTP status**, **WAF rule id** and **User agent** are optional. Without **Virtual host**, endpoints that share a path combine their traffic. Property names are letters, digits, underscore, space and hyphen, at most 64 characters. **Copy mapping from…** reuses another source's mapping.",
+        "Set **Product label** if you want a note such as the WAF product. It is never parsed and does not change the version.",
+        "Choose **Review and create**, read **Changed fields**, then **Create profile**. The profile is created disabled, as version 1, and validation starts at once.",
+        "Read the result under **Validation**; the page checks every 5 seconds while it runs. Validation reads a bounded sample of the source's recent events (the last 15 minutes by default). A field that collection reads must be populated, with plausible values, on at least 90% of them. Each field gets one status: **Usable**, **Not mapped**, **Property rejected**, **Not populated**, **Low coverage** or **Values look wrong**, or **No verdict** when the source sent no events or a check could not run. A source with no events in the window is **Inconclusive**, not invalid: choose **Validate again** while it has traffic.",
+        "If **Action** is mapped, assign its values under **Action values**: each value seen is set to **Blocked** or **Allowed**. A value you do not assign counts as unmapped, never as allowed, and so does any value beyond a truncated list. Saving this map is a mapping change.",
+        "When the result is **Valid** for the current version, choose **Enable collection** under **Collection**. Until then the page says why it cannot: still validating, **Invalid**, **Inconclusive** or not yet validated.",
+        "To change the mapping later, edit it, choose **Review and save** and **Save as version {n}**. Collection pauses and validation is requested. **Disable collection** is always available."
+      ],
+      "afterSteps": [
+        {
+          "p": "**What \"valid for the current version\" means:** validation belongs to one version. On the WAF behavior page a profile validated for an older version reads **STALE** (\"VALID for v3; profile is now v4\"), and a profile that was never validated reads **UNVALIDATED**. Neither is collected. A source reading \"Version 5 not validated\" is paused, not unhealthy."
+        }
+      ],
+      "states": [
+        {
+          "p": "A validation already running; **Reload their version** when another administrator saved first (your edits stay in the form); a property list that could not be refreshed, in which case you type the name as QRadar shows it and validation checks it; the forbidden notice naming `admin:waf`."
+        }
+      ]
+    },
+    "ips-source-setup": {
+      "title": "Set up an IPS source",
+      "answers": "How do I start collecting IPS behavior from a log source?",
+      "body": [
+        {
+          "p": "The flow is the one of `waf-source-setup`: map fields, validate the saved version against the source's events, enable collection. IPS administration is a separate permission; a WAF administrator does not control IPS collection."
+        }
+      ],
+      "steps": [
+        "Open **Administration**, then **IPS sources**, and choose to add a source from the picker.",
+        "On a new profile, under **Start from a preset**, choose **Cisco Firepower Threat Defense**, **Palo Alto THREAT** or **No preset (schema defaults)**. A preset only fills in defaults; the profile must still validate against this source's events.",
+        "Under **Field mapping**, set **Source IP**, **Destination IP**, **Destination port** and **Signature**, which are required, and **Protocol**, **Action** and **Severity**, which are not. Each field is read either from a **QRadar field** that every parser fills or from a **Custom property**. **Action** feeds the block ratio; **Severity** is kept for bounded evidence only.",
+        "Set **Product label** (a note) and choose **Review and create**, then **Create profile**. The profile is created disabled and validation starts.",
+        "Map the action values to **Blocked** or **Allowed**. At most 20 values can be listed; when the field has more, the validation is inconclusive and unlisted values count as unmapped, never as allowed.",
+        "Choose **Enable collection** once the current version validated as valid. A mapping change creates a new version, pauses collection and requests validation."
+      ],
+      "states": [
+        {
+          "p": "A validation running; **Reload their version** after a concurrent save; an inconclusive result for a source with no events; the forbidden notice naming `admin:ips`."
+        }
+      ]
+    },
+    "property-watch-setup": {
+      "title": "Create a property watch",
+      "answers": "How do I count the values of a QRadar property over time and have the platform judge changes?",
+      "body": [
+        {
+          "p": "A property watch counts how many events carry each value of one or two QRadar properties, per 5-minute bucket, within a scope. The platform learns a baseline per value and raises incidents on changes. Values are stored in clear text. Reading watches needs `read:property_watches`; creating, editing, enabling and deleting need `property_watch:write`, which the admin and `detection_engineer` roles hold."
+        }
+      ],
+      "steps": [
+        "Open **Property watches** and choose **New watch**. Enter **Watch name** (at most 80 characters) and an optional **Description**.",
+        "Under **1. Scope**, choose a **Scope kind**: **Log source**, **Log source type** or **Log source group**, then the scope itself. The page states how many sources it resolves to.",
+        "Under **2. Properties**, choose one or two properties. Two is the limit because each added property multiplies the combinations a baseline has to learn. A property is a QRadar normalized field or a custom property.",
+        "Under **3. Values**, optionally pin values that must always be counted (at most 10 by default; quotes and backslashes cannot be pinned). Other frequent values are tracked automatically, up to 20 new values per bucket and 200 in all by default. A threshold rule can use only a pinned value.",
+        "Under **4. Detection**, tick the detectors and set **Incident severity**. **Value spike**, **Value drop**, **Value disappeared** and **New value** need about a week of baseline or history; **New combination** needs two properties.",
+        "Under **5. History**, leave **Read history from QRadar (used only for learning)** ticked to read the window in **History window** once before collection begins; old events teach the baseline and are never judged. It is unavailable when the server has history reading off or too few free searches per tick. The request cannot change after history or collected buckets exist.",
+        "Choose **Save as disabled and preview**. The platform saves the definition disabled and spends a few bounded searches over the last closed hour. **6. Preview** shows **Total events**, **Parsed events**, **Coverage** and the top values. It tells apart no events, a property that parsed on none, and a search that was not measured.",
+        "When the preview is sound, open the watch and choose **Enable**, then confirm **Enable watch**. The confirmation shows how many enabled-watch slots (10 by default) and per-tick searches are already claimed; a full budget refuses the enable and names the number."
+      ],
+      "states": [
+        {
+          "p": "**COLLECTION OFF** when the family switch `PW_COLLECTION_ENABLED` is false (the default): enabling stores the choice but nothing is collected; shadow mode when `PW_ALERTING_ENABLED` is false (the default), where incidents are recorded and no alert opens; **This watch is enabled. Saving here disables it until you enable it again**; a preview rate limit; **Delete** refused while a custom rule pins one of its values; the write notice when the role lacks `property_watch:write`."
+        }
+      ]
+    },
+    "custom-rule-setup": {
+      "title": "Create a custom rule",
+      "answers": "How do I get an alert when a stored measurement stays past a threshold?",
+      "body": [
+        {
+          "p": "A custom rule is a threshold on a measurement the platform already stores. It never runs a query of its own against QRadar: it reads stored aggregates only, so it can use only a subject the platform collects and has admitted. A condition the platform does not collect belongs in a custom search. Reading rules needs `read:custom_rules`; creating, editing, enabling and deleting need `custom_rule:write`, held by the admin and `detection_engineer` roles."
+        }
+      ],
+      "steps": [
+        "Open **Custom rules** and choose **New rule**. Enter **Name** (at most 80 characters) and an optional **Description**.",
+        "Choose the **Subject kind**: **Log source**, **Fleet class**, **WAF endpoint**, **IPS entity**, **IPS source** or **Property watch value**, then the subject. A WAF endpoint or IPS entity must be admitted; a property watch value must be pinned on its watch first.",
+        "Choose the **Metric**; the list depends on the subject kind (for example event count, average EPS, request count, block ratio, 5xx ratio, 4xx ratio). A ratio threshold is a share greater than 0 and less than 1.",
+        "Set **Operator** (above, at or above, below, at or below, equal to) and **Threshold**, which carries its unit.",
+        "Set **Sustain (buckets)**, how many consecutive buckets must breach before the rule fires, and **Recovery (buckets)**, how many must clear before it recovers. Both default to 2 and must be at least 1. The summary line restates the rule in words.",
+        "Set **Severity** (default MEDIUM) and leave **Enabled** unticked while you test; a rule is created disabled by default.",
+        "Read **Draft preview**: it replays the draft over stored aggregates for the chosen **Window** (24 hours by default, or the server's preview limit when that is shorter) and shows how often it would have fired. It stores nothing and sends nothing to QRadar. **Not measured** buckets are gaps, not zero; a **Lower bound** reading is at least the value shown; maintenance buckets do not open, refresh or resolve a breach. If most buckets were not measured, the preview says it cannot describe the period.",
+        "Choose **Create rule**, then **Enable** on the rule when the preview is sound. A cap on enabled rules (100 by default) refuses an enable beyond it."
+      ],
+      "states": [
+        {
+          "p": "**Rule evaluation is off because CUSTOM_RULES_ENABLED is false**, in which case enabled rules are not judged (the default); **Breaches are recorded and nothing pages until CUSTOM_RULES_ALERTING_ENABLED is on**, the shadow mode (also the default); **Stale**, **No verdict** and **Subject retired** states on a saved rule; the write notice when the role lacks `custom_rule:write`; **Reload the current rule** after a concurrent change. Deleting a rule resolves its open alert first."
+        }
+      ]
+    },
+    "outage-policy": {
+      "title": "Outage alerts",
+      "answers": "Which silent sources raise an alert, and which are only recorded?",
+      "body": [
+        {
+          "p": "Every monitored source raises an alert when it goes silent, which is the default. This page changes that for a class of sources or for one source. The page is administrative: reading it needs the same permission as changing it, and `read:*` does not grant it."
+        },
+        {
+          "h": "How to read it"
+        },
+        {
+          "ul": [
+            "**Alert** raises the outage alert. **Record only** still records the silence on the source and on **Overview**, with its normal lifecycle; it only stops that anomaly from raising an alert. An alert that is already open resolves normally. Only **No events** is affected; volume drops and spikes still alert.",
+            "**Grace** is the number of empty buckets tolerated before silence counts, from 0 to 48. A blank grace uses the default of 1 bucket.",
+            "The mode that applies to a source comes from the first of: a source override, the row for its class (an instance row beats the global one), the default. The **Classes** table shows where each class's mode comes from."
+          ]
+        }
+      ],
+      "steps": [
+        "Open **Administration**, then **Outage alerts**.",
+        "In **Classes**, choose **Set policy** (or **Edit**) on a class. Set **Mode** and **Grace, in buckets**. Under **Before you save**, read the effect: how many sources stop or resume alerting and how many keep their own override.",
+        "Choose **Save**. **Use default** removes the class row.",
+        "To treat one source differently, choose **Add override** under **Source overrides**, search by name or QRadar type, and set its mode and grace. **Remove override** returns it to its class.",
+        "A source whose override says the same as its class is pinned against a later change to the class."
+      ],
+      "states": [
+        {
+          "p": "**No outage policy is set.**; **No class has a monitored source.**; **Fleet summary unavailable**, where the two count columns are blank and the policy is still complete; **Source no longer in inventory** on an override; the forbidden notice naming `admin:outage`. Every change is audited."
+        }
+      ]
+    },
+    "classification-rules": {
+      "title": "Classification rules",
+      "answers": "Which rules decide the class of a log source, and in what order?",
+      "body": [
+        {
+          "p": "The class of a source decides which policy it falls under, for example its outage mode. The page lists the rules in the order the platform decides."
+        },
+        {
+          "h": "How to read it"
+        },
+        {
+          "p": "**Order of decision:** **Operator override** (the class chosen for one source), **QRadar internal** (the type is internal, or the identifier is 127.0.0.1), **Group rules**, **Type rules**, **Name rules**, then **Unclassified** when nothing matched. The first level that decides wins. Within a level the highest priority wins; two rules of equal priority naming different classes leave the level undecided, record a conflict, and the next level is tried."
+        },
+        {
+          "p": "Each level has a table with **Priority**, **Pattern**, **Class**, **Origin**, **Enabled** and **Actions**. **Built-in** rules ship with the product and can only be switched **On** or **Off**. **Custom** rules can be edited and deleted. A rule matches a **Group id**, a **Type id**, a **Type name pattern**, a **Source name pattern** or an **Identifier pattern**; a pattern is a regular expression of at most 256 characters, and a priority runs from 0 to 10000."
+        }
+      ],
+      "steps": [
+        "Open **Administration**, then **Classification rules**.",
+        "To change what a built-in rule matches, add a custom rule with a higher priority instead.",
+        "Under **Add a custom rule** (admin only, audited), choose what it **Matches**, enter the **Pattern**, **Target class**, **Priority** and an optional **Description**, then **Add rule**. A rule cannot target Unclassified.",
+        "Use **On** and **Off**, **Edit** and **Delete** (confirmed with **Confirm delete**) on existing rules.",
+        "Every change re-classifies the sources it affects at once."
+      ],
+      "states": [
+        {
+          "p": "**No {level} exist.** for an empty level; the forbidden notice naming `read:fleet` to read or `admin:classification` to change."
+        }
+      ],
+      "permission": "`read:fleet` (to open); `admin:classification` (to change)"
+    },
+    "search-cadence": {
+      "title": "Search cadence",
+      "answers": "How often does each kind of search query QRadar, and what does that cost in detection delay?",
+      "body": [
+        {
+          "p": "Each search family queries QRadar at its own cadence. Changing it changes only when QRadar is searched: bucket widths, rule-match windows and learning periods do not change. A slower cadence sends fewer searches and delays detection. A silence alert, for example, can arrive up to one cadence late."
+        },
+        {
+          "h": "How to read it"
+        },
+        {
+          "p": "The table has one row per family with **Family**, **Cadence**, **Bucket**, **Worst-case detection delay**, **Last run (UTC)**, **Next run (UTC)** and **Searches in last run**. The worst-case delay is the cadence plus the bucket plus a settle time (120 seconds by default). A dash in **Bucket** means the family has no buckets; for anomaly explanations the delay bounds how late evidence arrives, not how late a detection does. **Not run since upgrade** and **not counted** are missing measurements, not zero."
+        },
+        {
+          "p": "The choices are every 5 minutes, 15 minutes, 30 minutes, 1 hour, 2 hours, 4 hours and 8 hours. By default every family runs every 5 minutes, except **WAF collection** and **IPS collection**, which run every 15 minutes because they cost the most searches per source."
+        }
+      ],
+      "steps": [
+        "Open **Administration**, then **Search cadence**.",
+        "Change the cadence in the family's row. The change applies without a restart.",
+        "Read **Saved. Changed by {user} at** and the new next run."
+      ],
+      "states": [
+        {
+          "p": "**No search families were returned.**; **No run yet**; the forbidden notice naming `admin:search_cadence`. Every change is audited."
+        }
+      ],
+      "permission": "`read:search_cadence` (to view); `admin:search_cadence` (to change)"
+    },
+    "history-backfill": {
+      "title": "History backfill",
+      "answers": "Should the platform read QRadar's past so that baselines can learn at once, and what has been read?",
+      "body": [
+        {
+          "p": "A baseline normally needs weeks of collected buckets. History backfill reads QRadar's past once, read-only, so baselines learn sooner. The window is the history backfill setting, 28 days by default. Old data is used for learning only and never judged: nothing old raises an alert. The decision is recorded per enabled console."
+        },
+        {
+          "h": "How to read it"
+        },
+        {
+          "p": "The line at the top of each console reads **History backfill: not decided**, **No, history is not read** or **Yes**, with who recorded it and when. The table shows each family (**Source volume**, **WAF**, **IPS**, **Catch-all senders**, **Rule matches**) and scope with its **State**: **Not requested**, **Waiting**, **Reading**, **Complete**, **Partial**, **Unavailable**, **Not eligible**, **Switched off**, **Not started**, **Not read** or **Profile disabled**. **Window asked** is what was requested; **Window proved** is how far back QRadar was shown to hold events (the floor, in UTC), which can be less than asked for. **Gaps in what was read** are listed. A **Partial** scope is usable for learning and says why it stopped."
+        }
+      ],
+      "steps": [
+        "Open **Administration**, then **History backfill**. While a console has no recorded answer, **Administration** shows a notice, and a dialog, **Read QRadar's past?**, can ask; **Decide later** leaves it open.",
+        "Read the estimate in the dialog: the searches and about how many hours each family needs. These are estimates from a model, not measurements. The schedule in **Search cadence** still applies.",
+        "Choose **Read history now** to record Yes, or **Record No**, and confirm. A Yes is never reversed.",
+        "At each family's next collection it reads the days before its first collected data. A WAF or IPS source reads history only if it has not been collected yet; sources you enable later read when enabled. Property watches ask for history when you create them.",
+        "To end a reading, choose **Stop reading**. What was read stays and is used for learning. **Read history now** starts it again; after No it can still be chosen later."
+      ],
+      "states": [
+        {
+          "p": "**No QRadar console is enabled.**; **Reading was stopped before this started.**; **Last step failed at … (…). The next collection retries.**; the forbidden notice naming `read:history_backfill`, or `admin:history_backfill` for the change. If the server has the history backfill switch off, nothing is read, though the answer can still be recorded."
+        }
+      ],
+      "permission": "`read:history_backfill` (to view); `admin:history_backfill` (to change)"
+    },
+    "users-and-directory": {
+      "title": "Users and directory sign-in",
+      "answers": "Who can sign in, with which roles, and how does directory sign-in reach the platform?",
+      "body": [
+        {
+          "p": "An account is local, with a password stored here, or LDAP, with the password checked by the directory. Roles are always assigned here; the directory supplies none. A person who signs in through the directory without an account gets one automatically, with no roles, so it holds no permissions until an administrator assigns roles (see `roles`)."
+        }
+      ],
+      "steps": [
+        "Open **Administration**, then **Users**. The table lists **Username**, **Source**, **Display name**, **Roles**, **Status** (active, disabled or locked), **Last login (UTC)** and **Actions**.",
+        "Under **Create an account** choose the **Source**. For a local account enter **Initial password** (at least 12 characters, not equal to the username). It is shown once, and the account must change it at the next sign-in. For LDAP, pre-create the account so a role is in place before the first sign-in; it has no password here. Assign roles and choose **Create account**.",
+        "Choose **Manage** on a row to change roles (**Save roles for {name}**), to disable or enable the account (**Disable {name}**, **Enable {name}**), to unlock it (**Unlock {name}**), or to **Reset password** (local only; an LDAP password changes in the directory). A reset password is shown once and must be changed at the next sign-in.",
+        "An account locks after 5 failed sign-ins for 15 minutes by default. The last active administrator cannot be disabled or lose the role.",
+        "Open **Directory** to configure LDAP: **Directory sign-in enabled**, **URLs, in bind order**, **StartTLS**, **CA certificate (PEM)** (empty uses the system trust store), **Bind template** with **Preview username**, **Timeout (seconds)** and the optional **User search base**. Choose **Save directory**; each save is a version.",
+        "Under **Test connection** enter a test username and password and choose **Test connection**. It reports **TLS**, **Trust**, **Certificate subject**, **Certificate issuer**, **Certificate expiry (UTC)**, **Bind** and **Latency**. The credentials are sent with the form and cleared; nothing is saved."
+      ],
+      "states": [
+        {
+          "p": "**No accounts are stored.**; **Someone else changed the directory configuration.** (reload and review); **No directory configuration is saved yet.**; on the login page, **The directory could not be reached. Local accounts still work.**; the forbidden notices naming `admin:users` and `admin:auth`."
+        }
+      ],
+      "permission": "`admin:users` (users); `admin:auth` (directory)"
+    }
+  }
+}

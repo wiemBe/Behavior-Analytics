@@ -10,6 +10,7 @@ import { Pagination } from "@/components/Pagination";
 import { OffenseFilters } from "@/components/OffenseFilters";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { enumLabel } from "@/i18n/enumLabels";
@@ -89,7 +90,7 @@ export default async function OffensesPage({
   if (error) {
     return (
       <>
-        <PageHeader title={t("title")} />
+        <PageHeader guide={guideFor("/offenses")} title={t("title")} />
         <div className="notice" role="alert">
           <p>{error}</p>
         </div>
@@ -104,6 +105,7 @@ export default async function OffensesPage({
       {/* Neither read says how far the offense snapshots reach: the page has no data time. */}
       <ReportDataAge iso={null} />
       <PageHeader
+        guide={guideFor("/offenses")}
         title={t("title")}
         description={t("description")}
       />

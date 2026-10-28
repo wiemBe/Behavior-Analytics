@@ -6,6 +6,7 @@ import { ScheduleLabel } from "@/components/searches/ScheduleLabel";
 import { searchAccessFrom, type SearchAccess } from "@/components/searches/authoring";
 import { versionTag } from "@/components/searches/searchesText";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
@@ -42,6 +43,7 @@ export default async function SearchCatalogPage() {
   return (
     <>
       <PageHeader
+        guide={guideFor("/searches")}
         title={t("title")}
         description={t("description")}
         actions={

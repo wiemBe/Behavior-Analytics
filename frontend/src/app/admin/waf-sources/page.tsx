@@ -7,6 +7,7 @@ import { AddSourcePicker } from "@/app/admin/waf-sources/AddSourcePicker";
 import { WafSourceTable } from "@/app/admin/waf-sources/WafSourceTable";
 import { readError } from "@/app/admin/waf-sources/readError";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { api, type MappingSchemaOut, type WafSourceStatus } from "@/lib/api";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 
@@ -40,6 +41,7 @@ export default async function WafSourcesPage() {
   return (
     <>
       <PageHeader
+        guide={guideFor("/admin/waf-sources")}
         title={t("title")}
         description={t("description")}
       />

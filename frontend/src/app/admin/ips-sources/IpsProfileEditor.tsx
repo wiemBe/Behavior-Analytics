@@ -36,6 +36,7 @@ import { MappingHistory } from "@/components/fieldmapping/MappingHistory";
 import { ValidationReport } from "@/components/fieldmapping/ValidationReport";
 import { ValueMapEditor, outcomeLabel } from "@/components/fieldmapping/ValueMapEditor";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import {
   ApiError,
   actionErrorMessage,
@@ -594,7 +595,7 @@ export function IpsProfileEditor({
 
   return (
     <>
-      <PageHeader title={source.name} meta={meta} />
+      <PageHeader guide={guideFor("/admin/ips-sources/[logSourceId]")} title={source.name} meta={meta} />
 
       {creating && (
         <p className="fm-banner is-info" role="status">

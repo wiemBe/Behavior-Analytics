@@ -6,6 +6,7 @@ import { SearchEditor } from "@/components/searches/SearchEditor";
 import { SearchWriteNotice } from "@/components/searches/SearchWriteNotice";
 import { searchAccessFrom, type SearchAccess } from "@/components/searches/authoring";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { api } from "@/lib/api";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -24,7 +25,7 @@ export default async function NewSearchPage() {
 
   return (
     <>
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader guide={guideFor("/searches/new")} title={t("title")} description={t("description")} />
       {access === "writer" ? (
         <SearchEditor mode="create" />
       ) : (

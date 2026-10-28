@@ -12,6 +12,7 @@ import { previousVersion, queryDiffText, searchAccessFrom, type SearchAccess } f
 import { versionTag } from "@/components/searches/searchesText";
 import { CodePanel } from "@/components/ui/CodePanel";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
@@ -56,7 +57,7 @@ export default async function SearchDetailPage({
   } catch {
     return (
       <>
-        <PageHeader title={t("title")} />
+        <PageHeader guide={guideFor("/searches/[id]")} title={t("title")} />
         <div className="notice" role="alert">
           <p>
             <strong>{t("loadFailed", { id })}</strong>
@@ -74,6 +75,7 @@ export default async function SearchDetailPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/searches/[id]")}
         title={search.name}
         meta={
           <span className={search.enabled ? "pill" : "pill warn"}>

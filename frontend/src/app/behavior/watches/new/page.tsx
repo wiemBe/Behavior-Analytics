@@ -11,6 +11,7 @@ import {
 } from "@/components/propertywatch/authoring";
 import { pwLatencyFrom } from "@/components/propertywatch/pwFormat";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, api, type CallerInfo, type PropertyWatchCatalog } from "@/lib/api";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 
@@ -44,7 +45,7 @@ export default async function NewPropertyWatchPage() {
 
   return (
     <>
-      <PageHeader title={t("new.title")} />
+      <PageHeader guide={guideFor("/behavior/watches/new")} title={t("new.title")} />
       {forbidden ? (
         <div className="notice" role="alert">
           <p><strong>{t("new.forbiddenTitle")}</strong></p>

@@ -7,6 +7,7 @@ import { canReadSearchCadence } from "@/components/cadence/CadenceLatency";
 import { CustomRuleLatency } from "@/components/customrules/CustomRuleLatency";
 import { customRuleAccessFrom, type CustomRuleAccess } from "@/components/customrules/authoring";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, api, type CallerInfo, type CustomRuleCatalog } from "@/lib/api";
 
 export async function generateMetadata() {
@@ -36,7 +37,7 @@ export default async function NewCustomRulePage() {
 
   return (
     <>
-      <PageHeader title={t("title")} />
+      <PageHeader guide={guideFor("/custom-rules/new")} title={t("title")} />
       {forbidden ? (
         <div className="notice" role="alert">
           <p><strong>{t("forbiddenTitle")}</strong></p>

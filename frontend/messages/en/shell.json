@@ -31,7 +31,8 @@
     "ipsSources": "IPS sources",
     "historyBackfill": "History backfill",
     "users": "Users",
-    "directory": "Directory"
+    "directory": "Directory",
+    "guide": "Guide"
   },
   "account": {
     "label": "Account: {name}",

@@ -9,6 +9,7 @@ import { getTranslations } from "next-intl/server";
 import { ProfileEditor, type Prefill } from "@/app/admin/waf-sources/ProfileEditor";
 import { readError } from "@/app/admin/waf-sources/readError";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import {
   ApiError,
   api,
@@ -34,7 +35,7 @@ export async function generateMetadata(): Promise<Metadata> {
 function Problem({ title, text, pageTitle }: { title: string; text: string; pageTitle: string }) {
   return (
     <>
-      <PageHeader title={pageTitle} />
+      <PageHeader guide={guideFor("/admin/waf-sources/[logSourceId]")} title={pageTitle} />
       <div className="notice" role="alert">
         <p>
           <strong>{title}</strong>

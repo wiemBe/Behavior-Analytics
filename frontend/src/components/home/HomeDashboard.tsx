@@ -27,6 +27,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { useReportDataAge } from "@/components/shell/AutoRefresh";
 import { epsSeriesAsOf } from "@/lib/home/asOf";
 import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
@@ -345,6 +346,7 @@ function DashboardSession({
         renderHeader={(actions) => (
           <>
             <PageHeader
+              guide={guideFor("/")}
               title={name}
               description={templateShown ? undefined : description ?? undefined}
               meta={hasMeta ? meta : undefined}
@@ -542,6 +544,7 @@ export function HomeDashboard() {
     lead = true,
   ) => (
     <PageHeader
+      guide={guideFor("/")}
       title={title}
       description={description ?? undefined}
       meta={reserve ? <span aria-hidden="true">{NBSP}</span> : hasMeta ? meta : undefined}
