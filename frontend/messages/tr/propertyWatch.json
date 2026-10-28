@@ -200,7 +200,7 @@
     "failedBody": "Sayfanın geri kalanı bundan etkilenmedi; ancak buradaki boş liste bir anlam taşımaz. Yeniden denemek için sayfayı yeniden yükleyin. Hiçbir şey değiştirilmedi.",
     "emptyTitle": "Son {days} gün içinde bu izlemede vaka tespit edilmedi.",
     "emptyBody": "Hâlâ öğrenen değerler ile alt sınırlı veya toplanmamış zaman dilimleri değerlendirilmez; bu nedenle boş liste her değerin normal olduğu anlamına gelmez.",
-    "introLimited": "Son {days} gün içinde tespit edilen vakalar UTC'ye göre en yeniden en eskiye sıralanır. Listelenen: {shown} / {total}; kalanlar <link>Anomaliler</link> sayfasındadır.",
+    "introLimited": "Son {days} gün içinde tespit edilen vakalar UTC'ye göre en yeniden en eskiye sıralanır. Listelenen: {shown, number} / {total, number}; kalanlar <link>Anomaliler</link> sayfasındadır.",
     "introAll": "Son {days} gün içinde tespit edilen vakalar UTC'ye göre en yeniden en eskiye sıralanır. Bunlar <link>Anomaliler</link> sayfasında da bulunur.",
     "tableLabel": "Bu izlemenin vakaları", "detector": "Algılayıcı", "started": "Başlangıç (UTC)",
     "resolved": "Çözülme (UTC)", "open": "Aç"
@@ -232,7 +232,7 @@
     "valuesEmptyBody": "Toplanmış zaman dilimi bir değeri kabul ettiğinde o değer belirir. O zamana kadar hiçbir şey değerlendirilmez; bu durum özelliğin hiç değer almadığı anlamına gelmez.",
     "plotted": "Çizilen değer: {selected}; üst sınır: {max}. Sayımlar olay / 5 dk birimindedir.",
     "tabsLabel": "İzleme ayrıntısı", "tabValues": "Değerler", "tabIncidents": "Vakalar",
-    "tabIncidentsCount": "Vakalar ({count})", "tabRules": "Eşik kuralları", "tabRulesCount": "Eşik kuralları ({count})",
+    "tabIncidentsCount": "Vakalar ({count, number})", "tabRules": "Eşik kuralları", "tabRulesCount": "Eşik kuralları ({count})",
     "tabDefinition": "Tanım", "chartLabel": "Seri grafiği"
   },
   "honesty": {
@@ -311,10 +311,10 @@
     "alerting": "Uyarı", "shadow": "Gölge: vakalar kaydedilir ve bildirim gönderilmez.", "paging": "Uyarı: vakalar için bildirim gönderilir.",
     "created": "Oluşturulma", "changed": "Son değişiklik", "by": " işlemi yapan: {operator}",
     "history": "Geçmiş", "requested": "İstenen", "noHistory": "Geçmiş istenmedi", "requestedWindow": "İstenen pencere",
-    "readFrom": "QRadar'dan okunan", "readSpanMissing": "okunabilir aralık kaydedilmedi", "historyFloor": "Geçmiş alt sınırı",
+    "readFrom": "QRadar'dan okunan", "readSpanMissing": "okunabilir aralık kaydedilmedi", "historyFloor": "Geçmiş tabanı",
     "membershipBasis": "Üyelik temeli", "membershipBasisBody": "Grubun bugünkü üyeliği kullanılır; geçmişteki üyeliği değil.",
     "historyGaps": "Geçmiş boşlukları", "generatedQuery": "Oluşturulan sorgu", "caps": "Geçerli kardinalite sınırları",
-    "capsBody": "Sınırı aşan değer kendi zaman diliminde sayılır; hiçbir zaman çizilmez veya değerlendirilmez. Coverage alt sınırı {floor}: bu sınırın altında yokluğu kanıt olarak okuyan kararlar yetersiz veridir.",
+    "capsBody": "Sınırı aşan değer kendi zaman diliminde sayılır; hiçbir zaman çizilmez veya değerlendirilmez. Coverage tabanı {floor}: bu tabanın altında yokluğu kanıt olarak okuyan kararlar yetersiz veridir.",
     "cap": {
       "values": "Zaman dilimi başına tutulan değerler", "newValues": "Zaman dilimi başına kabul edilen yeni değerler",
       "tracked": "İzleme başına izlenen değerler", "pinned": "İzleme başına sabitlenmiş değerler",
@@ -388,7 +388,7 @@
     "applicabilityTitle": "Uygulanabilirlik okuması.", "parses": "Seçilen özellik kümesi olayların {coverage} bölümünde ayrıştırıldı.",
     "unknownShare": "bilinmeyen bir", "notParses": "Scope olay göndermesine karşın seçilen özellik kümesi hiçbir olayda ayrıştırılmadı.",
     "cannotDetermine": "Önizleme, özelliğin bu scope'ta ayrıştırılıp ayrıştırılmadığını belirleyemiyor.",
-    "catalogTypes": "Katalog bu scope'ta {count} türü inceledi. Bu bir öneridir; gerçek önizleme uygulanabilirlik denetimidir.",
+    "catalogTypes": "Katalog bu scope'ta {count, number} türü inceledi. Bu bir öneridir; gerçek önizleme uygulanabilirlik denetimidir.",
     "grouped": "Değer sayıları", "totals": "Scope toplamı", "generatedAql": "oluşturulan AQL"
   },
   "investigation": {

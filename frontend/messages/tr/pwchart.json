@@ -32,7 +32,7 @@
   "axis": {
     "time": "Zaman (UTC)",
     "share": "Ayrıştırılan pay (%)",
-    "floor": "Alt sınır {percent}"
+    "floor": "Taban {percent}"
   },
   "area": {
     "notCollected": "toplanmadı",
@@ -44,7 +44,7 @@
     "ariaLabel": "Seçilen değerler için zaman dilimi başına olay sayısı ve scope'un ayrıştırılan payı",
     "empty": "Çizilen değer yok.",
     "summaryValues": "{count} değer için {unit}, UTC.",
-    "summaryCollected": "Aralıkta toplanan beş dakikalık aralık: {collected} / {window}.",
+    "summaryCollected": "Aralıkta toplanan beş dakikalık aralık: {collected, number} / {window, number}.",
     "summaryTable": "Aynı rakamlar değerler tablosunda var.",
     "keyLabel": "Grafik anahtarı",
     "pinned": "sabitlenmiş",
@@ -63,7 +63,7 @@
     "gapsMore": ", alt sınırlı bir zaman diliminde bilinmeyen değerler veya değerin izlenmediği zamanlar",
     "notZero": ". Bunlar sıfır olay değildir; 0'daki çizgi ölçülmüş bir sıfırdır.",
     "oneAtATime": " Beklenen aralık bir seferde tek değer için çizilir: bandını görmek için tek bir değer seçin.",
-    "dropped": " Seçilen {count} değer daha çizilmedi; grafik en çok {max} gösterir.",
+    "dropped": " Seçilen {count, number} değer daha çizilmedi; grafik en çok {max} gösterir.",
     "coveragePanel": " Alt panel, scope'taki olayların özelliğin ayrıştırıldığı payıdır."
   }
 }

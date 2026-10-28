@@ -251,7 +251,7 @@ describe("the configure drawer in Turkish", () => {
     };
     open();
     expect(screen.getByRole("heading", { name: "WAF endpoint trafiği bileşenini yapılandır" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Zaman aralığı")).toBeInTheDocument();
+    expect(screen.getByLabelText("Pencere")).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Gösterge panelini izle (24\u00a0sa)" })).toBeInTheDocument();
     expect(await screen.findByRole("combobox", { name: "WAF kaynağı" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "WAF endpoint" })).toHaveDisplayValue("Önce bir WAF kaynağı seçin");
@@ -549,12 +549,12 @@ describe("the expand dialog and the range control in Turkish", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: /Filo EPS.*7\u00a0gün/ })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Kapat" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("group", { name: "Zaman aralığı" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("group", { name: "Pencere" })).toBeInTheDocument();
   });
 
   it("names the select after the widget and writes the presets in Turkish", () => {
     render(<RangeControl options={["1h", "24h", "7d"]} value="24h" onChange={vi.fn()} compact title="Filo EPS" />);
-    expect(screen.getByLabelText("Filo EPS için zaman aralığı")).toBeInTheDocument();
+    expect(screen.getByLabelText("Filo EPS için pencere")).toBeInTheDocument();
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["1\u00a0sa", "24\u00a0sa", "7\u00a0gün"]);
   });
 });

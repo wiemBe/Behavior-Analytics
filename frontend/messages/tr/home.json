@@ -120,7 +120,7 @@
       "candidates": "aday",
       "recovering": "düzeliyor"
     },
-    "notJudged": "{count} kaynak değerlendirilmedi; bu sayımlara dahil değil.",
+    "notJudged": "{count, number} kaynak değerlendirilmedi; bu sayımlara dahil değil.",
     "notJudgedTitle": "Baseline'ı olmayan bir kaynak karar almaz, bu yüzden anomali oluşturamaz.",
     "nothingToJudge": "İzlenen log source yok; henüz değerlendirilecek bir şey yok."
   },
@@ -256,7 +256,7 @@
     "notJudgedWhat": "değerlendirilmeyen kaynak sayısı",
     "wafEmpty": "Etkin WAF endpoint anomalisi yok. Geçerli profili olmayan WAF kaynakları toplanmaz, bu yüzden değerlendirilmez.",
     "emptyUnread": "Etkin anomali yok. Kaç kaynağın değerlendirilmediği okunamadı.",
-    "emptyNotJudged": "Etkin anomali yok. Baseline'ı olmayan kaynaklar değerlendirilmiyor: {count} kaynak.",
+    "emptyNotJudged": "Etkin anomali yok. Baseline'ı olmayan kaynaklar değerlendirilmiyor: {count, number} kaynak.",
     "detected": "Tespit zamanı",
     "anomaly": "Anomali",
     "severityState": "Önem, durum",
@@ -304,7 +304,7 @@
   },
   "healthSummary": {
     "none": "İzlenen log source yok.",
-    "total": "{total} izlenen kaynak: {parts}.",
+    "total": "{total, number} izlenen kaynak: {parts}.",
     "silent": "Şu anda {silent, plural, other {#}} kaynak sessiz."
   }
 }

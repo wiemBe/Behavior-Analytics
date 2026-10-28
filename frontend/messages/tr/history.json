@@ -127,7 +127,7 @@
     "refused": "Reddedildi",
     "notEstimated": "süre tahmin edilmedi",
     "about": "yaklaşık {hours} saat",
-    "figures": "{searches} arama, {time}",
+    "figures": "{searches, number} arama, {time}",
     "reduced": "Azaltıldı: {reason}"
   },
   "table": {
@@ -139,7 +139,7 @@
     "asked": "İstenen pencere",
     "days": "gün",
     "proved": "Kanıtlanan pencere",
-    "floor": "alt sınır, UTC",
+    "floor": "taban, UTC",
     "read": "Okunan",
     "searches": "Arama",
     "through": "Okunan son zaman",
@@ -147,7 +147,7 @@
     "ofAsked": "{count} istendi",
     "windowProved": "Pencere kanıtlandı",
     "perSource": "kaynak başına",
-    "perSourceTitle": "Alt sınır kaynak başına kanıtlanır ve bu yanıtta yer almaz",
+    "perSourceTitle": "Taban kaynak başına kanıtlanır ve bu yanıtta yer almaz",
     "unreadable": "ilerleme okunamadı",
     "daysRead": "{days} gün",
     "daysOf": "{days} / {target} gün",

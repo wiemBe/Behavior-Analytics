@@ -148,7 +148,7 @@ describe("WAF behavior routes in Turkish", () => {
       params: Promise.resolve({ id: WAF_SOURCE_ID }), searchParams: Promise.resolve({}),
     }));
     expect(screen.getByText("1.204 / 500 endpoint etkin")).toBeInTheDocument();
-    expect(screen.getByText("Kullanım dışı")).toBeInTheDocument();
+    expect(screen.getByText("Kullanımdan kaldırıldı")).toBeInTheDocument();
     expect(screen.getByText("Değerlendirilmedi")).toBeInTheDocument();
     // Pagination groups the real total in the locale's form since I18N-6 round 1.
     expect(screen.getByText("1–50 / 1.204")).toBeInTheDocument();

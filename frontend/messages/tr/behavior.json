@@ -247,7 +247,7 @@
     "evidence": "Kanıt",
     "actions": "İşlemler",
     "open": "Aç",
-    "needsAttention": "Dikkat gerekenler",
+    "needsAttention": "Dikkat gerekiyor",
     "activeFailed": "Bu kaynak için etkin vaka listesi yüklenemedi. Şu anda açık, aday veya düzeliyor durumunda bir vaka olup olmadığı bilinmiyor.",
     "noActive": "Bu kaynak için şu anda açık, aday veya düzeliyor durumunda bir vaka yok.",
     "activeLabel": "Etkin anomaliler",

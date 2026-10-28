@@ -16,7 +16,7 @@
     "unassigned": "Atanmamış",
     "overSla": "{hours}\u00a0sa SLA'yı aşan",
     "oldest": "En eski",
-    "unknown": "+\u00a0{count}\u00a0{what} bilinmiyor",
+    "unknown": "+\u00a0{count, number}\u00a0{what} bilinmiyor",
     "magnitude": "büyüklük",
     "age": "yaş"
   },

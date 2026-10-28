@@ -299,7 +299,7 @@
     "notSavedFix": "Kaydedilmedi. Aşağıda işaretli alanları düzeltin; hiçbir şey gönderilmedi.",
     "loadedTheirs": "Sürüm {version} yüklendi. Düzenlemeleriniz formda duruyor; ona göre gözden geçirin.",
     "loading": "Yükleniyor…",
-    "reloadTheirs": "Onların sürümünü yükle",
+    "reloadTheirs": "Onların sürümünü yeniden yükle",
     "validateRequested": "Sürüm {version} için doğrulama istendi.",
     "validateNotStarted": "Doğrulama başlatılmadı. {message}",
     "alreadyRunning": "Bir doğrulama zaten çalışıyor.",

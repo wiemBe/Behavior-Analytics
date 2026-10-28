@@ -68,8 +68,8 @@ describe("custom-rule authoring in Turkish", () => {
   it("labels every subject kind and leaves an unknown evaluator status raw", () => {
     const kinds = ["LOG_SOURCE", "FLEET_CLASS", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE", "PW_VALUE"] as const;
     for (const kind of kinds) expect(subjectKindLabel(kind, tr)).not.toBe("");
-    expect(subjectKindLabel("WAF_ENDPOINT", tr)).toBe("WAF endpoint değeri");
-    expect(statusLabel("SUBJECT_RETIRED", tr)).toBe("Özne kullanımdan kaldırıldı");
+    expect(subjectKindLabel("WAF_ENDPOINT", tr)).toBe("WAF endpoint");
+    expect(statusLabel("SUBJECT_RETIRED", tr)).toBe("Konu kullanımdan kaldırıldı");
     expect(statusLabel("INSUFFICIENT_DATA", tr)).toBe("Yetersiz veri");
     expect(statusLabel("NORMAL", tr)).toBe("Normal durum");
     expect(statusLabel("FUTURE_STATE", tr)).toBe("FUTURE_STATE");
@@ -89,7 +89,7 @@ describe("custom-rule authoring in Turkish", () => {
     const draft = emptyDraft(catalog());
     expect(draftReason(draft, null, tr)).toBe("Ad zorunludur.");
     expect(draftReason({ ...draft, name: "a", logSourceId: "source-1" }, null, tr))
-      .toBe("Bu özne türü için metrik seçin.");
+      .toBe("Bu konu türü için metrik seçin.");
   });
 });
 
