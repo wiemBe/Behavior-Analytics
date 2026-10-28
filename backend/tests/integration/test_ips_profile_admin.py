@@ -133,7 +133,13 @@ def assert_conflict_detail(
 ) -> None:
     assert response.status_code == 409
     detail = response.json()["detail"]
-    assert set(detail) == {"message", "current_version", "updated_by", "pending_since"}
+    assert set(detail) - {"code", "params"} == {
+        "message",
+        "current_version",
+        "updated_by",
+        "pending_since",
+    }
+    assert ("code" in detail) == ("params" in detail)
     assert isinstance(detail["message"], str)
     assert detail["current_version"] == current_version
     assert detail["updated_by"] == updated_by
@@ -224,7 +230,7 @@ async def test_put_guards_create_update_sources_and_audit(
     invalid["mapping"]["SOURCE_IP"] = {"kind": "NORMALIZED", "name": "username"}
     response = api.put(path, json=invalid)
     assert response.status_code == 422
-    assert set(response.json()["detail"]) == {"message"}
+    assert set(response.json()["detail"]) - {"code", "params"} == {"message"}
     assert "allowlist" in response.json()["detail"]["message"]
     assert "username" not in response.json()["detail"]["message"]
 
@@ -232,7 +238,7 @@ async def test_put_guards_create_update_sources_and_audit(
     unsafe["mapping"]["ACTION"] = {"kind": "CUSTOM_PROPERTY", "name": 'x"; DROP'}
     response = api.put(path, json=unsafe)
     assert response.status_code == 422
-    assert set(response.json()["detail"]) == {"message"}
+    assert set(response.json()["detail"]) - {"code", "params"} == {"message"}
     assert 'x"; DROP' not in response.json()["detail"]["message"]
 
     missing_required = profile_body()
@@ -244,7 +250,7 @@ async def test_put_guards_create_update_sources_and_audit(
     overlap["action_value_map"] = {"BLOCKED": ["DROP"], "ALLOWED": ["drop"]}
     response = api.put(path, json=overlap)
     assert response.status_code == 422
-    assert set(response.json()["detail"]) == {"message"}
+    assert set(response.json()["detail"]) - {"code", "params"} == {"message"}
 
     without_action = profile_body()
     without_action["action_value_map"] = {"BLOCKED": ["DROP"], "ALLOWED": []}

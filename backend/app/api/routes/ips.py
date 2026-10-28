@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import SessionDep, SettingsDep
-from app.i18n.messages import render
+from app.i18n.messages import MessageRef, render
 from app.ips.profile import (
     ACTION_OUTCOMES,
     IPS_MAPPING_FIELDS,
@@ -221,10 +221,12 @@ async def _profile(
 
 
 def _conflict_detail(
-    message: str, profile: IpsSourceProfile | None = None
-) -> dict[str, str | int | None]:
+    reason: MessageRef | str, profile: IpsSourceProfile | None = None
+) -> dict[str, Any]:
+    """The 409 body: the sentence, its code when it has one, and the profile's version facts."""
     return {
-        "message": message,
+        "message": render(reason) if isinstance(reason, MessageRef) else reason,
+        **(reason.to_wire() if isinstance(reason, MessageRef) else {}),
         "current_version": profile.profile_version if profile else None,
         "updated_by": profile.updated_by if profile else None,
         "pending_since": (
@@ -233,6 +235,11 @@ def _conflict_detail(
             else None
         ),
     }
+
+
+def _input_detail(exc: IpsProfileError) -> dict[str, Any]:
+    """The 422 body of a refused mapping: the sentence, and its code when it has one."""
+    return {"message": str(exc), **(exc.ref.to_wire() if exc.ref is not None else {})}
 
 
 @router.get("/mapping-schema", response_model=IpsMappingSchemaOut)
@@ -355,9 +362,7 @@ async def put_ips_profile(
         if payload.expected_profile_version is not None:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
-                _conflict_detail(
-                    "the profile does not exist; create it with expected_profile_version null"
-                ),
+                _conflict_detail(MessageRef("validation.profile.conflict.missing")),
             )
         created = True
         mapping_changed = True
@@ -366,7 +371,10 @@ async def put_ips_profile(
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
                 _conflict_detail(
-                    f"profile version conflict; current version is {existing.profile_version}",
+                    MessageRef(
+                        "validation.profile.conflict.version",
+                        {"current": existing.profile_version},
+                    ),
                     existing,
                 ),
             )
@@ -375,7 +383,7 @@ async def put_ips_profile(
             mapping_changed = IpsFieldMapping.from_profile(existing) != _field_mapping(payload)
         except IpsProfileError as exc:
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT, {"message": str(exc)}
+                status.HTTP_422_UNPROCESSABLE_CONTENT, _input_detail(exc)
             ) from exc
     try:
         profile, _ = await service.upsert(
@@ -390,7 +398,7 @@ async def put_ips_profile(
             await service.request_validation(profile, actor=principal.subject)
     except IpsProfileError as exc:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, {"message": str(exc)}
+            status.HTTP_422_UNPROCESSABLE_CONTENT, _input_detail(exc)
         ) from exc
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return _profile_out(profile, source, settings)
@@ -415,7 +423,7 @@ async def request_ips_validation(
         )
     except IpsProfileError as exc:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, _conflict_detail(str(exc), profile)
+            status.HTTP_409_CONFLICT, _conflict_detail(exc.ref or str(exc), profile)
         ) from exc
     return _profile_out(profile, source, settings)
 
@@ -435,7 +443,7 @@ async def _set_enabled(
         )
     except IpsProfileError as exc:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, _conflict_detail(str(exc), profile)
+            status.HTTP_409_CONFLICT, _conflict_detail(exc.ref or str(exc), profile)
         ) from exc
     return _profile_out(profile, source, settings)
 

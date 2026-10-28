@@ -18,7 +18,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import SessionDep
 from app.fleet.service import reclassify_for_rule
-from app.i18n.refusal import permission_refusal
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import CodedHTTPException, permission_refusal
 from app.models.enums import ClassificationRuleKind
 from app.models.fleet import ClassificationRule
 from app.models.instance import QRadarInstance
@@ -61,9 +62,8 @@ def _snapshot(rule: ClassificationRule) -> dict[str, object]:
 
 
 def _duplicate() -> HTTPException:
-    return HTTPException(
-        status.HTTP_409_CONFLICT,
-        "a rule with this instance, kind and pattern already exists",
+    return CodedHTTPException(
+        status.HTTP_409_CONFLICT, MessageRef("classification.rule.duplicate")
     )
 
 
@@ -148,9 +148,8 @@ async def update_rule(
     rule = await _get(session, rule_id)
     changes = payload.model_dump(exclude_unset=True)
     if rule.built_in and set(changes) - {"enabled"}:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "a built-in rule can only be enabled or disabled",
+        raise CodedHTTPException(
+            status.HTTP_409_CONFLICT, MessageRef("classification.rule.built_in_edit")
         )
     for name in ("enabled", "priority", "pattern"):
         if name in changes and changes[name] is None:
@@ -201,9 +200,8 @@ async def delete_rule(
     _guard(principal, PERM_CLASSIFICATION_ADMIN)
     rule = await _get(session, rule_id)
     if rule.built_in:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "a built-in rule cannot be deleted; disable it instead",
+        raise CodedHTTPException(
+            status.HTTP_409_CONFLICT, MessageRef("classification.rule.built_in_delete")
         )
     instance_id = rule.instance_id
     snapshot = _snapshot(rule)

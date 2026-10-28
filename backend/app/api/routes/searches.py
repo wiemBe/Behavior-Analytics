@@ -20,7 +20,7 @@ from app.alerts.routing import default_policy
 from app.alerts.search_alerts import SearchAlertEvaluator
 from app.api.deps import ProviderDep, SessionDep, SettingsDep
 from app.core.config import Settings, get_settings
-from app.i18n.refusal import permission_refusal
+from app.i18n.refusal import CodedHTTPException, permission_refusal
 from app.models.enums import ExecutionErrorType
 from app.models.search import (
     ScheduledSearch,
@@ -285,7 +285,7 @@ async def create_search(
     except CronFloorError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     except EnabledSearchLimitError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        raise CodedHTTPException(status.HTTP_409_CONFLICT, exc.ref) from exc
     await record_audit(
         session, action="search.create", actor=principal.subject,
         object_type="scheduled_search", object_id=str(search.id),
@@ -393,12 +393,16 @@ async def update_search(
         sentence = str(exc)
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
-            {"message": sentence, "reasons": [sentence]},
+            {
+                "message": sentence,
+                "reasons": [sentence],
+                "reason_codes": [None if exc.ref is None else exc.ref.to_wire()],
+            },
         ) from exc
     except CronFloorError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     except EnabledSearchLimitError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        raise CodedHTTPException(status.HTTP_409_CONFLICT, exc.ref) from exc
     if set(changed) == {"enabled"}:
         action = "search.enable" if search.enabled else "search.disable"
         detail: dict[str, object] = {"before": before_enabled, "after": search.enabled}

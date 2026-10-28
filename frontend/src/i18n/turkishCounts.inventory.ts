@@ -66,6 +66,10 @@ export const PLAIN: Readonly<Record<string, Readonly<Record<string, PlainReason>
   // The server's own constants, words and their sentence: the dashboard limit (20) and the URL cap (8).
   "backend.auth.directory.urls_max": { max: "bounded" },
   "backend.dashboard.owner_limit": { limit: "bounded" },
+  // MSG-1b: the reader hands a count over already grouped (`formatCount`), so the plain form
+  // prints `1.204`; the value is a string, not a raw number.
+  "backend.search.aql.limit_exceeded": { limit: "string" },
+  "backend.search.enabled_cap": { limit: "string" },
   "behavior.advanced.cellsNote": { count: "string" },
   "behavior.advanced.clearedFailed.times": { count: "string" },
   "behavior.advanced.mostRecent": { count: "string" },

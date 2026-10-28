@@ -60,6 +60,31 @@ export function refusalSentences(error: Pick<ApiError, "detail" | "body">): Refu
   return [];
 }
 
+/**
+ * The reasons of an authoring body (`{message, reasons, reason_codes}`, MSG-1b), one sentence per
+ * reason with the code the server gave it. `reason_codes` runs parallel to `reasons`; a missing
+ * list, a short one, or a `null` entry leaves that reason uncoded. Null when the detail is not a
+ * reasons body (`reasons` absent or not a list of strings).
+ */
+export function reasonSentences(
+  error: Pick<ApiError, "detail">,
+): RefusalSentence[] | null {
+  const detail = error.detail;
+  if (!isRecord(detail) || !Array.isArray(detail.reasons)) return null;
+  const codes = Array.isArray(detail.reason_codes) ? detail.reason_codes : [];
+  const out: RefusalSentence[] = [];
+  detail.reasons.forEach((reason, index) => {
+    if (typeof reason !== "string") return;
+    const coded = codes[index];
+    out.push({
+      text: reason,
+      code: isRecord(coded) ? codeOf(coded.code) : null,
+      params: isRecord(coded) ? paramsOf(coded.params) : null,
+    });
+  });
+  return out;
+}
+
 /** The permission a 403 says is missing, when the server named it by code. */
 export function missingPermission(error: Pick<ApiError, "status" | "detail" | "body">): string | null {
   if (error.status !== 403) return null;
