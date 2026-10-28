@@ -618,7 +618,7 @@
         "Read the result under **Validation**; the page checks every 5 seconds while it runs. Validation reads a bounded sample of the source's recent events (the last 15 minutes by default). A field that collection reads must be populated, with plausible values, on at least 90% of them. Each field gets one status: **Usable**, **Not mapped**, **Property rejected**, **Not populated**, **Low coverage** or **Values look wrong**, or **No verdict** when the source sent no events or a check could not run. A source with no events in the window is **Inconclusive**, not invalid: choose **Validate again** while it has traffic.",
         "If **Action** is mapped, assign its values under **Action values**: each value seen is set to **Blocked** or **Allowed**. A value you do not assign counts as unmapped, never as allowed, and so does any value beyond a truncated list. Saving this map is a mapping change.",
         "When the result is **Valid** for the current version, choose **Enable collection** under **Collection**. Until then the page says why it cannot: still validating, **Invalid**, **Inconclusive** or not yet validated.",
-        "To change the mapping later, edit it, choose **Review and save** and **Save as version {n}**. Collection pauses and validation is requested. **Disable collection** is always available."
+        "To change the mapping later, edit it, choose **Review and save** and **Save as version {version}**. Collection pauses and validation is requested. **Disable collection** is always available."
       ],
       "afterSteps": [
         {

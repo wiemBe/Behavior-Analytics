@@ -257,10 +257,10 @@
           "p": "Liste, seçili aralıkta WAF kaynaklarını **Profil**, **Doğrulama**, **Endpoint coverage**, **Etkin endpoint'ler** ve **Kabul taşması** ile gösterir. **Kabul taşması aralığı** **24 saat**, **7 gün** ve **30 gün** seçeneklerini sunar. Bir kaynak yalnızca profili etkinse ve güncel sürümü için geçerliyse toplanır ve değerlendirilir; diğerleri karar üretmez. Dikkat gerektiren kaynaklar en başta listelenir. **Profil ayarları**, kaynağı WAF kaynakları yönetiminde açar."
         },
         {
-          "p": "Kaynak sayfası, **WAF kaynağı endpoint'leri**, izlenen endpoint'leri **Baseline hücreleri**, **Son görülme (UTC)**, **İzleme** ve **Durum** ile listeler; **Tüm endpoint'ler** ya da **Yalnızca etkin olanlar** seçeneğini sunar. Hiçbir algılayıcının değerlendirmediği bir endpoint **Değerlendirilmedi** der. **Etkin**, **Etkin değil** ve **Kullanım dışı**, sağlığı değil izlemeyi anlatır. Başlık **Profil etkin** ya da **Profil devre dışı** der ve etkin endpoint sayısını üst sınıra göre belirtir."
+          "p": "Kaynak sayfası, **WAF kaynağı endpoint'leri**, izlenen endpoint'leri **Baseline hücreleri**, **Son görülme (UTC)**, **İzleme** ve **Durum** ile listeler; **Tüm endpoint'ler** ya da **Yalnızca etkin olanlar** seçeneğini sunar. Hiçbir algılayıcının değerlendirmediği bir endpoint **Değerlendirilmedi** der. **Etkin**, **Etkin değil** ve **Kullanımdan kaldırıldı**, sağlığı değil izlemeyi anlatır. Başlık **Profil etkin** ya da **Profil devre dışı** der ve etkin endpoint sayısını üst sınıra göre belirtir."
         },
         {
-          "p": "Endpoint coverage'ı coverage alt sınırının altına düşen bir zaman dilimi kesin sayı olarak değil, alt sınır olarak kaydedilir. Toplanmış zaman dilimi olmayan bir endpoint'in baseline'ı yoktur ve değerlendirilmez."
+          "p": "Endpoint coverage'ı coverage tabanının altına düşen bir zaman dilimi kesin sayı olarak değil, alt sınır olarak kaydedilir. Toplanmış zaman dilimi olmayan bir endpoint'in baseline'ı yoktur ve değerlendirilmez."
         }
       ],
       "states": [
@@ -388,7 +388,7 @@
       "answers": "Hangi analitik kurallar sağlıklı ve hangileri tetiklenmiyor?",
       "body": [
         {
-          "p": "Sayfa başlığı **Kural sağlığı**dır. Bir kuralın kararı, var olmasından değil gözlenenden gelir: **Sağlıklı**, **Gürültülü**, **Etkin değil**, **Hiç gözlemlenmedi**, **Devre dışı**, **Bağımlılık bozulmuş**, **Yetersiz veri** ya da **Bilinmiyor**. **Yetersiz veri**, kuralın değerlendirilemediği anlamına gelir; bir algılama boşluğu değildir. Kural adının altındaki neden, hangi sebebin geçerli olduğunu söyler."
+          "p": "Sayfa başlığı **Kural sağlığı**dır. Bir kuralın kararı, var olmasından değil gözlenenden gelir: **Sağlıklı**, **Gürültülü**, **Etkin değil**, **Hiç gözlenmedi**, **Devre dışı**, **Bağımlılık bozulmuş**, **Yetersiz veri** ya da **Bilinmiyor**. **Yetersiz veri**, kuralın değerlendirilemediği anlamına gelir; bir algılama boşluğu değildir. Kural adının altındaki neden, hangi sebebin geçerli olduğunu söyler."
         },
         {
           "p": "Tablo **Kural**, **Tür**, **Etkin**, **Sağlık**, **Anlam**, **Son tetiklenme (UTC)** ve **Offense'lar** sütunlarını gösterir. Ayrıntı sayfası **Offense katkıları**, **Olay katkıları**, **Sağlık kanıtı**, **Yapı taşları**, **Telemetri gereksinimleri**, **Meta veriler** ve **Sağlık geçmişi**ni ekler. Eksik bir ölçüm kurulmamış olarak bildirilir, hiçbir zaman algılama boşluğu olarak bildirilmez."
@@ -425,7 +425,7 @@
       "answers": "Saklanan toplamlar üzerinde hangi eşik kuralları var ve tetikleniyorlar mı?",
       "body": [
         {
-          "p": "Özel bir kural, tek bir konu için toplanmış bir metriği ardışık 5 dakikalık zaman dilimleri boyunca değerlendirir. Liste **Ad**, **Durum ve neden**, **Özne**, **Koşul**, **Önem derecesi**, **Etkin** ve **Son değerlendirme (UTC)** sütunlarını gösterir. Oluşturmak, düzenlemek, etkinleştirmek ve silmek için `custom_rule:write` gerekir."
+          "p": "Özel bir kural, tek bir konu için toplanmış bir metriği ardışık 5 dakikalık zaman dilimleri boyunca değerlendirir. Liste **Ad**, **Durum ve neden**, **Konu**, **Koşul**, **Önem derecesi**, **Etkin** ve **Son değerlendirme (UTC)** sütunlarını gösterir. Oluşturmak, düzenlemek, etkinleştirmek ve silmek için `custom_rule:write` gerekir."
         },
         {
           "p": "İki bant her kuralı niteler: **CUSTOM_RULES_ENABLED false olduğu için kural değerlendirmesi kapalıdır. Etkin kurallar değerlendirilmiyor.** ve **CUSTOM_RULES_ALERTING_ENABLED açılana kadar ihlaller kaydedilir ancak bildirim gönderilmez.** İkincisi gölge modudur: ihlaller ve kural durumu yazılır, ancak hiçbir uyarı açılmaz, yenilenmez ya da çözülmez."
@@ -436,7 +436,7 @@
       ],
       "states": [
         {
-          "p": "**Henüz özel kural yok.**; **Hiç değerlendirilmedi**; **Bu kural için kaydedilmiş etkin ihlal yok.**; **Yetersiz veri**; **Özne kullanımdan kaldırıldı**."
+          "p": "**Henüz özel kural yok.**; **Hiç değerlendirilmedi**; **Bu kural için kaydedilmiş etkin ihlal yok.**; **Yetersiz veri**; **Konu kullanımdan kaldırıldı**."
         }
       ]
     },
@@ -614,11 +614,11 @@
         "**WAF kaynağı ekle**yi seçin ve **WAF profili olmayan log source'lar** listesinden bir log source seçin. Ada göre arayın. **WAF olarak sınıflandırılmış**, filo sınıflandırmasının zaten WAF saydığı bir kaynağı işaretler.",
         "**Alan eşleme** altında, her mantıksal alana okunacağı QRadar özelliğini verin (alan adları, backend'den geldiği için olduğu gibi İngilizce gösterilir): **URL path** ve **HTTP method** zorunludur; **Virtual host**, **Action**, **HTTP status**, **WAF rule id** ve **User agent** isteğe bağlıdır. **Virtual host** olmadan, yolu paylaşan endpoint'lerin trafiği birleşir. Özellik adları harf, rakam, alt çizgi, boşluk ve tireden oluşur ve en çok 64 karakterdir. **Eşlemeyi şuradan kopyala…** başka bir kaynağın eşlemesini yeniden kullanır.",
         "Bir not istiyorsanız (örneğin WAF ürünü) **Ürün etiketi**ni ayarlayın. Hiçbir zaman ayrıştırılmaz ve sürümü değiştirmez.",
-        "**İncele ve oluştur**u seçin, **Değişen alanlar**ı okuyun, sonra **Profil oluştur**u seçin. Profil devre dışı, sürüm 1 olarak oluşturulur ve doğrulama hemen başlar.",
+        "**Gözden geçir ve oluştur**u seçin, **Değişen alanlar**ı okuyun, sonra **Profil oluştur**u seçin. Profil devre dışı, sürüm 1 olarak oluşturulur ve doğrulama hemen başlar.",
         "Sonucu **Doğrulama** altında okuyun; sayfa çalışırken her 5 sn aralıkla denetler. Doğrulama, kaynağın yakın zamandaki olaylarından sınırlı bir örneği okur (varsayılan olarak son 15 dk). Toplamanın okuduğu bir alan, bu olayların en az %90 kadarında dolu ve makul değerli olmalıdır. Her alan tek bir durum alır: **Kullanılabilir**, **Eşlenmedi**, **Özellik reddedildi**, **Dolu değil**, **Düşük coverage** ya da **Değerler hatalı görünüyor**; kaynak olay göndermediyse ya da bir denetim çalışamadıysa **Karar yok**. Penceredeki olayı olmayan bir kaynak geçersiz değil, **Sonuçsuz**dur: trafiği varken **Yeniden doğrula**yı seçin.",
         "**Action** eşlenmişse değerlerini **Action değerleri** altında atayın: görülen her değer **Engellendi** ya da **İzin verildi** olarak ayarlanır. Atamadığınız bir değer eşlenmemiş sayılır, hiçbir zaman izin verilmiş sayılmaz; kırpılmış bir listenin ötesindeki değer de öyledir. Bu haritayı kaydetmek bir eşleme değişikliğidir.",
         "Sonuç güncel sürüm için **Geçerli** olduğunda **Toplama** altında **Toplamayı etkinleştir**i seçin. O zamana kadar sayfa nedenini söyler: doğrulama sürüyor, **Geçersiz**, **Sonuçsuz** ya da henüz doğrulanmadı.",
-        "Eşlemeyi sonra değiştirmek için düzenleyin, **İncele ve kaydet**i ve **Sürüm {n} olarak kaydet**i seçin. Toplama duraklar ve doğrulama istenir. **Toplamayı devre dışı bırak** her zaman kullanılabilir."
+        "Eşlemeyi sonra değiştirmek için düzenleyin, **Gözden geçir ve kaydet**i ve **Sürüm {version} olarak kaydet**i seçin. Toplama duraklar ve doğrulama istenir. **Toplamayı devre dışı bırak** her zaman kullanılabilir."
       ],
       "afterSteps": [
         {
@@ -649,7 +649,7 @@
       ],
       "states": [
         {
-          "p": "Süren bir doğrulama; eşzamanlı bir kayıttan sonra **Onların sürümünü yükle**; olayı olmayan bir kaynak için sonuçsuz bir sonuç; `admin:ips` iznini adlandıran izin yok bildirimi."
+          "p": "Süren bir doğrulama; eşzamanlı bir kayıttan sonra **Onların sürümünü yeniden yükle**; olayı olmayan bir kaynak için sonuçsuz bir sonuç; `admin:ips` iznini adlandıran izin yok bildirimi."
         }
       ]
     },
@@ -687,8 +687,8 @@
       ],
       "steps": [
         "**Özel kurallar** sayfasını açın ve **Yeni kural**ı seçin. **Ad**ı (en çok 80 karakter) ve isteğe bağlı bir **Açıklama** girin.",
-        "**Özne türü**nü seçin: **Log source nesnesi**, **Filo sınıfı**, **WAF endpoint değeri**, **IPS varlığı**, **IPS kaynağı** ya da **Özellik izleme değeri**; sonra özneyi. Bir WAF endpoint'i ya da IPS varlığı kabul edilmiş olmalıdır; bir özellik izleme değeri önce kendi izlemesinde sabitlenmiş olmalıdır.",
-        "**Metrik**i seçin; liste özne türüne bağlıdır (örneğin olay sayısı, ortalama EPS, istek sayısı, engelleme oranı, 5xx oranı, 4xx oranı). Oran eşiği sıfırdan büyük ve birden küçük bir paydır.",
+        "**Konu türü**nü seçin: **Log source**, **Filo sınıfı**, **WAF endpoint**, **IPS varlığı**, **IPS kaynağı** ya da **Özellik izleme değeri**; sonra konuyu. Bir WAF endpoint'i ya da IPS varlığı kabul edilmiş olmalıdır; bir özellik izleme değeri önce kendi izlemesinde sabitlenmiş olmalıdır.",
+        "**Metrik**i seçin; liste konu türüne bağlıdır (örneğin olay sayısı, ortalama EPS, istek sayısı, engelleme oranı, 5xx oranı, 4xx oranı). Oran eşiği sıfırdan büyük ve birden küçük bir paydır.",
         "**İşleç**i (üstünde, eşit veya üstünde, altında, eşit veya altında, eşit) ve birimini taşıyan **Eşik**i ayarlayın.",
         "**Sürdürme (zaman dilimi)** alanını, kuralın tetiklenmeden önce kaç ardışık zaman diliminin ihlal etmesi gerektiğini, **Düzelme (zaman dilimi)** alanını da düzelmeden önce kaçının temizlenmesi gerektiğini ayarlayın. Her ikisinin de varsayılan değeri iki, en küçük değeri birdir. Özet satırı kuralı sözcüklerle yineler.",
         "**Önem derecesi**ni ayarlayın (varsayılan Orta) ve test ederken **Etkin** işaretini kapalı bırakın; kural varsayılan olarak devre dışı oluşturulur.",
@@ -697,7 +697,7 @@
       ],
       "states": [
         {
-          "p": "**CUSTOM_RULES_ENABLED false olduğu için kural değerlendirmesi kapalıdır**; bu durumda etkin kurallar değerlendirilmez (varsayılan); **CUSTOM_RULES_ALERTING_ENABLED açılana kadar ihlaller kaydedilir ancak bildirim gönderilmez**, yani gölge modu (o da varsayılan); kaydedilmiş bir kuralda **Güncel değil**, **Karar yok** ve **Özne kullanımdan kaldırıldı** durumları; rolün `custom_rule:write` iznine sahip olmadığı durumda yazma bildirimi; eşzamanlı bir değişiklikten sonra **Geçerli kuralı yeniden yükle**. Bir kuralı silmek önce açık uyarısını çözer."
+          "p": "**CUSTOM_RULES_ENABLED false olduğu için kural değerlendirmesi kapalıdır**; bu durumda etkin kurallar değerlendirilmez (varsayılan); **CUSTOM_RULES_ALERTING_ENABLED açılana kadar ihlaller kaydedilir ancak bildirim gönderilmez**, yani gölge modu (o da varsayılan); kaydedilmiş bir kuralda **Güncel değil**, **Karar yok** ve **Konu kullanımdan kaldırıldı** durumları; rolün `custom_rule:write` iznine sahip olmadığı durumda yazma bildirimi; eşzamanlı bir değişiklikten sonra **Geçerli kuralı yeniden yükle**. Bir kuralı silmek önce açık uyarısını çözer."
         }
       ]
     },
@@ -803,7 +803,7 @@
           "h": "Nasıl okunur"
         },
         {
-          "p": "Her console'un en üstündeki satır **Geçmiş veri okuma: karar verilmedi**, **Hayır, geçmiş okunmuyor** ya da **Evet** der; kimin ne zaman kaydettiğini de belirtir. Tablo her ailenin (**Kaynak hacmi**, **WAF**, **IPS**, **Catch-all gönderenleri**, **Kural eşleşmeleri**) ve scope'un **Durum**unu gösterir: **İstenmedi**, **Bekliyor**, **Okunuyor**, **Tamamlandı**, **Kısmi**, **Kullanılamıyor**, **Uygun değil**, **Kapalı**, **Başlamadı**, **Okunmadı** ya da **Profil devre dışı**. **İstenen pencere** istenen penceredir; **Kanıtlanan pencere**, QRadar'ın olay tuttuğunun gösterildiği en eski noktadır (alt sınır, UTC) ve istenenden az olabilir. **Okunanlardaki boşluklar** listelenir. **Kısmi** bir scope öğrenme için kullanılabilir ve neden durduğunu söyler."
+          "p": "Her console'un en üstündeki satır **Geçmiş veri okuma: karar verilmedi**, **Hayır, geçmiş okunmuyor** ya da **Evet** der; kimin ne zaman kaydettiğini de belirtir. Tablo her ailenin (**Kaynak hacmi**, **WAF**, **IPS**, **Catch-all gönderenleri**, **Kural eşleşmeleri**) ve scope'un **Durum**unu gösterir: **İstenmedi**, **Bekliyor**, **Okunuyor**, **Tamamlandı**, **Kısmi**, **Kullanılamıyor**, **Uygun değil**, **Kapalı**, **Başlamadı**, **Okunmadı** ya da **Profil devre dışı**. **İstenen pencere** istenen penceredir; **Kanıtlanan pencere**, QRadar'ın olay tuttuğunun gösterildiği en eski noktadır (taban, UTC) ve istenenden az olabilir. **Okunanlardaki boşluklar** listelenir. **Kısmi** bir scope öğrenme için kullanılabilir ve neden durduğunu söyler."
         }
       ],
       "steps": [
