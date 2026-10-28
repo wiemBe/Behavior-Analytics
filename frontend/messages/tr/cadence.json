@@ -11,7 +11,7 @@
     "forbidden": "Rolünüz arama sıklığını okuyamıyor (izin: read:search_cadence). Hiçbir şey değiştirilmedi.",
     "failed": "Arama sıklığı yüklenemedi. Backend'e erişilemiyor olabilir; çalıştığını denetleyin, sonra sayfayı yenileyin. Hiçbir şey değiştirilmedi.",
     "emptyTitle": "Hiçbir arama ailesi döndürülmedi.",
-    "empty": "Dört aile (Phase A hacmi, WAF toplama, anomali açıklamaları ve kural eşleşmeleri) sıklık migration'ı tarafından eklenir; bu yüzden boş liste, eklemenin çalışmadığı anlamına gelir. Veritabanı migration'larının uygulandığını denetleyin, sonra sayfayı yenileyin."
+    "empty": "Sekiz ailenin hepsi veritabanı migration'larıyla eklenir (sıklık migration'ı Phase A hacmini, WAF toplamayı, anomali açıklamalarını ve kural eşleşmelerini; IPS, catch-all, geo ve özellik izleme migration'ları diğer dördünü ekler); bu yüzden boş liste, eklemenin çalışmadığı anlamına gelir. Veritabanı migration'larının uygulandığını denetleyin, sonra sayfayı yenileyin."
   },
   "table": {
     "label": "Aileye göre arama sıklığı",

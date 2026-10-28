@@ -2,7 +2,7 @@
   "second": "{count} sn",
   "minute": "{count} dk",
   "hour": "{count} sa",
-  "day": "{count} gün",
+  "day": "{count, number} gün",
   "eps": "EPS",
   "range": {
     "1h": "1 sa",

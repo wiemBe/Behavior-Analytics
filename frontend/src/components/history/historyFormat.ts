@@ -12,7 +12,6 @@ import {
 } from "@/lib/api";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { fixed, plainCount } from "@/lib/figureText";
-import { formatCount } from "@/lib/format";
 
 import { ENGLISH_HISTORY, historyWord } from "./historyText";
 
@@ -151,7 +150,7 @@ export function estimateText(
       ? i18n.t("history.estimate.notEstimated")
       : i18n.t("history.estimate.about", { hours: plainCount(estimate.hours, i18n.locale) });
   const figures = i18n.t("history.estimate.figures", {
-    searches: formatCount(estimate.searches, i18n.locale),
+    searches: estimate.searches,
     time,
   });
   if (estimate.reduced) {

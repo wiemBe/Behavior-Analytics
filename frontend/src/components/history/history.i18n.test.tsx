@@ -264,7 +264,7 @@ describe("the history table in Turkish", () => {
     expect(within(unread).getByText("ilerleme okunamadı")).toBeInTheDocument();
     expect(within(unread).getByText("kaynak başına")).toHaveAttribute(
       "title",
-      "Alt sınır kaynak başına kanıtlanır ve bu yanıtta yer almaz",
+      "Taban kaynak başına kanıtlanır ve bu yanıtta yer almaz",
     );
     const disabled = rowOf("WAF", "web-10");
     expect(within(disabled).getByText("Profil devre dışı")).toBeInTheDocument();

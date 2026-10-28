@@ -129,7 +129,7 @@
   },
   "ruleHealth": {
     "HEALTHY": "Sağlıklı",
-    "NEVER_OBSERVED": "Hiç gözlemlenmedi",
+    "NEVER_OBSERVED": "Hiç gözlenmedi",
     "INACTIVE": "Etkin değil",
     "NOISY": "Gürültülü",
     "DISABLED": "Devre dışı",

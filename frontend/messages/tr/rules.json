@@ -1,12 +1,12 @@
 {
   "meta": { "list": "Kural sağlığı", "detail": "Kural", "statistics": "Kural istatistikleri" },
   "title": "Kural sağlığı",
-  "description": "QRadar'dan toplanan analitik kuralları ve gerçekten gözlemlenenlere göre türetilen sağlık kararını gösterir. Yapı taşları toplanır ancak burada listelenmez.",
+  "description": "QRadar'dan toplanan analitik kuralları ve gerçekten gözlenenlere göre türetilen sağlık kararını gösterir. Yapı taşları toplanır ancak burada listelenmez.",
   "statisticsLink": "Kural istatistikleri",
   "loadNoun": "kurallar",
   "noReason": "Kaydedilmiş neden yok",
   "summaryNoticeTitle": "Henüz sağlık kararı olmayan kural sayısı: {count}.",
-  "summaryNotice": "Bir kural değerlendirilemiyorsa YETERSİZ VERİ durumundadır. Buna gözlemlenmemiş bir bağımlılık ile QRadar'ın son tetiklenme zamanını sunmadığı veya toplamanın kapsamadığı bir pencere dahildir. İkisi de tespit boşluğu değildir. Sağlık özeti bu kuralları birlikte sayar; her kural adının altındaki neden hangi durumun geçerli olduğunu belirtir.",
+  "summaryNotice": "Bir kural değerlendirilemiyorsa YETERSİZ VERİ durumundadır. Buna gözlenmemiş bir bağımlılık ile QRadar'ın son tetiklenme zamanını sunmadığı veya toplamanın kapsamadığı bir pencere dahildir. İkisi de tespit boşluğu değildir. Sağlık özeti bu kuralları birlikte sayar; her kural adının altındaki neden hangi durumun geçerli olduğunu belirtir.",
   "filters": { "placeholder": "Kural adında ara…", "search": "Kurallarda ara", "health": "Sağlık durumuna göre filtrele", "all": "Tüm sağlık durumları", "filter": "Filtrele", "clear": "Temizle" },
   "emptyFiltered": "Bu filtrelerle eşleşen kural yok.",
   "empty": "Henüz kural toplanmadı. Kuralları QRadar'dan almak için kural eşitlemesini çalıştırın.",
@@ -22,7 +22,7 @@
     "healthReason": "Sağlık nedeni: {reason}",
     "enabledValue": "etkin",
     "disabledValue": "devre dışı",
-    "notObserved": "gözlemlenmedi"
+    "notObserved": "gözlenmedi"
   },
   "boundary": { "listWhat": "kurallar", "listWhatError": "Kurallar", "detailTitle": "Kural", "detailWhat": "bu kural", "detailWhatError": "Bu kural", "detailBack": "← Kural sağlığı", "statisticsWhat": "kural istatistikleri", "statisticsWhatError": "Kural istatistikleri" },
   "detail": {
@@ -56,7 +56,7 @@
     "owner": "Sahip",
     "buildingBlock": "Yapı taşı",
     "lastFired": "Son tetiklenme",
-    "notObserved": "gözlemlenmedi",
+    "notObserved": "gözlenmedi",
     "healthEvaluated": "Sağlık değerlendirmesi",
     "mitre": "MITRE teknikleri",
     "noneMapped": "eşleme yok",
@@ -135,7 +135,7 @@
     "caption": "Etkin kurallar, değerlendirmesi en maliyetli olan en düşük kapasite ölçütünden başlayarak sıralanır. Birim: {unit}.",
     "rule": "Kural",
     "average": "Ortalama kapasite",
-    "excluded": "Bu sıralamanın dışında bırakılan, ölçütü olmayan etkin kural sayısı: {count}."
+    "excluded": "Bu sıralamanın dışında bırakılan, ölçütü olmayan etkin kural sayısı: {count, number}."
   },
   "matched": {
     "heading": "En çok eşleşenler",
@@ -183,7 +183,7 @@
     "noReason": "API neden bildirmedi.",
     "showing": "Ölçülen pencerelerde eşleşmesi olmayan etkin kuralların {shown}\u00a0/\u00a0{total} kadarı gösteriliyor.",
     "none": "Değerlendirilen etkin kuralların hiçbiri ölçülen pencerelerde sessiz değildi.",
-    "count": "Ölçülen pencerelerde eşleşmesi olmayan etkin kural sayısı: {count}.",
+    "count": "Ölçülen pencerelerde eşleşmesi olmayan etkin kural sayısı: {count, number}.",
     "recency": "Yakın zamanda ilk kez görülen bir kuralın eşleşmek için az zamanı olmuştur; ilk görülme zamanını kontrol edin.",
     "label": "Sessiz etkin kurallar tablosu",
     "caption": "Eksiksiz zaman aralığında ölçülen sıfıra sahip etkin kurallar, ilk görülme ve son tetiklenme zamanlarıyla UTC olarak gösterilir.",
@@ -192,8 +192,8 @@
     "firstSeen": "İlk görülme",
     "lastFired": "Son tetiklenme",
     "notRecorded": "kaydedilmedi",
-    "notObserved": "gözlemlenmedi",
-    "excluded": "Değerlendirilmeyen etkin kural sayısı: {count},",
+    "notObserved": "gözlenmedi",
+    "excluded": "Değerlendirilmeyen etkin kural sayısı: {count, number},",
     "because": "çünkü {reason}",
     "excludedHeading": "Türe göre değerlendirilmeyenler",
     "excludedLabel": "Türe göre değerlendirilmeyenler tablosu",

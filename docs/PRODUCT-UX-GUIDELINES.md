@@ -482,6 +482,12 @@ lowercase letter or with a placeholder that holds a lowercase noun: the message 
 word (`Okunamadı: {what}.`, `Rolünüz bunu okuyamıyor: {what} (izin: {permission}).`).
 `src/i18n/turkishText.contract.test.ts` pins all three rules over the Turkish catalog.
 
+A placeholder that a caller fills with a raw number which can reach 1,000 is written
+`{count, number}` in the Turkish value, so it prints `1.204` like the rest of the page; a plain
+placeholder prints the number as the caller passes it. A caller that already passes a string
+formatted with `formatCount(n, locale)` keeps a plain placeholder. `src/i18n/turkishCounts.contract.test.ts`
+pins the converted keys and makes every other count-like placeholder carry a recorded reason.
+
 Turkish copy uses the formal register (`siz`) and short button imperatives such as `Kaydet` and
 `Tekrar dene`. It uses no exclamation marks and no word meaning “live” or “real-time” (`canlı`,
 `gerçek zamanlı`, `anlık`), because collection runs on a cadence. As in English, an error says what
@@ -538,13 +544,20 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | scheduled search | zamanlanmış arama |
 | breach | ihlal |
 | shadow mode | gölge modu |
-| lower bound | alt sınır |
+| lower bound (a measurement that is at least the value shown) | alt sınır |
+| floor (a minimum a ratio must reach: the coverage floor, the history floor, a chart's floor line) | taban (`Coverage tabanı`, `Taban %90`) |
+| subject (of an anomaly or a custom rule) | konu |
+| review and create / review and save (`İncele` stays the Investigate button) | gözden geçir ve oluştur / gözden geçir ve kaydet |
+| reload their version | onların sürümünü yeniden yükle |
+| never observed | hiç gözlenmedi |
+| retired (WAF endpoint, widget option, custom-rule subject) | kullanımdan kaldırıldı |
+| needs attention | dikkat gerekiyor |
 | maintenance | bakım |
 | capacity | kapasite |
 | match | eşleşme |
 | hour, day, second (units) | sa, gün, sn |
 | fleet | filo |
-| window (the time span of a view) | pencere |
+| window (the time span of a view, and the control that sets it) | pencere |
 | incident (an open anomaly of a class) | vaka |
 | sender (catch-all) | gönderen |
 | queue | kuyruk |

@@ -147,8 +147,8 @@
     }
   },
   "range": {
-    "window": "Zaman aralığı",
-    "windowFor": "{title} için zaman aralığı"
+    "window": "Pencere",
+    "windowFor": "{title} için pencere"
   },
   "expand": {
     "close": "Kapat"
@@ -183,7 +183,7 @@
   },
   "configure": {
     "title": "{title} bileşenini yapılandır",
-    "timeRange": "Zaman aralığı",
+    "timeRange": "Pencere",
     "follow": "Gösterge panelini izle ({range})",
     "applyOff": "Yukarıdaki her seçim, okumanın döndürdüğü değerlerden yapılana kadar Uygula kapalıdır.",
     "sessionOnly": "Yalnızca bu oturumda geçerlidir; kaydetme henüz hazır değil.",
@@ -198,13 +198,13 @@
     "reopen": "Bu paneli kapatıp yeniden açın; hata sürerse backend'e erişilebildiğini denetleyin.",
     "noneWhat": "Yok: {what}.",
     "filter": "Filtrele: {what}",
-    "shownOf": "{shown} / {total} sonuç gösteriliyor",
-    "countWhat": "{count} {what}",
+    "shownOf": "{shown, number} / {total, number} sonuç gösteriliyor",
+    "countWhat": "{count, number} {what}",
     "choose": "Seçin…",
-    "firstOf": "Okuma ilk {count} / {total} kaydı döndürdü ({what}); burada yalnızca bunlar seçilebilir."
+    "firstOf": "Okuma ilk {count, number} / {total, number} kaydı döndürdü ({what}); burada yalnızca bunlar seçilebilir."
   },
   "options": {
-    "retired": "kullanımdan kalktı",
+    "retired": "kullanımdan kaldırıldı",
     "disabled": "devre dışı",
     "monitoredSources": {
       "what": "izlenen log source'lar",
