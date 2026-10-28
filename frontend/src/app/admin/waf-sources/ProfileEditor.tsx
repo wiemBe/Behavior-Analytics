@@ -286,8 +286,9 @@ export function ProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setConflict(conflictInfo(err));
       } else if (err instanceof ApiError && err.status === 422) {
-        const text = serverMessage(err) || t("serverRejected");
-        const key = fieldForMessage(schema, draft, text);
+        const text = serverMessage(err, backendMessage) || t("serverRejected");
+        // The field is found in the server's own English: the property name is in it verbatim.
+        const key = fieldForMessage(schema, draft, serverMessage(err));
         if (key) setFieldErrors({ [key]: text });
         else setFormError(text);
         setSaveMsg({ tone: "crit", text: t("formRejected") });
@@ -335,7 +336,9 @@ export function ProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setValidateMsg({
           tone: "warn",
-          text: t("validationNotStarted", { message: serverMessage(err) || t("alreadyRunning") }),
+          text: t("validationNotStarted", {
+            message: serverMessage(err, backendMessage) || t("alreadyRunning"),
+          }),
         });
       } else {
         setValidateMsg(failure(err, "validate", i18n));
@@ -365,7 +368,9 @@ export function ProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setCollectMsg({
           tone: "warn",
-          text: t("notEnabled", { message: serverMessage(err) || t("currentNotValid") }),
+          text: t("notEnabled", {
+            message: serverMessage(err, backendMessage) || t("currentNotValid"),
+          }),
         });
       } else {
         setCollectMsg(failure(err, "change", i18n));
@@ -609,7 +614,7 @@ export function ProfileEditor({
 
       {conflict && (
         <div className="fm-banner is-warn" role="alert">
-          <span>{conflictMessage(conflict, i18n)}</span>
+          <span>{conflictMessage(conflict, i18n, backendMessage)}</span>
           <button
             type="button"
             className="action secondary"

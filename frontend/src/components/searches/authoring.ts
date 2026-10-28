@@ -4,11 +4,13 @@
 // and read the API's refusal. A reason string is copied through unchanged.
 
 import { ENGLISH_TREND } from "@/components/trendText";
+import { renderRefusal } from "@/i18n/refusalMessage";
 import type { TextTranslator } from "@/i18n/textTranslator";
 import { ApiError, type CallerInfo, type ScheduledSearch, type ScheduledSearchCreate, type ScheduledSearchUpdate, type SearchExecution, type SearchVersion } from "@/lib/api";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { plainCount } from "@/lib/figureText";
 import type { FormatLocale } from "@/lib/format";
+import { reasonSentences, refusalSentences } from "@/lib/refusal";
 import { SCHEDULE_PRESETS, cronToPreset, everyLabel } from "@/lib/searchCadence";
 import { resultCount } from "@/lib/searchRuns";
 
@@ -243,11 +245,13 @@ export type SaveRefusal =
   | { kind: "forbidden"; detail: string }
   | { kind: "error"; detail: string };
 
-function reasonList(detail: unknown): string[] | null {
+/** The reasons of a 422 authoring body in the reader's language; the server's text when uncoded. */
+function reasonList(err: ApiError, i18n: BehaviorI18n): string[] | null {
+  const detail = err.detail;
   if (typeof detail !== "object" || detail === null || !("reasons" in detail)) return null;
   const reasons = (detail as { reasons: unknown }).reasons;
   if (!Array.isArray(reasons) || reasons.some((reason) => typeof reason !== "string")) return null;
-  return reasons as string[];
+  return (reasonSentences(err) ?? []).map((reason) => renderRefusal(reason, i18n.locale, i18n.t));
 }
 
 function schemaMessages(detail: unknown): string[] | null {
@@ -272,13 +276,14 @@ export function classifySaveError(err: unknown, i18n: BehaviorI18n = ENGLISH_SEA
   }
   if (err.status === 409) {
     const detail = typeof err.detail === "string" && err.detail !== "" ? err.detail : err.message;
-    return { kind: "cap", detail };
+    const [sentence] = refusalSentences(err);
+    return { kind: "cap", detail: sentence ? renderRefusal(sentence, i18n.locale, i18n.t) : detail };
   }
   if (err.status === 403) {
     return { kind: "forbidden", detail: t("searches.refusal.forbidden") };
   }
   if (err.status === 422) {
-    const reasons = reasonList(err.detail);
+    const reasons = reasonList(err, i18n);
     if (reasons) return { kind: "reasons", reasons };
     if (typeof err.detail === "string" && isCronFloor(err.detail)) return { kind: "schedule", detail: err.detail };
     if (typeof err.detail === "string" && err.detail !== "") return { kind: "error", detail: err.detail };

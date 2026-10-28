@@ -16,6 +16,7 @@ import {
   metricLabel,
   metricsFor,
   previewBody,
+  reasonTexts,
   selectedMetric,
   updateBody,
   type EditorDraft,
@@ -34,12 +35,12 @@ import { enumLabel } from "@/i18n/enumLabels";
 
 const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
 
-function previewFailure(error: unknown, t: TextTranslator): string {
+function previewFailure(error: unknown, t: TextTranslator, locale: Locale): string {
   if (error instanceof ApiError && error.status === 422) {
     const detail = error.detail;
     if (typeof detail === "object" && detail !== null && "reasons" in detail) {
       const reasons = (detail as { reasons?: unknown }).reasons;
-      if (Array.isArray(reasons)) return reasons.filter((reason) => typeof reason === "string").join(" ");
+      if (Array.isArray(reasons)) return reasonTexts(error, t, locale).join(" ");
     }
   }
   return t("customRules.editor.previewFailed");
@@ -105,7 +106,7 @@ export function CustomRuleEditor({
         .catch((error: unknown) => {
           if (controller.signal.aborted) return;
           setPreview(null);
-          setPreviewError(previewFailure(error, say));
+          setPreviewError(previewFailure(error, say, locale));
           setPreviewState("error");
         });
     }, 450);
@@ -113,7 +114,7 @@ export function CustomRuleEditor({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [draft, hours, say, validation]);
+  }, [draft, hours, locale, say, validation]);
 
   const summary = useMemo(() => {
     if (!metric || draft.threshold.trim() === "" || !Number.isFinite(Number(draft.threshold))) return null;

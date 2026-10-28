@@ -23,9 +23,11 @@ What this is and isn't:
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef, render
 
 # Keywords that must never appear: mutation / DDL / admin. AQL is read-only
 # (SELECT), so any of these is a red flag regardless of context.
@@ -46,11 +48,20 @@ _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|\d+|<=|>=|<>|!=|::|.", re.DOTALL
 
 
 class AQLValidationError(ValueError):
-    """Raised when AQL fails validation. `.reasons` lists every problem."""
+    """Raised when AQL fails validation. `.reasons` lists every problem as English.
 
-    def __init__(self, reasons: list[str]) -> None:
-        self.reasons = reasons
-        super().__init__("; ".join(reasons))
+    `.refs` holds the same problems as message codes, in the same order (``None`` for a
+    problem given as plain text).
+    """
+
+    def __init__(self, reasons: Sequence[MessageRef | str]) -> None:
+        self.refs: list[MessageRef | None] = [
+            ref if isinstance(ref, MessageRef) else None for ref in reasons
+        ]
+        self.reasons: list[str] = [
+            render(ref) if isinstance(ref, MessageRef) else ref for ref in reasons
+        ]
+        super().__init__("; ".join(self.reasons))
 
 
 @dataclass
@@ -138,9 +149,9 @@ def validate_aql(
     max_hours = max_time_range_hours or settings.ariel_max_time_range_hours
     max_rows = max_result_rows or settings.ariel_max_result_rows
 
-    reasons: list[str] = []
+    reasons: list[MessageRef] = []
     if not aql or not aql.strip():
-        raise AQLValidationError(["query is empty"])
+        raise AQLValidationError([MessageRef("search.aql.empty")])
 
     lex = _lex(aql)
     upper_tokens = [t.upper() for t in lex.tokens]
@@ -152,42 +163,49 @@ def validate_aql(
         not tok.isspace() for tok in lex.tokens[i + 1 :]
     )]
     if non_trailing:
-        reasons.append("multiple statements are not allowed")
+        reasons.append(MessageRef("search.aql.multiple_statements"))
 
     # 2. Must start with SELECT.
     if not upper_tokens or upper_tokens[0] != "SELECT":
-        reasons.append("query must be a single SELECT statement")
+        reasons.append(MessageRef("search.aql.not_select"))
 
     # 3. No banned/mutating keywords anywhere in the token stream.
     banned_found = sorted({t for t in upper_tokens if t in _BANNED_KEYWORDS})
     if banned_found:
-        reasons.append(f"disallowed keyword(s): {', '.join(banned_found)}")
+        reasons.append(
+            MessageRef("search.aql.disallowed_keywords", {"keywords": ", ".join(banned_found)})
+        )
 
     # 4. FROM <dataset> must be present and allowed.
     datasets = _extract_datasets(upper_tokens)
     if not datasets:
-        reasons.append("query must select FROM events or flows")
+        reasons.append(MessageRef("search.aql.no_dataset"))
     else:
         bad = [d for d in datasets if d not in _ALLOWED_DATASETS]
         if bad:
-            reasons.append(f"dataset(s) not permitted: {', '.join(bad)}")
+            reasons.append(
+                MessageRef("search.aql.dataset_not_permitted", {"datasets": ", ".join(bad)})
+            )
 
     # 5. Bounded time window required (no unbounded scans of all history).
     has_window, window_hours = _time_window(upper_tokens, lex.tokens)
     if not has_window:
-        reasons.append(
-            "query must include a bounded time window (LAST N ..., or START/STOP)"
-        )
+        reasons.append(MessageRef("search.aql.no_time_window"))
     elif window_hours is not None and window_hours > max_hours:
         reasons.append(
-            f"time range {window_hours}h exceeds the maximum {max_hours}h"
+            MessageRef(
+                "search.aql.time_range_exceeded",
+                {"window_hours": f"{window_hours}", "max_hours": max_hours},
+            )
         )
 
     # 6. Result limit sanity: an explicit LIMIT must not exceed the cap. Absence
     #    is fine — the executor imposes max_rows when fetching.
     limit = _explicit_limit(upper_tokens)
     if limit is not None and limit > max_rows:
-        reasons.append(f"LIMIT {limit} exceeds the maximum {max_rows} rows")
+        reasons.append(
+            MessageRef("search.aql.limit_exceeded", {"limit": limit, "max_rows": max_rows})
+        )
 
     if reasons:
         raise AQLValidationError(reasons)

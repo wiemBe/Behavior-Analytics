@@ -3,15 +3,17 @@
 //
 // A refusal can land anywhere: the forced password change sits in the application frame, so its
 // reader is part of every page. This module therefore reads only what a refusal parameter can be:
-// text, a plain count, or a nested `{code, params}` sentence. It imports no formatter and no
-// generated artifact, so it adds the `backend` catalog to the shell and nothing else. A sentence
-// whose parameters need more (a percent, a duration, an enum) is not a refusal sentence; it goes
-// through `backendMessage.ts`.
+// text, a count, or a nested `{code, params}` sentence. It imports no heavy formatter (only
+// `formatCount`, a one-line `Intl.NumberFormat`, so a count is grouped as everywhere else: Turkish
+// `1.204`) and no generated artifact, so it adds the `backend` catalog to the shell and nothing
+// else. A sentence whose parameters need more (a percent, a duration, an enum) is not a refusal
+// sentence; it goes through `backendMessage.ts`.
 //
 // The rule is the same as there: English shows the server's text as sent; another locale looks the
 // code up in `backend`, and anything absent, malformed, unknown, untranslated or too deep shows the
 // server's text. A code is never shown.
 
+import { formatCount } from "@/lib/format";
 import type { RefusalSentence } from "@/lib/refusal";
 
 import type { Locale } from "./locale";
@@ -26,6 +28,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 function translate(
   code: string,
   params: Record<string, unknown>,
+  locale: Locale,
   say: TextTranslator,
   depth: number,
 ): string | undefined {
@@ -35,9 +38,11 @@ function translate(
   const values: TextValues = {};
   for (const [name, value] of Object.entries(params)) {
     if (typeof value === "string") values[name] = value;
-    else if (typeof value === "number" && Number.isInteger(value)) values[name] = String(value);
-    else if (isRecord(value) && typeof value.code === "string" && isRecord(value.params)) {
-      const nested = translate(value.code, value.params, say, depth + 1);
+    else if (typeof value === "number" && Number.isInteger(value)) {
+      // Every count is grouped in the locale, as `backendMessage.ts` does whatever the style.
+      values[name] = formatCount(value, locale);
+    } else if (isRecord(value) && typeof value.code === "string" && isRecord(value.params)) {
+      const nested = translate(value.code, value.params, locale, say, depth + 1);
       if (nested === undefined) return undefined;
       values[name] = nested;
     } else return undefined;
@@ -59,5 +64,5 @@ export function renderRefusal(
   say: TextTranslator,
 ): string {
   if (locale === "en" || !sentence.code || !sentence.params) return sentence.text;
-  return translate(sentence.code, sentence.params, say, 0) ?? sentence.text;
+  return translate(sentence.code, sentence.params, locale, say, 0) ?? sentence.text;
 }

@@ -301,8 +301,9 @@ export function IpsProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setConflict(conflictInfo(err));
       } else if (err instanceof ApiError && err.status === 422) {
-        const text = serverMessage(err) || t("serverRejected");
-        const key = fieldForMessage(formSch, draft, text);
+        const text = serverMessage(err, backendMessage) || t("serverRejected");
+        // The field is found in the server's own English: the property name is in it verbatim.
+        const key = fieldForMessage(formSch, draft, serverMessage(err));
         if (key) setFieldErrors({ [key]: text });
         else setFormError(text);
         setSaveMsg({ tone: "crit", text: t("notSavedRejected") });
@@ -345,7 +346,7 @@ export function IpsProfileEditor({
         setValidateMsg({
           tone: "warn",
           text: t("validateNotStarted", {
-            message: serverMessage(err) || t("alreadyRunning"),
+            message: serverMessage(err, backendMessage) || t("alreadyRunning"),
           }),
         });
       } else {
@@ -376,7 +377,7 @@ export function IpsProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setCollectMsg({
           tone: "warn",
-          text: t("notEnabled", { message: serverMessage(err) || t("notValid") }),
+          text: t("notEnabled", { message: serverMessage(err, backendMessage) || t("notValid") }),
         });
       } else {
         setCollectMsg(failure(err, "change"));
@@ -609,7 +610,7 @@ export function IpsProfileEditor({
 
       {conflict && (
         <div className="fm-banner is-warn" role="alert">
-          <span>{conflictMessage(conflict, i18n)}</span>
+          <span>{conflictMessage(conflict, i18n, backendMessage)}</span>
           <button
             type="button"
             className="action secondary"

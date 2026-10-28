@@ -47,7 +47,7 @@ from app.custom_rules.validation import (
     _SUBJECT_COLUMNS,
     RULE_OPERATORS,
     CustomRuleDraft,
-    validate_rule_draft,
+    validate_rule_draft_coded,
 )
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import CodedHTTPException, permission_refusal
@@ -115,20 +115,17 @@ def _guard(principal: Principal) -> None:
         raise permission_refusal(exc) from exc
 
 
-def _is_cap_reason(reason: str) -> bool:
-    return reason.startswith("at most ") and "rules may be enabled at once" in reason
+def _is_cap_reason(reason: MessageRef) -> bool:
+    return reason.code == "ruledraft.enabled_cap"
 
 
-def _reject(reasons: list[str]) -> None:
+def _reject(reasons: list[MessageRef]) -> None:
     """422 with every reason, or 409 when the only reason is the enabled cap."""
     if not reasons:
         return
     if all(_is_cap_reason(reason) for reason in reasons):
-        raise HTTPException(status.HTTP_409_CONFLICT, reasons[0])
-    raise HTTPException(
-        status.HTTP_422_UNPROCESSABLE_CONTENT,
-        {"message": "; ".join(reasons), "reasons": reasons},
-    )
+        raise CodedHTTPException(status.HTTP_409_CONFLICT, reasons[0])
+    raise CodedHTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, reasons=reasons)
 
 
 def _as_str(value: object) -> str:
@@ -262,11 +259,11 @@ def _draft_from_patch(rule: CustomRule, payload: CustomRuleUpdate) -> CustomRule
     )
 
 
-def _null_reasons(payload: CustomRuleUpdate) -> list[str]:
-    reasons: list[str] = []
+def _null_reasons(payload: CustomRuleUpdate) -> list[MessageRef]:
+    reasons: list[MessageRef] = []
     for name in payload.model_fields_set - {"expected_updated_at", *_NULLABLE_PATCH}:
         if getattr(payload, name) is None:
-            reasons.append(f"{name} must not be null")
+            reasons.append(MessageRef("ruledraft.null_field", {"field": name}))
     return reasons
 
 
@@ -505,7 +502,9 @@ def build_custom_rule_catalog(
     )
 
 
-async def _pw_value_reason(session: AsyncSession, draft: CustomRuleDraft) -> str | None:
+async def _pw_value_reason(
+    session: AsyncSession, draft: CustomRuleDraft
+) -> MessageRef | None:
     """A rule pins a pinned property-watch value only (design §G.10.2).
 
     A value that is not pinned can retire by idleness and has no provable zero, and a rule
@@ -517,20 +516,19 @@ async def _pw_value_reason(session: AsyncSession, draft: CustomRuleDraft) -> str
         return None
     value = await session.get(PwValue, draft.pw_value_id)
     if value is None:
-        return f"property-watch value {draft.pw_value_id} does not exist"
+        return MessageRef("ruledraft.pw_value_missing", {"id": str(draft.pw_value_id)})
     watch = await session.get(PropertyWatch, value.watch_id)
     held = watch is not None and any(
         split_tuple_key(value.value_key) == tuple(pin) for pin in watch.pinned_values
     )
     if value.pinned and held:
         return None
-    return (
-        f"property-watch value {draft.pw_value_id} is not pinned; a rule can watch only a "
-        "pinned value, so pin it on its property watch first"
-    )
+    return MessageRef("ruledraft.pw_value_not_pinned", {"id": str(draft.pw_value_id)})
 
 
-async def _subject_reason(session: AsyncSession, draft: CustomRuleDraft) -> str | None:
+async def _subject_reason(
+    session: AsyncSession, draft: CustomRuleDraft
+) -> MessageRef | None:
     """The subject row is missing. A null id is the pairing reason, already listed."""
     if draft.subject_kind is CustomRuleSubjectKind.PW_VALUE:
         return await _pw_value_reason(session, draft)
@@ -538,19 +536,25 @@ async def _subject_reason(session: AsyncSession, draft: CustomRuleDraft) -> str 
         if draft.log_source_id is None:
             return None
         if await session.get(LogSource, draft.log_source_id) is None:
-            return f"log source {draft.log_source_id} does not exist"
+            return MessageRef(
+                "ruledraft.log_source_missing", {"id": str(draft.log_source_id)}
+            )
         return None
     if draft.subject_kind is CustomRuleSubjectKind.WAF_ENDPOINT:
         if draft.waf_endpoint_id is None:
             return None
         if await session.get(WafEndpoint, draft.waf_endpoint_id) is None:
-            return f"waf endpoint {draft.waf_endpoint_id} does not exist"
+            return MessageRef(
+                "ruledraft.waf_endpoint_missing", {"id": str(draft.waf_endpoint_id)}
+            )
         return None
     if draft.subject_kind is CustomRuleSubjectKind.IPS_ENTITY:
         if draft.ips_entity_id is None:
             return None
         if await session.get(IpsEntity, draft.ips_entity_id) is None:
-            return f"ips entity {draft.ips_entity_id} does not exist"
+            return MessageRef(
+                "ruledraft.ips_entity_missing", {"id": str(draft.ips_entity_id)}
+            )
     return None
 
 
@@ -613,7 +617,7 @@ async def _check_draft(
     *,
     previously_enabled: bool,
 ) -> None:
-    reasons = validate_rule_draft(
+    reasons = validate_rule_draft_coded(
         draft,
         enabled_count=await _enabled_count(session),
         previously_enabled=previously_enabled,
@@ -722,7 +726,7 @@ async def preview_draft(
     """Replay a draft over stored buckets. Nothing is written and nothing is audited."""
     draft = _draft_from_create(body)
     # A preview does not take an enabled slot. The cap is a write concern.
-    reasons = validate_rule_draft(
+    reasons = validate_rule_draft_coded(
         draft,
         enabled_count=0,
         previously_enabled=True,

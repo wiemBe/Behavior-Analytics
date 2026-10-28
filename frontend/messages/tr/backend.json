@@ -19,6 +19,14 @@
       },
       "profile": {
         "truncated": "Sınırlı doğrulama yoklaması kırpıldı"
+      },
+      "input": {
+        "normalized_field": "Normalize alan IPS izin listesinde yok",
+        "property_name": "Geçersiz QRadar özellik adı: yalnızca harf, rakam, alt çizgi, boşluk ve tire; en çok 64 karakter",
+        "action_count": "{outcome} eylem değerleri {max_count} değer sınırını aşıyor",
+        "action_value": "Geçersiz {outcome} eylem değeri: en çok {max_length} karakterlik yazdırılabilir bir belirteç kullanın",
+        "action_overlap": "Bir eylem değeri hem BLOCKED hem ALLOWED olarak eşlenmiş",
+        "action_needs_field": "Eylem eşlemesi için bir ACTION alan eşlemesi gerekir"
       }
     },
     "profile": {
@@ -31,7 +39,13 @@
       },
       "lookup_failed": "Log source araması başarısız oldu ({error})",
       "source_missing": "Bu log source QRadar'da mevcut değil",
-      "total_not_measured": "Toplam olay hacmi ölçülmedi ({error})"
+      "total_not_measured": "Toplam olay hacmi ölçülmedi ({error})",
+      "conflict": {
+        "missing": "Profil mevcut değil; expected_profile_version null olarak oluşturun",
+        "version": "Profil sürümü çakışması; geçerli sürüm {current}",
+        "running": "{profile_version} sürümünün doğrulaması {since} tarihinden beri zaten çalışıyor",
+        "not_validated": "Profil sürümü {profile_version} doğrulanmadı (durum: {validation_status}); önce doğrulamayı çalıştırın"
+      }
     },
     "waf": {
       "field": {
@@ -45,6 +59,12 @@
         "collection_disabled": "WAF toplaması devre dışı (WAF_COLLECTION_ENABLED=false)",
         "monitoring_disabled": "Log source için izleme devre dışı",
         "source_missing": "Profilin log source'u artık mevcut değil"
+      },
+      "input": {
+        "property_name": "{name} geçerli bir QRadar özellik adı değil: yalnızca harf, rakam, alt çizgi, boşluk ve tire; en çok 64 karakter",
+        "action_value": "{value} geçerli bir {outcome} eylem değeri değil: en çok {max_length} karakterlik yazdırılabilir bir belirteç olmalı",
+        "action_overlap": "Hem BLOCKED hem ALLOWED olarak eşlenen eylem değerleri: {values}",
+        "action_needs_property": "Eylem eşlemesi için bir eylem özelliği gerekir"
       }
     }
   },
@@ -177,6 +197,50 @@
     "cost": {
       "label": "QRadar kapasite ölçütü: kuralın ne kadar hızlı değerlendirilebileceği. Düşük değer, değerlendirmenin daha maliyetli olduğunu gösterir. Bu bir tetiklenme hızı değildir.",
       "unit": "saniyede milyon olay (QRadar birimi)"
+    }
+  },
+  "ruledraft": {
+    "subject_needs_column": "{kind} kuralları için {column} ayarlanmalıdır",
+    "column_must_be_empty": "{kind} kuralı için {column} boş kalmalıdır",
+    "source_class_unknown": "source_class {value} bilinen bir kaynak sınıfı değildir",
+    "metric_unknown": "{metric} metriği özel kural kataloğunda yok",
+    "metric_wrong_kind": "{metric} metriği {metric_kind} konusunu ölçer, {kind} konusunu değil",
+    "threshold_not_finite": "threshold_value sonlu bir sayı olmalıdır",
+    "threshold_negative": "threshold_value en az 0 olmalıdır",
+    "threshold_share": "{metric} eşiği bir paydır ve 0 ile 1 arasında olmalıdır (uçlar hariç)",
+    "operator_unknown": "{operator} işleci GT, GE, LT, LE, EQ değerlerinden biri değildir",
+    "sustain_min": "sustain_buckets en az 1 olmalıdır",
+    "recovery_min": "recovery_buckets en az 1 olmalıdır",
+    "enabled_cap": "Aynı anda en fazla {max_enabled} kural etkin olabilir (şu an {enabled_count} etkin)",
+    "null_field": "{field} boş (null) olamaz",
+    "log_source_missing": "{id} kimlikli log source mevcut değil",
+    "waf_endpoint_missing": "{id} kimlikli WAF endpoint mevcut değil",
+    "ips_entity_missing": "{id} kimlikli IPS varlığı mevcut değil",
+    "pw_value_missing": "{id} kimlikli özellik izleme değeri mevcut değil",
+    "pw_value_not_pinned": "{id} kimlikli özellik izleme değeri sabitlenmemiş; bir kural yalnızca sabitlenmiş bir değeri izleyebilir, bu yüzden önce özellik izlemesinde sabitleyin"
+  },
+  "search": {
+    "aql": {
+      "empty": "Sorgu boş",
+      "multiple_statements": "Birden çok deyime izin verilmez",
+      "not_select": "Sorgu tek bir SELECT deyimi olmalıdır",
+      "disallowed_keywords": "İzin verilmeyen anahtar sözcükler: {keywords}",
+      "no_dataset": "Sorgu FROM ile events veya flows seçmelidir",
+      "dataset_not_permitted": "İzin verilmeyen veri kümeleri: {datasets}",
+      "no_time_window": "Sorgu sınırlı bir zaman penceresi içermelidir (LAST N ... veya START/STOP)",
+      "time_range_exceeded": "{window_hours} sa uzunluğundaki zaman aralığı en fazla {max_hours} sa olabilir",
+      "limit_exceeded": "LIMIT {limit}, en fazla {max_rows} satırlık üst sınırı aşıyor"
+    },
+    "threshold": {
+      "unreachable": "{operator} {threshold} eşiğine hiçbir zaman ulaşılamaz: bir çalıştırma en fazla max_result_rows ({max_result_rows}) satır sayar; max_result_rows değerini eşiğin üzerine çıkarın veya eşiği düşürün"
+    },
+    "enabled_cap": "Etkin arama sınırı {limit}"
+  },
+  "classification": {
+    "rule": {
+      "duplicate": "Bu instance, tür ve desene sahip bir kural zaten var",
+      "built_in_edit": "Yerleşik bir kural yalnızca açılıp kapatılabilir",
+      "built_in_delete": "Yerleşik bir kural silinemez; bunun yerine kapatın"
     }
   }
 }

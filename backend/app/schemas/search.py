@@ -9,6 +9,7 @@ from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import Severity, VisualizationType
 from app.services.aql_validator import AQLValidationError, validate_aql
 
@@ -16,6 +17,14 @@ from app.services.aql_validator import AQLValidationError, validate_aql
 def unreachable_threshold_reason(
     operator: str, threshold_value: float | None, max_result_rows: int | None
 ) -> str | None:
+    """The English sentence of `unreachable_threshold_ref`, or None when it can be reached."""
+    ref = unreachable_threshold_ref(operator, threshold_value, max_result_rows)
+    return None if ref is None else render(ref)
+
+
+def unreachable_threshold_ref(
+    operator: str, threshold_value: float | None, max_result_rows: int | None
+) -> MessageRef | None:
     """Why a threshold can never be breached, or None when it can.
 
     A run returns at most ``max_result_rows`` rows, and a truncated run proves
@@ -32,15 +41,25 @@ def unreachable_threshold_reason(
     )
     if not unreachable:
         return None
-    return (
-        f"threshold {operator} {threshold_value:g} can never be reached: a run counts "
-        f"at most max_result_rows ({max_result_rows}) rows; raise max_result_rows above "
-        f"the threshold or lower the threshold"
+    return MessageRef(
+        "search.threshold.unreachable",
+        {
+            "operator": operator,
+            "threshold": f"{threshold_value:g}",
+            "max_result_rows": max_result_rows,
+        },
     )
 
 
 class ThresholdUnreachableError(ValueError):
-    """Raised when a create or update would store a never-breachable threshold."""
+    """Raised when a create or update would store a never-breachable threshold.
+
+    Built from the message code (`.ref`); `str(exc)` is its English sentence.
+    """
+
+    def __init__(self, reason: MessageRef | str) -> None:
+        self.ref: MessageRef | None = reason if isinstance(reason, MessageRef) else None
+        super().__init__(render(reason) if isinstance(reason, MessageRef) else reason)
 
 
 class AuthoringDetail(TypedDict):
@@ -50,11 +69,14 @@ class AuthoringDetail(TypedDict):
     the validator's order, then the threshold-reachability sentence when it
     applies. `message` is the compatibility string — the same text the schema
     validators already raise (`unsafe AQL: ` plus those reasons joined by
-    `"; "`, and the threshold sentence).
+    `"; "`, and the threshold sentence). It is composed from the reasons and carries no code
+    of its own; no view shows it (the editors list `reasons`). `reason_codes` is parallel to
+    `reasons`: `{code, params}` or `None` for a reason with no code.
     """
 
     message: str
     reasons: list[str]
+    reason_codes: list[dict[str, object] | None]
 
 
 _THRESHOLD_OPERATORS = frozenset({"GT", "GE", "LT", "LE", "EQ"})
@@ -73,7 +95,9 @@ def _compat_message(aql_reasons: list[str], threshold_reason: str | None) -> str
     return "; ".join(parts)
 
 
-def _aql_reasons(body: Mapping[str, Any], *, check_aql: bool) -> list[str]:
+def _aql_reasons(
+    body: Mapping[str, Any], *, check_aql: bool
+) -> list[tuple[str, MessageRef | None]]:
     if not check_aql or "aql_query" not in body:
         return []
     aql = body["aql_query"]
@@ -82,7 +106,7 @@ def _aql_reasons(body: Mapping[str, Any], *, check_aql: bool) -> list[str]:
     try:
         validate_aql(aql)
     except AQLValidationError as exc:
-        return list(exc.reasons)
+        return list(zip(exc.reasons, exc.refs, strict=True))
     return []
 
 
@@ -140,7 +164,9 @@ def authoring_detail_for_body(
     has already been accepted. Reasons are copied off the validator; they are
     not rewritten.
     """
-    aql_reasons = _aql_reasons(body, check_aql=check_aql)
+    aql_pairs = _aql_reasons(body, check_aql=check_aql)
+    aql_reasons = [text for text, _ref in aql_pairs]
+    threshold_ref: MessageRef | None = None
     threshold_reason: str | None = None
     if check_threshold:
         resolved = _resolved_threshold(
@@ -150,14 +176,19 @@ def authoring_detail_for_body(
             current_max_rows=current_max_rows,
         )
         if resolved is not None:
-            threshold_reason = unreachable_threshold_reason(*resolved)
+            threshold_ref = unreachable_threshold_ref(*resolved)
+            threshold_reason = None if threshold_ref is None else render(threshold_ref)
     if not aql_reasons and threshold_reason is None:
         return None
     reasons = list(aql_reasons)
+    refs = [ref for _text, ref in aql_pairs]
     if threshold_reason is not None:
         reasons.append(threshold_reason)
+        refs.append(threshold_ref)
     return AuthoringDetail(
-        message=_compat_message(aql_reasons, threshold_reason), reasons=reasons
+        message=_compat_message(aql_reasons, threshold_reason),
+        reasons=reasons,
+        reason_codes=[None if ref is None else ref.to_wire() for ref in refs],
     )
 
 
