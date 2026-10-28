@@ -22,9 +22,6 @@ import Link from "next/link";
 // The combobox pattern: the input is the combobox, the arrow keys move
 // `aria-activedescendant` through the links, Enter follows the active one and
 // Escape closes. Ctrl+K / Cmd+K focuses it.
-// The English catalog preserves the established source contract:
-// placeholder="Search sources, rules, anomalies"
-// aria-label="Search sources, rules, offenses and anomalies"
 
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";

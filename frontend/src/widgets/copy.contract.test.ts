@@ -7,7 +7,7 @@ import { MONITORED_SOURCES, PROPERTY_WATCH_OPTIONS, WAF_SOURCE_ENDPOINTS, WAF_SO
 import { WIDGETS } from "./registry";
 import { SEARCH_METRIC_OPTIONS, SEARCH_OPTIONS } from "./searchResultOptions";
 import { TEMPLATES } from "./templates";
-import { createLocaleTranslator } from "@/i18n/fallback";
+import { createLocaleTranslator } from "@/i18n/testTranslator";
 
 const say = (locale: "en" | "tr") => {
   const root = createLocaleTranslator(locale);

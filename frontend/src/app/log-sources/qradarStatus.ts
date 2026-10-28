@@ -2,6 +2,7 @@
 // and the detail page so the two never disagree.
 
 import type { TextTranslator } from "@/i18n/textTranslator";
+import { isPlainKey } from "@/i18n/ownKey";
 
 /** SUCCESS is healthy, WARNING a warning, ERROR a problem. Any other reported value (DISABLED,
  *  NA, ...) is not a verdict on the source, and neither is a status QRadar never reported:
@@ -21,5 +22,5 @@ export function qradarStatusTone(status: string | null): "ok" | "warn" | "crit" 
 export function qradarStatusLabel(status: string | null, say?: TextTranslator): string {
   if (status === null) return say ? say("logSources.status.unknown") : "unknown";
   const key = `logSources.status.${status}`;
-  return say && status !== "unknown" && !status.includes(".") && say.has?.(key) ? say(key) : status;
+  return say && status !== "unknown" && isPlainKey(status) && say.has?.(key) ? say(key) : status;
 }

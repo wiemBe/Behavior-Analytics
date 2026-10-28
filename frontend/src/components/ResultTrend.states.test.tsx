@@ -6,6 +6,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ResultTrend, scheduleIntervalMs, staleness } from "./ResultTrend";
 import { ApiError, api, type SearchExecution, type SearchResultTrend } from "@/lib/api";
+import { SearchResultTrend as SearchPageTrend } from "@/components/searches/SearchResultTrend";
+import { WidgetRuntimeContext } from "@/widgets/runtime";
+import { SearchResultsWidget } from "@/widgets/SearchResultsWidget";
 import { isReadField } from "@/widgets/types";
 import { widgetDef } from "@/widgets/registry";
 
@@ -312,12 +315,35 @@ describe("chart.search_results registry", () => {
     if (metricField && isReadField(metricField)) expect(metricField.from.dependsOn).toBe("search_id");
   });
 
-  it("is the component the search page and the widget both mount", () => {
-    const page = readFileSync(resolve(__dirname, "../app/searches/[id]/page.tsx"), "utf8");
-    const widget = readFileSync(resolve(__dirname, "../widgets/SearchResultsWidget.tsx"), "utf8");
-    expect(page).toContain('from "@/components/ResultTrend"');
-    expect(widget).toContain('from "@/components/ResultTrend"');
-    expect(page).toContain("<ResultTrend");
-    expect(widget).toContain("<ResultTrend");
+  it("is the component the search page and the widget both mount", async () => {
+    vi.spyOn(api, "search").mockResolvedValue({
+      id: "s-1", name: "Repeated failures", visualization_type: "LINE", enabled: true,
+      schedule_cron: "0 * * * *", schedule_timezone: "UTC", last_run_at: "2026-07-20T10:00:00Z",
+      next_run_at: "2026-07-20T11:00:00Z", consecutive_failures: 0, query_version: 1,
+    } as never);
+    vi.spyOn(api, "searchExecutions").mockResolvedValue([execution()]);
+    // The page mounts it through its client wrapper (`SearchResultTrend`), the widget directly.
+    const onPage = render(<SearchPageTrend searchId="s-1" executions={[execution()]} />);
+    await waitFor(() =>
+      expect(onPage.container.querySelector("[data-component='result-trend']")).not.toBeNull(),
+    );
+    onPage.unmount();
+    const onDashboard = render(
+      <WidgetRuntimeContext.Provider
+        value={{
+          rangeOptions: null, override: null, dashboardRange: "24h", setRange: () => undefined,
+          onExpand: null, expanded: false, onConfigure: () => undefined,
+        }}
+      >
+        <SearchResultsWidget
+          id="w_search1" config={{ search_id: "s-1", metric_key: "total" }} range={null}
+          expanded={false}
+        />
+      </WidgetRuntimeContext.Provider>,
+    );
+    await waitFor(() =>
+      expect(onDashboard.container.querySelector("[data-component='result-trend']")).not.toBeNull(),
+    );
   });
+
 });

@@ -55,8 +55,9 @@ export const STATUS_LABELS: Record<CatchallReviewStatus, string> = {
 export const STATUS_FILTERS: StatusFilter[] = ["NEW", "REVIEWED", "DISMISSED", "ALL"];
 
 export function statusLabel(value: CatchallReviewStatus, text: FleetText = englishFleetText): string {
+  if (!Object.hasOwn(STATUS_LABELS, value)) return value;
   const key = `catchall.status.${value}`;
-  return text.say.has?.(key) ? text.say(key) : (STATUS_LABELS[value] ?? value);
+  return text.say.has?.(key) ? text.say(key) : STATUS_LABELS[value];
 }
 
 export function statusFilterLabel(value: StatusFilter, text: FleetText = englishFleetText): string {

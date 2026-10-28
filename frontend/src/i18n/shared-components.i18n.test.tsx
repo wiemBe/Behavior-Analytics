@@ -27,7 +27,7 @@ import { UtcTime } from "@/components/ui/UtcTime";
 import { accountStatus } from "@/components/auth/accountStatus";
 import { bindOutcome, probeHeadline, trustWords } from "@/components/auth/probeCopy";
 import { errorTexts } from "@/components/auth/reasons";
-import { createLocaleTranslator } from "@/i18n/fallback";
+import { createLocaleTranslator } from "@/i18n/testTranslator";
 import type { CallerInfo } from "@/lib/api";
 import { setTestLocale } from "../../vitest.setup";
 

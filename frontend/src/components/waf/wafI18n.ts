@@ -6,7 +6,7 @@
 // Dashboard's option reads) and every existing test therefore keep today's English; route code
 // passes its own (`useBehaviorI18n()` in a component, `getBehaviorI18n()` in a server page).
 //
-// Only the namespaces the WAF helpers read are imported (the `fallback.ts` rule): `waf`, `units`,
+// Only the namespaces the WAF helpers read are imported (the area-bundle rule): `waf`, `units`,
 // `enums` (the detector-name table) and `behavior` (the evidence words `wafLabels` reuses).
 
 import behavior from "../../../messages/en/behavior.json";

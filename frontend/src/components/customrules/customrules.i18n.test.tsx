@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTestLocale } from "../../../vitest.setup";
-import { createLocaleTranslator } from "@/i18n/fallback";
+import { createLocaleTranslator } from "@/i18n/testTranslator";
 import type { CustomRulePreview } from "@/lib/api";
 
 import { CustomRuleWriteNotice } from "./CustomRuleWriteNotice";

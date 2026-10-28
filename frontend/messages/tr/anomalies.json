@@ -201,7 +201,7 @@
     "completed": "Tamamlandı",
     "noPackage": "Bu anomali için saklanmış kanıt paketi yok. Anormal aralık hakkında QRadar'dan hiçbir şey sorgulanmadı.",
     "queries": "Ariel sorguları",
-    "queriesNote": "Kanıtın nasıl elde edildiği. Yalnızca sorgu yapısı — kimlik bilgileri, başlıklar veya ham olay içerikleri kaydedilmez ve gösterilmez. Her ifade, kapsamını belirleyen START ve STOP sınırlarını taşır.",
+    "queriesNote": "Kanıtın nasıl elde edildiği. Yalnızca sorgu yapısı — kimlik bilgileri, başlıklar veya ham olay içerikleri kaydedilmez ve gösterilmez. Her ifade, scope'unu belirleyen START ve STOP sınırlarını taşır.",
     "noQueries": "Bu paket için sorgu kaydedilmedi.",
     "query": "Sorgu",
     "window": "pencere",

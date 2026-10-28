@@ -11,14 +11,13 @@ import { useTranslations } from "next-intl";
 import { WidgetFrame } from "@/components/home/WidgetFrame";
 import { Unmeasured, When } from "@/components/home/WidgetParts";
 import { TableScroll } from "@/components/ui/TableScroll";
-// `statePillText` is the WAF wave's helper: its call stays as it is, so the WAF
-// wave's conversion of it reaches this widget without a merge conflict here.
 import { statePillText } from "@/components/waf/wafLabels";
 import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
 import { homeReads, sevTone, type AnomalySummary, type Page } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
 import { ARROW } from "@/lib/behaviorI18n";
 import { combine2 } from "@/lib/home/combine";
+import { useEnumLabels } from "@/i18n/enumLabels";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { useExpanded } from "@/widgets/runtime";
 import type { WidgetState } from "@/widgets/types";
@@ -49,6 +48,7 @@ export function RecentIpsAnomaliesView({
   const expanded = useExpanded();
   const t = useTranslations("ips.recent");
   const i18n = useBehaviorI18n();
+  const { severityPill } = useEnumLabels();
   const pages =
     "status" in state
       ? state.status === "ok"
@@ -118,20 +118,20 @@ export function RecentIpsAnomaliesView({
                         </span>
                         <span className="tw-sub tw-wrap tw-fold-line">
                           <span className={`tw-state-word ${sevTone(r.severity)}`}>
-                            {r.severity}
+                            {severityPill(r.severity)}
                           </span>
                           {" · "}
                           <span className={`tw-state-word ${stateTone(r.state)}`}>
-                            {statePillText(r.state)}
+                            {statePillText(r.state, i18n)}
                           </span>
                           {" · "}
                           <UtcTime value={r.detectedAt} variant="compact" />
                         </span>
                       </td>
                       <td className="tw-unfold">
-                        <span className={`pill ${sevTone(r.severity)}`}>{r.severity}</span>
+                        <span className={`pill ${sevTone(r.severity)}`}>{severityPill(r.severity)}</span>
                         <span className={`tw-sub tw-wrap tw-state-word ${stateTone(r.state)}`}>
-                          {statePillText(r.state)}
+                          {statePillText(r.state, i18n)}
                         </span>
                       </td>
                       <td className="num">

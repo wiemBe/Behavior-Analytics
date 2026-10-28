@@ -17,6 +17,7 @@ import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
 import { formatCount } from "@/lib/format";
+import { dependencyWord } from "@/components/rules/dependencyWord";
 
 import "@/components/ui/controls.css";
 
@@ -78,10 +79,8 @@ export default async function RuleDetailPage({
   const reason = r.health_reason?.trim() || null;
   const buildingBlocks = r.dependencies.filter((d) => d.kind === "BUILDING_BLOCK");
   const telemetry = r.dependencies.filter((d) => d.kind !== "BUILDING_BLOCK");
-  const dependencyLabel = (group: "mappingSources" | "dependencyKinds", value: string) => {
-    const key = `rules.detail.${group}.${value}`;
-    return say.has?.(key) ? say(key) : value;
-  };
+  const dependencyLabel = (group: "mappingSources" | "dependencyKinds", value: string) =>
+    dependencyWord(say, group, value);
 
   return (
     <>
@@ -120,14 +119,14 @@ export default async function RuleDetailPage({
       <h3>{t("healthEvidence")}</h3>
       {isUnestablished(r.health_status) ? (
         <div className="notice">
-          <strong>{healthMeaning(r.health_status)}</strong>
+          <strong>{healthMeaning(r.health_status, say)}</strong>
           <p className="rule-health-reason">
             {reason ??
               t("unestablishedFallback")}
           </p>
         </div>
       ) : (
-        <p className="rule-health-reason">{reason ?? healthMeaning(r.health_status)}</p>
+        <p className="rule-health-reason">{reason ?? healthMeaning(r.health_status, say)}</p>
       )}
 
       <div className="detail-grid">

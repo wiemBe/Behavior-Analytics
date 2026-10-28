@@ -46,7 +46,7 @@
     },
     "health_detection": {
       "title": "Algılama sağlığı",
-      "description": "Teknik kapsamı ve kural kararları: algılama sağlam mı?"
+      "description": "Teknik coverage'ı ve kural kararları: algılama sağlam mı?"
     },
     "health_collection": {
       "title": "Zamanlanmış aramalar",
@@ -70,7 +70,7 @@
     },
     "waf_sources": {
       "title": "WAF kaynakları",
-      "description": "Profil kararı, endpoint kapsamı ve üst sınıra karşı etkin endpoint'ler."
+      "description": "Profil kararı, endpoint coverage'ı ve üst sınıra karşı etkin endpoint'ler."
     },
     "table_recent_waf_anomalies": {
       "title": "Son WAF anomalileri",
@@ -101,7 +101,7 @@
     },
     "chart_property_watch": {
       "title": "Özellik izleme",
-      "description": "Bir özellik izleme: sabitlenmiş değerleri ve son zaman diliminin en yüksek değerleri, zaman dilimi başına olay olarak, kapsamın kapsama oranıyla.",
+      "description": "Bir özellik izleme: sabitlenmiş değerleri ve son zaman diliminin en yüksek değerleri, zaman dilimi başına olay olarak, scope'un coverage oranıyla.",
       "fields": {
         "watch_id": "Özellik izleme"
       }
@@ -381,8 +381,8 @@
     "disabled": "İzleme devre dışı olduğu için bunun için arama gönderilmiyor.",
     "notRunYet": "Henüz çalışmadı: ilk toplama bir sonraki sıklık diliminde yapılır.",
     "noBucket": "Bu izleme için henüz zaman dilimi toplanmadı. {why} Oluşturulma: {at}.",
-    "inScope": "(kapsamdaki {parsed, number} / {total, number} olay)",
-    "notApplicable": "{at} zaman dilimi toplandı, ancak özellik hiçbir olayda ayrıştırılamadı{events}: kapsama oranı {coverage}. Hiçbir değer ölçülmedi ve hiçbiri değerlendirilmedi.",
+    "inScope": "(scope'taki {parsed, number} / {total, number} olay)",
+    "notApplicable": "{at} zaman dilimi toplandı, ancak özellik hiçbir olayda ayrıştırılamadı{events}: coverage oranı {coverage}. Hiçbir değer ölçülmedi ve hiçbiri değerlendirilmedi.",
     "fiveMinuteIntervals": "beş dakikalık aralık",
     "partialText": "{have, number} / {of, number} beş dakikalık aralık toplandı; kalanlar boşluktur, sıfır olay değildir",
     "lowerBoundsText": "Toplanan zaman dilimlerinden {lower, number} / {total, number} alt sınırdır; noktaları \"en az n\" olarak okunur ve olmayan değerler bilinmiyor demektir, sıfır değildir",
@@ -394,7 +394,7 @@
     "noFirstBucket": "İzleme ilk güncel zaman dilimini henüz toplamadı.",
     "noValues": "Bu izleme için son {window} içinde izlenen değer yok. Toplanan bir zaman dilimi değeri kabul ettiğinde değer görünür; o zamana kadar hiçbir şey değerlendirilmez. Oluşturulma: <created></created>.",
     "nothingToDraw": "Sabitlenmiş değer yok ve izlenen hiçbir değerin son zaman diliminde sayılmış olayı yok, bu yüzden çizilecek bir şey yok. Bu, sıfır olay ölçümü değildir.",
-    "coverageBadge": "Kapsama {value}",
+    "coverageBadge": "Coverage {value}",
     "nonePlotted": "Çizilen değer yok.",
     "chartLabel": "Sabitlenmiş değerler ve son zaman diliminin en yüksek değerleri için {unit}, UTC",
     "lastBucket": "Son zaman dilimi <time></time> <age></age>. Y ekseni: {unit}.",

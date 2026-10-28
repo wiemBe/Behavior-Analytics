@@ -2,28 +2,18 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-
-interface Override {
-  files?: string[];
-  rules?: Record<string, unknown>;
-}
+import { FRONTEND_ROOT, guardedFiles } from "./guardedFiles";
 
 describe("translated attribute contract", () => {
-  it("uses the ESLint conversion list and leaves no lettered literal accessibility text", () => {
-    const root = resolve(__dirname, "../..");
-    const config = JSON.parse(readFileSync(resolve(root, ".eslintrc.json"), "utf8")) as {
-      overrides?: Override[];
-    };
-    const files = config.overrides?.find(
-      (entry) => entry.rules?.["react/jsx-no-literals"] != null,
-    )?.files;
-    expect(files?.length).toBeGreaterThan(0);
+  it("walks the guarded tree and leaves no lettered literal accessibility text", () => {
+    const files = guardedFiles(".tsx");
+    expect(files.length).toBeGreaterThan(200);
 
     const failures: string[] = [];
-    for (const relative of files ?? []) {
+    for (const relative of files) {
       const source = ts.createSourceFile(
         relative,
-        readFileSync(resolve(root, relative), "utf8"),
+        readFileSync(resolve(FRONTEND_ROOT, relative), "utf8"),
         ts.ScriptTarget.Latest,
         true,
         ts.ScriptKind.TSX,

@@ -21,6 +21,7 @@ import { MAD_EPS } from "@/lib/behaviorI18n";
 import { plainCount } from "@/lib/figureText";
 import { formatShare } from "@/lib/format";
 import { relativeAgeFromSeconds, type AgeWords } from "@/lib/time";
+import { qradarStatusLabel } from "@/app/log-sources/qradarStatus";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { UtcTime } from "@/components/ui/UtcTime";
 
@@ -161,7 +162,13 @@ export function SourceQuality({
             <dt>{t("qradarStatus")}</dt>
             {/* Reported by QRadar about the log source. Not a statement about
                 whether our collector ran, which the API does not expose. */}
-            <dd>{qradarStatus ?? <span className="muted">{t("unavailable")}</span>}</dd>
+            <dd>
+              {qradarStatus != null ? (
+                qradarStatusLabel(qradarStatus, i18n.t)
+              ) : (
+                <span className="muted">{t("unavailable")}</span>
+              )}
+            </dd>
           </div>
         </dl>
       </section>

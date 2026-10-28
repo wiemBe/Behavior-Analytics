@@ -13,6 +13,7 @@ import { SCHEDULE_PRESETS, cronToPreset, everyLabel } from "@/lib/searchCadence"
 import { resultCount } from "@/lib/searchRuns";
 
 import { ENGLISH_SEARCHES } from "./searchesText";
+import { isPlainKey } from "@/i18n/ownKey";
 
 /** Platform caps (app/core/config.py: ariel_max_timeout_seconds and the two beside it). */
 export const SEARCH_CAPS = {
@@ -382,13 +383,17 @@ export function runReadout(
     const named = execution.error_type
       ? t("trend.run.errorType", {
           type: execution.error_type,
-          words: errorKey && t.has?.(errorKey) ? t(errorKey) : "",
+          words:
+            errorKey && isPlainKey(execution.error_type ?? "") && t.has?.(errorKey) ? t(errorKey) : "",
         }).trim()
       : t("trend.run.noErrorType");
     const count =
       consecutiveFailures == null
         ? t("trend.run.countUnknown", { after: SEARCH_FAILURE_ALERT_AFTER })
-        : t("trend.run.countKnown", { failures: consecutiveFailures, after: SEARCH_FAILURE_ALERT_AFTER });
+        : t("trend.run.countKnown", {
+            failures: plainCount(consecutiveFailures, locale),
+            after: SEARCH_FAILURE_ALERT_AFTER,
+          });
     const word =
       execution.status === "FAILED"
         ? t("trend.run.failedWord")

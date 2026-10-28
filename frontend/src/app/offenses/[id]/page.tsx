@@ -3,7 +3,8 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { formatAge, magnitudeTone, offenseStatusTone } from "@/lib/health";
+import { formatDuration } from "@/lib/behavior";
+import { magnitudeTone, offenseStatusTone } from "@/lib/health";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { formatCount } from "@/lib/format";
 import type { Locale } from "@/i18n/locale";
@@ -159,7 +160,7 @@ export default async function OffenseDetailPage({
         </div>
         <div>
           <dt>{t("age")}</dt>
-          <dd>{formatAge(o.age_seconds)}</dd>
+          <dd>{formatDuration(o.age_seconds, { t: say, locale })}</dd>
         </div>
       </dl>
 

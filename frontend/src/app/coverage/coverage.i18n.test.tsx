@@ -97,8 +97,8 @@ beforeEach(() => {
 describe("/coverage in Turkish", () => {
   it("titles the page and counts every status in the Turkish number form", async () => {
     await renderPage();
-    expect(screen.getByRole("heading", { level: 1, name: "Algılama kapsamı" })).toBeInTheDocument();
-    expect(screen.getByText(/Eşlenen kurallardan ve gözlenen sağlıklarından türetilen MITRE ATT&CK teknik kapsamı\./)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Algılama coverage'ı" })).toBeInTheDocument();
+    expect(screen.getByText(/Eşlenen kurallardan ve gözlenen sağlıklarından türetilen MITRE ATT&CK teknik coverage'ı\./)).toBeInTheDocument();
     for (const [label, value] of [
       ["KAPSANDI", "602"],
       ["KISMİ", "2"],
@@ -134,8 +134,8 @@ describe("/coverage in Turkish", () => {
   it("says coverage was not evaluated, never 0 %, when nothing is mapped", async () => {
     vi.mocked(api.coverageSummary).mockResolvedValue(summary({ total_techniques: 0, by_status: {}, covered_ratio: 0 }));
     await renderPage();
-    expect(screen.getByText("Kapsam değerlendirilmedi.")).toBeInTheDocument();
-    expect(screen.getByText(/Eşlemeleri bir yönetici ekler\. Bu, sıfır kapsam bulgusu değildir\./)).toBeInTheDocument();
+    expect(screen.getByText("Coverage değerlendirilmedi.")).toBeInTheDocument();
+    expect(screen.getByText(/Eşlemeleri bir yönetici ekler\. Bu, sıfır coverage bulgusu değildir\./)).toBeInTheDocument();
     expect(screen.queryByText(/%0/)).toBeNull();
     expect(screen.queryByRole("table", { name: "Teknikler" })).toBeNull();
   });
@@ -153,7 +153,7 @@ describe("/coverage in Turkish", () => {
   it("words the rule-centric and the data-source-centric views", async () => {
     await renderPage();
     expect(screen.getByRole("heading", { level: 3, name: "Kural odaklı görünüm" })).toBeInTheDocument();
-    const rules = screen.getByRole("table", { name: "Kurala göre kapsam" });
+    const rules = screen.getByRole("table", { name: "Kurala göre coverage" });
     for (const name of ["Kural", "Etkin", "Sağlık", "Teknikler", "Kanıt"]) {
       expect(within(rules).getByRole("columnheader", { name })).toBeInTheDocument();
     }
@@ -162,7 +162,7 @@ describe("/coverage in Turkish", () => {
     expect(rule).toHaveTextContent("HİÇ GÖZLENMEDİ");
     expect(rule).toHaveTextContent("açık %90,0; çıkarımsal %25,0");
     expect(screen.getByRole("heading", { level: 3, name: "Veri kaynağı odaklı görünüm" })).toBeInTheDocument();
-    const sources = screen.getByRole("table", { name: "Veri kaynağına göre kapsam" });
+    const sources = screen.getByRole("table", { name: "Veri kaynağına göre coverage" });
     for (const name of ["Veri kaynağı", "Tür", "Kurallar", "Teknikler", "Kanıt"]) {
       expect(within(sources).getByRole("columnheader", { name })).toBeInTheDocument();
     }
@@ -175,16 +175,16 @@ describe("/coverage in Turkish", () => {
   it.each([403, 401, 500])("keeps the heading and shows the failure on a %s", async (status) => {
     vi.mocked(api.coverageSummary).mockRejectedValue(new ApiError(status, "x"));
     await renderPage();
-    expect(screen.getByRole("heading", { level: 1, name: "Algılama kapsamı" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Algılama coverage'ı" })).toBeInTheDocument();
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
   it("announces loading and the route error without the exception", () => {
     const a = render(<CoverageLoading />);
-    expect(screen.getByRole("status")).toHaveTextContent("Algılama kapsamı yükleniyor…");
+    expect(screen.getByRole("status")).toHaveTextContent("Algılama coverage'ı yükleniyor…");
     a.unmount();
     render(<CoverageError error={Object.assign(new Error("secret"), { digest: "c1" })} reset={() => {}} />);
-    expect(screen.getByRole("alert")).toHaveTextContent("Algılama kapsamı gösterilemedi.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Algılama coverage'ı gösterilemedi.");
     expect(screen.getByRole("alert")).toHaveTextContent("Referans: c1.");
     expect(screen.getByRole("alert")).not.toHaveTextContent("secret");
   });

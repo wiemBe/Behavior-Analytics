@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTestLocale } from "../../../vitest.setup";
-import { createLocaleTranslator } from "@/i18n/fallback";
+import { createLocaleTranslator } from "@/i18n/testTranslator";
 import { enumLabel } from "@/i18n/enumLabels";
 import { ApiError } from "@/lib/api";
 import { formatShare } from "@/lib/format";

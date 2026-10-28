@@ -14,6 +14,7 @@ import { TableScroll } from "@/components/ui/TableScroll";
 import { formatCount } from "@/lib/format";
 
 import { outageView } from "./derive";
+import { isPlainKey } from "@/i18n/ownKey";
 
 import "./catalog.css";
 
@@ -29,16 +30,22 @@ function graceText(summary: OutageFleetSummary, text: FleetText): string | null 
   return `${buckets} (${text.say("units.minute", { count })})`;
 }
 
+/** The mode in words; null for a mode the catalog does not know. */
+export function outageModeLabel(
+  text: FleetText,
+  mode: OutageMode | null | undefined,
+): string | null {
+  return mode && isPlainKey(mode) && text.say.has?.(`catalog.outage.mode.${mode}`)
+    ? text.say(`catalog.outage.mode.${mode}`)
+    : null;
+}
+
 export function OutagePolicy() {
   const t = useTranslations("catalog.outage");
   const text = useFleetText();
   const n = (v: number) => formatCount(v, text.locale);
   const now = useTranslations("catalog")("now");
-  /** The mode in words; null for a mode the catalog does not know. */
-  const modeLabel = (mode: OutageMode | null | undefined): string | null =>
-    mode && text.say.has?.(`catalog.outage.mode.${mode}`)
-      ? text.say(`catalog.outage.mode.${mode}`)
-      : null;
+  const modeLabel = (mode: OutageMode | null | undefined) => outageModeLabel(text, mode);
   const read = homeReads.outageSummary("24h");
   const state = useApiResource(read.key, read.fetch);
 

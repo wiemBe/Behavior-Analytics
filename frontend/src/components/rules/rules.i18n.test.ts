@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createLocaleTranslator } from "@/i18n/fallback";
+import { createLocaleTranslator } from "@/i18n/testTranslator";
 
 import {
   formatCapacity,

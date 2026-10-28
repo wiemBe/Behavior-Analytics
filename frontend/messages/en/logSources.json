@@ -2,6 +2,7 @@
   "title": "Log Sources",
   "loadingWhat": "log sources",
   "errorWhat": "Log sources",
+  "loadNoun": "log sources",
   "countLead": "{count} sources.",
   "description": "QRadar-owned fields refresh on sync; criticality, owner and maintenance are SOC-owned and preserved.",
   "empty": "No log sources yet. Trigger an inventory sync to pull them from the configured provider.",

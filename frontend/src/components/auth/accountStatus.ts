@@ -2,7 +2,8 @@
 // not a lock. An unreadable timestamp is not reported as one either: the cell
 // would otherwise claim a lock it cannot place in time.
 
-import { englishText, type TextTranslator } from "@/i18n/fallback";
+import { englishText } from "./englishText";
+import type { TextTranslator } from "@/i18n/textTranslator";
 
 export function isLocked(lockedUntil: string | null, now: number): boolean {
   if (!lockedUntil) return false;

@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import { catalog, watch } from "@/components/propertywatch/fixtures";
-import { createLocaleTranslator } from "@/i18n/fallback";
+import { createLocaleTranslator } from "@/i18n/testTranslator";
 
 import { qualifiersOf } from "./PropertyWatchWidget";
 import { earlyState } from "./pwWidgetState";
@@ -80,8 +80,8 @@ describe("earlyState in Turkish", () => {
       "tr",
     );
     expect(s?.kind).toBe("no_data");
-    expect(reasonOf(s)).toContain("(kapsamdaki 0\u00a0/\u00a01.000 olay)");
-    expect(reasonOf(s)).toContain("kapsama oranı %50");
+    expect(reasonOf(s)).toContain("(scope'taki 0\u00a0/\u00a01.000 olay)");
+    expect(reasonOf(s)).toContain("coverage oranı %50");
   });
 
   it("is English when no translator is passed", () => {

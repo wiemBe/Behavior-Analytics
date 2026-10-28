@@ -9,7 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ResourceState } from "@/hooks/useApiResource";
-import { createLocaleTranslator } from "@/i18n/fallback";
+import { createLocaleTranslator } from "@/i18n/testTranslator";
 import type { DashboardListItem } from "@/lib/dashboardApi";
 import { setTestLocale } from "../../vitest.setup";
 

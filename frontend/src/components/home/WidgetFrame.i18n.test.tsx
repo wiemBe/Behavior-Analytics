@@ -16,7 +16,7 @@ import { setTestLocale } from "../../../vitest.setup";
 import { secondary, WidgetFrame, WidgetQualifiers, type DataTo } from "./WidgetFrame";
 import { reasonText, badgePhrase } from "./qualifierText";
 import { useMeasures } from "@/i18n/measures";
-import { createLocaleTranslator } from "@/i18n/fallback";
+import { createLocaleTranslator } from "@/i18n/testTranslator";
 
 const res = vi.hoisted(() => ({ cadence: { status: "loading" } as unknown }));
 vi.mock("@/hooks/useApiResource", () => ({
@@ -222,7 +222,7 @@ describe("WidgetQualifiers in Turkish", () => {
   it("translates a reason by its code and values, and shows a reason with no code as it is", () => {
     const say = createLocaleTranslator("tr");
     expect(reasonText(say, notCollected("x", { code: "NO_STEP_COMPLETE", values: { total: 1200 } }))).toBe(
-      "1.200 adımın hiçbirinde kapsamdaki tüm kaynak aralıkları tamamlanmış değil.",
+      "1.200 adımın hiçbirinde scope'taki tüm kaynak aralıkları tamamlanmış değil.",
     );
     expect(reasonText(say, insufficient("Something nobody coded."))).toBe("Something nobody coded.");
     // Text that happens to equal a known English sentence is not translated: only a code is.

@@ -724,7 +724,7 @@ describe("field mapping helpers", () => {
       { populatedRatio: 0.318, plausibleRatio: null, requiredCoverage: 0.9, usedByCollection: true },
       TR,
     );
-    expect(low).toMatchObject({ label: "Düşük kapsam", tone: "crit" });
+    expect(low).toMatchObject({ label: "Düşük coverage", tone: "crit" });
     expect(low.sentence).toBe("Olayların yalnızca %31,8 kadarı onu taşıyor; toplama için %90,0 gerekiyor.");
     // A missing share is never worded as 0 %.
     const none = fieldStatusInfo(
@@ -981,7 +981,7 @@ describe("field mapping components", () => {
     expect(screen.getByRole("columnheader", { name: "Yapan" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Ne değişti" })).toBeInTheDocument();
     expect(rows[0]).toHaveTextContent("Doğrulandı · v4");
-    expect(rows[0]).toHaveTextContent("Sonuç: valid");
+    expect(rows[0]).toHaveTextContent("Sonuç: Geçerli");
     expect(rows[1]).toHaveTextContent("Eşleme değişti");
     expect(within(screen.getByRole("list", { name: "Eşleme değişiklikleri" })).getByText(/URL path:/)).toHaveTextContent("URL path: request_uri → URL");
     expect(rows[2]).toHaveTextContent("waf.profile.future");

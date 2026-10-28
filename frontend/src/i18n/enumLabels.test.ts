@@ -4,7 +4,7 @@ import en from "../../messages/en";
 import tr from "../../messages/tr";
 import { enumLabel, statePillLabel, type EnumGroup, type EnumTranslator } from "./enumLabels";
 import { rowTypeLabel } from "@/components/ips/ipsLabels";
-import { createLocaleTranslator } from "./fallback";
+import { createLocaleTranslator } from "./testTranslator";
 
 function translator(locale: "en" | "tr"): EnumTranslator {
   const say = createLocaleTranslator(locale);

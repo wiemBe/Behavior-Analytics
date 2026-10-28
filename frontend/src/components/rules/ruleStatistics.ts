@@ -9,6 +9,7 @@ import type { Locale } from "@/i18n/locale";
 import type { TextTranslator } from "@/i18n/textTranslator";
 
 import { rulesEnglishText } from "./englishText";
+import { own } from "@/i18n/ownKey";
 
 
 export const STATS_PATH = "/rules/statistics";
@@ -74,7 +75,7 @@ function titleCase(raw: string): string {
 export function typeLabel(type: string | null, t: TextTranslator = rulesEnglishText): string {
   if (type === null || type === "") return t("rules.helpers.unknownType");
   if (type === "BUILDINGBLOCK") return t("rules.helpers.buildingBlockType");
-  const key = TYPE_KEYS[type];
+  const key = own(TYPE_KEYS, type);
   return key ? t(`rules.helpers.types.${key}`) : titleCase(type);
 }
 

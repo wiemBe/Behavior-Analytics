@@ -78,10 +78,10 @@
   },
   "detection": {
     "title": "Algılama sağlığı",
-    "link": "Kapsam",
-    "what": "algılama kapsamı",
+    "link": "Coverage",
+    "what": "algılama coverage'ı",
     "ruleHealthWhat": "kural sağlığı",
-    "notEvaluated": "<b>Kapsam değerlendirilmedi.</b> Henüz hiçbir teknik eşlenmedi; bu yüzden bu, sıfır kapsam bulgusu değildir.",
+    "notEvaluated": "<b>Coverage değerlendirilmedi.</b> Henüz hiçbir teknik eşlenmedi; bu yüzden bu, sıfır coverage bulgusu değildir.",
     "covered": "{covered} / {total} teknik kapsandı",
     "others": "Diğer durumlar:",
     "caption": "Karara göre kural sağlığı",

@@ -9,6 +9,7 @@ import type { Tone } from "@/lib/health";
 import type { WafSourceBehavior } from "@/lib/api";
 
 import { ENGLISH_WAF, type BehaviorI18n } from "./wafI18n";
+import { isPlainKey } from "@/i18n/ownKey";
 
 export interface ValidationView {
   label: string;
@@ -20,7 +21,7 @@ export interface ValidationView {
 /** The validation status as a pill shows it: the code in English, the capitals of the word in Turkish. */
 function labelOf(i18n: BehaviorI18n, status: string): string {
   const key = `waf.validation.label.${status}`;
-  return i18n.t.has?.(key) ? i18n.t(key) : status;
+  return isPlainKey(status) && i18n.t.has?.(key) ? i18n.t(key) : status;
 }
 
 export function validationView(

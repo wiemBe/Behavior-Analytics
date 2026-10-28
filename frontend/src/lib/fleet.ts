@@ -26,6 +26,7 @@ import { detectorLabel, NOT_MEASURED } from "@/lib/behavior";
 import type { FormatLocale } from "@/lib/format";
 import { formatCount } from "@/lib/format";
 import { englishFleetText, plainCount, type FleetText } from "@/lib/fleetText";
+import { isPlainKey, own } from "@/i18n/ownKey";
 
 // --- classes ------------------------------------------------------------------
 
@@ -61,13 +62,13 @@ export const ASSIGNABLE_CLASSES = ALL_CLASSES.filter((c) => c !== "UNCLASSIFIED"
  */
 function labelOf(text: FleetText, group: string, value: string, english?: string): string {
   const key = `${group}.${value}`;
-  if (value !== "" && !value.includes(".") && text.say.has?.(key)) return text.say(key);
+  if (isPlainKey(value) && text.say.has?.(key)) return text.say(key);
   return english ?? value;
 }
 
 export function classLabel(value: string | null | undefined, text: FleetText = englishFleetText): string {
   if (value == null) return NOT_MEASURED;
-  return labelOf(text, "enums.sourceClass", value, CLASS_LABELS[value as SourceClass] ?? value);
+  return labelOf(text, "enums.sourceClass", value, own(CLASS_LABELS, value) ?? value);
 }
 
 /** Tone of a class pill. Only UNCLASSIFIED is flagged: it needs a decision. */
@@ -234,7 +235,7 @@ const BASIS_LABELS: Record<string, string> = {
 };
 
 export function basisLabel(basis: string, text: FleetText = englishFleetText): string {
-  return labelOf(text, "fleet.basis", basis, BASIS_LABELS[basis] ?? basis);
+  return labelOf(text, "fleet.basis", basis, own(BASIS_LABELS, basis) ?? basis);
 }
 
 /** The English wording; the catalog (`fleet.conflict.subject`) carries both languages. */

@@ -37,7 +37,7 @@
   "reasons": {
     "noClassComplete": "Bu aralıkta tamamlanmış zaman dilimi olan sınıf yok.",
     "noStep": "Aralıkta hiç adım yok.",
-    "noStepComplete": "{total, number} adımın hiçbirinde kapsamdaki tüm kaynak aralıkları tamamlanmış değil.",
+    "noStepComplete": "{total, number} adımın hiçbirinde scope'taki tüm kaynak aralıkları tamamlanmış değil.",
     "noMonitored": "İzlenen log source yok.",
     "noVerdict": "İzlenen hiçbir kaynağın henüz bir kararı yok.",
     "noSnapshot": "Henüz offense kesiti toplanmadı.",

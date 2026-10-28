@@ -477,7 +477,12 @@ export function ResultTrend({
         splitNumber: 3,
         splitLine: { lineStyle: { color: palette.grid } },
         axisLine: { lineStyle: { color: palette.axis } },
-        axisLabel: { ...text, hideOverlap: true },
+        // English keeps ECharts' own plain digits; Turkish groups them (`1.200`).
+        axisLabel: {
+          ...text,
+          hideOverlap: true,
+          ...(x.locale === "en" ? {} : { formatter: (value: number) => trendCount(value, x.locale) }),
+        },
       },
       series: [
         {
@@ -612,7 +617,7 @@ export function ResultTrend({
   } else if (latest && FAILED_STATUSES.has(latest.status)) {
     body = (
       <p className={box} role="alert">
-        {runReadout(latest, loadedSearch?.consecutive_failures ?? null, t).text}
+        {runReadout(latest, loadedSearch?.consecutive_failures ?? null, t, x.locale).text}
       </p>
     );
   } else if (knowNeverRun || (executions === undefined && trend !== null && trend.points.length === 0)) {

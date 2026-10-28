@@ -12,6 +12,7 @@
 import type { TextTranslator } from "@/i18n/textTranslator";
 import type { useMeasures } from "@/i18n/measures";
 import { isWorded, reasonInfo, type Qualifier, type ReasonCode } from "@/lib/home/qualifiers";
+import { own } from "@/i18n/ownKey";
 
 type Measures = ReturnType<typeof useMeasures>;
 type Say = (key: string, values?: Record<string, string | number>) => string;
@@ -67,7 +68,7 @@ export function qualifierText(
   }
   if (q.kind === "PARTIAL") {
     if (isWorded(q)) return q.text;
-    const unitKey = UNIT_KEY[q.unit];
+    const unitKey = own(UNIT_KEY, q.unit);
     const unit = unitKey ? say(`home.qualifier.unit.${unitKey}`) : q.unit;
     const values = { have: measures.count(q.have), of: measures.count(q.of), unit };
     return say(compact ? "home.qualifier.partialCompact" : "home.qualifier.partial", values);

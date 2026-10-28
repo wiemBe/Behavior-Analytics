@@ -132,7 +132,7 @@ describe("chart.property_watch in Turkish", () => {
     world();
     renderWidget();
     expect(await screen.findByRole("img", { name: /5\u00a0dk başına olay.*UTC/ })).toBeInTheDocument();
-    expect(screen.getByText("Kapsama %96")).toBeInTheDocument();
+    expect(screen.getByText("Coverage %96")).toBeInTheDocument();
     expect(screen.getByText("2026-10-18 08:55:00 UTC")).toBeInTheDocument();
     expect(screen.getByText(/Y ekseni: 5 dk başına olay\./)).toBeInTheDocument();
     expect(screen.getByText(/\(\d+ dk önce\)/)).toBeInTheDocument();
@@ -211,8 +211,8 @@ describe("chart.property_watch in Turkish", () => {
     });
     renderWidget();
     const text = await screen.findByText(/özellik hiçbir olayda ayrıştırılamadı/);
-    expect(text).toHaveTextContent("(kapsamdaki 0 / 1.000 olay)");
-    expect(text).toHaveTextContent("kapsama oranı %0");
+    expect(text).toHaveTextContent("(scope'taki 0 / 1.000 olay)");
+    expect(text).toHaveTextContent("coverage oranı %0");
     expect(screen.getByText("Veri yok.")).toBeInTheDocument();
   });
 

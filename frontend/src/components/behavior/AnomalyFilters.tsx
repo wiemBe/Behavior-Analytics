@@ -337,8 +337,6 @@ export function AnomalyFilters({
                 type="search"
                 name="instance_id"
                 defaultValue={values.instance_id}
-                // placeholder="Instance…" (anomalies.filters.instancePlaceholder): the short form
-                // `placeholders.test.tsx` pins, kept in the source as text.
                 placeholder={t("instancePlaceholder")}
               />
 

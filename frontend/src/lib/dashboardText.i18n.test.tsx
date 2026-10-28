@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { HealthDistribution } from "@/components/behavior/HealthDistribution";
 import { historyMarkAreas } from "@/components/behavior/historyOrigin";
-import { createLocaleTranslator } from "@/i18n/fallback";
+import { createLocaleTranslator } from "@/i18n/testTranslator";
 import { ApiError, actionErrorMessage } from "@/lib/api";
 import { healthDistribution, healthSummaryText, type HealthGroup } from "@/lib/behaviorOverview";
 import { describeRefusal } from "@/lib/dashboardApi";

@@ -1,5 +1,6 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import Link from "next/link";
+import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { plainCount } from "@/lib/fleetText";
 import type { FormatLocale } from "@/lib/format";
@@ -22,7 +23,7 @@ export default async function LogSourcesPage() {
   try {
     sources = await api.logSources();
   } catch (err) {
-    error = loadErrorMessage(err, "log sources", "read:log_sources");
+    error = loadErrorMessage(err, t("loadNoun"), "read:log_sources", say);
   }
 
   return (
@@ -69,7 +70,7 @@ export default async function LogSourcesPage() {
                     )}
                   </td>
                   <td>{s.type_name ?? "—"}</td>
-                  <td>{s.criticality}</td>
+                  <td>{enumLabel(say, "severityPill", s.criticality)}</td>
                   <td>
                     <span className={`pill ${qradarStatusTone(s.qradar_status)}`}>
                       {qradarStatusLabel(s.qradar_status, say)}

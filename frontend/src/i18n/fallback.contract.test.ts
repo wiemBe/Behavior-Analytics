@@ -1,73 +1,70 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import en from "../../messages/en";
-import { SHARED_ENGLISH } from "./fallback";
-import { createTextTranslator } from "./textTranslator";
+import { englishText as authEnglish } from "@/components/auth/englishText";
+import { englishText as shellEnglish } from "@/components/shell/englishText";
 import { englishText as dashboardEnglish } from "@/widgets/englishText";
 
 const SRC = path.resolve(__dirname, "..");
-const read = (relative: string) => readFileSync(path.join(SRC, relative), "utf8");
 
-/** The namespaces a source file asks a translator for, from `t("ns.key")` and t(`ns.${..}`). */
-function namespacesUsed(source: string): Set<string> {
-  const found = new Set<string>();
-  for (const match of source.matchAll(/\bt\(\s*[`"']([A-Za-z]+)\./g)) found.add(match[1]);
-  return found;
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(full);
+    return /\.tsx?$/.test(entry.name) ? [full] : [];
+  });
 }
 
-describe("i18n/fallback", () => {
-  const callers = [
-    "components/auth/probeCopy.ts",
-    "components/auth/reasons.ts",
-    "components/auth/accountStatus.ts",
-    "components/shell/ConnectionStatus.tsx",
-  ];
-
-  it("holds the English of every namespace its remaining callers read, and no other", () => {
-    expect(Object.keys(SHARED_ENGLISH).sort()).toEqual(["auth", "common", "format", "shell"]);
-    for (const caller of callers) {
-      for (const namespace of namespacesUsed(read(caller))) {
-        expect(Object.keys(SHARED_ENGLISH), `${caller} reads ${namespace}`).toContain(namespace);
-      }
-    }
-  });
-
-  it("holds the same text as the catalog for those namespaces", () => {
-    const shared = createTextTranslator("en", SHARED_ENGLISH);
-    expect(shared("auth.probeOk")).toBe(en.auth.probeOk);
-    expect(shared("shell.connection.connected")).toBe(en.shell.connection.connected);
-    expect(shared("format.minutesAgo", { count: 5 })).toBe("5 min ago");
-    expect(shared("common.unknown")).toBe(en.common.unknown);
-  });
-
-  it("is not imported by any converted Dashboard file", () => {
-    for (const file of [
-      "app/page.tsx",
-      "components/home/HomeDashboard.tsx",
-      "components/home/WidgetFrame.tsx",
-      "components/home/qualifierText.ts",
-      "components/home/chartOptions.ts",
-      "widgets/DashboardView.tsx",
-      "widgets/DashboardMenu.tsx",
-      "widgets/Catalog.tsx",
-      "widgets/Configure.tsx",
-      "widgets/PropertyWatchWidget.tsx",
-      "widgets/pwWidgetState.ts",
-      "widgets/englishText.ts",
-    ]) {
-      expect(read(file), file).not.toMatch(/from "@\/i18n\/fallback"/);
-    }
+describe("i18n/fallback is gone", () => {
+  it("is imported by no file, tests included, and no longer exists", () => {
+    const importers = sourceFiles(SRC)
+      .filter((file) => !file.endsWith("fallback.contract.test.ts"))
+      .filter((file) => /(?:from|import)\s*\(?\s*["'](@\/i18n\/fallback|\.{1,2}\/(?:.*\/)?fallback)["']/.test(readFileSync(file, "utf8")))
+      .map((file) => path.relative(SRC, file));
+    expect(importers).toEqual([]);
+    expect(sourceFiles(path.join(SRC, "i18n")).map((file) => path.basename(file))).not.toContain(
+      "fallback.ts",
+    );
   });
 });
 
-describe("widgets/englishText", () => {
-  it("is the English of the Dashboard area, the same text as the catalog", () => {
+describe("area English bundles (the default translators of the converted helpers)", () => {
+  it("auth holds the same text as the catalog", () => {
+    expect(authEnglish("auth.probeOk")).toBe(en.auth.probeOk);
+    expect(authEnglish("auth.requestFailed")).toBe(en.auth.requestFailed);
+    expect(authEnglish("common.unknown")).toBe(en.common.unknown);
+  });
+
+  it("shell holds the same text as the catalog", () => {
+    expect(shellEnglish("shell.connection.connected")).toBe(en.shell.connection.connected);
+    expect(shellEnglish("format.minutesAgo", { count: 5 })).toBe("5 min ago");
+    expect(shellEnglish("common.ok")).toBe(en.common.ok);
+  });
+
+  it("widgets holds the same text as the catalog", () => {
     expect(dashboardEnglish("widgets.menu.nameRequired")).toBe(en.widgets.menu.nameRequired);
     expect(dashboardEnglish("home.frame.gapFailed")).toBe(en.home.frame.gapFailed);
     expect(dashboardEnglish("units.eps")).toBe("EPS");
     expect(dashboardEnglish("dashboard.notFinished")).toBe(en.dashboard.notFinished);
     expect(dashboardEnglish("enums.severity.HIGH")).toBe("High");
+  });
+
+  it("each bundle covers every namespace its helper reads", () => {
+    const namespacesUsed = (relative: string) => {
+      const found = new Set<string>();
+      const source = readFileSync(path.join(SRC, relative), "utf8");
+      for (const match of source.matchAll(/\bt\(\s*[`"']([A-Za-z]+)\./g)) found.add(match[1]);
+      return [...found];
+    };
+    for (const file of ["components/auth/probeCopy.ts", "components/auth/reasons.ts", "components/auth/accountStatus.ts"]) {
+      for (const namespace of namespacesUsed(file)) {
+        expect(["auth", "common"], `${file} reads ${namespace}`).toContain(namespace);
+      }
+    }
+    for (const namespace of namespacesUsed("components/shell/ConnectionStatus.tsx")) {
+      expect(["common", "format", "shell"], `ConnectionStatus reads ${namespace}`).toContain(namespace);
+    }
   });
 });

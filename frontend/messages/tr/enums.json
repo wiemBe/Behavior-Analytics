@@ -76,9 +76,9 @@
   "propertyWatchStatus": {
     "NOT_ENABLED": "Toplama kapalı",
     "DISABLED": "Devre dışı",
-    "SCOPE_EMPTY": "Kapsam boş",
-    "SCOPE_STALE": "Kapsam güncel değil",
-    "SCOPE_TOO_LARGE": "Kapsam çok büyük",
+    "SCOPE_EMPTY": "Scope boş",
+    "SCOPE_STALE": "Scope güncel değil",
+    "SCOPE_TOO_LARGE": "Scope çok büyük",
     "NOT_APPLICABLE": "Uygulanamaz",
     "STALE": "Güncel değil",
     "READING_HISTORY": "Geçmiş okunuyor",

@@ -54,7 +54,7 @@ export default async function CoveragePage({
       api.coverageByDataSource(),
     ]);
   } catch (err) {
-    error = loadErrorMessage(err, "detection coverage", "read:coverage");
+    error = loadErrorMessage(err, t("loadNoun"), "read:coverage", say);
   }
 
   if (error) {

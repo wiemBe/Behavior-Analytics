@@ -22,7 +22,9 @@ import type { Loaded } from "./TopBar";
 import type { HealthReady, SearchCadenceItem, SocOverview } from "@/lib/api";
 import { outcomeInfo } from "@/lib/searchCadence";
 import { UtcTime } from "@/components/ui/UtcTime";
-import { asTextTranslator, englishText, type TextTranslator } from "@/i18n/fallback";
+import { englishText } from "./englishText";
+import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
+import { own } from "@/i18n/ownKey";
 
 export type SignalTone = "ok" | "warn" | "crit" | "neutral";
 
@@ -71,7 +73,8 @@ function outcomeLabel(outcome: string, fallback: string, t: TextTranslator): str
     "no-sources": "noEligibleWafSource",
     dispatched: "dispatched",
   };
-  return key[outcome] ? t(`shell.connection.${key[outcome]}`) : fallback;
+  const word = own(key, outcome);
+  return word ? t(`shell.connection.${word}`) : fallback;
 }
 
 function instanceLabel(status: string, t: TextTranslator): string {
@@ -81,8 +84,9 @@ function instanceLabel(status: string, t: TextTranslator): string {
     UNREACHABLE: "unreachable",
     UNKNOWN: "unknown",
   };
-  return key[status]
-    ? t(`shell.connection.${key[status]}`)
+  const word = own(key, status);
+  return word
+    ? t(`shell.connection.${word}`)
     : status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
 }
 
@@ -125,7 +129,7 @@ export function buildSignals(
   } else if (overview.state === "ok") {
     const o = overview.data;
     const checkedAt = o.instance_last_health_check_at;
-    let tone = INSTANCE_TONE[o.instance_status] ?? "neutral";
+    let tone = own(INSTANCE_TONE, o.instance_status) ?? "neutral";
     let detail: ReactNode;
     if (checkedAt === null) {
       tone = "neutral";

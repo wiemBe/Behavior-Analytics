@@ -77,7 +77,7 @@
     "yesDays": " {days} gün için",
     "no": "Bu, Hayır yanıtını kaydeder. Hiçbir geçmiş okunmaz. Daha sonra yine “Geçmişi şimdi oku” seçeneğini seçebilirsiniz.",
     "start": "Bu, her aileden sonraki toplamada geçmişi yeniden okumasını ister: kaynak hacmi, catch-all gönderenleri ve kural eşleşmeleri (o zamandan beri eklenen kaynaklar dahil); bir WAF veya IPS kaynağı ise yalnızca henüz toplanmamışsa. Hiçbir şey hemen okunmaz ve eski hiçbir veri uyarı oluşturmaz.",
-    "stop": "Bu, Kısmi olarak okunan her hedefi “durduran” nedeniyle ve adınızla sonlandırır. Okunanlar kalır ve öğrenme için kullanılır. Hiçbir şey silinmez. “Geçmişi şimdi oku” okumayı yeniden başlatır."
+    "stop": "Bu, Kısmi olarak okunan her scope'u “durduran” nedeniyle ve adınızla sonlandırır. Okunanlar kalır ve öğrenme için kullanılır. Hiçbir şey silinmez. “Geçmişi şimdi oku” okumayı yeniden başlatır."
   },
   "dialog": {
     "questionDays": "QRadar'dan son {days} gün okunsun mu?",
@@ -131,10 +131,10 @@
     "reduced": "Azaltıldı: {reason}"
   },
   "table": {
-    "label": "Aile ve hedefe göre geçmiş veri okuma, {name}",
-    "caption": "{name} için QRadar'ın geçmişinden okunanlar, aile ve hedefe göre. Saatler UTC'dir.",
+    "label": "Aile ve scope'a göre geçmiş veri okuma, {name}",
+    "caption": "{name} için QRadar'ın geçmişinden okunanlar, aile ve scope'a göre. Saatler UTC'dir.",
     "family": "Aile",
-    "scope": "Hedef",
+    "scope": "Scope",
     "state": "Durum",
     "asked": "İstenen pencere",
     "days": "gün",

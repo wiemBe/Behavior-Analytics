@@ -13,6 +13,7 @@ import format from "../../messages/en/format.json";
 import units from "../../messages/en/units.json";
 import { createTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
 import type { FormatLocale } from "@/lib/format";
+import { isPlainKey } from "@/i18n/ownKey";
 
 export interface BehaviorI18n {
   /** A translator over the whole catalog: full keys, `behavior.state.meaning.OPEN`. */
@@ -28,7 +29,7 @@ export const ENGLISH_BEHAVIOR: BehaviorI18n = {
 
 /** The message at `key`, or the raw `value` when the catalog has none (never an empty string). */
 export function wordOrValue(i18n: BehaviorI18n, key: string, value: string): string {
-  if (value === "" || value.includes(".")) return value;
+  if (!isPlainKey(value)) return value;
   const full = `${key}.${value}`;
   return i18n.t.has?.(full) ? i18n.t(full) : value;
 }

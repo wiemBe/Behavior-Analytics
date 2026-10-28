@@ -75,14 +75,14 @@ describe("health.detection in Turkish", () => {
     expect(within(rules).getByText("GÜRÜLTÜLÜ")).toBeInTheDocument();
     // A verdict this build does not know reads as the code, never empty.
     expect(within(rules).getByText("FUTURE VERDICT")).toBeInTheDocument();
-    expect(link("Kapsam")).toHaveAttribute("href", "/coverage");
+    expect(link("Coverage")).toHaveAttribute("href", "/coverage");
   });
 
   it("says coverage was not evaluated instead of 0 %", () => {
     res.byKey = { [COV]: ok(coverage({ total_techniques: 0, by_status: {}, covered_ratio: 0 })), [RULES]: ok([]) };
     render(<HealthDetection />);
-    expect(screen.getByText("Kapsam değerlendirilmedi.")).toBeInTheDocument();
-    expect(document.body).toHaveTextContent("Henüz hiçbir teknik eşlenmedi; bu yüzden bu, sıfır kapsam bulgusu değildir.");
+    expect(screen.getByText("Coverage değerlendirilmedi.")).toBeInTheDocument();
+    expect(document.body).toHaveTextContent("Henüz hiçbir teknik eşlenmedi; bu yüzden bu, sıfır coverage bulgusu değildir.");
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
@@ -112,7 +112,7 @@ describe("health.detection in Turkish", () => {
     b.unmount();
     res.byKey = { [COV]: failed(500) };
     render(<HealthDetection />);
-    expect(screen.getByRole("alert")).toHaveTextContent("algılama kapsamı");
+    expect(screen.getByRole("alert")).toHaveTextContent("algılama coverage'ı");
   });
 });
 

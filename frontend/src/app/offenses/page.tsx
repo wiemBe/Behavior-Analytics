@@ -4,7 +4,8 @@ import { api, type OffenseAggregates, type OffenseSummary, type Page } from "@/l
 import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
 import { formatCount } from "@/lib/format";
-import { formatAge, magnitudeTone, offenseStatusTone } from "@/lib/health";
+import { formatDuration } from "@/lib/behavior";
+import { magnitudeTone, offenseStatusTone } from "@/lib/health";
 import { Pagination } from "@/components/Pagination";
 import { OffenseFilters } from "@/components/OffenseFilters";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
@@ -141,7 +142,7 @@ export default async function OffensesPage({
               locale,
               (count, what) => t("stats.unknown", { count, what }),
             )}
-            <StatCard label={t("stats.oldest")} value={formatAge(aggregates.oldest_age_seconds)} />
+            <StatCard label={t("stats.oldest")} value={formatDuration(aggregates.oldest_age_seconds, { t: say, locale })} />
           </div>
         </>
       )}
@@ -204,7 +205,7 @@ export default async function OffensesPage({
                     {o.event_count == null ? "—" : formatCount(o.event_count, locale)}
                   </td>
                   <td>{o.start_time ? <UtcTime value={o.start_time} wrapZone /> : "—"}</td>
-                  <td className="num">{formatAge(o.age_seconds)}</td>
+                  <td className="num">{formatDuration(o.age_seconds, { t: say, locale })}</td>
                 </tr>
               ))}
             </tbody>

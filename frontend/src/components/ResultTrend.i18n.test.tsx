@@ -4,7 +4,7 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createLocaleTranslator } from "@/i18n/fallback";
+import { createLocaleTranslator } from "@/i18n/testTranslator";
 import { ApiError, api, type SearchExecution } from "@/lib/api";
 import { formatRunDuration } from "@/lib/searchRuns";
 import { runReadout } from "@/components/searches/authoring";
