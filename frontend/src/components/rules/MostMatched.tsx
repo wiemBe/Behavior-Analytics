@@ -13,6 +13,7 @@ import { TableScroll } from "@/components/ui/TableScroll";
 import type { MatchRankRow } from "@/lib/api";
 import { useLocale, useTranslations } from "next-intl";
 import type { Locale } from "@/i18n/locale";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { asTextTranslator } from "@/i18n/textTranslator";
 
 import {
@@ -56,16 +57,24 @@ function Bound({ lower, children }: { lower: boolean; children: string }) {
 export function MostMatched({
   rows,
   reason,
+  reasonCode,
+  reasonParams,
   query,
 }: {
   /** The list for `query.rank`; null when matches could not be measured. */
   rows: MatchRankRow[] | null;
   reason: string | null;
+  /** The code and raw values `reason` was built from, when the API sent them. */
+  reasonCode?: string | null;
+  reasonParams?: Record<string, unknown> | null;
   query: StatsQuery;
 }) {
   const t = useTranslations("rules.matched");
   const say = asTextTranslator(useTranslations());
   const locale = useLocale() as Locale;
+  const backend = useBackendMessage();
+  const reasonText =
+    reason === null ? null : backend({ text: reason, code: reasonCode, params: reasonParams });
   const anyLower = (rows ?? []).some((r) => r.lower_bound);
 
   return (
@@ -93,7 +102,7 @@ export function MostMatched({
         <div className="banner" role="status">
           <div>
             <p>
-              <strong>{reason ?? t("missingTitle")}</strong>
+              <strong>{reasonText ?? t("missingTitle")}</strong>
             </p>
             <p>{t("missingHelp")}</p>
           </div>
@@ -108,7 +117,7 @@ export function MostMatched({
         <>
           {reason && (
             <p className="table-note stats-top-reason">
-              <strong>{t("partial")}</strong> {reason}
+              <strong>{t("partial")}</strong> {reasonText}
             </p>
           )}
           <TableScroll label={t("label")}>

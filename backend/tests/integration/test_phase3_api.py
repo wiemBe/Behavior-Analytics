@@ -498,6 +498,8 @@ class TestEnumFieldJsonBodies:
                 "last_evaluated_at": None,
                 "logic_version": 1,
                 "reason": None,
+                "reason_code": None,
+                "reason_params": None,
             }
         ]
 

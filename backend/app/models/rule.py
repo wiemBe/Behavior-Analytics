@@ -428,10 +428,26 @@ class DetectionCoverage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     logic_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
+    # The code and raw params `reason` was rendered from; rows from before stay NULL.
+    reason_i18n: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     # Per-rule evidence chain: rule -> rule health -> building blocks ->
     # required log sources -> telemetry health, as evaluated.
     evidence: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def reason_code(self) -> str | None:
+        if not isinstance(self.reason_i18n, dict):
+            return None
+        code = self.reason_i18n.get("code")
+        return code if isinstance(code, str) else None
+
+    @property
+    def reason_params(self) -> dict[str, object] | None:
+        if not isinstance(self.reason_i18n, dict):
+            return None
+        params = self.reason_i18n.get("params")
+        return params if isinstance(params, dict) else None
 
 
 class DetectionCoverageSnapshot(Base):
@@ -465,3 +481,19 @@ class DetectionCoverageSnapshot(Base):
     degraded_rule_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     logic_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
+    # The code and raw params `reason` was rendered from; rows from before stay NULL.
+    reason_i18n: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+
+    @property
+    def reason_code(self) -> str | None:
+        if not isinstance(self.reason_i18n, dict):
+            return None
+        code = self.reason_i18n.get("code")
+        return code if isinstance(code, str) else None
+
+    @property
+    def reason_params(self) -> dict[str, object] | None:
+        if not isinstance(self.reason_i18n, dict):
+            return None
+        params = self.reason_i18n.get("params")
+        return params if isinstance(params, dict) else None

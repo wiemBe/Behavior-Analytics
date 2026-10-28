@@ -975,6 +975,9 @@ export interface TechniqueCoverage {
   coverage_score: number | null;
   confidence: number | null;
   reason: string | null;
+  // The code and raw values `reason` was built from; absent or null on a row stored before them.
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   mapped_rule_count: number;
   enabled_rule_count: number;
   firing_rule_count: number;
@@ -3170,6 +3173,8 @@ export interface RuleStatisticsWindow {
   measured_seconds: number;
   complete: boolean;
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
 }
 
 export interface SilentRule {
@@ -3196,6 +3201,8 @@ export interface SilentSection {
   excluded: SilentExclusion[];
   excluded_count: number;
   excluded_reason: string;
+  excluded_reason_code?: string | null;
+  excluded_reason_params?: Record<string, unknown> | null;
 }
 
 export interface MatchRankRow {
@@ -3222,7 +3229,11 @@ export interface CostRow {
 
 export interface CostSection {
   label: string;
+  label_code?: string | null;
+  label_params?: Record<string, unknown> | null;
   unit: string;
+  unit_code?: string | null;
+  unit_params?: Record<string, unknown> | null;
   items: CostRow[];
   no_benchmark_count: number;
 }
@@ -3233,9 +3244,13 @@ export interface RuleStatistics {
   window: RuleStatisticsWindow;
   silent: SilentSection | null;
   silent_reason: string | null;
+  silent_reason_code?: string | null;
+  silent_reason_params?: Record<string, unknown> | null;
   top_by_matches: MatchRankRow[] | null;
   top_by_events: MatchRankRow[] | null;
   top_reason: string | null;
+  top_reason_code?: string | null;
+  top_reason_params?: Record<string, unknown> | null;
   costliest_by_benchmark: CostSection;
 }
 
