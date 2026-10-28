@@ -27,6 +27,8 @@ import type { FormatLocale } from "@/lib/format";
 import { formatCount } from "@/lib/format";
 import { englishFleetText, plainCount, type FleetText } from "@/lib/fleetText";
 import { isPlainKey, own } from "@/i18n/ownKey";
+import { renderRefusal } from "@/i18n/refusalMessage";
+import { refusalSentences } from "@/lib/refusal";
 
 // --- classes ------------------------------------------------------------------
 
@@ -482,9 +484,12 @@ export function ruleFailure(err: unknown, text: FleetText = englishFleetText): R
       return { kind: "forbidden", text: text.say("classification.failure.forbidden"), field: null };
     }
     if ((err.status === 422 || err.status === 409) && err.message) {
+      // The field is decided on the server's English; the words shown are the reader's language
+      // when the server gave the sentence a code.
+      const [sentence] = refusalSentences(err);
       return {
         kind: "error",
-        text: err.message,
+        text: sentence?.code ? renderRefusal(sentence, text.locale, text.say) : err.message,
         field: concernsPattern(err.message) ? "pattern" : null,
       };
     }

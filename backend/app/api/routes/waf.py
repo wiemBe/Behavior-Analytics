@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import SessionDep, SettingsDep
-from app.i18n.messages import render
+from app.i18n.messages import MessageRef, render
 from app.models.enums import SourceClass, WafLogicalField
 from app.models.fleet import LogSourceClassification
 from app.models.identity import AuditLog
@@ -158,10 +158,12 @@ def _field_mapping(payload: WafProfileIn) -> WafFieldMapping:
 
 
 def _conflict_detail(
-    message: str, profile: WafSourceProfile | None = None
-) -> dict[str, str | int | None]:
+    reason: MessageRef | str, profile: WafSourceProfile | None = None
+) -> dict[str, Any]:
+    """The 409 body: the sentence, its code when it has one, and the profile's version facts."""
     return {
-        "message": message,
+        "message": render(reason) if isinstance(reason, MessageRef) else reason,
+        **(reason.to_wire() if isinstance(reason, MessageRef) else {}),
         "current_version": profile.profile_version if profile is not None else None,
         "updated_by": profile.updated_by if profile is not None else None,
         "pending_since": (
@@ -170,6 +172,11 @@ def _conflict_detail(
             else None
         ),
     }
+
+
+def _input_detail(exc: WafProfileError) -> dict[str, Any]:
+    """The 422 body of a refused mapping: the sentence, and its code when it has one."""
+    return {"message": str(exc), **(exc.ref.to_wire() if exc.ref is not None else {})}
 
 
 @router.get("/mapping-schema", response_model=MappingSchemaOut)
@@ -284,9 +291,7 @@ async def put_waf_profile(
         if payload.expected_profile_version is not None:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
-                _conflict_detail(
-                    "the profile does not exist; create it with expected_profile_version null"
-                ),
+                _conflict_detail(MessageRef("validation.profile.conflict.missing")),
             )
         created = True
         mapping_changed = True
@@ -296,7 +301,8 @@ async def put_waf_profile(
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
                 _conflict_detail(
-                    f"profile version conflict; current version is {current}", existing
+                    MessageRef("validation.profile.conflict.version", {"current": current}),
+                    existing,
                 ),
             )
         created = False
@@ -304,7 +310,7 @@ async def put_waf_profile(
             mapping_changed = WafFieldMapping.from_profile(existing) != _field_mapping(payload)
         except WafProfileError as exc:
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT, {"message": str(exc)}
+                status.HTTP_422_UNPROCESSABLE_CONTENT, _input_detail(exc)
             ) from exc
 
     try:
@@ -320,7 +326,7 @@ async def put_waf_profile(
             await service.request_validation(profile, actor=principal.subject)
     except WafProfileError as exc:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, {"message": str(exc)}
+            status.HTTP_422_UNPROCESSABLE_CONTENT, _input_detail(exc)
         ) from exc
 
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
@@ -345,7 +351,7 @@ async def request_waf_validation(
         await service.request_validation(profile, actor=principal.subject)
     except WafProfileError as exc:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, _conflict_detail(str(exc), profile)
+            status.HTTP_409_CONFLICT, _conflict_detail(exc.ref or str(exc), profile)
         ) from exc
     return _profile_out(profile, source, settings)
 
@@ -365,7 +371,7 @@ async def _set_enabled(
         )
     except WafProfileError as exc:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, _conflict_detail(str(exc), profile)
+            status.HTTP_409_CONFLICT, _conflict_detail(exc.ref or str(exc), profile)
         ) from exc
     return _profile_out(profile, source, settings)
 

@@ -68,6 +68,13 @@
       "shape": "username must be 1 to 255 characters without spaces or control characters"
     }
   },
+  "classification": {
+    "rule": {
+      "built_in_delete": "a built-in rule cannot be deleted; disable it instead",
+      "built_in_edit": "a built-in rule can only be enabled or disabled",
+      "duplicate": "a rule with this instance, kind and pattern already exists"
+    }
+  },
   "coverage": {
     "evidence": {
       "acceptable": "The rule is enabled and its health is acceptable.",
@@ -307,6 +314,43 @@
       "unsettled": "No rule-match window in the requested span has settled yet."
     }
   },
+  "ruledraft": {
+    "column_must_be_empty": "{column} must stay empty for a {kind} rule",
+    "enabled_cap": "at most {max_enabled} rules may be enabled at once ({enabled_count} already are)",
+    "ips_entity_missing": "ips entity {id} does not exist",
+    "log_source_missing": "log source {id} does not exist",
+    "metric_unknown": "metric {metric} is not in the custom-rule catalog",
+    "metric_wrong_kind": "metric {metric} measures a {metric_kind} subject, not a {kind} one",
+    "null_field": "{field} must not be null",
+    "operator_unknown": "operator {operator} is not one of GT, GE, LT, LE, EQ",
+    "pw_value_missing": "property-watch value {id} does not exist",
+    "pw_value_not_pinned": "property-watch value {id} is not pinned; a rule can watch only a pinned value, so pin it on its property watch first",
+    "recovery_min": "recovery_buckets must be at least 1",
+    "source_class_unknown": "source_class {value} is not a known source class",
+    "subject_needs_column": "{kind} rules need {column} set",
+    "sustain_min": "sustain_buckets must be at least 1",
+    "threshold_negative": "threshold_value must be at least 0",
+    "threshold_not_finite": "threshold_value must be a finite number",
+    "threshold_share": "a {metric} threshold is a share and must lie strictly between 0 and 1",
+    "waf_endpoint_missing": "waf endpoint {id} does not exist"
+  },
+  "search": {
+    "aql": {
+      "dataset_not_permitted": "dataset(s) not permitted: {datasets}",
+      "disallowed_keywords": "disallowed keyword(s): {keywords}",
+      "empty": "query is empty",
+      "limit_exceeded": "LIMIT {limit} exceeds the maximum {max_rows} rows",
+      "multiple_statements": "multiple statements are not allowed",
+      "no_dataset": "query must select FROM events or flows",
+      "no_time_window": "query must include a bounded time window (LAST N ..., or START/STOP)",
+      "not_select": "query must be a single SELECT statement",
+      "time_range_exceeded": "time range {window_hours}h exceeds the maximum {max_hours}h"
+    },
+    "enabled_cap": "the limit is {limit} enabled searches",
+    "threshold": {
+      "unreachable": "threshold {operator} {threshold} can never be reached: a run counts at most max_result_rows ({max_result_rows}) rows; raise max_result_rows above the threshold or lower the threshold"
+    }
+  },
   "validation": {
     "field": {
       "insufficient_coverage": "populated on {populated} of events, below the required {required}",
@@ -320,11 +364,25 @@
         "rejected": "QRadar rejected the mapped field as named",
         "unpopulated": "the field exists but no event in the window carried a usable value"
       },
+      "input": {
+        "action_count": "{outcome} action values exceed the {max_count}-value limit",
+        "action_needs_field": "an action map needs an ACTION field mapping",
+        "action_overlap": "an action value is mapped to both BLOCKED and ALLOWED",
+        "action_value": "invalid {outcome} action value: use a printable token of at most {max_length} characters",
+        "normalized_field": "normalized field is not in the IPS allowlist",
+        "property_name": "invalid QRadar property name: letters, digits, underscore, space and hyphen only, at most 64 characters"
+      },
       "profile": {
         "truncated": "the bounded validation probe was truncated"
       }
     },
     "profile": {
+      "conflict": {
+        "missing": "the profile does not exist; create it with expected_profile_version null",
+        "not_validated": "profile version {profile_version} has not validated (status {validation_status}); run validation first",
+        "running": "validation of version {profile_version} is already running since {since}",
+        "version": "profile version conflict; current version is {current}"
+      },
       "field_reason": "{field}: {status} ({detail})",
       "ineligible": {
         "disabled": "the profile is disabled",
@@ -348,6 +406,12 @@
         "collection_disabled": "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)",
         "monitoring_disabled": "monitoring is disabled for the log source",
         "source_missing": "the profile''s log source no longer exists"
+      },
+      "input": {
+        "action_needs_property": "an action map needs an action property",
+        "action_overlap": "action values mapped to both BLOCKED and ALLOWED: {values}",
+        "action_value": "invalid {outcome} action value {value}: a printable token of at most {max_length} characters",
+        "property_name": "invalid QRadar property name {name}: letters, digits, underscore, space and hyphen only, at most 64 characters"
       }
     }
   }

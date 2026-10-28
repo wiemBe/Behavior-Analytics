@@ -113,6 +113,29 @@ def _text(code: str, template: str, **samples: str) -> MessageSpec:
     )
 
 
+def _mixed(
+    code: str,
+    template: str,
+    *,
+    text: Mapping[str, str] | None = None,
+    count: Mapping[str, int] | None = None,
+    **extra: tuple[ParamSpec, object],
+) -> MessageSpec:
+    """A sentence of text parameters (names, quoted user values), plain counts and extras."""
+    params: dict[str, ParamSpec] = {}
+    sample: dict[str, object] = {}
+    for name, value in (text or {}).items():
+        params[name] = ParamSpec(ParamKind.TEXT)
+        sample[name] = value
+    for name, number in (count or {}).items():
+        params[name] = ParamSpec(ParamKind.COUNT, style="plain")
+        sample[name] = number
+    for name, (spec, example) in extra.items():
+        params[name] = spec
+        sample[name] = example
+    return MessageSpec(code=code, template=template, params=params, sample=sample)
+
+
 _PW_ACTIONS = (
     "propertywatch.action.change_pins",
     "propertywatch.action.change_scope",
@@ -1577,6 +1600,220 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "(seen only below the admission threshold): this is classified only as a new value",
     ),
     # --- end MSG-4b ---
+    # --- MSG-1b: authoring reasons and remaining conflicts (Families 15, 11) -- keep contiguous ---
+    # Custom-rule draft validation (`app/custom_rules/validation.py`, the rule routes). A quoted
+    # user value (`{metric}`, `{value}`, `{operator}`) arrives already quoted by `repr`.
+    _mixed(
+        "ruledraft.subject_needs_column",
+        "{kind} rules need {column} set",
+        text={"kind": "LOG_SOURCE", "column": "log_source_id"},
+    ),
+    _mixed(
+        "ruledraft.column_must_be_empty",
+        "{column} must stay empty for a {kind} rule",
+        text={"column": "waf_endpoint_id", "kind": "LOG_SOURCE"},
+    ),
+    _mixed(
+        "ruledraft.source_class_unknown",
+        "source_class {value} is not a known source class",
+        text={"value": "'NOT_A_CLASS'"},
+    ),
+    _mixed(
+        "ruledraft.metric_unknown",
+        "metric {metric} is not in the custom-rule catalog",
+        text={"metric": "'events'"},
+    ),
+    _mixed(
+        "ruledraft.metric_wrong_kind",
+        "metric {metric} measures a {metric_kind} subject, not a {kind} one",
+        text={"metric": "events", "metric_kind": "WAF_ENDPOINT", "kind": "LOG_SOURCE"},
+    ),
+    _fixed("ruledraft.threshold_not_finite", "threshold_value must be a finite number"),
+    _fixed("ruledraft.threshold_negative", "threshold_value must be at least 0"),
+    _mixed(
+        "ruledraft.threshold_share",
+        "a {metric} threshold is a share and must lie strictly between 0 and 1",
+        text={"metric": "waf_block_ratio"},
+    ),
+    _mixed(
+        "ruledraft.operator_unknown",
+        "operator {operator} is not one of GT, GE, LT, LE, EQ",
+        text={"operator": "'NE'"},
+    ),
+    _fixed("ruledraft.sustain_min", "sustain_buckets must be at least 1"),
+    _fixed("ruledraft.recovery_min", "recovery_buckets must be at least 1"),
+    _mixed(
+        "ruledraft.enabled_cap",
+        "at most {max_enabled} rules may be enabled at once ({enabled_count} already are)",
+        count={"max_enabled": 100, "enabled_count": 100},
+    ),
+    _mixed(
+        "ruledraft.null_field",
+        "{field} must not be null",
+        text={"field": "metric"},
+    ),
+    _mixed(
+        "ruledraft.log_source_missing",
+        "log source {id} does not exist",
+        text={"id": "00000000-0000-0000-0000-000000000001"},
+    ),
+    _mixed(
+        "ruledraft.waf_endpoint_missing",
+        "waf endpoint {id} does not exist",
+        text={"id": "00000000-0000-0000-0000-000000000001"},
+    ),
+    _mixed(
+        "ruledraft.ips_entity_missing",
+        "ips entity {id} does not exist",
+        text={"id": "00000000-0000-0000-0000-000000000001"},
+    ),
+    _mixed(
+        "ruledraft.pw_value_missing",
+        "property-watch value {id} does not exist",
+        text={"id": "00000000-0000-0000-0000-000000000001"},
+    ),
+    _mixed(
+        "ruledraft.pw_value_not_pinned",
+        "property-watch value {id} is not pinned; a rule can watch only a "
+        "pinned value, so pin it on its property watch first",
+        text={"id": "00000000-0000-0000-0000-000000000001"},
+    ),
+    # Search authoring (`app/services/aql_validator.py`, `app/schemas/search.py`). The keyword and
+    # dataset lists arrive already joined by ", " (identifiers); a window length keeps the Python
+    # spelling of the float it was computed as (`48.0`).
+    _fixed("search.aql.empty", "query is empty"),
+    _fixed("search.aql.multiple_statements", "multiple statements are not allowed"),
+    _fixed("search.aql.not_select", "query must be a single SELECT statement"),
+    _mixed(
+        "search.aql.disallowed_keywords",
+        "disallowed keyword(s): {keywords}",
+        text={"keywords": "DROP, INSERT"},
+    ),
+    _fixed("search.aql.no_dataset", "query must select FROM events or flows"),
+    _mixed(
+        "search.aql.dataset_not_permitted",
+        "dataset(s) not permitted: {datasets}",
+        text={"datasets": "USERS"},
+    ),
+    _fixed(
+        "search.aql.no_time_window",
+        "query must include a bounded time window (LAST N ..., or START/STOP)",
+    ),
+    _mixed(
+        "search.aql.time_range_exceeded",
+        "time range {window_hours}h exceeds the maximum {max_hours}h",
+        text={"window_hours": "48.0"},
+        count={"max_hours": 24},
+    ),
+    _mixed(
+        "search.aql.limit_exceeded",
+        "LIMIT {limit} exceeds the maximum {max_rows} rows",
+        count={"limit": 20000, "max_rows": 10000},
+    ),
+    _mixed(
+        "search.threshold.unreachable",
+        "threshold {operator} {threshold} can never be reached: a run counts "
+        "at most max_result_rows ({max_result_rows}) rows; raise max_result_rows above "
+        "the threshold or lower the threshold",
+        text={"operator": "GT", "threshold": "10001"},
+        count={"max_result_rows": 10000},
+    ),
+    _mixed(
+        "search.enabled_cap",
+        "the limit is {limit} enabled searches",
+        count={"limit": 50},
+    ),
+    # Classification rule conflicts (`app/api/routes/classification_rules.py`).
+    _fixed(
+        "classification.rule.duplicate",
+        "a rule with this instance, kind and pattern already exists",
+    ),
+    _fixed(
+        "classification.rule.built_in_edit",
+        "a built-in rule can only be enabled or disabled",
+    ),
+    _fixed(
+        "classification.rule.built_in_delete",
+        "a built-in rule cannot be deleted; disable it instead",
+    ),
+    # WAF and IPS profile conflicts (`_conflict_detail` in `routes/waf.py` and `routes/ips.py`,
+    # the profile services). The message of the conflict body gains `code` and `params`.
+    _fixed(
+        "validation.profile.conflict.missing",
+        "the profile does not exist; create it with expected_profile_version null",
+    ),
+    _mixed(
+        "validation.profile.conflict.version",
+        "profile version conflict; current version is {current}",
+        count={"current": 4},
+    ),
+    _mixed(
+        "validation.profile.conflict.running",
+        "validation of version {profile_version} is already running since {since}",
+        text={"since": "2026-10-28T10:00:00+00:00"},
+        count={"profile_version": 4},
+    ),
+    _mixed(
+        "validation.profile.conflict.not_validated",
+        "profile version {profile_version} has not validated "
+        "(status {validation_status}); run validation first",
+        count={"profile_version": 4},
+        validation_status=(
+            ParamSpec(ParamKind.ENUM, enum_group="profileValidationStatus"),
+            "INVALID",
+        ),
+    ),
+    # Profile input refusals (`app/waf/profile.py`, `app/ips/profile.py`): a 422 `{message}` body.
+    _mixed(
+        "validation.waf.input.property_name",
+        "invalid QRadar property name {name}: letters, digits, underscore, "
+        "space and hyphen only, at most 64 characters",
+        text={"name": "'bad;name'"},
+    ),
+    _mixed(
+        "validation.waf.input.action_value",
+        "invalid {outcome} action value {value}: a printable token of at most "
+        "{max_length} characters",
+        text={"outcome": "BLOCKED", "value": "''"},
+        count={"max_length": 64},
+    ),
+    _mixed(
+        "validation.waf.input.action_overlap",
+        "action values mapped to both BLOCKED and ALLOWED: {values}",
+        text={"values": "['deny']"},
+    ),
+    _fixed("validation.waf.input.action_needs_property", "an action map needs an action property"),
+    _fixed(
+        "validation.ips.input.normalized_field",
+        "normalized field is not in the IPS allowlist",
+    ),
+    _fixed(
+        "validation.ips.input.property_name",
+        "invalid QRadar property name: letters, digits, underscore, space and "
+        "hyphen only, at most 64 characters",
+    ),
+    _mixed(
+        "validation.ips.input.action_count",
+        "{outcome} action values exceed the {max_count}-value limit",
+        text={"outcome": "BLOCKED"},
+        count={"max_count": 20},
+    ),
+    _mixed(
+        "validation.ips.input.action_value",
+        "invalid {outcome} action value: use a printable token of at most "
+        "{max_length} characters",
+        text={"outcome": "ALLOWED"},
+        count={"max_length": 64},
+    ),
+    _fixed(
+        "validation.ips.input.action_overlap",
+        "an action value is mapped to both BLOCKED and ALLOWED",
+    ),
+    _fixed(
+        "validation.ips.input.action_needs_field",
+        "an action map needs an ACTION field mapping",
+    ),
+    # --- end MSG-1b ---
 )
 
 

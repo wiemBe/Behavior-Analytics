@@ -28,7 +28,12 @@ class CodedHTTPException(HTTPException):
     - ``ref`` and ``fields``: ``detail`` is ``{"message": <sentence>, **fields}`` and the code
       goes inside it (``code``, ``params``), as the typed conflict bodies already carry
       ``message``;
-    - ``refs``: ``detail`` is the list of English sentences, one code per item.
+    - ``refs``: ``detail`` is the list of English sentences, one code per item;
+    - ``reasons``: ``detail`` is ``{"message", "reasons", "reason_codes"}``, the authoring body
+      (MSG-1b). ``reasons`` holds the English sentences, ``reason_codes`` a parallel list of
+      ``{code, params}`` (``null`` for a reason with no code). ``message`` is the compatibility
+      sentence the caller passes (default: the reasons joined by ``"; "``); it is one sentence
+      composed from the reasons, so it carries no code of its own.
     """
 
     def __init__(
@@ -37,17 +42,30 @@ class CodedHTTPException(HTTPException):
         ref: MessageRef | None = None,
         *,
         refs: Sequence[MessageRef] | None = None,
+        reasons: Sequence[MessageRef | str] | None = None,
+        message: str | None = None,
         fields: Mapping[str, Any] | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> None:
-        if (ref is None) == (refs is None):
-            raise ValueError("a coded refusal carries one ref or a list of refs")
-        if refs is not None and fields is not None:
-            raise ValueError("a list of refs has no extra fields")
+        if sum(item is not None for item in (ref, refs, reasons)) != 1:
+            raise ValueError("a coded refusal carries one ref, a list of refs or reasons")
+        if (refs is not None or reasons is not None) and fields is not None:
+            raise ValueError("a list of refs or reasons has no extra fields")
+        if message is not None and reasons is None:
+            raise ValueError("only a reasons body has a compatibility message")
         self.ref = ref
         self.refs = tuple(refs) if refs is not None else None
         detail: Any
-        if refs is not None:
+        if reasons is not None:
+            texts = [render(item) if isinstance(item, MessageRef) else item for item in reasons]
+            detail = {
+                "message": message if message is not None else "; ".join(texts),
+                "reasons": texts,
+                "reason_codes": [
+                    item.to_wire() if isinstance(item, MessageRef) else None for item in reasons
+                ],
+            }
+        elif refs is not None:
             detail = [render(item) for item in refs]
         elif ref is not None and fields is not None:
             detail = {"message": render(ref), **fields, **ref.to_wire()}

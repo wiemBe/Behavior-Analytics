@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass
 
 from app.custom_rules.catalog import CUSTOM_RULE_METRICS
+from app.i18n.messages import MessageRef, render
 from app.models.enums import CustomRuleMetric, CustomRuleSubjectKind, SourceClass
 
 #: The scheduled-search operator set (`app/schemas/search.py`).
@@ -56,13 +57,32 @@ def validate_rule_draft(
     previously_enabled: bool = False,
     max_enabled: int = 100,
 ) -> list[str]:
-    """Every reason the draft is not a legal rule; empty means it is one.
+    """Every reason the draft is not a legal rule, as English sentences; empty means legal."""
+    return [
+        render(reason)
+        for reason in validate_rule_draft_coded(
+            draft,
+            enabled_count=enabled_count,
+            previously_enabled=previously_enabled,
+            max_enabled=max_enabled,
+        )
+    ]
+
+
+def validate_rule_draft_coded(
+    draft: CustomRuleDraft,
+    *,
+    enabled_count: int = 0,
+    previously_enabled: bool = False,
+    max_enabled: int = 100,
+) -> list[MessageRef]:
+    """Every reason the draft is not a legal rule, each a message code; empty means it is one.
 
     `enabled_count` is the number of enabled rules that exist; the cap refuses
     creating or enabling beyond `max_enabled`, naming the limit (design §F.4.2).
     `previously_enabled` lets an edit keep its own enabled slot.
     """
-    reasons: list[str] = []
+    reasons: list[MessageRef] = []
 
     # The subject-column pairing, per kind.
     expected = _SUBJECT_COLUMNS[draft.subject_kind]
@@ -76,11 +96,17 @@ def validate_rule_draft(
     for name, value in columns.items():
         if name in expected and value is None:
             reasons.append(
-                f"{draft.subject_kind.value} rules need {name} set"
+                MessageRef(
+                    "ruledraft.subject_needs_column",
+                    {"kind": draft.subject_kind.value, "column": name},
+                )
             )
         if name not in expected and value is not None:
             reasons.append(
-                f"{name} must stay empty for a {draft.subject_kind.value} rule"
+                MessageRef(
+                    "ruledraft.column_must_be_empty",
+                    {"column": name, "kind": draft.subject_kind.value},
+                )
             )
     if (
         draft.subject_kind is CustomRuleSubjectKind.FLEET_CLASS
@@ -88,18 +114,28 @@ def validate_rule_draft(
         and draft.source_class not in {member.value for member in SourceClass}
     ):
         reasons.append(
-            f"source_class {draft.source_class!r} is not a known source class"
+            MessageRef(
+                "ruledraft.source_class_unknown", {"value": repr(draft.source_class)}
+            )
         )
 
     # The metric belongs to the kind (the catalog decides, not the evaluator).
     metric = _known_metric(draft.metric)
     entry = CUSTOM_RULE_METRICS[metric] if metric is not None else None
     if metric is None or entry is None:
-        reasons.append(f"metric {draft.metric!r} is not in the custom-rule catalog")
+        reasons.append(
+            MessageRef("ruledraft.metric_unknown", {"metric": repr(draft.metric)})
+        )
     elif entry.subject_kind is not draft.subject_kind:
         reasons.append(
-            f"metric {metric.value} measures a "
-            f"{entry.subject_kind.value} subject, not a {draft.subject_kind.value} one"
+            MessageRef(
+                "ruledraft.metric_wrong_kind",
+                {
+                    "metric": metric.value,
+                    "metric_kind": entry.subject_kind.value,
+                    "kind": draft.subject_kind.value,
+                },
+            )
         )
 
     # The threshold: finite and non-negative for every metric, strictly inside
@@ -110,32 +146,32 @@ def validate_rule_draft(
         draft.threshold_value
     )
     if not finite:
-        reasons.append("threshold_value must be a finite number")
+        reasons.append(MessageRef("ruledraft.threshold_not_finite"))
     elif draft.threshold_value < 0:
-        reasons.append("threshold_value must be at least 0")
+        reasons.append(MessageRef("ruledraft.threshold_negative"))
     if metric is not None and entry is not None and entry.is_ratio and finite and not (
         0.0 < draft.threshold_value < 1.0
     ):
-        reasons.append(
-            f"a {metric.value} threshold is a share and must lie strictly between 0 and 1"
-        )
+        reasons.append(MessageRef("ruledraft.threshold_share", {"metric": metric.value}))
 
     if draft.operator not in RULE_OPERATORS:
         reasons.append(
-            f"operator {draft.operator!r} is not one of GT, GE, LT, LE, EQ"
+            MessageRef("ruledraft.operator_unknown", {"operator": repr(draft.operator)})
         )
 
     if draft.sustain_buckets < 1:
-        reasons.append("sustain_buckets must be at least 1")
+        reasons.append(MessageRef("ruledraft.sustain_min"))
     if draft.recovery_buckets < 1:
-        reasons.append("recovery_buckets must be at least 1")
+        reasons.append(MessageRef("ruledraft.recovery_min"))
 
     # The enabled-rule cap, counting the slot this draft already holds.
     keeps_slot = draft.enabled and previously_enabled
     if draft.enabled and not keeps_slot and enabled_count >= max_enabled:
         reasons.append(
-            f"at most {max_enabled} rules may be enabled at once "
-            f"({enabled_count} already are)"
+            MessageRef(
+                "ruledraft.enabled_cap",
+                {"max_enabled": max_enabled, "enabled_count": enabled_count},
+            )
         )
 
     return reasons
@@ -155,4 +191,4 @@ def _known_metric(value: CustomRuleMetric | str) -> CustomRuleMetric | None:
     return candidate
 
 
-__all__ = ["RULE_OPERATORS", "CustomRuleDraft", "validate_rule_draft"]
+__all__ = ["RULE_OPERATORS", "CustomRuleDraft", "validate_rule_draft", "validate_rule_draft_coded"]

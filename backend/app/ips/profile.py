@@ -32,7 +32,15 @@ ACTION_VALUE_MAX_COUNT = 20
 
 
 class IpsProfileError(ValueError):
-    """A profile operation was refused. Its message is safe for an operator."""
+    """A profile operation was refused. Its message is safe for an operator.
+
+    Built from a message code, `str(exc)` is its English sentence and `.ref` the code; built
+    from text, `.ref` is None (the code-less refusals keep their words).
+    """
+
+    def __init__(self, reason: MessageRef | str) -> None:
+        self.ref: MessageRef | None = reason if isinstance(reason, MessageRef) else None
+        super().__init__(render(reason) if isinstance(reason, MessageRef) else reason)
 
 
 @dataclass(frozen=True)
@@ -105,14 +113,11 @@ class IpsFieldReference:
     def __post_init__(self) -> None:
         if self.kind is IpsReferenceKind.NORMALIZED:
             if self.name not in _NORMALIZED_FIELDS:
-                raise IpsProfileError("normalized field is not in the IPS allowlist")
+                raise IpsProfileError(MessageRef("validation.ips.input.normalized_field"))
             return
         if self.kind is IpsReferenceKind.CUSTOM_PROPERTY:
             if not PROPERTY_NAME_PATTERN.fullmatch(self.name):
-                raise IpsProfileError(
-                    "invalid QRadar property name: letters, digits, underscore, space and "
-                    "hyphen only, at most 64 characters"
-                )
+                raise IpsProfileError(MessageRef("validation.ips.input.property_name"))
             return
         raise IpsProfileError("unknown IPS field reference kind")
 
@@ -142,7 +147,10 @@ def _action_values(values: Iterable[str], outcome: str) -> tuple[str, ...]:
     raw_values = list(values)
     if len(raw_values) > ACTION_VALUE_MAX_COUNT:
         raise IpsProfileError(
-            f"{outcome} action values exceed the {ACTION_VALUE_MAX_COUNT}-value limit"
+            MessageRef(
+                "validation.ips.input.action_count",
+                {"outcome": outcome, "max_count": ACTION_VALUE_MAX_COUNT},
+            )
         )
     out: list[str] = []
     seen: set[str] = set()
@@ -153,8 +161,10 @@ def _action_values(values: Iterable[str], outcome: str) -> tuple[str, ...]:
             and value.isprintable()
         ):
             raise IpsProfileError(
-                f"invalid {outcome} action value: use a printable token of at most "
-                f"{ACTION_VALUE_MAX_LENGTH} characters"
+                MessageRef(
+                    "validation.ips.input.action_value",
+                    {"outcome": outcome, "max_length": ACTION_VALUE_MAX_LENGTH},
+                )
             )
         key = _action_key(value)
         if key not in seen:
@@ -182,9 +192,9 @@ class IpsFieldMapping:
         object.__setattr__(self, "allowed_actions", allowed)
         overlap = {_action_key(v) for v in blocked} & {_action_key(v) for v in allowed}
         if overlap:
-            raise IpsProfileError("an action value is mapped to both BLOCKED and ALLOWED")
+            raise IpsProfileError(MessageRef("validation.ips.input.action_overlap"))
         if (blocked or allowed) and self.action is None:
-            raise IpsProfileError("an action map needs an ACTION field mapping")
+            raise IpsProfileError(MessageRef("validation.ips.input.action_needs_field"))
 
     @classmethod
     def from_profile(cls, profile: IpsSourceProfile) -> IpsFieldMapping:

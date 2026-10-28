@@ -10,7 +10,7 @@ import {
   type CustomRuleUpdate,
 } from "@/lib/api";
 import { renderRefusal } from "@/i18n/refusalMessage";
-import { refusalSentences } from "@/lib/refusal";
+import { reasonSentences, refusalSentences } from "@/lib/refusal";
 import { latencyCadence, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
 import type { Locale } from "@/i18n/locale";
 import type { TextTranslator } from "@/i18n/textTranslator";
@@ -360,6 +360,15 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/** The reasons of a 422 authoring body, each in the reader's language (the server's text when uncoded). */
+export function reasonTexts(
+  error: Pick<ApiError, "detail">,
+  t: TextTranslator,
+  locale: Locale,
+): string[] {
+  return (reasonSentences(error) ?? []).map((reason) => renderRefusal(reason, locale, t));
+}
+
 export function classifySaveError(
   error: unknown,
   t: TextTranslator = customRulesEnglishText,
@@ -368,10 +377,11 @@ export function classifySaveError(
   if (!(error instanceof ApiError)) return { kind: "error", detail: t("customRules.authoring.saveFailed") };
   const detail = record(error.detail);
   if (error.status === 422 && Array.isArray(detail?.reasons)) {
-    return { kind: "reasons", reasons: detail.reasons.filter((reason): reason is string => typeof reason === "string") };
+    return { kind: "reasons", reasons: reasonTexts(error, t, locale) };
   }
   if (error.status === 409 && typeof error.detail === "string" && error.detail.includes("at most")) {
-    return { kind: "cap", detail: error.detail };
+    const [cap] = refusalSentences(error);
+    return { kind: "cap", detail: cap ? renderRefusal(cap, locale, t) : error.detail };
   }
   if (error.status === 409 && typeof detail?.current_version === "string") {
     return {
