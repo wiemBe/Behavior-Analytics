@@ -20,81 +20,115 @@ import type {
   PwWatchStatus,
 } from "@/lib/api";
 import { delayText, latencyCadence, latencyParts, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
-import { NOT_MEASURED } from "@/lib/behavior";
+import { formatDuration, NOT_MEASURED } from "@/lib/behavior";
+import { wordOrValue } from "@/lib/behaviorI18n";
 import type { Tone } from "@/lib/health";
 import { formatCount, formatPercent } from "@/lib/format";
+import { relativeAge as ageFrom } from "@/lib/time";
+import { worstCaseDelay } from "@/lib/searchCadence";
+
+import { ENGLISH_PW, type PwI18n } from "./pwText";
+
+function localizedDelay(
+  cadence: LatencyCadence | null | undefined,
+  i18n: PwI18n,
+): string | null {
+  const english = delayText(cadence);
+  if (!english || !cadence) return null;
+  if (i18n.locale === "en") return english;
+  const seconds = worstCaseDelay(
+    cadence.cadenceSeconds,
+    cadence.bucketSeconds,
+    cadence.settleSeconds,
+  ).seconds;
+  return i18n.t("propertyWatch.format.latencyUpTo", {
+    duration: formatDuration(seconds, i18n),
+  });
+}
 
 /** Said once per page: the cadence is not a promise of speed. */
-export function pwLatency(cadence?: LatencyCadence | null): LatencyParts {
+export function pwLatency(
+  cadence?: LatencyCadence | null,
+  i18n: PwI18n = ENGLISH_PW,
+): LatencyParts {
+  if (i18n.locale !== "en") {
+    const delay = localizedDelay(cadence, i18n);
+    return {
+      lead: i18n.t(
+        delay
+          ? "propertyWatch.format.latencyKnownLead"
+          : "propertyWatch.format.latencyUnknownLead",
+        delay ? { delay } : undefined,
+      ),
+      tail: i18n.t("propertyWatch.format.latencyTail", {
+        caveat: i18n.t("propertyWatch.format.latencyCaveat"),
+      }),
+    };
+  }
   return latencyParts(
-    "Watches",
+    i18n.t("propertyWatch.format.latencySubject"),
     cadence,
-    "This is not a seconds-level correlation engine — for alerting within seconds, use QRadar's own rules.",
+    i18n.t("propertyWatch.format.latencyCaveat"),
   );
 }
 
 /** The latency sentence from an API cadence, or the figure-free one when the API sent none. */
-export function pwLatencyFrom(cadence: Cadence | null | undefined): LatencyParts {
-  return pwLatency(latencyCadence(cadence));
+export function pwLatencyFrom(
+  cadence: Cadence | null | undefined,
+  i18n: PwI18n = ENGLISH_PW,
+): LatencyParts {
+  return pwLatency(latencyCadence(cadence), i18n);
 }
 
 /**
  * When a new pin can be used in a rule. The number follows only when the cadence is known;
  * otherwise nothing is promised beyond "the next collection".
  */
-export function pinAvailability(cadence?: LatencyCadence | null): string {
-  const delay = delayText(cadence);
+export function pinAvailability(
+  cadence?: LatencyCadence | null,
+  i18n: PwI18n = ENGLISH_PW,
+): string {
+  const delay = localizedDelay(cadence, i18n);
   return delay
-    ? `after the next property-watch collection, which runs ${delay} after the events arrive`
-    : "after the next property-watch collection";
+    ? i18n.t("propertyWatch.format.pinAfterDelay", { delay })
+    : i18n.t("propertyWatch.format.pinAfterNext");
 }
 
 // --- statuses ------------------------------------------------------------------
 
-const STATUS_LABELS: Record<PwWatchStatus, string> = {
-  NOT_ENABLED: "Collection off",
-  DISABLED: "Disabled",
-  SCOPE_EMPTY: "Scope empty",
-  SCOPE_STALE: "Scope stale",
-  SCOPE_TOO_LARGE: "Scope too large",
-  NOT_APPLICABLE: "Not applicable",
-  STALE: "Stale",
-  READING_HISTORY: "Reading history",
-  OPEN: "Incident open",
-  RECOVERING: "Recovering",
-  OK: "OK",
+const WATCH_STATUSES: Record<PwWatchStatus, true> = {
+  NOT_ENABLED: true,
+  DISABLED: true,
+  SCOPE_EMPTY: true,
+  SCOPE_STALE: true,
+  SCOPE_TOO_LARGE: true,
+  NOT_APPLICABLE: true,
+  STALE: true,
+  READING_HISTORY: true,
+  OPEN: true,
+  RECOVERING: true,
+  OK: true,
 };
 
-/** What each status means when the API sent no reason of its own. Never overrides one. */
-const STATUS_MEANING: Record<PwWatchStatus, string> = {
-  NOT_ENABLED: "The property-watch collection switch is off, so no search is sent.",
-  DISABLED: "This watch is switched off. Its history and incidents are kept.",
-  SCOPE_EMPTY: "The scope resolves to no synced log source, so no bucket is collected.",
-  SCOPE_STALE:
-    "The synced inventory of the scope is older than the staleness limit, so no bucket is collected and open incidents hold.",
-  SCOPE_TOO_LARGE:
-    "The scope needs more searches per run than one watch may use, so no bucket is collected.",
-  NOT_APPLICABLE:
-    "The property parsed on no event in scope. The values are not measured and no verdict is given.",
-  STALE: "No bucket has been stored for longer than the cadence allows.",
-  READING_HISTORY: "Reading history from QRadar. Nothing is judged until it finishes.",
-  OPEN: "An incident is open on one of its values.",
-  RECOVERING: "An incident is recovering and is held open until it is confirmed.",
-  OK: "The last collected bucket was judged.",
-};
-
-export const NEVER_RUN_LABEL = "Never run";
-export const NEVER_RUN_MEANING =
-  "No bucket has been collected for this watch yet. A watch that has not run is not judged.";
-
-export function statusLabel(status: PwWatchStatus | null): string {
-  return status === null ? NEVER_RUN_LABEL : STATUS_LABELS[status];
+export function statusLabel(
+  status: PwWatchStatus | null,
+  i18n: PwI18n = ENGLISH_PW,
+): string {
+  return status === null
+    ? i18n.t("propertyWatch.status.neverRun")
+    : Object.hasOwn(WATCH_STATUSES, status)
+      ? wordOrValue(i18n, "enums.propertyWatchStatus", status)
+      : status;
 }
 
 /** The API's own reason when there is one, else the status' fixed meaning. */
-export function statusReason(status: PwWatchStatus | null, reason: string | null): string {
+export function statusReason(
+  status: PwWatchStatus | null,
+  reason: string | null,
+  i18n: PwI18n = ENGLISH_PW,
+): string {
   if (reason) return reason;
-  return status === null ? NEVER_RUN_MEANING : STATUS_MEANING[status];
+  return i18n.t(`propertyWatch.status.meaning.${status ?? "NEVER_RUN"}`);
 }
 
 /**
@@ -159,39 +193,43 @@ const DETECTOR_LABELS: Record<PwAnomalyTypeName, string> = {
 export const PW_TYPES = Object.keys(DETECTOR_LABELS) as PwAnomalyTypeName[];
 
 export function isPwType(type: string | null | undefined): boolean {
-  return type != null && type in DETECTOR_LABELS;
+  return type != null && Object.hasOwn(DETECTOR_LABELS, type);
 }
 
 /** A property-watch detector's name; a type this build does not know shows as sent. */
-export function pwTypeLabel(type: string): string {
-  return DETECTOR_LABELS[type as PwAnomalyTypeName] ?? type;
+export function pwTypeLabel(type: string, i18n: PwI18n = ENGLISH_PW): string {
+  return isPwType(type) ? wordOrValue(i18n, "enums.propertyWatchAnomalyType", type) : type;
 }
 
 export function isPwRow(a: Pick<AnomalySummary, "subject_kind" | "pw_value">): boolean {
   return a.subject_kind === "PW_VALUE" && a.pw_value != null;
 }
 
-const SCOPE_KIND_LABELS: Record<PwScopeKind, string> = {
-  LOG_SOURCE: "Log source",
-  LOG_SOURCE_TYPE: "Log source type",
-  LOG_SOURCE_GROUP: "Log source group",
+const SCOPE_KINDS: Record<PwScopeKind, true> = {
+  LOG_SOURCE: true,
+  LOG_SOURCE_TYPE: true,
+  LOG_SOURCE_GROUP: true,
 };
 
-export function scopeKindLabel(kind: PwScopeKind): string {
-  return SCOPE_KIND_LABELS[kind] ?? kind;
+export function scopeKindLabel(kind: PwScopeKind, i18n: PwI18n = ENGLISH_PW): string {
+  if (!Object.hasOwn(SCOPE_KINDS, kind)) return kind;
+  return wordOrValue(i18n, "propertyWatch.scopeKind", kind);
 }
 
 /**
  * The scope in words: `Log source group: DMZ firewalls`. A scope the inventory no longer lists
  * says so with its QRadar id, rather than a blank.
  */
-export function scopeText(watch: Pick<PropertyWatch, "scope">): string {
+export function scopeText(
+  watch: Pick<PropertyWatch, "scope">,
+  i18n: PwI18n = ENGLISH_PW,
+): string {
   const { kind, name, qradar_id: id } = watch.scope;
-  const label = scopeKindLabel(kind);
-  if (name) return `${label}: ${name}`;
+  const label = scopeKindLabel(kind, i18n);
+  if (name) return i18n.t("propertyWatch.format.scopeNamed", { kind: label, name });
   return id === null
-    ? `${label}: not in the synced inventory`
-    : `${label} ${id}: not in the synced inventory`;
+    ? i18n.t("propertyWatch.format.scopeMissing", { kind: label })
+    : i18n.t("propertyWatch.format.scopeMissingId", { kind: label, id });
 }
 
 /** `Username × Action`. Property names are text and are rendered as text. */
@@ -202,21 +240,32 @@ export function propertiesText(watch: Pick<PropertyWatch, "properties">): string
 // --- readings ------------------------------------------------------------------
 
 /** The unit of a bucket count, spoken from the bucket width: `events per 5 min`. */
-export function eventsUnit(bucketSeconds: number | null | undefined): string {
-  if (!bucketSeconds || bucketSeconds <= 0) return "events per bucket";
+export function eventsUnit(
+  bucketSeconds: number | null | undefined,
+  i18n: PwI18n = ENGLISH_PW,
+): string {
+  if (!bucketSeconds || bucketSeconds <= 0) {
+    return i18n.t("propertyWatch.format.eventsPerBucket");
+  }
   const minutes = bucketSeconds / 60;
-  return Number.isInteger(minutes) ? `events per ${minutes} min` : `events per ${bucketSeconds} s`;
+  return Number.isInteger(minutes)
+    ? i18n.t("propertyWatch.format.eventsPerMinutes", { minutes })
+    : i18n.t("propertyWatch.format.eventsPerSeconds", { seconds: bucketSeconds });
 }
 
-const count = (n: number) => formatCount(n);
+const count = (n: number, i18n: PwI18n) => formatCount(n, i18n.locale);
 
 /** `12`, or `at least 12` for a lower bound. A missing count is an em dash, never `0`. */
 export function formatEvents(
   events: number | null | undefined,
   measurement?: MeasurementKind | string | null,
+  i18n: PwI18n = ENGLISH_PW,
 ): string {
   if (events == null || Number.isNaN(events)) return NOT_MEASURED;
-  return measurement === "LOWER_BOUND" ? `at least ${count(events)}` : count(events);
+  const value = count(events, i18n);
+  return measurement === "LOWER_BOUND"
+    ? i18n.t("propertyWatch.format.atLeast", { value })
+    : value;
 }
 
 /**
@@ -227,37 +276,43 @@ export function readingText(
   reading: PwReadingLabel,
   events: number | null,
   measurement: MeasurementKind | null,
+  i18n: PwI18n = ENGLISH_PW,
 ): string {
   switch (reading) {
     case "COUNT":
       // A count with no measurement cannot be said to be exact: it is not shown as one.
-      return events === null || measurement === null ? NOT_MEASURED : formatEvents(events, measurement);
+      return events === null || measurement === null
+        ? NOT_MEASURED
+        : formatEvents(events, measurement, i18n);
     case "MEASURED_ZERO":
       return events === 0 ? "0" : NOT_MEASURED;
     case "UNKNOWN":
-      return "unknown";
+      return i18n.t("propertyWatch.format.reading.UNKNOWN");
     case "NOT_AN_OBSERVATION":
-      return "not tracked then";
+      return i18n.t("propertyWatch.format.reading.NOT_AN_OBSERVATION");
     case "NO_BUCKET":
-      return "not collected";
+      return i18n.t("propertyWatch.format.reading.NO_BUCKET");
     default:
       return NOT_MEASURED;
   }
 }
 
 /** What a reading means, for the cell's title and assistive technology. */
-export function readingMeaning(reading: PwReadingLabel): string {
+export function readingMeaning(
+  reading: PwReadingLabel,
+  i18n: PwI18n = ENGLISH_PW,
+): string {
   switch (reading) {
     case "COUNT":
-      return "Events counted for this value in the bucket.";
+      return i18n.t("propertyWatch.format.readingMeaning.COUNT");
     case "MEASURED_ZERO":
-      return "Measured: the bucket was collected in full and this value had no events.";
+      return i18n.t("propertyWatch.format.readingMeaning.MEASURED_ZERO");
     case "UNKNOWN":
-      return "The bucket was a lower bound and this value was absent from it: not a zero, unknown.";
+      return i18n.t("propertyWatch.format.readingMeaning.UNKNOWN");
     case "NOT_AN_OBSERVATION":
-      return "This value was not tracked at that bucket, so there is no observation.";
+      return i18n.t("propertyWatch.format.readingMeaning.NOT_AN_OBSERVATION");
     case "NO_BUCKET":
-      return "No bucket was collected, so there is no observation.";
+      return i18n.t("propertyWatch.format.readingMeaning.NO_BUCKET");
     default:
       return "";
   }
@@ -266,18 +321,32 @@ export function readingMeaning(reading: PwReadingLabel): string {
 // --- coverage and time ---------------------------------------------------------
 
 /** A fraction as a whole percent, `96 %`; `null` is an em dash, never `0 %`. */
-export function formatCoveragePercent(ratio: number | null | undefined): string {
-  return formatPercent(ratio, null, 0);
+export function formatCoveragePercent(
+  ratio: number | null | undefined,
+  i18n: PwI18n = ENGLISH_PW,
+): string {
+  return formatPercent(ratio, null, 0, i18n.locale);
 }
 
 /** Coverage of the last bucket: `96 %`, or `at least 88 %` when the grouped search was cut. */
-export function coverageText(coverage: PropertyWatch["coverage"]): string {
+export function coverageText(
+  coverage: PropertyWatch["coverage"],
+  i18n: PwI18n = ENGLISH_PW,
+): string {
   if (!coverage || coverage.ratio === null) return NOT_MEASURED;
-  const text = formatCoveragePercent(coverage.ratio);
-  return coverage.measurement === "LOWER_BOUND" ? `at least ${text}` : text;
+  const text = formatCoveragePercent(coverage.ratio, i18n);
+  return coverage.measurement === "LOWER_BOUND"
+    ? i18n.t("propertyWatch.format.coverageAtLeast", { value: text })
+    : text;
 }
 
-export { relativeAge } from "@/lib/time";
+export function relativeAge(
+  iso: string | null | undefined,
+  now: Date | number,
+  i18n: PwI18n = ENGLISH_PW,
+): string {
+  return ageFrom(iso, now, (key, values) => i18n.t(`format.${key}`, values));
+}
 
 // --- the values table -----------------------------------------------------------
 
@@ -295,25 +364,38 @@ export function shareOfParsed(value: PwValue, latest: PwBucket | null): number |
 export { formatShare } from "@/lib/format";
 
 /** The expected range for the value's hour of the week, or why there is none. */
-export function expectedRangeText(value: PwValue): string {
+export function expectedRangeText(value: PwValue, i18n: PwI18n = ENGLISH_PW): string {
   if (value.baseline_state !== "RELIABLE") {
-    return value.baseline_state === "LEARNING" ? "learning" : "no baseline";
+    return value.baseline_state === "LEARNING"
+      ? i18n.t("propertyWatch.format.learning")
+      : i18n.t("propertyWatch.format.noBaseline");
   }
-  if (value.expected_low === null || value.expected_high === null) return "no range for this hour";
-  const fmt = (n: number) => (Number.isInteger(n) ? count(n) : n.toFixed(1));
+  if (value.expected_low === null || value.expected_high === null) {
+    return i18n.t("propertyWatch.format.noRange");
+  }
+  const fmt = (n: number) =>
+    Number.isInteger(n)
+      ? count(n, i18n)
+      : n.toLocaleString(i18n.locale === "tr" ? "tr-TR" : "en-US", {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        });
   return `${fmt(value.expected_low)} – ${fmt(value.expected_high)}`;
 }
 
 /** `Learning (12 of 168 cells)` or `Baseline reliable (168 of 168 cells)`. */
-export function baselineText(value: PwValue): string {
-  const cells = `${value.reliable_cells} of ${value.cells_total} cells`;
+export function baselineText(value: PwValue, i18n: PwI18n = ENGLISH_PW): string {
+  const cells = i18n.t("propertyWatch.format.cells", {
+    reliable: formatCount(value.reliable_cells, i18n.locale),
+    total: formatCount(value.cells_total, i18n.locale),
+  });
   switch (value.baseline_state) {
     case "RELIABLE":
-      return `Baseline reliable (${cells})`;
+      return i18n.t("propertyWatch.format.baselineReliable", { cells });
     case "LEARNING":
-      return `Learning (${cells})`;
+      return i18n.t("propertyWatch.format.baselineLearning", { cells });
     default:
-      return "No baseline yet";
+      return i18n.t("propertyWatch.format.baselineNone");
   }
 }
 
@@ -343,22 +425,57 @@ export interface PwFigure {
   lowerBound?: boolean;
 }
 
-const plural = (n: number | null, one: string, many: string) => (n === 1 ? one : many);
-
 /** The figure with its unit, or "not recorded"; `at least` for a lower bound. */
-export function figureText(f: PwFigure): string {
-  if (f.value === null || Number.isNaN(f.value)) return "not recorded";
-  const n = count(f.value);
-  const unit = f.unit === "events" ? plural(f.value, "event", "events") : f.unit === "buckets" ? plural(f.value, "bucket", "buckets") : f.unit;
-  return `${f.lowerBound ? "at least " : ""}${n}${unit ? ` ${unit}` : ""}`;
+export function figureText(f: PwFigure, i18n: PwI18n = ENGLISH_PW): string {
+  if (f.value === null || Number.isNaN(f.value)) {
+    return i18n.t("propertyWatch.format.notRecorded");
+  }
+  const n = count(f.value, i18n);
+  const unit =
+    f.unit === "events"
+      ? i18n.t(`propertyWatch.format.${f.value === 1 ? "eventOne" : "eventMany"}`)
+      : f.unit === "buckets"
+        ? i18n.t(`propertyWatch.format.${f.value === 1 ? "bucketOne" : "bucketMany"}`)
+        : f.unit;
+  if (!unit) {
+    return f.lowerBound ? i18n.t("propertyWatch.format.figureAtLeast", { value: n }) : n;
+  }
+  return i18n.t(
+    f.lowerBound
+      ? "propertyWatch.format.figureAtLeastWithUnit"
+      : "propertyWatch.format.figureWithUnit",
+    { value: n, unit },
+  );
 }
 
 /** The new-value and new-combination figures, each with what it counts. */
-export function newValueFigures(d: PwDetectionDetail, lowerBound: boolean): PwFigure[] {
+export function newValueFigures(
+  d: PwDetectionDetail,
+  lowerBound: boolean,
+  i18n: PwI18n = ENGLISH_PW,
+): PwFigure[] {
   return [
-    { label: "Events since first seen", value: d.events_since_first_seen, unit: "events", lowerBound },
-    { label: "Buckets with traffic", value: d.buckets_with_traffic, unit: "buckets", lowerBound },
-    { label: "Minimum to report", value: d.threshold, unit: "events" },
-    { label: "History verified", value: d.history_buckets_verified, unit: "buckets" },
+    {
+      label: i18n.t("propertyWatch.format.newValue.eventsSince"),
+      value: d.events_since_first_seen,
+      unit: "events",
+      lowerBound,
+    },
+    {
+      label: i18n.t("propertyWatch.format.newValue.trafficBuckets"),
+      value: d.buckets_with_traffic,
+      unit: "buckets",
+      lowerBound,
+    },
+    {
+      label: i18n.t("propertyWatch.format.newValue.minimum"),
+      value: d.threshold,
+      unit: "events",
+    },
+    {
+      label: i18n.t("propertyWatch.format.newValue.historyVerified"),
+      value: d.history_buckets_verified,
+      unit: "buckets",
+    },
   ];
 }

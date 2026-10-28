@@ -6,6 +6,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 
 import { PwStatus } from "@/components/propertywatch/PwStatus";
 import { PropertyWatchWriteNotice } from "@/components/propertywatch/PropertyWatchWriteNotice";
@@ -37,21 +38,23 @@ import {
 } from "@/lib/api";
 import { historyHeaderText } from "@/components/propertywatch/history";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 
 import "@/components/ui/controls.css";
 
 import "../watches.css";
 
-export const metadata: Metadata = {
-  title: "Property watch",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("propertyWatch.meta");
+  return { title: t("detail") };
+}
 
 const INCIDENT_DAYS = 30;
 
-function Problem({ title, children }: { title: string; children: React.ReactNode }) {
+function Problem({ title, pageTitle, children }: { title: string; pageTitle: string; children: React.ReactNode }) {
   return (
     <>
-      <PageHeader title="Property watch" />
+      <PageHeader title={pageTitle} />
       <div className="notice" role="alert">
         <p>
           <strong>{title}</strong>
@@ -69,6 +72,8 @@ export default async function PropertyWatchPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const t = await getTranslations("propertyWatch");
+  const i18n = await getBehaviorI18n();
   const { id } = await params;
   const query = await searchParams;
   const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -84,29 +89,26 @@ export default async function PropertyWatchPage({
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       return (
-        <Problem title="This property watch does not exist.">
-          It may have been deleted, or the link may be wrong.{" "}
-          <Link href="/behavior/watches">Open property watches</Link> to see the ones that exist.
+        <Problem title={t("detail.notFoundTitle")} pageTitle={t("detail.title")}>
+          {t.rich("detail.notFoundBody", { link: (chunks) => <Link href="/behavior/watches">{chunks}</Link> })}
         </Problem>
       );
     }
     if (err instanceof ApiError && err.status === 403) {
       return (
-        <Problem title="This property watch is forbidden for this account.">
-          Reading it needs <code>read:property_watches</code>. Ask an admin to grant a role that
-          includes it. Nothing was changed.
+        <Problem title={t("detail.forbiddenTitle")} pageTitle={t("detail.title")}>
+          {t.rich("detail.forbiddenBody", { permission: (chunks) => <code>{chunks}</code> })}
         </Problem>
       );
     }
     if (err instanceof ApiError && err.status === 401) {
       return (
-        <Problem title="Your session has expired.">Sign in again to continue. Nothing was changed.</Problem>
+        <Problem title={t("detail.expiredTitle")} pageTitle={t("detail.title")}>{t("detail.expiredBody")}</Problem>
       );
     }
     return (
-      <Problem title="This property watch could not be loaded.">
-        The backend may be unreachable: check that it is running, then reload the page. Nothing was
-        changed.
+      <Problem title={t("detail.failedTitle")} pageTitle={t("detail.title")}>
+        {t("detail.failedBody")}
       </Problem>
     );
   }
@@ -164,13 +166,13 @@ export default async function PropertyWatchPage({
             {watch.status !== "READING_HISTORY" && (
               <>
                 <span className="muted" aria-hidden="true">·</span>
-                <span>{historyHeaderText(watch.history)}</span>
+                <span>{historyHeaderText(watch.history, i18n)}</span>
               </>
             )}
             <span className="muted" aria-hidden="true">
               ·
             </span>
-            <span>{scopeText(watch)}</span>
+            <span>{scopeText(watch, i18n)}</span>
             <span className="muted" aria-hidden="true">
               ·
             </span>
@@ -178,19 +180,18 @@ export default async function PropertyWatchPage({
             <span className="muted" aria-hidden="true">
               ·
             </span>
-            <span>5-minute buckets</span>
+            <span>{t("detail.bucketWidth")}</span>
             <span className="muted" aria-hidden="true">
               ·
             </span>
             <span>
-              Last {watch.history.state === "READING" ? "collected " : ""}bucket{" "}
               {last ? (
-                <>
-                  <UtcTime value={last} />{" "}
-                  <span className="muted">({relativeAge(last, end)})</span>
-                </>
+                t.rich(watch.history.state === "READING" ? "detail.lastCollectedBucket" : "detail.lastBucket", {
+                  time: () => <UtcTime value={last} />,
+                  age: () => <span className="muted">({relativeAge(last, end, i18n)})</span>,
+                })
               ) : (
-                "none yet"
+                t("detail.noneYet")
               )}
             </span>
           </>
@@ -198,16 +199,16 @@ export default async function PropertyWatchPage({
       />
 
       <section className="pw-definition-editor" aria-labelledby="pw-edit-title">
-        <h2 id="pw-edit-title" className="sr-only">Watch definition editor</h2>
+        <h2 id="pw-edit-title" className="sr-only">{t("detail.editorHeading")}</h2>
         {access === "writer" && catalog ? (
           <details className="pw-edit-disclosure">
-            <summary>Edit watch</summary>
+            <summary>{t("detail.edit")}</summary>
             <WatchEditor catalog={catalog} mode="edit" watch={watch} initialScope={scope} />
           </details>
         ) : access === "writer" ? (
           <div className="notice" role="alert">
-            <p><strong>The editor bounds could not be loaded.</strong></p>
-            <p>The watch remains readable. Reload the page to try the catalog read again.</p>
+            <p><strong>{t("detail.boundsFailedTitle")}</strong></p>
+            <p>{t("detail.boundsFailedBody")}</p>
           </div>
         ) : (
           <PropertyWatchWriteNotice unknown={access === "unknown"} />

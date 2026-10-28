@@ -36,6 +36,7 @@ import meta from "./meta.json";
 import offenses from "./offenses.json";
 import outage from "./outage.json";
 import password from "./password.json";
+import propertyWatch from "./propertyWatch.json";
 import pwchart from "./pwchart.json";
 import rules from "./rules.json";
 import searches from "./searches.json";
@@ -81,6 +82,7 @@ const messages = {
   offenses,
   outage,
   password,
+  propertyWatch,
   pwchart,
   rules,
   searches,

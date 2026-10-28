@@ -525,6 +525,14 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | expand | büyüt |
 | discard | vazgeç |
 | property watch | özellik izleme |
+| property | özellik |
+| value | değer |
+| scope | kapsam |
+| pinned value | sabitlenmiş değer |
+| history | geçmiş |
+| preview | önizleme |
+| threshold | eşik |
+| parse / parsed | ayrıştırmak / ayrıştırılmış |
 | scheduled search | zamanlanmış arama |
 | breach | ihlal |
 | shadow mode | gölge modu |

@@ -214,13 +214,13 @@ export function PropertyWatchWidget({
   const seriesAt = seriesS.status === "ok" ? seriesS.receivedAt : null;
   const plotted = useMemo(() => {
     if (!seriesData || !items) return null;
-    const labels = new Map(items.map((v) => [v.id, valueText(v)]));
+    const labels = new Map(items.map((v) => [v.id, valueText(v, { t: say, locale })]));
     return seriesData.series.map((s) => ({
       ...s,
       value_key: labels.get(s.value_id) ?? s.value_key,
       points: s.points.filter((point) => point.origin === "LIVE"),
     }));
-  }, [seriesData, items]);
+  }, [seriesData, items, say, locale]);
   const bucketData = bucketsS.status === "ok" ? bucketsS.data : null;
   const liveBuckets = useMemo(
     () => bucketData?.filter((bucket) => bucket.origin === "LIVE") ?? null,

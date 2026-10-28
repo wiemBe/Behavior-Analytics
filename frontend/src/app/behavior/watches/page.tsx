@@ -10,6 +10,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 
 import { CadenceLatency, canReadSearchCadence } from "@/components/cadence/CadenceLatency";
 import { PwStatus } from "@/components/propertywatch/PwStatus";
@@ -29,14 +30,19 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { ApiError, api, type PropertyWatch, type PropertyWatchCatalog } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { formatCount } from "@/lib/format";
 
 import "@/components/ui/controls.css";
 
-export const metadata: Metadata = {
-  title: "Property watches",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("propertyWatch.meta");
+  return { title: t("list") };
+}
 
 export default async function PropertyWatchesPage() {
+  const t = await getTranslations("propertyWatch");
+  const i18n = await getBehaviorI18n();
   let watches: PropertyWatch[] = [];
   let catalog: PropertyWatchCatalog | null = null;
   let forbidden = false;
@@ -62,10 +68,10 @@ export default async function PropertyWatchesPage() {
   return (
     <>
       <PageHeader
-        title="Property watches"
+        title={t("list.title")}
         actions={
           access === "writer" ? (
-            <Link className="action" href="/behavior/watches/new">New watch</Link>
+            <Link className="action" href="/behavior/watches/new">{t("list.new")}</Link>
           ) : null
         }
       />
@@ -73,21 +79,19 @@ export default async function PropertyWatchesPage() {
       {forbidden ? (
         <div className="notice" role="alert">
           <p>
-            <strong>Property watches are forbidden for this account.</strong>
+            <strong>{t("list.forbiddenTitle")}</strong>
           </p>
           <p>
-            Reading this route needs <code>read:property_watches</code>. Ask an admin to grant a
-            role that includes it. Nothing was changed.
+            {t.rich("list.forbiddenBody", { permission: (chunks) => <code>{chunks}</code> })}
           </p>
         </div>
       ) : failed ? (
         <div className="notice" role="alert">
           <p>
-            <strong>Property watches could not be loaded.</strong>
+            <strong>{t("list.failedTitle")}</strong>
           </p>
           <p>
-            Nothing is shown, which is not the same as there being none. The backend may be
-            unreachable: check that it is running, then reload the page. No watch was changed.
+            {t("list.failedBody")}
           </p>
         </div>
       ) : (
@@ -96,8 +100,7 @@ export default async function PropertyWatchesPage() {
             {catalog === null ? (
               <div className="banner warn" role="status">
                 <span>
-                  <strong>SWITCHES NOT READ.</strong> The collection and alerting switches could
-                  not be loaded, so this page cannot say whether watches are being collected.
+                  <strong>{t("list.switchesUnreadTitle")}</strong>{" "}{t("list.switchesUnreadBody")}
                 </span>
               </div>
             ) : (
@@ -105,26 +108,26 @@ export default async function PropertyWatchesPage() {
                 {!catalog.collection_enabled && (
                   <div className="banner warn" role="status">
                     <span>
-                      <strong>COLLECTION OFF.</strong> <code>PW_COLLECTION_ENABLED</code> is false,
-                      so no search is sent and no watch is being judged, whatever a row says.
+                      <strong>{t("list.collectionOffTitle")}</strong>{" "}
+                      {t.rich("list.collectionOffBody", { setting: (chunks) => <code>{chunks}</code> })}
                     </span>
                   </div>
                 )}
                 {catalog.alerting_mode === "shadow" && (
                   <div className="banner" role="status">
                     <span>
-                      <strong>SHADOW MODE.</strong> Incidents are recorded and nothing pages until{" "}
-                      <code>PW_ALERTING_ENABLED</code> is on.
+                      <strong>{t("list.shadowTitle")}</strong>{" "}
+                      {t.rich("list.shadowBody", { setting: (chunks) => <code>{chunks}</code> })}
                     </span>
                   </div>
                 )}
               </>
             )}
-            <CadenceLatency className="pw-latency" parts={pwLatencyFrom(catalog?.cadence)} canLink={canLink} />
+            <CadenceLatency className="pw-latency" parts={pwLatencyFrom(catalog?.cadence, i18n)} canLink={canLink} />
             {access !== "writer" && (
               <p className="pw-write-note" role={access === "unknown" ? "alert" : undefined}>
-                {access === "unknown" ? "Permissions could not be read. " : ""}
-                Creating and editing a watch needs <code>property_watch:write</code>.
+                {access === "unknown" ? t("list.permissionsUnread") : ""}
+                {t.rich("list.writePermission", { permission: (chunks) => <code>{chunks}</code> })}
               </p>
             )}
           </div>
@@ -132,34 +135,31 @@ export default async function PropertyWatchesPage() {
           {rows.length === 0 ? (
             <div className="notice" role="status">
               <p>
-                <strong>No property watch exists yet.</strong>
+                <strong>{t("list.emptyTitle")}</strong>
               </p>
               <p>
-                A property watch counts the values of one or two properties, such as a username,
-                over a log source, a log source type or a group, in 5-minute buckets. It learns what
-                is normal for each value and reports a value that appears, disappears or changes.
-                Until one exists there is nothing to judge here.
+                {t("list.emptyBody")}
               </p>
             </div>
           ) : (
-            <TableScroll label="Property watches">
-              <table className="table-dense pw-list" aria-label="Property watches">
+            <TableScroll label={t("list.tableLabel")}>
+              <table className="table-dense pw-list" aria-label={t("list.tableLabel")}>
                 <thead>
                   <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Status and reason</th>
-                    <th scope="col">Scope</th>
-                    <th scope="col">Properties</th>
+                    <th scope="col">{t("list.name")}</th>
+                    <th scope="col">{t("list.statusReason")}</th>
+                    <th scope="col">{t("list.scope")}</th>
+                    <th scope="col">{t("list.properties")}</th>
                     <th scope="col" className="num">
-                      Coverage, last bucket
+                      {t("list.coverage")}
                     </th>
                     <th scope="col" className="num">
-                      Open incidents
+                      {t("list.openIncidents")}
                     </th>
                     <th scope="col" className="num">
-                      Last bucket (UTC)
+                      {t("list.lastBucketUtc")}
                     </th>
-                    <th scope="col">Enabled</th>
+                    <th scope="col">{t("list.enabled")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -171,21 +171,21 @@ export default async function PropertyWatchesPage() {
                       <td className="pw-status-cell">
                         <PwStatus status={w.status} reason={w.status_reason} history={w.history} />
                       </td>
-                      <td className="pw-scope-cell">{scopeText(w)}</td>
+                      <td className="pw-scope-cell">{scopeText(w, i18n)}</td>
                       <td className="pw-props-cell">{propertiesText(w)}</td>
-                      <td className="num">{coverageText(w.coverage)}</td>
-                      <td className="num">{w.open_incidents}</td>
+                      <td className="num">{coverageText(w.coverage, i18n)}</td>
+                      <td className="num">{formatCount(w.open_incidents, i18n.locale)}</td>
                       <td className="num cell-when nowrap">
                         {w.collected_through ? (
                           <>
                             <UtcTime value={w.collected_through} />
-                            <span className="cell-sub">{relativeAge(w.collected_through, now)}</span>
+                            <span className="cell-sub">{relativeAge(w.collected_through, now, i18n)}</span>
                           </>
                         ) : (
-                          <span className="muted">no bucket yet</span>
+                          <span className="muted">{t("list.noBucket")}</span>
                         )}
                       </td>
-                      <td>{w.enabled ? "Yes" : "No"}</td>
+                      <td>{t(w.enabled ? "common.yes" : "common.no")}</td>
                     </tr>
                   ))}
                 </tbody>

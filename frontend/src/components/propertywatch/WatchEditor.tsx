@@ -16,6 +16,8 @@ import {
   type WatchScope,
 } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { enumLabel } from "@/i18n/enumLabels";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import {
   DETECTORS,
@@ -23,6 +25,7 @@ import {
   createWatchBody,
   draftFromWatch,
   draftReasons,
+  detectorCopy,
   emptyWatchDraft,
   pinReason,
   propertyReason,
@@ -33,21 +36,23 @@ import {
 import { WatchPropertyPicker, WatchScopePicker } from "./WatchPickers";
 import { latencyCadence } from "@/components/cadence/CadenceLatency";
 
-import { formatShare } from "@/lib/format";
+import { formatCount, formatShare } from "@/lib/format";
 
 import { pinAvailability } from "./pwFormat";
 import { historyHeaderText } from "./history";
+import { ENGLISH_PW, type PwI18n } from "./pwText";
 
 import "./propertywatch.css";
 
 const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+const COLLECTION_SETTING = "PW_COLLECTION_ENABLED";
 /** When a "n/unit" limit has room again: within one unit of it, never sooner than a second. */
-function retryIn(limit: string): string {
+function retryIn(limit: string, i18n: PwI18n): string {
   const unit = limit.split("/")[1]?.trim().replace(/s$/, "");
-  if (unit === "second") return "about a second";
-  if (unit === "minute") return "about a minute";
-  if (unit === "hour") return "up to an hour";
-  return "a little while";
+  if (unit === "second") return i18n.t("propertyWatch.editor.retrySecond");
+  if (unit === "minute") return i18n.t("propertyWatch.editor.retryMinute");
+  if (unit === "hour") return i18n.t("propertyWatch.editor.retryHour");
+  return i18n.t("propertyWatch.editor.retryLater");
 }
 
 const FALLBACK_DETECTORS = Object.keys(DETECTORS) as PwAnomalyTypeName[];
@@ -55,73 +60,79 @@ const FALLBACK_DETECTORS = Object.keys(DETECTORS) as PwAnomalyTypeName[];
 function PreviewResult({
   preview,
   propertyOptions,
+  i18n,
 }: {
   preview: PwPreview;
   propertyOptions: PwPropertyOptions | null;
+  i18n: PwI18n;
 }) {
+  const t = i18n.t;
   const empty =
     preview.total_events === 0
-      ? "The scope sent no events in the last closed hour. That is measured silence, so there are no values to list."
+      ? t("propertyWatch.preview.emptySilence")
       : preview.property_parses === false
-        ? "Events arrived, but the selected property parsed on none of them. No value was measured."
+        ? t("propertyWatch.preview.emptyNotParsed")
         : preview.outcome === "NOT_MEASURED"
-          ? "The preview measured no bucket. This is not a zero or a healthy result."
-          : "No value was returned in the measured preview window.";
+          ? t("propertyWatch.preview.emptyNotMeasured")
+          : t("propertyWatch.preview.emptyNoRows");
   const types = propertyOptions?.scope_type_ids.length ?? 0;
 
   return (
     <div className="pw-preview-content">
       <div className={`banner ${preview.outcome === "MEASURED" ? "" : "warn"}`} role="status">
         <span>
-          <strong>{preview.outcome.replaceAll("_", " ")}.</strong>{" "}
-          {preview.buckets_measured} measured, {preview.buckets_lower_bound} lower-bound and{" "}
-          {preview.buckets_unmeasured} unmeasured 5-minute buckets.
-          {preview.reason ? ` ${preview.reason}` : ""}
+          <strong>{enumLabel(i18n.t, "propertyWatchPreviewOutcome", preview.outcome)}.</strong>{" "}
+          {t("propertyWatch.preview.summary", {
+            measured: formatCount(preview.buckets_measured, i18n.locale),
+            lower: formatCount(preview.buckets_lower_bound, i18n.locale),
+            unmeasured: formatCount(preview.buckets_unmeasured, i18n.locale),
+            reason: preview.reason ? ` ${preview.reason}` : "",
+          })}
         </span>
       </div>
       <p className="subtitle">
-        Last closed hour: <UtcTime value={preview.window_start} />{" "}
-        to <UtcTime value={preview.window_end} />.
+        {t("propertyWatch.preview.windowLead")} <UtcTime value={preview.window_start} />{" "}
+        {t("propertyWatch.preview.windowTo")} <UtcTime value={preview.window_end} />.
       </p>
       <dl className="pw-preview-facts">
         <div>
-          <dt>Total events</dt>
-          <dd className="num">{preview.total_events?.toLocaleString("en-US") ?? "—"}</dd>
+          <dt>{t("propertyWatch.preview.totalEvents")}</dt>
+          <dd className="num">{formatCount(preview.total_events, i18n.locale)}</dd>
         </div>
         <div>
-          <dt>Parsed events</dt>
-          <dd className="num">{preview.parsed_events?.toLocaleString("en-US") ?? "—"}</dd>
+          <dt>{t("propertyWatch.preview.parsedEvents")}</dt>
+          <dd className="num">{formatCount(preview.parsed_events, i18n.locale)}</dd>
         </div>
         <div>
-          <dt>Coverage</dt>
-          <dd className="num">{formatShare(preview.coverage)}</dd>
+          <dt>{t("propertyWatch.preview.coverage")}</dt>
+          <dd className="num">{formatShare(preview.coverage, i18n.locale)}</dd>
         </div>
         <div>
-          <dt>Unparsed remainder</dt>
+          <dt>{t("propertyWatch.preview.unparsed")}</dt>
           <dd className="num">
             {preview.unparsed_events === null
               ? "—"
-              : `${preview.unparsed_bound === "UPPER_BOUND" ? "at most " : ""}${preview.unparsed_events.toLocaleString("en-US")} events`}
+              : `${preview.unparsed_bound === "UPPER_BOUND" ? t("propertyWatch.format.atMost", { value: "" }) : ""}${t("propertyWatch.common.events", { count: preview.unparsed_events })}`}
           </dd>
         </div>
       </dl>
       {preview.rows.length === 0 ? (
         <div className="notice" role="status">
-          <p><strong>No preview value is available.</strong></p>
+          <p><strong>{t("propertyWatch.preview.emptyTitle")}</strong></p>
           <p>{empty}</p>
         </div>
       ) : (
-        <div className="table-scroll" role="region" aria-label="Preview values" tabIndex={0}>
-          <table aria-label="Preview values">
+        <div className="table-scroll" role="region" aria-label={t("propertyWatch.preview.tableLabel")} tabIndex={0}>
+          <table aria-label={t("propertyWatch.preview.tableLabel")}>
             <thead>
-              <tr><th scope="col">Value</th><th scope="col" className="num">Events in last hour</th><th scope="col" className="num">Share of parsed</th></tr>
+              <tr><th scope="col">{t("propertyWatch.common.value")}</th><th scope="col" className="num">{t("propertyWatch.preview.eventsLastHour")}</th><th scope="col" className="num">{t("propertyWatch.preview.share")}</th></tr>
             </thead>
             <tbody>
               {preview.rows.map((row) => (
                 <tr key={row.value_key}>
                   <td className="pw-value-text">{row.components.join(" × ") || row.value_key}</td>
-                  <td className="num">{preview.rows_measurement === "LOWER_BOUND" ? "at least " : ""}{row.events.toLocaleString("en-US")}</td>
-                  <td className="num">{formatShare(row.share)}</td>
+                  <td className="num">{preview.rows_measurement === "LOWER_BOUND" ? t("propertyWatch.format.atLeast", { value: formatCount(row.events, i18n.locale) }) : formatCount(row.events, i18n.locale)}</td>
+                  <td className="num">{formatShare(row.share, i18n.locale)}</td>
                 </tr>
               ))}
             </tbody>
@@ -130,25 +141,24 @@ function PreviewResult({
       )}
       <div className="notice">
         <p>
-          <strong>Applicability reading.</strong>{" "}
+          <strong>{t("propertyWatch.preview.applicabilityTitle")}</strong>{" "}
           {preview.property_parses === true
-            ? `The selected property set parsed on ${preview.coverage === null ? "an unknown share of" : `${formatShare(preview.coverage)} of`} events.`
+            ? t("propertyWatch.preview.parses", { coverage: preview.coverage === null ? t("propertyWatch.preview.unknownShare") : `${formatShare(preview.coverage, i18n.locale)} ${i18n.locale === "en" ? "of" : ""}` })
             : preview.property_parses === false
-              ? "The selected property set parsed on no event although the scope sent events."
-              : "The preview cannot determine whether the property parses on this scope."}
+              ? t("propertyWatch.preview.notParses")
+              : t("propertyWatch.preview.cannotDetermine")}
         </p>
         <p>
-          The catalog consulted {types} {types === 1 ? "type" : "types"} in this scope. It is a
-          suggestion; this real preview is the applicability check.
+          {t("propertyWatch.preview.catalogTypes", { count: types })}
         </p>
       </div>
       <div className="pw-query-list">
         {preview.queries.map((query) => (
           <CodePanel
             key={query.search}
-            label={`${query.search === "GROUPED" ? "Value counts" : "Scope total"} · generated AQL`}
+            label={`${t(query.search === "GROUPED" ? "propertyWatch.preview.grouped" : "propertyWatch.preview.totals")} · ${t("propertyWatch.preview.generatedAql")}`}
             code={query.text}
-            meta="Read-only"
+            meta={t("propertyWatch.common.readOnly")}
           />
         ))}
       </div>
@@ -161,12 +171,17 @@ export function WatchEditor({
   mode,
   watch,
   initialScope = null,
+  i18n: providedI18n,
 }: {
   catalog: PropertyWatchCatalog;
   mode: "create" | "edit";
   watch?: PropertyWatch;
   initialScope?: WatchScope | null;
+  i18n?: PwI18n;
 }) {
+  const runtimeI18n = useBehaviorI18n();
+  const i18n = providedI18n ?? runtimeI18n ?? ENGLISH_PW;
+  const t = i18n.t;
   const router = useRouter();
   const nameId = useId();
   const descriptionId = useId();
@@ -214,7 +229,7 @@ export function WatchEditor({
   }, [draft.scopeId, draft.scopeKind]);
 
   const detectors = useMemo(() => {
-    const fromCatalog = catalog.detectors.filter((d): d is PwAnomalyTypeName => d in DETECTORS);
+    const fromCatalog = catalog.detectors.filter((d): d is PwAnomalyTypeName => Object.hasOwn(DETECTORS, d));
     return fromCatalog.length > 0 ? fromCatalog : FALLBACK_DETECTORS;
   }, [catalog.detectors]);
 
@@ -244,7 +259,7 @@ export function WatchEditor({
 
   async function saveAndPreview() {
     if (saving) return;
-    const reasons = draftReasons(draft, catalog);
+    const reasons = draftReasons(draft, catalog, i18n);
     setLocalReasons(reasons);
     setServerReasons([]);
     setMessage(null);
@@ -263,24 +278,27 @@ export function WatchEditor({
       ]);
       setPreview(result);
       setScope(resolvedScope);
-      setMessage({ tone: "", text: "The watch was saved disabled and the stored definition was previewed." });
+      setMessage({ tone: "", text: t("propertyWatch.editor.saved") });
       if (mode === "edit") router.refresh();
     } catch (error) {
-      const refusal = classifyWatchError(error);
+      const refusal = classifyWatchError(error, i18n);
       if (refusal.kind === "reasons") setServerReasons(refusal.reasons);
       else if (refusal.kind === "version") {
         setConflict({ currentVersion: refusal.currentVersion, updatedBy: refusal.updatedBy });
       } else if (refusal.kind === "rate") {
         setMessage({
           tone: "warn",
-          text: `The preview is rate limited to ${catalog.preview_rate_limit}. Try again in ${retryIn(catalog.preview_rate_limit)}. The watch was saved disabled and the preview did not run.`,
+          text: t("propertyWatch.editor.rate", {
+            limit: catalog.preview_rate_limit,
+            retry: retryIn(catalog.preview_rate_limit, i18n),
+          }),
         });
       } else if (refusal.kind === "dependencies") {
         setMessage({
           tone: "crit",
           text: (
             <>
-              {refusal.message}. Rules to detach first:{" "}
+              {t("propertyWatch.actions.dependencies", { message: refusal.message })}
               {refusal.rules.map((rule, index) => (
                 <span key={rule.id}>
                   {index > 0 ? ", " : ""}
@@ -310,20 +328,27 @@ export function WatchEditor({
   );
   const historyDisabledReason =
     historyLocked && currentWatch
-      ? `${historyHeaderText(currentWatch.history)}. The request cannot change after history or collected buckets exist.`
+      ? t("propertyWatch.editor.historyLocked", { history: historyHeaderText(currentWatch.history, i18n) })
       : !catalog.history.enabled
-        ? "History reading is switched off on this server."
+        ? t("propertyWatch.editor.historyOff")
         : historySearchesAvailable < historyNeed
           ? catalog.history.searches_per_tick <= catalog.history.searches_free
-            ? `History needs ${historyNeed} searches per tick for this watch; this server gives a history reading at most ${catalog.history.searches_per_tick} (PW_BOOTSTRAP_SEARCHES_PER_TICK).`
-            : `History needs ${historyNeed} free searches per tick for this watch; ${catalog.history.searches_free} ${catalog.history.searches_free === 1 ? "is" : "are"} free.`
+            ? t("propertyWatch.editor.historyServerLimit", {
+                need: formatCount(historyNeed, i18n.locale),
+                available: formatCount(catalog.history.searches_per_tick, i18n.locale),
+              })
+            : t("propertyWatch.editor.historyFree", {
+                need: formatCount(historyNeed, i18n.locale),
+                free: formatCount(catalog.history.searches_free, i18n.locale),
+                verb: t(catalog.history.searches_free === 1 ? "propertyWatch.editor.is" : "propertyWatch.editor.are"),
+              })
           : null;
   // A disabled section never asks for history: the form shows, and sends, what will happen.
   const shown: WatchDraft =
     historyDisabledReason !== null && !historyLocked
       ? { ...draft, historyDays: 0, historyTouched: catalog.history.enabled || draft.historyTouched }
       : draft;
-  const summary = watchSummary(shown);
+  const summary = watchSummary(shown, i18n);
   const historyOptions = [...new Set([7, 14, 28, catalog.history.days_default])]
     .filter((days) => days >= catalog.history.days_min && days <= catalog.history.days_max)
     .sort((a, b) => a - b);
@@ -340,13 +365,12 @@ export function WatchEditor({
         {currentWatch?.enabled && (
           <div className="banner warn" role="note">
             <span>
-              This watch is enabled. Saving here disables it until you enable it again from the
-              actions above.
+              {t("propertyWatch.editor.enabledWarning")}
             </span>
           </div>
         )}
         <div className="pw-field">
-          <label htmlFor={nameId}>Watch name</label>
+          <label htmlFor={nameId}>{t("propertyWatch.editor.name")}</label>
           <input
             id={nameId}
             className="field"
@@ -357,7 +381,7 @@ export function WatchEditor({
           />
         </div>
         <div className="pw-field">
-          <label htmlFor={descriptionId}>Description</label>
+          <label htmlFor={descriptionId}>{t("propertyWatch.editor.description")}</label>
           <textarea
             id={descriptionId}
             rows={3}
@@ -368,7 +392,7 @@ export function WatchEditor({
         </div>
 
         <fieldset className="pw-editor-section">
-          <legend>1. Scope</legend>
+          <legend>{t("propertyWatch.editor.scopeLegend")}</legend>
           <WatchScopePicker
             kind={draft.scopeKind}
             selectedId={draft.scopeId}
@@ -387,40 +411,38 @@ export function WatchEditor({
               <p>
                 <strong>{draft.scopeLabel || draft.scopeId}</strong>{" "}
                 {draft.scopeCount === null
-                  ? "has no reliable resolved-member count."
-                  : `resolves to ${draft.scopeCount.toLocaleString("en-US")} sources.`}
+                  ? t("propertyWatch.editor.memberUnknown")
+                  : t("propertyWatch.editor.resolves", { count: formatCount(draft.scopeCount, i18n.locale) })}
               </p>
               {(scopeOption?.detail || watch?.scope.detail) && (
-                <p>Inventory path: {scopeOption?.detail ?? watch?.scope.detail}</p>
+                <p>{t("propertyWatch.editor.inventoryPath", { path: scopeOption?.detail ?? watch?.scope.detail ?? "" })}</p>
               )}
               {scope?.groups_walked.length ? (
                 <p>
-                  Groups walked: {scope.groups_walked.map((group) => group.name).join(" → ")}.
+                  {t("propertyWatch.editor.groupsWalked", { groups: scope.groups_walked.map((group) => group.name).join(" → ") })}
                 </p>
               ) : draft.scopeKind === "LOG_SOURCE_GROUP" && currentWatch === null ? (
-                <p>The exact descendant walk is available after the required disabled save.</p>
+                <p>{t("propertyWatch.editor.walkAfterSave")}</p>
               ) : null}
             </div>
           )}
         </fieldset>
 
         <fieldset className="pw-editor-section">
-          <legend>2. Properties</legend>
+          <legend>{t("propertyWatch.editor.propertiesLegend")}</legend>
           <p className="field-hint">
-            Choose one or two properties. Two is the limit because each additional property
-            multiplies the combination space and can prevent a reliable baseline from learning.
+            {t("propertyWatch.editor.propertiesHelp")}
           </p>
-          {propertyState === "loading" && <p className="loading-state" role="status">Loading property options…</p>}
+          {propertyState === "loading" && <p className="loading-state" role="status">{t("propertyWatch.editor.propertyLoading")}</p>}
           {propertyState === "error" && (
             <p className="field-error" role="alert">
-              Property options could not be loaded. You may type a valid property name, but the
-              catalog applicability reading is unavailable until this read succeeds.
+              {t("propertyWatch.editor.propertyFailed")}
             </p>
           )}
           {propertyOptions?.status === "UNAVAILABLE" && (
             <div className="notice" role="status">
-              <p><strong>The custom-property catalog is unavailable.</strong></p>
-              <p>{propertyOptions.detail ?? "Typed names remain suggestions until the real preview runs."}</p>
+              <p><strong>{t("propertyWatch.editor.catalogUnavailableTitle")}</strong></p>
+              <p>{propertyOptions.detail ?? t("propertyWatch.editor.catalogUnavailableFallback")}</p>
             </div>
           )}
           {draft.properties.map((property, index) => (
@@ -432,7 +454,7 @@ export function WatchEditor({
                 disabled={!draft.scopeId}
                 onChange={(next) => changeProperty(index, next)}
               />
-              {propertyReason(property) && <p className="field-error" role="alert">{propertyReason(property)}</p>}
+              {propertyReason(property, i18n) && <p className="field-error" role="alert">{propertyReason(property, i18n)}</p>}
               {draft.properties.length > 1 && (
                 <button
                   type="button"
@@ -446,7 +468,7 @@ export function WatchEditor({
                     });
                   }}
                 >
-                  Remove property {index + 1}
+                  {t("propertyWatch.editor.removeProperty", { index: formatCount(index + 1, i18n.locale) })}
                 </button>
               )}
             </div>
@@ -462,16 +484,16 @@ export function WatchEditor({
                 })
               }
             >
-              Add second property
+              {t("propertyWatch.editor.addProperty")}
             </button>
           )}
         </fieldset>
 
         <fieldset className="pw-editor-section">
-          <legend>3. Values</legend>
-          <p className="pw-section-lead">Always counted</p>
+          <legend>{t("propertyWatch.editor.valuesLegend")}</legend>
+          <p className="pw-section-lead">{t("propertyWatch.editor.alwaysCounted")}</p>
           {draft.pins.length === 0 ? (
-            <p className="field-hint">No value is pinned. Automatic values can be pinned later.</p>
+            <p className="field-hint">{t("propertyWatch.editor.noPins")}</p>
           ) : (
             <div className="pw-pins">
               {draft.pins.map((pin, row) => (
@@ -479,10 +501,10 @@ export function WatchEditor({
                   <div className="pw-pin-fields">
                     {draft.properties.map((property, column) => {
                       const id = `${nameId}-pin-${row}-${column}`;
-                      const reason = pinReason(pin[column] ?? "", catalog.value_max_length);
+                      const reason = pinReason(pin[column] ?? "", catalog.value_max_length, i18n);
                       return (
                         <div className="pw-field" key={column}>
-                          <label htmlFor={id}>{property.name || `Property ${column + 1}`}</label>
+                          <label htmlFor={id}>{property.name || `${t("propertyWatch.common.property")} ${formatCount(column + 1, i18n.locale)}`}</label>
                           <input
                             id={id}
                             className="field pw-mono-input"
@@ -501,7 +523,7 @@ export function WatchEditor({
                     className="action secondary"
                     onClick={() => patch({ pins: draft.pins.filter((_, i) => i !== row) })}
                   >
-                    Remove pinned value {row + 1}
+                    {t("propertyWatch.editor.removePin", { index: formatCount(row + 1, i18n.locale) })}
                   </button>
                 </div>
               ))}
@@ -515,21 +537,23 @@ export function WatchEditor({
               patch({ pins: [...draft.pins, Array.from({ length: draft.properties.length }, () => "")] })
             }
           >
-            Add pinned value
+            {t("propertyWatch.editor.addPin")}
           </button>
           <p className="field-hint">
-            At most {catalog.max_pinned_values} values or full pairs may be pinned. Quotes and
-            backslashes cannot be pinned. The most frequent other values are tracked automatically:
-            up to {catalog.max_new_values_per_bucket} new values per 5 minutes and{" "}
-            {catalog.max_active_values_per_watch} in total.
+            {t("propertyWatch.editor.pinsHelp", {
+              maxPins: formatCount(catalog.max_pinned_values, i18n.locale),
+              newValues: formatCount(catalog.max_new_values_per_bucket, i18n.locale),
+              activeValues: formatCount(catalog.max_active_values_per_watch, i18n.locale),
+            })}
           </p>
         </fieldset>
 
         <fieldset className="pw-editor-section">
-          <legend>4. Detection</legend>
+          <legend>{t("propertyWatch.editor.detectionLegend")}</legend>
           <div className="pw-detectors">
             {detectors.map((detector) => {
               const combinationBlocked = detector === "PW_NEW_COMBINATION" && draft.properties.length !== 2;
+              const copy = detectorCopy(detector, i18n);
               return (
                 <label key={detector} className="pw-detector-option">
                   <input
@@ -545,32 +569,39 @@ export function WatchEditor({
                     }
                   />
                   <span>
-                    <strong>{DETECTORS[detector].label}</strong>
-                    <span>{DETECTORS[detector].claim} {DETECTORS[detector].learning}</span>
+                    <strong>{copy.label}</strong>
+                    <span>{copy.claim} {copy.learning}</span>
                   </span>
                 </label>
               );
             })}
           </div>
           <div className="pw-field pw-severity-field">
-            <label htmlFor={severityId}>Incident severity</label>
+            <label htmlFor={severityId}>{t("propertyWatch.editor.incidentSeverity")}</label>
             <select
               id={severityId}
               className="select-control"
               value={draft.severity}
               onChange={(event) => patch({ severity: event.target.value })}
             >
-              {SEVERITIES.map((severity) => <option key={severity}>{severity}</option>)}
+              {SEVERITIES.map((severity) => <option key={severity}>{i18n.locale === "en" ? severity : enumLabel(i18n.t, "severity", severity)}</option>)}
             </select>
           </div>
           <p className="field-hint">
-            Threshold alerts are <Link href="/custom-rules/new">custom rules</Link> on a pinned
-            value. A new pin can be used in a rule {pinAvailability(latencyCadence(watch?.cadence ?? catalog.cadence))}.
+            {t("propertyWatch.editor.thresholdHelp", {
+              link: t("propertyWatch.editor.customRules"),
+              availability: pinAvailability(latencyCadence(watch?.cadence ?? catalog.cadence), i18n),
+            }).split(t("propertyWatch.editor.customRules"))[0]}
+            <Link href="/custom-rules/new">{t("propertyWatch.editor.customRules")}</Link>
+            {t("propertyWatch.editor.thresholdHelp", {
+              link: t("propertyWatch.editor.customRules"),
+              availability: pinAvailability(latencyCadence(watch?.cadence ?? catalog.cadence), i18n),
+            }).split(t("propertyWatch.editor.customRules"))[1]}
           </p>
         </fieldset>
 
         <fieldset className="pw-editor-section">
-          <legend>5. History</legend>
+          <legend>{t("propertyWatch.editor.historyLegend")}</legend>
           <label className="pw-detector-option" htmlFor={historyId}>
             <input
               id={historyId}
@@ -585,15 +616,15 @@ export function WatchEditor({
               }
             />
             <span>
-              <strong>Read history from QRadar (used only for learning)</strong>
-              <span>Reads QRadar&apos;s past once before collection begins.</span>
+              <strong>{t("propertyWatch.editor.readHistoryTitle")}</strong>
+              <span>{t("propertyWatch.editor.readHistoryBody")}</span>
             </span>
           </label>
           {historyDisabledReason && (
             <p className="field-hint" role="status">{historyDisabledReason}</p>
           )}
           <div className="pw-field">
-            <label htmlFor={historyDaysId}>History window</label>
+            <label htmlFor={historyDaysId}>{t("propertyWatch.editor.historyWindow")}</label>
             <select
               id={historyDaysId}
               className="select-control"
@@ -604,43 +635,47 @@ export function WatchEditor({
               }
             >
               {historyOptions.map((days) => (
-                <option key={days} value={days}>{days} days</option>
+                <option key={days} value={days}>{t("propertyWatch.common.days", { count: days })}</option>
               ))}
             </select>
           </div>
           {currentWatch?.history.estimate && shown.historyDays > 0 && (
             <p className="field-hint">
-              Estimate: about {currentWatch.history.estimate.searches_min} to{" "}
-              {currentWatch.history.estimate.searches_max} searches,{" "}
-              {currentWatch.history.estimate.ticks_min} to {currentWatch.history.estimate.ticks_max}{" "}
-              collection runs. This is an estimate, not a completion promise.
+              {t("propertyWatch.editor.estimate", {
+                searchMin: formatCount(currentWatch.history.estimate.searches_min, i18n.locale),
+                searchMax: formatCount(currentWatch.history.estimate.searches_max, i18n.locale),
+                tickMin: formatCount(currentWatch.history.estimate.ticks_min, i18n.locale),
+                tickMax: formatCount(currentWatch.history.estimate.ticks_max, i18n.locale),
+              })}
             </p>
           )}
           <ul className="pw-history-limits">
-            <li>Events whose property was not parsed then are not counted as history.</li>
-            <li>The membership of a group is today&apos;s, not as it was.</li>
-            <li>Nothing is judged until the reading finishes.</li>
+            <li>{t("propertyWatch.editor.historyLimitParsed")}</li>
+            <li>{t("propertyWatch.editor.historyLimitMembership")}</li>
+            <li>{t("propertyWatch.editor.historyLimitJudged")}</li>
           </ul>
         </fieldset>
 
         <p className="pw-editor-summary">{summary}</p>
         {localReasons.length > 0 && (
-          <ul className="pw-reasons" aria-label="Form validation reasons" role="alert">
+          <ul className="pw-reasons" aria-label={t("propertyWatch.editor.localReasons")} role="alert">
             {localReasons.map((reason) => <li key={reason}>{reason}</li>)}
           </ul>
         )}
         {serverReasons.length > 0 && (
-          <ul className="pw-reasons" aria-label="Server validation reasons" role="alert">
+          <ul className="pw-reasons" aria-label={t("propertyWatch.editor.serverReasons")} role="alert">
             {serverReasons.map((reason, index) => <li key={`${index}-${reason}`}>{reason}</li>)}
           </ul>
         )}
         {conflict && (
           <div className="banner warn" role="alert">
             <span>
-              This watch was changed by {conflict.updatedBy ?? "another operator"} at{" "}
-              {conflict.currentVersion}. Your draft was not written.
+              {t("propertyWatch.editor.conflict", {
+                operator: conflict.updatedBy ?? t("propertyWatch.editor.anotherOperator"),
+                version: conflict.currentVersion,
+              })}
               <button type="button" className="action secondary pw-inline-action" onClick={() => router.refresh()}>
-                Reload the current watch
+                {t("propertyWatch.editor.reload")}
               </button>
             </span>
           </div>
@@ -648,36 +683,32 @@ export function WatchEditor({
         {message && <div className={`banner ${message.tone}`} role={message.tone ? "alert" : "status"}><span>{message.text}</span></div>}
         <div className="actions">
           <button type="submit" className="action" disabled={saving}>
-            {saving ? "Saving and previewing…" : "Save as disabled and preview"}
+            {t(saving ? "propertyWatch.editor.saving" : "propertyWatch.editor.save")}
           </button>
         </div>
       </form>
 
       <aside className="pw-editor-preview panel" aria-labelledby={`${nameId}-preview-title`}>
         <div className="pw-preview-head">
-          <h2 id={`${nameId}-preview-title`}>6. Preview</h2>
+          <h2 id={`${nameId}-preview-title`}>{t("propertyWatch.editor.previewHeading")}</h2>
           <p>
-            Saves this definition disabled, then spends {catalog.preview_searches} bounded searches
-            over the last closed hour. Nothing is admitted or alerted.
+            {t("propertyWatch.editor.previewIntro", { searches: formatCount(catalog.preview_searches, i18n.locale) })}
           </p>
         </div>
         {!catalog.collection_enabled && (
           <div className="banner warn" role="status">
             <span>
-              <strong>COLLECTION OFF.</strong> <code>PW_COLLECTION_ENABLED</code> is false. A preview
-              may still run explicitly, but enabling will not collect buckets until the family switch is on.
+              <strong>{t("propertyWatch.editor.collectionOffTitle")}</strong>{" "}
+              <code>{COLLECTION_SETTING}</code>{t("propertyWatch.editor.collectionOffAfter")}
             </span>
           </div>
         )}
         {preview ? (
-          <PreviewResult preview={preview} propertyOptions={propertyOptions} />
+          <PreviewResult preview={preview} propertyOptions={propertyOptions} i18n={i18n} />
         ) : (
           <div className="notice" role="status">
-            <p><strong>No preview has run for this draft.</strong></p>
-            <p>
-              Complete the form, then save it disabled and preview the stored definition. The
-              preview will distinguish no events, no parsing and an unmeasured search.
-            </p>
+            <p><strong>{t("propertyWatch.editor.previewEmptyTitle")}</strong></p>
+            <p>{t("propertyWatch.editor.previewEmptyBody")}</p>
           </div>
         )}
       </aside>

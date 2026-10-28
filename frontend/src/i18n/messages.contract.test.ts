@@ -71,6 +71,10 @@ const IDENTICAL_ALLOWLIST = new Set([
   "home.healthGroupsInline.normal",
   "home.offenses.offense",
   "units.eps",
+  // I18N-11: QRadar's own object name stays English in Turkish (D-37).
+  "propertyWatch.scopeKind.LOG_SOURCE",
+  // I18N-11: a punctuation-only sentence terminator is the same in both languages.
+  "propertyWatch.honesty.period",
   // I18N-5: punctuation around a placeholder, the same in both languages.
   "customRules.latency.tail",
   // I18N-10: "Normal" is the same word in Turkish; "Robust z" and "QRadar id" are technical terms

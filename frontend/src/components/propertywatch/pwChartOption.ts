@@ -18,6 +18,7 @@ import { format } from "echarts/core";
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { PwBucket } from "@/lib/api";
 import { utcTimeHtml } from "@/components/ui/UtcTime";
+import { formatCount } from "@/lib/format";
 
 import { isolated, type PlotModel, type PlotPoint, type Span } from "./pwSeries";
 import { ENGLISH_PW, pwDecimal, pwEvents, pwKind, pwPercent, pwUnit, type PwI18n } from "./pwText";
@@ -444,6 +445,7 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
         min: 0,
         splitLine: { lineStyle: { color: c.grid } },
         ...axisCommon,
+        axisLabel: { ...text, formatter: (value: number) => formatCount(value, x.locale) },
       }] : []),
       ...(showCoverage
         ? [
@@ -457,6 +459,7 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
               splitNumber: 2,
               splitLine: { lineStyle: { color: c.grid } },
               ...axisCommon,
+              axisLabel: { ...text, formatter: (value: number) => formatCount(value, x.locale) },
             },
           ]
         : []),

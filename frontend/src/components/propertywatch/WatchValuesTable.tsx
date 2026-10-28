@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 import Link from "next/link";
 // The values table of a watch page: every figure the chart carries, as text, so assistive
@@ -14,6 +15,8 @@ import Link from "next/link";
 
 import type { AnomalySummary, PwBucket, PwValue, PwWatchHistory } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
+import { useEnumLabels } from "@/i18n/enumLabels";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { UtcTime } from "@/components/ui/UtcTime";
 
 import {
@@ -26,6 +29,7 @@ import {
   readingText,
   shareOfParsed,
 } from "./pwFormat";
+import { ENGLISH_PW, type PwI18n } from "./pwText";
 
 /** A value longer than this is cut to two lines in the cell and offered in full on request. */
 const FULL_VALUE_FROM = 60;
@@ -33,7 +37,11 @@ const FULL_VALUE_FROM = 60;
 export type ValueSort = "events" | "value" | "first_seen";
 
 /** The value as an analyst reads it: a combination's components joined, else its text. */
-export function valueText(v: Pick<PwValue, "value_key" | "components">): string {
+export function valueText(
+  v: Pick<PwValue, "value_key" | "components">,
+  _i18n: PwI18n = ENGLISH_PW,
+): string {
+  void _i18n;
   return v.components.length > 1 ? v.components.join(" × ") : v.value_key;
 }
 
@@ -50,12 +58,6 @@ export function activeIncidentsByValue(items: AnomalySummary[]): Map<string, Ano
   }
   return map;
 }
-
-const SORT_LABELS: Record<ValueSort, string> = {
-  events: "Events in the latest bucket",
-  value: "Value",
-  first_seen: "First seen",
-};
 
 export function WatchValuesTable({
   values,
@@ -80,7 +82,10 @@ export function WatchValuesTable({
   sortHref: (sort: ValueSort) => string;
   history?: PwWatchHistory | null;
 }) {
-  const unit = eventsUnit(latest?.bucket_seconds ?? 300);
+  const t = useTranslations("propertyWatch.valuesTable");
+  const i18n = useBehaviorI18n();
+  const { statePill } = useEnumLabels();
+  const unit = eventsUnit(latest?.bucket_seconds ?? 300, i18n);
   const full = selected.size >= maxSelected;
   const header = (key: ValueSort, text: ReactNode, className?: string) => (
     <th
@@ -94,56 +99,55 @@ export function WatchValuesTable({
     </th>
   );
   return (
-    <table className="table-dense pw-values" aria-label="Tracked values">
+    <table className="table-dense pw-values" aria-label={t("label")}>
       <caption className="sr-only">
-        Tracked values, pinned first. The latest bucket is
+        {t("captionStart")}
         {latest ? (
           <>
             {" "}
             <UtcTime value={latest.bucket_start} />
           </>
         ) : (
-          " not available"
+          t("captionUnavailable")
         )}
-        ; counts are {unit}.
+        {t("captionCounts", { unit })}
         {history?.floor ? (
-          <>
-            {" "}
-            First seen includes the history read from QRadar, from <UtcTime value={history.floor} />.
-          </>
+          t.rich("captionHistory", { time: () => <UtcTime value={history.floor as string} /> })
         ) : (
           ""
         )}
-        Select up to {maxSelected} values to plot them.
+        {t("captionSelect", { max: maxSelected })}
       </caption>
       <thead>
         <tr>
           <th scope="col" className="pw-col-plot">
-            <span className="sr-only">Plot</span>
+            <span className="sr-only">{t("plot")}</span>
           </th>
-          {header("value", SORT_LABELS.value)}
-          {header("events", "Events, latest bucket", "num")}
+          {header("value", t("sortValue"))}
+          {header("events", t("eventsLatest"), "num")}
           <th scope="col" className="num">
-            Expected range
+            {t("expectedRange")}
           </th>
           <th scope="col" className="num">
-            Share of parsed events
+            {t("share")}
           </th>
           {header(
             "first_seen",
             history?.floor ? (
               <>
-                First seen (UTC; history read from <UtcTime value={history.floor} />)
+                {t.rich("firstSeenHistory", {
+                  time: () => <UtcTime value={history.floor as string} />,
+                })}
               </>
             ) : (
-              "First seen (UTC)"
+              t("firstSeen")
             ),
           )}
         </tr>
       </thead>
       <tbody>
         {values.map((v) => {
-          const text = valueText(v);
+          const text = valueText(v, i18n);
           const checked = selected.has(v.id);
           const open = incidents.get(v.value_key) ?? [];
           return (
@@ -154,35 +158,35 @@ export function WatchValuesTable({
                   checked={checked}
                   disabled={!checked && full}
                   onChange={() => onToggle(v.id)}
-                  aria-label={`Plot ${text}`}
+                  aria-label={t("plotValue", { value: text })}
                 />
               </td>
               <td className="cell-name pw-value-cell">
                 <span className="pw-value-text pw-value-clamp">{text}</span>
                 {text.length > FULL_VALUE_FROM && (
                   <details className="pw-value-full">
-                    <summary>Show the full value</summary>
+                    <summary>{t("showFull")}</summary>
                     {/* Attacker-controlled: rendered as text, never as markup. */}
                     <span className="pw-value-text">{text}</span>
                   </details>
                 )}
-                {v.pinned && <span className="cell-sub">pinned</span>}
-                {v.truncated && <span className="cell-sub">value text was cut at the length limit</span>}
-                {!v.active && <span className="cell-sub">no longer tracked</span>}
-                <span className="cell-sub">{baselineText(v)}</span>
+                {v.pinned && <span className="cell-sub">{t("pinned")}</span>}
+                {v.truncated && <span className="cell-sub">{t("truncated")}</span>}
+                {!v.active && <span className="cell-sub">{t("inactive")}</span>}
+                <span className="cell-sub">{baselineText(v, i18n)}</span>
                 {open.map((a) => (
                   <span key={a.id} className="cell-sub">
                     <span className={`pill pill-quiet ${stateTone(a.state)}`}>
-                      {pwTypeLabel(a.anomaly_type)} · {a.state}
+                      {pwTypeLabel(a.anomaly_type, i18n)} · {statePill(a.state)}
                     </span>
                   </span>
                 ))}
               </td>
-              <td className="num" title={readingMeaning(v.reading)}>
-                {readingText(v.reading, v.events, v.measurement)}
+              <td className="num" title={readingMeaning(v.reading, i18n)}>
+                {readingText(v.reading, v.events, v.measurement, i18n)}
               </td>
-              <td className="num">{expectedRangeText(v)}</td>
-              <td className="num">{formatShare(shareOfParsed(v, latest))}</td>
+              <td className="num">{expectedRangeText(v, i18n)}</td>
+              <td className="num">{formatShare(shareOfParsed(v, latest), i18n.locale)}</td>
               <td className="num cell-when nowrap">
                 {v.first_seen_at ? (
                   <UtcTime value={v.first_seen_at} variant="compact" />

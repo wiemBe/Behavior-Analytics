@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import {
   api,
@@ -9,9 +10,11 @@ import {
   type PwScopeKind,
   type PwScopeOption,
 } from "@/lib/api";
+import { formatCount } from "@/lib/format";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import {
-  SCOPE_KIND_LABELS,
+  authoringScopeKindLabel,
   choosePropertyKind,
   propertyApplicability,
   scopeOptionTooLarge,
@@ -30,6 +33,8 @@ export function WatchScopePicker({
   onKind: (kind: PwScopeKind) => void;
   onSelect: (option: PwScopeOption | null) => void;
 }) {
+  const t = useTranslations("propertyWatch.pickers");
+  const i18n = useBehaviorI18n();
   const kindId = useId();
   const queryId = useId();
   const optionId = useId();
@@ -60,7 +65,7 @@ export function WatchScopePicker({
   return (
     <div className="pw-picker-grid">
       <div className="pw-field">
-        <label htmlFor={kindId}>Scope kind</label>
+        <label htmlFor={kindId}>{t("scopeKind")}</label>
         <select
           id={kindId}
           className="select-control"
@@ -71,27 +76,31 @@ export function WatchScopePicker({
             onSelect(null);
           }}
         >
-          {Object.entries(SCOPE_KIND_LABELS).map(([value, label]) => (
+          {(["LOG_SOURCE", "LOG_SOURCE_TYPE", "LOG_SOURCE_GROUP"] as PwScopeKind[]).map((value) => (
             <option key={value} value={value}>
-              {label}
+              {authoringScopeKindLabel(value, i18n)}
             </option>
           ))}
         </select>
       </div>
       <div className="pw-field">
-        <label htmlFor={queryId}>Find {SCOPE_KIND_LABELS[kind].toLowerCase()}</label>
+        <label htmlFor={queryId}>{t("findScope", {
+          kind: authoringScopeKindLabel(kind, i18n).toLocaleLowerCase(
+            i18n.locale === "tr" ? "tr-TR" : "en-US",
+          ),
+        })}</label>
         <input
           id={queryId}
           type="search"
           className="field"
           aria-controls={optionId}
           value={query}
-          placeholder="Search the synced inventory"
+          placeholder={t("searchPlaceholder")}
           onChange={(event) => setQuery(event.target.value)}
         />
       </div>
       <div className="pw-field pw-picker-result">
-        <label htmlFor={optionId}>{SCOPE_KIND_LABELS[kind]}</label>
+        <label htmlFor={optionId}>{authoringScopeKindLabel(kind, i18n)}</label>
         <select
           id={optionId}
           className="select-control"
@@ -103,22 +112,24 @@ export function WatchScopePicker({
         >
           <option value="">
             {state === "loading"
-              ? "Loading scope options…"
+              ? t("loading")
               : options.length === 0
-                ? "No matching scope"
-                : "Choose a scope"}
+                ? t("noMatch")
+                : t("choose")}
           </option>
           {options.map((option) => {
             const count =
               option.synced_source_count === null
-                ? "member count unavailable"
-                : `${option.synced_source_count.toLocaleString("en-US")} sources`;
+                ? t("memberUnavailable")
+                : i18n.t("propertyWatch.common.sources", {
+                    count: option.synced_source_count,
+                  });
             const disabled = scopeOptionTooLarge(option);
             return (
               <option key={option.id} value={option.id} disabled={disabled}>
                 {option.name} — {count}
                 {option.detail ? ` — ${option.detail}` : ""}
-                {disabled ? ` — ${option.scope_reason ?? "scope is too large"}` : ""}
+                {disabled ? ` — ${option.scope_reason ?? t("scopeTooLarge")}` : ""}
               </option>
             );
           })}
@@ -126,26 +137,37 @@ export function WatchScopePicker({
         {state === "ready" && (
           <p className="field-hint" role="status">
             {options.length === 0
-              ? `No ${SCOPE_KIND_LABELS[kind].toLowerCase()} matches.`
-              : `${options.length.toLocaleString("en-US")} ${SCOPE_KIND_LABELS[kind].toLowerCase()} ${options.length === 1 ? "option" : "options"} listed.`}
+              ? t("noMatches", {
+                  kind: authoringScopeKindLabel(kind, i18n).toLocaleLowerCase(
+                    i18n.locale === "tr" ? "tr-TR" : "en-US",
+                  ),
+                })
+              : t("listed", {
+                  count: options.length,
+                  kind: authoringScopeKindLabel(kind, i18n).toLocaleLowerCase(
+                    i18n.locale === "tr" ? "tr-TR" : "en-US",
+                  ),
+                })}
           </p>
         )}
         {state === "error" && (
           <p className="field-error" role="alert">
-            Scope options could not be loaded. Check the backend, then search again.
+            {t("loadFailed")}
           </p>
         )}
         {options.some(scopeOptionTooLarge) && (
           <div className="field-hint pw-oversize">
-            <p>Disabled: these scopes are over the per-watch search limit.</p>
+            <p>{t("oversizeTitle")}</p>
             <ul>
               {options.filter(scopeOptionTooLarge).map((option) => (
                 <li key={option.id}>
                   <strong>{option.name}</strong>
                   {option.synced_source_count === null
                     ? ""
-                    : `, ${option.synced_source_count.toLocaleString("en-US")} sources`}
-                  . {option.scope_reason ?? "Split the scope or use a type scope."}
+                    : `, ${i18n.t("propertyWatch.common.sources", {
+                        count: option.synced_source_count,
+                      })}`}
+                  . {option.scope_reason ?? t("splitScope")}
                 </li>
               ))}
             </ul>
@@ -169,6 +191,8 @@ export function WatchPropertyPicker({
   disabled?: boolean;
   onChange: (property: PwPropertyRef) => void;
 }) {
+  const t = useTranslations("propertyWatch.pickers");
+  const i18n = useBehaviorI18n();
   const inputId = useId();
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -184,7 +208,9 @@ export function WatchPropertyPicker({
 
   return (
     <div className="pw-field pw-property-picker">
-      <label htmlFor={inputId}>Property {index + 1}</label>
+      <label htmlFor={inputId}>{t("propertyNumber", {
+        index: formatCount(index + 1, i18n.locale),
+      })}</label>
       <input
         id={inputId}
         className="field pw-mono-input"
@@ -197,7 +223,7 @@ export function WatchPropertyPicker({
         spellCheck={false}
         disabled={disabled}
         value={value.name}
-        placeholder="Type or choose a property"
+        placeholder={t("propertyPlaceholder")}
         onFocus={() => setOpen(true)}
         onChange={(event) => {
           const name = event.target.value;
@@ -206,9 +232,14 @@ export function WatchPropertyPicker({
         }}
         onBlur={() => window.setTimeout(() => setOpen(false), 0)}
       />
-      <p className="field-hint">{propertyApplicability(value, options)}</p>
+      <p className="field-hint">{propertyApplicability(value, options, i18n)}</p>
       {open && (
-        <div id={listId} role="listbox" aria-label={`Properties for property ${index + 1}`} className="pw-option-list">
+        <div
+          id={listId}
+          role="listbox"
+          aria-label={t("propertyList", { index: formatCount(index + 1, i18n.locale) })}
+          className="pw-option-list"
+        >
           {normalized.map((name) => (
             <button
               key={`normalized-${name}`}
@@ -223,7 +254,7 @@ export function WatchPropertyPicker({
               }}
             >
               <span className="pw-option-name">{name}</span>
-              <span className="pw-option-hint">QRadar normalized field</span>
+              <span className="pw-option-hint">{i18n.t("propertyWatch.authoring.normalized")}</span>
             </button>
           ))}
           {rows.map((property) => (
@@ -244,15 +275,17 @@ export function WatchPropertyPicker({
               <span className="pw-option-name">{property.name}</span>
               <span className="pw-option-hint">
                 {property.name_allowed
-                  ? `Defined on ${property.defined_on_type_ids.length} of ${options?.scope_type_ids.length ?? 0} types in this scope`
-                  : "Not selectable: the name cannot be used safely in a stored property reference"}
+                  ? i18n.t("propertyWatch.authoring.definedTypes", {
+                      defined: formatCount(property.defined_on_type_ids.length, i18n.locale),
+                      total: formatCount(options?.scope_type_ids.length ?? 0, i18n.locale),
+                    })
+                  : t("notSelectable")}
               </span>
             </button>
           ))}
           {rows.length === 0 && !normalized.includes(value.name) && (
             <p className="pw-option-empty">
-              No catalog entry matches. The typed name can still be saved after validation; the
-              preview will show whether it parses.
+              {t("noCatalogMatch")}
             </p>
           )}
         </div>

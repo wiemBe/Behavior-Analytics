@@ -4,6 +4,7 @@
 import type { PwValue } from "@/lib/api";
 
 import { PW_MAX_SERIES } from "./pwSeries";
+import { ENGLISH_PW, type PwI18n } from "./pwText";
 
 export const PW_RANGES = [
   { key: "1h", label: "1 hour", hours: 1 },
@@ -16,6 +17,13 @@ export const PW_RANGES = [
 export const VALUES_PAGE_SIZE = 50;
 
 export type PwRangeKey = (typeof PW_RANGES)[number]["key"];
+
+export function pwRangeLabel(
+  range: (typeof PW_RANGES)[number],
+  i18n: PwI18n = ENGLISH_PW,
+): string {
+  return i18n.t(`propertyWatch.range.${range.key}`);
+}
 
 export function parsePwRange(value: string | undefined): (typeof PW_RANGES)[number] {
   return PW_RANGES.find((r) => r.key === value) ?? PW_RANGES[2];

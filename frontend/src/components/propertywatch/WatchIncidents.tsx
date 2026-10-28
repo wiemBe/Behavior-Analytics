@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 // The Incidents tab: this watch's rows in `/anomalies`, with the lifecycle each one is in.
 // A null list is "could not be loaded", which is not "there are none".
 
@@ -7,6 +8,8 @@ import { sevTone } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { useEnumLabels } from "@/i18n/enumLabels";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { pwTypeLabel } from "./pwFormat";
 import { valueText } from "./WatchValuesTable";
@@ -22,15 +25,18 @@ export function WatchIncidents({
   total: number | null;
   watchId: string;
 }) {
+  const t = useTranslations("propertyWatch.incidents");
+  const common = useTranslations("propertyWatch.common");
+  const i18n = useBehaviorI18n();
+  const { statePill, severityPill } = useEnumLabels();
   if (incidents === null) {
     return (
       <div className="notice" role="alert">
         <p>
-          <strong>This watch&apos;s incidents could not be loaded.</strong>
+          <strong>{t("failedTitle")}</strong>
         </p>
         <p>
-          The rest of the page is unaffected, but an empty list here would mean nothing: reload the
-          page to try again. Nothing was changed.
+          {t("failedBody")}
         </p>
       </div>
     );
@@ -39,11 +45,10 @@ export function WatchIncidents({
     return (
       <div className="notice" role="status">
         <p>
-          <strong>No incident was detected on this watch in the last {INCIDENT_WINDOW_DAYS} days.</strong>
+          <strong>{t("emptyTitle", { days: INCIDENT_WINDOW_DAYS })}</strong>
         </p>
         <p>
-          Values that are still learning, and buckets that were lower bounds or not collected, are
-          not judged, so an empty list is not a statement that every value is normal.
+          {t("emptyBody")}
         </p>
       </div>
     );
@@ -51,24 +56,38 @@ export function WatchIncidents({
   return (
     <div className="stack-6">
       <p className="subtitle">
-        Incidents detected in the last {INCIDENT_WINDOW_DAYS} days, newest first, in UTC.
         {total !== null && total > incidents.length
-          ? ` ${incidents.length} of ${total} are listed here; the rest are in `
-          : " They are also in "}
-        <Link href={`/anomalies?subject_kind=PW_VALUE&property_watch_id=${watchId}`}>Anomalies</Link>.
+          ? t.rich("introLimited", {
+              days: INCIDENT_WINDOW_DAYS,
+              shown: incidents.length,
+              total,
+              link: (chunks) => (
+                <Link href={`/anomalies?subject_kind=PW_VALUE&property_watch_id=${watchId}`}>
+                  {chunks}
+                </Link>
+              ),
+            })
+          : t.rich("introAll", {
+              days: INCIDENT_WINDOW_DAYS,
+              link: (chunks) => (
+                <Link href={`/anomalies?subject_kind=PW_VALUE&property_watch_id=${watchId}`}>
+                  {chunks}
+                </Link>
+              ),
+            })}
       </p>
-      <TableScroll label="Incidents of this watch">
-        <table className="table-dense" aria-label="Incidents of this watch">
+      <TableScroll label={t("tableLabel")}>
+        <table className="table-dense" aria-label={t("tableLabel")}>
           <thead>
             <tr>
-              <th scope="col">Value</th>
-              <th scope="col">Detector</th>
-              <th scope="col">State</th>
-              <th scope="col">Severity</th>
-              <th scope="col" className="num">Started (UTC)</th>
-              <th scope="col" className="num">Resolved (UTC)</th>
+              <th scope="col">{common("value")}</th>
+              <th scope="col">{t("detector")}</th>
+              <th scope="col">{common("state")}</th>
+              <th scope="col">{common("severity")}</th>
+              <th scope="col" className="num">{t("started")}</th>
+              <th scope="col" className="num">{t("resolved")}</th>
               <th scope="col">
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">{common("actions")}</span>
               </th>
             </tr>
           </thead>
@@ -76,14 +95,14 @@ export function WatchIncidents({
             {incidents.map((a) => (
               <tr key={a.id}>
                 <td className="cell-name pw-value-cell">
-                  <span className="pw-value-text">{a.pw_value ? valueText(a.pw_value) : "—"}</span>
+                  <span className="pw-value-text">{a.pw_value ? valueText(a.pw_value, i18n) : "—"}</span>
                 </td>
-                <td>{pwTypeLabel(a.anomaly_type)}</td>
+                <td>{pwTypeLabel(a.anomaly_type, i18n)}</td>
                 <td>
-                  <span className={`pill pill-strong ${stateTone(a.state)}`}>{a.state}</span>
+                  <span className={`pill pill-strong ${stateTone(a.state)}`}>{statePill(a.state)}</span>
                 </td>
                 <td>
-                  <span className={`pill pill-quiet ${sevTone(a.severity)}`}>{a.severity}</span>
+                  <span className={`pill pill-quiet ${sevTone(a.severity)}`}>{severityPill(a.severity)}</span>
                 </td>
                 <td className="num cell-when">
                   <UtcTime value={a.anomaly_start ?? a.detected_at} />
@@ -92,11 +111,11 @@ export function WatchIncidents({
                   {a.resolved_at ? (
                     <UtcTime value={a.resolved_at} />
                   ) : (
-                    <span className="muted">not resolved</span>
+                    <span className="muted">{common("notResolved")}</span>
                   )}
                 </td>
                 <td className="row-actions">
-                  <Link href={`/anomalies/${a.id}`}>Open</Link>
+                  <Link href={`/anomalies/${a.id}`}>{t("open")}</Link>
                 </td>
               </tr>
             ))}

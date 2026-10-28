@@ -1,5 +1,10 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return <BoundaryLoading title="Property watch" what="the property watch" />;
+  const t = useTranslations("propertyWatch");
+  return <BoundaryLoading title={t("meta.detail")} what={t("boundary.detailWhat")} />;
 }

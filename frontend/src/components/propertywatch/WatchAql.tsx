@@ -7,6 +7,7 @@
 // of them is an empty panel.
 
 import { CodePanel } from "@/components/ui/CodePanel";
+import { useTranslations } from "next-intl";
 import type { PwAqlQuery, WatchAql } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
 
@@ -14,24 +15,17 @@ import { UtcTime } from "@/components/ui/UtcTime";
 /** The outcome of the AQL read: the text, or the HTTP status that refused it (0: no answer). */
 export type AqlRead = { kind: "ok"; aql: WatchAql } | { kind: "error"; status: number };
 
-export const AQL_NOTE =
-  "Generated query text. The collector adds the time range and the page limit when it runs.";
-
-const SEARCH_LABELS: Record<PwAqlQuery["search"], string> = {
-  GROUPED: "Value counts",
-  TOTALS: "Scope total",
-  PINNED: "Pinned values",
-};
-
 function Queries({ prefix, queries }: { prefix: string; queries: PwAqlQuery[] }) {
+  const t = useTranslations("propertyWatch.aql");
+  const common = useTranslations("propertyWatch.common");
   return (
     <div className="pw-query-list">
       {queries.map((q) => (
         <CodePanel
           key={q.search}
-          label={`${prefix} · ${SEARCH_LABELS[q.search] ?? q.search}`}
+          label={`${prefix} · ${t(`search.${q.search}`)}`}
           code={q.text}
-          meta="Read-only"
+          meta={common("readOnly")}
         />
       ))}
     </div>
@@ -39,6 +33,8 @@ function Queries({ prefix, queries }: { prefix: string; queries: PwAqlQuery[] })
 }
 
 export function WatchAqlSection({ read }: { read: AqlRead | null }) {
+  const t = useTranslations("propertyWatch.aql");
+  const common = useTranslations("propertyWatch.common");
   if (read === null || read.kind === "error") {
     const forbidden = read !== null && read.status === 403;
     return (
@@ -46,14 +42,14 @@ export function WatchAqlSection({ read }: { read: AqlRead | null }) {
         <p>
           <strong>
             {forbidden
-              ? "The generated query text is forbidden for this account."
-              : "The generated query text could not be loaded."}
+              ? t("forbiddenTitle")
+              : t("failedTitle")}
           </strong>
         </p>
         <p>
           {forbidden
-            ? "Reading it needs read:property_watches. Ask an admin to grant a role that includes it."
-            : "The backend may be unreachable: reload the page to try again. Nothing was changed."}
+            ? t("forbiddenBody")
+            : t("failedBody")}
         </p>
       </div>
     );
@@ -62,64 +58,65 @@ export function WatchAqlSection({ read }: { read: AqlRead | null }) {
   const last = aql.last_bucket;
   return (
     <div className="stack-6">
-      <p className="subtitle">{AQL_NOTE}</p>
+      <p className="subtitle">{t("note")}</p>
 
       <div>
-        <h3 className="pw-subtitle">Current definition</h3>
+        <h3 className="pw-subtitle">{t("currentDefinition")}</h3>
         {aql.current_unavailable ? (
           <div className="notice" role="status">
             <p>
-              <strong>The query text for the current definition could not be generated.</strong>
+              <strong>{t("currentUnavailableTitle")}</strong>
             </p>
             <p>{aql.current_unavailable}</p>
           </div>
         ) : aql.current.length === 0 ? (
           <p className="notice" role="status">
-            No query text was generated for the current definition.
+            {t("currentEmpty")}
           </p>
         ) : (
           <>
             <p className="subtitle">
-              Generated for{" "}
-              {aql.window_start && aql.window_end ? (
-                <>
-                  <UtcTime value={aql.window_start} />
-                  {" → "}
-                  <UtcTime value={aql.window_end} />
-                </>
-              ) : (
-                "a window that was not recorded"
-              )}
-              , watch version {aql.watch_version}.
+              {aql.window_start && aql.window_end
+                ? t.rich("currentWindow", {
+                    start: () => <UtcTime value={aql.window_start as string} />,
+                    end: () => <UtcTime value={aql.window_end as string} />,
+                    version: aql.watch_version,
+                  })
+                : t("currentWindowFallback", {
+                    window: t("windowUnrecorded"),
+                    version: aql.watch_version,
+                  })}
             </p>
-            <Queries prefix="Current" queries={aql.current} />
+            <Queries prefix={common("current")} queries={aql.current} />
           </>
         )}
       </div>
 
       <div>
-        <h3 className="pw-subtitle">Last collected bucket</h3>
+        <h3 className="pw-subtitle">{t("lastCollected")}</h3>
         {last === null ? (
           <p className="notice" role="status">
-            No bucket collected yet, so no query text has been recorded.
+            {t("lastEmpty")}
           </p>
         ) : (
           <>
             <p className="subtitle">
-              Bucket <UtcTime value={last.bucket_start} />,
-              collected <UtcTime value={last.collected_at} />,
-              watch version {last.watch_version}
-              {last.watch_version !== aql.watch_version
-                ? `; the watch has since changed to version ${aql.watch_version}`
-                : ""}
-              .
+              {t.rich("lastSummary", {
+                bucket: () => <UtcTime value={last.bucket_start} />,
+                collected: () => <UtcTime value={last.collected_at} />,
+                version: last.watch_version,
+                changed:
+                  last.watch_version !== aql.watch_version
+                    ? t("versionChanged", { version: aql.watch_version })
+                    : "",
+              })}
             </p>
             {last.queries.length === 0 ? (
               <p className="notice" role="status">
-                No query text was recorded for that bucket. A search that was not sent leaves none.
+                {t("lastQueriesEmpty")}
               </p>
             ) : (
-              <Queries prefix="Last bucket" queries={last.queries} />
+              <Queries prefix={common("lastBucket")} queries={last.queries} />
             )}
           </>
         )}

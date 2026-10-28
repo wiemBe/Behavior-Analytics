@@ -6,8 +6,10 @@
 // which permission adds it.
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import type { PwPinRule } from "@/lib/api";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { valueText } from "./WatchValuesTable";
 
@@ -23,16 +25,16 @@ export function ThresholdRules({
   rules: PwPinRule[] | null;
   access: RuleAccess;
 }) {
+  const t = useTranslations("propertyWatch.thresholdRules");
+  const common = useTranslations("propertyWatch.common");
+  const i18n = useBehaviorI18n();
   if (rules === null) {
     return (
       <div className="notice" role="alert">
         <p>
-          <strong>The threshold rules of this watch could not be loaded.</strong>
+          <strong>{t("failedTitle")}</strong>
         </p>
-        <p>
-          The watch read did not carry them. Reload the page to try again; rules are listed on{" "}
-          <Link href="/custom-rules">Custom rules</Link> meanwhile.
-        </p>
+        <p>{t.rich("failedBody", { link: (chunks) => <Link href="/custom-rules">{chunks}</Link> })}</p>
       </div>
     );
   }
@@ -40,39 +42,37 @@ export function ThresholdRules({
     access === "writer" ? (
       <p>
         <Link href="/custom-rules/new" className="action secondary button-link">
-          New rule on a value
+          {t("new")}
         </Link>
       </p>
     ) : (
       <p className="subtitle">
         {access === "unknown"
-          ? `Your permissions could not be read, so the create link is not shown. Adding a rule needs ${RULE_WRITE_PERMISSION}.`
-          : `Adding a rule needs ${RULE_WRITE_PERMISSION}. Ask an admin to grant a role that includes it.`}
+          ? t("unknownPermission", { permission: RULE_WRITE_PERMISSION })
+          : t("permission", { permission: RULE_WRITE_PERMISSION })}
       </p>
     );
   return (
     <div className="stack-6">
       <p className="subtitle">
-        A threshold rule is a custom rule that pins one value of this watch. A rule&apos;s breaches are triaged on{" "}
-        <Link href="/alerts">Alerts</Link>.
+        {t.rich("intro", { link: (chunks) => <Link href="/alerts">{chunks}</Link> })}
       </p>
       {rules.length === 0 ? (
         <div className="notice" role="status">
           <p>
-            <strong>No rule pins a value of this watch.</strong>
+            <strong>{t("emptyTitle")}</strong>
           </p>
           <p>
-            Pick the property-watch value as the subject of a new custom rule to alert on one
-            value&apos;s count.
+            {t("emptyBody")}
           </p>
         </div>
       ) : (
-        <table className="table-dense pw-rules" aria-label="Threshold rules">
+        <table className="table-dense pw-rules" aria-label={t("tableLabel")}>
           <thead>
             <tr>
-              <th scope="col">Rule</th>
-              <th scope="col">Pinned value</th>
-              <th scope="col">State</th>
+              <th scope="col">{t("rule")}</th>
+              <th scope="col">{t("pinnedValue")}</th>
+              <th scope="col">{common("state")}</th>
             </tr>
           </thead>
           <tbody>
@@ -82,11 +82,11 @@ export function ThresholdRules({
                   <Link href={`/custom-rules/${r.id}`}>{r.name}</Link>
                 </td>
                 <td className="pw-value-cell">
-                  <span className="pw-value-text">{valueText(r)}</span>
+                  <span className="pw-value-text">{valueText(r, i18n)}</span>
                 </td>
                 <td>
                   <span className={`pill pill-quiet ${r.enabled ? "ok" : ""}`}>
-                    {r.enabled ? "Enabled" : "Disabled"}
+                    {r.enabled ? common("enabled") : common("disabled")}
                   </span>
                 </td>
               </tr>
