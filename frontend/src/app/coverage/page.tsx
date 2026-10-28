@@ -14,6 +14,8 @@ import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
+import { renderBackendMessage } from "@/i18n/backendMessage";
+import type { Locale } from "@/i18n/locale";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { kindLabel, mappingSourceLabel, statusLabel } from "@/lib/coverageText";
 import { formatShare, type FormatLocale } from "@/lib/format";
@@ -155,7 +157,15 @@ async function CoveragePage({
                       <td className="num">
                         {formatShare(tq.coverage_score, locale)}
                       </td>
-                      <td className="muted">{tq.reason ?? healthMeaning(tq.status, say)}</td>
+                      <td className="muted">
+                        {tq.reason !== null && tq.reason !== undefined
+                          ? renderBackendMessage(
+                              { text: tq.reason, code: tq.reason_code, params: tq.reason_params },
+                              locale as Locale,
+                              say,
+                            )
+                          : healthMeaning(tq.status, say)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

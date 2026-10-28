@@ -163,6 +163,8 @@ def test_0034_adds_nullable_i18n_and_round_trips(clean_db: str) -> None:
                 ),
                 {"dimension": DIMENSION},
             ).scalar_one() is None
+        # Drift is checked at head, so a later migration cannot hide a model gap.
+        command.upgrade(config, "head")
         command.check(config)
     finally:
         engine.dispose()

@@ -7,6 +7,7 @@
 import type { RuleStatisticsWindow } from "@/lib/api";
 import { useLocale, useTranslations } from "next-intl";
 import type { Locale } from "@/i18n/locale";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import {
   daysLabel,
@@ -20,6 +21,7 @@ export function MeasurementWindow({ window: w }: { window: RuleStatisticsWindow 
   const t = useTranslations("rules.measurement");
   const say = asTextTranslator(useTranslations());
   const locale = useLocale() as Locale;
+  const backend = useBackendMessage();
   const state = windowState(w);
   const requested = `${formatCount(w.days, locale)} ${daysLabel(w.days, say)}`;
   const fromHistory = w.history_windows ?? 0;
@@ -42,7 +44,9 @@ export function MeasurementWindow({ window: w }: { window: RuleStatisticsWindow 
       ) : (
         <>
           <strong>{state === "partial" ? t("partial") : t("insufficient")}</strong>{" "}
-          {w.reason ??
+          {(w.reason !== null
+            ? backend({ text: w.reason, code: w.reason_code, params: w.reason_params })
+            : null) ??
             (state === "partial"
               ? t("partialFallback")
               : t("insufficientFallback"))}

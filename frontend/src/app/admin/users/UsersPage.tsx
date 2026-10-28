@@ -47,7 +47,7 @@ type Once = { username: string; password: string; sentence: string };
 
 export function UsersPage() {
   const t = useTranslations("users");
-  const { t: say } = useBehaviorI18n();
+  const { t: say, locale } = useBehaviorI18n();
   const nameOf = (account: { username: string | null }) => account.username ?? t("theAccount");
   const [load, setLoad] = useState<Load>("loading");
   const [loadLines, setLoadLines] = useState<string[]>([]);
@@ -80,7 +80,7 @@ export function UsersPage() {
       setRolesProblem(null);
     } else if (!signal?.aborted) {
       setRoles(null);
-      setRolesProblem(errorTexts(rolesOut.reason, say));
+      setRolesProblem(errorTexts(rolesOut.reason, say, locale));
     }
     if (usersOut.status === "fulfilled") {
       setUsers(usersOut.value);
@@ -90,7 +90,7 @@ export function UsersPage() {
     }
     if (signal?.aborted) return;
     const reason = usersOut.reason;
-    setLoadLines(errorTexts(reason, say));
+    setLoadLines(errorTexts(reason, say, locale));
     setLoad(reason instanceof ApiError && reason.status === 403 ? "forbidden" : "error");
   }
 
@@ -157,7 +157,7 @@ export function UsersPage() {
       setOutcome({
         tone: "warn",
         heading: t("outcome.createFailed"),
-        lines: errorTexts(err, say),
+        lines: errorTexts(err, say, locale),
       });
     } finally {
       setPending(null);
@@ -187,7 +187,7 @@ export function UsersPage() {
       setOutcome({
         tone: "warn",
         heading: t("outcome.rolesFailed"),
-        lines: errorTexts(err, say),
+        lines: errorTexts(err, say, locale),
       });
     } finally {
       setPending(null);
@@ -209,7 +209,7 @@ export function UsersPage() {
       setOutcome({
         tone: "warn",
         heading: t("outcome.notChanged"),
-        lines: errorTexts(err, say),
+        lines: errorTexts(err, say, locale),
       });
     } finally {
       setPending(null);
@@ -227,7 +227,7 @@ export function UsersPage() {
       setOutcome({
         tone: "warn",
         heading: t("outcome.notUnlocked"),
-        lines: errorTexts(err, say),
+        lines: errorTexts(err, say, locale),
       });
     } finally {
       setPending(null);
@@ -266,7 +266,7 @@ export function UsersPage() {
       setOutcome({
         tone: "warn",
         heading: t("outcome.notReset"),
-        lines: errorTexts(err, say),
+        lines: errorTexts(err, say, locale),
       });
     } finally {
       setPending(null);

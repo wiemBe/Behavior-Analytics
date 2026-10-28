@@ -171,7 +171,7 @@ export function CustomRuleEditor({
       setSaved(true);
       router.refresh();
     } catch (error) {
-      const refusal = classifySaveError(error, say);
+      const refusal = classifySaveError(error, say, locale);
       if (refusal.kind === "reasons") setReasons(refusal.reasons);
       else if (refusal.kind === "cap") {
         setFormError(t("cap", { detail: refusal.detail, limit: catalog.max_enabled }));

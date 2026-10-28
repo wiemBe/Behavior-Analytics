@@ -68,7 +68,7 @@ describe("coded collection ineligibility", () => {
       "profile version 12000 has not been validated (last validated: 9999)",
       "validation.profile.ineligible.version_not_validated",
       { profile_version: 12000, validated_profile_version: 9999 },
-      "Duraklatıldı — Profil sürümü 12000 doğrulanmadı (son doğrulanan: 9999)",
+      "Duraklatıldı — Profil sürümü 12.000 doğrulanmadı (son doğrulanan: 9.999)",
     ],
     [
       "profile validation is INVALID",

@@ -4,9 +4,11 @@
 // and the current layout. Every widget edit flows through `changeLayout`; a failed or stale write
 // therefore changes only the save state and never discards the analyst's work.
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useReducer } from "react";
 
+import { renderRefusal } from "@/i18n/refusalMessage";
+import type { Locale } from "@/i18n/locale";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { ApiError } from "@/lib/api";
 import {
@@ -215,6 +217,7 @@ export function useDashboard(
 ) {
   const t = useTranslations("widgets.save");
   const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   const [state, dispatch] = useReducer(dashboardReducer, undefined, () =>
     initialDashboardState(source, layout),
   );
@@ -261,7 +264,11 @@ export function useDashboard(
         if (result.kind === "conflict") {
           dispatch({
             type: "conflict",
-            message: result.message,
+            message: renderRefusal(
+              { text: result.message, code: result.code, params: result.params },
+              locale,
+              say,
+            ),
             currentRevision: result.current_revision,
           });
           return { kind: "conflict" };
@@ -270,7 +277,7 @@ export function useDashboard(
         options.onSaved?.(result.dashboard);
         return { kind: "saved", dashboard: result.dashboard };
       } catch (error) {
-        const message = describeRefusal(error, say);
+        const message = describeRefusal(error, say, locale);
         const status = statusOf(error);
         const display = `${message} ${t("failedKept")}`;
         dispatch({ type: "error", message: display, status });
@@ -280,7 +287,7 @@ export function useDashboard(
         }
         return { kind: "error", message };
       }
-    }, [options, state.currentLayout, state.source, say, t]);
+    }, [options, state.currentLayout, state.source, say, locale, t]);
 
   const reload = useCallback(async (): Promise<boolean> => {
     if (state.source.kind !== "saved") return false;
@@ -294,12 +301,12 @@ export function useDashboard(
     } catch (error) {
       dispatch({
         type: "error",
-        message: `${describeRefusal(error, say)} ${t("unsavedKept")}`,
+        message: `${describeRefusal(error, say, locale)} ${t("unsavedKept")}`,
         status: statusOf(error),
       });
       return false;
     }
-  }, [options, state.source, say, t]);
+  }, [options, state.source, say, locale, t]);
 
   const saveAsCopy = useCallback(
     async (name: string): Promise<SaveOutcome> => {
@@ -320,7 +327,7 @@ export function useDashboard(
         options.onCreated?.(dashboard);
         return { kind: "saved", dashboard };
       } catch (error) {
-        const message = describeRefusal(error, say);
+        const message = describeRefusal(error, say, locale);
         const status = statusOf(error);
         dispatch({
           type: "error",
@@ -330,7 +337,7 @@ export function useDashboard(
         if (status === 403) return { kind: "forbidden", message };
         return { kind: "error", message };
       }
-    }, [options, state.currentLayout, state.source, say, t]);
+    }, [options, state.currentLayout, state.source, say, locale, t]);
 
   const syncMetadata = useCallback(
     (item: {

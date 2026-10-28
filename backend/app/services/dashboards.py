@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.i18n.messages import MessageRef, render
 from app.models.dashboard import Dashboard, DashboardVisibility, UserDashboardPref
 from app.repositories.audit import record_audit
 from app.schemas.dashboard import (
@@ -42,18 +43,24 @@ _NAME_CONSTRAINT = "uq_dashboard_owner_subject_name"
 class DashboardError(Exception):
     """A refused dashboard operation: the HTTP status and a body the route returns as is."""
 
-    def __init__(self, status_code: int, detail: str | dict[str, Any]) -> None:
+    def __init__(
+        self, status_code: int, ref: MessageRef, fields: dict[str, Any] | None = None
+    ) -> None:
         self.status_code = status_code
-        self.detail = detail
-        super().__init__(str(detail))
+        self.ref = ref
+        self.fields = fields
+        self.detail: str | dict[str, Any] = (
+            render(ref) if fields is None else {"message": render(ref), **fields}
+        )
+        super().__init__(str(self.detail))
 
 
 def _not_found() -> DashboardError:
-    return DashboardError(404, "dashboard not found")
+    return DashboardError(404, MessageRef("dashboard.not_found"))
 
 
 def _name_taken(name: str) -> DashboardError:
-    return DashboardError(409, f"you already have a dashboard named '{name}'")
+    return DashboardError(409, MessageRef("dashboard.name_taken", {"name": name}))
 
 
 def widget_count(layout: dict[str, Any]) -> int:
@@ -112,7 +119,7 @@ async def _visible_row(session: AsyncSession, dashboard_id: uuid.UUID, subject: 
 
 def _require_owner_or_admin(row: Dashboard, principal: Principal) -> None:
     if row.owner_subject != principal.subject and not principal.has(PERM_ADMIN):
-        raise DashboardError(403, "only the owner or an administrator can change this dashboard")
+        raise DashboardError(403, MessageRef("dashboard.owner_only"))
 
 
 async def _audit(
@@ -139,7 +146,7 @@ async def _guard_owner_limit(session: AsyncSession, subject: str) -> set[str]:
     names = set(owned)
     if len(names) >= MAX_DASHBOARDS_PER_OWNER:
         raise DashboardError(
-            409, f"the limit is {MAX_DASHBOARDS_PER_OWNER} dashboards per owner"
+            409, MessageRef("dashboard.owner_limit", {"limit": MAX_DASHBOARDS_PER_OWNER})
         )
     return names
 
@@ -265,10 +272,8 @@ async def replace_dashboard(
             raise _not_found()
         raise DashboardError(
             409,
-            {
-                "message": "this dashboard changed since you opened it",
-                "current_revision": current,
-            },
+            MessageRef("dashboard.changed_since_opened"),
+            {"current_revision": current},
         )
     # Every PUT replaces the layout, so every PUT is an update; a changed name is also a rename.
     await _audit(session, principal, "dashboard.update", updated)
@@ -295,7 +300,10 @@ async def patch_dashboard(
     if body.visibility is not None and body.visibility.value != row.visibility:
         if not principal.has(PERM_DASHBOARD_SHARE):
             raise DashboardError(
-                403, f"changing visibility needs the {PERM_DASHBOARD_SHARE} permission"
+                403,
+                MessageRef(
+                    "dashboard.visibility_needs_permission", {"permission": PERM_DASHBOARD_SHARE}
+                ),
             )
         values["visibility"] = body.visibility.value
         actions.append("dashboard.share")

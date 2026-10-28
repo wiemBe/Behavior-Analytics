@@ -14,6 +14,7 @@ import type { SilentSection } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { useLocale, useTranslations } from "next-intl";
 import type { Locale } from "@/i18n/locale";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
 
 import {
@@ -39,13 +40,19 @@ function Instant({ value, missing }: { value: string | null; missing: string }) 
 export function SilentRules({
   silent,
   reason,
+  reasonCode,
+  reasonParams,
 }: {
   silent: SilentSection | null;
   reason: string | null;
+  /** The code and raw values `reason` was built from, when the API sent them. */
+  reasonCode?: string | null;
+  reasonParams?: Record<string, unknown> | null;
 }) {
   const t = useTranslations("rules.silent");
   const say = asTextTranslator(useTranslations());
   const locale = useLocale() as Locale;
+  const backend = useBackendMessage();
   return (
     <section aria-labelledby="stats-silent">
       <div className="section-head">
@@ -60,7 +67,10 @@ export function SilentRules({
             <p>
               <strong>{t("notJudged")}</strong> {t("notJudgedHelp")}
             </p>
-            <p className="stats-window-reason">{reason ?? t("noReason")}</p>
+            <p className="stats-window-reason">{(reason === null
+              ? null
+              : backend({ text: reason, code: reasonCode, params: reasonParams })) ??
+              t("noReason")}</p>
           </div>
         </div>
       ) : (
@@ -126,7 +136,15 @@ export function SilentRules({
                   {t("excluded", { count: silent.excluded_count })}
                 </strong>{" "}
                 {t("because", {
-                  reason: locale === "en" ? lowerFirst(silent.excluded_reason) : silent.excluded_reason,
+                  // English lower-cases the API sentence to read on after "because". The Turkish
+                  // sentence opens with the type name EVENT, which stays upper case mid-clause.
+                  reason: locale === "en"
+                    ? lowerFirst(silent.excluded_reason)
+                    : backend({
+                        text: silent.excluded_reason,
+                        code: silent.excluded_reason_code,
+                        params: silent.excluded_reason_params,
+                      }),
                 })}
               </p>
               <div className="stats-excluded-detail">

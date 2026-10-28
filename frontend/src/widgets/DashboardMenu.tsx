@@ -9,9 +9,10 @@
 // Input is taken in native `<dialog>` forms. A refused write keeps its dialog open with the
 // server's own `detail`; the page re-reads the list after every write, nothing is optimistic.
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
+import type { Locale } from "@/i18n/locale";
 import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
 import { englishText } from "@/widgets/englishText";
 import { ApiError } from "@/lib/api";
@@ -345,6 +346,7 @@ export function DashboardMenu({
   const { open, setOpen, root, trigger } = usePopover();
   const t = useTranslations("widgets.menu");
   const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   const copy = useWidgetCopy();
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -379,10 +381,10 @@ export function DashboardMenu({
     } catch (error) {
       if (error instanceof ApiError && error.status === 403) {
         setDialog(null);
-        onRefused(describeRefusal(error, say));
+        onRefused(describeRefusal(error, say, locale));
         return null;
       }
-      return describeRefusal(error, say);
+      return describeRefusal(error, say, locale);
     }
   };
 

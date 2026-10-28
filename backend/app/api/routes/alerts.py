@@ -13,6 +13,7 @@ from app.alerts.dispatcher import NotificationDispatcher
 from app.alerts.routing import default_policy
 from app.alerts.service import AlertResult, AlertService
 from app.api.deps import SessionDep
+from app.i18n.refusal import permission_refusal
 from app.models.alert import Alert, AlertNotification
 from app.models.enums import AlertStatus
 from app.repositories.audit import record_audit
@@ -35,7 +36,7 @@ def _guard(principal: Principal, permission: str) -> None:
     try:
         require_permission(principal, permission)
     except PermissionDenied as exc:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+        raise permission_refusal(exc) from exc
 
 
 async def _enqueue_transition(session: AsyncSession, result: AlertResult) -> None:

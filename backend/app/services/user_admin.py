@@ -12,24 +12,22 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import CodedHTTPException
 from app.models.enums import AuthSource
 from app.models.identity import Role, User
 from app.repositories.audit import record_audit
-from app.security.passwords import hash_password_async, password_policy_reasons
+from app.security.passwords import hash_password_async, password_policy_refs
 from app.security.rbac import PERM_ADMIN
 from app.security.sanitizer import sanitize_text
-from app.security.usernames import USERNAME_SHAPE, normalize_username
+from app.security.usernames import normalize_username
 from app.services.auth_sessions import revoke_user_sessions
-
-_LAST_ADMIN = (
-    "the last active user holding admin:* cannot be disabled or lose that role"
-)
 
 
 @dataclass(frozen=True)
@@ -88,32 +86,34 @@ async def create_user(
 ) -> User:
     name = normalize_username(username)
     if name is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, USERNAME_SHAPE)
+        raise CodedHTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, MessageRef("auth.username.shape")
+        )
     address = _email(email)
     shown = _display(display_name)
     roles = await _roles(session, role_names)
     if auth_source == AuthSource.LDAP.value:
         if password:
-            raise HTTPException(
+            raise CodedHTTPException(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
-                "An LDAP user has no password here.",
+                MessageRef("auth.user.ldap_no_password"),
             )
         hashed = None
         must_change = False
     elif auth_source == AuthSource.LOCAL.value:
         if not password:
-            raise HTTPException(
+            raise CodedHTTPException(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
-                "A local user needs an initial password.",
+                MessageRef("auth.user.local_needs_password"),
             )
-        reasons = password_policy_reasons(password, name)
+        reasons = password_policy_refs(password, name)
         if reasons:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, reasons)
+            raise CodedHTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, refs=reasons)
         hashed = await hash_password_async(password)
         must_change = True
     else:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "auth_source must be LOCAL or LDAP"
+        raise CodedHTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, MessageRef("auth.user.source_invalid")
         )
 
     await _reject_duplicates(session, name, address)
@@ -132,9 +132,8 @@ async def create_user(
     try:
         await session.flush()
     except IntegrityError as exc:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "A user with that username or email already exists.",
+        raise CodedHTTPException(
+            status.HTTP_409_CONFLICT, MessageRef("auth.user.exists")
         ) from exc
     await _wrote(session, actor, "user.create", user, before=None, after=user_snapshot(user))
     return user
@@ -197,13 +196,12 @@ async def reset_password(
     """Set a local password. The password is not returned and not audited."""
     user = await _locked(session, user_id)
     if user.auth_source != AuthSource.LOCAL.value or not user.username:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "Only a local account can have its password reset here.",
+        raise CodedHTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, MessageRef("auth.user.reset_local_only")
         )
-    reasons = password_policy_reasons(password, user.username)
+    reasons = password_policy_refs(password, user.username)
     if reasons:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, reasons)
+        raise CodedHTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, refs=reasons)
     before = user_snapshot(user)
     user.hashed_password = await hash_password_async(password)
     user.must_change_password = True
@@ -225,7 +223,7 @@ async def _locked(session: AsyncSession, user_id: uuid.UUID) -> User:
         .with_for_update()
     )
     if user is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No user has that id.")
+        raise CodedHTTPException(status.HTTP_404_NOT_FOUND, MessageRef("auth.user.not_found"))
     return user
 
 
@@ -241,7 +239,7 @@ async def _keep_last_admin(
         if user.id != target.id and actionable(user) and holds_admin(user)
     ]
     if not remaining:
-        raise HTTPException(status.HTTP_409_CONFLICT, _LAST_ADMIN)
+        raise CodedHTTPException(status.HTTP_409_CONFLICT, MessageRef("auth.user.last_admin"))
 
 
 async def _roles(session: AsyncSession, names: list[str]) -> list[Role]:
@@ -254,9 +252,9 @@ async def _roles(session: AsyncSession, names: list[str]) -> list[Role]:
     }
     missing = [name for name in ordered if name not in found]
     if missing:
-        raise HTTPException(
+        raise CodedHTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
-            [f"unknown role: {name}" for name in missing],
+            refs=[MessageRef("auth.user.role_unknown", {"name": name}) for name in missing],
         )
     return [found[name] for name in ordered]
 
@@ -266,15 +264,15 @@ async def _reject_duplicates(
 ) -> None:
     existing = await session.scalar(select(User.id).where(User.username == username))
     if existing is not None:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "A user with that username already exists."
+        raise CodedHTTPException(
+            status.HTTP_409_CONFLICT, MessageRef("auth.user.username_taken")
         )
     if email is None:
         return
     taken = await session.scalar(select(User.id).where(User.email == email))
     if taken is not None:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "A user with that email already exists."
+        raise CodedHTTPException(
+            status.HTTP_409_CONFLICT, MessageRef("auth.user.email_taken")
         )
 
 
@@ -287,10 +285,14 @@ def _email(value: str | None) -> str | None:
         or email.count("@") != 1
         or any(ord(ch) < 32 or ch.isspace() for ch in email)
     ):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "email is not usable")
+        raise CodedHTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, MessageRef("auth.user.email_unusable")
+        )
     local, _, domain = email.partition("@")
     if not local or not domain:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "email is not usable")
+        raise CodedHTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, MessageRef("auth.user.email_unusable")
+        )
     return email
 
 

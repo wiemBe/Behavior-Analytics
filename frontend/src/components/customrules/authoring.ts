@@ -9,6 +9,8 @@ import {
   type CustomRuleSubjectKind,
   type CustomRuleUpdate,
 } from "@/lib/api";
+import { renderRefusal } from "@/i18n/refusalMessage";
+import { refusalSentences } from "@/lib/refusal";
 import { latencyCadence, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
 import type { Locale } from "@/i18n/locale";
 import type { TextTranslator } from "@/i18n/textTranslator";
@@ -361,6 +363,7 @@ function record(value: unknown): Record<string, unknown> | null {
 export function classifySaveError(
   error: unknown,
   t: TextTranslator = customRulesEnglishText,
+  locale: Locale = "en",
 ): SaveRefusal {
   if (!(error instanceof ApiError)) return { kind: "error", detail: t("customRules.authoring.saveFailed") };
   const detail = record(error.detail);
@@ -377,7 +380,14 @@ export function classifySaveError(
       updatedBy: typeof detail.updated_by === "string" ? detail.updated_by : null,
     };
   }
-  return { kind: "error", detail: typeof error.detail === "string" ? error.detail : t("customRules.authoring.saveFailed") };
+  const [sentence] = refusalSentences(error);
+  return {
+    kind: "error",
+    detail:
+      typeof error.detail === "string"
+        ? (sentence ? renderRefusal(sentence, locale, t) : error.detail)
+        : t("customRules.authoring.saveFailed"),
+  };
 }
 
 /** Words an analyst reads. Only a recorded OK verdict takes the positive tone. */

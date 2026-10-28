@@ -49,6 +49,8 @@ from app.custom_rules.validation import (
     CustomRuleDraft,
     validate_rule_draft,
 )
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import CodedHTTPException, permission_refusal
 from app.models.custom_rule import CustomRule, CustomRuleBreach
 from app.models.enums import CustomRuleMetric, CustomRuleSubjectKind, SourceClass
 from app.models.ips import IpsEntity
@@ -110,7 +112,7 @@ def _guard(principal: Principal) -> None:
     try:
         require_permission(principal, PERM_CUSTOM_RULE_WRITE)
     except PermissionDenied as exc:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+        raise permission_refusal(exc) from exc
 
 
 def _is_cap_reason(reason: str) -> bool:
@@ -565,16 +567,14 @@ async def _flush_name(session: AsyncSession, name: str) -> None:
             await session.flush()
     except IntegrityError as exc:
         if _PW_VALUE_FK_CONSTRAINT in str(exc):
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                "the property-watch value no longer exists (its watch changed or was deleted "
-                "while the rule was saved); reload and choose a value again",
+            raise CodedHTTPException(
+                status.HTTP_409_CONFLICT, MessageRef("customrule.watch_value_gone")
             ) from exc
         if _NAME_CONSTRAINT not in str(exc):
             raise
-        raise HTTPException(
+        raise CodedHTTPException(
             status.HTTP_409_CONFLICT,
-            f"a custom rule named '{name}' already exists",
+            MessageRef("customrule.name_exists", {"name": name}),
         ) from exc
 
 
@@ -671,9 +671,9 @@ async def create_rule(
         await _lock_enabled_cap(session)
     await _check_draft(session, draft, settings, previously_enabled=False)
     if await _name_taken(session, body.name, None):
-        raise HTTPException(
+        raise CodedHTTPException(
             status.HTTP_409_CONFLICT,
-            f"a custom rule named '{body.name}' already exists",
+            MessageRef("customrule.name_exists", {"name": body.name}),
         )
     now = datetime.now(UTC)
     rule = CustomRule(
@@ -823,9 +823,9 @@ async def update_rule(
         return _rule_out(rule, breach, settings)
     new_name = str(after["name"])
     if new_name != rule.name and await _name_taken(session, new_name, rule.id):
-        raise HTTPException(
+        raise CodedHTTPException(
             status.HTTP_409_CONFLICT,
-            f"a custom rule named '{new_name}' already exists",
+            MessageRef("customrule.name_exists", {"name": new_name}),
         )
     changed = {key for key in after if after[key] != before[key]}
     _apply(rule, payload)

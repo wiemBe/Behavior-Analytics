@@ -12,6 +12,7 @@ import { TableScroll } from "@/components/ui/TableScroll";
 import type { CostSection } from "@/lib/api";
 import { useLocale, useTranslations } from "next-intl";
 import type { Locale } from "@/i18n/locale";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { asTextTranslator } from "@/i18n/textTranslator";
 
 import { formatCapacity, kindLabel } from "./ruleStatistics";
@@ -20,6 +21,9 @@ export function CostliestRules({ cost }: { cost: CostSection }) {
   const t = useTranslations("rules.cost");
   const say = asTextTranslator(useTranslations());
   const locale = useLocale() as Locale;
+  const backend = useBackendMessage();
+  const label = backend({ text: cost.label, code: cost.label_code, params: cost.label_params });
+  const unit = backend({ text: cost.unit, code: cost.unit_code, params: cost.unit_params });
   return (
     <section aria-labelledby="stats-cost">
       <div className="section-head">
@@ -27,7 +31,7 @@ export function CostliestRules({ cost }: { cost: CostSection }) {
           {t("heading")}
         </h2>
       </div>
-      <p className="subtitle">{cost.label}</p>
+      <p className="subtitle">{label}</p>
 
       {cost.items.length === 0 ? (
         <div className="notice">
@@ -40,14 +44,14 @@ export function CostliestRules({ cost }: { cost: CostSection }) {
         <TableScroll label={t("label")}>
           <table className="stats-table stats-cost">
             <caption className="sr-only">
-              {t("caption", { unit: cost.unit })}
+              {t("caption", { unit })}
             </caption>
             <thead>
               <tr>
                 <th scope="col">{t("rule")}</th>
                 <th scope="col" className="num">
                   {t("average")}
-                  <span className="cell-sub">{cost.unit}</span>
+                  <span className="cell-sub">{unit}</span>
                 </th>
               </tr>
             </thead>

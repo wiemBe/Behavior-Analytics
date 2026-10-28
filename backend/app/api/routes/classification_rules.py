@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import SessionDep
 from app.fleet.service import reclassify_for_rule
+from app.i18n.refusal import permission_refusal
 from app.models.enums import ClassificationRuleKind
 from app.models.fleet import ClassificationRule
 from app.models.instance import QRadarInstance
@@ -45,7 +46,7 @@ def _guard(principal: Principal, permission: str) -> None:
     try:
         require_permission(principal, permission)
     except PermissionDenied as exc:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+        raise permission_refusal(exc) from exc
 
 
 def _snapshot(rule: ClassificationRule) -> dict[str, object]:

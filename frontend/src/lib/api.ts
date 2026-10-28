@@ -4,6 +4,7 @@
 // credentials and never contacts QRadar or the MCP service directly.
 
 import type { TextTranslator } from "@/i18n/textTranslator";
+import { missingPermission } from "@/lib/refusal";
 
 const PUBLIC_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -988,6 +989,9 @@ export interface TechniqueCoverage {
   coverage_score: number | null;
   confidence: number | null;
   reason: string | null;
+  // The code and raw values `reason` was built from; absent or null on a row stored before them.
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   mapped_rule_count: number;
   enabled_rule_count: number;
   firing_rule_count: number;
@@ -2753,8 +2757,17 @@ export function actionErrorMessage(err: unknown, t?: TextTranslator): string {
     switch (err.status) {
       case 401:
         return say("sessionExpired", "Your session has expired. Sign in again to continue.");
-      case 403:
+      case 403: {
+        // A refusal that names the missing permission by code says which one (MSG-1); any other
+        // 403 keeps the general sentence.
+        const permission = missingPermission(err);
+        if (permission !== null) {
+          return t
+            ? t("errors.forbiddenPermission", { permission })
+            : `You need the ${permission} permission for this.`;
+        }
         return say("forbidden", "You do not have permission to perform this action.");
+      }
       case 404:
         return say("notFound", "This item no longer exists. Refresh the page.");
       case 409:
@@ -2988,12 +3001,16 @@ async function fleetRequest<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     let detail = res.statusText;
+    let raw: unknown;
+    let body: unknown;
     try {
-      detail = detailText((await res.json()).detail, detail);
+      body = await res.json();
+      raw = (body as { detail?: unknown } | null)?.detail;
+      detail = detailText(raw, detail);
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, raw, body);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -3215,6 +3232,8 @@ export interface RuleStatisticsWindow {
   measured_seconds: number;
   complete: boolean;
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
 }
 
 export interface SilentRule {
@@ -3241,6 +3260,8 @@ export interface SilentSection {
   excluded: SilentExclusion[];
   excluded_count: number;
   excluded_reason: string;
+  excluded_reason_code?: string | null;
+  excluded_reason_params?: Record<string, unknown> | null;
 }
 
 export interface MatchRankRow {
@@ -3267,7 +3288,11 @@ export interface CostRow {
 
 export interface CostSection {
   label: string;
+  label_code?: string | null;
+  label_params?: Record<string, unknown> | null;
   unit: string;
+  unit_code?: string | null;
+  unit_params?: Record<string, unknown> | null;
   items: CostRow[];
   no_benchmark_count: number;
 }
@@ -3278,9 +3303,13 @@ export interface RuleStatistics {
   window: RuleStatisticsWindow;
   silent: SilentSection | null;
   silent_reason: string | null;
+  silent_reason_code?: string | null;
+  silent_reason_params?: Record<string, unknown> | null;
   top_by_matches: MatchRankRow[] | null;
   top_by_events: MatchRankRow[] | null;
   top_reason: string | null;
+  top_reason_code?: string | null;
+  top_reason_params?: Record<string, unknown> | null;
   costliest_by_benchmark: CostSection;
 }
 

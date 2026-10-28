@@ -1,6 +1,7 @@
 {
   "sessionExpired": "Oturumunuzun süresi doldu. Devam etmek için yeniden giriş yapın.",
   "forbidden": "Bu işlemi yapma izniniz yok.",
+  "forbiddenPermission": "Bunun için {permission} iznine sahip olmanız gerekir.",
   "notFound": "Bu öğe artık yok. Sayfayı yenileyin.",
   "conflict": "Bu, geçerli durumla çelişiyor. Sayfayı yenileyip yeniden deneyin.",
   "invalid": "İstek geçersiz bulunarak reddedildi.",

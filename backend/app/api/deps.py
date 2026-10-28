@@ -5,11 +5,12 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
+from app.i18n.refusal import permission_refusal
 from app.providers.base import QRadarProvider
 from app.providers.factory import get_provider
 from app.security.auth import get_principal
@@ -42,7 +43,7 @@ def requires(permission: str):  # type: ignore[no-untyped-def]
         try:
             require_permission(principal, permission)
         except PermissionDenied as exc:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+            raise permission_refusal(exc) from exc
         return principal
 
     return _dep

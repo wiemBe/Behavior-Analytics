@@ -47,6 +47,8 @@ from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings, get_settings
 from app.core.rate_limit import limiter
 from app.custom_rules.alerts import alerting_mode
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import CodedHTTPException, permission_refusal
 from app.models.enums import (
     PwAnomalyType,
     PwHistoryState,
@@ -160,7 +162,7 @@ def _guard(principal: Principal) -> None:
     try:
         require_permission(principal, PERM_PROPERTY_WATCH_WRITE)
     except PermissionDenied as exc:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+        raise permission_refusal(exc) from exc
 
 
 def _reject(reasons: list[str]) -> None:
@@ -238,12 +240,12 @@ async def _flush_name(
     except IntegrityError as exc:
         if watch_id is not None and _RULE_FK_CONSTRAINT in str(exc):
             raise await _rules_conflict(
-                session, watch_id, "change the scope, properties or pins", exc
+                session, watch_id, svc.ACTION_CHANGE_PINS, exc
             ) from exc
         if _NAME_CONSTRAINT not in str(exc):
             raise
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, f"a property watch named '{name}' already exists"
+        raise CodedHTTPException(
+            status.HTTP_409_CONFLICT, MessageRef("propertywatch.name_exists", {"name": name})
         ) from exc
 
 
@@ -260,15 +262,8 @@ async def _rules_conflict(
     await session.rollback()
     rules = await svc.dependent_rules(session, watch_id)
     if rules:
-        return HTTPException(status.HTTP_409_CONFLICT, svc.dependency_refusal(rules, action))
-    return HTTPException(
-        status.HTTP_409_CONFLICT,
-        {
-            "message": f"cannot {action}: a custom rule pinned a value of this watch while "
-            "the request ran; reload and try again",
-            "rules": [],
-        },
-    )
+        return svc.dependency_refusal(rules, action)
+    return svc.dependency_raced(action)
 
 
 async def _flush_refusing(session: AsyncSession, watch_id: uuid.UUID, action: str) -> None:
@@ -649,8 +644,8 @@ async def create_watch(
     assert instance_id is not None
     taken = await session.scalar(select(PropertyWatch.id).where(PropertyWatch.name == body.name))
     if taken is not None:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, f"a property watch named '{body.name}' already exists"
+        raise CodedHTTPException(
+            status.HTTP_409_CONFLICT, MessageRef("propertywatch.name_exists", {"name": body.name})
         )
     now = datetime.now(UTC)
     watch = PropertyWatch(
@@ -812,7 +807,7 @@ async def _refuse_if_pinned_by_rules(
     """
     rules = await svc.dependent_rules(session, watch_id, value_keys=value_keys)
     if rules:
-        raise HTTPException(status.HTTP_409_CONFLICT, svc.dependency_refusal(rules, action))
+        raise svc.dependency_refusal(rules, action)
 
 
 def _label(kind: PwScopeKind, source: object, type_id: object, group_id: object) -> str:
@@ -902,8 +897,9 @@ async def update_watch(
             )
         )
         if taken is not None:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT, f"a property watch named '{new_name}' already exists"
+            raise CodedHTTPException(
+                status.HTTP_409_CONFLICT,
+                MessageRef("propertywatch.name_exists", {"name": new_name}),
             )
     was_enabled = bool(watch.enabled)
     wants_enabled = merged.enabled
@@ -916,13 +912,13 @@ async def update_watch(
         await _lock_enabled_cap(session)
     if changed & {"scope", "properties"}:
         await _refuse_if_pinned_by_rules(
-            session, watch.id, "change the scope or properties (the watch version would change)"
+            session, watch.id, svc.ACTION_CHANGE_SCOPE
         )
     if "pinned_values" in changed:
         await _refuse_if_pinned_by_rules(
             session,
             watch.id,
-            "unpin a value",
+            svc.ACTION_UNPIN,
             value_keys=svc.removed_pin_keys(watch.pinned_values, merged.pinned_values),
         )
     snapshot_before = svc.watch_snapshot(watch)
@@ -1010,7 +1006,7 @@ async def delete_watch(
     """
     _guard(principal)
     watch = await _locked(session, watch_id)
-    await _refuse_if_pinned_by_rules(session, watch.id, "delete the watch")
+    await _refuse_if_pinned_by_rules(session, watch.id, svc.ACTION_DELETE)
     # The principal resolves the watch's open alerts, then the watch goes (design §G.15).
     await svc.resolve_watch_alerts(
         session,
@@ -1021,7 +1017,7 @@ async def delete_watch(
     snapshot = svc.watch_snapshot(watch)
     key = str(watch.id)
     await session.delete(watch)
-    await _flush_refusing(session, watch.id, "delete the watch")
+    await _flush_refusing(session, watch.id, svc.ACTION_DELETE)
     await record_audit(
         session,
         action="property_watch.delete",
@@ -1168,7 +1164,7 @@ async def put_pins(
     await _refuse_if_pinned_by_rules(
         session,
         watch.id,
-        "unpin a value",
+        svc.ACTION_UNPIN,
         value_keys=svc.removed_pin_keys(watch.pinned_values, payload.pinned_values),
     )
     cadence: CadenceOut | None = None
@@ -1199,7 +1195,7 @@ async def put_pins(
         watch.pinned_values = wanted
         watch.updated_by = principal.subject
         watch.updated_at = _bumped(_utc(watch.updated_at))
-        await _flush_refusing(session, watch.id, "unpin a value")
+        await _flush_refusing(session, watch.id, svc.ACTION_UNPIN)
         if watch.enabled:
             capacity = await svc.enable_reasons(session, watch, settings)
             if capacity:

@@ -12,10 +12,14 @@ import en from "../../messages/en";
 import tr from "../../messages/tr";
 import { RouteMessages } from "./RouteMessages";
 import { CATALOG_NAMESPACES, chainTo, scanEntries } from "./namespaceScan";
+import codes from "./backendCodes.generated.json";
+import { renderRefusal } from "./refusalMessage";
+import { createTextTranslator } from "./textTranslator";
 import { FRONTEND_ROOT } from "./guardedFiles";
 import {
   BOUNDARY_KEYS,
   ROUTE_NAMESPACES,
+  SHELL_BACKEND_KEYS,
   SHELL_NAMESPACES,
   TOP_BAR_KEYS,
   pickMessages,
@@ -50,7 +54,9 @@ function layoutsOf(page: string): string[] {
 }
 
 const root = scanEntries(["src/app/layout.tsx", ...outsidePage]);
-const shell = [...root.namespaces.keys()].sort();
+// `backend` is read by the shell only through the single keys of SHELL_BACKEND_KEYS (below), so it
+// is not a shell namespace; the routes that read more of it list it themselves.
+const shell = [...root.namespaces.keys()].filter((n) => n !== "backend").sort();
 
 function line(items: readonly string[]): string {
   return `[${items.map((item) => `"${item}"`).join(", ")}]`;
@@ -70,6 +76,66 @@ describe("the root provider", () => {
   it("carries the strings the route boundaries read, and no namespace twice", () => {
     const keys = [...root.keys.keys()].filter((key) => !shell.includes(key.split(".")[0])).sort();
     expect([...BOUNDARY_KEYS], `BOUNDARY_KEYS must be ${line(keys)}`).toEqual(keys);
+  });
+
+  it("reads `backend` only through the keys of SHELL_BACKEND_KEYS", () => {
+    // The one module that builds a `backend` key at run time is the refusal reader; every other
+    // shell-reachable module that names a `backend` key by literal must name a listed one.
+    const builders: string[] = [];
+    const literals = new Set<string>();
+    for (const file of root.browserFiles) {
+      const text = readFileSync(file.startsWith("/") ? file : join(FRONTEND_ROOT, file), "utf8");
+      if (/[`"']backend\.\$\{/.test(text)) builders.push(file.replace(`${FRONTEND_ROOT}/`, ""));
+      for (const match of text.matchAll(/["'`](backend\.[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)["'`]/g)) {
+        literals.add(match[1]);
+      }
+    }
+    expect(builders).toEqual(["src/i18n/refusalMessage.ts"]);
+    for (const key of literals) expect(SHELL_BACKEND_KEYS as readonly string[], key).toContain(key);
+    expect(root.namespaces.has("backend")).toBe(true);
+    expect(SHELL_NAMESPACES as readonly string[]).not.toContain("backend");
+  });
+
+  it("holds every shell backend key in both catalogs, as a registered code, and words it in Turkish", () => {
+    const sent = shellMessages(tr);
+    const say = createTextTranslator("tr", sent);
+    for (const key of SHELL_BACKEND_KEYS) {
+      let at: unknown = sent;
+      for (const part of key.split(".")) {
+        at = typeof at === "object" && at !== null && Object.hasOwn(at, part) ? (at as Record<string, unknown>)[part] : undefined;
+      }
+      expect(typeof at, key).toBe("string");
+      let inEnglish: unknown = shellMessages(en);
+      for (const part of key.split(".")) {
+        inEnglish = (inEnglish as Record<string, unknown>)?.[part];
+      }
+      expect(typeof inEnglish, key).toBe("string");
+      const code = key.slice("backend.".length);
+      const spec = (codes as Record<string, { sample: Record<string, unknown>; sample_english: string }>)[code];
+      expect(spec, code).toBeDefined();
+      const words = renderRefusal({ text: spec.sample_english, code, params: spec.sample }, "tr", say);
+      expect(words, code).not.toBe(spec.sample_english);
+    }
+  });
+
+  it("lists every refusal the forced password change can show", () => {
+    // `POST /auth/password` answers with the password policy, the session and cross-site
+    // refusals and the permission 403; the shell words them, so each must be a shell key.
+    const reachable = Object.keys(codes).filter(
+      (code) =>
+        code.startsWith("auth.password.") ||
+        code.startsWith("auth.session.") ||
+        code.startsWith("auth.csrf.") ||
+        code === "auth.permission.missing",
+    );
+    expect([...SHELL_BACKEND_KEYS].sort()).toEqual(reachable.map((code) => `backend.${code}`).sort());
+  });
+
+  it("never sends the whole `backend` namespace to the root provider", () => {
+    for (const catalog of [en, tr]) {
+      const sent = JSON.stringify(shellMessages(catalog).backend);
+      expect(sent.length).toBeLessThan(JSON.stringify(catalog.backend).length / 2);
+    }
   });
 
   it("holds every top-bar key in both catalogs, as a string", () => {
@@ -138,7 +204,12 @@ describe("the route table", () => {
     const scan = scanEntries([page, ...layoutsOf(page)]);
     expect(scan.unresolved).toEqual([]);
     expect(scan.violations).toEqual([]);
-    const needed = [...scan.namespaces.keys()].filter((n) => !shell.includes(n)).sort();
+    // The root layout reaches `backend` for every page (the forced password change); that reach is
+    // the shell's single keys, so only the page's own graph decides whether the route lists it.
+    const own = scanEntries([page, ...layoutsOf(page).filter((layout) => layout !== "src/app/layout.tsx")]);
+    const needed = [...scan.namespaces.keys()]
+      .filter((n) => !shell.includes(n) && (n !== "backend" || own.namespaces.has("backend")))
+      .sort();
     const route = routeOf(page);
     const explained = needed.map((n) => `${n}: ${chainTo(scan, scan.namespaces.get(n)!).join(" > ")}`);
     expect(

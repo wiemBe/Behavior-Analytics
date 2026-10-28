@@ -203,6 +203,11 @@ async def test_a_rule_created_after_the_check_makes_the_delete_a_409(
     assert refused.status_code == 409, refused.text
     detail = refused.json()["detail"]
     assert "late-rule" in detail["message"] and "delete the watch" in detail["message"]
+    assert detail["code"] == "propertywatch.dependency.refused"
+    assert detail["params"] == {
+        "action": {"code": "propertywatch.action.delete", "params": {}},
+        "names": "'late-rule'",
+    }
     assert [r["name"] for r in detail["rules"]] == ["late-rule"]
     assert set(detail["rules"][0]) == {"id", "name"}
 
@@ -330,6 +335,7 @@ async def test_a_value_deleted_after_the_check_makes_the_rule_patch_a_409(
     )
     assert response.status_code == 409, response.text
     assert "no longer exists" in response.json()["detail"]
+    assert response.json()["detail_code"] == "customrule.watch_value_gone"
     db_session.expire_all()
     stored = (await db_session.scalars(select(CustomRule))).one()
     assert stored.pw_value_id == pinned_id
@@ -348,6 +354,7 @@ async def test_the_rule_name_conflict_and_other_errors_keep_their_handling(
     monkeypatch.setattr(rules_routes, "_name_taken", never_taken)
     dup = client.post(PREFIX, json=_rule_body(pinned.id))
     assert dup.status_code == 409 and "already exists" in dup.json()["detail"]
+    assert dup.json()["detail_code"] == "customrule.name_exists"
 
     real_flush = Session.flush
 

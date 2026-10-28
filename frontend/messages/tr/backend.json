@@ -47,5 +47,136 @@
         "source_missing": "Profilin log source'u artık mevcut değil"
       }
     }
+  },
+  "auth": {
+    "permission": {
+      "missing": "Gerekli izin eksik: {permission}"
+    },
+    "password": {
+      "too_short": "Parola en az 12 karakter olmalıdır",
+      "too_long": "Parola en fazla 72 bayt olmalıdır",
+      "equals_username": "Parola kullanıcı adıyla aynı olmamalıdır",
+      "ldap_directory": "LDAP hesapları parolalarını burada değil, dizinde değiştirir.",
+      "local_only": "Parolayı yalnızca yerel bir hesap değiştirebilir",
+      "current_wrong": "Mevcut parola yanlış"
+    },
+    "username": {
+      "shape": "Kullanıcı adı 1 ile 255 karakter arasında olmalı; boşluk veya denetim karakteri içermemelidir"
+    },
+    "login": {
+      "invalid_credentials": "Kullanıcı adı veya parola geçersiz",
+      "directory_unavailable": "Dizin sunucusuna ulaşılamıyor. Oturum açma tamamlanmadı."
+    },
+    "session": {
+      "required": "Oturum açmanız gerekiyor.",
+      "must_change_password": "Başka bir istekten önce parolanın değiştirilmesi gerekiyor."
+    },
+    "csrf": {
+      "origin_missing": "Siteler arası istek reddedildi: istekte Origin veya Referer üst bilgisi yok.",
+      "origin_mismatch": "Siteler arası istek reddedildi: {origin} kaynağı yapılandırılmış genel kaynak değil."
+    },
+    "user": {
+      "last_admin": "admin:* iznine sahip son etkin kullanıcı devre dışı bırakılamaz ve bu rolü kaybedemez",
+      "not_found": "Bu kimliğe sahip bir kullanıcı yok.",
+      "ldap_no_password": "Bir LDAP kullanıcısının burada parolası olmaz.",
+      "local_needs_password": "Yerel bir kullanıcı için ilk parola gerekir.",
+      "source_invalid": "auth_source değeri LOCAL veya LDAP olmalıdır",
+      "exists": "Bu kullanıcı adına veya e-postaya sahip bir kullanıcı zaten var.",
+      "username_taken": "Bu kullanıcı adına sahip bir kullanıcı zaten var.",
+      "email_taken": "Bu e-postaya sahip bir kullanıcı zaten var.",
+      "email_unusable": "E-posta adresi kullanılamaz",
+      "reset_local_only": "Burada yalnızca yerel bir hesabın parolası sıfırlanabilir.",
+      "role_unknown": "Bilinmeyen rol: {name}"
+    },
+    "directory": {
+      "stale": "Dizin yapılandırması güncel değil. Yeniden yükleyip tekrar deneyin.",
+      "test_needs_url": "Test için bir dizin URL adresi gerekir",
+      "urls_max": "En fazla {max} dizin URL adresine izin verilir",
+      "url_empty": "Bir dizin URL adresi boş",
+      "url_too_long": "Bir dizin URL adresi 512 karakterden uzun",
+      "url_scheme": "{url} ldap:// veya ldaps:// kullanmalıdır",
+      "url_credentials": "{url} kimlik bilgisi içermemelidir",
+      "url_host": "{url} bir ana makine adı içermelidir",
+      "url_path": "{url} yol içermemelidir",
+      "url_query": "{url} sorgu içermemelidir",
+      "url_fragment": "{url} parça içermemelidir",
+      "start_tls_with_ldaps": "ldaps:// URL adresi için start_tls kapalı olmalıdır",
+      "start_tls_needs_ldap": "start_tls için ldap:// URL adresi gerekir",
+      "ldap_needs_start_tls": "ldap:// URL adresi için start_tls gerekir",
+      "enabled_needs_url": "Etkin bir yapılandırmanın en az bir dizin URL adresi olmalıdır",
+      "enabled_needs_valid_url": "Etkin bir yapılandırmanın en az bir geçerli dizin URL adresi olmalıdır",
+      "template_too_long": "bind_template 512 karakterden uzun",
+      "template_username": "bind_template içinde '{'username'}' bulunmalıdır",
+      "timeout_range": "timeout_seconds 1 ile 30 arasında olmalıdır",
+      "ca_too_long": "ca_pem çok uzun",
+      "ca_private_key": "ca_pem bir sertifika olmalıdır, özel anahtar olamaz",
+      "ca_invalid": "ca_pem bir PEM X.509 sertifikası değil",
+      "cert_not_yet_valid": "{subject} sertifikası henüz geçerli değil (not_before {not_before})",
+      "cert_expired": "{subject} sertifikasının süresi dolmuş (not_after {not_after})",
+      "base_too_long": "user_search_base 1024 karakterden uzun",
+      "base_control_character": "user_search_base bir denetim karakteri içeriyor"
+    }
+  },
+  "dashboard": {
+    "not_found": "Gösterge paneli bulunamadı",
+    "name_taken": "''{name}'' adlı bir gösterge paneliniz zaten var",
+    "owner_limit": "Sahip başına en fazla {limit} gösterge paneli olabilir",
+    "owner_only": "Bu gösterge panelini yalnızca sahibi veya bir yönetici değiştirebilir",
+    "visibility_needs_permission": "Görünürlüğü değiştirmek için {permission} izni gerekir",
+    "changed_since_opened": "Bu gösterge paneli siz açtıktan sonra değişti"
+  },
+  "propertywatch": {
+    "name_exists": "''{name}'' adlı bir özellik izleme zaten var",
+    "action": {
+      "change_pins": "scope, özellikleri veya sabitlenmiş değerleri değiştirme",
+      "change_scope": "scope veya özellikleri değiştirme (izleme sürümü değişir)",
+      "unpin": "bir değerin sabitlemesini kaldırma",
+      "delete": "izlemeyi silme"
+    },
+    "dependency": {
+      "refused": "{action} işlemi yapılamıyor: {names} özel kuralları bu izlemenin bir değerini sabitliyor; önce kuralları ayırın veya silin",
+      "raced": "{action} işlemi yapılamıyor: istek çalışırken bir özel kural bu izlemenin bir değerini sabitledi; yeniden yükleyip tekrar deneyin"
+    }
+  },
+  "customrule": {
+    "name_exists": "''{name}'' adlı bir özel kural zaten var",
+    "watch_value_gone": "Özellik izleme değeri artık yok (kural kaydedilirken izleme değişti veya silindi); yeniden yükleyip bir değer seçin"
+  },
+  "coverage": {
+    "rollup": {
+      "unmapped": "Bu tekniğe eşlenmiş kural yok.",
+      "all_excluded": "Bu tekniğe eşlenen her kural devre dışı ya da sayım dışı bırakılmış; bu yüzden etkin algılama yok.",
+      "none_detecting": "{degraded} / {enabled} etkin kural şu anda algılama yapmıyor.",
+      "not_established": "Eşlenen kurallar için kural sağlığı henüz belirlenmedi.",
+      "some_degraded": "{working} / {enabled} etkin kural algılıyor; {degraded} kural bozulmuş.",
+      "some_unestablished": "{working} / {enabled} etkin kural algılıyor; geri kalanların durumu henüz belirlenmedi.",
+      "all_detecting": "Bu tekniğe eşlenen {enabled} etkin kuralın tümü algılıyor."
+    },
+    "evidence": {
+      "below_floor": "Eşleme güveni {confidence}, {floor} tabanının altında; kaydedildi ancak coverage'a sayılmadı.",
+      "disabled": "Kural devre dışı olduğu için etkin coverage sağlamıyor.",
+      "acceptable": "Kural etkin ve sağlığı kabul edilebilir.",
+      "dependency_degraded": "Kuralın gerektirdiği telemetri kullanılamıyor; bu yüzden tetiklenemez.",
+      "never_observed": "Kuralın hiç tetiklendiği gözlenmedi.",
+      "inactive": "Kural, hareketsizlik penceresi içinde tetiklenmedi.",
+      "not_established": "Kuralın sağlığı henüz belirlenmedi."
+    }
+  },
+  "rule_statistics": {
+    "window": {
+      "none": "Bu instance için hiçbir kural eşleşmesi penceresi toplanmadı: toplama devre dışı ya da henüz çalışmadı; bu yüzden hiçbir şey ölçülmüyor.",
+      "unsettled": "İstenen aralıkta henüz kesinleşmiş bir kural eşleşmesi penceresi yok.",
+      "incomplete": "Aralıkta {complete} / {expected} pencere eksiksiz ({missing} eksik, {truncated} kırpılmış, {failed} başarısız). Eksiksiz olmayan bir penceredeki yokluk hiçbir şeyi kanıtlamaz."
+    },
+    "top": {
+      "no_complete_window": "Ölçülecek eksiksiz pencere yok."
+    },
+    "silent": {
+      "excluded": "EVENT kuralları ve EVENT yapı taşları değerlendirilen tek türdür: olay araması bunların her eşleşmesini görür. COMMON kuralları akışlarda da eşleşir, ancak akışlar aranmaz; bu yüzden sessizlikleri bilinmez. FLOW ve OFFENSE kuralları hiç aranmaz."
+    },
+    "cost": {
+      "label": "QRadar kapasite ölçütü: kuralın ne kadar hızlı değerlendirilebileceği. Düşük değer, değerlendirmenin daha maliyetli olduğunu gösterir. Bu bir tetiklenme hızı değildir.",
+      "unit": "saniyede milyon olay (QRadar birimi)"
+    }
   }
 }
