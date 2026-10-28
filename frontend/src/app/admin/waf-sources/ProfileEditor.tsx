@@ -15,6 +15,7 @@ import { useTranslations } from "next-intl";
 import { FieldMappingForm } from "@/components/fieldmapping/FieldMappingForm";
 import { MappingHistory } from "@/components/fieldmapping/MappingHistory";
 import { ValidationReport } from "@/components/fieldmapping/ValidationReport";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { ValueMapEditor, outcomeLabel } from "@/components/fieldmapping/ValueMapEditor";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
@@ -132,6 +133,7 @@ export function ProfileEditor({
   const pageT = useTranslations("waf.admin.page");
   const common = useTranslations("common");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const { locale } = i18n;
   const count = (value: number) => formatCount(value, locale);
   const [profile, setProfile] = useState<WafProfileOut | null>(initialProfile);
@@ -284,8 +286,9 @@ export function ProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setConflict(conflictInfo(err));
       } else if (err instanceof ApiError && err.status === 422) {
-        const text = serverMessage(err) || t("serverRejected");
-        const key = fieldForMessage(schema, draft, text);
+        const text = serverMessage(err, backendMessage) || t("serverRejected");
+        // The field is found in the server's own English: the property name is in it verbatim.
+        const key = fieldForMessage(schema, draft, serverMessage(err));
         if (key) setFieldErrors({ [key]: text });
         else setFormError(text);
         setSaveMsg({ tone: "crit", text: t("formRejected") });
@@ -333,7 +336,9 @@ export function ProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setValidateMsg({
           tone: "warn",
-          text: t("validationNotStarted", { message: serverMessage(err) || t("alreadyRunning") }),
+          text: t("validationNotStarted", {
+            message: serverMessage(err, backendMessage) || t("alreadyRunning"),
+          }),
         });
       } else {
         setValidateMsg(failure(err, "validate", i18n));
@@ -363,7 +368,9 @@ export function ProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setCollectMsg({
           tone: "warn",
-          text: t("notEnabled", { message: serverMessage(err) || t("currentNotValid") }),
+          text: t("notEnabled", {
+            message: serverMessage(err, backendMessage) || t("currentNotValid"),
+          }),
         });
       } else {
         setCollectMsg(failure(err, "change", i18n));
@@ -418,7 +425,13 @@ export function ProfileEditor({
   }
 
   // --- header ---------------------------------------------------------------
-  const stateInput = profile ? { ...profile, fields: profile.validation?.fields } : null;
+  const stateInput = profile
+    ? {
+        ...profile,
+        fields: profile.validation?.fields,
+        renderBackendMessage: backendMessage,
+      }
+    : null;
   const vState = stateInput ? validationState(stateInput, schema, i18n) : null;
   const cState = stateInput ? collectionState(stateInput, i18n) : null;
 
@@ -601,7 +614,7 @@ export function ProfileEditor({
 
       {conflict && (
         <div className="fm-banner is-warn" role="alert">
-          <span>{conflictMessage(conflict, i18n)}</span>
+          <span>{conflictMessage(conflict, i18n, backendMessage)}</span>
           <button
             type="button"
             className="action secondary"

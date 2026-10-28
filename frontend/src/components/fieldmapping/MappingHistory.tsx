@@ -10,6 +10,7 @@ import { versionLabel } from "@/lib/behaviorI18n";
 import { plainCount } from "@/lib/figureText";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import type { TextTranslator } from "@/i18n/textTranslator";
+import { useBackendMessage } from "@/i18n/backendMessage";
 
 // Punctuation between parts of one line; the same in both languages.
 const ARROW = " → ";
@@ -57,6 +58,7 @@ export function MappingHistory({
 }) {
   const t = useTranslations("fieldMapping.history");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const labelOf = actionLabel ?? ((action: string) => historyActionLabel(action, i18n));
   if (entries.length === 0) {
     return <p className="fm-empty">{t("empty")}</p>;
@@ -105,11 +107,26 @@ export function MappingHistory({
                   )}
                   {e.reasons && e.reasons.length > 0 && (
                     <ul className="fm-changes" aria-label={t("reasonsLabel")}>
-                      {e.reasons.map((r) => (
-                        <li key={r}>
-                          {reasonText(r, schema, schema.min_coverage_ratio, undefined, i18n)}
-                        </li>
-                      ))}
+                      {e.reasons.map((r, index) => {
+                        const coded = e.reason_codes?.[index];
+                        const sentence = {
+                          text: r,
+                          code: coded?.code,
+                          params: coded?.params,
+                        };
+                        const existing = reasonText(
+                          r,
+                          schema,
+                          schema.min_coverage_ratio,
+                          undefined,
+                          i18n,
+                        );
+                        return (
+                          <li key={`${r}-${index}`}>
+                            {existing === r ? backendMessage(sentence) : existing}
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </td>

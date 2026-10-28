@@ -21,6 +21,7 @@ from app.collectors.waf_endpoint_collector import COLLECTOR_NAME, watermark_coll
 from app.core.config import Settings
 from app.history.origin import origin_of
 from app.history.state import HistoryFamily
+from app.i18n.messages import render
 from app.models.enums import WafMeasurement
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
@@ -38,7 +39,7 @@ from app.services.waf_pipeline import (
     scheduling_record,
 )
 from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
-from app.waf.profile import collection_ineligibility
+from app.waf.profile import collection_ineligibility_message
 
 
 def _parse(value: object) -> datetime | None:
@@ -244,7 +245,9 @@ async def waf_source_statuses(
                 ).total_seconds()
             )
 
-        reason = collection_ineligibility(profile, log_source, settings)
+        reason_message = collection_ineligibility_message(profile, log_source, settings)
+        reason = render(reason_message) if reason_message is not None else None
+        reason_wire = reason_message.to_wire() if reason_message is not None else None
         report_fields = (profile.validation_report or {}).get("fields", [])
         out.append(
             WafSourceStatusOut(
@@ -273,6 +276,12 @@ async def waf_source_statuses(
                 ],
                 collection_eligible=reason is None,
                 ineligible_reason=reason,
+                ineligible_reason_code=(
+                    reason_wire["code"] if reason_wire is not None else None
+                ),
+                ineligible_reason_params=(
+                    reason_wire["params"] if reason_wire is not None else None
+                ),
                 collection_watermark_at=collection.watermark_at if collection else None,
                 last_run_at=collection.last_run_at if collection else None,
                 last_success_at=last_success_at,

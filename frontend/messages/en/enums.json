@@ -15,6 +15,12 @@
     "RESOLVED": "RESOLVED",
     "SUPPRESSED": "SUPPRESSED"
   },
+  "profileValidationStatus": {
+    "UNVALIDATED": "UNVALIDATED",
+    "VALID": "VALID",
+    "INVALID": "INVALID",
+    "INCONCLUSIVE": "INCONCLUSIVE"
+  },
   "offenseStatus": {
     "OPEN": "OPEN",
     "HIDDEN": "HIDDEN",

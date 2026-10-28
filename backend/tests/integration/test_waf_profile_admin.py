@@ -72,7 +72,13 @@ def assert_conflict_detail(
 ) -> None:
     assert response.status_code == 409
     detail = response.json()["detail"]
-    assert set(detail) == {"message", "current_version", "updated_by", "pending_since"}
+    assert set(detail) - {"code", "params"} == {
+        "message",
+        "current_version",
+        "updated_by",
+        "pending_since",
+    }
+    assert ("code" in detail) == ("params" in detail)
     assert isinstance(detail["message"], str)
     assert detail["current_version"] == current_version
     assert detail["updated_by"] == updated_by
@@ -229,7 +235,7 @@ async def test_put_validation_guards_create_update_and_audit(
     for body, message in invalid_bodies:
         response = api.put(path, json=body)
         assert response.status_code == 422
-        assert set(response.json()["detail"]) == {"message"}
+        assert set(response.json()["detail"]) - {"code", "params"} == {"message"}
         assert message in response.json()["detail"]["message"]
 
     body_validation = api.put(path, json={})

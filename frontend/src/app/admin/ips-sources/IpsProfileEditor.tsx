@@ -25,7 +25,7 @@ import {
   ipsFieldStatusInfo,
   ipsHistoryActionLabel,
   ipsOutcomeNote,
-  ipsReasonText,
+  ipsCodedReasonText,
   lastValidationWasBusy,
   referenceKindOf,
   reportForTable,
@@ -36,6 +36,7 @@ import { MappingHistory } from "@/components/fieldmapping/MappingHistory";
 import { ValidationReport } from "@/components/fieldmapping/ValidationReport";
 import { ValueMapEditor, outcomeLabel } from "@/components/fieldmapping/ValueMapEditor";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { guideFor } from "@/lib/guideRoutes";
 import {
   ApiError,
@@ -111,6 +112,7 @@ export function IpsProfileEditor({
 }) {
   const t = useTranslations("ips.editor");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const formSch = useMemo(() => formSchema(schema), [schema]);
   const [profile, setProfile] = useState<IpsProfileOut | null>(initialProfile);
   const [catalog, setCatalog] = useState<PropertyCatalogOut | null>(initialCatalog);
@@ -299,8 +301,9 @@ export function IpsProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setConflict(conflictInfo(err));
       } else if (err instanceof ApiError && err.status === 422) {
-        const text = serverMessage(err) || t("serverRejected");
-        const key = fieldForMessage(formSch, draft, text);
+        const text = serverMessage(err, backendMessage) || t("serverRejected");
+        // The field is found in the server's own English: the property name is in it verbatim.
+        const key = fieldForMessage(formSch, draft, serverMessage(err));
         if (key) setFieldErrors({ [key]: text });
         else setFormError(text);
         setSaveMsg({ tone: "crit", text: t("notSavedRejected") });
@@ -343,7 +346,7 @@ export function IpsProfileEditor({
         setValidateMsg({
           tone: "warn",
           text: t("validateNotStarted", {
-            message: serverMessage(err) || t("alreadyRunning"),
+            message: serverMessage(err, backendMessage) || t("alreadyRunning"),
           }),
         });
       } else {
@@ -374,7 +377,7 @@ export function IpsProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setCollectMsg({
           tone: "warn",
-          text: t("notEnabled", { message: serverMessage(err) || t("notValid") }),
+          text: t("notEnabled", { message: serverMessage(err, backendMessage) || t("notValid") }),
         });
       } else {
         setCollectMsg(failure(err, "change"));
@@ -400,7 +403,7 @@ export function IpsProfileEditor({
   }
 
   // --- header ---------------------------------------------------------------
-  const stateInput = profile ?? null;
+  const stateInput = profile ? { ...profile, renderBackendMessage: backendMessage } : null;
   const vState = stateInput ? validationState(stateInput, null, i18n) : null;
   const cState = stateInput ? collectionState(stateInput, i18n) : null;
 
@@ -607,7 +610,7 @@ export function IpsProfileEditor({
 
       {conflict && (
         <div className="fm-banner is-warn" role="alert">
-          <span>{conflictMessage(conflict, i18n)}</span>
+          <span>{conflictMessage(conflict, i18n, backendMessage)}</span>
           <button
             type="button"
             className="action secondary"
@@ -727,7 +730,9 @@ export function IpsProfileEditor({
             notes={notes}
             hideColumns={["distinct", "plausible"]}
             statusInfo={(status, ctx) => ipsFieldStatusInfo(status, ctx, i18n)}
-            formatReason={(reason, ratio) => ipsReasonText(reason, schema, ratio, i18n)}
+            formatReason={(reason, ratio, sentence) =>
+              ipsCodedReasonText(reason, schema, ratio, sentence, i18n)
+            }
             describeReference={(f) => {
               const kind = referenceKindOf(report, f.field);
               return kind ? referenceKindLabel(kind, i18n) : null;

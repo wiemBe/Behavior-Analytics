@@ -29,7 +29,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.core.text import percent
+from app.i18n.messages import MessageRef, render
 from app.models.enums import WafFieldStatus, WafLogicalField, WafProfileValidationStatus
 from app.providers.dto import WafPropertyProbe, WafSourceProbe
 from app.waf.normalize import (
@@ -41,6 +41,13 @@ from app.waf.normalize import (
 from app.waf.profile import WafFieldMapping
 
 _TOKEN_MAX = 64
+
+_NOT_MAPPED = MessageRef("validation.waf.field.not_mapped")
+_PROPERTY_REJECTED = MessageRef("validation.waf.field.property_rejected")
+_POPULATION_NOT_MEASURED = MessageRef("validation.field.population_not_measured")
+_TOTAL_NOT_MEASURED = MessageRef("validation.field.total_not_measured")
+_NO_EVENTS = MessageRef("validation.field.no_events")
+_UNPOPULATED = MessageRef("validation.waf.field.unpopulated")
 
 
 def _bounded_token(value: str) -> bool:
@@ -91,10 +98,11 @@ class FieldValidation:
     values_truncated: bool = False
     discovered_values: list[dict[str, Any]] = field(default_factory=list)
     detail: str | None = None
+    detail_message: MessageRef | None = None
     queries: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "field": self.logical.value,
             "property_name": self.property_name,
             "status": self.status.value,
@@ -109,12 +117,18 @@ class FieldValidation:
             "detail": self.detail,
             "queries": self.queries,
         }
+        if self.detail_message is not None:
+            wire = self.detail_message.to_wire()
+            out["detail_code"] = wire["code"]
+            out["detail_params"] = wire["params"]
+        return out
 
 
 @dataclass
 class ProfileValidation:
     status: WafProfileValidationStatus
     reasons: list[str]
+    reason_messages: list[MessageRef | None]
     log_source_found: bool
     total_events: int | None
     fields: list[FieldValidation]
@@ -130,6 +144,10 @@ class ProfileValidation:
         return {
             "status": self.status.value,
             "reasons": self.reasons,
+            "reason_codes": [
+                message.to_wire() if message is not None else None
+                for message in self.reason_messages
+            ],
             "log_source_found": self.log_source_found,
             "total_events": self.total_events,
             "window_start": self.window_start,
@@ -156,25 +174,33 @@ def evaluate_field(
     )
     if property_name is None or probe is None:
         result.status = WafFieldStatus.NOT_MAPPED
-        result.detail = "no QRadar property is mapped to this field"
+        result.detail = render(_NOT_MAPPED)
+        result.detail_message = _NOT_MAPPED
         return result
 
     result.queries = list(probe.queries)
     if probe.rejected:
         result.status = WafFieldStatus.PROPERTY_REJECTED
-        result.detail = "QRadar rejected a query naming this property; it does not exist as named"
+        result.detail = render(_PROPERTY_REJECTED)
+        result.detail_message = _PROPERTY_REJECTED
         return result
     if probe.error is not None or probe.populated_events is None:
         result.status = WafFieldStatus.QUERY_FAILED
-        result.detail = probe.error or "population was not measured"
+        if probe.error is not None:
+            result.detail = probe.error
+        else:
+            result.detail = render(_POPULATION_NOT_MEASURED)
+            result.detail_message = _POPULATION_NOT_MEASURED
         return result
     if total_events is None:
         result.status = WafFieldStatus.QUERY_FAILED
-        result.detail = "the source's total event volume was not measured"
+        result.detail = render(_TOTAL_NOT_MEASURED)
+        result.detail_message = _TOTAL_NOT_MEASURED
         return result
     if total_events == 0:
         result.status = WafFieldStatus.NO_EVENTS
-        result.detail = "the source produced no events in the window; nothing can be concluded"
+        result.detail = render(_NO_EVENTS)
+        result.detail_message = _NO_EVENTS
         return result
 
     result.populated_events = probe.populated_events
@@ -184,7 +210,8 @@ def evaluate_field(
 
     if probe.populated_events == 0:
         result.status = WafFieldStatus.UNPOPULATED
-        result.detail = "the property exists but no event in the window carried a value"
+        result.detail = render(_UNPOPULATED)
+        result.detail_message = _UNPOPULATED
         return result
 
     check = PLAUSIBLE[logical]
@@ -201,18 +228,29 @@ def evaluate_field(
 
     if used_by_collection and result.populated_ratio < min_ratio:
         result.status = WafFieldStatus.INSUFFICIENT_COVERAGE
-        result.detail = (
-            f"populated on {percent(result.populated_ratio, precision=1)} of events, below "
-            f"the required {percent(min_ratio)}"
+        result.detail_message = MessageRef(
+            "validation.field.insufficient_coverage",
+            {"populated": result.populated_ratio, "required": min_ratio},
         )
+        result.detail = render(result.detail_message)
         return result
     if result.plausible_ratio is None or result.plausible_ratio < min_ratio:
         result.status = WafFieldStatus.IMPLAUSIBLE
-        shown = percent(result.plausible_ratio, precision=1, missing="no values")
-        result.detail = (
-            f"{shown} of sampled events carry a plausible {logical.value.lower()} value, "
-            f"below the required {percent(min_ratio)}"
-        )
+        if result.plausible_ratio is None:
+            result.detail_message = MessageRef(
+                "validation.waf.field.implausible_no_values",
+                {"logical": logical.value.lower(), "required": min_ratio},
+            )
+        else:
+            result.detail_message = MessageRef(
+                "validation.waf.field.implausible_ratio",
+                {
+                    "plausible": result.plausible_ratio,
+                    "logical": logical.value.lower(),
+                    "required": min_ratio,
+                },
+            )
+        result.detail = render(result.detail_message)
         return result
     return result
 
@@ -240,31 +278,63 @@ def evaluate_profile(
     ]
 
     reasons: list[str] = []
+    reason_messages: list[MessageRef | None] = []
+
+    def add_reason(message: MessageRef) -> None:
+        reasons.append(render(message))
+        reason_messages.append(message)
+
     status = WafProfileValidationStatus.VALID
     if log_source_error is not None:
         status = WafProfileValidationStatus.INCONCLUSIVE
-        reasons.append(f"the log source lookup failed ({log_source_error})")
+        add_reason(
+            MessageRef("validation.profile.lookup_failed", {"error": log_source_error})
+        )
     elif not log_source_found:
         status = WafProfileValidationStatus.INVALID
-        reasons.append("the log source does not exist in QRadar")
+        add_reason(MessageRef("validation.profile.source_missing"))
     for f in fields:
         if not f.used_by_collection:
             continue
         if f.status in _INVALIDATING:
             status = WafProfileValidationStatus.INVALID
-            reasons.append(f"{f.logical.value}: {f.status.value} ({f.detail})")
+            add_reason(
+                MessageRef(
+                    "validation.profile.field_reason",
+                    {
+                        "field": f.logical.value,
+                        "status": f.status.value,
+                        "detail": f.detail_message or f.detail or "",
+                    },
+                )
+            )
         elif f.status is not WafFieldStatus.AVAILABLE and status is not (
             WafProfileValidationStatus.INVALID
         ):
             status = WafProfileValidationStatus.INCONCLUSIVE
-            reasons.append(f"{f.logical.value}: {f.status.value} ({f.detail})")
+            add_reason(
+                MessageRef(
+                    "validation.profile.field_reason",
+                    {
+                        "field": f.logical.value,
+                        "status": f.status.value,
+                        "detail": f.detail_message or f.detail or "",
+                    },
+                )
+            )
     if probe.total_error is not None and status is WafProfileValidationStatus.VALID:
         status = WafProfileValidationStatus.INCONCLUSIVE
-        reasons.append(f"total event volume was not measured ({probe.total_error})")
+        add_reason(
+            MessageRef(
+                "validation.profile.total_not_measured",
+                {"error": probe.total_error},
+            )
+        )
 
     return ProfileValidation(
         status=status,
         reasons=reasons,
+        reason_messages=reason_messages,
         log_source_found=log_source_found,
         total_events=probe.total_events,
         fields=fields,

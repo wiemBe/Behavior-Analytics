@@ -15,6 +15,12 @@
     "RESOLVED": "ÇÖZÜLDÜ",
     "SUPPRESSED": "BASTIRILDI"
   },
+  "profileValidationStatus": {
+    "UNVALIDATED": "Doğrulanmadı",
+    "VALID": "Geçerli",
+    "INVALID": "Geçersiz",
+    "INCONCLUSIVE": "Sonuçsuz"
+  },
   "offenseStatus": {
     "OPEN": "Açık",
     "HIDDEN": "Gizli",

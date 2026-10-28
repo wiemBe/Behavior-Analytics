@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     IpsLogicalField,
     IpsPreset,
@@ -31,7 +32,15 @@ ACTION_VALUE_MAX_COUNT = 20
 
 
 class IpsProfileError(ValueError):
-    """A profile operation was refused. Its message is safe for an operator."""
+    """A profile operation was refused. Its message is safe for an operator.
+
+    Built from a message code, `str(exc)` is its English sentence and `.ref` the code; built
+    from text, `.ref` is None (the code-less refusals keep their words).
+    """
+
+    def __init__(self, reason: MessageRef | str) -> None:
+        self.ref: MessageRef | None = reason if isinstance(reason, MessageRef) else None
+        super().__init__(render(reason) if isinstance(reason, MessageRef) else reason)
 
 
 @dataclass(frozen=True)
@@ -104,14 +113,11 @@ class IpsFieldReference:
     def __post_init__(self) -> None:
         if self.kind is IpsReferenceKind.NORMALIZED:
             if self.name not in _NORMALIZED_FIELDS:
-                raise IpsProfileError("normalized field is not in the IPS allowlist")
+                raise IpsProfileError(MessageRef("validation.ips.input.normalized_field"))
             return
         if self.kind is IpsReferenceKind.CUSTOM_PROPERTY:
             if not PROPERTY_NAME_PATTERN.fullmatch(self.name):
-                raise IpsProfileError(
-                    "invalid QRadar property name: letters, digits, underscore, space and "
-                    "hyphen only, at most 64 characters"
-                )
+                raise IpsProfileError(MessageRef("validation.ips.input.property_name"))
             return
         raise IpsProfileError("unknown IPS field reference kind")
 
@@ -141,7 +147,10 @@ def _action_values(values: Iterable[str], outcome: str) -> tuple[str, ...]:
     raw_values = list(values)
     if len(raw_values) > ACTION_VALUE_MAX_COUNT:
         raise IpsProfileError(
-            f"{outcome} action values exceed the {ACTION_VALUE_MAX_COUNT}-value limit"
+            MessageRef(
+                "validation.ips.input.action_count",
+                {"outcome": outcome, "max_count": ACTION_VALUE_MAX_COUNT},
+            )
         )
     out: list[str] = []
     seen: set[str] = set()
@@ -152,8 +161,10 @@ def _action_values(values: Iterable[str], outcome: str) -> tuple[str, ...]:
             and value.isprintable()
         ):
             raise IpsProfileError(
-                f"invalid {outcome} action value: use a printable token of at most "
-                f"{ACTION_VALUE_MAX_LENGTH} characters"
+                MessageRef(
+                    "validation.ips.input.action_value",
+                    {"outcome": outcome, "max_length": ACTION_VALUE_MAX_LENGTH},
+                )
             )
         key = _action_key(value)
         if key not in seen:
@@ -181,9 +192,9 @@ class IpsFieldMapping:
         object.__setattr__(self, "allowed_actions", allowed)
         overlap = {_action_key(v) for v in blocked} & {_action_key(v) for v in allowed}
         if overlap:
-            raise IpsProfileError("an action value is mapped to both BLOCKED and ALLOWED")
+            raise IpsProfileError(MessageRef("validation.ips.input.action_overlap"))
         if (blocked or allowed) and self.action is None:
-            raise IpsProfileError("an action map needs an ACTION field mapping")
+            raise IpsProfileError(MessageRef("validation.ips.input.action_needs_field"))
 
     @classmethod
     def from_profile(cls, profile: IpsSourceProfile) -> IpsFieldMapping:
@@ -276,17 +287,32 @@ IPS_PRESETS: dict[IpsPreset, IpsFieldMapping] = {
 }
 
 
-def profile_ineligibility(profile: IpsSourceProfile) -> str | None:
-    """Why a later IPS collection run must not use this profile."""
+def profile_ineligibility_message(profile: IpsSourceProfile) -> MessageRef | None:
+    """Code for why a later IPS collection run must not use this profile."""
     if not profile.enabled:
-        return "the profile is disabled"
+        return MessageRef("validation.profile.ineligible.disabled")
     if profile.validated_profile_version != profile.profile_version:
         if profile.validated_profile_version is None:
-            return f"profile version {profile.profile_version} has never been validated"
-        return (
-            f"profile version {profile.profile_version} has not been validated "
-            f"(last validated: {profile.validated_profile_version})"
+            return MessageRef(
+                "validation.profile.ineligible.version_never_validated",
+                {"profile_version": profile.profile_version},
+            )
+        return MessageRef(
+            "validation.profile.ineligible.version_not_validated",
+            {
+                "profile_version": profile.profile_version,
+                "validated_profile_version": profile.validated_profile_version,
+            },
         )
     if profile.validation_status != IpsProfileValidationStatus.VALID:
-        return f"profile validation is {profile.validation_status}"
+        return MessageRef(
+            "validation.profile.ineligible.status",
+            {"validation_status": str(profile.validation_status)},
+        )
     return None
+
+
+def profile_ineligibility(profile: IpsSourceProfile) -> str | None:
+    """Why a later IPS collection run must not use this profile."""
+    message = profile_ineligibility_message(profile)
+    return render(message) if message is not None else None

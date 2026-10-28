@@ -25,6 +25,10 @@ import {
   type WafValidationStatus,
 } from "@/lib/api";
 import {
+  renderBackendMessage,
+  type BackendSentence,
+} from "@/i18n/backendMessage";
+import {
   type DraftChanges,
   type FieldChange,
   type FieldStatusInfo,
@@ -237,6 +241,19 @@ export function ipsReasonText(
   return asWaf === reason ? capitalise(reason) : asWaf;
 }
 
+/** Keep IPS's existing special cases, then use a backend code only for its verbatim fallback. */
+export function ipsCodedReasonText(
+  reason: string,
+  schema: IpsMappingSchemaOut,
+  populatedRatio: (field: string) => number | null,
+  sentence: BackendSentence,
+  i18n: BehaviorI18n = ENGLISH_IPS,
+): string {
+  const existing = ipsReasonText(reason, schema, populatedRatio, i18n);
+  if (existing !== capitalise(reason)) return existing;
+  return capitalise(renderBackendMessage(sentence, i18n.locale, i18n.t));
+}
+
 /** One warning per field whose events carry a generic "Unknown …" signature name. */
 export function genericNameNotes(
   report: IpsValidationReportOut,
@@ -266,6 +283,7 @@ export function reportForTable(report: IpsValidationReportOut | null) {
   return {
     status: report.status as WafValidationStatus,
     reasons: report.reasons,
+    reason_codes: report.reason_codes,
     total_events: report.total_events,
     window_start: report.window_start,
     window_end: report.window_end,
@@ -284,6 +302,8 @@ export function reportForTable(report: IpsValidationReportOut | null) {
         values_truncated: f.values_truncated,
         discovered_values: f.discovered_values as DiscoveredValue[],
         detail: f.detail,
+        detail_code: f.detail_code,
+        detail_params: f.detail_params,
       }),
     ),
   };
@@ -341,6 +361,7 @@ export function historyForTable(entries: IpsProfileHistoryEntryOut[]): WafProfil
     mapping_after: flatten(e.mapping_after),
     outcome: e.outcome,
     reasons: e.reasons,
+    reason_codes: e.reason_codes,
   }));
 }
 

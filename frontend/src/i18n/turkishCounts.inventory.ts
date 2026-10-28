@@ -73,6 +73,10 @@ export const PLAIN: Readonly<Record<string, Readonly<Record<string, PlainReason>
   "backend.rule_health.incomplete.cause.failed_many": { count: "string" },
   "backend.rule_health.incomplete.cause.failed_many_class": { count: "string" },
   "backend.rule_health.incomplete.cause.skipped_many": { count: "string" },
+  // MSG-1b: the reader hands a count over already grouped (`formatCount`), so the plain form
+  // prints `1.204`; the value is a string, not a raw number.
+  "backend.search.aql.limit_exceeded": { limit: "string" },
+  "backend.search.enabled_cap": { limit: "string" },
   "behavior.advanced.cellsNote": { count: "string" },
   "behavior.advanced.clearedFailed.times": { count: "string" },
   "behavior.advanced.mostRecent": { count: "string" },

@@ -463,6 +463,27 @@
     "sample_english_params": {},
     "template": "username must be 1 to 255 characters without spaces or control characters"
   },
+  "classification.rule.built_in_delete": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a built-in rule cannot be deleted; disable it instead",
+    "sample_english_params": {},
+    "template": "a built-in rule cannot be deleted; disable it instead"
+  },
+  "classification.rule.built_in_edit": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a built-in rule can only be enabled or disabled",
+    "sample_english_params": {},
+    "template": "a built-in rule can only be enabled or disabled"
+  },
+  "classification.rule.duplicate": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a rule with this instance, kind and pattern already exists",
+    "sample_english_params": {},
+    "template": "a rule with this instance, kind and pattern already exists"
+  },
   "coverage.evidence.acceptable": {
     "params": {},
     "sample": {},
@@ -1503,5 +1524,948 @@
     "sample_english": "No rule-match window in the requested span has settled yet.",
     "sample_english_params": {},
     "template": "No rule-match window in the requested span has settled yet."
+  },
+  "ruledraft.column_must_be_empty": {
+    "params": {
+      "column": {
+        "kind": "text"
+      },
+      "kind": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "column": "waf_endpoint_id",
+      "kind": "LOG_SOURCE"
+    },
+    "sample_english": "waf_endpoint_id must stay empty for a LOG_SOURCE rule",
+    "sample_english_params": {
+      "column": "waf_endpoint_id",
+      "kind": "LOG_SOURCE"
+    },
+    "template": "{column} must stay empty for a {kind} rule"
+  },
+  "ruledraft.enabled_cap": {
+    "params": {
+      "enabled_count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "max_enabled": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "enabled_count": 100,
+      "max_enabled": 100
+    },
+    "sample_english": "at most 100 rules may be enabled at once (100 already are)",
+    "sample_english_params": {
+      "enabled_count": "100",
+      "max_enabled": "100"
+    },
+    "template": "at most {max_enabled} rules may be enabled at once ({enabled_count} already are)"
+  },
+  "ruledraft.ips_entity_missing": {
+    "params": {
+      "id": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "id": "00000000-0000-0000-0000-000000000001"
+    },
+    "sample_english": "ips entity 00000000-0000-0000-0000-000000000001 does not exist",
+    "sample_english_params": {
+      "id": "00000000-0000-0000-0000-000000000001"
+    },
+    "template": "ips entity {id} does not exist"
+  },
+  "ruledraft.log_source_missing": {
+    "params": {
+      "id": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "id": "00000000-0000-0000-0000-000000000001"
+    },
+    "sample_english": "log source 00000000-0000-0000-0000-000000000001 does not exist",
+    "sample_english_params": {
+      "id": "00000000-0000-0000-0000-000000000001"
+    },
+    "template": "log source {id} does not exist"
+  },
+  "ruledraft.metric_unknown": {
+    "params": {
+      "metric": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "metric": "'events'"
+    },
+    "sample_english": "metric 'events' is not in the custom-rule catalog",
+    "sample_english_params": {
+      "metric": "'events'"
+    },
+    "template": "metric {metric} is not in the custom-rule catalog"
+  },
+  "ruledraft.metric_wrong_kind": {
+    "params": {
+      "kind": {
+        "kind": "text"
+      },
+      "metric": {
+        "kind": "text"
+      },
+      "metric_kind": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "kind": "LOG_SOURCE",
+      "metric": "events",
+      "metric_kind": "WAF_ENDPOINT"
+    },
+    "sample_english": "metric events measures a WAF_ENDPOINT subject, not a LOG_SOURCE one",
+    "sample_english_params": {
+      "kind": "LOG_SOURCE",
+      "metric": "events",
+      "metric_kind": "WAF_ENDPOINT"
+    },
+    "template": "metric {metric} measures a {metric_kind} subject, not a {kind} one"
+  },
+  "ruledraft.null_field": {
+    "params": {
+      "field": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "field": "metric"
+    },
+    "sample_english": "metric must not be null",
+    "sample_english_params": {
+      "field": "metric"
+    },
+    "template": "{field} must not be null"
+  },
+  "ruledraft.operator_unknown": {
+    "params": {
+      "operator": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "operator": "'NE'"
+    },
+    "sample_english": "operator 'NE' is not one of GT, GE, LT, LE, EQ",
+    "sample_english_params": {
+      "operator": "'NE'"
+    },
+    "template": "operator {operator} is not one of GT, GE, LT, LE, EQ"
+  },
+  "ruledraft.pw_value_missing": {
+    "params": {
+      "id": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "id": "00000000-0000-0000-0000-000000000001"
+    },
+    "sample_english": "property-watch value 00000000-0000-0000-0000-000000000001 does not exist",
+    "sample_english_params": {
+      "id": "00000000-0000-0000-0000-000000000001"
+    },
+    "template": "property-watch value {id} does not exist"
+  },
+  "ruledraft.pw_value_not_pinned": {
+    "params": {
+      "id": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "id": "00000000-0000-0000-0000-000000000001"
+    },
+    "sample_english": "property-watch value 00000000-0000-0000-0000-000000000001 is not pinned; a rule can watch only a pinned value, so pin it on its property watch first",
+    "sample_english_params": {
+      "id": "00000000-0000-0000-0000-000000000001"
+    },
+    "template": "property-watch value {id} is not pinned; a rule can watch only a pinned value, so pin it on its property watch first"
+  },
+  "ruledraft.recovery_min": {
+    "params": {},
+    "sample": {},
+    "sample_english": "recovery_buckets must be at least 1",
+    "sample_english_params": {},
+    "template": "recovery_buckets must be at least 1"
+  },
+  "ruledraft.source_class_unknown": {
+    "params": {
+      "value": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "value": "'NOT_A_CLASS'"
+    },
+    "sample_english": "source_class 'NOT_A_CLASS' is not a known source class",
+    "sample_english_params": {
+      "value": "'NOT_A_CLASS'"
+    },
+    "template": "source_class {value} is not a known source class"
+  },
+  "ruledraft.subject_needs_column": {
+    "params": {
+      "column": {
+        "kind": "text"
+      },
+      "kind": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "column": "log_source_id",
+      "kind": "LOG_SOURCE"
+    },
+    "sample_english": "LOG_SOURCE rules need log_source_id set",
+    "sample_english_params": {
+      "column": "log_source_id",
+      "kind": "LOG_SOURCE"
+    },
+    "template": "{kind} rules need {column} set"
+  },
+  "ruledraft.sustain_min": {
+    "params": {},
+    "sample": {},
+    "sample_english": "sustain_buckets must be at least 1",
+    "sample_english_params": {},
+    "template": "sustain_buckets must be at least 1"
+  },
+  "ruledraft.threshold_negative": {
+    "params": {},
+    "sample": {},
+    "sample_english": "threshold_value must be at least 0",
+    "sample_english_params": {},
+    "template": "threshold_value must be at least 0"
+  },
+  "ruledraft.threshold_not_finite": {
+    "params": {},
+    "sample": {},
+    "sample_english": "threshold_value must be a finite number",
+    "sample_english_params": {},
+    "template": "threshold_value must be a finite number"
+  },
+  "ruledraft.threshold_share": {
+    "params": {
+      "metric": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "metric": "waf_block_ratio"
+    },
+    "sample_english": "a waf_block_ratio threshold is a share and must lie strictly between 0 and 1",
+    "sample_english_params": {
+      "metric": "waf_block_ratio"
+    },
+    "template": "a {metric} threshold is a share and must lie strictly between 0 and 1"
+  },
+  "ruledraft.waf_endpoint_missing": {
+    "params": {
+      "id": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "id": "00000000-0000-0000-0000-000000000001"
+    },
+    "sample_english": "waf endpoint 00000000-0000-0000-0000-000000000001 does not exist",
+    "sample_english_params": {
+      "id": "00000000-0000-0000-0000-000000000001"
+    },
+    "template": "waf endpoint {id} does not exist"
+  },
+  "search.aql.dataset_not_permitted": {
+    "params": {
+      "datasets": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "datasets": "USERS"
+    },
+    "sample_english": "dataset(s) not permitted: USERS",
+    "sample_english_params": {
+      "datasets": "USERS"
+    },
+    "template": "dataset(s) not permitted: {datasets}"
+  },
+  "search.aql.disallowed_keywords": {
+    "params": {
+      "keywords": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "keywords": "DROP, INSERT"
+    },
+    "sample_english": "disallowed keyword(s): DROP, INSERT",
+    "sample_english_params": {
+      "keywords": "DROP, INSERT"
+    },
+    "template": "disallowed keyword(s): {keywords}"
+  },
+  "search.aql.empty": {
+    "params": {},
+    "sample": {},
+    "sample_english": "query is empty",
+    "sample_english_params": {},
+    "template": "query is empty"
+  },
+  "search.aql.limit_exceeded": {
+    "params": {
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "max_rows": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "limit": 20000,
+      "max_rows": 10000
+    },
+    "sample_english": "LIMIT 20000 exceeds the maximum 10000 rows",
+    "sample_english_params": {
+      "limit": "20000",
+      "max_rows": "10000"
+    },
+    "template": "LIMIT {limit} exceeds the maximum {max_rows} rows"
+  },
+  "search.aql.multiple_statements": {
+    "params": {},
+    "sample": {},
+    "sample_english": "multiple statements are not allowed",
+    "sample_english_params": {},
+    "template": "multiple statements are not allowed"
+  },
+  "search.aql.no_dataset": {
+    "params": {},
+    "sample": {},
+    "sample_english": "query must select FROM events or flows",
+    "sample_english_params": {},
+    "template": "query must select FROM events or flows"
+  },
+  "search.aql.no_time_window": {
+    "params": {},
+    "sample": {},
+    "sample_english": "query must include a bounded time window (LAST N ..., or START/STOP)",
+    "sample_english_params": {},
+    "template": "query must include a bounded time window (LAST N ..., or START/STOP)"
+  },
+  "search.aql.not_select": {
+    "params": {},
+    "sample": {},
+    "sample_english": "query must be a single SELECT statement",
+    "sample_english_params": {},
+    "template": "query must be a single SELECT statement"
+  },
+  "search.aql.time_range_exceeded": {
+    "params": {
+      "max_hours": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "window_hours": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "max_hours": 24,
+      "window_hours": "48.0"
+    },
+    "sample_english": "time range 48.0h exceeds the maximum 24h",
+    "sample_english_params": {
+      "max_hours": "24",
+      "window_hours": "48.0"
+    },
+    "template": "time range {window_hours}h exceeds the maximum {max_hours}h"
+  },
+  "search.enabled_cap": {
+    "params": {
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "limit": 50
+    },
+    "sample_english": "the limit is 50 enabled searches",
+    "sample_english_params": {
+      "limit": "50"
+    },
+    "template": "the limit is {limit} enabled searches"
+  },
+  "search.threshold.unreachable": {
+    "params": {
+      "max_result_rows": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "operator": {
+        "kind": "text"
+      },
+      "threshold": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "max_result_rows": 10000,
+      "operator": "GT",
+      "threshold": "10001"
+    },
+    "sample_english": "threshold GT 10001 can never be reached: a run counts at most max_result_rows (10000) rows; raise max_result_rows above the threshold or lower the threshold",
+    "sample_english_params": {
+      "max_result_rows": "10000",
+      "operator": "GT",
+      "threshold": "10001"
+    },
+    "template": "threshold {operator} {threshold} can never be reached: a run counts at most max_result_rows ({max_result_rows}) rows; raise max_result_rows above the threshold or lower the threshold"
+  },
+  "validation.field.insufficient_coverage": {
+    "params": {
+      "populated": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "required": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "populated": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.318
+      },
+      "required": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      }
+    },
+    "sample_english": "populated on 31.8 % of events, below the required 90 %",
+    "sample_english_params": {
+      "populated": "31.8 %",
+      "required": "90 %"
+    },
+    "template": "populated on {populated} of events, below the required {required}"
+  },
+  "validation.field.no_events": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the source produced no events in the window; nothing can be concluded",
+    "sample_english_params": {},
+    "template": "the source produced no events in the window; nothing can be concluded"
+  },
+  "validation.field.population_not_measured": {
+    "params": {},
+    "sample": {},
+    "sample_english": "population was not measured",
+    "sample_english_params": {},
+    "template": "population was not measured"
+  },
+  "validation.field.total_not_measured": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the source's total event volume was not measured",
+    "sample_english_params": {},
+    "template": "the source's total event volume was not measured"
+  },
+  "validation.ips.field.not_mapped": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no QRadar field is mapped to this logical field",
+    "sample_english_params": {},
+    "template": "no QRadar field is mapped to this logical field"
+  },
+  "validation.ips.field.rejected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar rejected the mapped field as named",
+    "sample_english_params": {},
+    "template": "QRadar rejected the mapped field as named"
+  },
+  "validation.ips.field.unpopulated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the field exists but no event in the window carried a usable value",
+    "sample_english_params": {},
+    "template": "the field exists but no event in the window carried a usable value"
+  },
+  "validation.ips.input.action_count": {
+    "params": {
+      "max_count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "outcome": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "max_count": 20,
+      "outcome": "BLOCKED"
+    },
+    "sample_english": "BLOCKED action values exceed the 20-value limit",
+    "sample_english_params": {
+      "max_count": "20",
+      "outcome": "BLOCKED"
+    },
+    "template": "{outcome} action values exceed the {max_count}-value limit"
+  },
+  "validation.ips.input.action_needs_field": {
+    "params": {},
+    "sample": {},
+    "sample_english": "an action map needs an ACTION field mapping",
+    "sample_english_params": {},
+    "template": "an action map needs an ACTION field mapping"
+  },
+  "validation.ips.input.action_overlap": {
+    "params": {},
+    "sample": {},
+    "sample_english": "an action value is mapped to both BLOCKED and ALLOWED",
+    "sample_english_params": {},
+    "template": "an action value is mapped to both BLOCKED and ALLOWED"
+  },
+  "validation.ips.input.action_value": {
+    "params": {
+      "max_length": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "outcome": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "max_length": 64,
+      "outcome": "ALLOWED"
+    },
+    "sample_english": "invalid ALLOWED action value: use a printable token of at most 64 characters",
+    "sample_english_params": {
+      "max_length": "64",
+      "outcome": "ALLOWED"
+    },
+    "template": "invalid {outcome} action value: use a printable token of at most {max_length} characters"
+  },
+  "validation.ips.input.normalized_field": {
+    "params": {},
+    "sample": {},
+    "sample_english": "normalized field is not in the IPS allowlist",
+    "sample_english_params": {},
+    "template": "normalized field is not in the IPS allowlist"
+  },
+  "validation.ips.input.property_name": {
+    "params": {},
+    "sample": {},
+    "sample_english": "invalid QRadar property name: letters, digits, underscore, space and hyphen only, at most 64 characters",
+    "sample_english_params": {},
+    "template": "invalid QRadar property name: letters, digits, underscore, space and hyphen only, at most 64 characters"
+  },
+  "validation.ips.profile.truncated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bounded validation probe was truncated",
+    "sample_english_params": {},
+    "template": "the bounded validation probe was truncated"
+  },
+  "validation.profile.conflict.missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the profile does not exist; create it with expected_profile_version null",
+    "sample_english_params": {},
+    "template": "the profile does not exist; create it with expected_profile_version null"
+  },
+  "validation.profile.conflict.not_validated": {
+    "params": {
+      "profile_version": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "validation_status": {
+        "enum_group": "profileValidationStatus",
+        "kind": "enum"
+      }
+    },
+    "sample": {
+      "profile_version": 4,
+      "validation_status": "INVALID"
+    },
+    "sample_english": "profile version 4 has not validated (status INVALID); run validation first",
+    "sample_english_params": {
+      "profile_version": "4",
+      "validation_status": "INVALID"
+    },
+    "template": "profile version {profile_version} has not validated (status {validation_status}); run validation first"
+  },
+  "validation.profile.conflict.running": {
+    "params": {
+      "profile_version": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "since": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "profile_version": 4,
+      "since": "2026-10-28T10:00:00+00:00"
+    },
+    "sample_english": "validation of version 4 is already running since 2026-10-28T10:00:00+00:00",
+    "sample_english_params": {
+      "profile_version": "4",
+      "since": "2026-10-28T10:00:00+00:00"
+    },
+    "template": "validation of version {profile_version} is already running since {since}"
+  },
+  "validation.profile.conflict.version": {
+    "params": {
+      "current": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "current": 4
+    },
+    "sample_english": "profile version conflict; current version is 4",
+    "sample_english_params": {
+      "current": "4"
+    },
+    "template": "profile version conflict; current version is {current}"
+  },
+  "validation.profile.field_reason": {
+    "params": {
+      "detail": {
+        "kind": "ref",
+        "ref_codes": [
+          "validation.field.population_not_measured",
+          "validation.field.total_not_measured",
+          "validation.field.no_events",
+          "validation.field.insufficient_coverage",
+          "validation.waf.field.not_mapped",
+          "validation.waf.field.property_rejected",
+          "validation.waf.field.unpopulated",
+          "validation.waf.field.implausible_ratio",
+          "validation.waf.field.implausible_no_values",
+          "validation.ips.field.not_mapped",
+          "validation.ips.field.rejected",
+          "validation.ips.field.unpopulated"
+        ]
+      },
+      "field": {
+        "kind": "text"
+      },
+      "status": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "detail": {
+        "code": "validation.field.insufficient_coverage",
+        "params": {
+          "populated": {
+            "kind": "percent",
+            "precision": 1,
+            "ratio": 0.318
+          },
+          "required": {
+            "kind": "percent",
+            "precision": 0,
+            "ratio": 0.9
+          }
+        }
+      },
+      "field": "URL",
+      "status": "INSUFFICIENT_COVERAGE"
+    },
+    "sample_english": "URL: INSUFFICIENT_COVERAGE (populated on 31.8 % of events, below the required 90 %)",
+    "sample_english_params": {
+      "detail": "populated on 31.8 % of events, below the required 90 %",
+      "field": "URL",
+      "status": "INSUFFICIENT_COVERAGE"
+    },
+    "template": "{field}: {status} ({detail})"
+  },
+  "validation.profile.ineligible.disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the profile is disabled",
+    "sample_english_params": {},
+    "template": "the profile is disabled"
+  },
+  "validation.profile.ineligible.status": {
+    "params": {
+      "validation_status": {
+        "enum_group": "profileValidationStatus",
+        "kind": "enum"
+      }
+    },
+    "sample": {
+      "validation_status": "INVALID"
+    },
+    "sample_english": "profile validation is INVALID",
+    "sample_english_params": {
+      "validation_status": "INVALID"
+    },
+    "template": "profile validation is {validation_status}"
+  },
+  "validation.profile.ineligible.version_never_validated": {
+    "params": {
+      "profile_version": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "profile_version": 12000
+    },
+    "sample_english": "profile version 12000 has never been validated",
+    "sample_english_params": {
+      "profile_version": "12000"
+    },
+    "template": "profile version {profile_version} has never been validated"
+  },
+  "validation.profile.ineligible.version_not_validated": {
+    "params": {
+      "profile_version": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "validated_profile_version": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "profile_version": 12000,
+      "validated_profile_version": 9999
+    },
+    "sample_english": "profile version 12000 has not been validated (last validated: 9999)",
+    "sample_english_params": {
+      "profile_version": "12000",
+      "validated_profile_version": "9999"
+    },
+    "template": "profile version {profile_version} has not been validated (last validated: {validated_profile_version})"
+  },
+  "validation.profile.lookup_failed": {
+    "params": {
+      "error": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "error": "ProviderUnavailableError: timeout"
+    },
+    "sample_english": "the log source lookup failed (ProviderUnavailableError: timeout)",
+    "sample_english_params": {
+      "error": "ProviderUnavailableError: timeout"
+    },
+    "template": "the log source lookup failed ({error})"
+  },
+  "validation.profile.source_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the log source does not exist in QRadar",
+    "sample_english_params": {},
+    "template": "the log source does not exist in QRadar"
+  },
+  "validation.profile.total_not_measured": {
+    "params": {
+      "error": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "error": "ProviderUnavailableError: timeout"
+    },
+    "sample_english": "total event volume was not measured (ProviderUnavailableError: timeout)",
+    "sample_english_params": {
+      "error": "ProviderUnavailableError: timeout"
+    },
+    "template": "total event volume was not measured ({error})"
+  },
+  "validation.waf.field.implausible_no_values": {
+    "params": {
+      "logical": {
+        "kind": "text"
+      },
+      "required": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "logical": "method",
+      "required": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      }
+    },
+    "sample_english": "no values of sampled events carry a plausible method value, below the required 90 %",
+    "sample_english_params": {
+      "logical": "method",
+      "required": "90 %"
+    },
+    "template": "no values of sampled events carry a plausible {logical} value, below the required {required}"
+  },
+  "validation.waf.field.implausible_ratio": {
+    "params": {
+      "logical": {
+        "kind": "text"
+      },
+      "plausible": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "required": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "logical": "method",
+      "plausible": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.125
+      },
+      "required": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      }
+    },
+    "sample_english": "12.5 % of sampled events carry a plausible method value, below the required 90 %",
+    "sample_english_params": {
+      "logical": "method",
+      "plausible": "12.5 %",
+      "required": "90 %"
+    },
+    "template": "{plausible} of sampled events carry a plausible {logical} value, below the required {required}"
+  },
+  "validation.waf.field.not_mapped": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no QRadar property is mapped to this field",
+    "sample_english_params": {},
+    "template": "no QRadar property is mapped to this field"
+  },
+  "validation.waf.field.property_rejected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar rejected a query naming this property; it does not exist as named",
+    "sample_english_params": {},
+    "template": "QRadar rejected a query naming this property; it does not exist as named"
+  },
+  "validation.waf.field.unpopulated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the property exists but no event in the window carried a value",
+    "sample_english_params": {},
+    "template": "the property exists but no event in the window carried a value"
+  },
+  "validation.waf.ineligible.collection_disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)",
+    "sample_english_params": {},
+    "template": "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)"
+  },
+  "validation.waf.ineligible.monitoring_disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "monitoring is disabled for the log source",
+    "sample_english_params": {},
+    "template": "monitoring is disabled for the log source"
+  },
+  "validation.waf.ineligible.source_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the profile's log source no longer exists",
+    "sample_english_params": {},
+    "template": "the profile's log source no longer exists"
+  },
+  "validation.waf.input.action_needs_property": {
+    "params": {},
+    "sample": {},
+    "sample_english": "an action map needs an action property",
+    "sample_english_params": {},
+    "template": "an action map needs an action property"
+  },
+  "validation.waf.input.action_overlap": {
+    "params": {
+      "values": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "values": "['deny']"
+    },
+    "sample_english": "action values mapped to both BLOCKED and ALLOWED: ['deny']",
+    "sample_english_params": {
+      "values": "['deny']"
+    },
+    "template": "action values mapped to both BLOCKED and ALLOWED: {values}"
+  },
+  "validation.waf.input.action_value": {
+    "params": {
+      "max_length": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "outcome": {
+        "kind": "text"
+      },
+      "value": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "max_length": 64,
+      "outcome": "BLOCKED",
+      "value": "''"
+    },
+    "sample_english": "invalid BLOCKED action value '': a printable token of at most 64 characters",
+    "sample_english_params": {
+      "max_length": "64",
+      "outcome": "BLOCKED",
+      "value": "''"
+    },
+    "template": "invalid {outcome} action value {value}: a printable token of at most {max_length} characters"
+  },
+  "validation.waf.input.property_name": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "'bad;name'"
+    },
+    "sample_english": "invalid QRadar property name 'bad;name': letters, digits, underscore, space and hyphen only, at most 64 characters",
+    "sample_english_params": {
+      "name": "'bad;name'"
+    },
+    "template": "invalid QRadar property name {name}: letters, digits, underscore, space and hyphen only, at most 64 characters"
   }
 }

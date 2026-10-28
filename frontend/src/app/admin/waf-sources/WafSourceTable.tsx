@@ -11,6 +11,7 @@ import { UtcTime } from "@/components/ui/UtcTime";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { formatCount } from "@/lib/format";
 import { versionLabel } from "@/lib/behaviorI18n";
+import { useBackendMessage } from "@/i18n/backendMessage";
 
 import "@/components/ui/controls.css";
 
@@ -23,6 +24,7 @@ export function WafSourceTable({
 }) {
   const t = useTranslations("waf.admin.table");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const { locale } = i18n;
   const rows = sortByAttention(sources);
   return (
@@ -47,7 +49,11 @@ export function WafSourceTable({
           </thead>
           <tbody>
             {rows.map((s) => {
-              const state = { ...s, fields: s.validation_fields };
+              const state = {
+                ...s,
+                fields: s.validation_fields,
+                renderBackendMessage: backendMessage,
+              };
               const v = validationState(state, schema, i18n);
               const c = collectionState(state, i18n);
               return (

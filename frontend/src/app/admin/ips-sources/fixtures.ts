@@ -182,6 +182,8 @@ export function report(over: Partial<IpsValidationReportOut> = {}): IpsValidatio
         populated_events: null,
         populated_ratio: null,
         detail: "no QRadar field is mapped to this logical field",
+        detail_code: "validation.ips.field.not_mapped",
+        detail_params: {},
       }),
       fieldReport({
         field: "SEVERITY",
@@ -240,11 +242,14 @@ export function panProfile(over: Partial<IpsProfileOut> = {}): IpsProfileOut {
     collection_eligible: false,
     enabled: false,
     ineligible_reason: "the profile is disabled",
+    ineligible_reason_code: "validation.profile.ineligible.disabled",
+    ineligible_reason_params: {},
     validation: report({
       status: "INCONCLUSIVE",
       profile_version: 3,
       probe_truncated: true,
       reasons: ["the bounded validation probe was truncated"],
+      reason_codes: [{ code: "validation.ips.profile.truncated", params: {} }],
       fields: [
         ...report().fields.filter((f) => f.field !== "ACTION"),
         fieldReport({

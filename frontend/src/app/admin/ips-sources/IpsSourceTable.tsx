@@ -10,12 +10,14 @@ import { versionLabel } from "@/lib/behaviorI18n";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { collectionState, sortByAttention, validationState } from "@/lib/fieldMapping";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { useBackendMessage } from "@/i18n/backendMessage";
 
 import "@/components/ui/controls.css";
 
 export function IpsSourceTable({ sources }: { sources: IpsSourceStatus[] }) {
   const t = useTranslations("ips.table");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const rows = sortByAttention(sources);
   return (
     <>
@@ -40,7 +42,10 @@ export function IpsSourceTable({ sources }: { sources: IpsSourceStatus[] }) {
           <tbody>
             {rows.map((s) => {
               const v = validationState(s, null, i18n);
-              const c = collectionState(s, i18n);
+              const c = collectionState(
+                { ...s, renderBackendMessage: backendMessage },
+                i18n,
+              );
               return (
                 <tr key={s.profile_id}>
                   <td className="cell-name ips-source-cell">

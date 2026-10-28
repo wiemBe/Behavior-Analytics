@@ -440,6 +440,13 @@ export interface ProfileStateInput {
   validated_profile_version: number | null;
   collection_eligible: boolean;
   ineligible_reason: string | null;
+  ineligible_reason_code?: string | null;
+  ineligible_reason_params?: Record<string, unknown> | null;
+  renderBackendMessage?: (sentence: {
+    text: string;
+    code?: string | null;
+    params?: Record<string, unknown> | null;
+  }) => string;
   validation_pending?: boolean;
   /** Per-field outcomes, for the reason after "Invalid:". */
   fields?: { field: string; property_name: string | null; status: string }[];
@@ -543,7 +550,14 @@ export function collectionState(
   return {
     collecting: false,
     label: p.ineligible_reason
-      ? i18n.t(k("state.pausedWhy"), { reason: p.ineligible_reason })
+      ? i18n.t(k("state.pausedWhy"), {
+          reason:
+            p.renderBackendMessage?.({
+              text: p.ineligible_reason,
+              code: p.ineligible_reason_code,
+              params: p.ineligible_reason_params,
+            }) ?? p.ineligible_reason,
+        })
       : i18n.t(k("state.paused")),
   };
 }
@@ -598,7 +612,17 @@ export interface ConflictInfo {
   by: string | null;
   /** The server's own sentence; safe to show. */
   message: string | null;
+  /** The message code the sentence carries (`code` and `params` inside the detail), if any. */
+  code?: string | null;
+  params?: Record<string, unknown> | null;
 }
+
+/** Renders a server sentence in the reader's language (`useBackendMessage()`); English as sent. */
+export type SentenceRenderer = (sentence: {
+  text: string;
+  code?: string | null;
+  params?: Record<string, unknown> | null;
+}) => string;
 
 /**
  * What a 409 names. Every 409 carries a structured detail
@@ -615,12 +639,26 @@ export function conflictInfo(err: unknown): ConflictInfo {
     version: typeof o.current_version === "number" ? o.current_version : null,
     by: typeof o.updated_by === "string" ? o.updated_by : null,
     message: typeof o.message === "string" ? o.message : null,
+    // Present only when the server coded the sentence: an uncoded conflict keeps its old shape.
+    ...(typeof o.code === "string" ? { code: o.code } : {}),
+    ...(typeof o.code === "string" && typeof o.params === "object" && o.params !== null && !Array.isArray(o.params)
+      ? { params: o.params as Record<string, unknown> }
+      : {}),
   };
 }
 
-export function conflictMessage(info: ConflictInfo, i18n: BehaviorI18n = ENGLISH_FM): string {
+export function conflictMessage(
+  info: ConflictInfo,
+  i18n: BehaviorI18n = ENGLISH_FM,
+  render?: SentenceRenderer,
+): string {
   const keep = i18n.t(k("conflict.keep"));
-  if (info.message) return `${info.message} ${keep}`;
+  if (info.message) {
+    const words = render
+      ? render({ text: info.message, code: info.code, params: info.params })
+      : info.message;
+    return `${words} ${keep}`;
+  }
   const to =
     info.version == null
       ? i18n.t(k("conflict.newer"))
@@ -629,12 +667,23 @@ export function conflictMessage(info: ConflictInfo, i18n: BehaviorI18n = ENGLISH
   return i18n.t(k("conflict.changed"), { to, by, keep });
 }
 
-/** The server's message for an error: `detail.message`, else the plain detail. */
-export function serverMessage(err: unknown): string {
+/**
+ * The server's message for an error: `detail.message`, else the plain detail. With a renderer, a
+ * sentence the server gave a code is worded in the reader's language; without one, as sent.
+ */
+export function serverMessage(err: unknown, render?: SentenceRenderer): string {
   if (err instanceof ApiError) {
     const d = err.detail;
     if (d && typeof d === "object" && typeof (d as { message?: unknown }).message === "string") {
-      return (d as { message: string }).message;
+      const o = d as { message: string; code?: unknown; params?: unknown };
+      if (!render) return o.message;
+      return render({
+        text: o.message,
+        code: typeof o.code === "string" ? o.code : null,
+        params: typeof o.params === "object" && o.params !== null && !Array.isArray(o.params)
+          ? (o.params as Record<string, unknown>)
+          : null,
+      });
     }
     return err.message;
   }

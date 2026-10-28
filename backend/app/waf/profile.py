@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import Settings
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     WafBreakdown,
     WafFieldStatus,
@@ -104,7 +105,15 @@ WAF_MAPPING_FIELDS = (
 
 
 class WafProfileError(ValueError):
-    """A profile operation was refused. The message is safe to show an operator."""
+    """A profile operation was refused. The message is safe to show an operator.
+
+    Built from a message code, `str(exc)` is its English sentence and `.ref` the code; built
+    from text, `.ref` is None (the code-less refusals keep their words).
+    """
+
+    def __init__(self, reason: MessageRef | str) -> None:
+        self.ref: MessageRef | None = reason if isinstance(reason, MessageRef) else None
+        super().__init__(render(reason) if isinstance(reason, MessageRef) else reason)
 
 
 def validate_property_name(name: str) -> str:
@@ -116,8 +125,7 @@ def validate_property_name(name: str) -> str:
     """
     if not PROPERTY_NAME_PATTERN.match(name):
         raise WafProfileError(
-            f"invalid QRadar property name {name!r}: letters, digits, underscore, "
-            "space and hyphen only, at most 64 characters"
+            MessageRef("validation.waf.input.property_name", {"name": repr(name)})
         )
     return name
 
@@ -138,8 +146,10 @@ def _action_values(values: Iterable[str], outcome: str) -> tuple[str, ...]:
         value = raw.strip()
         if not (0 < len(value) <= _ACTION_VALUE_MAX and value.isprintable()):
             raise WafProfileError(
-                f"invalid {outcome} action value {raw!r}: a printable token of at most "
-                f"{_ACTION_VALUE_MAX} characters"
+                MessageRef(
+                    "validation.waf.input.action_value",
+                    {"outcome": outcome, "value": repr(raw), "max_length": _ACTION_VALUE_MAX},
+                )
             )
         if action_key(value) not in {action_key(v) for v in out}:
             out.append(value)
@@ -176,10 +186,10 @@ class WafFieldMapping:
         overlap = {action_key(v) for v in blocked} & {action_key(v) for v in allowed}
         if overlap:
             raise WafProfileError(
-                f"action values mapped to both BLOCKED and ALLOWED: {sorted(overlap)}"
+                MessageRef("validation.waf.input.action_overlap", {"values": str(sorted(overlap))})
             )
         if (blocked or allowed) and self.action is None:
-            raise WafProfileError("an action map needs an action property")
+            raise WafProfileError(MessageRef("validation.waf.input.action_needs_property"))
 
     @classmethod
     def from_profile(cls, profile: WafSourceProfile) -> WafFieldMapping:
@@ -238,32 +248,49 @@ class WafFieldMapping:
         return out
 
 
-def collection_ineligibility(
+def collection_ineligibility_message(
     profile: WafSourceProfile, log_source: LogSource | None, settings: Settings
-) -> str | None:
-    """Why this source must not be collected now, or None when it may be.
+) -> MessageRef | None:
+    """Code for why this source must not be collected now, or None when it may be.
 
     Every condition fails closed. In particular a profile whose mapping changed
     after its last validation does not run on the unvalidated mapping.
     """
     if not settings.waf_collection_enabled:
-        return "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)"
+        return MessageRef("validation.waf.ineligible.collection_disabled")
     if log_source is None:
-        return "the profile's log source no longer exists"
+        return MessageRef("validation.waf.ineligible.source_missing")
     if not profile.enabled:
-        return "the profile is disabled"
+        return MessageRef("validation.profile.ineligible.disabled")
     if not log_source.monitoring_enabled:
-        return "monitoring is disabled for the log source"
+        return MessageRef("validation.waf.ineligible.monitoring_disabled")
     if profile.validated_profile_version != profile.profile_version:
         if profile.validated_profile_version is None:
-            return f"profile version {profile.profile_version} has never been validated"
-        return (
-            f"profile version {profile.profile_version} has not been validated "
-            f"(last validated: {profile.validated_profile_version})"
+            return MessageRef(
+                "validation.profile.ineligible.version_never_validated",
+                {"profile_version": profile.profile_version},
+            )
+        return MessageRef(
+            "validation.profile.ineligible.version_not_validated",
+            {
+                "profile_version": profile.profile_version,
+                "validated_profile_version": profile.validated_profile_version,
+            },
         )
     if profile.validation_status != WafProfileValidationStatus.VALID:
-        return f"profile validation is {profile.validation_status}"
+        return MessageRef(
+            "validation.profile.ineligible.status",
+            {"validation_status": str(profile.validation_status)},
+        )
     return None
+
+
+def collection_ineligibility(
+    profile: WafSourceProfile, log_source: LogSource | None, settings: Settings
+) -> str | None:
+    """Why this source must not be collected now, or None when it may be."""
+    message = collection_ineligibility_message(profile, log_source, settings)
+    return render(message) if message is not None else None
 
 
 @dataclass(frozen=True)
