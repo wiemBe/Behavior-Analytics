@@ -79,15 +79,18 @@ function numberText(value: number, spec: BackendParamSpec, locale: FormatLocale)
     return value.toLocaleString(tag, {
       minimumFractionDigits: precision,
       maximumFractionDigits: precision,
-      useGrouping: false,
+      useGrouping: true,
     });
   }
-  // The backend's "general" style is Python's `:g`: six significant digits, no grouping.
+  // The style shapes the backend's English render only (`general` is Python's `:g`, `grouped`
+  // adds commas, `repr` keeps a trailing `.0`). This reader never renders English from params, so
+  // every number is grouped in the reader's locale (Turkish `1.204`, `1.260,0`); a declared
+  // precision is kept, otherwise six significant digits.
   return value.toLocaleString(tag, {
     ...(spec.precision === undefined
       ? { maximumSignificantDigits: 6 }
       : { maximumFractionDigits: spec.precision }),
-    useGrouping: spec.style === "grouped",
+    useGrouping: true,
   });
 }
 

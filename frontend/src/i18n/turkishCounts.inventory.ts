@@ -66,6 +66,20 @@ export const PLAIN: Readonly<Record<string, Readonly<Record<string, PlainReason>
   // The server's own constants, words and their sentence: the dashboard limit (20) and the URL cap (8).
   "backend.auth.directory.urls_max": { max: "bounded" },
   "backend.dashboard.owner_limit": { limit: "bounded" },
+  // MSG-4b: `backendMessage.ts` formats every count and number param in the reader's locale
+  // before `t` sees it (grouped counts, fixed decimals, durations), so each stays plain.
+  "backend.pw.detector.learning_day": { days: "string" },
+  "backend.pw.detector.not_active": { days: "string" },
+  "backend.pw.draft.history_days_range": { days: "string" },
+  "backend.pw.draft.pin_count": { max: "string", count: "string" },
+  "backend.pw.draft.pin_parts": { count: "string" },
+  "backend.pw.draft.property_count": { count: "string" },
+  "backend.pw.draft.series_max": { max: "string", count: "string" },
+  "backend.pw.preview.group_too_large": { max: "string" },
+  "backend.pw.reference.pin_length": { max: "string" },
+  "backend.pw.scope.group_stale": { limit: "string" },
+  "backend.pw.scope.too_large": { limit: "string" },
+  "backend.pw.status.reading_history": { total: "string" },
   "behavior.advanced.cellsNote": { count: "string" },
   "behavior.advanced.clearedFailed.times": { count: "string" },
   "behavior.advanced.mostRecent": { count: "string" },

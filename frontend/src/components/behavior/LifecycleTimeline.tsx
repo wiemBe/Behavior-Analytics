@@ -12,6 +12,7 @@
 import { useTranslations } from "next-intl";
 
 import { Disclosure } from "@/components/ui/Disclosure";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { useEnumLabels } from "@/i18n/enumLabels";
 import type { AnomalyTransition } from "@/lib/api";
 import { ARROW, versionLabel } from "@/lib/behaviorI18n";
@@ -33,6 +34,7 @@ export function LifecycleTimeline({
   const t = useTranslations("anomalies.lifecycle");
   const { locale } = useBehaviorI18n();
   const { label } = useEnumLabels();
+  const backendMessage = useBackendMessage();
   const wording = stateLabel ?? ((state: string) => label("anomalyState", state));
   if (transitions.length === 0) {
     return <div className="notice">{t("empty")}</div>;
@@ -62,7 +64,11 @@ export function LifecycleTimeline({
             </div>
 
             <p className="lifecycle-reason">
-              {tr.reason ?? <span className="muted">{t("noReason")}</span>}
+              {tr.reason ? (
+                backendMessage({ text: tr.reason, code: tr.reason_code, params: tr.reason_params })
+              ) : (
+                <span className="muted">{t("noReason")}</span>
+              )}
             </p>
 
             <Disclosure summary={t("detail")}>

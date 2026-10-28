@@ -21,6 +21,7 @@ from app.alerts.service import AlertInput, AlertResolution, AlertService
 from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.lifecycle import LifecycleInput, advance_counters, next_state
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     AnomalyState,
     EvidenceStatus,
@@ -61,7 +62,7 @@ from app.property_watch.facts import (
     reading_for,
     split_tuple_key,
 )
-from app.property_watch.history import verify_value_history
+from app.property_watch.history import PwHistoryFacts, verify_value_history
 from app.repositories.property_watch import PropertyWatchRepository
 from app.waf.inputs import HistoryFacts
 
@@ -154,9 +155,24 @@ type _AlertAction = _AlertOpenOrUpdate | _AlertResolve
 
 #: The alert actor and the reasons the engine resolves with (design §G.10.1).
 ALERT_ACTOR = "pw-engine"
-REASON_RECOVERED = "condition recovered"
-REASON_VERSION = "watch definition changed"
-REASON_RETIRED = "value retired; no longer evaluated"
+MESSAGE_RECOVERED = MessageRef("pw.transition.recovered")
+MESSAGE_VERSION = MessageRef("pw.transition.definition_changed")
+MESSAGE_RETIRED = MessageRef("pw.transition.value_retired")
+REASON_RECOVERED = render(MESSAGE_RECOVERED)
+REASON_VERSION = render(MESSAGE_VERSION)
+REASON_RETIRED = render(MESSAGE_RETIRED)
+
+_HISTORY_NEVER_COLLECTED = MessageRef("pw.history_check.first_bucket_never_collected")
+_HISTORY_OUTSIDE_WINDOW = MessageRef("pw.history_check.outside_window")
+
+_STATUS_OPEN = MessageRef("pw.status.open")
+_STATUS_RECOVERING = MessageRef("pw.status.recovering")
+_STATUS_EVALUATED = MessageRef("pw.status.evaluated")
+
+
+def _wire(message: MessageRef | None) -> dict[str, object] | None:
+    """The `{code, params}` an `_i18n` column stores, or None for a sentence with no code."""
+    return None if message is None else message.to_wire()
 
 
 @dataclass
@@ -476,7 +492,7 @@ class PwAnomalyEngine:
         for state in states.values():
             if state.value_version == versions.get(state.watch_id):
                 continue
-            if self._retire_state(state, incidents, writes, report, reason=REASON_VERSION):
+            if self._retire_state(state, incidents, writes, report, reason=MESSAGE_VERSION):
                 report.version_resolved += 1
 
     def _resolve_retired(
@@ -501,7 +517,7 @@ class PwAnomalyEngine:
         for state in states.values():
             if state.value_id not in retired:
                 continue
-            if self._retire_state(state, incidents, writes, report, reason=REASON_RETIRED):
+            if self._retire_state(state, incidents, writes, report, reason=MESSAGE_RETIRED):
                 report.retired_resolved += 1
 
     def _retire_state(
@@ -511,7 +527,7 @@ class PwAnomalyEngine:
         writes: _Writes,
         report: PwEvaluationReport,
         *,
-        reason: str,
+        reason: MessageRef,
         emit_alert: bool = True,
     ) -> bool:
         """Resolve one state's active incident and clear the state; report whether it resolved.
@@ -536,7 +552,8 @@ class PwAnomalyEngine:
                     previous,
                     AnomalyState.RESOLVED,
                     state.last_interval_start,
-                    reason,
+                    render(reason),
+                    message=reason,
                 )
             )
             report.resolved += 1
@@ -551,7 +568,7 @@ class PwAnomalyEngine:
                         state.watch_id,
                         str(incident.row["value_key"]),
                         state.detector.value,
-                        reason,
+                        render(reason),
                     )
                 )
         if (
@@ -567,7 +584,7 @@ class PwAnomalyEngine:
         state.open_anomaly_id = None
         return resolved_incident
 
-    async def resolve_watch_incidents(self, watch: PropertyWatch, *, reason: str) -> int:
+    async def resolve_watch_incidents(self, watch: PropertyWatch, *, reason: MessageRef) -> int:
         """Resolve every incident a watch still holds (the PATCH-disable path, §G.10.1).
 
         Loads the watch's detector states and their active incidents in two bulk statements
@@ -710,26 +727,21 @@ class PwAnomalyEngine:
                 # A collection status (stale scope, not applicable, ...) is not the detector's
                 # to overwrite; only the evaluation watermark moves.
                 status_value, reason = str(watch.last_status), watch.last_status_reason
-            elif any(state.state is AnomalyState.OPEN for state in current):
-                status_value, reason = (
-                    PwWatchStatus.OPEN.value,
-                    "one or more value incidents are open",
-                )
-            elif any(state.state is AnomalyState.RECOVERING for state in current):
-                status_value, reason = (
-                    PwWatchStatus.RECOVERING.value,
-                    "one or more value incidents are recovering",
-                )
+                reason_i18n = watch.last_status_reason_i18n
             else:
-                status_value, reason = (
-                    PwWatchStatus.OK.value,
-                    "the latest collected bucket was evaluated",
-                )
+                if any(state.state is AnomalyState.OPEN for state in current):
+                    status_value, message = PwWatchStatus.OPEN.value, _STATUS_OPEN
+                elif any(state.state is AnomalyState.RECOVERING for state in current):
+                    status_value, message = PwWatchStatus.RECOVERING.value, _STATUS_RECOVERING
+                else:
+                    status_value, message = PwWatchStatus.OK.value, _STATUS_EVALUATED
+                reason, reason_i18n = render(message), message.to_wire()
             writes.watches[watch_id] = {
                 "watch_id": watch_id,
                 "evaluated_through": at,
                 "last_status": status_value,
                 "last_status_reason": reason,
+                "last_status_reason_i18n": reason_i18n,
             }
 
     @staticmethod
@@ -845,8 +857,10 @@ class PwAnomalyEngine:
         appearance = buckets.get(first)
         if appearance is None:
             appearance = current
-            facts = HistoryFacts(
-                complete=False, reason="the first-appearance bucket was never collected"
+            facts = PwHistoryFacts(
+                complete=False,
+                reason=render(_HISTORY_NEVER_COLLECTED),
+                message=_HISTORY_NEVER_COLLECTED,
             )
         grace = timedelta(
             seconds=current.bucket_seconds * self.settings.pw_scope_change_grace_buckets
@@ -883,7 +897,11 @@ class PwAnomalyEngine:
         history_end = _aware(watch.history_end)
         return PwNoveltyFacts(
             first_seen_at=first,
-            history=HistoryFacts(complete=False, reason="outside the novelty window"),
+            history=PwHistoryFacts(
+                complete=False,
+                reason=render(_HISTORY_OUTSIDE_WINDOW),
+                message=_HISTORY_OUTSIDE_WINDOW,
+            ),
             history_start=first,
             history_end=first,
             history_buckets=0,
@@ -1283,10 +1301,12 @@ class PwAnomalyEngine:
             "policy_version": self.settings.anomaly_policy_version,
             "watch_version": value.watch_version,
             "explanation": evidence.reason,
+            "explanation_i18n": _wire(evidence.reason_message),
             "details": evidence.to_dict(),
             "evidence_status": EvidenceStatus.NOT_REQUESTED.value,
             "suppressed": False,
             "suppression_reason": None,
+            "suppression_reason_i18n": None,
             "observed_measurement": self._measurement(evidence).value,
         }
         return _Incident(row, dirty=True)
@@ -1311,6 +1331,7 @@ class PwAnomalyEngine:
                 deviation_score=evidence.deviation_score,
                 confidence=evidence.confidence,
                 explanation=evidence.reason,
+                explanation_i18n=_wire(evidence.reason_message),
                 details=evidence.to_dict(),
                 observed_measurement=self._measurement(evidence).value,
             )
@@ -1364,6 +1385,8 @@ class PwAnomalyEngine:
         bucket_start: datetime | None,
         reason: str,
         evidence: AnomalyEvidence[PwAnomalyType] | None = None,
+        *,
+        message: MessageRef | None = None,
     ) -> dict[str, object]:
         return {
             "id": uuid.uuid4(),
@@ -1373,6 +1396,7 @@ class PwAnomalyEngine:
             "occurred_at": self._clock(),
             "bucket_start": bucket_start,
             "reason": reason,
+            "reason_i18n": _wire(message),
             "actor": "pw-engine",
             "observed_value": evidence.observed_value if evidence else None,
             "expected_value": evidence.expected_value if evidence else None,

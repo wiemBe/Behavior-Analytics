@@ -34,6 +34,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import PwScopeKind, PwWatchStatus
 
 
@@ -63,7 +64,8 @@ class ResolvedScope:
     """What a watch's scope resolved to this tick.
 
     `status` is None when it resolved. Otherwise it is the `PwWatchStatus` the watch takes,
-    `reason` says why in words that name no value, and nothing is searched.
+    `reason` says why in words that name no value (`message` is the registry reference those
+    words were rendered from), and nothing is searched.
     `chunks` are the id lists of the searches: one of one id for a source or a type, and for
     a group consecutive runs of at most `max_sources` sorted ids.
     """
@@ -71,6 +73,7 @@ class ResolvedScope:
     scope_kind: PwScopeKind
     status: PwWatchStatus | None = None
     reason: str | None = None
+    message: MessageRef | None = None
     chunks: tuple[tuple[int, ...], ...] = ()
     member_count: int | None = None
     fingerprint: str | None = None
@@ -123,10 +126,20 @@ def chunk_ids(ids: Sequence[int], size: int) -> tuple[tuple[int, ...], ...]:
     return tuple(tuple(ids[i : i + size]) for i in range(0, len(ids), size))
 
 
+def _scope_message(name: str, **params: object) -> MessageRef:
+    return MessageRef(f"pw.scope.{name}", params)
+
+
 def _unresolved(
-    kind: PwScopeKind, status: PwWatchStatus, reason: str, **extra: object
+    kind: PwScopeKind, status: PwWatchStatus, message: MessageRef, **extra: object
 ) -> ResolvedScope:
-    return ResolvedScope(kind, status=status, reason=reason, **extra)  # type: ignore[arg-type]
+    return ResolvedScope(
+        kind,
+        status=status,
+        reason=render(message),
+        message=message,
+        **extra,  # type: ignore[arg-type]
+    )
 
 
 def resolve_scope(
@@ -149,7 +162,7 @@ def resolve_scope(
         source = next((s for s in sources if s.id == log_source_id), None)
         if source is None:
             return _unresolved(
-                scope_kind, PwWatchStatus.SCOPE_EMPTY, "the log source is not in the inventory"
+                scope_kind, PwWatchStatus.SCOPE_EMPTY, _scope_message("source_missing")
             )
         return ResolvedScope(
             scope_kind,
@@ -161,25 +174,25 @@ def resolve_scope(
     if scope_kind is PwScopeKind.LOG_SOURCE_TYPE:
         if type_id is None:
             return _unresolved(
-                scope_kind, PwWatchStatus.SCOPE_EMPTY, "the watch names no log source type"
+                scope_kind, PwWatchStatus.SCOPE_EMPTY, _scope_message("names_no_type")
             )
         typed_members = sum(1 for s in sources if s.type_id == type_id)
         if typed_members == 0:
             return _unresolved(
                 scope_kind,
                 PwWatchStatus.SCOPE_EMPTY,
-                "no synced log source has this type",
+                _scope_message("type_empty"),
                 member_count=0,
             )
         return ResolvedScope(scope_kind, chunks=((type_id,),), member_count=typed_members)
     if group_id is None:
         return _unresolved(
-            scope_kind, PwWatchStatus.SCOPE_EMPTY, "the watch names no log source group"
+            scope_kind, PwWatchStatus.SCOPE_EMPTY, _scope_message("names_no_group")
         )
     own = groups.get(group_id)
     if own is None:
         return _unresolved(
-            scope_kind, PwWatchStatus.SCOPE_EMPTY, "the log source group is not in the inventory"
+            scope_kind, PwWatchStatus.SCOPE_EMPTY, _scope_message("group_missing")
         )
     walked = group_and_descendants(group_id, groups)
     wanted = set(walked)
@@ -202,8 +215,9 @@ def resolve_scope(
         return _unresolved(
             scope_kind,
             PwWatchStatus.SCOPE_STALE,
-            "the group inventory was last synced at "
-            f"{oldest.isoformat()}, older than {stale_after}",
+            _scope_message(
+                "group_stale", synced=oldest, limit=stale_after.total_seconds()
+            ),
             member_count=len(member_ids),
             groups_walked=walked_ids,
             members=member_rows,
@@ -212,7 +226,7 @@ def resolve_scope(
         return _unresolved(
             scope_kind,
             PwWatchStatus.SCOPE_EMPTY,
-            "the group and its descendants hold no synced log source",
+            _scope_message("group_empty"),
             member_count=0,
             groups_walked=walked_ids,
             members=member_rows,
@@ -222,7 +236,12 @@ def resolve_scope(
         return _unresolved(
             scope_kind,
             PwWatchStatus.SCOPE_TOO_LARGE,
-            f"{len(member_ids)} sources need {len(chunks)} searches; the limit is {max_chunks}",
+            _scope_message(
+                "too_large",
+                sources=len(member_ids),
+                searches=len(chunks),
+                limit=max_chunks,
+            ),
             member_count=len(member_ids),
             groups_walked=walked_ids,
             members=member_rows,

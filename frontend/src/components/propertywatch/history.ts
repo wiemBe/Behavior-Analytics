@@ -1,6 +1,7 @@
 import type { PwWatchHistory } from "@/lib/api";
 import { utcTimeText } from "@/components/ui/UtcTime";
 
+import { pwSentence } from "./pwReason";
 import { ENGLISH_PW, type PwI18n } from "./pwText";
 
 const days = (value: number | null, i18n: PwI18n) =>
@@ -65,7 +66,13 @@ export function historyStateText(history: PwWatchHistory, i18n: PwI18n = ENGLISH
       }
       return i18n.t("propertyWatch.history.state.PARTIAL", {
         progress,
-        reason: history.reason ?? i18n.t("propertyWatch.history.state.PARTIAL_FALLBACK"),
+        reason: history.reason
+          ? pwSentence(
+              history.reason,
+              { code: history.reason_code, params: history.reason_params },
+              i18n,
+            )
+          : i18n.t("propertyWatch.history.state.PARTIAL_FALLBACK"),
       });
     case "UNAVAILABLE":
       return i18n.t("propertyWatch.history.state.UNAVAILABLE", { requested });

@@ -240,10 +240,21 @@ def _unified_item(row: dict) -> AnomalyListItem:
         k: v
         for k, v in row.items()
         if not k.startswith(("endpoint_", "entity_", "pw_"))
-        and k not in ("waf_endpoint_id", "ips_entity_id")
+        and k not in ("waf_endpoint_id", "ips_entity_id", "explanation_i18n")
     }
+    stored = row.get("explanation_i18n")
+    explanation_code, explanation_params = (
+        stored_message_parts(stored.get("code"), stored.get("params"))
+        if isinstance(stored, dict)
+        else (None, None)
+    )
     return AnomalyListItem(
-        **fields, waf_endpoint=waf_endpoint, ips_entity=ips_entity, pw_value=pw_value
+        **fields,
+        explanation_code=explanation_code,
+        explanation_params=explanation_params,
+        waf_endpoint=waf_endpoint,
+        ips_entity=ips_entity,
+        pw_value=pw_value,
     )
 
 
@@ -544,6 +555,8 @@ def _pw_detail(
         suppressed=anomaly.suppressed,
         observed_measurement=str(anomaly.observed_measurement),
         explanation=anomaly.explanation,
+        explanation_code=anomaly.explanation_code,
+        explanation_params=anomaly.explanation_params,
         baseline_version=anomaly.baseline_version,
         policy_version=anomaly.policy_version,
         transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],

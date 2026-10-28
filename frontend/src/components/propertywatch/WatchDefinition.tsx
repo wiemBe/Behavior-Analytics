@@ -16,8 +16,8 @@ import {
   scopeKindLabel,
   scopeText,
   statusLabel,
-  statusReason,
 } from "./pwFormat";
+import { codedStatusReason } from "./pwReason";
 import { HistoryGapLine } from "./WatchHonesty";
 import { ENGLISH_PW, type PwI18n } from "./pwText";
 
@@ -143,7 +143,7 @@ function Membership({ scope, i18n }: { scope: WatchScope | null; i18n: PwI18n })
   if (scope === null) return <div className="notice" role="alert">{t("propertyWatch.definition.membershipFailed")}</div>;
   return (
     <div className="stack-6">
-      {!scope.resolved && scope.state && <p className="banner warn"><span><strong>{statusLabel(scope.state, i18n).toLocaleUpperCase(i18n.locale)}.</strong>{" "}{statusReason(scope.state, scope.reason, i18n)} {t("propertyWatch.definition.membershipWarning")}</span></p>}
+      {!scope.resolved && scope.state && <p className="banner warn"><span><strong>{statusLabel(scope.state, i18n).toLocaleUpperCase(i18n.locale)}.</strong>{" "}{codedStatusReason(scope.state, scope.reason, i18n, { code: scope.reason_code, params: scope.reason_params })} {t("propertyWatch.definition.membershipWarning")}</span></p>}
       <dl className="dimension-meta pw-dl">
         <div><dt>{t("propertyWatch.definition.members")}</dt><dd className="num">{scope.member_count === null ? <span className="muted">{t("propertyWatch.definition.notStated")}</span> : <>{formatCount(scope.member_count, i18n.locale)}<span className="muted"> {t(scope.member_count === 1 ? "propertyWatch.definition.sourceOne" : "propertyWatch.definition.sourceMany")}</span></>}</dd></div>
         <div><dt>{t("propertyWatch.definition.inventorySynced")}</dt><dd className="num">{scope.inventory_synced_at ? <><UtcTime value={scope.inventory_synced_at} />{scope.inventory_age_seconds !== null && <span className="muted">{t("propertyWatch.definition.ageAgo", { age: formatDuration(scope.inventory_age_seconds, i18n) })}</span>}</> : <span className="muted">{t("propertyWatch.common.notRecorded")}</span>}</dd></div>

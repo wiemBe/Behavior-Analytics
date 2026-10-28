@@ -2,12 +2,29 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import PwBucketMeasurement, PwBucketOrigin
 from app.property_watch.facts import PwBucketFact
 from app.waf.inputs import HistoryFacts
+
+
+@dataclass(frozen=True)
+class PwHistoryFacts(HistoryFacts):
+    """`HistoryFacts` whose reason is also a registry reference (the English is its render)."""
+
+    message: MessageRef | None = None
+
+
+def _incomplete(message: MessageRef) -> PwHistoryFacts:
+    return PwHistoryFacts(complete=False, reason=render(message), message=message)
+
+
+def _check(name: str, **params: object) -> MessageRef:
+    return MessageRef(f"pw.history_check.{name}", params)
 
 
 def verify_value_history(
@@ -24,10 +41,7 @@ def verify_value_history(
         raise ValueError("coverage must be between zero and one")
     window_seconds = int((history_end - history_start).total_seconds())
     if bucket_seconds <= 0 or window_seconds <= 0 or window_seconds % bucket_seconds:
-        return HistoryFacts(
-            complete=False,
-            reason="the history window is not divisible by the collection bucket width",
-        )
+        return _incomplete(_check("not_divisible"))
     expected_count = window_seconds // bucket_seconds
     expected_starts = {
         history_start + timedelta(seconds=bucket_seconds * index)
@@ -36,63 +50,50 @@ def verify_value_history(
     starts = {bucket.bucket_start for bucket in buckets}
     missing = sorted(expected_starts - starts)
     if missing:
-        return HistoryFacts(
-            complete=False,
-            reason=(
-                f"history bucket {missing[0].isoformat()} was never collected "
-                f"({len(missing)} of {expected_count} missing)"
-            ),
+        return _incomplete(
+            _check(
+                "bucket_never_collected",
+                bucket=missing[0],
+                missing=len(missing),
+                expected=expected_count,
+            )
         )
     if len(buckets) != expected_count:
-        return HistoryFacts(
-            complete=False,
-            reason=(
-                f"the history contains {len(buckets)} bucket records for "
-                f"{expected_count} expected buckets"
-            ),
-        )
+        return _incomplete(_check("record_count", records=len(buckets), expected=expected_count))
 
     ordered = sorted(buckets, key=lambda bucket: bucket.bucket_start)
-    checks = (
-        (
-            lambda bucket: bucket.bucket_seconds != bucket_seconds,
-            "used a different collection bucket width",
-        ),
+    checks: tuple[tuple[Callable[[PwBucketFact], bool], str, dict[str, object]], ...] = (
+        (lambda bucket: bucket.bucket_seconds != bucket_seconds, "bucket_width", {}),
         (
             lambda bucket: bucket.values_measurement is PwBucketMeasurement.NOT_COLLECTED,
-            "was NOT_COLLECTED",
+            "bucket_not_collected",
+            {},
         ),
         (
             lambda bucket: bucket.values_measurement is PwBucketMeasurement.LOWER_BOUND,
-            "had truncated value discovery",
+            "discovery_truncated",
+            {},
         ),
         (
             lambda bucket: bucket.admission_truncated or bucket.rejected_over_quota > 0,
-            "had truncated value admission",
+            "admission_truncated",
+            {},
         ),
         (
             lambda bucket: bucket.watch_version != watch_version,
-            f"used another watch version, not first-appearance version {watch_version}",
+            "bucket_version",
+            {"version": watch_version},
         ),
     )
-    for failing, wording in checks:
+    for failing, name, extra in checks:
         for bucket in ordered:
             if failing(bucket):
-                return HistoryFacts(
-                    complete=False,
-                    reason=f"history bucket {bucket.bucket_start.isoformat()} {wording}",
-                )
+                return _incomplete(_check(name, bucket=bucket.bucket_start, **extra))
     for bucket in ordered:
         if (
             bucket.origin is PwBucketOrigin.HISTORY
             and bool(bucket.total_events)
             and not bucket.coverage.reaches(min_coverage)
         ):
-            return HistoryFacts(
-                complete=False,
-                reason=(
-                    f"history bucket {bucket.bucket_start.isoformat()} "
-                    "had parsing coverage below the floor"
-                ),
-            )
+            return _incomplete(_check("bucket_coverage", bucket=bucket.bucket_start))
     return HistoryFacts(complete=True)

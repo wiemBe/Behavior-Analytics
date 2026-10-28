@@ -39,6 +39,7 @@ import { latencyCadence } from "@/components/cadence/CadenceLatency";
 import { formatCount, formatShare } from "@/lib/format";
 
 import { pinAvailability } from "./pwFormat";
+import { pwSentence } from "./pwReason";
 import { historyHeaderText } from "./history";
 import { ENGLISH_PW, type PwI18n } from "./pwText";
 
@@ -86,7 +87,13 @@ function PreviewResult({
             measured: formatCount(preview.buckets_measured, i18n.locale),
             lower: formatCount(preview.buckets_lower_bound, i18n.locale),
             unmeasured: formatCount(preview.buckets_unmeasured, i18n.locale),
-            reason: preview.reason ? ` ${preview.reason}` : "",
+            reason: preview.reason
+              ? ` ${pwSentence(
+                  preview.reason,
+                  { code: preview.reason_code, params: preview.reason_params },
+                  i18n,
+                )}`
+              : "",
           })}
         </span>
       </div>

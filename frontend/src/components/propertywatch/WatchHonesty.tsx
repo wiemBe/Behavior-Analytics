@@ -9,7 +9,8 @@ import { formatCount } from "@/lib/format";
 import type { PropertyWatch, PropertyWatchCatalog, PwBucket, PwWatchHistory } from "@/lib/api";
 
 import { historyProgress, historyStateText } from "./history";
-import { statusLabel, statusReason } from "./pwFormat";
+import { statusLabel } from "./pwFormat";
+import { codedStatusReason, pwSentence } from "./pwReason";
 import { ENGLISH_PW, type PwI18n } from "./pwText";
 
 export interface HonestyNote {
@@ -25,7 +26,13 @@ export function HistoryGapLine({
   gap: NonNullable<PwWatchHistory["gaps"]>[number];
   i18n?: PwI18n;
 }) {
-  const reason = gap.reason.trim().replace(/[.:;]+$/, "");
+  const reason = pwSentence(
+    gap.reason,
+    { code: gap.reason_code, params: gap.reason_params },
+    i18n,
+  )
+    .trim()
+    .replace(/[.:;]+$/, "");
   return (
     <>
       {i18n.t("propertyWatch.honesty.historyGap", {
@@ -48,7 +55,10 @@ const FAULT_STATUSES = new Set([
 ]);
 
 export function honestyNotes(input: {
-  watch: Pick<PropertyWatch, "status" | "status_reason" | "history">;
+  watch: Pick<
+    PropertyWatch,
+    "status" | "status_reason" | "status_reason_code" | "status_reason_params" | "history"
+  >;
   catalog: Pick<PropertyWatchCatalog, "collection_enabled"> | null;
   buckets: PwBucket[] | null;
   hours: number;
@@ -105,13 +115,19 @@ export function honestyNotes(input: {
     notes.push({
       label: t("propertyWatch.honesty.label.neverRun"),
       tone: "",
-      text: statusReason(null, watch.status_reason, i18n),
+      text: codedStatusReason(null, watch.status_reason, i18n, {
+        code: watch.status_reason_code,
+        params: watch.status_reason_params,
+      }),
     });
   } else if (FAULT_STATUSES.has(watch.status)) {
     notes.push({
       label: statusLabel(watch.status, i18n).toLocaleUpperCase(i18n.locale),
       tone: "warn",
-      text: statusReason(watch.status, watch.status_reason, i18n),
+      text: codedStatusReason(watch.status, watch.status_reason, i18n, {
+        code: watch.status_reason_code,
+        params: watch.status_reason_params,
+      }),
     });
   }
   if (buckets === null) {

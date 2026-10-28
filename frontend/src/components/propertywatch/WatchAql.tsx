@@ -10,6 +10,9 @@ import { CodePanel } from "@/components/ui/CodePanel";
 import { useTranslations } from "next-intl";
 import type { PwAqlQuery, WatchAql } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
+
+import { pwSentence } from "./pwReason";
 
 
 /** The outcome of the AQL read: the text, or the HTTP status that refused it (0: no answer). */
@@ -35,6 +38,7 @@ function Queries({ prefix, queries }: { prefix: string; queries: PwAqlQuery[] })
 export function WatchAqlSection({ read }: { read: AqlRead | null }) {
   const t = useTranslations("propertyWatch.aql");
   const common = useTranslations("propertyWatch.common");
+  const i18n = useBehaviorI18n();
   if (read === null || read.kind === "error") {
     const forbidden = read !== null && read.status === 403;
     return (
@@ -67,7 +71,13 @@ export function WatchAqlSection({ read }: { read: AqlRead | null }) {
             <p>
               <strong>{t("currentUnavailableTitle")}</strong>
             </p>
-            <p>{aql.current_unavailable}</p>
+            <p>
+              {pwSentence(
+                aql.current_unavailable,
+                { code: aql.current_unavailable_code, params: aql.current_unavailable_params },
+                i18n,
+              )}
+            </p>
           </div>
         ) : aql.current.length === 0 ? (
           <p className="notice" role="status">
