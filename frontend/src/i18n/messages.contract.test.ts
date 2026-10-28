@@ -77,6 +77,42 @@ const IDENTICAL_ALLOWLIST = new Set([
   "propertyWatch.honesty.period",
   // I18N-5: punctuation around a placeholder, the same in both languages.
   "customRules.latency.tail",
+  // I18N-10: "Normal" is the same word in Turkish; "Robust z" and "QRadar id" are technical terms
+  // (the robust z-score, a QRadar object label) the glossary keeps in English.
+  "ips.stateWord.NORMAL",
+  "ips.detection.robustZ",
+  "ips.editor.qradarId",
+  "ips.table.qradarId",
+  "ips.picker.qradarId",
+  // I18N-9: the glossary keeps these product and technical terms English (WAF, endpoint, virtual
+  // host, Normalizer, robust z); "QRadar id" matches QRadar's own screens; "WAF" alone is the
+  // product name; "{label} (%)" is punctuation and a placeholder only.
+  "waf.admin.picker.qradarId",
+  "waf.admin.table.qradarId",
+  "waf.chart.axisRatio",
+  "waf.detection.robustZ",
+  "waf.editor.qradarId",
+  "waf.endpoints.endpoint",
+  "waf.endpoints.normalizer",
+  "waf.incident.virtualHost",
+  "waf.sourcesWidget.linkWaf",
+  "waf.state.NORMAL",
+  "waf.traffic.linkWaf",
+  // I18N-7: punctuation around a placeholder, and technical terms the glossary keeps in English.
+  "cadence.latency.tail",
+  "searches.list.mitre",
+  "searches.editor.aql",
+  "history.page.consoleLabel",
+  "history.family.WAF",
+  "history.family.IPS",
+  "history.table.utc",
+  "history.scope.logSource",
+  // I18N-8: protocol and unit names the product keeps as QRadar and the directory show them
+  // (StartTLS, TLS, Bind, the millisecond unit); the Turkish auth messages already say "bind".
+  "directory.form.startTls",
+  "directory.test.bind",
+  "directory.test.tls",
+  "directory.test.ms",
 ]);
 
 describe("message catalog contract", () => {

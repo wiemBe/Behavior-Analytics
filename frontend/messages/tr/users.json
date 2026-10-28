@@ -1,0 +1,100 @@
+{
+  "meta": {
+    "title": "Kullanıcılar"
+  },
+  "boundary": {
+    "title": "Kullanıcılar",
+    "errorWhat": "Kullanıcılar",
+    "loadingWhat": "kullanıcılar"
+  },
+  "page": {
+    "title": "Kullanıcılar",
+    "description": "Oturum açabilen hesaplar ve yöneticinin atadığı roller. Son oturum açma saati UTC.",
+    "forbidden": "Rolünüz kullanıcıları yönetemiyor (izin: admin:users).",
+    "loadFailed": "Kullanıcılar yüklenemedi.",
+    "tryAgain": "Tekrar dene"
+  },
+  "theAccount": "hesap",
+  "once": {
+    "initial": "{name} için ilk parola yalnızca bir kez gösterilir. Hesap, bir sonraki oturum açmada bunu değiştirmek zorundadır.",
+    "reset": "{name} için yeni parola yalnızca bir kez gösterilir. Hesap, bir sonraki oturum açmada bunu değiştirmek zorundadır.",
+    "dismiss": "Parolayı gizle"
+  },
+  "outcome": {
+    "createdLocal": "Yerel kullanıcı {name} oluşturuldu. Hesap, bir sonraki oturum açmada parolayı değiştirmek zorundadır.",
+    "createdLdap": "LDAP kullanıcısı {name} önceden oluşturuldu. Hesabın burada parolası yok.",
+    "createFailed": "Hesap oluşturulmadı.",
+    "rolesNow": "{name} için roller artık: {roles}.",
+    "rolesCleared": "{name} için roller temizlendi.",
+    "rolesFailed": "Roller değiştirilmedi.",
+    "disabled": "{name} devre dışı bırakıldı.",
+    "enabled": "{name} etkinleştirildi.",
+    "notChanged": "Hesap değiştirilmedi.",
+    "unlocked": "{name} kilidi açıldı.",
+    "notUnlocked": "Hesabın kilidi açılmadı.",
+    "mismatch": "Yeni parola ile onayı eşleşmiyor.",
+    "notReset": "Parola sıfırlanmadı.",
+    "resetDone": "{name} için parola sıfırlandı. Hesap, bir sonraki oturum açmada bunu değiştirmek zorundadır."
+  },
+  "empty": {
+    "title": "Kayıtlı hesap yok.",
+    "text": "Aşağıdan yerel bir hesap oluşturun ya da ilk oturum açmadan önce rolün hazır olması için bir dizin hesabını önceden oluşturun."
+  },
+  "table": {
+    "label": "Hesaplar",
+    "caption": "Kaynak, görünen ad, roller, durum ve son oturum açmayla hesaplar. Saatler UTC.",
+    "username": "Kullanıcı adı",
+    "source": "Kaynak",
+    "displayName": "Görünen ad",
+    "roles": "Roller",
+    "status": "Durum",
+    "lastLogin": "Son oturum açma (UTC)",
+    "actions": "İşlemler",
+    "manageAria": "{name} hesabını yönet",
+    "manage": "Yönet"
+  },
+  "actions": {
+    "title": "{name} için işlemler",
+    "email": "E-posta",
+    "passwordChange": "Parola değişikliği",
+    "required": "Bir sonraki oturum açmada zorunlu.",
+    "notRequired": "Zorunlu değil.",
+    "rolesForm": "Roller",
+    "rolesLegend": "Roller",
+    "rolesProblemEdit": "Roller yüklenemedi. Kaydetme, bu hesapta zaten olan rolleri koruyabilir; listede eksik olan bir rolü ekleyemez.",
+    "savingRoles": "Roller kaydediliyor",
+    "saveRoles": "{name} için rolleri kaydet",
+    "enabling": "Etkinleştiriliyor",
+    "enable": "{name} hesabını etkinleştir",
+    "disabling": "Devre dışı bırakılıyor",
+    "disable": "{name} hesabını devre dışı bırak",
+    "unlocking": "Kilit açılıyor",
+    "unlock": "{name} hesabının kilidini aç",
+    "notLocked": "Kilitli değil.",
+    "resetTitle": "Parolayı sıfırla",
+    "newPassword": "Yeni parola",
+    "confirmPassword": "Yeni parolayı onayla",
+    "resetting": "Parola sıfırlanıyor",
+    "reset": "{name} için parolayı sıfırla",
+    "ldapNoPassword": "LDAP hesabının burada parolası yok.",
+    "select": "Rollerini, durumunu ya da yerel parolasını değiştirmek için bir hesap seçin."
+  },
+  "create": {
+    "title": "Hesap oluştur",
+    "source": "Kaynak",
+    "username": "Kullanıcı adı",
+    "displayName": "Görünen ad",
+    "email": "E-posta",
+    "initialPassword": "İlk parola",
+    "initialHint": "Hesap oluşturulduktan sonra bir kez gösterilir. Hesap, bir sonraki oturum açmada bunu değiştirmek zorundadır.",
+    "ldapHint": "Parolayı dizin denetler. Bu hesap, ilk oturum açmadan önce bir rol atanabilsin diye burada oluşturulur.",
+    "rolesProblem": "Roller yüklenemedi. Şimdi oluşturmak hiçbir rol atamaz.",
+    "creating": "Hesap oluşturuluyor",
+    "submit": "Hesap oluştur"
+  },
+  "roles": {
+    "none": "Tanımlı rol yok.",
+    "noPermissions": "İzin yok",
+    "notInList": "Rol listesinde yok. Kaydetmenin onu düşürmemesi için seçili bırakıldı."
+  }
+}

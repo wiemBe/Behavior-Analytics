@@ -136,5 +136,24 @@
     "DEPENDENCY_DEGRADED": "Bağımlılık bozulmuş",
     "INSUFFICIENT_DATA": "Yetersiz veri",
     "UNKNOWN": "Bilinmiyor"
+  },
+  "executionStatus": {
+    "PENDING": "BEKLİYOR",
+    "QUEUED": "SIRADA",
+    "RUNNING": "ÇALIŞIYOR",
+    "COMPLETED": "TAMAMLANDI",
+    "FAILED": "BAŞARISIZ",
+    "TIMEOUT": "ZAMAN AŞIMI",
+    "CANCELLED": "İPTAL EDİLDİ"
+  },
+  "executionTrigger": {
+    "SCHEDULED": "Zamanlanmış",
+    "MANUAL": "Elle"
+  },
+  "role": {
+    "admin": "Yönetici (admin)",
+    "analyst": "Analist (analyst)",
+    "viewer": "Görüntüleyici (viewer)",
+    "detection_engineer": "Tespit mühendisi (detection_engineer)"
   }
 }

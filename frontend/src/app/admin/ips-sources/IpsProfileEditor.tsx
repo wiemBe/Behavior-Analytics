@@ -11,6 +11,7 @@
 // Validation is asynchronous, so a pending one is polled every five seconds.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import {
   draftFromDefaults,
@@ -28,7 +29,6 @@ import {
   lastValidationWasBusy,
   referenceKindOf,
   reportForTable,
-  IPS_PERMISSION,
   type IpsDraft,
 } from "@/app/admin/ips-sources/ips";
 import { FieldMappingForm, referenceKindLabel } from "@/components/fieldmapping/FieldMappingForm";
@@ -58,6 +58,8 @@ import {
   validationState,
   type ConflictInfo,
 } from "@/lib/fieldMapping";
+import { ARROW } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
@@ -83,27 +85,11 @@ function Notice({ msg }: { msg: Msg }) {
   );
 }
 
-function failure(err: unknown, verb: string): Msg {
-  if (err instanceof ApiError && err.status === 403) {
-    return {
-      tone: "crit",
-      text: `Your role cannot ${verb} IPS sources (permission ${IPS_PERMISSION}). Nothing was changed.`,
-    };
-  }
-  return { tone: "crit", text: `Not changed. ${actionErrorMessage(err)}` };
-}
-
-function unavailable(detail: string): PropertyCatalogOut {
-  return {
-    status: "UNAVAILABLE",
-    fetched_at: null,
-    filtered_by_source_type: false,
-    properties: [],
-    detail,
-  };
-}
-
 const NO_PRESET = "NONE";
+
+/** The marks a value change line carries before its added and removed values. */
+const PLUS = "+";
+const MINUS = "−";
 
 export function IpsProfileEditor({
   schema,
@@ -122,6 +108,8 @@ export function IpsProfileEditor({
   history: IpsProfileHistoryEntryOut[] | null;
   pollMs?: number;
 }) {
+  const t = useTranslations("ips.editor");
+  const i18n = useBehaviorI18n();
   const formSch = useMemo(() => formSchema(schema), [schema]);
   const [profile, setProfile] = useState<IpsProfileOut | null>(initialProfile);
   const [catalog, setCatalog] = useState<PropertyCatalogOut | null>(initialCatalog);
@@ -161,8 +149,25 @@ export function IpsProfileEditor({
   const confirmRef = useRef<HTMLDivElement>(null);
   const confirmTrigger = useRef<HTMLButtonElement | null>(null);
 
+  function failure(err: unknown, verb: "change" | "read" | "validate"): Msg {
+    if (err instanceof ApiError && err.status === 403) {
+      return { tone: "crit", text: t(`forbidden.${verb}`) };
+    }
+    return { tone: "crit", text: t("notChanged", { message: actionErrorMessage(err) }) };
+  }
+
+  function unavailable(detail: string): PropertyCatalogOut {
+    return {
+      status: "UNAVAILABLE",
+      fetched_at: null,
+      filtered_by_source_type: false,
+      properties: [],
+      detail,
+    };
+  }
+
   const changes = useMemo(() => ipsDraftChanges(schema, baseDraft, draft), [schema, baseDraft, draft]);
-  const errors = useMemo(() => draftErrors(formSch, draft), [formSch, draft]);
+  const errors = useMemo(() => draftErrors(formSch, draft, i18n), [formSch, draft, i18n]);
   const dirty = changes.total > 0;
   const typeName = profile?.log_source_type_name ?? source.typeName;
 
@@ -241,10 +246,7 @@ export function IpsProfileEditor({
     setFieldErrors({});
     setAttempted(true);
     if (Object.keys(errors).length > 0) {
-      setSaveMsg({
-        tone: "crit",
-        text: "Not saved. Fix the fields marked below; nothing was sent.",
-      });
+      setSaveMsg({ tone: "crit", text: t("notSavedFix") });
       return;
     }
     confirmTrigger.current = from;
@@ -284,20 +286,11 @@ export function IpsProfileEditor({
       setFieldErrors({});
       setFormError(null);
       if (previousVersion === null) {
-        setSaveMsg({
-          tone: "ok",
-          text: `Created version ${out.profile_version}. Collection stays off. Validation of version ${out.profile_version} has been requested.`,
-        });
+        setSaveMsg({ tone: "ok", text: t("created", { version: out.profile_version }) });
       } else if (out.profile_version === previousVersion) {
-        setSaveMsg({
-          tone: "ok",
-          text: "Saved. This was a label change only, so the version and its validation are unchanged.",
-        });
+        setSaveMsg({ tone: "ok", text: t("savedLabelOnly") });
       } else {
-        setSaveMsg({
-          tone: "ok",
-          text: `Saved as version ${out.profile_version}. Collection is paused until it validates. Validation has been requested.`,
-        });
+        setSaveMsg({ tone: "ok", text: t("savedVersion", { version: out.profile_version }) });
       }
       void refreshHistory();
     } catch (err) {
@@ -305,14 +298,11 @@ export function IpsProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setConflict(conflictInfo(err));
       } else if (err instanceof ApiError && err.status === 422) {
-        const text = serverMessage(err) || "The server rejected this mapping.";
+        const text = serverMessage(err) || t("serverRejected");
         const key = fieldForMessage(formSch, draft, text);
         if (key) setFieldErrors({ [key]: text });
         else setFormError(text);
-        setSaveMsg({
-          tone: "crit",
-          text: "Not saved. The server rejected the mapping; see the message below.",
-        });
+        setSaveMsg({ tone: "crit", text: t("notSavedRejected") });
       } else {
         setSaveMsg(failure(err, "change"));
       }
@@ -329,10 +319,7 @@ export function IpsProfileEditor({
       setProfile(next);
       setBaseVersion(next.profile_version);
       setConflict(null);
-      setSaveMsg({
-        tone: "info",
-        text: `Loaded version ${next.profile_version}. Your edits are still in the form; review them against it.`,
-      });
+      setSaveMsg({ tone: "info", text: t("loadedTheirs", { version: next.profile_version }) });
       void refreshHistory();
     } catch (err) {
       setSaveMsg(failure(err, "read"));
@@ -348,16 +335,15 @@ export function IpsProfileEditor({
     try {
       const out = await ipsApi.validateProfile(source.id);
       setProfile(out);
-      setValidateMsg({
-        tone: "ok",
-        text: `Validation of version ${out.profile_version} has been requested.`,
-      });
+      setValidateMsg({ tone: "ok", text: t("validateRequested", { version: out.profile_version }) });
       void refreshHistory();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setValidateMsg({
           tone: "warn",
-          text: `Validation was not started. ${serverMessage(err) || "A validation is already running."}`,
+          text: t("validateNotStarted", {
+            message: serverMessage(err) || t("alreadyRunning"),
+          }),
         });
       } else {
         setValidateMsg(failure(err, "validate"));
@@ -379,15 +365,15 @@ export function IpsProfileEditor({
       setCollectMsg({
         tone: "ok",
         text: enable
-          ? `Collection is enabled for version ${out.profile_version}.`
-          : "Collection is disabled. No searches run for this source.",
+          ? t("collectEnabled", { version: out.profile_version })
+          : t("collectDisabled"),
       });
       void refreshHistory();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setCollectMsg({
           tone: "warn",
-          text: `Not enabled. ${serverMessage(err) || "The current version is not valid."}`,
+          text: t("notEnabled", { message: serverMessage(err) || t("notValid") }),
         });
       } else {
         setCollectMsg(failure(err, "change"));
@@ -401,31 +387,30 @@ export function IpsProfileEditor({
     try {
       setCatalog(await ipsApi.propertyCatalog(source.id, true));
     } catch (err) {
-      setCatalog((c) => c ?? unavailable("The list could not be read."));
+      setCatalog((c) => c ?? unavailable(t("catalogUnavailable")));
       setSaveMsg({
         tone: "warn",
-        text: `The property list could not be refreshed. ${
-          err instanceof ApiError && err.status === 403
-            ? `Your role cannot read it (permission ${IPS_PERMISSION}).`
-            : "The previous list is still shown."
-        }`,
+        text: t("catalogRefreshFailed", {
+          reason:
+            err instanceof ApiError && err.status === 403 ? t("catalogForbidden") : t("catalogPrevious"),
+        }),
       });
     }
   }
 
   // --- header ---------------------------------------------------------------
   const stateInput = profile ?? null;
-  const vState = stateInput ? validationState(stateInput) : null;
-  const cState = stateInput ? collectionState(stateInput) : null;
+  const vState = stateInput ? validationState(stateInput, null, i18n) : null;
+  const cState = stateInput ? collectionState(stateInput, i18n) : null;
 
   const meta = (
     <>
-      <span className="muted num">QRadar id {source.qradarId}</span>
-      <span className="muted">{typeName ?? "log-source type unknown"}</span>
+      <span className="muted num">{t("qradarId", { id: source.qradarId })}</span>
+      <span className="muted">{typeName ?? t("typeUnknown")}</span>
       {profile?.product_label && <span className="muted">{profile.product_label}</span>}
       {profile ? (
         <>
-          <span className="pill">Version {profile.profile_version}</span>
+          <span className="pill">{t("versionPill", { version: profile.profile_version })}</span>
           {vState && (
             <span className={`pill ${vState.tone === "neutral" ? "" : vState.tone}`}>
               {vState.label}
@@ -436,7 +421,7 @@ export function IpsProfileEditor({
           )}
         </>
       ) : (
-        <span className="pill">No profile yet</span>
+        <span className="pill">{t("noProfile")}</span>
       )}
     </>
   );
@@ -451,20 +436,19 @@ export function IpsProfileEditor({
   const currentReport = report !== null && report.profile_version === profile?.profile_version;
   const busyBefore = profile ? lastValidationWasBusy(history, profile.profile_version) : false;
   const tableReport = useMemo(() => reportForTable(report), [report]);
-  const notes = useMemo(() => (report ? genericNameNotes(report) : []), [report]);
+  const notes = useMemo(() => (report ? genericNameNotes(report, i18n) : []), [report, i18n]);
 
+  const lower = (text: string) => text.toLocaleLowerCase(i18n.locale === "tr" ? "tr-TR" : "en-US");
   const truncatedNote =
     actionTruncated && report?.status === "INCONCLUSIVE" && currentReport
-      ? `The probe lists at most 20 ${actionLabel.toLowerCase()} values and this field has more, so the last validation was inconclusive. Values not listed count as unmapped, never as allowed.`
+      ? t("truncatedNote", { action: lower(actionLabel) })
       : null;
 
   const actionUnmappedNote = (
     <p className="fm-banner is-info" role="status">
       <span>
-        <strong>{actionLabel} is not mapped.</strong> Neither Cisco Firepower Threat Defense nor
-        Palo Alto THREAT exposes an action in a QRadar field, so a site authors a custom property
-        for it in QRadar and maps it here. Until it is mapped, the block ratio cannot be judged:
-        it is reported as insufficient data, never as no blocks.
+        <strong>{t("actionUnmappedStrong", { action: actionLabel })}</strong>{" "}
+        {t("actionUnmappedBody")}
       </span>
     </p>
   );
@@ -490,7 +474,7 @@ export function IpsProfileEditor({
       <div
         className="fm-confirm"
         role="region"
-        aria-label="Confirm the change"
+        aria-label={t("confirmRegion")}
         tabIndex={-1}
         ref={confirmRef}
         onKeyDown={(event) => {
@@ -500,32 +484,36 @@ export function IpsProfileEditor({
           }
         }}
       >
-        <h3>{creating ? "Create this profile?" : "Save this change?"}</h3>
+        <h3>{creating ? t("createTitle") : t("saveTitle")}</h3>
         {changeRows.length > 0 && (
-          <ul className="fm-changes" aria-label="Changed fields">
+          <ul className="fm-changes" aria-label={t("changedFields")}>
             {changeRows.map((c) => (
               <li key={c.key}>
                 {c.label}:{" "}
-                {c.from === null ? <span className="muted">not mapped</span> : <code>{c.from}</code>}
-                {" → "}
-                {c.to === null ? <span className="muted">not mapped</span> : <code>{c.to}</code>}
+                {c.from === null ? (
+                  <span className="muted">{t("notMapped")}</span>
+                ) : (
+                  <code>{c.from}</code>
+                )}
+                <span className="muted"> {ARROW} </span>
+                {c.to === null ? <span className="muted">{t("notMapped")}</span> : <code>{c.to}</code>}
               </li>
             ))}
           </ul>
         )}
         {changes.values.length > 0 && (
-          <ul className="fm-changes" aria-label="Changed values">
+          <ul className="fm-changes" aria-label={t("changedValues")}>
             {changes.values.map((v) => (
               <li key={v.outcome}>
-                {outcomeLabel(v.outcome)} values:{" "}
+                {t("valuesLine", { outcome: outcomeLabel(v.outcome, i18n) })}{" "}
                 {v.added.map((a) => (
                   <span key={`a-${a}`}>
-                    + <code>{a}</code>{" "}
+                    {PLUS} <code>{a}</code>{" "}
                   </span>
                 ))}
                 {v.removed.map((r) => (
                   <span key={`r-${r}`}>
-                    − <code>{r}</code>{" "}
+                    {MINUS} <code>{r}</code>{" "}
                   </span>
                 ))}
               </li>
@@ -534,36 +522,27 @@ export function IpsProfileEditor({
         )}
         {changes.labelChanged && !creating && (
           <p className="fm-note">
-            The product label changes to “{draft.productLabel.trim() || "none"}”.
+            {t("labelChange", { label: draft.productLabel.trim() || t("noneLabel") })}
           </p>
         )}
         {creating ? (
           <p>
-            The profile is created disabled. Collection from this source stays off until version 1
-            validates and you enable it. Validation starts now and runs a few bounded searches
-            against QRadar.
-            {draft.preset ? " The preset only filled in defaults; they are validated like any other mapping." : ""}
+            {t("createBody")} {draft.preset ? t("presetTail") : ""}
           </p>
         ) : mapped ? (
-          <p>
-            Collection from this source pauses until version {nextVersion} validates. Validation
-            starts now and runs a few bounded searches against QRadar.
-          </p>
+          <p>{t("mappedBody", { version: nextVersion })}</p>
         ) : (
-          <p>
-            Only the product label changes. The version, its validation and collection are
-            unaffected.
-          </p>
+          <p>{t("labelOnlyBody")}</p>
         )}
         <div className="actions">
           <button type="button" className="action" disabled={busy !== null} onClick={() => void save()}>
             {busy === "save"
-              ? "Saving…"
+              ? t("saving")
               : creating
-                ? "Create profile"
+                ? t("createButton")
                 : labelOnly
-                  ? "Save label"
-                  : `Save as version ${nextVersion}`}
+                  ? t("saveLabelButton")
+                  : t("saveVersionButton", { version: nextVersion })}
           </button>
           <button
             type="button"
@@ -571,7 +550,7 @@ export function IpsProfileEditor({
             disabled={busy !== null}
             onClick={closeConfirmation}
           >
-            Cancel
+            {t("cancel")}
           </button>
         </div>
       </div>
@@ -582,10 +561,10 @@ export function IpsProfileEditor({
     <div className="fm-bar">
       <p className="fm-bar-state">
         {creating
-          ? "A new profile. Nothing is saved yet."
+          ? t("newProfile")
           : dirty
-            ? `${changes.total} unsaved ${changes.total === 1 ? "change" : "changes"}.`
-            : "No unsaved changes."}
+            ? t("unsaved", { count: changes.total })
+            : t("noUnsaved")}
       </p>
       <div className="actions">
         <button
@@ -594,7 +573,7 @@ export function IpsProfileEditor({
           disabled={busy !== null || (!creating && !dirty) || confirmAt === where}
           onClick={(event) => review(where, event.currentTarget)}
         >
-          {creating ? "Review and create" : "Review and save"}
+          {creating ? t("reviewCreate") : t("reviewSave")}
         </button>
         {!creating && (
           <button
@@ -603,14 +582,14 @@ export function IpsProfileEditor({
             disabled={busy !== null || !dirty}
             onClick={discard}
           >
-            Discard changes
+            {t("discard")}
           </button>
         )}
       </div>
     </div>
   );
 
-  const block = profile ? enableBlockReason(profile) : null;
+  const block = profile ? enableBlockReason(profile, i18n) : null;
   const presetValue = draft.preset ?? NO_PRESET;
 
   return (
@@ -620,41 +599,33 @@ export function IpsProfileEditor({
       {creating && (
         <p className="fm-banner is-info" role="status">
           <span>
-            <strong>This log source has no IPS profile.</strong> Review the mapping, then create
-            the profile. Nothing is saved until you confirm.
+            {t.rich("creatingBanner", { strong: (chunks) => <strong>{chunks}</strong> })}
           </span>
         </p>
       )}
 
       {conflict && (
         <div className="fm-banner is-warn" role="alert">
-          <span>{conflictMessage(conflict)}</span>
+          <span>{conflictMessage(conflict, i18n)}</span>
           <button
             type="button"
             className="action secondary"
             disabled={busy !== null}
             onClick={() => void reloadTheirs()}
           >
-            {busy === "reload" ? "Loading…" : "Reload their version"}
+            {busy === "reload" ? t("loading") : t("reloadTheirs")}
           </button>
         </div>
       )}
 
       <section aria-labelledby="fm-mapping-h" className="fm-section">
-        <h2 id="fm-mapping-h">Field mapping</h2>
-        <p className="subtitle">
-          The QRadar field each logical field is read from for this source: a normalized field
-          that every parser fills, or a custom property. Changing one pauses collection until the
-          new version validates.
-        </p>
+        <h2 id="fm-mapping-h">{t("mappingTitle")}</h2>
+        <p className="subtitle">{t("mappingSubtitle")}</p>
 
         {creating && (
           <fieldset className="fm-presets" disabled={busy !== null}>
-            <legend>Start from a preset</legend>
-            <p className="fm-note">
-              A preset fills in defaults for a product. It is a starting point only: the profile
-              still has to validate against this source’s events before anything is collected.
-            </p>
+            <legend>{t("presetLegend")}</legend>
+            <p className="fm-note">{t("presetNote")}</p>
             <div className="fm-preset-options">
               {schema.presets.map((p) => (
                 <label key={p.key} className="fm-radio">
@@ -674,7 +645,7 @@ export function IpsProfileEditor({
                   checked={presetValue === NO_PRESET}
                   onChange={() => choosePreset(NO_PRESET)}
                 />
-                No preset (schema defaults)
+                {t("noPreset")}
               </label>
             </div>
           </fieldset>
@@ -699,7 +670,7 @@ export function IpsProfileEditor({
         />
         {creating && !actionMapped && actionUnmappedNote}
         <div className="fm-label-row">
-          <label htmlFor="fm-product-label">Product label</label>
+          <label htmlFor="fm-product-label">{t("productLabel")}</label>
           <input
             id="fm-product-label"
             className="field fm-input"
@@ -711,7 +682,7 @@ export function IpsProfileEditor({
             onChange={(e) => setDraft({ ...draft, productLabel: e.target.value })}
           />
           <span id="fm-product-label-d" className="muted">
-            An operator note, for example the IPS product. Never parsed.
+            {t("productLabelHelp")}
           </span>
         </div>
         {formError && (
@@ -726,7 +697,7 @@ export function IpsProfileEditor({
 
       {profile && (
         <section aria-labelledby="fm-validation-h" className="fm-section">
-          <h2 id="fm-validation-h">Validation</h2>
+          <h2 id="fm-validation-h">{t("validationTitle")}</h2>
           <div className="fm-actions-line">
             <button
               type="button"
@@ -734,20 +705,16 @@ export function IpsProfileEditor({
               disabled={busy !== null || pending}
               onClick={() => void validateNow()}
             >
-              {busy === "validate" ? "Requesting…" : pending ? "Validation running" : "Validate again"}
+              {busy === "validate" ? t("requesting") : pending ? t("running") : t("validateAgain")}
             </button>
             {dirty && (
-              <span className="muted">
-                Validates the saved version {profile.profile_version}, not your unsaved edits.
-              </span>
+              <span className="muted">{t("validatesSaved", { version: profile.profile_version })}</span>
             )}
           </div>
           <Notice msg={validateMsg} />
           {busyBefore && !pending && (
             <p className="fm-banner is-warn" role="status">
-              The last validation of version {profile.profile_version} did not run: another job
-              held this source. The result below is the previous one, and nothing was changed.
-              Validate again.
+              {t("busyBefore", { version: profile.profile_version })}
             </p>
           )}
           <ValidationReport
@@ -758,11 +725,11 @@ export function IpsProfileEditor({
             requiredCoverage={schema.min_coverage_ratio}
             notes={notes}
             hideColumns={["distinct", "plausible"]}
-            statusInfo={ipsFieldStatusInfo}
-            formatReason={(reason, ratio) => ipsReasonText(reason, schema, ratio)}
+            statusInfo={(status, ctx) => ipsFieldStatusInfo(status, ctx, i18n)}
+            formatReason={(reason, ratio) => ipsReasonText(reason, schema, ratio, i18n)}
             describeReference={(f) => {
               const kind = referenceKindOf(report, f.field);
-              return kind ? referenceKindLabel(kind) : null;
+              return kind ? referenceKindLabel(kind, i18n) : null;
             }}
           />
         </section>
@@ -770,11 +737,16 @@ export function IpsProfileEditor({
 
       {profile && valueMap && (
         <section aria-labelledby="fm-values-h" className="fm-section">
-          <h2 id="fm-values-h">{actionLabel} values</h2>
+          <h2 id="fm-values-h">{t("valuesTitle", { action: actionLabel })}</h2>
           <p className="subtitle">
-            Which raw {actionLabel.toLowerCase()} values count as{" "}
-            {valueMap.outcomes.map((o) => outcomeLabel(o).toLowerCase()).join(" and ")}. Saving
-            this map is a mapping change: it bumps the version and validates again.
+            {t("valuesSubtitle", {
+              action: lower(actionLabel),
+              // The Turkish sentence puts the outcomes after a colon, so their labels keep
+              // their capital; the English one runs them into the sentence in lower case.
+              outcomes: valueMap.outcomes
+                .map((o) => (i18n.locale === "tr" ? outcomeLabel(o, i18n) : lower(outcomeLabel(o))))
+                .join(` ${t("and")} `),
+            })}
           </p>
           {!actionMapped ? (
             actionUnmappedNote
@@ -791,7 +763,10 @@ export function IpsProfileEditor({
                 discoveredNote={
                   actionReport?.reference &&
                   actionReport.reference.name !== (draft.mapping[valueMap.field] ?? "").trim()
-                    ? `These values were counted under ${actionReport.reference.name}; the mapping now reads ${draft.mapping[valueMap.field].trim()}. Validate again to refresh them.`
+                    ? t("discoveredNote", {
+                        reference: actionReport.reference.name,
+                        mapping: draft.mapping[valueMap.field].trim(),
+                      })
                     : null
                 }
                 onChange={(next) => setDraft({ ...draft, actionMap: next })}
@@ -810,14 +785,16 @@ export function IpsProfileEditor({
 
       {profile && (
         <section aria-labelledby="fm-collection-h" className="fm-section">
-          <h2 id="fm-collection-h">Collection</h2>
+          <h2 id="fm-collection-h">{t("collectionTitle")}</h2>
           <p className="fm-state-line">
             <strong>{cState?.label}</strong>
             {profile.validated_at && vState?.kind === "valid" && (
               <span className="muted">
-                {" "}
-                · version {profile.profile_version} validated{" "}
-                <UtcTime value={profile.validated_at} />
+                {" · "}
+                {t.rich("validatedLine", {
+                  version: profile.profile_version,
+                  time: () => <UtcTime value={profile.validated_at as string} />,
+                })}
               </span>
             )}
           </p>
@@ -829,7 +806,7 @@ export function IpsProfileEditor({
                 disabled={busy !== null}
                 onClick={() => void toggleCollection(false)}
               >
-                Disable collection
+                {t("disableCollection")}
               </button>
             ) : (
               <button
@@ -839,7 +816,7 @@ export function IpsProfileEditor({
                 aria-describedby={block ? "fm-enable-why" : undefined}
                 onClick={() => void toggleCollection(true)}
               >
-                Enable collection
+                {t("enableCollection")}
               </button>
             )}
             {!profile.enabled && block && (
@@ -854,18 +831,17 @@ export function IpsProfileEditor({
 
       {profile && (
         <section aria-labelledby="fm-history-h" className="fm-section">
-          <h2 id="fm-history-h">History</h2>
+          <h2 id="fm-history-h">{t("historyTitle")}</h2>
           {history === null ? (
             <p className="fm-note is-crit" role="alert">
-              The history could not be loaded. Reload the page to try again; the profile itself is
-              unaffected.
+              {t("historyFailed")}
             </p>
           ) : (
             <MappingHistory
               schema={formSch}
               entries={historyForTable(history)}
-              actionLabel={ipsHistoryActionLabel}
-              outcomeNote={ipsOutcomeNote}
+              actionLabel={(action) => ipsHistoryActionLabel(action, i18n)}
+              outcomeNote={(entry) => ipsOutcomeNote(entry, i18n)}
             />
           )}
         </section>

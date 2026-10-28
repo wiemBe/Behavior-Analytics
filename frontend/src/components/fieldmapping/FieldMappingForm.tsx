@@ -7,11 +7,13 @@
 // controlled. It never saves: the owner decides what a change means.
 
 import { useId, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { PropertyInput } from "@/components/fieldmapping/PropertyInput";
 import type { CatalogProperty, MappingFieldOut, MappingSchemaOut, PropertyCatalogOut } from "@/lib/api";
 import { catalogNote, draftErrors, type MappingDraft } from "@/lib/fieldMapping";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import "@/components/ui/controls.css";
 
@@ -29,7 +31,13 @@ const KIND_LABEL: Record<string, string> = {
   CUSTOM_PROPERTY: "Custom property",
 };
 
-export function referenceKindLabel(kind: string): string {
+export function referenceKindLabel(
+  kind: string,
+  i18n?: { t: (key: string) => string; locale: string },
+): string {
+  if (i18n && Object.prototype.hasOwnProperty.call(KIND_LABEL, kind)) {
+    return i18n.t(`fieldMapping.form.kind${kind}`);
+  }
   return KIND_LABEL[kind] ?? kind;
 }
 
@@ -52,6 +60,7 @@ function CopyFrom({
   onCopy: (id: string) => Promise<string>;
   disabled: boolean;
 }) {
+  const t = useTranslations("fieldMapping.form");
   const selectId = useId();
   const [choice, setChoice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -66,7 +75,7 @@ function CopyFrom({
     } catch (err) {
       setNote({
         ok: false,
-        text: err instanceof Error && err.message ? err.message : "The mapping could not be copied.",
+        text: err instanceof Error && err.message ? err.message : t("copyFailed"),
       });
     } finally {
       setBusy(false);
@@ -76,7 +85,7 @@ function CopyFrom({
   return (
     <div className="fm-copy">
       <label htmlFor={selectId} className="fm-copy-label">
-        Copy mapping from…
+        {t("copyLabel")}
       </label>
       <select
         id={selectId}
@@ -85,7 +94,7 @@ function CopyFrom({
         disabled={disabled || busy || options.length === 0}
         onChange={(e) => setChoice(e.target.value)}
       >
-        <option value="">{options.length === 0 ? "No other source has a mapping" : "Choose a source"}</option>
+        <option value="">{options.length === 0 ? t("copyNone") : t("copyChoose")}</option>
         {options.map((o) => (
           <option key={o.id} value={o.id}>
             {o.label}
@@ -98,7 +107,7 @@ function CopyFrom({
         disabled={disabled || busy || !choice}
         onClick={() => void run()}
       >
-        {busy ? "Copying…" : "Copy"}
+        {busy ? t("copying") : t("copy")}
       </button>
       {note && (
         <p className={`fm-note${note.ok ? "" : " is-crit"}`} role={note.ok ? "status" : "alert"}>
@@ -141,9 +150,11 @@ export function FieldMappingForm({
   referenceKinds?: Record<string, string>;
   onKindChange?: (key: string, kind: string) => void;
 }) {
+  const t = useTranslations("fieldMapping.form");
+  const i18n = useBehaviorI18n();
   const uid = useId();
   const [refreshing, setRefreshing] = useState(false);
-  const errors = useMemo(() => draftErrors(schema, draft), [schema, draft]);
+  const errors = useMemo(() => draftErrors(schema, draft, i18n), [schema, draft, i18n]);
 
   function setProperty(key: string, value: string) {
     onChange({ ...draft, mapping: { ...draft.mapping, [key]: value } });
@@ -167,17 +178,16 @@ export function FieldMappingForm({
         <p className="fm-catalog" role="status">
           {available ? (
             <>
-              Property list from this console, fetched {<UtcTime value={catalog.fetched_at} />}.{" "}
+              {t.rich("catalogFetched", { time: () => <UtcTime value={catalog.fetched_at} /> })}{" "}
               {catalog.filtered_by_source_type
-                ? `Properties that apply to ${typeName ?? "this source’s type"} come first.`
-                : "It is not filtered by log-source type."}
+                ? t("catalogApplies", { type: typeName ?? t("catalogThisType") })
+                : t("catalogUnfiltered")}
             </>
           ) : (
-            <>
-              The property list is unavailable
-              {catalog?.detail ? `: ${catalog.detail}` : "."} Type each name as QRadar shows it;
-              validation checks it.
-            </>
+            t("catalogDownTail", {
+              lead:
+                t("catalogDown") + (catalog?.detail ? `: ${catalog.detail}` : "."),
+            })
           )}
         </p>
         {onRefreshCatalog && (
@@ -187,7 +197,7 @@ export function FieldMappingForm({
             disabled={disabled || refreshing}
             onClick={() => void refresh()}
           >
-            {refreshing ? "Refreshing…" : "Refresh list"}
+            {refreshing ? t("refreshing") : t("refresh")}
           </button>
         )}
       </div>
@@ -204,7 +214,7 @@ export function FieldMappingForm({
           const kind = switchable ? (referenceKinds?.[field.key] ?? field.kinds[0]) : null;
           const normalizedKind = kind === "NORMALIZED";
           // A QRadar normalized field is not in the console's property list.
-          const note = normalizedKind ? null : catalogNote(value, catalog, typeName);
+          const note = normalizedKind ? null : catalogNote(value, catalog, typeName, i18n);
           const clientError = errors[field.key];
           const error =
             fieldErrors[field.key] ??
@@ -217,7 +227,7 @@ export function FieldMappingForm({
                   {field.label}
                 </label>
                 <span className={`fm-req${field.required ? " is-required" : ""}`}>
-                  {field.required ? "Required" : "Optional"}
+                  {field.required ? t("required") : t("optional")}
                 </span>
                 <p id={descId} className="fm-desc">
                   {field.description}
@@ -226,7 +236,7 @@ export function FieldMappingForm({
               <div className="fm-control">
                 {switchable && kind && (
                   <fieldset className="fm-kind">
-                    <legend className="sr-only">{field.label} reference kind</legend>
+                    <legend className="sr-only">{t("kindLegend", { field: field.label })}</legend>
                     {field.kinds.map((k) => (
                       <label key={k} className="fm-radio">
                         <input
@@ -236,7 +246,7 @@ export function FieldMappingForm({
                           disabled={disabled}
                           onChange={() => onKindChange?.(field.key, k)}
                         />
-                        {referenceKindLabel(k)}
+                        {referenceKindLabel(k, i18n)}
                       </label>
                     ))}
                   </fieldset>
@@ -246,7 +256,7 @@ export function FieldMappingForm({
                     <select
                       id={inputId}
                       className="select-control"
-                      aria-label={`${field.label} QRadar field`}
+                      aria-label={t("fieldAria", { field: field.label })}
                       aria-describedby={hasMsg ? `${descId} ${msgId}` : descId}
                       aria-invalid={Boolean(error) || undefined}
                       value={value}
@@ -254,10 +264,10 @@ export function FieldMappingForm({
                       onChange={(e) => setProperty(field.key, e.target.value)}
                     >
                       {(value === "" || !field.required) && (
-                        <option value="">{field.required ? "Choose a field" : "Not mapped"}</option>
+                        <option value="">{field.required ? t("chooseField") : t("notMapped")}</option>
                       )}
                       {value !== "" && !field.normalized_options.includes(value) && (
-                        <option value={value}>{value} (not an allowed field)</option>
+                        <option value={value}>{t("notAllowed", { value })}</option>
                       )}
                       {field.normalized_options.map((o) => (
                         <option key={o} value={o}>
@@ -268,9 +278,9 @@ export function FieldMappingForm({
                   ) : (
                     <PropertyInput
                       id={inputId}
-                      label={`${field.label} property`}
+                      label={t("propertyLabel", { field: field.label })}
                       value={value}
-                      placeholder={field.required ? "Property name" : "Not mapped"}
+                      placeholder={field.required ? t("propertyPlaceholder") : t("notMapped")}
                       suggestions={propertiesFor(field, catalog)}
                       normalized={switchable ? [] : normalizedFor(field)}
                       describedBy={hasMsg ? `${descId} ${msgId}` : descId}
@@ -284,10 +294,10 @@ export function FieldMappingForm({
                       type="button"
                       className="action secondary"
                       disabled={disabled}
-                      aria-label={`Do not map ${field.label}`}
+                      aria-label={t("unmapAria", { field: field.label })}
                       onClick={() => setProperty(field.key, "")}
                     >
-                      Unmap
+                      {t("unmap")}
                     </button>
                   )}
                 </div>

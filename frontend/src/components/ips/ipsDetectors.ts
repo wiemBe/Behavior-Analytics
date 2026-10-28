@@ -8,6 +8,9 @@
 // Mirrors `app/ips/behavior.py` and `app/ips/inputs.py`.
 
 import type { IpsAnomalyDetail, IpsDetectionDetail } from "@/lib/api";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+
+import { ENGLISH_IPS } from "./ipsI18n";
 
 /** `since` is the new-port detector's cumulative count since first appearance: not a per-bucket rate. */
 export type IpsUnit = "events" | "ports" | "share" | "since";
@@ -75,6 +78,20 @@ const SPECS: Record<string, IpsDetectorSpec> = {
 
 export function detectorSpec(type: string): IpsDetectorSpec | null {
   return SPECS[type] ?? null;
+}
+
+/** The measured quantity in the interface language, for the axis, the tooltip and the summary. */
+export function quantityText(type: string, i18n: BehaviorI18n = ENGLISH_IPS): string {
+  const spec = SPECS[type];
+  if (!spec) return "";
+  return i18n.t.has?.(`ips.detector.quantity.${type}`) ? i18n.t(`ips.detector.quantity.${type}`) : spec.quantity;
+}
+
+/** What a share is a share of, in the interface language; null when the detector is not a share. */
+export function ofText(type: string, i18n: BehaviorI18n = ENGLISH_IPS): string | null {
+  const spec = SPECS[type];
+  if (!spec?.of) return null;
+  return i18n.t.has?.(`ips.detector.of.${type}`) ? i18n.t(`ips.detector.of.${type}`) : spec.of;
 }
 
 /**

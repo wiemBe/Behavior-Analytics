@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function NewSearchError({
@@ -9,7 +11,8 @@ export default function NewSearchError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("searches.new");
   return (
-    <BoundaryError title="New search" what="The search editor" digest={error.digest} onRetry={reset} />
+    <BoundaryError title={t("title")} what={t("errorWhat")} digest={error.digest} onRetry={reset} />
   );
 }

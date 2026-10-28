@@ -8,15 +8,19 @@
 // a save is in flight.
 
 import { useId, useRef, useState, type FormEvent } from "react";
+import { useTranslations } from "next-intl";
 
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 import type { OutageMode } from "@/lib/api";
+import { plainCount } from "@/lib/figureText";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import {
   GRACE_MAX,
   GRACE_MIN,
   MODE_LABELS,
   formatMinutes,
+  modeLabel,
   parseGrace,
   saveFailure,
   type Impact,
@@ -66,6 +70,8 @@ export function PolicyForm({
   onSave: (body: PolicyBody) => Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useTranslations("outage.form");
+  const i18n = useBehaviorI18n();
   const uid = useId();
   const [mode, setMode] = useState<OutageMode>(initialMode);
   const [graceText, setGraceText] = useState(initialGrace === null ? "" : String(initialGrace));
@@ -74,7 +80,7 @@ export function PolicyForm({
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
 
-  const parsed = parseGrace(graceText);
+  const parsed = parseGrace(graceText, i18n);
   const grace = parsed.ok ? parsed.value : initialGrace;
   const impact = impactFor(mode, grace);
   const unchanged = parsed.ok && isUnchanged(mode, grace);
@@ -82,7 +88,7 @@ export function PolicyForm({
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (inFlight.current) return;
-    const g = parseGrace(graceText);
+    const g = parseGrace(graceText, i18n);
     if (!g.ok) {
       setGraceError(g.message);
       return;
@@ -94,7 +100,7 @@ export function PolicyForm({
     try {
       await onSave({ mode, silence_grace_buckets: g.value });
     } catch (err) {
-      const failure = saveFailure(err);
+      const failure = saveFailure(err, i18n);
       if (failure.field === "grace") {
         setGraceError(failure.text);
         setOutcome({ kind: "idle" });
@@ -118,7 +124,7 @@ export function PolicyForm({
       {context && <p className="field-hint">{context}</p>}
       <div className="rule-form-grid">
         <span id={modeId} className="outage-form-label">
-          Mode
+          {t("mode")}
         </span>
         <div className="fm-radios" role="radiogroup" aria-labelledby={modeId}>
           {(Object.keys(MODE_LABELS) as OutageMode[]).map((m) => (
@@ -131,11 +137,11 @@ export function PolicyForm({
                 disabled={pending}
                 onChange={() => setMode(m)}
               />
-              {MODE_LABELS[m]}
+              {modeLabel(m, i18n)}
             </label>
           ))}
         </div>
-        <label htmlFor={graceId}>Grace, in buckets</label>
+        <label htmlFor={graceId}>{t("grace")}</label>
         <div>
           <input
             id={graceId}
@@ -152,9 +158,12 @@ export function PolicyForm({
             }}
           />
           <p id={hintId} className="field-hint">
-            {GRACE_MIN} to {GRACE_MAX}. Blank uses the default.
+            {t("hint", {
+              min: plainCount(GRACE_MIN, i18n.locale),
+              max: plainCount(GRACE_MAX, i18n.locale),
+            })}
             {bucketSeconds !== null &&
-              ` One bucket is ${formatMinutes(bucketSeconds / 60)}.`}
+              t("bucketHint", { duration: formatMinutes(bucketSeconds / 60, i18n) })}
           </p>
           {graceError && (
             <p id={errId} className="field-error" role="alert">
@@ -163,15 +172,15 @@ export function PolicyForm({
           )}
         </div>
       </div>
-      <ImpactNote impact={impact} title="Before you save" />
+      <ImpactNote impact={impact} title={t("before")} />
       <div className="actions">
         <button type="submit" className="action" disabled={pending || unchanged}>
-          {pending ? "Saving…" : "Save"}
+          {pending ? t("saving") : t("save")}
         </button>
         <button type="button" className="action secondary" disabled={pending} onClick={onCancel}>
-          Cancel
+          {t("cancel")}
         </button>
-        {unchanged && !pending && <span className="field-hint">Nothing differs from what is in effect.</span>}
+        {unchanged && !pending && <span className="field-hint">{t("unchanged")}</span>}
       </div>
       <ChangeStatus outcome={outcome} />
     </form>

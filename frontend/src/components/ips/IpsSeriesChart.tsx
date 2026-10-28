@@ -17,6 +17,9 @@
 //   * no marker on every point; only a lone measured bucket between gaps is
 //     marked, because a line cannot show one point;
 //   * every colour comes from the tokens through `readChartPalette`.
+//
+// The words and figures follow the interface language, read here (the chart is a client
+// component, so a server page cannot hand it a translator); a test may pass its own `i18n`.
 
 import { LineChart } from "echarts/charts";
 import {
@@ -39,13 +42,19 @@ import {
   readHistoryShade,
   type OriginRow,
 } from "@/components/behavior/historyOrigin";
+import { TURKISH_ECHARTS_LOCALE } from "@/components/home/chartLocale";
 import { readChartPalette } from "@/lib/chartPalette";
+import { grouped, plainCount, fixed } from "@/lib/figureText";
 import { formatShare } from "@/lib/format";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { bucketWidth } from "@/components/waf/wafFormat";
+import { unitGap } from "@/i18n/measures";
 import { utcTimeHtml } from "@/components/ui/UtcTime";
 
-
 import type { IpsUnit } from "./ipsDetectors";
+import { ENGLISH_IPS } from "./ipsI18n";
+import { unitText } from "./ipsFormat";
 import { buildIpsBaselineLookup, type IpsBaselineSource } from "./ipsBaseline";
 import {
   ipsMarkedIntervals,
@@ -86,20 +95,23 @@ export interface IpsTransition {
 }
 
 /** What a dimension measurement means for the reader of one bucket. */
-export function measurementMeaning(measurement: string | null): string {
+export function measurementMeaning(
+  measurement: string | null,
+  i18n: BehaviorI18n = ENGLISH_IPS,
+): string {
   switch (measurement) {
     case "EXACT":
-      return "exact";
+      return i18n.t("ips.chartMeasurement.EXACT");
     case "LOWER_BOUND":
-      return "a lower bound: the dimension's search hit its cap";
+      return i18n.t("ips.chartMeasurement.LOWER_BOUND");
     case "NOT_COLLECTED":
-      return "not collected";
+      return i18n.t("ips.chartMeasurement.NOT_COLLECTED");
     case "FAILED":
-      return "the search failed";
+      return i18n.t("ips.chartMeasurement.FAILED");
     case "REJECTED":
-      return "the search was rejected";
+      return i18n.t("ips.chartMeasurement.REJECTED");
     case null:
-      return "the bucket record is missing, so exactness is unknown";
+      return i18n.t("ips.chartMeasurement.MISSING");
     default:
       return measurement;
   }
@@ -119,6 +131,7 @@ export function IpsSeriesChart({
   transitions = [],
   ariaLabel,
   textSummary,
+  i18n,
 }: {
   points: IpsPoint[];
   /** The stored bucket rows behind `points`, for the marked intervals. */
@@ -142,8 +155,14 @@ export function IpsSeriesChart({
   ariaLabel: string;
   /** The chart as prose, for readers who cannot see a canvas. */
   textSummary?: string;
+  /** Overrides the interface language (tests); the chart reads it itself otherwise. */
+  i18n?: BehaviorI18n;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const own = useBehaviorI18n();
+  const x = i18n ?? own;
+  const t = x.t;
+  const locale = x.locale;
 
   const scale = unit === "share" ? 100 : 1;
   const marks = useMemo(() => ipsMarkedIntervals(rows, points), [rows, points]);
@@ -164,18 +183,12 @@ export function IpsSeriesChart({
   const hasLowerBound = points.some((p) => p.lowerBound);
   const hasMaintenance = marks.some((m) => m.mark === "MAINTENANCE");
   const hasUnmeasured = marks.some((m) => m.mark !== "MAINTENANCE");
-  const width = bucketWidth(bucketSeconds);
-  const unitText =
-    unit === "events"
-      ? width
-        ? `events / ${width}`
-        : "events / bucket"
-      : unit === "ports"
-        ? "distinct ports"
-        : "%";
-  const axisTitle = unit === "share" ? `${quantity} (%)` : `${quantity} (${unitText})`;
-  const bandLabel = seasonal ? "Expected range (seasonal p05–p95)" : "Expected range at detection";
-  const medianLabel = seasonal ? "Expected (seasonal cell)" : "Expected at detection";
+  const axisUnit = unitText(unit, bucketWidth(bucketSeconds), x);
+  const axisTitle = unit === "share" ? `${quantity} (%)` : `${quantity} (${axisUnit})`;
+  const bandLabel = seasonal
+    ? t("ips.chart.bandSeasonal")
+    : t("ips.chart.bandDetection");
+  const medianLabel = seasonal ? t("ips.chart.medianSeasonal") : t("ips.chart.medianDetection");
 
   const buildOption = useMemo(() => {
     if (points.length === 0) return null;
@@ -222,10 +235,14 @@ export function IpsSeriesChart({
       const text = { color: c.label, fontFamily: c.font };
       const axisCommon = { axisLine: { lineStyle: { color: c.axis } }, axisLabel: text };
       const quiet = { silent: true, label: { show: false } };
-      const fmt = (v: number) => (unit === "share" ? formatShare(v) : v.toFixed(1));
-      const suffix = unit === "events" ? ` ${unitText}` : unit === "ports" ? " ports" : "";
-      const whole = (v: number) =>
-        unit === "share" ? formatShare(v) : String(v);
+      const fmt = (v: number) => (unit === "share" ? formatShare(v, locale) : fixed(v, 1, locale));
+      const suffix =
+        unit === "events"
+          ? `${unitGap(locale)}${axisUnit}`
+          : unit === "ports"
+            ? `${unitGap(locale)}${t("ips.chart.portsWord")}`
+            : "";
+      const whole = (v: number) => (unit === "share" ? formatShare(v, locale) : plainCount(v, locale));
 
       return {
         animation: !reduceMotion,
@@ -245,20 +262,25 @@ export function IpsSeriesChart({
             const p = i != null ? points[i] : undefined;
             if (!p || i == null) return "";
             if (p.kind === "GAP") {
-              return [utcTimeHtml(new Date(p.t).toISOString()), kindMeaning("GAP")].join("<br/>");
+              return [utcTimeHtml(new Date(p.t).toISOString()), kindMeaning("GAP", x)].join("<br/>");
             }
             const cell = seasonal ? cells[i] : null;
             const observed =
               p.observed != null
                 ? `${quantity}: ${p.lowerBound ? "≥ " : ""}${whole(p.observed)}${suffix}`
-                : `${quantity}: not measured`;
+                : t("ips.chart.tooltipNotMeasured", { quantity });
             const reported =
               p.observed == null && p.reported != null
-                ? `Reported but not used: ${whole(p.reported)}${suffix}`
+                ? t("ips.chart.tooltipReported", {
+                    value: `${whole(p.reported)}${suffix}`,
+                  })
                 : "";
             const counts =
               unit === "share" && p.numerator != null && p.denominator != null
-                ? `${p.numerator} of ${p.denominator} events`
+                ? t("ips.chart.tooltipCounts", {
+                    num: plainCount(p.numerator, locale),
+                    den: plainCount(p.denominator, locale),
+                  })
                 : "";
             let median = "";
             let band = "";
@@ -268,7 +290,7 @@ export function IpsSeriesChart({
               band =
                 cell?.low != null && cell.high != null
                   ? `${bandLabel}: ${fmt(cell.low)} – ${fmt(cell.high)}${suffix}`
-                  : `${bandLabel}: no reliable baseline for this weekday and hour`;
+                  : t("ips.chart.noReliableCell", { band: bandLabel });
             } else {
               median = expected != null ? `${medianLabel}: ${fmt(expected)}${suffix}` : "";
               band =
@@ -283,10 +305,10 @@ export function IpsSeriesChart({
               counts,
               median,
               band,
-              `Measurement: ${measurementMeaning(p.measurement)}`,
-              p.maintenance ? "In maintenance: not judged by the engine" : "",
-              p.admissionTruncated ? "Entity admission was truncated in this bucket" : "",
-              originText(origins.get(p.t)),
+              t("ips.chart.measurementLabel", { meaning: measurementMeaning(p.measurement, x) }),
+              p.maintenance ? t("ips.chart.maintenanceTip") : "",
+              p.admissionTruncated ? t("ips.chart.admissionTip") : "",
+              originText(origins.get(p.t), { say: t, locale }),
             ]
               .filter(Boolean)
               .join("<br/>");
@@ -294,7 +316,7 @@ export function IpsSeriesChart({
         },
         xAxis: {
           type: "time",
-          name: "Time (UTC)",
+          name: t("ips.chart.axisTime"),
           nameLocation: "middle",
           nameGap: 30,
           nameTextStyle: text,
@@ -307,6 +329,9 @@ export function IpsSeriesChart({
           min: 0,
           splitLine: { lineStyle: { color: c.grid } },
           ...axisCommon,
+          // The Turkish tick numbers group with a dot; English keeps ECharts' own.
+          axisLabel:
+            locale === "tr" ? { ...text, formatter: (value: number) => grouped(value, locale) } : text,
         },
         series: [
           {
@@ -343,7 +368,7 @@ export function IpsSeriesChart({
                   ...quiet,
                   symbol: "none",
                   lineStyle: { color: c.marker, type: "dashed" },
-                  data: transitions.map((t) => ({ xAxis: Date.parse(t.at), name: t.label })),
+                  data: transitions.map((tr) => ({ xAxis: Date.parse(tr.at), name: tr.label })),
                 }
               : undefined,
           },
@@ -403,20 +428,28 @@ export function IpsSeriesChart({
     seasonal,
     cells,
     unit,
-    unitText,
+    axisUnit,
     axisTitle,
     quantity,
     bandLabel,
     medianLabel,
     history,
     origins,
+    t,
+    locale,
+    x,
   ]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !buildOption) return;
 
-    const chart = echarts.init(el);
+    // ECharts names months from its locale; English is its default, Turkish is given here.
+    const chart = echarts.init(
+      el,
+      null,
+      locale === "tr" ? { locale: TURKISH_ECHARTS_LOCALE as never } : undefined,
+    );
     chart.setOption(buildOption());
 
     const observer = new ResizeObserver(() => chart.resize());
@@ -426,7 +459,7 @@ export function IpsSeriesChart({
       observer.disconnect();
       chart.dispose();
     };
-  }, [buildOption]);
+  }, [buildOption, locale]);
 
   if (points.length === 0) return null;
 
@@ -435,7 +468,7 @@ export function IpsSeriesChart({
       <div ref={containerRef} className="chart chart-ips" role="img" aria-label={ariaLabel} />
       {textSummary && <p className="sr-only">{textSummary}</p>}
       <HistoryText rows={rows} />
-      <ul className="chart-legend" aria-label="Chart key">
+      <ul className="chart-legend" aria-label={t("ips.chart.keyLabel")}>
         <li>
           <span className="chart-key chart-key-observed" aria-hidden="true" />
           {quantity}
@@ -455,35 +488,40 @@ export function IpsSeriesChart({
         {hasUnmeasured && (
           <li>
             <span className="chart-key chart-key-gap" aria-hidden="true" />
-            Not stored, not measured or not exact
+            {t("ips.chart.legendGap")}
           </li>
         )}
         {hasMaintenance && (
           <li>
             <span className="chart-key chart-key-maintenance" aria-hidden="true" />
-            Maintenance
+            {t("ips.chart.legendMaintenance")}
           </li>
         )}
         {anomalies.length > 0 && (
           <li>
             <span className="chart-key chart-key-anomaly" aria-hidden="true" />
-            Anomalous interval
+            {t("ips.chart.legendAnomaly")}
           </li>
         )}
         {transitions.length > 0 && (
           <li>
             <span className="chart-key chart-key-rule" aria-hidden="true" />
-            Lifecycle transition
+            {t("ips.chart.legendTransition")}
           </li>
         )}
         {history.length > 0 && <HistoryKey />}
       </ul>
       <p className="subtitle chart-note">
-        Gaps in the line are buckets that were not stored or not measured. They are not{" "}
-        {unit === "share" ? "0 %" : unit === "ports" ? "zero ports" : "zero events"}.
-        {hasLowerBound && " Some buckets are lower bounds (at least the plotted value)."}
-        {seasonal &&
-          " The band follows the baseline cell of each bucket's UTC weekday and hour, and is absent where that cell is missing or not yet reliable."}
+        {t("ips.chart.noteGaps", {
+          zero:
+            unit === "share"
+              ? t("ips.chart.zeroShare")
+              : unit === "ports"
+                ? t("ips.chart.zeroPorts")
+                : t("ips.chart.zeroEvents"),
+        })}
+        {hasLowerBound && ` ${t("ips.chart.noteLower")}`}
+        {seasonal && ` ${t("ips.chart.noteSeasonal")}`}
       </p>
     </>
   );

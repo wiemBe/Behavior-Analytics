@@ -16,6 +16,29 @@ import {
   type SourceClass,
 } from "@/lib/api";
 import { classLabel } from "@/lib/fleet";
+import { createTextTranslator } from "@/i18n/textTranslator";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { fixed, plainCount } from "@/lib/figureText";
+
+import enums from "../../../../messages/en/enums.json";
+import errors from "../../../../messages/en/errors.json";
+import outage from "../../../../messages/en/outage.json";
+
+// Every helper that builds visible text takes a `BehaviorI18n` (a translator over the whole catalog,
+// and the locale) as its LAST optional argument and defaults to English, so the Dashboard's outage
+// widget and every existing test keep today's text. Route code passes its own
+// (`useBehaviorI18n()` in a component, `getBehaviorI18n()` in a server page).
+
+/** The English of this area, for the helpers' defaults. */
+export const ENGLISH_OUTAGE: BehaviorI18n = {
+  t: createTextTranslator("en", { enums, errors, outage }),
+  locale: "en",
+};
+
+const k = (key: string) => `outage.${key}`;
+
+/** The fleet-text bundle `lib/fleet` helpers take, built from this area's. */
+const fleetOf = (i18n: BehaviorI18n) => ({ say: i18n.t, locale: i18n.locale });
 
 export const GRACE_MIN = 0;
 export const GRACE_MAX = 48;
@@ -25,8 +48,15 @@ export const MODE_LABELS: Record<OutageMode, string> = {
   RECORD_ONLY: "Record only",
 };
 
-export function modeLabel(mode: OutageMode): string {
-  return MODE_LABELS[mode];
+export function modeLabel(mode: OutageMode, i18n: BehaviorI18n = ENGLISH_OUTAGE): string {
+  return Object.prototype.hasOwnProperty.call(MODE_LABELS, mode)
+    ? i18n.t(k(`mode.${mode}`))
+    : String(mode);
+}
+
+/** A counted noun (`unit.bucket`, `unit.monitoredSource`, `unit.source`) in the interface language. */
+function counted(i18n: BehaviorI18n, key: string, count: number): string {
+  return i18n.t(k(key), { count, n: plainCount(count, i18n.locale) });
 }
 
 export function plural(n: number, one: string, many = `${one}s`): string {
@@ -36,26 +66,33 @@ export function plural(n: number, one: string, many = `${one}s`): string {
 // --- grace ---------------------------------------------------------------------
 
 /** `6 buckets · 30 min`, or the buckets alone when the width is not known. */
-export function formatGrace(buckets: number, bucketSeconds: number | null): string {
-  const b = plural(buckets, "bucket");
+export function formatGrace(
+  buckets: number,
+  bucketSeconds: number | null,
+  i18n: BehaviorI18n = ENGLISH_OUTAGE,
+): string {
+  const b = counted(i18n, "unit.bucket", buckets);
   if (bucketSeconds === null) return b;
-  return `${b} · ${formatMinutes((buckets * bucketSeconds) / 60)}`;
+  return `${b} · ${formatMinutes((buckets * bucketSeconds) / 60, i18n)}`;
 }
 
 /** The two halves of a grace, for a cell that puts the minutes on a second line. */
 export function graceParts(
   buckets: number,
   bucketSeconds: number | null,
+  i18n: BehaviorI18n = ENGLISH_OUTAGE,
 ): { buckets: string; minutes: string | null } {
   return {
-    buckets: plural(buckets, "bucket"),
-    minutes: bucketSeconds === null ? null : formatMinutes((buckets * bucketSeconds) / 60),
+    buckets: counted(i18n, "unit.bucket", buckets),
+    minutes:
+      bucketSeconds === null ? null : formatMinutes((buckets * bucketSeconds) / 60, i18n),
   };
 }
 
-export function formatMinutes(minutes: number): string {
+export function formatMinutes(minutes: number, i18n: BehaviorI18n = ENGLISH_OUTAGE): string {
   const rounded = Math.round(minutes * 10) / 10;
-  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} min`;
+  const value = Number.isInteger(rounded) ? plainCount(rounded, i18n.locale) : fixed(rounded, 1, i18n.locale);
+  return i18n.t(k("unit.minutes"), { value });
 }
 
 export type GraceParse = { ok: true; value: number | null } | { ok: false; message: string };
@@ -65,11 +102,11 @@ export type GraceParse = { ok: true; value: number | null } | { ok: false; messa
  * whole number. The range is the server's to enforce and its 422 is shown at
  * the field, so an out-of-range number is sent rather than judged here.
  */
-export function parseGrace(text: string): GraceParse {
+export function parseGrace(text: string, i18n: BehaviorI18n = ENGLISH_OUTAGE): GraceParse {
   const t = text.trim();
   if (t === "") return { ok: true, value: null };
   if (!/^-?\d+$/.test(t)) {
-    return { ok: false, message: "Enter a whole number of buckets, or leave it blank for the default." };
+    return { ok: false, message: i18n.t(k("grace.blank")) };
   }
   return { ok: true, value: Number(t) };
 }
@@ -115,10 +152,13 @@ export function defaultMode(summary: OutageFleetSummary | null): OutageMode | nu
 }
 
 /** `1 bucket (5 min)`, or null when the default grace is not reported. */
-export function defaultGraceText(summary: OutageFleetSummary | null): string | null {
+export function defaultGraceText(
+  summary: OutageFleetSummary | null,
+  i18n: BehaviorI18n = ENGLISH_OUTAGE,
+): string | null {
   const g = summary?.default_silence_grace_buckets;
   if (g === null || g === undefined) return null;
-  const p = graceParts(g, summary ? summary.bucket_seconds : null);
+  const p = graceParts(g, summary ? summary.bucket_seconds : null, i18n);
   return p.minutes ? `${p.buckets} (${p.minutes})` : p.buckets;
 }
 
@@ -143,6 +183,7 @@ export interface ClassLine {
 export function classLines(
   summary: OutageFleetSummary | null,
   rows: OutagePolicyRow[],
+  i18n: BehaviorI18n = ENGLISH_OUTAGE,
 ): ClassLine[] {
   const byClass = new Map<string, OutageClassSummary>(
     (summary?.classes ?? []).map((c) => [c.source_class, c]),
@@ -187,9 +228,13 @@ export function classLines(
       });
     }
   }
+  const fleet = fleetOf(i18n);
+  // English keeps the runtime's own collation; Turkish orders by its alphabet.
+  const collate = (a: string, b: string) =>
+    i18n.locale === "tr" ? a.localeCompare(b, "tr") : a.localeCompare(b);
   return lines.sort(
     (a, b) =>
-      classLabel(a.source_class).localeCompare(classLabel(b.source_class)) ||
+      collate(classLabel(a.source_class, fleet), classLabel(b.source_class, fleet)) ||
       (a.row?.instance_id ?? "").localeCompare(b.row?.instance_id ?? ""),
   );
 }
@@ -237,72 +282,81 @@ export interface ClassChange {
   bucketSeconds: number | null;
 }
 
-function sources(n: number, cls: SourceClass): string {
-  return `${plural(n, "monitored source")} in ${classLabel(cls)}`;
-}
-
 function graceClause(
   g: number | null,
   bucketSeconds: number | null,
   defaultGrace: string | null,
+  i18n: BehaviorI18n,
 ): string {
-  if (g !== null) return formatGrace(g, bucketSeconds);
-  return defaultGrace ? `the default grace, ${defaultGrace}` : "the default grace";
+  if (g !== null) return formatGrace(g, bucketSeconds, i18n);
+  return defaultGrace
+    ? i18n.t(k("grace.defaultWith"), { default: defaultGrace })
+    : i18n.t(k("grace.default"));
 }
 
 /** What saving (or removing) a class row does, in numbers, before it is saved. */
-export function classImpact(c: ClassChange): Impact {
+export function classImpact(c: ClassChange, i18n: BehaviorI18n = ENGLISH_OUTAGE): Impact {
   const lines: string[] = [];
   let known = true;
-  const who = c.covered === null ? null : sources(c.covered, c.source_class);
+  const fleet = fleetOf(i18n);
+  const cls = classLabel(c.source_class, fleet);
+  const named = i18n.t(k("impact.classNamed"), { class: cls });
+  const say = (key: string, values?: Record<string, string | number>) =>
+    i18n.t(k(`impact.${key}`), values);
+  const mode = (m: OutageMode) => modeLabel(m, i18n);
+  const who =
+    c.covered === null
+      ? null
+      : say("inClass", { sources: counted(i18n, "unit.monitoredSource", c.covered), class: cls });
 
   if (c.toMode === null) {
     known = false;
-    lines.push(
-      "The default mode is not reported, so the effect of this change cannot be counted here.",
-    );
+    lines.push(say("unknownDefault"));
   } else if (c.fromMode !== null && c.fromMode === c.toMode) {
     lines.push(
       c.removal
-        ? `${classLabel(c.source_class)} already resolves to ${modeLabel(c.toMode)}; removing the row changes no mode.`
-        : `The mode stays ${modeLabel(c.toMode)}.`,
+        ? say("sameRemoval", { class: named, mode: mode(c.toMode) })
+        : say("sameKeep", { mode: mode(c.toMode) }),
     );
   } else if (who === null) {
     known = false;
     lines.push(
-      `${classLabel(c.source_class)} will ${c.toMode === "RECORD_ONLY" ? "no longer raise outage alerts" : "raise outage alerts"}. The number of sources affected is unavailable because the fleet summary could not be read.`,
+      say(c.toMode === "RECORD_ONLY" ? "unknownCountStop" : "unknownCountRaise", { class: named }),
     );
   } else if (c.covered === 0) {
-    lines.push(
-      `No monitored source in ${classLabel(c.source_class)} is decided by this row, so no source changes behaviour.`,
-    );
+    lines.push(say("none", { class: cls }));
   } else if (c.toMode === "RECORD_ONLY") {
-    lines.push(`${who} will no longer raise outage alerts.`);
+    lines.push(say("stop", { who }));
     if (c.alertingOverrides > 0) {
-      const one = c.alertingOverrides === 1;
       lines.push(
-        `${plural(c.alertingOverrides, "source")} ${one ? "keeps" : "keep"} alerting through ${one ? "its" : "their"} own ${one ? "override" : "overrides"}.`,
+        say("keepAlerting", { count: c.alertingOverrides, n: plainCount(c.alertingOverrides, i18n.locale) }),
       );
     }
   } else {
-    lines.push(`${who} will raise outage alerts again.`);
+    lines.push(say("raise", { who }));
     if (c.recordOnlyOverrides > 0) {
-      const one = c.recordOnlyOverrides === 1;
       lines.push(
-        `${plural(c.recordOnlyOverrides, "source")} ${one ? "stays" : "stay"} record-only through ${one ? "its" : "their"} own ${one ? "override" : "overrides"}.`,
+        say("stayRecordOnly", {
+          count: c.recordOnlyOverrides,
+          n: plainCount(c.recordOnlyOverrides, i18n.locale),
+        }),
       );
     }
   }
 
   if (c.fromGrace !== c.toGrace) {
+    const to = graceClause(c.toGrace, c.bucketSeconds, c.defaultGrace, i18n);
     lines.push(
       c.covered === null || c.covered > 0
-        ? `A silent source is judged after ${graceClause(c.toGrace, c.bucketSeconds, c.defaultGrace)} instead of ${graceClause(c.fromGrace, c.bucketSeconds, c.defaultGrace)}.`
-        : `The grace becomes ${graceClause(c.toGrace, c.bucketSeconds, c.defaultGrace)}.`,
+        ? say("graceChanged", {
+            to,
+            from: graceClause(c.fromGrace, c.bucketSeconds, c.defaultGrace, i18n),
+          })
+        : say("graceBecomes", { to }),
     );
   }
   if (lines.length === 1 && c.fromMode === c.toMode && c.fromGrace === c.toGrace) {
-    lines.push("Nothing changes.");
+    lines.push(say("nothing"));
   }
   return { lines, known };
 }
@@ -323,40 +377,46 @@ export interface SourceChange {
 }
 
 /** The same, for one source's override. */
-export function sourceImpact(c: SourceChange): Impact {
+export function sourceImpact(c: SourceChange, i18n: BehaviorI18n = ENGLISH_OUTAGE): Impact {
   const lines: string[] = [];
-  const classText = c.source_class ? classLabel(c.source_class) : "its class";
+  const say = (key: string, values?: Record<string, string | number>) =>
+    i18n.t(k(`impact.${key}`), values);
+  const mode = (m: OutageMode) => modeLabel(m, i18n);
+  const classText = c.source_class
+    ? say("classNamed", { class: classLabel(c.source_class, fleetOf(i18n)) })
+    : say("itsClass");
   const toMode = c.removal ? c.classMode : c.toMode;
   let known = true;
   if (toMode === null) {
     known = false;
-    lines.push(
-      `${c.name} falls back to the mode of ${classText}, which is not reported here, so the effect cannot be stated.`,
-    );
+    lines.push(say("sourceUnknown", { name: c.name, class: classText }));
   } else if (c.fromMode !== null && c.fromMode === toMode) {
     lines.push(
       c.removal
-        ? `${c.name} already resolves to ${modeLabel(toMode)}; removing the override changes no mode.`
-        : `${c.name} stays ${modeLabel(toMode)}.`,
+        ? say("sourceSameRemoval", { name: c.name, mode: mode(toMode) })
+        : say("sourceSameKeep", { name: c.name, mode: mode(toMode) }),
     );
   } else if (toMode === "RECORD_ONLY") {
-    lines.push(`${c.name} will no longer raise outage alerts.`);
+    lines.push(say("sourceStop", { name: c.name }));
   } else {
-    lines.push(`${c.name} will raise outage alerts.`);
+    lines.push(say("sourceRaise", { name: c.name }));
   }
   if (!c.removal && c.classMode !== null && toMode !== null) {
     lines.push(
       toMode === c.classMode
-        ? `${classText} resolves to ${modeLabel(c.classMode)} as well, so this override pins the source against a later change to its class.`
-        : `${classText} resolves to ${modeLabel(c.classMode)}; this source differs from it.`,
+        ? say("pinned", { class: classText, mode: mode(c.classMode) })
+        : say("differs", { class: classText, mode: mode(c.classMode) }),
     );
   }
   if (c.removal) {
-    lines.push(`It follows ${classText} again.`);
+    lines.push(say("follows", { class: classText }));
   }
   if (c.fromGrace !== c.toGrace) {
     lines.push(
-      `It is judged silent after ${graceClause(c.toGrace, c.bucketSeconds, c.defaultGrace)} instead of ${graceClause(c.fromGrace, c.bucketSeconds, c.defaultGrace)}.`,
+      say("sourceGrace", {
+        to: graceClause(c.toGrace, c.bucketSeconds, c.defaultGrace, i18n),
+        from: graceClause(c.fromGrace, c.bucketSeconds, c.defaultGrace, i18n),
+      }),
     );
   }
   return { lines, known };
@@ -373,51 +433,48 @@ export interface Failure {
   gone: boolean;
 }
 
-export function saveFailure(err: unknown): Failure {
+export function saveFailure(err: unknown, i18n: BehaviorI18n = ENGLISH_OUTAGE): Failure {
   if (err instanceof ApiError) {
     if (err.status === 403) {
-      return {
-        kind: "forbidden",
-        text: "Your role cannot change the outage alert policy (permission admin:outage). Nothing was changed.",
-        field: null,
-        gone: false,
-      };
+      return { kind: "forbidden", text: i18n.t(k("failure.forbidden")), field: null, gone: false };
     }
     if (err.status === 422 && err.message) {
       return { kind: "error", text: err.message, field: "grace", gone: false };
     }
   }
-  return { kind: "error", text: `Not saved. ${actionErrorMessage(err)}`, field: null, gone: false };
+  return {
+    kind: "error",
+    text: i18n.t(k("failure.notSaved"), { reason: actionErrorMessage(err, i18n.t) }),
+    field: null,
+    gone: false,
+  };
 }
 
-export function removeFailure(err: unknown): Failure {
+export function removeFailure(err: unknown, i18n: BehaviorI18n = ENGLISH_OUTAGE): Failure {
   if (err instanceof ApiError && err.status === 404) {
-    return {
-      kind: "error",
-      text: "This row was already removed by someone else. The list has been reloaded.",
-      field: null,
-      gone: true,
-    };
+    return { kind: "error", text: i18n.t(k("failure.gone")), field: null, gone: true };
   }
   if (err instanceof ApiError && err.status === 403) {
-    return { ...saveFailure(err) };
+    return { ...saveFailure(err, i18n) };
   }
-  return { kind: "error", text: `Not removed. ${actionErrorMessage(err)}`, field: null, gone: false };
+  return {
+    kind: "error",
+    text: i18n.t(k("failure.notRemoved"), { reason: actionErrorMessage(err, i18n.t) }),
+    field: null,
+    gone: false,
+  };
 }
 
 /** What a failed read of the policy says. Never the raw error. */
-export function readError(err: unknown): { forbidden: boolean; text: string } {
+export function readError(
+  err: unknown,
+  i18n: BehaviorI18n = ENGLISH_OUTAGE,
+): { forbidden: boolean; text: string } {
   if (err instanceof ApiError && err.status === 403) {
-    return {
-      forbidden: true,
-      text: "Your role cannot read the outage alert policy (permission admin:outage). Reading it needs the same permission as changing it. Nothing was changed.",
-    };
+    return { forbidden: true, text: i18n.t(k("failure.readForbidden")) };
   }
   if (err instanceof ApiError && err.status === 401) {
-    return { forbidden: false, text: "Your session has expired. Sign in again to continue." };
+    return { forbidden: false, text: i18n.t(k("failure.expired")) };
   }
-  return {
-    forbidden: false,
-    text: "The outage alert policy could not be loaded, so nothing is shown here. The backend may be unreachable; check that it is running, then reload the page. Nothing was changed.",
-  };
+  return { forbidden: false, text: i18n.t(k("failure.readFailed")) };
 }

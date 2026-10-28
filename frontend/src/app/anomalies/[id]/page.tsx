@@ -286,7 +286,14 @@ export default async function AnomalyDetailPage({
   // rather than EPS, so it has its own view; the Phase A page below is unchanged.
   if (isWafDetail(loaded)) {
     const [buckets, baselines] = await Promise.all([wafBuckets(loaded), wafBaselines(loaded)]);
-    return <WafInvestigation anomaly={loaded} buckets={buckets} baselines={baselines} />;
+    return (
+      <WafInvestigation
+        anomaly={loaded}
+        buckets={buckets}
+        baselines={baselines}
+        i18n={await getBehaviorI18n()}
+      />
+    );
   }
   // An IPS entity or source is investigated against its own event, port or share
   // series, in that unit and never in EPS, so it has its own view as well.

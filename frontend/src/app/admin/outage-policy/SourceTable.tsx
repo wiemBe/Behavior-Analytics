@@ -7,12 +7,14 @@
 // removal, because there is nothing left to edit.
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { outagePolicyApi, type OutageMode, type OutagePolicyRow } from "@/lib/api";
 import { classLabel } from "@/lib/fleet";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import {
   graceParts,
@@ -52,10 +54,12 @@ function SourceRow({
   onChanged: (text: string) => Promise<void>;
   onGone: (text: string) => Promise<void>;
 }) {
+  const t = useTranslations("outage.sources");
+  const i18n = useBehaviorI18n();
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<ChangeOutcome>({ kind: "idle" });
   const gone = isGone(row);
-  const name = gone ? NO_LONGER_IN_INVENTORY : (row.source_name as string);
+  const name = gone ? t("gone") : (row.source_name as string);
   const instanceRow = row.instance_id !== null;
 
   async function remove() {
@@ -65,13 +69,9 @@ function SourceRow({
     try {
       await outagePolicyApi.deleteSource(row.scope_value, row.instance_id);
       setRemoving(false);
-      await onChanged(
-        gone
-          ? "Removed the override of a source that is no longer in the inventory."
-          : `Removed the override of ${name}. It follows its class again.`,
-      );
+      await onChanged(gone ? t("removedGone") : t("removed", { name }));
     } catch (err) {
-      const failure = removeFailure(err);
+      const failure = removeFailure(err, i18n);
       if (failure.gone) {
         setRemoving(false);
         await onGone(failure.text);
@@ -84,18 +84,21 @@ function SourceRow({
   }
 
   const change = (mode: OutageMode, grace: number | null, removal: boolean) =>
-    sourceImpact({
-      name,
-      source_class: row.source_class,
-      classMode,
-      fromMode: row.mode,
-      fromGrace: row.silence_grace_buckets,
-      toMode: mode,
-      toGrace: grace,
-      removal,
-      bucketSeconds,
-      defaultGrace,
-    });
+    sourceImpact(
+      {
+        name,
+        source_class: row.source_class,
+        classMode,
+        fromMode: row.mode,
+        fromGrace: row.silence_grace_buckets,
+        toMode: mode,
+        toGrace: grace,
+        removal,
+        bucketSeconds,
+        defaultGrace,
+      },
+      i18n,
+    );
 
   return (
     <>
@@ -104,33 +107,33 @@ function SourceRow({
           {gone ? <span className="muted">{name}</span> : name}
           <span className="cell-sub">
             {gone
-              ? `Log source id ${shortId(row.scope_value)}…`
+              ? t("goneId", { id: shortId(row.scope_value) })
               : row.source_class
-                ? classLabel(row.source_class)
+                ? classLabel(row.source_class, { say: i18n.t, locale: i18n.locale })
                 : ""}
           </span>
           {instanceRow && row.instance_id && (
             <span className="cell-sub">
               <span className="pill">
-                Instance: {row.instance_name ?? shortId(row.instance_id)}
+                {t("instance", { name: row.instance_name ?? shortId(row.instance_id) })}
               </span>
             </span>
           )}
         </th>
         <td>
           <span className={row.mode === "ALERT" ? "pill info" : "pill warn"}>
-            {modeLabel(row.mode)}
+            {modeLabel(row.mode, i18n)}
           </span>
         </td>
         <td className="nowrap">
           {row.silence_grace_buckets === null ? (
-            <span className="muted">Default</span>
+            <span className="muted">{t("default")}</span>
           ) : (
             <>
-              {graceParts(row.silence_grace_buckets, bucketSeconds).buckets}
-              {graceParts(row.silence_grace_buckets, bucketSeconds).minutes && (
+              {graceParts(row.silence_grace_buckets, bucketSeconds, i18n).buckets}
+              {graceParts(row.silence_grace_buckets, bucketSeconds, i18n).minutes && (
                 <span className="cell-sub">
-                  {graceParts(row.silence_grace_buckets, bucketSeconds).minutes}
+                  {graceParts(row.silence_grace_buckets, bucketSeconds, i18n).minutes}
                 </span>
               )}
             </>
@@ -146,20 +149,24 @@ function SourceRow({
               <button
                 type="button"
                 className="action secondary"
-                aria-label={`Edit the override of ${name}`}
+                aria-label={t("editAria", { name })}
                 disabled={pending}
                 onClick={() => {
                   setRemoving(false);
                   setEditing(!editing);
                 }}
               >
-                Edit
+                {t("edit")}
               </button>
             )}
             <button
               type="button"
               className="action secondary"
-              aria-label={`Remove the override of ${name}${gone ? ` (id ${shortId(row.scope_value)})` : ""}`}
+              aria-label={
+                gone
+                  ? t("removeGoneAria", { name, id: shortId(row.scope_value) })
+                  : t("removeAria", { name })
+              }
               disabled={pending}
               onClick={() => {
                 setEditing(false);
@@ -167,7 +174,7 @@ function SourceRow({
                 setRemoving(!removing);
               }}
             >
-              Remove override
+              {t("remove")}
             </button>
           </div>
         </td>
@@ -177,7 +184,7 @@ function SourceRow({
           <td colSpan={5}>
             {editing && (
               <PolicyForm
-                label={`Edit the override of ${name}`}
+                label={t("editLabel", { name })}
                 initialMode={row.mode}
                 initialGrace={row.silence_grace_buckets}
                 bucketSeconds={bucketSeconds}
@@ -188,7 +195,7 @@ function SourceRow({
                 onSave={async (body) => {
                   await outagePolicyApi.putSource(row.scope_value, body);
                   setEditing(false);
-                  await onChanged(`Saved. ${name} is now ${modeLabel(body.mode)}.`);
+                  await onChanged(t("saved", { name, mode: modeLabel(body.mode, i18n) }));
                 }}
                 onCancel={() => setEditing(false)}
               />
@@ -196,14 +203,12 @@ function SourceRow({
             {removing && (
               <div className="rule-form outage-form">
                 <ImpactNote
-                  title="Before you remove"
+                  title={t("beforeRemove")}
                   impact={
                     gone
                       ? {
                           known: true,
-                          lines: [
-                            "This row governs no source: its source is no longer in the inventory. Removing it changes no behaviour.",
-                          ],
+                          lines: [i18n.t("outage.impact.goneRow")],
                         }
                       : change(row.mode, null, true)
                   }
@@ -215,7 +220,7 @@ function SourceRow({
                     disabled={pending}
                     onClick={() => void remove()}
                   >
-                    {pending ? "Removing…" : "Remove override"}
+                    {pending ? t("removing") : t("remove")}
                   </button>
                   <button
                     type="button"
@@ -223,7 +228,7 @@ function SourceRow({
                     disabled={pending}
                     onClick={() => setRemoving(false)}
                   >
-                    Keep
+                    {t("keep")}
                   </button>
                 </div>
                 <ChangeStatus outcome={outcome} />
@@ -255,20 +260,18 @@ export function SourceTable({
   onChanged: (text: string) => Promise<void>;
   onGone: (text: string) => Promise<void>;
 }) {
+  const t = useTranslations("outage.sources");
   return (
-    <TableScroll label="Source overrides">
+    <TableScroll label={t("tableLabel")}>
       <table className="fleet-table outage-table">
-        <caption className="sr-only">
-          Sources whose outage mode or grace is set on the source itself, and who last changed
-          each. Times are UTC.
-        </caption>
+        <caption className="sr-only">{t("caption")}</caption>
         <thead>
           <tr>
-            <th scope="col">Source</th>
-            <th scope="col">Outage mode</th>
-            <th scope="col">Grace</th>
-            <th scope="col">Changed by</th>
-            <th scope="col">Actions</th>
+            <th scope="col">{t("source")}</th>
+            <th scope="col">{t("mode")}</th>
+            <th scope="col">{t("grace")}</th>
+            <th scope="col">{t("changedBy")}</th>
+            <th scope="col">{t("actions")}</th>
           </tr>
         </thead>
         <tbody>

@@ -40,9 +40,14 @@ import { formatFigure } from "@/components/ips/ipsFormat";
 import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
 import { isPwRow, pwTypeLabel } from "@/components/propertywatch/pwFormat";
 import { valueText } from "@/components/propertywatch/WatchValuesTable";
-import { formatRequests, SINCE_UNIT } from "@/components/waf/wafFormat";
+import { formatRequests, listUnit, sinceUnit } from "@/components/waf/wafFormat";
 import { formatPercent } from "@/lib/format";
-import { endpointLabel, isWafRow, subjectText } from "@/components/waf/wafLabels";
+import {
+  anomalyTypeLabel,
+  endpointLabel,
+  isWafRow,
+  subjectText,
+} from "@/components/waf/wafLabels";
 import { isNewEndpointType, isRatioType } from "@/components/waf/wafSummary";
 import { UtcTime } from "@/components/ui/UtcTime";
 
@@ -60,6 +65,7 @@ import "@/components/ui/controls.css";
  */
 function SubjectCell({ a }: { a: AnomalySummary }) {
   const t = useTranslations("anomalies.rows");
+  const ipsI18n = useBehaviorI18n();
   // A property-watch row has no source of its own: its watch names it.
   const source = a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? t("unnamed");
   // Below 1100 px the Started column folds under the subject.
@@ -93,7 +99,7 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
     // the page that administers it needs a grant the list cannot know the caller has.
     return (
       <td className="cell-name cell-subject">
-        <span className="subject-endpoint ips-subject-name">{ipsSubjectText(a)}</span>
+        <span className="subject-endpoint ips-subject-name">{ipsSubjectText(a, ipsI18n)}</span>
         <span className="sr-only"> · </span>
         <span className="subject-source" title={source}>
           {source}
@@ -153,7 +159,8 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
   const t = useTranslations("anomalies.rows");
   const common = useTranslations("common");
   const units = useTranslations("units");
-  const { locale } = useBehaviorI18n();
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
   if (isPwRow(a)) {
     // Volume detectors count events per 5-minute bucket. The figure of a new-value detector has
     // no unit this list knows, so it shows none rather than a number under a guessed one.
@@ -167,9 +174,9 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
     return (
       <>
         <span className="ips-figures">
-          {formatRequests(a.observed_value, a.observed_measurement)}
+          {formatRequests(a.observed_value, a.observed_measurement, locale)}
           <span className="muted"> {ARROW} </span>
-          {formatRequests(a.expected_value)}
+          {formatRequests(a.expected_value, null, locale)}
         </span>
         <span className="cell-sub ips-unit">{t("eventsPer5Min")}</span>
       </>
@@ -201,9 +208,9 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
     return (
       <>
         <span className="ips-figures">
-          {formatFigure(f.unit, f.observed, m)}
+          {formatFigure(f.unit, f.observed, m, i18n)}
           <span className="muted"> {ARROW} </span>
-          {expectsNone(a.anomaly_type) ? common("none") : formatFigure(f.unit, f.expected)}
+          {expectsNone(a.anomaly_type) ? common("none") : formatFigure(f.unit, f.expected, undefined, i18n)}
         </span>
         {unitWords && <span className="cell-sub ips-unit">{unitWords}</span>}
       </>
@@ -230,22 +237,24 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
     return (
       <>
         <span className="ips-figures">
-          {formatRequests(a.observed_value, a.observed_measurement)}
+          {formatRequests(a.observed_value, a.observed_measurement, locale)}
           <span className="muted"> {ARROW} </span>
           {common("none")}
         </span>
-        <span className="cell-sub ips-unit">{SINCE_UNIT}</span>
+        <span className="cell-sub ips-unit">{sinceUnit(i18n)}</span>
       </>
     );
   }
   return (
     <>
       {ratio
-        ? formatPercent(a.observed_value, a.observed_measurement)
-        : formatRequests(a.observed_value, a.observed_measurement)}
+        ? formatPercent(a.observed_value, a.observed_measurement, 1, locale)
+        : formatRequests(a.observed_value, a.observed_measurement, locale)}
       <span className="muted"> {ARROW} </span>
-      {ratio ? formatPercent(a.expected_value) : formatRequests(a.expected_value)}
-      {!ratio && <span className="unit"> {WAF_LIST_UNIT}</span>}
+      {ratio
+        ? formatPercent(a.expected_value, null, 1, locale)
+        : formatRequests(a.expected_value, null, locale)}
+      {!ratio && <span className="unit"> {listUnit(i18n)}</span>}
     </>
   );
 }
@@ -285,8 +294,9 @@ function ipsDeltaHidden(a: AnomalySummary): boolean {
 /** The detector's name in a row: Phase A in the interface language; the other families' own labels. */
 function typeText(a: AnomalySummary, i18n: BehaviorI18n): string {
   if (isPwRow(a)) return pwTypeLabel(a.anomaly_type, i18n);
-  if (!isWafRow(a) && !isIpsRow(a)) return detectorLabel(a.anomaly_type, i18n);
-  return rowTypeLabel(a);
+  if (isWafRow(a)) return anomalyTypeLabel(a.anomaly_type, i18n);
+  if (!isIpsRow(a)) return detectorLabel(a.anomaly_type, i18n);
+  return rowTypeLabel(a, i18n);
 }
 
 export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
@@ -355,8 +365,8 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                         isPwRow(a) && a.pw_value
                           ? `${valueText(a.pw_value)} · ${a.pw_value.watch_name}`
                           : isIpsRow(a)
-                            ? `${ipsSubjectText(a)} · ${a.log_source_name ?? a.log_source_id}`
-                            : subjectText(a),
+                            ? `${ipsSubjectText(a, i18n)} · ${a.log_source_name ?? a.log_source_id}`
+                            : subjectText(a, i18n),
                     })}
                     onClick={() => setExpanded(open ? null : a.id)}
                   >

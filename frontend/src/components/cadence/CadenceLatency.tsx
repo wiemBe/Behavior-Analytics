@@ -5,9 +5,12 @@
 // settle margin passes none, and the sentence then says what the delay depends on.
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { holds } from "@/components/auth/access";
 import type { Cadence, CallerInfo } from "@/lib/api";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { ENGLISH_CADENCE } from "@/lib/cadenceText";
 import { worstCaseDelay } from "@/lib/searchCadence";
 
 export const READ_SEARCH_CADENCE = "read:search_cadence";
@@ -32,13 +35,16 @@ export function latencyCadence(cadence: Cadence | null | undefined): LatencyCade
   };
 }
 
-/** `up to 22 min`, or null when the cadence is not known on the page. */
-export function delayText(cadence: LatencyCadence | null | undefined): string | null {
+/** `up to 22 min` (`en fazla 22 dk`), or null when the cadence is not known on the page. */
+export function delayText(
+  cadence: LatencyCadence | null | undefined,
+  i18n: BehaviorI18n = ENGLISH_CADENCE,
+): string | null {
   if (!cadence) return null;
   const { cadenceSeconds, bucketSeconds, settleSeconds } = cadence;
   if (![cadenceSeconds, settleSeconds].every(Number.isFinite)) return null;
   if (bucketSeconds !== null && !Number.isFinite(bucketSeconds)) return null;
-  return worstCaseDelay(cadenceSeconds, bucketSeconds, settleSeconds).text;
+  return worstCaseDelay(cadenceSeconds, bucketSeconds, settleSeconds, i18n).text;
 }
 
 /** The link to Search cadence is offered only to a reader that can open the page. */
@@ -60,19 +66,19 @@ export function latencyParts(
   subject: string,
   cadence: LatencyCadence | null | undefined,
   closing: string,
+  i18n: BehaviorI18n = ENGLISH_CADENCE,
 ): LatencyParts {
-  const delay = delayText(cadence);
-  const when = delay
-    ? `${delay} after the events arrive (the schedule is set on `
-    : "after each collection of their family (the schedule is set on ";
+  const delay = delayText(cadence, i18n);
   return {
-    lead: `${subject} are judged on collected 5-minute buckets, ${when}`,
-    tail: `). ${closing}`,
+    lead: delay
+      ? i18n.t("cadence.latency.knownLead", { subject, delay })
+      : i18n.t("cadence.latency.unknownLead", { subject }),
+    tail: i18n.t("cadence.latency.tail", { closing }),
   };
 }
 
-export function partsText(parts: LatencyParts): string {
-  return `${parts.lead}Search cadence${parts.tail}`;
+export function partsText(parts: LatencyParts, i18n: BehaviorI18n = ENGLISH_CADENCE): string {
+  return `${parts.lead}${i18n.t("cadence.latency.link")}${parts.tail}`;
 }
 
 export function CadenceLatency({
@@ -84,10 +90,11 @@ export function CadenceLatency({
   canLink: boolean;
   className: string;
 }) {
+  const t = useTranslations("cadence.latency");
   return (
     <p className={className}>
       {parts.lead}
-      {canLink ? <Link href="/admin/search-cadence">Search cadence</Link> : "Search cadence"}
+      {canLink ? <Link href="/admin/search-cadence">{t("link")}</Link> : t("link")}
       {parts.tail}
     </p>
   );

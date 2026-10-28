@@ -1,17 +1,23 @@
 // The rules that decide a log source's class, and the order they apply in.
 
 import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
 
 import { RulesManager } from "@/components/fleet/RulesManager";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ApiError, fleetApi, type ClassificationRule } from "@/lib/api";
-import { PRECEDENCE } from "@/lib/fleet";
+import { precedenceSteps } from "@/lib/fleet";
+import { fleetTextOf, plainCount } from "@/lib/fleetText";
 
-export const metadata: Metadata = {
-  title: "Classification rules",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("classification.meta");
+  return { title: t("title") };
+}
 
 export default async function ClassificationRulesPage() {
+  const t = await getTranslations("classification.page");
+  const locale = await getLocale();
+  const text = fleetTextOf(await getTranslations(), locale);
   let rules: ClassificationRule[] = [];
   let error: string | null = null;
   try {
@@ -19,29 +25,32 @@ export default async function ClassificationRulesPage() {
   } catch (err) {
     error =
       err instanceof ApiError && err.status === 403
-        ? "Your role cannot read classification rules (permission read:fleet). Nothing was changed."
+        ? t("forbidden")
         : err instanceof ApiError && err.status === 401
-          ? "Your session has expired. Sign in again to continue."
-          : "Classification rules could not be loaded. The backend may be unreachable; check that it is running, then reload the page. Nothing was changed.";
+          ? t("expired")
+          : t("failed");
   }
-
   const builtIn = rules.filter((r) => r.built_in).length;
 
   return (
     <>
       <PageHeader
-        title="Classification rules"
+        title={t("title")}
         description={
           error
-            ? "The rules that decide a log source's class."
-            : `${rules.length} rules, ${builtIn} built-in and ${rules.length - builtIn} custom. Built-in rules can be switched on or off; to change what they match, add a custom rule with a higher priority.`
+            ? t("descriptionError")
+            : t("description", {
+                total: plainCount(rules.length, text.locale),
+                builtIn: plainCount(builtIn, text.locale),
+                custom: plainCount(rules.length - builtIn, text.locale),
+              })
         }
       />
 
       {error ? (
         <div className="notice" role="alert">
           <p>
-            <strong>Classification rules could not be shown.</strong>
+            <strong>{t("errorTitle")}</strong>
           </p>
           <p>{error}</p>
         </div>
@@ -49,21 +58,17 @@ export default async function ClassificationRulesPage() {
         <>
           <section aria-labelledby="precedence">
             <h2 className="section-title" id="precedence">
-              Order of decision
+              {t("precedenceTitle")}
             </h2>
             <ol className="precedence">
-              {PRECEDENCE.map((step) => (
-                <li key={step.title}>
+              {precedenceSteps(text).map((step) => (
+                <li key={step.key}>
                   <strong>{step.title}</strong>
                   <span className="muted"> — {step.detail}</span>
                 </li>
               ))}
             </ol>
-            <p className="subtitle">
-              The first level that decides wins. Within a level the highest priority wins; two
-              rules of equal priority naming different classes leave the level undecided, record a
-              conflict, and the next level is tried.
-            </p>
+            <p className="subtitle">{t("precedenceNote")}</p>
           </section>
           <RulesManager initial={rules} />
         </>

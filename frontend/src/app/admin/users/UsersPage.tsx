@@ -5,8 +5,9 @@
 // view until it is dismissed, and is never written to web storage.
 
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslations } from "next-intl";
 
-import { accountStatus } from "@/components/auth/accountStatus";
+import { isLocked } from "@/components/auth/accountStatus";
 import {
   createUser,
   disableUser,
@@ -28,16 +29,22 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { LoadingState } from "@/components/ui/RouteState";
 import { ApiError } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { enumLabel, type EnumTranslator } from "@/i18n/enumLabels";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
+
+// The two account sources are codes the backend names; they read the same in both languages.
+const SOURCE_LOCAL = "LOCAL";
+const SOURCE_LDAP = "LDAP";
 
 type Load = "loading" | "ready" | "error" | "forbidden";
 type Outcome = { tone: "ok" | "warn"; heading?: string; lines: string[] };
 type Once = { username: string; password: string; sentence: string };
 
-const DESCRIPTION =
-  "Accounts that can sign in, and the roles an administrator assigned. Last login is UTC.";
-
 export function UsersPage() {
+  const t = useTranslations("users");
+  const { t: say } = useBehaviorI18n();
+  const nameOf = (account: { username: string | null }) => account.username ?? t("theAccount");
   const [load, setLoad] = useState<Load>("loading");
   const [loadLines, setLoadLines] = useState<string[]>([]);
   const [users, setUsers] = useState<Account[]>([]);
@@ -69,7 +76,7 @@ export function UsersPage() {
       setRolesProblem(null);
     } else if (!signal?.aborted) {
       setRoles(null);
-      setRolesProblem(errorTexts(rolesOut.reason));
+      setRolesProblem(errorTexts(rolesOut.reason, say));
     }
     if (usersOut.status === "fulfilled") {
       setUsers(usersOut.value);
@@ -79,7 +86,7 @@ export function UsersPage() {
     }
     if (signal?.aborted) return;
     const reason = usersOut.reason;
-    setLoadLines(errorTexts(reason));
+    setLoadLines(errorTexts(reason, say));
     setLoad(reason instanceof ApiError && reason.status === 403 ? "forbidden" : "error");
   }
 
@@ -124,20 +131,18 @@ export function UsersPage() {
         setOnce({
           username: name,
           password: typed,
-          sentence: `The initial password for ${name} is shown once. The account must change it at the next sign-in.`,
+          sentence: t("once.initial", { name }),
         });
         setPassword("");
         setOutcome({
           tone: "ok",
-          lines: [
-            `Created local user ${name}. The account must change the password at the next sign-in.`,
-          ],
+          lines: [t("outcome.createdLocal", { name })],
         });
       } else {
         setOnce(null);
         setOutcome({
           tone: "ok",
-          lines: [`Pre-created LDAP user ${name}. The account has no password here.`],
+          lines: [t("outcome.createdLdap", { name })],
         });
       }
       setUsername("");
@@ -145,7 +150,11 @@ export function UsersPage() {
       setEmail("");
       setCreateRoles([]);
     } catch (err) {
-      setOutcome({ tone: "warn", heading: "The account was not created.", lines: errorTexts(err) });
+      setOutcome({
+        tone: "warn",
+        heading: t("outcome.createFailed"),
+        lines: errorTexts(err, say),
+      });
     } finally {
       setPending(null);
     }
@@ -160,25 +169,29 @@ export function UsersPage() {
       const saved = await setUserRoles(selected.id, roleDraft);
       replace(saved);
       setRoleDraft(saved.roles);
-      const name = saved.username ?? "the account";
-      const listed = [...saved.roles].sort().join(", ");
+      const name = nameOf(saved);
+      const listed = [...saved.roles].sort().map(roleName).join(", ");
       setOutcome({
         tone: "ok",
         lines: [
           listed
-            ? `Roles for ${name} are now ${listed}.`
-            : `Roles for ${name} were cleared.`,
+            ? t("outcome.rolesNow", { name, roles: listed })
+            : t("outcome.rolesCleared", { name }),
         ],
       });
     } catch (err) {
-      setOutcome({ tone: "warn", heading: "The roles were not changed.", lines: errorTexts(err) });
+      setOutcome({
+        tone: "warn",
+        heading: t("outcome.rolesFailed"),
+        lines: errorTexts(err, say),
+      });
     } finally {
       setPending(null);
     }
   }
 
   async function onDisable(user: Account, disabled: boolean) {
-    const name = user.username ?? "the account";
+    const name = nameOf(user);
     setPending(disabled ? "disable" : "enable");
     setOutcome(null);
     try {
@@ -186,13 +199,13 @@ export function UsersPage() {
       replace(saved);
       setOutcome({
         tone: "ok",
-        lines: [disabled ? `Disabled ${name}.` : `Enabled ${name}.`],
+        lines: [disabled ? t("outcome.disabled", { name }) : t("outcome.enabled", { name })],
       });
     } catch (err) {
       setOutcome({
         tone: "warn",
-        heading: "The account was not changed.",
-        lines: errorTexts(err),
+        heading: t("outcome.notChanged"),
+        lines: errorTexts(err, say),
       });
     } finally {
       setPending(null);
@@ -200,14 +213,18 @@ export function UsersPage() {
   }
 
   async function onUnlock(user: Account) {
-    const name = user.username ?? "the account";
+    const name = nameOf(user);
     setPending("unlock");
     setOutcome(null);
     try {
       replace(await unlockUser(user.id));
-      setOutcome({ tone: "ok", lines: [`Unlocked ${name}.`] });
+      setOutcome({ tone: "ok", lines: [t("outcome.unlocked", { name })] });
     } catch (err) {
-      setOutcome({ tone: "warn", heading: "The account was not unlocked.", lines: errorTexts(err) });
+      setOutcome({
+        tone: "warn",
+        heading: t("outcome.notUnlocked"),
+        lines: errorTexts(err, say),
+      });
     } finally {
       setPending(null);
     }
@@ -216,12 +233,12 @@ export function UsersPage() {
   async function onReset(event: FormEvent) {
     event.preventDefault();
     if (!selected) return;
-    const name = selected.username ?? "the account";
+    const name = nameOf(selected);
     if (resetPassword !== resetConfirm) {
       setOutcome({
         tone: "warn",
-        heading: "The password was not reset.",
-        lines: ["The new password and the confirmation do not match."],
+        heading: t("outcome.notReset"),
+        lines: [t("outcome.mismatch")],
       });
       return;
     }
@@ -233,20 +250,26 @@ export function UsersPage() {
       setOnce({
         username: name,
         password: typed,
-        sentence: `The new password for ${name} is shown once. The account must change it at the next sign-in.`,
+        sentence: t("once.reset", { name }),
       });
       setResetPassword("");
       setResetConfirm("");
       setOutcome({
         tone: "ok",
-        lines: [`Reset the password for ${name}. The account must change it at the next sign-in.`],
+        lines: [t("outcome.resetDone", { name })],
       });
     } catch (err) {
-      setOutcome({ tone: "warn", heading: "The password was not reset.", lines: errorTexts(err) });
+      setOutcome({
+        tone: "warn",
+        heading: t("outcome.notReset"),
+        lines: errorTexts(err, say),
+      });
     } finally {
       setPending(null);
     }
   }
+
+  const roleName = useRoleName();
 
   function replace(saved: Account) {
     setUsers((current) => current.map((user) => (user.id === saved.id ? saved : user)));
@@ -254,21 +277,21 @@ export function UsersPage() {
 
   return (
     <div className={styles.stack}>
-      <PageHeader title="Users" description={DESCRIPTION} />
-      {load === "loading" ? <LoadingState what="users" /> : null}
+      <PageHeader title={t("page.title")} description={t("page.description")} />
+      {load === "loading" ? <LoadingState what={t("boundary.loadingWhat")} /> : null}
       {load === "forbidden" ? (
         <ReasonList
           tone="warn"
-          heading="Your role cannot administer users (permission admin:users)."
+          heading={t("page.forbidden")}
           lines={loadLines}
         />
       ) : null}
       {load === "error" ? (
         <>
-          <ReasonList tone="warn" heading="Users could not be loaded." lines={loadLines} />
+          <ReasonList tone="warn" heading={t("page.loadFailed")} lines={loadLines} />
           <p>
             <button type="button" className="action secondary" onClick={() => void loadUsers()}>
-              Try again
+              {t("page.tryAgain")}
             </button>
           </p>
         </>
@@ -284,7 +307,7 @@ export function UsersPage() {
                 <p>{once.sentence}</p>
                 <p className={`num ${styles.preview}`}>{once.password}</p>
                 <button type="button" className="action secondary" onClick={() => setOnce(null)}>
-                  Dismiss the password
+                  {t("once.dismiss")}
                 </button>
               </div>
             </div>
@@ -292,30 +315,25 @@ export function UsersPage() {
           {users.length === 0 ? (
             <div className="notice" role="status">
               <p>
-                <strong>No accounts are stored.</strong>
+                <strong>{t("empty.title")}</strong>
               </p>
-              <p>
-                Create a local account below, or pre-create a directory account so a role is in
-                place before the first sign-in.
-              </p>
+              <p>{t("empty.text")}</p>
             </div>
           ) : (
-            <TableScroll label="Accounts">
+            <TableScroll label={t("table.label")}>
               <table className={`table-dense ${styles.accounts}`}>
-                <caption className="sr-only">
-                  Accounts with source, display name, roles, status and last login. Times are UTC.
-                </caption>
+                <caption className="sr-only">{t("table.caption")}</caption>
                 <thead>
                   <tr>
-                    <th scope="col">Username</th>
-                    <th scope="col">Source</th>
-                    <th scope="col">Display name</th>
-                    <th scope="col">Roles</th>
-                    <th scope="col">Status</th>
+                    <th scope="col">{t("table.username")}</th>
+                    <th scope="col">{t("table.source")}</th>
+                    <th scope="col">{t("table.displayName")}</th>
+                    <th scope="col">{t("table.roles")}</th>
+                    <th scope="col">{t("table.status")}</th>
                     <th scope="col" className="num">
-                      Last login (UTC)
+                      {t("table.lastLogin")}
                     </th>
-                    <th scope="col">Actions</th>
+                    <th scope="col">{t("table.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -326,7 +344,7 @@ export function UsersPage() {
                         <th scope="row">{name}</th>
                         <td>{user.auth_source}</td>
                         <td>{user.display_name?.trim() || "—"}</td>
-                        <td>{user.roles.length > 0 ? user.roles.join(", ") : "—"}</td>
+                        <td>{user.roles.length > 0 ? user.roles.map(roleName).join(", ") : "—"}</td>
                         <td>
                           <Status user={user} now={now} />
                         </td>
@@ -335,11 +353,11 @@ export function UsersPage() {
                           <button
                             type="button"
                             className={`action secondary ${styles.manage}`}
-                            aria-label={`Manage ${name}`}
+                            aria-label={t("table.manageAria", { name })}
                             aria-pressed={selectedId === user.id}
                             onClick={() => openActions(user)}
                           >
-                            Manage
+                            {t("table.manage")}
                           </button>
                         </td>
                       </tr>
@@ -352,21 +370,25 @@ export function UsersPage() {
 
           {selected ? (
             <section className={styles.section} aria-labelledby="account-actions">
-              <h2 id="account-actions">Actions for {selected.username ?? "the account"}</h2>
+              <h2 id="account-actions">{t("actions.title", { name: nameOf(selected) })}</h2>
               <dl className={styles.defs}>
-                <dt>Email</dt>
+                <dt>{t("actions.email")}</dt>
                 <dd>{selected.email?.trim() || "—"}</dd>
-                <dt>Password change</dt>
+                <dt>{t("actions.passwordChange")}</dt>
                 <dd>
                   {selected.must_change_password
-                    ? "Required at the next sign-in."
-                    : "Not required."}
+                    ? t("actions.required")
+                    : t("actions.notRequired")}
                 </dd>
               </dl>
-              <form className={styles.form} aria-label="Roles" onSubmit={(event) => void onSaveRoles(event)}>
+              <form
+                className={styles.form}
+                aria-label={t("actions.rolesForm")}
+                onSubmit={(event) => void onSaveRoles(event)}
+              >
                 <RoleField
                   idPrefix="edit"
-                  legend="Roles"
+                  legend={t("actions.rolesLegend")}
                   catalog={roles ?? []}
                   extra={selected.roles}
                   selected={roleDraft}
@@ -376,13 +398,15 @@ export function UsersPage() {
                 {rolesProblem ? (
                   <ReasonList
                     tone="warn"
-                    heading="Roles could not be loaded. Saving can keep the roles already on this account, not add one that is missing from the list."
+                    heading={t("actions.rolesProblemEdit")}
                     lines={rolesProblem}
                   />
                 ) : null}
                 <div className={styles.actions}>
                   <button type="submit" className="action" disabled={pending !== null}>
-                    {pending === "roles" ? "Saving roles" : `Save roles for ${selected.username ?? "the account"}`}
+                    {pending === "roles"
+                      ? t("actions.savingRoles")
+                      : t("actions.saveRoles", { name: nameOf(selected) })}
                   </button>
                 </div>
               </form>
@@ -394,7 +418,9 @@ export function UsersPage() {
                     disabled={pending !== null}
                     onClick={() => void onDisable(selected, false)}
                   >
-                    {pending === "enable" ? "Enabling" : `Enable ${selected.username ?? "the account"}`}
+                    {pending === "enable"
+                      ? t("actions.enabling")
+                      : t("actions.enable", { name: nameOf(selected) })}
                   </button>
                 ) : (
                   <button
@@ -403,27 +429,35 @@ export function UsersPage() {
                     disabled={pending !== null}
                     onClick={() => void onDisable(selected, true)}
                   >
-                    {pending === "disable" ? "Disabling" : `Disable ${selected.username ?? "the account"}`}
+                    {pending === "disable"
+                      ? t("actions.disabling")
+                      : t("actions.disable", { name: nameOf(selected) })}
                   </button>
                 )}
-                {accountStatus(selected, now).includes("locked") ? (
+                {isLocked(selected.locked_until, now) ? (
                   <button
                     type="button"
                     className="action secondary"
                     disabled={pending !== null}
                     onClick={() => void onUnlock(selected)}
                   >
-                    {pending === "unlock" ? "Unlocking" : `Unlock ${selected.username ?? "the account"}`}
+                    {pending === "unlock"
+                      ? t("actions.unlocking")
+                      : t("actions.unlock", { name: nameOf(selected) })}
                   </button>
                 ) : (
-                  <p className="cell-sub">Not locked.</p>
+                  <p className="cell-sub">{t("actions.notLocked")}</p>
                 )}
               </div>
               {selected.auth_source === "LOCAL" ? (
-                <form className={styles.form} aria-label="Reset password" onSubmit={(event) => void onReset(event)}>
-                  <h3>Reset password</h3>
+                <form
+                  className={styles.form}
+                  aria-label={t("actions.resetTitle")}
+                  onSubmit={(event) => void onReset(event)}
+                >
+                  <h3>{t("actions.resetTitle")}</h3>
                   <label className={styles.field}>
-                    <span className={styles.label}>New password</span>
+                    <span className={styles.label}>{t("actions.newPassword")}</span>
                     <input
                       className={styles.control}
                       type="password"
@@ -435,7 +469,7 @@ export function UsersPage() {
                     />
                   </label>
                   <label className={styles.field}>
-                    <span className={styles.label}>Confirm new password</span>
+                    <span className={styles.label}>{t("actions.confirmPassword")}</span>
                     <input
                       className={styles.control}
                       type="password"
@@ -449,26 +483,30 @@ export function UsersPage() {
                   <div className={styles.actions}>
                     <button type="submit" className="action" disabled={pending !== null}>
                       {pending === "reset"
-                        ? "Resetting password"
-                        : `Reset password for ${selected.username ?? "the account"}`}
+                        ? t("actions.resetting")
+                        : t("actions.reset", { name: nameOf(selected) })}
                     </button>
                   </div>
                 </form>
               ) : (
-                <p>An LDAP account has no password here.</p>
+                <p>{t("actions.ldapNoPassword")}</p>
               )}
             </section>
           ) : users.length > 0 ? (
             <p className="notice" role="status">
-              Select an account to change its roles, status, or local password.
+              {t("actions.select")}
             </p>
           ) : null}
 
           <section className={styles.section} aria-labelledby="create-account">
-            <h2 id="create-account">Create an account</h2>
-            <form className={styles.form} aria-label="Create an account" onSubmit={(event) => void onCreate(event)}>
+            <h2 id="create-account">{t("create.title")}</h2>
+            <form
+              className={styles.form}
+              aria-label={t("create.title")}
+              onSubmit={(event) => void onCreate(event)}
+            >
               <fieldset className={styles.checks}>
-                <legend className={styles.legend}>Source</legend>
+                <legend className={styles.legend}>{t("create.source")}</legend>
                 <label className={styles.check}>
                   <input
                     type="radio"
@@ -476,7 +514,7 @@ export function UsersPage() {
                     checked={source === "LOCAL"}
                     onChange={() => setSource("LOCAL")}
                   />
-                  <span>LOCAL</span>
+                  <span>{SOURCE_LOCAL}</span>
                 </label>
                 <label className={styles.check}>
                   <input
@@ -488,11 +526,11 @@ export function UsersPage() {
                       setPassword("");
                     }}
                   />
-                  <span>LDAP</span>
+                  <span>{SOURCE_LDAP}</span>
                 </label>
               </fieldset>
               <label className={styles.field}>
-                <span className={styles.label}>Username</span>
+                <span className={styles.label}>{t("create.username")}</span>
                 <input
                   className={styles.control}
                   value={username}
@@ -502,7 +540,7 @@ export function UsersPage() {
                 />
               </label>
               <label className={styles.field}>
-                <span className={styles.label}>Display name</span>
+                <span className={styles.label}>{t("create.displayName")}</span>
                 <input
                   className={styles.control}
                   value={displayName}
@@ -511,7 +549,7 @@ export function UsersPage() {
                 />
               </label>
               <label className={styles.field}>
-                <span className={styles.label}>Email</span>
+                <span className={styles.label}>{t("create.email")}</span>
                 <input
                   className={styles.control}
                   type="email"
@@ -523,7 +561,7 @@ export function UsersPage() {
               {source === "LOCAL" ? (
                 <div className={styles.field}>
                   <label className={styles.field} htmlFor="initial-password">
-                    <span className={styles.label}>Initial password</span>
+                    <span className={styles.label}>{t("create.initialPassword")}</span>
                   </label>
                   <input
                     id="initial-password"
@@ -536,19 +574,17 @@ export function UsersPage() {
                     required
                   />
                   <p id="initial-password-hint" className="cell-sub">
-                    Shown once after the account is created. The account must change it at the
-                    next sign-in.
+                    {t("create.initialHint")}
                   </p>
                 </div>
               ) : (
                 <p className="cell-sub">
-                  The directory checks the password. This account is created here so a role can
-                  be assigned before the first sign-in.
+                  {t("create.ldapHint")}
                 </p>
               )}
               <RoleField
                 idPrefix="create"
-                legend="Roles"
+                legend={t("actions.rolesLegend")}
                 catalog={roles ?? []}
                 extra={[]}
                 selected={createRoles}
@@ -558,13 +594,13 @@ export function UsersPage() {
               {rolesProblem ? (
                 <ReasonList
                   tone="warn"
-                  heading="Roles could not be loaded. Creating now assigns no role."
+                  heading={t("create.rolesProblem")}
                   lines={rolesProblem}
                 />
               ) : null}
               <div className={styles.actions}>
                 <button type="submit" className="action" disabled={pending !== null}>
-                  {pending === "create" ? "Creating account" : "Create account"}
+                  {pending === "create" ? t("create.creating") : t("create.submit")}
                 </button>
               </div>
             </form>
@@ -575,12 +611,25 @@ export function UsersPage() {
   );
 }
 
+/** A role's label (`enums.role`); a role the catalog does not list shows its own name. */
+function useRoleName(): (name: string) => string {
+  const t = useTranslations("enums") as unknown as EnumTranslator;
+  return (name) => enumLabel(t, "role", name);
+}
+
 function Status({ user, now }: { user: Account; now: number }) {
+  const { t } = useBehaviorI18n();
+  // The codes decide the tone; the words come from the catalog.
+  const codes: Array<"active" | "disabled" | "locked"> = [];
+  if (user.disabled) codes.push("disabled");
+  if (isLocked(user.locked_until, now)) codes.push("locked");
+  if (codes.length === 0) codes.push("active");
+  const word = { active: "auth.statusActive", disabled: "auth.statusDisabled", locked: "auth.statusLocked" };
   return (
     <span className={styles.tableActions}>
-      {accountStatus(user, now).map((label) => (
-        <span key={label} className={label === "active" ? "pill ok" : label === "locked" ? "pill warn" : "pill"}>
-          {label}
+      {codes.map((code) => (
+        <span key={code} className={code === "active" ? "pill ok" : code === "locked" ? "pill warn" : "pill"}>
+          {t(word[code])}
         </span>
       ))}
     </span>
@@ -604,16 +653,18 @@ function RoleField({
   onChange: (next: string[]) => void;
   disabled: boolean;
 }) {
+  const t = useTranslations("users.roles");
+  const roleName = useRoleName();
   const names = roleChoices(catalog, extra);
   return (
     <fieldset className={styles.checks} disabled={disabled}>
       <legend className={styles.legend}>{legend}</legend>
-      {names.length === 0 ? <p>No roles are defined.</p> : null}
+      {names.length === 0 ? <p>{t("none")}</p> : null}
       {names.map((name) => {
         const known = catalog.find((role) => role.name === name);
         const detail = known
-          ? known.permissions.join(", ") || "No permissions"
-          : "Not in the role list. Left selected so a save does not drop it.";
+          ? known.permissions.join(", ") || t("noPermissions")
+          : t("notInList");
         return (
           <div key={name}>
             <label className={styles.check}>
@@ -623,7 +674,7 @@ function RoleField({
                 aria-describedby={`role-${idPrefix}-${name}`}
                 onChange={(event) => onChange(toggle(selected, name, event.target.checked))}
               />
-              <span className={styles.roleName}>{name}</span>
+              <span className={styles.roleName}>{roleName(name)}</span>
             </label>
             <p id={`role-${idPrefix}-${name}`} className="cell-sub">
               {detail}
