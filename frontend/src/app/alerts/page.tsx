@@ -11,6 +11,7 @@ import { UtcTime } from "@/components/ui/UtcTime";
 import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "./alerts.css";
 
@@ -32,7 +33,7 @@ export async function generateMetadata() {
   return { title: t("list") };
 }
 
-export default async function AlertsPage({
+async function AlertsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -142,3 +143,5 @@ export default async function AlertsPage({
     </>
   );
 }
+
+export default withRouteMessages("/alerts", AlertsPage);

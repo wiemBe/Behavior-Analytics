@@ -11,6 +11,7 @@ import { Blocks, Markup } from "@/components/guide/Markup";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideSection } from "@/lib/guideSections";
 import { rawMessage, readGuideSection } from "@/lib/guideText";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 type Params = Promise<{ section: string }>;
 
@@ -21,7 +22,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   return { title: readGuideSection(rawMessage(t, "sections"), id).title };
 }
 
-export default async function GuideSectionPage({ params }: { params: Params }) {
+async function GuideSectionPage({ params }: { params: Params }) {
   const { section: id } = await params;
   const facts = guideSection(id);
   if (!facts) notFound();
@@ -124,3 +125,5 @@ export default async function GuideSectionPage({ params }: { params: Params }) {
     </>
   );
 }
+
+export default withRouteMessages("/guide/[section]", GuideSectionPage);

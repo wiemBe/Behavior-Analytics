@@ -21,13 +21,14 @@ import {
   parseFleetSourceQuery,
 } from "@/lib/fleet";
 import { fleetTextOf } from "@/lib/fleetText";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("fleet.meta");
   return { title: t("sources") };
 }
 
-export default async function FleetSourcesPage({
+async function FleetSourcesPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -114,3 +115,5 @@ export default async function FleetSourcesPage({
     </>
   );
 }
+
+export default withRouteMessages("/fleet/sources", FleetSourcesPage);

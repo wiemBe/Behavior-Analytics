@@ -40,6 +40,7 @@ import {
 } from "@/lib/anomalyQuery";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { sourcesAsOf } from "@/lib/home/asOf";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "./anomalies.css";
 
@@ -48,7 +49,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("metaTitle") };
 }
 
-export default async function AnomaliesPage({
+async function AnomaliesPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, SearchParamValue>>;
@@ -222,3 +223,5 @@ export default async function AnomaliesPage({
     </>
   );
 }
+
+export default withRouteMessages("/anomalies", AnomaliesPage);

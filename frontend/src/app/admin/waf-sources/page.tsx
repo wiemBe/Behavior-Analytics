@@ -10,13 +10,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { api, type MappingSchemaOut, type WafSourceStatus } from "@/lib/api";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("waf.meta");
   return { title: t("admin") };
 }
 
-export default async function WafSourcesPage() {
+async function WafSourcesPage() {
   const t = await getTranslations("waf.admin");
   const i18n = await getBehaviorI18n();
   let sources: WafSourceStatus[] = [];
@@ -72,3 +73,5 @@ export default async function WafSourcesPage() {
     </>
   );
 }
+
+export default withRouteMessages("/admin/waf-sources", WafSourcesPage);

@@ -40,6 +40,7 @@ import {
 import { historyHeaderText } from "@/components/propertywatch/history";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "@/components/ui/controls.css";
 
@@ -66,7 +67,7 @@ function Problem({ title, pageTitle, children }: { title: string; pageTitle: str
   );
 }
 
-export default async function PropertyWatchPage({
+async function PropertyWatchPage({
   params,
   searchParams,
 }: {
@@ -239,3 +240,5 @@ export default async function PropertyWatchPage({
     </>
   );
 }
+
+export default withRouteMessages("/behavior/watches/[id]", PropertyWatchPage);

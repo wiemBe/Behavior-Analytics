@@ -9,13 +9,14 @@ import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, fleetApi, type ClassificationRule } from "@/lib/api";
 import { precedenceSteps } from "@/lib/fleet";
 import { fleetTextOf, plainCount } from "@/lib/fleetText";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("classification.meta");
   return { title: t("title") };
 }
 
-export default async function ClassificationRulesPage() {
+async function ClassificationRulesPage() {
   const t = await getTranslations("classification.page");
   const locale = await getLocale();
   const text = fleetTextOf(await getTranslations(), locale);
@@ -78,3 +79,5 @@ export default async function ClassificationRulesPage() {
     </>
   );
 }
+
+export default withRouteMessages("/admin/classification-rules", ClassificationRulesPage);

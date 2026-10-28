@@ -19,6 +19,7 @@ import { UtcTime } from "@/components/ui/UtcTime";
 import type { Locale } from "@/i18n/locale";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { enumLabel } from "@/i18n/enumLabels";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 const EVALUATION_SETTING = "CUSTOM_RULES_ENABLED";
 const ALERTING_SETTING = "CUSTOM_RULES_ALERTING_ENABLED";
@@ -31,7 +32,7 @@ export async function generateMetadata() {
 }
 
 
-export default async function CustomRulesPage() {
+async function CustomRulesPage() {
   const t = await getTranslations("customRules");
   const say = asTextTranslator(await getTranslations());
   const locale = (await getLocale()) as Locale;
@@ -151,3 +152,5 @@ export default async function CustomRulesPage() {
     </>
   );
 }
+
+export default withRouteMessages("/custom-rules", CustomRulesPage);

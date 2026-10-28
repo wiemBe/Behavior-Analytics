@@ -26,6 +26,7 @@ import {
   resolveInstanceId,
 } from "@/lib/fieldMapping";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("waf.meta");
@@ -46,7 +47,7 @@ function Problem({ title, text, pageTitle }: { title: string; text: string; page
   );
 }
 
-export default async function WafSourcePage({
+async function WafSourcePage({
   params,
   searchParams,
 }: {
@@ -164,3 +165,5 @@ export default async function WafSourcePage({
     />
   );
 }
+
+export default withRouteMessages("/admin/waf-sources/[logSourceId]", WafSourcePage);

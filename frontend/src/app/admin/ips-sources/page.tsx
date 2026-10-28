@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { fleetApi, ipsApi, type IpsSourceStatus } from "@/lib/api";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("ips.page");
@@ -26,7 +27,7 @@ async function instanceFor(sources: IpsSourceStatus[]): Promise<string | null> {
   }
 }
 
-export default async function IpsSourcesPage() {
+async function IpsSourcesPage() {
   const t = await getTranslations("ips.page");
   const i18n = await getBehaviorI18n();
   let sources: IpsSourceStatus[] = [];
@@ -68,3 +69,5 @@ export default async function IpsSourcesPage() {
     </>
   );
 }
+
+export default withRouteMessages("/admin/ips-sources", IpsSourcesPage);

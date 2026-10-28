@@ -32,6 +32,7 @@ import { UtcTime } from "@/components/ui/UtcTime";
 import type { Locale } from "@/i18n/locale";
 import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
 import { enumLabel } from "@/i18n/enumLabels";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 function measuredValue(
@@ -53,7 +54,7 @@ export async function generateMetadata() {
   return { title: t("detail") };
 }
 
-export default async function CustomRuleDetailPage({ params }: { params: Promise<{ id: string }> }) {
+async function CustomRuleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const t = await getTranslations("customRules.detail");
   const say = asTextTranslator(await getTranslations());
@@ -210,3 +211,5 @@ export default async function CustomRuleDetailPage({ params }: { params: Promise
     </>
   );
 }
+
+export default withRouteMessages("/custom-rules/[id]", CustomRuleDetailPage);

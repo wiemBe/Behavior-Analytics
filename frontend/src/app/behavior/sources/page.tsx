@@ -37,6 +37,7 @@ import {
   sourceQueryParams,
 } from "@/lib/sourceInventory";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "./sources.css";
@@ -71,7 +72,7 @@ function SortHeader({
   );
 }
 
-export default async function SourcesIndexPage({
+async function SourcesIndexPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -202,3 +203,5 @@ export default async function SourcesIndexPage({
     </>
   );
 }
+
+export default withRouteMessages("/behavior/sources", SourcesIndexPage);

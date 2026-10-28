@@ -8,12 +8,13 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, api, type LogSourceDetail } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import { qradarStatusLabel, qradarStatusTone } from "../qradarStatus";
 
 import "./log-source-detail.css";
 
-export default async function LogSourceDetailPage({
+async function LogSourceDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -95,3 +96,5 @@ export default async function LogSourceDetailPage({
     </>
   );
 }
+
+export default withRouteMessages("/log-sources/[id]", LogSourceDetailPage);

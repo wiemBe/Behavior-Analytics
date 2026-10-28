@@ -16,6 +16,7 @@ import { UtcTime } from "@/components/ui/UtcTime";
 import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "@/components/ui/controls.css";
 
@@ -59,7 +60,7 @@ function magnitudeStep(magnitude: number): number {
   return Math.min(10, Math.max(0, Math.round(magnitude)));
 }
 
-export default async function OffensesPage({
+async function OffensesPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -226,3 +227,5 @@ export default async function OffensesPage({
     </>
   );
 }
+
+export default withRouteMessages("/offenses", OffensesPage);

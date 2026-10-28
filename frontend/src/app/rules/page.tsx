@@ -19,6 +19,7 @@ import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
 import { formatCount } from "@/lib/format";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "@/components/ui/controls.css";
 import "./rules.css";
@@ -39,7 +40,7 @@ export async function generateMetadata() {
   return { title: t("list") };
 }
 
-export default async function RulesPage({
+async function RulesPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -216,3 +217,5 @@ export default async function RulesPage({
     </>
   );
 }
+
+export default withRouteMessages("/rules", RulesPage);

@@ -12,16 +12,19 @@ import { Suspense } from "react";
 
 import { HomeDashboard } from "@/components/home/HomeDashboard";
 import { HomeFallback } from "@/components/home/HomeFallback";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("dashboard");
   return { title: t("title") };
 }
 
-export default function HomePage() {
+function HomePage() {
   return (
     <Suspense fallback={<HomeFallback />}>
       <HomeDashboard />
     </Suspense>
   );
 }
+
+export default withRouteMessages("/", HomePage);

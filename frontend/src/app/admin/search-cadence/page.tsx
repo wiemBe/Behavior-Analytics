@@ -8,13 +8,14 @@ import { SearchCadenceTable } from "@/components/cadence/SearchCadenceTable";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, api, type SearchCadenceItem } from "@/lib/api";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("cadence.meta");
   return { title: t("title") };
 }
 
-export default async function SearchCadencePage() {
+async function SearchCadencePage() {
   const t = await getTranslations("cadence.page");
   const errors = await getTranslations("errors");
   let items: SearchCadenceItem[] = [];
@@ -54,3 +55,5 @@ export default async function SearchCadencePage() {
     </>
   );
 }
+
+export default withRouteMessages("/admin/search-cadence", SearchCadencePage);

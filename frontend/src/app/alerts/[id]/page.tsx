@@ -11,6 +11,7 @@ import { UtcTime } from "@/components/ui/UtcTime";
 import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "./alert-detail.css";
@@ -27,7 +28,7 @@ export async function generateMetadata() {
   return { title: t("detail") };
 }
 
-export default async function AlertDetailPage({
+async function AlertDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -130,3 +131,5 @@ export default async function AlertDetailPage({
     </>
   );
 }
+
+export default withRouteMessages("/alerts/[id]", AlertDetailPage);

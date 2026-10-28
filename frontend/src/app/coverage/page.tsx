@@ -20,6 +20,7 @@ import { formatShare, type FormatLocale } from "@/lib/format";
 import { plainCount } from "@/lib/fleetText";
 import { healthMeaning, healthTone } from "@/lib/health";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "./coverage.css";
@@ -30,7 +31,7 @@ const PAGE_SIZE = 50;
 // than silently absent.
 const STATUSES = ["COVERED", "PARTIAL", "DEGRADED", "MISSING", "NOT_EVALUATED"];
 
-export default async function CoveragePage({
+async function CoveragePage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -216,3 +217,5 @@ export default async function CoveragePage({
     </>
   );
 }
+
+export default withRouteMessages("/coverage", CoveragePage);

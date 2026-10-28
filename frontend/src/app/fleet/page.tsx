@@ -18,6 +18,7 @@ import { ApiError, fleetApi, type FleetSummary } from "@/lib/api";
 import { parseWindow, windowName } from "@/lib/fleet";
 import { fleetTextOf, plainCount } from "@/lib/fleetText";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("fleet.meta");
@@ -31,7 +32,7 @@ function queueItem(count: number, text: string, href: string) {
   return count > 0 ? <Link href={href}>{text}</Link> : <span>{text}</span>;
 }
 
-export default async function FleetPage({
+async function FleetPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -140,3 +141,5 @@ export default async function FleetPage({
     </>
   );
 }
+
+export default withRouteMessages("/fleet", FleetPage);
