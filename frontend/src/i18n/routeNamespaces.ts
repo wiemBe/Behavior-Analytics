@@ -181,7 +181,7 @@ export const ROUTE_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
   "/admin/waf-sources": ["fieldMapping", "waf"],
   "/alerts/[id]": ["alerts"],
   "/alerts": [],
-  "/anomalies/[id]": ["anomalies", "classification", "enums", "fleet", "home", "ips", "propertyWatch", "pwchart", "ui", "waf"],
+  "/anomalies/[id]": ["anomalies", "backend", "classification", "enums", "fleet", "home", "ips", "propertyWatch", "pwchart", "ui", "waf"],
   "/anomalies": ["anomalies", "enums", "ips", "propertyWatch", "pwchart", "waf"],
   "/behavior": [],
   "/behavior/sources/[id]": [],
