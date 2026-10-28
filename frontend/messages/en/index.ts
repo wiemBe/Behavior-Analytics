@@ -28,6 +28,7 @@ import login from "./login.json";
 import meta from "./meta.json";
 import offenses from "./offenses.json";
 import password from "./password.json";
+import propertyWatch from "./propertyWatch.json";
 import pwchart from "./pwchart.json";
 import rules from "./rules.json";
 import shell from "./shell.json";
@@ -62,6 +63,7 @@ const messages = {
   meta,
   offenses,
   password,
+  propertyWatch,
   pwchart,
   rules,
   shell,

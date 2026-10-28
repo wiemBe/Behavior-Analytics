@@ -5,20 +5,29 @@
 // own small catalog (the `pwchart` namespace only), so the watch pages are unchanged.
 
 import enPwchart from "../../../messages/en/pwchart.json";
-import { createTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
-import { formatCount, formatPercent, type FormatLocale } from "@/lib/format";
+import enEnums from "../../../messages/en/enums.json";
+import enFormat from "../../../messages/en/format.json";
+import enPropertyWatch from "../../../messages/en/propertyWatch.json";
+import enStates from "../../../messages/en/states.json";
+import enUnits from "../../../messages/en/units.json";
+import { createTextTranslator } from "@/i18n/textTranslator";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { formatCount, formatPercent } from "@/lib/format";
 import { NOT_MEASURED } from "@/lib/behavior";
 
 import type { PlotKind } from "./pwSeries";
 
-export interface PwI18n {
-  /** A translator over the whole catalog (full keys: `pwchart.axis.time`). */
-  t: TextTranslator;
-  locale: FormatLocale;
-}
+export type PwI18n = BehaviorI18n;
 
 export const ENGLISH_PW: PwI18n = {
-  t: createTextTranslator("en", { pwchart: enPwchart }),
+  t: createTextTranslator("en", {
+    enums: enEnums,
+    format: enFormat,
+    propertyWatch: enPropertyWatch,
+    pwchart: enPwchart,
+    states: enStates,
+    units: enUnits,
+  }),
   locale: "en",
 };
 

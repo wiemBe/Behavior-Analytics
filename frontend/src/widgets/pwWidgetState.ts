@@ -60,7 +60,7 @@ export function earlyState(
       watch.status === "NOT_ENABLED" ? `${t("widgets.propertyWatch.settingOff")} ` : "";
     return {
       kind: "not_collected",
-      reason: `${setting}${statusReason(watch.status, watch.status_reason)} ${t("widgets.propertyWatch.openHistory")}`,
+      reason: `${setting}${statusReason(watch.status, watch.status_reason, { t, locale })} ${t("widgets.propertyWatch.openHistory")}`,
     };
   }
   if (watch.history.state === "READING") {
@@ -79,7 +79,7 @@ export function earlyState(
       ? t("widgets.propertyWatch.disabled")
       : watch.status === null
         ? t("widgets.propertyWatch.notRunYet")
-        : statusReason(watch.status, watch.status_reason);
+        : statusReason(watch.status, watch.status_reason, { t, locale });
     return {
       kind: "empty",
       reason: t("widgets.propertyWatch.noBucket", { why, at: "{at}" }),

@@ -8,6 +8,7 @@
 // add a group there only for a value set that no other namespace owns.
 
 import { useTranslations } from "next-intl";
+import enEnums from "../../messages/en/enums.json";
 
 export type EnumGroup =
   | "severity"
@@ -23,7 +24,11 @@ type ExtendedEnumGroup =
   | "notificationChannel"
   | "notificationStatus"
   | "alertTransition"
-  | "ruleHealth";
+  | "ruleHealth"
+  | "propertyWatchAnomalyType"
+  | "propertyWatchStatus"
+  | "propertyWatchHistoryState"
+  | "propertyWatchPreviewOutcome";
 
 /** The part of a translator this module needs: next-intl's `t` and its `has`. */
 export interface EnumTranslator {
@@ -39,6 +44,10 @@ export function enumLabel(
 ): string {
   // A "." in a value would read as a path into the catalog, so such a value is never a key.
   if (value === "" || value.includes(".")) return value;
+  const table = (enEnums as Record<string, unknown>)[group];
+  // `next-intl`'s `has()` follows the prototype chain. Only a catalog's own value keys are
+  // eligible, otherwise a backend value such as "constructor" would become interface copy.
+  if (typeof table !== "object" || table === null || !Object.hasOwn(table, value)) return value;
   const key = `${group}.${value}`;
   if (t.has?.(key)) return t(key);
   const rootKey = `enums.${key}`;

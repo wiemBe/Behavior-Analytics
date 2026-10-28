@@ -66,6 +66,38 @@
     "IPS_PORT_FANOUT_SPIKE": "Port dağılımı artışı",
     "IPS_BLOCK_RATIO_SHIFT": "Engelleme oranı kayması"
   },
+  "propertyWatchAnomalyType": {
+    "PW_VALUE_SPIKE": "Değer ani artışı",
+    "PW_VALUE_DROP": "Değer ani düşüşü",
+    "PW_VALUE_DISAPPEARED": "Değer kayboldu",
+    "PW_NEW_VALUE": "Yeni değer",
+    "PW_NEW_COMBINATION": "Yeni birleşim"
+  },
+  "propertyWatchStatus": {
+    "NOT_ENABLED": "Toplama kapalı",
+    "DISABLED": "Devre dışı",
+    "SCOPE_EMPTY": "Kapsam boş",
+    "SCOPE_STALE": "Kapsam güncel değil",
+    "SCOPE_TOO_LARGE": "Kapsam çok büyük",
+    "NOT_APPLICABLE": "Uygulanamaz",
+    "STALE": "Güncel değil",
+    "READING_HISTORY": "Geçmiş okunuyor",
+    "OPEN": "Vaka açık",
+    "RECOVERING": "Düzeliyor",
+    "OK": "Uygun"
+  },
+  "propertyWatchHistoryState": {
+    "NOT_REQUESTED": "İSTENMEDİ",
+    "READING": "OKUNUYOR",
+    "COMPLETE": "TAMAMLANDI",
+    "PARTIAL": "KISMİ",
+    "UNAVAILABLE": "KULLANILAMIYOR"
+  },
+  "propertyWatchPreviewOutcome": {
+    "MEASURED": "ÖLÇÜLDÜ",
+    "PARTIAL": "KISMİ",
+    "NOT_MEASURED": "ÖLÇÜLMEDİ"
+  },
   "alertStatus": {
     "OPEN": "Açık",
     "ACKNOWLEDGED": "Alındı",

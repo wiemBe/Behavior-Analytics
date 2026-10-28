@@ -284,7 +284,7 @@ function ipsDeltaHidden(a: AnomalySummary): boolean {
 
 /** The detector's name in a row: Phase A in the interface language; the other families' own labels. */
 function typeText(a: AnomalySummary, i18n: BehaviorI18n): string {
-  if (isPwRow(a)) return pwTypeLabel(a.anomaly_type);
+  if (isPwRow(a)) return pwTypeLabel(a.anomaly_type, i18n);
   if (!isWafRow(a) && !isIpsRow(a)) return detectorLabel(a.anomaly_type, i18n);
   return rowTypeLabel(a);
 }

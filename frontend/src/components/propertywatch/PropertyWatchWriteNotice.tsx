@@ -1,14 +1,16 @@
+import { useTranslations } from "next-intl";
+
 export function PropertyWatchWriteNotice({ unknown = false }: { unknown?: boolean }) {
+  const t = useTranslations("propertyWatch.writeNotice");
   return (
     <div className="notice" role={unknown ? "alert" : undefined}>
       <p>
-        <strong>{unknown ? "Permissions could not be read." : "The property-watch editor is hidden."}</strong>
+        <strong>{unknown ? t("permissionsUnread") : t("hidden")}</strong>
       </p>
-      <p>
-        Creating, editing, enabling and deleting property watches needs{" "}
-        <code>property_watch:write</code>. An admin or the <code>detection_engineer</code> role can
-        grant it.
-      </p>
+      <p>{t.rich("body", {
+        permission: (chunks) => <code>{chunks}</code>,
+        role: (chunks) => <code>{chunks}</code>,
+      })}</p>
     </div>
   );
 }

@@ -66,6 +66,38 @@
     "IPS_PORT_FANOUT_SPIKE": "Port fan-out spike",
     "IPS_BLOCK_RATIO_SHIFT": "Block-ratio shift"
   },
+  "propertyWatchAnomalyType": {
+    "PW_VALUE_SPIKE": "Value spike",
+    "PW_VALUE_DROP": "Value drop",
+    "PW_VALUE_DISAPPEARED": "Value disappeared",
+    "PW_NEW_VALUE": "New value",
+    "PW_NEW_COMBINATION": "New combination"
+  },
+  "propertyWatchStatus": {
+    "NOT_ENABLED": "Collection off",
+    "DISABLED": "Disabled",
+    "SCOPE_EMPTY": "Scope empty",
+    "SCOPE_STALE": "Scope stale",
+    "SCOPE_TOO_LARGE": "Scope too large",
+    "NOT_APPLICABLE": "Not applicable",
+    "STALE": "Stale",
+    "READING_HISTORY": "Reading history",
+    "OPEN": "Incident open",
+    "RECOVERING": "Recovering",
+    "OK": "OK"
+  },
+  "propertyWatchHistoryState": {
+    "NOT_REQUESTED": "NOT REQUESTED",
+    "READING": "READING",
+    "COMPLETE": "COMPLETE",
+    "PARTIAL": "PARTIAL",
+    "UNAVAILABLE": "UNAVAILABLE"
+  },
+  "propertyWatchPreviewOutcome": {
+    "MEASURED": "MEASURED",
+    "PARTIAL": "PARTIAL",
+    "NOT_MEASURED": "NOT MEASURED"
+  },
   "alertStatus": {
     "OPEN": "Open",
     "ACKNOWLEDGED": "Acknowledged",

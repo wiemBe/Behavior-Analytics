@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { api, type PropertyWatch, type PropertyWatchCatalog } from "@/lib/api";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { classifyWatchError, onlyHistoryBudget } from "./authoring";
 
@@ -17,6 +19,9 @@ export function WatchActions({
   watch: PropertyWatch;
   catalog: PropertyWatchCatalog | null;
 }) {
+  const t = useTranslations("propertyWatch.actions");
+  const common = useTranslations("propertyWatch.common");
+  const i18n = useBehaviorI18n();
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [confirming, setConfirming] = useState<"enable" | "delete" | null>(null);
@@ -25,11 +30,11 @@ export function WatchActions({
   const [historyDays, setHistoryDays] = useState(catalog?.history.days_default ?? 7);
 
   function renderRefusal(caught: unknown, fallback: string): React.ReactNode {
-    const refusal = classifyWatchError(caught);
+    const refusal = classifyWatchError(caught, i18n);
     if (refusal.kind === "dependencies") {
       return (
         <>
-          {refusal.message}. Rules to detach first:{" "}
+          {t("dependencies", { message: refusal.message })}
           {refusal.rules.map((rule, index) => (
             <span key={rule.id}>
               {index > 0 ? ", " : ""}
@@ -41,7 +46,10 @@ export function WatchActions({
       );
     }
     if (refusal.kind === "version") {
-      return `This watch was changed by ${refusal.updatedBy ?? "another operator"} at ${refusal.currentVersion}. Reload it before trying again.`;
+      return t("version", {
+        operator: refusal.updatedBy ?? t("anotherOperator"),
+        version: refusal.currentVersion,
+      });
     }
     if (refusal.kind === "reasons") {
       return refusal.reasons.map((reason, index) => (
@@ -65,7 +73,7 @@ export function WatchActions({
       setConfirming(null);
       router.refresh();
     } catch (caught) {
-      const refusal = classifyWatchError(caught);
+      const refusal = classifyWatchError(caught, i18n);
       // The offer is made on the code, never on the wording: only the history budget alone
       // can be dropped (T-145). Another reason refuses the same attempt.
       if (enabled && refusal.kind === "conflict" && onlyHistoryBudget(refusal.codes)) {
@@ -75,7 +83,7 @@ export function WatchActions({
       setError(
         renderRefusal(
           caught,
-          `The watch could not be ${enabled ? "enabled" : "disabled"}. Reload it and try again.`,
+          enabled ? t("enableFailed") : t("disableFailed"),
         ),
       );
     } finally {
@@ -96,7 +104,7 @@ export function WatchActions({
       setHistoryBudgetRefusal(false);
       router.refresh();
     } catch (caught) {
-      setError(renderRefusal(caught, "The watch could not be enabled without history. Reload it and try again."));
+      setError(renderRefusal(caught, t("withoutHistoryFailed")));
     } finally {
       setPending(false);
     }
@@ -110,7 +118,7 @@ export function WatchActions({
       await api.requestPropertyWatchHistory(watch.id, historyDays);
       router.refresh();
     } catch (caught) {
-      setError(renderRefusal(caught, "History could not be requested. Reload the watch and try again."));
+      setError(renderRefusal(caught, t("historyFailed")));
     } finally {
       setPending(false);
     }
@@ -137,7 +145,7 @@ export function WatchActions({
       router.push("/behavior/watches");
     } catch (caught) {
       setConfirming(null);
-      setError(renderRefusal(caught, "The watch could not be deleted. Reload it and try again."));
+      setError(renderRefusal(caught, t("deleteFailed")));
       setPending(false);
     }
   }
@@ -151,7 +159,7 @@ export function WatchActions({
           disabled={pending}
           onClick={() => void setEnabled(false)}
         >
-          {pending ? "Saving…" : "Disable"}
+          {pending ? t("saving") : t("disable")}
         </button>
       ) : (
         <button
@@ -160,7 +168,7 @@ export function WatchActions({
           disabled={pending}
           onClick={() => setConfirming("enable")}
         >
-          Enable
+          {t("enable")}
         </button>
       )}
       <button
@@ -169,53 +177,55 @@ export function WatchActions({
         disabled={pending}
         onClick={() => setConfirming("delete")}
       >
-        Delete
+        {t("delete")}
       </button>
       {canRequestHistory && (
-        <div className="pw-history-action" role="group" aria-label="Read history">
+        <div className="pw-history-action" role="group" aria-label={t("historyGroup")}>
           <label>
-            History window{" "}
+            {t("historyWindow")}
             <select
               className="select-control"
               value={historyDays}
               disabled={pending}
               onChange={(event) => setHistoryDays(Number(event.target.value))}
             >
-              {historyOptions.map((days) => <option key={days} value={days}>{days} days</option>)}
+              {historyOptions.map((days) => (
+                <option key={days} value={days}>{common("days", { count: days })}</option>
+              ))}
             </select>
           </label>
           <button type="button" className="action secondary" disabled={pending} onClick={() => void requestHistory()}>
-            Read history
+            {t("readHistory")}
           </button>
         </div>
       )}
 
       {confirming === "enable" && (
-        <div className="pw-action-confirm" role="group" aria-label="Enable watch confirmation">
+        <div className="pw-action-confirm" role="group" aria-label={t("enableConfirmLabel")}>
           <p>
-            Enable this watch? The family switch is{" "}
-            <strong>{catalog?.collection_enabled ? "on" : "off"}</strong>.{" "}
+            {t("enableQuestion", {
+              switch: catalog?.collection_enabled ? t("switchOn") : t("switchOff"),
+            })}{" "}
             {catalog ? (
-              <>
-                {catalog.enabled_count} of {catalog.max_enabled} enabled-watch slots and{" "}
-                {catalog.budget_used} of {catalog.search_budget} searches per tick are already claimed.
-              </>
+              t("capacity", {
+                enabled: catalog.enabled_count,
+                maxEnabled: catalog.max_enabled,
+                used: catalog.budget_used,
+                budget: catalog.search_budget,
+              })
             ) : (
-              "The enabled-watch cap and search budget could not be read."
+              t("capacityUnknown")
             )}
           </p>
           {!catalog?.collection_enabled && (
-            <p>
-              Enabling stores the choice, but no bucket is collected while{" "}
-              <code>PW_COLLECTION_ENABLED</code> is false.
-            </p>
+            <p>{t.rich("enableStored", { setting: (chunks) => <code>{chunks}</code> })}</p>
           )}
           <div className="actions">
             <button type="button" className="action" disabled={pending} onClick={() => void setEnabled(true)}>
-              Enable watch
+              {t("enableWatch")}
             </button>
             <button type="button" className="action secondary" onClick={() => setConfirming(null)}>
-              Keep disabled
+              {t("keepDisabled")}
             </button>
           </div>
         </div>
@@ -225,19 +235,18 @@ export function WatchActions({
         <div
           className="pw-action-confirm pw-delete-confirm"
           role="group"
-          aria-label="Delete watch confirmation"
+          aria-label={t("deleteConfirmLabel")}
         >
-          <p>
-            Delete <strong>{watch.name}</strong>? This removes its aggregate values, baselines and
-            incident history. A custom rule that pins one of its values will refuse the deletion
-            and name every rule to detach first.
-          </p>
+          <p>{t.rich("deleteQuestion", {
+            strong: (chunks) => <strong>{chunks}</strong>,
+            name: watch.name,
+          })}</p>
           <div className="actions">
             <button type="button" className="action" disabled={pending} onClick={() => void remove()}>
-              Delete this property watch
+              {t("deleteWatch")}
             </button>
             <button type="button" className="action secondary" onClick={() => setConfirming(null)}>
-              Keep watch
+              {t("keepWatch")}
             </button>
           </div>
         </div>
@@ -248,13 +257,12 @@ export function WatchActions({
         </div>
       )}
       {historyBudgetRefusal && (
-        <div className="pw-action-confirm" role="group" aria-label="Enable without history">
+        <div className="pw-action-confirm" role="group" aria-label={t("withoutHistoryLabel")}>
           <p>
-            Enable without history to start collecting at the next cadence slot. The watch then
-            learns forward only; QRadar&apos;s past is not read.
+            {t("withoutHistoryBody")}
           </p>
           <button type="button" className="action" disabled={pending} onClick={() => void enableWithoutHistory()}>
-            Enable without history
+            {t("withoutHistory")}
           </button>
         </div>
       )}

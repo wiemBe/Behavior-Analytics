@@ -52,6 +52,7 @@ import {
 import { ratioSpecFor } from "@/components/waf/wafSeries";
 import { dimensionLabel, hasConfidenceLimitation, stateMeaningIn } from "@/lib/behavior";
 import { getBehaviorI18n, getEnumLabels } from "@/lib/behaviorI18n.server";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { summarizeAnomaly, summarizeTimeline } from "@/lib/summarize";
 import { buildSeries } from "@/lib/timeseries";
 
@@ -193,7 +194,7 @@ const PW_SERIES_MAX_HOURS = 168;
  * the value's text; it is null once retention deleted the value, and then there is no series to
  * read. Every part is optional: a failed read is `null` and the view says so, it is not "nothing".
  */
-async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
+async function pwData(anomaly: PwAnomalyDetail, i18n: BehaviorI18n): Promise<PwInvestigationData> {
   const anchor = Date.parse(anomaly.anomaly_start ?? anomaly.detected_at);
   const end = Date.parse(anomaly.anomaly_end ?? anomaly.resolved_at ?? anomaly.detected_at);
   const now = Date.now();
@@ -209,8 +210,7 @@ async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
       ...base,
       series: null,
       buckets: null,
-      chartNote:
-        "This value is no longer stored (retention), so its series cannot be read and no chart is drawn. The incident's own figures and lifecycle are kept below.",
+      chartNote: i18n.t("propertyWatch.investigation.chartRetention"),
     };
   }
   if (hours > PW_SERIES_MAX_HOURS) {
@@ -218,7 +218,7 @@ async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
       ...base,
       series: null,
       buckets: null,
-      chartNote: `This incident is older than the ${PW_SERIES_MAX_HOURS / 24} days the series read covers, so its chart is not drawn. The incident's own figures and lifecycle are shown.`,
+      chartNote: i18n.t("propertyWatch.investigation.chartOld", { days: PW_SERIES_MAX_HOURS / 24 }),
     };
   }
   const [series, buckets] = await Promise.all([
@@ -234,7 +234,7 @@ async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
     buckets,
     chartNote:
       series === null
-        ? "The series of this value could not be loaded. The rest of this investigation is unaffected, but the chart is absent rather than empty."
+        ? i18n.t("propertyWatch.investigation.chartFailed")
         : null,
   };
 }
@@ -279,7 +279,8 @@ export default async function AnomalyDetailPage({
 
   // A property-watch value is investigated against its own watch's series, in events per bucket.
   if (isPwDetail(loaded)) {
-    return <PwInvestigation anomaly={loaded} data={await pwData(loaded)} />;
+    const pwI18n = await getBehaviorI18n();
+    return <PwInvestigation anomaly={loaded} data={await pwData(loaded, pwI18n)} />;
   }
   // A WAF endpoint is investigated against its own request buckets, in requests
   // rather than EPS, so it has its own view; the Phase A page below is unchanged.

@@ -1,3 +1,5 @@
+"use client";
+
 // The investigation view of a property-watch incident: which value of which watch, what the
 // detector measured against what it expected, and where the value sits in the watch's own
 // series. Composition only: the page fetches, this arranges.
@@ -13,8 +15,11 @@ import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
 import { PropertyWatchSeriesChart } from "@/components/propertywatch/PropertyWatchSeriesChart";
 import type { PwAnomalyDetail, PwBucket, PwValueSeries } from "@/lib/api";
 import { sevTone } from "@/lib/api";
-import { formatMetric, formatRatio, robustScoreMeaning, stateMeaning, stateTone } from "@/lib/behavior";
-import { UtcTime } from "@/components/ui/UtcTime";
+import { formatMetric, formatRatio, robustScoreMeaning, stateMeaningIn, stateTone } from "@/lib/behavior";
+import { enumLabel } from "@/i18n/enumLabels";
+import { formatCount } from "@/lib/format";
+import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import {
   eventsUnit,
@@ -25,6 +30,7 @@ import {
   scopeKindLabel,
 } from "./pwFormat";
 import { valueText } from "./WatchValuesTable";
+import { ENGLISH_PW, type PwI18n } from "./pwText";
 
 export interface PwInvestigationData {
   /** The value's series around the incident, or null when it could not be read. */
@@ -37,26 +43,31 @@ export interface PwInvestigationData {
 }
 
 const VOLUME = new Set(["PW_VALUE_SPIKE", "PW_VALUE_DROP", "PW_VALUE_DISAPPEARED"]);
+const RANGE_ARROW = " → ";
+const RANGE_DASH = " – ";
 
-const NOT_RECORDED = "not recorded";
-
-function Recorded({ children, ok }: { children: React.ReactNode; ok: boolean }) {
-  return ok ? <>{children}</> : <span className="muted">{NOT_RECORDED}</span>;
+function Recorded({ children, ok, i18n }: { children: React.ReactNode; ok: boolean; i18n: PwI18n }) {
+  return ok ? <>{children}</> : <span className="muted">{i18n.t("propertyWatch.common.notRecorded")}</span>;
 }
 
 export function PwInvestigation({
   anomaly,
   data,
+  i18n: providedI18n,
 }: {
   anomaly: PwAnomalyDetail;
   data: PwInvestigationData;
+  i18n?: PwI18n;
 }) {
+  const runtimeI18n = useBehaviorI18n();
+  const i18n = providedI18n ?? runtimeI18n ?? ENGLISH_PW;
+  const t = i18n.t;
   const ref = anomaly.pw_value;
   const d = anomaly.detection;
-  const text = valueText(ref);
+  const text = valueText(ref, i18n);
   const volume = VOLUME.has(anomaly.anomaly_type);
   const bucketSeconds = data.buckets?.[0]?.bucket_seconds ?? 300;
-  const unit = eventsUnit(bucketSeconds);
+  const unit = eventsUnit(bucketSeconds, i18n);
   const watchHref = `/behavior/watches/${ref.watch_id}`;
   const measurement = d?.observed_measurement ?? anomaly.observed_measurement;
   const lower = measurement === "LOWER_BOUND";
@@ -94,25 +105,25 @@ export function PwInvestigation({
       <header className="page-header incident-header">
         <div>
           <p className="incident-back">
-            <Link href="/anomalies">← All anomalies</Link>
+            <Link href="/anomalies">{t("propertyWatch.investigation.back")}</Link>
           </p>
           <div className="row incident-identity">
-            <span className="incident-detector">{pwTypeLabel(anomaly.anomaly_type)}</span>
-            <span className={`pill pill-strong ${stateTone(anomaly.state)}`}>{anomaly.state}</span>
-            <span className={`pill pill-quiet ${sevTone(anomaly.severity)}`}>{anomaly.severity}</span>
+            <span className="incident-detector">{pwTypeLabel(anomaly.anomaly_type, i18n)}</span>
+            <span className={`pill pill-strong ${stateTone(anomaly.state)}`}>{enumLabel(i18n.t, "anomalyState", anomaly.state)}</span>
+            <span className={`pill pill-quiet ${sevTone(anomaly.severity)}`}>{enumLabel(i18n.t, "severityPill", anomaly.severity)}</span>
             <span className="incident-interval">
               {anomaly.anomaly_start ? (
                 <>
                   <UtcTime value={anomaly.anomaly_start} />
-                  {" → "}
+                  {RANGE_ARROW}
                   {anomaly.anomaly_end ? (
                     <UtcTime value={anomaly.anomaly_end} />
                   ) : (
-                    "still running"
+                    t("propertyWatch.investigation.stillRunning")
                   )}
                 </>
               ) : (
-                "Interval not recorded"
+                t("propertyWatch.investigation.intervalMissing")
               )}
             </span>
           </div>
@@ -123,46 +134,45 @@ export function PwInvestigation({
             href={valueId ? `${watchHref}?value=${valueId}` : watchHref}
             className="action secondary button-link"
           >
-            {valueId ? "Open this value on the watch" : "Open the watch"}
+            {t(valueId ? "propertyWatch.investigation.openValue" : "propertyWatch.investigation.openWatch")}
           </Link>
         </div>
       </header>
 
       {valueId === null && (
         <p className="notice" role="status">
-          This value is no longer stored (retention); the incident is kept. The figures below are
-          the ones recorded when it was detected.
+          {t("propertyWatch.investigation.retained")}
         </p>
       )}
       {reason && <p className="incident-summary">{reason}</p>}
-      <p className="subtitle">{stateMeaning(anomaly.state)}</p>
+      <p className="subtitle">{stateMeaningIn(anomaly.state, i18n)}</p>
 
       <section aria-labelledby="pw-inc-what">
         <h2 id="pw-inc-what" className="section-title">
-          What was measured
+          {t("propertyWatch.investigation.what")}
         </h2>
         <dl className="dimension-meta pw-dl">
           <div>
-            <dt>Watch</dt>
+            <dt>{t("propertyWatch.investigation.watch")}</dt>
             <dd>
               <Link href={watchHref}>{ref.watch_name}</Link>
-              <span className="muted"> version {ref.watch_version}</span>
+              <span className="muted">{t("propertyWatch.investigation.version", { version: formatCount(ref.watch_version, i18n.locale) })}</span>
             </dd>
           </div>
           <div>
-            <dt>Scope</dt>
-            <dd>{scopeKindLabel(ref.scope_kind)}</dd>
+            <dt>{t("propertyWatch.investigation.scope")}</dt>
+            <dd>{scopeKindLabel(ref.scope_kind, i18n)}</dd>
           </div>
           <div>
-            <dt>{ref.properties.length === 1 ? "Property" : "Properties"}</dt>
+            <dt>{t(ref.properties.length === 1 ? "propertyWatch.common.property" : "propertyWatch.common.properties")}</dt>
             <dd className="pw-prop-name">{ref.properties.map((p) => p.name).join(" × ")}</dd>
           </div>
           <div>
-            <dt>Consecutive buckets</dt>
-            <dd className="num">{anomaly.consecutive_buckets}</dd>
+            <dt>{t("propertyWatch.investigation.consecutive")}</dt>
+            <dd className="num">{formatCount(anomaly.consecutive_buckets, i18n.locale)}</dd>
           </div>
           <div>
-            <dt>Detected</dt>
+            <dt>{t("propertyWatch.investigation.detected")}</dt>
             <dd className="num">
               <UtcTime value={anomaly.detected_at} />
             </dd>
@@ -172,121 +182,123 @@ export function PwInvestigation({
 
       <section aria-labelledby="pw-inc-det">
         <h2 id="pw-inc-det" className="section-title">
-          Against what normal
+          {t("propertyWatch.investigation.against")}
         </h2>
         {d === null ? (
           <div className="notice" role="status">
-            No detector working was recorded for this incident, so its expected range, threshold
-            and baseline cannot be shown. This is a missing record, not a normal baseline.
+            {t("propertyWatch.investigation.workingMissing")}
           </div>
         ) : volume ? (
-          <dl className="dimension-meta pw-dl" aria-label="Detector figures">
+          <dl className="dimension-meta pw-dl" aria-label={t("propertyWatch.investigation.figures")}>
             <div>
-              <dt>Observed</dt>
+              <dt>{t("propertyWatch.investigation.observed")}</dt>
               <dd className="num">
-                <Recorded ok={observed != null}>
-                  {formatEvents(observed, measurement)}
+                <Recorded ok={observed != null} i18n={i18n}>
+                  {formatEvents(observed, measurement, i18n)}
                   <span className="muted"> {unit}</span>
                 </Recorded>
               </dd>
             </div>
             <div>
-              <dt>Expected range for this hour of the week</dt>
+              <dt>{t("propertyWatch.investigation.expected")}</dt>
               <dd className="num">
-                <Recorded ok={band !== null}>
-                  {formatEvents(d.expected_low)} – {formatEvents(d.expected_high)}
+                <Recorded ok={band !== null} i18n={i18n}>
+                  {formatEvents(d.expected_low, undefined, i18n)}{RANGE_DASH}{formatEvents(d.expected_high, undefined, i18n)}
                   <span className="muted"> {unit}</span>
                 </Recorded>
               </dd>
             </div>
             <div>
-              <dt>Expected median</dt>
+              <dt>{t("propertyWatch.investigation.median")}</dt>
               <dd className="num">
-                <Recorded ok={(d.expected_median ?? anomaly.expected_value) != null}>
-                  {formatMetric(d.expected_median ?? anomaly.expected_value, 1)}
+                <Recorded ok={(d.expected_median ?? anomaly.expected_value) != null} i18n={i18n}>
+                  {formatMetric(d.expected_median ?? anomaly.expected_value, 1, i18n.locale)}
                   <span className="muted"> {unit}</span>
                 </Recorded>
               </dd>
             </div>
             <div>
-              <dt>Deviation</dt>
+              <dt>{t("propertyWatch.investigation.deviation")}</dt>
               <dd className="num">
-                <Recorded ok={(anomaly.deviation_ratio ?? d.ratio) != null}>
-                  {formatRatio(anomaly.deviation_ratio ?? d.ratio)}
-                  <span className="muted"> of the median</span>
+                <Recorded ok={(anomaly.deviation_ratio ?? d.ratio) != null} i18n={i18n}>
+                  {formatRatio(anomaly.deviation_ratio ?? d.ratio, i18n.locale)}
+                  <span className="muted">{t("propertyWatch.investigation.ofMedian")}</span>
                 </Recorded>
               </dd>
             </div>
             <div>
-              <dt>Robust z-score</dt>
+              <dt>{t("propertyWatch.investigation.robust")}</dt>
               <dd className="num">
-                <Recorded ok={d.robust_z != null}>{formatMetric(d.robust_z)}</Recorded>
+                <Recorded ok={d.robust_z != null} i18n={i18n}>{formatMetric(d.robust_z, 2, i18n.locale)}</Recorded>
                 {d.threshold != null && (
-                  <span className="muted"> threshold {formatMetric(d.threshold, 1)} (z-score)</span>
+                  <span className="muted">{t("propertyWatch.investigation.threshold", { value: formatMetric(d.threshold, 1, i18n.locale) })}</span>
                 )}
               </dd>
             </div>
             <div>
-              <dt>Baseline sample</dt>
+              <dt>{t("propertyWatch.investigation.sample")}</dt>
               <dd className="num">
-                <Recorded ok={d.baseline_sample_count != null}>
-                  {figureText({ label: "", value: d.baseline_sample_count, unit: "buckets" })}
+                <Recorded ok={d.baseline_sample_count != null} i18n={i18n}>
+                  {figureText({ label: "", value: d.baseline_sample_count, unit: "buckets" }, i18n)}
                 </Recorded>
-                <span className="muted"> of this hour of the week</span>
+                <span className="muted">{t("propertyWatch.investigation.sampleHour")}</span>
               </dd>
             </div>
           </dl>
         ) : (
-          <dl className="dimension-meta pw-dl" aria-label="Detector figures">
+          <dl className="dimension-meta pw-dl" aria-label={t("propertyWatch.investigation.figures")}>
             <div>
-              <dt>Observed</dt>
+              <dt>{t("propertyWatch.investigation.observed")}</dt>
               <dd className="num">
                 {figureText({
                   label: "",
                   value: observed ?? null,
                   unit: "events",
                   lowerBound: lower,
-                })}
+                }, i18n)}
               </dd>
             </div>
-            {newValueFigures(d, lower).map((f) => (
+            {newValueFigures(d, lower, i18n).map((f) => (
               <div key={f.label}>
                 <dt>{f.label}</dt>
-                <dd className="num">{figureText(f)}</dd>
+                <dd className="num">{figureText(f, i18n)}</dd>
               </div>
             ))}
             {d.classification && (
               <div>
-                <dt>Classification</dt>
-                <dd>{d.classification.replace("PW_", "").replaceAll("_", " ").toLowerCase()}</dd>
+                <dt>{t("propertyWatch.investigation.classification")}</dt>
+                <dd>{pwTypeLabel(d.classification, i18n)}</dd>
               </div>
             )}
           </dl>
         )}
         {d?.robust_score_status && volume && d.robust_score_status !== "OK" && (
-          <p className="subtitle">{robustScoreMeaning(d.robust_score_status as "DEGENERATE")}</p>
+          <p className="subtitle">{robustScoreMeaning(d.robust_score_status as "DEGENERATE", i18n)}</p>
         )}
         {d?.claim && <p className="subtitle">{d.claim}.</p>}
         {historyEvidence && (
           <p className="subtitle">
-            The {historyEvidence.days.toLocaleString("en-US", { maximumFractionDigits: 1 })} days before{" "}
-            {<UtcTime value={historyEvidence.before} />} were verified:{" "}
-            {historyEvidence.verified.toLocaleString("en-US")} buckets, of which{" "}
-            {historyEvidence.fromHistory.toLocaleString("en-US")} were read from QRadar history
-            from {<UtcTime value={historyEvidence.floor} />} and not judged.
+            {t("propertyWatch.investigation.historyEvidence", {
+              days: Number.isInteger(historyEvidence.days)
+                ? formatCount(historyEvidence.days, i18n.locale)
+                : formatMetric(historyEvidence.days, 1, i18n.locale),
+              before: utcTimeText(historyEvidence.before),
+              verified: formatCount(historyEvidence.verified, i18n.locale),
+              history: formatCount(historyEvidence.fromHistory, i18n.locale),
+              floor: utcTimeText(historyEvidence.floor),
+            })}
           </p>
         )}
         {lower && (
           <p className="subtitle">
-            The observed count is a lower bound: at least that many events, so the finding is real
-            and its size is not exact.
+            {t("propertyWatch.investigation.lowerBound")}
           </p>
         )}
       </section>
 
       <section aria-labelledby="pw-inc-series">
         <h2 id="pw-inc-series" className="section-title">
-          The value around the incident
+          {t("propertyWatch.investigation.series")}
         </h2>
         {data.chartNote ? (
           <div className="notice" role="status">
@@ -306,7 +318,8 @@ export function PwInvestigation({
                 : []
             }
             detectionBand={band}
-            emptyText="No series was stored for this value in this window."
+            emptyText={t("propertyWatch.investigation.seriesEmpty")}
+            i18n={i18n}
           />
         )}
       </section>
@@ -314,31 +327,31 @@ export function PwInvestigation({
       {anomaly.explanation_package && (
         <section aria-labelledby="pw-inc-evidence">
           <h2 id="pw-inc-evidence" className="section-title">
-            Evidence collected
+            {t("propertyWatch.investigation.evidence")}
           </h2>
           <dl className="dimension-meta pw-dl">
             <div>
-              <dt>Status</dt>
+              <dt>{t("propertyWatch.common.state")}</dt>
               <dd>{anomaly.explanation_package.status}</dd>
             </div>
             <div>
-              <dt>Incident window</dt>
+              <dt>{t("propertyWatch.investigation.incidentWindow")}</dt>
               <dd className="num">
                 <UtcTime value={anomaly.explanation_package.anomaly_window_start} />
-                {" → "}
+                {RANGE_ARROW}
                 <UtcTime value={anomaly.explanation_package.anomaly_window_end} />
               </dd>
             </div>
             <div>
-              <dt>Events in the incident window</dt>
+              <dt>{t("propertyWatch.investigation.incidentEvents")}</dt>
               <dd className="num">
-                {anomaly.explanation_package.anomaly_total_events.toLocaleString("en-US")}
+                {formatCount(anomaly.explanation_package.anomaly_total_events, i18n.locale)}
               </dd>
             </div>
             <div>
-              <dt>Events in the comparison window</dt>
+              <dt>{t("propertyWatch.investigation.comparisonEvents")}</dt>
               <dd className="num">
-                {anomaly.explanation_package.baseline_total_events.toLocaleString("en-US")}
+                {formatCount(anomaly.explanation_package.baseline_total_events, i18n.locale)}
               </dd>
             </div>
           </dl>
@@ -352,7 +365,7 @@ export function PwInvestigation({
 
       <section aria-labelledby="pw-inc-life">
         <h2 id="pw-inc-life" className="section-title">
-          Lifecycle, oldest first
+          {t("propertyWatch.investigation.lifecycle")}
         </h2>
         <LifecycleTimeline transitions={transitions} policyVersion={anomaly.policy_version} />
       </section>
