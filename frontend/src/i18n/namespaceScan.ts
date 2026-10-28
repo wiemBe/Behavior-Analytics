@@ -20,11 +20,13 @@
 // each `t("key")` call of a translator made by `useTranslations("ns")` and reports it in `keys`
 // (`rules.boundary.listWhatError`), so that the root provider can carry just those strings.//
 // One exception to "everything a browser module imports counts": a module may list helpers it calls
-// without a translator in `export const I18N_ENGLISH_DEFAULT_CALLS = ["helper", ...]`. Those
-// helpers format with their own English default, so they read nothing from the provider. The walk
-// does not enter the module they come from (when all its named imports are listed) and checks
-// the claim instead: every call of a listed helper must pass fewer arguments than the position of
-// the helper's translator parameter (the one defaulted to `ENGLISH_*`).
+// with a translator in `export const I18N_KEYED_CALLS = ["helper", ...]` (the top bar does, so that
+// the root provider carries single keys, `TOP_BAR_KEYS`, and not the namespaces of those helpers).
+// The walk does not enter the module they come from (when all its named imports are listed) and
+// checks the claim instead: every call of a listed helper must pass its translator parameter (the
+// one defaulted to `ENGLISH_*`, or typed as a translator), because a call without it would read the
+// helper's English default and show English to a Turkish analyst. Which keys the helpers read is
+// checked at run time by `src/components/shell/TopSearch.keys.test.tsx`.
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import ts from "typescript";
@@ -48,7 +50,7 @@ export interface Scan {
   bundles: Map<string, string>;
   /** Full key paths read by the route boundary files (`error.tsx`), with the file that reads each. */
   keys: Map<string, string>;
-  /** Listed English-default calls that pass a translator, or whose helper cannot be checked. */
+  /** Listed keyed calls that omit the translator, or whose helper cannot be checked. */
   violations: string[];
   /** Every module the walk visited in the browser. */
   browserFiles: Set<string>;
@@ -137,14 +139,14 @@ function collect(source: ts.SourceFile, file: string, into: Scan) {
   visit(source);
 }
 
-/** The helper names a module declares in `I18N_ENGLISH_DEFAULT_CALLS`. */
-function englishDefaultCalls(source: ts.SourceFile): string[] {
+/** The helper names a module declares in `I18N_KEYED_CALLS`. */
+function keyedCalls(source: ts.SourceFile): string[] {
   const names: string[] = [];
   const visit = (node: ts.Node) => {
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      node.name.text === "I18N_ENGLISH_DEFAULT_CALLS" &&
+      node.name.text === "I18N_KEYED_CALLS" &&
       node.initializer
     ) {
       let list: ts.Expression = node.initializer;
@@ -159,7 +161,10 @@ function englishDefaultCalls(source: ts.SourceFile): string[] {
   return names;
 }
 
-/** The index of a function's translator parameter (defaulted to `ENGLISH_*`), -1 if it has none. */
+/**
+ * The index of a function's translator parameter (defaulted to `ENGLISH_*`, or typed as a
+ * translator), -1 if it has none, `null` if the function is not found.
+ */
 function translatorPosition(target: string, name: string): number | null {
   const source = ts.createSourceFile(target, readFileSync(target, "utf8"), ts.ScriptTarget.Latest, true);
   for (const statement of source.statements) {
@@ -171,16 +176,15 @@ function translatorPosition(target: string, name: string): number | null {
           /^ENGLISH_/.test(parameter.initializer.getText(source)),
       );
       if (at >= 0) return at;
-      const typed = parameters.some((parameter) =>
+      return parameters.findIndex((parameter) =>
         /I18n|Translator/.test(parameter.type?.getText(source) ?? ""),
       );
-      return typed ? null : -1;
     }
   }
   return null;
 }
 
-function checkEnglishDefaultCalls(
+function checkKeyedCalls(
   source: ts.SourceFile,
   file: string,
   listed: string[],
@@ -208,8 +212,8 @@ function checkEnglishDefaultCalls(
         const [target, original] = (origin.get(name) ?? "|").split("|");
         const at = target ? translatorPosition(target, original) : null;
         if (at === null) into.violations.push(`${file}: cannot check ${name}`);
-        else if (at >= 0 && node.arguments.length > at) {
-          into.violations.push(`${file}: ${name} is called with a translator`);
+        else if (at >= 0 && node.arguments.length <= at) {
+          into.violations.push(`${file}: ${name} is called without a translator`);
         }
       }
     }
@@ -273,7 +277,7 @@ function collectKeys(source: ts.SourceFile, file: string, into: Scan) {
   readCalls(source);
 }
 
-function importsOf(source: ts.SourceFile, englishDefault: string[]): string[] {
+function importsOf(source: ts.SourceFile, keyed: string[]): string[] {
   const found: string[] = [];
   const visit = (node: ts.Node) => {
     if (
@@ -282,11 +286,9 @@ function importsOf(source: ts.SourceFile, englishDefault: string[]): string[] {
       node.importClause?.namedBindings &&
       ts.isNamedImports(node.importClause.namedBindings) &&
       !node.importClause.name &&
-      node.importClause.namedBindings.elements.every((element) =>
-        englishDefault.includes(element.name.text),
-      )
+      node.importClause.namedBindings.elements.every((element) => keyed.includes(element.name.text))
     ) {
-      // Every name comes from the English-default list: the module is not entered.
+      // Every name comes from the keyed-call list: the module is not entered.
     } else if (
       (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
       node.moduleSpecifier &&
@@ -326,8 +328,8 @@ export function scanEntries(entries: string[]): Scan {
       if (BOUNDARY_FILE.test(file)) collectKeys(source, file, scan);
       else collect(source, file, scan);
     }
-    const listed = browser ? englishDefaultCalls(source) : [];
-    if (listed.length > 0) checkEnglishDefaultCalls(source, file, listed, scan);
+    const listed = browser ? keyedCalls(source) : [];
+    if (listed.length > 0) checkKeyedCalls(source, file, listed, scan);
     for (const specifier of importsOf(source, listed)) {
       const bundle = bundleNamespace(specifier);
       if (bundle !== null) {

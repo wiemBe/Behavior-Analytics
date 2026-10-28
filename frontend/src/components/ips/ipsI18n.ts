@@ -2,7 +2,7 @@
 // Dashboard widget) for its pure helpers.
 //
 // A helper that builds text takes a `BehaviorI18n` as its last argument and defaults to the
-// `ENGLISH_IPS` here, so every caller outside this area (`AnomalyRows`, `TopSearch`,
+// `ENGLISH_IPS` here, so every caller outside this area (`AnomalyRows`,
 // `lib/home/recentAnomalies`, the tests) and every unconverted route keeps today's English.
 // Route code passes its own: `useBehaviorI18n()` in a component, `getBehaviorI18n()`
 // (lib/behaviorI18n.server) in a server page. Nothing here translates by matching text: a helper
