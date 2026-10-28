@@ -51,7 +51,7 @@ export function rowTypeLabel(
   a: Pick<AnomalySummary, "subject_kind" | "anomaly_type">,
   i18n: BehaviorI18n = ENGLISH_IPS,
 ): string {
-  return isIpsRow(a) ? ipsTypeLabel(a.anomaly_type, i18n) : anomalyTypeLabel(a.anomaly_type);
+  return isIpsRow(a) ? ipsTypeLabel(a.anomaly_type, i18n) : anomalyTypeLabel(a.anomaly_type, i18n);
 }
 
 const IPS_DIMENSIONS = ["DESTINATION_PORT", "DESTINATION_IP", "SIGNATURE"];

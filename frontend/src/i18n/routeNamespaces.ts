@@ -1,8 +1,9 @@
 // Which catalog namespaces each part of the application sends to the browser (I18N-12b).
 //
 // The root layout sends the SHELL (the top bar, navigation, account menu, connection status, the
-// guide links and what every page's client code shares) plus BOUNDARY_KEYS: the single strings that a
-// route's `error.tsx` / `loading.tsx` read, because those render outside the page. Each page then
+// guide links and what every page's client code shares) plus two lists of single keys: BOUNDARY_KEYS,
+// the strings that a route's `error.tsx` / `loading.tsx` read, because those render outside the page,
+// and TOP_BAR_KEYS, the code names the top bar's search results read (I18N-13). Each page then
 // wraps its content in a provider holding the shell plus ROUTE_NAMESPACES for its route
 // (`withRouteMessages`, `./RouteMessages.tsx`). The nested provider replaces the root one, so a
 // route's set is the shell plus its own. Server components read the whole catalog through
@@ -99,6 +100,54 @@ export const BOUNDARY_KEYS = [
   "waf.boundary.endpointsError",
   "waf.boundary.endpointsLoading",
   "waf.boundary.endpointsTitle",
+] as const;
+
+/**
+ * The single keys the top bar's search results read (`TopSearch`): the names of an anomaly's
+ * detector and state, of an offense's status, and of an IPS row's subject. The top bar is in the root
+ * provider, so these go into every page's HTML; a whole `enums`, `ips`, `waf` or `propertyWatch`
+ * namespace would be hundreds of kilobytes. The helpers that read them are listed in
+ * `I18N_KEYED_CALLS` (checked by the scan), and `TopSearch.keys.test.tsx` renders a row for every
+ * code and fails when the keys read differ from this list.
+ */
+export const TOP_BAR_KEYS = [
+  "enums.anomalyState.CANDIDATE",
+  "enums.anomalyState.INSUFFICIENT_DATA",
+  "enums.anomalyState.NORMAL",
+  "enums.anomalyState.OPEN",
+  "enums.anomalyState.RECOVERING",
+  "enums.anomalyState.RESOLVED",
+  "enums.anomalyState.SUPPRESSED",
+  "enums.anomalyType.IPS_BLOCK_RATIO_SHIFT",
+  "enums.anomalyType.IPS_DESTINATION_RATE_SPIKE",
+  "enums.anomalyType.IPS_NEW_DESTINATION_PORT",
+  "enums.anomalyType.IPS_PORT_FANOUT_SPIKE",
+  "enums.anomalyType.IPS_PORT_RATE_SPIKE",
+  "enums.anomalyType.IPS_SIGNATURE_BURST",
+  "enums.anomalyType.IPS_SOURCE_CONCENTRATION_SPIKE",
+  "enums.anomalyType.NO_EVENTS",
+  "enums.anomalyType.VOLUME_DROP",
+  "enums.anomalyType.VOLUME_SPIKE",
+  "enums.anomalyType.WAF_BLOCK_RATIO_SPIKE",
+  "enums.anomalyType.WAF_CLIENT_CONCENTRATION_SPIKE",
+  "enums.anomalyType.WAF_CLIENT_ENDPOINT_FANOUT_SPIKE",
+  "enums.anomalyType.WAF_CLIENT_ERROR_RATIO_SPIKE",
+  "enums.anomalyType.WAF_ERROR_RATIO_SPIKE",
+  "enums.anomalyType.WAF_NEW_ENDPOINT_ACCESS",
+  "enums.anomalyType.WAF_REQUEST_RATE_SPIKE",
+  "enums.offenseStatus.CLOSED",
+  "enums.offenseStatus.HIDDEN",
+  "enums.offenseStatus.OPEN",
+  "enums.propertyWatchAnomalyType.PW_NEW_COMBINATION",
+  "enums.propertyWatchAnomalyType.PW_NEW_VALUE",
+  "enums.propertyWatchAnomalyType.PW_VALUE_DISAPPEARED",
+  "enums.propertyWatchAnomalyType.PW_VALUE_DROP",
+  "enums.propertyWatchAnomalyType.PW_VALUE_SPIKE",
+  "ips.dimension.DESTINATION_IP",
+  "ips.dimension.DESTINATION_PORT",
+  "ips.entity.signatureId",
+  "ips.subject.entityNotRecorded",
+  "ips.subject.sourceLevel",
 ] as const;
 
 export const SHELL_NAMESPACES = [
@@ -202,7 +251,7 @@ export function routeMessages(
   return pickMessages(messages, [...SHELL_NAMESPACES, ...ROUTE_NAMESPACES[route]]);
 }
 
-/** What the browser gets before a page's provider: the shell and the boundary strings. */
+/** What the browser gets before a page's provider: the shell, the boundary strings and the top bar's keys. */
 export function shellMessages(messages: Readonly<Record<string, unknown>>): Record<string, unknown> {
-  return pickMessages(messages, SHELL_NAMESPACES, BOUNDARY_KEYS);
+  return pickMessages(messages, SHELL_NAMESPACES, [...BOUNDARY_KEYS, ...TOP_BAR_KEYS]);
 }

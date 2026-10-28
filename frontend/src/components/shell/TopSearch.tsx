@@ -28,18 +28,34 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
+import { isPwRow, pwTypeLabel } from "@/components/propertywatch/pwFormat";
+import { anomalyTypeLabel } from "@/components/waf/wafLabels";
+import { enumLabel } from "@/i18n/enumLabels";
 import {
   ApiError,
   shellApi,
   type AnomalySummary,
   type Page,
 } from "@/lib/api";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 /**
- * Helpers called without a translator: the IPS subject and type read as their own English (checked by
- * `src/i18n/routeNamespaces.contract.test.ts`), so the top bar needs none of their namespaces.
+ * The helpers that name a result row, called with the interface's translator. The top bar is in the
+ * root provider, so it reads single keys of their namespaces (`TOP_BAR_KEYS` in
+ * `src/i18n/routeNamespaces.ts`) and not the namespaces themselves; the contract test checks that
+ * every call passes the translator and, at run time, that the keys read are the keys sent.
+ * `isIpsRow` and `isPwRow` read no message.
  */
-export const I18N_ENGLISH_DEFAULT_CALLS = ["ipsSubjectText", "isIpsRow", "rowTypeLabel"] as const;
+export const I18N_KEYED_CALLS = [
+  "anomalyTypeLabel",
+  "enumLabel",
+  "ipsSubjectText",
+  "isIpsRow",
+  "isPwRow",
+  "pwTypeLabel",
+  "rowTypeLabel",
+] as const;
 
 export const DEBOUNCE_MS = 250;
 const PER_GROUP = 5;
@@ -78,8 +94,16 @@ async function settle(
   }
 }
 
+/** A detector's name in a result row, as the anomaly list names it; a type this build lacks shows as sent. */
+function typeText(a: AnomalySummary, i18n: BehaviorI18n): string {
+  if (isPwRow(a)) return pwTypeLabel(a.anomaly_type, i18n);
+  if (isIpsRow(a)) return rowTypeLabel(a, i18n);
+  return anomalyTypeLabel(a.anomaly_type, i18n);
+}
+
 export function TopSearch() {
   const t = useTranslations("shell.search");
+  const i18n = useBehaviorI18n();
   const router = useRouter();
   const uid = useId();
   const listId = `${uid}-list`;
@@ -153,7 +177,7 @@ export function TopSearch() {
               id: `offense-${o.qradar_offense_id}`,
               href: `/offenses/${o.qradar_offense_id}`,
               title: o.description ?? t("offenseId", { id: o.qradar_offense_id }),
-              sub: `#${o.qradar_offense_id} · ${o.status}`,
+              sub: `#${o.qradar_offense_id} · ${enumLabel(i18n.t, "offenseStatus", o.status)}`,
             })),
           ),
           settle("anomalies", async () => {
@@ -163,7 +187,7 @@ export function TopSearch() {
               .filter((a) =>
                 // An IPS row is also found by its subject (the entity), which its source name
                 // does not contain.
-                `${a.log_source_name ?? ""} ${a.pw_value?.watch_name ?? ""} ${isIpsRow(a) ? ipsSubjectText(a) : ""}`
+                `${a.log_source_name ?? ""} ${a.pw_value?.watch_name ?? ""} ${isIpsRow(a) ? ipsSubjectText(a, i18n) : ""}`
                   .toLowerCase()
                   .includes(needle),
               )
@@ -172,14 +196,14 @@ export function TopSearch() {
                   ? {
                       id: `anomaly-${a.id}`,
                       href: `/anomalies/${a.id}`,
-                      title: ipsSubjectText(a),
-                      sub: `${rowTypeLabel(a)} · ${a.log_source_name ?? a.log_source_id} · ${a.state}`,
+                      title: ipsSubjectText(a, i18n),
+                      sub: `${typeText(a, i18n)} · ${a.log_source_name ?? a.log_source_id} · ${enumLabel(i18n.t, "anomalyState", a.state)}`,
                     }
                   : {
                       id: `anomaly-${a.id}`,
                       href: `/anomalies/${a.id}`,
                       title: a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? t("propertyWatchValue"),
-                      sub: `${a.anomaly_type} · ${a.state}`,
+                      sub: `${typeText(a, i18n)} · ${enumLabel(i18n.t, "anomalyState", a.state)}`,
                     },
               );
           }),
@@ -199,7 +223,7 @@ export function TopSearch() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [trimmed, t]);
+  }, [trimmed, t, i18n]);
 
   // Ctrl+K / Cmd+K focuses the field from anywhere.
   useEffect(() => {

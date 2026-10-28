@@ -17,6 +17,7 @@ import {
   BOUNDARY_KEYS,
   ROUTE_NAMESPACES,
   SHELL_NAMESPACES,
+  TOP_BAR_KEYS,
   pickMessages,
   routeMessages,
   shellMessages,
@@ -69,6 +70,31 @@ describe("the root provider", () => {
   it("carries the strings the route boundaries read, and no namespace twice", () => {
     const keys = [...root.keys.keys()].filter((key) => !shell.includes(key.split(".")[0])).sort();
     expect([...BOUNDARY_KEYS], `BOUNDARY_KEYS must be ${line(keys)}`).toEqual(keys);
+  });
+
+  it("holds every top-bar key in both catalogs, as a string", () => {
+    for (const catalog of [en, tr]) {
+      const sent = shellMessages(catalog);
+      for (const key of TOP_BAR_KEYS) {
+        let at: unknown = sent;
+        for (const part of key.split(".")) {
+          at = typeof at === "object" && at !== null && Object.hasOwn(at, part) ? (at as Record<string, unknown>)[part] : undefined;
+        }
+        expect(typeof at, key).toBe("string");
+      }
+    }
+  });
+
+  it("sends the top bar's keys one by one, never a whole namespace they come from", () => {
+    const namespaces = new Set(TOP_BAR_KEYS.map((key) => key.split(".")[0]));
+    for (const namespace of namespaces) {
+      expect(SHELL_NAMESPACES as readonly string[], namespace).not.toContain(namespace);
+      for (const catalog of [en, tr]) {
+        const sent = (shellMessages(catalog)[namespace] ?? {}) as Record<string, unknown>;
+        const whole = catalog[namespace as keyof typeof catalog] as unknown as Record<string, unknown>;
+        expect(JSON.stringify(sent).length, namespace).toBeLessThan(JSON.stringify(whole).length / 2);
+      }
+    }
   });
 
   it("never sends the guide", () => {
