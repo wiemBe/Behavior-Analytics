@@ -38,7 +38,7 @@ from app.models.enums import (
     Severity,
     WafAnomalyType,
 )
-from app.schemas.messages import MessageParamValue, MessageValue
+from app.schemas.messages import MessageParamValue, MessageValue, stored_message_parts
 
 
 class SubjectKind(StrEnum):
@@ -258,6 +258,10 @@ class AnomalyTransitionOut(BaseModel):
     occurred_at: datetime
     bucket_start: datetime | None = None
     reason: str | None = None
+    #: Stable code and raw values of `reason` for a non-English client. Null: no code (a
+    #: row stored before codes, or a reason the producing engine has not coded).
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     actor: str
     observed_value: float | None = None
     expected_value: float | None = None
@@ -306,6 +310,9 @@ class AnomalyListItem(BaseModel):
     #: Server-rendered detector reasoning, so the UI never reconstructs
     #: detection logic to explain a verdict.
     explanation: str | None = None
+    #: Stable code and raw values of `explanation` for a non-English client. Null: no code.
+    explanation_code: str | None = None
+    explanation_params: dict[str, MessageParamValue] | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -538,6 +545,8 @@ class PwDetectionDetailOut(BaseModel):
     """
 
     reason: str | None = None
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     expected_low: float | None = None
     expected_high: float | None = None
     threshold: float | None = None
@@ -566,6 +575,8 @@ class PwDetectionDetailOut(BaseModel):
     events_since_first_seen: float | None = None
     buckets_with_traffic: int | None = None
     claim: str | None = None
+    claim_code: str | None = None
+    claim_params: dict[str, MessageParamValue] | None = None
 
 
 class AnomalyDetailOut(AnomalyListItem):
@@ -841,8 +852,16 @@ def pw_detection_detail(details: dict[str, Any] | None) -> PwDetectionDetailOut 
     extra = _section(details, "extra")
     status = _text(extra, "robust_score_status")
     measurement = _text(extra, "observed_measurement") or _text(extra, "measurement")
+    reason_code, reason_params = stored_message_parts(
+        details.get("reason_code"), details.get("reason_params")
+    )
+    claim_code, claim_params = stored_message_parts(
+        extra.get("claim_code"), extra.get("claim_params")
+    )
     return PwDetectionDetailOut(
         reason=_text(details, "reason"),
+        reason_code=reason_code,
+        reason_params=reason_params,
         expected_low=_num(details, "baseline_low"),
         expected_high=_num(details, "baseline_high"),
         threshold=_num(details, "threshold"),
@@ -868,6 +887,8 @@ def pw_detection_detail(details: dict[str, Any] | None) -> PwDetectionDetailOut 
         events_since_first_seen=_num(extra, "events_since_first_seen"),
         buckets_with_traffic=_count(extra, "buckets_with_traffic"),
         claim=_text(extra, "claim"),
+        claim_code=claim_code,
+        claim_params=claim_params,
     )
 
 

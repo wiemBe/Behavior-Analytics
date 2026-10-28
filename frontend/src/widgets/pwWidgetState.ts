@@ -2,13 +2,19 @@
 // reads any value, how it picks the values it draws, and when a last bucket counts as old. No
 // React and no fetch, so each rule has a unit test.
 
-import { statusReason } from "@/components/propertywatch/pwFormat";
+import { codedStatusReason } from "@/components/propertywatch/pwReason";
 import { PW_MAX_SERIES } from "@/components/propertywatch/pwSeries";
 import { type TextTranslator } from "@/i18n/textTranslator";
 import { englishText } from "@/widgets/englishText";
 import type { PropertyWatch, PropertyWatchCatalog, PwValue } from "@/lib/api";
 import { formatPercent, type FormatLocale } from "@/lib/format";
 import type { WidgetState } from "./types";
+
+/** The code of a watch's status sentence and its raw values, as the API sends them beside it. */
+const coded = (watch: PropertyWatch) => ({
+  code: watch.status_reason_code,
+  params: watch.status_reason_params,
+});
 
 /**
  * The cadence of the PROPERTY_WATCH search family when a read does not carry one. It is the
@@ -60,7 +66,7 @@ export function earlyState(
       watch.status === "NOT_ENABLED" ? `${t("widgets.propertyWatch.settingOff")} ` : "";
     return {
       kind: "not_collected",
-      reason: `${setting}${statusReason(watch.status, watch.status_reason, { t, locale })} ${t("widgets.propertyWatch.openHistory")}`,
+      reason: `${setting}${codedStatusReason(watch.status, watch.status_reason, { t, locale }, coded(watch))} ${t("widgets.propertyWatch.openHistory")}`,
     };
   }
   if (watch.history.state === "READING") {
@@ -79,7 +85,7 @@ export function earlyState(
       ? t("widgets.propertyWatch.disabled")
       : watch.status === null
         ? t("widgets.propertyWatch.notRunYet")
-        : statusReason(watch.status, watch.status_reason, { t, locale });
+        : codedStatusReason(watch.status, watch.status_reason, { t, locale }, coded(watch));
     return {
       kind: "empty",
       reason: t("widgets.propertyWatch.noBucket", { why, at: "{at}" }),

@@ -1161,6 +1161,9 @@ export interface AnomalyTransition {
   occurred_at: string;
   bucket_start: string | null;
   reason: string | null;
+  // The registry code of `reason` and its raw values (absent or null: no code, show `reason`).
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   actor: string;
   observed_value: number | null;
   expected_value: number | null;
@@ -1191,6 +1194,9 @@ export interface AnomalySummary {
   evidence_status: EvidenceStatus;
   suppressed: boolean;
   explanation: string | null;
+  // The registry code of `explanation` and its raw values (property-watch rows today).
+  explanation_code?: string | null;
+  explanation_params?: Record<string, unknown> | null;
   // The unified list (T-057). Absent on a Phase A row from an older response, so
   // a missing `subject_kind` is read as LOG_SOURCE.
   subject_kind?: SubjectKind;
@@ -1727,6 +1733,8 @@ export interface PwScopeOption {
   synced_source_count: number | null;
   scope_state: PwWatchStatus | null;
   scope_reason: string | null;
+  scope_reason_code?: string | null;
+  scope_reason_params?: Record<string, unknown> | null;
 }
 
 export interface PwPropertyOption {
@@ -1767,6 +1775,8 @@ export interface WatchScope {
   resolved: boolean;
   state: PwWatchStatus | null;
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   member_count: number | null;
   members: string[];
   members_total: number | null;
@@ -1796,6 +1806,9 @@ export interface PwHistoryGap {
   start: string;
   end: string;
   reason: string;
+  // A gap stored before codes carries none.
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
 }
 
 export interface PwHistoryEstimate {
@@ -1819,6 +1832,8 @@ export interface PwWatchHistory {
   buckets_read: number | null;
   gaps: PwHistoryGap[] | null;
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   progress_unreadable: boolean;
   started_at: string | null;
   finished_at: string | null;
@@ -1844,6 +1859,8 @@ export interface PropertyWatch {
   // null: the watch has never run, which is not OK.
   status: PwWatchStatus | null;
   status_reason: string | null;
+  status_reason_code?: string | null;
+  status_reason_params?: Record<string, unknown> | null;
   collected_through: string | null;
   evaluated_through: string | null;
   last_run_at: string | null;
@@ -1890,6 +1907,8 @@ export interface WatchAql {
   bucket_seconds: number | null;
   current: PwAqlQuery[];
   current_unavailable: string | null;
+  current_unavailable_code?: string | null;
+  current_unavailable_params?: Record<string, unknown> | null;
   last_bucket: {
     bucket_start: string;
     collected_at: string;
@@ -2054,6 +2073,8 @@ export interface PwPreview {
   searches_sent: number;
   outcome: "MEASURED" | "PARTIAL" | "NOT_MEASURED";
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   buckets_measured: number;
   buckets_lower_bound: number;
   buckets_unmeasured: number;
@@ -2085,6 +2106,8 @@ export interface PwValueRef {
  *  counts and the API declares no unit for them (see `newValueFigures` in `components/propertywatch/pwFormat.ts`). */
 export interface PwDetectionDetail {
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   expected_low: number | null;
   expected_high: number | null;
   threshold: number | null;
@@ -2108,6 +2131,8 @@ export interface PwDetectionDetail {
   events_since_first_seen: number | null;
   buckets_with_traffic: number | null;
   claim: string | null;
+  claim_code?: string | null;
+  claim_params?: Record<string, unknown> | null;
 }
 
 /** A property-watch value's incident, as `GET /anomalies/{id}` serves it (PW-5c). */

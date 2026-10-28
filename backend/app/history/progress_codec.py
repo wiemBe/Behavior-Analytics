@@ -61,6 +61,8 @@ _OPTIONAL_INTS = ("chunk_buckets", "chunk_ceiling")
 _FLOAT_FIELDS = ("recent_rows_per_bucket",)
 _BOOL_FIELDS = ("density_checked",)
 _GAP_KEYS = ("start", "end", "reason")
+#: A gap written with a message code carries these two beside the three above, or neither.
+_GAP_CODE_KEYS = ("reason_code", "reason_params")
 
 
 class ProgressCodecError(ValueError):
@@ -125,6 +127,18 @@ def _decode_float(value: object, name: str) -> float | None:
     return number
 
 
+def _encode_gap(gap: Gap) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "start": _encode_datetime(gap.start, "gap start"),
+        "end": _encode_datetime(gap.end, "gap end"),
+        "reason": gap.reason,
+    }
+    if gap.reason_code is not None and gap.reason_params is not None:
+        out["reason_code"] = gap.reason_code
+        out["reason_params"] = dict(gap.reason_params)
+    return out
+
+
 def encode_progress(
     progress: ScopeProgress, adapter: Mapping[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -136,14 +150,7 @@ def encode_progress(
         if name in _DATETIME_FIELDS:
             body[name] = None if value is None else _encode_datetime(value, name)
         elif name == "gaps":
-            body[name] = [
-                {
-                    "start": _encode_datetime(gap.start, "gap start"),
-                    "end": _encode_datetime(gap.end, "gap end"),
-                    "reason": gap.reason,
-                }
-                for gap in value
-            ]
+            body[name] = [_encode_gap(gap) for gap in value]
         elif name in _FLOAT_FIELDS:
             body[name] = _encode_float(value, name)
         else:
@@ -211,16 +218,31 @@ def decode_progress(data: object) -> DecodedProgress:
         raise ProgressCodecError("gaps must be a list")
     gaps: list[Gap] = []
     for index, raw in enumerate(raw_gaps):
-        if not isinstance(raw, Mapping) or set(raw) != set(_GAP_KEYS):
-            raise ProgressCodecError(f"gap {index} must have exactly {list(_GAP_KEYS)}")
+        coded = isinstance(raw, Mapping) and set(raw) == {*_GAP_KEYS, *_GAP_CODE_KEYS}
+        if not isinstance(raw, Mapping) or (set(raw) != set(_GAP_KEYS) and not coded):
+            raise ProgressCodecError(
+                f"gap {index} must have exactly {list(_GAP_KEYS)}, "
+                f"or those and {list(_GAP_CODE_KEYS)}"
+            )
         reason = raw["reason"]
         if not isinstance(reason, str):
             raise ProgressCodecError(f"gap {index} reason must be a string")
+        reason_code: str | None = None
+        reason_params: dict[str, object] | None = None
+        if coded:
+            if not isinstance(raw["reason_code"], str) or not isinstance(
+                raw["reason_params"], Mapping
+            ):
+                raise ProgressCodecError(f"gap {index} message code must be a string and an object")
+            reason_code = raw["reason_code"]
+            reason_params = dict(raw["reason_params"])
         gaps.append(
             Gap(
                 start=_decode_datetime(raw["start"], f"gap {index} start"),
                 end=_decode_datetime(raw["end"], f"gap {index} end"),
                 reason=reason,
+                reason_code=reason_code,
+                reason_params=reason_params,
             )
         )
     values["gaps"] = tuple(gaps)

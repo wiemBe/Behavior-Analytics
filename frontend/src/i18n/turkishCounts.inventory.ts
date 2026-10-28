@@ -73,6 +73,20 @@ export const PLAIN: Readonly<Record<string, Readonly<Record<string, PlainReason>
   "backend.rule_health.incomplete.cause.failed_many": { count: "string" },
   "backend.rule_health.incomplete.cause.failed_many_class": { count: "string" },
   "backend.rule_health.incomplete.cause.skipped_many": { count: "string" },
+  // MSG-4b: `backendMessage.ts` formats every count and number param in the reader's locale
+  // before `t` sees it (grouped counts, fixed decimals, durations), so each stays plain.
+  "backend.pw.detector.learning_day": { days: "string" },
+  "backend.pw.detector.not_active": { days: "string" },
+  "backend.pw.draft.history_days_range": { days: "string" },
+  "backend.pw.draft.pin_count": { max: "string", count: "string" },
+  "backend.pw.draft.pin_parts": { count: "string" },
+  "backend.pw.draft.property_count": { count: "string" },
+  "backend.pw.draft.series_max": { max: "string", count: "string" },
+  "backend.pw.preview.group_too_large": { max: "string" },
+  "backend.pw.reference.pin_length": { max: "string" },
+  "backend.pw.scope.group_stale": { limit: "string" },
+  "backend.pw.scope.too_large": { limit: "string" },
+  "backend.pw.status.reading_history": { total: "string" },
   // MSG-1b: the reader hands a count over already grouped (`formatCount`), so the plain form
   // prints `1.204`; the value is a string, not a raw number.
   "backend.search.aql.limit_exceeded": { limit: "string" },

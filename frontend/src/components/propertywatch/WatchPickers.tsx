@@ -19,6 +19,7 @@ import {
   propertyApplicability,
   scopeOptionTooLarge,
 } from "./authoring";
+import { scopeReason } from "./pwReason";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -129,7 +130,7 @@ export function WatchScopePicker({
               <option key={option.id} value={option.id} disabled={disabled}>
                 {option.name} — {count}
                 {option.detail ? ` — ${option.detail}` : ""}
-                {disabled ? ` — ${option.scope_reason ?? t("scopeTooLarge")}` : ""}
+                {disabled ? ` — ${scopeReason(option, i18n) ?? t("scopeTooLarge")}` : ""}
               </option>
             );
           })}
@@ -167,7 +168,7 @@ export function WatchScopePicker({
                     : `, ${i18n.t("propertyWatch.common.sources", {
                         count: option.synced_source_count,
                       })}`}
-                  . {option.scope_reason ?? t("splitScope")}
+                  . {scopeReason(option, i18n) ?? t("splitScope")}
                 </li>
               ))}
             </ul>

@@ -755,6 +755,22 @@
     "sample_english_params": {},
     "template": "field is not populated for this log source"
   },
+  "history.gap.search_failed": {
+    "params": {
+      "failures": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "failures": 3
+    },
+    "sample_english": "search failed 3 times at the minimum width",
+    "sample_english_params": {
+      "failures": "3"
+    },
+    "template": "search failed {failures} times at the minimum width"
+  },
   "propertywatch.action.change_pins": {
     "params": {},
     "sample": {},
@@ -850,6 +866,2336 @@
       "name": "Admin logons"
     },
     "template": "a property watch named '{name}' already exists"
+  },
+  "pw.detector.admission_truncated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the first-appearance bucket had truncated admission: the value appeared in a flood and is not individually new",
+    "sample_english_params": {},
+    "template": "the first-appearance bucket had truncated admission: the value appeared in a flood and is not individually new"
+  },
+  "pw.detector.baseline_few_visits": {
+    "params": {
+      "samples": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "visits": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "samples": 12,
+      "visits": 2
+    },
+    "sample_english": "the value-events baseline has 12 sample(s), but they come from too few separate weekly visits of this weekday and hour: a baseline needs the same hour from at least 2 different weeks",
+    "sample_english_params": {
+      "samples": "12",
+      "visits": "2"
+    },
+    "template": "the value-events baseline has {samples} sample(s), but they come from too few separate weekly visits of this weekday and hour: a baseline needs the same hour from at least {visits} different weeks"
+  },
+  "pw.detector.baseline_few_visits_one": {
+    "params": {
+      "samples": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "samples": 12
+    },
+    "sample_english": "the value-events baseline has 12 sample(s), but they come from too few separate weekly visits of this weekday and hour: a baseline needs the same hour from at least 1 different week",
+    "sample_english_params": {
+      "samples": "12"
+    },
+    "template": "the value-events baseline has {samples} sample(s), but they come from too few separate weekly visits of this weekday and hour: a baseline needs the same hour from at least 1 different week"
+  },
+  "pw.detector.baseline_samples": {
+    "params": {
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "samples": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "minimum": 8,
+      "samples": 5
+    },
+    "sample_english": "the value-events baseline has 5 sample(s), below the minimum of 8",
+    "sample_english_params": {
+      "minimum": "8",
+      "samples": "5"
+    },
+    "template": "the value-events baseline has {samples} sample(s), below the minimum of {minimum}"
+  },
+  "pw.detector.baseline_version": {
+    "params": {
+      "baseline": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "bucket": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "baseline": 1,
+      "bucket": 2
+    },
+    "sample_english": "the baseline uses watch version 1, not the bucket's 2",
+    "sample_english_params": {
+      "baseline": "1",
+      "bucket": "2"
+    },
+    "template": "the baseline uses watch version {baseline}, not the bucket's {bucket}"
+  },
+  "pw.detector.basis_above_p95": {
+    "params": {
+      "bound": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "bound": 130.0
+    },
+    "sample_english": "robust score is unavailable (MAD=0); the value is above p95 130.00",
+    "sample_english_params": {
+      "bound": "130.00"
+    },
+    "template": "robust score is unavailable (MAD=0); the value is above p95 {bound}"
+  },
+  "pw.detector.basis_below_p05": {
+    "params": {
+      "bound": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "bound": 80.0
+    },
+    "sample_english": "robust score is unavailable (MAD=0); the value is below p05 80.00",
+    "sample_english_params": {
+      "bound": "80.00"
+    },
+    "template": "robust score is unavailable (MAD=0); the value is below p05 {bound}"
+  },
+  "pw.detector.basis_z_high": {
+    "params": {
+      "score": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "repr"
+      }
+    },
+    "sample": {
+      "score": 6.2,
+      "threshold": 3.5
+    },
+    "sample_english": "robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "score": "6.20",
+      "threshold": "3.5"
+    },
+    "template": "robust z={score} (threshold +{threshold})"
+  },
+  "pw.detector.basis_z_low": {
+    "params": {
+      "score": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "repr"
+      }
+    },
+    "sample": {
+      "score": -6.2,
+      "threshold": 3.5
+    },
+    "sample_english": "robust z=-6.20 (threshold -3.5)",
+    "sample_english_params": {
+      "score": "-6.20",
+      "threshold": "3.5"
+    },
+    "template": "robust z={score} (threshold -{threshold})"
+  },
+  "pw.detector.bucket_membership": {
+    "params": {},
+    "sample": {},
+    "sample_english": "membership changed during this bucket",
+    "sample_english_params": {},
+    "template": "membership changed during this bucket"
+  },
+  "pw.detector.bucket_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket is missing: no count was measured",
+    "sample_english_params": {},
+    "template": "the bucket is missing: no count was measured"
+  },
+  "pw.detector.bucket_not_collected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket was NOT_COLLECTED: its count is not zero",
+    "sample_english_params": {},
+    "template": "the bucket was NOT_COLLECTED: its count is not zero"
+  },
+  "pw.detector.bucket_not_parsed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the property parsed on none of this bucket's events: NOT_APPLICABLE",
+    "sample_english_params": {},
+    "template": "the property parsed on none of this bucket's events: NOT_APPLICABLE"
+  },
+  "pw.detector.claim_new_combination": {
+    "params": {},
+    "sample": {},
+    "sample_english": "both components were tracked before, but never together in the verified history",
+    "sample_english_params": {},
+    "template": "both components were tracked before, but never together in the verified history"
+  },
+  "pw.detector.claim_new_value": {
+    "params": {
+      "min_events": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "min_events": 3
+    },
+    "sample_english": "the value stayed below 3 events in every bucket of the verified history",
+    "sample_english_params": {
+      "min_events": "3"
+    },
+    "template": "the value stayed below {min_events} events in every bucket of the verified history"
+  },
+  "pw.detector.combination_inputs_unsupported": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the declared combination inputs do not support a verdict",
+    "sample_english_params": {},
+    "template": "the declared combination inputs do not support a verdict"
+  },
+  "pw.detector.component_untracked": {
+    "params": {},
+    "sample": {},
+    "sample_english": "at least one component was not previously tracked: this is classified only as a new value",
+    "sample_english_params": {},
+    "template": "at least one component was not previously tracked: this is classified only as a new value"
+  },
+  "pw.detector.component_untracked_below_admission": {
+    "params": {},
+    "sample": {},
+    "sample_english": "at least one component was not previously tracked (seen only below the admission threshold): this is classified only as a new value",
+    "sample_english_params": {},
+    "template": "at least one component was not previously tracked (seen only below the admission threshold): this is classified only as a new value"
+  },
+  "pw.detector.components_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the tuple's two component histories were not supplied",
+    "sample_english_params": {},
+    "template": "the tuple's two component histories were not supplied"
+  },
+  "pw.detector.count_unknown": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the value's count is unknown for this bucket, not zero",
+    "sample_english_params": {},
+    "template": "the value's count is unknown for this bucket, not zero"
+  },
+  "pw.detector.coverage_below": {
+    "params": {
+      "floor": {
+        "kind": "percent"
+      },
+      "seen": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "floor": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      },
+      "seen": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.62
+      }
+    },
+    "sample_english": "property coverage was 62 %, below the 90 % floor",
+    "sample_english_params": {
+      "floor": "90 %",
+      "seen": "62 %"
+    },
+    "template": "property coverage was {seen}, below the {floor} floor"
+  },
+  "pw.detector.coverage_unknown": {
+    "params": {
+      "floor": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "floor": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      }
+    },
+    "sample_english": "property coverage was unknown, below the 90 % floor",
+    "sample_english_params": {
+      "floor": "90 %"
+    },
+    "template": "property coverage was unknown, below the {floor} floor"
+  },
+  "pw.detector.disappear_median_floor": {
+    "params": {
+      "floor": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "median": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "floor": 5.0,
+      "median": 2.0
+    },
+    "sample_english": "baseline median 2.0 is below the 5.0 disappearance floor",
+    "sample_english_params": {
+      "floor": "5.0",
+      "median": "2.0"
+    },
+    "template": "baseline median {median} is below the {floor} disappearance floor"
+  },
+  "pw.detector.disappeared_fired": {
+    "params": {
+      "median": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "streak": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "median": 120.0,
+      "streak": 6
+    },
+    "sample_english": "the value had zero parsed events for 6 consecutive exact buckets; the seasonal median is 120.0 events",
+    "sample_english_params": {
+      "median": "120.0",
+      "streak": "6"
+    },
+    "template": "the value had zero parsed events for {streak} consecutive exact buckets; the seasonal median is {median} events"
+  },
+  "pw.detector.drop_delta_below_min": {
+    "params": {
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "minimum": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "delta": 30.0,
+      "minimum": 50.0
+    },
+    "sample_english": "fall of 30 events is below the 50 minimum absolute delta",
+    "sample_english_params": {
+      "delta": "30",
+      "minimum": "50"
+    },
+    "template": "fall of {delta} events is below the {minimum} minimum absolute delta"
+  },
+  "pw.detector.drop_fired": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.detector.basis_z_high",
+          "pw.detector.basis_z_low",
+          "pw.detector.basis_above_p95",
+          "pw.detector.basis_below_p05"
+        ]
+      },
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "median": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "pw.detector.basis_z_low",
+        "params": {
+          "score": -6.2,
+          "threshold": 3.5
+        }
+      },
+      "delta": 90.0,
+      "median": 100.0,
+      "observed": 10.0,
+      "ratio": 0.1
+    },
+    "sample_english": "10 exact events is below the median 100.0 (-90, 0.10x); robust z=-6.20 (threshold -3.5)",
+    "sample_english_params": {
+      "basis": "robust z=-6.20 (threshold -3.5)",
+      "delta": "90",
+      "median": "100.0",
+      "observed": "10",
+      "ratio": "0.10"
+    },
+    "template": "{observed} exact events is below the median {median} (-{delta}, {ratio}x); {basis}"
+  },
+  "pw.detector.drop_median_floor": {
+    "params": {
+      "floor": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "median": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "floor": 20.0,
+      "median": 12.0
+    },
+    "sample_english": "baseline median 12.0 is below the 20.0 traffic floor",
+    "sample_english_params": {
+      "floor": "20.0",
+      "median": "12.0"
+    },
+    "template": "baseline median {median} is below the {floor} traffic floor"
+  },
+  "pw.detector.drop_ratio_above": {
+    "params": {
+      "line": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "line": 0.5,
+      "ratio": 0.8
+    },
+    "sample_english": "observed/expected ratio 0.80 is above the 0.50 drop line",
+    "sample_english_params": {
+      "line": "0.50",
+      "ratio": "0.80"
+    },
+    "template": "observed/expected ratio {ratio} is above the {line} drop line"
+  },
+  "pw.detector.established_hand_off": {
+    "params": {
+      "first_seen": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "hand_off": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "first_seen": "2026-10-17T12:00:00+00:00",
+      "hand_off": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "established value: first seen 2026-10-17T12:00:00+00:00 in the history read before the watch went live at 2026-10-17T12:00:00+00:00",
+    "sample_english_params": {
+      "first_seen": "2026-10-17T12:00:00+00:00",
+      "hand_off": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "established value: first seen {first_seen} in the history read before the watch went live at {hand_off}"
+  },
+  "pw.detector.established_outside_window": {
+    "params": {
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "first_seen": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "buckets": 12,
+      "first_seen": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "established value: first admitted 2026-10-17T12:00:00+00:00, outside the 12-bucket novelty window",
+    "sample_english_params": {
+      "buckets": "12",
+      "first_seen": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "established value: first admitted {first_seen}, outside the {buckets}-bucket novelty window"
+  },
+  "pw.detector.grace_membership": {
+    "params": {},
+    "sample": {},
+    "sample_english": "membership changed inside the first-appearance grace window",
+    "sample_english_params": {},
+    "template": "membership changed inside the first-appearance grace window"
+  },
+  "pw.detector.history_incomplete": {
+    "params": {
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.history_check.not_divisible",
+          "pw.history_check.bucket_never_collected",
+          "pw.history_check.record_count",
+          "pw.history_check.bucket_width",
+          "pw.history_check.bucket_not_collected",
+          "pw.history_check.discovery_truncated",
+          "pw.history_check.admission_truncated",
+          "pw.history_check.bucket_version",
+          "pw.history_check.bucket_coverage",
+          "pw.history_check.first_bucket_never_collected",
+          "pw.history_check.outside_window",
+          "pw.history_check.incomplete"
+        ]
+      }
+    },
+    "sample": {
+      "reason": {
+        "code": "pw.history_check.not_divisible",
+        "params": {}
+      }
+    },
+    "sample_english": "novelty cannot be established: the history window is not divisible by the collection bucket width",
+    "sample_english_params": {
+      "reason": "the history window is not divisible by the collection bucket width"
+    },
+    "template": "novelty cannot be established: {reason}"
+  },
+  "pw.detector.inputs_unsupported": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the declared inputs do not support a verdict",
+    "sample_english_params": {},
+    "template": "the declared inputs do not support a verdict"
+  },
+  "pw.detector.last_seen_unknown": {
+    "params": {},
+    "sample": {},
+    "sample_english": "when the value was last observed is not known",
+    "sample_english_params": {},
+    "template": "when the value was last observed is not known"
+  },
+  "pw.detector.learning_day": {
+    "params": {
+      "day": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "day": 3,
+      "days": 7
+    },
+    "sample_english": "learning: day 3 of 7",
+    "sample_english_params": {
+      "day": "3",
+      "days": "7"
+    },
+    "template": "learning: day {day} of {days}"
+  },
+  "pw.detector.learning_unknown": {
+    "params": {},
+    "sample": {},
+    "sample_english": "learning: the watch's first collected bucket is unknown",
+    "sample_english_params": {},
+    "template": "learning: the watch's first collected bucket is unknown"
+  },
+  "pw.detector.mad_within_p05": {
+    "params": {
+      "bound": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "bound": 80.0
+    },
+    "sample_english": "robust score is unavailable (MAD=0) and the value is within p05 80.00",
+    "sample_english_params": {
+      "bound": "80.00"
+    },
+    "template": "robust score is unavailable (MAD=0) and the value is within p05 {bound}"
+  },
+  "pw.detector.mad_within_p95": {
+    "params": {
+      "bound": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "bound": 130.0
+    },
+    "sample_english": "robust score is unavailable (MAD=0) and the value is within p95 130.00",
+    "sample_english_params": {
+      "bound": "130.00"
+    },
+    "template": "robust score is unavailable (MAD=0) and the value is within p95 {bound}"
+  },
+  "pw.detector.materiality_lower_bound": {
+    "params": {
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.detector.materiality_short"
+        ]
+      }
+    },
+    "sample": {
+      "reason": {
+        "code": "pw.detector.materiality_short",
+        "params": {
+          "buckets": 1,
+          "events": 12,
+          "min_buckets": 2,
+          "min_events": 20
+        }
+      }
+    },
+    "sample_english": "12 event(s) in 1 bucket(s) since first appearance has not reached 20 events in 2 buckets; the materiality counts are lower bounds",
+    "sample_english_params": {
+      "reason": "12 event(s) in 1 bucket(s) since first appearance has not reached 20 events in 2 buckets"
+    },
+    "template": "{reason}; the materiality counts are lower bounds"
+  },
+  "pw.detector.materiality_short": {
+    "params": {
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "events": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "min_buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "min_events": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "buckets": 1,
+      "events": 12,
+      "min_buckets": 2,
+      "min_events": 20
+    },
+    "sample_english": "12 event(s) in 1 bucket(s) since first appearance has not reached 20 events in 2 buckets",
+    "sample_english_params": {
+      "buckets": "1",
+      "events": "12",
+      "min_buckets": "2",
+      "min_events": "20"
+    },
+    "template": "{events} event(s) in {buckets} bucket(s) since first appearance has not reached {min_events} events in {min_buckets} buckets"
+  },
+  "pw.detector.new_fired": {
+    "params": {
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "claim": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.detector.claim_new_value",
+          "pw.detector.claim_new_combination"
+        ]
+      },
+      "events": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "buckets": 3,
+      "claim": {
+        "code": "pw.detector.claim_new_value",
+        "params": {
+          "min_events": 3
+        }
+      },
+      "events": 40
+    },
+    "sample_english": "40 events across 3 buckets since first appearance; the value stayed below 3 events in every bucket of the verified history",
+    "sample_english_params": {
+      "buckets": "3",
+      "claim": "the value stayed below 3 events in every bucket of the verified history",
+      "events": "40"
+    },
+    "template": "{events} events across {buckets} buckets since first appearance; {claim}"
+  },
+  "pw.detector.new_fired_lower": {
+    "params": {
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "claim": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.detector.claim_new_value",
+          "pw.detector.claim_new_combination"
+        ]
+      },
+      "events": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "buckets": 3,
+      "claim": {
+        "code": "pw.detector.claim_new_value",
+        "params": {
+          "min_events": 3
+        }
+      },
+      "events": 40
+    },
+    "sample_english": "at least 40 events across 3 buckets since first appearance; the value stayed below 3 events in every bucket of the verified history",
+    "sample_english_params": {
+      "buckets": "3",
+      "claim": "the value stayed below 3 events in every bucket of the verified history",
+      "events": "40"
+    },
+    "template": "at least {events} events across {buckets} buckets since first appearance; {claim}"
+  },
+  "pw.detector.new_value_is_combination": {
+    "params": {},
+    "sample": {},
+    "sample_english": "both tuple components were tracked before: this is classified only as a new combination",
+    "sample_english_params": {},
+    "template": "both tuple components were tracked before: this is classified only as a new combination"
+  },
+  "pw.detector.no_baseline": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no value-events baseline for this weekday/hour cell yet",
+    "sample_english_params": {},
+    "template": "no value-events baseline for this weekday/hour cell yet"
+  },
+  "pw.detector.no_status": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the watch has never established a collection status",
+    "sample_english_params": {},
+    "template": "the watch has never established a collection status"
+  },
+  "pw.detector.not_active": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 7
+    },
+    "sample_english": "the value was not observed within the last 7 days",
+    "sample_english_params": {
+      "days": "7"
+    },
+    "template": "the value was not observed within the last {days} days"
+  },
+  "pw.detector.not_proven_lower_bound": {
+    "params": {
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.detector.spike_min_events",
+          "pw.detector.ratio_not_reached",
+          "pw.detector.spike_delta_below_min",
+          "pw.detector.z_not_reached_high",
+          "pw.detector.mad_within_p95",
+          "pw.detector.drop_median_floor",
+          "pw.detector.drop_ratio_above",
+          "pw.detector.drop_delta_below_min",
+          "pw.detector.z_not_reached_low",
+          "pw.detector.mad_within_p05",
+          "pw.detector.not_active",
+          "pw.detector.disappear_median_floor",
+          "pw.detector.observed_positive",
+          "pw.detector.streak_short"
+        ]
+      },
+      "scope": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "reason": {
+        "code": "pw.detector.mad_within_p95",
+        "params": {
+          "bound": 130.0
+        }
+      },
+      "scope": "an input is a lower bound"
+    },
+    "sample_english": "robust score is unavailable (MAD=0) and the value is within p95 130.00; an input is a lower bound, so a normal verdict cannot be concluded",
+    "sample_english_params": {
+      "reason": "robust score is unavailable (MAD=0) and the value is within p95 130.00",
+      "scope": "an input is a lower bound"
+    },
+    "template": "{reason}; {scope}, so a normal verdict cannot be concluded"
+  },
+  "pw.detector.novelty_inputs_unsupported": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the declared novelty inputs do not support a verdict",
+    "sample_english_params": {},
+    "template": "the declared novelty inputs do not support a verdict"
+  },
+  "pw.detector.novelty_unestablished": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the value's first appearance was not established",
+    "sample_english_params": {},
+    "template": "the value's first appearance was not established"
+  },
+  "pw.detector.observed_positive": {
+    "params": {
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "observed": 14.0
+    },
+    "sample_english": "the value carried 14 exact events in this bucket",
+    "sample_english_params": {
+      "observed": "14"
+    },
+    "template": "the value carried {observed} exact events in this bucket"
+  },
+  "pw.detector.one_property": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a one-property watch has nothing to combine",
+    "sample_english_params": {},
+    "template": "a one-property watch has nothing to combine"
+  },
+  "pw.detector.pinned_never_new": {
+    "params": {},
+    "sample": {},
+    "sample_english": "pinned values are operator-named and are never classified as new",
+    "sample_english_params": {},
+    "template": "pinned values are operator-named and are never classified as new"
+  },
+  "pw.detector.ratio_not_reached": {
+    "params": {
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "ratio": 1.4,
+      "threshold": 2.0
+    },
+    "sample_english": "observed/expected ratio 1.40 has not reached 2.00",
+    "sample_english_params": {
+      "ratio": "1.40",
+      "threshold": "2.00"
+    },
+    "template": "observed/expected ratio {ratio} has not reached {threshold}"
+  },
+  "pw.detector.spike_delta_below_min": {
+    "params": {
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "minimum": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "delta": 30.0,
+      "minimum": 50.0
+    },
+    "sample_english": "increase of 30 events is below the 50 minimum absolute delta",
+    "sample_english_params": {
+      "delta": "30",
+      "minimum": "50"
+    },
+    "template": "increase of {delta} events is below the {minimum} minimum absolute delta"
+  },
+  "pw.detector.spike_fired": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.detector.basis_z_high",
+          "pw.detector.basis_z_low",
+          "pw.detector.basis_above_p95",
+          "pw.detector.basis_below_p05"
+        ]
+      },
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "median": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "pw.detector.basis_z_high",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "delta": 420.0,
+      "median": 100.0,
+      "observed": 520.0,
+      "ratio": 5.2
+    },
+    "sample_english": "520 events is above the median 100.0 (+420, 5.20x); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "delta": "420",
+      "median": "100.0",
+      "observed": "520",
+      "ratio": "5.20"
+    },
+    "template": "{observed} events is above the median {median} (+{delta}, {ratio}x); {basis}"
+  },
+  "pw.detector.spike_fired_lower": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.detector.basis_z_high",
+          "pw.detector.basis_z_low",
+          "pw.detector.basis_above_p95",
+          "pw.detector.basis_below_p05"
+        ]
+      },
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "median": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "pw.detector.basis_z_high",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "delta": 420.0,
+      "median": 100.0,
+      "observed": 520.0,
+      "ratio": 5.2
+    },
+    "sample_english": "at least 520 events is above the median 100.0 (+420, 5.20x); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "delta": "420",
+      "median": "100.0",
+      "observed": "520",
+      "ratio": "5.20"
+    },
+    "template": "at least {observed} events is above the median {median} (+{delta}, {ratio}x); {basis}"
+  },
+  "pw.detector.spike_min_events": {
+    "params": {
+      "minimum": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "minimum": 20.0,
+      "observed": 12.0
+    },
+    "sample_english": "12 events is below the 20 minimum",
+    "sample_english_params": {
+      "minimum": "20",
+      "observed": "12"
+    },
+    "template": "{observed} events is below the {minimum} minimum"
+  },
+  "pw.detector.spike_zero_median": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.detector.basis_z_high",
+          "pw.detector.basis_z_low",
+          "pw.detector.basis_above_p95",
+          "pw.detector.basis_below_p05"
+        ]
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "pw.detector.basis_above_p95",
+        "params": {
+          "bound": 4.0
+        }
+      },
+      "observed": 90.0
+    },
+    "sample_english": "90 events rose from a zero median; robust score is unavailable (MAD=0); the value is above p95 4.00",
+    "sample_english_params": {
+      "basis": "robust score is unavailable (MAD=0); the value is above p95 4.00",
+      "observed": "90"
+    },
+    "template": "{observed} events rose from a zero median; {basis}"
+  },
+  "pw.detector.spike_zero_median_lower": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.detector.basis_z_high",
+          "pw.detector.basis_z_low",
+          "pw.detector.basis_above_p95",
+          "pw.detector.basis_below_p05"
+        ]
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "pw.detector.basis_above_p95",
+        "params": {
+          "bound": 4.0
+        }
+      },
+      "observed": 90.0
+    },
+    "sample_english": "at least 90 events rose from a zero median; robust score is unavailable (MAD=0); the value is above p95 4.00",
+    "sample_english_params": {
+      "basis": "robust score is unavailable (MAD=0); the value is above p95 4.00",
+      "observed": "90"
+    },
+    "template": "at least {observed} events rose from a zero median; {basis}"
+  },
+  "pw.detector.streak_short": {
+    "params": {
+      "required": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "streak": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "required": 6,
+      "streak": 3
+    },
+    "sample_english": "the value has 3 consecutive measured-zero bucket(s), below the required 6",
+    "sample_english_params": {
+      "required": "6",
+      "streak": "3"
+    },
+    "template": "the value has {streak} consecutive measured-zero bucket(s), below the required {required}"
+  },
+  "pw.detector.watch_blocked": {
+    "params": {
+      "status": {
+        "enum_group": "propertyWatchStatus",
+        "kind": "enum"
+      }
+    },
+    "sample": {
+      "status": "SCOPE_STALE"
+    },
+    "sample_english": "the watch is SCOPE_STALE: no value verdict is possible",
+    "sample_english_params": {
+      "status": "SCOPE_STALE"
+    },
+    "template": "the watch is {status}: no value verdict is possible"
+  },
+  "pw.detector.window_bucket_missing": {
+    "params": {
+      "at": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "at": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "the bucket at 2026-10-17T12:00:00+00:00 inside the disappearance window was not supplied: its count is not zero",
+    "sample_english_params": {
+      "at": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "the bucket at {at} inside the disappearance window was not supplied: its count is not zero"
+  },
+  "pw.detector.window_count_unknown": {
+    "params": {
+      "at": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "at": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "the value count at 2026-10-17T12:00:00+00:00 is unknown, not zero",
+    "sample_english_params": {
+      "at": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "the value count at {at} is unknown, not zero"
+  },
+  "pw.detector.window_coverage": {
+    "params": {
+      "at": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "at": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "property coverage at 2026-10-17T12:00:00+00:00 was below the floor",
+    "sample_english_params": {
+      "at": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "property coverage at {at} was below the floor"
+  },
+  "pw.detector.window_membership": {
+    "params": {},
+    "sample": {},
+    "sample_english": "membership changed inside the disappearance window",
+    "sample_english_params": {},
+    "template": "membership changed inside the disappearance window"
+  },
+  "pw.detector.z_not_reached_high": {
+    "params": {
+      "score": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "repr"
+      }
+    },
+    "sample": {
+      "score": 2.1,
+      "threshold": 3.5
+    },
+    "sample_english": "robust z=2.10 has not reached +3.5",
+    "sample_english_params": {
+      "score": "2.10",
+      "threshold": "3.5"
+    },
+    "template": "robust z={score} has not reached +{threshold}"
+  },
+  "pw.detector.z_not_reached_low": {
+    "params": {
+      "score": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "repr"
+      }
+    },
+    "sample": {
+      "score": -2.1,
+      "threshold": 3.5
+    },
+    "sample_english": "robust z=-2.10 has not reached -3.5",
+    "sample_english_params": {
+      "score": "-2.10",
+      "threshold": "3.5"
+    },
+    "template": "robust z={score} has not reached -{threshold}"
+  },
+  "pw.draft.combination_needs_two": {
+    "params": {},
+    "sample": {},
+    "sample_english": "PW_NEW_COMBINATION needs a watch with two properties",
+    "sample_english_params": {},
+    "template": "PW_NEW_COMBINATION needs a watch with two properties"
+  },
+  "pw.draft.detector_required": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a watch evaluates at least one detector",
+    "sample_english_params": {},
+    "template": "a watch evaluates at least one detector"
+  },
+  "pw.draft.field_null": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "severity"
+    },
+    "sample_english": "severity must not be null",
+    "sample_english_params": {
+      "name": "severity"
+    },
+    "template": "{name} must not be null"
+  },
+  "pw.draft.group_missing": {
+    "params": {
+      "id": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "id": 12
+    },
+    "sample_english": "log source group 12 is not in the synced inventory",
+    "sample_english_params": {
+      "id": "12"
+    },
+    "template": "log source group {id} is not in the synced inventory"
+  },
+  "pw.draft.history_days_null": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history_days must not be null; use 0 for no history",
+    "sample_english_params": {},
+    "template": "history_days must not be null; use 0 for no history"
+  },
+  "pw.draft.history_days_range": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "high": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "low": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 3,
+      "high": 30,
+      "low": 7
+    },
+    "sample_english": "history_days must be 0 (no history) or between 7 and 30, not 3",
+    "sample_english_params": {
+      "days": "3",
+      "high": "30",
+      "low": "7"
+    },
+    "template": "history_days must be 0 (no history) or between {low} and {high}, not {days}"
+  },
+  "pw.draft.instance_differs": {
+    "params": {},
+    "sample": {},
+    "sample_english": "instance_id differs from the log source's instance",
+    "sample_english_params": {},
+    "template": "instance_id differs from the log source's instance"
+  },
+  "pw.draft.log_source_missing": {
+    "params": {
+      "id": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "id": "5b0c8b0e-0000-4000-8000-000000000001"
+    },
+    "sample_english": "log source 5b0c8b0e-0000-4000-8000-000000000001 does not exist",
+    "sample_english_params": {
+      "id": "5b0c8b0e-0000-4000-8000-000000000001"
+    },
+    "template": "log source {id} does not exist"
+  },
+  "pw.draft.no_instance": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no QRadar instance is registered",
+    "sample_english_params": {},
+    "template": "no QRadar instance is registered"
+  },
+  "pw.draft.pin_count": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "max": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 11,
+      "max": 10
+    },
+    "sample_english": "a watch pins at most 10 values, not 11",
+    "sample_english_params": {
+      "count": "11",
+      "max": "10"
+    },
+    "template": "a watch pins at most {max} values, not {count}"
+  },
+  "pw.draft.pin_invalid": {
+    "params": {
+      "index": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "part": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.reference.normalized_not_allowed",
+          "pw.reference.name_invalid",
+          "pw.reference.kind_unknown",
+          "pw.reference.not_an_object",
+          "pw.reference.name_not_text",
+          "pw.reference.pin_not_text",
+          "pw.reference.pin_empty",
+          "pw.reference.pin_length",
+          "pw.reference.pin_characters"
+        ]
+      }
+    },
+    "sample": {
+      "index": 1,
+      "part": 2,
+      "reason": {
+        "code": "pw.reference.pin_empty",
+        "params": {}
+      }
+    },
+    "sample_english": "pinned value 1, part 2: a pinned value cannot be empty",
+    "sample_english_params": {
+      "index": "1",
+      "part": "2",
+      "reason": "a pinned value cannot be empty"
+    },
+    "template": "pinned value {index}, part {part}: {reason}"
+  },
+  "pw.draft.pin_parts": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "index": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 2,
+      "index": 1
+    },
+    "sample_english": "pinned value 1: needs 2 string(s), one per property",
+    "sample_english_params": {
+      "count": "2",
+      "index": "1"
+    },
+    "template": "pinned value {index}: needs {count} string(s), one per property"
+  },
+  "pw.draft.pin_twice": {
+    "params": {
+      "index": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "index": 2
+    },
+    "sample_english": "pinned value 2: pinned twice",
+    "sample_english_params": {
+      "index": "2"
+    },
+    "template": "pinned value {index}: pinned twice"
+  },
+  "pw.draft.pinned_rows": {
+    "params": {
+      "rows": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "target": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "rows": 9000,
+      "target": 5000
+    },
+    "sample_english": "the pinned values can return up to 9000 rows per bucket, above the 5000 rows one history search may carry; unpin values or request no history",
+    "sample_english_params": {
+      "rows": "9000",
+      "target": "5000"
+    },
+    "template": "the pinned values can return up to {rows} rows per bucket, above the {target} rows one history search may carry; unpin values or request no history"
+  },
+  "pw.draft.property_count": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 3
+    },
+    "sample_english": "a watch names one or two properties, not 3",
+    "sample_english_params": {
+      "count": "3"
+    },
+    "template": "a watch names one or two properties, not {count}"
+  },
+  "pw.draft.property_invalid": {
+    "params": {
+      "index": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.reference.normalized_not_allowed",
+          "pw.reference.name_invalid",
+          "pw.reference.kind_unknown",
+          "pw.reference.not_an_object",
+          "pw.reference.name_not_text",
+          "pw.reference.pin_not_text",
+          "pw.reference.pin_empty",
+          "pw.reference.pin_length",
+          "pw.reference.pin_characters"
+        ]
+      }
+    },
+    "sample": {
+      "index": 2,
+      "reason": {
+        "code": "pw.reference.kind_unknown",
+        "params": {}
+      }
+    },
+    "sample_english": "property 2: unknown property reference kind",
+    "sample_english_params": {
+      "index": "2",
+      "reason": "unknown property reference kind"
+    },
+    "template": "property {index}: {reason}"
+  },
+  "pw.draft.property_twice": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a watch cannot name the same property twice",
+    "sample_english_params": {},
+    "template": "a watch cannot name the same property twice"
+  },
+  "pw.draft.scope_id_number": {
+    "params": {
+      "kind": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "kind": "LOG_SOURCE_TYPE"
+    },
+    "sample_english": "scope_id of a LOG_SOURCE_TYPE scope is a number",
+    "sample_english_params": {
+      "kind": "LOG_SOURCE_TYPE"
+    },
+    "template": "scope_id of a {kind} scope is a number"
+  },
+  "pw.draft.scope_id_uuid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "scope_id of a LOG_SOURCE scope is the source's id",
+    "sample_english_params": {},
+    "template": "scope_id of a LOG_SOURCE scope is the source's id"
+  },
+  "pw.draft.scope_must_be_empty": {
+    "params": {
+      "column": {
+        "kind": "text"
+      },
+      "kind": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "column": "scope_type_id",
+      "kind": "LOG_SOURCE"
+    },
+    "sample_english": "scope_type_id must be empty for a LOG_SOURCE scope",
+    "sample_english_params": {
+      "column": "scope_type_id",
+      "kind": "LOG_SOURCE"
+    },
+    "template": "{column} must be empty for a {kind} scope"
+  },
+  "pw.draft.scope_negative": {
+    "params": {
+      "column": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "column": "scope_group_id"
+    },
+    "sample_english": "scope_group_id must not be negative",
+    "sample_english_params": {
+      "column": "scope_group_id"
+    },
+    "template": "{column} must not be negative"
+  },
+  "pw.draft.scope_required": {
+    "params": {
+      "column": {
+        "kind": "text"
+      },
+      "kind": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "column": "log_source_id",
+      "kind": "LOG_SOURCE"
+    },
+    "sample_english": "log_source_id is required for a LOG_SOURCE scope",
+    "sample_english_params": {
+      "column": "log_source_id",
+      "kind": "LOG_SOURCE"
+    },
+    "template": "{column} is required for a {kind} scope"
+  },
+  "pw.draft.series_max": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "max": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 13,
+      "max": 12
+    },
+    "sample_english": "at most 12 values per request, not 13",
+    "sample_english_params": {
+      "count": "13",
+      "max": "12"
+    },
+    "template": "at most {max} values per request, not {count}"
+  },
+  "pw.draft.series_untracked": {
+    "params": {
+      "value": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "value": "5b0c8b0e-0000-4000-8000-000000000002"
+    },
+    "sample_english": "value 5b0c8b0e-0000-4000-8000-000000000002 is not a tracked value of this watch's current version",
+    "sample_english_params": {
+      "value": "5b0c8b0e-0000-4000-8000-000000000002"
+    },
+    "template": "value {value} is not a tracked value of this watch's current version"
+  },
+  "pw.draft.type_missing": {
+    "params": {
+      "id": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "id": 11
+    },
+    "sample_english": "log source type 11 is not in the synced inventory",
+    "sample_english_params": {
+      "id": "11"
+    },
+    "template": "log source type {id} is not in the synced inventory"
+  },
+  "pw.history.starts_next": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the reading starts at the next collection",
+    "sample_english_params": {},
+    "template": "the reading starts at the next collection"
+  },
+  "pw.history.switched_off": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history reading is switched off",
+    "sample_english_params": {},
+    "template": "history reading is switched off"
+  },
+  "pw.history.unreadable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the stored history progress could not be read back",
+    "sample_english_params": {},
+    "template": "the stored history progress could not be read back"
+  },
+  "pw.history_change.already_collected": {
+    "params": {
+      "marks": {
+        "kind": "list",
+        "style": "and"
+      }
+    },
+    "sample": {
+      "marks": {
+        "items": [
+          "collected_through",
+          "evaluated_through"
+        ],
+        "kind": "list"
+      }
+    },
+    "sample_english": "this watch has already collected (collected_through and evaluated_through set); create a new watch to read history",
+    "sample_english_params": {
+      "marks": "collected_through and evaluated_through"
+    },
+    "template": "this watch has already collected ({marks} set); create a new watch to read history"
+  },
+  "pw.history_change.already_requested": {
+    "params": {
+      "state": {
+        "enum_group": "propertyWatchHistoryState",
+        "kind": "enum"
+      }
+    },
+    "sample": {
+      "state": "READING"
+    },
+    "sample_english": "history is READING on this watch and cannot be requested again; create a new watch to read history",
+    "sample_english_params": {
+      "state": "READING"
+    },
+    "template": "history is {state} on this watch and cannot be requested again; create a new watch to read history"
+  },
+  "pw.history_change.holds_buckets": {
+    "params": {
+      "stored": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "stored": 288
+    },
+    "sample_english": "this watch holds 288 stored bucket(s) of its current version; create a new watch to read history",
+    "sample_english_params": {
+      "stored": "288"
+    },
+    "template": "this watch holds {stored} stored bucket(s) of its current version; create a new watch to read history"
+  },
+  "pw.history_check.admission_truncated": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "history bucket 2026-10-17T12:00:00+00:00 had truncated value admission",
+    "sample_english_params": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "history bucket {bucket} had truncated value admission"
+  },
+  "pw.history_check.bucket_coverage": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "history bucket 2026-10-17T12:00:00+00:00 had parsing coverage below the floor",
+    "sample_english_params": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "history bucket {bucket} had parsing coverage below the floor"
+  },
+  "pw.history_check.bucket_never_collected": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "missing": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-17T12:00:00+00:00",
+      "expected": 2016,
+      "missing": 2
+    },
+    "sample_english": "history bucket 2026-10-17T12:00:00+00:00 was never collected (2 of 2016 missing)",
+    "sample_english_params": {
+      "bucket": "2026-10-17T12:00:00+00:00",
+      "expected": "2016",
+      "missing": "2"
+    },
+    "template": "history bucket {bucket} was never collected ({missing} of {expected} missing)"
+  },
+  "pw.history_check.bucket_not_collected": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "history bucket 2026-10-17T12:00:00+00:00 was NOT_COLLECTED",
+    "sample_english_params": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "history bucket {bucket} was NOT_COLLECTED"
+  },
+  "pw.history_check.bucket_version": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "version": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-17T12:00:00+00:00",
+      "version": 2
+    },
+    "sample_english": "history bucket 2026-10-17T12:00:00+00:00 used another watch version, not first-appearance version 2",
+    "sample_english_params": {
+      "bucket": "2026-10-17T12:00:00+00:00",
+      "version": "2"
+    },
+    "template": "history bucket {bucket} used another watch version, not first-appearance version {version}"
+  },
+  "pw.history_check.bucket_width": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "history bucket 2026-10-17T12:00:00+00:00 used a different collection bucket width",
+    "sample_english_params": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "history bucket {bucket} used a different collection bucket width"
+  },
+  "pw.history_check.discovery_truncated": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "history bucket 2026-10-17T12:00:00+00:00 had truncated value discovery",
+    "sample_english_params": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "history bucket {bucket} had truncated value discovery"
+  },
+  "pw.history_check.first_bucket_never_collected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the first-appearance bucket was never collected",
+    "sample_english_params": {},
+    "template": "the first-appearance bucket was never collected"
+  },
+  "pw.history_check.incomplete": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the history is incomplete",
+    "sample_english_params": {},
+    "template": "the history is incomplete"
+  },
+  "pw.history_check.not_divisible": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the history window is not divisible by the collection bucket width",
+    "sample_english_params": {},
+    "template": "the history window is not divisible by the collection bucket width"
+  },
+  "pw.history_check.outside_window": {
+    "params": {},
+    "sample": {},
+    "sample_english": "outside the novelty window",
+    "sample_english_params": {},
+    "template": "outside the novelty window"
+  },
+  "pw.history_check.record_count": {
+    "params": {
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "records": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "expected": 2016,
+      "records": 2017
+    },
+    "sample_english": "the history contains 2017 bucket records for 2016 expected buckets",
+    "sample_english_params": {
+      "expected": "2016",
+      "records": "2017"
+    },
+    "template": "the history contains {records} bucket records for {expected} expected buckets"
+  },
+  "pw.preview.cut_at_row_limit": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the grouped search was cut at the row limit and a preview does not split it; narrow the scope or preview a type or a source",
+    "sample_english_params": {},
+    "template": "the grouped search was cut at the row limit and a preview does not split it; narrow the scope or preview a type or a source"
+  },
+  "pw.preview.group_too_large": {
+    "params": {
+      "max": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "members": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "max": 500,
+      "members": 700
+    },
+    "sample_english": "the group resolves to 700 sources and a preview covers one search chunk of at most 500; preview a smaller group, a type or a source",
+    "sample_english_params": {
+      "max": "500",
+      "members": "700"
+    },
+    "template": "the group resolves to {members} sources and a preview covers one search chunk of at most {max}; preview a smaller group, a type or a source"
+  },
+  "pw.preview.lower_bound": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a bucket was cut at the row limit: its counts are lower bounds",
+    "sample_english_params": {},
+    "template": "a bucket was cut at the row limit: its counts are lower bounds"
+  },
+  "pw.preview.scope_unresolved": {
+    "params": {
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "pw.scope.source_missing",
+          "pw.scope.names_no_type",
+          "pw.scope.type_empty",
+          "pw.scope.names_no_group",
+          "pw.scope.group_missing",
+          "pw.scope.group_stale",
+          "pw.scope.group_empty",
+          "pw.scope.too_large"
+        ]
+      },
+      "status": {
+        "enum_group": "propertyWatchStatus",
+        "kind": "enum"
+      }
+    },
+    "sample": {
+      "reason": {
+        "code": "pw.scope.group_empty",
+        "params": {}
+      },
+      "status": "SCOPE_EMPTY"
+    },
+    "sample_english": "SCOPE_EMPTY: the group and its descendants hold no synced log source",
+    "sample_english_params": {
+      "reason": "the group and its descendants hold no synced log source",
+      "status": "SCOPE_EMPTY"
+    },
+    "template": "{status}: {reason}"
+  },
+  "pw.preview.search_failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a search failed, so its buckets were not measured",
+    "sample_english_params": {},
+    "template": "a search failed, so its buckets were not measured"
+  },
+  "pw.preview.unsearchable": {
+    "params": {
+      "error": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "error": "unknown property reference kind"
+    },
+    "sample_english": "the stored watch cannot be searched: unknown property reference kind",
+    "sample_english_params": {
+      "error": "unknown property reference kind"
+    },
+    "template": "the stored watch cannot be searched: {error}"
+  },
+  "pw.reference.kind_unknown": {
+    "params": {},
+    "sample": {},
+    "sample_english": "unknown property reference kind",
+    "sample_english_params": {},
+    "template": "unknown property reference kind"
+  },
+  "pw.reference.name_invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "invalid QRadar property name: letters, digits, underscore, space and hyphen only, at most 64 characters",
+    "sample_english_params": {},
+    "template": "invalid QRadar property name: letters, digits, underscore, space and hyphen only, at most 64 characters"
+  },
+  "pw.reference.name_not_text": {
+    "params": {},
+    "sample": {},
+    "sample_english": "property reference name must be text",
+    "sample_english_params": {},
+    "template": "property reference name must be text"
+  },
+  "pw.reference.normalized_not_allowed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "normalized field is not in the property-watch allowlist",
+    "sample_english_params": {},
+    "template": "normalized field is not in the property-watch allowlist"
+  },
+  "pw.reference.not_an_object": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a property reference is an object with a kind and a name",
+    "sample_english_params": {},
+    "template": "a property reference is an object with a kind and a name"
+  },
+  "pw.reference.pin_characters": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a pinned value cannot hold a quote, a backslash, a control character or leading or trailing whitespace",
+    "sample_english_params": {},
+    "template": "a pinned value cannot hold a quote, a backslash, a control character or leading or trailing whitespace"
+  },
+  "pw.reference.pin_empty": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a pinned value cannot be empty",
+    "sample_english_params": {},
+    "template": "a pinned value cannot be empty"
+  },
+  "pw.reference.pin_length": {
+    "params": {
+      "max": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "max": 255
+    },
+    "sample_english": "a pinned value is at most 255 characters",
+    "sample_english_params": {
+      "max": "255"
+    },
+    "template": "a pinned value is at most {max} characters"
+  },
+  "pw.reference.pin_not_text": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a pinned value is text",
+    "sample_english_params": {},
+    "template": "a pinned value is text"
+  },
+  "pw.scope.group_empty": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the group and its descendants hold no synced log source",
+    "sample_english_params": {},
+    "template": "the group and its descendants hold no synced log source"
+  },
+  "pw.scope.group_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the log source group is not in the inventory",
+    "sample_english_params": {},
+    "template": "the log source group is not in the inventory"
+  },
+  "pw.scope.group_stale": {
+    "params": {
+      "limit": {
+        "kind": "duration",
+        "style": "timedelta"
+      },
+      "synced": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "limit": {
+        "kind": "duration",
+        "seconds": 1800
+      },
+      "synced": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "the group inventory was last synced at 2026-10-17T12:00:00+00:00, older than 0:30:00",
+    "sample_english_params": {
+      "limit": "0:30:00",
+      "synced": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "the group inventory was last synced at {synced}, older than {limit}"
+  },
+  "pw.scope.names_no_group": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the watch names no log source group",
+    "sample_english_params": {},
+    "template": "the watch names no log source group"
+  },
+  "pw.scope.names_no_type": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the watch names no log source type",
+    "sample_english_params": {},
+    "template": "the watch names no log source type"
+  },
+  "pw.scope.source_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the log source is not in the inventory",
+    "sample_english_params": {},
+    "template": "the log source is not in the inventory"
+  },
+  "pw.scope.too_large": {
+    "params": {
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "searches": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "sources": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "limit": 5,
+      "searches": 7,
+      "sources": 700
+    },
+    "sample_english": "700 sources need 7 searches; the limit is 5",
+    "sample_english_params": {
+      "limit": "5",
+      "searches": "7",
+      "sources": "700"
+    },
+    "template": "{sources} sources need {searches} searches; the limit is {limit}"
+  },
+  "pw.scope.type_empty": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no synced log source has this type",
+    "sample_english_params": {},
+    "template": "no synced log source has this type"
+  },
+  "pw.status.disabled_by": {
+    "params": {
+      "actor": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "actor": "efe"
+    },
+    "sample_english": "disabled by efe",
+    "sample_english_params": {
+      "actor": "efe"
+    },
+    "template": "disabled by {actor}"
+  },
+  "pw.status.evaluated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the latest collected bucket was evaluated",
+    "sample_english_params": {},
+    "template": "the latest collected bucket was evaluated"
+  },
+  "pw.status.latest_search_failed": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "the latest search failed; bucket 2026-10-17T12:00:00+00:00 is stored NOT_COLLECTED",
+    "sample_english_params": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "the latest search failed; bucket {bucket} is stored NOT_COLLECTED"
+  },
+  "pw.status.not_applicable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the property parsed on no event in scope; the values are not measured",
+    "sample_english_params": {},
+    "template": "the property parsed on no event in scope; the values are not measured"
+  },
+  "pw.status.open": {
+    "params": {},
+    "sample": {},
+    "sample_english": "one or more value incidents are open",
+    "sample_english_params": {},
+    "template": "one or more value incidents are open"
+  },
+  "pw.status.reading_history": {
+    "params": {
+      "done": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "total": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "done": 3.46,
+      "total": 7.0
+    },
+    "sample_english": "Reading history from QRadar: 3.5 of 7.0 days; nothing is judged until it finishes",
+    "sample_english_params": {
+      "done": "3.5",
+      "total": "7.0"
+    },
+    "template": "Reading history from QRadar: {done} of {total} days; nothing is judged until it finishes"
+  },
+  "pw.status.recovering": {
+    "params": {},
+    "sample": {},
+    "sample_english": "one or more value incidents are recovering",
+    "sample_english_params": {},
+    "template": "one or more value incidents are recovering"
+  },
+  "pw.transition.definition_changed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "watch definition changed",
+    "sample_english_params": {},
+    "template": "watch definition changed"
+  },
+  "pw.transition.recovered": {
+    "params": {},
+    "sample": {},
+    "sample_english": "condition recovered",
+    "sample_english_params": {},
+    "template": "condition recovered"
+  },
+  "pw.transition.value_retired": {
+    "params": {},
+    "sample": {},
+    "sample_english": "value retired; no longer evaluated",
+    "sample_english_params": {},
+    "template": "value retired; no longer evaluated"
+  },
+  "pw.transition.watch_deleted": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the watch was deleted",
+    "sample_english_params": {},
+    "template": "the watch was deleted"
+  },
+  "pw.transition.watch_disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "watch disabled; no longer evaluated",
+    "sample_english_params": {},
+    "template": "watch disabled; no longer evaluated"
   },
   "rule_health.age_unknown": {
     "params": {},

@@ -4,15 +4,20 @@ The API keeps the rendered English sentence and adds a stable code plus raw
 parameters. English clients keep the sentence byte for byte; another locale
 may render the code and parameters through its catalog.
 
-Formatting styles are deliberately closed. Counts accept ``grouped`` (the
+Formatting styles are deliberately closed, and they shape the backend's English render only:
+the frontend never renders English from params, and in Turkish it groups every count and
+every number (``1.204``, ``1.260,0``) whatever the style. Counts accept ``grouped`` (the
 default) or ``plain`` (no grouping; it shapes the backend's English render only, the
 frontend groups every count in the reader's locale); numbers accept ``general`` (the
-default), ``grouped`` or ``fixed``; points accept ``signed`` (the default) or
-``unsigned``; lists accept ``comma`` (the default), ``and`` or ``semicolon`` (``"; "``, for a
-list of clauses that carry commas); timestamps accept the default (date, second, ``UTC``) or
-``minute`` (date, minute, ``UTC``). Percent precision, fixed-number precision, and point precision
-are declared separately. Duration, enum, ref, and text params have one spelling and therefore no
-alternate style.
+default), ``grouped``, ``fixed`` or ``repr`` (Python's ``str()`` of the number, which keeps
+a trailing ``.0``); points accept ``signed`` (the default) or ``unsigned``; lists accept
+``comma`` (the default), ``and`` or ``semicolon`` (``"; "``, for a list of clauses that carry
+commas); durations accept ``timedelta`` (Python's ``str()`` of a ``timedelta``, ``0:30:00`` or
+``1 day, 2:00:00``, for a sentence that always printed it so); timestamps accept the default
+(date, second, ``UTC``), ``minute`` (date, minute, ``UTC``) or ``iso``
+(``datetime.isoformat()``, for a sentence that always embedded it). Percent precision,
+fixed-number precision, and point precision are declared separately. Enum, ref, and text params
+have one spelling and therefore no alternate style.
 """
 
 from __future__ import annotations
@@ -21,7 +26,7 @@ import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from string import Formatter
 
@@ -145,6 +150,98 @@ _RH_LABELS = (
     "rule_health.label.building_block",
     "rule_health.label.log_source_type",
 )
+
+# Shorthands of the MSG-4b block (property-watch sentences). Counts print without grouping,
+# as the f-strings they replace did; fixed-point numbers keep their `:.Nf` precision.
+_PLAIN = ParamSpec(ParamKind.COUNT, style="plain")
+_FIXED0 = ParamSpec(ParamKind.NUMBER, style="fixed", precision=0)
+_FIXED1 = ParamSpec(ParamKind.NUMBER, style="fixed", precision=1)
+_FIXED2 = ParamSpec(ParamKind.NUMBER, style="fixed", precision=2)
+_REPR = ParamSpec(ParamKind.NUMBER, style="repr")
+_TEXT = ParamSpec(ParamKind.TEXT)
+_ISO = ParamSpec(ParamKind.TIMESTAMP, style="iso")
+_PERCENT = ParamSpec(ParamKind.PERCENT)
+
+_PW_AT = datetime(2026, 10, 17, 12, 0, tzinfo=UTC)
+
+_PW_REFERENCE_REASONS = (
+    "pw.reference.normalized_not_allowed",
+    "pw.reference.name_invalid",
+    "pw.reference.kind_unknown",
+    "pw.reference.not_an_object",
+    "pw.reference.name_not_text",
+    "pw.reference.pin_not_text",
+    "pw.reference.pin_empty",
+    "pw.reference.pin_length",
+    "pw.reference.pin_characters",
+)
+
+_PW_SCOPE_REASONS = (
+    "pw.scope.source_missing",
+    "pw.scope.names_no_type",
+    "pw.scope.type_empty",
+    "pw.scope.names_no_group",
+    "pw.scope.group_missing",
+    "pw.scope.group_stale",
+    "pw.scope.group_empty",
+    "pw.scope.too_large",
+)
+
+_PW_HISTORY_CHECKS = (
+    "pw.history_check.not_divisible",
+    "pw.history_check.bucket_never_collected",
+    "pw.history_check.record_count",
+    "pw.history_check.bucket_width",
+    "pw.history_check.bucket_not_collected",
+    "pw.history_check.discovery_truncated",
+    "pw.history_check.admission_truncated",
+    "pw.history_check.bucket_version",
+    "pw.history_check.bucket_coverage",
+    "pw.history_check.first_bucket_never_collected",
+    "pw.history_check.outside_window",
+    "pw.history_check.incomplete",
+)
+
+#: The sentences a guard can wrap in "...; <scope>, so a normal verdict cannot be concluded".
+_PW_NOT_PROVEN = (
+    "pw.detector.spike_min_events",
+    "pw.detector.ratio_not_reached",
+    "pw.detector.spike_delta_below_min",
+    "pw.detector.z_not_reached_high",
+    "pw.detector.mad_within_p95",
+    "pw.detector.drop_median_floor",
+    "pw.detector.drop_ratio_above",
+    "pw.detector.drop_delta_below_min",
+    "pw.detector.z_not_reached_low",
+    "pw.detector.mad_within_p05",
+    "pw.detector.not_active",
+    "pw.detector.disappear_median_floor",
+    "pw.detector.observed_positive",
+    "pw.detector.streak_short",
+)
+
+_PW_BASES = (
+    "pw.detector.basis_z_high",
+    "pw.detector.basis_z_low",
+    "pw.detector.basis_above_p95",
+    "pw.detector.basis_below_p05",
+)
+
+_PW_CLAIMS = (
+    "pw.detector.claim_new_value",
+    "pw.detector.claim_new_combination",
+)
+
+
+def _msg(
+    code: str,
+    template: str,
+    params: Mapping[str, ParamSpec] | None = None,
+    sample: Mapping[str, object] | None = None,
+) -> MessageSpec:
+    """A sentence with declared parameters (MSG-4b); no parameters is `_fixed`."""
+    return MessageSpec(code=code, template=template, params=params or {}, sample=sample or {})
+
 
 REGISTRY: tuple[MessageSpec, ...] = (
     _fixed(
@@ -984,6 +1081,801 @@ REGISTRY: tuple[MessageSpec, ...] = (
         sample={"validation_status": "INVALID"},
     ),
     # --- end MSG-4a ---
+    # --- MSG-4b: property-watch sentences (Family 6) -- keep contiguous ---------------------
+    # Watch status (stored in property_watch.last_status_reason_i18n).
+    _msg(
+        "pw.status.reading_history",
+        "Reading history from QRadar: {done} of {total} days; nothing is judged until it finishes",
+        {"done": _FIXED1, "total": _FIXED1},
+        {"done": 3.46, "total": 7.0},
+    ),
+    _msg(
+        "pw.status.not_applicable",
+        "the property parsed on no event in scope; the values are not measured",
+    ),
+    _msg(
+        "pw.status.latest_search_failed",
+        "the latest search failed; bucket {bucket} is stored NOT_COLLECTED",
+        {"bucket": _ISO},
+        {"bucket": _PW_AT},
+    ),
+    _msg(
+        "pw.status.disabled_by",
+        "disabled by {actor}",
+        {"actor": _TEXT},
+        {"actor": "efe"},
+    ),
+    _msg("pw.status.open", "one or more value incidents are open"),
+    _msg("pw.status.recovering", "one or more value incidents are recovering"),
+    _msg("pw.status.evaluated", "the latest collected bucket was evaluated"),
+    # Scope resolution.
+    _msg("pw.scope.source_missing", "the log source is not in the inventory"),
+    _msg("pw.scope.names_no_type", "the watch names no log source type"),
+    _msg("pw.scope.type_empty", "no synced log source has this type"),
+    _msg("pw.scope.names_no_group", "the watch names no log source group"),
+    _msg("pw.scope.group_missing", "the log source group is not in the inventory"),
+    _msg(
+        "pw.scope.group_stale",
+        "the group inventory was last synced at {synced}, older than {limit}",
+        {"synced": _ISO, "limit": ParamSpec(ParamKind.DURATION, style="timedelta")},
+        {"synced": _PW_AT, "limit": 1800},
+    ),
+    _msg(
+        "pw.scope.group_empty",
+        "the group and its descendants hold no synced log source",
+    ),
+    _msg(
+        "pw.scope.too_large",
+        "{sources} sources need {searches} searches; the limit is {limit}",
+        {"sources": _PLAIN, "searches": _PLAIN, "limit": _PLAIN},
+        {"sources": 700, "searches": 7, "limit": 5},
+    ),
+    # History reading (computed) and the planner's gap (stored in history_progress).
+    _msg("pw.history.switched_off", "history reading is switched off"),
+    _msg("pw.history.starts_next", "the reading starts at the next collection"),
+    _msg(
+        "pw.history.unreadable",
+        "the stored history progress could not be read back",
+    ),
+    _msg(
+        "history.gap.search_failed",
+        "search failed {failures} times at the minimum width",
+        {"failures": _PLAIN},
+        {"failures": 3},
+    ),
+    # Transition reasons (stored in pw_anomaly_transition.reason_i18n).
+    _msg("pw.transition.recovered", "condition recovered"),
+    _msg("pw.transition.definition_changed", "watch definition changed"),
+    _msg("pw.transition.value_retired", "value retired; no longer evaluated"),
+    _msg("pw.transition.watch_deleted", "the watch was deleted"),
+    _msg("pw.transition.watch_disabled", "watch disabled; no longer evaluated"),
+    # What a property reference or a pinned value may be.
+    _msg(
+        "pw.reference.normalized_not_allowed",
+        "normalized field is not in the property-watch allowlist",
+    ),
+    _msg(
+        "pw.reference.name_invalid",
+        "invalid QRadar property name: letters, digits, underscore, space and hyphen only, "
+        "at most 64 characters",
+    ),
+    _msg("pw.reference.kind_unknown", "unknown property reference kind"),
+    _msg(
+        "pw.reference.not_an_object",
+        "a property reference is an object with a kind and a name",
+    ),
+    _msg("pw.reference.name_not_text", "property reference name must be text"),
+    _msg("pw.reference.pin_not_text", "a pinned value is text"),
+    _msg("pw.reference.pin_empty", "a pinned value cannot be empty"),
+    _msg(
+        "pw.reference.pin_length",
+        "a pinned value is at most {max} characters",
+        {"max": _PLAIN},
+        {"max": 255},
+    ),
+    _msg(
+        "pw.reference.pin_characters",
+        "a pinned value cannot hold a quote, a backslash, a control character or "
+        "leading or trailing whitespace",
+    ),
+    # Draft validation and the other 422 reasons of the watch routes.
+    _msg(
+        "pw.draft.scope_required",
+        "{column} is required for a {kind} scope",
+        {"column": _TEXT, "kind": _TEXT},
+        {"column": "log_source_id", "kind": "LOG_SOURCE"},
+    ),
+    _msg(
+        "pw.draft.scope_must_be_empty",
+        "{column} must be empty for a {kind} scope",
+        {"column": _TEXT, "kind": _TEXT},
+        {"column": "scope_type_id", "kind": "LOG_SOURCE"},
+    ),
+    _msg(
+        "pw.draft.scope_negative",
+        "{column} must not be negative",
+        {"column": _TEXT},
+        {"column": "scope_group_id"},
+    ),
+    _msg(
+        "pw.draft.property_count",
+        "a watch names one or two properties, not {count}",
+        {"count": _PLAIN},
+        {"count": 3},
+    ),
+    _msg(
+        "pw.draft.property_invalid",
+        "property {index}: {reason}",
+        {"index": _PLAIN, "reason": ParamSpec(ParamKind.REF, ref_codes=_PW_REFERENCE_REASONS)},
+        {"index": 2, "reason": MessageRef("pw.reference.kind_unknown")},
+    ),
+    _msg("pw.draft.property_twice", "a watch cannot name the same property twice"),
+    _msg(
+        "pw.draft.pin_count",
+        "a watch pins at most {max} values, not {count}",
+        {"max": _PLAIN, "count": _PLAIN},
+        {"max": 10, "count": 11},
+    ),
+    _msg(
+        "pw.draft.pin_parts",
+        "pinned value {index}: needs {count} string(s), one per property",
+        {"index": _PLAIN, "count": _PLAIN},
+        {"index": 1, "count": 2},
+    ),
+    _msg(
+        "pw.draft.pin_invalid",
+        "pinned value {index}, part {part}: {reason}",
+        {
+            "index": _PLAIN,
+            "part": _PLAIN,
+            "reason": ParamSpec(ParamKind.REF, ref_codes=_PW_REFERENCE_REASONS),
+        },
+        {"index": 1, "part": 2, "reason": MessageRef("pw.reference.pin_empty")},
+    ),
+    _msg(
+        "pw.draft.pin_twice",
+        "pinned value {index}: pinned twice",
+        {"index": _PLAIN},
+        {"index": 2},
+    ),
+    _msg("pw.draft.detector_required", "a watch evaluates at least one detector"),
+    _msg(
+        "pw.draft.combination_needs_two",
+        "PW_NEW_COMBINATION needs a watch with two properties",
+    ),
+    _msg(
+        "pw.draft.log_source_missing",
+        "log source {id} does not exist",
+        {"id": _TEXT},
+        {"id": "5b0c8b0e-0000-4000-8000-000000000001"},
+    ),
+    _msg(
+        "pw.draft.type_missing",
+        "log source type {id} is not in the synced inventory",
+        {"id": _PLAIN},
+        {"id": 11},
+    ),
+    _msg(
+        "pw.draft.group_missing",
+        "log source group {id} is not in the synced inventory",
+        {"id": _PLAIN},
+        {"id": 12},
+    ),
+    _msg(
+        "pw.draft.history_days_null",
+        "history_days must not be null; use 0 for no history",
+    ),
+    _msg(
+        "pw.draft.history_days_range",
+        "history_days must be 0 (no history) or between {low} and {high}, not {days}",
+        {"low": _PLAIN, "high": _PLAIN, "days": _PLAIN},
+        {"low": 7, "high": 30, "days": 3},
+    ),
+    _msg(
+        "pw.draft.instance_differs",
+        "instance_id differs from the log source's instance",
+    ),
+    _msg("pw.draft.no_instance", "no QRadar instance is registered"),
+    _msg(
+        "pw.draft.pinned_rows",
+        "the pinned values can return up to {rows} rows per bucket, above the {target} rows "
+        "one history search may carry; unpin values or request no history",
+        {"rows": _PLAIN, "target": _PLAIN},
+        {"rows": 9000, "target": 5000},
+    ),
+    _msg(
+        "pw.draft.field_null",
+        "{name} must not be null",
+        {"name": _TEXT},
+        {"name": "severity"},
+    ),
+    _msg(
+        "pw.draft.scope_id_uuid",
+        "scope_id of a LOG_SOURCE scope is the source's id",
+    ),
+    _msg(
+        "pw.draft.scope_id_number",
+        "scope_id of a {kind} scope is a number",
+        {"kind": _TEXT},
+        {"kind": "LOG_SOURCE_TYPE"},
+    ),
+    _msg(
+        "pw.draft.series_max",
+        "at most {max} values per request, not {count}",
+        {"max": _PLAIN, "count": _PLAIN},
+        {"max": 12, "count": 13},
+    ),
+    _msg(
+        "pw.draft.series_untracked",
+        "value {value} is not a tracked value of this watch's current version",
+        {"value": _TEXT},
+        {"value": "5b0c8b0e-0000-4000-8000-000000000002"},
+    ),
+    # Changing the history request (409) and the bounded preview.
+    _msg(
+        "pw.history_change.already_requested",
+        "history is {state} on this watch and cannot be requested again; "
+        "create a new watch to read history",
+        {"state": ParamSpec(ParamKind.ENUM, enum_group="propertyWatchHistoryState")},
+        {"state": "READING"},
+    ),
+    _msg(
+        "pw.history_change.already_collected",
+        "this watch has already collected ({marks} set); create a new watch to read history",
+        {"marks": ParamSpec(ParamKind.LIST, style="and")},
+        {"marks": ["collected_through", "evaluated_through"]},
+    ),
+    _msg(
+        "pw.history_change.holds_buckets",
+        "this watch holds {stored} stored bucket(s) of its current version; "
+        "create a new watch to read history",
+        {"stored": _PLAIN},
+        {"stored": 288},
+    ),
+    _msg(
+        "pw.preview.scope_unresolved",
+        "{status}: {reason}",
+        {
+            "status": ParamSpec(ParamKind.ENUM, enum_group="propertyWatchStatus"),
+            "reason": ParamSpec(ParamKind.REF, ref_codes=_PW_SCOPE_REASONS),
+        },
+        {
+            "status": "SCOPE_EMPTY",
+            "reason": MessageRef("pw.scope.group_empty"),
+        },
+    ),
+    _msg(
+        "pw.preview.group_too_large",
+        "the group resolves to {members} sources and a preview covers one search chunk of "
+        "at most {max}; preview a smaller group, a type or a source",
+        {"members": _PLAIN, "max": _PLAIN},
+        {"members": 700, "max": 500},
+    ),
+    _msg(
+        "pw.preview.unsearchable",
+        "the stored watch cannot be searched: {error}",
+        {"error": _TEXT},
+        {"error": "unknown property reference kind"},
+    ),
+    _msg(
+        "pw.preview.search_failed",
+        "a search failed, so its buckets were not measured",
+    ),
+    _msg(
+        "pw.preview.cut_at_row_limit",
+        "the grouped search was cut at the row limit and a preview does not split it; "
+        "narrow the scope or preview a type or a source",
+    ),
+    _msg(
+        "pw.preview.lower_bound",
+        "a bucket was cut at the row limit: its counts are lower bounds",
+    ),
+    # The novelty history verifier (property_watch/history.py and the engine).
+    _msg(
+        "pw.history_check.not_divisible",
+        "the history window is not divisible by the collection bucket width",
+    ),
+    _msg(
+        "pw.history_check.bucket_never_collected",
+        "history bucket {bucket} was never collected ({missing} of {expected} missing)",
+        {"bucket": _ISO, "missing": _PLAIN, "expected": _PLAIN},
+        {"bucket": _PW_AT, "missing": 2, "expected": 2016},
+    ),
+    _msg(
+        "pw.history_check.record_count",
+        "the history contains {records} bucket records for {expected} expected buckets",
+        {"records": _PLAIN, "expected": _PLAIN},
+        {"records": 2017, "expected": 2016},
+    ),
+    _msg(
+        "pw.history_check.bucket_width",
+        "history bucket {bucket} used a different collection bucket width",
+        {"bucket": _ISO},
+        {"bucket": _PW_AT},
+    ),
+    _msg(
+        "pw.history_check.bucket_not_collected",
+        "history bucket {bucket} was NOT_COLLECTED",
+        {"bucket": _ISO},
+        {"bucket": _PW_AT},
+    ),
+    _msg(
+        "pw.history_check.discovery_truncated",
+        "history bucket {bucket} had truncated value discovery",
+        {"bucket": _ISO},
+        {"bucket": _PW_AT},
+    ),
+    _msg(
+        "pw.history_check.admission_truncated",
+        "history bucket {bucket} had truncated value admission",
+        {"bucket": _ISO},
+        {"bucket": _PW_AT},
+    ),
+    _msg(
+        "pw.history_check.bucket_version",
+        "history bucket {bucket} used another watch version, "
+        "not first-appearance version {version}",
+        {"bucket": _ISO, "version": _PLAIN},
+        {"bucket": _PW_AT, "version": 2},
+    ),
+    _msg(
+        "pw.history_check.bucket_coverage",
+        "history bucket {bucket} had parsing coverage below the floor",
+        {"bucket": _ISO},
+        {"bucket": _PW_AT},
+    ),
+    _msg(
+        "pw.history_check.first_bucket_never_collected",
+        "the first-appearance bucket was never collected",
+    ),
+    _msg("pw.history_check.outside_window", "outside the novelty window"),
+    _msg("pw.history_check.incomplete", "the history is incomplete"),
+    # Detector guards.
+    _msg(
+        "pw.detector.no_status",
+        "the watch has never established a collection status",
+    ),
+    _msg(
+        "pw.detector.watch_blocked",
+        "the watch is {status}: no value verdict is possible",
+        {"status": ParamSpec(ParamKind.ENUM, enum_group="propertyWatchStatus")},
+        {"status": "SCOPE_STALE"},
+    ),
+    _msg("pw.detector.bucket_missing", "the bucket is missing: no count was measured"),
+    _msg(
+        "pw.detector.bucket_not_collected",
+        "the bucket was NOT_COLLECTED: its count is not zero",
+    ),
+    _msg("pw.detector.bucket_membership", "membership changed during this bucket"),
+    _msg(
+        "pw.detector.bucket_not_parsed",
+        "the property parsed on none of this bucket's events: NOT_APPLICABLE",
+    ),
+    _msg(
+        "pw.detector.no_baseline",
+        "no value-events baseline for this weekday/hour cell yet",
+    ),
+    _msg(
+        "pw.detector.baseline_version",
+        "the baseline uses watch version {baseline}, not the bucket's {bucket}",
+        {"baseline": _PLAIN, "bucket": _PLAIN},
+        {"baseline": 1, "bucket": 2},
+    ),
+    _msg(
+        "pw.detector.baseline_few_visits",
+        "the value-events baseline has {samples} sample(s), but they come from too few "
+        "separate weekly visits of this weekday and hour: a baseline needs the same hour "
+        "from at least {visits} different weeks",
+        {"samples": _PLAIN, "visits": _PLAIN},
+        {"samples": 12, "visits": 2},
+    ),
+    _msg(
+        "pw.detector.baseline_few_visits_one",
+        "the value-events baseline has {samples} sample(s), but they come from too few "
+        "separate weekly visits of this weekday and hour: a baseline needs the same hour "
+        "from at least 1 different week",
+        {"samples": _PLAIN},
+        {"samples": 12},
+    ),
+    _msg(
+        "pw.detector.baseline_samples",
+        "the value-events baseline has {samples} sample(s), below the minimum of {minimum}",
+        {"samples": _PLAIN, "minimum": _PLAIN},
+        {"samples": 5, "minimum": 8},
+    ),
+    _msg(
+        "pw.detector.count_unknown",
+        "the value's count is unknown for this bucket, not zero",
+    ),
+    _msg(
+        "pw.detector.inputs_unsupported",
+        "the declared inputs do not support a verdict",
+    ),
+    _msg(
+        "pw.detector.coverage_below",
+        "property coverage was {seen}, below the {floor} floor",
+        {"seen": _PERCENT, "floor": _PERCENT},
+        {"seen": 0.62, "floor": 0.9},
+    ),
+    _msg(
+        "pw.detector.coverage_unknown",
+        "property coverage was unknown, below the {floor} floor",
+        {"floor": _PERCENT},
+        {"floor": 0.9},
+    ),
+    _msg(
+        "pw.detector.not_proven_lower_bound",
+        "{reason}; {scope}, so a normal verdict cannot be concluded",
+        {
+            "reason": ParamSpec(ParamKind.REF, ref_codes=_PW_NOT_PROVEN),
+            "scope": _TEXT,
+        },
+        {
+            "reason": MessageRef("pw.detector.mad_within_p95", {"bound": 130.0}),
+            "scope": "an input is a lower bound",
+        },
+    ),
+    # Value spike.
+    _msg(
+        "pw.detector.spike_min_events",
+        "{observed} events is below the {minimum} minimum",
+        {"observed": _FIXED0, "minimum": _FIXED0},
+        {"observed": 12.0, "minimum": 20.0},
+    ),
+    _msg(
+        "pw.detector.ratio_not_reached",
+        "observed/expected ratio {ratio} has not reached {threshold}",
+        {"ratio": _FIXED2, "threshold": _FIXED2},
+        {"ratio": 1.4, "threshold": 2.0},
+    ),
+    _msg(
+        "pw.detector.spike_delta_below_min",
+        "increase of {delta} events is below the {minimum} minimum absolute delta",
+        {"delta": _FIXED0, "minimum": _FIXED0},
+        {"delta": 30.0, "minimum": 50.0},
+    ),
+    _msg(
+        "pw.detector.z_not_reached_high",
+        "robust z={score} has not reached +{threshold}",
+        {"score": _FIXED2, "threshold": _REPR},
+        {"score": 2.1, "threshold": 3.5},
+    ),
+    _msg(
+        "pw.detector.mad_within_p95",
+        "robust score is unavailable (MAD=0) and the value is within p95 {bound}",
+        {"bound": _FIXED2},
+        {"bound": 130.0},
+    ),
+    _msg(
+        "pw.detector.basis_z_high",
+        "robust z={score} (threshold +{threshold})",
+        {"score": _FIXED2, "threshold": _REPR},
+        {"score": 6.2, "threshold": 3.5},
+    ),
+    _msg(
+        "pw.detector.basis_above_p95",
+        "robust score is unavailable (MAD=0); the value is above p95 {bound}",
+        {"bound": _FIXED2},
+        {"bound": 130.0},
+    ),
+    _msg(
+        "pw.detector.spike_fired",
+        "{observed} events is above the median {median} (+{delta}, {ratio}x); {basis}",
+        {
+            "observed": _FIXED0,
+            "median": _FIXED1,
+            "delta": _FIXED0,
+            "ratio": _FIXED2,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_PW_BASES),
+        },
+        {
+            "observed": 520.0,
+            "median": 100.0,
+            "delta": 420.0,
+            "ratio": 5.2,
+            "basis": MessageRef(
+                "pw.detector.basis_z_high", {"score": 6.2, "threshold": 3.5}
+            ),
+        },
+    ),
+    _msg(
+        "pw.detector.spike_fired_lower",
+        "at least {observed} events is above the median {median} (+{delta}, {ratio}x); {basis}",
+        {
+            "observed": _FIXED0,
+            "median": _FIXED1,
+            "delta": _FIXED0,
+            "ratio": _FIXED2,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_PW_BASES),
+        },
+        {
+            "observed": 520.0,
+            "median": 100.0,
+            "delta": 420.0,
+            "ratio": 5.2,
+            "basis": MessageRef(
+                "pw.detector.basis_z_high", {"score": 6.2, "threshold": 3.5}
+            ),
+        },
+    ),
+    _msg(
+        "pw.detector.spike_zero_median",
+        "{observed} events rose from a zero median; {basis}",
+        {"observed": _FIXED0, "basis": ParamSpec(ParamKind.REF, ref_codes=_PW_BASES)},
+        {
+            "observed": 90.0,
+            "basis": MessageRef("pw.detector.basis_above_p95", {"bound": 4.0}),
+        },
+    ),
+    _msg(
+        "pw.detector.spike_zero_median_lower",
+        "at least {observed} events rose from a zero median; {basis}",
+        {"observed": _FIXED0, "basis": ParamSpec(ParamKind.REF, ref_codes=_PW_BASES)},
+        {
+            "observed": 90.0,
+            "basis": MessageRef("pw.detector.basis_above_p95", {"bound": 4.0}),
+        },
+    ),
+    # Value drop.
+    _msg(
+        "pw.detector.drop_median_floor",
+        "baseline median {median} is below the {floor} traffic floor",
+        {"median": _FIXED1, "floor": _FIXED1},
+        {"median": 12.0, "floor": 20.0},
+    ),
+    _msg(
+        "pw.detector.drop_ratio_above",
+        "observed/expected ratio {ratio} is above the {line} drop line",
+        {"ratio": _FIXED2, "line": _FIXED2},
+        {"ratio": 0.8, "line": 0.5},
+    ),
+    _msg(
+        "pw.detector.drop_delta_below_min",
+        "fall of {delta} events is below the {minimum} minimum absolute delta",
+        {"delta": _FIXED0, "minimum": _FIXED0},
+        {"delta": 30.0, "minimum": 50.0},
+    ),
+    _msg(
+        "pw.detector.z_not_reached_low",
+        "robust z={score} has not reached -{threshold}",
+        {"score": _FIXED2, "threshold": _REPR},
+        {"score": -2.1, "threshold": 3.5},
+    ),
+    _msg(
+        "pw.detector.mad_within_p05",
+        "robust score is unavailable (MAD=0) and the value is within p05 {bound}",
+        {"bound": _FIXED2},
+        {"bound": 80.0},
+    ),
+    _msg(
+        "pw.detector.basis_z_low",
+        "robust z={score} (threshold -{threshold})",
+        {"score": _FIXED2, "threshold": _REPR},
+        {"score": -6.2, "threshold": 3.5},
+    ),
+    _msg(
+        "pw.detector.basis_below_p05",
+        "robust score is unavailable (MAD=0); the value is below p05 {bound}",
+        {"bound": _FIXED2},
+        {"bound": 80.0},
+    ),
+    _msg(
+        "pw.detector.drop_fired",
+        "{observed} exact events is below the median {median} (-{delta}, {ratio}x); {basis}",
+        {
+            "observed": _FIXED0,
+            "median": _FIXED1,
+            "delta": _FIXED0,
+            "ratio": _FIXED2,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_PW_BASES),
+        },
+        {
+            "observed": 10.0,
+            "median": 100.0,
+            "delta": 90.0,
+            "ratio": 0.1,
+            "basis": MessageRef(
+                "pw.detector.basis_z_low", {"score": -6.2, "threshold": 3.5}
+            ),
+        },
+    ),
+    # Value disappeared.
+    _msg(
+        "pw.detector.last_seen_unknown",
+        "when the value was last observed is not known",
+    ),
+    _msg(
+        "pw.detector.not_active",
+        "the value was not observed within the last {days} days",
+        {"days": _PLAIN},
+        {"days": 7},
+    ),
+    _msg(
+        "pw.detector.disappear_median_floor",
+        "baseline median {median} is below the {floor} disappearance floor",
+        {"median": _FIXED1, "floor": _FIXED1},
+        {"median": 2.0, "floor": 5.0},
+    ),
+    _msg(
+        "pw.detector.observed_positive",
+        "the value carried {observed} exact events in this bucket",
+        {"observed": _FIXED0},
+        {"observed": 14.0},
+    ),
+    _msg(
+        "pw.detector.window_bucket_missing",
+        "the bucket at {at} inside the disappearance window was not supplied: "
+        "its count is not zero",
+        {"at": _ISO},
+        {"at": _PW_AT},
+    ),
+    _msg(
+        "pw.detector.window_membership",
+        "membership changed inside the disappearance window",
+    ),
+    _msg(
+        "pw.detector.window_count_unknown",
+        "the value count at {at} is unknown, not zero",
+        {"at": _ISO},
+        {"at": _PW_AT},
+    ),
+    _msg(
+        "pw.detector.window_coverage",
+        "property coverage at {at} was below the floor",
+        {"at": _ISO},
+        {"at": _PW_AT},
+    ),
+    _msg(
+        "pw.detector.streak_short",
+        "the value has {streak} consecutive measured-zero bucket(s), below the "
+        "required {required}",
+        {"streak": _PLAIN, "required": _PLAIN},
+        {"streak": 3, "required": 6},
+    ),
+    _msg(
+        "pw.detector.disappeared_fired",
+        "the value had zero parsed events for {streak} consecutive exact buckets; "
+        "the seasonal median is {median} events",
+        {"streak": _PLAIN, "median": _FIXED1},
+        {"streak": 6, "median": 120.0},
+    ),
+    # New value and new combination.
+    _msg(
+        "pw.detector.novelty_unestablished",
+        "the value's first appearance was not established",
+    ),
+    _msg(
+        "pw.detector.established_hand_off",
+        "established value: first seen {first_seen} in the history read before the "
+        "watch went live at {hand_off}",
+        {"first_seen": _ISO, "hand_off": _ISO},
+        {"first_seen": _PW_AT, "hand_off": _PW_AT},
+    ),
+    _msg(
+        "pw.detector.established_outside_window",
+        "established value: first admitted {first_seen}, outside the "
+        "{buckets}-bucket novelty window",
+        {"first_seen": _ISO, "buckets": _PLAIN},
+        {"first_seen": _PW_AT, "buckets": 12},
+    ),
+    _msg(
+        "pw.detector.pinned_never_new",
+        "pinned values are operator-named and are never classified as new",
+    ),
+    _msg(
+        "pw.detector.learning_unknown",
+        "learning: the watch's first collected bucket is unknown",
+    ),
+    _msg(
+        "pw.detector.learning_day",
+        "learning: day {day} of {days}",
+        {"day": _PLAIN, "days": _PLAIN},
+        {"day": 3, "days": 7},
+    ),
+    _msg(
+        "pw.detector.grace_membership",
+        "membership changed inside the first-appearance grace window",
+    ),
+    _msg(
+        "pw.detector.history_incomplete",
+        "novelty cannot be established: {reason}",
+        {"reason": ParamSpec(ParamKind.REF, ref_codes=_PW_HISTORY_CHECKS)},
+        {"reason": MessageRef("pw.history_check.not_divisible")},
+    ),
+    _msg(
+        "pw.detector.novelty_inputs_unsupported",
+        "the declared novelty inputs do not support a verdict",
+    ),
+    _msg(
+        "pw.detector.combination_inputs_unsupported",
+        "the declared combination inputs do not support a verdict",
+    ),
+    _msg(
+        "pw.detector.admission_truncated",
+        "the first-appearance bucket had truncated admission: the value appeared in a "
+        "flood and is not individually new",
+    ),
+    _msg(
+        "pw.detector.materiality_short",
+        "{events} event(s) in {buckets} bucket(s) since first appearance has not reached "
+        "{min_events} events in {min_buckets} buckets",
+        {"events": _PLAIN, "buckets": _PLAIN, "min_events": _PLAIN, "min_buckets": _PLAIN},
+        {"events": 12, "buckets": 1, "min_events": 20, "min_buckets": 2},
+    ),
+    _msg(
+        "pw.detector.materiality_lower_bound",
+        "{reason}; the materiality counts are lower bounds",
+        {
+            "reason": ParamSpec(
+                ParamKind.REF, ref_codes=("pw.detector.materiality_short",)
+            )
+        },
+        {
+            "reason": MessageRef(
+                "pw.detector.materiality_short",
+                {"events": 12, "buckets": 1, "min_events": 20, "min_buckets": 2},
+            )
+        },
+    ),
+    _msg(
+        "pw.detector.new_fired",
+        "{events} events across {buckets} buckets since first appearance; {claim}",
+        {
+            "events": _PLAIN,
+            "buckets": _PLAIN,
+            "claim": ParamSpec(ParamKind.REF, ref_codes=_PW_CLAIMS),
+        },
+        {
+            "events": 40,
+            "buckets": 3,
+            "claim": MessageRef("pw.detector.claim_new_value", {"min_events": 3}),
+        },
+    ),
+    _msg(
+        "pw.detector.new_fired_lower",
+        "at least {events} events across {buckets} buckets since first appearance; {claim}",
+        {
+            "events": _PLAIN,
+            "buckets": _PLAIN,
+            "claim": ParamSpec(ParamKind.REF, ref_codes=_PW_CLAIMS),
+        },
+        {
+            "events": 40,
+            "buckets": 3,
+            "claim": MessageRef("pw.detector.claim_new_value", {"min_events": 3}),
+        },
+    ),
+    _msg(
+        "pw.detector.claim_new_value",
+        "the value stayed below {min_events} events in every bucket of the verified history",
+        {"min_events": _PLAIN},
+        {"min_events": 3},
+    ),
+    _msg(
+        "pw.detector.claim_new_combination",
+        "both components were tracked before, but never together in the verified history",
+    ),
+    _msg(
+        "pw.detector.new_value_is_combination",
+        "both tuple components were tracked before: this is classified only as a "
+        "new combination",
+    ),
+    _msg("pw.detector.one_property", "a one-property watch has nothing to combine"),
+    _msg(
+        "pw.detector.components_missing",
+        "the tuple's two component histories were not supplied",
+    ),
+    _msg(
+        "pw.detector.component_untracked",
+        "at least one component was not previously tracked: "
+        "this is classified only as a new value",
+    ),
+    _msg(
+        "pw.detector.component_untracked_below_admission",
+        "at least one component was not previously tracked "
+        "(seen only below the admission threshold): this is classified only as a new value",
+    ),
+    # --- end MSG-4b ---
     # --- MSG-1b: authoring reasons and remaining conflicts (Families 15, 11) -- keep contiguous ---
     # Custom-rule draft validation (`app/custom_rules/validation.py`, the rule routes). A quoted
     # user value (`{metric}`, `{value}`, `{operator}`) arrives already quoted by `repr`.
@@ -1203,11 +2095,11 @@ REGISTRY: tuple[MessageSpec, ...] = (
 
 _STYLES: dict[ParamKind, set[str | None]] = {
     ParamKind.COUNT: {None, "grouped", "plain"},
-    ParamKind.NUMBER: {None, "general", "grouped", "fixed"},
+    ParamKind.NUMBER: {None, "general", "grouped", "fixed", "repr"},
     ParamKind.PERCENT: {None},
     ParamKind.POINTS: {None, "signed", "unsigned"},
-    ParamKind.DURATION: {None},
-    ParamKind.TIMESTAMP: {None, "minute"},
+    ParamKind.DURATION: {None, "timedelta"},
+    ParamKind.TIMESTAMP: {None, "minute", "iso"},
     ParamKind.ENUM: {None},
     ParamKind.LIST: {None, "comma", "and", "semicolon"},
     ParamKind.REF: {None},
@@ -1336,10 +2228,12 @@ def _numeric(value: object, *, name: str) -> int | float:
     return value
 
 
-def _duration(value: object, *, name: str) -> str:
+def _duration(value: object, *, name: str, style: str | None = None) -> str:
     seconds = _numeric(value, name=name)
     if seconds < 0:
         raise MessageRenderError(f"{name} must not be negative")
+    if style == "timedelta":
+        return str(timedelta(seconds=seconds))
     total = round(seconds)
     if total == 0:
         return "0 s"
@@ -1366,6 +2260,8 @@ def _timestamp(value: object, *, name: str, style: str | None = None) -> str:
         raise MessageRenderError(f"{name} must be an ISO-8601 timestamp")
     if instant.tzinfo is None:
         raise MessageRenderError(f"{name} must include a timezone")
+    if style == "iso":
+        return instant.isoformat()
     instant = instant.astimezone(UTC)
     return instant.strftime("%Y-%m-%d %H:%M UTC" if style == "minute" else "%Y-%m-%d %H:%M:%S UTC")
 
@@ -1387,6 +2283,8 @@ def _format_param(
         if spec.style == "grouped":
             precision = spec.precision if spec.precision is not None else 0
             return f"{number:,.{precision}f}"
+        if spec.style == "repr":
+            return str(number)
         return f"{number:g}"
     if spec.kind is ParamKind.PERCENT:
         number = _numeric(value, name=name)
@@ -1399,7 +2297,7 @@ def _format_param(
             signed=spec.style != "unsigned",
         )
     if spec.kind is ParamKind.DURATION:
-        return _duration(value, name=name)
+        return _duration(value, name=name, style=spec.style)
     if spec.kind is ParamKind.TIMESTAMP:
         return _timestamp(value, name=name, style=spec.style)
     if spec.kind in (ParamKind.ENUM, ParamKind.TEXT):

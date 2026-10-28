@@ -11,7 +11,7 @@ import {
   type PwScopeKind,
   type PwScopeOption,
 } from "@/lib/api";
-import { renderRefusal } from "@/i18n/refusalMessage";
+import { renderBackendMessage } from "@/i18n/backendMessage";
 import { wordOrValue } from "@/lib/behaviorI18n";
 import { formatCount } from "@/lib/format";
 import { refusalSentences } from "@/lib/refusal";
@@ -362,7 +362,7 @@ export function onlyHistoryBudget(codes: string[]): boolean {
 /** The refusal's first sentence in the reader's language (the server's own text in English). */
 function said(error: ApiError, i18n: PwI18n): string | null {
   const [sentence] = refusalSentences(error);
-  return sentence ? renderRefusal(sentence, i18n.locale, i18n.t) : null;
+  return sentence ? renderBackendMessage(sentence, i18n.locale, i18n.t) : null;
 }
 
 export function classifyWatchError(
@@ -374,9 +374,25 @@ export function classifyWatchError(
   }
   const detail = record(error.detail);
   if (error.status === 422 && Array.isArray(detail?.reasons)) {
+    // `reason_codes` runs parallel to `reasons`; an item with no code shows the server's text.
+    const codes = Array.isArray(detail.reason_codes) ? detail.reason_codes : [];
     return {
       kind: "reasons",
-      reasons: detail.reasons.filter((reason): reason is string => typeof reason === "string"),
+      reasons: detail.reasons.flatMap((reason, index) => {
+        if (typeof reason !== "string") return [];
+        const coded = record(codes[index]);
+        return [
+          renderBackendMessage(
+            {
+              text: reason,
+              code: typeof coded?.code === "string" ? coded.code : null,
+              params: record(coded?.params),
+            },
+            i18n.locale,
+            i18n.t,
+          ),
+        ];
+      }),
     };
   }
   if (error.status === 409 && typeof detail?.current_version === "string") {

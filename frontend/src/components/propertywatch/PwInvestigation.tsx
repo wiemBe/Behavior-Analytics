@@ -29,6 +29,7 @@ import {
   pwTypeLabel,
   scopeKindLabel,
 } from "./pwFormat";
+import { pwSentence } from "./pwReason";
 import { valueText } from "./WatchValuesTable";
 import { ENGLISH_PW, type PwI18n } from "./pwText";
 import { GuideLink } from "@/components/guide/GuideLink";
@@ -87,7 +88,15 @@ export function PwInvestigation({
     (a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at),
   );
   const observed = d?.observed_events ?? anomaly.observed_value;
-  const reason = d?.reason ?? anomaly.explanation;
+  const reason = d?.reason
+    ? pwSentence(d.reason, { code: d.reason_code, params: d.reason_params }, i18n)
+    : anomaly.explanation
+      ? pwSentence(
+          anomaly.explanation,
+          { code: anomaly.explanation_code, params: anomaly.explanation_params },
+          i18n,
+        )
+      : null;
   const historyEvidence =
     (anomaly.anomaly_type === "PW_NEW_VALUE" || anomaly.anomaly_type === "PW_NEW_COMBINATION") &&
     d?.history_buckets_from_history !== null &&
@@ -278,7 +287,11 @@ export function PwInvestigation({
         {d?.robust_score_status && volume && d.robust_score_status !== "OK" && (
           <p className="subtitle">{robustScoreMeaning(d.robust_score_status as "DEGENERATE", i18n)}</p>
         )}
-        {d?.claim && <p className="subtitle">{d.claim}.</p>}
+        {d?.claim && (
+          <p className="subtitle">
+            {pwSentence(d.claim, { code: d.claim_code, params: d.claim_params }, i18n)}.
+          </p>
+        )}
         {historyEvidence && (
           <p className="subtitle">
             {t("propertyWatch.investigation.historyEvidence", {

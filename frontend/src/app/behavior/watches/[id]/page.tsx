@@ -165,7 +165,15 @@ async function PropertyWatchPage({
         actions={access === "writer" ? <WatchActions watch={watch} catalog={catalog} /> : null}
         meta={
           <>
-            <PwStatus status={watch.status} reason={watch.status_reason} history={watch.history} strong inline />
+            <PwStatus
+              status={watch.status}
+              reason={watch.status_reason}
+              reasonCode={watch.status_reason_code}
+              reasonParams={watch.status_reason_params}
+              history={watch.history}
+              strong
+              inline
+            />
             {watch.status !== "READING_HISTORY" && (
               <>
                 <span className="muted" aria-hidden="true">·</span>

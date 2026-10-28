@@ -31,7 +31,7 @@ rule pins one of its values.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
@@ -47,7 +47,7 @@ from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings, get_settings
 from app.core.rate_limit import limiter
 from app.custom_rules.alerts import alerting_mode
-from app.i18n.messages import MessageRef
+from app.i18n.messages import MessageRef, render
 from app.i18n.refusal import CodedHTTPException, permission_refusal
 from app.models.enums import (
     PwAnomalyType,
@@ -165,12 +165,22 @@ def _guard(principal: Principal) -> None:
         raise permission_refusal(exc) from exc
 
 
-def _reject(reasons: list[str]) -> None:
-    """422 with every reason."""
+def _refusal(code: str, /, **params: object) -> MessageRef:
+    """A reason of the 422 that no service function owns."""
+    return MessageRef(f"pw.draft.{code}", params)
+
+
+def _reject(reasons: Sequence[MessageRef]) -> None:
+    """422 with every reason: `{message, reasons, reason_codes}`, the codes parallel to the text."""
     if reasons:
+        texts = [render(reason) for reason in reasons]
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
-            {"message": "; ".join(reasons), "reasons": reasons},
+            {
+                "message": "; ".join(texts),
+                "reasons": texts,
+                "reason_codes": [reason.to_wire() for reason in reasons],
+            },
         )
 
 
@@ -411,6 +421,8 @@ async def scope_options(
                 synced_source_count=counts[index][0],
                 scope_state=counts[index][1],
                 scope_reason=counts[index][2],
+                scope_reason_code=svc.wire_parts(counts[index][3])[0],
+                scope_reason_params=svc.wire_parts(counts[index][3])[1],
             )
             for index, t in enumerate(types)
         ]
@@ -445,6 +457,8 @@ async def scope_options(
             synced_source_count=counts[index][0],
             scope_state=counts[index][1],
             scope_reason=counts[index][2],
+            scope_reason_code=svc.wire_parts(counts[index][3])[0],
+            scope_reason_params=svc.wire_parts(counts[index][3])[1],
         )
         for index, (path, g) in enumerate(page)
     ]
@@ -452,19 +466,20 @@ async def scope_options(
 
 async def _resolved_options(
     session: AsyncSession, settings: Settings, subjects: list[svc.ScopeSubject]
-) -> list[tuple[int | None, PwWatchStatus | None, str | None]]:
-    """`(synced_source_count, state, reason)` per subject, from the shared resolver.
+) -> list[tuple[int | None, PwWatchStatus | None, str | None, MessageRef | None]]:
+    """`(synced_source_count, state, reason, reason reference)` per subject, from the shared
+    resolver.
 
     A scope that resolved reports its count. A scope that did not reports no count and names
     the reason, except an empty one whose emptiness the inventory measured: that is a real
     zero and is reported as one (design §G.4).
     """
     scopes = await svc.resolve_subjects(session, settings, subjects, now=datetime.now(UTC))
-    out: list[tuple[int | None, PwWatchStatus | None, str | None]] = []
+    out: list[tuple[int | None, PwWatchStatus | None, str | None, MessageRef | None]] = []
     for scope in scopes:
         measurable = scope.resolved or scope.status is PwWatchStatus.SCOPE_EMPTY
         count = scope.member_count if measurable else None
-        out.append((count, scope.status, scope.reason))
+        out.append((count, scope.status, scope.reason, scope.message))
     return out
 
 
@@ -487,7 +502,7 @@ async def property_options(
         try:
             source_id = uuid.UUID(scope_id)
         except ValueError:
-            _reject(["scope_id of a LOG_SOURCE scope is the source's id"])
+            _reject([_refusal("scope_id_uuid")])
             raise
         source = await session.get(LogSource, source_id)
         if source is None:
@@ -498,7 +513,7 @@ async def property_options(
         try:
             number = int(scope_id)
         except ValueError:
-            _reject([f"scope_id of a {scope_kind.value} scope is a number"])
+            _reject([_refusal("scope_id_number", kind=scope_kind.value)])
             raise
         instance_key = await _default_instance(session, instance_id)
         if instance_key is None:
@@ -525,6 +540,8 @@ async def property_options(
                 )
             )[0]
             if not group_scope.resolved:
+                if group_scope.message is not None:
+                    raise CodedHTTPException(status.HTTP_409_CONFLICT, group_scope.message)
                 raise HTTPException(
                     status.HTTP_409_CONFLICT,
                     group_scope.reason or "the group's scope cannot be resolved",
@@ -612,34 +629,34 @@ async def create_watch(
         pinned_values=body.pinned_values,
         detectors=detectors,
     )
-    reasons = svc.validate_draft(draft, max_pinned=settings.pw_max_pinned_values)
+    reasons = svc.validate_draft_refs(draft, max_pinned=settings.pw_max_pinned_values)
     cadence: CadenceOut | None = None
     history_days = _create_history_days(body, settings)
     if "history_days" in body.model_fields_set and body.history_days is None:
-        reasons.append("history_days must not be null; use 0 for no history")
+        reasons.append(_refusal("history_days_null"))
     elif history_days is not None:
-        day_reasons = svc.history_days_reasons(history_days, settings)
+        day_reasons = svc.history_days_refs(history_days, settings)
         reasons.extend(day_reasons)
         if history_days >= 1 and not day_reasons:
             cadence = await svc.property_watch_cadence(session, settings)
             reasons.extend(
-                await svc.pinned_rows_reasons(session, draft, settings, cadence=cadence)
+                await svc.pinned_rows_refs(session, draft, settings, cadence=cadence)
             )
     instance_id: uuid.UUID | None = None
     if body.scope_kind is PwScopeKind.LOG_SOURCE and body.log_source_id is not None:
         source = await session.get(LogSource, body.log_source_id)
         if source is None:
-            reasons.append(f"log source {body.log_source_id} does not exist")
+            reasons.append(_refusal("log_source_missing", id=str(body.log_source_id)))
         else:
             instance_id = source.instance_id
             if body.instance_id is not None and body.instance_id != instance_id:
-                reasons.append("instance_id differs from the log source's instance")
+                reasons.append(_refusal("instance_differs"))
     else:
         instance_id = await _default_instance(session, body.instance_id)
         if instance_id is None:
-            reasons.append("no QRadar instance is registered")
+            reasons.append(_refusal("no_instance"))
         else:
-            reasons.extend(await svc.scope_existence_reasons(session, draft, instance_id))
+            reasons.extend(await svc.scope_existence_refs(session, draft, instance_id))
     _reject(reasons)
     assert instance_id is not None
     taken = await session.scalar(select(PropertyWatch.id).where(PropertyWatch.name == body.name))
@@ -702,9 +719,9 @@ async def get_watch_scope(
     return await svc.watch_scope(session, watch, settings, now=datetime.now(UTC))
 
 
-def _null_reasons(payload: PropertyWatchUpdate) -> list[str]:
+def _null_reasons(payload: PropertyWatchUpdate) -> list[MessageRef]:
     return [
-        f"{name} must not be null"
+        _refusal("field_null", name=name)
         for name in sorted(payload.model_fields_set - {"expected_updated_at", *_NULLABLE_PATCH})
         if getattr(payload, name) is None
     ]
@@ -842,11 +859,11 @@ async def update_watch(
         pinned_values=merged.pinned_values,
         detectors=merged.detectors,
     )
-    reasons = svc.validate_draft(draft, max_pinned=settings.pw_max_pinned_values)
+    reasons = svc.validate_draft_refs(draft, max_pinned=settings.pw_max_pinned_values)
     before = _editable(watch)
     days_changed = merged.history_days != watch.history_days
     if days_changed and merged.history_days is not None:
-        reasons.extend(svc.history_days_reasons(merged.history_days, settings))
+        reasons.extend(svc.history_days_refs(merged.history_days, settings))
     after_scope = _label(kind, merged.log_source_id, merged.scope_type_id, merged.scope_group_id)
     scope_changed = after_scope != before["scope"]
     instance_id = watch.instance_id
@@ -854,11 +871,11 @@ async def update_watch(
         if kind is PwScopeKind.LOG_SOURCE and draft.log_source_id is not None:
             source = await session.get(LogSource, draft.log_source_id)
             if source is None:
-                reasons.append(f"log source {draft.log_source_id} does not exist")
+                reasons.append(_refusal("log_source_missing", id=str(draft.log_source_id)))
             else:
                 instance_id = source.instance_id
         else:
-            reasons.extend(await svc.scope_existence_reasons(session, draft, instance_id))
+            reasons.extend(await svc.scope_existence_refs(session, draft, instance_id))
     _reject(reasons)
     after: dict[str, object] = {
         "name": merged.name,
@@ -878,7 +895,7 @@ async def update_watch(
     if "history_days" in changed:
         blockers = await svc.history_change_reasons(session, watch)
         if blockers:
-            raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(blockers))
+            raise CodedHTTPException(status.HTTP_409_CONFLICT, blockers[0])
     reads_history = (
         merged.history_days is not None
         and merged.history_days >= 1
@@ -888,7 +905,7 @@ async def update_watch(
     if reads_history and changed & {"history_days", "pinned_values", "properties"}:
         # The pins a reading would search for must fit one search (decision of 2026-10-19).
         cadence = await svc.property_watch_cadence(session, settings)
-        _reject(await svc.pinned_rows_reasons(session, draft, settings, cadence=cadence))
+        _reject(await svc.pinned_rows_refs(session, draft, settings, cadence=cadence))
     new_name = merged.name
     if "name" in changed:
         taken = await session.scalar(
@@ -963,12 +980,13 @@ async def update_watch(
         watch.collected_through = None
         watch.last_status = None
         watch.last_status_reason = None
+        watch.last_status_reason_i18n = None
     if was_enabled and not wants_enabled:
         # A disabled watch is no longer evaluated, so an incident open on it would never end
         # (design §G.10.1): resolve the watch's incidents and their alerts here, as the
         # operator, in this same transaction. Enabling again starts fresh.
         await PwAnomalyEngine(session, settings=settings).resolve_watch_incidents(
-            watch, reason=svc.REASON_WATCH_DISABLED
+            watch, reason=svc.MESSAGE_WATCH_DISABLED
         )
         await svc.resolve_watch_alerts(
             session,
@@ -978,7 +996,9 @@ async def update_watch(
             enqueuer=NotificationDispatcher(session, notifiers={}, policy=default_policy()),
         )
         watch.last_status = PwWatchStatus.DISABLED
-        watch.last_status_reason = f"disabled by {principal.subject}"
+        disabled_by = MessageRef("pw.status.disabled_by", {"actor": principal.subject})
+        watch.last_status_reason = render(disabled_by)
+        watch.last_status_reason_i18n = disabled_by.to_wire()
     action = (
         ("property_watch.enable" if watch.enabled else "property_watch.disable")
         if changed == {"enabled"}
@@ -1082,15 +1102,12 @@ async def value_series(
     watch = await _load(session, watch_id)
     unique = list(dict.fromkeys(value_ids))
     if len(unique) > svc.SERIES_MAX_VALUES:
-        _reject([f"at most {svc.SERIES_MAX_VALUES} values per request, not {len(unique)}"])
+        _reject([_refusal("series_max", max=svc.SERIES_MAX_VALUES, count=len(unique))])
     series, missing = await svc.value_series(
         session, watch, unique, hours=hours, now=datetime.now(UTC)
     )
     if missing:
-        _reject(
-            [f"value {value} is not a tracked value of this watch's current version"
-             for value in missing]
-        )
+        _reject([_refusal("series_untracked", value=str(value)) for value in missing])
     return WatchSeriesOut(hours=hours, series=series)
 
 
@@ -1120,12 +1137,12 @@ async def preview_watch(
     try:
         scope_ids = await svc.preview_scope_ids(session, watch, settings, now)
     except svc.PreviewRefused as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        raise CodedHTTPException(status.HTTP_409_CONFLICT, exc.ref) from exc
     provider = factory(instance)
     try:
         result = await svc.run_preview(watch, scope_ids, settings, provider, now=now)
     except svc.PreviewRefused as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        raise CodedHTTPException(status.HTTP_409_CONFLICT, exc.ref) from exc
     finally:
         await provider.aclose()
     await record_audit(
@@ -1159,7 +1176,9 @@ async def put_pins(
     if _utc(payload.expected_updated_at) != _utc(watch.updated_at):
         raise HTTPException(status.HTTP_409_CONFLICT, _conflict(watch))
     _reject(
-        svc.pin_reasons(payload.pinned_values, len(watch.properties), settings.pw_max_pinned_values)
+        svc.pin_reason_refs(
+            payload.pinned_values, len(watch.properties), settings.pw_max_pinned_values
+        )
     )
     await _refuse_if_pinned_by_rules(
         session,
@@ -1171,7 +1190,7 @@ async def put_pins(
     if svc.watch_reads_history(watch):
         cadence = await svc.property_watch_cadence(session, settings)
         _reject(
-            await svc.pinned_rows_reasons(
+            await svc.pinned_rows_refs(
                 session,
                 svc.WatchDraft(
                     scope_kind=PwScopeKind(str(watch.scope_kind)),
@@ -1231,17 +1250,17 @@ async def request_history(
     """
     _guard(principal)
     watch = await _locked(session, watch_id)
-    _reject(svc.history_days_reasons(payload.history_days, settings))
+    _reject(svc.history_days_refs(payload.history_days, settings))
     cadence: CadenceOut | None = None
     previous = watch.history_days
     if payload.history_days == previous:
         return await _one_out(session, watch, settings, detail=True)
     blockers = await svc.history_change_reasons(session, watch)
     if blockers:
-        raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(blockers))
+        raise CodedHTTPException(status.HTTP_409_CONFLICT, blockers[0])
     if payload.history_days >= 1:
         cadence = await svc.property_watch_cadence(session, settings)
-        _reject(await svc.pinned_rows_reasons(session, watch, settings, cadence=cadence))
+        _reject(await svc.pinned_rows_refs(session, watch, settings, cadence=cadence))
     if watch.enabled:
         await _lock_enabled_cap(session)
     watch.history_days = payload.history_days

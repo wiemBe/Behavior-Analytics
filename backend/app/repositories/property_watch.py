@@ -499,6 +499,9 @@ class PropertyWatchRepository:
                 "collected_through": row["collected_through"],
                 "last_status": row["last_status"],
                 "last_status_reason": row["last_status_reason"],
+                # A row that names no message reference writes none: the English text stands
+                # alone, never beside a code of an earlier sentence.
+                "last_status_reason_i18n": row.get("last_status_reason_i18n"),
                 "last_run_at": row["last_run_at"],
                 "history_write": flag,
             }
@@ -512,6 +515,9 @@ class PropertyWatchRepository:
                 collected_through=bindparam("collected_through"),
                 last_status=bindparam("last_status"),
                 last_status_reason=bindparam("last_status_reason"),
+                last_status_reason_i18n=bindparam(
+                    "last_status_reason_i18n", type_=table.c.last_status_reason_i18n.type
+                ),
                 last_run_at=bindparam("last_run_at"),
                 **history_values,
             ),
@@ -570,6 +576,9 @@ class PropertyWatchRepository:
                 evaluated_through=bindparam("evaluated_through"),
                 last_status=bindparam("last_status"),
                 last_status_reason=bindparam("last_status_reason"),
+                last_status_reason_i18n=bindparam(
+                    "last_status_reason_i18n", type_=table.c.last_status_reason_i18n.type
+                ),
             ),
             rows,
         )

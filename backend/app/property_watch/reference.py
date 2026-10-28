@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import PwReferenceKind
 from app.providers.base import PROPERTY_NAME_PATTERN
 
@@ -47,7 +48,20 @@ PW_PINNED_VALUE_PATTERN = re.compile(
 
 class PwReferenceError(ValueError):
     """A reference or a pin was refused. Its message is safe for an operator and never
-    echoes the offending text."""
+    echoes the offending text.
+
+    The sentences an editor can show (`PwFieldReference` and `validate_pinned_value`) are built
+    from a registry reference, kept in `ref`; the others (`validate_properties`,
+    `validate_pinned_values`, reached by the collector only) are plain text with `ref` None.
+    """
+
+    def __init__(self, message: str | MessageRef) -> None:
+        self.ref: MessageRef | None = message if isinstance(message, MessageRef) else None
+        super().__init__(render(message) if isinstance(message, MessageRef) else message)
+
+
+def _refused(name: str, **params: object) -> PwReferenceError:
+    return PwReferenceError(MessageRef(f"pw.reference.{name}", params))
 
 
 @dataclass(frozen=True)
@@ -58,31 +72,28 @@ class PwFieldReference:
     def __post_init__(self) -> None:
         if self.kind is PwReferenceKind.NORMALIZED:
             if self.name not in _NORMALIZED_FIELDS:
-                raise PwReferenceError("normalized field is not in the property-watch allowlist")
+                raise _refused("normalized_not_allowed")
             return
         if self.kind is PwReferenceKind.CUSTOM_PROPERTY:
             if not PROPERTY_NAME_PATTERN.fullmatch(self.name):
-                raise PwReferenceError(
-                    "invalid QRadar property name: letters, digits, underscore, space and "
-                    "hyphen only, at most 64 characters"
-                )
+                raise _refused("name_invalid")
             return
-        raise PwReferenceError("unknown property reference kind")
+        raise _refused("kind_unknown")
 
     @classmethod
     def from_dict(cls, value: Any) -> PwFieldReference:
         if not isinstance(value, dict):
-            raise PwReferenceError("a property reference is an object with a kind and a name")
+            raise _refused("not_an_object")
         raw_kind = value.get("kind")
         if not isinstance(raw_kind, str):
-            raise PwReferenceError("unknown property reference kind")
+            raise _refused("kind_unknown")
         try:
             kind = PwReferenceKind(raw_kind)
         except ValueError as exc:
-            raise PwReferenceError("unknown property reference kind") from exc
+            raise _refused("kind_unknown") from exc
         name = value.get("name")
         if not isinstance(name, str):
-            raise PwReferenceError("property reference name must be text")
+            raise _refused("name_not_text")
         return cls(kind=kind, name=name)
 
     def as_dict(self) -> dict[str, str]:
@@ -104,18 +115,13 @@ def validate_properties(raw: Sequence[Any]) -> tuple[PwFieldReference, ...]:
 def validate_pinned_value(value: Any) -> str:
     """One pinned component, or `PwReferenceError`. Never escapes, never trims."""
     if not isinstance(value, str):
-        raise PwReferenceError("a pinned value is text")
+        raise _refused("pin_not_text")
     if not value:
-        raise PwReferenceError("a pinned value cannot be empty")
+        raise _refused("pin_empty")
     if len(value) > PW_PINNED_VALUE_MAX_LENGTH:
-        raise PwReferenceError(
-            f"a pinned value is at most {PW_PINNED_VALUE_MAX_LENGTH} characters"
-        )
+        raise _refused("pin_length", max=PW_PINNED_VALUE_MAX_LENGTH)
     if not PW_PINNED_VALUE_PATTERN.fullmatch(value) or not value.isprintable():
-        raise PwReferenceError(
-            "a pinned value cannot hold a quote, a backslash, a control character or "
-            "leading or trailing whitespace"
-        )
+        raise _refused("pin_characters")
     return value
 
 

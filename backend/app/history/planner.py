@@ -30,6 +30,7 @@ from enum import StrEnum
 
 from app.core.text import percent
 from app.history.state import HistoryTrigger
+from app.i18n.messages import MessageRef, render
 
 # One search never covers more than a week (`validate_bucketed_metric_window`).
 HARD_MAX_SPAN_HOURS = 168
@@ -161,6 +162,10 @@ class Gap:
     start: datetime
     end: datetime
     reason: str
+    #: The registry code of `reason` and its wire parameters, when the gap was written with
+    #: one (MSG-4b); a gap stored before that has neither and keeps its English.
+    reason_code: str | None = None
+    reason_params: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -702,10 +707,16 @@ def settle_step(
                         reasons.append(f"more than {settings.max_gaps} unreadable spans")
                         updated = replace(updated, failures=failures)
                     else:
+                        gap_message = MessageRef(
+                            "history.gap.search_failed", {"failures": failures}
+                        )
+                        gap_wire = gap_message.to_wire()
                         new_gap = Gap(
                             blocker.span.start,
                             blocker.span.end,
-                            f"search failed {failures} times at the minimum width",
+                            render(gap_message),
+                            reason_code=str(gap_wire["code"]),
+                            reason_params=dict(gap_wire["params"]),  # type: ignore[call-overload]
                         )
                         updated = replace(
                             updated,

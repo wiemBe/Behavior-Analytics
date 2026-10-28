@@ -26,6 +26,7 @@ from app.models.enums import (
     PwWatchStatus,
     Severity,
 )
+from app.schemas.messages import MessageParamValue
 from app.schemas.search_cadence import CadenceOut
 
 PwReadingLabel = Literal[
@@ -182,6 +183,9 @@ class WatchScopeOut(BaseModel):
     resolved: bool
     state: PwWatchStatus | None = None
     reason: str | None = None
+    #: Stable code and raw values of `reason`, for a non-English client. Null: no code.
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     #: The resolved member count. `None` when the resolver would not state one.
     member_count: int | None = None
     #: Up to 200 member names, sorted; `members_total` is the true count.
@@ -230,6 +234,9 @@ class HistoryGapOut(BaseModel):
     start: datetime
     end: datetime
     reason: str
+    #: Stable code and raw values of `reason` (null on a gap stored before codes existed).
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
 
 
 class HistoryEstimateOut(BaseModel):
@@ -268,6 +275,8 @@ class WatchHistoryOut(BaseModel):
     buckets_read: int | None = None
     gaps: list[HistoryGapOut] | None = None
     reason: str | None = None
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     progress_unreadable: bool = False
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -294,6 +303,9 @@ class PropertyWatchOut(BaseModel):
     #: `None`: the watch has never run, which is not `OK`.
     status: PwWatchStatus | None = None
     status_reason: str | None = None
+    #: Stable code and raw values of `status_reason` (null on a row stored before codes).
+    status_reason_code: str | None = None
+    status_reason_params: dict[str, MessageParamValue] | None = None
     collected_through: datetime | None = None
     evaluated_through: datetime | None = None
     last_run_at: datetime | None = None
@@ -399,6 +411,8 @@ class ScopeOptionOut(BaseModel):
     #: like), with its `scope_reason`. A group or type with no count says why here.
     scope_state: PwWatchStatus | None = None
     scope_reason: str | None = None
+    scope_reason_code: str | None = None
+    scope_reason_params: dict[str, MessageParamValue] | None = None
 
 
 class PropertyOptionOut(BaseModel):
@@ -536,6 +550,8 @@ class PreviewOut(BaseModel):
     #: NOT_MEASURED: nothing was measured (a failed or cut search).
     outcome: Literal["MEASURED", "PARTIAL", "NOT_MEASURED"]
     reason: str | None = None
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     buckets_measured: int
     buckets_lower_bound: int
     buckets_unmeasured: int
@@ -590,4 +606,6 @@ class WatchAqlOut(BaseModel):
     bucket_seconds: int | None = None
     current: list[WatchAqlQueryOut]
     current_unavailable: str | None = None
+    current_unavailable_code: str | None = None
+    current_unavailable_params: dict[str, MessageParamValue] | None = None
     last_bucket: WatchAqlLastBucketOut | None = None
