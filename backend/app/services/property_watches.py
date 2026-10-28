@@ -32,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from typing import Any, Literal, cast
 
+from fastapi import HTTPException
 from sqlalchemy import and_, func, null, select, tuple_
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +40,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.alerts.dispatcher import AlertEnqueuer
 from app.alerts.service import AlertResolution, AlertService
 from app.core.config import Settings
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import CodedHTTPException
 from app.models.alert import Alert
 from app.models.custom_rule import CustomRule
 from app.models.enums import (
@@ -1917,16 +1920,71 @@ def removed_pin_keys(
     return [join_tuple_key(tuple(pin)) for pin in current if tuple(pin) not in keep]
 
 
-def dependency_refusal(rules: Sequence[DependentRule], action: str) -> dict[str, Any]:
-    """The 409 body: what was refused, why, and the rules to detach first."""
+# The actions a dependency refusal names, as the English phrase the callers pass and the
+# registry's ``propertywatch.action.*`` code it is coded as.
+_ACTION_CODES = {
+    "change the scope, properties or pins": "propertywatch.action.change_pins",
+    "change the scope or properties (the watch version would change)": (
+        "propertywatch.action.change_scope"
+    ),
+    "unpin a value": "propertywatch.action.unpin",
+    "delete the watch": "propertywatch.action.delete",
+}
+ACTION_CHANGE_PINS = "change the scope, properties or pins"
+ACTION_CHANGE_SCOPE = "change the scope or properties (the watch version would change)"
+ACTION_UNPIN = "unpin a value"
+ACTION_DELETE = "delete the watch"
+
+
+def action_ref(action: str) -> MessageRef | None:
+    """The code of an action phrase, or None for a phrase the registry does not know."""
+    code = _ACTION_CODES.get(action)
+    return None if code is None else MessageRef(code)
+
+
+def dependency_refusal(rules: Sequence[DependentRule], action: str) -> HTTPException:
+    """The 409: what was refused, why, and the rules to detach first.
+
+    An action phrase the registry does not know keeps the plain English body, uncoded.
+    """
     names = ", ".join(f"'{rule.name}'" for rule in rules)
-    return {
-        "message": (
-            f"cannot {action}: custom rule(s) {names} pin a value of this watch; "
-            "detach or delete the rule(s) first"
-        ),
-        "rules": [{"id": str(rule.id), "name": rule.name} for rule in rules],
-    }
+    listed = [{"id": str(rule.id), "name": rule.name} for rule in rules]
+    ref = action_ref(action)
+    if ref is None:
+        return HTTPException(
+            409,
+            {
+                "message": (
+                    f"cannot {action}: custom rule(s) {names} pin a value of this watch; "
+                    "detach or delete the rule(s) first"
+                ),
+                "rules": listed,
+            },
+        )
+    return CodedHTTPException(
+        409,
+        MessageRef("propertywatch.dependency.refused", {"action": ref, "names": names}),
+        fields={"rules": listed},
+    )
+
+
+def dependency_raced(action: str) -> HTTPException:
+    """The 409 for a rule that pinned a value after the check: no rule is left to name."""
+    ref = action_ref(action)
+    if ref is None:
+        return HTTPException(
+            409,
+            {
+                "message": f"cannot {action}: a custom rule pinned a value of this watch while "
+                "the request ran; reload and try again",
+                "rules": [],
+            },
+        )
+    return CodedHTTPException(
+        409,
+        MessageRef("propertywatch.dependency.raced", {"action": ref}),
+        fields={"rules": []},
+    )
 
 
 # ------------------------------------------- alerts of a deleted or disabled watch (PW-4, G.10.1)

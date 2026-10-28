@@ -13,10 +13,10 @@ from urllib.parse import urlsplit
 from fastapi import Request
 
 from app.core.config import Settings
+from app.i18n.messages import MessageRef, render
 
 _UNSAFE = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _DEV_ORIGIN = "http://localhost:3000"
-_MISSING = "Cross-site request refused: the request has no Origin or Referer header."
 
 
 def _normalise(value: str) -> str:
@@ -26,6 +26,33 @@ def _normalise(value: str) -> str:
 
 def _reflect(origin: str) -> str:
     return origin.replace("\r", "").replace("\n", "")[:200]
+
+
+def refusal_ref(
+    method: str,
+    origin: str | None,
+    referer: str | None,
+    *,
+    public_origin: str,
+    enforced: bool,
+    allow_dev_localhost: bool,
+) -> MessageRef | None:
+    """Return the coded refusal, or None when the request may proceed."""
+    if not enforced or method.upper() not in _UNSAFE:
+        return None
+    claimed = origin
+    if not claimed and referer:
+        parts = urlsplit(referer)
+        if parts.scheme and parts.netloc:
+            claimed = f"{parts.scheme}://{parts.netloc}"
+    if not claimed:
+        return MessageRef("auth.csrf.origin_missing")
+    allowed = {_normalise(public_origin)}
+    if allow_dev_localhost:
+        allowed.add(_DEV_ORIGIN)
+    if _normalise(claimed) not in allowed:
+        return MessageRef("auth.csrf.origin_mismatch", {"origin": _reflect(claimed)})
+    return None
 
 
 def refusal_reason(
@@ -38,29 +65,20 @@ def refusal_reason(
     allow_dev_localhost: bool,
 ) -> str | None:
     """Return the refusal text, or None when the request may proceed."""
-    if not enforced or method.upper() not in _UNSAFE:
-        return None
-    claimed = origin
-    if not claimed and referer:
-        parts = urlsplit(referer)
-        if parts.scheme and parts.netloc:
-            claimed = f"{parts.scheme}://{parts.netloc}"
-    if not claimed:
-        return _MISSING
-    allowed = {_normalise(public_origin)}
-    if allow_dev_localhost:
-        allowed.add(_DEV_ORIGIN)
-    if _normalise(claimed) not in allowed:
-        return (
-            "Cross-site request refused: origin "
-            f"{_reflect(claimed)} is not the configured public origin."
-        )
-    return None
+    ref = refusal_ref(
+        method,
+        origin,
+        referer,
+        public_origin=public_origin,
+        enforced=enforced,
+        allow_dev_localhost=allow_dev_localhost,
+    )
+    return None if ref is None else render(ref)
 
 
-def request_refusal(request: Request, settings: Settings) -> str | None:
-    """Apply :func:`refusal_reason` to a request. Origin wins over Referer."""
-    return refusal_reason(
+def request_refusal(request: Request, settings: Settings) -> MessageRef | None:
+    """Apply :func:`refusal_ref` to a request. Origin wins over Referer."""
+    return refusal_ref(
         request.method,
         request.headers.get("origin"),
         request.headers.get("referer"),

@@ -1,7 +1,101 @@
 {
+  "auth": {
+    "csrf": {
+      "origin_mismatch": "Cross-site request refused: origin {origin} is not the configured public origin.",
+      "origin_missing": "Cross-site request refused: the request has no Origin or Referer header."
+    },
+    "directory": {
+      "base_control_character": "user_search_base contains a control character",
+      "base_too_long": "user_search_base is longer than 1024 characters",
+      "ca_invalid": "ca_pem is not a PEM X.509 certificate",
+      "ca_private_key": "ca_pem must be a certificate, not a private key",
+      "ca_too_long": "ca_pem is too long",
+      "cert_expired": "certificate {subject} is expired (not_after {not_after})",
+      "cert_not_yet_valid": "certificate {subject} is not yet valid (not_before {not_before})",
+      "enabled_needs_url": "an enabled configuration needs at least one directory URL",
+      "enabled_needs_valid_url": "an enabled configuration needs at least one valid directory URL",
+      "ldap_needs_start_tls": "an ldap:// URL requires start_tls",
+      "stale": "The directory configuration is stale. Reload it and retry.",
+      "start_tls_needs_ldap": "start_tls requires an ldap:// URL",
+      "start_tls_with_ldaps": "start_tls must be false for an ldaps:// URL",
+      "template_too_long": "bind_template is longer than 512 characters",
+      "template_username": "bind_template must contain '{'username'}'",
+      "test_needs_url": "the test needs a directory URL",
+      "timeout_range": "timeout_seconds must be between 1 and 30",
+      "url_credentials": "{url} must not contain credentials",
+      "url_empty": "a directory URL is empty",
+      "url_fragment": "{url} must not have a fragment",
+      "url_host": "{url} must name a host",
+      "url_path": "{url} must not have a path",
+      "url_query": "{url} must not have a query",
+      "url_scheme": "{url} must use ldap:// or ldaps://",
+      "url_too_long": "a directory URL is longer than 512 characters",
+      "urls_max": "at most {max} directory URLs are allowed"
+    },
+    "login": {
+      "directory_unavailable": "The directory server is unavailable. Sign-in was not completed.",
+      "invalid_credentials": "Invalid username or password"
+    },
+    "password": {
+      "current_wrong": "current password is wrong",
+      "equals_username": "password must not equal the username",
+      "ldap_directory": "LDAP accounts change their password in the directory, not here.",
+      "local_only": "only a local account can change its password",
+      "too_long": "password must be at most 72 bytes",
+      "too_short": "password must be at least 12 characters"
+    },
+    "permission": {
+      "missing": "missing required permission: {permission}"
+    },
+    "session": {
+      "must_change_password": "A password change is required before any other request.",
+      "required": "Authentication required."
+    },
+    "user": {
+      "email_taken": "A user with that email already exists.",
+      "email_unusable": "email is not usable",
+      "exists": "A user with that username or email already exists.",
+      "last_admin": "the last active user holding admin:* cannot be disabled or lose that role",
+      "ldap_no_password": "An LDAP user has no password here.",
+      "local_needs_password": "A local user needs an initial password.",
+      "not_found": "No user has that id.",
+      "reset_local_only": "Only a local account can have its password reset here.",
+      "role_unknown": "unknown role: {name}",
+      "source_invalid": "auth_source must be LOCAL or LDAP",
+      "username_taken": "A user with that username already exists."
+    },
+    "username": {
+      "shape": "username must be 1 to 255 characters without spaces or control characters"
+    }
+  },
+  "customrule": {
+    "name_exists": "a custom rule named ''{name}'' already exists",
+    "watch_value_gone": "the property-watch value no longer exists (its watch changed or was deleted while the rule was saved); reload and choose a value again"
+  },
+  "dashboard": {
+    "changed_since_opened": "this dashboard changed since you opened it",
+    "name_taken": "you already have a dashboard named ''{name}''",
+    "not_found": "dashboard not found",
+    "owner_limit": "the limit is {limit} dashboards per owner",
+    "owner_only": "only the owner or an administrator can change this dashboard",
+    "visibility_needs_permission": "changing visibility needs the {permission} permission"
+  },
   "explanation": {
     "dimension": {
       "unpopulated": "field is not populated for this log source"
     }
+  },
+  "propertywatch": {
+    "action": {
+      "change_pins": "change the scope, properties or pins",
+      "change_scope": "change the scope or properties (the watch version would change)",
+      "delete": "delete the watch",
+      "unpin": "unpin a value"
+    },
+    "dependency": {
+      "raced": "cannot {action}: a custom rule pinned a value of this watch while the request ran; reload and try again",
+      "refused": "cannot {action}: custom rule(s) {names} pin a value of this watch; detach or delete the rule(s) first"
+    },
+    "name_exists": "a property watch named ''{name}'' already exists"
   }
 }

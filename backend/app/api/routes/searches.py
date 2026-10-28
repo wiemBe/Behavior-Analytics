@@ -20,6 +20,7 @@ from app.alerts.routing import default_policy
 from app.alerts.search_alerts import SearchAlertEvaluator
 from app.api.deps import ProviderDep, SessionDep, SettingsDep
 from app.core.config import Settings, get_settings
+from app.i18n.refusal import permission_refusal
 from app.models.enums import ExecutionErrorType
 from app.models.search import (
     ScheduledSearch,
@@ -154,7 +155,7 @@ def _guard(principal: Principal, permission: str) -> None:
     try:
         require_permission(principal, permission)
     except PermissionDenied as exc:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+        raise permission_refusal(exc) from exc
 
 
 def _is_authoring_error(error: Any) -> bool:

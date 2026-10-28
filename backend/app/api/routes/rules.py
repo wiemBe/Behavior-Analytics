@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
+from app.i18n.refusal import permission_refusal
 from app.models.enums import RuleHealthStatus
 from app.models.instance import QRadarInstance
 from app.models.rule import AnalyticsRule, RuleCapacitySample
@@ -56,7 +57,7 @@ def _guard(principal: Principal, permission: str) -> None:
     try:
         require_permission(principal, permission)
     except PermissionDenied as exc:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+        raise permission_refusal(exc) from exc
 
 
 async def _resolve_instance(

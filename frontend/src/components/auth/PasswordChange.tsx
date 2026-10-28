@@ -5,7 +5,7 @@
 // refusal the backend sends is shown as sent.
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useState, type FormEvent } from "react";
 
 import { changePassword } from "./client";
@@ -16,6 +16,7 @@ import { useSession } from "./session";
 import styles from "./auth.module.css";
 import { destinationAfterPasswordChange } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
+import type { Locale } from "@/i18n/locale";
 import { asTextTranslator } from "@/i18n/textTranslator";
 
 export function PasswordChange({
@@ -26,7 +27,8 @@ export function PasswordChange({
   embedded?: boolean;
 }) {
   const t = useTranslations("password");
-  const auth = useTranslations("auth");
+  const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   const session = useSession();
   const router = useRouter();
   const params = useSearchParams();
@@ -51,7 +53,7 @@ export function PasswordChange({
       await changePassword(current, next);
     } catch (err) {
       setPending(false);
-      setLines(errorTexts(err, asTextTranslator(auth)));
+      setLines(errorTexts(err, say, locale));
       return;
     }
     setCurrent("");

@@ -465,6 +465,8 @@ async def test_the_source_scope_takes_its_instance_and_a_duplicate_name_is_409(
     dup = client.post(PREFIX, json=_body("by-source"))
     assert dup.status_code == 409
     assert "already exists" in dup.json()["detail"]
+    assert dup.json()["detail_code"] == "propertywatch.name_exists"
+    assert dup.json()["detail_params"] == {"name": "by-source"}
 
 
 async def test_the_patch_carries_a_version_and_a_stale_one_is_409(

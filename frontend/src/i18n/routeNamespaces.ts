@@ -3,7 +3,8 @@
 // The root layout sends the SHELL (the top bar, navigation, account menu, connection status, the
 // guide links and what every page's client code shares) plus two lists of single keys: BOUNDARY_KEYS,
 // the strings that a route's `error.tsx` / `loading.tsx` read, because those render outside the page,
-// and TOP_BAR_KEYS, the code names the top bar's search results read (I18N-13). Each page then
+// TOP_BAR_KEYS, the code names the top bar's search results read (I18N-13), and SHELL_BACKEND_KEYS,
+// the refusal sentences the forced password change words (MSG-1). Each page then
 // wraps its content in a provider holding the shell plus ROUTE_NAMESPACES for its route
 // (`withRouteMessages`, `./RouteMessages.tsx`). The nested provider replaces the root one, so a
 // route's set is the shell plus its own. Server components read the whole catalog through
@@ -150,6 +151,28 @@ export const TOP_BAR_KEYS = [
   "ips.subject.sourceLevel",
 ] as const;
 
+/**
+ * The single `backend.*` keys the shell renders itself (MSG-1 round 1): the forced password change
+ * in `AppFrame` words the password policy, the session and cross-site refusals and the permission
+ * 403 through `refusalMessage.ts`. The root provider carries these keys one by one and never the
+ * `backend` namespace; a route that shows more of it lists `backend` in `ROUTE_NAMESPACES`.
+ * `routeNamespaces.contract.test.tsx` fails when shell-reachable code names a `backend` key that is
+ * not listed here.
+ */
+export const SHELL_BACKEND_KEYS = [
+  "backend.auth.csrf.origin_mismatch",
+  "backend.auth.csrf.origin_missing",
+  "backend.auth.password.current_wrong",
+  "backend.auth.password.equals_username",
+  "backend.auth.password.ldap_directory",
+  "backend.auth.password.local_only",
+  "backend.auth.password.too_long",
+  "backend.auth.password.too_short",
+  "backend.auth.permission.missing",
+  "backend.auth.session.must_change_password",
+  "backend.auth.session.required",
+] as const;
+
 export const SHELL_NAMESPACES = [
   "auth",
   "behavior",
@@ -166,17 +189,17 @@ export const SHELL_NAMESPACES = [
 ] as const;
 
 export const ROUTE_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
-  "/account": ["account"],
-  "/account/password": [],
+  "/account": ["account", "backend"],
+  "/account/password": ["backend"],
   "/admin/classification-rules": ["classification", "enums", "fleet"],
-  "/admin/directory": ["directory"],
+  "/admin/directory": ["backend", "directory"],
   "/admin/history-backfill": [],
   "/admin/ips-sources/[logSourceId]": ["fieldMapping", "ips", "waf"],
   "/admin/ips-sources": ["fieldMapping", "ips", "waf"],
   "/admin/outage-policy": ["classification", "enums", "fleet", "outage"],
   "/admin": ["admin", "users"],
   "/admin/search-cadence": [],
-  "/admin/users": ["enums", "users"],
+  "/admin/users": ["backend", "enums", "users"],
   "/admin/waf-sources/[logSourceId]": ["fieldMapping", "waf"],
   "/admin/waf-sources": ["fieldMapping", "waf"],
   "/alerts/[id]": ["alerts"],
@@ -188,25 +211,25 @@ export const ROUTE_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
   "/behavior/sources": [],
   "/behavior/waf": [],
   "/behavior/waf/sources/[id]": [],
-  "/behavior/watches/[id]": ["classification", "enums", "fleet", "home", "propertyWatch", "pwchart", "ui"],
-  "/behavior/watches/new": ["enums", "propertyWatch", "pwchart", "ui"],
+  "/behavior/watches/[id]": ["backend", "classification", "enums", "fleet", "home", "propertyWatch", "pwchart", "ui"],
+  "/behavior/watches/new": ["backend", "enums", "propertyWatch", "pwchart", "ui"],
   "/behavior/watches": [],
   "/config-changes": [],
   "/coverage": [],
-  "/custom-rules/[id]": ["customRules", "enums"],
-  "/custom-rules/new": ["customRules", "enums"],
+  "/custom-rules/[id]": ["backend", "customRules", "enums"],
+  "/custom-rules/new": ["backend", "customRules", "enums"],
   "/custom-rules": [],
   "/fleet/catchall": ["catchall", "fleet"],
   "/fleet": [],
   "/fleet/sources": ["classification", "enums", "fleet"],
   "/guide": [],
   "/guide/[section]": [],
-  "/login": ["login"],
+  "/login": ["backend", "login"],
   "/log-sources/[id]": [],
   "/log-sources": [],
   "/offenses/[id]": [],
   "/offenses": [],
-  "/": ["catalog", "catchall", "classification", "coverage", "dashboard", "enums", "fieldMapping", "fleet", "home", "ips", "propertyWatch", "pwchart", "searches", "trend", "waf", "widgets"],
+  "/": ["backend", "catalog", "catchall", "classification", "coverage", "dashboard", "enums", "fieldMapping", "fleet", "home", "ips", "propertyWatch", "pwchart", "searches", "trend", "waf", "widgets"],
   "/rules/[id]": [],
   "/rules": [],
   "/rules/statistics": [],
@@ -253,5 +276,5 @@ export function routeMessages(
 
 /** What the browser gets before a page's provider: the shell, the boundary strings and the top bar's keys. */
 export function shellMessages(messages: Readonly<Record<string, unknown>>): Record<string, unknown> {
-  return pickMessages(messages, SHELL_NAMESPACES, [...BOUNDARY_KEYS, ...TOP_BAR_KEYS]);
+  return pickMessages(messages, SHELL_NAMESPACES, [...BOUNDARY_KEYS, ...TOP_BAR_KEYS, ...SHELL_BACKEND_KEYS]);
 }

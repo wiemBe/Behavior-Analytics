@@ -11,8 +11,10 @@ import {
   type PwScopeKind,
   type PwScopeOption,
 } from "@/lib/api";
+import { renderRefusal } from "@/i18n/refusalMessage";
 import { wordOrValue } from "@/lib/behaviorI18n";
 import { formatCount } from "@/lib/format";
+import { refusalSentences } from "@/lib/refusal";
 
 import { ENGLISH_PW, type PwI18n } from "./pwText";
 
@@ -357,6 +359,12 @@ export function onlyHistoryBudget(codes: string[]): boolean {
   return codes.length === 1 && codes[0] === HISTORY_BUDGET_CODE;
 }
 
+/** The refusal's first sentence in the reader's language (the server's own text in English). */
+function said(error: ApiError, i18n: PwI18n): string | null {
+  const [sentence] = refusalSentences(error);
+  return sentence ? renderRefusal(sentence, i18n.locale, i18n.t) : null;
+}
+
 export function classifyWatchError(
   error: unknown,
   i18n: PwI18n = ENGLISH_PW,
@@ -381,10 +389,7 @@ export function classifyWatchError(
   if (error.status === 409 && Array.isArray(detail?.rules)) {
     return {
       kind: "dependencies",
-      message:
-        typeof detail.message === "string"
-          ? detail.message
-          : i18n.t("propertyWatch.authoring.dependencyFallback"),
+      message: said(error, i18n) ?? i18n.t("propertyWatch.authoring.dependencyFallback"),
       rules: detail.rules.flatMap((item) => {
         const rule = record(item);
         return typeof rule?.id === "string" && typeof rule.name === "string"
@@ -393,7 +398,7 @@ export function classifyWatchError(
       }),
     };
   }
-  const text = typeof error.detail === "string" ? error.detail : error.message;
+  const text = typeof error.detail === "string" ? (said(error, i18n) ?? error.detail) : error.message;
   if (error.status === 403 && i18n.locale === "tr") {
     return { kind: "conflict", detail: i18n.t("propertyWatch.authoring.writeForbidden"), codes: [] };
   }

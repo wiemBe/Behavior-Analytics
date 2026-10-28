@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -17,6 +17,8 @@ from app.api.deps import SessionDep, SettingsDep, get_principal, requires
 from app.api.request_meta import client_ip, user_agent
 from app.core.config import Settings, get_settings
 from app.core.rate_limit import limiter
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import CodedHTTPException
 from app.models.identity import LdapConfig, User
 from app.repositories.audit import record_audit
 from app.schemas.auth import (
@@ -43,7 +45,7 @@ from app.services.ldap_config import (
     get_ldap_row,
     snapshot,
     spec_from_row,
-    validate_directory,
+    validate_directory_coded,
 )
 
 public_router = APIRouter(prefix="/auth", tags=["auth"])
@@ -106,7 +108,7 @@ async def login(
         # Commit before raising. The session dependency rolls a raised
         # HTTPException back, which would forget the lockout.
         await session.commit()
-        raise HTTPException(status_code=result.status_code, detail=result.detail)
+        raise CodedHTTPException(result.status_code, result.ref)
     _set_cookie(response, result.token, settings)
     return LoginOut(
         username=result.username,
@@ -151,19 +153,21 @@ async def change_password(
     principal: Principal = Depends(get_principal),
 ) -> LoginOut:
     if principal.user_id is None or principal.auth_source != "LOCAL":
-        message = (
-            "LDAP accounts change their password in the directory, not here."
+        ref = MessageRef(
+            "auth.password.ldap_directory"
             if principal.auth_source == "LDAP"
-            else "only a local account can change its password"
+            else "auth.password.local_only"
         )
-        raise HTTPException(status.HTTP_403_FORBIDDEN, message)
+        raise CodedHTTPException(status.HTTP_403_FORBIDDEN, ref)
     user = await session.scalar(
         select(User)
         .where(User.id == principal.user_id)
         .options(selectinload(User.roles))
     )
     if user is None or user.disabled_at is not None or not user.is_active:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authentication required.")
+        raise CodedHTTPException(
+            status.HTTP_401_UNAUTHORIZED, MessageRef("auth.session.required")
+        )
     result = await change_own_password(
         session,
         settings,
@@ -222,7 +226,7 @@ async def write_ldap_config(
     session: SessionDep,
     principal: Principal = Depends(get_principal),
 ) -> LdapConfigOut:
-    spec, reasons = validate_directory(
+    spec, reasons = validate_directory_coded(
         enabled=body.enabled,
         urls=body.urls,
         start_tls=body.start_tls,
@@ -232,13 +236,12 @@ async def write_ldap_config(
         user_search_base=body.user_search_base,
     )
     if spec is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, reasons)
+        raise CodedHTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, refs=reasons)
     row = await get_ldap_row(session)
     if row is None:
         if body.version != 0:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                "The directory configuration is stale. Reload it and retry.",
+            raise CodedHTTPException(
+                status.HTTP_409_CONFLICT, MessageRef("auth.directory.stale")
             )
         before = None
         row = LdapConfig(
@@ -257,9 +260,8 @@ async def write_ldap_config(
         session.add(row)
     else:
         if row.version != body.version:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                "The directory configuration is stale. Reload it and retry.",
+            raise CodedHTTPException(
+                status.HTTP_409_CONFLICT, MessageRef("auth.directory.stale")
             )
         before = snapshot(spec_from_row(row), row.version)
         row.enabled = spec.enabled
@@ -291,7 +293,7 @@ async def write_ldap_config(
 @admin_router.post("/ldap-config/test", response_model=LdapTestOut)
 async def test_ldap_config(body: LdapTestIn) -> LdapTestOut:
     """Probe a draft. Nothing is stored and the call is not audited."""
-    spec, reasons = validate_directory(
+    spec, reasons = validate_directory_coded(
         enabled=body.enabled,
         urls=body.urls,
         start_tls=body.start_tls,
@@ -301,11 +303,11 @@ async def test_ldap_config(body: LdapTestIn) -> LdapTestOut:
         user_search_base=body.user_search_base,
     )
     if spec is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, reasons)
+        raise CodedHTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, refs=reasons)
     if not spec.urls:
-        raise HTTPException(
+        raise CodedHTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
-            ["the test needs a directory URL"],
+            refs=[MessageRef("auth.directory.test_needs_url")],
         )
     report = await bind_directory(spec, body.username, body.password)
     certificate = None

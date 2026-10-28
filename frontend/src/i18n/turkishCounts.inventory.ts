@@ -63,6 +63,9 @@ export const PLAIN: Readonly<Record<string, Readonly<Record<string, PlainReason>
   "anomalies.summary.timeline.gaps": { shown: "string" },
   "anomalies.summary.timeline.range": { max: "string", min: "string", shown: "string" },
   "anomalies.technical.seconds": { count: "bounded" },
+  // The server's own constants, words and their sentence: the dashboard limit (20) and the URL cap (8).
+  "backend.auth.directory.urls_max": { max: "bounded" },
+  "backend.dashboard.owner_limit": { limit: "bounded" },
   "behavior.advanced.cellsNote": { count: "string" },
   "behavior.advanced.clearedFailed.times": { count: "string" },
   "behavior.advanced.mostRecent": { count: "string" },

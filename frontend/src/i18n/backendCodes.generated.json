@@ -1,9 +1,658 @@
 {
+  "auth.csrf.origin_mismatch": {
+    "params": {
+      "origin": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "origin": "https://other.example"
+    },
+    "sample_english": "Cross-site request refused: origin https://other.example is not the configured public origin.",
+    "sample_english_params": {
+      "origin": "https://other.example"
+    },
+    "template": "Cross-site request refused: origin {origin} is not the configured public origin."
+  },
+  "auth.csrf.origin_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Cross-site request refused: the request has no Origin or Referer header.",
+    "sample_english_params": {},
+    "template": "Cross-site request refused: the request has no Origin or Referer header."
+  },
+  "auth.directory.base_control_character": {
+    "params": {},
+    "sample": {},
+    "sample_english": "user_search_base contains a control character",
+    "sample_english_params": {},
+    "template": "user_search_base contains a control character"
+  },
+  "auth.directory.base_too_long": {
+    "params": {},
+    "sample": {},
+    "sample_english": "user_search_base is longer than 1024 characters",
+    "sample_english_params": {},
+    "template": "user_search_base is longer than 1024 characters"
+  },
+  "auth.directory.ca_invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "ca_pem is not a PEM X.509 certificate",
+    "sample_english_params": {},
+    "template": "ca_pem is not a PEM X.509 certificate"
+  },
+  "auth.directory.ca_private_key": {
+    "params": {},
+    "sample": {},
+    "sample_english": "ca_pem must be a certificate, not a private key",
+    "sample_english_params": {},
+    "template": "ca_pem must be a certificate, not a private key"
+  },
+  "auth.directory.ca_too_long": {
+    "params": {},
+    "sample": {},
+    "sample_english": "ca_pem is too long",
+    "sample_english_params": {},
+    "template": "ca_pem is too long"
+  },
+  "auth.directory.cert_expired": {
+    "params": {
+      "not_after": {
+        "kind": "text"
+      },
+      "subject": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "not_after": "2020-01-01T00:00:00+00:00",
+      "subject": "CN=ca"
+    },
+    "sample_english": "certificate CN=ca is expired (not_after 2020-01-01T00:00:00+00:00)",
+    "sample_english_params": {
+      "not_after": "2020-01-01T00:00:00+00:00",
+      "subject": "CN=ca"
+    },
+    "template": "certificate {subject} is expired (not_after {not_after})"
+  },
+  "auth.directory.cert_not_yet_valid": {
+    "params": {
+      "not_before": {
+        "kind": "text"
+      },
+      "subject": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "not_before": "2030-01-01T00:00:00+00:00",
+      "subject": "CN=ca"
+    },
+    "sample_english": "certificate CN=ca is not yet valid (not_before 2030-01-01T00:00:00+00:00)",
+    "sample_english_params": {
+      "not_before": "2030-01-01T00:00:00+00:00",
+      "subject": "CN=ca"
+    },
+    "template": "certificate {subject} is not yet valid (not_before {not_before})"
+  },
+  "auth.directory.enabled_needs_url": {
+    "params": {},
+    "sample": {},
+    "sample_english": "an enabled configuration needs at least one directory URL",
+    "sample_english_params": {},
+    "template": "an enabled configuration needs at least one directory URL"
+  },
+  "auth.directory.enabled_needs_valid_url": {
+    "params": {},
+    "sample": {},
+    "sample_english": "an enabled configuration needs at least one valid directory URL",
+    "sample_english_params": {},
+    "template": "an enabled configuration needs at least one valid directory URL"
+  },
+  "auth.directory.ldap_needs_start_tls": {
+    "params": {},
+    "sample": {},
+    "sample_english": "an ldap:// URL requires start_tls",
+    "sample_english_params": {},
+    "template": "an ldap:// URL requires start_tls"
+  },
+  "auth.directory.stale": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The directory configuration is stale. Reload it and retry.",
+    "sample_english_params": {},
+    "template": "The directory configuration is stale. Reload it and retry."
+  },
+  "auth.directory.start_tls_needs_ldap": {
+    "params": {},
+    "sample": {},
+    "sample_english": "start_tls requires an ldap:// URL",
+    "sample_english_params": {},
+    "template": "start_tls requires an ldap:// URL"
+  },
+  "auth.directory.start_tls_with_ldaps": {
+    "params": {},
+    "sample": {},
+    "sample_english": "start_tls must be false for an ldaps:// URL",
+    "sample_english_params": {},
+    "template": "start_tls must be false for an ldaps:// URL"
+  },
+  "auth.directory.template_too_long": {
+    "params": {},
+    "sample": {},
+    "sample_english": "bind_template is longer than 512 characters",
+    "sample_english_params": {},
+    "template": "bind_template is longer than 512 characters"
+  },
+  "auth.directory.template_username": {
+    "params": {},
+    "sample": {},
+    "sample_english": "bind_template must contain {username}",
+    "sample_english_params": {},
+    "template": "bind_template must contain {{username}}"
+  },
+  "auth.directory.test_needs_url": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the test needs a directory URL",
+    "sample_english_params": {},
+    "template": "the test needs a directory URL"
+  },
+  "auth.directory.timeout_range": {
+    "params": {},
+    "sample": {},
+    "sample_english": "timeout_seconds must be between 1 and 30",
+    "sample_english_params": {},
+    "template": "timeout_seconds must be between 1 and 30"
+  },
+  "auth.directory.url_credentials": {
+    "params": {
+      "url": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "url": "ldap://u@dc"
+    },
+    "sample_english": "ldap://u@dc must not contain credentials",
+    "sample_english_params": {
+      "url": "ldap://u@dc"
+    },
+    "template": "{url} must not contain credentials"
+  },
+  "auth.directory.url_empty": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a directory URL is empty",
+    "sample_english_params": {},
+    "template": "a directory URL is empty"
+  },
+  "auth.directory.url_fragment": {
+    "params": {
+      "url": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "url": "ldap://dc#x"
+    },
+    "sample_english": "ldap://dc#x must not have a fragment",
+    "sample_english_params": {
+      "url": "ldap://dc#x"
+    },
+    "template": "{url} must not have a fragment"
+  },
+  "auth.directory.url_host": {
+    "params": {
+      "url": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "url": "ldap://"
+    },
+    "sample_english": "ldap:// must name a host",
+    "sample_english_params": {
+      "url": "ldap://"
+    },
+    "template": "{url} must name a host"
+  },
+  "auth.directory.url_path": {
+    "params": {
+      "url": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "url": "ldap://dc/x"
+    },
+    "sample_english": "ldap://dc/x must not have a path",
+    "sample_english_params": {
+      "url": "ldap://dc/x"
+    },
+    "template": "{url} must not have a path"
+  },
+  "auth.directory.url_query": {
+    "params": {
+      "url": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "url": "ldap://dc?x"
+    },
+    "sample_english": "ldap://dc?x must not have a query",
+    "sample_english_params": {
+      "url": "ldap://dc?x"
+    },
+    "template": "{url} must not have a query"
+  },
+  "auth.directory.url_scheme": {
+    "params": {
+      "url": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "url": "http://dc"
+    },
+    "sample_english": "http://dc must use ldap:// or ldaps://",
+    "sample_english_params": {
+      "url": "http://dc"
+    },
+    "template": "{url} must use ldap:// or ldaps://"
+  },
+  "auth.directory.url_too_long": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a directory URL is longer than 512 characters",
+    "sample_english_params": {},
+    "template": "a directory URL is longer than 512 characters"
+  },
+  "auth.directory.urls_max": {
+    "params": {
+      "max": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "max": 8
+    },
+    "sample_english": "at most 8 directory URLs are allowed",
+    "sample_english_params": {
+      "max": "8"
+    },
+    "template": "at most {max} directory URLs are allowed"
+  },
+  "auth.login.directory_unavailable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The directory server is unavailable. Sign-in was not completed.",
+    "sample_english_params": {},
+    "template": "The directory server is unavailable. Sign-in was not completed."
+  },
+  "auth.login.invalid_credentials": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Invalid username or password",
+    "sample_english_params": {},
+    "template": "Invalid username or password"
+  },
+  "auth.password.current_wrong": {
+    "params": {},
+    "sample": {},
+    "sample_english": "current password is wrong",
+    "sample_english_params": {},
+    "template": "current password is wrong"
+  },
+  "auth.password.equals_username": {
+    "params": {},
+    "sample": {},
+    "sample_english": "password must not equal the username",
+    "sample_english_params": {},
+    "template": "password must not equal the username"
+  },
+  "auth.password.ldap_directory": {
+    "params": {},
+    "sample": {},
+    "sample_english": "LDAP accounts change their password in the directory, not here.",
+    "sample_english_params": {},
+    "template": "LDAP accounts change their password in the directory, not here."
+  },
+  "auth.password.local_only": {
+    "params": {},
+    "sample": {},
+    "sample_english": "only a local account can change its password",
+    "sample_english_params": {},
+    "template": "only a local account can change its password"
+  },
+  "auth.password.too_long": {
+    "params": {},
+    "sample": {},
+    "sample_english": "password must be at most 72 bytes",
+    "sample_english_params": {},
+    "template": "password must be at most 72 bytes"
+  },
+  "auth.password.too_short": {
+    "params": {},
+    "sample": {},
+    "sample_english": "password must be at least 12 characters",
+    "sample_english_params": {},
+    "template": "password must be at least 12 characters"
+  },
+  "auth.permission.missing": {
+    "params": {
+      "permission": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "permission": "read:*"
+    },
+    "sample_english": "missing required permission: read:*",
+    "sample_english_params": {
+      "permission": "read:*"
+    },
+    "template": "missing required permission: {permission}"
+  },
+  "auth.session.must_change_password": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A password change is required before any other request.",
+    "sample_english_params": {},
+    "template": "A password change is required before any other request."
+  },
+  "auth.session.required": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Authentication required.",
+    "sample_english_params": {},
+    "template": "Authentication required."
+  },
+  "auth.user.email_taken": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A user with that email already exists.",
+    "sample_english_params": {},
+    "template": "A user with that email already exists."
+  },
+  "auth.user.email_unusable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "email is not usable",
+    "sample_english_params": {},
+    "template": "email is not usable"
+  },
+  "auth.user.exists": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A user with that username or email already exists.",
+    "sample_english_params": {},
+    "template": "A user with that username or email already exists."
+  },
+  "auth.user.last_admin": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the last active user holding admin:* cannot be disabled or lose that role",
+    "sample_english_params": {},
+    "template": "the last active user holding admin:* cannot be disabled or lose that role"
+  },
+  "auth.user.ldap_no_password": {
+    "params": {},
+    "sample": {},
+    "sample_english": "An LDAP user has no password here.",
+    "sample_english_params": {},
+    "template": "An LDAP user has no password here."
+  },
+  "auth.user.local_needs_password": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A local user needs an initial password.",
+    "sample_english_params": {},
+    "template": "A local user needs an initial password."
+  },
+  "auth.user.not_found": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No user has that id.",
+    "sample_english_params": {},
+    "template": "No user has that id."
+  },
+  "auth.user.reset_local_only": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Only a local account can have its password reset here.",
+    "sample_english_params": {},
+    "template": "Only a local account can have its password reset here."
+  },
+  "auth.user.role_unknown": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "analyst"
+    },
+    "sample_english": "unknown role: analyst",
+    "sample_english_params": {
+      "name": "analyst"
+    },
+    "template": "unknown role: {name}"
+  },
+  "auth.user.source_invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "auth_source must be LOCAL or LDAP",
+    "sample_english_params": {},
+    "template": "auth_source must be LOCAL or LDAP"
+  },
+  "auth.user.username_taken": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A user with that username already exists.",
+    "sample_english_params": {},
+    "template": "A user with that username already exists."
+  },
+  "auth.username.shape": {
+    "params": {},
+    "sample": {},
+    "sample_english": "username must be 1 to 255 characters without spaces or control characters",
+    "sample_english_params": {},
+    "template": "username must be 1 to 255 characters without spaces or control characters"
+  },
+  "customrule.name_exists": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "Volume drop"
+    },
+    "sample_english": "a custom rule named 'Volume drop' already exists",
+    "sample_english_params": {
+      "name": "Volume drop"
+    },
+    "template": "a custom rule named '{name}' already exists"
+  },
+  "customrule.watch_value_gone": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the property-watch value no longer exists (its watch changed or was deleted while the rule was saved); reload and choose a value again",
+    "sample_english_params": {},
+    "template": "the property-watch value no longer exists (its watch changed or was deleted while the rule was saved); reload and choose a value again"
+  },
+  "dashboard.changed_since_opened": {
+    "params": {},
+    "sample": {},
+    "sample_english": "this dashboard changed since you opened it",
+    "sample_english_params": {},
+    "template": "this dashboard changed since you opened it"
+  },
+  "dashboard.name_taken": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "Overview"
+    },
+    "sample_english": "you already have a dashboard named 'Overview'",
+    "sample_english_params": {
+      "name": "Overview"
+    },
+    "template": "you already have a dashboard named '{name}'"
+  },
+  "dashboard.not_found": {
+    "params": {},
+    "sample": {},
+    "sample_english": "dashboard not found",
+    "sample_english_params": {},
+    "template": "dashboard not found"
+  },
+  "dashboard.owner_limit": {
+    "params": {
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "limit": 20
+    },
+    "sample_english": "the limit is 20 dashboards per owner",
+    "sample_english_params": {
+      "limit": "20"
+    },
+    "template": "the limit is {limit} dashboards per owner"
+  },
+  "dashboard.owner_only": {
+    "params": {},
+    "sample": {},
+    "sample_english": "only the owner or an administrator can change this dashboard",
+    "sample_english_params": {},
+    "template": "only the owner or an administrator can change this dashboard"
+  },
+  "dashboard.visibility_needs_permission": {
+    "params": {
+      "permission": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "permission": "dashboard:share"
+    },
+    "sample_english": "changing visibility needs the dashboard:share permission",
+    "sample_english_params": {
+      "permission": "dashboard:share"
+    },
+    "template": "changing visibility needs the {permission} permission"
+  },
   "explanation.dimension.unpopulated": {
     "params": {},
     "sample": {},
     "sample_english": "field is not populated for this log source",
     "sample_english_params": {},
     "template": "field is not populated for this log source"
+  },
+  "propertywatch.action.change_pins": {
+    "params": {},
+    "sample": {},
+    "sample_english": "change the scope, properties or pins",
+    "sample_english_params": {},
+    "template": "change the scope, properties or pins"
+  },
+  "propertywatch.action.change_scope": {
+    "params": {},
+    "sample": {},
+    "sample_english": "change the scope or properties (the watch version would change)",
+    "sample_english_params": {},
+    "template": "change the scope or properties (the watch version would change)"
+  },
+  "propertywatch.action.delete": {
+    "params": {},
+    "sample": {},
+    "sample_english": "delete the watch",
+    "sample_english_params": {},
+    "template": "delete the watch"
+  },
+  "propertywatch.action.unpin": {
+    "params": {},
+    "sample": {},
+    "sample_english": "unpin a value",
+    "sample_english_params": {},
+    "template": "unpin a value"
+  },
+  "propertywatch.dependency.raced": {
+    "params": {
+      "action": {
+        "kind": "ref",
+        "ref_codes": [
+          "propertywatch.action.change_pins",
+          "propertywatch.action.change_scope",
+          "propertywatch.action.unpin",
+          "propertywatch.action.delete"
+        ]
+      }
+    },
+    "sample": {
+      "action": {
+        "code": "propertywatch.action.unpin",
+        "params": {}
+      }
+    },
+    "sample_english": "cannot unpin a value: a custom rule pinned a value of this watch while the request ran; reload and try again",
+    "sample_english_params": {
+      "action": "unpin a value"
+    },
+    "template": "cannot {action}: a custom rule pinned a value of this watch while the request ran; reload and try again"
+  },
+  "propertywatch.dependency.refused": {
+    "params": {
+      "action": {
+        "kind": "ref",
+        "ref_codes": [
+          "propertywatch.action.change_pins",
+          "propertywatch.action.change_scope",
+          "propertywatch.action.unpin",
+          "propertywatch.action.delete"
+        ]
+      },
+      "names": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "action": {
+        "code": "propertywatch.action.delete",
+        "params": {}
+      },
+      "names": "'Rule A'"
+    },
+    "sample_english": "cannot delete the watch: custom rule(s) 'Rule A' pin a value of this watch; detach or delete the rule(s) first",
+    "sample_english_params": {
+      "action": "delete the watch",
+      "names": "'Rule A'"
+    },
+    "template": "cannot {action}: custom rule(s) {names} pin a value of this watch; detach or delete the rule(s) first"
+  },
+  "propertywatch.name_exists": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "Admin logons"
+    },
+    "sample_english": "a property watch named 'Admin logons' already exists",
+    "sample_english_params": {
+      "name": "Admin logons"
+    },
+    "template": "a property watch named '{name}' already exists"
   }
 }

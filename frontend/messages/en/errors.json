@@ -1,6 +1,7 @@
 {
   "sessionExpired": "Your session has expired. Sign in again to continue.",
   "forbidden": "You do not have permission to perform this action.",
+  "forbiddenPermission": "You need the {permission} permission for this.",
   "notFound": "This item no longer exists. Refresh the page.",
   "conflict": "This conflicts with the current state. Refresh and try again.",
   "invalid": "The request was rejected as invalid.",

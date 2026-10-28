@@ -5,7 +5,7 @@
 // says to wait. The password is never written to web storage.
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useState, type FormEvent } from "react";
 
 import { login } from "@/components/auth/client";
@@ -16,13 +16,15 @@ import { useSession } from "@/components/auth/session";
 import styles from "@/components/auth/auth.module.css";
 import { ApiError, destinationAfterLogin } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { asTextTranslator } from "@/i18n/textTranslator";
+import type { Locale } from "@/i18n/locale";
+import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
 
 type Problem = { heading?: string; lines: string[]; alert?: boolean };
 
 export function LoginForm() {
   const t = useTranslations("login");
-  const auth = useTranslations("auth");
+  const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   const common = useTranslations("common");
   const session = useSession();
   const router = useRouter();
@@ -41,7 +43,7 @@ export function LoginForm() {
       result = await login(username, password);
     } catch (err) {
       setPending(false);
-      setProblem(loginProblem(err, t, auth));
+      setProblem(loginProblem(err, t, say, locale));
       return;
     }
     try {
@@ -112,9 +114,10 @@ export function LoginForm() {
 function loginProblem(
   err: unknown,
   t: ReturnType<typeof useTranslations<"login">>,
-  auth: ReturnType<typeof useTranslations<"auth">>,
+  say: TextTranslator,
+  locale: Locale,
 ): Problem {
-  const lines = errorTexts(err, asTextTranslator(auth));
+  const lines = errorTexts(err, say, locale);
   if (err instanceof ApiError && err.status === 401) return { lines, alert: true };
   if (err instanceof ApiError && err.status === 503) {
     return {

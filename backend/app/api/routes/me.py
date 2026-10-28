@@ -10,6 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import SessionDep, get_principal
 from app.api.request_meta import client_ip, user_agent
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import CodedHTTPException
 from app.models.identity import User
 from app.schemas.me import MeOut, PreferencesIn
 from app.security import rbac
@@ -91,7 +93,9 @@ async def update_preferences(
         .options(selectinload(User.roles))
     )
     if user is None or user.disabled_at is not None or not user.is_active:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authentication required.")
+        raise CodedHTTPException(
+            status.HTTP_401_UNAUTHORIZED, MessageRef("auth.session.required")
+        )
     await change_ui_language(
         session,
         user,

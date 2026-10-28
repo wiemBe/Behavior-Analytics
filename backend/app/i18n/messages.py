@@ -92,13 +92,229 @@ class MessageRef:
         return _to_wire(self, REGISTRY)
 
 
+def _fixed(code: str, template: str) -> MessageSpec:
+    """A sentence with no parameters."""
+    return MessageSpec(code=code, template=template, params={}, sample={})
+
+
+def _text(code: str, template: str, **samples: str) -> MessageSpec:
+    """A sentence whose parameters are all identifiers or names, shown verbatim."""
+    return MessageSpec(
+        code=code,
+        template=template,
+        params={name: ParamSpec(ParamKind.TEXT) for name in samples},
+        sample=samples,
+    )
+
+
+_PW_ACTIONS = (
+    "propertywatch.action.change_pins",
+    "propertywatch.action.change_scope",
+    "propertywatch.action.unpin",
+    "propertywatch.action.delete",
+)
+
 REGISTRY: tuple[MessageSpec, ...] = (
-    MessageSpec(
-        code="explanation.dimension.unpopulated",
-        template="field is not populated for this log source",
-        params={},
-        sample={},
+    _fixed(
+        "explanation.dimension.unpopulated",
+        "field is not populated for this log source",
     ),
+    # --- MSG-1: refusal and validation sentences (I18N-B1 Family 15) -- keep contiguous ---
+    # The permission refusal, every router.
+    _text(
+        "auth.permission.missing",
+        "missing required permission: {permission}",
+        permission="read:*",
+    ),
+    # Passwords and usernames.
+    _fixed("auth.password.too_short", "password must be at least 12 characters"),
+    _fixed("auth.password.too_long", "password must be at most 72 bytes"),
+    _fixed("auth.password.equals_username", "password must not equal the username"),
+    _fixed(
+        "auth.password.ldap_directory",
+        "LDAP accounts change their password in the directory, not here.",
+    ),
+    _fixed("auth.password.local_only", "only a local account can change its password"),
+    _fixed("auth.password.current_wrong", "current password is wrong"),
+    _fixed(
+        "auth.username.shape",
+        "username must be 1 to 255 characters without spaces or control characters",
+    ),
+    # Sign-in and sessions.
+    _fixed("auth.login.invalid_credentials", "Invalid username or password"),
+    _fixed(
+        "auth.login.directory_unavailable",
+        "The directory server is unavailable. Sign-in was not completed.",
+    ),
+    _fixed("auth.session.required", "Authentication required."),
+    _fixed(
+        "auth.session.must_change_password",
+        "A password change is required before any other request.",
+    ),
+    _fixed(
+        "auth.csrf.origin_missing",
+        "Cross-site request refused: the request has no Origin or Referer header.",
+    ),
+    _text(
+        "auth.csrf.origin_mismatch",
+        "Cross-site request refused: origin {origin} is not the configured public origin.",
+        origin="https://other.example",
+    ),
+    # Account administration.
+    _fixed(
+        "auth.user.last_admin",
+        "the last active user holding admin:* cannot be disabled or lose that role",
+    ),
+    _fixed("auth.user.not_found", "No user has that id."),
+    _fixed("auth.user.ldap_no_password", "An LDAP user has no password here."),
+    _fixed("auth.user.local_needs_password", "A local user needs an initial password."),
+    _fixed("auth.user.source_invalid", "auth_source must be LOCAL or LDAP"),
+    _fixed("auth.user.exists", "A user with that username or email already exists."),
+    _fixed("auth.user.username_taken", "A user with that username already exists."),
+    _fixed("auth.user.email_taken", "A user with that email already exists."),
+    _fixed("auth.user.email_unusable", "email is not usable"),
+    _fixed(
+        "auth.user.reset_local_only",
+        "Only a local account can have its password reset here.",
+    ),
+    _text("auth.user.role_unknown", "unknown role: {name}", name="analyst"),
+    # Directory configuration.
+    _fixed(
+        "auth.directory.stale",
+        "The directory configuration is stale. Reload it and retry.",
+    ),
+    _fixed("auth.directory.test_needs_url", "the test needs a directory URL"),
+    MessageSpec(
+        code="auth.directory.urls_max",
+        template="at most {max} directory URLs are allowed",
+        params={"max": ParamSpec(ParamKind.COUNT, style="plain")},
+        sample={"max": 8},
+    ),
+    _fixed("auth.directory.url_empty", "a directory URL is empty"),
+    _fixed("auth.directory.url_too_long", "a directory URL is longer than 512 characters"),
+    _text("auth.directory.url_scheme", "{url} must use ldap:// or ldaps://", url="http://dc"),
+    _text("auth.directory.url_credentials", "{url} must not contain credentials", url="ldap://u@dc"),
+    _text("auth.directory.url_host", "{url} must name a host", url="ldap://"),
+    _text("auth.directory.url_path", "{url} must not have a path", url="ldap://dc/x"),
+    _text("auth.directory.url_query", "{url} must not have a query", url="ldap://dc?x"),
+    _text("auth.directory.url_fragment", "{url} must not have a fragment", url="ldap://dc#x"),
+    _fixed(
+        "auth.directory.start_tls_with_ldaps",
+        "start_tls must be false for an ldaps:// URL",
+    ),
+    _fixed("auth.directory.start_tls_needs_ldap", "start_tls requires an ldap:// URL"),
+    _fixed("auth.directory.ldap_needs_start_tls", "an ldap:// URL requires start_tls"),
+    _fixed(
+        "auth.directory.enabled_needs_url",
+        "an enabled configuration needs at least one directory URL",
+    ),
+    _fixed(
+        "auth.directory.enabled_needs_valid_url",
+        "an enabled configuration needs at least one valid directory URL",
+    ),
+    _fixed(
+        "auth.directory.template_too_long",
+        "bind_template is longer than 512 characters",
+    ),
+    _fixed(
+        "auth.directory.template_username",
+        "bind_template must contain {{username}}",
+    ),
+    _fixed("auth.directory.timeout_range", "timeout_seconds must be between 1 and 30"),
+    _fixed("auth.directory.ca_too_long", "ca_pem is too long"),
+    _fixed(
+        "auth.directory.ca_private_key",
+        "ca_pem must be a certificate, not a private key",
+    ),
+    _fixed("auth.directory.ca_invalid", "ca_pem is not a PEM X.509 certificate"),
+    _text(
+        "auth.directory.cert_not_yet_valid",
+        "certificate {subject} is not yet valid (not_before {not_before})",
+        subject="CN=ca",
+        not_before="2030-01-01T00:00:00+00:00",
+    ),
+    _text(
+        "auth.directory.cert_expired",
+        "certificate {subject} is expired (not_after {not_after})",
+        subject="CN=ca",
+        not_after="2020-01-01T00:00:00+00:00",
+    ),
+    _fixed(
+        "auth.directory.base_too_long",
+        "user_search_base is longer than 1024 characters",
+    ),
+    _fixed(
+        "auth.directory.base_control_character",
+        "user_search_base contains a control character",
+    ),
+    # Dashboards.
+    _fixed("dashboard.not_found", "dashboard not found"),
+    _text(
+        "dashboard.name_taken",
+        "you already have a dashboard named '{name}'",
+        name="Overview",
+    ),
+    MessageSpec(
+        code="dashboard.owner_limit",
+        template="the limit is {limit} dashboards per owner",
+        params={"limit": ParamSpec(ParamKind.COUNT, style="plain")},
+        sample={"limit": 20},
+    ),
+    _fixed(
+        "dashboard.owner_only",
+        "only the owner or an administrator can change this dashboard",
+    ),
+    _text(
+        "dashboard.visibility_needs_permission",
+        "changing visibility needs the {permission} permission",
+        permission="dashboard:share",
+    ),
+    _fixed("dashboard.changed_since_opened", "this dashboard changed since you opened it"),
+    # Property watches and custom rules.
+    _text(
+        "propertywatch.name_exists",
+        "a property watch named '{name}' already exists",
+        name="Admin logons",
+    ),
+    _text(
+        "customrule.name_exists",
+        "a custom rule named '{name}' already exists",
+        name="Volume drop",
+    ),
+    _fixed(
+        "customrule.watch_value_gone",
+        "the property-watch value no longer exists (its watch changed or was deleted "
+        "while the rule was saved); reload and choose a value again",
+    ),
+    _fixed("propertywatch.action.change_pins", "change the scope, properties or pins"),
+    _fixed(
+        "propertywatch.action.change_scope",
+        "change the scope or properties (the watch version would change)",
+    ),
+    _fixed("propertywatch.action.unpin", "unpin a value"),
+    _fixed("propertywatch.action.delete", "delete the watch"),
+    MessageSpec(
+        code="propertywatch.dependency.refused",
+        template=(
+            "cannot {action}: custom rule(s) {names} pin a value of this watch; "
+            "detach or delete the rule(s) first"
+        ),
+        params={
+            "action": ParamSpec(ParamKind.REF, ref_codes=_PW_ACTIONS),
+            "names": ParamSpec(ParamKind.TEXT),
+        },
+        sample={"action": MessageRef("propertywatch.action.delete"), "names": "'Rule A'"},
+    ),
+    MessageSpec(
+        code="propertywatch.dependency.raced",
+        template=(
+            "cannot {action}: a custom rule pinned a value of this watch while "
+            "the request ran; reload and try again"
+        ),
+        params={"action": ParamSpec(ParamKind.REF, ref_codes=_PW_ACTIONS)},
+        sample={"action": MessageRef("propertywatch.action.unpin")},
+    ),
+    # --- end MSG-1 ---
 )
 
 
@@ -222,6 +438,13 @@ def _registry_map(registry: Sequence[MessageSpec]) -> dict[str, MessageSpec]:
     return {spec.code: spec for spec in registry}
 
 
+def _specs_by_code(registry: Sequence[MessageSpec]) -> Mapping[str, MessageSpec]:
+    """The code map. The module ``REGISTRY`` is static, so its map is built once."""
+    if registry is REGISTRY:
+        return _REGISTRY_BY_CODE
+    return _registry_map(registry)
+
+
 def _numeric(value: object, *, name: str) -> int | float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise MessageRenderError(f"{name} must be a number")
@@ -325,7 +548,7 @@ def render(
     registry: Sequence[MessageSpec] = REGISTRY,
 ) -> str:
     """Render a reference in the exact legacy English spelling."""
-    spec = _registry_map(registry).get(ref.code)
+    spec = _specs_by_code(registry).get(ref.code)
     if spec is None:
         raise MessageRenderError(f"unknown message code: {ref.code}")
     expected = set(spec.params)
@@ -384,8 +607,7 @@ def _wire_param(
 
 
 def _to_wire(ref: MessageRef, registry: Sequence[MessageSpec]) -> dict[str, object]:
-    specs = _registry_map(registry)
-    spec = specs.get(ref.code)
+    spec = _specs_by_code(registry).get(ref.code)
     if spec is None:
         raise MessageRenderError(f"unknown message code: {ref.code}")
     # This pins missing/extra and kind errors before building the payload.
@@ -408,4 +630,5 @@ def sample_english_params(spec: MessageSpec) -> dict[str, str]:
 
 
 validate_registry(REGISTRY)
+_REGISTRY_BY_CODE: dict[str, MessageSpec] = _registry_map(REGISTRY)
 

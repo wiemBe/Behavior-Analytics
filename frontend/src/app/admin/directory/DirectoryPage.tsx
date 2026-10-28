@@ -74,7 +74,7 @@ export function DirectoryPage() {
       setLoad("ready");
     } catch (err) {
       if (signal?.aborted) return;
-      setLoadLines(errorTexts(err, say));
+      setLoadLines(errorTexts(err, say, locale));
       setLoad(err instanceof ApiError && err.status === 403 ? "forbidden" : "error");
     }
   }
@@ -109,14 +109,14 @@ export function DirectoryPage() {
         setOutcome({
           tone: "warn",
           heading: t("outcome.conflict"),
-          lines: errorTexts(err, say),
+          lines: errorTexts(err, say, locale),
           reload: true,
         });
       } else {
         setOutcome({
           tone: "warn",
           heading: t("outcome.notSaved"),
-          lines: errorTexts(err, say),
+          lines: errorTexts(err, say, locale),
         });
       }
     } finally {
@@ -134,7 +134,7 @@ export function DirectoryPage() {
       setOutcome({
         tone: "warn",
         heading: t("outcome.notReloaded"),
-        lines: errorTexts(err, say),
+        lines: errorTexts(err, say, locale),
         reload: true,
       });
     } finally {
@@ -163,7 +163,7 @@ export function DirectoryPage() {
       });
       setProbe({ kind: "done", result, username });
     } catch (err) {
-      setProbe({ kind: "failed", lines: errorTexts(err, say) });
+      setProbe({ kind: "failed", lines: errorTexts(err, say, locale) });
     } finally {
       setTestUser("");
       setTestPassword("");

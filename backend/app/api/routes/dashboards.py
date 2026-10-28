@@ -13,9 +13,10 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.api.deps import SessionDep
+from app.i18n.refusal import CodedHTTPException, permission_refusal
 from app.schemas.dashboard import (
     DashboardCreate,
     DashboardOut,
@@ -44,11 +45,11 @@ def _guard_write(principal: Principal) -> None:
     try:
         require_permission(principal, PERM_DASHBOARD_WRITE)
     except PermissionDenied as exc:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+        raise permission_refusal(exc) from exc
 
 
-def _refuse(exc: DashboardError) -> HTTPException:
-    return HTTPException(exc.status_code, exc.detail)
+def _refuse(exc: DashboardError) -> CodedHTTPException:
+    return CodedHTTPException(exc.status_code, exc.ref, fields=exc.fields)
 
 
 @router.get("", response_model=PagedDashboards)

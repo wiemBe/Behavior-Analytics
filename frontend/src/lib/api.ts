@@ -4,6 +4,7 @@
 // credentials and never contacts QRadar or the MCP service directly.
 
 import type { TextTranslator } from "@/i18n/textTranslator";
+import { missingPermission } from "@/lib/refusal";
 
 const PUBLIC_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -2708,8 +2709,17 @@ export function actionErrorMessage(err: unknown, t?: TextTranslator): string {
     switch (err.status) {
       case 401:
         return say("sessionExpired", "Your session has expired. Sign in again to continue.");
-      case 403:
+      case 403: {
+        // A refusal that names the missing permission by code says which one (MSG-1); any other
+        // 403 keeps the general sentence.
+        const permission = missingPermission(err);
+        if (permission !== null) {
+          return t
+            ? t("errors.forbiddenPermission", { permission })
+            : `You need the ${permission} permission for this.`;
+        }
         return say("forbidden", "You do not have permission to perform this action.");
+      }
       case 404:
         return say("notFound", "This item no longer exists. Refresh the page.");
       case 409:
@@ -2943,12 +2953,16 @@ async function fleetRequest<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     let detail = res.statusText;
+    let raw: unknown;
+    let body: unknown;
     try {
-      detail = detailText((await res.json()).detail, detail);
+      body = await res.json();
+      raw = (body as { detail?: unknown } | null)?.detail;
+      detail = detailText(raw, detail);
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, raw, body);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;

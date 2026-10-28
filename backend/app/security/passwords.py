@@ -13,6 +13,8 @@ import threading
 
 import bcrypt
 
+from app.i18n.messages import MessageRef, render
+
 BCRYPT_ROUNDS = 12
 _MAX_PASSWORD_BYTES = 72
 
@@ -64,13 +66,18 @@ async def verify_password_async(password: str, hashed: str | None) -> bool:
     return await asyncio.to_thread(verify_password, password, hashed)
 
 
+def password_policy_refs(password: str, username: str) -> list[MessageRef]:
+    """Every reason the password is refused, as codes. Empty means it is acceptable."""
+    reasons: list[MessageRef] = []
+    if len(password) < 12:
+        reasons.append(MessageRef("auth.password.too_short"))
+    if len(password.encode("utf-8")) > _MAX_PASSWORD_BYTES:
+        reasons.append(MessageRef("auth.password.too_long"))
+    if password.casefold() == username.casefold():
+        reasons.append(MessageRef("auth.password.equals_username"))
+    return reasons
+
+
 def password_policy_reasons(password: str, username: str) -> list[str]:
     """Every reason the password is refused. Empty means it is acceptable."""
-    reasons: list[str] = []
-    if len(password) < 12:
-        reasons.append("password must be at least 12 characters")
-    if len(password.encode("utf-8")) > _MAX_PASSWORD_BYTES:
-        reasons.append("password must be at most 72 bytes")
-    if password.casefold() == username.casefold():
-        reasons.append("password must not equal the username")
-    return reasons
+    return [render(ref) for ref in password_policy_refs(password, username)]
