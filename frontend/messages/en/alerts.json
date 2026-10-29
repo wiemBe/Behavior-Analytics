@@ -14,6 +14,7 @@
     "failedHelp": "It may not exist, or the backend may be unreachable. Check the Alerts list, or reload the page to try again.",
     "seen": "seen {count}×",
     "fingerprint": "fingerprint",
+    "descriptionLabel": "Description",
     "evidence": "Evidence",
     "lifecycle": "Lifecycle",
     "opened": "Opened: {value}",

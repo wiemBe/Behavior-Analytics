@@ -1,4 +1,52 @@
 {
+  "alert": {
+    "custom_rule": {
+      "deleted": "the rule was deleted",
+      "description": {
+        "exact": "{name} observed {observed} ({operator} {threshold})",
+        "exact_unit": "{name} observed {observed} {unit} ({operator} {threshold} {unit})",
+        "lower_bound": "{name} observed at least {observed} ({operator} {threshold})",
+        "lower_bound_unit": "{name} observed at least {observed} {unit} ({operator} {threshold} {unit})",
+        "unmeasured": "{name} observed unmeasured ({operator} {threshold})",
+        "unmeasured_unit": "{name} observed unmeasured ({operator} {threshold} {unit})"
+      },
+      "recovered": "condition recovered"
+    },
+    "inventory": {
+      "catchall_sender": {
+        "description": "A device that is not a configured log source is sending to a catch-all log source and requires SOC review.",
+        "reviewed": "catch-all sender {target}",
+        "title": "New sender on {source}: {identifier}"
+      },
+      "log_source": {
+        "description": "A new non-internal log source requires SOC review.",
+        "reviewed": "log source reviewed",
+        "title": "New log source: {name}"
+      }
+    },
+    "offense_collection": {
+      "recovered": "Offense collection freshness recovered.",
+      "stale": {
+        "description": "The read-only offense collector has not completed within its configured freshness threshold.",
+        "title": "Offense collection is stale for {instance}"
+      }
+    },
+    "search": {
+      "failure": {
+        "description": "{name} failed {failures} consecutive runs ({error_type})",
+        "recovered": "search executed successfully",
+        "title": "{name} is failing to run"
+      },
+      "threshold": {
+        "exact": "{name} returned {observed} ({operator} {threshold})",
+        "lower_bound": "{name} returned at least {observed} ({operator} {threshold})",
+        "recovered": "result back within threshold"
+      }
+    },
+    "threshold": {
+      "crossed": "{name} crossed its threshold"
+    }
+  },
   "auth": {
     "csrf": {
       "origin_mismatch": "Cross-site request refused: origin {origin} is not the configured public origin.",
@@ -93,6 +141,59 @@
       "some_degraded": "{working} of {enabled} enabled rules are detecting; {degraded} are degraded.",
       "some_unestablished": "{working} of {enabled} enabled rules are detecting; the rest are not yet established.",
       "unmapped": "No rule is mapped to this technique."
+    }
+  },
+  "custom_rule": {
+    "family": {
+      "collection_off": "{setting} is off",
+      "unknown": "no collection family is known for subject kind {kind}"
+    },
+    "reading": {
+      "action_breakdown_missing": "the action breakdown was not collected",
+      "action_denominator_lower_bound": "the action denominator is a lower bound",
+      "action_denominator_zero": "the action denominator is zero",
+      "bucket_not_complete": "the bucket is not COMPLETE",
+      "bucket_partial": "the bucket is PARTIAL",
+      "class_no_complete_source": "the class has no COMPLETE source bucket",
+      "class_no_enabled_source": "the class has no enabled, monitored source",
+      "count_semantics_unknown": "the bucket does not state whether its counts are exact or lower bounds",
+      "dimension_missing": "the dimension was not collected",
+      "exact_required": "the detector needs exact counts and this count is a lower bound",
+      "not_finite": "the reading is not finite",
+      "numerator_missing": "the numerator was not collected",
+      "request_count_semantics_missing": "the bucket does not state whether the request count is exact",
+      "response_breakdown_missing": "the response-code breakdown was not collected",
+      "response_denominator_lower_bound": "the response-code denominator is a lower bound",
+      "response_denominator_zero": "the response-code denominator is zero",
+      "subject_missing": "no row for this subject in the bucket",
+      "unmapped_remainder_missing": "the unmapped remainder was not collected"
+    },
+    "status": {
+      "bucket_not_measured": "the bucket was not measured",
+      "disabled": "the rule is disabled",
+      "family_not_collected": "the subject''s family is not collected",
+      "lower_bound_below_threshold": "a lower bound below the threshold proves nothing",
+      "lower_bound_cannot_prove_under": "a lower bound cannot prove the reading is under the threshold",
+      "maintenance": "the source is in maintenance",
+      "no_verdict": "the bucket supports no verdict",
+      "operator_unknown": "operator {operator} is not known",
+      "platform_off": "CUSTOM_RULES_ENABLED is off",
+      "stale": {
+        "minute": "no bucket collected for this kind since {bucket} ({age})",
+        "second": "no bucket collected for this kind since {bucket} ({age})"
+      },
+      "subject_retired": "the subject is retired",
+      "threshold_not_finite": "threshold_value is not finite"
+    },
+    "subject": {
+      "endpoint_retired": "the endpoint is retired",
+      "endpoint_retired_at": "the endpoint was retired at {retired_at}",
+      "entity_retired": "the entity is retired",
+      "entity_retired_at": "the entity was retired at {retired_at}",
+      "missing": "the subject no longer exists",
+      "unknown_retirement": "no retirement rule is known for subject kind {kind}",
+      "value_retired": "the value is retired",
+      "value_unpinned": "the value is no longer pinned"
     }
   },
   "customrule": {

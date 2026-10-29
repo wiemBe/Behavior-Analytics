@@ -201,10 +201,13 @@ function formatParam(
       return taggedKind(value, "duration") && finite(value.seconds)
         ? durationText(context.units, value.seconds)
         : undefined;
-    case "timestamp":
-      return typeof value === "string" && utcTimeText(value) !== "—"
-        ? utcTimeText(value)
-        : undefined;
+    case "timestamp": {
+      if (typeof value !== "string") return undefined;
+      const full = utcTimeText(value);
+      if (full === "—") return undefined;
+      // The `minute` style is date, hour:minute and UTC; the default keeps its seconds.
+      return spec.style === "minute" ? full.replace(/(\d\d:\d\d):\d\d( UTC)$/, "$1$2") : full;
+    }
     case "enum":
       return typeof value === "string" && spec.enum_group
         ? enumLabel(context.say as EnumTranslator, spec.enum_group as never, value)

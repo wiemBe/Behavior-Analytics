@@ -136,6 +136,24 @@ describe("custom-rule status and write states in Turkish", () => {
     expect(screen.getByText("collector has not run")).toBeInTheDocument();
   });
 
+  it("renders a coded stale reason with Turkish timestamp, age and grouping", () => {
+    render(
+      <RuleStatus
+        status="STALE"
+        reason="no bucket collected for this kind since 2026-10-28 09:00 UTC (25 h 1 min)"
+        reasonCode="custom_rule.status.stale.minute"
+        reasonParams={{
+          bucket: "2026-10-28T09:00:00+00:00",
+          age: { kind: "duration", seconds: 90060 },
+        }}
+      />,
+    );
+    expect(screen.getByText((_, element) => element?.textContent === (
+      "Bu tür için 2026-10-28 09:00 UTC tarihinden beri zaman dilimi "
+      + "toplanmadı (1 gün 1 sa 1 dk)"
+    ))).toBeInTheDocument();
+  });
+
   it("names the write permission and granting role as code", () => {
     render(<CustomRuleWriteNotice />);
     expect(screen.getByText("Kural düzenleyici gizlendi.")).toBeInTheDocument();

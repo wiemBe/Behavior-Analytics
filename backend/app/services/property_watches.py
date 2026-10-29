@@ -2098,6 +2098,7 @@ async def resolve_watch_alerts(
     *,
     actor: str,
     reason: str = REASON_WATCH_DELETED,
+    reason_message: MessageRef | None = None,
     enqueuer: AlertEnqueuer | None = None,
     clock: Any = None,
 ) -> int:
@@ -2110,6 +2111,8 @@ async def resolve_watch_alerts(
     """
     if not actor.strip():
         raise ValueError("actor is required")
+    if reason_message is None and reason == REASON_WATCH_DELETED:
+        reason_message = MESSAGE_WATCH_DELETED
     fingerprints = list(
         (
             await session.scalars(
@@ -2126,7 +2129,12 @@ async def resolve_watch_alerts(
     _, resolved = await AlertService(session, clock=clock).apply_bulk(
         [],
         [
-            AlertResolution(fingerprint=item, actor=actor, reason=reason)
+            AlertResolution(
+                fingerprint=item,
+                actor=actor,
+                reason=reason,
+                reason_message=reason_message,
+            )
             for item in fingerprints
         ],
     )

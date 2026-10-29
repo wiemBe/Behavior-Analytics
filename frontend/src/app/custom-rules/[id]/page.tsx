@@ -127,7 +127,7 @@ async function CustomRuleDetailPage({ params }: { params: Promise<{ id: string }
 
       <section className="cr-rule-identity" aria-labelledby="state-title">
         <h2 id="state-title">{t("currentState")}</h2>
-        <RuleStatus status={rule.last_status} reason={rule.last_status_reason} />
+        <RuleStatus status={rule.last_status} reason={rule.last_status_reason} reasonCode={rule.last_status_reason_code} reasonParams={rule.last_status_reason_params} />
         <dl className="cr-definition">
           <div><dt>{t("subject")}</dt><dd><span>{subjectKindLabel(rule.subject_kind, say)} · </span><Link href={subject.href}>{subject.label}</Link></dd></div>
           <div><dt>{t("condition")}</dt><dd>{conditionText(rule, locale, say)}</dd></div>

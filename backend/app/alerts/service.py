@@ -26,6 +26,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.i18n.messages import MessageRef, render
 from app.models.alert import Alert
 from app.models.enums import AlertStatus, AlertTransition, Severity
 
@@ -41,6 +42,8 @@ class AlertInput:
     evidence: dict | None = None
     source_anomaly_ids: list[str] | None = None
     context: dict | None = None
+    title_message: MessageRef | None = None
+    description_message: MessageRef | None = None
 
 
 @dataclass
@@ -56,6 +59,16 @@ class AlertResolution:
     fingerprint: str
     actor: str
     reason: str | None = None
+    reason_message: MessageRef | None = None
+
+
+def _message_value(
+    text: str | None, message: MessageRef | None
+) -> tuple[str | None, dict[str, object] | None]:
+    """Derive English and wire metadata from one ref, or clear metadata for free text."""
+    if message is None:
+        return text, None
+    return render(message), message.to_wire()
 
 
 class AlertService:
@@ -71,23 +84,23 @@ class AlertService:
         existing = await self._find_active(data.fingerprint)
 
         if existing is not None:
-            existing.occurrence_count += 1
-            existing.last_seen_at = now
-            existing.severity = data.severity
-            if data.evidence is not None:
-                existing.evidence_snapshot = data.evidence
-            if data.source_anomaly_ids:
-                merged = set(existing.source_anomaly_ids) | set(data.source_anomaly_ids)
-                existing.source_anomaly_ids = sorted(merged)
+            self._refresh(existing, data, now)
             await self.session.flush()
             # No transition -> no notification. This is the dedup guarantee.
             return AlertResult(alert=existing, opened=False, updated=True, transition=None)
 
+        title, title_i18n = _message_value(data.title, data.title_message)
+        description, description_i18n = _message_value(
+            data.description, data.description_message
+        )
+        assert title is not None
         alert = Alert(
             dedup_key=data.fingerprint,
             fingerprint=data.fingerprint,
-            title=data.title,
-            description=data.description,
+            title=title,
+            title_i18n=title_i18n,
+            description=description,
+            description_i18n=description_i18n,
             severity=data.severity,
             status=AlertStatus.OPEN,
             source_type=data.source_type,
@@ -109,8 +122,7 @@ class AlertService:
             existing = await self._find_active(data.fingerprint)
             if existing is None:
                 raise
-            existing.occurrence_count += 1
-            existing.last_seen_at = self._clock()
+            self._refresh(existing, data, self._clock())
             await self.session.flush()
             return AlertResult(alert=existing, opened=False, updated=True, transition=None)
 
@@ -132,7 +144,12 @@ class AlertService:
                            transition=AlertTransition.ACKNOWLEDGED)
 
     async def resolve(
-        self, alert_id: uuid.UUID, *, actor: str, reason: str | None = None
+        self,
+        alert_id: uuid.UUID,
+        *,
+        actor: str,
+        reason: str | None = None,
+        reason_message: MessageRef | None = None,
     ) -> AlertResult:
         alert = await self.session.get(Alert, alert_id)
         if alert is None:
@@ -142,18 +159,30 @@ class AlertService:
         alert.status = AlertStatus.RESOLVED
         alert.resolved_at = self._clock()
         alert.resolved_by = actor
-        alert.resolution_reason = reason
+        alert.resolution_reason, alert.resolution_reason_i18n = _message_value(
+            reason, reason_message
+        )
         await self.session.flush()
         return AlertResult(alert=alert, opened=False, updated=True,
                            transition=AlertTransition.RESOLVED)
 
     async def resolve_by_fingerprint(
-        self, fingerprint: str, *, actor: str, reason: str | None = None
+        self,
+        fingerprint: str,
+        *,
+        actor: str,
+        reason: str | None = None,
+        reason_message: MessageRef | None = None,
     ) -> AlertResult | None:
         alert = await self._find_active(fingerprint)
         if alert is None:
             return None
-        return await self.resolve(alert.id, actor=actor, reason=reason)
+        return await self.resolve(
+            alert.id,
+            actor=actor,
+            reason=reason,
+            reason_message=reason_message,
+        )
 
     async def apply_bulk(
         self,
@@ -196,15 +225,7 @@ class AlertService:
             existing = active.get(data.fingerprint)
             if existing is None:
                 continue
-            now = self._clock()
-            existing.occurrence_count += 1
-            existing.last_seen_at = now
-            existing.severity = data.severity
-            if data.evidence is not None:
-                existing.evidence_snapshot = data.evidence
-            if data.source_anomaly_ids:
-                merged = set(existing.source_anomaly_ids) | set(data.source_anomaly_ids)
-                existing.source_anomaly_ids = sorted(merged)
+            self._refresh(existing, data, self._clock())
             results[index] = AlertResult(
                 alert=existing, opened=False, updated=True, transition=None
             )
@@ -226,24 +247,24 @@ class AlertService:
             now = self._clock()
             existing = active.get(data.fingerprint)
             if existing is not None:
-                existing.occurrence_count += 1
-                existing.last_seen_at = now
-                existing.severity = data.severity
-                if data.evidence is not None:
-                    existing.evidence_snapshot = data.evidence
-                if data.source_anomaly_ids:
-                    merged = set(existing.source_anomaly_ids) | set(data.source_anomaly_ids)
-                    existing.source_anomaly_ids = sorted(merged)
+                self._refresh(existing, data, now)
                 results[index] = AlertResult(
                     alert=existing, opened=False, updated=True, transition=None
                 )
                 continue
 
+            title, title_i18n = _message_value(data.title, data.title_message)
+            description, description_i18n = _message_value(
+                data.description, data.description_message
+            )
+            assert title is not None
             alert = Alert(
                 dedup_key=data.fingerprint,
                 fingerprint=data.fingerprint,
-                title=data.title,
-                description=data.description,
+                title=title,
+                title_i18n=title_i18n,
+                description=description,
+                description_i18n=description_i18n,
                 severity=data.severity,
                 status=AlertStatus.OPEN,
                 source_type=data.source_type,
@@ -267,8 +288,7 @@ class AlertService:
                 existing = await self._find_active(data.fingerprint)
                 if existing is None:
                     raise
-                existing.occurrence_count += 1
-                existing.last_seen_at = self._clock()
+                self._refresh(existing, data, self._clock())
                 active[data.fingerprint] = existing
                 results[index] = AlertResult(
                     alert=existing, opened=False, updated=True, transition=None
@@ -293,7 +313,10 @@ class AlertService:
             resolving.status = AlertStatus.RESOLVED
             resolving.resolved_at = self._clock()
             resolving.resolved_by = item.actor
-            resolving.resolution_reason = item.reason
+            (
+                resolving.resolution_reason,
+                resolving.resolution_reason_i18n,
+            ) = _message_value(item.reason, item.reason_message)
             active.pop(item.fingerprint, None)
             resolved.append(
                 AlertResult(
@@ -306,6 +329,27 @@ class AlertService:
 
         await self.session.flush()
         return opened_or_updated, resolved
+
+    @staticmethod
+    def _refresh(alert: Alert, data: AlertInput, now: datetime) -> None:
+        """Refresh one active row, keeping text and message metadata inseparable."""
+        title, title_i18n = _message_value(data.title, data.title_message)
+        description, description_i18n = _message_value(
+            data.description, data.description_message
+        )
+        assert title is not None
+        alert.occurrence_count += 1
+        alert.last_seen_at = now
+        alert.severity = data.severity
+        alert.title = title
+        alert.title_i18n = title_i18n
+        alert.description = description
+        alert.description_i18n = description_i18n
+        if data.evidence is not None:
+            alert.evidence_snapshot = data.evidence
+        if data.source_anomaly_ids:
+            merged = set(alert.source_anomaly_ids) | set(data.source_anomaly_ids)
+            alert.source_anomaly_ids = sorted(merged)
 
     async def _find_active(self, fingerprint: str) -> Alert | None:
         return await self.session.scalar(

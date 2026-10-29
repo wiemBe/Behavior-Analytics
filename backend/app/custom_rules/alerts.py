@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.alerts.dispatcher import AlertEnqueuer
 from app.alerts.fingerprint import custom_rule_breach_fingerprint
 from app.alerts.service import AlertInput, AlertResolution, AlertResult, AlertService
+from app.i18n.messages import MessageRef, render
 from app.models.alert import Alert
 from app.models.enums import AlertStatus, Severity
 
@@ -44,6 +45,10 @@ REASON_RECOVERED = "condition recovered"
 REASON_DISABLED = "the rule is disabled"
 REASON_RETIRED = "the subject is retired"
 REASON_DELETED = "the rule was deleted"
+MESSAGE_RECOVERED = MessageRef("alert.custom_rule.recovered")
+MESSAGE_DISABLED = MessageRef("custom_rule.status.disabled")
+MESSAGE_RETIRED = MessageRef("custom_rule.status.subject_retired")
+MESSAGE_DELETED = MessageRef("alert.custom_rule.deleted")
 
 _STATUS_DISABLED = "DISABLED"
 _STATUS_RETIRED = "SUBJECT_RETIRED"
@@ -85,6 +90,25 @@ def extra_resolve_reason(
     return REASON_RECOVERED
 
 
+def extra_resolve_message(
+    status: str | None,
+    status_reason_message: MessageRef | None,
+    *,
+    breach_open: bool,
+    alerting_enabled: bool,
+) -> MessageRef | None:
+    """Coded counterpart of :func:`extra_resolve_reason` for stored alert metadata."""
+    if not alerting_enabled:
+        return None
+    if status == _STATUS_DISABLED:
+        return MESSAGE_DISABLED
+    if status == _STATUS_RETIRED:
+        return status_reason_message or MESSAGE_RETIRED
+    if breach_open:
+        return None
+    return MESSAGE_RECOVERED
+
+
 @dataclass(frozen=True)
 class CustomRuleAlertEvent:
     """One breach transition the sink should reflect as an alert.
@@ -111,6 +135,7 @@ class CustomRuleAlertEvent:
     last_bucket_start: datetime
     unmeasured_buckets: int
     reason: str | None = None
+    reason_message: MessageRef | None = None
 
 
 class CustomRuleAlertSink(Protocol):
@@ -181,6 +206,11 @@ def compile_batch(
                     fingerprint=custom_rule_breach_fingerprint(event.rule_id),
                     actor=EVALUATOR_ACTOR,
                     reason=event.reason or REASON_RECOVERED,
+                    reason_message=(
+                        event.reason_message
+                        if event.reason is not None
+                        else MESSAGE_RECOVERED
+                    ),
                 )
             )
             continue
@@ -192,13 +222,17 @@ def compile_batch(
 
 def _alert_input(event: CustomRuleAlertEvent) -> AlertInput:
     metric = f"{event.metric} ({event.unit})" if event.unit else event.metric
+    title_message = MessageRef("alert.threshold.crossed", {"name": event.rule_name})
+    description_message = _description_message(event)
     return AlertInput(
         fingerprint=custom_rule_breach_fingerprint(event.rule_id),
-        title=f"{event.rule_name} crossed its threshold",
+        title=render(title_message),
+        title_message=title_message,
         severity=Severity(event.severity),
         source_type=SOURCE_TYPE,
         source_id=event.rule_id,
-        description=_description(event),
+        description=render(description_message),
+        description_message=description_message,
         evidence={
             "observed_value": event.observed_value,
             "measurement": event.measurement,
@@ -218,18 +252,32 @@ def _alert_input(event: CustomRuleAlertEvent) -> AlertInput:
 
 
 def _description(event: CustomRuleAlertEvent) -> str:
-    unit = f" {event.unit}" if event.unit else ""
-    if event.observed_value is None:
-        observed = "unmeasured"
-    else:
-        prefix = "at least " if event.measurement == "LOWER_BOUND" else ""
-        observed = f"{prefix}{event.observed_value:g}{unit}"
-    return (
-        f"{event.rule_name} observed {observed} ({event.operator} {event.threshold_value:g}{unit})"
+    return render(_description_message(event))
+
+
+def _description_message(event: CustomRuleAlertEvent) -> MessageRef:
+    measured = "unmeasured" if event.observed_value is None else (
+        "lower_bound" if event.measurement == "LOWER_BOUND" else "exact"
     )
+    suffix = "_unit" if event.unit else ""
+    params: dict[str, object] = {
+        "name": event.rule_name,
+        "operator": event.operator,
+        "threshold": event.threshold_value,
+    }
+    if event.observed_value is not None:
+        params["observed"] = event.observed_value
+    if event.unit:
+        params["unit"] = event.unit
+    return MessageRef(f"alert.custom_rule.description.{measured}{suffix}", params)
 
 
-def _resolve_only_event(rule_id: uuid.UUID, reason: str, now: datetime) -> CustomRuleAlertEvent:
+def _resolve_only_event(
+    rule_id: uuid.UUID,
+    reason: str,
+    now: datetime,
+    reason_message: MessageRef | None = None,
+) -> CustomRuleAlertEvent:
     """A resolve the fold did not emit. Only the id, action and reason are read."""
     return CustomRuleAlertEvent(
         action="resolve",
@@ -249,6 +297,7 @@ def _resolve_only_event(rule_id: uuid.UUID, reason: str, now: datetime) -> Custo
         last_bucket_start=now,
         unmeasured_buckets=0,
         reason=reason,
+        reason_message=reason_message,
     )
 
 
@@ -332,7 +381,9 @@ class AlertingCustomRuleSink:
         for rule_id in found:
             if rule_id is None or rule_id in already:
                 continue
-            self._events.append(_resolve_only_event(rule_id, REASON_DELETED, now))
+            self._events.append(
+                _resolve_only_event(rule_id, REASON_DELETED, now, MESSAGE_DELETED)
+            )
             already.add(rule_id)
 
 
@@ -357,6 +408,7 @@ async def resolve_deleted_rule_alert(
         custom_rule_breach_fingerprint(rule_id),
         actor=actor,
         reason=REASON_DELETED,
+        reason_message=MESSAGE_DELETED,
     )
     if enqueuer is not None and result is not None and result.transition is not None:
         await enqueuer.enqueue(result.alert, result.transition)
@@ -384,6 +436,7 @@ __all__ = [
     "NoOpCustomRuleAlertSink",
     "alerting_mode",
     "compile_batch",
+    "extra_resolve_message",
     "extra_resolve_reason",
     "resolve_deleted_rule_alert",
 ]

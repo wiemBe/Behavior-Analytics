@@ -20,6 +20,7 @@ from app.alerts.fingerprint import inventory_fingerprint
 from app.alerts.service import AlertInput, AlertService
 from app.core.config import Settings, get_settings
 from app.fleet.service import classify_sources
+from app.i18n.messages import MessageRef, render
 from app.models.enums import ClassificationReviewStatus, InstanceStatus, Severity
 from app.models.fleet import LogSourceGroup, LogSourceType
 from app.models.instance import QRadarInstance
@@ -209,14 +210,22 @@ class InventorySyncService:
                 if classification.review_status != ClassificationReviewStatus.NEW:
                     continue
                 result = classification.result
+                title_message = MessageRef(
+                    "alert.inventory.log_source.title", {"name": source.name}
+                )
+                description_message = MessageRef(
+                    "alert.inventory.log_source.description"
+                )
                 alert_inputs.append(
                     AlertInput(
                         fingerprint=inventory_fingerprint(instance.id, source.qradar_id),
-                        title=f"New log source: {source.name}",
+                        title=render(title_message),
+                        title_message=title_message,
                         severity=Severity.LOW,
                         source_type="log_source",
                         source_id=source.id,
-                        description="A new non-internal log source requires SOC review.",
+                        description=render(description_message),
+                        description_message=description_message,
                         evidence={
                             "qradar_id": source.qradar_id,
                             "first_seen_at": source.first_seen_at.isoformat(),

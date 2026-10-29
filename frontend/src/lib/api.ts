@@ -720,7 +720,11 @@ export interface Alert {
   id: string;
   fingerprint: string;
   title: string;
+  title_code?: string | null;
+  title_params?: Record<string, unknown> | null;
   description: string | null;
+  description_code?: string | null;
+  description_params?: Record<string, unknown> | null;
   severity: string;
   status: string;
   source_type: string;
@@ -730,6 +734,8 @@ export interface Alert {
   acknowledged_by: string | null;
   resolved_by: string | null;
   resolution_reason: string | null;
+  resolution_reason_code?: string | null;
+  resolution_reason_params?: Record<string, unknown> | null;
   occurrence_count: number;
   evidence_snapshot: Record<string, unknown>;
   source_anomaly_ids: string[];
@@ -2363,6 +2369,8 @@ export interface CustomRule {
   last_evaluated_at: string | null;
   last_status: string | null;
   last_status_reason: string | null;
+  last_status_reason_code?: string | null;
+  last_status_reason_params?: Record<string, unknown> | null;
   active_breach: CustomRuleBreach | null;
   alerting_mode: "shadow" | "alerting";
   created_at: string;

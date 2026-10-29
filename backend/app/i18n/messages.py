@@ -13,11 +13,12 @@ default), ``grouped``, ``fixed`` or ``repr`` (Python's ``str()`` of the number, 
 a trailing ``.0``); points accept ``signed`` (the default) or ``unsigned``; lists accept
 ``comma`` (the default), ``and`` or ``semicolon`` (``"; "``, for a list of clauses that carry
 commas); durations accept ``timedelta`` (Python's ``str()`` of a ``timedelta``, ``0:30:00`` or
-``1 day, 2:00:00``, for a sentence that always printed it so); timestamps accept the default
+``1 day, 2:00:00``, for a sentence that always printed it so) or ``age`` (unbounded hours plus
+minutes and seconds, as the custom-rule stale reason printed them); timestamps accept the default
 (date, second, ``UTC``), ``minute`` (date, minute, ``UTC``) or ``iso``
 (``datetime.isoformat()``, for a sentence that always embedded it). Percent precision,
-fixed-number precision, and point precision are declared separately. Enum, ref, and text params
-have one spelling and therefore no alternate style.
+fixed-number precision, and point precision are declared separately. Enum params accept ``lower``
+when the legacy sentence lower-cased the raw value; ref and text params have one spelling.
 """
 
 from __future__ import annotations
@@ -1876,6 +1877,305 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "(seen only below the admission threshold): this is classified only as a new value",
     ),
     # --- end MSG-4b ---
+    # --- MSG-7: alerts and custom-rule status reasons (Families 13 and 14) -------------------
+    _text(
+        "alert.threshold.crossed",
+        "{name} crossed its threshold",
+        name="Failed sign-ins",
+    ),
+    _msg(
+        "alert.search.threshold.exact",
+        "{name} returned {observed} ({operator} {threshold})",
+        {
+            "name": _TEXT,
+            "observed": ParamSpec(ParamKind.NUMBER, style="general"),
+            "operator": ParamSpec(ParamKind.ENUM, enum_group="customRuleOperator"),
+            "threshold": ParamSpec(ParamKind.NUMBER, style="general"),
+        },
+        {"name": "Daily failures", "observed": 1204.0, "operator": "GT", "threshold": 50.0},
+    ),
+    _msg(
+        "alert.search.threshold.lower_bound",
+        "{name} returned at least {observed} ({operator} {threshold})",
+        {
+            "name": _TEXT,
+            "observed": ParamSpec(ParamKind.NUMBER, style="general"),
+            "operator": ParamSpec(ParamKind.ENUM, enum_group="customRuleOperator"),
+            "threshold": ParamSpec(ParamKind.NUMBER, style="general"),
+        },
+        {"name": "Daily failures", "observed": 1204.0, "operator": "GT", "threshold": 50.0},
+    ),
+    _text(
+        "alert.search.failure.title",
+        "{name} is failing to run",
+        name="Daily failures",
+    ),
+    _msg(
+        "alert.search.failure.description",
+        "{name} failed {failures} consecutive runs ({error_type})",
+        {"name": _TEXT, "failures": _PLAIN, "error_type": _TEXT},
+        {"name": "Daily failures", "failures": 1204, "error_type": "ConnectTimeout"},
+    ),
+    _fixed("alert.search.threshold.recovered", "result back within threshold"),
+    _fixed("alert.search.failure.recovered", "search executed successfully"),
+    _msg(
+        "alert.custom_rule.description.exact",
+        "{name} observed {observed} ({operator} {threshold})",
+        {
+            "name": _TEXT,
+            "observed": ParamSpec(ParamKind.NUMBER, style="general"),
+            "operator": ParamSpec(ParamKind.ENUM, enum_group="customRuleOperator"),
+            "threshold": ParamSpec(ParamKind.NUMBER, style="general"),
+        },
+        {"name": "High traffic", "observed": 1204.0, "operator": "GT", "threshold": 50.0},
+    ),
+    _msg(
+        "alert.custom_rule.description.exact_unit",
+        "{name} observed {observed} {unit} ({operator} {threshold} {unit})",
+        {
+            "name": _TEXT,
+            "observed": ParamSpec(ParamKind.NUMBER, style="general"),
+            "unit": _TEXT,
+            "operator": ParamSpec(ParamKind.ENUM, enum_group="customRuleOperator"),
+            "threshold": ParamSpec(ParamKind.NUMBER, style="general"),
+        },
+        {
+            "name": "High traffic",
+            "observed": 1204.0,
+            "unit": "events",
+            "operator": "GT",
+            "threshold": 50.0,
+        },
+    ),
+    _msg(
+        "alert.custom_rule.description.lower_bound",
+        "{name} observed at least {observed} ({operator} {threshold})",
+        {
+            "name": _TEXT,
+            "observed": ParamSpec(ParamKind.NUMBER, style="general"),
+            "operator": ParamSpec(ParamKind.ENUM, enum_group="customRuleOperator"),
+            "threshold": ParamSpec(ParamKind.NUMBER, style="general"),
+        },
+        {"name": "High traffic", "observed": 1204.0, "operator": "GT", "threshold": 50.0},
+    ),
+    _msg(
+        "alert.custom_rule.description.lower_bound_unit",
+        "{name} observed at least {observed} {unit} ({operator} {threshold} {unit})",
+        {
+            "name": _TEXT,
+            "observed": ParamSpec(ParamKind.NUMBER, style="general"),
+            "unit": _TEXT,
+            "operator": ParamSpec(ParamKind.ENUM, enum_group="customRuleOperator"),
+            "threshold": ParamSpec(ParamKind.NUMBER, style="general"),
+        },
+        {
+            "name": "High traffic",
+            "observed": 1204.0,
+            "unit": "events",
+            "operator": "GT",
+            "threshold": 50.0,
+        },
+    ),
+    _msg(
+        "alert.custom_rule.description.unmeasured",
+        "{name} observed unmeasured ({operator} {threshold})",
+        {
+            "name": _TEXT,
+            "operator": ParamSpec(ParamKind.ENUM, enum_group="customRuleOperator"),
+            "threshold": ParamSpec(ParamKind.NUMBER, style="general"),
+        },
+        {"name": "High traffic", "operator": "GT", "threshold": 50.0},
+    ),
+    _msg(
+        "alert.custom_rule.description.unmeasured_unit",
+        "{name} observed unmeasured ({operator} {threshold} {unit})",
+        {
+            "name": _TEXT,
+            "operator": ParamSpec(ParamKind.ENUM, enum_group="customRuleOperator"),
+            "threshold": ParamSpec(ParamKind.NUMBER, style="general"),
+            "unit": _TEXT,
+        },
+        {
+            "name": "High traffic",
+            "operator": "GT",
+            "threshold": 50.0,
+            "unit": "events",
+        },
+    ),
+    _fixed("alert.custom_rule.recovered", "condition recovered"),
+    _fixed("alert.custom_rule.deleted", "the rule was deleted"),
+    _text(
+        "alert.offense_collection.stale.title",
+        "Offense collection is stale for {instance}",
+        instance="Lab console",
+    ),
+    _fixed(
+        "alert.offense_collection.stale.description",
+        "The read-only offense collector has not completed within its configured freshness "
+        "threshold.",
+    ),
+    _fixed(
+        "alert.offense_collection.recovered",
+        "Offense collection freshness recovered.",
+    ),
+    _text("alert.inventory.log_source.title", "New log source: {name}", name="Edge firewall"),
+    _fixed(
+        "alert.inventory.log_source.description",
+        "A new non-internal log source requires SOC review.",
+    ),
+    _text(
+        "alert.inventory.catchall_sender.title",
+        "New sender on {source}: {identifier}",
+        source="Catch-all source",
+        identifier="host-1204",
+    ),
+    _fixed(
+        "alert.inventory.catchall_sender.description",
+        "A device that is not a configured log source is sending to a catch-all log source and "
+        "requires SOC review.",
+    ),
+    _msg(
+        "alert.inventory.catchall_sender.reviewed",
+        "catch-all sender {target}",
+        {
+            "target": ParamSpec(
+                ParamKind.ENUM,
+                enum_group="catchallReviewStatus",
+                style="lower",
+            )
+        },
+        {"target": "REVIEWED"},
+    ),
+    _fixed("alert.inventory.log_source.reviewed", "log source reviewed"),
+    _fixed("custom_rule.status.platform_off", "CUSTOM_RULES_ENABLED is off"),
+    _fixed("custom_rule.status.disabled", "the rule is disabled"),
+    _fixed("custom_rule.status.subject_retired", "the subject is retired"),
+    _fixed(
+        "custom_rule.status.family_not_collected",
+        "the subject's family is not collected",
+    ),
+    _fixed("custom_rule.status.maintenance", "the source is in maintenance"),
+    _fixed("custom_rule.status.bucket_not_measured", "the bucket was not measured"),
+    _fixed("custom_rule.status.threshold_not_finite", "threshold_value is not finite"),
+    _text(
+        "custom_rule.status.operator_unknown",
+        "operator {operator} is not known",
+        operator="'XX'",
+    ),
+    _fixed("custom_rule.status.no_verdict", "the bucket supports no verdict"),
+    _fixed(
+        "custom_rule.status.lower_bound_below_threshold",
+        "a lower bound below the threshold proves nothing",
+    ),
+    _fixed(
+        "custom_rule.status.lower_bound_cannot_prove_under",
+        "a lower bound cannot prove the reading is under the threshold",
+    ),
+    _msg(
+        "custom_rule.status.stale.minute",
+        "no bucket collected for this kind since {bucket} ({age})",
+        {
+            "bucket": ParamSpec(ParamKind.TIMESTAMP, style="minute"),
+            "age": ParamSpec(ParamKind.DURATION, style="age"),
+        },
+        {"bucket": _PW_AT, "age": 5400},
+    ),
+    _msg(
+        "custom_rule.status.stale.second",
+        "no bucket collected for this kind since {bucket} ({age})",
+        {
+            "bucket": ParamSpec(ParamKind.TIMESTAMP),
+            "age": ParamSpec(ParamKind.DURATION, style="age"),
+        },
+        {"bucket": _PW_AT.replace(second=7), "age": 90061},
+    ),
+    _fixed("custom_rule.reading.subject_missing", "no row for this subject in the bucket"),
+    _fixed("custom_rule.reading.not_finite", "the reading is not finite"),
+    _fixed("custom_rule.reading.bucket_partial", "the bucket is PARTIAL"),
+    _fixed("custom_rule.reading.bucket_not_complete", "the bucket is not COMPLETE"),
+    _fixed(
+        "custom_rule.reading.class_no_enabled_source",
+        "the class has no enabled, monitored source",
+    ),
+    _fixed(
+        "custom_rule.reading.class_no_complete_source",
+        "the class has no COMPLETE source bucket",
+    ),
+    _fixed(
+        "custom_rule.reading.request_count_semantics_missing",
+        "the bucket does not state whether the request count is exact",
+    ),
+    _fixed("custom_rule.reading.numerator_missing", "the numerator was not collected"),
+    _fixed(
+        "custom_rule.reading.unmapped_remainder_missing",
+        "the unmapped remainder was not collected",
+    ),
+    _fixed(
+        "custom_rule.reading.action_breakdown_missing",
+        "the action breakdown was not collected",
+    ),
+    _fixed(
+        "custom_rule.reading.action_denominator_lower_bound",
+        "the action denominator is a lower bound",
+    ),
+    _fixed(
+        "custom_rule.reading.action_denominator_zero",
+        "the action denominator is zero",
+    ),
+    _fixed(
+        "custom_rule.reading.response_breakdown_missing",
+        "the response-code breakdown was not collected",
+    ),
+    _fixed(
+        "custom_rule.reading.response_denominator_lower_bound",
+        "the response-code denominator is a lower bound",
+    ),
+    _fixed(
+        "custom_rule.reading.response_denominator_zero",
+        "the response-code denominator is zero",
+    ),
+    _fixed("custom_rule.reading.dimension_missing", "the dimension was not collected"),
+    _fixed(
+        "custom_rule.reading.count_semantics_unknown",
+        "the bucket does not state whether its counts are exact or lower bounds",
+    ),
+    _fixed(
+        "custom_rule.reading.exact_required",
+        "the detector needs exact counts and this count is a lower bound",
+    ),
+    _text(
+        "custom_rule.family.collection_off",
+        "{setting} is off",
+        setting="waf_collection_enabled",
+    ),
+    _text(
+        "custom_rule.family.unknown",
+        "no collection family is known for subject kind {kind}",
+        kind="UNKNOWN",
+    ),
+    _fixed("custom_rule.subject.missing", "the subject no longer exists"),
+    _msg(
+        "custom_rule.subject.endpoint_retired_at",
+        "the endpoint was retired at {retired_at}",
+        {"retired_at": _ISO},
+        {"retired_at": _PW_AT},
+    ),
+    _fixed("custom_rule.subject.endpoint_retired", "the endpoint is retired"),
+    _msg(
+        "custom_rule.subject.entity_retired_at",
+        "the entity was retired at {retired_at}",
+        {"retired_at": _ISO},
+        {"retired_at": _PW_AT},
+    ),
+    _fixed("custom_rule.subject.entity_retired", "the entity is retired"),
+    _fixed("custom_rule.subject.value_unpinned", "the value is no longer pinned"),
+    _fixed("custom_rule.subject.value_retired", "the value is retired"),
+    _text(
+        "custom_rule.subject.unknown_retirement",
+        "no retirement rule is known for subject kind {kind}",
+        kind="UNKNOWN",
+    ),
+    # --- end MSG-7 ---------------------------------------------------------------------------
     # --- MSG-1b: authoring reasons and remaining conflicts (Families 15, 11) -- keep contiguous ---
     # Custom-rule draft validation (`app/custom_rules/validation.py`, the rule routes). A quoted
     # user value (`{metric}`, `{value}`, `{operator}`) arrives already quoted by `repr`.
@@ -2098,9 +2398,9 @@ _STYLES: dict[ParamKind, set[str | None]] = {
     ParamKind.NUMBER: {None, "general", "grouped", "fixed", "repr"},
     ParamKind.PERCENT: {None},
     ParamKind.POINTS: {None, "signed", "unsigned"},
-    ParamKind.DURATION: {None, "timedelta"},
+    ParamKind.DURATION: {None, "timedelta", "age"},
     ParamKind.TIMESTAMP: {None, "minute", "iso"},
-    ParamKind.ENUM: {None},
+    ParamKind.ENUM: {None, "lower"},
     ParamKind.LIST: {None, "comma", "and", "semicolon"},
     ParamKind.REF: {None},
     ParamKind.TEXT: {None},
@@ -2234,6 +2534,18 @@ def _duration(value: object, *, name: str, style: str | None = None) -> str:
         raise MessageRenderError(f"{name} must not be negative")
     if style == "timedelta":
         return str(timedelta(seconds=seconds))
+    if style == "age":
+        total = max(0, round(seconds))
+        hours, remainder = divmod(total, 3_600)
+        minutes, seconds_left = divmod(remainder, 60)
+        age_parts: list[str] = []
+        if hours:
+            age_parts.append(f"{hours} h")
+        if minutes:
+            age_parts.append(f"{minutes} min")
+        if seconds_left or not age_parts:
+            age_parts.append(f"{seconds_left} s")
+        return " ".join(age_parts)
     total = round(seconds)
     if total == 0:
         return "0 s"
@@ -2303,7 +2615,7 @@ def _format_param(
     if spec.kind in (ParamKind.ENUM, ParamKind.TEXT):
         if not isinstance(value, str):
             raise MessageRenderError(f"{name} must be text")
-        return value
+        return value.lower() if spec.kind is ParamKind.ENUM and spec.style == "lower" else value
     if spec.kind is ParamKind.LIST:
         if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
             raise MessageRenderError(f"{name} must be a list")

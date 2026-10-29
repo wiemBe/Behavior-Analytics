@@ -32,6 +32,8 @@ type ExtendedEnumGroup =
   | "profileValidationStatus"
   | "executionStatus"
   | "executionTrigger"
+  | "customRuleOperator"
+  | "catchallReviewStatus"
   | "role";
 
 /** The part of a translator this module needs: next-intl's `t` and its `has`. */

@@ -123,9 +123,9 @@ const DETAIL_MANY_TR =
   "Değerlendirme penceresinin ölçülen kural eşleşmesi coverage'ı eksiksiz değil " +
   `(719${NB}/${NB}8.640 pencere eksiksiz): 3 pencere toplanamadı (son hata sınıfı: ` +
   "TimeoutError) ve 1 pencere, yakalama ufkunun ötesinde bırakıldığı için hiç aranmadı. " +
-  "Etkilenen pencereler: 2026-10-25 10:00:00 UTC ile 2026-10-25 12:00:00 UTC arasında. " +
+  "Etkilenen pencereler: 2026-10-25 10:00 UTC ile 2026-10-25 12:00 UTC arasında. " +
   "Ölçülen eşleşmelerin yokluğu, kuralın hiç tetiklenmediğinin kanıtı değildir. " +
-  "Değerlendirme penceresi, etkilenen son pencereyi 2026-11-24 12:00:00 UTC tarihine kadar " +
+  "Değerlendirme penceresi, etkilenen son pencereyi 2026-11-24 12:00 UTC tarihine kadar " +
   "tutuyor.";
 
 const DETAIL_ONE_EN =
@@ -361,7 +361,7 @@ describe("rule detail reason in the reader's language", () => {
     expect(reason).toHaveTextContent(
       flat(`(23${NB}/${NB}24 pencere eksiksiz): 1 pencere toplanamadı`),
     );
-    expect(reason).toHaveTextContent("Etkilenen pencere: 2026-10-25 10:00:00 UTC.");
+    expect(reason).toHaveTextContent("Etkilenen pencere: 2026-10-25 10:00 UTC.");
   });
 
   it("renders the history rows' coded reasons and keeps old rows English", async () => {
