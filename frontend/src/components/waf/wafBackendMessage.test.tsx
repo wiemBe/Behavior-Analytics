@@ -83,7 +83,7 @@ describe("the detector's reason", () => {
       },
     });
     expect(reasonText()).toBe(
-      "En az 412 istek (alt sınır: Sayım bir alt sınırdır: artış kanıtlanabilir, normal davranış kanıtlanamaz), baseline medyanı olan 41,5 değerinin üzerinde (hiç trafik beklenmiyordu, +370 istek/zaman dilimi); MAD=0 olduğundan robust skor kullanılamıyor; gözlenen değer beklenen [22,00, 68,00] aralığının dışında",
+      "En az 412 istek (alt sınır: sayım bir alt sınırdır: artış kanıtlanabilir, normal davranış kanıtlanamaz), baseline medyanı olan 41,5 değerinin üzerinde (hiç trafik beklenmiyordu, +370 istek/zaman dilimi); MAD=0 olduğundan robust skor kullanılamıyor; gözlenen değer beklenen [22,00, 68,00] aralığının dışında",
     );
   });
 

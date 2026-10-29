@@ -15,6 +15,7 @@ import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { DecisionLine } from "./DecisionLine";
 import {
   ADMIN_PERMISSION,
+  assumptionTexts,
   conflictConsole,
   costHours,
   estimateText,
@@ -23,6 +24,7 @@ import {
   questionText,
   requestedDays,
 } from "./historyFormat";
+import { shellSentenceReader } from "./historyShellReader";
 
 import "@/components/ui/controls.css";
 import "./history.css";
@@ -51,6 +53,7 @@ function ConsoleEstimateTable({
 }) {
   const t = useTranslations("history.dialog");
   const i18n = useBehaviorI18n();
+  const read = shellSentenceReader(i18n);
   return (
     <table className="hb-families">
       <caption className="sr-only">{t("caption", { name: consoleState.name })}</caption>
@@ -64,22 +67,23 @@ function ConsoleEstimateTable({
       <tbody>
         {consoleState.families.map((family) => {
           const est = settled
-            ? estimateText(estimate?.families.find((f) => f.family === family.family), i18n)
+            ? estimateText(estimate?.families.find((f) => f.family === family.family), i18n, read)
             : { figures: "—", note: null };
           return (
             <tr key={family.family}>
               <th scope="row">{familyName(family.family, i18n)}</th>
-              <td>{familyStateText(family, i18n)}</td>
+              <td>{familyStateText(family, i18n, read)}</td>
               <td className="hb-est">
                 {est.figures}
                 {est.note && <span className="cell-sub">{est.note}</span>}
                 {settled && (
                   <ul className="hb-assumptions" aria-label={t("assumptionsFor", { name: familyName(family.family, i18n) })}>
-                    {[...new Set(estimate?.families.find((f) => f.family === family.family)?.assumptions ?? [])].map(
-                      (a) => (
-                        <li key={a}>{a}</li>
-                      ),
-                    )}
+                    {assumptionTexts(
+                      estimate?.families.find((f) => f.family === family.family),
+                      read,
+                    ).map((a) => (
+                      <li key={a}>{a}</li>
+                    ))}
                   </ul>
                 )}
               </td>

@@ -36,7 +36,9 @@ type ExtendedEnumGroup =
   | "executionTrigger"
   | "customRuleOperator"
   | "catchallReviewStatus"
-  | "role";
+  | "role"
+  | "historyScanStatus"
+  | "historyEmptyNoun";
 
 /** The part of a translator this module needs: next-intl's `t` and its `has`. */
 export interface EnumTranslator {

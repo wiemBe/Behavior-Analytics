@@ -118,15 +118,21 @@ describe("the root provider", () => {
     }
   });
 
-  it("lists every refusal the forced password change can show", () => {
+  it("lists every refusal the forced password change and every estimate sentence of the history dialog can show", () => {
     // `POST /auth/password` answers with the password policy, the session and cross-site
     // refusals and the permission 403; the shell words them, so each must be a shell key.
+    // The history backfill's first-run dialog (MSG-8a) also sits in the shell and words an
+    // estimate: its codes are the other shell keys. `history.estimate.empty_sources` is left out
+    // on purpose: its `noun` is an enum of `enums`, which the shell does not carry, so the lean
+    // reader shows the server's text for it.
     const reachable = Object.keys(codes).filter(
       (code) =>
         code.startsWith("auth.password.") ||
         code.startsWith("auth.session.") ||
         code.startsWith("auth.csrf.") ||
-        code === "auth.permission.missing",
+        code === "auth.permission.missing" ||
+        (/^history\.(fit|estimate|assumption|family|window|interval|words)\./.test(code) &&
+          code !== "history.estimate.empty_sources"),
     );
     expect([...SHELL_BACKEND_KEYS].sort()).toEqual(reachable.map((code) => `backend.${code}`).sort());
   });

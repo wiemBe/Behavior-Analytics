@@ -254,12 +254,18 @@ export interface HistoryWindow {
   available: boolean;
   limited_by: string[];
   reason: string | null;
+  /** The registry code of `reason` and its raw values (MSG-8a); null when it has none. */
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
 }
 
 export interface HistoryGap {
   start: string;
   end: string;
   reason: string;
+  /** Null on a gap stored before codes existed. */
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
 }
 
 /** One log source of a console-wide reading: its key and, when known, its name. */
@@ -286,6 +292,9 @@ export interface HistoryScope {
   started_at: string | null;
   finished_at: string | null;
   reason: string | null;
+  /** Null on a row written before codes existed, and on a sentence that has none. */
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   last_error_class: string | null;
   last_error_at: string | null;
   searches: number | null;
@@ -304,6 +313,8 @@ export interface HistoryScope {
   sources_silent_count: number | null;
   progress_unreadable: boolean;
   later_yes: string;
+  later_yes_code?: string | null;
+  later_yes_params?: Record<string, unknown> | null;
 }
 
 export interface HistorySource {
@@ -311,16 +322,22 @@ export interface HistorySource {
   name: string;
   profile_enabled: boolean;
   later_yes: string;
+  later_yes_code?: string | null;
+  later_yes_params?: Record<string, unknown> | null;
 }
 
 export interface HistoryFamily {
   family: HistoryFamilyKey | string;
   collection_enabled: boolean;
   collection_reason: string;
+  collection_reason_code?: string | null;
+  collection_reason_params?: Record<string, unknown> | null;
   window: HistoryWindow;
   scopes: HistoryScope[];
   sources: HistorySource[] | null;
   later_yes: string | null;
+  later_yes_code?: string | null;
+  later_yes_params?: Record<string, unknown> | null;
 }
 
 export interface HistoryConsole {
@@ -330,6 +347,8 @@ export interface HistoryConsole {
   mode: HistoryConsoleMode;
   families: HistoryFamily[];
   message: string | null;
+  message_code?: string | null;
+  message_params?: Record<string, unknown> | null;
 }
 
 export interface HistoryFamilyEstimate {
@@ -342,7 +361,11 @@ export interface HistoryFamilyEstimate {
   reduced: boolean;
   refused: boolean;
   reason: string;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   assumptions: string[];
+  /** One reference per assumption, parallel to `assumptions`; null for words without a code. */
+  assumption_codes?: ({ code: string; params: Record<string, unknown> } | null)[];
 }
 
 export interface HistoryConsoleEstimate {
@@ -1641,6 +1664,9 @@ export interface IpsEntityRef {
 
 export interface IpsDetectionDetail {
   reason: string | null;
+  // The registry code of `reason` and its raw values; absent on a row stored before codes.
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   expected_low: number | null;
   expected_high: number | null;
   threshold: number | null;
@@ -1662,6 +1688,8 @@ export interface IpsDetectionDetail {
   observed_measurement: MeasurementKind | null;
   absolute_delta: number | null;
   caveat: string | null;
+  caveat_code?: string | null;
+  caveat_params?: Record<string, unknown> | null;
   ratio: number | null;
   ratio_basis: string | null;
   robust_score_status: RobustScoreStatus | null;

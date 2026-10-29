@@ -164,11 +164,34 @@ interface RenderContext {
   units: (key: string, values?: Record<string, string | number>) => string;
 }
 
+/**
+ * A list parameter joined as its style says. The style shapes the backend's English; here it
+ * keeps the same structure in the reader's language: `and_all` joins with one conjunction between
+ * every item (a limit sentence), and `semicolon` joins the clauses of a history reason with
+ * "; " as the English does. The `semicolon` lists of the earlier families (rule health) take the
+ * locale's own list form in a non-English reader, as their catalogs were written for.
+ */
+function joinedList(
+  items: unknown[],
+  spec: BackendParamSpec,
+  context: RenderContext,
+  depth: number,
+  code: string,
+): string | undefined {
+  const parts = items.map((item) => formatUntyped(item, context, depth));
+  if (parts.some((part) => part === undefined)) return undefined;
+  const texts = parts as string[];
+  if (spec.style === "semicolon" && code.startsWith("history.")) return texts.join("; ");
+  if (spec.style === "and_all") return texts.join(context.locale === "tr" ? " ve " : " and ");
+  return new Intl.ListFormat(context.locale === "tr" ? "tr-TR" : "en-US").format(texts);
+}
+
 function formatParam(
   value: unknown,
   spec: BackendParamSpec,
   context: RenderContext,
   depth: number,
+  code: string,
 ): string | undefined {
   switch (spec.kind) {
     case "count":
@@ -219,7 +242,9 @@ function formatParam(
         : label;
     }
     case "list":
-      return taggedKind(value, "list") ? formatUntyped(value, context, depth) : undefined;
+      return taggedKind(value, "list") && Array.isArray(value.items)
+        ? joinedList(value.items, spec, context, depth, code)
+        : undefined;
     case "ref":
       if (typeof value === "string") return value;
       if (!isRecord(value) || typeof value.code !== "string" || !isRecord(value.params)) {
@@ -250,17 +275,51 @@ function translateCode(
     return undefined;
   }
   const formatted: Record<string, string> = {};
+  // A nested sentence keeps its own capital only at the start of the sentence that holds it. In
+  // Turkish the rest of the sentence continues it ("alt sınır: sayım bir alt sınırdır"), so such
+  // a ref is formatted as a marker and put back, lower-first, once the template has placed it.
+  const nested: Record<string, string> = {};
   for (const name of expected) {
-    const value = formatParam(ref.params[name], spec.params[name], context, depth);
+    const value = formatParam(ref.params[name], spec.params[name], context, depth, ref.code);
     if (value === undefined) return undefined;
-    formatted[name] = value;
+    if (context.locale === "tr" && spec.params[name].kind === "ref" && isRecord(ref.params[name])) {
+      nested[name] = value;
+      formatted[name] = nestedMarker(name);
+    } else {
+      formatted[name] = value;
+    }
   }
   try {
     const translated = context.say(key, formatted);
-    return translated === key ? undefined : translated;
+    return translated === key ? undefined : placeNested(translated, nested);
   } catch {
     return undefined;
   }
+}
+
+/** Private-use delimiters: they cannot occur in a catalog string or a rendered value. */
+const nestedMarker = (name: string): string => `\uE000${name}\uE001`;
+
+/**
+ * The first word lower-cased when it is a plain capitalised word ("Sayım", "Robust"): a word
+ * with another capital or a digit ("HTTP", "WAF", "GET") is an acronym or a name and stays.
+ */
+function lowerFirst(text: string): string {
+  const match = /^(\p{Lu})([\p{Ll}'’]*)(?=$|[\s:;,.)])/u.exec(text);
+  return match ? match[1].toLocaleLowerCase("tr-TR") + text.slice(1) : text;
+}
+
+function placeNested(template: string, nested: Record<string, string>): string {
+  let out = template;
+  for (const [name, text] of Object.entries(nested)) {
+    const parts = out.split(nestedMarker(name));
+    out = parts.reduce(
+      (before, part, index) =>
+        index === 0 ? part : before + (before === "" ? text : lowerFirst(text)) + part,
+      "",
+    );
+  }
+  return out;
 }
 
 export function renderBackendMessage(

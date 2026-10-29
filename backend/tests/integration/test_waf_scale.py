@@ -259,6 +259,7 @@ class TestStatementCounts:
                 "started_at": T0 - timedelta(days=2),
                 "finished_at": T0 - timedelta(days=2),
                 "reason": "test: a finished reading",
+                "reason_i18n": None,
                 "last_error_class": None,
                 "last_error_at": None,
                 "progress": encode_progress(

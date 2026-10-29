@@ -27,7 +27,8 @@ def scope_row(instance_id: uuid.UUID, family: str = "WAF", key: str = "1", **ext
         "instance_id": instance_id, "family": family, "scope_key": key, "state": "READING",
         "days_requested": 28, "days_target": None, "target_start": None, "floor": None,
         "through": None, "anchor": None, "started_at": NOW, "finished_at": None,
-        "reason": None, "last_error_class": None, "last_error_at": None, "progress": {},
+        "reason": None, "reason_i18n": None, "last_error_class": None, "last_error_at": None,
+        "progress": {},
     }
     values.update(extra)
     return values

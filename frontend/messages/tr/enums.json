@@ -182,5 +182,14 @@
     "partial": "kısmi",
     "missing": "eksik",
     "complete": "eksiksiz"
+  },
+  "historyScanStatus": {
+    "failed": "başarısız oldu",
+    "truncated": "kırpıldı",
+    "not_run": "çalıştırılmadı"
+  },
+  "historyEmptyNoun": {
+    "tracked endpoint": "izlenen endpoint",
+    "admitted entity": "kabul edilmiş varlık"
   }
 }

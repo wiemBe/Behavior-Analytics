@@ -7,6 +7,7 @@
 
 import { useTranslations } from "next-intl";
 
+import { useBackendMessage } from "@/i18n/backendMessage";
 import type { IpsAnomalyDetail } from "@/lib/api";
 import {
   formatCount,
@@ -53,12 +54,26 @@ export function IpsDetectionBlock({
   const t = useTranslations("ips.detection");
   const i18n = useBehaviorI18n();
   const { locale } = i18n;
+  // The detector's own sentences, in the reader's language when the API sent their code.
+  const say = useBackendMessage();
   const d = anomaly.detection;
   if (!d) {
     return <div className="notice">{t("noWorking")}</div>;
   }
 
-  const reason = d.reason ?? anomaly.explanation;
+  const reason =
+    d.reason != null
+      ? say({ text: d.reason, code: d.reason_code, params: d.reason_params })
+      : anomaly.explanation != null
+        ? say({
+            text: anomaly.explanation,
+            code: anomaly.explanation_code,
+            params: anomaly.explanation_params,
+          })
+        : null;
+  const caveat = d.caveat
+    ? say({ text: d.caveat, code: d.caveat_code, params: d.caveat_params })
+    : null;
   const spec = detectorSpec(anomaly.anomaly_type);
   const f = ipsFigures(anomaly, d);
   const unit = unitText(f.unit, bucketWidth(bucketSeconds), i18n);
@@ -120,7 +135,7 @@ export function IpsDetectionBlock({
             value={formatCount(anomaly.consecutive_buckets, locale)}
           />
         </dl>
-        {d.caveat && <p className="subtitle">{d.caveat}</p>}
+        {caveat && <p className="subtitle">{caveat}</p>}
       </div>
     );
   }
@@ -185,7 +200,7 @@ export function IpsDetectionBlock({
           {robustScoreMeaning(d.robust_score_status, i18n)}
         </p>
       )}
-      {d.caveat && <p className="subtitle">{d.caveat}</p>}
+      {caveat && <p className="subtitle">{caveat}</p>}
     </div>
   );
 }

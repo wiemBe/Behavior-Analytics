@@ -39,6 +39,7 @@ from tests.integration.history_phase_a_support import (
     settings_for,
     tick,
 )
+from tests.integration.history_reason_support import assert_coded
 from tests.integration.test_history_backfill_api import ADMIN, BASE, Client, family_of
 from tests.integration.test_waf_scale import counting
 
@@ -202,6 +203,7 @@ async def test_a_cut_source_and_a_silent_source_end_partial_with_counts(db_sessi
 
     assert scope.state == "PARTIAL"
     assert "QRadar holds less than asked for 1 of 4 sources" in scope.reason
+    assert_coded(scope)
     assert "2 sources had no event in the window" in scope.reason
     floors = SourceFloors.decode((await _decoded(db_session, console)).adapter)
     assert set(floors.first_buckets) == {"1", "2"}
@@ -228,6 +230,7 @@ async def test_a_console_with_no_event_in_the_window_is_unavailable(db_session) 
 
     assert scope.state == "UNAVAILABLE"
     assert "no event" in scope.reason
+    assert_coded(scope)
     assert await history_rows(db_session, console.instance) == []
 
 
@@ -247,6 +250,7 @@ async def test_a_console_with_no_monitored_source_is_unavailable_without_searchi
     scope = await scope_of(db_session, console.instance)
     assert scope is not None and scope.state == "UNAVAILABLE"
     assert "monitored" in scope.reason
+    assert_coded(scope)
     assert len(provider.calls) == searches + 1  # only the live search of that tick
 
 
@@ -261,6 +265,7 @@ async def test_the_window_is_refused_below_seven_days(db_session) -> None:
 
     assert scope.state == "UNAVAILABLE"
     assert "below the 7-day minimum" in scope.reason
+    assert_coded(scope)
     assert await history_rows(db_session, console.instance) == []
 
 
@@ -346,6 +351,7 @@ async def test_the_switch_off_ends_a_reading_partial(db_session) -> None:
     scope = await scope_of(db_session, console.instance)
     assert scope is not None and scope.state == "PARTIAL"
     assert scope.reason == "history reading was switched off"
+    assert_coded(scope)
     assert len(provider.calls) == searches + 1  # live only
     assert len(await history_rows(db_session, console.instance)) == written
     # Switched off again later: nothing is created or moved.
@@ -372,6 +378,7 @@ async def test_a_stop_request_ends_a_reading_partial(db_session) -> None:
     scope = await scope_of(db_session, console.instance)
     assert scope is not None and scope.state == "PARTIAL"
     assert scope.reason == "stopped by analyst@example.test"
+    assert_coded(scope)
     assert len(provider.calls) == searches + 1
     # The rows it wrote are evidence: their sources were queued and rebuilt in this tick.
     assert report.history is not None and report.history.rebuilt == len(QIDS)
@@ -826,6 +833,7 @@ async def test_a_span_that_cannot_be_read_becomes_a_gap_and_the_scope_ends_parti
 
     assert scope.state == "PARTIAL"
     assert "1 span(s) could not be read" in scope.reason
+    assert_coded(scope)
     progress = decode_progress(scope.progress).progress
     assert [(g.start, g.end) for g in progress.gaps] == [(bad, bad + STEP)]
     starts = {r.bucket_start for r in await history_rows(db_session, console.instance)}
@@ -850,6 +858,7 @@ async def test_the_time_limit_ends_a_reading_partial(db_session) -> None:
     scope = await scope_of(db_session, console.instance)
     assert scope is not None and scope.state == "PARTIAL"
     assert "did not finish in 72 h" in scope.reason
+    assert_coded(scope)
 
 
 async def test_no_history_row_reaches_the_anchor(db_session) -> None:
@@ -959,6 +968,7 @@ async def test_a_provider_outage_marks_the_scope_and_the_next_step_clears_it(db_
     assert scope.last_error_class == "ProviderUnavailableError"
     assert scope.last_error_at == FIRST_TICK + STEP
     assert "the width halves to" in (scope.reason or "")
+    assert_coded(scope)
     progress = (await _decoded(db_session, console)).progress
     assert progress.chunk_buckets is not None and progress.chunk_buckets < 1333 // 2 + 1
     assert progress.chunk_ceiling == progress.chunk_buckets
@@ -1007,6 +1017,7 @@ async def test_capacity_refusal_yields_without_halving_or_marking_the_scope(db_s
     assert yielded.last_error_class == "EarlierProviderError"
     assert yielded.last_error_at == FIRST_TICK
     assert yielded.reason == "deferred: no Ariel permit within 7 s"
+    assert yielded.reason_i18n is None
     assert report.history is not None and report.history.searches == 0
     assert await history_rows(db_session, console.instance) == []
     assert _ARIEL_PRIORITY.get() == "live"

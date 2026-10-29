@@ -90,6 +90,7 @@ from app.history.planner import (
     settle_step,
 )
 from app.history.progress_codec import ProgressCodecError
+from app.history.reasons import message_wire, semicolon_reason
 from app.history.rule_match import (
     RULE_MATCH_SCOPE_KEY,
     ChunkFold,
@@ -100,6 +101,7 @@ from app.history.rule_match import (
     planner_settings,
     scan_result,
 )
+from app.i18n.messages import MessageRef
 from app.models.enums import SearchFamily
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
@@ -559,6 +561,7 @@ class RuleMatchCollector:
         target_start = row.target_start
         started_at = row.started_at
         fit_reason: str | None = None
+        fit_message: MessageRef | None = None
 
         if progress is None:
             # A fresh window (§B.6.5): the family's own lookback, reduced to
@@ -573,6 +576,7 @@ class RuleMatchCollector:
                     state=next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL).state,
                     trigger=HistoryTrigger.WINDOW_TOO_SMALL,
                     reason=family.reason or "history is unavailable for this console",
+                    reason_message=family.reason_message,
                     now=now,
                     progress=None,
                 )
@@ -587,6 +591,7 @@ class RuleMatchCollector:
                     state=next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL).state,
                     trigger=HistoryTrigger.WINDOW_TOO_SMALL,
                     reason=fitted.reason,
+                    reason_message=fitted.reason_message,
                     now=now,
                     progress=None,
                 )
@@ -596,6 +601,7 @@ class RuleMatchCollector:
             started_at = started_at or now
             progress = new_progress(target_start, started_at, settings)
             fit_reason = fitted.reason
+            fit_message = fitted.reason_message
 
         # A scan may be followed by a read in the same tick, while budget and
         # time remain; a read ends the step.
@@ -613,10 +619,15 @@ class RuleMatchCollector:
                 enabled=bool(self.settings.history_backfill_enabled),
             )
             if plan.action is StepAction.WAIT:
-                report.history_reason = self._with_fit(fit_reason, plan.reason)
+                report.history_reason, _ = self._with_fit(
+                    fit_reason, fit_message, plan.reason, plan.reason_message
+                )
                 return
             if plan.action is StepAction.FINISH:
                 trigger = plan.trigger or HistoryTrigger.FINISHED_PARTIAL
+                finish_reason, finish_message = self._with_fit(
+                    fit_reason, fit_message, plan.reason, plan.reason_message
+                )
                 await self._finish_history(
                     instance,
                     row,
@@ -624,7 +635,8 @@ class RuleMatchCollector:
                     report,
                     state=next_state(HistoryState.READING, trigger).state,
                     trigger=trigger,
-                    reason=self._with_fit(fit_reason, plan.reason),
+                    reason=finish_reason,
+                    reason_message=finish_message,
                     now=now,
                     progress=progress,
                     days_target=days_target,
@@ -650,7 +662,9 @@ class RuleMatchCollector:
                     result = failed_scan(span)
                 scan = interpret_scan(progress, [result], end=anchor, settings=settings)
                 progress = scan.progress
-                report.history_reason = self._with_fit(fit_reason, scan.reason)
+                report.history_reason, scan_message = self._with_fit(
+                    fit_reason, fit_message, scan.reason, scan.reason_message
+                )
                 progress_json = encode_progress(progress)
                 if scan.trigger is not None:
                     await self._finish_history(
@@ -661,6 +675,7 @@ class RuleMatchCollector:
                         state=next_state(HistoryState.READING, scan.trigger).state,
                         trigger=scan.trigger,
                         reason=report.history_reason,
+                        reason_message=scan_message,
                         now=now,
                         progress=progress,
                         days_target=days_target,
@@ -675,6 +690,7 @@ class RuleMatchCollector:
                     state=HistoryState.READING,
                     trigger=None,
                     reason=report.history_reason,
+                    reason_message=scan_message,
                     now=now,
                     progress=progress,
                     days_target=days_target,
@@ -764,7 +780,9 @@ class RuleMatchCollector:
             await self._write_history_rows(window_rows, metric_rows)
             report.history_windows_written += len(window_rows)
             report.history_rows_written += len(metric_rows)
-            report.history_reason = self._with_fit(fit_reason, settlement.reason)
+            report.history_reason, settled_message = self._with_fit(
+                fit_reason, fit_message, settlement.reason, settlement.reason_message
+            )
 
             if settlement.trigger is not None:
                 await self._finish_history(
@@ -775,6 +793,7 @@ class RuleMatchCollector:
                     state=next_state(HistoryState.READING, settlement.trigger).state,
                     trigger=settlement.trigger,
                     reason=report.history_reason,
+                    reason_message=settled_message,
                     now=now,
                     progress=settlement.progress,
                     days_target=days_target,
@@ -789,6 +808,7 @@ class RuleMatchCollector:
                     state=HistoryState.READING,
                     trigger=None,
                     reason=report.history_reason,
+                    reason_message=settled_message,
                     now=now,
                     progress=settlement.progress,
                     days_target=days_target,
@@ -810,6 +830,7 @@ class RuleMatchCollector:
         reason: str,
         now: datetime,
         progress: ScopeProgress | None,
+        reason_message: MessageRef | dict[str, object] | None = None,
         days_target: int | None = None,
         target_start: datetime | None = None,
         started_at: datetime | None = None,
@@ -822,6 +843,7 @@ class RuleMatchCollector:
             state=state,
             trigger=trigger,
             reason=reason,
+            reason_message=reason_message,
             now=now,
             progress=progress,
             days_target=days_target,
@@ -845,6 +867,7 @@ class RuleMatchCollector:
         days_target: int | None,
         target_start: datetime | None,
         started_at: datetime | None,
+        reason_message: MessageRef | dict[str, object] | None = None,
     ) -> None:
         """Write the scope row: the lifecycle's columns, then the planner's fields."""
         if trigger is None:
@@ -861,6 +884,8 @@ class RuleMatchCollector:
                     state,
                     trigger,
                     bounded_reason(reason),
+                    None,
+                    message_wire(reason_message),
                 ),
                 instance_id=instance.id,
                 family=HistoryFamily.RULE_MATCH,
@@ -870,7 +895,12 @@ class RuleMatchCollector:
                 at=now,
             )
         if progress is None:
-            scope_values = step_row(scope_values, state=state, reason=reason)
+            scope_values = step_row(
+                scope_values,
+                state=state,
+                reason=reason,
+                reason_i18n=message_wire(reason_message),
+            )
         else:
             scope_values = step_row(
                 scope_values,
@@ -882,6 +912,7 @@ class RuleMatchCollector:
                 started_at=started_at,
                 finished_at=now if trigger is not None else None,
                 reason=reason,
+                reason_i18n=message_wire(reason_message),
                 progress=encode_progress(progress),
             )
         await HistoryBackfillRepository(self.session).write_scopes([scope_values])
@@ -923,11 +954,16 @@ class RuleMatchCollector:
             )
 
     @staticmethod
-    def _with_fit(fit_reason: str | None, step_reason: str) -> str:
-        """The window's reason once, followed by this step's reason."""
+    def _with_fit(
+        fit_reason: str | None,
+        fit_message: MessageRef | None,
+        step_reason: str,
+        step_message: MessageRef | None,
+    ) -> tuple[str, dict[str, object] | None]:
+        """The window's reason once, followed by this step's reason, and their reference."""
         if fit_reason is None:
-            return step_reason
-        return f"{fit_reason}; {step_reason}"
+            return step_reason, message_wire(step_message)
+        return semicolon_reason([(fit_reason, fit_message), (step_reason, step_message)])
 
     async def _oldest_live_window(self, instance_id: uuid.UUID) -> datetime | None:
         """The anchor: the oldest live `rule_match_window`, whatever its status."""

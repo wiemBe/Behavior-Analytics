@@ -492,8 +492,9 @@ describe("the first-run dialog in Turkish", () => {
     expect(row("WAF")).toHaveTextContent("1 kaynak etkin; sonradan etkinleştireceğiniz kaynaklar, etkinleştirdiğinizde okunur.");
     expect(row("WAF")).toHaveTextContent("2.100 arama, yaklaşık 72 saat");
     expect(row("WAF")).toHaveTextContent("Azaltıldı: 20 of 28 days fit in 72 hours");
-    expect(row("IPS")).toHaveTextContent("Kapalı. IPS_COLLECTION_ENABLED is off.");
-    expect(row("IPS")).toHaveTextContent("no estimate: collection is switched off");
+    // MSG-8a: the fixture's codes make the dialog word them (it read the API's English before).
+    expect(row("IPS")).toHaveTextContent("Kapalı. IPS_COLLECTION_ENABLED kapalı.");
+    expect(row("IPS")).toHaveTextContent("Tahmin yok: toplama kapalı (IPS_COLLECTION_ENABLED kapalı)");
     expect(row("IPS")).not.toHaveTextContent(/\b0 arama\b/);
     expect(row("Coğrafya")).toHaveTextContent("Dışarıda bırakıldı. Doldurulacak baseline yok.");
     expect(within(dialog).getByRole("list", { name: "WAF için varsayımlar" })).toBeInTheDocument();

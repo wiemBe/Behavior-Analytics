@@ -12,16 +12,17 @@ frontend groups every count in the reader's locale); numbers accept ``general`` 
 default), ``grouped``, ``fixed``, ``trimmed`` (a whole number without a point, otherwise up to three
 decimals with trailing zeros dropped) or ``repr`` (Python's ``str()`` of the number, which keeps
 a trailing ``.0``); points accept ``signed`` (the default) or ``unsigned``; lists accept
-``comma`` (the default), ``and`` or ``semicolon`` (``"; "``, for a list of clauses that carry
-commas); durations accept ``timedelta`` (Python's ``str()`` of a ``timedelta``, ``0:30:00`` or
-``1 day, 2:00:00``, for a sentence that always printed it so) or ``age`` (unbounded hours plus
-minutes and seconds, as the custom-rule stale reason printed them); timestamps accept the default
-(date, second, ``UTC``), ``minute`` (date, minute, ``UTC``) or ``iso``
-(``datetime.isoformat()``, for a sentence that always embedded it); enums accept ``lower`` (the
-value in lowercase, for a sentence that always embedded it so; the frontend labels the value from
-an enum group whose labels are lowercase). Percent precision, fixed-number precision, and point
-precision are declared separately. Ref and text params have one spelling and therefore no
-alternate style.
+``comma`` (the default), ``and`` (Oxford: "a, b and c"), ``and_all`` (a flat " and " between
+every item, for a sentence whose legacy English joined that way) or ``semicolon`` (``"; "``,
+for a list of clauses that carry commas); durations accept ``timedelta`` (Python's ``str()`` of
+a ``timedelta``, ``0:30:00`` or ``1 day, 2:00:00``, for a sentence that always printed it so) or
+``age`` (unbounded hours plus minutes and seconds, as the custom-rule stale reason printed them);
+timestamps accept the default (date, second, ``UTC``), ``minute`` (date, minute, ``UTC``) or
+``iso`` (``datetime.isoformat()``, for a sentence that always embedded it); enums accept
+``lower`` (the value in lowercase, for a sentence that always embedded it so; the frontend labels
+the value from an enum group whose labels are lowercase). Percent precision, fixed-number
+precision, and point precision are declared separately. Ref and text params have one spelling
+and therefore no alternate style.
 """
 
 from __future__ import annotations
@@ -322,6 +323,102 @@ _WAF_NOVELTY_CAUSES = (
 )
 
 
+# Shorthands and reference groups of the MSG-6b block (IPS anomaly sentences, Family 5). The IPS
+# twins of the WAF sentences reuse a `waf.*` code only where the English and the parameters are
+# identical (scopes, the z basis, percent bases, the ratio guards, five history checks).
+_GROUPED0 = ParamSpec(ParamKind.NUMBER, style="grouped", precision=0)
+_IPS_AT = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
+
+_IPS_LABELS = (
+    "ips.label.destination_port",
+    "ips.label.destination_ip",
+    "ips.label.signature",
+    "ips.label.port_fanout",
+    "ips.label.destination_port_hyphenated",
+    "ips.label.source_ip_hyphenated",
+    "ips.label.action",
+)
+
+#: What an entity spike is about: the dimension's noun.
+_IPS_SUBJECT_KINDS = (
+    "ips.label.destination_port",
+    "ips.label.destination_ip",
+    "ips.label.signature",
+)
+
+_IPS_SUBJECTS = ("ips.subject.named", "ips.subject.busiest_fanout")
+
+_IPS_STATES = (
+    "ips.state.not_collected",
+    "ips.state.failed",
+    "ips.state.rejected",
+    "ips.state.lower_bound",
+)
+
+#: The `role` each declared input requirement carries (`app.anomaly.capabilities`).
+_IPS_ROLES = (
+    "ips.role.volume",
+    "ips.role.coverage",
+    "ips.role.history",
+    "ips.role.materiality",
+    "ips.role.largest_contributor",
+    "ips.role.total",
+    "ips.role.largest_fanout",
+    "ips.role.destination_port_coverage",
+    "ips.role.numerator",
+    "ips.role.denominator",
+)
+
+#: Why a scope is narrower than full: the scope decision, optionally led by the input's role.
+_IPS_SCOPES = (*_WAF_SCOPES, "ips.scope.role")
+
+_IPS_NOUNS = ("ips.noun.events", "ips.noun.distinct_ports")
+
+_IPS_RATIO_TEXTS = ("waf.rate.ratio_multiple", "ips.spike.ratio_none")
+
+#: The bases a firing sentence ends with: the z basis and the two p95 fallbacks (events, share).
+_IPS_BASES = (
+    "waf.basis.z",
+    "ips.basis.mad_above_p95_events",
+    "waf.basis.mad_above_p95",
+)
+
+#: The guard sentences a lower bound may wrap ("...; the count is a lower bound (...)").
+_IPS_NOT_PROVEN = (
+    "ips.spike.below_min",
+    "waf.rate.ratio_not_reached",
+    "ips.spike.delta_below_min",
+    "waf.basis.z_not_reached",
+    "ips.basis.mad_within_p95_events",
+    "waf.basis.mad_within_p95",
+    "ips.concentration.top_below_min",
+    "waf.concentration.rise_below_min",
+    "ips.block.numerator_below_min",
+    "waf.ratio.rise_below_min",
+    "waf.ratio.multiple_below_min",
+)
+
+_IPS_HISTORY_CHECKS = (
+    "waf.history_check.not_divisible",
+    "waf.history_check.never_collected",
+    "waf.history_check.record_count",
+    "waf.history_check.bucket_width",
+    "waf.history_check.profile_version",
+    "waf.history_check.appearance_never_collected",
+    "ips.history_check.port_search_not_exact",
+    "ips.history_check.coverage_low",
+    "ips.history_check.admission_unrecorded",
+    "ips.history_check.normalizer_version",
+    "ips.history_check.maintenance",
+    "ips.history_check.not_loaded",
+    "ips.history_check.before_hand_off",
+)
+
+_IPS_NOVELTY_CAUSES = (*_IPS_HISTORY_CHECKS, "waf.novelty.history_incomplete")
+
+_IPS_BELOW_MATERIALITY = ("ips.novelty.below_materiality",)
+
+
 # Shorthands of the MSG-5 block (Phase A detector sentences and lifecycle transition reasons).
 _A_COMPLETENESS = ParamSpec(ParamKind.ENUM, enum_group="bucketCompleteness", style="lower")
 _A_RATIO_TEXTS = (
@@ -336,6 +433,28 @@ _A_VOLUME_BASIS_SAMPLE = MessageRef(
     "anomaly.detector.basis_z", {"score": 6.2, "threshold": 3.5}
 )
 _A_VOLUME_RATIO_SAMPLE = MessageRef("anomaly.detector.ratio_times_expected", {"ratio": 5.2})
+
+#: History (MSG-8a): the reasons an estimate line can carry, and the counted source words.
+_HB_B0 = datetime(2026, 10, 1, 8, 30, tzinfo=UTC)
+_HB_AT = datetime(2026, 10, 2, 8, 30, tzinfo=UTC)
+_ESTIMATE_REASONS = (
+    "history.fit.reduced",
+    "history.fit.fits",
+    "history.fit.refused",
+    "history.estimate.all_refused",
+    "history.estimate.some_refused",
+    "history.estimate.some_refused_reduced",
+    "history.estimate.reduced",
+    "history.estimate.all_fit",
+    "history.estimate.no_collection",
+    "history.estimate.planner_refused",
+    "history.estimate.no_monitored",
+    "history.estimate.no_waf",
+    "history.estimate.no_ips",
+    "history.estimate.no_catchall",
+    "history.estimate.no_rules",
+)
+_SOURCE_WORDS = ("history.words.source_one", "history.words.source_many")
 
 
 def _msg(
@@ -3424,6 +3543,598 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # Suppression.
     _msg("waf.suppression.maintenance_window", "maintenance window"),
     # --- end MSG-6 ---------------------------------------------------------------------------
+    # --- MSG-6b: IPS anomaly sentences (Family 5) -- keep contiguous -------------------------
+    # The dimension nouns a spike names and a guard refuses on.
+    _msg("ips.label.destination_port", "destination port"),
+    _msg("ips.label.destination_ip", "destination IP"),
+    _msg("ips.label.signature", "signature"),
+    _msg("ips.label.port_fanout", "port fan-out"),
+    _msg("ips.label.destination_port_hyphenated", "destination-port"),
+    _msg("ips.label.source_ip_hyphenated", "source-IP"),
+    _msg("ips.label.action", "action"),
+    # What a dimension's search was (`IpsDimensionFacts.state`).
+    _msg("ips.state.not_collected", "not collected"),
+    _msg("ips.state.failed", "failed"),
+    _msg("ips.state.rejected", "rejected"),
+    _msg("ips.state.lower_bound", "lower_bound"),
+    # The metric nouns of a spike, and the entity or source it is about.
+    _msg("ips.noun.events", "events"),
+    _msg("ips.noun.distinct_ports", "distinct ports"),
+    _msg(
+        "ips.subject.named",
+        "{kind} {name}",
+        {"kind": ParamSpec(ParamKind.REF, ref_codes=_IPS_SUBJECT_KINDS), "name": _TEXT},
+        {"kind": MessageRef("ips.label.destination_port"), "name": "443/tcp"},
+    ),
+    _msg("ips.subject.busiest_fanout", "the busiest source IP's distinct ports"),
+    # The role of a declared input (`app.anomaly.capabilities`), which leads its scope reason.
+    _msg("ips.role.volume", "volume"),
+    _msg("ips.role.coverage", "coverage"),
+    _msg("ips.role.history", "history"),
+    _msg("ips.role.materiality", "materiality"),
+    _msg("ips.role.largest_contributor", "largest contributor"),
+    _msg("ips.role.total", "total"),
+    _msg("ips.role.largest_fanout", "largest fan-out"),
+    _msg("ips.role.destination_port_coverage", "destination-port coverage"),
+    _msg("ips.role.numerator", "numerator"),
+    _msg("ips.role.denominator", "denominator"),
+    _msg(
+        "ips.scope.role",
+        "{role}: {reason}",
+        {
+            "role": ParamSpec(ParamKind.REF, ref_codes=_IPS_ROLES),
+            "reason": ParamSpec(ParamKind.REF, ref_codes=_WAF_SCOPES),
+        },
+        {
+            "role": MessageRef("ips.role.volume"),
+            "reason": MessageRef("waf.scope.lower_bound_increase"),
+        },
+    ),
+    # Guards shared by every IPS detector.
+    _msg("ips.guard.maintenance", "the source was in maintenance during this bucket"),
+    _msg(
+        "ips.guard.dimension_unmeasured",
+        "the {label} search was {state} for this bucket: the value is unavailable, not zero",
+        {
+            "label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS),
+            "state": ParamSpec(ParamKind.REF, ref_codes=_IPS_STATES),
+        },
+        {
+            "label": MessageRef("ips.label.destination_port"),
+            "state": MessageRef("ips.state.failed"),
+        },
+    ),
+    _msg(
+        "ips.guard.coverage_unmeasurable",
+        "{label} coverage was not measurable, below the {floor} floor: the events without a "
+        "value may differ in kind from the ones with one, so the visible numbers bound nothing",
+        {"label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS), "floor": _PERCENT},
+        {"label": MessageRef("ips.label.destination_port"), "floor": 0.9},
+    ),
+    _msg(
+        "ips.guard.coverage_low",
+        "{label} coverage was {covered}, below the {floor} floor: the events without a "
+        "value may differ in kind from the ones with one, so the visible numbers bound nothing",
+        {
+            "label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS),
+            "covered": _PERCENT,
+            "floor": _PERCENT,
+        },
+        {"label": MessageRef("ips.label.destination_port"), "covered": 0.62, "floor": 0.9},
+    ),
+    _msg(
+        "ips.guard.no_entity",
+        "no {label} entity was supplied for this verdict",
+        {"label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS)},
+        {"label": MessageRef("ips.label.destination_port")},
+    ),
+    _msg(
+        "ips.guard.entity_not_judged",
+        "a {dimension} entity is not judged by {detector}",
+        {"dimension": _TEXT, "detector": _TEXT},
+        {"dimension": "DESTINATION_IP", "detector": "IPS_PORT_RATE_SPIKE"},
+    ),
+    _msg(
+        "ips.guard.absent_port",
+        "port 0 and protocol 255 are absent values, not a service: no claim about them",
+    ),
+    _msg(
+        "ips.guard.generic_signature",
+        "the signature's name is generic: a claim about a specific signature is not safe",
+    ),
+    _msg("ips.guard.count_unknown", "the entity's count is unknown for this bucket"),
+    _msg(
+        "ips.guard.fanout_unstated",
+        "the bucket does not state its largest distinct-port count",
+    ),
+    _msg("ips.guard.source_totals_unstated", "the bucket does not state its source-IP totals"),
+    _msg("ips.guard.action_unmapped", "no action property mapped"),
+    _msg(
+        "ips.guard.action_counts_unstated",
+        "the bucket does not state its blocked and action event counts",
+    ),
+    _msg(
+        "ips.guard.baseline_versions",
+        "the {metric} baseline was built under profile version {profile} and normalizer "
+        "version {normalizer}, not the bucket's {bucket_profile} and {bucket_normalizer}",
+        {
+            "metric": _TEXT,
+            "profile": _TEXT,
+            "normalizer": _TEXT,
+            "bucket_profile": _TEXT,
+            "bucket_normalizer": _TEXT,
+        },
+        {
+            "metric": "entity_events",
+            "profile": "3",
+            "normalizer": "2",
+            "bucket_profile": "4",
+            "bucket_normalizer": "2",
+        },
+    ),
+    _msg(
+        "ips.guard.baseline_samples",
+        "the {metric} baseline has {samples} sample(s), below the minimum of {minimum} for a "
+        "defensible verdict",
+        {"metric": _TEXT, "samples": _PLAIN, "minimum": _PLAIN},
+        {"metric": "entity_events", "samples": 7, "minimum": 8},
+    ),
+    _msg(
+        "ips.guard.not_proven_lower_bound",
+        "{reason}; the count is a lower bound ({scope}), so a normal verdict cannot be "
+        "concluded from it",
+        {
+            "reason": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOT_PROVEN),
+            "scope": ParamSpec(ParamKind.REF, ref_codes=_IPS_SCOPES),
+        },
+        {
+            "reason": MessageRef("waf.basis.z_not_reached", {"score": 2.1, "threshold": 3.5}),
+            "scope": MessageRef("waf.scope.lower_bound_increase"),
+        },
+    ),
+    # Entity spikes (port, destination IP, signature) and the port fan-out.
+    _msg(
+        "ips.spike.below_min",
+        "{observed} {unit}/bucket is below the {minimum} minimum for a defensible verdict",
+        {
+            "observed": _GROUPED0,
+            "unit": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOUNS),
+            "minimum": _GROUPED0,
+        },
+        {"observed": 12.0, "unit": MessageRef("ips.noun.events"), "minimum": 20.0},
+    ),
+    _msg(
+        "ips.spike.delta_below_min",
+        "increase of {delta} {unit}/bucket is below the {minimum} minimum absolute delta",
+        {
+            "delta": _GROUPED0,
+            "unit": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOUNS),
+            "minimum": _GROUPED0,
+        },
+        {"delta": 30.0, "unit": MessageRef("ips.noun.events"), "minimum": 50.0},
+    ),
+    _msg("ips.spike.ratio_none", "expected none"),
+    _msg(
+        "ips.spike.fired",
+        "{observed} {unit} for {subject} is above the baseline median {expected} "
+        "({ratio_text}, +{delta} {unit}/bucket); {basis}",
+        {
+            "observed": _GROUPED0,
+            "unit": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOUNS),
+            "subject": ParamSpec(ParamKind.REF, ref_codes=_IPS_SUBJECTS),
+            "expected": _FIXED1,
+            "ratio_text": ParamSpec(ParamKind.REF, ref_codes=_IPS_RATIO_TEXTS),
+            "delta": _GROUPED0,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "observed": 1520.0,
+            "unit": MessageRef("ips.noun.events"),
+            "subject": MessageRef(
+                "ips.subject.named",
+                {"kind": MessageRef("ips.label.destination_port"), "name": "443/tcp"},
+            ),
+            "expected": 100.0,
+            "ratio_text": MessageRef("waf.rate.ratio_multiple", {"ratio": 15.2}),
+            "delta": 1420.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "ips.spike.fired_lower",
+        "at least {observed} {unit} (a lower bound: {scope}) for {subject} is above the "
+        "baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}",
+        {
+            "observed": _GROUPED0,
+            "unit": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOUNS),
+            "scope": ParamSpec(ParamKind.REF, ref_codes=_IPS_SCOPES),
+            "subject": ParamSpec(ParamKind.REF, ref_codes=_IPS_SUBJECTS),
+            "expected": _FIXED1,
+            "ratio_text": ParamSpec(ParamKind.REF, ref_codes=_IPS_RATIO_TEXTS),
+            "delta": _GROUPED0,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "observed": 1520.0,
+            "unit": MessageRef("ips.noun.events"),
+            "scope": MessageRef(
+                "ips.scope.role",
+                {
+                    "role": MessageRef("ips.role.volume"),
+                    "reason": MessageRef("waf.scope.lower_bound_increase"),
+                },
+            ),
+            "subject": MessageRef(
+                "ips.subject.named",
+                {"kind": MessageRef("ips.label.destination_port"), "name": "443/tcp"},
+            ),
+            "expected": 100.0,
+            "ratio_text": MessageRef("waf.rate.ratio_multiple", {"ratio": 15.2}),
+            "delta": 1420.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    # The score guard over an event count (a share uses the `waf.basis.*` sentences).
+    _msg(
+        "ips.basis.mad_within_p95_events",
+        "robust score unavailable (MAD=0) and {observed} is within the historical p95 {bound}",
+        {"observed": _GROUPED0, "bound": _GROUPED0},
+        {"observed": 310.0, "bound": 350.0},
+    ),
+    _msg(
+        "ips.basis.mad_above_p95_events",
+        "robust score unavailable (MAD=0); {observed} is above the historical p95 {bound}",
+        {"observed": _GROUPED0, "bound": _GROUPED0},
+        {"observed": 410.0, "bound": 350.0},
+    ),
+    # Source concentration.
+    _msg(
+        "ips.concentration.top_below_min",
+        "the largest source IP sent {top} events, below the {minimum} minimum for a material "
+        "concentration",
+        {"top": _PLAIN, "minimum": _PLAIN},
+        {"top": 15, "minimum": 20},
+    ),
+    _msg(
+        "ips.concentration.total_below_min",
+        "{total} events is below the {minimum} minimum for a composition verdict",
+        {"total": _PLAIN, "minimum": _PLAIN},
+        {"total": 40, "minimum": 50},
+    ),
+    _msg(
+        "ips.concentration.fired",
+        "the largest source IP sent {top} of {total} events ({share}), against an expected "
+        "share of {expected} ({rise}); the five largest sent {top5}; {basis}",
+        {
+            "top": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "rise": _POINTS1,
+            "top5": _PCT1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "top": 70,
+            "total": 100,
+            "share": 0.7,
+            "expected": 0.1,
+            "rise": 0.6,
+            "top5": 0.95,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "ips.concentration.fired_no_top5",
+        "the largest source IP sent {top} of {total} events ({share}), against an expected "
+        "share of {expected} ({rise}); the five largest sent n/a; {basis}",
+        {
+            "top": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "rise": _POINTS1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "top": 70,
+            "total": 100,
+            "share": 0.7,
+            "expected": 0.1,
+            "rise": 0.6,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    # Block-ratio shift.
+    _msg(
+        "ips.block.numerator_below_min",
+        "{count} blocked events is below the {minimum} minimum; no material rise in the "
+        "proportion is possible",
+        {"count": _PLAIN, "minimum": _PLAIN},
+        {"count": 5, "minimum": 10},
+    ),
+    _msg(
+        "ips.block.denominator_below_min",
+        "{count} events carrying an action is below the {minimum} minimum denominator for a "
+        "ratio verdict",
+        {"count": _PLAIN, "minimum": _PLAIN},
+        {"count": 40, "minimum": 50},
+    ),
+    _msg(
+        "ips.block.fired",
+        "{count} of {total} events carrying an action were blocked ({share}), against an "
+        "expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "multiple": _FIXED1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "count": 60,
+            "total": 100,
+            "share": 0.6,
+            "expected": 0.1,
+            "history": 1200.0,
+            "rise": 0.5,
+            "multiple": 6.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "ips.block.fired_no_multiple",
+        "{count} of {total} events carrying an action were blocked ({share}), against an "
+        "expected {expected} from {history} historical events ({rise}); {basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "count": 60,
+            "total": 100,
+            "share": 0.6,
+            "expected": 0.0,
+            "history": 1200.0,
+            "rise": 0.6,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "ips.block.fired_lower",
+        "at least {count} of {total} events carrying an action were blocked (at least "
+        "{share}), against an expected {expected} from {history} historical events ({rise}, "
+        "{multiple}x); {basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "multiple": _FIXED1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "count": 60,
+            "total": 100,
+            "share": 0.6,
+            "expected": 0.1,
+            "history": 1200.0,
+            "rise": 0.5,
+            "multiple": 6.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "ips.block.fired_lower_no_multiple",
+        "at least {count} of {total} events carrying an action were blocked (at least "
+        "{share}), against an expected {expected} from {history} historical events ({rise}); "
+        "{basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "count": 60,
+            "total": 100,
+            "share": 0.6,
+            "expected": 0.0,
+            "history": 1200.0,
+            "rise": 0.6,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    # New destination port.
+    _msg("ips.novelty.not_established", "the port's first appearance was not established"),
+    _msg(
+        "ips.novelty.established_outside_window",
+        "established port: first admitted {first_seen}, outside the {buckets}-bucket novelty "
+        "window",
+        {"first_seen": _ISO, "buckets": _PLAIN},
+        {"first_seen": _IPS_AT, "buckets": 12},
+    ),
+    _msg(
+        "ips.novelty.established_hand_off",
+        "established port: first admitted {first_seen}, before history hand-off {hand_off}",
+        {"first_seen": _ISO, "hand_off": _ISO},
+        {"first_seen": _IPS_AT, "hand_off": _IPS_AT + timedelta(days=1)},
+    ),
+    _msg(
+        "ips.novelty.readmitted",
+        "re-admitted port: it was retired and seen again, so it is not new",
+    ),
+    _msg(
+        "ips.novelty.cannot_establish",
+        "novelty cannot be established: {cause}",
+        {"cause": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOVELTY_CAUSES)},
+        {"cause": MessageRef("waf.history_check.not_divisible")},
+    ),
+    _msg(
+        "ips.novelty.flood_discovery",
+        "the first-appearance bucket's destination-port discovery was incomplete: the port "
+        "cannot be told apart from a flood of new ports",
+    ),
+    _msg(
+        "ips.novelty.flood_admission",
+        "the first-appearance bucket's destination-port admission was truncated: the port "
+        "appeared in a flood of new ports and is not individually new",
+    ),
+    _msg(
+        "ips.novelty.below_materiality",
+        "{events} event(s) in {buckets} bucket(s) since first appearance has not reached "
+        "{min_events} events in {min_buckets} buckets",
+        {"events": _PLAIN, "buckets": _PLAIN, "min_events": _PLAIN, "min_buckets": _PLAIN},
+        {"events": 5, "buckets": 1, "min_events": 20, "min_buckets": 2},
+    ),
+    _msg(
+        "ips.novelty.below_materiality_lower",
+        "{reason}; the counts are lower bounds",
+        {"reason": ParamSpec(ParamKind.REF, ref_codes=_IPS_BELOW_MATERIALITY)},
+        {
+            "reason": MessageRef(
+                "ips.novelty.below_materiality",
+                {"events": 5, "buckets": 1, "min_events": 20, "min_buckets": 2},
+            )
+        },
+    ),
+    _msg(
+        "ips.novelty.fired",
+        "destination port {port} carried {events} events across {buckets} buckets since it "
+        "first appeared at {first_seen}; in the verified history {history_start} to "
+        "{history_end} it stayed below {admission} events in every bucket",
+        {
+            "port": _TEXT,
+            "events": _PLAIN,
+            "buckets": _PLAIN,
+            "first_seen": _ISO,
+            "history_start": _ISO,
+            "history_end": _ISO,
+            "admission": _PLAIN,
+        },
+        {
+            "port": "443/tcp",
+            "events": 30,
+            "buckets": 2,
+            "first_seen": _IPS_AT,
+            "history_start": _IPS_AT - timedelta(days=7),
+            "history_end": _IPS_AT,
+            "admission": 3,
+        },
+    ),
+    _msg(
+        "ips.novelty.fired_lower",
+        "destination port {port} carried at least {events} events across {buckets} buckets "
+        "since it first appeared at {first_seen}; in the verified history {history_start} to "
+        "{history_end} it stayed below {admission} events in every bucket",
+        {
+            "port": _TEXT,
+            "events": _PLAIN,
+            "buckets": _PLAIN,
+            "first_seen": _ISO,
+            "history_start": _ISO,
+            "history_end": _ISO,
+            "admission": _PLAIN,
+        },
+        {
+            "port": "443/tcp",
+            "events": 30,
+            "buckets": 2,
+            "first_seen": _IPS_AT,
+            "history_start": _IPS_AT - timedelta(days=7),
+            "history_end": _IPS_AT,
+            "admission": 3,
+        },
+    ),
+    # What the history behind a new-port claim can fail on (`waf.history_check.*` covers the
+    # checks the endpoint and the port share).
+    _msg(
+        "ips.history_check.port_search_not_exact",
+        "history bucket {bucket} had a destination-port search that was {state}, not exact",
+        {"bucket": _ISO, "state": ParamSpec(ParamKind.REF, ref_codes=_IPS_STATES)},
+        {"bucket": _IPS_AT, "state": MessageRef("ips.state.failed")},
+    ),
+    _msg(
+        "ips.history_check.coverage_low",
+        "history bucket {bucket} had destination-port coverage below the {floor} floor",
+        {"bucket": _ISO, "floor": _PERCENT},
+        {"bucket": _IPS_AT, "floor": 0.9},
+    ),
+    _msg(
+        "ips.history_check.admission_unrecorded",
+        "history bucket {bucket} had truncated or unrecorded destination-port admission",
+        {"bucket": _ISO},
+        {"bucket": _IPS_AT},
+    ),
+    _msg(
+        "ips.history_check.normalizer_version",
+        "history bucket {bucket} is incompatible with normalizer version {version}",
+        {"bucket": _ISO, "version": _PLAIN},
+        {"bucket": _IPS_AT, "version": 2},
+    ),
+    _msg(
+        "ips.history_check.maintenance",
+        "history bucket {bucket} was in maintenance",
+        {"bucket": _ISO},
+        {"bucket": _IPS_AT},
+    ),
+    _msg("ips.history_check.not_loaded", "history was not loaded for an established port"),
+    _msg(
+        "ips.history_check.before_hand_off",
+        "the port was first admitted before the history hand-off at {hand_off}",
+        {"hand_off": _ISO},
+        {"hand_off": _IPS_AT},
+    ),
+    # The fixed interpretive caveats, one per detector.
+    _msg(
+        "ips.caveat.port_rate",
+        "More events on a port describe traffic volume, not intent: a scan, a deployment and "
+        "a misconfigured client look alike here.",
+    ),
+    _msg(
+        "ips.caveat.destination_rate",
+        "More events towards a destination describe traffic volume, not an attack on it.",
+    ),
+    _msg(
+        "ips.caveat.signature_burst",
+        "A burst of one signature describes how often the IPS matched it, not that the "
+        "matched activity succeeded.",
+    ),
+    _msg(
+        "ips.caveat.port_fanout",
+        "Many distinct destination ports from one source IP is a traffic shape, not an "
+        "attack verdict: a scan, a vulnerability assessment and a service that rotates "
+        "ports look alike.",
+    ),
+    _msg(
+        "ips.caveat.source_concentration",
+        "A dominant source IP describes traffic composition, not intent. Behind a proxy or "
+        "NAT it is the intermediary's address.",
+    ),
+    _msg(
+        "ips.caveat.block_ratio",
+        "Blocking is judged through the profile's action map. A higher block ratio describes "
+        "the IPS's decisions; it does not establish that an attack succeeded.",
+    ),
+    _msg(
+        "ips.caveat.new_port",
+        "A newly busy destination port may be a deployment as easily as a probe. The "
+        "contributors are the bucket's busiest source IPs, not necessarily this port's.",
+    ),
+    # --- end MSG-6b --------------------------------------------------------------------------
     # --- MSG-8b: search scheduling, the manual-run budget refusal and run results -- keep
     # contiguous ---
     # The cron floor. The cron and the timezone are shown as the user wrote them (the cron
@@ -3517,6 +4228,738 @@ REGISTRY: tuple[MessageSpec, ...] = (
         {"reasons": [MessageRef("search.aql.empty", {})]},
     ),
     # --- end MSG-8b ---
+    # --- MSG-8a: history backfill sentences (Family 7) -- keep contiguous -------------------
+    # The scan and step plans of the shared planner. Counts print without grouping, as the
+    # f-strings they replace did; the floor-found times are `isoformat()`, as they always were.
+    _msg("history.scan.end", "the scan reached the end of the window"),
+    _msg("history.scan.search", "scan for the first event of the scope"),
+    _msg("history.scan.no_result", "no scan result was provided"),
+    _msg(
+        "history.scan.failed",
+        "the floor scan failed {failures} times; history is unavailable",
+        {"failures": _PLAIN},
+        {"failures": 3},
+    ),
+    _msg(
+        "history.scan.retry",
+        "a scan search was {status}; it proves nothing, so it is retried "
+        "({failures} of {max_failures})",
+        {
+            "status": ParamSpec(ParamKind.ENUM, enum_group="historyScanStatus"),
+            "failures": _PLAIN,
+            "max_failures": _PLAIN,
+        },
+        {"status": "failed", "failures": 1, "max_failures": 3},
+    ),
+    _msg(
+        "history.scan.too_recent",
+        "the first event is too recent to prove anything older: the margin of {margin} h "
+        "reaches the end of the window",
+        {"margin": _PLAIN},
+        {"margin": 24},
+    ),
+    _msg(
+        "history.scan.floor_found",
+        "QRadar holds events of the scope from {first}; history starts at {floor}",
+        {"first": _ISO, "floor": _ISO},
+        {"first": _HB_B0, "floor": _HB_AT},
+    ),
+    _msg(
+        "history.scan.floor_found_late",
+        "QRadar holds events of the scope from {first}; history starts at {floor} "
+        "(later than the asked start)",
+        {"first": _ISO, "floor": _ISO},
+        {"first": _HB_B0, "floor": _HB_AT},
+    ),
+    _msg(
+        "history.scan.no_event_window",
+        "no event of the scope in the whole window; nothing is written",
+    ),
+    _msg("history.scan.no_event_span", "no event in the scanned span; scan the next one"),
+    # The step plan; "history reading was switched off" is the state table's sentence
+    # (`history.state.switched_off`), so the planner reuses that code.
+    _msg("history.step.stopped", "history reading was stopped by an operator"),
+    _msg(
+        "history.step.time_limit",
+        "the reading did not finish in {hours} h",
+        {"hours": _PLAIN},
+        {"hours": 72},
+    ),
+    _msg("history.step.wait_budget", "waiting for search budget"),
+    _msg(
+        "history.step.read",
+        "read {buckets} bucket(s) in {searches} search(es) of up to {width}",
+        {"buckets": _PLAIN, "searches": _PLAIN, "width": _PLAIN},
+        {"buckets": 576, "searches": 2, "width": 288},
+    ),
+    # The finish verdict: a semicolon list of clause refs, joined exactly as before.
+    _msg(
+        "history.finish.floor_cut",
+        "QRadar holds less than asked (the floor is later than the asked start)",
+    ),
+    _msg(
+        "history.finish.gaps",
+        "{count} span(s) could not be read",
+        {"count": _PLAIN},
+        {"count": 2},
+    ),
+    _msg(
+        "history.finish.partial",
+        "reached the end; {problems}",
+        {"problems": ParamSpec(ParamKind.LIST, style="semicolon")},
+        {
+            "problems": [
+                MessageRef("history.finish.floor_cut"),
+                MessageRef("history.finish.gaps", {"count": 2}),
+            ]
+        },
+    ),
+    _msg("history.finish.complete", "reached the end with the whole asked window read"),
+    # The width notes of a settled step (§B.6.3).
+    _msg(
+        "history.width.released",
+        "{steps} clean steps brought the failure ceiling to the row fit of {fit}; "
+        "the ceiling is released",
+        {"steps": _PLAIN, "fit": _PLAIN},
+        {"steps": 3, "fit": 576},
+    ),
+    _msg(
+        "history.width.ceiling_doubled",
+        "{steps} clean steps doubled the failure ceiling to {ceiling}",
+        {"steps": _PLAIN, "ceiling": _PLAIN},
+        {"steps": 3, "ceiling": 576},
+    ),
+    # The clauses of a settled tick; `history.settle.ticked` is their "; "-join.
+    _msg(
+        "history.settle.read",
+        "read {count} bucket(s)",
+        {"count": _PLAIN},
+        {"count": 288},
+    ),
+    _msg(
+        "history.settle.width",
+        "the width is {count} bucket(s)",
+        {"count": _PLAIN},
+        {"count": 576},
+    ),
+    _msg(
+        "history.settle.too_many_gaps",
+        "more than {count} unreadable spans",
+        {"count": _PLAIN},
+        {"count": 20},
+    ),
+    _msg(
+        "history.settle.gap_recorded",
+        "recorded a gap: {gap}",
+        {"gap": ParamSpec(ParamKind.REF, ref_codes=("history.gap.search_failed",))},
+        {"gap": MessageRef("history.gap.search_failed", {"failures": 3})},
+    ),
+    _msg(
+        "history.settle.failed_minimum",
+        "a search failed at the minimum width ({failures} of {max_failures}); "
+        "the same span is tried again",
+        {"failures": _PLAIN, "max_failures": _PLAIN},
+        {"failures": 1, "max_failures": 3},
+    ),
+    _msg(
+        "history.settle.failed_halve",
+        "a search of {buckets} buckets failed; the width halves to {width}",
+        {"buckets": _PLAIN, "width": _PLAIN},
+        {"buckets": 288, "width": 144},
+    ),
+    _msg(
+        "history.settle.truncated_halve",
+        "a search of {buckets} buckets was truncated and keeps nothing; the width halves "
+        "to {width}",
+        {"buckets": _PLAIN, "width": _PLAIN},
+        {"buckets": 288, "width": 144},
+    ),
+    _msg("history.settle.budget_ended", "the budget ended before this span was searched"),
+    _msg(
+        "history.settle.density",
+        "{share} of the buckets read are lower bounds (limit {limit}): too many distinct "
+        "values per bucket, so history would be lower bounds",
+        {"share": _PERCENT, "limit": _PERCENT},
+        {"share": 0.06, "limit": 0.05},
+    ),
+    _msg(
+        "history.settle.ticked",
+        "{clauses}",
+        {"clauses": ParamSpec(ParamKind.LIST, style="semicolon")},
+        {
+            "clauses": [
+                MessageRef("history.settle.read", {"count": 288}),
+                MessageRef("history.settle.width", {"count": 576}),
+            ]
+        },
+    ),
+    # `fit_window` (§B.6.5): the hours are `.1f`, a closed style reproduces them.
+    _msg(
+        "history.fit.reduced",
+        "window reduced from {asked} to {days} days: the estimate exceeded {limit} hours",
+        {"asked": _PLAIN, "days": _PLAIN, "limit": _PLAIN},
+        {"asked": 28, "days": 21, "limit": 72},
+    ),
+    _msg(
+        "history.fit.fits",
+        "the {days}-day window fits in an estimated {hours} hours",
+        {"days": _PLAIN, "hours": _FIXED1},
+        {"days": 28, "hours": 23.4},
+    ),
+    _msg(
+        "history.fit.refused",
+        "even {days} days need about {hours} hours ({searches} searches, {ticks} ticks), "
+        "over the {limit}-hour limit; history is unavailable",
+        {"days": _PLAIN, "hours": _FIXED1, "searches": _PLAIN, "ticks": _PLAIN, "limit": _PLAIN},
+        {"days": 7, "hours": 90.0, "searches": 700, "ticks": 70, "limit": 72},
+    ),
+    # The family window (`fit_family_window`): the limit words join with " and ".
+    _msg(
+        "history.window.limit_setting",
+        "{setting} is {days} days",
+        {"setting": _TEXT, "days": _PLAIN},
+        {"setting": "BASELINE_LOOKBACK_DAYS", "days": 21},
+    ),
+    _msg(
+        "history.window.limit_retention",
+        "{setting} is {days} days and {hours_setting} is {hours} hours, so the reading "
+        "would outlive the retention",
+        {"setting": _TEXT, "days": _PLAIN, "hours_setting": _TEXT, "hours": _PLAIN},
+        {
+            "setting": "RETENTION_LOG_SOURCE_METRIC_DAYS",
+            "days": 21,
+            "hours_setting": "HISTORY_BACKFILL_MAX_HOURS",
+            "hours": 72,
+        },
+    ),
+    _msg(
+        "history.window.reduced",
+        "window reduced from {asked} to {days} days: {limits}",
+        {
+            "asked": _PLAIN,
+            "days": _PLAIN,
+            "limits": ParamSpec(ParamKind.LIST, style="and_all"),
+        },
+        {
+            "asked": 28,
+            "days": 21,
+            "limits": [
+                MessageRef(
+                    "history.window.limit_setting",
+                    {"setting": "BASELINE_LOOKBACK_DAYS", "days": 21},
+                ),
+                MessageRef(
+                    "history.window.limit_retention",
+                    {
+                        "setting": "RETENTION_LOG_SOURCE_METRIC_DAYS",
+                        "days": 22,
+                        "hours_setting": "HISTORY_BACKFILL_MAX_HOURS",
+                        "hours": 72,
+                    },
+                ),
+            ],
+        },
+    ),
+    _msg(
+        "history.window.unavailable",
+        "history unavailable: the window would be {days} days, below the {minimum}-day "
+        "minimum; {limits}",
+        {
+            "days": _PLAIN,
+            "minimum": _PLAIN,
+            "limits": ParamSpec(ParamKind.LIST, style="and_all"),
+        },
+        {
+            "days": 5,
+            "minimum": 7,
+            "limits": [
+                MessageRef(
+                    "history.window.limit_setting",
+                    {"setting": "HISTORY_BACKFILL_DAYS", "days": 5},
+                )
+            ],
+        },
+    ),
+    # What a later Yes would do for a scope (the "if Yes is said later" column).
+    _msg("history.later_yes.possible", "possible"),
+    _msg("history.later_yes.not_possible", "not possible: this source already collected"),
+    _msg("history.later_yes.has_scope", "not needed: this source has a history scope"),
+    # The collection switch words of the admin page.
+    _msg("history.family.always_on", "source-volume collection is the platform's base collection"),
+    _msg(
+        "history.family.switch_on",
+        "{setting} is on",
+        {"setting": _TEXT},
+        {"setting": "WAF_COLLECTION_ENABLED"},
+    ),
+    _msg(
+        "history.family.switch_off",
+        "{setting} is off",
+        {"setting": _TEXT},
+        {"setting": "IPS_COLLECTION_ENABLED"},
+    ),
+    # The first-step zero counts of the WAF and IPS collectors (stored on the scope row).
+    _msg(
+        "history.family.zero_endpoint",
+        "fitted with no tracked endpoint yet; the {limit}-hour limit still bounds the reading",
+        {"limit": _PLAIN},
+        {"limit": 72},
+    ),
+    _msg(
+        "history.family.zero_entity",
+        "fitted with no admitted entity yet; the {limit}-hour limit still bounds the reading",
+        {"limit": _PLAIN},
+        {"limit": 72},
+    ),
+    _msg(
+        "history.family.fair_share",
+        "fitted with a fair share of {share} of the {total} shared history searches per tick",
+        {"share": _PLAIN, "total": _PLAIN},
+        {"share": 3, "total": 10},
+    ),
+    # The per-source estimate summary (`estimate_source_family`).
+    _msg(
+        "history.estimate.all_refused",
+        "all {sources} sources are unavailable: even {days} days exceed the {limit}-hour "
+        "per-source limit",
+        {"sources": _PLAIN, "days": _PLAIN, "limit": _PLAIN},
+        {"sources": 4, "days": 7, "limit": 72},
+    ),
+    _msg(
+        "history.estimate.some_refused",
+        "{refused} of {sources} sources are unavailable because even 7 days exceed the "
+        "{limit}-hour per-source limit; the remaining source windows fit",
+        {"refused": _PLAIN, "sources": _PLAIN, "limit": _PLAIN},
+        {"refused": 1, "sources": 4, "limit": 72},
+    ),
+    _msg(
+        "history.estimate.some_refused_reduced",
+        "{refused} of {sources} sources are unavailable because even 7 days exceed the "
+        "{limit}-hour per-source limit; the remaining source windows fit, with the smallest "
+        "reduced from {asked} to {days} days",
+        {"refused": _PLAIN, "sources": _PLAIN, "limit": _PLAIN, "asked": _PLAIN, "days": _PLAIN},
+        {"refused": 1, "sources": 4, "limit": 72, "asked": 28, "days": 21},
+    ),
+    _msg(
+        "history.estimate.reduced",
+        "window reduced from {asked} to {days} days for the smallest per-source fit: the "
+        "estimate exceeded {limit} hours",
+        {"asked": _PLAIN, "days": _PLAIN, "limit": _PLAIN},
+        {"asked": 28, "days": 21, "limit": 72},
+    ),
+    _msg(
+        "history.estimate.all_fit",
+        "all {sources} per-source {days}-day windows fit; the console total is an estimated "
+        "{hours} hours",
+        {"sources": _PLAIN, "days": _PLAIN, "hours": _FIXED1},
+        {"sources": 4, "days": 28, "hours": 61.2},
+    ),
+    # Why an estimate is missing (the service's `no estimate: ...` shapes).
+    _msg(
+        "history.estimate.no_collection",
+        "no estimate: collection is switched off ({reason})",
+        {"reason": ParamSpec(ParamKind.REF, ref_codes=("history.family.switch_off",))},
+        {"reason": MessageRef("history.family.switch_off", {"setting": "IPS_COLLECTION_ENABLED"})},
+    ),
+    _msg(
+        "history.estimate.planner_refused",
+        "no estimate: the planner refused the settings ({error})",
+        {"error": _TEXT},
+        {"error": "max_hours and cadence_seconds must be >= 1"},
+    ),
+    _msg(
+        "history.estimate.no_monitored",
+        "no estimate: the console has no monitored log source yet",
+    ),
+    _msg("history.estimate.no_waf", "no estimate: no WAF source is enabled on this console"),
+    _msg("history.estimate.no_ips", "no estimate: no IPS source is enabled on this console"),
+    _msg(
+        "history.estimate.no_catchall",
+        "no estimate: no catch-all bucket has been collected in the last {days} days",
+        {"days": _PLAIN},
+        {"days": 7},
+    ),
+    _msg("history.estimate.no_rules", "no estimate: the console has no enabled rule"),
+    # The estimate compositions of the service.
+    _msg(
+        "history.estimate.empty_sources",
+        "{reason}; {count} source(s) fitted with no {noun} yet; the {limit}-hour limit still "
+        "bounds the reading",
+        {
+            "reason": ParamSpec(ParamKind.REF, ref_codes=_ESTIMATE_REASONS),
+            "count": _PLAIN,
+            "noun": ParamSpec(ParamKind.ENUM, enum_group="historyEmptyNoun"),
+            "limit": _PLAIN,
+        },
+        {
+            "reason": MessageRef(
+                "history.estimate.all_fit", {"sources": 4, "days": 28, "hours": 61.2}
+            ),
+            "count": 2,
+            "noun": "tracked endpoint",
+            "limit": 72,
+        },
+    ),
+    _msg(
+        "history.estimate.window_limited",
+        "{window}; {fit}",
+        {
+            "window": ParamSpec(ParamKind.REF, ref_codes=("history.window.reduced",)),
+            "fit": ParamSpec(ParamKind.REF, ref_codes=_ESTIMATE_REASONS),
+        },
+        {
+            "window": MessageRef(
+                "history.window.reduced",
+                {
+                    "asked": 28,
+                    "days": 21,
+                    "limits": [
+                        MessageRef(
+                            "history.window.limit_setting",
+                            {"setting": "BASELINE_LOOKBACK_DAYS", "days": 21},
+                        )
+                    ],
+                },
+            ),
+            "fit": MessageRef("history.fit.fits", {"days": 21, "hours": 45.0}),
+        },
+    ),
+    # The decision and request sentences of the admin surface.
+    _msg(
+        "history.request.start",
+        "Read history now is recorded. Each family applies it at its next collection; "
+        "no scope has changed yet.",
+    ),
+    _msg(
+        "history.request.stop",
+        "Stop reading is recorded. Each family ends its reading scopes at its next "
+        "collection; no scope has changed yet.",
+    ),
+    _msg(
+        "history.request.refused",
+        "record Yes first: the console has no Yes answer to start or stop",
+    ),
+    _msg("history.decide.never_reversed", "a Yes is never reversed; stop the reading instead"),
+    _msg("history.decide.meantime", "a decision was recorded in the meantime; it is shown here"),
+    # The state table (`_TRANSITIONS`): one code per fixed sentence.
+    _msg(
+        "history.state.request_awaiting_anchor",
+        "history was requested, and the scope waits for its first live bucket (the anchor)",
+    ),
+    _msg(
+        "history.state.request_ready",
+        "history was requested, and the scope can be planned at its next collection",
+    ),
+    _msg(
+        "history.state.not_eligible_preceded",
+        "the scope already has live buckets, and a prepend would move first_seen_at (§B.5)",
+    ),
+    _msg("history.state.anchor_found", "the first live bucket exists; reading can start"),
+    _msg(
+        "history.state.not_eligible_late",
+        "the scope turned out to have live buckets that history cannot precede",
+    ),
+    _msg(
+        "history.state.nothing_to_read_scan",
+        "QRadar holds no event of the scope in the window, or the floor scan could not be done",
+    ),
+    _msg("history.state.nothing_to_read", "QRadar holds no event of the scope in the window"),
+    _msg(
+        "history.state.window_too_small",
+        "the estimate exceeds the time limit even at the smallest window",
+    ),
+    _msg(
+        "history.state.finished_complete",
+        "the reading reached the end; the floor is within one bucket of the asked start "
+        "and no gap exists",
+    ),
+    _msg(
+        "history.state.finished_partial",
+        "the reading reached the end, but QRadar holds less than asked or a gap exists",
+    ),
+    _msg(
+        "history.state.density_gate",
+        "too many buckets would be lower bounds; reading further would store only those",
+    ),
+    _msg(
+        "history.state.too_many_gaps",
+        "the gap list is full; the scope has too many unreadable spans",
+    ),
+    _msg("history.state.time_limit", "the reading did not finish inside its time limit"),
+    _msg(
+        "history.state.switched_off_start",
+        "history reading is switched off; the scope starts live",
+    ),
+    _msg(
+        "history.state.switched_off_waiting",
+        "history reading was switched off while waiting",
+    ),
+    _msg("history.state.switched_off", "history reading was switched off"),
+    _msg("history.state.stopped_waiting", "stopped by an operator while waiting"),
+    _msg("history.state.stopped", "stopped by an operator"),
+    _msg(
+        "history.state.restart",
+        "the reading restarts: a new answer, a topped-up source or a new watch version",
+    ),
+    # The lifecycle's own reasons (the scope rows the lifecycle writes itself).
+    _msg(
+        "history.lifecycle.not_eligible",
+        "this source already collected live data; history cannot be read before it "
+        "(disable the profile and create it again to read its history)",
+    ),
+    _msg("history.lifecycle.restart", "read history now: topping up"),
+    _msg(
+        "history.lifecycle.stopped_by",
+        "stopped by {by}",
+        {"by": _TEXT},
+        {"by": "ayse"},
+    ),
+    # The multi-source finishes (`finish_with_sources`) and their counted words.
+    _msg("history.words.source_one", "1 source"),
+    _msg(
+        "history.words.source_many",
+        "{count} sources",
+        {"count": _PLAIN},
+        {"count": 5},
+    ),
+    _msg(
+        "history.finish.cut_sources",
+        "QRadar holds less than asked for {cut} of {total}",
+        {
+            "cut": _PLAIN,
+            "total": ParamSpec(ParamKind.REF, ref_codes=_SOURCE_WORDS),
+        },
+        {"cut": 2, "total": MessageRef("history.words.source_many", {"count": 5})},
+    ),
+    _msg(
+        "history.finish.silent_sources",
+        "{sources} had no event in the window",
+        {"sources": ParamSpec(ParamKind.REF, ref_codes=_SOURCE_WORDS)},
+        {"sources": MessageRef("history.words.source_one")},
+    ),
+    # The adapter finishes of Phase A and catch-all.
+    _msg(
+        "history.phase_a.no_event",
+        "QRadar holds no event of a monitored source in the window; nothing is written",
+    ),
+    _msg(
+        "history.phase_a.no_monitored",
+        "no log source is monitored, so there is nothing to read history for",
+    ),
+    _msg(
+        "history.catchall.no_event",
+        "no catch-all source had an event in the window; nothing is written",
+    ),
+    _msg(
+        "history.catchall.anchor_gone",
+        "the live anchor is gone: the history has no end to read up to",
+    ),
+    _msg(
+        "history.catchall.unreadable",
+        "the stored history progress could not be read back",
+    ),
+    _msg("history.waf.volume_pass_finished", "history volume pass finished"),
+    _msg("history.waf.wait_time_budget", "waiting for the history time budget"),
+    # A scope reason made of two or more coded clauses (the legacy `"; ".join`).
+    _msg(
+        "history.reason.joined",
+        "{clauses}",
+        {"clauses": ParamSpec(ParamKind.LIST, style="semicolon")},
+        {
+            "clauses": [
+                MessageRef("history.family.zero_endpoint", {"limit": 72}),
+                MessageRef("history.settle.read", {"count": 288}),
+            ]
+        },
+    ),
+    # The estimate assumptions: composed of shape, budget, cadence and counted words.
+    _msg("history.assumption.shape_windows", "hourly windows"),
+    _msg(
+        "history.assumption.shape_buckets",
+        "{minutes}-minute buckets",
+        {"minutes": _PLAIN},
+        {"minutes": 5},
+    ),
+    _msg(
+        "history.assumption.budget_waf",
+        "{per_source} history searches per source tick times {sources} sources at once",
+        {"per_source": _PLAIN, "sources": _PLAIN},
+        {"per_source": 10, "sources": 4},
+    ),
+    _msg(
+        "history.assumption.budget_ips",
+        "{per_tick} history searches shared per tick",
+        {"per_tick": _PLAIN},
+        {"per_tick": 10},
+    ),
+    _msg(
+        "history.assumption.budget_plain",
+        "{per_tick} history searches per tick",
+        {"per_tick": _PLAIN},
+        {"per_tick": 10},
+    ),
+    _msg(
+        "history.assumption.opening",
+        "{shape}, {budget}",
+        {
+            "shape": ParamSpec(
+                ParamKind.REF,
+                ref_codes=(
+                    "history.assumption.shape_windows",
+                    "history.assumption.shape_buckets",
+                ),
+            ),
+            "budget": ParamSpec(
+                ParamKind.REF,
+                ref_codes=(
+                    "history.assumption.budget_waf",
+                    "history.assumption.budget_ips",
+                    "history.assumption.budget_plain",
+                ),
+            ),
+        },
+        {
+            "shape": MessageRef("history.assumption.shape_buckets", {"minutes": 5}),
+            "budget": MessageRef("history.assumption.budget_plain", {"per_tick": 10}),
+        },
+    ),
+    _msg("history.interval.minute_one", "1 minute"),
+    _msg(
+        "history.interval.minute_many",
+        "{count} minutes",
+        {"count": _PLAIN},
+        {"count": 5},
+    ),
+    _msg("history.interval.hour_one", "1 hour"),
+    _msg(
+        "history.interval.hour_many",
+        "{count} hours",
+        {"count": _PLAIN},
+        {"count": 2},
+    ),
+    _msg("history.interval.day_one", "1 day"),
+    _msg(
+        "history.interval.day_many",
+        "{count} days",
+        {"count": _PLAIN},
+        {"count": 3},
+    ),
+    _msg(
+        "history.assumption.cadence",
+        "one tick every {interval} (the family's Search cadence)",
+        {
+            "interval": ParamSpec(
+                ParamKind.REF,
+                ref_codes=(
+                    "history.interval.minute_one",
+                    "history.interval.minute_many",
+                    "history.interval.hour_one",
+                    "history.interval.hour_many",
+                    "history.interval.day_one",
+                    "history.interval.day_many",
+                ),
+            )
+        },
+        {"interval": MessageRef("history.interval.minute_many", {"count": 5})},
+    ),
+    _msg(
+        "history.assumption.qradar_time",
+        "QRadar time per search not measured on this console",
+    ),
+    _msg(
+        "history.assumption.phase_a_rows",
+        "{sources} monitored sources, one row each per bucket",
+        {"sources": _PLAIN},
+        {"sources": 120},
+    ),
+    _msg(
+        "history.assumption.waf_sources",
+        "{count} WAF sources with {endpoints} tracked endpoints",
+        {"count": _PLAIN, "endpoints": _PLAIN},
+        {"count": 4, "endpoints": 18},
+    ),
+    _msg(
+        "history.assumption.waf_breakdown",
+        "action, response code and source IP read over {days} days only",
+        {"days": _PLAIN},
+        {"days": 7},
+    ),
+    _msg("history.words.plan_one", "1 per-source plan"),
+    _msg(
+        "history.words.plan_many",
+        "{count} per-source plans",
+        {"count": _PLAIN},
+        {"count": 6},
+    ),
+    _msg(
+        "history.assumption.ips_sources",
+        "{count} IPS sources in {plans}",
+        {
+            "count": _PLAIN,
+            "plans": ParamSpec(
+                ParamKind.REF,
+                ref_codes=("history.words.plan_one", "history.words.plan_many"),
+            ),
+        },
+        {"count": 6, "plans": MessageRef("history.words.plan_many", {"count": 6})},
+    ),
+    _msg(
+        "history.assumption.ips_values",
+        "{source_ips} source IPs, {action_values} action values and {fanout} port fan-out "
+        "rows per source and bucket assumed",
+        {"source_ips": _PLAIN, "action_values": _PLAIN, "fanout": _PLAIN},
+        {"source_ips": 50, "action_values": 3, "fanout": 10},
+    ),
+    _msg(
+        "history.assumption.ips_fair_share",
+        "each per-source plan is fitted with a fair share of {share} of the {per_tick} "
+        "shared searches per tick",
+        {"share": _PLAIN, "per_tick": _PLAIN},
+        {"share": 3, "per_tick": 10},
+    ),
+    _msg("history.words.bucket_one", "1 live bucket"),
+    _msg(
+        "history.words.bucket_many",
+        "{count} live buckets",
+        {"count": _PLAIN},
+        {"count": 2016},
+    ),
+    _msg(
+        "history.assumption.catchall_senders",
+        "{senders} senders per bucket (the mean of {buckets} of the last {days} days)",
+        {
+            "senders": _PLAIN,
+            "buckets": ParamSpec(
+                ParamKind.REF,
+                ref_codes=("history.words.bucket_one", "history.words.bucket_many"),
+            ),
+            "days": _PLAIN,
+        },
+        {
+            "senders": 12,
+            "buckets": MessageRef("history.words.bucket_many", {"count": 2016}),
+            "days": 7,
+        },
+    ),
+    _msg(
+        "history.assumption.catchall_rows",
+        "{rows} rows per search",
+        {"rows": _PLAIN},
+        {"rows": 5000},
+    ),
+    _msg(
+        "history.assumption.rules",
+        "{rules} enabled rules, every one assumed to match in each window",
+        {"rules": _PLAIN},
+        {"rules": 40},
+    ),
+    _msg(
+        "history.assumption.rule_rows",
+        "{rows} rows per search, plus one console total",
+        {"rows": _PLAIN},
+        {"rows": 1000},
+    ),
+    # --- end MSG-8a ---------------------------------------------------------------------------
 )
 
 
@@ -3528,7 +4971,7 @@ _STYLES: dict[ParamKind, set[str | None]] = {
     ParamKind.DURATION: {None, "timedelta", "age"},
     ParamKind.TIMESTAMP: {None, "minute", "iso"},
     ParamKind.ENUM: {None, "lower"},
-    ParamKind.LIST: {None, "comma", "and", "semicolon"},
+    ParamKind.LIST: {None, "comma", "and", "and_all", "semicolon"},
     ParamKind.REF: {None},
     ParamKind.TEXT: {None},
 }
@@ -3756,6 +5199,8 @@ def _format_param(
         ]
         if spec.style == "semicolon":
             return "; ".join(rendered)
+        if spec.style == "and_all":
+            return " and ".join(rendered)
         if spec.style == "and" and len(rendered) > 1:
             return f"{', '.join(rendered[:-1])} and {rendered[-1]}"
         return ", ".join(rendered)

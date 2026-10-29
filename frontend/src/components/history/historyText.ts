@@ -28,3 +28,19 @@ export function historyWord(i18n: BehaviorI18n, group: string, value: string): s
 export function ageWords(i18n: BehaviorI18n): AgeWords {
   return (key, values) => i18n.t(`format.${key}`, values);
 }
+
+/** The registry code of a sentence the API sent, and its raw values (absent on an old row). */
+export interface HistoryCoded {
+  code?: string | null;
+  params?: Record<string, unknown> | null;
+}
+
+/** Reads a sentence the API wrote: its text, and the code beside it when it has one. */
+export type SentenceReader = (text: string, coded?: HistoryCoded | null) => string;
+
+/**
+ * The reader of the first-run dialog: the API's text as sent. The dialog is mounted in the shell,
+ * and the shell does not carry the `backend` catalog (`routeNamespaces.contract.test.tsx`), so it
+ * cannot word a code; the history page passes `sentenceReader` (./historyReasons) instead.
+ */
+export const plainSentence: SentenceReader = (text) => text;

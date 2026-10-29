@@ -51,6 +51,7 @@ from app.services.ips_pipeline import (
 from app.services.locks import collector_lock_key
 from app.services.search_cadence import SearchCadenceService
 from tests.integration.factories import make_instance
+from tests.integration.history_reason_support import assert_coded
 from tests.integration.test_history_backfill_api import READER, Client
 from tests.integration.test_ips_baseline import add_bucket as ips_bucket
 from tests.integration.test_ips_baseline import add_source as ips_source
@@ -305,6 +306,7 @@ class TestReading:
         assert scope.days_target == WINDOW_DAYS
         assert scope.target_start == target
         assert "fitted with no admitted entity yet" in (scope.reason or "")
+        assert_coded(scope)
         assert scope.floor == target
         assert scope.progress  # the scope has searched
         # The reading ends at the boundary of the tick that finished it.
@@ -456,6 +458,7 @@ class TestReading:
         assert scope is not None
         assert scope.days_target == 7 and scope.target_start == target
         assert "window reduced from 28 to 7 days" in (scope.reason or "")
+        assert_coded(scope)
         # One search cannot fund a seven-dimension read chunk.  The fit is stored
         # nevertheless; a later tick with room for a chunk must use that same fit.
         assert provider.ips_searches == []
@@ -566,6 +569,8 @@ class TestReading:
         ]
         assert all(scope is not None and scope.days_target == 20 for scope in scopes)
         assert all("fair share of 5 of the 10" in (scope.reason or "") for scope in scopes)
+        for scope in scopes:
+            assert_coded(scope)
 
         route = Client(
             db_schema,
@@ -743,6 +748,7 @@ class TestHandOff:
         assert scope is not None
         assert scope.state == "PARTIAL"
         assert "switched off" in (scope.reason or "")
+        assert_coded(scope)
 
     async def test_a_stop_request_ends_the_reading_in_the_same_tick(
         self, db_session
@@ -768,6 +774,7 @@ class TestHandOff:
         assert scope is not None
         assert scope.state == "PARTIAL"
         assert "stopped by operator" in (scope.reason or "")
+        assert_coded(scope)
 
 
 class TestStatementCount:
@@ -1448,6 +1455,7 @@ class TestOperatorPath:
         assert scope is not None
         assert scope.state == "PARTIAL"
         assert "did not finish" in (scope.reason or "")
+        assert_coded(scope)
 
     async def test_a_locked_source_is_skipped(self, db_session) -> None:
         instance = await make_instance(db_session)
@@ -1563,6 +1571,7 @@ class TestOperatorPath:
         assert yielded.last_error_class == "ProviderError"
         assert yielded.last_error_at == before_error_at
         assert yielded.reason == "deferred: no Ariel permit within 7 s"
+        assert yielded.reason_i18n is None
         rows = (
             await db_session.scalars(
                 select(IpsSourceBucket).where(IpsSourceBucket.log_source_id == source.id)

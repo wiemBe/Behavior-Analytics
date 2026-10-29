@@ -182,5 +182,14 @@
     "partial": "partial",
     "missing": "missing",
     "complete": "complete"
+  },
+  "historyScanStatus": {
+    "failed": "failed",
+    "truncated": "truncated",
+    "not_run": "not run"
+  },
+  "historyEmptyNoun": {
+    "tracked endpoint": "tracked endpoint",
+    "admitted entity": "admitted entity"
   }
 }

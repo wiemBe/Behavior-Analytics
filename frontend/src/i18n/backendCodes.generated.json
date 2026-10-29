@@ -2409,6 +2409,1061 @@
     "sample_english_params": {},
     "template": "field is not populated for this log source"
   },
+  "history.assumption.budget_ips": {
+    "params": {
+      "per_tick": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "per_tick": 10
+    },
+    "sample_english": "10 history searches shared per tick",
+    "sample_english_params": {
+      "per_tick": "10"
+    },
+    "template": "{per_tick} history searches shared per tick"
+  },
+  "history.assumption.budget_plain": {
+    "params": {
+      "per_tick": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "per_tick": 10
+    },
+    "sample_english": "10 history searches per tick",
+    "sample_english_params": {
+      "per_tick": "10"
+    },
+    "template": "{per_tick} history searches per tick"
+  },
+  "history.assumption.budget_waf": {
+    "params": {
+      "per_source": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "sources": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "per_source": 10,
+      "sources": 4
+    },
+    "sample_english": "10 history searches per source tick times 4 sources at once",
+    "sample_english_params": {
+      "per_source": "10",
+      "sources": "4"
+    },
+    "template": "{per_source} history searches per source tick times {sources} sources at once"
+  },
+  "history.assumption.cadence": {
+    "params": {
+      "interval": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.interval.minute_one",
+          "history.interval.minute_many",
+          "history.interval.hour_one",
+          "history.interval.hour_many",
+          "history.interval.day_one",
+          "history.interval.day_many"
+        ]
+      }
+    },
+    "sample": {
+      "interval": {
+        "code": "history.interval.minute_many",
+        "params": {
+          "count": 5
+        }
+      }
+    },
+    "sample_english": "one tick every 5 minutes (the family's Search cadence)",
+    "sample_english_params": {
+      "interval": "5 minutes"
+    },
+    "template": "one tick every {interval} (the family's Search cadence)"
+  },
+  "history.assumption.catchall_rows": {
+    "params": {
+      "rows": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "rows": 5000
+    },
+    "sample_english": "5000 rows per search",
+    "sample_english_params": {
+      "rows": "5000"
+    },
+    "template": "{rows} rows per search"
+  },
+  "history.assumption.catchall_senders": {
+    "params": {
+      "buckets": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.words.bucket_one",
+          "history.words.bucket_many"
+        ]
+      },
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "senders": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "buckets": {
+        "code": "history.words.bucket_many",
+        "params": {
+          "count": 2016
+        }
+      },
+      "days": 7,
+      "senders": 12
+    },
+    "sample_english": "12 senders per bucket (the mean of 2016 live buckets of the last 7 days)",
+    "sample_english_params": {
+      "buckets": "2016 live buckets",
+      "days": "7",
+      "senders": "12"
+    },
+    "template": "{senders} senders per bucket (the mean of {buckets} of the last {days} days)"
+  },
+  "history.assumption.ips_fair_share": {
+    "params": {
+      "per_tick": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "share": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "per_tick": 10,
+      "share": 3
+    },
+    "sample_english": "each per-source plan is fitted with a fair share of 3 of the 10 shared searches per tick",
+    "sample_english_params": {
+      "per_tick": "10",
+      "share": "3"
+    },
+    "template": "each per-source plan is fitted with a fair share of {share} of the {per_tick} shared searches per tick"
+  },
+  "history.assumption.ips_sources": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "plans": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.words.plan_one",
+          "history.words.plan_many"
+        ]
+      }
+    },
+    "sample": {
+      "count": 6,
+      "plans": {
+        "code": "history.words.plan_many",
+        "params": {
+          "count": 6
+        }
+      }
+    },
+    "sample_english": "6 IPS sources in 6 per-source plans",
+    "sample_english_params": {
+      "count": "6",
+      "plans": "6 per-source plans"
+    },
+    "template": "{count} IPS sources in {plans}"
+  },
+  "history.assumption.ips_values": {
+    "params": {
+      "action_values": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "fanout": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "source_ips": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "action_values": 3,
+      "fanout": 10,
+      "source_ips": 50
+    },
+    "sample_english": "50 source IPs, 3 action values and 10 port fan-out rows per source and bucket assumed",
+    "sample_english_params": {
+      "action_values": "3",
+      "fanout": "10",
+      "source_ips": "50"
+    },
+    "template": "{source_ips} source IPs, {action_values} action values and {fanout} port fan-out rows per source and bucket assumed"
+  },
+  "history.assumption.opening": {
+    "params": {
+      "budget": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.assumption.budget_waf",
+          "history.assumption.budget_ips",
+          "history.assumption.budget_plain"
+        ]
+      },
+      "shape": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.assumption.shape_windows",
+          "history.assumption.shape_buckets"
+        ]
+      }
+    },
+    "sample": {
+      "budget": {
+        "code": "history.assumption.budget_plain",
+        "params": {
+          "per_tick": 10
+        }
+      },
+      "shape": {
+        "code": "history.assumption.shape_buckets",
+        "params": {
+          "minutes": 5
+        }
+      }
+    },
+    "sample_english": "5-minute buckets, 10 history searches per tick",
+    "sample_english_params": {
+      "budget": "10 history searches per tick",
+      "shape": "5-minute buckets"
+    },
+    "template": "{shape}, {budget}"
+  },
+  "history.assumption.phase_a_rows": {
+    "params": {
+      "sources": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "sources": 120
+    },
+    "sample_english": "120 monitored sources, one row each per bucket",
+    "sample_english_params": {
+      "sources": "120"
+    },
+    "template": "{sources} monitored sources, one row each per bucket"
+  },
+  "history.assumption.qradar_time": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar time per search not measured on this console",
+    "sample_english_params": {},
+    "template": "QRadar time per search not measured on this console"
+  },
+  "history.assumption.rule_rows": {
+    "params": {
+      "rows": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "rows": 1000
+    },
+    "sample_english": "1000 rows per search, plus one console total",
+    "sample_english_params": {
+      "rows": "1000"
+    },
+    "template": "{rows} rows per search, plus one console total"
+  },
+  "history.assumption.rules": {
+    "params": {
+      "rules": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "rules": 40
+    },
+    "sample_english": "40 enabled rules, every one assumed to match in each window",
+    "sample_english_params": {
+      "rules": "40"
+    },
+    "template": "{rules} enabled rules, every one assumed to match in each window"
+  },
+  "history.assumption.shape_buckets": {
+    "params": {
+      "minutes": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "minutes": 5
+    },
+    "sample_english": "5-minute buckets",
+    "sample_english_params": {
+      "minutes": "5"
+    },
+    "template": "{minutes}-minute buckets"
+  },
+  "history.assumption.shape_windows": {
+    "params": {},
+    "sample": {},
+    "sample_english": "hourly windows",
+    "sample_english_params": {},
+    "template": "hourly windows"
+  },
+  "history.assumption.waf_breakdown": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 7
+    },
+    "sample_english": "action, response code and source IP read over 7 days only",
+    "sample_english_params": {
+      "days": "7"
+    },
+    "template": "action, response code and source IP read over {days} days only"
+  },
+  "history.assumption.waf_sources": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "endpoints": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 4,
+      "endpoints": 18
+    },
+    "sample_english": "4 WAF sources with 18 tracked endpoints",
+    "sample_english_params": {
+      "count": "4",
+      "endpoints": "18"
+    },
+    "template": "{count} WAF sources with {endpoints} tracked endpoints"
+  },
+  "history.catchall.anchor_gone": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the live anchor is gone: the history has no end to read up to",
+    "sample_english_params": {},
+    "template": "the live anchor is gone: the history has no end to read up to"
+  },
+  "history.catchall.no_event": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no catch-all source had an event in the window; nothing is written",
+    "sample_english_params": {},
+    "template": "no catch-all source had an event in the window; nothing is written"
+  },
+  "history.catchall.unreadable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the stored history progress could not be read back",
+    "sample_english_params": {},
+    "template": "the stored history progress could not be read back"
+  },
+  "history.decide.meantime": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a decision was recorded in the meantime; it is shown here",
+    "sample_english_params": {},
+    "template": "a decision was recorded in the meantime; it is shown here"
+  },
+  "history.decide.never_reversed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a Yes is never reversed; stop the reading instead",
+    "sample_english_params": {},
+    "template": "a Yes is never reversed; stop the reading instead"
+  },
+  "history.estimate.all_fit": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "hours": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "sources": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 28,
+      "hours": 61.2,
+      "sources": 4
+    },
+    "sample_english": "all 4 per-source 28-day windows fit; the console total is an estimated 61.2 hours",
+    "sample_english_params": {
+      "days": "28",
+      "hours": "61.2",
+      "sources": "4"
+    },
+    "template": "all {sources} per-source {days}-day windows fit; the console total is an estimated {hours} hours"
+  },
+  "history.estimate.all_refused": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "sources": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 7,
+      "limit": 72,
+      "sources": 4
+    },
+    "sample_english": "all 4 sources are unavailable: even 7 days exceed the 72-hour per-source limit",
+    "sample_english_params": {
+      "days": "7",
+      "limit": "72",
+      "sources": "4"
+    },
+    "template": "all {sources} sources are unavailable: even {days} days exceed the {limit}-hour per-source limit"
+  },
+  "history.estimate.empty_sources": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "noun": {
+        "enum_group": "historyEmptyNoun",
+        "kind": "enum"
+      },
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.fit.reduced",
+          "history.fit.fits",
+          "history.fit.refused",
+          "history.estimate.all_refused",
+          "history.estimate.some_refused",
+          "history.estimate.some_refused_reduced",
+          "history.estimate.reduced",
+          "history.estimate.all_fit",
+          "history.estimate.no_collection",
+          "history.estimate.planner_refused",
+          "history.estimate.no_monitored",
+          "history.estimate.no_waf",
+          "history.estimate.no_ips",
+          "history.estimate.no_catchall",
+          "history.estimate.no_rules"
+        ]
+      }
+    },
+    "sample": {
+      "count": 2,
+      "limit": 72,
+      "noun": "tracked endpoint",
+      "reason": {
+        "code": "history.estimate.all_fit",
+        "params": {
+          "days": 28,
+          "hours": 61.2,
+          "sources": 4
+        }
+      }
+    },
+    "sample_english": "all 4 per-source 28-day windows fit; the console total is an estimated 61.2 hours; 2 source(s) fitted with no tracked endpoint yet; the 72-hour limit still bounds the reading",
+    "sample_english_params": {
+      "count": "2",
+      "limit": "72",
+      "noun": "tracked endpoint",
+      "reason": "all 4 per-source 28-day windows fit; the console total is an estimated 61.2 hours"
+    },
+    "template": "{reason}; {count} source(s) fitted with no {noun} yet; the {limit}-hour limit still bounds the reading"
+  },
+  "history.estimate.no_catchall": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 7
+    },
+    "sample_english": "no estimate: no catch-all bucket has been collected in the last 7 days",
+    "sample_english_params": {
+      "days": "7"
+    },
+    "template": "no estimate: no catch-all bucket has been collected in the last {days} days"
+  },
+  "history.estimate.no_collection": {
+    "params": {
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.family.switch_off"
+        ]
+      }
+    },
+    "sample": {
+      "reason": {
+        "code": "history.family.switch_off",
+        "params": {
+          "setting": "IPS_COLLECTION_ENABLED"
+        }
+      }
+    },
+    "sample_english": "no estimate: collection is switched off (IPS_COLLECTION_ENABLED is off)",
+    "sample_english_params": {
+      "reason": "IPS_COLLECTION_ENABLED is off"
+    },
+    "template": "no estimate: collection is switched off ({reason})"
+  },
+  "history.estimate.no_ips": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no estimate: no IPS source is enabled on this console",
+    "sample_english_params": {},
+    "template": "no estimate: no IPS source is enabled on this console"
+  },
+  "history.estimate.no_monitored": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no estimate: the console has no monitored log source yet",
+    "sample_english_params": {},
+    "template": "no estimate: the console has no monitored log source yet"
+  },
+  "history.estimate.no_rules": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no estimate: the console has no enabled rule",
+    "sample_english_params": {},
+    "template": "no estimate: the console has no enabled rule"
+  },
+  "history.estimate.no_waf": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no estimate: no WAF source is enabled on this console",
+    "sample_english_params": {},
+    "template": "no estimate: no WAF source is enabled on this console"
+  },
+  "history.estimate.planner_refused": {
+    "params": {
+      "error": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "error": "max_hours and cadence_seconds must be >= 1"
+    },
+    "sample_english": "no estimate: the planner refused the settings (max_hours and cadence_seconds must be >= 1)",
+    "sample_english_params": {
+      "error": "max_hours and cadence_seconds must be >= 1"
+    },
+    "template": "no estimate: the planner refused the settings ({error})"
+  },
+  "history.estimate.reduced": {
+    "params": {
+      "asked": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "asked": 28,
+      "days": 21,
+      "limit": 72
+    },
+    "sample_english": "window reduced from 28 to 21 days for the smallest per-source fit: the estimate exceeded 72 hours",
+    "sample_english_params": {
+      "asked": "28",
+      "days": "21",
+      "limit": "72"
+    },
+    "template": "window reduced from {asked} to {days} days for the smallest per-source fit: the estimate exceeded {limit} hours"
+  },
+  "history.estimate.some_refused": {
+    "params": {
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "refused": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "sources": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "limit": 72,
+      "refused": 1,
+      "sources": 4
+    },
+    "sample_english": "1 of 4 sources are unavailable because even 7 days exceed the 72-hour per-source limit; the remaining source windows fit",
+    "sample_english_params": {
+      "limit": "72",
+      "refused": "1",
+      "sources": "4"
+    },
+    "template": "{refused} of {sources} sources are unavailable because even 7 days exceed the {limit}-hour per-source limit; the remaining source windows fit"
+  },
+  "history.estimate.some_refused_reduced": {
+    "params": {
+      "asked": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "refused": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "sources": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "asked": 28,
+      "days": 21,
+      "limit": 72,
+      "refused": 1,
+      "sources": 4
+    },
+    "sample_english": "1 of 4 sources are unavailable because even 7 days exceed the 72-hour per-source limit; the remaining source windows fit, with the smallest reduced from 28 to 21 days",
+    "sample_english_params": {
+      "asked": "28",
+      "days": "21",
+      "limit": "72",
+      "refused": "1",
+      "sources": "4"
+    },
+    "template": "{refused} of {sources} sources are unavailable because even 7 days exceed the {limit}-hour per-source limit; the remaining source windows fit, with the smallest reduced from {asked} to {days} days"
+  },
+  "history.estimate.window_limited": {
+    "params": {
+      "fit": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.fit.reduced",
+          "history.fit.fits",
+          "history.fit.refused",
+          "history.estimate.all_refused",
+          "history.estimate.some_refused",
+          "history.estimate.some_refused_reduced",
+          "history.estimate.reduced",
+          "history.estimate.all_fit",
+          "history.estimate.no_collection",
+          "history.estimate.planner_refused",
+          "history.estimate.no_monitored",
+          "history.estimate.no_waf",
+          "history.estimate.no_ips",
+          "history.estimate.no_catchall",
+          "history.estimate.no_rules"
+        ]
+      },
+      "window": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.window.reduced"
+        ]
+      }
+    },
+    "sample": {
+      "fit": {
+        "code": "history.fit.fits",
+        "params": {
+          "days": 21,
+          "hours": 45.0
+        }
+      },
+      "window": {
+        "code": "history.window.reduced",
+        "params": {
+          "asked": 28,
+          "days": 21,
+          "limits": {
+            "items": [
+              {
+                "code": "history.window.limit_setting",
+                "params": {
+                  "days": 21,
+                  "setting": "BASELINE_LOOKBACK_DAYS"
+                }
+              }
+            ],
+            "kind": "list"
+          }
+        }
+      }
+    },
+    "sample_english": "window reduced from 28 to 21 days: BASELINE_LOOKBACK_DAYS is 21 days; the 21-day window fits in an estimated 45.0 hours",
+    "sample_english_params": {
+      "fit": "the 21-day window fits in an estimated 45.0 hours",
+      "window": "window reduced from 28 to 21 days: BASELINE_LOOKBACK_DAYS is 21 days"
+    },
+    "template": "{window}; {fit}"
+  },
+  "history.family.always_on": {
+    "params": {},
+    "sample": {},
+    "sample_english": "source-volume collection is the platform's base collection",
+    "sample_english_params": {},
+    "template": "source-volume collection is the platform's base collection"
+  },
+  "history.family.fair_share": {
+    "params": {
+      "share": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "share": 3,
+      "total": 10
+    },
+    "sample_english": "fitted with a fair share of 3 of the 10 shared history searches per tick",
+    "sample_english_params": {
+      "share": "3",
+      "total": "10"
+    },
+    "template": "fitted with a fair share of {share} of the {total} shared history searches per tick"
+  },
+  "history.family.switch_off": {
+    "params": {
+      "setting": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "setting": "IPS_COLLECTION_ENABLED"
+    },
+    "sample_english": "IPS_COLLECTION_ENABLED is off",
+    "sample_english_params": {
+      "setting": "IPS_COLLECTION_ENABLED"
+    },
+    "template": "{setting} is off"
+  },
+  "history.family.switch_on": {
+    "params": {
+      "setting": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "setting": "WAF_COLLECTION_ENABLED"
+    },
+    "sample_english": "WAF_COLLECTION_ENABLED is on",
+    "sample_english_params": {
+      "setting": "WAF_COLLECTION_ENABLED"
+    },
+    "template": "{setting} is on"
+  },
+  "history.family.zero_endpoint": {
+    "params": {
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "limit": 72
+    },
+    "sample_english": "fitted with no tracked endpoint yet; the 72-hour limit still bounds the reading",
+    "sample_english_params": {
+      "limit": "72"
+    },
+    "template": "fitted with no tracked endpoint yet; the {limit}-hour limit still bounds the reading"
+  },
+  "history.family.zero_entity": {
+    "params": {
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "limit": 72
+    },
+    "sample_english": "fitted with no admitted entity yet; the 72-hour limit still bounds the reading",
+    "sample_english_params": {
+      "limit": "72"
+    },
+    "template": "fitted with no admitted entity yet; the {limit}-hour limit still bounds the reading"
+  },
+  "history.finish.complete": {
+    "params": {},
+    "sample": {},
+    "sample_english": "reached the end with the whole asked window read",
+    "sample_english_params": {},
+    "template": "reached the end with the whole asked window read"
+  },
+  "history.finish.cut_sources": {
+    "params": {
+      "cut": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "total": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.words.source_one",
+          "history.words.source_many"
+        ]
+      }
+    },
+    "sample": {
+      "cut": 2,
+      "total": {
+        "code": "history.words.source_many",
+        "params": {
+          "count": 5
+        }
+      }
+    },
+    "sample_english": "QRadar holds less than asked for 2 of 5 sources",
+    "sample_english_params": {
+      "cut": "2",
+      "total": "5 sources"
+    },
+    "template": "QRadar holds less than asked for {cut} of {total}"
+  },
+  "history.finish.floor_cut": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar holds less than asked (the floor is later than the asked start)",
+    "sample_english_params": {},
+    "template": "QRadar holds less than asked (the floor is later than the asked start)"
+  },
+  "history.finish.gaps": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 2
+    },
+    "sample_english": "2 span(s) could not be read",
+    "sample_english_params": {
+      "count": "2"
+    },
+    "template": "{count} span(s) could not be read"
+  },
+  "history.finish.partial": {
+    "params": {
+      "problems": {
+        "kind": "list",
+        "style": "semicolon"
+      }
+    },
+    "sample": {
+      "problems": {
+        "items": [
+          {
+            "code": "history.finish.floor_cut",
+            "params": {}
+          },
+          {
+            "code": "history.finish.gaps",
+            "params": {
+              "count": 2
+            }
+          }
+        ],
+        "kind": "list"
+      }
+    },
+    "sample_english": "reached the end; QRadar holds less than asked (the floor is later than the asked start); 2 span(s) could not be read",
+    "sample_english_params": {
+      "problems": "QRadar holds less than asked (the floor is later than the asked start); 2 span(s) could not be read"
+    },
+    "template": "reached the end; {problems}"
+  },
+  "history.finish.silent_sources": {
+    "params": {
+      "sources": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.words.source_one",
+          "history.words.source_many"
+        ]
+      }
+    },
+    "sample": {
+      "sources": {
+        "code": "history.words.source_one",
+        "params": {}
+      }
+    },
+    "sample_english": "1 source had no event in the window",
+    "sample_english_params": {
+      "sources": "1 source"
+    },
+    "template": "{sources} had no event in the window"
+  },
+  "history.fit.fits": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "hours": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "days": 28,
+      "hours": 23.4
+    },
+    "sample_english": "the 28-day window fits in an estimated 23.4 hours",
+    "sample_english_params": {
+      "days": "28",
+      "hours": "23.4"
+    },
+    "template": "the {days}-day window fits in an estimated {hours} hours"
+  },
+  "history.fit.reduced": {
+    "params": {
+      "asked": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "asked": 28,
+      "days": 21,
+      "limit": 72
+    },
+    "sample_english": "window reduced from 28 to 21 days: the estimate exceeded 72 hours",
+    "sample_english_params": {
+      "asked": "28",
+      "days": "21",
+      "limit": "72"
+    },
+    "template": "window reduced from {asked} to {days} days: the estimate exceeded {limit} hours"
+  },
+  "history.fit.refused": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "hours": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "searches": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "ticks": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 7,
+      "hours": 90.0,
+      "limit": 72,
+      "searches": 700,
+      "ticks": 70
+    },
+    "sample_english": "even 7 days need about 90.0 hours (700 searches, 70 ticks), over the 72-hour limit; history is unavailable",
+    "sample_english_params": {
+      "days": "7",
+      "hours": "90.0",
+      "limit": "72",
+      "searches": "700",
+      "ticks": "70"
+    },
+    "template": "even {days} days need about {hours} hours ({searches} searches, {ticks} ticks), over the {limit}-hour limit; history is unavailable"
+  },
   "history.gap.search_failed": {
     "params": {
       "failures": {
@@ -2424,6 +3479,2908 @@
       "failures": "3"
     },
     "template": "search failed {failures} times at the minimum width"
+  },
+  "history.interval.day_many": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 3
+    },
+    "sample_english": "3 days",
+    "sample_english_params": {
+      "count": "3"
+    },
+    "template": "{count} days"
+  },
+  "history.interval.day_one": {
+    "params": {},
+    "sample": {},
+    "sample_english": "1 day",
+    "sample_english_params": {},
+    "template": "1 day"
+  },
+  "history.interval.hour_many": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 2
+    },
+    "sample_english": "2 hours",
+    "sample_english_params": {
+      "count": "2"
+    },
+    "template": "{count} hours"
+  },
+  "history.interval.hour_one": {
+    "params": {},
+    "sample": {},
+    "sample_english": "1 hour",
+    "sample_english_params": {},
+    "template": "1 hour"
+  },
+  "history.interval.minute_many": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 5
+    },
+    "sample_english": "5 minutes",
+    "sample_english_params": {
+      "count": "5"
+    },
+    "template": "{count} minutes"
+  },
+  "history.interval.minute_one": {
+    "params": {},
+    "sample": {},
+    "sample_english": "1 minute",
+    "sample_english_params": {},
+    "template": "1 minute"
+  },
+  "history.later_yes.has_scope": {
+    "params": {},
+    "sample": {},
+    "sample_english": "not needed: this source has a history scope",
+    "sample_english_params": {},
+    "template": "not needed: this source has a history scope"
+  },
+  "history.later_yes.not_possible": {
+    "params": {},
+    "sample": {},
+    "sample_english": "not possible: this source already collected",
+    "sample_english_params": {},
+    "template": "not possible: this source already collected"
+  },
+  "history.later_yes.possible": {
+    "params": {},
+    "sample": {},
+    "sample_english": "possible",
+    "sample_english_params": {},
+    "template": "possible"
+  },
+  "history.lifecycle.not_eligible": {
+    "params": {},
+    "sample": {},
+    "sample_english": "this source already collected live data; history cannot be read before it (disable the profile and create it again to read its history)",
+    "sample_english_params": {},
+    "template": "this source already collected live data; history cannot be read before it (disable the profile and create it again to read its history)"
+  },
+  "history.lifecycle.restart": {
+    "params": {},
+    "sample": {},
+    "sample_english": "read history now: topping up",
+    "sample_english_params": {},
+    "template": "read history now: topping up"
+  },
+  "history.lifecycle.stopped_by": {
+    "params": {
+      "by": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "by": "ayse"
+    },
+    "sample_english": "stopped by ayse",
+    "sample_english_params": {
+      "by": "ayse"
+    },
+    "template": "stopped by {by}"
+  },
+  "history.phase_a.no_event": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar holds no event of a monitored source in the window; nothing is written",
+    "sample_english_params": {},
+    "template": "QRadar holds no event of a monitored source in the window; nothing is written"
+  },
+  "history.phase_a.no_monitored": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no log source is monitored, so there is nothing to read history for",
+    "sample_english_params": {},
+    "template": "no log source is monitored, so there is nothing to read history for"
+  },
+  "history.reason.joined": {
+    "params": {
+      "clauses": {
+        "kind": "list",
+        "style": "semicolon"
+      }
+    },
+    "sample": {
+      "clauses": {
+        "items": [
+          {
+            "code": "history.family.zero_endpoint",
+            "params": {
+              "limit": 72
+            }
+          },
+          {
+            "code": "history.settle.read",
+            "params": {
+              "count": 288
+            }
+          }
+        ],
+        "kind": "list"
+      }
+    },
+    "sample_english": "fitted with no tracked endpoint yet; the 72-hour limit still bounds the reading; read 288 bucket(s)",
+    "sample_english_params": {
+      "clauses": "fitted with no tracked endpoint yet; the 72-hour limit still bounds the reading; read 288 bucket(s)"
+    },
+    "template": "{clauses}"
+  },
+  "history.request.refused": {
+    "params": {},
+    "sample": {},
+    "sample_english": "record Yes first: the console has no Yes answer to start or stop",
+    "sample_english_params": {},
+    "template": "record Yes first: the console has no Yes answer to start or stop"
+  },
+  "history.request.start": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Read history now is recorded. Each family applies it at its next collection; no scope has changed yet.",
+    "sample_english_params": {},
+    "template": "Read history now is recorded. Each family applies it at its next collection; no scope has changed yet."
+  },
+  "history.request.stop": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Stop reading is recorded. Each family ends its reading scopes at its next collection; no scope has changed yet.",
+    "sample_english_params": {},
+    "template": "Stop reading is recorded. Each family ends its reading scopes at its next collection; no scope has changed yet."
+  },
+  "history.scan.end": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the scan reached the end of the window",
+    "sample_english_params": {},
+    "template": "the scan reached the end of the window"
+  },
+  "history.scan.failed": {
+    "params": {
+      "failures": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "failures": 3
+    },
+    "sample_english": "the floor scan failed 3 times; history is unavailable",
+    "sample_english_params": {
+      "failures": "3"
+    },
+    "template": "the floor scan failed {failures} times; history is unavailable"
+  },
+  "history.scan.floor_found": {
+    "params": {
+      "first": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "floor": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "first": "2026-10-01T08:30:00+00:00",
+      "floor": "2026-10-02T08:30:00+00:00"
+    },
+    "sample_english": "QRadar holds events of the scope from 2026-10-01T08:30:00+00:00; history starts at 2026-10-02T08:30:00+00:00",
+    "sample_english_params": {
+      "first": "2026-10-01T08:30:00+00:00",
+      "floor": "2026-10-02T08:30:00+00:00"
+    },
+    "template": "QRadar holds events of the scope from {first}; history starts at {floor}"
+  },
+  "history.scan.floor_found_late": {
+    "params": {
+      "first": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "floor": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "first": "2026-10-01T08:30:00+00:00",
+      "floor": "2026-10-02T08:30:00+00:00"
+    },
+    "sample_english": "QRadar holds events of the scope from 2026-10-01T08:30:00+00:00; history starts at 2026-10-02T08:30:00+00:00 (later than the asked start)",
+    "sample_english_params": {
+      "first": "2026-10-01T08:30:00+00:00",
+      "floor": "2026-10-02T08:30:00+00:00"
+    },
+    "template": "QRadar holds events of the scope from {first}; history starts at {floor} (later than the asked start)"
+  },
+  "history.scan.no_event_span": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no event in the scanned span; scan the next one",
+    "sample_english_params": {},
+    "template": "no event in the scanned span; scan the next one"
+  },
+  "history.scan.no_event_window": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no event of the scope in the whole window; nothing is written",
+    "sample_english_params": {},
+    "template": "no event of the scope in the whole window; nothing is written"
+  },
+  "history.scan.no_result": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no scan result was provided",
+    "sample_english_params": {},
+    "template": "no scan result was provided"
+  },
+  "history.scan.retry": {
+    "params": {
+      "failures": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "max_failures": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "status": {
+        "enum_group": "historyScanStatus",
+        "kind": "enum"
+      }
+    },
+    "sample": {
+      "failures": 1,
+      "max_failures": 3,
+      "status": "failed"
+    },
+    "sample_english": "a scan search was failed; it proves nothing, so it is retried (1 of 3)",
+    "sample_english_params": {
+      "failures": "1",
+      "max_failures": "3",
+      "status": "failed"
+    },
+    "template": "a scan search was {status}; it proves nothing, so it is retried ({failures} of {max_failures})"
+  },
+  "history.scan.search": {
+    "params": {},
+    "sample": {},
+    "sample_english": "scan for the first event of the scope",
+    "sample_english_params": {},
+    "template": "scan for the first event of the scope"
+  },
+  "history.scan.too_recent": {
+    "params": {
+      "margin": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "margin": 24
+    },
+    "sample_english": "the first event is too recent to prove anything older: the margin of 24 h reaches the end of the window",
+    "sample_english_params": {
+      "margin": "24"
+    },
+    "template": "the first event is too recent to prove anything older: the margin of {margin} h reaches the end of the window"
+  },
+  "history.settle.budget_ended": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the budget ended before this span was searched",
+    "sample_english_params": {},
+    "template": "the budget ended before this span was searched"
+  },
+  "history.settle.density": {
+    "params": {
+      "limit": {
+        "kind": "percent"
+      },
+      "share": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "limit": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.05
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.06
+      }
+    },
+    "sample_english": "6 % of the buckets read are lower bounds (limit 5 %): too many distinct values per bucket, so history would be lower bounds",
+    "sample_english_params": {
+      "limit": "5 %",
+      "share": "6 %"
+    },
+    "template": "{share} of the buckets read are lower bounds (limit {limit}): too many distinct values per bucket, so history would be lower bounds"
+  },
+  "history.settle.failed_halve": {
+    "params": {
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "width": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "buckets": 288,
+      "width": 144
+    },
+    "sample_english": "a search of 288 buckets failed; the width halves to 144",
+    "sample_english_params": {
+      "buckets": "288",
+      "width": "144"
+    },
+    "template": "a search of {buckets} buckets failed; the width halves to {width}"
+  },
+  "history.settle.failed_minimum": {
+    "params": {
+      "failures": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "max_failures": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "failures": 1,
+      "max_failures": 3
+    },
+    "sample_english": "a search failed at the minimum width (1 of 3); the same span is tried again",
+    "sample_english_params": {
+      "failures": "1",
+      "max_failures": "3"
+    },
+    "template": "a search failed at the minimum width ({failures} of {max_failures}); the same span is tried again"
+  },
+  "history.settle.gap_recorded": {
+    "params": {
+      "gap": {
+        "kind": "ref",
+        "ref_codes": [
+          "history.gap.search_failed"
+        ]
+      }
+    },
+    "sample": {
+      "gap": {
+        "code": "history.gap.search_failed",
+        "params": {
+          "failures": 3
+        }
+      }
+    },
+    "sample_english": "recorded a gap: search failed 3 times at the minimum width",
+    "sample_english_params": {
+      "gap": "search failed 3 times at the minimum width"
+    },
+    "template": "recorded a gap: {gap}"
+  },
+  "history.settle.read": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 288
+    },
+    "sample_english": "read 288 bucket(s)",
+    "sample_english_params": {
+      "count": "288"
+    },
+    "template": "read {count} bucket(s)"
+  },
+  "history.settle.ticked": {
+    "params": {
+      "clauses": {
+        "kind": "list",
+        "style": "semicolon"
+      }
+    },
+    "sample": {
+      "clauses": {
+        "items": [
+          {
+            "code": "history.settle.read",
+            "params": {
+              "count": 288
+            }
+          },
+          {
+            "code": "history.settle.width",
+            "params": {
+              "count": 576
+            }
+          }
+        ],
+        "kind": "list"
+      }
+    },
+    "sample_english": "read 288 bucket(s); the width is 576 bucket(s)",
+    "sample_english_params": {
+      "clauses": "read 288 bucket(s); the width is 576 bucket(s)"
+    },
+    "template": "{clauses}"
+  },
+  "history.settle.too_many_gaps": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 20
+    },
+    "sample_english": "more than 20 unreadable spans",
+    "sample_english_params": {
+      "count": "20"
+    },
+    "template": "more than {count} unreadable spans"
+  },
+  "history.settle.truncated_halve": {
+    "params": {
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "width": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "buckets": 288,
+      "width": 144
+    },
+    "sample_english": "a search of 288 buckets was truncated and keeps nothing; the width halves to 144",
+    "sample_english_params": {
+      "buckets": "288",
+      "width": "144"
+    },
+    "template": "a search of {buckets} buckets was truncated and keeps nothing; the width halves to {width}"
+  },
+  "history.settle.width": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 576
+    },
+    "sample_english": "the width is 576 bucket(s)",
+    "sample_english_params": {
+      "count": "576"
+    },
+    "template": "the width is {count} bucket(s)"
+  },
+  "history.state.anchor_found": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the first live bucket exists; reading can start",
+    "sample_english_params": {},
+    "template": "the first live bucket exists; reading can start"
+  },
+  "history.state.density_gate": {
+    "params": {},
+    "sample": {},
+    "sample_english": "too many buckets would be lower bounds; reading further would store only those",
+    "sample_english_params": {},
+    "template": "too many buckets would be lower bounds; reading further would store only those"
+  },
+  "history.state.finished_complete": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the reading reached the end; the floor is within one bucket of the asked start and no gap exists",
+    "sample_english_params": {},
+    "template": "the reading reached the end; the floor is within one bucket of the asked start and no gap exists"
+  },
+  "history.state.finished_partial": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the reading reached the end, but QRadar holds less than asked or a gap exists",
+    "sample_english_params": {},
+    "template": "the reading reached the end, but QRadar holds less than asked or a gap exists"
+  },
+  "history.state.not_eligible_late": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the scope turned out to have live buckets that history cannot precede",
+    "sample_english_params": {},
+    "template": "the scope turned out to have live buckets that history cannot precede"
+  },
+  "history.state.not_eligible_preceded": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the scope already has live buckets, and a prepend would move first_seen_at (§B.5)",
+    "sample_english_params": {},
+    "template": "the scope already has live buckets, and a prepend would move first_seen_at (§B.5)"
+  },
+  "history.state.nothing_to_read": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar holds no event of the scope in the window",
+    "sample_english_params": {},
+    "template": "QRadar holds no event of the scope in the window"
+  },
+  "history.state.nothing_to_read_scan": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar holds no event of the scope in the window, or the floor scan could not be done",
+    "sample_english_params": {},
+    "template": "QRadar holds no event of the scope in the window, or the floor scan could not be done"
+  },
+  "history.state.request_awaiting_anchor": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history was requested, and the scope waits for its first live bucket (the anchor)",
+    "sample_english_params": {},
+    "template": "history was requested, and the scope waits for its first live bucket (the anchor)"
+  },
+  "history.state.request_ready": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history was requested, and the scope can be planned at its next collection",
+    "sample_english_params": {},
+    "template": "history was requested, and the scope can be planned at its next collection"
+  },
+  "history.state.restart": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the reading restarts: a new answer, a topped-up source or a new watch version",
+    "sample_english_params": {},
+    "template": "the reading restarts: a new answer, a topped-up source or a new watch version"
+  },
+  "history.state.stopped": {
+    "params": {},
+    "sample": {},
+    "sample_english": "stopped by an operator",
+    "sample_english_params": {},
+    "template": "stopped by an operator"
+  },
+  "history.state.stopped_waiting": {
+    "params": {},
+    "sample": {},
+    "sample_english": "stopped by an operator while waiting",
+    "sample_english_params": {},
+    "template": "stopped by an operator while waiting"
+  },
+  "history.state.switched_off": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history reading was switched off",
+    "sample_english_params": {},
+    "template": "history reading was switched off"
+  },
+  "history.state.switched_off_start": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history reading is switched off; the scope starts live",
+    "sample_english_params": {},
+    "template": "history reading is switched off; the scope starts live"
+  },
+  "history.state.switched_off_waiting": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history reading was switched off while waiting",
+    "sample_english_params": {},
+    "template": "history reading was switched off while waiting"
+  },
+  "history.state.time_limit": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the reading did not finish inside its time limit",
+    "sample_english_params": {},
+    "template": "the reading did not finish inside its time limit"
+  },
+  "history.state.too_many_gaps": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the gap list is full; the scope has too many unreadable spans",
+    "sample_english_params": {},
+    "template": "the gap list is full; the scope has too many unreadable spans"
+  },
+  "history.state.window_too_small": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the estimate exceeds the time limit even at the smallest window",
+    "sample_english_params": {},
+    "template": "the estimate exceeds the time limit even at the smallest window"
+  },
+  "history.step.read": {
+    "params": {
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "searches": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "width": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "buckets": 576,
+      "searches": 2,
+      "width": 288
+    },
+    "sample_english": "read 576 bucket(s) in 2 search(es) of up to 288",
+    "sample_english_params": {
+      "buckets": "576",
+      "searches": "2",
+      "width": "288"
+    },
+    "template": "read {buckets} bucket(s) in {searches} search(es) of up to {width}"
+  },
+  "history.step.stopped": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history reading was stopped by an operator",
+    "sample_english_params": {},
+    "template": "history reading was stopped by an operator"
+  },
+  "history.step.time_limit": {
+    "params": {
+      "hours": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "hours": 72
+    },
+    "sample_english": "the reading did not finish in 72 h",
+    "sample_english_params": {
+      "hours": "72"
+    },
+    "template": "the reading did not finish in {hours} h"
+  },
+  "history.step.wait_budget": {
+    "params": {},
+    "sample": {},
+    "sample_english": "waiting for search budget",
+    "sample_english_params": {},
+    "template": "waiting for search budget"
+  },
+  "history.waf.volume_pass_finished": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history volume pass finished",
+    "sample_english_params": {},
+    "template": "history volume pass finished"
+  },
+  "history.waf.wait_time_budget": {
+    "params": {},
+    "sample": {},
+    "sample_english": "waiting for the history time budget",
+    "sample_english_params": {},
+    "template": "waiting for the history time budget"
+  },
+  "history.width.ceiling_doubled": {
+    "params": {
+      "ceiling": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "steps": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "ceiling": 576,
+      "steps": 3
+    },
+    "sample_english": "3 clean steps doubled the failure ceiling to 576",
+    "sample_english_params": {
+      "ceiling": "576",
+      "steps": "3"
+    },
+    "template": "{steps} clean steps doubled the failure ceiling to {ceiling}"
+  },
+  "history.width.released": {
+    "params": {
+      "fit": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "steps": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "fit": 576,
+      "steps": 3
+    },
+    "sample_english": "3 clean steps brought the failure ceiling to the row fit of 576; the ceiling is released",
+    "sample_english_params": {
+      "fit": "576",
+      "steps": "3"
+    },
+    "template": "{steps} clean steps brought the failure ceiling to the row fit of {fit}; the ceiling is released"
+  },
+  "history.window.limit_retention": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "hours": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "hours_setting": {
+        "kind": "text"
+      },
+      "setting": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "days": 21,
+      "hours": 72,
+      "hours_setting": "HISTORY_BACKFILL_MAX_HOURS",
+      "setting": "RETENTION_LOG_SOURCE_METRIC_DAYS"
+    },
+    "sample_english": "RETENTION_LOG_SOURCE_METRIC_DAYS is 21 days and HISTORY_BACKFILL_MAX_HOURS is 72 hours, so the reading would outlive the retention",
+    "sample_english_params": {
+      "days": "21",
+      "hours": "72",
+      "hours_setting": "HISTORY_BACKFILL_MAX_HOURS",
+      "setting": "RETENTION_LOG_SOURCE_METRIC_DAYS"
+    },
+    "template": "{setting} is {days} days and {hours_setting} is {hours} hours, so the reading would outlive the retention"
+  },
+  "history.window.limit_setting": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "setting": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "days": 21,
+      "setting": "BASELINE_LOOKBACK_DAYS"
+    },
+    "sample_english": "BASELINE_LOOKBACK_DAYS is 21 days",
+    "sample_english_params": {
+      "days": "21",
+      "setting": "BASELINE_LOOKBACK_DAYS"
+    },
+    "template": "{setting} is {days} days"
+  },
+  "history.window.reduced": {
+    "params": {
+      "asked": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "limits": {
+        "kind": "list",
+        "style": "and_all"
+      }
+    },
+    "sample": {
+      "asked": 28,
+      "days": 21,
+      "limits": {
+        "items": [
+          {
+            "code": "history.window.limit_setting",
+            "params": {
+              "days": 21,
+              "setting": "BASELINE_LOOKBACK_DAYS"
+            }
+          },
+          {
+            "code": "history.window.limit_retention",
+            "params": {
+              "days": 22,
+              "hours": 72,
+              "hours_setting": "HISTORY_BACKFILL_MAX_HOURS",
+              "setting": "RETENTION_LOG_SOURCE_METRIC_DAYS"
+            }
+          }
+        ],
+        "kind": "list"
+      }
+    },
+    "sample_english": "window reduced from 28 to 21 days: BASELINE_LOOKBACK_DAYS is 21 days and RETENTION_LOG_SOURCE_METRIC_DAYS is 22 days and HISTORY_BACKFILL_MAX_HOURS is 72 hours, so the reading would outlive the retention",
+    "sample_english_params": {
+      "asked": "28",
+      "days": "21",
+      "limits": "BASELINE_LOOKBACK_DAYS is 21 days and RETENTION_LOG_SOURCE_METRIC_DAYS is 22 days and HISTORY_BACKFILL_MAX_HOURS is 72 hours, so the reading would outlive the retention"
+    },
+    "template": "window reduced from {asked} to {days} days: {limits}"
+  },
+  "history.window.unavailable": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "limits": {
+        "kind": "list",
+        "style": "and_all"
+      },
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 5,
+      "limits": {
+        "items": [
+          {
+            "code": "history.window.limit_setting",
+            "params": {
+              "days": 5,
+              "setting": "HISTORY_BACKFILL_DAYS"
+            }
+          }
+        ],
+        "kind": "list"
+      },
+      "minimum": 7
+    },
+    "sample_english": "history unavailable: the window would be 5 days, below the 7-day minimum; HISTORY_BACKFILL_DAYS is 5 days",
+    "sample_english_params": {
+      "days": "5",
+      "limits": "HISTORY_BACKFILL_DAYS is 5 days",
+      "minimum": "7"
+    },
+    "template": "history unavailable: the window would be {days} days, below the {minimum}-day minimum; {limits}"
+  },
+  "history.words.bucket_many": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 2016
+    },
+    "sample_english": "2016 live buckets",
+    "sample_english_params": {
+      "count": "2016"
+    },
+    "template": "{count} live buckets"
+  },
+  "history.words.bucket_one": {
+    "params": {},
+    "sample": {},
+    "sample_english": "1 live bucket",
+    "sample_english_params": {},
+    "template": "1 live bucket"
+  },
+  "history.words.plan_many": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 6
+    },
+    "sample_english": "6 per-source plans",
+    "sample_english_params": {
+      "count": "6"
+    },
+    "template": "{count} per-source plans"
+  },
+  "history.words.plan_one": {
+    "params": {},
+    "sample": {},
+    "sample_english": "1 per-source plan",
+    "sample_english_params": {},
+    "template": "1 per-source plan"
+  },
+  "history.words.source_many": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 5
+    },
+    "sample_english": "5 sources",
+    "sample_english_params": {
+      "count": "5"
+    },
+    "template": "{count} sources"
+  },
+  "history.words.source_one": {
+    "params": {},
+    "sample": {},
+    "sample_english": "1 source",
+    "sample_english_params": {},
+    "template": "1 source"
+  },
+  "ips.basis.mad_above_p95_events": {
+    "params": {
+      "bound": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      }
+    },
+    "sample": {
+      "bound": 350.0,
+      "observed": 410.0
+    },
+    "sample_english": "robust score unavailable (MAD=0); 410 is above the historical p95 350",
+    "sample_english_params": {
+      "bound": "350",
+      "observed": "410"
+    },
+    "template": "robust score unavailable (MAD=0); {observed} is above the historical p95 {bound}"
+  },
+  "ips.basis.mad_within_p95_events": {
+    "params": {
+      "bound": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      }
+    },
+    "sample": {
+      "bound": 350.0,
+      "observed": 310.0
+    },
+    "sample_english": "robust score unavailable (MAD=0) and 310 is within the historical p95 350",
+    "sample_english_params": {
+      "bound": "350",
+      "observed": "310"
+    },
+    "template": "robust score unavailable (MAD=0) and {observed} is within the historical p95 {bound}"
+  },
+  "ips.block.denominator_below_min": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 40,
+      "minimum": 50
+    },
+    "sample_english": "40 events carrying an action is below the 50 minimum denominator for a ratio verdict",
+    "sample_english_params": {
+      "count": "40",
+      "minimum": "50"
+    },
+    "template": "{count} events carrying an action is below the {minimum} minimum denominator for a ratio verdict"
+  },
+  "ips.block.fired": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "ips.basis.mad_above_p95_events",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "history": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "multiple": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "count": 60,
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.1
+      },
+      "history": 1200.0,
+      "multiple": 6.0,
+      "rise": {
+        "kind": "points",
+        "points": 50.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.6
+      },
+      "total": 100
+    },
+    "sample_english": "60 of 100 events carrying an action were blocked (60.0 %), against an expected 10.0 % from 1200 historical events (+50.0 pp, 6.0x); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "count": "60",
+      "expected": "10.0 %",
+      "history": "1200",
+      "multiple": "6.0",
+      "rise": "+50.0 pp",
+      "share": "60.0 %",
+      "total": "100"
+    },
+    "template": "{count} of {total} events carrying an action were blocked ({share}), against an expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}"
+  },
+  "ips.block.fired_lower": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "ips.basis.mad_above_p95_events",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "history": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "multiple": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "count": 60,
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.1
+      },
+      "history": 1200.0,
+      "multiple": 6.0,
+      "rise": {
+        "kind": "points",
+        "points": 50.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.6
+      },
+      "total": 100
+    },
+    "sample_english": "at least 60 of 100 events carrying an action were blocked (at least 60.0 %), against an expected 10.0 % from 1200 historical events (+50.0 pp, 6.0x); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "count": "60",
+      "expected": "10.0 %",
+      "history": "1200",
+      "multiple": "6.0",
+      "rise": "+50.0 pp",
+      "share": "60.0 %",
+      "total": "100"
+    },
+    "template": "at least {count} of {total} events carrying an action were blocked (at least {share}), against an expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}"
+  },
+  "ips.block.fired_lower_no_multiple": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "ips.basis.mad_above_p95_events",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "history": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "count": 60,
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.0
+      },
+      "history": 1200.0,
+      "rise": {
+        "kind": "points",
+        "points": 60.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.6
+      },
+      "total": 100
+    },
+    "sample_english": "at least 60 of 100 events carrying an action were blocked (at least 60.0 %), against an expected 0.0 % from 1200 historical events (+60.0 pp); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "count": "60",
+      "expected": "0.0 %",
+      "history": "1200",
+      "rise": "+60.0 pp",
+      "share": "60.0 %",
+      "total": "100"
+    },
+    "template": "at least {count} of {total} events carrying an action were blocked (at least {share}), against an expected {expected} from {history} historical events ({rise}); {basis}"
+  },
+  "ips.block.fired_no_multiple": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "ips.basis.mad_above_p95_events",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "history": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "count": 60,
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.0
+      },
+      "history": 1200.0,
+      "rise": {
+        "kind": "points",
+        "points": 60.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.6
+      },
+      "total": 100
+    },
+    "sample_english": "60 of 100 events carrying an action were blocked (60.0 %), against an expected 0.0 % from 1200 historical events (+60.0 pp); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "count": "60",
+      "expected": "0.0 %",
+      "history": "1200",
+      "rise": "+60.0 pp",
+      "share": "60.0 %",
+      "total": "100"
+    },
+    "template": "{count} of {total} events carrying an action were blocked ({share}), against an expected {expected} from {history} historical events ({rise}); {basis}"
+  },
+  "ips.block.numerator_below_min": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 5,
+      "minimum": 10
+    },
+    "sample_english": "5 blocked events is below the 10 minimum; no material rise in the proportion is possible",
+    "sample_english_params": {
+      "count": "5",
+      "minimum": "10"
+    },
+    "template": "{count} blocked events is below the {minimum} minimum; no material rise in the proportion is possible"
+  },
+  "ips.caveat.block_ratio": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Blocking is judged through the profile's action map. A higher block ratio describes the IPS's decisions; it does not establish that an attack succeeded.",
+    "sample_english_params": {},
+    "template": "Blocking is judged through the profile's action map. A higher block ratio describes the IPS's decisions; it does not establish that an attack succeeded."
+  },
+  "ips.caveat.destination_rate": {
+    "params": {},
+    "sample": {},
+    "sample_english": "More events towards a destination describe traffic volume, not an attack on it.",
+    "sample_english_params": {},
+    "template": "More events towards a destination describe traffic volume, not an attack on it."
+  },
+  "ips.caveat.new_port": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A newly busy destination port may be a deployment as easily as a probe. The contributors are the bucket's busiest source IPs, not necessarily this port's.",
+    "sample_english_params": {},
+    "template": "A newly busy destination port may be a deployment as easily as a probe. The contributors are the bucket's busiest source IPs, not necessarily this port's."
+  },
+  "ips.caveat.port_fanout": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Many distinct destination ports from one source IP is a traffic shape, not an attack verdict: a scan, a vulnerability assessment and a service that rotates ports look alike.",
+    "sample_english_params": {},
+    "template": "Many distinct destination ports from one source IP is a traffic shape, not an attack verdict: a scan, a vulnerability assessment and a service that rotates ports look alike."
+  },
+  "ips.caveat.port_rate": {
+    "params": {},
+    "sample": {},
+    "sample_english": "More events on a port describe traffic volume, not intent: a scan, a deployment and a misconfigured client look alike here.",
+    "sample_english_params": {},
+    "template": "More events on a port describe traffic volume, not intent: a scan, a deployment and a misconfigured client look alike here."
+  },
+  "ips.caveat.signature_burst": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A burst of one signature describes how often the IPS matched it, not that the matched activity succeeded.",
+    "sample_english_params": {},
+    "template": "A burst of one signature describes how often the IPS matched it, not that the matched activity succeeded."
+  },
+  "ips.caveat.source_concentration": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A dominant source IP describes traffic composition, not intent. Behind a proxy or NAT it is the intermediary's address.",
+    "sample_english_params": {},
+    "template": "A dominant source IP describes traffic composition, not intent. Behind a proxy or NAT it is the intermediary's address."
+  },
+  "ips.concentration.fired": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "ips.basis.mad_above_p95_events",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "top": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "top5": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.1
+      },
+      "rise": {
+        "kind": "points",
+        "points": 60.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.7
+      },
+      "top": 70,
+      "top5": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.95
+      },
+      "total": 100
+    },
+    "sample_english": "the largest source IP sent 70 of 100 events (70.0 %), against an expected share of 10.0 % (+60.0 pp); the five largest sent 95.0 %; robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "expected": "10.0 %",
+      "rise": "+60.0 pp",
+      "share": "70.0 %",
+      "top": "70",
+      "top5": "95.0 %",
+      "total": "100"
+    },
+    "template": "the largest source IP sent {top} of {total} events ({share}), against an expected share of {expected} ({rise}); the five largest sent {top5}; {basis}"
+  },
+  "ips.concentration.fired_no_top5": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "ips.basis.mad_above_p95_events",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "top": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.1
+      },
+      "rise": {
+        "kind": "points",
+        "points": 60.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.7
+      },
+      "top": 70,
+      "total": 100
+    },
+    "sample_english": "the largest source IP sent 70 of 100 events (70.0 %), against an expected share of 10.0 % (+60.0 pp); the five largest sent n/a; robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "expected": "10.0 %",
+      "rise": "+60.0 pp",
+      "share": "70.0 %",
+      "top": "70",
+      "total": "100"
+    },
+    "template": "the largest source IP sent {top} of {total} events ({share}), against an expected share of {expected} ({rise}); the five largest sent n/a; {basis}"
+  },
+  "ips.concentration.top_below_min": {
+    "params": {
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "top": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "minimum": 20,
+      "top": 15
+    },
+    "sample_english": "the largest source IP sent 15 events, below the 20 minimum for a material concentration",
+    "sample_english_params": {
+      "minimum": "20",
+      "top": "15"
+    },
+    "template": "the largest source IP sent {top} events, below the {minimum} minimum for a material concentration"
+  },
+  "ips.concentration.total_below_min": {
+    "params": {
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "minimum": 50,
+      "total": 40
+    },
+    "sample_english": "40 events is below the 50 minimum for a composition verdict",
+    "sample_english_params": {
+      "minimum": "50",
+      "total": "40"
+    },
+    "template": "{total} events is below the {minimum} minimum for a composition verdict"
+  },
+  "ips.guard.absent_port": {
+    "params": {},
+    "sample": {},
+    "sample_english": "port 0 and protocol 255 are absent values, not a service: no claim about them",
+    "sample_english_params": {},
+    "template": "port 0 and protocol 255 are absent values, not a service: no claim about them"
+  },
+  "ips.guard.action_counts_unstated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket does not state its blocked and action event counts",
+    "sample_english_params": {},
+    "template": "the bucket does not state its blocked and action event counts"
+  },
+  "ips.guard.action_unmapped": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no action property mapped",
+    "sample_english_params": {},
+    "template": "no action property mapped"
+  },
+  "ips.guard.baseline_samples": {
+    "params": {
+      "metric": {
+        "kind": "text"
+      },
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "samples": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "metric": "entity_events",
+      "minimum": 8,
+      "samples": 7
+    },
+    "sample_english": "the entity_events baseline has 7 sample(s), below the minimum of 8 for a defensible verdict",
+    "sample_english_params": {
+      "metric": "entity_events",
+      "minimum": "8",
+      "samples": "7"
+    },
+    "template": "the {metric} baseline has {samples} sample(s), below the minimum of {minimum} for a defensible verdict"
+  },
+  "ips.guard.baseline_versions": {
+    "params": {
+      "bucket_normalizer": {
+        "kind": "text"
+      },
+      "bucket_profile": {
+        "kind": "text"
+      },
+      "metric": {
+        "kind": "text"
+      },
+      "normalizer": {
+        "kind": "text"
+      },
+      "profile": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "bucket_normalizer": "2",
+      "bucket_profile": "4",
+      "metric": "entity_events",
+      "normalizer": "2",
+      "profile": "3"
+    },
+    "sample_english": "the entity_events baseline was built under profile version 3 and normalizer version 2, not the bucket's 4 and 2",
+    "sample_english_params": {
+      "bucket_normalizer": "2",
+      "bucket_profile": "4",
+      "metric": "entity_events",
+      "normalizer": "2",
+      "profile": "3"
+    },
+    "template": "the {metric} baseline was built under profile version {profile} and normalizer version {normalizer}, not the bucket's {bucket_profile} and {bucket_normalizer}"
+  },
+  "ips.guard.count_unknown": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the entity's count is unknown for this bucket",
+    "sample_english_params": {},
+    "template": "the entity's count is unknown for this bucket"
+  },
+  "ips.guard.coverage_low": {
+    "params": {
+      "covered": {
+        "kind": "percent"
+      },
+      "floor": {
+        "kind": "percent"
+      },
+      "label": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.label.destination_port",
+          "ips.label.destination_ip",
+          "ips.label.signature",
+          "ips.label.port_fanout",
+          "ips.label.destination_port_hyphenated",
+          "ips.label.source_ip_hyphenated",
+          "ips.label.action"
+        ]
+      }
+    },
+    "sample": {
+      "covered": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.62
+      },
+      "floor": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      },
+      "label": {
+        "code": "ips.label.destination_port",
+        "params": {}
+      }
+    },
+    "sample_english": "destination port coverage was 62 %, below the 90 % floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing",
+    "sample_english_params": {
+      "covered": "62 %",
+      "floor": "90 %",
+      "label": "destination port"
+    },
+    "template": "{label} coverage was {covered}, below the {floor} floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing"
+  },
+  "ips.guard.coverage_unmeasurable": {
+    "params": {
+      "floor": {
+        "kind": "percent"
+      },
+      "label": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.label.destination_port",
+          "ips.label.destination_ip",
+          "ips.label.signature",
+          "ips.label.port_fanout",
+          "ips.label.destination_port_hyphenated",
+          "ips.label.source_ip_hyphenated",
+          "ips.label.action"
+        ]
+      }
+    },
+    "sample": {
+      "floor": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      },
+      "label": {
+        "code": "ips.label.destination_port",
+        "params": {}
+      }
+    },
+    "sample_english": "destination port coverage was not measurable, below the 90 % floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing",
+    "sample_english_params": {
+      "floor": "90 %",
+      "label": "destination port"
+    },
+    "template": "{label} coverage was not measurable, below the {floor} floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing"
+  },
+  "ips.guard.dimension_unmeasured": {
+    "params": {
+      "label": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.label.destination_port",
+          "ips.label.destination_ip",
+          "ips.label.signature",
+          "ips.label.port_fanout",
+          "ips.label.destination_port_hyphenated",
+          "ips.label.source_ip_hyphenated",
+          "ips.label.action"
+        ]
+      },
+      "state": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.state.not_collected",
+          "ips.state.failed",
+          "ips.state.rejected",
+          "ips.state.lower_bound"
+        ]
+      }
+    },
+    "sample": {
+      "label": {
+        "code": "ips.label.destination_port",
+        "params": {}
+      },
+      "state": {
+        "code": "ips.state.failed",
+        "params": {}
+      }
+    },
+    "sample_english": "the destination port search was failed for this bucket: the value is unavailable, not zero",
+    "sample_english_params": {
+      "label": "destination port",
+      "state": "failed"
+    },
+    "template": "the {label} search was {state} for this bucket: the value is unavailable, not zero"
+  },
+  "ips.guard.entity_not_judged": {
+    "params": {
+      "detector": {
+        "kind": "text"
+      },
+      "dimension": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "detector": "IPS_PORT_RATE_SPIKE",
+      "dimension": "DESTINATION_IP"
+    },
+    "sample_english": "a DESTINATION_IP entity is not judged by IPS_PORT_RATE_SPIKE",
+    "sample_english_params": {
+      "detector": "IPS_PORT_RATE_SPIKE",
+      "dimension": "DESTINATION_IP"
+    },
+    "template": "a {dimension} entity is not judged by {detector}"
+  },
+  "ips.guard.fanout_unstated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket does not state its largest distinct-port count",
+    "sample_english_params": {},
+    "template": "the bucket does not state its largest distinct-port count"
+  },
+  "ips.guard.generic_signature": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the signature's name is generic: a claim about a specific signature is not safe",
+    "sample_english_params": {},
+    "template": "the signature's name is generic: a claim about a specific signature is not safe"
+  },
+  "ips.guard.maintenance": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the source was in maintenance during this bucket",
+    "sample_english_params": {},
+    "template": "the source was in maintenance during this bucket"
+  },
+  "ips.guard.no_entity": {
+    "params": {
+      "label": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.label.destination_port",
+          "ips.label.destination_ip",
+          "ips.label.signature",
+          "ips.label.port_fanout",
+          "ips.label.destination_port_hyphenated",
+          "ips.label.source_ip_hyphenated",
+          "ips.label.action"
+        ]
+      }
+    },
+    "sample": {
+      "label": {
+        "code": "ips.label.destination_port",
+        "params": {}
+      }
+    },
+    "sample_english": "no destination port entity was supplied for this verdict",
+    "sample_english_params": {
+      "label": "destination port"
+    },
+    "template": "no {label} entity was supplied for this verdict"
+  },
+  "ips.guard.not_proven_lower_bound": {
+    "params": {
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.spike.below_min",
+          "waf.rate.ratio_not_reached",
+          "ips.spike.delta_below_min",
+          "waf.basis.z_not_reached",
+          "ips.basis.mad_within_p95_events",
+          "waf.basis.mad_within_p95",
+          "ips.concentration.top_below_min",
+          "waf.concentration.rise_below_min",
+          "ips.block.numerator_below_min",
+          "waf.ratio.rise_below_min",
+          "waf.ratio.multiple_below_min"
+        ]
+      },
+      "scope": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.scope.unstated",
+          "waf.scope.lower_bound_increase",
+          "waf.scope.needs_exact",
+          "waf.scope.unattributed",
+          "waf.scope.unclassified",
+          "waf.scope.inputs_unsupported",
+          "waf.scope.composition_exact",
+          "ips.scope.role"
+        ]
+      }
+    },
+    "sample": {
+      "reason": {
+        "code": "waf.basis.z_not_reached",
+        "params": {
+          "score": 2.1,
+          "threshold": 3.5
+        }
+      },
+      "scope": {
+        "code": "waf.scope.lower_bound_increase",
+        "params": {}
+      }
+    },
+    "sample_english": "robust z=2.10 has not reached +3.5; the count is a lower bound (the count is a lower bound: an increase can be proven, normal behaviour cannot), so a normal verdict cannot be concluded from it",
+    "sample_english_params": {
+      "reason": "robust z=2.10 has not reached +3.5",
+      "scope": "the count is a lower bound: an increase can be proven, normal behaviour cannot"
+    },
+    "template": "{reason}; the count is a lower bound ({scope}), so a normal verdict cannot be concluded from it"
+  },
+  "ips.guard.source_totals_unstated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket does not state its source-IP totals",
+    "sample_english_params": {},
+    "template": "the bucket does not state its source-IP totals"
+  },
+  "ips.history_check.admission_unrecorded": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-13T12:00:00+00:00"
+    },
+    "sample_english": "history bucket 2026-10-13T12:00:00+00:00 had truncated or unrecorded destination-port admission",
+    "sample_english_params": {
+      "bucket": "2026-10-13T12:00:00+00:00"
+    },
+    "template": "history bucket {bucket} had truncated or unrecorded destination-port admission"
+  },
+  "ips.history_check.before_hand_off": {
+    "params": {
+      "hand_off": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "hand_off": "2026-10-13T12:00:00+00:00"
+    },
+    "sample_english": "the port was first admitted before the history hand-off at 2026-10-13T12:00:00+00:00",
+    "sample_english_params": {
+      "hand_off": "2026-10-13T12:00:00+00:00"
+    },
+    "template": "the port was first admitted before the history hand-off at {hand_off}"
+  },
+  "ips.history_check.coverage_low": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "floor": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-13T12:00:00+00:00",
+      "floor": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      }
+    },
+    "sample_english": "history bucket 2026-10-13T12:00:00+00:00 had destination-port coverage below the 90 % floor",
+    "sample_english_params": {
+      "bucket": "2026-10-13T12:00:00+00:00",
+      "floor": "90 %"
+    },
+    "template": "history bucket {bucket} had destination-port coverage below the {floor} floor"
+  },
+  "ips.history_check.maintenance": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-13T12:00:00+00:00"
+    },
+    "sample_english": "history bucket 2026-10-13T12:00:00+00:00 was in maintenance",
+    "sample_english_params": {
+      "bucket": "2026-10-13T12:00:00+00:00"
+    },
+    "template": "history bucket {bucket} was in maintenance"
+  },
+  "ips.history_check.normalizer_version": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "version": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-13T12:00:00+00:00",
+      "version": 2
+    },
+    "sample_english": "history bucket 2026-10-13T12:00:00+00:00 is incompatible with normalizer version 2",
+    "sample_english_params": {
+      "bucket": "2026-10-13T12:00:00+00:00",
+      "version": "2"
+    },
+    "template": "history bucket {bucket} is incompatible with normalizer version {version}"
+  },
+  "ips.history_check.not_loaded": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history was not loaded for an established port",
+    "sample_english_params": {},
+    "template": "history was not loaded for an established port"
+  },
+  "ips.history_check.port_search_not_exact": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "state": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.state.not_collected",
+          "ips.state.failed",
+          "ips.state.rejected",
+          "ips.state.lower_bound"
+        ]
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-13T12:00:00+00:00",
+      "state": {
+        "code": "ips.state.failed",
+        "params": {}
+      }
+    },
+    "sample_english": "history bucket 2026-10-13T12:00:00+00:00 had a destination-port search that was failed, not exact",
+    "sample_english_params": {
+      "bucket": "2026-10-13T12:00:00+00:00",
+      "state": "failed"
+    },
+    "template": "history bucket {bucket} had a destination-port search that was {state}, not exact"
+  },
+  "ips.label.action": {
+    "params": {},
+    "sample": {},
+    "sample_english": "action",
+    "sample_english_params": {},
+    "template": "action"
+  },
+  "ips.label.destination_ip": {
+    "params": {},
+    "sample": {},
+    "sample_english": "destination IP",
+    "sample_english_params": {},
+    "template": "destination IP"
+  },
+  "ips.label.destination_port": {
+    "params": {},
+    "sample": {},
+    "sample_english": "destination port",
+    "sample_english_params": {},
+    "template": "destination port"
+  },
+  "ips.label.destination_port_hyphenated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "destination-port",
+    "sample_english_params": {},
+    "template": "destination-port"
+  },
+  "ips.label.port_fanout": {
+    "params": {},
+    "sample": {},
+    "sample_english": "port fan-out",
+    "sample_english_params": {},
+    "template": "port fan-out"
+  },
+  "ips.label.signature": {
+    "params": {},
+    "sample": {},
+    "sample_english": "signature",
+    "sample_english_params": {},
+    "template": "signature"
+  },
+  "ips.label.source_ip_hyphenated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "source-IP",
+    "sample_english_params": {},
+    "template": "source-IP"
+  },
+  "ips.noun.distinct_ports": {
+    "params": {},
+    "sample": {},
+    "sample_english": "distinct ports",
+    "sample_english_params": {},
+    "template": "distinct ports"
+  },
+  "ips.noun.events": {
+    "params": {},
+    "sample": {},
+    "sample_english": "events",
+    "sample_english_params": {},
+    "template": "events"
+  },
+  "ips.novelty.below_materiality": {
+    "params": {
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "events": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "min_buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "min_events": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "buckets": 1,
+      "events": 5,
+      "min_buckets": 2,
+      "min_events": 20
+    },
+    "sample_english": "5 event(s) in 1 bucket(s) since first appearance has not reached 20 events in 2 buckets",
+    "sample_english_params": {
+      "buckets": "1",
+      "events": "5",
+      "min_buckets": "2",
+      "min_events": "20"
+    },
+    "template": "{events} event(s) in {buckets} bucket(s) since first appearance has not reached {min_events} events in {min_buckets} buckets"
+  },
+  "ips.novelty.below_materiality_lower": {
+    "params": {
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.novelty.below_materiality"
+        ]
+      }
+    },
+    "sample": {
+      "reason": {
+        "code": "ips.novelty.below_materiality",
+        "params": {
+          "buckets": 1,
+          "events": 5,
+          "min_buckets": 2,
+          "min_events": 20
+        }
+      }
+    },
+    "sample_english": "5 event(s) in 1 bucket(s) since first appearance has not reached 20 events in 2 buckets; the counts are lower bounds",
+    "sample_english_params": {
+      "reason": "5 event(s) in 1 bucket(s) since first appearance has not reached 20 events in 2 buckets"
+    },
+    "template": "{reason}; the counts are lower bounds"
+  },
+  "ips.novelty.cannot_establish": {
+    "params": {
+      "cause": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.history_check.not_divisible",
+          "waf.history_check.never_collected",
+          "waf.history_check.record_count",
+          "waf.history_check.bucket_width",
+          "waf.history_check.profile_version",
+          "waf.history_check.appearance_never_collected",
+          "ips.history_check.port_search_not_exact",
+          "ips.history_check.coverage_low",
+          "ips.history_check.admission_unrecorded",
+          "ips.history_check.normalizer_version",
+          "ips.history_check.maintenance",
+          "ips.history_check.not_loaded",
+          "ips.history_check.before_hand_off",
+          "waf.novelty.history_incomplete"
+        ]
+      }
+    },
+    "sample": {
+      "cause": {
+        "code": "waf.history_check.not_divisible",
+        "params": {}
+      }
+    },
+    "sample_english": "novelty cannot be established: the history window is not divisible by the collection bucket width",
+    "sample_english_params": {
+      "cause": "the history window is not divisible by the collection bucket width"
+    },
+    "template": "novelty cannot be established: {cause}"
+  },
+  "ips.novelty.established_hand_off": {
+    "params": {
+      "first_seen": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "hand_off": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "first_seen": "2026-10-13T12:00:00+00:00",
+      "hand_off": "2026-10-14T12:00:00+00:00"
+    },
+    "sample_english": "established port: first admitted 2026-10-13T12:00:00+00:00, before history hand-off 2026-10-14T12:00:00+00:00",
+    "sample_english_params": {
+      "first_seen": "2026-10-13T12:00:00+00:00",
+      "hand_off": "2026-10-14T12:00:00+00:00"
+    },
+    "template": "established port: first admitted {first_seen}, before history hand-off {hand_off}"
+  },
+  "ips.novelty.established_outside_window": {
+    "params": {
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "first_seen": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "buckets": 12,
+      "first_seen": "2026-10-13T12:00:00+00:00"
+    },
+    "sample_english": "established port: first admitted 2026-10-13T12:00:00+00:00, outside the 12-bucket novelty window",
+    "sample_english_params": {
+      "buckets": "12",
+      "first_seen": "2026-10-13T12:00:00+00:00"
+    },
+    "template": "established port: first admitted {first_seen}, outside the {buckets}-bucket novelty window"
+  },
+  "ips.novelty.fired": {
+    "params": {
+      "admission": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "events": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "first_seen": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "history_end": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "history_start": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "port": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "admission": 3,
+      "buckets": 2,
+      "events": 30,
+      "first_seen": "2026-10-13T12:00:00+00:00",
+      "history_end": "2026-10-13T12:00:00+00:00",
+      "history_start": "2026-10-06T12:00:00+00:00",
+      "port": "443/tcp"
+    },
+    "sample_english": "destination port 443/tcp carried 30 events across 2 buckets since it first appeared at 2026-10-13T12:00:00+00:00; in the verified history 2026-10-06T12:00:00+00:00 to 2026-10-13T12:00:00+00:00 it stayed below 3 events in every bucket",
+    "sample_english_params": {
+      "admission": "3",
+      "buckets": "2",
+      "events": "30",
+      "first_seen": "2026-10-13T12:00:00+00:00",
+      "history_end": "2026-10-13T12:00:00+00:00",
+      "history_start": "2026-10-06T12:00:00+00:00",
+      "port": "443/tcp"
+    },
+    "template": "destination port {port} carried {events} events across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it stayed below {admission} events in every bucket"
+  },
+  "ips.novelty.fired_lower": {
+    "params": {
+      "admission": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "events": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "first_seen": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "history_end": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "history_start": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "port": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "admission": 3,
+      "buckets": 2,
+      "events": 30,
+      "first_seen": "2026-10-13T12:00:00+00:00",
+      "history_end": "2026-10-13T12:00:00+00:00",
+      "history_start": "2026-10-06T12:00:00+00:00",
+      "port": "443/tcp"
+    },
+    "sample_english": "destination port 443/tcp carried at least 30 events across 2 buckets since it first appeared at 2026-10-13T12:00:00+00:00; in the verified history 2026-10-06T12:00:00+00:00 to 2026-10-13T12:00:00+00:00 it stayed below 3 events in every bucket",
+    "sample_english_params": {
+      "admission": "3",
+      "buckets": "2",
+      "events": "30",
+      "first_seen": "2026-10-13T12:00:00+00:00",
+      "history_end": "2026-10-13T12:00:00+00:00",
+      "history_start": "2026-10-06T12:00:00+00:00",
+      "port": "443/tcp"
+    },
+    "template": "destination port {port} carried at least {events} events across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it stayed below {admission} events in every bucket"
+  },
+  "ips.novelty.flood_admission": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the first-appearance bucket's destination-port admission was truncated: the port appeared in a flood of new ports and is not individually new",
+    "sample_english_params": {},
+    "template": "the first-appearance bucket's destination-port admission was truncated: the port appeared in a flood of new ports and is not individually new"
+  },
+  "ips.novelty.flood_discovery": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the first-appearance bucket's destination-port discovery was incomplete: the port cannot be told apart from a flood of new ports",
+    "sample_english_params": {},
+    "template": "the first-appearance bucket's destination-port discovery was incomplete: the port cannot be told apart from a flood of new ports"
+  },
+  "ips.novelty.not_established": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the port's first appearance was not established",
+    "sample_english_params": {},
+    "template": "the port's first appearance was not established"
+  },
+  "ips.novelty.readmitted": {
+    "params": {},
+    "sample": {},
+    "sample_english": "re-admitted port: it was retired and seen again, so it is not new",
+    "sample_english_params": {},
+    "template": "re-admitted port: it was retired and seen again, so it is not new"
+  },
+  "ips.role.coverage": {
+    "params": {},
+    "sample": {},
+    "sample_english": "coverage",
+    "sample_english_params": {},
+    "template": "coverage"
+  },
+  "ips.role.denominator": {
+    "params": {},
+    "sample": {},
+    "sample_english": "denominator",
+    "sample_english_params": {},
+    "template": "denominator"
+  },
+  "ips.role.destination_port_coverage": {
+    "params": {},
+    "sample": {},
+    "sample_english": "destination-port coverage",
+    "sample_english_params": {},
+    "template": "destination-port coverage"
+  },
+  "ips.role.history": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history",
+    "sample_english_params": {},
+    "template": "history"
+  },
+  "ips.role.largest_contributor": {
+    "params": {},
+    "sample": {},
+    "sample_english": "largest contributor",
+    "sample_english_params": {},
+    "template": "largest contributor"
+  },
+  "ips.role.largest_fanout": {
+    "params": {},
+    "sample": {},
+    "sample_english": "largest fan-out",
+    "sample_english_params": {},
+    "template": "largest fan-out"
+  },
+  "ips.role.materiality": {
+    "params": {},
+    "sample": {},
+    "sample_english": "materiality",
+    "sample_english_params": {},
+    "template": "materiality"
+  },
+  "ips.role.numerator": {
+    "params": {},
+    "sample": {},
+    "sample_english": "numerator",
+    "sample_english_params": {},
+    "template": "numerator"
+  },
+  "ips.role.total": {
+    "params": {},
+    "sample": {},
+    "sample_english": "total",
+    "sample_english_params": {},
+    "template": "total"
+  },
+  "ips.role.volume": {
+    "params": {},
+    "sample": {},
+    "sample_english": "volume",
+    "sample_english_params": {},
+    "template": "volume"
+  },
+  "ips.scope.role": {
+    "params": {
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.scope.unstated",
+          "waf.scope.lower_bound_increase",
+          "waf.scope.needs_exact",
+          "waf.scope.unattributed",
+          "waf.scope.unclassified",
+          "waf.scope.inputs_unsupported",
+          "waf.scope.composition_exact"
+        ]
+      },
+      "role": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.role.volume",
+          "ips.role.coverage",
+          "ips.role.history",
+          "ips.role.materiality",
+          "ips.role.largest_contributor",
+          "ips.role.total",
+          "ips.role.largest_fanout",
+          "ips.role.destination_port_coverage",
+          "ips.role.numerator",
+          "ips.role.denominator"
+        ]
+      }
+    },
+    "sample": {
+      "reason": {
+        "code": "waf.scope.lower_bound_increase",
+        "params": {}
+      },
+      "role": {
+        "code": "ips.role.volume",
+        "params": {}
+      }
+    },
+    "sample_english": "volume: the count is a lower bound: an increase can be proven, normal behaviour cannot",
+    "sample_english_params": {
+      "reason": "the count is a lower bound: an increase can be proven, normal behaviour cannot",
+      "role": "volume"
+    },
+    "template": "{role}: {reason}"
+  },
+  "ips.spike.below_min": {
+    "params": {
+      "minimum": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      },
+      "unit": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.noun.events",
+          "ips.noun.distinct_ports"
+        ]
+      }
+    },
+    "sample": {
+      "minimum": 20.0,
+      "observed": 12.0,
+      "unit": {
+        "code": "ips.noun.events",
+        "params": {}
+      }
+    },
+    "sample_english": "12 events/bucket is below the 20 minimum for a defensible verdict",
+    "sample_english_params": {
+      "minimum": "20",
+      "observed": "12",
+      "unit": "events"
+    },
+    "template": "{observed} {unit}/bucket is below the {minimum} minimum for a defensible verdict"
+  },
+  "ips.spike.delta_below_min": {
+    "params": {
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      },
+      "minimum": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      },
+      "unit": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.noun.events",
+          "ips.noun.distinct_ports"
+        ]
+      }
+    },
+    "sample": {
+      "delta": 30.0,
+      "minimum": 50.0,
+      "unit": {
+        "code": "ips.noun.events",
+        "params": {}
+      }
+    },
+    "sample_english": "increase of 30 events/bucket is below the 50 minimum absolute delta",
+    "sample_english_params": {
+      "delta": "30",
+      "minimum": "50",
+      "unit": "events"
+    },
+    "template": "increase of {delta} {unit}/bucket is below the {minimum} minimum absolute delta"
+  },
+  "ips.spike.fired": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "ips.basis.mad_above_p95_events",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      },
+      "expected": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      },
+      "ratio_text": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.rate.ratio_multiple",
+          "ips.spike.ratio_none"
+        ]
+      },
+      "subject": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.subject.named",
+          "ips.subject.busiest_fanout"
+        ]
+      },
+      "unit": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.noun.events",
+          "ips.noun.distinct_ports"
+        ]
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "delta": 1420.0,
+      "expected": 100.0,
+      "observed": 1520.0,
+      "ratio_text": {
+        "code": "waf.rate.ratio_multiple",
+        "params": {
+          "ratio": 15.2
+        }
+      },
+      "subject": {
+        "code": "ips.subject.named",
+        "params": {
+          "kind": {
+            "code": "ips.label.destination_port",
+            "params": {}
+          },
+          "name": "443/tcp"
+        }
+      },
+      "unit": {
+        "code": "ips.noun.events",
+        "params": {}
+      }
+    },
+    "sample_english": "1,520 events for destination port 443/tcp is above the baseline median 100.0 (15.20x expected, +1,420 events/bucket); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "delta": "1,420",
+      "expected": "100.0",
+      "observed": "1,520",
+      "ratio_text": "15.20x expected",
+      "subject": "destination port 443/tcp",
+      "unit": "events"
+    },
+    "template": "{observed} {unit} for {subject} is above the baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}"
+  },
+  "ips.spike.fired_lower": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "ips.basis.mad_above_p95_events",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      },
+      "expected": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "grouped"
+      },
+      "ratio_text": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.rate.ratio_multiple",
+          "ips.spike.ratio_none"
+        ]
+      },
+      "scope": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.scope.unstated",
+          "waf.scope.lower_bound_increase",
+          "waf.scope.needs_exact",
+          "waf.scope.unattributed",
+          "waf.scope.unclassified",
+          "waf.scope.inputs_unsupported",
+          "waf.scope.composition_exact",
+          "ips.scope.role"
+        ]
+      },
+      "subject": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.subject.named",
+          "ips.subject.busiest_fanout"
+        ]
+      },
+      "unit": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.noun.events",
+          "ips.noun.distinct_ports"
+        ]
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "delta": 1420.0,
+      "expected": 100.0,
+      "observed": 1520.0,
+      "ratio_text": {
+        "code": "waf.rate.ratio_multiple",
+        "params": {
+          "ratio": 15.2
+        }
+      },
+      "scope": {
+        "code": "ips.scope.role",
+        "params": {
+          "reason": {
+            "code": "waf.scope.lower_bound_increase",
+            "params": {}
+          },
+          "role": {
+            "code": "ips.role.volume",
+            "params": {}
+          }
+        }
+      },
+      "subject": {
+        "code": "ips.subject.named",
+        "params": {
+          "kind": {
+            "code": "ips.label.destination_port",
+            "params": {}
+          },
+          "name": "443/tcp"
+        }
+      },
+      "unit": {
+        "code": "ips.noun.events",
+        "params": {}
+      }
+    },
+    "sample_english": "at least 1,520 events (a lower bound: volume: the count is a lower bound: an increase can be proven, normal behaviour cannot) for destination port 443/tcp is above the baseline median 100.0 (15.20x expected, +1,420 events/bucket); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "delta": "1,420",
+      "expected": "100.0",
+      "observed": "1,520",
+      "ratio_text": "15.20x expected",
+      "scope": "volume: the count is a lower bound: an increase can be proven, normal behaviour cannot",
+      "subject": "destination port 443/tcp",
+      "unit": "events"
+    },
+    "template": "at least {observed} {unit} (a lower bound: {scope}) for {subject} is above the baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}"
+  },
+  "ips.spike.ratio_none": {
+    "params": {},
+    "sample": {},
+    "sample_english": "expected none",
+    "sample_english_params": {},
+    "template": "expected none"
+  },
+  "ips.state.failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "failed",
+    "sample_english_params": {},
+    "template": "failed"
+  },
+  "ips.state.lower_bound": {
+    "params": {},
+    "sample": {},
+    "sample_english": "lower_bound",
+    "sample_english_params": {},
+    "template": "lower_bound"
+  },
+  "ips.state.not_collected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "not collected",
+    "sample_english_params": {},
+    "template": "not collected"
+  },
+  "ips.state.rejected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "rejected",
+    "sample_english_params": {},
+    "template": "rejected"
+  },
+  "ips.subject.busiest_fanout": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the busiest source IP's distinct ports",
+    "sample_english_params": {},
+    "template": "the busiest source IP's distinct ports"
+  },
+  "ips.subject.named": {
+    "params": {
+      "kind": {
+        "kind": "ref",
+        "ref_codes": [
+          "ips.label.destination_port",
+          "ips.label.destination_ip",
+          "ips.label.signature"
+        ]
+      },
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "kind": {
+        "code": "ips.label.destination_port",
+        "params": {}
+      },
+      "name": "443/tcp"
+    },
+    "sample_english": "destination port 443/tcp",
+    "sample_english_params": {
+      "kind": "destination port",
+      "name": "443/tcp"
+    },
+    "template": "{kind} {name}"
   },
   "propertywatch.action.change_pins": {
     "params": {},

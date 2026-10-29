@@ -11,7 +11,14 @@ import { ApiError, api, type HistoryConsole } from "@/lib/api";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { DecisionLine, RequestLines } from "./DecisionLine";
-import { ADMIN_PERMISSION, confirmText, conflictConsole, modeText } from "./historyFormat";
+import {
+  ADMIN_PERMISSION,
+  confirmText,
+  conflictConsole,
+  conflictDetail,
+  modeText,
+} from "./historyFormat";
+import { sentenceReader } from "./historyReasons";
 
 import "./history.css";
 
@@ -58,6 +65,7 @@ export function DecisionBlock({
   const t = useTranslations("history.decision");
   const common = useTranslations("common");
   const i18n = useBehaviorI18n();
+  const read = sentenceReader(i18n);
   const label = (action: Action) => t(action);
   const [confirming, setConfirming] = useState<Action | null>(null);
   const [busy, setBusy] = useState(false);
@@ -81,7 +89,9 @@ export function DecisionBlock({
       setConfirming(null);
       setOutcome({
         tone: "ok",
-        text: next.message ?? (
+        text: (next.message !== null
+          ? read(next.message, { code: next.message_code, params: next.message_params })
+          : null) ?? (
           <>
             {t("recorded")}
             <DecisionLine console={next} />
@@ -93,7 +103,10 @@ export function DecisionBlock({
       const recorded = conflictConsole(err);
       if (recorded !== null) {
         onChange(recorded);
-        const why = err instanceof ApiError && typeof err.detail === "string" ? ` ${err.detail}.` : "";
+        const why =
+          err instanceof ApiError && typeof err.detail === "string"
+            ? ` ${conflictDetail(err, err.detail, read)}.`
+            : "";
         setOutcome({
           tone: "crit",
           text: (
@@ -109,7 +122,10 @@ export function DecisionBlock({
         setOutcome({
           tone: "crit",
           text: t("refused", {
-            detail: typeof err.detail === "string" ? err.detail : t("refusedFallback"),
+            detail:
+              typeof err.detail === "string"
+                ? conflictDetail(err, err.detail, read)
+                : t("refusedFallback"),
           }),
         });
       } else if (err instanceof ApiError && err.status === 403) {
