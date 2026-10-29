@@ -14,6 +14,7 @@
     "failedHelp": "Uyarı mevcut olmayabilir veya backend'e erişilemiyor olabilir. Uyarılar listesini kontrol edin ya da yeniden denemek için sayfayı yenileyin.",
     "seen": "{count} kez görüldü",
     "fingerprint": "parmak izi",
+    "descriptionLabel": "Açıklama",
     "evidence": "Kanıt",
     "lifecycle": "Yaşam döngüsü",
     "opened": "Açılma: {value}",

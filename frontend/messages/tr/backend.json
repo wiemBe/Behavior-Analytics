@@ -1,4 +1,105 @@
 {
+  "alert": {
+    "custom_rule": {
+      "deleted": "Kural silindi",
+      "description": {
+        "exact": "{name}, {observed} değerini gözlemledi (eşik {operator} {threshold})",
+        "exact_unit": "{name}, {observed} {unit} değerini gözlemledi (eşik {operator} {threshold} {unit})",
+        "lower_bound": "{name}, en az {observed} değerini gözlemledi (eşik {operator} {threshold})",
+        "lower_bound_unit": "{name}, en az {observed} {unit} değerini gözlemledi (eşik {operator} {threshold} {unit})",
+        "unmeasured": "{name}, ölçülmemiş bir değer gözlemledi (eşik {operator} {threshold})",
+        "unmeasured_unit": "{name}, ölçülmemiş bir değer gözlemledi (eşik {operator} {threshold} {unit})"
+      },
+      "recovered": "Koşul düzeldi"
+    },
+    "inventory": {
+      "catchall_sender": {
+        "description": "Yapılandırılmış bir log source olmayan cihaz, catch-all log source'a veri gönderiyor ve SOC incelemesi gerektiriyor.",
+        "reviewed": "Catch-all gönderici {target}",
+        "title": "{source} üzerinde yeni gönderici: {identifier}"
+      },
+      "log_source": {
+        "description": "Yeni ve dahili olmayan log source, SOC incelemesi gerektiriyor.",
+        "reviewed": "Log source incelendi",
+        "title": "Yeni log source: {name}"
+      }
+    },
+    "offense_collection": {
+      "recovered": "Offense toplama güncelliği düzeldi.",
+      "stale": {
+        "description": "Salt okunur offense toplayıcı, yapılandırılmış güncellik eşiği içinde tamamlanmadı.",
+        "title": "{instance} için offense toplama güncel değil"
+      }
+    },
+    "search": {
+      "failure": {
+        "description": "{name}, art arda {failures} çalıştırmada başarısız oldu ({error_type})",
+        "recovered": "Arama başarıyla çalıştırıldı",
+        "title": "{name} çalıştırılamıyor"
+      },
+      "threshold": {
+        "exact": "{name}, {observed} sonucunu döndürdü (eşik {operator} {threshold})",
+        "lower_bound": "{name}, en az {observed} sonucunu döndürdü (eşik {operator} {threshold})",
+        "recovered": "Sonuç yeniden eşik içinde"
+      }
+    },
+    "threshold": {
+      "crossed": "{name} eşiğini aştı"
+    }
+  },
+  "custom_rule": {
+    "family": {
+      "collection_off": "{setting} kapalı",
+      "unknown": "{kind} konu türü için bilinen bir toplama ailesi yok"
+    },
+    "reading": {
+      "action_breakdown_missing": "Eylem dağılımı toplanmadı",
+      "action_denominator_lower_bound": "Eylem paydası bir alt sınır",
+      "action_denominator_zero": "Eylem paydası sıfır",
+      "bucket_not_complete": "Zaman dilimi COMPLETE değil",
+      "bucket_partial": "Zaman dilimi PARTIAL",
+      "class_no_complete_source": "Sınıfta COMPLETE zaman dilimine sahip kaynak yok",
+      "class_no_enabled_source": "Sınıfta etkin ve izlenen kaynak yok",
+      "count_semantics_unknown": "Zaman dilimi, sayımlarının kesin mi yoksa alt sınır mı olduğunu belirtmiyor",
+      "dimension_missing": "Boyut toplanmadı",
+      "exact_required": "Tespit kesin sayım gerektiriyor ve bu sayım bir alt sınır",
+      "not_finite": "Okuma sonlu değil",
+      "numerator_missing": "Pay toplanmadı",
+      "request_count_semantics_missing": "Zaman dilimi, istek sayısının kesin olup olmadığını belirtmiyor",
+      "response_breakdown_missing": "Yanıt kodu dağılımı toplanmadı",
+      "response_denominator_lower_bound": "Yanıt kodu paydası bir alt sınır",
+      "response_denominator_zero": "Yanıt kodu paydası sıfır",
+      "subject_missing": "Bu konu için zaman diliminde satır yok",
+      "unmapped_remainder_missing": "Eşlenmemiş kalan toplanmadı"
+    },
+    "status": {
+      "bucket_not_measured": "Zaman dilimi ölçülmedi",
+      "disabled": "Kural devre dışı",
+      "family_not_collected": "Konunun ailesi toplanmıyor",
+      "lower_bound_below_threshold": "Eşiğin altındaki bir alt sınır hiçbir şeyi kanıtlamaz",
+      "lower_bound_cannot_prove_under": "Bir alt sınır, okumanın eşiğin altında olduğunu kanıtlayamaz",
+      "maintenance": "Kaynak bakımda",
+      "no_verdict": "Zaman dilimi hiçbir hükmü desteklemiyor",
+      "operator_unknown": "{operator} işleci bilinmiyor",
+      "platform_off": "CUSTOM_RULES_ENABLED kapalı",
+      "stale": {
+        "minute": "Bu tür için {bucket} tarihinden beri zaman dilimi toplanmadı ({age})",
+        "second": "Bu tür için {bucket} tarihinden beri zaman dilimi toplanmadı ({age})"
+      },
+      "subject_retired": "Konu kullanımdan kaldırıldı",
+      "threshold_not_finite": "threshold_value sonlu değil"
+    },
+    "subject": {
+      "endpoint_retired": "Endpoint kullanımdan kaldırıldı",
+      "endpoint_retired_at": "Endpoint {retired_at} tarihinde kullanımdan kaldırıldı",
+      "entity_retired": "Varlık kullanımdan kaldırıldı",
+      "entity_retired_at": "Varlık {retired_at} tarihinde kullanımdan kaldırıldı",
+      "missing": "Konu artık mevcut değil",
+      "unknown_retirement": "{kind} konu türü için bilinen bir kullanımdan kaldırma kuralı yok",
+      "value_retired": "Değer kullanımdan kaldırıldı",
+      "value_unpinned": "Değer artık sabitlenmiş değil"
+    }
+  },
   "explanation": {
     "dimension": {
       "unpopulated": "Bu alan, bu log source'un olaylarında dolu değil"

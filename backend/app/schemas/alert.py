@@ -13,6 +13,7 @@ from app.models.enums import (
     NotificationStatus,
     Severity,
 )
+from app.schemas.messages import MessageParamValue
 
 
 class AlertOut(BaseModel):
@@ -21,7 +22,11 @@ class AlertOut(BaseModel):
     id: uuid.UUID
     fingerprint: str
     title: str
+    title_code: str | None
+    title_params: dict[str, MessageParamValue] | None
     description: str | None
+    description_code: str | None
+    description_params: dict[str, MessageParamValue] | None
     severity: Severity
     status: AlertStatus
     source_type: str
@@ -34,6 +39,8 @@ class AlertOut(BaseModel):
     resolved_at: datetime | None
     resolved_by: str | None
     resolution_reason: str | None
+    resolution_reason_code: str | None
+    resolution_reason_params: dict[str, MessageParamValue] | None
     occurrence_count: int
     evidence_snapshot: dict
     source_anomaly_ids: list[str]

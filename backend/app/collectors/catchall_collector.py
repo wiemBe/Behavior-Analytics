@@ -94,6 +94,7 @@ from app.history.planner import (
 from app.history.progress_codec import ProgressCodecError, encode_progress
 from app.history.source_floors import SourceFloors
 from app.history.state import HistoryState, HistoryTrigger, next_state
+from app.i18n.messages import MessageRef, render
 from app.ips.keyed_search import IpsSearchBudget
 from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.enums import (
@@ -652,17 +653,25 @@ class CatchallCollector:
     ) -> int:
         """One LOW inventory alert per new sender, in one `apply_bulk` (D-9: off by default)."""
         by_id = {source.id: source for source in sources}
-        inputs = [
-            AlertInput(
+        inputs: list[AlertInput] = []
+        for sender_id, source_id, identifier in sorted(created, key=lambda c: (c[1], c[2])):
+            title_message = MessageRef(
+                "alert.inventory.catchall_sender.title",
+                {"source": by_id[source_id].name, "identifier": identifier},
+            )
+            description_message = MessageRef(
+                "alert.inventory.catchall_sender.description"
+            )
+            inputs.append(
+                AlertInput(
                 fingerprint=catchall_sender_fingerprint(instance.id, source_id, identifier),
-                title=f"New sender on {by_id[source_id].name}: {identifier}",
+                title=render(title_message),
+                title_message=title_message,
                 severity=Severity.LOW,
                 source_type="catchall_sender",
                 source_id=sender_id,
-                description=(
-                    "A device that is not a configured log source is sending to a "
-                    "catch-all log source and requires SOC review."
-                ),
+                description=render(description_message),
+                description_message=description_message,
                 evidence={
                     "identifier": identifier,
                     "catchall_log_source": by_id[source_id].name,
@@ -674,9 +683,8 @@ class CatchallCollector:
                     "owner": by_id[source_id].owner,
                     "instance": instance.name,
                 },
+                )
             )
-            for sender_id, source_id, identifier in sorted(created, key=lambda c: (c[1], c[2]))
-        ]
         await AlertService(self.session, clock=lambda: now).apply_bulk(inputs, [])
         return len(inputs)
 

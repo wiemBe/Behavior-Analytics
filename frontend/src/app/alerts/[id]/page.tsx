@@ -12,6 +12,7 @@ import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
 import { withRouteMessages } from "@/i18n/RouteMessages";
+import { renderBackendMessage } from "@/i18n/backendMessage";
 
 
 import "./alert-detail.css";
@@ -56,12 +57,39 @@ async function AlertDetailPage({
       </>
     );
   }
+  const title = renderBackendMessage(
+    { text: alert.title, code: alert.title_code, params: alert.title_params },
+    locale,
+    say,
+  );
+  const description = alert.description
+    ? renderBackendMessage(
+        {
+          text: alert.description,
+          code: alert.description_code,
+          params: alert.description_params,
+        },
+        locale,
+        say,
+      )
+    : null;
+  const resolution = alert.resolution_reason
+    ? renderBackendMessage(
+        {
+          text: alert.resolution_reason,
+          code: alert.resolution_reason_code,
+          params: alert.resolution_reason_params,
+        },
+        locale,
+        say,
+      )
+    : null;
 
   return (
     <>
       <PageHeader
         guide={guideFor("/alerts/[id]")}
-        title={alert.title}
+        title={title}
         description={
           <>
             <span className={`pill ${sevTone(alert.severity)}`}>
@@ -75,6 +103,11 @@ async function AlertDetailPage({
       />
 
       <div className="card">
+        <div className="k">{t("descriptionLabel")}</div>
+        <p>{description ?? "—"}</p>
+      </div>
+
+      <div className="card">
         <div className="k">{t("evidence")}</div>
         <div className="alert-evidence">
           <Evidence data={alert.evidence_snapshot} />
@@ -86,7 +119,7 @@ async function AlertDetailPage({
         <p>{t("openedLabel")} {<UtcTime value={alert.opened_at} />}</p>
         <p>{t("acknowledgedByLabel")} {alert.acknowledged_by ?? "—"}</p>
         <p>{t("resolvedByLabel")} {alert.resolved_by ?? "—"}</p>
-        <p>{t("resolutionLabel")} {alert.resolution_reason ?? "—"}</p>
+        <p>{t("resolutionLabel")} {resolution ?? "—"}</p>
         <p>{t("sourceAnomalies", { count: formatCount(alert.source_anomaly_ids.length, locale) })}</p>
       </div>
 

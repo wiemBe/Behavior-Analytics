@@ -12,6 +12,7 @@ import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
 import { withRouteMessages } from "@/i18n/RouteMessages";
+import { renderBackendMessage } from "@/i18n/backendMessage";
 
 import "./alerts.css";
 
@@ -119,7 +120,13 @@ async function AlertsPage({
                 {alerts.map((a) => (
                   <tr key={a.id}>
                     <td className="alert-title">
-                      <Link href={`/alerts/${a.id}`}>{a.title}</Link>
+                      <Link href={`/alerts/${a.id}`}>
+                        {renderBackendMessage(
+                          { text: a.title, code: a.title_code, params: a.title_params },
+                          locale,
+                          say,
+                        )}
+                      </Link>
                     </td>
                     <td><span className={`pill ${sevTone(a.severity)}`}>{enumLabel(say, "severityPill", a.severity)}</span></td>
                     <td><span className={`pill ${statusTone(a.status)}`}>{enumLabel(say, "alertStatusPill", a.status)}</span></td>

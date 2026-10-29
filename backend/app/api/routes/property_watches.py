@@ -993,6 +993,7 @@ async def update_watch(
             watch.id,
             actor=principal.subject,
             reason=svc.REASON_WATCH_DISABLED,
+            reason_message=svc.MESSAGE_WATCH_DISABLED,
             enqueuer=NotificationDispatcher(session, notifiers={}, policy=default_policy()),
         )
         watch.last_status = PwWatchStatus.DISABLED

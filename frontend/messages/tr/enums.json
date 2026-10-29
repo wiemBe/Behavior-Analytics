@@ -161,6 +161,17 @@
     "SCHEDULED": "Zamanlanmış",
     "MANUAL": "Elle"
   },
+  "customRuleOperator": {
+    "GT": ">",
+    "GE": "≥",
+    "LT": "<",
+    "LE": "≤",
+    "EQ": "="
+  },
+  "catchallReviewStatus": {
+    "REVIEWED": "incelendi",
+    "DISMISSED": "reddedildi"
+  },
   "role": {
     "admin": "Yönetici (admin)",
     "analyst": "Analist (analyst)",

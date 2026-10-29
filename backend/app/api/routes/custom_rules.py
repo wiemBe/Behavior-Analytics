@@ -380,6 +380,8 @@ def _rule_out(
         last_evaluated_at=rule.last_evaluated_at,
         last_status=rule.last_status,
         last_status_reason=rule.last_status_reason,
+        last_status_reason_code=rule.last_status_reason_code,
+        last_status_reason_params=rule.last_status_reason_params,
         active_breach=None if active is None else _breach_out(active),
         alerting_mode=alerting_mode(settings.custom_rules_alerting_enabled),
         created_at=rule.created_at,

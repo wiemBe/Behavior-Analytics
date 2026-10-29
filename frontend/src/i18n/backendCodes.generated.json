@@ -1,4 +1,457 @@
 {
+  "alert.custom_rule.deleted": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the rule was deleted",
+    "sample_english_params": {},
+    "template": "the rule was deleted"
+  },
+  "alert.custom_rule.description.exact": {
+    "params": {
+      "name": {
+        "kind": "text"
+      },
+      "observed": {
+        "kind": "number",
+        "style": "general"
+      },
+      "operator": {
+        "enum_group": "customRuleOperator",
+        "kind": "enum"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "general"
+      }
+    },
+    "sample": {
+      "name": "High traffic",
+      "observed": 1204.0,
+      "operator": "GT",
+      "threshold": 50.0
+    },
+    "sample_english": "High traffic observed 1204 (GT 50)",
+    "sample_english_params": {
+      "name": "High traffic",
+      "observed": "1204",
+      "operator": "GT",
+      "threshold": "50"
+    },
+    "template": "{name} observed {observed} ({operator} {threshold})"
+  },
+  "alert.custom_rule.description.exact_unit": {
+    "params": {
+      "name": {
+        "kind": "text"
+      },
+      "observed": {
+        "kind": "number",
+        "style": "general"
+      },
+      "operator": {
+        "enum_group": "customRuleOperator",
+        "kind": "enum"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "general"
+      },
+      "unit": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "High traffic",
+      "observed": 1204.0,
+      "operator": "GT",
+      "threshold": 50.0,
+      "unit": "events"
+    },
+    "sample_english": "High traffic observed 1204 events (GT 50 events)",
+    "sample_english_params": {
+      "name": "High traffic",
+      "observed": "1204",
+      "operator": "GT",
+      "threshold": "50",
+      "unit": "events"
+    },
+    "template": "{name} observed {observed} {unit} ({operator} {threshold} {unit})"
+  },
+  "alert.custom_rule.description.lower_bound": {
+    "params": {
+      "name": {
+        "kind": "text"
+      },
+      "observed": {
+        "kind": "number",
+        "style": "general"
+      },
+      "operator": {
+        "enum_group": "customRuleOperator",
+        "kind": "enum"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "general"
+      }
+    },
+    "sample": {
+      "name": "High traffic",
+      "observed": 1204.0,
+      "operator": "GT",
+      "threshold": 50.0
+    },
+    "sample_english": "High traffic observed at least 1204 (GT 50)",
+    "sample_english_params": {
+      "name": "High traffic",
+      "observed": "1204",
+      "operator": "GT",
+      "threshold": "50"
+    },
+    "template": "{name} observed at least {observed} ({operator} {threshold})"
+  },
+  "alert.custom_rule.description.lower_bound_unit": {
+    "params": {
+      "name": {
+        "kind": "text"
+      },
+      "observed": {
+        "kind": "number",
+        "style": "general"
+      },
+      "operator": {
+        "enum_group": "customRuleOperator",
+        "kind": "enum"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "general"
+      },
+      "unit": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "High traffic",
+      "observed": 1204.0,
+      "operator": "GT",
+      "threshold": 50.0,
+      "unit": "events"
+    },
+    "sample_english": "High traffic observed at least 1204 events (GT 50 events)",
+    "sample_english_params": {
+      "name": "High traffic",
+      "observed": "1204",
+      "operator": "GT",
+      "threshold": "50",
+      "unit": "events"
+    },
+    "template": "{name} observed at least {observed} {unit} ({operator} {threshold} {unit})"
+  },
+  "alert.custom_rule.description.unmeasured": {
+    "params": {
+      "name": {
+        "kind": "text"
+      },
+      "operator": {
+        "enum_group": "customRuleOperator",
+        "kind": "enum"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "general"
+      }
+    },
+    "sample": {
+      "name": "High traffic",
+      "operator": "GT",
+      "threshold": 50.0
+    },
+    "sample_english": "High traffic observed unmeasured (GT 50)",
+    "sample_english_params": {
+      "name": "High traffic",
+      "operator": "GT",
+      "threshold": "50"
+    },
+    "template": "{name} observed unmeasured ({operator} {threshold})"
+  },
+  "alert.custom_rule.description.unmeasured_unit": {
+    "params": {
+      "name": {
+        "kind": "text"
+      },
+      "operator": {
+        "enum_group": "customRuleOperator",
+        "kind": "enum"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "general"
+      },
+      "unit": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "High traffic",
+      "operator": "GT",
+      "threshold": 50.0,
+      "unit": "events"
+    },
+    "sample_english": "High traffic observed unmeasured (GT 50 events)",
+    "sample_english_params": {
+      "name": "High traffic",
+      "operator": "GT",
+      "threshold": "50",
+      "unit": "events"
+    },
+    "template": "{name} observed unmeasured ({operator} {threshold} {unit})"
+  },
+  "alert.custom_rule.recovered": {
+    "params": {},
+    "sample": {},
+    "sample_english": "condition recovered",
+    "sample_english_params": {},
+    "template": "condition recovered"
+  },
+  "alert.inventory.catchall_sender.description": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A device that is not a configured log source is sending to a catch-all log source and requires SOC review.",
+    "sample_english_params": {},
+    "template": "A device that is not a configured log source is sending to a catch-all log source and requires SOC review."
+  },
+  "alert.inventory.catchall_sender.reviewed": {
+    "params": {
+      "target": {
+        "enum_group": "catchallReviewStatus",
+        "kind": "enum",
+        "style": "lower"
+      }
+    },
+    "sample": {
+      "target": "REVIEWED"
+    },
+    "sample_english": "catch-all sender reviewed",
+    "sample_english_params": {
+      "target": "reviewed"
+    },
+    "template": "catch-all sender {target}"
+  },
+  "alert.inventory.catchall_sender.title": {
+    "params": {
+      "identifier": {
+        "kind": "text"
+      },
+      "source": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "identifier": "host-1204",
+      "source": "Catch-all source"
+    },
+    "sample_english": "New sender on Catch-all source: host-1204",
+    "sample_english_params": {
+      "identifier": "host-1204",
+      "source": "Catch-all source"
+    },
+    "template": "New sender on {source}: {identifier}"
+  },
+  "alert.inventory.log_source.description": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A new non-internal log source requires SOC review.",
+    "sample_english_params": {},
+    "template": "A new non-internal log source requires SOC review."
+  },
+  "alert.inventory.log_source.reviewed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "log source reviewed",
+    "sample_english_params": {},
+    "template": "log source reviewed"
+  },
+  "alert.inventory.log_source.title": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "Edge firewall"
+    },
+    "sample_english": "New log source: Edge firewall",
+    "sample_english_params": {
+      "name": "Edge firewall"
+    },
+    "template": "New log source: {name}"
+  },
+  "alert.offense_collection.recovered": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Offense collection freshness recovered.",
+    "sample_english_params": {},
+    "template": "Offense collection freshness recovered."
+  },
+  "alert.offense_collection.stale.description": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The read-only offense collector has not completed within its configured freshness threshold.",
+    "sample_english_params": {},
+    "template": "The read-only offense collector has not completed within its configured freshness threshold."
+  },
+  "alert.offense_collection.stale.title": {
+    "params": {
+      "instance": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "instance": "Lab console"
+    },
+    "sample_english": "Offense collection is stale for Lab console",
+    "sample_english_params": {
+      "instance": "Lab console"
+    },
+    "template": "Offense collection is stale for {instance}"
+  },
+  "alert.search.failure.description": {
+    "params": {
+      "error_type": {
+        "kind": "text"
+      },
+      "failures": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "error_type": "ConnectTimeout",
+      "failures": 1204,
+      "name": "Daily failures"
+    },
+    "sample_english": "Daily failures failed 1204 consecutive runs (ConnectTimeout)",
+    "sample_english_params": {
+      "error_type": "ConnectTimeout",
+      "failures": "1204",
+      "name": "Daily failures"
+    },
+    "template": "{name} failed {failures} consecutive runs ({error_type})"
+  },
+  "alert.search.failure.recovered": {
+    "params": {},
+    "sample": {},
+    "sample_english": "search executed successfully",
+    "sample_english_params": {},
+    "template": "search executed successfully"
+  },
+  "alert.search.failure.title": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "Daily failures"
+    },
+    "sample_english": "Daily failures is failing to run",
+    "sample_english_params": {
+      "name": "Daily failures"
+    },
+    "template": "{name} is failing to run"
+  },
+  "alert.search.threshold.exact": {
+    "params": {
+      "name": {
+        "kind": "text"
+      },
+      "observed": {
+        "kind": "number",
+        "style": "general"
+      },
+      "operator": {
+        "enum_group": "customRuleOperator",
+        "kind": "enum"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "general"
+      }
+    },
+    "sample": {
+      "name": "Daily failures",
+      "observed": 1204.0,
+      "operator": "GT",
+      "threshold": 50.0
+    },
+    "sample_english": "Daily failures returned 1204 (GT 50)",
+    "sample_english_params": {
+      "name": "Daily failures",
+      "observed": "1204",
+      "operator": "GT",
+      "threshold": "50"
+    },
+    "template": "{name} returned {observed} ({operator} {threshold})"
+  },
+  "alert.search.threshold.lower_bound": {
+    "params": {
+      "name": {
+        "kind": "text"
+      },
+      "observed": {
+        "kind": "number",
+        "style": "general"
+      },
+      "operator": {
+        "enum_group": "customRuleOperator",
+        "kind": "enum"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "general"
+      }
+    },
+    "sample": {
+      "name": "Daily failures",
+      "observed": 1204.0,
+      "operator": "GT",
+      "threshold": 50.0
+    },
+    "sample_english": "Daily failures returned at least 1204 (GT 50)",
+    "sample_english_params": {
+      "name": "Daily failures",
+      "observed": "1204",
+      "operator": "GT",
+      "threshold": "50"
+    },
+    "template": "{name} returned at least {observed} ({operator} {threshold})"
+  },
+  "alert.search.threshold.recovered": {
+    "params": {},
+    "sample": {},
+    "sample_english": "result back within threshold",
+    "sample_english_params": {},
+    "template": "result back within threshold"
+  },
+  "alert.threshold.crossed": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "Failed sign-ins"
+    },
+    "sample_english": "Failed sign-ins crossed its threshold",
+    "sample_english_params": {
+      "name": "Failed sign-ins"
+    },
+    "template": "{name} crossed its threshold"
+  },
   "anomaly.detector.basis_mad_outside": {
     "params": {
       "lower": {
@@ -1487,6 +1940,378 @@
     "sample_english": "No rule is mapped to this technique.",
     "sample_english_params": {},
     "template": "No rule is mapped to this technique."
+  },
+  "custom_rule.family.collection_off": {
+    "params": {
+      "setting": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "setting": "waf_collection_enabled"
+    },
+    "sample_english": "waf_collection_enabled is off",
+    "sample_english_params": {
+      "setting": "waf_collection_enabled"
+    },
+    "template": "{setting} is off"
+  },
+  "custom_rule.family.unknown": {
+    "params": {
+      "kind": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "kind": "UNKNOWN"
+    },
+    "sample_english": "no collection family is known for subject kind UNKNOWN",
+    "sample_english_params": {
+      "kind": "UNKNOWN"
+    },
+    "template": "no collection family is known for subject kind {kind}"
+  },
+  "custom_rule.reading.action_breakdown_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the action breakdown was not collected",
+    "sample_english_params": {},
+    "template": "the action breakdown was not collected"
+  },
+  "custom_rule.reading.action_denominator_lower_bound": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the action denominator is a lower bound",
+    "sample_english_params": {},
+    "template": "the action denominator is a lower bound"
+  },
+  "custom_rule.reading.action_denominator_zero": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the action denominator is zero",
+    "sample_english_params": {},
+    "template": "the action denominator is zero"
+  },
+  "custom_rule.reading.bucket_not_complete": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket is not COMPLETE",
+    "sample_english_params": {},
+    "template": "the bucket is not COMPLETE"
+  },
+  "custom_rule.reading.bucket_partial": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket is PARTIAL",
+    "sample_english_params": {},
+    "template": "the bucket is PARTIAL"
+  },
+  "custom_rule.reading.class_no_complete_source": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the class has no COMPLETE source bucket",
+    "sample_english_params": {},
+    "template": "the class has no COMPLETE source bucket"
+  },
+  "custom_rule.reading.class_no_enabled_source": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the class has no enabled, monitored source",
+    "sample_english_params": {},
+    "template": "the class has no enabled, monitored source"
+  },
+  "custom_rule.reading.count_semantics_unknown": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket does not state whether its counts are exact or lower bounds",
+    "sample_english_params": {},
+    "template": "the bucket does not state whether its counts are exact or lower bounds"
+  },
+  "custom_rule.reading.dimension_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the dimension was not collected",
+    "sample_english_params": {},
+    "template": "the dimension was not collected"
+  },
+  "custom_rule.reading.exact_required": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the detector needs exact counts and this count is a lower bound",
+    "sample_english_params": {},
+    "template": "the detector needs exact counts and this count is a lower bound"
+  },
+  "custom_rule.reading.not_finite": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the reading is not finite",
+    "sample_english_params": {},
+    "template": "the reading is not finite"
+  },
+  "custom_rule.reading.numerator_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the numerator was not collected",
+    "sample_english_params": {},
+    "template": "the numerator was not collected"
+  },
+  "custom_rule.reading.request_count_semantics_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket does not state whether the request count is exact",
+    "sample_english_params": {},
+    "template": "the bucket does not state whether the request count is exact"
+  },
+  "custom_rule.reading.response_breakdown_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the response-code breakdown was not collected",
+    "sample_english_params": {},
+    "template": "the response-code breakdown was not collected"
+  },
+  "custom_rule.reading.response_denominator_lower_bound": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the response-code denominator is a lower bound",
+    "sample_english_params": {},
+    "template": "the response-code denominator is a lower bound"
+  },
+  "custom_rule.reading.response_denominator_zero": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the response-code denominator is zero",
+    "sample_english_params": {},
+    "template": "the response-code denominator is zero"
+  },
+  "custom_rule.reading.subject_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no row for this subject in the bucket",
+    "sample_english_params": {},
+    "template": "no row for this subject in the bucket"
+  },
+  "custom_rule.reading.unmapped_remainder_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the unmapped remainder was not collected",
+    "sample_english_params": {},
+    "template": "the unmapped remainder was not collected"
+  },
+  "custom_rule.status.bucket_not_measured": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket was not measured",
+    "sample_english_params": {},
+    "template": "the bucket was not measured"
+  },
+  "custom_rule.status.disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the rule is disabled",
+    "sample_english_params": {},
+    "template": "the rule is disabled"
+  },
+  "custom_rule.status.family_not_collected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the subject's family is not collected",
+    "sample_english_params": {},
+    "template": "the subject's family is not collected"
+  },
+  "custom_rule.status.lower_bound_below_threshold": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a lower bound below the threshold proves nothing",
+    "sample_english_params": {},
+    "template": "a lower bound below the threshold proves nothing"
+  },
+  "custom_rule.status.lower_bound_cannot_prove_under": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a lower bound cannot prove the reading is under the threshold",
+    "sample_english_params": {},
+    "template": "a lower bound cannot prove the reading is under the threshold"
+  },
+  "custom_rule.status.maintenance": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the source is in maintenance",
+    "sample_english_params": {},
+    "template": "the source is in maintenance"
+  },
+  "custom_rule.status.no_verdict": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket supports no verdict",
+    "sample_english_params": {},
+    "template": "the bucket supports no verdict"
+  },
+  "custom_rule.status.operator_unknown": {
+    "params": {
+      "operator": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "operator": "'XX'"
+    },
+    "sample_english": "operator 'XX' is not known",
+    "sample_english_params": {
+      "operator": "'XX'"
+    },
+    "template": "operator {operator} is not known"
+  },
+  "custom_rule.status.platform_off": {
+    "params": {},
+    "sample": {},
+    "sample_english": "CUSTOM_RULES_ENABLED is off",
+    "sample_english_params": {},
+    "template": "CUSTOM_RULES_ENABLED is off"
+  },
+  "custom_rule.status.stale.minute": {
+    "params": {
+      "age": {
+        "kind": "duration",
+        "style": "age"
+      },
+      "bucket": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "age": {
+        "kind": "duration",
+        "seconds": 5400
+      },
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "no bucket collected for this kind since 2026-10-17 12:00 UTC (1 h 30 min)",
+    "sample_english_params": {
+      "age": "1 h 30 min",
+      "bucket": "2026-10-17 12:00 UTC"
+    },
+    "template": "no bucket collected for this kind since {bucket} ({age})"
+  },
+  "custom_rule.status.stale.second": {
+    "params": {
+      "age": {
+        "kind": "duration",
+        "style": "age"
+      },
+      "bucket": {
+        "kind": "timestamp"
+      }
+    },
+    "sample": {
+      "age": {
+        "kind": "duration",
+        "seconds": 90061
+      },
+      "bucket": "2026-10-17T12:00:07+00:00"
+    },
+    "sample_english": "no bucket collected for this kind since 2026-10-17 12:00:07 UTC (25 h 1 min 1 s)",
+    "sample_english_params": {
+      "age": "25 h 1 min 1 s",
+      "bucket": "2026-10-17 12:00:07 UTC"
+    },
+    "template": "no bucket collected for this kind since {bucket} ({age})"
+  },
+  "custom_rule.status.subject_retired": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the subject is retired",
+    "sample_english_params": {},
+    "template": "the subject is retired"
+  },
+  "custom_rule.status.threshold_not_finite": {
+    "params": {},
+    "sample": {},
+    "sample_english": "threshold_value is not finite",
+    "sample_english_params": {},
+    "template": "threshold_value is not finite"
+  },
+  "custom_rule.subject.endpoint_retired": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the endpoint is retired",
+    "sample_english_params": {},
+    "template": "the endpoint is retired"
+  },
+  "custom_rule.subject.endpoint_retired_at": {
+    "params": {
+      "retired_at": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "retired_at": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "the endpoint was retired at 2026-10-17T12:00:00+00:00",
+    "sample_english_params": {
+      "retired_at": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "the endpoint was retired at {retired_at}"
+  },
+  "custom_rule.subject.entity_retired": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the entity is retired",
+    "sample_english_params": {},
+    "template": "the entity is retired"
+  },
+  "custom_rule.subject.entity_retired_at": {
+    "params": {
+      "retired_at": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "retired_at": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "the entity was retired at 2026-10-17T12:00:00+00:00",
+    "sample_english_params": {
+      "retired_at": "2026-10-17T12:00:00+00:00"
+    },
+    "template": "the entity was retired at {retired_at}"
+  },
+  "custom_rule.subject.missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the subject no longer exists",
+    "sample_english_params": {},
+    "template": "the subject no longer exists"
+  },
+  "custom_rule.subject.unknown_retirement": {
+    "params": {
+      "kind": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "kind": "UNKNOWN"
+    },
+    "sample_english": "no retirement rule is known for subject kind UNKNOWN",
+    "sample_english_params": {
+      "kind": "UNKNOWN"
+    },
+    "template": "no retirement rule is known for subject kind {kind}"
+  },
+  "custom_rule.subject.value_retired": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the value is retired",
+    "sample_english_params": {},
+    "template": "the value is retired"
+  },
+  "custom_rule.subject.value_unpinned": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the value is no longer pinned",
+    "sample_english_params": {},
+    "template": "the value is no longer pinned"
   },
   "customrule.name_exists": {
     "params": {

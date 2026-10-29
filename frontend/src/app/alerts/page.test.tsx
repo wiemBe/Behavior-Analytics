@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import AlertsPage from "./page";
 import AlertsLoading from "./loading";
 import { ApiError, api, type Alert, type Page } from "@/lib/api";
+import { setTestLocale } from "../../../vitest.setup";
 
 // States this route renders, from `page.tsx`:
 //  - the read fails: the 403 / 401 / failure sentence from `loadErrorMessage`;
@@ -49,7 +50,10 @@ async function renderPage(params: Record<string, string | undefined> = {}) {
   return render(await AlertsPage({ searchParams: Promise.resolve(params) }));
 }
 
-beforeEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.restoreAllMocks();
+  setTestLocale("en");
+});
 
 describe("alert list states", () => {
   it("names the list while the route is loading", () => {
@@ -93,6 +97,37 @@ describe("alert list states", () => {
 });
 
 describe("alert list contents", () => {
+  it("renders coded search and custom-rule titles in Turkish", async () => {
+    setTestLocale("tr");
+    vi.spyOn(api, "alerts").mockResolvedValue(page([
+      alert({
+        id: "search",
+        title: "Daily failures crossed its threshold",
+        title_code: "alert.threshold.crossed",
+        title_params: { name: "Günlük hatalar" },
+      }),
+      alert({
+        id: "rule",
+        title: "High traffic crossed its threshold",
+        title_code: "alert.threshold.crossed",
+        title_params: { name: "Yüksek trafik" },
+      }),
+    ]));
+    await renderPage();
+    expect(screen.getByRole("link", { name: "Günlük hatalar eşiğini aştı" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Yüksek trafik eşiğini aştı" })).toBeInTheDocument();
+  });
+
+  it("keeps coded English titles byte for byte", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert({
+      title: "Stored English exactly",
+      title_code: "alert.threshold.crossed",
+      title_params: { name: "Ignored in English" },
+    })]));
+    await renderPage();
+    expect(screen.getByRole("link", { name: "Stored English exactly" })).toBeInTheDocument();
+  });
+
   it("states the lifecycle and lists every column", async () => {
     vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
     await renderPage();

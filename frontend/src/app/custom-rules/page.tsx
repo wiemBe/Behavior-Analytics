@@ -129,7 +129,7 @@ async function CustomRulesPage() {
                     return (
                       <tr key={rule.id}>
                         <td className="cell-name"><Link href={`/custom-rules/${rule.id}`}>{rule.name}</Link></td>
-                        <td><RuleStatus status={rule.last_status} reason={rule.last_status_reason} /></td>
+                        <td><RuleStatus status={rule.last_status} reason={rule.last_status_reason} reasonCode={rule.last_status_reason_code} reasonParams={rule.last_status_reason_params} /></td>
                         <td className="cell-name">
                           <span className="cr-cell-kicker">{subjectKindLabel(rule.subject_kind, say)}</span>
                           {subject ? <Link href={subject.href}>{subject.label}</Link> : "—"}

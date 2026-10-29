@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AlertDetailPage from "./page";
 import { ApiError, api, type Alert, type Notification } from "@/lib/api";
+import { setTestLocale } from "../../../../vitest.setup";
 
 // States this route renders, from `page.tsx`:
 //  - either read fails: a "Could not load alert <id>" notice (a 404 is not special);
@@ -67,6 +68,7 @@ async function renderPage(id = "a-1") {
 }
 
 beforeEach(() => {
+  setTestLocale("en");
   vi.restoreAllMocks();
   vi.spyOn(api, "alert").mockResolvedValue(alert());
   vi.spyOn(api, "alertNotifications").mockResolvedValue([notification()]);
@@ -91,6 +93,51 @@ describe("alert detail states", () => {
 });
 
 describe("alert detail contents", () => {
+  it("renders coded title, lower-bound description and resolution in Turkish", async () => {
+    setTestLocale("tr");
+    vi.spyOn(api, "alert").mockResolvedValue(alert({
+      title: "High traffic crossed its threshold",
+      title_code: "alert.threshold.crossed",
+      title_params: { name: "Yüksek trafik" },
+      description: "High traffic observed at least 1204 events (GT 1000 events)",
+      description_code: "alert.custom_rule.description.lower_bound_unit",
+      description_params: {
+        name: "Yüksek trafik",
+        observed: 1204,
+        unit: "olay",
+        operator: "GT",
+        threshold: 1000,
+      },
+      resolution_reason: "condition recovered",
+      resolution_reason_code: "alert.custom_rule.recovered",
+      resolution_reason_params: {},
+    }));
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Yüksek trafik eşiğini aştı" })).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === (
+      "Yüksek trafik, en az 1.204\u00a0olay değerini gözlemledi (eşik > 1.000\u00a0olay)"
+    ))).toBeInTheDocument();
+    expect(screen.getByText("Yaşam döngüsü").closest(".card")).toHaveTextContent("Çözüm: Koşul düzeldi");
+  });
+
+  it("shows the stored English title, description and resolution verbatim", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(alert({
+      title: "Stored title",
+      title_code: "alert.threshold.crossed",
+      title_params: { name: "Ignored" },
+      description: "Stored description",
+      description_code: "alert.custom_rule.description.exact",
+      description_params: { name: "Ignored", observed: 2, operator: "GT", threshold: 1 },
+      resolution_reason: "Stored resolution",
+      resolution_reason_code: "alert.custom_rule.recovered",
+      resolution_reason_params: {},
+    }));
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Stored title" })).toBeInTheDocument();
+    expect(screen.getByText("Stored description")).toBeInTheDocument();
+    expect(screen.getByText("Lifecycle").closest(".card")).toHaveTextContent("Resolution: Stored resolution");
+  });
+
   it("names the alert and its lifecycle at a glance", async () => {
     await renderPage();
     expect(screen.getByRole("heading", { name: "Event volume spike on Core Firewall", level: 1 })).toBeInTheDocument();

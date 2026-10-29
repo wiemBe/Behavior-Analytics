@@ -161,6 +161,17 @@
     "SCHEDULED": "SCHEDULED",
     "MANUAL": "MANUAL"
   },
+  "customRuleOperator": {
+    "GT": "above",
+    "GE": "at or above",
+    "LT": "below",
+    "LE": "at or below",
+    "EQ": "equal to"
+  },
+  "catchallReviewStatus": {
+    "REVIEWED": "reviewed",
+    "DISMISSED": "dismissed"
+  },
   "role": {
     "admin": "admin",
     "analyst": "analyst",
