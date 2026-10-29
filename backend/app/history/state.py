@@ -15,6 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.i18n.messages import MessageRef, render
+
 
 class HistoryFamily(StrEnum):
     """The families that read their past (§B.2). Geo is left out on purpose."""
@@ -78,6 +80,8 @@ class StateChange:
     state: HistoryState
     trigger: HistoryTrigger
     reason: str
+    #: The registry reference of `reason` (MSG-8a): every transition is coded.
+    reason_message: MessageRef
 
 
 S = HistoryState
@@ -85,71 +89,73 @@ T = HistoryTrigger
 
 _FINISHED = (S.COMPLETE, S.PARTIAL, S.UNAVAILABLE)
 
-# (state, trigger) -> (next state, the reason in words)
-_TRANSITIONS: dict[tuple[HistoryState, HistoryTrigger], tuple[HistoryState, str]] = {
+# (state, trigger) -> (next state, the reason in words as a coded reference)
+_TRANSITIONS: dict[tuple[HistoryState, HistoryTrigger], tuple[HistoryState, MessageRef]] = {
     (S.NOT_REQUESTED, T.REQUEST_AWAITING_ANCHOR): (
         S.WAITING,
-        "history was requested, and the scope waits for its first live bucket (the anchor)",
+        MessageRef("history.state.request_awaiting_anchor"),
     ),
     (S.NOT_REQUESTED, T.REQUEST_READY): (
         S.READING,
-        "history was requested, and the scope can be planned at its next collection",
+        MessageRef("history.state.request_ready"),
     ),
     (S.NOT_REQUESTED, T.NOT_ELIGIBLE): (
         S.NOT_ELIGIBLE,
-        "the scope already has live buckets, and a prepend would move first_seen_at (§B.5)",
+        MessageRef("history.state.not_eligible_preceded"),
     ),
-    (S.WAITING, T.ANCHOR_FOUND): (S.READING, "the first live bucket exists; reading can start"),
+    (S.WAITING, T.ANCHOR_FOUND): (S.READING, MessageRef("history.state.anchor_found")),
     (S.WAITING, T.NOT_ELIGIBLE): (
         S.NOT_ELIGIBLE,
-        "the scope turned out to have live buckets that history cannot precede",
+        MessageRef("history.state.not_eligible_late"),
     ),
     (S.READING, T.NOTHING_TO_READ): (
         S.UNAVAILABLE,
-        "QRadar holds no event of the scope in the window, or the floor scan could not be done",
+        MessageRef("history.state.nothing_to_read_scan"),
     ),
     (S.WAITING, T.NOTHING_TO_READ): (
         S.UNAVAILABLE,
-        "QRadar holds no event of the scope in the window",
+        MessageRef("history.state.nothing_to_read"),
     ),
     (S.READING, T.WINDOW_TOO_SMALL): (
         S.UNAVAILABLE,
-        "the estimate exceeds the time limit even at the smallest window",
+        MessageRef("history.state.window_too_small"),
     ),
     (S.READING, T.FINISHED_COMPLETE): (
         S.COMPLETE,
-        "the reading reached the end; the floor is within one bucket of the asked start "
-        "and no gap exists",
+        MessageRef("history.state.finished_complete"),
     ),
     (S.READING, T.FINISHED_PARTIAL): (
         S.PARTIAL,
-        "the reading reached the end, but QRadar holds less than asked or a gap exists",
+        MessageRef("history.state.finished_partial"),
     ),
     (S.READING, T.DENSITY_GATE): (
         S.PARTIAL,
-        "too many buckets would be lower bounds; reading further would store only those",
+        MessageRef("history.state.density_gate"),
     ),
     (S.READING, T.TOO_MANY_GAPS): (
         S.PARTIAL,
-        "the gap list is full; the scope has too many unreadable spans",
+        MessageRef("history.state.too_many_gaps"),
     ),
     (S.READING, T.TIME_LIMIT): (
         S.PARTIAL,
-        "the reading did not finish inside its time limit",
+        MessageRef("history.state.time_limit"),
     ),
     (S.NOT_REQUESTED, T.SWITCHED_OFF): (
         S.PARTIAL,
-        "history reading is switched off; the scope starts live",
+        MessageRef("history.state.switched_off_start"),
     ),
-    (S.WAITING, T.SWITCHED_OFF): (S.PARTIAL, "history reading was switched off while waiting"),
-    (S.READING, T.SWITCHED_OFF): (S.PARTIAL, "history reading was switched off"),
-    (S.WAITING, T.STOPPED_BY_OPERATOR): (S.PARTIAL, "stopped by an operator while waiting"),
-    (S.READING, T.STOPPED_BY_OPERATOR): (S.PARTIAL, "stopped by an operator"),
+    (S.WAITING, T.SWITCHED_OFF): (
+        S.PARTIAL,
+        MessageRef("history.state.switched_off_waiting"),
+    ),
+    (S.READING, T.SWITCHED_OFF): (S.PARTIAL, MessageRef("history.state.switched_off")),
+    (S.WAITING, T.STOPPED_BY_OPERATOR): (
+        S.PARTIAL,
+        MessageRef("history.state.stopped_waiting"),
+    ),
+    (S.READING, T.STOPPED_BY_OPERATOR): (S.PARTIAL, MessageRef("history.state.stopped")),
     **{
-        (state, T.RESTART): (
-            S.READING,
-            "the reading restarts: a new answer, a topped-up source or a new watch version",
-        )
+        (state, T.RESTART): (S.READING, MessageRef("history.state.restart"))
         for state in (S.READING, *_FINISHED)
     },
 }
@@ -162,8 +168,14 @@ def next_state(current: HistoryState, trigger: HistoryTrigger) -> StateChange:
         raise IllegalTransitionError(
             f"history state {current.value} does not accept {trigger.value}"
         )
-    target, reason = entry
-    return StateChange(previous=current, state=target, trigger=trigger, reason=reason)
+    target, message = entry
+    return StateChange(
+        previous=current,
+        state=target,
+        trigger=trigger,
+        reason=render(message),
+        reason_message=message,
+    )
 
 
 def legal_triggers(current: HistoryState) -> frozenset[HistoryTrigger]:

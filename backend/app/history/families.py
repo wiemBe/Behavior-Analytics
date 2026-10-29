@@ -21,6 +21,7 @@ from typing import Any
 
 from app.history.planner import DEFAULT_MIN_WINDOW_DAYS
 from app.history.state import SCOPE_TABLE_FAMILIES, HistoryFamily
+from app.i18n.messages import MessageRef, render
 
 DAYS_SETTING = "history_backfill_days"
 MAX_HOURS_SETTING = "history_backfill_max_hours"
@@ -37,7 +38,7 @@ class FamilySpec:
     tables: tuple[str, ...]
     #: Setting that switches the family's collection on, or None with `always_on_reason`.
     collection_switch: str | None
-    always_on_reason: str | None
+    always_on_reason: MessageRef | None
     #: The family's own lookback in days, or None when it has none.
     lookback_setting: str | None
     #: Retention in days, and the setting that switches that retention on.
@@ -54,7 +55,7 @@ FAMILY_SPECS: dict[HistoryFamily, FamilySpec] = {
         family=HistoryFamily.PHASE_A,
         tables=("log_source_metric",),
         collection_switch=None,
-        always_on_reason="source-volume collection is the platform's base collection",
+        always_on_reason=MessageRef("history.family.always_on"),
         lookback_setting="baseline_lookback_days",
         retention_setting="retention_log_source_metric_days",
         retention_switch="retention_enabled",
@@ -134,6 +135,8 @@ class FittedWindow:
     days: int | None
     limited_by: tuple[str, ...]
     reason: str | None
+    #: The registry reference of `reason` (MSG-8a); None when the whole window fits.
+    reason_message: MessageRef | None = None
 
     @property
     def available(self) -> bool:
@@ -181,48 +184,66 @@ def fit_family_window(family: HistoryFamily, settings: Any) -> FittedWindow:
     limited_by = tuple(name for name, value in candidates if value == smallest)
 
     if smallest < DEFAULT_MIN_WINDOW_DAYS:
+        reason, reason_message = _unavailable_reason(
+            spec, smallest, limited_by, settings, retention, retention_fit, max_hours
+        )
         return FittedWindow(
             family=family,
             requested_days=requested,
             days=None,
             limited_by=limited_by,
-            reason=_unavailable_reason(
-                spec, smallest, limited_by, settings, retention, retention_fit, max_hours
-            ),
+            reason=reason,
+            reason_message=reason_message,
         )
     if smallest < requested:
+        limits = _limit_messages(spec, limited_by, settings, retention, max_hours)
+        message = MessageRef(
+            "history.window.reduced",
+            {"asked": requested, "days": smallest, "limits": limits},
+        )
         return FittedWindow(
             family=family,
             requested_days=requested,
             days=smallest,
             limited_by=limited_by,
-            reason=(
-                f"window reduced from {requested} to {smallest} days: "
-                + _limit_words(spec, limited_by, settings, retention, max_hours)
-            ),
+            reason=render(message),
+            reason_message=message,
         )
     return FittedWindow(
         family=family, requested_days=requested, days=smallest, limited_by=limited_by, reason=None
     )
 
 
-def _limit_words(
+def _limit_messages(
     spec: FamilySpec,
     limited_by: tuple[str, ...],
     settings: Any,
     retention: int | None,
     max_hours: int,
-) -> str:
-    parts: list[str] = []
+) -> list[MessageRef]:
+    """The setting sentences that bound the window, joined with " and " when rendered."""
+    parts: list[MessageRef] = []
     for name in limited_by:
         if name == spec.retention_setting and retention is not None:
             parts.append(
-                f"{_label(name)} is {retention} days and {_label(MAX_HOURS_SETTING)} is "
-                f"{max_hours} hours, so the reading would outlive the retention"
+                MessageRef(
+                    "history.window.limit_retention",
+                    {
+                        "setting": _label(name),
+                        "days": retention,
+                        "hours_setting": _label(MAX_HOURS_SETTING),
+                        "hours": max_hours,
+                    },
+                )
             )
         else:
-            parts.append(f"{_label(name)} is {getattr(settings, name)} days")
-    return " and ".join(parts)
+            parts.append(
+                MessageRef(
+                    "history.window.limit_setting",
+                    {"setting": _label(name), "days": int(getattr(settings, name))},
+                )
+            )
+    return parts
 
 
 def _unavailable_reason(
@@ -233,13 +254,17 @@ def _unavailable_reason(
     retention: int | None,
     retention_fit: int | None,
     max_hours: int,
-) -> str:
+) -> tuple[str, MessageRef]:
     fits = max(smallest, 0)
-    return (
-        f"history unavailable: the window would be {fits} days, below the "
-        f"{DEFAULT_MIN_WINDOW_DAYS}-day minimum; "
-        + _limit_words(spec, limited_by, settings, retention, max_hours)
+    message = MessageRef(
+        "history.window.unavailable",
+        {
+            "days": fits,
+            "minimum": DEFAULT_MIN_WINDOW_DAYS,
+            "limits": _limit_messages(spec, limited_by, settings, retention, max_hours),
+        },
     )
+    return render(message), message
 
 
 # --------------------------------------------------------------------------- search budget

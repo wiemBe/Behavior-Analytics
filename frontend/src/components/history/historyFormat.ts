@@ -13,7 +13,7 @@ import {
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { fixed, plainCount } from "@/lib/figureText";
 
-import { ENGLISH_HISTORY, historyWord } from "./historyText";
+import { ENGLISH_HISTORY, historyWord, plainSentence, type SentenceReader } from "./historyText";
 
 export const READ_PERMISSION = "read:history_backfill";
 export const ADMIN_PERMISSION = "admin:history_backfill";
@@ -104,15 +104,37 @@ export function questionText(days: number | null, i18n: BehaviorI18n = ENGLISH_H
     : i18n.t("history.dialog.questionDays", { days: plainCount(days, i18n.locale) });
 }
 
+/** Why the family is switched off, in the interface language. */
+export function collectionReason(family: HistoryFamily, read: SentenceReader = plainSentence): string {
+  return read(family.collection_reason, {
+    code: family.collection_reason_code,
+    params: family.collection_reason_params,
+  });
+}
+
+/** Why the family has no window, or how its window was reduced, in the interface language. */
+export function windowReason(
+  family: HistoryFamily,
+  i18n: BehaviorI18n = ENGLISH_HISTORY,
+  read: SentenceReader = plainSentence,
+): string {
+  const { reason, reason_code, reason_params } = family.window;
+  return reason === null
+    ? i18n.t("history.familyState.windowNotFitted")
+    : read(reason, { code: reason_code, params: reason_params });
+}
+
 /** What the family is, before any estimate: its state in the dialog's "families" column. */
-export function familyStateText(family: HistoryFamily, i18n: BehaviorI18n = ENGLISH_HISTORY): string {
+export function familyStateText(
+  family: HistoryFamily,
+  i18n: BehaviorI18n = ENGLISH_HISTORY,
+  read: SentenceReader = plainSentence,
+): string {
   if (!family.collection_enabled) {
-    return i18n.t("history.familyState.switchedOff", { reason: family.collection_reason });
+    return i18n.t("history.familyState.switchedOff", { reason: collectionReason(family, read) });
   }
   if (!family.window.available) {
-    return i18n.t("history.familyState.unavailable", {
-      reason: family.window.reason ?? i18n.t("history.familyState.windowNotFitted"),
-    });
+    return i18n.t("history.familyState.unavailable", { reason: windowReason(family, i18n, read) });
   }
   if (family.sources !== null) {
     const waiting = family.sources.length;
@@ -132,6 +154,7 @@ export function familyStateText(family: HistoryFamily, i18n: BehaviorI18n = ENGL
 export function estimateText(
   estimate: HistoryFamilyEstimate | undefined,
   i18n: BehaviorI18n = ENGLISH_HISTORY,
+  read: SentenceReader = plainSentence,
 ): {
   figures: string;
   note: string | null;
@@ -139,11 +162,15 @@ export function estimateText(
   if (estimate === undefined) {
     return { figures: "—", note: i18n.t("history.estimate.none") };
   }
+  const reason = read(estimate.reason, {
+    code: estimate.reason_code,
+    params: estimate.reason_params,
+  });
   if (estimate.refused) {
-    return { figures: i18n.t("history.estimate.refused"), note: estimate.reason };
+    return { figures: i18n.t("history.estimate.refused"), note: reason };
   }
   if (estimate.searches === null) {
-    return { figures: "—", note: estimate.reason };
+    return { figures: "—", note: reason };
   }
   const time =
     estimate.hours === null
@@ -156,10 +183,20 @@ export function estimateText(
   if (estimate.reduced) {
     return {
       figures,
-      note: i18n.t("history.estimate.reduced", { reason: estimate.reason }),
+      note: i18n.t("history.estimate.reduced", { reason }),
     };
   }
   return { figures, note: null };
+}
+
+/** The assumptions of an estimate in the interface language, each once, in the API's order. */
+export function assumptionTexts(
+  estimate: HistoryFamilyEstimate | undefined,
+  read: SentenceReader = plainSentence,
+): string[] {
+  const codes = estimate?.assumption_codes ?? [];
+  const texts = (estimate?.assumptions ?? []).map((text, index) => read(text, codes[index]));
+  return [...new Set(texts)];
 }
 
 /** The longest family estimate of a console: the families read side by side, each in its task. */
@@ -175,6 +212,19 @@ export function costHours(estimate: HistoryConsoleEstimate | undefined): number 
 }
 
 // --- failures ---------------------------------------------------------------
+
+/** The sentence a 409 carries, in the interface language (its code sits beside it in the body). */
+export function conflictDetail(
+  err: ApiError,
+  detail: string,
+  read: SentenceReader = plainSentence,
+): string {
+  const body = err.body as
+    | { detail_code?: string | null; detail_params?: Record<string, unknown> | null }
+    | null
+    | undefined;
+  return read(detail, { code: body?.detail_code ?? null, params: body?.detail_params ?? null });
+}
 
 /** The console a 409 carries, when its body has one. */
 export function conflictConsole(err: unknown): HistoryConsole | null {

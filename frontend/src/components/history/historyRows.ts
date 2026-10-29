@@ -12,8 +12,8 @@ import type {
 
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 
-import { stateInfo, type StateInfo } from "./historyFormat";
-import { ENGLISH_HISTORY } from "./historyText";
+import { collectionReason, stateInfo, windowReason, type StateInfo } from "./historyFormat";
+import { ENGLISH_HISTORY, plainSentence, type SentenceReader } from "./historyText";
 
 export interface HistoryRow {
   key: string;
@@ -47,6 +47,7 @@ function scopeRow(
   family: HistoryFamily,
   scope: HistoryScope,
   i18n: BehaviorI18n,
+  read: SentenceReader,
 ): HistoryRow {
   const perSource = family.sources !== null;
   const last =
@@ -76,15 +77,21 @@ function scopeRow(
     },
     searches: scope.searches,
     last,
-    reason: scope.reason,
-    gaps: scope.gaps ?? [],
+    reason:
+      scope.reason === null
+        ? null
+        : read(scope.reason, { code: scope.reason_code, params: scope.reason_params }),
+    gaps: (scope.gaps ?? []).map((gap) => ({
+      ...gap,
+      reason: read(gap.reason, { code: gap.reason_code, params: gap.reason_params }),
+    })),
     lastErrorClass: scope.last_error_class,
     lastErrorAt: scope.last_error_at,
     sourcesCut: scope.sources_cut,
     sourcesSilent: scope.sources_silent,
     sourcesCutCount: scope.sources_cut_count,
     sourcesSilentCount: scope.sources_silent_count,
-    laterYes: scope.later_yes,
+    laterYes: read(scope.later_yes, { code: scope.later_yes_code, params: scope.later_yes_params }),
   };
 }
 
@@ -95,16 +102,23 @@ interface Absent {
   reason: string;
 }
 
-function absentState(console: HistoryConsole, family: HistoryFamily, i18n: BehaviorI18n): Absent {
+function absentState(
+  console: HistoryConsole,
+  family: HistoryFamily,
+  i18n: BehaviorI18n,
+  read: SentenceReader,
+): Absent {
   const t = i18n.t;
   const absent = (code: string, reason: string): Absent => ({
     state: stateInfo(code, i18n),
     stateCode: code,
     reason,
   });
-  if (!family.collection_enabled) return absent("SWITCHED_OFF", family.collection_reason);
+  if (!family.collection_enabled) {
+    return absent("SWITCHED_OFF", collectionReason(family, read));
+  }
   if (!family.window.available) {
-    return absent("UNAVAILABLE", family.window.reason ?? t("history.familyState.windowNotFitted"));
+    return absent("UNAVAILABLE", windowReason(family, i18n, read));
   }
   if (console.mode === "UNDECIDED") return absent("NOT_READ", t("history.row.noDecision"));
   if (console.mode === "NO") return absent("NOT_READ", t("history.row.answerNo"));
@@ -120,9 +134,10 @@ function absentRow(
   keyTail: string,
   laterYes: string | null,
   i18n: BehaviorI18n,
+  read: SentenceReader,
   override?: Absent,
 ): HistoryRow {
-  const { state, stateCode, reason } = override ?? absentState(console, family, i18n);
+  const { state, stateCode, reason } = override ?? absentState(console, family, i18n, read);
   const window = family.window;
   return {
     key: `${console.instance_id}:${family.family}:${keyTail}`,
@@ -151,11 +166,15 @@ function absentRow(
   };
 }
 
-export function rowsOf(console: HistoryConsole, i18n: BehaviorI18n = ENGLISH_HISTORY): HistoryRow[] {
+export function rowsOf(
+  console: HistoryConsole,
+  i18n: BehaviorI18n = ENGLISH_HISTORY,
+  read: SentenceReader = plainSentence,
+): HistoryRow[] {
   const rows: HistoryRow[] = [];
   for (const family of console.families) {
     const before = rows.length;
-    for (const scope of family.scopes) rows.push(scopeRow(console, family, scope, i18n));
+    for (const scope of family.scopes) rows.push(scopeRow(console, family, scope, i18n, read));
     for (const source of family.sources ?? []) {
       let override: Absent | undefined;
       if (!source.profile_enabled) {
@@ -172,8 +191,9 @@ export function rowsOf(console: HistoryConsole, i18n: BehaviorI18n = ENGLISH_HIS
           source.name,
           i18n.t("history.scope.logSource", { key: source.scope_key }),
           `source:${source.scope_key}`,
-          source.later_yes,
+          read(source.later_yes, { code: source.later_yes_code, params: source.later_yes_params }),
           i18n,
+          read,
           override,
         ),
       );
@@ -187,8 +207,14 @@ export function rowsOf(console: HistoryConsole, i18n: BehaviorI18n = ENGLISH_HIS
           none ? i18n.t("history.scope.noSource") : i18n.t("history.scope.whole"),
           null,
           "all",
-          family.later_yes,
+          family.later_yes === null
+            ? null
+            : read(family.later_yes, {
+                code: family.later_yes_code,
+                params: family.later_yes_params,
+              }),
           i18n,
+          read,
           none && family.collection_enabled
             ? {
                 state: stateInfo("NOT_STARTED", i18n),

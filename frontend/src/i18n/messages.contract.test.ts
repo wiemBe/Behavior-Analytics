@@ -64,6 +64,11 @@ const IDENTICAL_ALLOWLIST = new Set([
   "backend.waf.subject.named",
   // MSG-8b: the defensive re-validation error is the joined, already-worded reasons.
   "backend.search.run.validation",
+  // MSG-8a: pure compositions of other sentences (a join of clauses, a pair of references).
+  "backend.history.assumption.opening",
+  "backend.history.estimate.window_limited",
+  "backend.history.reason.joined",
+  "backend.history.settle.ticked",
   "common.product",
   "customRules.authoring.subjectKinds.LOG_SOURCE",
   "customRules.authoring.subjectKinds.WAF_ENDPOINT",

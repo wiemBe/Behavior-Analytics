@@ -47,6 +47,7 @@ from app.services.waf_pipeline import (
 from app.waf import engine as engine_module
 from app.waf.behavior import detect_new_endpoint_access
 from tests.integration.factories import make_log_source
+from tests.integration.history_reason_support import assert_coded
 from tests.integration.test_history_backfill_api import READER, Client
 from tests.integration.test_waf_ariel_budget import holder
 from tests.integration.test_waf_breakdown_collection import OUTCOMES_ON
@@ -235,6 +236,7 @@ async def test_pipeline_applies_yes_and_live_ineligibility_before_collection(db_
     assert scope is not None
     assert scope.state == HistoryState.READING.value
     assert "fitted with no tracked endpoint yet" in (scope.reason or "")
+    assert_coded(scope)
 
     # A separate source that already has a LIVE row is classified before its next
     # collection attempt, so history cannot be placed in front of that row.
@@ -308,6 +310,7 @@ async def test_waf_fits_once_and_the_estimate_route_matches_the_adapter(
     assert scope is not None
     assert scope.days_target == 15 and scope.target_start == target
     assert "window reduced from 28 to 15 days" in (scope.reason or "")
+    assert_coded(scope)
     assert provider.calls[0][2] == target - timedelta(hours=24)
     starts = (
         await db_session.scalars(
@@ -395,6 +398,7 @@ async def test_waf_refuses_below_seven_days_without_an_ariel_search(db_session) 
     )
     assert scope is not None and scope.state == HistoryState.UNAVAILABLE.value
     assert "even 7 days" in (scope.reason or "")
+    assert_coded(scope)
     assert result["history_searches"] == 0 and provider.calls == []
 
     live = await run_waf_source(
@@ -485,6 +489,7 @@ async def test_scope_upsert_refreshes_loaded_rows_once_and_skips_unloaded_rows(
             "started_at": T0,
             "finished_at": T0 + STEP if state == "PARTIAL" else None,
             "reason": "stopped by operator" if state == "PARTIAL" else None,
+            "reason_i18n": None,
             "last_error_class": None,
             "last_error_at": None,
             "progress": {},
@@ -547,6 +552,7 @@ async def test_waf_stop_before_an_unstepped_reading_keeps_existing_evidence(
                 "started_at": T0,
                 "finished_at": None,
                 "reason": "read history now: topping up",
+                "reason_i18n": None,
                 "last_error_class": None,
                 "last_error_at": None,
                 "progress": {},
@@ -570,6 +576,7 @@ async def test_waf_stop_before_an_unstepped_reading_keeps_existing_evidence(
     )
     assert stopped is not None and stopped.state == HistoryState.PARTIAL.value
     assert stopped.reason == "stopped by operator"
+    assert_coded(stopped)
     assert stopped.progress == {}
     assert (stopped.days_target, stopped.target_start, stopped.floor, stopped.through) == (
         7,
@@ -962,6 +969,7 @@ async def test_worker_failure_rolls_back_rows_and_progress_then_resumes(
                 "started_at": T0,
                 "finished_at": None,
                 "reason": "test starts at a proved floor",
+                "reason_i18n": None,
                 "last_error_class": None,
                 "last_error_at": None,
                 "progress": encode_progress(progress),
@@ -1247,6 +1255,7 @@ async def test_empty_history_handoff_keeps_null_watermarks_then_live_seeds(db_se
                 "started_at": T0,
                 "finished_at": None,
                 "reason": "nothing settled",
+                "reason_i18n": None,
                 "last_error_class": None,
                 "last_error_at": None,
                 "progress": encode_progress(progress),
@@ -1443,6 +1452,7 @@ async def reading_scope(  # type: ignore[no-untyped-def]
                 "started_at": body.started_at,
                 "finished_at": None,
                 "reason": "test starts at a proved floor",
+                "reason_i18n": None,
                 "last_error_class": None,
                 "last_error_at": None,
                 "progress": encode_progress(body),
@@ -1621,6 +1631,10 @@ async def test_history_step_waits_on_a_zero_search_or_time_budget(db_session) ->
     )
     assert no_searches.searches == 0 and no_searches.rows_written == 0
     assert no_searches.reason == "waiting for search budget"
+    assert no_searches.reason_message == {
+        "code": "history.step.wait_budget",
+        "params": {},
+    }
     assert provider.calls == []
 
     no_time = await collector.history_volume_step(
@@ -1633,6 +1647,10 @@ async def test_history_step_waits_on_a_zero_search_or_time_budget(db_session) ->
     )
     assert no_time.searches == 0 and no_time.rows_written == 0
     assert no_time.reason == "waiting for the history time budget"
+    assert no_time.reason_message == {
+        "code": "history.waf.wait_time_budget",
+        "params": {},
+    }
     assert no_time.progress.through is None
     assert provider.calls == []
 
@@ -1719,6 +1737,7 @@ async def test_the_floor_is_the_first_history_bucket_and_a_cut_floor_ends_partia
     await db_session.refresh(scope)
     assert scope.state == HistoryState.PARTIAL.value
     assert "less than asked" in (scope.reason or "")
+    assert_coded(scope)
     assert scope.anchor == T0 + STEP
 
 
@@ -1757,6 +1776,7 @@ async def test_switched_off_and_stopped_readings_end_partial_before_live(db_sess
     )
     assert scope is not None and scope.state == HistoryState.PARTIAL.value
     assert "switched off" in (scope.reason or "")
+    assert_coded(scope)
     assert scope.anchor == T0 + 3 * STEP
     watermarks = (
         await db_session.scalars(
@@ -1931,6 +1951,7 @@ async def test_a_capacity_refusal_defers_volume_without_changing_scope_progress(
     assert yielded.last_error_class == "EarlierProviderError"
     assert yielded.last_error_at == T0
     assert yielded.reason == "deferred: no Ariel permit within 7 s"
+    assert yielded.reason_i18n is None
     assert await db_session.scalar(select(WafSourceBucket)) is None
     assert _ARIEL_PRIORITY.get() == "live"
 
@@ -2006,6 +2027,7 @@ async def test_a_capacity_refusal_defers_breakdown_without_changing_scope_progre
     assert yielded.last_error_class == "EarlierProviderError"
     assert yielded.last_error_at == T0
     assert yielded.reason == "deferred: no Ariel permit within 7 s"
+    assert yielded.reason_i18n is None
     assert _ARIEL_PRIORITY.get() == "live"
 
 

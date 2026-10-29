@@ -50,8 +50,10 @@ from app.history.planner import (
     new_progress,
     searches_for,
 )
-from app.history.source_floors import SourceFloors, finish_with_sources
+from app.history.reasons import message_wire
+from app.history.source_floors import SourceFloors, finish_with_sources_coded
 from app.history.state import HistoryFamily, HistoryTrigger
+from app.i18n.messages import MessageRef, render
 from app.models.enums import CatchallMeasurement, CatchallReviewStatus, IpsCellState
 from app.providers.dto import CatchallSenderRow
 from app.waf.admission import AdmissionPolicy
@@ -228,6 +230,34 @@ def catchall_finish(
     margin: timedelta,
     bucket: timedelta,
 ) -> tuple[HistoryTrigger, str]:
+    """The trigger and the reason a finished reading ends with, as its words only.
+
+    Kept for the callers that only need the words; `catchall_finish_coded` is the
+    same rule and also returns the sentence's wire reference.
+    """
+    trigger, reason, _ = catchall_finish_coded(
+        trigger,
+        reason,
+        floors,
+        known=known,
+        target_start=target_start,
+        margin=margin,
+        bucket=bucket,
+    )
+    return trigger, reason
+
+
+def catchall_finish_coded(
+    trigger: HistoryTrigger,
+    reason: str,
+    floors: SourceFloors,
+    *,
+    known: Sequence[str],
+    target_start: datetime,
+    margin: timedelta,
+    bucket: timedelta,
+    reason_message: MessageRef | dict[str, object] | None = None,
+) -> tuple[HistoryTrigger, str, dict[str, object] | None]:
     """The trigger and the reason a finished reading ends with (§B.3.4, §B.4.4).
 
     No catch-all source had an event in the window: the reading is unavailable
@@ -236,15 +266,13 @@ def catchall_finish(
     with the counts and never a source name.
     """
     if trigger not in (HistoryTrigger.FINISHED_COMPLETE, HistoryTrigger.FINISHED_PARTIAL):
-        return trigger, reason
+        return trigger, reason, message_wire(reason_message)
     if not floors.first_buckets:
-        return (
-            HistoryTrigger.NOTHING_TO_READ,
-            "no catch-all source had an event in the window; nothing is written",
-        )
+        message = MessageRef("history.catchall.no_event")
+        return HistoryTrigger.NOTHING_TO_READ, render(message), message.to_wire()
     if trigger is HistoryTrigger.FINISHED_PARTIAL:
-        return trigger, reason
-    return finish_with_sources(
+        return trigger, reason, message_wire(reason_message)
+    return finish_with_sources_coded(
         trigger,
         reason,
         floors,
@@ -252,6 +280,7 @@ def catchall_finish(
         target_start=target_start,
         margin=margin,
         bucket=bucket,
+        reason_message=reason_message,
     )
 
 

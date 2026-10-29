@@ -9,6 +9,11 @@
 // else. A sentence whose parameters need more (a percent, a duration, an enum) is not a refusal
 // sentence; it goes through `backendMessage.ts`.
 //
+// The first-run dialog of the history backfill (MSG-8a) is mounted in the shell too, and its
+// estimate sentences need three more shapes, each named by its parameter: `hours` is a number with
+// one decimal (`0,1`, `72,0`), `limits` a list of nested sentences joined with one conjunction, and
+// the `noun` enum and any other list are not worded here (the server's text is shown).
+//
 // The rule is the same as there: English shows the server's text as sent; another locale looks the
 // code up in `backend`, and anything absent, malformed, unknown, untranslated or too deep shows the
 // server's text. A code is never shown.
@@ -25,6 +30,13 @@ const MAX_DEPTH = 4;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** Parameters written with one fixed decimal, whatever the value (`72` is `72,0`). */
+const ONE_DECIMAL = new Set(["hours"]);
+/** An enum parameter is worded from `enums`, which the shell does not carry: the text is shown. */
+const UNWORDED = new Set(["noun"]);
+/** Parameters that are a tagged list of sentences, joined with one conjunction. */
+const CONJUNCTION_LISTS = new Set(["limits"]);
+
 function translate(
   code: string,
   params: Record<string, unknown>,
@@ -37,10 +49,30 @@ function translate(
   if (say.has && !say.has(key)) return undefined;
   const values: TextValues = {};
   for (const [name, value] of Object.entries(params)) {
+    if (UNWORDED.has(name)) return undefined;
     if (typeof value === "string") values[name] = value;
-    else if (typeof value === "number" && Number.isInteger(value)) {
+    else if (typeof value === "number" && ONE_DECIMAL.has(name) && Number.isFinite(value)) {
+      values[name] = value.toLocaleString(locale === "tr" ? "tr-TR" : "en-US", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      });
+    } else if (typeof value === "number" && Number.isInteger(value)) {
       // Every count is grouped in the locale, as `backendMessage.ts` does whatever the style.
       values[name] = formatCount(value, locale);
+    } else if (
+      CONJUNCTION_LISTS.has(name) &&
+      isRecord(value) &&
+      value.kind === "list" &&
+      Array.isArray(value.items)
+    ) {
+      const items: string[] = [];
+      for (const item of value.items) {
+        if (!isRecord(item) || typeof item.code !== "string" || !isRecord(item.params)) return undefined;
+        const nested = translate(item.code, item.params, locale, say, depth + 1);
+        if (nested === undefined) return undefined;
+        items.push(nested);
+      }
+      values[name] = items.join(locale === "tr" ? " ve " : " and ");
     } else if (isRecord(value) && typeof value.code === "string" && isRecord(value.params)) {
       const nested = translate(value.code, value.params, locale, say, depth + 1);
       if (nested === undefined) return undefined;

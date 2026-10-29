@@ -10,9 +10,10 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.history.lifecycle import ConsoleMode
+from app.schemas.messages import MessageParamValue, MessageValue
 
 
 class DecisionAnswerIn(BaseModel):
@@ -46,12 +47,18 @@ class WindowOut(BaseModel):
     available: bool
     limited_by: list[str]
     reason: str | None
+    #: Stable code and raw values of `reason`, for a non-English client. Null: no code.
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
 
 
 class GapOut(BaseModel):
     start: datetime
     end: datetime
     reason: str
+    #: Stable code and raw values of `reason` (null on a gap stored before codes existed).
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
 
 
 class ScopeSourceOut(BaseModel):
@@ -91,6 +98,9 @@ class ScopeOut(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     reason: str | None
+    #: Stable code and raw values of `reason` (null on an old or an uncoded row).
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     last_error_class: str | None
     last_error_at: datetime | None
     #: From the decoded progress; None for a `{}` progress or one that does not decode.
@@ -117,6 +127,9 @@ class ScopeOut(BaseModel):
     #: True when the stored progress did not decode: the three fields above are None.
     progress_unreadable: bool
     later_yes: str
+    #: Stable code of `later_yes` (it has no values).
+    later_yes_code: str | None = None
+    later_yes_params: dict[str, MessageParamValue] | None = None
 
 
 class SourceOut(BaseModel):
@@ -126,18 +139,25 @@ class SourceOut(BaseModel):
     name: str
     profile_enabled: bool
     later_yes: str
+    later_yes_code: str | None = None
+    later_yes_params: dict[str, MessageParamValue] | None = None
 
 
 class FamilyOut(BaseModel):
     family: str
     collection_enabled: bool
     collection_reason: str
+    #: Stable code and raw values of `collection_reason`; null when it has no code.
+    collection_reason_code: str | None = None
+    collection_reason_params: dict[str, MessageParamValue] | None = None
     window: WindowOut
     scopes: list[ScopeOut]
     #: WAF and IPS only: the configured sources without a scope row. None elsewhere.
     sources: list[SourceOut] | None
     #: Console-wide families: "possible". None for WAF and IPS (it is per source).
     later_yes: str | None
+    later_yes_code: str | None = None
+    later_yes_params: dict[str, MessageParamValue] | None = None
 
 
 class ConsoleOut(BaseModel):
@@ -148,10 +168,16 @@ class ConsoleOut(BaseModel):
     families: list[FamilyOut]
     #: Set by the three writes: what was recorded and when the scopes change.
     message: str | None = None
+    #: Stable code and raw values of `message`; null when it has no code.
+    message_code: str | None = None
+    message_params: dict[str, MessageParamValue] | None = None
 
 
 class ConflictOut(BaseModel):
     detail: str
+    #: Stable code and raw values of `detail`; null when it has no code.
+    detail_code: str | None = None
+    detail_params: dict[str, MessageParamValue] | None = None
     console: ConsoleOut | None = None
 
 
@@ -166,7 +192,12 @@ class EstimateOut(BaseModel):
     reduced: bool
     refused: bool
     reason: str
+    #: Stable code and raw values of `reason`; null when it has no code.
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     assumptions: list[str]
+    #: One reference per assumption, parallel to `assumptions`; null for uncoded words.
+    assumption_codes: list[MessageValue | None] = Field(default_factory=list)
 
 
 class ConsoleEstimateOut(BaseModel):

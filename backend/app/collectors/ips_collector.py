@@ -39,7 +39,6 @@ from app.history import (
     HistoryState,
     HistoryTrigger,
     IpsGroup,
-    bounded_reason,
     console_mode,
     decode_progress,
     encode_progress,
@@ -62,7 +61,13 @@ from app.history.ips import (
     fold_ips_history,
     ips_planner_settings,
 )
-from app.history.lifecycle import decision_view, deferred_scope_row, scope_row, scope_view
+from app.history.lifecycle import (
+    coded_reason,
+    decision_view,
+    deferred_scope_row,
+    scope_row,
+    scope_view,
+)
 from app.history.planner import (
     ChunkResult,
     PlannerSettings,
@@ -75,6 +80,8 @@ from app.history.planner import (
     plan_step,
     settle_step,
 )
+from app.history.reasons import semicolon_reason
+from app.i18n.messages import MessageRef, render
 from app.ips.collection_plan import IpsSourceGroup, plan_searches
 from app.ips.fold import (
     IpsActionFact,
@@ -947,21 +954,29 @@ class IpsCollector:
             stored = values["progress"]
             assert isinstance(stored, dict)
             fit_reason: str | None = None
+            fit_wire: dict[str, object] | None = None
             if stored:
                 decoded = decode_progress(stored)
                 progress = decoded.progress
                 adapter = decoded.adapter
                 stored_reason = adapter.get("fit_reason")
                 fit_reason = stored_reason if isinstance(stored_reason, str) else None
+                stored_wire = adapter.get("fit_reason_i18n")
+                fit_wire = dict(stored_wire) if isinstance(stored_wire, dict) else None
             else:
                 assert fitted is not None
                 if not fitted.available or fitted.days is None:
                     change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
+                    text, wire = coded_reason(
+                        fitted.reason or change.reason,
+                        fitted.reason_message if fitted.reason else change.reason_message,
+                    )
                     values.update(
                         state=change.state.value,
                         anchor=boundary,
                         finished_at=now,
-                        reason=bounded_reason(fitted.reason or change.reason),
+                        reason=text,
+                        reason_i18n=wire,
                     )
                     handoffs[source_id] = False
                     report.history_states[str(source_id)] = change.state.value
@@ -983,34 +998,34 @@ class IpsCollector:
                     settings=planner,
                     searches_per_tick=fair_share,
                 )
-                zero_reason = (
-                    f"fitted with no admitted entity yet; the "
-                    f"{self.settings.history_backfill_max_hours}-hour limit still bounds "
-                    "the reading"
+                zero_message = (
+                    MessageRef(
+                        "history.family.zero_entity",
+                        {"limit": self.settings.history_backfill_max_hours},
+                    )
                     if no_entities
                     else None
                 )
-                fair_reason = (
-                    f"fitted with a fair share of {fair_share} of the {remaining} shared "
-                    "history searches per tick"
+                fair_message = MessageRef(
+                    "history.family.fair_share", {"share": fair_share, "total": remaining}
                 )
-                fit_reason = "; ".join(
-                    part
-                    for part in (
-                        fitted.reason,
-                        fit.reason if fit.reduced or fit.refused else None,
-                        zero_reason,
-                        fair_reason,
-                    )
-                    if part
+                fit_reason, fit_wire = semicolon_reason(
+                    [
+                        (fitted.reason or "", fitted.reason_message),
+                        (fit.reason if fit.reduced or fit.refused else "", fit.reason_message),
+                        ("" if zero_message is None else render(zero_message), zero_message),
+                        (render(fair_message), fair_message),
+                    ]
                 )
                 if fit.refused or fit.days_fitted is None or fit.target_start is None:
                     change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
+                    text, wire = coded_reason(fit_reason, fit_wire)
                     values.update(
                         state=change.state.value,
                         anchor=boundary,
                         finished_at=now,
-                        reason=bounded_reason(fit_reason),
+                        reason=text,
+                        reason_i18n=wire,
                     )
                     handoffs[source_id] = False
                     report.history_states[str(source_id)] = change.state.value
@@ -1019,7 +1034,7 @@ class IpsCollector:
                 started_at = values.get("started_at")
                 assert isinstance(started_at, datetime)
                 progress = new_progress(fit.target_start, started_at, planner)
-                adapter = {"fit_reason": fit_reason}
+                adapter = {"fit_reason": fit_reason, "fit_reason_i18n": fit_wire}
                 values.update(
                     days_target=fit.days_fitted,
                     target_start=fit.target_start,
@@ -1038,6 +1053,7 @@ class IpsCollector:
                 settings=planner,
             )
             reason = plan.reason
+            reason_message = plan.reason_message
             trigger = plan.trigger
             updated = progress
             if plan.action is StepAction.SCAN:
@@ -1053,6 +1069,7 @@ class IpsCollector:
                 )
                 updated = decision.progress
                 reason = decision.reason
+                reason_message = decision.reason_message
                 trigger = decision.trigger
             elif plan.action is StepAction.READ:
                 results: list[ChunkResult] = []
@@ -1070,6 +1087,7 @@ class IpsCollector:
                     settled = settle_step(progress, results, end=boundary, settings=planner)
                     updated = settled.progress
                     reason = settled.reason
+                    reason_message = settled.reason_message
                     trigger = settled.trigger
                     ready: list[HistoryIpsBucket] = []
                     for span in settled.write_spans:
@@ -1078,12 +1096,16 @@ class IpsCollector:
                         assert updated.floor is not None
                         writes.append(_HistoryWrite(item, updated.floor, tuple(ready)))
 
-            reason = "; ".join(part for part in (fit_reason, reason) if part)
+            reason, reason_wire = semicolon_reason(
+                [(fit_reason or "", fit_wire), (reason, reason_message)]
+            )
+            reason, reason_wire = coded_reason(reason, reason_wire)
             values.update(
                 floor=updated.floor,
                 through=updated.through,
                 progress=encode_progress(updated, adapter=adapter),
-                reason=bounded_reason(reason),
+                reason=reason,
+                reason_i18n=reason_wire,
             )
             if trigger is not None:
                 change = next_state(HistoryState.READING, trigger)

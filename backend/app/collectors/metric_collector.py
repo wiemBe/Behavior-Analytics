@@ -78,8 +78,10 @@ from app.history.progress_codec import (
     decode_progress,
     encode_progress,
 )
+from app.history.reasons import message_wire, semicolon_reason
 from app.history.source_floors import SourceFloors
 from app.history.state import HistoryFamily, HistoryState, HistoryTrigger, next_state
+from app.i18n.messages import MessageRef
 from app.models.enums import BucketCompleteness, SearchFamily
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource, LogSourceMetric
@@ -832,7 +834,7 @@ class MetricCollector:
                     decision=decision,
                     at=now,
                 )
-            progress, days_target, reason = planned
+            progress, days_target, reason, reason_wire = planned
             if previous is None:
                 floors = SourceFloors()
                 adapter = floors.encode()
@@ -854,6 +856,7 @@ class MetricCollector:
                 target_start=progress.target_start,
                 progress=encode_progress(progress, adapter),
                 reason=reason,
+                reason_i18n=reason_wire,
             )
             first_step = True
         else:
@@ -880,7 +883,14 @@ class MetricCollector:
             if not first_step:
                 return None
             return self._step_values(
-                instance.id, row, progress, adapter, floors, ps, row.reason or plan.reason
+                instance.id,
+                row,
+                progress,
+                adapter,
+                floors,
+                ps,
+                row.reason or plan.reason,
+                message_wire(row.reason_i18n if row.reason else plan.reason_message),
             )
 
         if plan.action is StepAction.FINISH:
@@ -888,6 +898,7 @@ class MetricCollector:
             return self._finish_values(
                 instance, decision, row, progress, adapter, floors, known, ps, plan.trigger,
                 plan.reason, now, rebuild_keys=_topup_source_keys(adapter),
+                reason_message=message_wire(plan.reason_message),
             )
 
         # Every monitored source already has a floor: nothing to search, and the reading ends
@@ -896,6 +907,7 @@ class MetricCollector:
             return self._finish_values(
                 instance, decision, row, progress, adapter, floors, known, ps,
                 HistoryTrigger.FINISHED_COMPLETE, plan.reason, now, rebuild_keys=[],
+                reason_message=message_wire(plan.reason_message),
             )
 
         # READ: the chunks go through the live split routine, one search cap for the step.
@@ -975,9 +987,17 @@ class MetricCollector:
                 instance, decision, row, settlement.progress, adapter, fold.floors, known, ps,
                 settlement.trigger, settlement.reason, now,
                 rebuild_keys=_topup_source_keys(adapter),
+                reason_message=message_wire(settlement.reason_message),
             )
         return self._step_values(
-            instance.id, row, settlement.progress, adapter, fold.floors, ps, settlement.reason
+            instance.id,
+            row,
+            settlement.progress,
+            adapter,
+            fold.floors,
+            ps,
+            settlement.reason,
+            message_wire(settlement.reason_message),
         )
 
     def _plan_window(
@@ -988,7 +1008,7 @@ class MetricCollector:
         monitored: int,
         ps: PlannerSettings,
         now: datetime,
-    ) -> tuple[ScopeProgress, int, str] | ScopeAction:
+    ) -> tuple[ScopeProgress, int, str, dict[str, object] | None] | ScopeAction:
         """The first step's plan: the fitted window, `T0`, and the read start.
 
         The read starts at `T0 - m` and the first span is the floor proof (§B.6.2 step 1),
@@ -1002,10 +1022,14 @@ class MetricCollector:
         source), moved only through `next_state`.
         """
         if monitored == 0:
-            return _refusal(HistoryTrigger.NOTHING_TO_READ, phase_a.NO_MONITORED_REASON)
+            return _refusal(
+                HistoryTrigger.NOTHING_TO_READ,
+                phase_a.NO_MONITORED_REASON,
+                phase_a.NO_MONITORED_MESSAGE,
+            )
         fitted = fit_family_window(HISTORY_FAMILY, self.settings)
         if fitted.days is None:
-            return _refusal(HistoryTrigger.WINDOW_TOO_SMALL, fitted.reason)
+            return _refusal(HistoryTrigger.WINDOW_TOO_SMALL, fitted.reason, fitted.reason_message)
         # The operator's answer and the settings are both upper bounds of the window.
         requested = min(decision.days or fitted.days, fitted.days)
         fit = fit_window(
@@ -1016,13 +1040,18 @@ class MetricCollector:
             searches_per_tick=self.settings.history_backfill_searches_per_tick,
         )
         if fit.refused or fit.days_fitted is None or fit.target_start is None:
-            return _refusal(HistoryTrigger.WINDOW_TOO_SMALL, fit.reason)
-        reason = "; ".join(
-            part for part in (fitted.reason, fit.reason if fit.reduced else None) if part
-        ) or fit.reason
+            return _refusal(HistoryTrigger.WINDOW_TOO_SMALL, fit.reason, fit.reason_message)
+        reason, reason_wire = semicolon_reason(
+            [
+                (fitted.reason or "", fitted.reason_message),
+                (fit.reason if fit.reduced else "", fit.reason_message),
+            ]
+        )
+        if not reason:
+            reason, reason_wire = fit.reason, message_wire(fit.reason_message)
         progress = new_progress(fit.target_start, row.started_at or now, ps)
         progress = replace(progress, floor=fit.target_start - ps.margin, scan_cursor=None)
-        return progress, fit.days_fitted, reason
+        return progress, fit.days_fitted, reason, reason_wire
 
     def _step_values(
         self,
@@ -1033,6 +1062,7 @@ class MetricCollector:
         floors: SourceFloors,
         ps: PlannerSettings,
         reason: str,
+        reason_message: dict[str, object] | None = None,
     ) -> dict[str, Any]:
         """The scope row after a step that left the scope `READING`."""
         earliest = phase_a.earliest_floor(
@@ -1047,6 +1077,7 @@ class MetricCollector:
             floor=earliest,
             through=progress.through,
             reason=reason,
+            reason_i18n=reason_message,
             progress=encode_progress(progress, {**adapter, **floors.encode()}),
         )
 
@@ -1064,6 +1095,7 @@ class MetricCollector:
         reason: str,
         now: datetime,
         rebuild_keys: Collection[str] | None = None,
+        reason_message: dict[str, object] | None = None,
     ) -> dict[str, Any]:
         """The scope row of a reading that ends: the state comes from `next_state`.
 
@@ -1071,8 +1103,14 @@ class MetricCollector:
         sources that had no floor, so sources the previous reading already rebuilt are not
         queued again. `None` rebuilds every monitored source the reading reached.
         """
-        trigger, reason = phase_a.finish(
-            trigger, reason, floors, known=known, target_start=progress.target_start, settings=ps
+        trigger, reason, reason_message = phase_a.finish_coded(
+            trigger,
+            reason,
+            floors,
+            known=known,
+            target_start=progress.target_start,
+            settings=ps,
+            reason_message=reason_message,
         )
         change = next_state(HistoryState.READING, trigger)
         readable = known if rebuild_keys is None else rebuild_keys
@@ -1086,8 +1124,22 @@ class MetricCollector:
             floors,
             ps,
             reason,
+            reason_message,
         )
-        action = ScopeAction(ActionKind.TRANSITION, change.state, trigger, reason or change.reason)
+        action = (
+            ScopeAction(
+                ActionKind.TRANSITION, change.state, trigger, reason, None, reason_message
+            )
+            if reason
+            else ScopeAction(
+                ActionKind.TRANSITION,
+                change.state,
+                trigger,
+                change.reason,
+                None,
+                change.reason_message.to_wire(),
+            )
+        )
         return transition_row(
             action,
             instance_id=instance.id,
@@ -1243,10 +1295,30 @@ def _with_pending(row: ScopeRowView) -> ScopeRowView:
     return replace(row, progress=encode_progress(decoded.progress, adapter))
 
 
-def _refusal(trigger: HistoryTrigger, reason: str | None) -> ScopeAction:
+def _refusal(
+    trigger: HistoryTrigger,
+    reason: str | None,
+    reason_message: MessageRef | dict[str, object] | None = None,
+) -> ScopeAction:
     """A reading that ends before it starts (`UNAVAILABLE`), through `next_state`."""
     change = next_state(HistoryState.READING, trigger)
-    return ScopeAction(ActionKind.TRANSITION, change.state, trigger, reason or change.reason)
+    if reason:
+        return ScopeAction(
+            ActionKind.TRANSITION,
+            change.state,
+            trigger,
+            reason,
+            None,
+            message_wire(reason_message),
+        )
+    return ScopeAction(
+        ActionKind.TRANSITION,
+        change.state,
+        trigger,
+        change.reason,
+        None,
+        change.reason_message.to_wire(),
+    )
 
 
 def _span_starts(span: Span, settings: PlannerSettings) -> list[datetime]:

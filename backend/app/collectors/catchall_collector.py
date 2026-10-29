@@ -53,7 +53,7 @@ from app.history.catchall import (
     CatchallStep,
     SenderTouch,
     bucket_row,
-    catchall_finish,
+    catchall_finish_coded,
     catchall_history_budget,
     catchall_planner_settings,
     catchall_window_fit,
@@ -92,6 +92,7 @@ from app.history.planner import (
     settle_step,
 )
 from app.history.progress_codec import ProgressCodecError, encode_progress
+from app.history.reasons import message_wire
 from app.history.source_floors import SourceFloors
 from app.history.state import HistoryState, HistoryTrigger, next_state
 from app.i18n.messages import MessageRef, render
@@ -130,7 +131,9 @@ BOOTSTRAPPED_KEY = "bootstrapped"
 _BUCKET_CHUNK = 1000
 _SENDER_CHUNK = 2000
 #: The reason a scope whose stored progress cannot be read back ends (§B.4.4).
-UNREADABLE_PROGRESS = "the stored history progress could not be read back"
+UNREADABLE_MESSAGE = MessageRef("history.catchall.unreadable")
+UNREADABLE_PROGRESS = render(UNREADABLE_MESSAGE)
+ANCHOR_GONE_MESSAGE = MessageRef("history.catchall.anchor_gone")
 #: The console-wide scope of this family: one row for the console (§B.5).
 SCOPE_KEY = ""
 #: The states in which a scope no longer reads (§B.4.4 "The hold").
@@ -866,7 +869,8 @@ class CatchallCollector:
                 view=view,
                 progress=None,
                 trigger=HistoryTrigger.FINISHED_PARTIAL,
-                reason="the live anchor is gone: the history has no end to read up to",
+                reason=render(ANCHOR_GONE_MESSAGE),
+                reason_message=ANCHOR_GONE_MESSAGE,
                 now=now,
             )
         return await self._read_history(
@@ -929,6 +933,7 @@ class CatchallCollector:
                     progress=None,
                     trigger=HistoryTrigger.WINDOW_TOO_SMALL,
                     reason=fitted.reason or "the window is too small to read history",
+                    reason_message=fitted.reason_message,
                     now=now,
                 )
             progress = reading_progress(anchor - timedelta(days=days), now, planner)
@@ -949,6 +954,7 @@ class CatchallCollector:
                 progress=progress,
                 trigger=plan.trigger,
                 reason=plan.reason,
+                reason_message=plan.reason_message,
                 now=now,
             )
         if plan.action is StepAction.SCAN:
@@ -962,6 +968,7 @@ class CatchallCollector:
                 progress=progress,
                 trigger=HistoryTrigger.FINISHED_PARTIAL,
                 reason=UNREADABLE_PROGRESS,
+                reason_message=UNREADABLE_MESSAGE,
                 now=now,
             )
         sources = await self._catchall_sources(instance.id)
@@ -1032,6 +1039,7 @@ class CatchallCollector:
                 progress=None,
                 trigger=HistoryTrigger.WINDOW_TOO_SMALL,
                 reason=fit.reason,
+                reason_message=fit.reason_message,
                 now=now,
             )
         if fit is not None and fit.target_start is not None and fit.target_start > (
@@ -1058,7 +1066,7 @@ class CatchallCollector:
             touches, instance=instance, anchor=anchor, now=now
         )
         if settlement.trigger is not None:
-            trigger, reason = catchall_finish(
+            trigger, reason, reason_wire = catchall_finish_coded(
                 settlement.trigger,
                 settlement.reason,
                 fold.floors,
@@ -1066,6 +1074,7 @@ class CatchallCollector:
                 target_start=progress.target_start,
                 margin=planner.margin,
                 bucket=planner.bucket,
+                reason_message=settlement.reason_message,
             )
             return await self._finish_history(
                 instance,
@@ -1076,6 +1085,7 @@ class CatchallCollector:
                 floors=fold.floors,
                 trigger=trigger,
                 reason=reason,
+                reason_message=reason_wire,
                 now=now,
             )
         new_view = replace(
@@ -1101,6 +1111,7 @@ class CatchallCollector:
                         scope_key=SCOPE_KEY,
                     ),
                     reason=settlement.reason,
+                    reason_i18n=message_wire(settlement.reason_message),
                 )
             ]
         )
@@ -1134,11 +1145,17 @@ class CatchallCollector:
         reason: str,
         now: datetime,
         floors: SourceFloors | None = None,
+        reason_message: MessageRef | dict[str, object] | None = None,
     ) -> HistoryState:
         """End the reading: the scope's state, its reason and its row."""
         change = next_state(view.state, trigger)
         action = ScopeAction(
-            ActionKind.TRANSITION, change.state, trigger, bounded_reason(reason)
+            ActionKind.TRANSITION,
+            change.state,
+            trigger,
+            bounded_reason(reason),
+            None,
+            message_wire(reason_message),
         )
         new_view = replace(
             view,
