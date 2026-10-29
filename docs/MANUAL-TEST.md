@@ -25,10 +25,7 @@ kendi bölümünü bu bölümün **üstüne** ekler.
 
 ## 0.1.7
 
-<!-- Orkestratör etiketleme sırasında: (1) <HEAD-0.1.7> yer tutucusunu gerçek migrasyon numarasıyla değiştirir (beklenen zincir 0033 ... 0043; bkz. docs/tasks/MT-1a.report.md), (2) MSG-8a ve MSG-6b işaretli kontrolleri birleşmiş koda karşı yeniden doğrular. -->
-
-Bu bölüm 0.1.6 sitesini 0.1.7'ye yükseltir ve yükseltilmiş siteyi sınar. Üretim sitesi bugün 0.1.6'dadır (migrasyon başı `0032`). Bu bölümde `<HEAD-0.1.7>` yazan yerde,
-0.1.7'nin migrasyon başı olan numara okunur (`/api/v1/version` içindeki `migration_head`). Üretim IPS kaynakları Cisco Firepower/FTD ve Palo Alto Threat'tir.
+Bu bölüm 0.1.6 sitesini 0.1.7'ye yükseltir ve yükseltilmiş siteyi sınar. Üretim sitesi bugün 0.1.6'dadır (migrasyon başı `0032`). 0.1.7'nin migrasyon başı `0044`'tür (`/api/v1/version` içindeki `migration_head`). Üretim IPS kaynakları Cisco Firepower/FTD ve Palo Alto Threat'tir.
 
 ### Bu sürüm neyi değiştirir
 
@@ -36,9 +33,9 @@ Bu bölüm 0.1.6 sitesini 0.1.7'ye yükseltir ve yükseltilmiş siteyi sınar. �
   Backend'in yazdığı cümlelerin büyük bölümü artık bir kodla birlikte saklanır ve Türkçe okunur: Phase A anomali açıklamaları ve yaşam döngüsü nedenleri, WAF ve IPS anomali cümleleri,
   özellik izleme cümleleri, kural sağlığı ve coverage nedenleri, uyarı başlıkları, özel kural durum nedenleri, arama zamanlama ve çalıştırma iletileri, geçmiş okuma cümleleri,
   reddetme (403/409/422) iletileri. İngilizce, API'nin metnidir ve değişmez.
-- **Migrasyonlar eklemelidir.** `0033` ... `<HEAD-0.1.7>` yalnızca boş (`NULL`) kabul eden yeni sütunlar ekler; var olan satırlar değişmez, hiçbir şey silinmez ve geri doldurma yoktur.
+- **Migrasyonlar eklemelidir.** `0033` ... `0044` yeni sütunlar ekler. `0033` dışındakiler boş (`NULL`) kabul eder; `0033`, `app_user.ui_language` sütununu ekler ve var olan her hesap `en` değerini alır. Var olan satırlar değişmez, hiçbir şey silinmez ve geri doldurma yoktur.
   0.1.6'nın yazdığı saklı cümleler İngilizce kalır; Türkçede de İngilizce görünür (bölüm 4).
-- **Bu sürümde olmayanlar.** Motorun yazdığı uyarı başlıkları ve "condition recovered" nedeni (MSG-7b) ve catch-all toplayıcının geçmiş cümleleri (MSG-8c) İngilizce kalır. Bu beklenir, hata değildir.
+- **Bu sürümde olmayanlar.** Motorun yazdığı uyarı başlıkları ve "condition recovered" nedeni (MSG-7b) İngilizce kalır; geçmiş okumadaki Ariel erteleme cümlesi de İngilizce kalır (MT-59). Bu beklenir, hata değildir.
 
 ### Nasıl kullanılır
 
@@ -192,7 +189,7 @@ tar -tzf "$BUNDLE" | head -40
 
 ### 2. Yükseltme 0.1.6 → 0.1.7
 
-Siteyi 0.1.6'dan 0.1.7'ye yükseltmenin iki yolu vardır; birini seç. Hedef sürüm `docs/OPERATIONS.md` içindeki "Yükseltme" ve "Çevrimdışı paket" bölümleriyle aynı biçimde çalışır. Yükseltme, kendi doğrulanmış `pre-upgrade` yedeğini alır; ayrıca yedeğin geri yükleme testi yapılır. Yükseltmeden sonra beklenen migrasyon başı `<HEAD-0.1.7>` olarak yazılmıştır; etiketleme sırasında gerçek numara bu belgeye işlenir. 0.1.6 başı `0032`'dir.
+Siteyi 0.1.6'dan 0.1.7'ye yükseltmenin iki yolu vardır; birini seç. Hedef sürüm `docs/OPERATIONS.md` içindeki "Yükseltme" ve "Çevrimdışı paket" bölümleriyle aynı biçimde çalışır. Yükseltme, kendi doğrulanmış `pre-upgrade` yedeğini alır; ayrıca yedeğin geri yükleme testi yapılır. Yükseltmeden sonra beklenen migrasyon başı `0044`'tür; 0.1.6 başı `0032`'dir.
 
 **Kesinti.** Backend, worker ve beat, `pg_dump` başlangıcından `/api/v1/health/ready` 200 dönene kadar kapalıdır; `frontend` ve `proxy` de durdurulur. Küçük bir veritabanında yükseltme kesintisi yaklaşık 15-20 sn ölçüldü; 5 GiB altı veritabanı için bütçe 10 dakikadır. İmaj çekme bu pencerenin dışındadır. Bunlar söz değildir. Yükseltme Redis'i boşaltır (`FLUSHALL`); sıradaki görevler kaybolur ve bir sonraki beat tick'inde yeniden kurulur, önemli veri PostgreSQL'dedir. QRadar'a hiçbir şey yazılmaz.
 
@@ -226,7 +223,7 @@ Full report: ./qradar-dash doctor
 
 ```
 PASS  db_connect     database accepted SELECT 1
-PASS  migration_head database and image are at <HEAD-0.1.7>
+PASS  migration_head database and image are at 0044
 Full report: ./qradar-dash doctor
 ```
 
@@ -258,7 +255,7 @@ tar -xf /yol/qradar-dash-0.1.7-bundle.tar --exclude=images.tar
 
 - İki toplam aynıdır.
 - Paket doğrulanır ve yüklenir; çıktıda `bundle images loaded and checked against MANIFEST` satırı görünür. Hiçbir konteyner imajlar yüklenip denetlenmeden durdurulmaz.
-- Sonrası, çevrimiçi yoldaki gibidir: iki `PASS` çifti (ilki `0032`, ikincisi `<HEAD-0.1.7>`) ve son satır `Upgrade complete: 0.1.6 -> 0.1.7.`, çıkış kodu 0.
+- Sonrası, çevrimiçi yoldaki gibidir: iki `PASS` çifti (ilki `0032`, ikincisi `0044`) ve son satır `Upgrade complete: 0.1.6 -> 0.1.7.`, çıkış kodu 0.
 - Eksik bir imaj varsa `upgrade refused: target images are unavailable: image <imaj> is not loaded on this host; no container was stopped; pass the bundle: …` yazılır ve hiçbir şey durmaz.
 
 **Kaydet:** Her iki toplam, çıkış kodu, başlangıç ve bitiş saati (UTC), iki `migration_head` satırı.
@@ -280,8 +277,8 @@ curl -s http://127.0.0.1:8000/api/v1/health/ready
 **Beklenen:**
 
 - `status`: `Installed version: 0.1.7`; `Last upgrade: success, 0.1.6 -> 0.1.7 at <utc>`; `Last upgrade backup: <yol> (age <yaş>)`; `API ready: HTTP 200 (…)`; çıkış kodu 0; her servis sağlıklı.
-- `/api/v1/version`: `"version":"0.1.7"` ve `"migration_head":"<HEAD-0.1.7>"`.
-- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"<HEAD-0.1.7>"`.
+- `/api/v1/version`: `"version":"0.1.7"` ve `"migration_head":"0044"`.
+- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0044"`.
 
 **Kaydet:** Üç çıktının sürüm ve `migration_head` değerleri; `Last upgrade:` satırı.
 
@@ -297,7 +294,7 @@ curl -s http://127.0.0.1:8000/api/v1/health/ready
 
 **Beklenen:**
 
-- `FAIL` yoktur. `db_connect` PASS; `migration_head` PASS ve `database and image are at <HEAD-0.1.7>`; `version_match` PASS ve `frontend and backend report 0.1.7`; `containers` PASS.
+- `FAIL` yoktur. `db_connect` PASS; `migration_head` PASS ve `database and image are at 0044`; `version_match` PASS ve `frontend and backend report 0.1.7`; `containers` PASS.
 - Beat ve worker yeni başladığı için ilk dakikada `celery_workers` ya da `celery_beat` geçici FAIL verebilir; bir dakika bekleyip komutu yinele. İkinci çalıştırmada FAIL kalırsa Kaldı.
 - Toplama henüz bir kadans çalışmadığı için `cadence`, `anomaly_evaluation` ve `rule_match_coverage` WARN olabilir. Bunlar MT-11 içinde yeniden okunur.
 
@@ -613,7 +610,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 
 **Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
 
-#### MT-29 — Dil: Anomali ayrıntısı, IPS `/anomalies/<id>` [çekirdek] <!-- MSG-6b -->
+#### MT-29 — Dil: Anomali ayrıntısı, IPS `/anomalies/<id>` [çekirdek]
 
 **Eylem:**
 
@@ -622,7 +619,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 **Beklenen:**
 
 - Türkçe başlık: “Anomali incelemesi”.
-- Kodlu alanlar (Türkçe olmalı): Algılayıcı bloğundaki gerekçe ve uyarı notu Türkçe (MSG-6b); yaşam döngüsü nedenleri (MSG-5). 0.1.7 MSG-6b ile birlikte etiketlenir.
+- Kodlu alanlar (Türkçe olmalı): Algılayıcı bloğundaki gerekçe ve uyarı notu Türkçe (MSG-6b); yaşam döngüsü nedenleri (MSG-5). Bastırılmış IPS anomalisi yalnızca "Bastırıldı" etiketini gösterir; bastırma nedeni cümlesi gösterilmez.
 - 0.1.6 eski satırı (İngilizce kalması doğru): 0.1.7'den önce açılmış IPS anomalisinde İngilizce gerekçe.
 
 **Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
@@ -943,7 +940,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 
 **Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
 
-#### MT-52 — Dil: Geçmiş veri okuma `/admin/history-backfill` [çekirdek] <!-- MSG-8a -->
+#### MT-52 — Dil: Geçmiş veri okuma `/admin/history-backfill` [çekirdek]
 
 **Ne zaman bakılır:** Yeni satırlar için bölüm 2'deki bekleme.
 
@@ -954,7 +951,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 **Beklenen:**
 
 - Türkçe başlık: “Geçmiş veri okuma”.
-- Kodlu alanlar (Türkçe olmalı): Kapsam nedenleri, boşluk nedenleri, tahmin cümleleri, varsayımlar ve karar iletileri Türkçe (MSG-8a). Kapsam her adımda nedenini yeniden yazar.
+- Kodlu alanlar (Türkçe olmalı): Kapsam nedenleri (catch-all dahil tüm aileler), boşluk nedenleri, tahmin cümleleri, varsayımlar ve karar iletileri Türkçe (MSG-8a). Kapsam her adımda nedenini yeniden yazar. İstisna: Ariel erteleme nedeni İngilizce kalır (MT-59).
 - 0.1.6 eski satırı (İngilizce kalması doğru): Bir sonraki adıma kadar kapsamın eski nedeni (İngilizce).
 
 **Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
@@ -1031,7 +1028,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 
 **Temizlik:** Gerekmez; bir `auth.login_failed` denetim kaydı yazılır.
 
-#### MT-58 — 0.1.6'dan kalan saklı cümleler Türkçede de İngilizcedir <!-- MSG-8a -->
+#### MT-58 — 0.1.6'dan kalan saklı cümleler Türkçede de İngilizcedir
 
 **Eylem:**
 
@@ -1044,13 +1041,15 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 
 **Kaydet:** Dört yerden hangileri için eski satır bulundu; her birinde İngilizce metin okunuyordu (evet/hayır).
 
-#### MT-59 — 0.1.7'de İngilizce kalması beklenenler [çekirdek] <!-- MSG-8a -->
+#### MT-59 — 0.1.7'de İngilizce kalması beklenenler [çekirdek]
 
 **Eylem:**
 
 - Aşağıdaki listeyi oku. Türkçe turda bu listede **olmayan** bir İngilizce cümle bulursan Kaldı yaz; listedekileri hata sayma:
 - **Motorun yazdığı uyarı başlıkları, açıklamaları ve "condition recovered" çözüm nedeni** (Phase A, WAF, IPS ve özellik izleme motorlarının uyarıları): MSG-7b, 0.1.7'de **yok**.
-- **Catch-all toplayıcının geçmiş cümleleri** (geçmiş okumada catch-all kapsamının nedenleri): MSG-8c, 0.1.7'de **yok**. Geçmiş okumanın diğer ailelerinin cümleleri MSG-8a ile Türkçedir.
+- **Geçmiş okumada Ariel erteleme nedeni** (`deferred: no Ariel permit within N s`; havuz meşgulken bir kapsamın “Neden” hücresi): MSG-8c, 0.1.7'de **yok**; İngilizce kalır ve hata değildir. Catch-all dahil geçmiş okumanın diğer tüm cümleleri MSG-8a ile Türkçedir.
+- **İlk açılış sorusundaki tahmin notu** `history.estimate.empty_sources` (henüz izlenen endpoint ya da kabul edilmiş varlığı olmayan bir WAF/IPS kaynağı için, tahmin cümlesinin sonunda "…{count} sources fitted with no … yet; the … limit still bounds the reading"): Türkçe pencerede İngilizce kalır. Geçmiş okuma sayfası bunu göstermez.
+- **Eski geçmiş boşlukları ve kapsam satırları** (0.1.7'den önce yazılmış): saklı İngilizce metin.
 - Bildirim kanallarına (Teams, e-posta, Slack, webhook, syslog) giden metinler her zaman İngilizcedir; gönderilen bildirim metni arayüz dilini izlemez.
 - QRadar'dan, bir sağlayıcıdan ya da bir kütüphaneden gelen serbest metin: `anomaly.error`, Ariel'in kendi hata iletileri (`search_execution.error_message` içinde "Ariel search failed" dışındakiler), izleme filigranının `last_error` değeri.
 - Operatörün yazdığı metin: uyarıyı çözerken yazılan neden, arama/kural adları, açıklamalar, sınıflandırma deseni.
@@ -1318,7 +1317,7 @@ Pano, `/` yolundadır. Gösterge paneli menüsünden (“Gösterge panelleri”)
 
 **Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
 
-#### MT-79 — Pano bileşeni: “Son IPS anomalileri” <!-- MSG-6b -->
+#### MT-79 — Pano bileşeni: “Son IPS anomalileri”
 
 **Eylem:**
 
@@ -1326,7 +1325,7 @@ Pano, `/` yolundadır. Gösterge paneli menüsünden (“Gösterge panelleri”)
 
 **Beklenen:**
 
-- Veri yüklenir. Etkin IPS anomalileri; bağlantı IPS varlıklarını ve kaynaklarını birlikte açar (0.1.6 ile gelen "IPS varlıkları ve kaynakları" seçeneği). Satırdaki cümleler MSG-6b ile Türkçedir.
+- Veri yüklenir. Etkin IPS anomalileri; bağlantı IPS varlıklarını ve kaynaklarını birlikte açar (0.1.6 ile gelen "IPS varlıkları ve kaynakları" seçeneği). Satırdaki cümleler Türkçedir (MSG-6b).
 - Bağlantı `/anomalies?subject_kind=IPS&active_only=true` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
 
 **Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
@@ -1398,7 +1397,7 @@ Anomali listesi tek yerde dört aileyi toplar: log source (Phase A), WAF endpoin
 
 **Kaydet:** Bir gerekçe cümlesinin dili (Türkçe/İngilizce) ve anomalinin açılış zamanı.
 
-#### MT-84 — IPS anomali ayrıntısı <!-- MSG-6b -->
+#### MT-84 — IPS anomali ayrıntısı
 
 **Ön koşul:** Sitede bir IPS anomalisi var (Cisco Firepower/FTD ya da Palo Alto Threat kaynağından).
 
@@ -1409,7 +1408,9 @@ Anomali listesi tek yerde dört aileyi toplar: log source (Phase A), WAF endpoin
 **Beklenen:**
 
 - Blokta “Tespit anında sezonluk p05–p95”, “Robust z eşiği”, “Önemlilik eşiği”, “Doğrulanmış geçmiş” satırları vardır. Ölçülmeyen değer tire ve gerekçe taşır. Kanıt bölümü “Bir IPS vakasının kanıt paketi ve katkı sağlayan değerler listesi yoktur. Yukarıdaki seri ve değerlendirilenler algılayıcının kaydettikleridir; IPS için kaynak adresleri sunulmaz.” der: IPS için kaynak adresi gösterilmez.
-- <!-- MSG-6b --> Gerekçe cümlesi ve uyarı notu Türkçedir (MSG-6b): varlık ani artışları, engelleme oranı kayması, yoğunlaşma, yeni hedef port (üç ISO zaman damgalı cümle). 0.1.7'den önce açılmış anomalide bu cümleler saklı İngilizce metindir. Bin ve üzeri sayılar Türkçe gruplanır (`1.204`).
+- Gerekçe cümlesi Türkçedir (MSG-6b): varlık ani artışı (“{observed} {unit}, {subject} için baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} {unit}/zaman dilimi); {basis}”), engelleme oranı kayması, yoğunlaşma, yeni hedef port (“İlk göründüğü {first_seen} tarihinden bu yana {port} hedef portu {buckets} zaman diliminde {events} olay taşıdı; doğrulanmış {history_start} – {history_end} geçmişinde her zaman diliminde {admission} olayın altında kaldı”; üç UTC zaman damgalı cümle). Uyarı notu sabit cümledir, örneğin “Engelleme, profilin eylem eşlemesi üzerinden değerlendirilir. Daha yüksek bir engelleme oranı IPS kararlarını tanımlar; bir saldırının başarılı olduğunu göstermez.” Sayım bir alt sınırsa cümle “En az {observed} {unit} (alt sınır: {scope}), {subject} için baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} {unit}/zaman dilimi); {basis}” biçimindedir. Bin ve üzeri sayılar Türkçe gruplanır (`12.345`), oranlar `%60,0` biçimindedir.
+- İç içe cümle, iki nokta üst üste ya da tireden sonra küçük harfle başlar (örneğin "alt sınır: …", "…, {role}: {reason}"); büyük harfle başlayan iç cümle hatadır. 0.1.7'den önce açılmış anomalide gerekçe ve not saklı İngilizce metindir.
+- Bastırılmış (bakım penceresindeki) IPS anomalisi yalnızca “BASTIRILDI” etiketini gösterir. Bastırma nedeni cümlesi saklanır ama ne API'den sunulur ne de bir sayfada gösterilir: bu cümleyi bekleme, görmemek hata değildir.
 - Yaşam döngüsü nedenleri Türkçedir (MSG-5).
 
 **Kaydet:** Bir gerekçe cümlesinin dili ve anomalinin açılış zamanı. IPS anomalisi yoksa `Koşulmadı`.
@@ -1649,7 +1650,7 @@ Arama kataloğu, saklanan ve doğrulanmış AQL aramalarını içerir (`/searche
 
 Sayfa `/admin/history-backfill` yolundadır (“Geçmiş veri okuma”); okumak için `read:history_backfill`, kararı değiştirmek için `admin:history_backfill` gerekir. Geçmiş okuma yalnızca öğrenme içindir; okunan kovalar yargılanmaz. `HISTORY_BACKFILL_ENABLED` varsayılanı `true`'dur. Okuma, QRadar'a salt okunur arama gönderir ve 72 saatlik bütçe içinde kalır (`docs/OPERATIONS.md`, "Geçmiş okuma").
 
-#### MT-99 — Geçmiş okuma sayfası: karar bloğu ve tablo <!-- MSG-8a -->
+#### MT-99 — Geçmiş okuma sayfası: karar bloğu ve tablo
 
 **Ön koşul:** Yönetici hesabı.
 
@@ -1664,7 +1665,8 @@ Sayfa `/admin/history-backfill` yolundadır (“Geçmiş veri okuma”); okumak 
 - Başlık “Geçmiş veri okuma”. Her etkin console için “Console {name}” bölümü: karar satırı (“Geçmiş veri okuma: Evet{days}. Kaydeden: {by}, ‹zaman›.”, “Geçmiş veri okuma: Hayır, geçmiş okunmuyor. Kaydeden: {by}, ‹zaman›.” ya da “Geçmiş veri okuma: karar verilmedi. QRadar'ın geçmişinden hiçbir şey okunmuyor.”) ve tablo.
 - Tablo sütunları: “Aile”, “Scope”, “Durum”, “İstenen pencere”, “Kanıtlanan pencere”, “Okunan”, “Arama”, “Okunan son zaman”, “Neden”, “Sonradan Evet denirse”. Aileler: “Kaynak hacmi”, “WAF”, “IPS”, “Catch-all gönderenleri”, “Kural eşleşmeleri”.
 - Durum sözcükleri: “Bekliyor”, “Okunuyor”, “Tamamlandı”, “Kısmi”, “Kullanılamıyor”, “Uygun değil”. Okunmayan sayı tire olarak görünür, sıfır olarak değil.
-- <!-- MSG-8a --> Neden sütunundaki cümleler, boşluk nedenleri ve tahmin/varsayım cümleleri Türkçedir (MSG-8a): örneğin pencere kısaltma cümlesi ("window reduced from N to D days: …"), "yaklaşık X saat" biçimli tahminler, Türkçe gruplanmış sayılar. Eski kapsam nedenleri bir sonraki adıma kadar saklı İngilizce metinle görünür; bu kapsam satırı her toplamada nedenini yeniden yazar.
+- “Neden” sütunundaki cümleler her ailede (catch-all dahil) Türkçedir (MSG-8a); cümle parçaları küçük harfle başlar ve noktalı virgülle birleşir. Örnekler: “tarama pencerenin sonuna ulaştı”; “okuma sona ulaştı; taban, istenen başlangıca bir zaman diliminden az uzaklıkta ve boşluk yok”; “sona ulaşıldı; {problems}” (iç parçalar: “QRadar, {cut} / {total} için istenenden azını tutuyor”, “{sources} için pencerede olay yoktu”); “pencere {asked} günden {days} güne indirildi: {limits}”; “arama bütçesi bekleniyor”; boşluk satırı “Arama en küçük genişlikte {failures} kez başarısız oldu”; catch-all: “pencerede hiçbir catch-all kaynağının olayı yoktu; hiçbir şey yazılmadı”. Sayılar Türkçe gruplanır, süre "yaklaşık X saat" biçimindedir. “Sonradan Evet denirse” sütunu: “mümkün”, “olanaksız: bu kaynak zaten veri topladı”, “gerekmez: bu kaynağın geçmiş kapsamı var”.
+- İstisnalar (İngilizce kalır, hata değildir): kapsam Ariel havuzu meşgul olduğu için ertelendiyse nedeni `deferred: no Ariel permit within N s` (MT-59); 0.1.7'den önce yazılmış satırlar ve boşluklar saklı İngilizce metindir. Kapsam her adımda nedenini yeniden yazar, bu yüzden bir adımdan sonra Türkçeye döner.
 - Console yoksa “Etkin bir QRadar console'u yok.”; yetki yoksa “Rolünüz bunu okuyamıyor (izin: read:history_backfill). Hiçbir şey değiştirilmedi.”
 
 **Kaydet:** Sayfa açıldı mı; kararın durumu (Evet / Hayır / karar verilmedi); aile durumlarının özeti; bir neden cümlesinin dili.
@@ -1683,7 +1685,7 @@ Sayfa `/admin/history-backfill` yolundadır (“Geçmiş veri okuma”); okumak 
 
 **Kaydet:** Pencere çıktı mı; "Sonra karar ver" seçildi mi.
 
-#### MT-101 — Geçmişi şimdi oku / Okumayı durdur (yazar) yalnızca lab QRadar araması <!-- MSG-8a -->
+#### MT-101 — Geçmişi şimdi oku / Okumayı durdur (yazar) yalnızca lab QRadar araması
 
 **Ön koşul:** **yalnızca lab**: bu düğmeler her ailenin sonraki toplamasında QRadar'a salt okunur aramalar gönderir (kapasite harcar) ve okumayı başlatır ya da durdurur; üretimde `Koşulmadı` işaretle.
 
@@ -1693,7 +1695,7 @@ Sayfa `/admin/history-backfill` yolundadır (“Geçmiş veri okuma”); okumak 
 
 **Beklenen:**
 
-- Kaydedildi: “Kaydedildi. ”. Satırlar hemen değişmez; her aile sonraki toplamasında uygular. Durdurmada okuyan kapsamlar “Kısmi” biter ve nedeni durduranın adıyla yazılır ("stopped by <kullanıcı>"). Yetkisiz hesapta “Değiştirilmedi. Rolünüz geçmiş veri okumayı değiştiremiyor (izin: {permission}).”
+- Kaydedildi: “Kaydedildi. ”. Satırlar hemen değişmez; her aile sonraki toplamasında uygular. Durdurmada okuyan kapsamlar “Kısmi” biter ve nedeni durduranın adıyla yazılır (“durduran: {by}”); "Geçmişi şimdi oku" sonrası eksikleri tamamlayan kapsam “geçmişi şimdi oku: eksikler tamamlanıyor” yazar. Kayıt iletileri: ““Geçmişi şimdi oku” kaydedildi. Her aile bunu sonraki toplamasında uygular; henüz hiçbir scope değişmedi.” / ““Okumayı durdur” kaydedildi. Her aile okuyan scope'larını sonraki toplamasında sonlandırır; henüz hiçbir scope değişmedi.” Yetkisiz hesapta “Değiştirilmedi. Rolünüz geçmiş veri okumayı değiştiremiyor (izin: {permission}).”
 
 **Kaydet:** İki adımın bildirimi; sonraki kadansta satırın durumu.
 
@@ -2061,7 +2063,7 @@ curl -s http://127.0.0.1:8000/api/v1/version
 
 **Beklenen:**
 
-- Geri alma sonrası baş `0032`, ikinci yükseltme sonrası `<HEAD-0.1.7>`; `Last upgrade:` satırı en son işlemi gösterir.
+- Geri alma sonrası baş `0032`, ikinci yükseltme sonrası `0044`; `Last upgrade:` satırı en son işlemi gösterir.
 
 **Kaydet:** İki sonuç.
 

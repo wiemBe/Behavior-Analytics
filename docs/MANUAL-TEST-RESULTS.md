@@ -12,7 +12,7 @@ Bu sayfa `docs/MANUAL-TEST.md` kılavuzunun **0.1.7** bölümünün sonuç sayfa
 | Başlangıç (UTC) | |
 | Bitiş (UTC) | |
 | Yükseltme yolu (çevrimiçi / çevrimdışı paket) | |
-| Migrasyon başı sonra (`<HEAD-0.1.7>`) | |
+| Migrasyon başı sonra (`0044`) | |
 | Geri alma yapıldı mı (hayır / evet, saati) | |
 
 **Çekirdek (üretim yolu)**, 38 kontrol: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-10, MT-11, MT-12, MT-13, MT-14, MT-15, MT-20, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-59, MT-95, MT-119, MT-120, MT-121, MT-124, MT-125. Üretimde yalnızca `Çekirdek` sütunu "evet" olan satırlar doldurulur; diğerleri laboratuvar koşusu içindir.
