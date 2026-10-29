@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef
 from app.ips.profile import IpsFieldMapping, IpsProfileError
 from app.ips.validation import IpsProfileValidation, evaluate_profile
 from app.models.enums import IpsPreset, IpsProfileValidationStatus
@@ -130,8 +131,13 @@ class IpsProfileService:
             or profile.validated_profile_version != profile.profile_version
         ):
             raise IpsProfileError(
-                f"profile version {profile.profile_version} has not validated "
-                f"(status {profile.validation_status}); run validation first"
+                MessageRef(
+                    "validation.profile.conflict.not_validated",
+                    {
+                        "profile_version": profile.profile_version,
+                        "validation_status": f"{profile.validation_status}",
+                    },
+                )
             )
         if profile.enabled == enabled:
             return False
@@ -250,6 +256,10 @@ class IpsProfileService:
                 "profile_version": profile.profile_version,
                 "status": result.status.value,
                 "reasons": result.reasons,
+                "reason_codes": [
+                    message.to_wire() if message is not None else None
+                    for message in result.reason_messages
+                ],
             },
         )
 
@@ -269,8 +279,13 @@ class IpsProfileService:
                 seconds=self.settings.ips_validation_pending_timeout_seconds
             ):
                 raise IpsProfileError(
-                    f"validation of version {profile.profile_version} is already running "
-                    f"since {requested_at.isoformat()}"
+                    MessageRef(
+                        "validation.profile.conflict.running",
+                        {
+                            "profile_version": profile.profile_version,
+                            "since": requested_at.isoformat(),
+                        },
+                    )
                 )
         profile.validation_requested_at = now
         profile.validation_requested_by = actor

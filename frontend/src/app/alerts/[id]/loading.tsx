@@ -1,5 +1,7 @@
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
+import { useTranslations } from "next-intl";
 
 export default function Loading() {
-  return <BoundaryLoading title="Alert Detail" what="this alert" />;
+  const t = useTranslations("alerts.boundary");
+  return <BoundaryLoading title={t("detailTitle")} what={t("detailWhat")} />;
 }

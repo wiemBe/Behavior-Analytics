@@ -81,11 +81,12 @@ export function epsChartModel(series: FleetEpsSeries): EpsChartModel {
 
   const qualifiers: Qualifier[] = [];
   if (total === 0) {
-    qualifiers.push(notCollected("The window holds no step."));
+    qualifiers.push(notCollected("The window holds no step.", { code: "NO_STEP" }));
   } else if (measured === 0) {
     qualifiers.push(
       notCollected(
         `No step of ${total.toLocaleString("en-US")} has every in-scope source-interval complete.`,
+        { code: "NO_STEP_COMPLETE", values: { total } },
       ),
     );
   } else if (measured < total) {

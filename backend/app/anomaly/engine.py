@@ -50,6 +50,7 @@ from app.anomaly.thresholds import ThresholdResolver
 from app.core.config import Settings, get_settings
 from app.fleet.outage_policy import ResolvedOutage, resolve
 from app.history.origin import is_live_clause
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     AnomalyState,
@@ -80,6 +81,11 @@ if TYPE_CHECKING:
     from app.alerts.dispatcher import AlertEnqueuer
 
 logger = logging.getLogger(__name__)
+
+#: Sentences this engine writes itself (the detectors' and the lifecycle's are in their modules).
+MESSAGE_SUPPRESSED_BY_NO_EVENTS = MessageRef("anomaly.detector.suppressed_by_no_events")
+MESSAGE_MAINTENANCE = MessageRef("anomaly.suppression.maintenance")
+MESSAGE_RECOVERED = MessageRef("anomaly.resolution.recovered")
 
 #: Detector types whose incidents warrant a bounded explanation package. A
 #: silence has no volume to attribute, so there is nothing to explain.
@@ -546,7 +552,10 @@ class AnomalyEngine:
             for e in results:
                 if e.anomaly_type in SUPPRESSED_BY_NO_EVENTS:
                     e.signal = DetectorSignal.UNKNOWN
-                    e.reason = "suppressed: no events this interval"
+                    # The text and the reference are replaced together: the demoted verdict
+                    # must not keep the detector's own code beside a different sentence.
+                    e.reason_message = MESSAGE_SUPPRESSED_BY_NO_EVENTS
+                    e.reason = render(e.reason_message)
         return results
 
     # ------------------------------------------------------------ hysteresis
@@ -634,7 +643,7 @@ class AnomalyEngine:
             )
             state.active_anomaly_id = created.id
             await self._record_transition(
-                created, previous, target, metric, decision.reason, evidence
+                created, previous, target, metric, decision.message, evidence
             )
             report.candidates.append(evidence.anomaly_type.value)
             return
@@ -652,13 +661,13 @@ class AnomalyEngine:
                 log_source, metric, evidence, state, incident, in_maintenance, report
             )
             await self._record_transition(
-                incident, previous, target, metric, decision.reason, evidence
+                incident, previous, target, metric, decision.message, evidence
             )
             return
 
         if anomaly is not None:
             await self._record_transition(
-                anomaly, previous, target, metric, decision.reason, evidence
+                anomaly, previous, target, metric, decision.message, evidence
             )
 
         if target is AnomalyState.RECOVERING:
@@ -678,7 +687,9 @@ class AnomalyEngine:
             if anomaly is not None:
                 anomaly.state = AnomalyState.SUPPRESSED
                 anomaly.suppressed = True
-                anomaly.suppression_reason = anomaly.suppression_reason or "maintenance window"
+                if not anomaly.suppression_reason:
+                    anomaly.suppression_reason = render(MESSAGE_MAINTENANCE)
+                    anomaly.suppression_reason_i18n = MESSAGE_MAINTENANCE.to_wire()
             state.is_open = False
             return
 
@@ -725,9 +736,11 @@ class AnomalyEngine:
             policy_version=self.settings.anomaly_policy_version,
             evidence_status=EvidenceStatus.NOT_REQUESTED,
             explanation=evidence.reason,
+            explanation_i18n=evidence.reason_wire,
             details=evidence.to_dict(),
             suppressed=in_maintenance,
-            suppression_reason="maintenance window" if in_maintenance else None,
+            suppression_reason=render(MESSAGE_MAINTENANCE) if in_maintenance else None,
+            suppression_reason_i18n=MESSAGE_MAINTENANCE.to_wire() if in_maintenance else None,
         )
         self.session.add(anomaly)
         await self.session.flush()
@@ -816,6 +829,7 @@ class AnomalyEngine:
                 anomaly.robust_z = _as_float(facts.get("robust_z"))
                 anomaly.absolute_delta = _as_float(facts.get("absolute_delta_events"))
                 anomaly.explanation = evidence.reason
+                anomaly.explanation_i18n = evidence.reason_wire
                 anomaly.details = evidence.to_dict()
 
     async def _active_anomaly(
@@ -831,7 +845,7 @@ class AnomalyEngine:
         from_state: AnomalyState,
         to_state: AnomalyState,
         metric: LogSourceMetric,
-        reason: str,
+        message: MessageRef,
         evidence: AnomalyEvidence,
     ) -> None:
         self.session.add(
@@ -841,7 +855,8 @@ class AnomalyEngine:
                 to_state=to_state,
                 occurred_at=self._clock(),
                 bucket_start=metric.bucket_start,
-                reason=reason,
+                reason=render(message),
+                reason_i18n=message.to_wire(),
                 actor="anomaly-engine",
                 observed_value=evidence.observed_value,
                 expected_value=evidence.expected_value,
@@ -1000,7 +1015,7 @@ class AnomalyEngine:
         result = await self.alerts.resolve_by_fingerprint(
             anomaly_fingerprint(log_source.id, evidence.anomaly_type.value),
             actor="anomaly-engine",
-            reason="condition recovered",
+            reason=render(MESSAGE_RECOVERED),
         )
         if self._enqueuer is not None and result is not None and result.transition is not None:
             await self._enqueuer.enqueue(result.alert, result.transition)

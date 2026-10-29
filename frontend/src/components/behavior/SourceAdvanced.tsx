@@ -8,6 +8,8 @@
 // Nothing is removed. Every figure the previous page rendered is still here,
 // one interaction away.
 
+import { useTranslations } from "next-intl";
+
 import { Disclosure } from "@/components/ui/Disclosure";
 import { TableScroll } from "@/components/ui/TableScroll";
 import type {
@@ -19,7 +21,17 @@ import type {
 import { completenessMeaning, formatMetric } from "@/lib/behavior";
 import { clearedFaultLine } from "@/lib/evaluationFault";
 import { UtcTime } from "@/components/ui/UtcTime";
+import {
+  MAD_EPS,
+  P05_P95_EPS,
+  completenessCode,
+  errorClassText,
+  versionLabel,
+} from "@/lib/behaviorI18n";
+import { plainCount } from "@/lib/figureText";
 import { formatCount, formatShare } from "@/lib/format";
+import { qradarStatusLabel } from "@/app/log-sources/qradarStatus";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { OriginMarker } from "./HistoryKey";
 
@@ -42,6 +54,12 @@ export function SourceAdvanced({
   /** The metric read failed: the bucket table is not "empty", it is unread. */
   bucketsFailed?: boolean;
 }) {
+  const t = useTranslations("behavior.advanced");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
+  const metric = (value: number | null | undefined, digits = 2) => formatMetric(value, digits, locale);
+  const band = (low: number | null, high: number | null) => `${metric(low)} – ${metric(high)}`;
+  const yesNo = (value: boolean) => (value ? t("yes") : t("no"));
   const recent = [...buckets]
     .sort((a, b) => Date.parse(b.bucket_start) - Date.parse(a.bucket_start))
     .slice(0, BUCKET_ROWS);
@@ -51,67 +69,67 @@ export function SourceAdvanced({
     <div className="stack-6">
       {cleared && (
         <p className="subtitle">
-          Last evaluation fault: the{" "}
-          <UtcTime value={cleared.failedBucket} variant="compact" /> bucket{" "}
-          {cleared.attempts == null
-            ? "failed"
-            : cleared.attempts === 1
-              ? "failed once"
-              : `failed ${cleared.attempts} times`}
-          {cleared.errorClass ? ` (${cleared.errorClass})` : ""}
-          {cleared.lastFailure ? (
-            <>
-              {" "}
-              at <UtcTime value={cleared.lastFailure} variant="compact" />
-            </>
-          ) : null}
-          ; judged on retry at <UtcTime value={cleared.resolvedAt} variant="compact" />.
+          {t.rich(cleared.lastFailure ? "clearedWithTime" : "clearedNoTime", {
+            bucket: () => <UtcTime value={cleared.failedBucket} variant="compact" />,
+            failed: t(
+              cleared.attempts == null
+                ? "clearedFailed.unknown"
+                : cleared.attempts === 1
+                  ? "clearedFailed.once"
+                  : "clearedFailed.times",
+              { count: plainCount(cleared.attempts ?? 0, locale) },
+            ),
+            errorClass: errorClassText(cleared.errorClass),
+            time: () =>
+              cleared.lastFailure ? <UtcTime value={cleared.lastFailure} variant="compact" /> : null,
+            resolved: () => <UtcTime value={cleared.resolvedAt} variant="compact" />,
+          })}
         </p>
       )}
-      <Disclosure summary="Baseline history" note={cellsFailed ? "not loaded" : `${cells.length} cells`}>
+      <Disclosure
+        summary={t("baselineHistory")}
+        note={cellsFailed ? t("notLoaded") : t("cellsNote", { count: plainCount(cells.length, locale) })}
+      >
         {cellsFailed ? (
           <div className="notice" role="alert">
-            Baseline history could not be loaded. This is a failed request, not
-            an absence of baselines.
+            {t("cellsFailed")}
           </div>
         ) : cells.length === 0 ? (
           <div className="notice">
-            No baseline cells have been computed for this source yet. It is not
-            being judged against any expectation.
+            {t("cellsEmpty")}
           </div>
         ) : (
-          <TableScroll label="Baseline cells">
+          <TableScroll label={t("cellsLabel")}>
             <table>
               <caption className="sr-only">
-                Seasonal baseline cells for this source, one per weekday and
-                hour, with median, variability and sample count.
+                {t("cellsCaption")}
               </caption>
               <thead>
                 <tr>
                   <th scope="col" className="num">
-                    Weekday (ISO)
+                    {t("weekday")}
                   </th>
                   <th scope="col" className="num">
-                    Hour (UTC)
+                    {t("hour")}
                   </th>
                   <th scope="col" className="num">
-                    Median (EPS)
+                    {t("median")}
                   </th>
                   <th scope="col" className="num">
-                    MAD (EPS)
+                    {MAD_EPS}
                   </th>
                   <th scope="col" className="num">
-                    p05 – p95 (EPS)
+                    {P05_P95_EPS}
                   </th>
                   <th scope="col" className="num">
-                    Samples
+                    {t("samples")}
                   </th>
                   <th scope="col" className="num">
-                    Completeness
+                    {t("completeness")}
                   </th>
-                  <th scope="col">Reliable</th>
+                  <th scope="col">{t("reliable")}</th>
                   <th scope="col" className="num">
-                    Version
+                    {t("version")}
                   </th>
                 </tr>
               </thead>
@@ -120,20 +138,20 @@ export function SourceAdvanced({
                   <tr key={`${c.metric_name}-${c.weekday}-${c.hour}`}>
                     <td className="num">{c.weekday}</td>
                     <td className="num">{c.hour}</td>
-                    <td className="num">{formatMetric(c.median)}</td>
-                    <td className="num">{formatMetric(c.mad, 3)}</td>
+                    <td className="num">{metric(c.median)}</td>
+                    <td className="num">{metric(c.mad, 3)}</td>
                     <td className="num">
-                      {formatMetric(c.p05)} – {formatMetric(c.p95)}
+                      {band(c.p05, c.p95)}
                     </td>
-                    <td className="num">{c.sample_count}</td>
-                    <td className="num">{formatShare(c.completeness)}</td>
+                    <td className="num">{formatCount(c.sample_count, locale)}</td>
+                    <td className="num">{formatShare(c.completeness, locale)}</td>
                     <td>
                       {/* Stated as a word, not only as a colour. */}
                       <span className={`pill pill-quiet ${c.is_reliable ? "ok" : "warn"}`}>
-                        {c.is_reliable ? "yes" : "no"}
+                        {yesNo(c.is_reliable)}
                       </span>
                     </td>
-                    <td className="num">v{c.baseline_version}</td>
+                    <td className="num">{versionLabel(c.baseline_version)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -143,45 +161,44 @@ export function SourceAdvanced({
       </Disclosure>
 
       <Disclosure
-        summary="Metric buckets"
+        summary={t("metricBuckets")}
         note={
-          bucketsFailed ? "not loaded" : `${Math.min(recent.length, BUCKET_ROWS)} most recent`
+          bucketsFailed
+            ? t("notLoaded")
+            : t("mostRecent", { count: plainCount(Math.min(recent.length, BUCKET_ROWS), locale) })
         }
       >
         {bucketsFailed ? (
           <div className="notice">
-            Metric history could not be loaded (see the alert above). This is a
-            failed request, not an absence of collection.
+            {t("bucketsFailed")}
           </div>
         ) : recent.length === 0 ? (
           <div className="notice">
-            No metric buckets were collected in this window. This is an absence
-            of collection, not an observation of zero traffic.
+            {t("bucketsEmpty")}
           </div>
         ) : (
-          <TableScroll label="Metric buckets">
+          <TableScroll label={t("metricBuckets")}>
             <table>
               <caption className="sr-only">
-                The most recently collected intervals, with observed volume and
-                how completely each was collected.
+                {t("bucketsCaption")}
               </caption>
               <thead>
                 <tr>
                   <th scope="col" className="num">
-                    Interval
+                    {t("interval")}
                   </th>
                   <th scope="col" className="num">
-                    Events
+                    {t("events")}
                   </th>
                   <th scope="col" className="num">
-                    Average EPS
+                    {t("averageEps")}
                   </th>
                   <th scope="col" className="num">
-                    Peak EPS
+                    {t("peakEps")}
                   </th>
-                  <th scope="col">Completeness</th>
+                  <th scope="col">{t("completeness")}</th>
                   <th scope="col" className="num">
-                    Last event
+                    {t("lastEvent")}
                   </th>
                 </tr>
               </thead>
@@ -191,23 +208,23 @@ export function SourceAdvanced({
                     <td className="num">
                       <UtcTime value={b.bucket_start} />
                     </td>
-                    <td className="num">{formatCount(b.event_count)}</td>
+                    <td className="num">{formatCount(b.event_count, locale)}</td>
                     {/* A COMPLETE zero is a measurement and renders as 0.00.
                         Only an unobserved interval renders as an em dash. */}
                     <td className="num">
                       {b.completeness === "COMPLETE" ? (
-                        formatMetric(b.average_eps)
+                        metric(b.average_eps)
                       ) : (
                         <span className="muted">—</span>
                       )}
                     </td>
-                    <td className="num">{formatMetric(b.peak_eps)}</td>
+                    <td className="num">{metric(b.peak_eps)}</td>
                     <td>
                       <span
                         className={`pill pill-quiet ${b.completeness === "COMPLETE" ? "ok" : "warn"}`}
-                        title={completenessMeaning(b.completeness)}
+                        title={completenessMeaning(b.completeness, i18n)}
                       >
-                        {b.completeness}
+                        {completenessCode(i18n, b.completeness)}
                       </span>
                       <OriginMarker origin={b.origin} />
                     </td>
@@ -220,11 +237,11 @@ export function SourceAdvanced({
         )}
       </Disclosure>
 
-      <Disclosure summary="Collection details">
+      <Disclosure summary={t("collectionDetails")}>
         <dl className="dimension-meta">
           {behavior.skipped_buckets && behavior.skipped_buckets.length > 0 && (
             <div>
-              <dt>Buckets not judged</dt>
+              <dt>{t("bucketsNotJudged")}</dt>
               <dd>
                 {behavior.skipped_buckets.map((b) => (
                   <span key={b.bucket_start} className="cell-sub">
@@ -235,69 +252,75 @@ export function SourceAdvanced({
             </div>
           )}
           <div>
-            <dt>Last collected bucket</dt>
+            <dt>{t("lastCollected")}</dt>
             <dd className="num">{<UtcTime value={behavior.last_bucket_at} />}</dd>
           </div>
           <div>
-            <dt>Last event</dt>
+            <dt>{t("lastEvent")}</dt>
             <dd className="num">{<UtcTime value={behavior.last_event_at} />}</dd>
           </div>
           <div>
-            <dt>Baseline samples</dt>
-            <dd className="num">{behavior.baseline_sample_count}</dd>
+            <dt>{t("baselineSamples")}</dt>
+            <dd className="num">{formatCount(behavior.baseline_sample_count, locale)}</dd>
           </div>
           <div>
-            <dt>Baseline completeness</dt>
+            <dt>{t("baselineCompleteness")}</dt>
             <dd className="num">
-              {formatShare(behavior.baseline_completeness)}
+              {formatShare(behavior.baseline_completeness, locale)}
             </dd>
           </div>
           <div>
-            <dt>Collection source</dt>
-            <dd>QRadar Ariel, via the backend collector</dd>
+            <dt>{t("collectionSource")}</dt>
+            <dd>{t("collectionSourceValue")}</dd>
           </div>
         </dl>
       </Disclosure>
 
-      <Disclosure summary="Source metadata">
+      <Disclosure summary={t("sourceMetadata")}>
         {meta ? (
           <dl className="dimension-meta">
             <div>
-              <dt>QRadar ID</dt>
+              <dt>{t("qradarId")}</dt>
               <dd className="num">{meta.qradar_id}</dd>
             </div>
             <div>
-              <dt>Type</dt>
+              <dt>{t("type")}</dt>
               <dd>{meta.type_name ?? <span className="muted">—</span>}</dd>
             </div>
             <div>
-              <dt>Owner</dt>
+              <dt>{t("owner")}</dt>
               <dd>{meta.owner ?? <span className="muted">—</span>}</dd>
             </div>
             <div>
-              <dt>Enabled</dt>
-              <dd>{meta.enabled ? "yes" : "no"}</dd>
+              <dt>{t("enabled")}</dt>
+              <dd>{yesNo(meta.enabled)}</dd>
             </div>
             <div>
-              <dt>Monitoring</dt>
-              <dd>{meta.monitoring_enabled ? "enabled" : "disabled"}</dd>
+              <dt>{t("monitoring")}</dt>
+              <dd>{meta.monitoring_enabled ? t("monitoringOn") : t("monitoringOff")}</dd>
             </div>
             <div>
-              <dt>Maintenance mode</dt>
-              <dd>{meta.maintenance_mode ? "active" : "inactive"}</dd>
+              <dt>{t("maintenance")}</dt>
+              <dd>{meta.maintenance_mode ? t("maintenanceOn") : t("maintenanceOff")}</dd>
             </div>
             <div>
-              <dt>QRadar status</dt>
-              <dd>{meta.qradar_status ?? <span className="muted">—</span>}</dd>
+              <dt>{t("qradarStatus")}</dt>
+              <dd>
+                {meta.qradar_status != null ? (
+                  qradarStatusLabel(meta.qradar_status, i18n.t)
+                ) : (
+                  <span className="muted">—</span>
+                )}
+              </dd>
             </div>
             <div>
-              <dt>Timezone</dt>
+              <dt>{t("timezone")}</dt>
               <dd>{meta.timezone_name ?? <span className="muted">—</span>}</dd>
             </div>
           </dl>
         ) : (
           <div className="notice">
-            Inventory metadata could not be loaded for this source.
+            {t("metadataFailed")}
           </div>
         )}
       </Disclosure>

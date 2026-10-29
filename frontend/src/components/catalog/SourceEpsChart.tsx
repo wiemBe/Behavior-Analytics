@@ -16,6 +16,7 @@ import {
 } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { HistoryKey, HistoryText } from "@/components/behavior/HistoryKey";
@@ -29,7 +30,10 @@ import {
 } from "@/components/behavior/historyOrigin";
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import { useEChart } from "@/components/home/useEChart";
+import { formatEps } from "@/i18n/measures";
+import { grouped } from "@/lib/figureText";
 import type { MetricBucket } from "@/lib/api";
+import { useFleetText, type FleetText } from "@/lib/fleetText";
 import type { HomePalette } from "@/lib/home/chartPalette";
 import {
   buildSeries,
@@ -39,6 +43,8 @@ import {
 } from "@/lib/timeseries";
 import type { BaselineLookup, SeasonalValue } from "@/components/waf/wafBaseline";
 import { utcTimeHtml } from "@/components/ui/UtcTime";
+
+import { englishCatalogText } from "./catalogText";
 
 
 import type { EChartsOption } from "echarts";
@@ -88,8 +94,13 @@ export function sourceEpsModel(
   };
 }
 
-export function buildSourceEpsOption(m: SourceEpsModel, c: HomePalette): EChartsOption {
+export function buildSourceEpsOption(
+  m: SourceEpsModel,
+  c: HomePalette,
+  words: FleetText = englishCatalogText,
+): EChartsOption {
   const { points, cells } = m;
+  const { say, locale } = words;
   const reduceMotion =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
@@ -111,9 +122,9 @@ export function buildSourceEpsOption(m: SourceEpsModel, c: HomePalette): ECharts
       { xAxis: g.end },
     ],
   );
-  const historyAreas = historyMarkAreas(m.history, readHistoryShade(), m.labelled);
+  const historyAreas = historyMarkAreas(m.history, readHistoryShade(), m.labelled, say("behavior.history.text"));
   const lone = isolatedPoints(points);
-  const fmt = (v: number) => v.toFixed(2);
+  const fmt = (v: number) => (locale === "en" ? v.toFixed(2) : formatEps(v, locale));
 
   return {
     animation: !reduceMotion,
@@ -133,20 +144,21 @@ export function buildSourceEpsOption(m: SourceEpsModel, c: HomePalette): ECharts
         const p = i != null ? points[i] : undefined;
         if (!p || i == null) return "";
         const cell = cells[i];
+        const unit = UNIT;
         return [
           utcTimeHtml(new Date(p.t).toISOString()),
           p.observed != null
-            ? `Observed: ${fmt(p.observed)} ${UNIT}`
-            : `Observed: not measured (${kindMeaning(p.kind)})`,
+            ? say("catalog.chart.observedTip", { value: fmt(p.observed), unit })
+            : say("catalog.chart.observedNone", { kind: kindMeaning(p.kind, { t: say, locale }) }),
           p.observed == null && p.reported != null
-            ? `Reported by the partial collection: ${fmt(p.reported)} ${UNIT}`
+            ? say("catalog.chart.reported", { value: fmt(p.reported), unit })
             : "",
-          cell ? `Expected median: ${fmt(cell.median)} ${UNIT}` : "",
+          cell ? say("catalog.chart.median", { value: fmt(cell.median), unit }) : "",
           cell?.low != null && cell.high != null
-            ? `Expected range: ${fmt(cell.low)} – ${fmt(cell.high)} ${UNIT}`
-            : "Expected range: no reliable baseline for this weekday and hour",
-          `Collection: ${kindMeaning(p.kind)}`,
-          originText(m.origins.get(p.t)),
+            ? say("catalog.chart.range", { low: fmt(cell.low), high: fmt(cell.high), unit })
+            : say("catalog.chart.noBaseline"),
+          say("catalog.chart.collection", { kind: kindMeaning(p.kind, { t: say, locale }) }),
+          originText(m.origins.get(p.t), words),
         ]
           .filter(Boolean)
           .join("<br/>");
@@ -154,7 +166,7 @@ export function buildSourceEpsOption(m: SourceEpsModel, c: HomePalette): ECharts
     },
     xAxis: {
       type: "time",
-      name: "Time (UTC)",
+      name: say("catalog.chart.xAxis"),
       nameLocation: "middle",
       nameGap: 24,
       nameTextStyle: text,
@@ -162,11 +174,13 @@ export function buildSourceEpsOption(m: SourceEpsModel, c: HomePalette): ECharts
     },
     yAxis: {
       type: "value",
-      name: "Events per second (EPS)",
+      name: say("catalog.chart.yAxis"),
       nameTextStyle: { ...text, align: "left" },
       min: 0,
       splitLine: { lineStyle: { color: c.grid } },
       ...axisCommon,
+      axisLabel:
+        locale === "tr" ? { ...text, formatter: (value: number) => grouped(value, locale) } : text,
     },
     series: [
       {
@@ -253,10 +267,15 @@ export function SourceEpsChart({
   /** The history words inside the chart (the expanded widget); the tile leaves them to the key. */
   labelled?: boolean;
 }) {
+  const t = useTranslations("catalog.chart");
+  const { say, locale } = useFleetText();
   const model = useMemo(() => sourceEpsModel(buckets, lookup, labelled), [buckets, lookup, labelled]);
   const build = useMemo(
-    () => (model.points.length > 0 ? (p: HomePalette) => buildSourceEpsOption(model, p) : null),
-    [model],
+    () =>
+      model.points.length > 0
+        ? (p: HomePalette) => buildSourceEpsOption(model, p, { say, locale })
+        : null,
+    [model, say, locale],
   );
   const ref = useEChart(build);
   return (
@@ -264,27 +283,27 @@ export function SourceEpsChart({
       <div ref={ref} className="hc-chart cw-tall" role="img" aria-label={ariaLabel} />
       <p className="sr-only">{textSummary}</p>
       <HistoryText rows={buckets} />
-      <ul className="hc-key-list" aria-label="Chart key">
+      <ul className="hc-key-list" aria-label={t("key")}>
         <li>
           <span className="chart-key chart-key-observed" aria-hidden="true" />
-          Observed
+          {t("observed")}
         </li>
         {model.hasMedian && (
           <li>
             <span className="chart-key chart-key-expected" aria-hidden="true" />
-            Expected median
+            {t("expectedMedian")}
           </li>
         )}
         {model.hasBand && (
-          <li title="The seasonal p05 to p95 of this source's EPS for the bucket's weekday and hour (UTC).">
+          <li title={t("expectedRangeTitle")}>
             <span className="chart-key chart-key-band" aria-hidden="true" />
-            Expected range
+            {t("expectedRange")}
           </li>
         )}
         {model.gaps.length > 0 && (
-          <li title="Intervals that were partial or not stored. They are not zero traffic.">
+          <li title={t("notMeasuredTitle")}>
             <span className="chart-key chart-key-gap" aria-hidden="true" />
-            Not measured
+            {t("notMeasured")}
           </li>
         )}
         {model.history.length > 0 && <HistoryKey />}

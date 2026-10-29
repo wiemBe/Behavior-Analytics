@@ -121,7 +121,10 @@
   font-variant-numeric: tabular-nums;
 }
 .kpi-line-part {
-  white-space: nowrap;
+  /* A part wraps as a unit when it fits a line, and between its words when it is longer than the
+     card: a Turkish sentence must not run past the edge and be cut. */
+  display: inline-block;
+  max-width: 100%;
 }
 .kpi-line-label {
   color: var(--text-3);

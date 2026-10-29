@@ -7,10 +7,13 @@
 // reads are therefore enough, and no row is missed by cutting each list first.
 
 import type { AnomalySummary, Page } from "@/lib/api";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { ipsFigures } from "@/components/ips/ipsDetectors";
+import { ENGLISH_IPS } from "@/components/ips/ipsI18n";
 import { formatFigure } from "@/components/ips/ipsFormat";
 import { ipsSubjectText, rowTypeLabel } from "@/components/ips/ipsLabels";
 import { formatCount } from "@/lib/format";
+import { own } from "@/i18n/ownKey";
 
 export const IPS_ANOMALIES_LIMIT = 5;
 
@@ -37,29 +40,36 @@ export interface IpsAnomaliesView {
   badge: string;
   /** "Showing the latest 5 of 18"; null when every active anomaly is listed. */
   shown: string | null;
+  /** The same count without the "latest" lead, for the expanded widget. */
+  shownShort: string | null;
 }
 
-const UNIT_WORDS: Record<string, string> = {
-  events: "events / bucket",
-  ports: "distinct ports",
-  since: "events since first appeared",
+const UNIT_KEYS: Record<string, string> = {
+  events: "ips.unit.perBucket",
+  ports: "ips.unit.ports",
+  since: "ips.unit.sinceShort",
 };
 
-function row(a: AnomalySummary): IpsAnomalyRow {
+function row(a: AnomalySummary, i18n: BehaviorI18n): IpsAnomalyRow {
   const f = ipsFigures(a, null);
   const none = a.anomaly_type === "IPS_NEW_DESTINATION_PORT";
   return {
     id: a.id,
     detectedAt: a.detected_at,
-    subject: ipsSubjectText(a),
-    sourceName: a.log_source_name ?? a.log_source_id ?? "Unknown source",
-    typeLabel: rowTypeLabel(a),
+    subject: ipsSubjectText(a, i18n),
+    sourceName: a.log_source_name ?? a.log_source_id ?? i18n.t("ips.recent.unknownSource"),
+    typeLabel: rowTypeLabel(a, i18n),
     severity: a.severity,
     state: a.state,
-    observed: f.unit == null ? null : formatFigure(f.unit, f.observed, a.observed_measurement),
+    observed: f.unit == null ? null : formatFigure(f.unit, f.observed, a.observed_measurement, i18n),
     // A new port expects none: the figure is the word, never a 0.
-    expected: f.unit == null ? null : none ? "none" : formatFigure(f.unit, f.expected),
-    unitWords: f.unit == null ? "" : (UNIT_WORDS[f.unit] ?? ""),
+    expected:
+      f.unit == null
+        ? null
+        : none
+          ? i18n.t("common.none")
+          : formatFigure(f.unit, f.expected, undefined, i18n),
+    unitWords: f.unit == null ? "" : own(UNIT_KEYS, f.unit) ? i18n.t(UNIT_KEYS[f.unit]) : "",
     href: `/anomalies/${a.id}`,
   };
 }
@@ -81,17 +91,22 @@ export function mergeIpsAnomalies(
   entities: Page<AnomalySummary>,
   sources: Page<AnomalySummary>,
   limit: number = IPS_ANOMALIES_LIMIT,
+  i18n: BehaviorI18n = ENGLISH_IPS,
 ): IpsAnomaliesView {
   const merged = mergedItems(entities, sources, limit);
   const total = entities.total + sources.total;
-  const n = (v: number) => formatCount(v);
+  const n = (v: number) => formatCount(v, i18n.locale);
   return {
-    rows: merged.map(row),
+    rows: merged.map((a) => row(a, i18n)),
     total,
-    badge: `${n(total)} active`,
+    badge: i18n.t("ips.recent.badge", { count: n(total) }),
     shown:
       merged.length > 0 && total > merged.length
-        ? `Showing the latest ${merged.length} of ${n(total)}`
+        ? i18n.t("ips.recent.shown", { count: n(merged.length), total: n(total) })
+        : null,
+    shownShort:
+      merged.length > 0 && total > merged.length
+        ? i18n.t("ips.recent.shownShort", { count: n(merged.length), total: n(total) })
         : null,
   };
 }

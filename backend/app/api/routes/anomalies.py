@@ -119,6 +119,7 @@ from app.schemas.ips_behavior import (
     PagedIpsMetrics,
     PagedIpsSources,
 )
+from app.schemas.messages import stored_message_parts, stored_reasons
 
 router = APIRouter(prefix="/anomalies", tags=["anomalies"])
 behavior_router = APIRouter(prefix="/behavior", tags=["behavior"])
@@ -239,10 +240,21 @@ def _unified_item(row: dict) -> AnomalyListItem:
         k: v
         for k, v in row.items()
         if not k.startswith(("endpoint_", "entity_", "pw_"))
-        and k not in ("waf_endpoint_id", "ips_entity_id")
+        and k not in ("waf_endpoint_id", "ips_entity_id", "explanation_i18n")
     }
+    stored = row.get("explanation_i18n")
+    explanation_code, explanation_params = (
+        stored_message_parts(stored.get("code"), stored.get("params"))
+        if isinstance(stored, dict)
+        else (None, None)
+    )
     return AnomalyListItem(
-        **fields, waf_endpoint=waf_endpoint, ips_entity=ips_entity, pw_value=pw_value
+        **fields,
+        explanation_code=explanation_code,
+        explanation_params=explanation_params,
+        waf_endpoint=waf_endpoint,
+        ips_entity=ips_entity,
+        pw_value=pw_value,
     )
 
 
@@ -427,6 +439,8 @@ async def _waf_detail(
         suppressed=anomaly.suppressed,
         observed_measurement=str(anomaly.observed_measurement),
         explanation=anomaly.explanation,
+        explanation_code=anomaly.explanation_code,
+        explanation_params=anomaly.explanation_params,
         baseline_version=anomaly.baseline_version,
         policy_version=anomaly.policy_version,
         transitions=[AnomalyTransitionOut.model_validate(t) for t in anomaly.transitions],
@@ -488,6 +502,8 @@ async def _ips_detail(
         suppressed=anomaly.suppressed,
         observed_measurement=str(anomaly.observed_measurement),
         explanation=anomaly.explanation,
+        explanation_code=anomaly.explanation_code,
+        explanation_params=anomaly.explanation_params,
         baseline_version=anomaly.baseline_version,
         policy_version=anomaly.policy_version,
         transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
@@ -543,6 +559,8 @@ def _pw_detail(
         suppressed=anomaly.suppressed,
         observed_measurement=str(anomaly.observed_measurement),
         explanation=anomaly.explanation,
+        explanation_code=anomaly.explanation_code,
+        explanation_params=anomaly.explanation_params,
         baseline_version=anomaly.baseline_version,
         policy_version=anomaly.policy_version,
         transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
@@ -902,6 +920,9 @@ def _validation_report(report: dict | None) -> WafValidationReportOut | None:
         if not isinstance(raw, dict):
             continue
         discovered = raw.get("discovered_values")
+        detail_code, detail_params = stored_message_parts(
+            raw.get("detail_code"), raw.get("detail_params")
+        )
         fields.append(
             WafValidationFieldOut(
                 field=str(raw.get("field")),
@@ -920,9 +941,11 @@ def _validation_report(report: dict | None) -> WafValidationReportOut | None:
                 else None,
                 discovered_value_count=len(discovered) if isinstance(discovered, list) else None,
                 detail=raw.get("detail") if isinstance(raw.get("detail"), str) else None,
+                detail_code=detail_code,
+                detail_params=detail_params,
             )
         )
-    reasons = report.get("reasons")
+    reasons, reason_codes = stored_reasons(report.get("reasons"), report.get("reason_codes"))
     found = report.get("log_source_found")
 
     def text(key: str) -> str | None:
@@ -931,7 +954,8 @@ def _validation_report(report: dict | None) -> WafValidationReportOut | None:
 
     return WafValidationReportOut(
         status=text("status"),
-        reasons=[r for r in reasons if isinstance(r, str)] if isinstance(reasons, list) else [],
+        reasons=reasons,
+        reason_codes=reason_codes,
         log_source_found=found if isinstance(found, bool) else None,
         total_events=_count(report.get("total_events")),
         window_start=text("window_start"),

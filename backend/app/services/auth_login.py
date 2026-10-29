@@ -16,18 +16,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings
+from app.i18n.messages import MessageRef, render
+from app.i18n.refusal import CodedHTTPException
 from app.models.enums import AuthSource
 from app.models.identity import User
 from app.repositories.audit import record_audit
 from app.security.passwords import (
     hash_password_async,
-    password_policy_reasons,
+    password_policy_refs,
     verify_password_async,
 )
 from app.security.sanitizer import sanitize_text
@@ -40,10 +42,10 @@ from app.services.auth_sessions import (
 from app.services.ldap_bind import bind_directory
 from app.services.ldap_config import get_ldap_row, spec_from_row
 
-INVALID_CREDENTIALS = "Invalid username or password"
-DIRECTORY_UNAVAILABLE = (
-    "The directory server is unavailable. Sign-in was not completed."
-)
+INVALID_CREDENTIALS_REF = MessageRef("auth.login.invalid_credentials")
+DIRECTORY_UNAVAILABLE_REF = MessageRef("auth.login.directory_unavailable")
+INVALID_CREDENTIALS = render(INVALID_CREDENTIALS_REF)
+DIRECTORY_UNAVAILABLE = render(DIRECTORY_UNAVAILABLE_REF)
 
 
 @dataclass(frozen=True)
@@ -58,7 +60,11 @@ class LoginSuccess:
 @dataclass(frozen=True)
 class LoginFailure:
     status_code: int
-    detail: str
+    ref: MessageRef
+
+    @property
+    def detail(self) -> str:
+        return render(self.ref)
 
 
 def is_locked(user: User, now: datetime) -> bool:
@@ -109,7 +115,7 @@ async def authenticate(
             source_ip=source_ip,
             user_agent=user_agent,
         )
-        return LoginFailure(401, INVALID_CREDENTIALS)
+        return LoginFailure(401, INVALID_CREDENTIALS_REF)
 
     user = await session.scalar(
         select(User).where(User.username == username).options(selectinload(User.roles))
@@ -144,7 +150,7 @@ async def _empty_password(
             session, "auth.locked", username, reason="locked",
             source_ip=source_ip, user_agent=user_agent, user=user,
         )
-        return LoginFailure(401, INVALID_CREDENTIALS)
+        return LoginFailure(401, INVALID_CREDENTIALS_REF)
     if user is not None:
         await _count_failure(
             session, settings, user, username, now, "empty_password",
@@ -155,7 +161,7 @@ async def _empty_password(
             session, "auth.login_failed", username, reason="empty_password",
             source_ip=source_ip, user_agent=user_agent,
         )
-    return LoginFailure(401, INVALID_CREDENTIALS)
+    return LoginFailure(401, INVALID_CREDENTIALS_REF)
 
 
 async def _local(
@@ -176,20 +182,20 @@ async def _local(
             session, "auth.locked", username, reason="locked",
             source_ip=source_ip, user_agent=user_agent, user=user,
         )
-        return LoginFailure(401, INVALID_CREDENTIALS)
+        return LoginFailure(401, INVALID_CREDENTIALS_REF)
     clear_expired_lock(user, now)
     if not await verify_password_async(password, user.hashed_password):
         await _count_failure(
             session, settings, user, username, now, "invalid_credentials",
             source_ip, user_agent,
         )
-        return LoginFailure(401, INVALID_CREDENTIALS)
+        return LoginFailure(401, INVALID_CREDENTIALS_REF)
     if _disabled(user):
         await _audit(
             session, "auth.login_failed", username, reason="disabled",
             source_ip=source_ip, user_agent=user_agent, user=user,
         )
-        return LoginFailure(401, INVALID_CREDENTIALS)
+        return LoginFailure(401, INVALID_CREDENTIALS_REF)
     return await _success(session, settings, user, now, source_ip, user_agent)
 
 
@@ -208,7 +214,7 @@ async def _directory(
             session, "auth.locked", username, reason="locked",
             source_ip=source_ip, user_agent=user_agent, user=user,
         )
-        return LoginFailure(401, INVALID_CREDENTIALS)
+        return LoginFailure(401, INVALID_CREDENTIALS_REF)
     if user is not None:
         clear_expired_lock(user, now)
 
@@ -220,7 +226,7 @@ async def _directory(
             session, "auth.login_failed", username, reason="ldap_disabled",
             source_ip=source_ip, user_agent=user_agent, user=user,
         )
-        return LoginFailure(401, INVALID_CREDENTIALS)
+        return LoginFailure(401, INVALID_CREDENTIALS_REF)
 
     try:
         report = await bind_directory(spec, username, password)
@@ -230,7 +236,7 @@ async def _directory(
             source_ip=source_ip, user_agent=user_agent, user=user,
             extra={"directory_error": type(exc).__name__},
         )
-        return LoginFailure(503, DIRECTORY_UNAVAILABLE)
+        return LoginFailure(503, DIRECTORY_UNAVAILABLE_REF)
 
     if report.invalid_credentials:
         if user is not None:
@@ -243,7 +249,7 @@ async def _directory(
                 session, "auth.login_failed", username, reason="invalid_credentials",
                 source_ip=source_ip, user_agent=user_agent,
             )
-        return LoginFailure(401, INVALID_CREDENTIALS)
+        return LoginFailure(401, INVALID_CREDENTIALS_REF)
 
     if not report.ok:
         await _audit(
@@ -251,7 +257,7 @@ async def _directory(
             source_ip=source_ip, user_agent=user_agent, user=user,
             extra={"directory_error": report.bind_reason or report.tls_reason},
         )
-        return LoginFailure(503, DIRECTORY_UNAVAILABLE)
+        return LoginFailure(503, DIRECTORY_UNAVAILABLE_REF)
 
     created = False
     if user is None:
@@ -283,7 +289,7 @@ async def _directory(
             session, "auth.login_failed", username, reason="disabled",
             source_ip=source_ip, user_agent=user_agent, user=user,
         )
-        return LoginFailure(401, INVALID_CREDENTIALS)
+        return LoginFailure(401, INVALID_CREDENTIALS_REF)
     await _apply_profile(session, user, report.display_name, report.mail)
     if created:
         await session.refresh(user, attribute_names=["roles"])
@@ -415,15 +421,16 @@ async def change_own_password(
     password is never written to the audit record.
     """
     if user.auth_source != AuthSource.LOCAL.value or not user.username:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "LDAP accounts change their password in the directory, not here.",
+        raise CodedHTTPException(
+            status.HTTP_403_FORBIDDEN, MessageRef("auth.password.ldap_directory")
         )
     if not await verify_password_async(current_password, user.hashed_password):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "current password is wrong")
-    reasons = password_policy_reasons(new_password, user.username)
+        raise CodedHTTPException(
+            status.HTTP_401_UNAUTHORIZED, MessageRef("auth.password.current_wrong")
+        )
+    reasons = password_policy_refs(new_password, user.username)
     if reasons:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, reasons)
+        raise CodedHTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, refs=reasons)
     now = datetime.now(UTC)
     user.hashed_password = await hash_password_async(new_password)
     user.must_change_password = False
@@ -443,6 +450,39 @@ async def change_own_password(
     return await _success(
         session, settings, user, now, source_ip, user_agent, record_login=False
     )
+
+
+async def change_ui_language(
+    session: AsyncSession,
+    user: User,
+    ui_language: str,
+    *,
+    source_ip: str | None,
+    user_agent: str | None,
+) -> bool:
+    """Set the account's interface language. Return True when it changed.
+
+    Writing the value the row already holds is a no-op and writes no audit
+    record: the account's state did not change, so its trail should not claim
+    one did.
+    """
+    if user.ui_language == ui_language:
+        return False
+    old = user.ui_language
+    user.ui_language = ui_language
+    await record_audit(
+        session,
+        action="account.preferences.update",
+        actor=user.username or str(user.id),
+        actor_id=user.id,
+        object_type="user",
+        object_id=str(user.id),
+        outcome="SUCCESS",
+        detail={"username": user.username, "old": old, "new": ui_language},
+        source_ip=source_ip,
+        user_agent=user_agent,
+    )
+    return True
 
 
 def _clean_display(value: str | None) -> str | None:

@@ -38,6 +38,7 @@ from app.models.enums import (
     Severity,
     WafAnomalyType,
 )
+from app.schemas.messages import MessageParamValue, MessageValue, stored_message_parts
 
 
 class SubjectKind(StrEnum):
@@ -257,6 +258,10 @@ class AnomalyTransitionOut(BaseModel):
     occurred_at: datetime
     bucket_start: datetime | None = None
     reason: str | None = None
+    #: Stable code and raw values of `reason` for a non-English client. Null: no code (a
+    #: row stored before codes, or a reason the producing engine has not coded).
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     actor: str
     observed_value: float | None = None
     expected_value: float | None = None
@@ -305,6 +310,9 @@ class AnomalyListItem(BaseModel):
     #: Server-rendered detector reasoning, so the UI never reconstructs
     #: detection logic to explain a verdict.
     explanation: str | None = None
+    #: Stable code and raw values of `explanation` for a non-English client. Null: no code.
+    explanation_code: str | None = None
+    explanation_params: dict[str, MessageParamValue] | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -352,6 +360,9 @@ class ExplanationDimensionOut(BaseModel):
     availability: DimensionAvailability
     #: Why a dimension is UNAVAILABLE or FAILED. Sanitized.
     detail: str | None = None
+    #: Stable code and raw values for a non-English client. Both are null on old rows.
+    detail_code: str | None = None
+    detail_params: dict[str, MessageParamValue] | None = None
     baseline_distinct_count: int | None = None
     anomaly_distinct_count: int | None = None
     cardinality_ratio: float | None = None
@@ -400,6 +411,10 @@ class DetectionDetailOut(BaseModel):
 
     #: The detector's own sentence explaining the verdict.
     reason: str | None = None
+    #: Stable code and raw values of `reason` for a non-English client. Null: no code (an
+    #: incident stored before codes).
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     #: The expected band the observation was judged against.
     expected_low: float | None = None
     expected_high: float | None = None
@@ -439,6 +454,10 @@ class WafDetectionDetailOut(BaseModel):
     """
 
     reason: str | None = None
+    #: Stable code and raw values of `reason` for a non-English client. Null: no code (a row
+    #: stored before codes, or a sentence written as plain text).
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     expected_low: float | None = None
     expected_high: float | None = None
     threshold: float | None = None
@@ -466,6 +485,8 @@ class WafDetectionDetailOut(BaseModel):
     percentage_point_change: float | None = None
     #: The detector's fixed interpretive caveat ("a change in traffic, not intent").
     caveat: str | None = None
+    caveat_code: str | None = None
+    caveat_params: dict[str, MessageParamValue] | None = None
 
     ratio: float | None = None
     ratio_basis: str | None = None
@@ -485,6 +506,10 @@ class IpsDetectionDetailOut(BaseModel):
     """
 
     reason: str | None = None
+    #: Stable code and raw values of `reason` for a non-English client. Null: no code (a row
+    #: stored before codes, or a sentence written as plain text).
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     expected_low: float | None = None
     expected_high: float | None = None
     threshold: float | None = None
@@ -516,6 +541,8 @@ class IpsDetectionDetailOut(BaseModel):
     absolute_delta: float | None = None
     #: The detector's fixed interpretive caveat ("volume, not intent").
     caveat: str | None = None
+    caveat_code: str | None = None
+    caveat_params: dict[str, MessageParamValue] | None = None
 
     ratio: float | None = None
     ratio_basis: str | None = None
@@ -534,6 +561,8 @@ class PwDetectionDetailOut(BaseModel):
     """
 
     reason: str | None = None
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     expected_low: float | None = None
     expected_high: float | None = None
     threshold: float | None = None
@@ -562,6 +591,8 @@ class PwDetectionDetailOut(BaseModel):
     events_since_first_seen: float | None = None
     buckets_with_traffic: int | None = None
     claim: str | None = None
+    claim_code: str | None = None
+    claim_params: dict[str, MessageParamValue] | None = None
 
 
 class AnomalyDetailOut(AnomalyListItem):
@@ -643,9 +674,14 @@ def detection_detail(details: dict[str, Any] | None) -> DetectionDetailOut | Non
     sample_count = num(details, "sample_count")
     baseline_version = num(facts, "baseline_version")
     status = text(facts, "robust_score_status")
+    reason_code, reason_params = stored_message_parts(
+        details.get("reason_code"), details.get("reason_params")
+    )
 
     return DetectionDetailOut(
         reason=text(details, "reason"),
+        reason_code=reason_code,
+        reason_params=reason_params,
         expected_low=num(details, "baseline_low"),
         expected_high=num(details, "baseline_high"),
         threshold=num(details, "threshold"),
@@ -720,9 +756,17 @@ def waf_detection_detail(
         completeness = _num(expected, "completeness")
     status = _text(extra, "robust_score_status")
     measurement = _text(extra, "request_count_measurement")
+    reason_code, reason_params = stored_message_parts(
+        details.get("reason_code"), details.get("reason_params")
+    )
+    caveat_code, caveat_params = stored_message_parts(
+        extra.get("caveat_code"), extra.get("caveat_params")
+    )
 
     return WafDetectionDetailOut(
         reason=_text(details, "reason"),
+        reason_code=reason_code,
+        reason_params=reason_params,
         expected_low=_num(details, "baseline_low"),
         expected_high=_num(details, "baseline_high"),
         threshold=_num(details, "threshold"),
@@ -741,6 +785,8 @@ def waf_detection_detail(
         observed_denominator=_num(observed, "denominator"),
         percentage_point_change=_num(extra, "percentage_point_change"),
         caveat=_text(extra, "caveat"),
+        caveat_code=caveat_code,
+        caveat_params=caveat_params,
         ratio=_num(extra, "ratio"),
         ratio_basis=_text(extra, "ratio_basis"),
         robust_score_status=(
@@ -771,6 +817,12 @@ def ips_detection_detail(details: dict[str, Any] | None) -> IpsDetectionDetailOu
     version = _num(expected, "baseline_version")
     status = _text(extra, "robust_score_status")
     measurement = _text(extra, "observed_measurement")
+    reason_code, reason_params = stored_message_parts(
+        details.get("reason_code"), details.get("reason_params")
+    )
+    caveat_code, caveat_params = stored_message_parts(
+        extra.get("caveat_code"), extra.get("caveat_params")
+    )
 
     # Which shape the detector's own evidence declares; the others stay None.
     against = _num(expected, "expected")
@@ -780,6 +832,8 @@ def ips_detection_detail(details: dict[str, Any] | None) -> IpsDetectionDetailOu
 
     return IpsDetectionDetailOut(
         reason=_text(details, "reason"),
+        reason_code=reason_code,
+        reason_params=reason_params,
         expected_low=_num(details, "baseline_low"),
         expected_high=_num(details, "baseline_high"),
         threshold=_num(details, "threshold"),
@@ -800,6 +854,8 @@ def ips_detection_detail(details: dict[str, Any] | None) -> IpsDetectionDetailOu
         ),
         absolute_delta=_num(extra, "absolute_delta"),
         caveat=_text(extra, "caveat"),
+        caveat_code=caveat_code,
+        caveat_params=caveat_params,
         ratio=_num(extra, "ratio"),
         ratio_basis=_text(extra, "ratio_basis"),
         robust_score_status=(
@@ -837,8 +893,16 @@ def pw_detection_detail(details: dict[str, Any] | None) -> PwDetectionDetailOut 
     extra = _section(details, "extra")
     status = _text(extra, "robust_score_status")
     measurement = _text(extra, "observed_measurement") or _text(extra, "measurement")
+    reason_code, reason_params = stored_message_parts(
+        details.get("reason_code"), details.get("reason_params")
+    )
+    claim_code, claim_params = stored_message_parts(
+        extra.get("claim_code"), extra.get("claim_params")
+    )
     return PwDetectionDetailOut(
         reason=_text(details, "reason"),
+        reason_code=reason_code,
+        reason_params=reason_params,
         expected_low=_num(details, "baseline_low"),
         expected_high=_num(details, "baseline_high"),
         threshold=_num(details, "threshold"),
@@ -864,6 +928,8 @@ def pw_detection_detail(details: dict[str, Any] | None) -> PwDetectionDetailOut 
         events_since_first_seen=_num(extra, "events_since_first_seen"),
         buckets_with_traffic=_count(extra, "buckets_with_traffic"),
         claim=_text(extra, "claim"),
+        claim_code=claim_code,
+        claim_params=claim_params,
     )
 
 
@@ -942,6 +1008,8 @@ class WafValidationFieldOut(BaseModel):
     #: How many bounded sample values the report holds. The values are not served.
     discovered_value_count: int | None = None
     detail: str | None = None
+    detail_code: str | None = None
+    detail_params: dict[str, MessageParamValue] | None = None
 
 
 class WafValidationReportOut(BaseModel):
@@ -949,6 +1017,7 @@ class WafValidationReportOut(BaseModel):
 
     status: str | None = None
     reasons: list[str] = Field(default_factory=list)
+    reason_codes: list[MessageValue | None] | None = None
     log_source_found: bool | None = None
     total_events: int | None = None
     window_start: str | None = None

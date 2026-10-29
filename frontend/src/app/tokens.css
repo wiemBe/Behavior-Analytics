@@ -163,6 +163,8 @@
      only a destination name with one supporting sentence. */
   --admin-form-max: 96ch;
   --admin-hub-max: 72ch;
+  /* The Guide: the reading measure of a section and of the contents. */
+  --guide-measure: 76ch;
   /* Sign-in, the password gate and the no-role screen: one narrow column,
      about 384 px, not a settings form stretched across the page. */
   --auth-column: 24rem;

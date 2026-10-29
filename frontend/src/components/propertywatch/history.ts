@@ -1,52 +1,81 @@
 import type { PwWatchHistory } from "@/lib/api";
 import { utcTimeText } from "@/components/ui/UtcTime";
 
+import { pwSentence } from "./pwReason";
+import { ENGLISH_PW, type PwI18n } from "./pwText";
 
-const days = (value: number | null) =>
-  value === null ? "an unknown number" : value.toLocaleString("en-US", { maximumFractionDigits: 1 });
+const days = (value: number | null, i18n: PwI18n) =>
+  value === null
+    ? i18n.t("propertyWatch.history.unknownDays")
+    : value.toLocaleString(i18n.locale === "tr" ? "tr-TR" : "en-US", {
+        maximumFractionDigits: 1,
+      });
 
-export function historyProgress(history: PwWatchHistory): string {
-  return `${days(history.days_read)} of ${history.days_requested ?? "the requested"} days`;
+export function historyProgress(history: PwWatchHistory, i18n: PwI18n = ENGLISH_PW): string {
+  return i18n.t("propertyWatch.history.progress", {
+    read: days(history.days_read, i18n),
+    requested: history.days_requested ?? i18n.t("propertyWatch.history.requestedDays"),
+  });
 }
 
 /** The one line beside the status pill while the past is being read. */
-export function historyReadingReason(history: PwWatchHistory): string {
-  return `${historyProgress(history)} read. Nothing is judged until it finishes.`;
+export function historyReadingReason(history: PwWatchHistory, i18n: PwI18n = ENGLISH_PW): string {
+  return i18n.t("propertyWatch.history.readingReason", {
+    progress: historyProgress(history, i18n),
+  });
 }
 
-export function historyHeaderText(history: PwWatchHistory): string {
+export function historyHeaderText(history: PwWatchHistory, i18n: PwI18n = ENGLISH_PW): string {
+  const progress = historyProgress(history, i18n);
   switch (history.state) {
     case "NOT_REQUESTED":
-      return "History not requested";
+      return i18n.t("propertyWatch.history.header.NOT_REQUESTED");
     case "READING":
-      return `Reading history: ${historyProgress(history)}`;
+      return i18n.t("propertyWatch.history.header.READING", { progress });
     case "COMPLETE":
-      return `History complete: ${historyProgress(history)}`;
+      return i18n.t("propertyWatch.history.header.COMPLETE", { progress });
     case "PARTIAL":
-      return `History partial: ${historyProgress(history)}`;
+      return i18n.t("propertyWatch.history.header.PARTIAL", { progress });
     case "UNAVAILABLE":
-      return "History unavailable";
+      return i18n.t("propertyWatch.history.header.UNAVAILABLE");
   }
 }
 
-export function historyStateText(history: PwWatchHistory): string | null {
-  const requested = history.days_requested ?? "the requested";
+export function historyStateText(history: PwWatchHistory, i18n: PwI18n = ENGLISH_PW): string | null {
+  const requested = history.days_requested ?? i18n.t("propertyWatch.history.requestedDays");
+  const progress = historyProgress(history, i18n);
   switch (history.state) {
     case "NOT_REQUESTED":
       return null;
     case "READING":
-      return `Reading history from QRadar: ${historyProgress(history)}. Nothing is judged until it finishes.`;
+      return i18n.t("propertyWatch.history.state.READING", { progress });
     case "COMPLETE": {
-      const finished = history.finished_at?.slice(0, 10) ?? "an unrecorded date";
-      return `History: ${days(history.days_read)} days read from QRadar on ${finished}, used for baselines and new-value checks. Those buckets were not judged.`;
+      const finished =
+        history.finished_at?.slice(0, 10) ?? i18n.t("propertyWatch.history.state.unrecordedDate");
+      return i18n.t("propertyWatch.history.state.COMPLETE", {
+        days: days(history.days_read, i18n),
+        finished,
+      });
     }
     case "PARTIAL":
       if (history.floor) {
-        return `History: ${historyProgress(history)}. QRadar holds events of this scope from ${utcTimeText(history.floor)}; earlier buckets are not claimed as zero.`;
+        return i18n.t("propertyWatch.history.state.PARTIAL_FLOOR", {
+          progress,
+          floor: utcTimeText(history.floor),
+        });
       }
-      return `History: ${historyProgress(history)}. ${history.reason ?? "The requested history could not be read in full."}`;
+      return i18n.t("propertyWatch.history.state.PARTIAL", {
+        progress,
+        reason: history.reason
+          ? pwSentence(
+              history.reason,
+              { code: history.reason_code, params: history.reason_params },
+              i18n,
+            )
+          : i18n.t("propertyWatch.history.state.PARTIAL_FALLBACK"),
+      });
     case "UNAVAILABLE":
-      return `QRadar holds no events of this scope in the last ${requested} days. The watch learns forward.`;
+      return i18n.t("propertyWatch.history.state.UNAVAILABLE", { requested });
   }
 }
 

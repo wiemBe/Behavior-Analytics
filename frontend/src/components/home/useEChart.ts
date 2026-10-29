@@ -7,9 +7,12 @@
 // pulls the full bundle.
 
 import * as echarts from "echarts/core";
+import { useLocale } from "next-intl";
 import { useEffect, useRef } from "react";
 
 import { readHomePalette, type HomePalette } from "@/lib/home/chartPalette";
+
+import { TURKISH_ECHARTS_LOCALE } from "./chartLocale";
 
 import type { EChartsOption } from "echarts";
 
@@ -27,13 +30,19 @@ export function useEChart(
   onClick?: (click: ChartClick) => void,
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const locale = useLocale();
   const clickRef = useRef(onClick);
   clickRef.current = onClick;
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !build) return;
-    const chart = echarts.init(el);
+    // ECharts names months from its locale; English is its default, Turkish is given here.
+    const chart = echarts.init(
+      el,
+      null,
+      locale === "tr" ? { locale: TURKISH_ECHARTS_LOCALE as never } : undefined,
+    );
     chart.setOption(build(readHomePalette()));
     chart.on("click", (e: unknown) => clickRef.current?.(e as ChartClick));
     const observer = new ResizeObserver(() => chart.resize());
@@ -42,7 +51,7 @@ export function useEChart(
       observer.disconnect();
       chart.dispose();
     };
-  }, [build]);
+  }, [build, locale]);
 
   return containerRef;
 }

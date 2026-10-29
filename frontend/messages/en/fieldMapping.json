@@ -1,0 +1,195 @@
+{
+  "draft": {
+    "badName": "Not an allowed property name. Names match {pattern} and are never sent to QRadar otherwise.",
+    "required": "Required: collection cannot run without it.",
+    "valuesNoProperty": "Values are assigned but no property is mapped for this field. Map the property first.",
+    "valueInBoth": "The value “{value}” is in both lists. Assign it to one."
+  },
+  "catalogNote": {
+    "notListed": "Not in this console’s property list. Validation will check it.",
+    "wrongType": "This property has no parsing expression for this source’s log-source type.",
+    "wrongTypeNamed": "This property has no parsing expression for this source’s log-source type ({type})."
+  },
+  "fieldStatus": {
+    "AVAILABLE": {
+      "label": "Usable",
+      "sentence": "Populated, and the values look right."
+    },
+    "NOT_MAPPED": {
+      "label": "Not mapped",
+      "sentence": "No property is mapped to this field."
+    },
+    "PROPERTY_REJECTED": {
+      "label": "Property rejected",
+      "sentence": "QRadar does not know a property with this name."
+    },
+    "UNPOPULATED": {
+      "label": "Not populated",
+      "sentence": "The property exists but no event in the window carried it."
+    },
+    "INSUFFICIENT_COVERAGE": {
+      "label": "Low coverage"
+    },
+    "IMPLAUSIBLE": {
+      "label": "Values look wrong"
+    },
+    "NO_EVENTS": {
+      "label": "No verdict",
+      "sentence": "The source sent no events in the window. This says nothing about the field."
+    },
+    "QUERY_FAILED": {
+      "label": "No verdict",
+      "sentence": "The check could not run. This says nothing about the field."
+    },
+    "unknownSentence": "This build does not recognise this status; it is shown as recorded.",
+    "coverageHeadMissing": "Too few events carry it",
+    "coverageHead": "Only {share} of events carry it",
+    "coverageNeeds": "{head}; collection needs {need}.",
+    "implausibleMissing": "The property is populated but its values do not look like this field.",
+    "implausibleShare": "The property is populated but only {share} of sampled values look like this field."
+  },
+  "reason": {
+    "noEvents": "no events in the window",
+    "checkFailed": "a check could not run",
+    "rejected": "{label} property does not exist",
+    "notMapped": "{label} is not mapped",
+    "unpopulated": "{label} property carries no values",
+    "rarely": "{label} property is rarely populated",
+    "wrong": "{label} property values look wrong"
+  },
+  "state": {
+    "pending": "Validating v{version}…",
+    "valid": "Valid (v{version})",
+    "invalid": "Invalid",
+    "invalidWhy": "Invalid: {why}",
+    "inconclusive": "Inconclusive",
+    "inconclusiveWhy": "Inconclusive: {why}",
+    "unvalidated": "Version {version} not validated",
+    "collecting": "Collecting",
+    "paused": "Paused",
+    "pausedWhy": "Paused — {reason}"
+  },
+  "block": {
+    "pending": "Version {version} is still being validated. Enable becomes available when it validates as valid.",
+    "invalid": "Version {version} validated as invalid. Fix the mapping and validate again.",
+    "inconclusive": "Version {version} validated as inconclusive. Validate again when the source has events.",
+    "unvalidated": "Version {version} has not been validated. Validate it first."
+  },
+  "conflict": {
+    "keep": "Your edits are kept below; reload to see theirs.",
+    "newer": "a newer version",
+    "version": "version {version}",
+    "by": " (by {name})",
+    "changed": "This mapping changed to {to} while you were editing{by}. {keep}"
+  },
+  "history": {
+    "created": "Created",
+    "mapping_changed": "Mapping changed",
+    "relabelled": "Label changed",
+    "validation_requested": "Validation requested",
+    "validated": "Validated",
+    "enabled": "Collection enabled",
+    "disabled": "Collection disabled",
+    "notMapped": "not mapped",
+    "empty": "No changes are recorded for this profile yet. Creating it, changing its mapping, validating it and enabling it each add a line here.",
+    "tableLabel": "Profile history",
+    "caption": "Changes to this profile, newest first. Times are UTC.",
+    "time": "Time (UTC)",
+    "actor": "Actor",
+    "what": "What changed",
+    "outcome": "Outcome: {outcome}",
+    "outcomes": { "SUCCESS": "Success", "SOURCE_BUSY": "Source busy", "FAILURE": "Failure" },
+    "changesLabel": "Mapping changes",
+    "reasonsLabel": "Reasons"
+  },
+  "form": {
+    "kindNORMALIZED": "QRadar field",
+    "kindCUSTOM_PROPERTY": "Custom property",
+    "copyLabel": "Copy mapping from…",
+    "copyNone": "No other source has a mapping",
+    "copyChoose": "Choose a source",
+    "copying": "Copying…",
+    "copy": "Copy",
+    "copyFailed": "The mapping could not be copied.",
+    "catalogFetched": "Property list from this console, fetched <time></time>.",
+    "catalogApplies": "Properties that apply to {type} come first.",
+    "catalogThisType": "this source’s type",
+    "catalogUnfiltered": "It is not filtered by log-source type.",
+    "catalogDown": "The property list is unavailable",
+    "catalogDownTail": "{lead} Type each name as QRadar shows it; validation checks it.",
+    "refreshing": "Refreshing…",
+    "refresh": "Refresh list",
+    "required": "Required",
+    "optional": "Optional",
+    "kindLegend": "{field} reference kind",
+    "fieldAria": "{field} QRadar field",
+    "chooseField": "Choose a field",
+    "notMapped": "Not mapped",
+    "notAllowed": "{value} (not an allowed field)",
+    "propertyLabel": "{field} property",
+    "propertyPlaceholder": "Property name",
+    "unmapAria": "Do not map {field}",
+    "unmap": "Unmap"
+  },
+  "input": {
+    "groupApplies": "Applies to this source type",
+    "groupOther": "Other source types",
+    "groupUnknown": "Type unknown",
+    "normalized": "QRadar normalized fields",
+    "notSelectable": "not selectable: name not allowed",
+    "countFiltered": "{shown} of {total} properties match",
+    "count": "{total} properties",
+    "countNote": " for “{query}”. The name you typed can still be used; validation will check it.",
+    "listLabel": "Properties for {label}",
+    "current": "current"
+  },
+  "report": {
+    "none": "Version {version} has not been validated, so there is no report. Validation reads a bounded sample of this source’s events from QRadar.",
+    "stale": "This report is for version {reportVersion}; version {version} has not been validated.",
+    "VALID": "Valid",
+    "INVALID": "Invalid",
+    "INCONCLUSIVE": "Inconclusive",
+    "UNVALIDATED": "Not validated",
+    "result": "Result",
+    "window": "Window (UTC)",
+    "to": " to ",
+    "events": "Events in window",
+    "versionChecked": "Version checked",
+    "reasonsLabel": "Reasons for the result",
+    "tableLabel": "Validation result per field",
+    "caption": "What validation found for each mapped field. Shares are percentages of the events in the window.",
+    "field": "Field",
+    "populated": "Populated",
+    "ofEvents": "% of events",
+    "distinct": "Distinct values",
+    "plausible": "Plausible",
+    "ofSampled": "% of sampled",
+    "noProperty": "no property mapped",
+    "needed": "collection needs it",
+    "informational": "informational",
+    "notMeasured": "Not measured",
+    "notMeasuredSr": " not measured",
+    "pendingSince": "Validating version {version} since <time></time>. This page checks every 5 seconds.",
+    "pendingNoSince": "Validating version {version}. This page checks every 5 seconds."
+  },
+  "values": {
+    "BLOCKED": "Blocked",
+    "ALLOWED": "Allowed",
+    "notSeen": "not seen in the last validation",
+    "inBoth": "in both lists; choose one",
+    "notInList": "Not in the last validation's list",
+    "notCounted": " not counted",
+    "legend": "{field} value {value}",
+    "notMapped": "Not mapped",
+    "empty": "The last validation listed no {field} values. Validate the source while it has events to discover them; until then every value is unmapped.",
+    "truncated": "This list is truncated: only the most frequent {field} values were returned. Values not listed count as unmapped, never as allowed.",
+    "tableLabel": "{field} value outcomes",
+    "caption": "{field} values with their event counts in the last validation window, and the outcome each is assigned to.",
+    "value": "Value",
+    "events": "Events",
+    "inWindow": "in the window",
+    "outcome": "Outcome",
+    "addLabel": "Add a value that was not listed",
+    "addAs": "Add as {outcome}"
+  }
+}

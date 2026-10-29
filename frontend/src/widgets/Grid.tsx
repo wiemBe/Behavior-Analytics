@@ -8,6 +8,7 @@ import ReactGridLayout, {
   verticalCompactor,
   type Layout as GridLayoutValue,
 } from "react-grid-layout";
+import { useTranslations } from "next-intl";
 import {
   useCallback,
   useId,
@@ -17,6 +18,7 @@ import {
 } from "react";
 
 import { hasConfigure } from "./Configure";
+import { useWidgetCopy } from "./copy";
 import {
   moveWidget,
   resizeWidget,
@@ -113,6 +115,7 @@ function ArrangeControls({
   onConfigure,
   onExpand,
 }: ArrangeProps) {
+  const t = useTranslations("widgets.grid");
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const atMaxW = widget.w >= (size.maxW ?? GRID_COLUMNS) || widget.x + widget.w >= GRID_COLUMNS;
@@ -122,24 +125,24 @@ function ArrangeControls({
       <button
         type="button"
         className="dg-arrange-trigger"
-        aria-label={`Arrange ${title}`}
+        aria-label={t("arrange", { title })}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((current) => !current)}
       >
-        Edit
+        {t("edit")}
       </button>
       {open ? (
         <div className="dg-arrange-panel" id={panelId}>
           <fieldset>
-            <legend>Move</legend>
+            <legend>{t("move")}</legend>
             <div className="dg-step-grid">
               {(["left", "right", "up", "down"] as const).map((direction) => (
                 <button
                   type="button"
                   className="dg-step"
                   key={direction}
-                  aria-label={`Move ${title} ${direction}`}
+                  aria-label={t(`moveNamed.${direction}`, { title })}
                   disabled={
                     (direction === "left" && widget.x === 0) ||
                     (direction === "right" && widget.x + widget.w >= GRID_COLUMNS) ||
@@ -147,20 +150,20 @@ function ArrangeControls({
                   }
                   onClick={() => onMove(direction)}
                 >
-                  {direction[0].toUpperCase() + direction.slice(1)}
+                  {t(`moveButton.${direction}`)}
                 </button>
               ))}
             </div>
           </fieldset>
           <fieldset>
-            <legend>Resize</legend>
+            <legend>{t("resize")}</legend>
             <div className="dg-step-grid">
               {(["wider", "narrower", "taller", "shorter"] as const).map((direction) => (
                 <button
                   type="button"
                   className="dg-step"
                   key={direction}
-                  aria-label={`Resize ${title} ${direction}`}
+                  aria-label={t(`resizeNamed.${direction}`, { title })}
                   disabled={
                     (direction === "wider" && atMaxW) ||
                     (direction === "narrower" && widget.w <= size.minW) ||
@@ -169,11 +172,7 @@ function ArrangeControls({
                   }
                   onClick={() => onResize(direction)}
                 >
-                  {direction === "narrower"
-                    ? "Narrow"
-                    : direction === "shorter"
-                      ? "Shorten"
-                      : direction[0].toUpperCase() + direction.slice(1)}
+                  {t(`resizeButton.${direction}`)}
                 </button>
               ))}
             </div>
@@ -183,29 +182,29 @@ function ArrangeControls({
               <button
                 type="button"
                 className="dg-step"
-                aria-label={`Configure ${title}`}
+                aria-label={t("configureNamed", { title })}
                 onClick={(event) => onConfigure(event.currentTarget)}
               >
-                Configure
+                {t("configure")}
               </button>
             ) : null}
             {onExpand ? (
               <button
                 type="button"
                 className="dg-step"
-                aria-label={`Expand ${title}`}
+                aria-label={t("expandNamed", { title })}
                 onClick={(event) => onExpand(event.currentTarget)}
               >
-                Expand
+                {t("expand")}
               </button>
             ) : null}
             <button
               type="button"
               className="dg-step dg-arrange-remove"
-              aria-label={`Remove ${title}`}
+              aria-label={t("removeNamed", { title })}
               onClick={onRemove}
             >
-              Remove widget
+              {t("remove")}
             </button>
           </div>
         </div>
@@ -231,6 +230,8 @@ export function EditGrid({
   onExpand,
   renderWidget,
 }: EditGridProps) {
+  const t = useTranslations("widgets.view");
+  const copy = useWidgetCopy();
   const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
   const [metrics, setMetrics] = useState<GridMetrics | null>(null);
 
@@ -271,7 +272,7 @@ export function EditGrid({
         >
           {widgets.map((widget) => {
             const def = widgetDef(widget.type);
-            const title = def?.title ?? "Unsupported widget";
+            const title = def ? copy.title(def) : t("unsupportedTitle");
             const size = def?.size ?? {
               w: widget.w,
               h: widget.h,
@@ -318,7 +319,7 @@ export function EditGrid({
         </ReactGridLayout>
       ) : (
         <p className="dg-editor-loading" role="status">
-          Loading dashboard editor…
+          {t("loadingEditor")}
         </p>
       )}
     </div>

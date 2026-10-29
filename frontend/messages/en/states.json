@@ -1,0 +1,12 @@
+{
+  "loading": "Loading {what}…",
+  "couldNotDisplay": "{what} could not be displayed.",
+  "renderFailed": "The page failed while rendering. Nothing on it was changed. Try again; if it keeps failing, check that the backend is reachable.",
+  "reference": " Reference: {digest}.",
+  "insufficientData": "Insufficient data",
+  "partial": "Partial",
+  "truncated": "Truncated",
+  "notCollected": "Not collected",
+  "stale": "Stale",
+  "forbidden": "Forbidden"
+}

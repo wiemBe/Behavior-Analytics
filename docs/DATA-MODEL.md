@@ -279,6 +279,11 @@ widget IDs, types, geometry and bounded opaque configuration only. The server do
 execute layout content. Revision tokens prevent lost updates; visibility and ownership control
 which principals can read or modify a record.
 
+## Accounts
+
+`app_user` holds the sign-in identity. `ui_language` (`'en'` or `'tr'`, default `'en'`) is the
+analyst's interface-language choice; it lives on the account (D-37) and only its owner sets it.
+
 ## Alerts, notifications and audit
 
 The shared alert lifecycle is open, acknowledged and resolved. A partial unique index on the active

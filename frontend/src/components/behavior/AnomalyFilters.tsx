@@ -13,9 +13,15 @@
 // control responsible for it.
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
+import { useEnumLabels } from "@/i18n/enumLabels";
 import type { SourceBehavior } from "@/lib/api";
+import { ENGLISH_ANOMALIES } from "@/lib/anomaliesI18n";
 import { subjectKindLabel, SUBJECT_KINDS } from "@/lib/anomalyQuery";
+import { detectorLabel } from "@/lib/behavior";
+import { CLOSE_MARK, evidenceCode, wordOrValue, type BehaviorI18n } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { IPS_TYPES, isIpsType, ipsTypeLabel } from "@/components/ips/ipsLabels";
 import { PW_TYPES, pwTypeLabel, isPwType } from "@/components/propertywatch/pwFormat";
 import { WAF_TYPES, anomalyTypeLabel } from "@/components/waf/wafLabels";
@@ -60,40 +66,51 @@ export interface AnomalyFilterValues {
   until: string;
 }
 
+/** The detector's name in a chip: the IPS, property-watch and WAF names stay as their helpers write them. */
+function detectorName(text: string, i18n: BehaviorI18n): string {
+  if (isIpsType(text)) return ipsTypeLabel(text, i18n);
+  if (isPwType(text)) return pwTypeLabel(text, i18n);
+  if (DETECTOR_TYPES.includes(text)) return detectorLabel(text, i18n);
+  return anomalyTypeLabel(text, i18n);
+}
+
 /** Human labels for the active-filter chips. */
 export function chipLabel(
   key: keyof AnomalyFilterValues,
   value: string | boolean,
   sources: SourceBehavior[],
+  i18n: BehaviorI18n = ENGLISH_ANOMALIES,
 ): string {
   const text = String(value);
+  const say = (name: string, values?: Record<string, string>) =>
+    i18n.t(`anomalies.filters.chip.${name}`, values);
   switch (key) {
     case "active_only":
-      return "Active only";
+      return say("activeOnly");
     case "subject_kind":
-      return `Subject: ${subjectKindLabel(text)}`;
+      return say("subject", { value: subjectKindLabel(text, i18n) });
     case "ips_entity_id":
-      return `IPS entity: ${text.slice(0, 8)}…`;
+      return say("ipsEntity", { id: text.slice(0, 8) });
     case "property_watch_id":
-      return `Property watch: ${text.slice(0, 8)}…`;
+      return say("propertyWatch", { id: text.slice(0, 8) });
     case "log_source_id": {
       const match = sources.find((s) => s.log_source_id === text);
-      return `Source: ${match?.name ?? text}`;
+      return say("source", { value: match?.name ?? text });
     }
     case "instance_id":
-      return `Instance: ${text}`;
+      return say("instance", { value: text });
     case "anomaly_type":
-      return `Detector: ${isIpsType(text) ? ipsTypeLabel(text) : isPwType(text) ? pwTypeLabel(text) : anomalyTypeLabel(text)}`;
+      return say("detector", { value: detectorName(text, i18n) });
     case "state":
-      return `State: ${text}`;
+      return say("state", { value: wordOrValue(i18n, "enums.anomalyState", text) });
     case "severity":
-      return `Severity: ${text}`;
+      return say("severity", { value: wordOrValue(i18n, "enums.severityPill", text) });
     case "evidence_status":
-      return `Evidence: ${text}`;
+      return say("evidence", { value: evidenceCode(i18n, text) });
     case "since":
-      return `From: ${utcTimeText(text)}`;
+      return say("since", { value: utcTimeText(text) });
     case "until":
-      return `To: ${utcTimeText(text)}`;
+      return say("until", { value: utcTimeText(text) });
     default:
       return `${key}: ${text}`;
   }
@@ -134,6 +151,9 @@ export function AnomalyFilters({
   /** The source read failed. The select is omitted; the anomaly list is unaffected. */
   sourcesFailed?: boolean;
 }) {
+  const t = useTranslations("anomalies.filters");
+  const i18n = useBehaviorI18n();
+  const { label, severityPill } = useEnumLabels();
   const advancedActive = Boolean(
     values.log_source_id || values.instance_id || values.evidence_status,
   );
@@ -151,8 +171,7 @@ export function AnomalyFilters({
     <>
       {sourcesFailed && (
         <p className="notice" role="status">
-          The source list could not be loaded, so the source filter is unavailable; the anomaly
-          list below is complete.
+          {t("sourcesFailed")}
         </p>
       )}
       <form className="filters" method="get" action="/anomalies">
@@ -164,29 +183,29 @@ export function AnomalyFilters({
           <input type="hidden" name="property_watch_id" value={values.property_watch_id} />
         )}
         <label className="sr-only" htmlFor="anomaly-subject">
-          Subject kind
+          {t("subjectLabel")}
         </label>
         <select
           id="anomaly-subject"
           name="subject_kind"
           defaultValue={values.subject_kind ?? ""}
         >
-          <option value="">All subjects</option>
+          <option value="">{t("allSubjects")}</option>
           {SUBJECT_KINDS.map((k) => (
             <option key={k.value} value={k.value}>
-              {k.label}
+              {subjectKindLabel(k.value, i18n)}
             </option>
           ))}
         </select>
 
         <label className="sr-only" htmlFor="anomaly-state">
-          Lifecycle state
+          {t("stateLabel")}
         </label>
         <select id="anomaly-state" name="state" defaultValue={values.state}>
-          <option value="">All states</option>
+          <option value="">{t("allStates")}</option>
           {STATES.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {label("anomalyState", s)}
             </option>
           ))}
         </select>
@@ -199,56 +218,56 @@ export function AnomalyFilters({
             value="true"
             defaultChecked={values.active_only}
           />
-          Active only
+          {t("activeOnly")}
         </label>
 
         <label className="sr-only" htmlFor="anomaly-detector">
-          Detector type
+          {t("detectorLabel")}
         </label>
         <select
           id="anomaly-detector"
           name="anomaly_type"
           defaultValue={values.anomaly_type}
         >
-          <option value="">All detectors</option>
-          <optgroup label="Log sources">
-            {DETECTOR_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {anomalyTypeLabel(t)}
+          <option value="">{t("allDetectors")}</option>
+          <optgroup label={t("groupLogSources")}>
+            {DETECTOR_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {detectorLabel(type, i18n)}
               </option>
             ))}
           </optgroup>
-          <optgroup label="WAF endpoints">
-            {WAF_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {anomalyTypeLabel(t)}
+          <optgroup label={t("groupWaf")}>
+            {WAF_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {anomalyTypeLabel(type, i18n)}
               </option>
             ))}
           </optgroup>
-          <optgroup label="IPS entities and sources">
-            {IPS_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {ipsTypeLabel(t)}
+          <optgroup label={t("groupIps")}>
+            {IPS_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {ipsTypeLabel(type, i18n)}
               </option>
             ))}
           </optgroup>
-          <optgroup label="Property watch values">
-            {PW_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {pwTypeLabel(t)}
+          <optgroup label={t("groupPw")}>
+            {PW_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {pwTypeLabel(type, i18n)}
               </option>
             ))}
           </optgroup>
         </select>
 
         <label className="sr-only" htmlFor="anomaly-severity">
-          Severity
+          {t("severityLabel")}
         </label>
         <select id="anomaly-severity" name="severity" defaultValue={values.severity}>
-          <option value="">All severities</option>
+          <option value="">{t("allSeverities")}</option>
           {SEVERITIES.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {severityPill(s)}
             </option>
           ))}
         </select>
@@ -258,7 +277,7 @@ export function AnomalyFilters({
             visible, because two bare date fields say neither which is which
             nor which timezone they mean. */}
         <label className="filter-field" htmlFor="anomaly-since">
-          Start time (UTC)
+          {t("since")}
           <input
             id="anomaly-since"
             type="datetime-local"
@@ -267,7 +286,7 @@ export function AnomalyFilters({
           />
         </label>
         <label className="filter-field" htmlFor="anomaly-until">
-          End time (UTC)
+          {t("until")}
           <input
             id="anomaly-until"
             type="datetime-local"
@@ -276,13 +295,13 @@ export function AnomalyFilters({
           />
         </label>
 
-        <button type="submit">Filter</button>
+        <button type="submit">{t("submit")}</button>
 
         {/* Opened when something inside is active, so a filtered view never
             hides the control responsible for it. */}
         <details className="disclosure filter-more" open={advancedActive}>
           <summary className="disclosure-summary">
-            <span className="disclosure-label">More filters</span>
+            <span className="disclosure-label">{t("more")}</span>
           </summary>
           <div className="disclosure-body">
             <div className="filters filters-advanced">
@@ -293,14 +312,14 @@ export function AnomalyFilters({
               ) : (
                 <>
                   <label className="sr-only" htmlFor="anomaly-source">
-                    Log source
+                    {t("sourceLabel")}
                   </label>
                   <select
                     id="anomaly-source"
                     name="log_source_id"
                     defaultValue={values.log_source_id}
                   >
-                    <option value="">All log sources</option>
+                    <option value="">{t("allSources")}</option>
                     {sources.map((s) => (
                       <option key={s.log_source_id} value={s.log_source_id}>
                         {s.name}
@@ -311,28 +330,28 @@ export function AnomalyFilters({
               )}
 
               <label className="sr-only" htmlFor="anomaly-instance">
-                QRadar instance
+                {t("instanceLabel")}
               </label>
               <input
                 id="anomaly-instance"
                 type="search"
                 name="instance_id"
                 defaultValue={values.instance_id}
-                placeholder="Instance…"
+                placeholder={t("instancePlaceholder")}
               />
 
               <label className="sr-only" htmlFor="anomaly-evidence">
-                Evidence status
+                {t("evidenceLabel")}
               </label>
               <select
                 id="anomaly-evidence"
                 name="evidence_status"
                 defaultValue={values.evidence_status}
               >
-                <option value="">All evidence states</option>
+                <option value="">{t("allEvidence")}</option>
                 {EVIDENCE.map((e) => (
                   <option key={e} value={e}>
-                    {e}
+                    {evidenceCode(i18n, e)}
                   </option>
                 ))}
               </select>
@@ -344,27 +363,24 @@ export function AnomalyFilters({
       {/* Chips render only when something is actually filtered. */}
       {activeChips.length > 0 && (
         <div className="row filter-chips">
-          <span className="muted">Filtered by</span>
+          <span className="muted">{t("filteredBy")}</span>
           {activeChips.map(([key, value]) => (
             <Link
               key={key}
               href={withoutFilter(values, key)}
               className="filter-chip"
-              aria-label={`Remove filter ${chipLabel(key, value, sources)}`}
+              aria-label={t("removeFilter", { chip: chipLabel(key, value, sources, i18n) })}
             >
-              {key === "since" || key === "until" ? (
-                <>
-                  {key === "since" ? "From: " : "To: "}
-                  <UtcTime value={String(value)} />
-                </>
-              ) : (
-                chipLabel(key, value, sources)
-              )}
-              <span aria-hidden="true">✕</span>
+              {key === "since" || key === "until"
+                ? t.rich(key === "since" ? "chip.sinceRich" : "chip.untilRich", {
+                    value: () => <UtcTime value={String(value)} />,
+                  })
+                : chipLabel(key, value, sources, i18n)}
+              <span aria-hidden="true">{CLOSE_MARK}</span>
             </Link>
           ))}
           <Link href="/anomalies" className="filter-clear">
-            Clear all
+            {t("clearAll")}
           </Link>
         </div>
       )}

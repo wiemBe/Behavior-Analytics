@@ -1,0 +1,9 @@
+{
+  "copyQueryLabel": "{label} sorgusunu panoya kopyala",
+  "copyQuery": "Sorguyu kopyala",
+  "queryCopied": "Sorgu panoya kopyalandı",
+  "pagination": "Sayfalama",
+  "pageRange": "{from}–{to} / {total}",
+  "previous": "Önceki",
+  "next": "Sonraki"
+}

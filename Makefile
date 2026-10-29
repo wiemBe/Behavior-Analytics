@@ -5,7 +5,7 @@ help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-18s %s\n", $$1, $$2}'
 
 lint: ## Ruff lint the backend
-	cd backend && ruff check app tests
+	cd backend && ruff check app tests scripts
 
 mypy: ## Type-check the backend application
 	cd backend && mypy app

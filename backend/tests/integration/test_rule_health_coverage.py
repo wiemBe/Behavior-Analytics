@@ -381,7 +381,11 @@ class TestFlapDamping:
         assert report.changed == 0
         await db_session.refresh(rule)
         assert rule.health_status == RuleHealthStatus.HEALTHY
-        assert rule.health_evaluated_at == NOW
+        # RM-2: a held-back verdict holds `health_evaluated_at` back with it.
+        # The reason shown beside the badge is read from the snapshot at that
+        # timestamp, so it must keep naming the evaluation the shown verdict
+        # came from, never the newer one that disagrees (RULE-1 pairing).
+        assert rule.health_evaluated_at is None
 
     @pytest.mark.asyncio
     async def test_a_repeated_verdict_is_applied(self, db_session) -> None:

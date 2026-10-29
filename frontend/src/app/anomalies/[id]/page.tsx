@@ -16,6 +16,7 @@
 // the three strongest contributors, and everything else behind three tabs.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 
 import { EvidenceBanner } from "@/components/behavior/EvidenceBanner";
@@ -31,6 +32,7 @@ import { detectorSpec } from "@/components/ips/ipsDetectors";
 import { IpsInvestigation, type IpsSeriesData } from "@/components/ips/IpsInvestigation";
 import { PwInvestigation, type PwInvestigationData } from "@/components/propertywatch/PwInvestigation";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { WafInvestigation } from "@/components/waf/WafInvestigation";
 import {
   ApiError,
@@ -49,15 +51,19 @@ import {
   type WafMetricBucket,
 } from "@/lib/api";
 import { ratioSpecFor } from "@/components/waf/wafSeries";
-import { dimensionLabel, hasConfidenceLimitation, stateMeaning } from "@/lib/behavior";
+import { dimensionLabel, hasConfidenceLimitation, stateMeaningIn } from "@/lib/behavior";
+import { getBehaviorI18n, getEnumLabels } from "@/lib/behaviorI18n.server";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { summarizeAnomaly, summarizeTimeline } from "@/lib/summarize";
 import { buildSeries } from "@/lib/timeseries";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "./incident.css";
 
-export const metadata: Metadata = {
-  title: "Anomaly investigation",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("anomalies.detail");
+  return { title: t("metaTitle") };
+}
 
 /** How much surrounding context the timeline shows around the anomaly. */
 const CONTEXT_HOURS = 6;
@@ -190,7 +196,7 @@ const PW_SERIES_MAX_HOURS = 168;
  * the value's text; it is null once retention deleted the value, and then there is no series to
  * read. Every part is optional: a failed read is `null` and the view says so, it is not "nothing".
  */
-async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
+async function pwData(anomaly: PwAnomalyDetail, i18n: BehaviorI18n): Promise<PwInvestigationData> {
   const anchor = Date.parse(anomaly.anomaly_start ?? anomaly.detected_at);
   const end = Date.parse(anomaly.anomaly_end ?? anomaly.resolved_at ?? anomaly.detected_at);
   const now = Date.now();
@@ -206,8 +212,7 @@ async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
       ...base,
       series: null,
       buckets: null,
-      chartNote:
-        "This value is no longer stored (retention), so its series cannot be read and no chart is drawn. The incident's own figures and lifecycle are kept below.",
+      chartNote: i18n.t("propertyWatch.investigation.chartRetention"),
     };
   }
   if (hours > PW_SERIES_MAX_HOURS) {
@@ -215,7 +220,7 @@ async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
       ...base,
       series: null,
       buckets: null,
-      chartNote: `This incident is older than the ${PW_SERIES_MAX_HOURS / 24} days the series read covers, so its chart is not drawn. The incident's own figures and lifecycle are shown.`,
+      chartNote: i18n.t("propertyWatch.investigation.chartOld", { days: PW_SERIES_MAX_HOURS / 24 }),
     };
   }
   const [series, buckets] = await Promise.all([
@@ -231,17 +236,18 @@ async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
     buckets,
     chartNote:
       series === null
-        ? "The series of this value could not be loaded. The rest of this investigation is unaffected, but the chart is absent rather than empty."
+        ? i18n.t("propertyWatch.investigation.chartFailed")
         : null,
   };
 }
 
-export default async function AnomalyDetailPage({
+async function AnomalyDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const t = await getTranslations("anomalies.detail");
 
   let loaded: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail | null = null;
   let status = 0;
@@ -254,19 +260,19 @@ export default async function AnomalyDetailPage({
   if (!loaded) {
     return (
       <>
-        <PageHeader title="Anomaly investigation" />
+        <PageHeader guide={guideFor("/anomalies/[id]")} title={t("title")} />
         <div className="notice" role="alert">
           <p>
             {status === 404
-              ? "This anomaly does not exist. It may have been removed, or the link may be wrong."
+              ? t("notFound")
               : status === 403
-                ? "You do not have permission to view anomaly evidence. Ask an administrator for the read:anomalies grant."
+                ? t("forbidden")
                 : status === 401
-                  ? "Your session has expired. Sign in again to continue."
-                  : "Could not load this anomaly. The backend may be unreachable; reload the page to try again."}
+                  ? t("expired")
+                  : t("failed")}
           </p>
           <p className="incident-error-link">
-            <Link href="/anomalies">Back to all anomalies</Link>
+            <Link href="/anomalies">{t("back")}</Link>
           </p>
         </div>
       </>
@@ -275,13 +281,21 @@ export default async function AnomalyDetailPage({
 
   // A property-watch value is investigated against its own watch's series, in events per bucket.
   if (isPwDetail(loaded)) {
-    return <PwInvestigation anomaly={loaded} data={await pwData(loaded)} />;
+    const pwI18n = await getBehaviorI18n();
+    return <PwInvestigation anomaly={loaded} data={await pwData(loaded, pwI18n)} />;
   }
   // A WAF endpoint is investigated against its own request buckets, in requests
   // rather than EPS, so it has its own view; the Phase A page below is unchanged.
   if (isWafDetail(loaded)) {
     const [buckets, baselines] = await Promise.all([wafBuckets(loaded), wafBaselines(loaded)]);
-    return <WafInvestigation anomaly={loaded} buckets={buckets} baselines={baselines} />;
+    return (
+      <WafInvestigation
+        anomaly={loaded}
+        buckets={buckets}
+        baselines={baselines}
+        i18n={await getBehaviorI18n()}
+      />
+    );
   }
   // An IPS entity or source is investigated against its own event, port or share
   // series, in that unit and never in EPS, so it has its own view as well.
@@ -301,6 +315,8 @@ export default async function AnomalyDetailPage({
     );
   }
   const anomaly: AnomalyDetail = loaded;
+  const i18n = await getBehaviorI18n();
+  const { label: enumText } = await getEnumLabels();
 
   // The timeline is context around the incident, so the window is anchored to
   // the anomaly rather than to now — an anomaly from last week must still
@@ -328,24 +344,27 @@ export default async function AnomalyDetailPage({
 
   const pkg = anomaly.explanation_package;
   const detection = anomaly.detection;
-  const summary = summarizeAnomaly(anomaly);
+  const summary = summarizeAnomaly(anomaly, i18n);
   const degenerate = hasConfidenceLimitation(detection?.robust_score_status);
 
   const points = buildSeries(buckets);
   const incomplete = buckets.filter((b) => b.completeness !== "COMPLETE").length;
-  const chartSummary = summarizeTimeline({
+  const chartSummary = summarizeTimeline(
+    {
     observed: points.map((p) => p.observed),
     expected: detection?.expected_eps ?? anomaly.expected_value,
     anomalyStart: anomaly.anomaly_start,
     anomalyEnd: anomaly.anomaly_end,
     state: anomaly.state,
     incompleteBuckets: incomplete,
-    totalBuckets: buckets.length,
-  });
+      totalBuckets: buckets.length,
+    },
+    i18n,
+  );
 
   const truncated = (pkg?.dimensions ?? [])
     .filter((d) => d.availability === "TRUNCATED")
-    .map((d) => dimensionLabel(d.dimension));
+    .map((d) => dimensionLabel(d.dimension, i18n));
 
   return (
     <>
@@ -355,18 +374,17 @@ export default async function AnomalyDetailPage({
       {/* --- B. deterministic summary ------------------------------------ */}
       <p className="incident-summary">{summary.text}</p>
       {summary.caveat && <p className="subtitle">{summary.caveat}</p>}
-      <p className="subtitle">{stateMeaning(anomaly.state)}</p>
+      <p className="subtitle">{stateMeaningIn(anomaly.state, i18n)}</p>
 
       {/* --- C. the four primary metrics, as one comparison --------------- */}
       <IncidentMetrics anomaly={anomaly} confidenceLimited={degenerate} />
 
       {/* --- D. the timeline --------------------------------------------- */}
       <section>
-        <h2 className="section-title">Timeline</h2>
+        <h2 className="section-title">{t("timeline")}</h2>
         {bucketsFailed ? (
           <div className="notice" role="alert">
-            Metric history could not be loaded. The rest of this investigation
-            is unaffected, but the timeline is absent rather than empty.
+            {t("metricsFailed")}
           </div>
         ) : (
           <VolumeChart
@@ -379,11 +397,11 @@ export default async function AnomalyDetailPage({
                 ? [{ start: anomaly.anomaly_start, end: anomaly.anomaly_end }]
                 : []
             }
-            transitions={anomaly.transitions.map((t) => ({
-              at: t.occurred_at,
-              label: t.to_state,
+            transitions={anomaly.transitions.map((tr) => ({
+              at: tr.occurred_at,
+              label: enumText("anomalyState", tr.to_state),
             }))}
-            ariaLabel="Observed volume, expected baseline and the anomalous interval"
+            ariaLabel={t("chartAria")}
             textSummary={chartSummary}
           />
         )}
@@ -391,11 +409,9 @@ export default async function AnomalyDetailPage({
 
       {/* --- E. what changed --------------------------------------------- */}
       <section>
-        <h2 className="section-title">What changed</h2>
+        <h2 className="section-title">{t("whatChanged")}</h2>
         <p className="subtitle">
-          The strongest contributors, one per dimension. These are the values
-          that moved most during the interval — a measured share of the change,
-          not a statement of cause.
+          {t("whatChangedNote")}
         </p>
         <TopContributors
           packaged={pkg}
@@ -413,7 +429,7 @@ export default async function AnomalyDetailPage({
 
       {/* --- G. everything else, behind tabs ------------------------------ */}
       <section id="evidence">
-        <h2 className="section-title">Investigation detail</h2>
+        <h2 className="section-title">{t("investigation")}</h2>
         <AnomalyTabs
           evidence={(
             <DimensionExplorer
@@ -433,3 +449,5 @@ export default async function AnomalyDetailPage({
     </>
   );
 }
+
+export default withRouteMessages("/anomalies/[id]", AnomalyDetailPage);

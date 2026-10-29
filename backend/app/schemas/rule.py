@@ -8,6 +8,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import MappingSource, RuleDependencyKind, RuleHealthStatus
+from app.schemas.messages import MessageParamValue
 from app.schemas.offense import _Sanitized
 
 
@@ -39,6 +40,10 @@ class RuleSummary(_Sanitized):
     # the verdict shown beside it. Null when that snapshot is absent (aged out, or never
     # written) or recorded none.
     health_reason: str | None = None
+    # The code and raw values `health_reason` was rendered from; null on a snapshot written
+    # before they were stored.
+    health_reason_code: str | None = None
+    health_reason_params: dict[str, MessageParamValue] | None = None
     last_fired_at: datetime | None = None
     offense_contribution_count: int = 0
     event_contribution_count: int = 0
@@ -66,6 +71,8 @@ class RuleHealthSnapshotOut(_Sanitized):
     logic_version: int
     confidence: float
     reason: str | None = None
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     window_start: datetime | None = None
     window_end: datetime | None = None
     last_triggered_at: datetime | None = None

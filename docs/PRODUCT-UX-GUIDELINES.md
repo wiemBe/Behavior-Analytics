@@ -448,6 +448,162 @@ observed contributor", "largest volume change", "behavior is consistent with",
 
 ---
 
+## Language
+
+The interface is offered in English and Turkish; English is the default. The analyst chooses the
+language under Account settings, and the server stores the choice on the user account so it follows
+the analyst to other browsers. The URL never carries a locale.
+
+Phase 1 translates interface copy: navigation, headings, controls, labels, table headers, notices
+and designed loading, empty, error and honesty states. Sentences written by the backend, including
+anomaly explanations, rule-health reasons, alert text and evaluation notes, remain English until
+the backend exposes message codes. Frontend code must never translate those sentences by matching
+their text.
+
+The following technical terms remain English in Turkish: offense, log source, EPS, WAF, IPS, AQL,
+baseline, MCP, LDAP, QRadar, DSM, QID, ATT&CK, CIDR, HTTP, UTC, coverage and scope (decision D-39,
+2026-10-28), along with product-object names that match QRadar's screens. A Turkish suffix attached
+to an English term takes an apostrophe, for example `offense'lar`, `log source'un`, `coverage'ı` and
+`scope'taki`. The verb "to cover" is not the term: `kapsandı` (covered) and `kapsadığı` (spans) stay
+Turkish.
+
+Turkish numbers use a dot for digit groups and a comma for decimals: `1.204` and `31,8`. The percent
+sign precedes the number without a space: `%31,8`, `≥ %12,5` and `<%0,1`. English retains `1,204`,
+`31.8 %` (with U+00A0), `≥ 12.5 %` and `<0.1 %`. The missing mark is `—` in both languages. Absolute
+and compact timestamps are identical and explicitly UTC in both languages; only surrounding words
+and relative ages are translated.
+
+Turkish writes a count of a total as `M / N <noun>` with U+00A0 around the slash and before the
+noun: `4.596 / 4.608 aralık`, `Değerlendirilen 4 kaynak: 3 normal`, `Kırpılmış: ilk 96 / 237`. It
+never attaches a suffix to a number (`3'ü`, `4 kaynaktan 3 tanesi`). A number and its unit are
+never separated by an ordinary space: `24 sa`, `5 dk`, `2 sa 55 dk`, `7 gün`, `968,70 EPS` and
+`olay / 5 dk` use U+00A0 (English keeps its ordinary space). A Turkish sentence never starts with a
+lowercase letter or with a placeholder that holds a lowercase noun: the message opens with a fixed
+word (`Okunamadı: {what}.`, `Rolünüz bunu okuyamıyor: {what} (izin: {permission}).`).
+`src/i18n/turkishText.contract.test.ts` pins all three rules over the Turkish catalog.
+
+A placeholder that a caller fills with a raw number which can reach 1,000 is written
+`{count, number}` in the Turkish value, so it prints `1.204` like the rest of the page; a plain
+placeholder prints the number as the caller passes it. A caller that already passes a string
+formatted with `formatCount(n, locale)` keeps a plain placeholder. `src/i18n/turkishCounts.contract.test.ts`
+pins the converted keys and makes every other count-like placeholder carry a recorded reason.
+
+Turkish copy uses the formal register (`siz`) and short button imperatives such as `Kaydet` and
+`Tekrar dene`. It uses no exclamation marks and no word meaning “live” or “real-time” (`canlı`,
+`gerçek zamanlı`, `anlık`), because collection runs on a cadence. As in English, an error says what
+failed and what the analyst can do.
+
+Recurring interface terms use this glossary. A route task adds a missing word here before using it.
+
+| English | Turkish |
+|---|---|
+| anomaly | anomali |
+| source | kaynak |
+| detector | algılayıcı |
+| verdict | karar |
+| status | durum |
+| insufficient data | yetersiz veri |
+| partial | kısmi |
+| truncated | kırpılmış |
+| not collected | toplanmadı |
+| stale | güncel değil |
+| forbidden | izin yok |
+| expected range | beklenen aralık |
+| bucket | zaman dilimi |
+| cadence | sıklık |
+| collection | toplama |
+| search | arama |
+| rule | kural |
+| alert | uyarı |
+| acknowledge | alındı olarak işaretle |
+| investigation | inceleme |
+| evidence | kanıt |
+| contributor | katkı sağlayan |
+| dashboard | gösterge paneli |
+| widget | bileşen |
+| settings | ayarlar |
+| sign in | oturum aç |
+| sign out | oturumu kapat |
+| snapshot | kesit |
+| severity | önem derecesi |
+| lifecycle | yaşam döngüsü |
+| template | şablon |
+| customize | özelleştir |
+| manage | yönet |
+| expand | büyüt |
+| discard | vazgeç |
+| property watch | özellik izleme |
+| property | özellik |
+| value | değer |
+| scope | scope (stays English, D-39) |
+| pinned value | sabitlenmiş değer |
+| history | geçmiş |
+| preview | önizleme |
+| threshold | eşik |
+| parse / parsed | ayrıştırmak / ayrıştırılmış |
+| scheduled search | zamanlanmış arama |
+| breach | ihlal |
+| shadow mode | gölge modu |
+| lower bound (a measurement that is at least the value shown) | alt sınır |
+| floor (a minimum a ratio must reach: the coverage floor, the history floor, a chart's floor line) | taban (`Coverage tabanı`, `Taban %90`) |
+| subject (of an anomaly or a custom rule) | konu |
+| review and create / review and save (`İncele` stays the Investigate button) | gözden geçir ve oluştur / gözden geçir ve kaydet |
+| reload their version | onların sürümünü yeniden yükle |
+| never observed | hiç gözlenmedi |
+| retired (WAF endpoint, widget option, custom-rule subject) | kullanımdan kaldırıldı |
+| needs attention | dikkat gerekiyor |
+| maintenance | bakım |
+| capacity | kapasite |
+| match | eşleşme |
+| hour, day, second (units) | sa, gün, sn |
+| fleet | filo |
+| window (the time span of a view, and the control that sets it) | pencere |
+| incident (an open anomaly of a class) | vaka |
+| sender (catch-all) | gönderen |
+| queue | kuyruk |
+| dismiss | yoksay |
+| override (an operator's class for one source) | geçersiz kılma |
+| search family | arama ailesi |
+| silence grace | sessizlik toleransı |
+| coverage | coverage (stays English, D-39) |
+| technique, tactic (ATT&CK) | teknik, taktik |
+| entity (an IPS destination port, destination or signature) | varlık |
+| signature (IPS) | imza |
+| source-level (an IPS source's whole traffic) | kaynak düzeyi |
+| observed, expected | gözlenen, beklenen |
+| deviation | sapma |
+| materiality floor | önemlilik eşiği |
+| block ratio | engelleme oranı |
+| destination port | hedef port |
+| request | istek |
+| endpoint | endpoint |
+| profile | profil |
+| mapping | eşleme |
+| validation | doğrulama |
+| virtual host | virtual host |
+| admission | kabul |
+| ratio | oran |
+| history backfill | geçmiş veri okuma |
+| scope (of a history backfill row: a console or one log source) | scope (stays English, D-39; `destination port` stays `hedef port`) |
+| console (QRadar) | console (stays English, like log source) |
+| schedule | zamanlama |
+| execution, run (of a stored search) | çalıştırma |
+| trigger (of a run: scheduled, manual) | tetikleyici (zamanlanmış, elle) |
+| guardrails (a search's timeout, window and row caps) | koruma sınırları |
+| settle (the margin before a bucket is read) | yerleşme payı |
+| role | rol (a role is shown as "Label (code)"; the code stays) |
+| account | hesap |
+| directory (LDAP) | dizin |
+| outage | kesinti |
+| permission | izin (the key stays a code) |
+| pattern | desen |
+| built-in, custom (rule) | yerleşik, özel |
+| property (QRadar) | özellik |
+| instance | instance (kept English) |
+| precedence, order of decision | karar sırası |
+
+---
+
 ## 8. Component contracts
 
 Each reusable component owns an invariant. Fix presentation problems in the
@@ -581,7 +737,8 @@ skeleton. `LoadingState` is a polite live region naming what is loading.
 `ErrorState` is an alert that says the page could not be displayed, that
 nothing was changed, and what to try; it **must not** render the exception
 text, which can carry a stack trace or an upstream URL. Next's error digest may
-be shown as a reference.
+be shown as a reference. Its `what` argument is one translated noun phrase in
+the nominative so English and Turkish can compose the surrounding sentence.
 
 ### `TopBar`, `TopSearch`, `AutoRefresh`, `AlertBell`, `ConnectionStatus`
 

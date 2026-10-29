@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import IpsPreset
+from app.schemas.messages import MessageParamValue, MessageValue
 
 
 class IpsFieldReferenceIn(BaseModel):
@@ -87,12 +88,15 @@ class IpsValidationFieldOut(BaseModel):
     values_truncated: bool
     discovered_values: list[dict[str, Any]] = Field(default_factory=list)
     detail: str | None = None
+    detail_code: str | None = None
+    detail_params: dict[str, MessageParamValue] | None = None
     warnings: list[str] = Field(default_factory=list)
 
 
 class IpsValidationReportOut(BaseModel):
     status: str
     reasons: list[str]
+    reason_codes: list[MessageValue | None] | None = None
     warnings: list[str]
     total_events: int | None = None
     window_start: datetime
@@ -125,6 +129,8 @@ class IpsProfileOut(BaseModel):
     validation_requested_by: str | None = None
     collection_eligible: bool
     ineligible_reason: str | None = None
+    ineligible_reason_code: str | None = None
+    ineligible_reason_params: dict[str, MessageParamValue] | None = None
     updated_by: str | None = None
     updated_at: datetime
 
@@ -133,6 +139,8 @@ class IpsFieldStatusOut(BaseModel):
     field: str
     status: str
     detail: str | None = None
+    detail_code: str | None = None
+    detail_params: dict[str, MessageParamValue] | None = None
 
 
 class IpsSourceStatusOut(BaseModel):
@@ -156,8 +164,11 @@ class IpsSourceStatusOut(BaseModel):
     #: can say why a row is INVALID or INCONCLUSIVE and not only that it is.
     validation_fields: list[IpsFieldStatusOut] = Field(default_factory=list)
     validation_reasons: list[str] = Field(default_factory=list)
+    validation_reason_codes: list[MessageValue | None] | None = None
     collection_eligible: bool
     ineligible_reason: str | None = None
+    ineligible_reason_code: str | None = None
+    ineligible_reason_params: dict[str, MessageParamValue] | None = None
     updated_by: str | None = None
     updated_at: datetime
 
@@ -180,3 +191,4 @@ class IpsProfileHistoryEntryOut(BaseModel):
     mapping_after: dict[str, Any] | None = None
     outcome: str
     reasons: list[str] | None = None
+    reason_codes: list[MessageValue | None] | None = None

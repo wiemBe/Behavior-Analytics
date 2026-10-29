@@ -1,0 +1,501 @@
+{
+  "state": {
+    "meaning": {
+      "INSUFFICIENT_DATA": "Bu mevsimsel hücre için henüz yeterli bir baseline yok — bu kaynak değerlendirilmiyor ve bu, sağlıklı olduğu anlamına gelmez.",
+      "NORMAL_outside": "Haftanın bu günü ve saati için algılayıcının kararına göre NORMAL; burada gösterilen gözlenen değer beklenen aralığın içinde değil.",
+      "NORMAL_unknown": "Haftanın bu günü ve saati için algılayıcının kararına göre NORMAL.",
+      "NORMAL_inside": "Gözlenen hacim, haftanın bu günü ve saati için beklenen aralığın içinde.",
+      "CANDIDATE": "Anormal bir aralık kaydedildi. Henüz bir vaka değil: vakaya yükseltmek için art arda anormal aralıklar gerekir.",
+      "OPEN": "Onaylanmış vaka — tek bir zaman diliminden kaynaklanan yapay sonucu elemeye yetecek kadar art arda anormal aralık.",
+      "RECOVERING": "Beklenen aralığın içine döndü, ancak yeterli sayıda art arda normal aralık bunu doğrulayana kadar açık tutuluyor.",
+      "RESOLVED": "Kalıcı normal davranıştan sonra kapatıldı.",
+      "SUPPRESSED": "Kaynak bakımdayken algılandı. Geçmiş için kaydedildi, hiçbir zaman bildirilmez."
+    }
+  },
+  "dimension": {
+    "meaning": {
+      "AVAILABLE": "Her iki pencere için de eksiksiz toplandı.",
+      "TRUNCATED": "Sonuç yapılandırılmış değer sınırına ulaştı; bu nedenle aşağıdaki katkı sağlayanlar listenin tamamı değil, en üst kısmıdır. Sınır altında yeni ve kaybolan değerler belirlenemez — bir değer, yalnızca diğer pencerede sınırın altında kaldığı için yeni görünebilir — bu yüzden bu sayılar bildirilmez.",
+      "UNAVAILABLE": "Kullanılamıyor — bu alan, seçilen aralık için QRadar olay şeması veya DSM tarafından sunulmadı. Kontrol edilmedi ve buradaki katkı sağlayanların yokluğundan hiçbir sonuç çıkarılamaz.",
+      "FAILED": "Bu boyut için sorgu tamamlanmadı. Kontrol edilmedi."
+    },
+    "label": {
+      "event_name": "Olay adı",
+      "source_ip": "Kaynak IP",
+      "destination_ip": "Hedef IP",
+      "destination_port": "Hedef port",
+      "source_port": "Kaynak port",
+      "username": "Kullanıcı adı",
+      "action": "Eylem",
+      "category": "Kategori",
+      "protocol": "Protokol"
+    }
+  },
+  "bucket": {
+    "meaning": {
+      "COMPLETE": "Aralığın tamamı gözlendi.",
+      "PARTIAL": "Bu aralığın yalnızca bir bölümü toplandı; bu nedenle hacmi bir ölçüm değil, eksik sayımdır. Hiçbir baseline'a girmez ve hiçbir kararı etkilemez.",
+      "MISSING": "Bu aralık hiç toplanmadı. Yokluğu, kaynağın olay gönderip göndermediği hakkında hiçbir şey söylemez."
+    }
+  },
+  "score": {
+    "meaning": {
+      "OK": "MAD sıfır değildi; bu nedenle robust z-skoru anlamlı bir sapma ölçüsüdür ve karar buna dayanır.",
+      "DEGENERATE": "MAD sıfırdı — baseline örneklerinin yarısından fazlası aynıydı; bu, sabit ve düşük hacimli bir kaynak için normaldir. Bu nedenle z-skoru, tabana sabitlenmiş ölçeğin yapay bir sonucudur ve kullanılmadı. Karar bunun yerine belirlenimci beklenen sınır, oran ve mutlak fark testlerine dayanır; bu sağlam ama daha zayıf bir kanıttır ve güven değeri bunu yansıtacak şekilde sınırlandırılmıştır.",
+      "UNAVAILABLE": "Bu karar için robust skor hesaplanamadı."
+    }
+  },
+  "range": {
+    "label": "{count, plural, other {# sa}}",
+    "nav": "Grafik zaman aralığı",
+    "title": "Aralık"
+  },
+  "source": {
+    "note7d": "Bu grafik son 24 saati gösterir; bu sayfanın gösterebildiği en uzun penceredir. Bileşen 7 günü kapsıyordu; bir dakikalık zaman dilimlerinden oluşan 7 günlük pencere burada kullanılamıyor."
+  },
+  "weekday": {
+    "1": "Pzt",
+    "2": "Sal",
+    "3": "Çar",
+    "4": "Per",
+    "5": "Cum",
+    "6": "Cmt",
+    "7": "Paz",
+    "unknown": "ISO hafta günü {weekday}, saat {hour} UTC"
+  },
+  "baseline": {
+    "label": {
+      "STILL_LEARNING": "Hâlâ öğreniyor",
+      "DEGENERATE": "Sıfır değişkenlik",
+      "INCOMPLETE": "Eksik",
+      "RELIABLE": "Güvenilir"
+    },
+    "explanation": {
+      "learningSome": "Haftanın bu günü ve saati için şimdiye kadar yalnızca {count, plural, other {{shown} tam örnek}} var — bu kaynağı değerlendirmek için yeterli değil. Değerlendirilmiyor; bu, sağlıklı olduğu anlamına gelmez.",
+      "learningNone": "Haftanın bu günü ve saati için henüz tam örnek yok. Bu kaynak değerlendirilmiyor; bu, sağlıklı olduğu anlamına gelmez.",
+      "degenerate": "Baseline değişkenliği sıfır — haftanın bu günü ve saati için {samples} örneğin yarısından fazlası aynıydı; bu, sabit ve düşük hacimli bir kaynak için normaldir. Bu nedenle robust z-skoru yapay bir sonuçtur ve kullanılmaz; önemli sapmalar belirlenimci beklenen aralık testine döner, bu sağlam ama daha zayıf bir kanıttır.",
+      "incomplete": "Haftanın bu günü ve saati için baseline, {completeness} toplama tamlığında {count, plural, other {{shown} örnekten}} oluşuyor ve backend onu güvenilir olarak işaretlemedi. Buna karşı verilen kararlar göründüğünden daha zayıftır.",
+      "reliableCell": "Baseline, haftanın bu günü ve saati için {count, plural, other {{shown} tam örneğe}} dayanıyor.",
+      "reliableSeasonal": "Baseline, bu mevsimsel hücre için {count, plural, other {{shown} tam örneğe}} dayanıyor."
+    }
+  },
+  "collection": {
+    "label": {
+      "NONE": "Yakın zamanda toplama yok",
+      "DELAYED": "Gecikmeli",
+      "PARTIAL": "Kısmi",
+      "CURRENT": "Güncel"
+    },
+    "explanation": {
+      "none": "Bu kaynak için hiç metrik zaman dilimi toplanmadı. Bu, toplamanın yokluğudur; kaynağın sessiz olduğunun gözlemi değildir.",
+      "delayed": "Toplanan en yeni aralık {minutes} dk eski; {factor} toplama aralığından fazla geride. Bu kaynağın yakın zamandaki hacmi henüz bilinmiyor — bu, olay gönderip göndermediği hakkında hiçbir şey söylemez.",
+      "absent": "{count, plural, other {{shown} aralığın}} saklanmış hiç zaman dilimi yok",
+      "incomplete": "{count, plural, other {{shown} aralık}} yalnızca kısmen toplandı",
+      "and": " ve ",
+      "partial": "Bu pencerenin kapsadığı {expected} aralık arasında {bits}. Bunlar sıfır olarak değil, boşluk olarak çizilir ve hiçbir baseline'a girmez — yokluğu, kaynağın olay gönderip göndermediği hakkında hiçbir şey söylemez.",
+      "current": "Bu penceredeki {total} aralığın tamamı eksiksiz toplandı."
+    }
+  },
+  "timeline": {
+    "over": "Son {range} boyunca gözlenen hacim.",
+    "noneCollected": "Bu pencerede hiçbir aralık eksiksiz toplanmadı; bu nedenle tanımlanacak gözlenen bir seri yok.",
+    "ranged": "Değerler, eksiksiz toplanan {count, plural, other {{shown} aralık}} boyunca {min} ile {max} EPS arasında değişti.",
+    "current": "En son gözlem değeri {value} EPS.",
+    "currentNone": "En son aralıkta güvenilir bir gözlem yok.",
+    "expected": "Beklenen baseline değeri {value} EPS.",
+    "expectedNone": "Bu kaynak için henüz bir baseline beklentisi yok; hâlâ öğreniyor.",
+    "missing": "{count, plural, other {{shown} aralık}} toplanmadı",
+    "partial": "{count, plural, other {{shown} aralık}} yalnızca kısmen toplandı",
+    "and": " ve ",
+    "gaps": "{bits} — gözlenmedikleri için sıfır trafik olarak değil, boşluk olarak çizildi.",
+    "anomaliesUnknown": "Bu pencere için anomali geçmişi yüklenemedi.",
+    "anomaliesShowing": "Bu pencerede algılanan {shown} / {total} anomali gösteriliyor.",
+    "anomaliesNone": "Bu pencerede anomali algılanmadı.",
+    "anomaliesSome": "Bu pencerede {count, plural, other {{shown} anomali}} algılandı."
+  },
+  "attention": {
+    "issue": {
+      "noEvents": "Olay alınmadı",
+      "evidenceFailed": "Kanıt toplama başarısız oldu",
+      "volumeBelow": "Hacim baseline'ın altında",
+      "volumeAbove": "Hacim baseline'ın üstünde",
+      "noBaseline": "Yeterli baseline yok",
+      "deviating": "Baseline'dan sapıyor"
+    }
+  },
+  "series": {
+    "kind": {
+      "COMPLETE": "aralığın tamamı gözlendi",
+      "PARTIAL": "kısmen toplandı — bildirilen hacim bir ölçüm değil, eksik sayımdır",
+      "MISSING": "aralık toplanmadı — bu, sessizliğin kanıtı değildir",
+      "GAP": "bu aralık için hiç zaman dilimi saklanmadı"
+    }
+  },
+  "health": {
+    "meaning": {
+      "INSUFFICIENT_DATA": "Karar vermek için yeterli toplanmış kanıt yok — bu bir bulgu değildir.",
+      "NOT_EVALUATED": "Bu teknik için henüz bir değerlendirme çalışmadı.",
+      "HEALTHY": "Beklenen sınırlar içinde tetikleniyor.",
+      "DISABLED": "QRadar'da devre dışı; bu nedenle algılamaya katkı sağlayamaz.",
+      "NOISY": "Beklenen hızının çok üzerinde tetikleniyor.",
+      "INACTIVE": "Daha önce tetiklendi, ancak yakın zamanda tetiklenmedi.",
+      "NEVER_OBSERVED": "Sürekli izlendi ve hiç tetiklendiği görülmedi.",
+      "DEPENDENCY_DEGRADED": "Bağımlı olduğu bir yapı taşı veya log source sağlıksız.",
+      "COVERED": "Bu tekniğe eşlenen en az bir sağlıklı, etkin kural var.",
+      "PARTIAL": "Eşlenmiş, ancak katkı sağlayan algılama tam olarak sağlıklı değil.",
+      "DEGRADED": "Eşlenmiş kurallar var ancak bozulmuş durumda.",
+      "MISSING": "Bu tekniğe eşlenen kural yok."
+    }
+  },
+  "fault": {
+    "attempts": {
+      "unknown": "değerlendirmesi başarısız oldu",
+      "once": "değerlendirmesi bir kez başarısız oldu",
+      "times": "değerlendirmesi {count} kez başarısız oldu",
+      "used": "{attempts} / {max} deneme kullanıldı"
+    },
+    "givenUp": {
+      "count": "24 sa içinde {count, plural, other {{shown} zaman diliminden}} vazgeçildi",
+      "some": "24 sa içinde zaman dilimlerinden vazgeçildi"
+    },
+    "qualifier": {
+      "text": "Değerlendirilmedi: {count, plural, other {{shown} kaynak}} (24 sa)",
+      "sourcesClause": "{count, plural, other {{shown} kaynakta}} değerlendirme hatası var",
+      "bucketsClause": "24 sa içinde {count, plural, other {{shown} zaman dilimi}} değerlendirilmedi"
+    }
+  },
+  "history": {
+    "text": "QRadar geçmişinden okundu, değerlendirilmedi",
+    "textCapital": "QRadar geçmişinden okundu, değerlendirilmedi",
+    "originUnknown": "köken bilinmiyor",
+    "originLine": "Köken: bilinmiyor (kaynağın zaman dilimi kaydı eksik)",
+    "span": "{start} ile {end} UTC arası",
+    "summaryHistory": "{count, plural, other {{history} / {total} zaman dilimi}} QRadar geçmişinden okundu, değerlendirilmedi ({spans}).",
+    "summaryUnknown": "{count, plural, other {{unknown} zaman diliminin}} kökeni bilinmiyor: kaynağın zaman dilimi kaydı eksik."
+  },
+  "filters": {
+    "searchLabel": "Kaynak adına göre ara",
+    "searchPlaceholder": "Kaynak adı ara…",
+    "stateLabel": "Davranış durumu",
+    "allStates": "Tüm durumlar",
+    "anomalyLabel": "Anomali durumu",
+    "anyAnomaly": "Herhangi bir anomali durumu",
+    "hasActive": "Etkin anomalisi var",
+    "noActive": "Etkin anomalisi yok",
+    "baselineLabel": "Baseline yeterliliği",
+    "anyBaseline": "Herhangi bir baseline",
+    "insufficientOnly": "Yalnızca yetersiz veri",
+    "baselinedOnly": "Yalnızca baseline'ı olanlar",
+    "submit": "Filtrele",
+    "clear": "Temizle"
+  },
+  "header": {
+    "allSources": "← Tüm kaynaklar",
+    "judgedThrough": "<time></time> zamanına kadar değerlendirildi",
+    "partial": "KISMİ",
+    "qradarId": "QRadar kimliği {id}",
+    "criticality": "Kritiklik {value}",
+    "monitoringDisabled": "İzleme devre dışı",
+    "maintenanceMode": "Bakım modu",
+    "inventoryDetail": "Envanter ayrıntısı"
+  },
+  "qualifier": {
+    "notJudgedSince": "<time></time> zamanından beri değerlendirilmedi",
+    "noVerdict": "Bir zaman diliminin kararı yok",
+    "one": "1 zaman dilimi değerlendirilmedi",
+    "oneWithTime": "1 zaman dilimi değerlendirilmedi: <time></time>",
+    "many": "24 sa içinde {count, plural, other {{shown} zaman dilimi}} değerlendirilmedi",
+    "latest": ", en yeni <time></time>",
+    "unit": "Değerlendirilmeyen zaman dilimi",
+    "unitWithTime": "Değerlendirilmeyen zaman dilimi: <time></time>"
+  },
+  "evaluationNotice": {
+    "noVerdict": "<bucket></bucket> zaman diliminin kararı yok.",
+    "failedAt": "Değerlendirmesi <time></time> anında başarısız oldu{errorClass}.",
+    "failed": "Değerlendirmesi başarısız oldu.",
+    "coverThrough": "Bu kaynağın kararları <time></time> zamanına kadar olan zaman dilimlerini kapsıyor; sonraki deneme bir sonraki değerlendirme turunda çalışır.",
+    "nextAttempt": "Sonraki deneme bir sonraki değerlendirme turunda çalışır.",
+    "notJudged": "<bucket></bucket> zaman dilimi değerlendirilmedi.",
+    "notJudgedAttempts": "<bucket></bucket> zaman dilimi değerlendirilmedi: {phrase}.",
+    "notJudgedLast": "<bucket></bucket> zaman dilimi değerlendirilmedi; en son <time></time> anında{errorClass}.",
+    "notJudgedAttemptsLast": "<bucket></bucket> zaman dilimi değerlendirilmedi: {phrase}; en son <time></time> anında{errorClass}.",
+    "skippedOne": "Bu pencerede 1 zaman diliminin kararı yok.",
+    "skippedMany": "Bu pencerede {count, plural, other {{shown} zaman diliminin}} kararı yok.",
+    "resumed": "Değerlendirme yeniden başladı; kararlar artık <time></time> zamanına kadar olan zaman dilimlerini kapsıyor."
+  },
+  "quality": {
+    "baselineTitle": "Baseline kalitesi",
+    "samples": "Örnekler",
+    "seasonalCell": "Mevsimsel hücre",
+    "cellCompleteness": "Hücre tamlığı",
+    "expectedRange": "Beklenen aralık (EPS)",
+    "collectionTitle": "Toplama sağlığı",
+    "collectionUnknown": "Metrik geçmişi yüklenemedi; bu nedenle toplama değerlendirilemiyor. Bu, başarısız bir istektir; kaynak veya toplayıcısı hakkında bir bilgi değildir.",
+    "latestInterval": "Toplanan son aralık",
+    "lag": "Toplama gecikmesi",
+    "intervals": "Penceredeki aralıklar",
+    "intervalsObserved": "{observed} / {total} aralık tam gözlendi",
+    "qradarStatus": "QRadar log source durumu",
+    "unavailable": "kullanılamıyor"
+  },
+  "sourceAnomalies": {
+    "detector": "Algılayıcı",
+    "state": "Durum",
+    "observedExpected": "Gözlenen → Beklenen (EPS)",
+    "deviation": "Sapma",
+    "started": "Başlangıç",
+    "evidence": "Kanıt",
+    "actions": "İşlemler",
+    "open": "Aç",
+    "needsAttention": "Dikkat gerekiyor",
+    "activeFailed": "Bu kaynak için etkin vaka listesi yüklenemedi. Şu anda açık, aday veya düzeliyor durumunda bir vaka olup olmadığı bilinmiyor.",
+    "noActive": "Bu kaynak için şu anda açık, aday veya düzeliyor durumunda bir vaka yok.",
+    "activeLabel": "Etkin anomaliler",
+    "activeCaption": "Bu kaynak için hâlâ açık, aday veya düzeliyor durumunda olan anomaliler.",
+    "recentlyClosed": "Yakın zamanda kapananlar",
+    "historyFailed": "Bu kaynak için anomali geçmişi yüklenemedi. Bu, başarısız bir istektir; anomali bulunmadığı anlamına gelmez.",
+    "noneUnjudged": "Anomali yok — ancak bu kaynağın yeterli bir baseline'ı yok; bu nedenle hiçbir algılayıcı onu değerlendirmedi. Bu, temiz bir sonuç değildir.",
+    "noneInWindow": "Son {range} içinde anomali algılanmadı.",
+    "closedLabel": "Yakın zamanda kapanan anomaliler",
+    "closedCaption": "Bu kaynak için çözülmüş veya artık etkin olmayan anomaliler."
+  },
+  "evidenceStatus": {
+    "NOT_REQUESTED": "İSTENMEDİ",
+    "PENDING": "BEKLİYOR",
+    "COMPLETE": "TAMAMLANDI",
+    "PARTIAL": "KISMİ",
+    "UNAVAILABLE": "KULLANILAMIYOR",
+    "FAILED": "BAŞARISIZ"
+  },
+  "evidenceWord": {
+    "NOT_REQUESTED": "İstenmedi",
+    "PENDING": "Bekliyor",
+    "COMPLETE": "Tamamlandı",
+    "PARTIAL": "Kısmi",
+    "UNAVAILABLE": "Kullanılamıyor",
+    "FAILED": "Başarısız"
+  },
+  "availability": {
+    "AVAILABLE": "KULLANILABİLİR",
+    "TRUNCATED": "KIRPILMIŞ",
+    "UNAVAILABLE": "KULLANILAMIYOR",
+    "FAILED": "BAŞARISIZ"
+  },
+  "completeness": {
+    "COMPLETE": "TAMAMLANDI",
+    "PARTIAL": "KISMİ",
+    "MISSING": "TOPLANMADI"
+  },
+  "advanced": {
+    "yes": "evet",
+    "no": "hayır",
+    "clearedWithTime": "Son değerlendirme hatası: <bucket></bucket> zaman dilimi {failed}{errorClass}, <time></time> anında; yeniden denemede <resolved></resolved> anında değerlendirildi.",
+    "clearedNoTime": "Son değerlendirme hatası: <bucket></bucket> zaman dilimi {failed}{errorClass}; yeniden denemede <resolved></resolved> anında değerlendirildi.",
+    "clearedFailed": {
+      "unknown": "başarısız oldu",
+      "once": "bir kez başarısız oldu",
+      "times": "{count} kez başarısız oldu"
+    },
+    "baselineHistory": "Baseline geçmişi",
+    "notLoaded": "yüklenmedi",
+    "cellsNote": "{count} hücre",
+    "cellsFailed": "Baseline geçmişi yüklenemedi. Bu, başarısız bir istektir; baseline bulunmadığı anlamına gelmez.",
+    "cellsEmpty": "Bu kaynak için henüz baseline hücresi hesaplanmadı. Hiçbir beklentiye göre değerlendirilmiyor.",
+    "cellsLabel": "Baseline hücreleri",
+    "cellsCaption": "Bu kaynağın mevsimsel baseline hücreleri; haftanın günü ve saati başına bir hücre, medyan, değişkenlik ve örnek sayısıyla.",
+    "weekday": "Haftanın günü (ISO)",
+    "hour": "Saat (UTC)",
+    "median": "Medyan (EPS)",
+    "samples": "Örnekler",
+    "completeness": "Tamlık",
+    "reliable": "Güvenilir",
+    "version": "Sürüm",
+    "metricBuckets": "Metrik zaman dilimleri",
+    "mostRecent": "en yeni {count}",
+    "bucketsFailed": "Metrik geçmişi yüklenemedi (yukarıdaki uyarıya bakın). Bu, başarısız bir istektir; toplamanın yokluğu anlamına gelmez.",
+    "bucketsEmpty": "Bu pencerede hiç metrik zaman dilimi toplanmadı. Bu, toplamanın yokluğudur; sıfır trafiğin gözlemi değildir.",
+    "bucketsCaption": "En son toplanan aralıklar; gözlenen hacim ve her birinin ne kadar eksiksiz toplandığıyla.",
+    "interval": "Aralık",
+    "events": "Olaylar",
+    "averageEps": "Ortalama EPS",
+    "peakEps": "En yüksek EPS",
+    "lastEvent": "Son olay",
+    "collectionDetails": "Toplama ayrıntıları",
+    "bucketsNotJudged": "Değerlendirilmeyen zaman dilimleri",
+    "lastCollected": "Toplanan son zaman dilimi",
+    "baselineSamples": "Baseline örnekleri",
+    "baselineCompleteness": "Baseline tamlığı",
+    "collectionSource": "Toplama kaynağı",
+    "collectionSourceValue": "QRadar Ariel, backend toplayıcı üzerinden",
+    "sourceMetadata": "Kaynak üst verisi",
+    "qradarId": "QRadar kimliği",
+    "type": "Tür",
+    "owner": "Sahip",
+    "enabled": "Etkin",
+    "monitoring": "İzleme",
+    "monitoringOn": "etkin",
+    "monitoringOff": "devre dışı",
+    "maintenance": "Bakım modu",
+    "maintenanceOn": "etkin",
+    "maintenanceOff": "etkin değil",
+    "qradarStatus": "QRadar durumu",
+    "timezone": "Saat dilimi",
+    "metadataFailed": "Bu kaynak için envanter üst verisi yüklenemedi."
+  },
+  "chart": {
+    "ariaDefault": "Beklenen baseline'a karşı gözlenen hacim",
+    "tooltip": {
+      "observed": "Gözlenen: {value} EPS",
+      "notMeasured": "Gözlenen: ölçülmedi ({meaning})",
+      "reported": "Kısmi toplamanın bildirdiği: {value} EPS",
+      "band": "Beklenen aralık: {low} – {high} EPS",
+      "expected": "Beklenen: {value} EPS",
+      "collection": "Toplama: {meaning}",
+      "anomalous": "Anormal aralık: {label}",
+      "anomalyFallback": "anomali"
+    },
+    "axis": {
+      "time": "Zaman (UTC)",
+      "eps": "Saniyedeki olay sayısı (EPS)"
+    },
+    "empty": "Bu pencere için hiç metrik zaman dilimi toplanmadı. Bu, toplamanın yokluğudur; sıfır trafiğin gözlemi değildir.",
+    "key": {
+      "title": "Grafik açıklaması",
+      "observed": "Gözlenen EPS",
+      "median": "Beklenen medyan",
+      "range": "Beklenen aralık",
+      "gap": "Tam toplanmadı",
+      "anomaly": "Anormal aralık",
+      "transition": "Yaşam döngüsü geçişi"
+    },
+    "note": "Gözlenen çizgideki boşluklar tam toplanmamış aralıklardır. Sıfır trafik değildir."
+  },
+  "scoreStatus": {
+    "OK": "TAMAM",
+    "DEGENERATE": "DEJENERE",
+    "UNAVAILABLE": "KULLANILAMIYOR"
+  },
+  "errors": {
+    "forbidden": "Davranış analizini görüntüleme izniniz yok.",
+    "expired": "Oturumunuzun süresi doldu. Devam etmek için yeniden oturum açın."
+  },
+  "boundary": {
+    "title": "Davranış genel bakışı",
+    "errorWhat": "Davranış analizi",
+    "loadingWhat": "Davranış analizi"
+  },
+  "overview": {
+    "metaTitle": "Genel bakış",
+    "title": "Davranış genel bakışı",
+    "description": "{shown} izlenen kaynak; her biri haftanın bu günü ve saati için kendi baseline'ıyla karşılaştırılıyor. <utc>Saatler UTC.</utc>",
+    "failed": "Davranış analizi yüklenemedi. Backend'e erişilemiyor olabilir. Yeniden denemek için sayfayı yenileyin; sorun sürerse backend sağlığını denetleyin.",
+    "failedShort": "Davranış analizi yüklenemedi.",
+    "stats": {
+      "openAnomalies": "Açık anomaliler",
+      "silentSources": "Sessiz kaynaklar",
+      "highDeviation": "Yüksek sapma",
+      "highDeviationNote": "Beklenen hacminin 2 katına veya üstüne çıkan ya da yarısına veya altına inen kaynaklar.",
+      "insufficientData": "Yetersiz veri",
+      "insufficientNote": "Değerlendirilmiyor — yukarıdaki sıfır bunları kapsamaz."
+    },
+    "strip": {
+      "spikes": "Ani artışlar",
+      "drops": "Ani düşüşler",
+      "candidates": "Adaylar",
+      "recovering": "Düzeliyor",
+      "resolved24h": "Çözülenler, 24 sa",
+      "evidencePending": "Kanıt bekliyor",
+      "evidenceFailed": "Kanıt başarısız"
+    },
+    "banner": {
+      "lead": "{count, plural, other {{shown} / {total} izlenen kaynakta geçerli mevsimsel hücre için yeterli baseline yok.}}",
+      "rest": "{count, plural, other {Bu kaynaklar değerlendirilmiyor; bu nedenle yukarıdaki hiçbir anomali sayısı onları kapsamıyor. Buradaki sıfır, bir karar bulunmadığını gösterir; her şeyin yolunda olduğunu değil.}}"
+    },
+    "attention": {
+      "title": "Dikkat gerekiyor",
+      "activeFailed": "Etkin anomali listesi yüklenemedi; bu çalışma listesi eksik olabilir.",
+      "ranked": "En yeni {shown} / {total} etkin anomali arasından sıralandı. <link>Tüm etkin anomalileri göster</link>.",
+      "unmatched": "{count, plural, other {{shown} etkin anomali bir çalışma listesi satırıyla eşleştirilemedi. <link>Tüm etkin anomalileri göster</link>.}}",
+      "empty": "Şu anda anormal olan, baseline'ından belirgin biçimde sapan ya da baseline bekleyen hiçbir şey yok. Yalnızca normal olan kaynaklar burada listelenmez.",
+      "label": "Dikkat gerektiren kaynaklar",
+      "caption": "Dikkat gerektiren kaynaklar; sıralama: yaşam döngüsü durumu, önem derecesi, sapma, ardından yenilik.",
+      "source": "Kaynak",
+      "state": "Durum",
+      "issue": "Sorun ve önem",
+      "observedExpected": "Gözlenen / beklenen (EPS)",
+      "deviation": "Sapma",
+      "started": "Başlangıç",
+      "detail": "Ayrıntı",
+      "investigate": "İncele",
+      "showing": "En yüksek öncelikli {limit} / {total} gösteriliyor. <link>Tüm etkin anomalileri gör</link>."
+    },
+    "recent": {
+      "title": "Son çözülenler",
+      "empty": "Henüz çözülmüş anomali yok.",
+      "latest": "Son çözülen {total} anomalinin en yeni {shown} kaydı gösteriliyor.",
+      "label": "Son çözülen anomaliler",
+      "caption": "Kalıcı normal davranıştan sonra kapanan anomaliler.",
+      "source": "Kaynak",
+      "detector": "Algılayıcı",
+      "severity": "Önem derecesi",
+      "resolved": "Çözüldü",
+      "detail": "Ayrıntı",
+      "investigate": "İncele"
+    },
+    "health": {
+      "title": "Kaynak sağlığı",
+      "viewAll": "Tüm {shown} kaynağı göster"
+    }
+  },
+  "sources": {
+    "metaTitle": "Kaynaklar",
+    "title": "Kaynaklar",
+    "description": "Haftanın bu günü ve saati için mevsimsel baseline'a karşı güncel hacim. Saatler UTC.",
+    "failed": "Kaynak davranışı yüklenemedi. Backend'e erişilemiyor olabilir. Yeniden denemek için sayfayı yenileyin; sorun sürerse backend sağlığını denetleyin.",
+    "noMatch": "Bu filtrelerle eşleşen kaynak yok. Bu filtrelenmiş bir görünümdür, filo hakkında bir açıklama değildir.",
+    "none": "İzlenen log source yok. Hacim baseline'ını toplamaya başlamak için bir kaynakta izlemeyi etkinleştirin.",
+    "label": "İzlenen log source'lar",
+    "caption": "Saniye başına gözlenen ve beklenen olay, baseline'dan sapma ve etkin anomali sayısıyla izlenen log source'lar.",
+    "source": "Kaynak",
+    "state": "Durum",
+    "observed": "Gözlenen (EPS)",
+    "expected": "Beklenen (EPS)",
+    "deviation": "Sapma",
+    "lastEvent": "Son olay",
+    "anomalies": "Anomaliler",
+    "detail": "Ayrıntı",
+    "stillLearning": "öğreniyor"
+  },
+  "sourcePage": {
+    "metaTitle": "Kaynak davranışı",
+    "title": "Kaynak davranışı",
+    "allSources": "← Tüm kaynaklar",
+    "notFound": "Bu log source mevcut değil. İzlemeden kaldırılmış olabilir; kaynak listesinden başka birini seçin.",
+    "failed": "Bu kaynak yüklenemedi. Backend'e erişilemiyor olabilir. Yeniden denemek için sayfayı yenileyin; sorun sürerse backend sağlığını denetleyin.",
+    "observedEps": "Gözlenen EPS",
+    "collectedNewer": "<time></time> tarihinde toplandı; son karardan daha yeni",
+    "mostRecent": "Toplanan en son aralık",
+    "expectedEps": "Beklenen EPS",
+    "stillLearning": "Öğreniyor",
+    "expectedNote": "Haftanın bu günü ve saati için mevsimsel baseline",
+    "deviation": "Sapma",
+    "deviationNote": "Gözlenenin beklenene oranı",
+    "lastEvent": "Son olay",
+    "lastEventNote": "Gözlenen en son olay",
+    "noEvent": "Hiç olay gözlenmedi",
+    "notes": {
+      "learning": "Baseline henüz öğreniyor",
+      "zeroVariability": "Baseline değişkenliği sıfır",
+      "collection": "Toplama: {status}",
+      "silent": "Kaynak şu anda sessiz",
+      "monitoringDisabled": "İzleme devre dışı",
+      "maintenance": "Bakım modu etkin"
+    },
+    "volume": "Gözlenen hacim",
+    "metricsFailed": "Metrik geçmişi yüklenemedi. Bu başarısız bir istektir, trafik yokluğu değil.",
+    "chartAria": "{name} için gözlenen EPS ve beklenen baseline",
+    "anomalies": "Anomaliler",
+    "quality": "Veri kalitesi",
+    "technical": "Teknik ayrıntı"
+  }
+}

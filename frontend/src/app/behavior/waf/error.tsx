@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function WafBehaviorError({
@@ -9,5 +11,13 @@ export default function WafBehaviorError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <BoundaryError title="WAF behavior" what="WAF behavior" digest={error.digest} onRetry={reset} />;
+  const t = useTranslations("waf.boundary");
+  return (
+    <BoundaryError
+      title={t("behaviorTitle")}
+      what={t("behaviorError")}
+      digest={error.digest}
+      onRetry={reset}
+    />
+  );
 }

@@ -1,0 +1,105 @@
+{
+  "meta": {
+    "title": "Sınıflama kuralları"
+  },
+  "boundary": {
+    "title": "Sınıflama kuralları",
+    "errorWhat": "Sınıflama kuralları",
+    "loadingWhat": "sınıflama kuralları"
+  },
+  "page": {
+    "title": "Sınıflama kuralları",
+    "description": "{total} kural; {builtIn} yerleşik, {custom} özel. Yerleşik kurallar açılıp kapatılabilir; neyle eşleştiklerini değiştirmek için daha yüksek öncelikli özel bir kural ekleyin.",
+    "descriptionError": "Bir log source'un sınıfını belirleyen kurallar.",
+    "errorTitle": "Sınıflama kuralları gösterilemedi.",
+    "forbidden": "Rolünüz sınıflama kurallarını okuyamıyor (izin: read:fleet). Hiçbir şey değiştirilmedi.",
+    "expired": "Oturumunuzun süresi doldu. Devam etmek için yeniden oturum açın.",
+    "failed": "Sınıflama kuralları yüklenemedi. Backend'e erişilemiyor olabilir; çalıştığını denetleyin, sonra sayfayı yenileyin. Hiçbir şey değiştirilmedi.",
+    "precedenceTitle": "Karar sırası",
+    "precedenceNote": "Karar veren ilk düzey kazanır. Bir düzeyde en yüksek öncelik kazanır; farklı sınıflar gösteren eşit öncelikli iki kural düzeyi kararsız bırakır, bir çakışma kaydeder ve bir sonraki düzey denenir."
+  },
+  "precedence": {
+    "override": {
+      "title": "Operatör geçersiz kılması",
+      "detail": "tek bir kaynak için seçilen sınıf"
+    },
+    "internal": {
+      "title": "QRadar dahili",
+      "detail": "tür dahilidir ya da tanımlayıcı 127.0.0.1'dir"
+    },
+    "group": {
+      "title": "Grup kuralları",
+      "detail": "kaynağın içinde olduğu bir grup ya da onun herhangi bir üst grubu"
+    },
+    "type": {
+      "title": "Tür kuralları",
+      "detail": "sayısal tür kimliği ya da tür adındaki bir desen"
+    },
+    "name": {
+      "title": "Ad kuralları",
+      "detail": "kaynak adındaki ya da tanımlayıcısındaki bir desen"
+    },
+    "unclassified": {
+      "title": "Sınıflanmamış",
+      "detail": "hiçbir şey eşleşmedi"
+    }
+  },
+  "level": {
+    "group": "Grup kuralları",
+    "type": "Tür kuralları",
+    "name": "Ad kuralları"
+  },
+  "kind": {
+    "GROUP": "Grup kimliği",
+    "TYPE": "Tür kimliği",
+    "TYPE_NAME_REGEX": "Tür adı deseni",
+    "NAME_REGEX": "Kaynak adı deseni",
+    "IDENTIFIER_REGEX": "Tanımlayıcı deseni"
+  },
+  "hint": {
+    "regex": "Düzenli ifade, en çok 256 karakter.",
+    "numeric": "Sayısal bir kimlik."
+  },
+  "failure": {
+    "forbidden": "Rolünüz sınıflama kurallarını değiştiremiyor (izin: admin:classification). Hiçbir şey değiştirilmedi.",
+    "notChanged": "Değiştirilmedi. {reason}"
+  },
+  "manager": {
+    "levelEmptyTitle": "{level} yok.",
+    "levelEmptyText": "Aşağıdan bir kural eklenene kadar kaynaklar bu düzeyde sınıflandırılmaz.",
+    "caption": "{level}, en yüksek öncelik önce. Kapalı bir kural atlanır.",
+    "priority": "Öncelik",
+    "pattern": "Desen",
+    "class": "Sınıf",
+    "origin": "Köken",
+    "enabled": "Etkin",
+    "actions": "İşlemler",
+    "addTitle": "Özel kural ekle",
+    "addNote": "Yalnızca yönetici, denetim kaydı tutulur",
+    "editAria": "{pattern} kuralını düzenle",
+    "targetClass": "Hedef sınıf",
+    "description": "Açıklama",
+    "matches": "Eşleşen",
+    "saveRule": "Kuralı kaydet",
+    "cancel": "İptal",
+    "addRule": "Kural ekle",
+    "builtIn": "Yerleşik",
+    "custom": "Özel",
+    "oneInstance": "Tek instance",
+    "allInstances": "Tüm instance'lar",
+    "enabledAria": "Etkin: {label}",
+    "on": "Açık",
+    "off": "Kapalı",
+    "confirmDelete": "Silmeyi onayla",
+    "keep": "Koru",
+    "edit": "Düzenle",
+    "delete": "Sil",
+    "editRowAria": "{label} kuralını düzenle",
+    "deleteRowAria": "{label} kuralını sil",
+    "enabledDone": "Etkinleştirildi. Kaynaklar yeniden sınıflandırılıyor.",
+    "disabledDone": "Devre dışı bırakıldı. Kaynaklar yeniden sınıflandırılıyor.",
+    "saved": "Kaydedildi. Kaynaklar yeniden sınıflandırılıyor.",
+    "added": "Kural eklendi. Eşleştiği kaynaklar yeniden sınıflandırılıyor.",
+    "priorityHint": "0 ile 10000 arası. Bir düzeyde en yüksek öncelik karar verir."
+  }
+}

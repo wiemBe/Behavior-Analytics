@@ -1,3 +1,5 @@
+import { getLocale, getTranslations } from "next-intl/server";
+
 import {
   api,
   type CoverageSummary,
@@ -10,10 +12,17 @@ import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { formatShare } from "@/lib/format";
+import { renderBackendMessage } from "@/i18n/backendMessage";
+import type { Locale } from "@/i18n/locale";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { kindLabel, mappingSourceLabel, statusLabel } from "@/lib/coverageText";
+import { formatShare, type FormatLocale } from "@/lib/format";
+import { plainCount } from "@/lib/fleetText";
 import { healthMeaning, healthTone } from "@/lib/health";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "./coverage.css";
@@ -24,12 +33,15 @@ const PAGE_SIZE = 50;
 // than silently absent.
 const STATUSES = ["COVERED", "PARTIAL", "DEGRADED", "MISSING", "NOT_EVALUATED"];
 
-export default async function CoveragePage({
+async function CoveragePage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
+  const t = await getTranslations("coverage");
+  const say = asTextTranslator(await getTranslations());
+  const locale = (await getLocale()) as FormatLocale;
   const offset = Math.max(0, Number(params.offset ?? 0) || 0);
 
   let summary: CoverageSummary | null = null;
@@ -46,13 +58,13 @@ export default async function CoveragePage({
       api.coverageByDataSource(),
     ]);
   } catch (err) {
-    error = loadErrorMessage(err, "detection coverage", "read:coverage");
+    error = loadErrorMessage(err, t("loadNoun"), "read:coverage", say);
   }
 
   if (error) {
     return (
       <>
-        <PageHeader title="Detection Coverage" />
+        <PageHeader guide={guideFor("/coverage")} title={t("title")} />
         <div className="notice" role="alert">
           <p>{error}</p>
         </div>
@@ -68,19 +80,17 @@ export default async function CoveragePage({
   return (
     <>
       <PageHeader
-        title="Detection Coverage"
-        description="MITRE ATT&CK technique coverage, derived from mapped rules and their observed health. Coverage is never inferred from a rule merely existing."
+        guide={guideFor("/coverage")}
+        title={t("title")}
+        description={t("description")}
       />
 
       {nothingMapped ? (
         // The honest empty state. Showing 0% covered here would be a claim we
         // cannot support; showing 100% would be worse.
         <div className="notice">
-          <strong>Coverage has not been evaluated.</strong>
-          <p>
-            No ATT&amp;CK technique mappings are configured, so coverage cannot be
-            measured. An administrator adds them. This is not a finding of zero coverage.
-          </p>
+          <strong>{t("notEvaluatedHeading")}</strong>
+          <p>{t("notEvaluatedBody")}</p>
         </div>
       ) : (
         <>
@@ -88,8 +98,8 @@ export default async function CoveragePage({
             {STATUSES.map((s) => (
               <StatCard
                 key={s}
-                label={s.replace(/_/g, " ")}
-                value={summary?.by_status?.[s] ?? 0}
+                label={statusLabel(say, s)}
+                value={plainCount(summary?.by_status?.[s] ?? 0, locale)}
                 tone={healthTone(s) || undefined}
               />
             ))}
@@ -98,54 +108,64 @@ export default async function CoveragePage({
               .map((s) => (
                 <StatCard
                   key={s}
-                  label={s.replace(/_/g, " ")}
-                  value={summary?.by_status?.[s] ?? 0}
+                  label={statusLabel(say, s)}
+                  value={plainCount(summary?.by_status?.[s] ?? 0, locale)}
                   tone={healthTone(s) || undefined}
                 />
               ))}
           </div>
 
           <p className="muted">
-            {summary?.total_techniques} techniques evaluated ·{" "}
-            {formatShare(summary?.covered_ratio)} covered ·{" "}
-            {summary?.mapping_provenance.explicit ?? 0} explicit /{" "}
-            {summary?.mapping_provenance.inferred ?? 0} inferred mappings ·
-            generated {<UtcTime value={summary?.generated_at} />}
+            {t.rich("summary", {
+              total: summary ? plainCount(summary.total_techniques, locale) : "",
+              covered: formatShare(summary?.covered_ratio, locale),
+              explicit: plainCount(summary?.mapping_provenance.explicit ?? 0, locale),
+              inferred: plainCount(summary?.mapping_provenance.inferred ?? 0, locale),
+              time: () => <UtcTime value={summary?.generated_at} />,
+            })}
           </p>
 
           {items.length === 0 ? (
-            <div className="notice">No techniques on this page.</div>
+            <div className="notice">{t("noTechniques")}</div>
           ) : (
             <>
-              <TableScroll label="Techniques">
-              <table className="coverage-table" aria-label="Techniques">
+              <TableScroll label={t("techniques.label")}>
+              <table className="coverage-table" aria-label={t("techniques.label")}>
                 <thead>
                   <tr>
-                    <th>Technique</th>
-                    <th>Name</th>
-                    <th>Tactic</th>
-                    <th>Status</th>
-                    <th className="num">Rules</th>
-                    <th className="num">Score</th>
-                    <th>Evidence</th>
+                    <th>{t("techniques.technique")}</th>
+                    <th>{t("techniques.name")}</th>
+                    <th>{t("techniques.tactic")}</th>
+                    <th>{t("techniques.status")}</th>
+                    <th className="num">{t("techniques.rules")}</th>
+                    <th className="num">{t("techniques.score")}</th>
+                    <th>{t("techniques.evidence")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((t) => (
-                    <tr key={t.technique_id}>
-                      <td>{t.technique_id}</td>
-                      <td>{t.technique_name ?? "—"}</td>
-                      <td>{t.tactic ?? "—"}</td>
+                  {items.map((tq) => (
+                    <tr key={tq.technique_id}>
+                      <td>{tq.technique_id}</td>
+                      <td>{tq.technique_name ?? "—"}</td>
+                      <td>{tq.tactic ?? "—"}</td>
                       <td>
-                        <span className={`pill ${healthTone(t.status)}`}>
-                          {t.status.replace(/_/g, " ")}
+                        <span className={`pill ${healthTone(tq.status)}`}>
+                          {statusLabel(say, tq.status)}
                         </span>
                       </td>
-                      <td className="num">{t.mapped_rule_count}</td>
+                      <td className="num">{plainCount(tq.mapped_rule_count, locale)}</td>
                       <td className="num">
-                        {formatShare(t.coverage_score)}
+                        {formatShare(tq.coverage_score, locale)}
                       </td>
-                      <td className="muted">{t.reason ?? healthMeaning(t.status)}</td>
+                      <td className="muted">
+                        {tq.reason !== null && tq.reason !== undefined
+                          ? renderBackendMessage(
+                              { text: tq.reason, code: tq.reason_code, params: tq.reason_params },
+                              locale as Locale,
+                              say,
+                            )
+                          : healthMeaning(tq.status, say)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -163,20 +183,20 @@ export default async function CoveragePage({
         </>
       )}
 
-      <h3>Rule-centric view</h3>
+      <h3>{t("byRule.heading")}</h3>
       {byRule.length === 0 ? (
-        <div className="notice">No rules have ATT&amp;CK technique mappings yet.</div>
+        <div className="notice">{t("byRule.empty")}</div>
       ) : (
-        <TableScroll label="Coverage by rule">
-        <table className="coverage-table" aria-label="Coverage by rule">
-          <thead><tr><th>Rule</th><th>Enabled</th><th>Health</th><th>Techniques</th><th>Evidence</th></tr></thead>
+        <TableScroll label={t("byRule.label")}>
+        <table className="coverage-table" aria-label={t("byRule.label")}>
+          <thead><tr><th>{t("byRule.rule")}</th><th>{t("byRule.enabled")}</th><th>{t("byRule.health")}</th><th>{t("byRule.techniques")}</th><th>{t("byRule.evidence")}</th></tr></thead>
           <tbody>
             {byRule.map((r) => (
               <tr key={r.rule_id}>
-                <td>{r.name}</td><td>{r.enabled ? "Yes" : "No"}</td>
-                <td><span className={`pill ${healthTone(r.health_status)}`}>{r.health_status.replace(/_/g, " ")}</span></td>
-                <td>{r.techniques.map((t) => t.technique_id).join(", ")}</td>
-                <td className="muted">{r.techniques.map((t) => `${t.source.toLowerCase()} ${formatShare(t.confidence)}`).join("; ")}</td>
+                <td>{r.name}</td><td>{r.enabled ? t("byRule.yes") : t("byRule.no")}</td>
+                <td><span className={`pill ${healthTone(r.health_status)}`}>{statusLabel(say, r.health_status)}</span></td>
+                <td>{r.techniques.map((tq) => tq.technique_id).join(", ")}</td>
+                <td className="muted">{r.techniques.map((tq) => `${mappingSourceLabel(say, tq.source)} ${formatShare(tq.confidence, locale)}`).join("; ")}</td>
               </tr>
             ))}
           </tbody>
@@ -184,20 +204,20 @@ export default async function CoveragePage({
         </TableScroll>
       )}
 
-      <h3>Data-source-centric view</h3>
+      <h3>{t("byDataSource.heading")}</h3>
       {byDataSource.length === 0 ? (
-        <div className="notice">No rule-to-log-source dependencies are available from this QRadar inventory.</div>
+        <div className="notice">{t("byDataSource.empty")}</div>
       ) : (
-        <TableScroll label="Coverage by data source">
-        <table className="coverage-table" aria-label="Coverage by data source">
-          <thead><tr><th>Data source</th><th>Kind</th><th>Rules</th><th>Techniques</th><th>Evidence</th></tr></thead>
+        <TableScroll label={t("byDataSource.label")}>
+        <table className="coverage-table" aria-label={t("byDataSource.label")}>
+          <thead><tr><th>{t("byDataSource.dataSource")}</th><th>{t("byDataSource.kind")}</th><th>{t("byDataSource.rules")}</th><th>{t("byDataSource.techniques")}</th><th>{t("byDataSource.evidence")}</th></tr></thead>
           <tbody>
             {byDataSource.map((d) => (
               <tr key={`${d.kind}:${d.target_ref}`}>
-                <td>{d.target_name ?? d.target_ref}</td><td>{d.kind.replace(/_/g, " ")}</td>
+                <td>{d.target_name ?? d.target_ref}</td><td>{kindLabel(say, d.kind)}</td>
                 <td>{d.rules.map((r) => r.name).join(", ")}</td>
                 <td>{d.techniques.join(", ") || "—"}</td>
-                <td className="muted">{d.rules.map((r) => `${r.dependency_source.toLowerCase()} ${formatShare(r.dependency_confidence)}`).join("; ")}</td>
+                <td className="muted">{d.rules.map((r) => `${mappingSourceLabel(say, r.dependency_source)} ${formatShare(r.dependency_confidence, locale)}`).join("; ")}</td>
               </tr>
             ))}
           </tbody>
@@ -207,3 +227,5 @@ export default async function CoveragePage({
     </>
   );
 }
+
+export default withRouteMessages("/coverage", CoveragePage);

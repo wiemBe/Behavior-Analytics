@@ -9,6 +9,7 @@ const byLabel = (a: { label: string }, b: { label: string }) => a.label.localeCo
 
 /** Scheduled searches (`GET /searches`). The layout stores the search id. */
 export const SEARCH_OPTIONS: OptionsSource = {
+  messageKey: "scheduledSearches",
   what: "scheduled searches",
   emptyReason: "No scheduled search exists yet, so there is nothing to chart.",
   read: () => ({
@@ -27,6 +28,7 @@ export const SEARCH_OPTIONS: OptionsSource = {
  * analyst can place the widget, and the chart shows the empty state.
  */
 export const SEARCH_METRIC_OPTIONS: OptionsSource = {
+  messageKey: "searchMetricKeys",
   what: "metric keys",
   emptyReason: "This search has stored no metric key yet.",
   dependsOn: "search_id",

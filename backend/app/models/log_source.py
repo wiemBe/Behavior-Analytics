@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     BigInteger,
@@ -32,6 +32,7 @@ from app.models.enums import (
     EvidenceStatus,
     Severity,
 )
+from app.models.message_ref import stored_code, stored_params
 
 if TYPE_CHECKING:
     # Runtime import would be circular: explanation.py maps back to
@@ -329,12 +330,19 @@ class LogSourceAnomaly(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Human-readable reason, rendered server-side so the UI never has to
     # reconstruct detection logic.
     explanation: Mapped[str | None] = mapped_column(Text)
+    #: `{code, params}` of `explanation`, written and overwritten with it (NULL on rows stored
+    #: before codes).
+    explanation_i18n: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     details: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Set when the anomaly fired while the source was in maintenance: recorded
     # for history but never notified.
     suppressed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     suppression_reason: Mapped[str | None] = mapped_column(String(255))
+    #: `{code, params}` of `suppression_reason`. No endpoint serves the reason today.
+    suppression_reason_i18n: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
 
     # --- Phase A lifecycle --------------------------------------------------
     state: Mapped[AnomalyState] = mapped_column(
@@ -380,6 +388,14 @@ class LogSourceAnomaly(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="anomaly", cascade="all, delete-orphan", uselist=False
     )
 
+    @property
+    def explanation_code(self) -> str | None:
+        return stored_code(self.explanation_i18n)
+
+    @property
+    def explanation_params(self) -> dict[str, Any] | None:
+        return stored_params(self.explanation_i18n)
+
     def __repr__(self) -> str:
         return f"<LogSourceAnomaly {self.anomaly_type} state={self.state}>"
 
@@ -410,8 +426,18 @@ class AnomalyStateTransition(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # suppression has no triggering bucket.
     bucket_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reason: Mapped[str | None] = mapped_column(Text)
+    #: `{code, params}` of `reason`, written with it (NULL on rows stored before codes).
+    reason_i18n: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     actor: Mapped[str] = mapped_column(String(64), default="anomaly-engine", nullable=False)
     observed_value: Mapped[float | None] = mapped_column(Float)
     expected_value: Mapped[float | None] = mapped_column(Float)
 
     anomaly: Mapped[LogSourceAnomaly] = relationship(back_populates="transitions")
+
+    @property
+    def reason_code(self) -> str | None:
+        return stored_code(self.reason_i18n)
+
+    @property
+    def reason_params(self) -> dict[str, Any] | None:
+        return stored_params(self.reason_i18n)

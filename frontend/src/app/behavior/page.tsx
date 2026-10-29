@@ -17,13 +17,15 @@
 // its own neutral tone — never green — and an explicit sentence.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import { HealthDistribution } from "@/components/behavior/HealthDistribution";
 import { StatCard } from "@/components/StatCard";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
   ApiError,
@@ -41,21 +43,34 @@ import {
   healthSummaryText,
 } from "@/lib/behaviorOverview";
 import { detectorLabel, formatMetric, formatRatio, stateTone } from "@/lib/behavior";
+import { getBehaviorI18n, getEnumLabels } from "@/lib/behaviorI18n.server";
+import { plainCount } from "@/lib/figureText";
 import { sourcesAsOf } from "@/lib/home/asOf";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "./overview.css";
 
-export const metadata: Metadata = {
-  title: "Overview",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("behavior.overview");
+  return { title: t("metaTitle") };
+}
+
+/** The state's own separator, with a break opportunity after each one. */
+const UNDERSCORE = "_";
 
 /** How many rows the worklist and the recent list show before linking on. */
 const ATTENTION_LIMIT = 8;
 const RECENT_LIMIT = 6;
 
-export default async function BehaviorPage() {
+async function BehaviorPage() {
+  const t = await getTranslations("behavior.overview");
+  const errors = await getTranslations("behavior.errors");
+  const i18n = await getBehaviorI18n();
+  const { locale } = i18n;
+  const { statePill, severityPill } = await getEnumLabels();
+  const count = (n: number) => plainCount(n, locale);
   let summary: BehaviorSummary | null = null;
   let sources: SourceBehavior[] = [];
   let active: AnomalySummary[] = [];
@@ -84,26 +99,27 @@ export default async function BehaviorPage() {
   } catch (err) {
     error =
       err instanceof ApiError && err.status === 403
-        ? "You do not have permission to view behavioral analytics."
+        ? errors("forbidden")
         : err instanceof ApiError && err.status === 401
-          ? "Your session has expired. Sign in again to continue."
-          : "Behavioral analytics could not be loaded. The backend may be unreachable. Reload the page to try again; if it persists, check the backend health.";
+          ? errors("expired")
+          : t("failed");
   }
 
   if (error || !summary) {
     return (
       <>
-        <PageHeader title="Behavioral overview" />
+        <PageHeader guide={guideFor("/behavior")} title={t("title")} />
         <div className="notice" role="alert">
-          {error ?? "Behavioral analytics could not be loaded."}
+          {error ?? t("failedShort")}
         </div>
       </>
     );
   }
 
+  const allActive = (chunks: ReactNode) => <Link href="/anomalies?active_only=true">{chunks}</Link>;
   const unjudged = summary.insufficient_data_sources;
   const highDeviation = countHighDeviation(sources);
-  const attention = buildAttentionRows(sources, active);
+  const attention = buildAttentionRows(sources, active, i18n);
   const groups = healthDistribution(sources);
   const recent = summary.recently_resolved.slice(0, RECENT_LIMIT);
 
@@ -111,73 +127,72 @@ export default async function BehaviorPage() {
     <>
       <ReportDataAge iso={sourcesAsOf(sources, null)} />
       <PageHeader
-        title="Behavioral overview"
-        description={
-          <>
-            {summary.monitored_sources} monitored sources, each compared with its own
-            baseline for this weekday and hour. <span className="when-utc">Times are UTC.</span>
-          </>
-        }
+        guide={guideFor("/behavior")}
+        title={t("title")}
+        description={t.rich("description", {
+          shown: count(summary.monitored_sources),
+          utc: (chunks) => <span className="when-utc">{chunks}</span>,
+        })}
       />
 
       {/* --- level 1: the four counters that decide whether to keep reading -- */}
       <div className="grid-4">
         <StatCard
-          label="Open anomalies"
-          value={summary.open_anomalies}
+          label={t("stats.openAnomalies")}
+          value={count(summary.open_anomalies)}
           tone={summary.open_anomalies > 0 ? "crit" : undefined}
         />
         <StatCard
-          label="Silent sources"
-          value={summary.silent_sources}
+          label={t("stats.silentSources")}
+          value={count(summary.silent_sources)}
           tone={summary.silent_sources > 0 ? "crit" : undefined}
         />
         <StatCard
-          label="High deviation"
-          value={highDeviation}
+          label={t("stats.highDeviation")}
+          value={count(highDeviation)}
           tone={highDeviation > 0 ? "warn" : undefined}
-          note="Sources at or beyond 2x, or at or below half, their expected volume."
+          note={t("stats.highDeviationNote")}
         />
         {/* Neutral tone, never green: this is an observability gap, and
             colouring it as healthy is the failure mode this card exists to
             prevent. */}
         <StatCard
-          label="Insufficient data"
-          value={unjudged}
-          note="Not being judged — a zero above does not cover these."
+          label={t("stats.insufficientData")}
+          value={count(unjudged)}
+          note={t("stats.insufficientNote")}
         />
       </div>
 
       {/* --- level 2: the secondary counts, as one compact strip ------------ */}
       <dl className="status-strip">
         <div>
-          <dt>Spikes</dt>
-          <dd className="num">{summary.spikes}</dd>
+          <dt>{t("strip.spikes")}</dt>
+          <dd className="num">{count(summary.spikes)}</dd>
         </div>
         <div>
-          <dt>Drops</dt>
-          <dd className="num">{summary.drops}</dd>
+          <dt>{t("strip.drops")}</dt>
+          <dd className="num">{count(summary.drops)}</dd>
         </div>
         <div>
-          <dt>Candidates</dt>
-          <dd className="num">{summary.candidates}</dd>
+          <dt>{t("strip.candidates")}</dt>
+          <dd className="num">{count(summary.candidates)}</dd>
         </div>
         <div>
-          <dt>Recovering</dt>
-          <dd className="num">{summary.recovering}</dd>
+          <dt>{t("strip.recovering")}</dt>
+          <dd className="num">{count(summary.recovering)}</dd>
         </div>
         <div>
-          <dt>Resolved, 24 h</dt>
-          <dd className="num">{summary.resolved_last_24h}</dd>
+          <dt>{t("strip.resolved24h")}</dt>
+          <dd className="num">{count(summary.resolved_last_24h)}</dd>
         </div>
         <div>
-          <dt>Evidence pending</dt>
-          <dd className="num">{summary.evidence_pending}</dd>
+          <dt>{t("strip.evidencePending")}</dt>
+          <dd className="num">{count(summary.evidence_pending)}</dd>
         </div>
         <div>
-          <dt>Evidence failed</dt>
+          <dt>{t("strip.evidenceFailed")}</dt>
           <dd className={summary.evidence_failed > 0 ? "num crit-text" : "num"}>
-            {summary.evidence_failed}
+            {count(summary.evidence_failed)}
           </dd>
         </div>
       </dl>
@@ -186,70 +201,71 @@ export default async function BehaviorPage() {
         <p className="banner">
           <span>
             <strong>
-              {unjudged} of {summary.monitored_sources} monitored source
-              {unjudged === 1 ? "" : "s"} {unjudged === 1 ? "has" : "have"} no
-              adequate baseline for the current seasonal cell.
+              {t("banner.lead", {
+                count: unjudged,
+                shown: count(unjudged),
+                total: count(summary.monitored_sources),
+              })}
             </strong>{" "}
-            {unjudged === 1 ? "It is" : "They are"} not being judged, so no
-            anomaly count above covers {unjudged === 1 ? "it" : "them"}. A zero
-            here is the absence of a verdict, not a clean bill of health.
+            {t("banner.rest", { count: unjudged })}
           </span>
         </p>
       )}
 
       {/* --- needs attention ------------------------------------------------ */}
       <section>
-        <h2 className="section-title">Needs attention</h2>
+        <h2 className="section-title">{t("attention.title")}</h2>
         {activeFailed && (
           <p className="notice" role="alert">
-            The active anomaly list could not be loaded; this worklist may be incomplete.
+            {t("attention.activeFailed")}
           </p>
         )}
         {activePage && activePage.total > active.length && (
           <p className="subtitle">
-            Ranked from the {active.length} most recent of {activePage.total} active anomalies.{" "}
-            <Link href="/anomalies?active_only=true">View all active anomalies</Link>.
+            {t.rich("attention.ranked", {
+              shown: count(active.length),
+              total: count(activePage.total),
+              link: allActive,
+            })}
           </p>
         )}
         {attention.length === 0 ? (
           summary.open_anomalies > 0 ? (
             <div className="notice" role="status">
-              {summary.open_anomalies} active{" "}
-              {summary.open_anomalies === 1 ? "anomaly" : "anomalies"} could not be matched
-              to a worklist row.{" "}
-              <Link href="/anomalies?active_only=true">View all active anomalies</Link>.
+              {t.rich("attention.unmatched", {
+                count: summary.open_anomalies,
+                shown: count(summary.open_anomalies),
+                link: allActive,
+              })}
             </div>
           ) : activeFailed ? null : (
             <div className="notice">
-              Nothing is currently anomalous, deviating materially from its
-              baseline, or waiting on a baseline. Sources that are simply normal
-              are not listed here.
+              {t("attention.empty")}
             </div>
           )
         ) : (
           <>
-            <TableScroll label="Sources needing attention">
+            <TableScroll label={t("attention.label")}>
               <table className="attention-table">
                 <caption className="sr-only">
-                  Sources needing attention, ordered by lifecycle state, then
-                  severity, then deviation, then recency.
+                  {t("attention.caption")}
                 </caption>
                 <thead>
                   <tr>
-                    <th scope="col">Source</th>
-                    <th scope="col">State</th>
-                    <th scope="col">Issue and severity</th>
+                    <th scope="col">{t("attention.source")}</th>
+                    <th scope="col">{t("attention.state")}</th>
+                    <th scope="col">{t("attention.issue")}</th>
                     <th scope="col" className="num">
-                      Observed / expected (EPS)
+                      {t("attention.observedExpected")}
                     </th>
                     <th scope="col" className="num">
-                      Deviation
+                      {t("attention.deviation")}
                     </th>
                     <th scope="col" className="num">
-                      Started
+                      {t("attention.started")}
                     </th>
                     <th scope="col">
-                      <span className="sr-only">Detail</span>
+                      <span className="sr-only">{t("attention.detail")}</span>
                     </th>
                   </tr>
                 </thead>
@@ -266,16 +282,19 @@ export default async function BehaviorPage() {
                           {/* A break opportunity after each underscore, so
                               INSUFFICIENT_DATA can fold in a narrow column. */}
                           <span>
-                            {row.state.split("_").map((part, i, all) => (
-                              <Fragment key={i}>
-                                {part}
-                                {i < all.length - 1 && (
-                                  <>
-                                    _<wbr />
-                                  </>
-                                )}
-                              </Fragment>
-                            ))}
+                            {statePill(row.state)
+                              .split("_")
+                              .map((part, i, all) => (
+                                <Fragment key={i}>
+                                  {part}
+                                  {i < all.length - 1 && (
+                                    <>
+                                      {UNDERSCORE}
+                                      <wbr />
+                                    </>
+                                  )}
+                                </Fragment>
+                              ))}
                           </span>
                         </span>
                       </td>
@@ -289,7 +308,7 @@ export default async function BehaviorPage() {
                           </span>
                           {row.severity && (
                             <span className={`pill pill-quiet ${sevTone(row.severity)}`}>
-                              {row.severity}
+                              {severityPill(row.severity)}
                             </span>
                           )}
                         </span>
@@ -302,23 +321,25 @@ export default async function BehaviorPage() {
                           <span className="muted">—</span>
                         ) : (
                           <>
-                            {formatMetric(row.observed)}
+                            {formatMetric(row.observed, 2, locale)}
                             {" / "}
                             {row.expected == null ? (
                               <span className="muted">—</span>
                             ) : (
-                              formatMetric(row.expected)
+                              formatMetric(row.expected, 2, locale)
                             )}
                           </>
                         )}
                       </td>
-                      <td className="num">{formatRatio(row.deviation)}</td>
+                      <td className="num">{formatRatio(row.deviation, locale)}</td>
                       <td className="num cell-when">
                         <UtcTime value={row.at} variant="compact" wrapZone />
                       </td>
                       <td>
                         <Link href={row.href}>
-                          {row.href.startsWith("/anomalies") ? "Investigate" : "Detail"}
+                          {row.href.startsWith("/anomalies")
+                            ? t("attention.investigate")
+                            : t("attention.detail")}
                         </Link>
                       </td>
                     </tr>
@@ -328,9 +349,11 @@ export default async function BehaviorPage() {
             </TableScroll>
             {attention.length > ATTENTION_LIMIT && (
               <p className="subtitle">
-                Showing the {ATTENTION_LIMIT} highest-priority of{" "}
-                {attention.length}.{" "}
-                <Link href="/anomalies?active_only=true">See all active anomalies</Link>.
+                {t.rich("attention.showing", {
+                  limit: count(ATTENTION_LIMIT),
+                  total: count(attention.length),
+                  link: allActive,
+                })}
               </p>
             )}
           </>
@@ -339,32 +362,34 @@ export default async function BehaviorPage() {
 
       {/* --- recently resolved ---------------------------------------------- */}
       <section>
-        <h2 className="section-title">Recently resolved</h2>
+        <h2 className="section-title">{t("recent.title")}</h2>
         {recent.length === 0 ? (
-          <div className="notice">No anomalies have been resolved yet.</div>
+          <div className="notice">{t("recent.empty")}</div>
         ) : (
           <>
             {summary.recently_resolved.length > RECENT_LIMIT && (
               <p className="subtitle">
-                Latest {recent.length} of the {summary.recently_resolved.length} most recently
-                resolved anomalies.
+                {t("recent.latest", {
+                  shown: count(recent.length),
+                  total: count(summary.recently_resolved.length),
+                })}
               </p>
             )}
-            <TableScroll label="Recently resolved anomalies">
+            <TableScroll label={t("recent.label")}>
               <table>
                 <caption className="sr-only">
-                  Anomalies that closed after sustained normal behavior.
+                  {t("recent.caption")}
                 </caption>
                 <thead>
                   <tr>
-                    <th scope="col">Source</th>
-                    <th scope="col">Detector</th>
-                    <th scope="col">Severity</th>
+                    <th scope="col">{t("recent.source")}</th>
+                    <th scope="col">{t("recent.detector")}</th>
+                    <th scope="col">{t("recent.severity")}</th>
                     <th scope="col" className="num">
-                      Resolved
+                      {t("recent.resolved")}
                     </th>
                     <th scope="col">
-                      <span className="sr-only">Detail</span>
+                      <span className="sr-only">{t("recent.detail")}</span>
                     </th>
                   </tr>
                 </thead>
@@ -372,17 +397,17 @@ export default async function BehaviorPage() {
                   {recent.map((a) => (
                     <tr key={a.id}>
                       <td className="cell-name">{a.log_source_name ?? a.log_source_id}</td>
-                      <td>{detectorLabel(a.anomaly_type)}</td>
+                      <td>{detectorLabel(a.anomaly_type, i18n)}</td>
                       <td>
                         <span className={`pill pill-quiet ${sevTone(a.severity)}`}>
-                          {a.severity}
+                          {severityPill(a.severity)}
                         </span>
                       </td>
                       <td className="num">
                         {<UtcTime value={a.resolved_at} variant="compact" />}
                       </td>
                       <td>
-                        <Link href={`/anomalies/${a.id}`}>Investigate</Link>
+                        <Link href={`/anomalies/${a.id}`}>{t("recent.investigate")}</Link>
                       </td>
                     </tr>
                   ))}
@@ -395,16 +420,19 @@ export default async function BehaviorPage() {
 
       {/* --- fleet proportion ------------------------------------------------ */}
       <section>
-        <h2 className="section-title">Source health</h2>
+        <h2 className="section-title">{t("health.title")}</h2>
         <HealthDistribution
           groups={groups}
           total={sources.length}
-          summary={healthSummaryText(groups, sources.length, summary.silent_sources)}
+          summary={healthSummaryText(groups, sources.length, summary.silent_sources, i18n.t)}
+          say={i18n.t}
         />
         <p className="subtitle">
-          <Link href="/behavior/sources">View all {sources.length} sources</Link>
+          <Link href="/behavior/sources">{t("health.viewAll", { shown: count(sources.length) })}</Link>
         </p>
       </section>
     </>
   );
 }
+
+export default withRouteMessages("/behavior", BehaviorPage);

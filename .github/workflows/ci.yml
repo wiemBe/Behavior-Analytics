@@ -68,7 +68,7 @@ jobs:
 
       - name: Lint
         working-directory: backend
-        run: ruff check app tests
+        run: ruff check app tests scripts
 
       - name: Type check
         working-directory: backend
@@ -183,7 +183,24 @@ jobs:
         # carry one `-q`; a second one (-qq) hides the "N passed, M skipped" line.
         # The shard script splits tests/integration into five shards that weigh
         # the same; together with the unit job they run every test exactly once.
-        run: pytest -rs -m integration --durations=15 $(python scripts/ci_shard.py --shard ${{ matrix.shard }} --of 5)
+        # The JUnit XML report records each test's setup + call + teardown time;
+        # the shard weights are refreshed from these reports (docs/DEVELOPMENT.md).
+        run: pytest -rs -m integration --durations=15 --junitxml=integration-shard-${{ matrix.shard }}.xml $(python scripts/ci_shard.py --shard ${{ matrix.shard }} --of 5)
+
+      - name: Upload the integration durations
+        # The report holds test timings only: test and class names, times, and
+        # the failure text of a failing test. No secret exists in this job's
+        # environment for a failure text to carry (every value in `env:` above
+        # is a throwaway already committed to this repository), and the trace
+        # backs show no locals: CI passes neither -l nor --showlocals.
+        # A failing shard's timings are still useful, so upload regardless.
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: integration-durations-shard-${{ matrix.shard }}
+          path: backend/integration-shard-${{ matrix.shard }}.xml
+          retention-days: 14
+          if-no-files-found: warn
 
   frontend:
     runs-on: ubuntu-latest

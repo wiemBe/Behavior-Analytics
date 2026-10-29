@@ -6,6 +6,7 @@
 // password it was given.
 
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslations } from "next-intl";
 
 import { renderBindName } from "@/components/auth/bindName";
 import {
@@ -27,12 +28,12 @@ import { ReasonList } from "@/components/auth/ReasonList";
 import { errorTexts } from "@/components/auth/reasons";
 import styles from "@/components/auth/auth.module.css";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { LoadingState } from "@/components/ui/RouteState";
 import { ApiError } from "@/lib/api";
 import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
-
-
-const DESCRIPTION = "Where directory accounts bind, and a connection test that stores nothing.";
+import { plainCount } from "@/lib/figureText";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 interface FormState {
   enabled: boolean;
@@ -53,6 +54,8 @@ type ProbeView =
   | { kind: "failed"; lines: string[] };
 
 export function DirectoryPage() {
+  const t = useTranslations("directory");
+  const { t: say, locale } = useBehaviorI18n();
   const [load, setLoad] = useState<"loading" | "ready" | "error" | "forbidden">("loading");
   const [loadLines, setLoadLines] = useState<string[]>([]);
   const [form, setForm] = useState<FormState | null>(null);
@@ -71,7 +74,7 @@ export function DirectoryPage() {
       setLoad("ready");
     } catch (err) {
       if (signal?.aborted) return;
-      setLoadLines(errorTexts(err));
+      setLoadLines(errorTexts(err, say, locale));
       setLoad(err instanceof ApiError && err.status === 403 ? "forbidden" : "error");
     }
   }
@@ -99,21 +102,21 @@ export function DirectoryPage() {
       setForm(formFrom(saved));
       setOutcome({
         tone: "ok",
-        lines: [`Saved the directory configuration as version ${saved.version}.`],
+        lines: [t("outcome.saved", { version: plainCount(saved.version, locale) })],
       });
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setOutcome({
           tone: "warn",
-          heading: "Someone else changed the directory configuration.",
-          lines: errorTexts(err),
+          heading: t("outcome.conflict"),
+          lines: errorTexts(err, say, locale),
           reload: true,
         });
       } else {
         setOutcome({
           tone: "warn",
-          heading: "The directory configuration was not saved.",
-          lines: errorTexts(err),
+          heading: t("outcome.notSaved"),
+          lines: errorTexts(err, say, locale),
         });
       }
     } finally {
@@ -126,12 +129,12 @@ export function DirectoryPage() {
     try {
       const config = await getDirectory();
       setForm(formFrom(config));
-      setOutcome({ tone: "ok", lines: ["Reloaded the directory configuration."] });
+      setOutcome({ tone: "ok", lines: [t("outcome.reloaded")] });
     } catch (err) {
       setOutcome({
         tone: "warn",
-        heading: "The directory configuration could not be reloaded.",
-        lines: errorTexts(err),
+        heading: t("outcome.notReloaded"),
+        lines: errorTexts(err, say, locale),
         reload: true,
       });
     } finally {
@@ -160,7 +163,7 @@ export function DirectoryPage() {
       });
       setProbe({ kind: "done", result, username });
     } catch (err) {
-      setProbe({ kind: "failed", lines: errorTexts(err) });
+      setProbe({ kind: "failed", lines: errorTexts(err, say, locale) });
     } finally {
       setTestUser("");
       setTestPassword("");
@@ -172,12 +175,12 @@ export function DirectoryPage() {
 
   return (
     <div className={styles.stack}>
-      <PageHeader title="Directory" description={DESCRIPTION} />
-      {load === "loading" ? <LoadingState what="the directory configuration" /> : null}
+      <PageHeader guide={guideFor("/admin/directory")} title={t("page.title")} description={t("page.description")} />
+      {load === "loading" ? <LoadingState what={t("boundary.loadingWhat")} /> : null}
       {load === "forbidden" ? (
         <ReasonList
           tone="warn"
-          heading="Your role cannot change the directory (permission admin:auth)."
+          heading={t("page.forbidden")}
           lines={loadLines}
         />
       ) : null}
@@ -185,12 +188,12 @@ export function DirectoryPage() {
         <>
           <ReasonList
             tone="warn"
-            heading="The directory configuration could not be loaded."
+            heading={t("page.loadFailed")}
             lines={loadLines}
           />
           <p>
             <button type="button" className="action secondary" onClick={() => void loadConfig()}>
-              Try again
+              {t("page.tryAgain")}
             </button>
           </p>
         </>
@@ -200,21 +203,19 @@ export function DirectoryPage() {
           {unsaved ? (
             <div className="notice" role="status">
               <p>
-                <strong>No directory configuration is saved yet.</strong>
+                <strong>{t("unsaved.title")}</strong>
               </p>
-              <p>Saving creates the first one. The version starts at 0 until that save.</p>
+              <p>{t("unsaved.text")}</p>
             </div>
           ) : (
             <p>
-              Version {form.version}
-              {form.updatedAt ? (
-                <>
-                  , last saved <UtcTime value={form.updatedAt} />
-                </>
-              ) : (
-                ""
-              )}
-              {form.updatedBy ? ` by ${form.updatedBy}` : ""}.
+              {t.rich("version.line", {
+                version: plainCount(form.version, locale),
+                hasSaved: form.updatedAt ? "yes" : "no",
+                hasBy: form.updatedBy ? "yes" : "no",
+                name: form.updatedBy ?? "",
+                time: () => <UtcTime value={form.updatedAt} />,
+              })}
             </p>
           )}
           {outcome ? (
@@ -228,13 +229,13 @@ export function DirectoryPage() {
                 onClick={() => void onReload()}
                 disabled={pending !== null}
               >
-                {pending === "reload" ? "Reloading" : "Reload"}
+                {pending === "reload" ? t("reloading") : t("reload")}
               </button>
             </p>
           ) : null}
           <form
             className={`${styles.form} ${styles.section}`}
-            aria-label="Directory configuration"
+            aria-label={t("form.label")}
             onSubmit={(event) => void onSave(event)}
           >
             <label className={styles.check}>
@@ -243,14 +244,14 @@ export function DirectoryPage() {
                 checked={form.enabled}
                 onChange={(event) => patch({ enabled: event.target.checked })}
               />
-              <span>Directory sign-in enabled</span>
+              <span>{t("form.enabled")}</span>
             </label>
             <fieldset className={styles.checks}>
-              <legend className={styles.legend}>URLs, in bind order</legend>
+              <legend className={styles.legend}>{t("form.urls")}</legend>
               {form.urls.map((url, index) => (
                 <div key={index} className={styles.urlRow}>
                   <label className={styles.field}>
-                    <span className={styles.label}>URL {index + 1}</span>
+                    <span className={styles.label}>{t("form.url", { n: plainCount(index + 1, locale) })}</span>
                     <input
                       className={styles.control}
                       value={url}
@@ -268,7 +269,7 @@ export function DirectoryPage() {
                       className="action secondary"
                       onClick={() => patch({ urls: form.urls.filter((_, item) => item !== index) })}
                     >
-                      Remove URL {index + 1}
+                      {t("form.removeUrl", { n: plainCount(index + 1, locale) })}
                     </button>
                   ) : null}
                 </div>
@@ -279,7 +280,7 @@ export function DirectoryPage() {
                   className="action secondary"
                   onClick={() => patch({ urls: [...form.urls, ""] })}
                 >
-                  Add URL
+                  {t("form.addUrl")}
                 </button>
               </div>
             </fieldset>
@@ -289,11 +290,11 @@ export function DirectoryPage() {
                 checked={form.startTls}
                 onChange={(event) => patch({ startTls: event.target.checked })}
               />
-              <span>StartTLS</span>
+              <span>{t("form.startTls")}</span>
             </label>
             <div className={styles.field}>
               <label className={styles.label} htmlFor="ca-pem">
-                CA certificate (PEM)
+                {t("form.caPem")}
               </label>
               <textarea
                 id="ca-pem"
@@ -304,11 +305,11 @@ export function DirectoryPage() {
                 onChange={(event) => patch({ caPem: event.target.value })}
               />
               <p id="ca-pem-hint" className={styles.hint}>
-                Empty uses the system trust store.
+                {t("form.caPemHint")}
               </p>
             </div>
             <label className={styles.field}>
-              <span className={styles.label}>Bind template</span>
+              <span className={styles.label}>{t("form.bindTemplate")}</span>
               <input
                 className={styles.control}
                 value={form.bindTemplate}
@@ -317,7 +318,7 @@ export function DirectoryPage() {
               />
             </label>
             <label className={styles.field}>
-              <span className={styles.label}>Preview username</span>
+              <span className={styles.label}>{t("form.previewUser")}</span>
               <input
                 className={styles.control}
                 value={previewUser}
@@ -326,10 +327,12 @@ export function DirectoryPage() {
               />
             </label>
             <p className={styles.preview}>
-              Bind name: {renderBindName(form.bindTemplate, previewUser) || "—"}
+              {t("form.bindName", {
+                name: renderBindName(form.bindTemplate, previewUser) || "—",
+              })}
             </p>
             <label className={styles.field}>
-              <span className={styles.label}>Timeout (seconds)</span>
+              <span className={styles.label}>{t("form.timeout")}</span>
               <input
                 className={`${styles.control} ${styles.controlNum}`}
                 inputMode="numeric"
@@ -339,7 +342,7 @@ export function DirectoryPage() {
             </label>
             <div className={styles.field}>
               <label className={styles.label} htmlFor="search-base">
-                User search base
+                {t("form.searchBase")}
               </label>
               <input
                 id="search-base"
@@ -350,30 +353,27 @@ export function DirectoryPage() {
                 onChange={(event) => patch({ searchBase: event.target.value })}
               />
               <p id="search-base-hint" className={styles.hint}>
-                Optional. Empty sends no search base.
+                {t("form.searchBaseHint")}
               </p>
             </div>
             <div className={styles.actions}>
               <button type="submit" className="action" disabled={pending !== null}>
-                {pending === "save" ? "Saving" : "Save directory"}
+                {pending === "save" ? t("form.saving") : t("form.save")}
               </button>
             </div>
           </form>
 
           <section className={styles.section} aria-labelledby="test-connection">
-            <h2 id="test-connection">Test connection</h2>
-            <p className={`${styles.hint} ${styles.sectionNote}`}>
-              The username and password are sent with the form above and then cleared. They are
-              not saved.
-            </p>
+            <h2 id="test-connection">{t("test.title")}</h2>
+            <p className={`${styles.hint} ${styles.sectionNote}`}>{t("test.note")}</p>
             <form
               className={styles.form}
-              aria-label="Test connection"
+              aria-label={t("test.title")}
               onSubmit={(event) => void onTest(event)}
               autoComplete="off"
             >
               <label className={styles.field}>
-                <span className={styles.label}>Test username</span>
+                <span className={styles.label}>{t("test.username")}</span>
                 <input
                   className={styles.control}
                   value={testUser}
@@ -383,7 +383,7 @@ export function DirectoryPage() {
                 />
               </label>
               <label className={styles.field}>
-                <span className={styles.label}>Test password</span>
+                <span className={styles.label}>{t("test.password")}</span>
                 <input
                   className={styles.control}
                   type="password"
@@ -395,12 +395,12 @@ export function DirectoryPage() {
               </label>
               <div className={styles.actions}>
                 <button type="submit" className="action" disabled={pending !== null}>
-                  {pending === "test" ? "Testing connection" : "Test connection"}
+                  {pending === "test" ? t("test.testing") : t("test.submit")}
                 </button>
               </div>
             </form>
             {probe?.kind === "failed" ? (
-              <ReasonList tone="warn" heading="The connection test failed." lines={probe.lines} />
+              <ReasonList tone="warn" heading={t("test.failed")} lines={probe.lines} />
             ) : null}
             {probe?.kind === "done" ? (
               <ProbeResult result={probe.result} username={probe.username} />
@@ -423,41 +423,43 @@ function Outcome({ word }: { word: OutcomeWord }) {
 }
 
 function ProbeResult({ result, username }: { result: DirectoryProbe; username: string }) {
+  const t = useTranslations("directory.test");
+  const { t: say, locale } = useBehaviorI18n();
   return (
     <>
       <p className={styles.resultLine}>
-        <strong>{probeHeadline(result.tls.status, result.bind.status, username)}</strong>
+        <strong>{probeHeadline(result.tls.status, result.bind.status, username, say)}</strong>
       </p>
       <dl className={styles.defs}>
-        <dt>TLS</dt>
+        <dt>{t("tls")}</dt>
         <dd>
-          <Outcome word={tlsOutcome(result.tls.status, result.tls.reason)} />
+          <Outcome word={tlsOutcome(result.tls.status, result.tls.reason, say)} />
         </dd>
-        <dt>Trust</dt>
-        <dd>{trustWords(result.tls.trust)}</dd>
+        <dt>{t("trust")}</dt>
+        <dd>{trustWords(result.tls.trust, say)}</dd>
         {result.certificate ? (
           <>
-            <dt>Certificate subject</dt>
+            <dt>{t("subject")}</dt>
             <dd>{result.certificate.subject}</dd>
-            <dt>Certificate issuer</dt>
+            <dt>{t("issuer")}</dt>
             <dd>{result.certificate.issuer}</dd>
-            <dt>Certificate expiry (UTC)</dt>
+            <dt>{t("expiry")}</dt>
             <dd>
               <CertificateExpiry value={result.certificate.not_after} />
             </dd>
           </>
         ) : (
           <>
-            <dt>Certificate</dt>
-            <dd>No certificate was returned.</dd>
+            <dt>{t("certificate")}</dt>
+            <dd>{t("noCertificate")}</dd>
           </>
         )}
-        <dt>Bind</dt>
+        <dt>{t("bind")}</dt>
         <dd>
-          <Outcome word={bindOutcome(result.bind.status, result.bind.reason)} />
+          <Outcome word={bindOutcome(result.bind.status, result.bind.reason, say)} />
         </dd>
-        <dt>Latency</dt>
-        <dd className="num">{result.latency_ms} ms</dd>
+        <dt>{t("latency")}</dt>
+        <dd className="num">{t("ms", { ms: plainCount(result.latency_ms, locale) })}</dd>
       </dl>
     </>
   );

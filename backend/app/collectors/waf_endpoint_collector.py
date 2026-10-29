@@ -106,6 +106,7 @@ from app.history.planner import (
     plan_step,
     settle_step,
 )
+from app.history.reasons import message_wire, semicolon_reason
 from app.history.state import HistoryTrigger
 
 # The WAF adapter is imported from its submodule: ``app.history`` must not re-export it
@@ -117,6 +118,7 @@ from app.history.waf import (
     fold_volume_history,
     waf_planner_settings,
 )
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     BucketCompleteness,
     SearchFamily,
@@ -227,6 +229,8 @@ class WafHistoryStep:
     searches: int = 0
     permit_unavailable: bool = False
     error: ProviderError | None = None
+    #: The registry reference of `reason` (MSG-8a); None when the sentence has no code.
+    reason_message: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1283,9 +1287,16 @@ class WafEndpointCollector:
             settings=planner,
         )
         if plan.action is StepAction.FINISH:
-            return WafHistoryStep(progress, plan.reason, plan.trigger)
+            return WafHistoryStep(
+                progress,
+                plan.reason,
+                plan.trigger,
+                reason_message=message_wire(plan.reason_message),
+            )
         if plan.action is StepAction.WAIT:
-            return WafHistoryStep(progress, plan.reason)
+            return WafHistoryStep(
+                progress, plan.reason, reason_message=message_wire(plan.reason_message)
+            )
 
         async def run() -> WafHistoryStep:
             if plan.action is StepAction.SCAN:
@@ -1318,6 +1329,7 @@ class WafEndpointCollector:
                         decision.trigger,
                         searches=1 if status is not SearchStatus.NOT_RUN else 0,
                         error=scan_error,
+                        reason_message=message_wire(decision.reason_message),
                     )
                 reuse_span = Span(updated.floor, plan.scan_span.end)
                 result = self._history_chunk_result(
@@ -1328,13 +1340,20 @@ class WafEndpointCollector:
                 folded = await self.persist_history_volume(
                     log_source, scan_values, floor=updated.floor
                 )
+                joined, joined_message = semicolon_reason(
+                    [
+                        (decision.reason, decision.reason_message),
+                        (settled.reason, settled.reason_message),
+                    ]
+                )
                 return WafHistoryStep(
                     settled.progress,
-                    f"{decision.reason}; {settled.reason}",
+                    joined,
                     settled.trigger,
                     rows_written=len(folded.metrics),
                     searches=1,
                     error=scan_error,
+                    reason_message=joined_message,
                 )
 
             results: list[ChunkResult] = []
@@ -1354,7 +1373,8 @@ class WafEndpointCollector:
                 if status in (SearchStatus.FAILED, SearchStatus.TRUNCATED):
                     break
             if not results:
-                return WafHistoryStep(progress, "waiting for the history time budget")
+                waiting = MessageRef("history.waf.wait_time_budget")
+                return WafHistoryStep(progress, render(waiting), reason_message=waiting.to_wire())
             settled = settle_step(progress, results, end=boundary, settings=planner)
             step_values: list[HistoryVolumeBucket] = []
             for span in settled.write_spans:
@@ -1375,6 +1395,7 @@ class WafEndpointCollector:
                 rows_written=rows,
                 searches=sum(result.searches for result in results),
                 error=step_error,
+                reason_message=message_wire(settled.reason_message),
             )
 
         if self.ariel_budget is None:

@@ -4,10 +4,12 @@
 // docs/FIELD-MAPPING.md §FM.7 and saying where the prefill came from.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 
 import { ProfileEditor, type Prefill } from "@/app/admin/waf-sources/ProfileEditor";
 import { readError } from "@/app/admin/waf-sources/readError";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import {
   ApiError,
   api,
@@ -23,15 +25,18 @@ import {
   pickPrefillSource,
   resolveInstanceId,
 } from "@/lib/fieldMapping";
+import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
-export const metadata: Metadata = {
-  title: "WAF source",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("waf.meta");
+  return { title: t("adminSource") };
+}
 
-function Problem({ title, text }: { title: string; text: string }) {
+function Problem({ title, text, pageTitle }: { title: string; text: string; pageTitle: string }) {
   return (
     <>
-      <PageHeader title="WAF source" />
+      <PageHeader guide={guideFor("/admin/waf-sources/[logSourceId]")} title={pageTitle} />
       <div className="notice" role="alert">
         <p>
           <strong>{title}</strong>
@@ -42,7 +47,7 @@ function Problem({ title, text }: { title: string; text: string }) {
   );
 }
 
-export default async function WafSourcePage({
+async function WafSourcePage({
   params,
   searchParams,
 }: {
@@ -50,6 +55,9 @@ export default async function WafSourcePage({
   /** `instance` is set by the picker from the candidate's `instance_id`. */
   searchParams?: Promise<{ instance?: string }>;
 }) {
+  const t = await getTranslations("waf.admin.page");
+  const admin = await getTranslations("waf.admin.read");
+  const i18n = await getBehaviorI18n();
   const { logSourceId } = await params;
   const hinted = (await searchParams)?.instance ?? null;
 
@@ -59,8 +67,9 @@ export default async function WafSourcePage({
   } catch (err) {
     return (
       <Problem
-        title="This WAF source could not be shown."
-        text={readError(err, "the field-mapping schema")}
+        pageTitle={t("title")}
+        title={t("couldNotShow")}
+        text={readError(err, admin("whatSchema"), i18n)}
       />
     );
   }
@@ -72,8 +81,9 @@ export default async function WafSourcePage({
     if (!(err instanceof ApiError && err.status === 404)) {
       return (
         <Problem
-          title="This WAF source could not be shown."
-          text={readError(err, "this source’s profile")}
+          pageTitle={t("title")}
+          title={t("couldNotShow")}
+          text={readError(err, admin("whatProfile"), i18n)}
         />
       );
     }
@@ -86,13 +96,15 @@ export default async function WafSourcePage({
     } catch (err) {
       return err instanceof ApiError && err.status === 404 ? (
         <Problem
-          title="This log source does not exist."
-          text="No log source has this id, so there is nothing to configure. Choose one from the WAF sources list."
+          pageTitle={t("title")}
+          title={t("noLogSourceTitle")}
+          text={t("noLogSourceText")}
         />
       ) : (
         <Problem
-          title="This WAF source could not be shown."
-          text={readError(err, "this log source")}
+          pageTitle={t("title")}
+          title={t("couldNotShow")}
+          text={readError(err, admin("whatLogSource"), i18n)}
         />
       );
     }
@@ -121,12 +133,15 @@ export default async function WafSourcePage({
     prefill = seeded
       ? {
           draft: { ...draftFromProfile(schema, seeded), productLabel: "" },
-          origin: `Prefilled from ${seeded.log_source_name} (version ${seeded.profile_version}), the most recently validated profile on this console.`,
+          origin: {
+            kind: "seeded",
+            name: seeded.log_source_name,
+            version: seeded.profile_version,
+          },
         }
       : {
           draft: draftFromDefaults(schema),
-          origin:
-            "Prefilled from the schema defaults, because no validated profile on this console could seed it.",
+          origin: { kind: "defaults" },
         };
   }
 
@@ -150,3 +165,5 @@ export default async function WafSourcePage({
     />
   );
 }
+
+export default withRouteMessages("/admin/waf-sources/[logSourceId]", WafSourcePage);

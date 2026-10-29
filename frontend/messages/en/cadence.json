@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "title": "Search cadence"
+  },
+  "page": {
+    "title": "Search cadence",
+    "description": "How often each search family queries QRadar, and the detection delay that costs. Times are UTC.",
+    "loadingWhat": "search cadence",
+    "errorWhat": "Search cadence",
+    "couldNotShow": "Search cadence could not be shown.",
+    "forbidden": "Your role cannot read search cadence (permission read:search_cadence). Nothing was changed.",
+    "failed": "Search cadence could not be loaded. The backend may be unreachable; check that it is running, then reload the page. Nothing was changed.",
+    "emptyTitle": "No search families were returned.",
+    "empty": "All eight families are seeded by database migrations (the cadence migration seeds Phase A volume, WAF collection, anomaly explanations and rule matches; the IPS, catch-all, geo and property-watch migrations seed the other four), so an empty list means the seed did not run. Check that the database migrations have been applied, then reload the page."
+  },
+  "table": {
+    "label": "Search cadence by family",
+    "caption": "Search families with their cadence, bucket width, worst-case delay, last run, next run and searches sent in the last run. Times are UTC.",
+    "family": "Family",
+    "cadence": "Cadence",
+    "bucket": "Bucket",
+    "noBuckets": "— = no buckets",
+    "worstCase": "Worst-case detection delay",
+    "formula": "cadence + bucket + settle",
+    "lastRun": "Last run (UTC)",
+    "nextRun": "Next run (UTC)",
+    "searchesSent": "Searches in last run",
+    "cadenceFor": "Cadence for {name}",
+    "noBucketsTitle": "This family has no buckets",
+    "notRun": "Not run since upgrade",
+    "noRunYet": "No run yet",
+    "notCounted": "not counted",
+    "notCountedTitle": "This family does not count its searches yet",
+    "savedBy": "Saved. Changed by {user} at <time></time>.",
+    "saved": "Saved. Changed at <time></time>.",
+    "forbidden": "Your role cannot change search cadence (permission admin:search_cadence).",
+    "notesLabel": "How to read the table",
+    "noteCadence": "Cadence sets when a family searches QRadar. The bucket width it stores does not change.",
+    "noteExplanation": "Anomaly explanations have no buckets, so their delay bounds how late evidence arrives, not how late a detection does.",
+    "noteMissing": "“Not run since upgrade” means the family has not run since the cadence tracking was introduced. “Not counted” means the family does not count its searches yet. Neither is zero."
+  },
+  "delay": {
+    "upTo": "up to {duration}",
+    "evidenceUpTo": "evidence up to {duration}"
+  },
+  "schedule": {
+    "every": "Every {duration}",
+    "custom": "Custom"
+  },
+  "outcome": {
+    "ok": "Complete",
+    "partial": "Partial",
+    "failed": "Failed",
+    "no-instance": "No enabled instance",
+    "no-sources": "No eligible WAF source",
+    "dispatched": "Dispatched"
+  },
+  "change": {
+    "nothingChanged": "{forbidden} Nothing was changed.",
+    "notChanged": "Not changed. {reason}"
+  },
+  "family": {
+    "PHASE_A_VOLUME": { "name": "Phase A volume", "scope": "Event count per log source" },
+    "WAF_COLLECTION": { "name": "WAF collection", "scope": "Endpoint, status and client breakdowns" },
+    "ANOMALY_EXPLANATION": { "name": "Anomaly explanations", "scope": "Evidence for open anomalies" },
+    "RULE_MATCH": { "name": "Rule matches", "scope": "Events matched per rule" },
+    "IPS_COLLECTION": { "name": "IPS collection", "scope": "Port, IP, signature and fan-out per source" },
+    "CATCHALL_SENDERS": { "name": "Catch-all senders", "scope": "Senders feeding SIM Generic and the Universal DSMs" },
+    "GEO_COLLECTION": { "name": "Geography", "scope": "Events per country, by source and destination address" },
+    "PROPERTY_WATCH": { "name": "Property watches", "scope": "Event count per watched property value" }
+  },
+  "latency": {
+    "link": "Search cadence",
+    "knownLead": "{subject} are judged on collected 5-minute buckets, {delay} after the events arrive (the schedule is set on ",
+    "unknownLead": "{subject} are judged on collected 5-minute buckets, after each collection of their family (the schedule is set on ",
+    "tail": "). {closing}"
+  }
+}

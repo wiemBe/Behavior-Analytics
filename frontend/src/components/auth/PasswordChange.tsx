@@ -5,6 +5,7 @@
 // refusal the backend sends is shown as sent.
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { useState, type FormEvent } from "react";
 
 import { changePassword } from "./client";
@@ -15,8 +16,19 @@ import { useSession } from "./session";
 import styles from "./auth.module.css";
 import { destinationAfterPasswordChange } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
+import type { Locale } from "@/i18n/locale";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
-export function PasswordChange({ required = false }: { required?: boolean }) {
+export function PasswordChange({
+  required = false,
+  embedded = false,
+}: {
+  required?: boolean;
+  embedded?: boolean;
+}) {
+  const t = useTranslations("password");
+  const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   const session = useSession();
   const router = useRouter();
   const params = useSearchParams();
@@ -31,7 +43,7 @@ export function PasswordChange({ required = false }: { required?: boolean }) {
     event.preventDefault();
     if (next !== confirm) {
       setDone(false);
-      setLines(["The new password and the confirmation do not match."]);
+      setLines([t("mismatch")]);
       return;
     }
     setPending(true);
@@ -41,7 +53,7 @@ export function PasswordChange({ required = false }: { required?: boolean }) {
       await changePassword(current, next);
     } catch (err) {
       setPending(false);
-      setLines(errorTexts(err));
+      setLines(errorTexts(err, say, locale));
       return;
     }
     setCurrent("");
@@ -51,7 +63,7 @@ export function PasswordChange({ required = false }: { required?: boolean }) {
       await session.reload();
     } catch {
       setPending(false);
-      setLines(["The password is changed, but the account could not be read again. Try again."]);
+      setLines([t("changedReloadFailed")]);
       return;
     }
     setPending(false);
@@ -62,23 +74,23 @@ export function PasswordChange({ required = false }: { required?: boolean }) {
 
   return (
     <div className={styles.column}>
-      <PageHeader
-        title="Change password"
-        description={
-          required
-            ? "This account cannot continue until the password is changed."
-            : "A local account changes its password here."
-        }
-        actions={required ? <SignOutButton /> : null}
-      />
+      {embedded ? (
+        <p className={styles.sectionNote}>{t("localDescription")}</p>
+      ) : (
+        <PageHeader
+          title={t("title")}
+          description={required ? t("requiredDescription") : t("localDescription")}
+          actions={required ? <SignOutButton /> : null}
+        />
+      )}
       <form
         className={styles.form}
-        aria-label="Change password"
+        aria-label={t("form")}
         onSubmit={(event) => void onSubmit(event)}
         aria-busy={pending}
       >
         <label className={styles.field}>
-          <span className={styles.label}>Current password</span>
+          <span className={styles.label}>{t("current")}</span>
           <input
             className={styles.control}
             type="password"
@@ -90,7 +102,7 @@ export function PasswordChange({ required = false }: { required?: boolean }) {
           />
         </label>
         <label className={styles.field}>
-          <span className={styles.label}>New password</span>
+          <span className={styles.label}>{t("new")}</span>
           <input
             className={styles.control}
             type="password"
@@ -102,7 +114,7 @@ export function PasswordChange({ required = false }: { required?: boolean }) {
           />
         </label>
         <label className={styles.field}>
-          <span className={styles.label}>Confirm new password</span>
+          <span className={styles.label}>{t("confirm")}</span>
           <input
             className={styles.control}
             type="password"
@@ -115,12 +127,12 @@ export function PasswordChange({ required = false }: { required?: boolean }) {
         </label>
         <div className={styles.actions}>
           <button type="submit" className={`action ${styles.submit}`} disabled={pending}>
-            {pending ? "Changing password" : "Change password"}
+            {pending ? t("changing") : t("change")}
           </button>
         </div>
       </form>
-      {done ? <ReasonList tone="ok" lines={["The password is changed."]} /> : null}
-      {lines ? <ReasonList tone="warn" heading="The password was not changed." lines={lines} /> : null}
+      {done ? <ReasonList tone="ok" lines={[t("changed")]} /> : null}
+      {lines ? <ReasonList tone="warn" heading={t("notChanged")} lines={lines} /> : null}
     </div>
   );
 }

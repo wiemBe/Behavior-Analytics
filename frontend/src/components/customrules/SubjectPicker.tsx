@@ -2,10 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 
-import { SUBJECT_KIND_LABELS, subjectKindInSentence } from "@/components/customrules/authoring";
+import {
+  customRuleDelayText,
+  subjectKindInSentence,
+  subjectKindLabel,
+} from "@/components/customrules/authoring";
 import { latencyCadence } from "@/components/cadence/CadenceLatency";
-import { pinAvailability } from "@/components/propertywatch/pwFormat";
 import {
   loadIpsEntities,
   loadIpsSources,
@@ -22,6 +26,8 @@ import {
   type WafEndpointInventory,
   type WafSourceBehavior,
 } from "@/lib/api";
+import type { Locale } from "@/i18n/locale";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 interface SubjectValue {
   logSourceId: string;
@@ -56,7 +62,14 @@ function entityLabel(entity: IpsEntityInventory): string {
 }
 
 export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel }: SubjectPickerProps) {
+  const t = useTranslations("customRules.picker");
+  const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   const pinCadence = latencyCadence(catalog.cadences?.find((c) => c.family === "PROPERTY_WATCH"));
+  const pinDelay = customRuleDelayText(pinCadence, locale, say);
+  const availability = pinDelay
+    ? t("availabilityKnown", { duration: pinDelay })
+    : t("availabilityUnknown");
   const kindId = useId();
   const searchId = useId();
   const parentId = useId();
@@ -170,7 +183,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
   return (
     <div className="cr-subject-picker">
       <div className="cr-field">
-        <label htmlFor={kindId}>Subject kind</label>
+        <label htmlFor={kindId}>{t("kind")}</label>
         <select
           id={kindId}
           className="select-control"
@@ -179,7 +192,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
         >
           {catalog.subject_kinds.map((subject) => (
             <option key={subject.subject_kind} value={subject.subject_kind}>
-              {SUBJECT_KIND_LABELS[subject.subject_kind]}
+              {subjectKindLabel(subject.subject_kind, say)}
             </option>
           ))}
         </select>
@@ -187,7 +200,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
 
       {kind === "FLEET_CLASS" ? (
         <div className="cr-field">
-          <label htmlFor={subjectId}>Fleet class</label>
+          <label htmlFor={subjectId}>{t("fleetClass")}</label>
           <select
             id={subjectId}
             className="select-control"
@@ -197,7 +210,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
               onLabel(event.target.value);
             }}
           >
-            <option value="">Choose a fleet class</option>
+            <option value="">{t("chooseFleet")}</option>
             {catalog.source_classes.map((sourceClass) => (
               <option key={sourceClass} value={sourceClass}>{sourceClass}</option>
             ))}
@@ -206,7 +219,9 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
       ) : (
         <div className="cr-field">
           <label htmlFor={searchId}>
-            Find {kind === "PW_VALUE" ? "property watch" : subjectKindInSentence(kind)}
+            {kind === "PW_VALUE"
+              ? t("findWatch")
+              : t("findSubject", { subject: subjectKindInSentence(kind, say) })}
           </label>
           <input
             id={searchId}
@@ -215,8 +230,8 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
             value={query}
             placeholder={
               kind === "PW_VALUE"
-                ? "Filter existing property watches"
-                : "Filter the existing source list"
+                ? t("filterWatches")
+                : t("filterSources")
             }
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -225,7 +240,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
 
       {kind === "LOG_SOURCE" && (
         <div className="cr-field">
-          <label htmlFor={subjectId}>Log source</label>
+          <label htmlFor={subjectId}>{t("logSource")}</label>
           <select
             id={subjectId}
             className="select-control"
@@ -236,7 +251,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
               setLogSource(event.target.value, source?.name ?? event.target.value);
             }}
           >
-            <option value="">{loading ? "Loading sources…" : "Choose a log source"}</option>
+            <option value="">{loading ? t("loadingSources") : t("chooseLogSource")}</option>
             {filteredSources.map((source) => (
               <option key={source.log_source_id} value={source.log_source_id}>{source.name}</option>
             ))}
@@ -246,7 +261,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
 
       {kind === "IPS_SOURCE" && (
         <div className="cr-field">
-          <label htmlFor={subjectId}>IPS source</label>
+          <label htmlFor={subjectId}>{t("ipsSource")}</label>
           <select
             id={subjectId}
             className="select-control"
@@ -257,7 +272,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
               setLogSource(event.target.value, source?.log_source_name ?? event.target.value);
             }}
           >
-            <option value="">{loading ? "Loading sources…" : "Choose an IPS source"}</option>
+            <option value="">{loading ? t("loadingSources") : t("chooseIpsSource")}</option>
             {filteredIpsSources.map((source) => (
               <option key={source.log_source_id} value={source.log_source_id}>{source.log_source_name}</option>
             ))}
@@ -268,7 +283,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
       {(kind === "WAF_ENDPOINT" || kind === "IPS_ENTITY") && (
         <>
           <div className="cr-field">
-            <label htmlFor={parentId}>{kind === "WAF_ENDPOINT" ? "WAF source" : "IPS source"}</label>
+            <label htmlFor={parentId}>{kind === "WAF_ENDPOINT" ? t("wafSource") : t("ipsSource")}</label>
             <select
               id={parentId}
               className="select-control"
@@ -282,7 +297,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
                 onLabel("");
               }}
             >
-              <option value="">Choose a source first</option>
+              <option value="">{t("chooseSourceFirst")}</option>
               {(kind === "WAF_ENDPOINT" ? wafSources : filteredIpsSources).map((source) => (
                 <option key={source.log_source_id} value={source.log_source_id}>
                   {source.log_source_name}
@@ -291,7 +306,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
             </select>
           </div>
           <div className="cr-field">
-            <label htmlFor={subjectId}>{kind === "WAF_ENDPOINT" ? "Admitted endpoint" : "Admitted entity"}</label>
+            <label htmlFor={subjectId}>{kind === "WAF_ENDPOINT" ? t("admittedEndpoint") : t("admittedEntity")}</label>
             <select
               id={subjectId}
               className="select-control"
@@ -310,7 +325,13 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
               }}
             >
               <option value="">
-                {!parentSourceId ? "Choose a source first" : loading ? "Loading subjects…" : `Choose an admitted ${kind === "WAF_ENDPOINT" ? "endpoint" : "entity"}`}
+                {!parentSourceId
+                  ? t("chooseSourceFirst")
+                  : loading
+                    ? t("loadingSubjects")
+                    : t("chooseAdmitted", {
+                        subject: kind === "WAF_ENDPOINT" ? t("endpoints") : t("entities"),
+                      })}
               </option>
               {(kind === "WAF_ENDPOINT" ? endpoints : entities).map((subject) => (
                 <option key={subject.id} value={subject.id}>
@@ -324,12 +345,12 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
           {parentSourceId && !loading && (kind === "WAF_ENDPOINT" ? endpoints : entities).length === 0 && (
             <div className="notice cr-empty-subject">
               <p>
-                No admitted {kind === "WAF_ENDPOINT" ? "endpoints" : "entities"} are available.
-                Only admitted subjects can be used by a rule because the platform stores no
-                measurement for anything else.
+                {t("noneAdmitted", {
+                  subjects: kind === "WAF_ENDPOINT" ? t("endpoints") : t("entities"),
+                })}
               </p>
               <p>
-                Conditions the platform does not collect belong in a <Link href="/searches/new">custom search</Link>.
+                {t("customSearchBefore")}<Link href="/searches/new">{t("customSearch")}</Link>.
               </p>
             </div>
           )}
@@ -339,7 +360,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
       {kind === "PW_VALUE" && (
         <>
           <div className="cr-field">
-            <label htmlFor={parentId}>Property watch</label>
+            <label htmlFor={parentId}>{t("propertyWatch")}</label>
             <select
               id={parentId}
               className="select-control"
@@ -352,14 +373,14 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
                 onLabel("");
               }}
             >
-              <option value="">Choose a property watch first</option>
+              <option value="">{t("chooseWatchFirst")}</option>
               {filteredWatches.map((watch) => (
                 <option key={watch.id} value={watch.id}>{watch.name}</option>
               ))}
             </select>
           </div>
           <div className="cr-field">
-            <label htmlFor={subjectId}>Pinned value</label>
+            <label htmlFor={subjectId}>{t("pinnedValue")}</label>
             <select
               id={subjectId}
               className="select-control"
@@ -372,7 +393,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
               }}
             >
               <option value="">
-                {!watchId ? "Choose a property watch first" : loading ? "Loading pinned values…" : "Choose a pinned value"}
+                {!watchId ? t("chooseWatchFirst") : loading ? t("loadingPinned") : t("choosePinned")}
               </option>
               {pinnedValues.map((item) => (
                 <option key={item.id} value={item.id}>{item.components.join(" × ") || item.value_key}</option>
@@ -382,19 +403,17 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
           {watchId && !loading && pinnedValues.length === 0 && (
             <div className="notice cr-empty-subject">
               <p>
-                No pinned value is available. Automatic values are not offered to a threshold
-                rule: <Link href={`/behavior/watches/${watchId}`}>open the property watch</Link> and
-                pin the value first.
+                {t("noPinnedBefore")}<Link href={`/behavior/watches/${watchId}`}>{t("openWatch")}</Link>{t("noPinnedAfter")}
               </p>
               <p>
-                A new pin can be used in a rule {pinAvailability(pinCadence)}.
+                {t("newPin", { availability })}
               </p>
             </div>
           )}
           {watchId && pinnedValues.length > 0 && (
             <p className="field-hint">
-              Only pinned values are listed. To use another value, <Link href={`/behavior/watches/${watchId}`}>pin it on the watch first</Link>.
-              A value pinned just now is listed {pinAvailability(pinCadence)}.
+              {t("onlyPinnedBefore")}<Link href={`/behavior/watches/${watchId}`}>{t("pinFirst")}</Link>
+              {t("onlyPinnedAfter", { availability })}
             </p>
           )}
         </>
@@ -402,7 +421,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
 
       {state === "error" && (
         <p className="field-error" role="alert">
-          The existing subject list could not be loaded. Check the backend, then choose the subject again.
+          {t("loadFailed")}
         </p>
       )}
     </div>

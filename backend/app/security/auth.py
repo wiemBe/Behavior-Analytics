@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import CodedHTTPException
 from app.models.identity import User
 from app.security.rbac import Principal
 from app.services.auth_sessions import (
@@ -29,7 +31,6 @@ from app.services.auth_sessions import (
 
 _LOCAL_DEV_PERMISSIONS = frozenset({"admin:*"})
 _LOCAL_READONLY_PERMISSIONS = frozenset({"read:*"})
-_MUST_CHANGE_DETAIL = "A password change is required before any other request."
 
 
 def principal_for(user: User) -> Principal:
@@ -46,6 +47,7 @@ def principal_for(user: User) -> Principal:
         must_change_password=user.must_change_password,
         roles=tuple(sorted(role.name for role in user.roles)),
         user_id=user.id,
+        ui_language=user.ui_language,
     )
 
 
@@ -103,11 +105,15 @@ async def _session_principal(
             if user.must_change_password and not _allowed_while_password_must_change(
                 request.method, request.url.path, settings.api_prefix
             ):
-                raise HTTPException(status.HTTP_403_FORBIDDEN, _MUST_CHANGE_DETAIL)
+                raise CodedHTTPException(
+                    status.HTTP_403_FORBIDDEN, MessageRef("auth.session.must_change_password")
+                )
             await touch_last_seen(session, row, datetime.now(UTC))
             return principal_for(user)
     except AuthenticationRequired as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, exc.detail) from exc
+        raise CodedHTTPException(
+            status.HTTP_401_UNAUTHORIZED, MessageRef("auth.session.required")
+        ) from exc
 
 
 def _local_principal(authorization: str | None, settings: Settings) -> Principal:

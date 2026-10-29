@@ -1,5 +1,8 @@
+import { useTranslations } from "next-intl";
+
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return <BoundaryLoading title="Log Source Detail" what="this log source" />;
+  const t = useTranslations("logSources.detail");
+  return <BoundaryLoading title={t("title")} what={t("loadingWhat")} />;
 }

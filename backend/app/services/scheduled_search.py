@@ -18,12 +18,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef, render
 from app.models.search import ScheduledSearch, SearchExecution, SearchQueryVersion
 from app.schemas.search import (
     ScheduledSearchCreate,
     ScheduledSearchUpdate,
     ThresholdUnreachableError,
-    unreachable_threshold_reason,
+    unreachable_threshold_ref,
 )
 
 
@@ -32,7 +33,8 @@ class EnabledSearchLimitError(Exception):
 
     def __init__(self, limit: int) -> None:
         self.limit = limit
-        super().__init__(f"the limit is {limit} enabled searches")
+        self.ref = MessageRef("search.enabled_cap", {"limit": limit})
+        super().__init__(render(self.ref))
 
 
 class ScheduledSearchService:
@@ -62,7 +64,10 @@ class ScheduledSearchService:
 
         outcome = await asyncio.to_thread(check_cron_floor, cron, timezone)
         if not outcome.accepted:
-            raise CronFloorError(outcome.reason or "schedule_cron is below the floor")
+            if outcome.reason is not None:
+                raise CronFloorError(outcome.reason, outcome.ref)
+            fallback = MessageRef("search.cron.floor_missed")
+            raise CronFloorError(render(fallback), fallback)
 
     async def create(self, payload: ScheduledSearchCreate, *, actor: str | None) -> ScheduledSearch:
         # Floor first, so a too-frequent cron is refused before the cap query.
@@ -139,7 +144,7 @@ class ScheduledSearchService:
         effective_operator = data.get("threshold_operator", search.threshold_operator)
         effective_threshold = data.get("threshold_value", search.threshold_value)
         effective_max_rows = data.get("max_result_rows", search.max_result_rows)
-        reason = unreachable_threshold_reason(
+        reason = unreachable_threshold_ref(
             effective_operator, effective_threshold, effective_max_rows
         )
         if reason is not None:

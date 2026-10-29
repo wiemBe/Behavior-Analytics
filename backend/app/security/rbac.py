@@ -29,6 +29,9 @@ class Principal:
     must_change_password: bool = False
     roles: tuple[str, ...] = ()
     user_id: uuid.UUID | None = None
+    # D-37. The account's interface language, read with the session's user row.
+    # "en" for the development principals, which have no account to store it on.
+    ui_language: str = "en"
 
     def has(self, permission: str) -> bool:
         if permission in self.permissions:

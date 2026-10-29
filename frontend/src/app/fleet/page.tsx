@@ -6,32 +6,42 @@
 // the API returns them.
 
 import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
 import Link from "next/link";
 
 import { FleetClassTable } from "@/components/fleet/FleetClassTable";
 import { WindowSwitch } from "@/components/fleet/WindowSwitch";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, fleetApi, type FleetSummary } from "@/lib/api";
 import { parseWindow, windowName } from "@/lib/fleet";
+import { fleetTextOf, plainCount } from "@/lib/fleetText";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("fleet.meta");
+  return { title: t("fleet") };
+}
 
-export const metadata: Metadata = {
-  title: "Fleet",
-};
+/** The full stop that ends the review-queue sentence (outside every item, so not translated). */
+const STOP = ".";
 
-function queueItem(count: number, singular: string, plural: string, href: string) {
-  const text = `${count.toLocaleString("en-US")} ${count === 1 ? singular : plural}`;
+function queueItem(count: number, text: string, href: string) {
   return count > 0 ? <Link href={href}>{text}</Link> : <span>{text}</span>;
 }
 
-export default async function FleetPage({
+async function FleetPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const window = parseWindow((await searchParams).window);
+  const t = await getTranslations("fleet.page");
+  const q = await getTranslations("fleet.queue");
+  const locale = await getLocale();
+  const text = fleetTextOf(await getTranslations(), locale);
 
   let summary: FleetSummary | null = null;
   let error: string | null = null;
@@ -40,10 +50,10 @@ export default async function FleetPage({
   } catch (err) {
     error =
       err instanceof ApiError && err.status === 403
-        ? "Your role cannot read the fleet summary (permission read:fleet). Nothing was changed."
+        ? t("forbidden")
         : err instanceof ApiError && err.status === 401
-          ? "Your session has expired. Sign in again to continue."
-          : "The fleet summary could not be loaded. The backend may be unreachable; check that it is running, then reload the page.";
+          ? text.say("errors.sessionExpired")
+          : t("unreachable");
   }
 
   return (
@@ -51,86 +61,79 @@ export default async function FleetPage({
       {/* The summary's `window_end` is the request's own "now": the page has no data time. */}
       <ReportDataAge iso={null} />
       <PageHeader
-        title="Log-source fleet"
-        description="Volume per class of log source against its baseline, and the sources waiting for review. Times are UTC."
+        guide={guideFor("/fleet")}
+        title={t("title")}
+        description={t("description")}
         actions={<WindowSwitch active={window} />}
       />
 
       {error || !summary ? (
         <div className="notice" role="alert">
           <p>
-            <strong>The fleet summary could not be shown.</strong>
+            <strong>{t("noticeHeading")}</strong>
           </p>
-          <p>{error ?? "The fleet summary could not be loaded."}</p>
+          <p>{error ?? t("loadFailed")}</p>
         </div>
       ) : (
         <>
-          <p className="banner" aria-label="Review queue">
+          <p className="banner" aria-label={t("queueLabel")}>
             <span>
-              <strong>Review queue:</strong>{" "}
+              <strong>{t("queueLead")}</strong>{" "}
               {queueItem(
                 summary.new_sources,
-                "new source",
-                "new sources",
+                q("newSources", { count: summary.new_sources }),
                 "/fleet/sources?review_status=NEW",
               )}
               ,{" "}
               {queueItem(
                 summary.conflict_sources,
-                "source with a conflicting class",
-                "sources with a conflicting class",
+                q("conflictSources", { count: summary.conflict_sources }),
                 "/fleet/sources?has_conflict=true",
               )}
               ,{" "}
               {queueItem(
                 summary.unclassified_sources,
-                "unclassified source",
-                "unclassified sources",
+                q("unclassifiedSources", { count: summary.unclassified_sources }),
                 "/fleet/sources?class=UNCLASSIFIED",
               )}
-              .
+              {STOP}
             </span>
           </p>
 
           <p className="subtitle fleet-window">
-            Last {windowName(window)}: {<UtcTime value={summary.window_start} />} to{" "}
-            {<UtcTime value={summary.window_end} />}, in {summary.bucket_seconds / 60}-minute buckets.
+            {t.rich("windowLine", {
+              window: windowName(window, text),
+              minutes: plainCount(summary.bucket_seconds / 60, text.locale),
+              start: () => <UtcTime value={summary.window_start} />,
+              end: () => <UtcTime value={summary.window_end} />,
+            })}
           </p>
 
           {summary.classes.length === 0 ? (
             <div className="notice">
               <p>
-                <strong>No classes were returned.</strong>
+                <strong>{t("noClassesHeading")}</strong>
               </p>
-              <p>
-                The summary lists every class that has at least one source. Run an inventory sync
-                from the Log Sources page, then reload.
-              </p>
+              <p>{t("noClassesBody")}</p>
             </div>
           ) : (
-            <FleetClassTable classes={summary.classes} windowName={windowName(window)} />
+            <FleetClassTable classes={summary.classes} windowName={windowName(window, text)} />
           )}
 
           <ul className="table-notes">
-            <li>
-              Events and mean EPS count complete buckets only. Where the window is incomplete, the
-              row says how many buckets are partial or missing.
-            </li>
-            <li>
-              Expected EPS is the sum, over the sources that have a baseline, of each source&apos;s mean
-              baseline median across every UTC weekday and hour cell the window spans. A source
-              counts only when all of those cells are reliable.
-            </li>
+            <li>{t("noteEvents")}</li>
+            <li>{t("noteExpected")}</li>
           </ul>
 
           <section aria-labelledby="fleet-internal">
             <h2 className="section-title" id="fleet-internal">
-              QRadar internal sources
+              {t("internalHeading")}
             </h2>
             <p className="subtitle">
-              {summary.internal.sources.enabled} enabled, {summary.internal.sources.disabled}{" "}
-              disabled. They are counted apart from the classes above and carry no volume figure
-              here.
+              {t("internalCounts", {
+                enabled: plainCount(summary.internal.sources.enabled, text.locale),
+                disabled: plainCount(summary.internal.sources.disabled, text.locale),
+              })}
             </p>
           </section>
         </>
@@ -138,3 +141,5 @@ export default async function FleetPage({
     </>
   );
 }
+
+export default withRouteMessages("/fleet", FleetPage);

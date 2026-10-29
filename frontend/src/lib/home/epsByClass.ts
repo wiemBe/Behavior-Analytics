@@ -60,7 +60,7 @@ export function epsByClass(summary: FleetSummary): EpsByClass {
   }
 
   if (measured.length === 0) {
-    qualifiers.push(insufficient("No class has a complete bucket in this window."));
+    qualifiers.push(insufficient("No class has a complete bucket in this window.", { code: "NO_CLASS_COMPLETE" }));
     return {
       entries: [],
       totalEps: null,

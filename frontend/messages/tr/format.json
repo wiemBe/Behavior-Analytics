@@ -1,0 +1,6 @@
+{
+  "underMinuteAgo": "1 dk'dan az önce",
+  "minutesAgo": "{count} dk önce",
+  "hoursAgo": "{count} sa önce",
+  "daysAgo": "{count, number} gün önce"
+}

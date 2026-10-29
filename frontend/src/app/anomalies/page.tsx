@@ -11,6 +11,7 @@
 // the detail link were off-screen entirely.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 
 import { AnomalyFilters } from "@/components/behavior/AnomalyFilters";
 import { AnomalyRows } from "@/components/behavior/AnomalyRows";
@@ -20,6 +21,7 @@ import { isPwRow } from "@/components/propertywatch/pwFormat";
 import { isWafRow } from "@/components/waf/wafLabels";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
   ApiError,
@@ -36,21 +38,26 @@ import {
   subjectKindsForApi,
   type SearchParamValue,
 } from "@/lib/anomalyQuery";
+import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { sourcesAsOf } from "@/lib/home/asOf";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "./anomalies.css";
 
-export const metadata: Metadata = {
-  title: "Anomalies",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("anomalies.list");
+  return { title: t("metaTitle") };
+}
 
-export default async function AnomaliesPage({
+async function AnomaliesPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, SearchParamValue>>;
 }) {
   const raw = await searchParams;
-  const q = parseAnomalyQuery(raw);
+  const t = await getTranslations("anomalies.list");
+  const i18n = await getBehaviorI18n();
+  const q = parseAnomalyQuery(raw, i18n);
   // The subject filters are parsed beside the Phase A query, not in it: a WAF
   // detector type is a valid `anomaly_type` here and would be dropped by the
   // Phase A allow-list.
@@ -96,10 +103,10 @@ export default async function AnomaliesPage({
   } catch (err) {
     error =
       err instanceof ApiError && err.status === 403
-        ? "You do not have permission to view anomalies. Ask an administrator for the read:anomalies grant."
+        ? t("forbidden")
         : err instanceof ApiError && err.status === 401
-          ? "Your session has expired. Sign in again to continue."
-          : "Anomalies could not be loaded. The backend may be unreachable; reload the page to try again.";
+          ? t("expired")
+          : t("failed");
   }
 
   const filtered = Boolean(
@@ -128,8 +135,9 @@ export default async function AnomaliesPage({
     <>
       <ReportDataAge iso={dataTo} />
       <PageHeader
-        title="Anomalies"
-        description="Open an anomaly to see what changed during its interval. Times are UTC."
+        guide={guideFor("/anomalies")}
+        title={t("title")}
+        description={t("description")}
       />
 
       <AnomalyFilters
@@ -159,40 +167,37 @@ export default async function AnomaliesPage({
         </div>
       ) : items.length === 0 ? (
         <div className="notice">
-          {filtered
-            ? "No anomalies match these filters. This is a filtered view, not a statement about the fleet."
-            : "No anomalies have been detected. Sources without an adequate baseline are not being judged — check the behavioral overview for how many."}
+          {filtered ? t("noMatch") : t("none")}
         </div>
       ) : (
         <>
-          <TableScroll label="Detected anomalies">
+          <TableScroll label={t("label")}>
             <table className="sticky-actions anomaly-list">
               <caption className="sr-only">
-                Detected anomalies with lifecycle state, observed against
-                expected volume, deviation, severity and evidence status.
+                {t("caption")}
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Subject</th>
-                  <th scope="col">Detector</th>
-                  <th scope="col">State</th>
+                  <th scope="col">{t("subject")}</th>
+                  <th scope="col">{t("detector")}</th>
+                  <th scope="col">{t("state")}</th>
                   <th scope="col" className="num col-nowrap">
-                    {hasWaf ? "Observed → Expected" : "Observed → Expected (EPS)"}
+                    {hasWaf ? t("observedExpected") : t("observedExpectedEps")}
                   </th>
                   <th scope="col" className="num col-md col-dev">
-                    Deviation
+                    {t("deviation")}
                   </th>
                   <th scope="col" className="col-sm">
-                    Severity
+                    {t("severity")}
                   </th>
                   <th scope="col" className="num col-sm col-started">
-                    Started
+                    {t("started")}
                   </th>
                   <th scope="col" className="col-md">
-                    Evidence
+                    {t("evidence")}
                   </th>
                   <th scope="col">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">{t("actions")}</span>
                   </th>
                 </tr>
               </thead>
@@ -218,3 +223,5 @@ export default async function AnomaliesPage({
     </>
   );
 }
+
+export default withRouteMessages("/anomalies", AnomaliesPage);

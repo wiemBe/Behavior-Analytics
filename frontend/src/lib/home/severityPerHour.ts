@@ -47,7 +47,7 @@ export function severityPerHour(
       severities: [],
       outsideRange: 0,
       lowerBound: false,
-      qualifiers: [insufficient("The range is not a valid span of hours.")],
+      qualifiers: [insufficient("The range is not a valid span of hours.", { code: "INVALID_RANGE" })],
     };
   }
 

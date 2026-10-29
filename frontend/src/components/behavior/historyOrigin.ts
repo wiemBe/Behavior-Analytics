@@ -11,7 +11,10 @@
 //   * `LIVE`, and a response that carries no `origin` at all, say nothing: a series with no
 //     history bucket looks exactly as it did before.
 
+import type { TextTranslator } from "@/i18n/textTranslator";
 import type { HistoryOrigin } from "@/lib/api";
+import { plainCount } from "@/lib/figureText";
+import type { FormatLocale } from "@/lib/format";
 
 export const HISTORY_TEXT = "read from QRadar history, not judged";
 export const HISTORY_TEXT_CAPITAL = "Read from QRadar history, not judged";
@@ -72,17 +75,31 @@ export function originByTime(rows: OriginRow[]): Map<number, HistoryOrigin | nul
   return new Map(rows.map((r) => [Date.parse(r.bucket_start), r.origin]));
 }
 
+/**
+ * The words of the interface language for the history statements: the translator over the full
+ * catalog (`behavior.history.*`). Without one every function here keeps its English, so the
+ * families whose pages are not converted yet are unchanged.
+ */
+export interface HistoryWords {
+  say: TextTranslator;
+  locale: FormatLocale;
+}
+
 /** The tooltip / table line for one bucket; empty when there is nothing to say. */
-export function originText(origin: HistoryOrigin | null | undefined): string {
-  if (origin === "HISTORY") return HISTORY_TEXT_CAPITAL;
-  if (origin === null) return `Origin: ${ORIGIN_UNKNOWN_TEXT} (the source's bucket record is missing)`;
+export function originText(origin: HistoryOrigin | null | undefined, words?: HistoryWords): string {
+  if (origin === "HISTORY") return words ? words.say("behavior.history.textCapital") : HISTORY_TEXT_CAPITAL;
+  if (origin === null) {
+    return words
+      ? words.say("behavior.history.originLine")
+      : `Origin: ${ORIGIN_UNKNOWN_TEXT} (the source's bucket record is missing)`;
+  }
   return "";
 }
 
 /** A marker for a table row: short, in words. */
-export function originMarker(origin: HistoryOrigin | null | undefined): string {
-  if (origin === "HISTORY") return HISTORY_TEXT;
-  if (origin === null) return ORIGIN_UNKNOWN_TEXT;
+export function originMarker(origin: HistoryOrigin | null | undefined, words?: HistoryWords): string {
+  if (origin === "HISTORY") return words ? words.say("behavior.history.text") : HISTORY_TEXT;
+  if (origin === null) return words ? words.say("behavior.history.originUnknown") : ORIGIN_UNKNOWN_TEXT;
   return "";
 }
 
@@ -92,20 +109,36 @@ const utc = (ms: number) => {
 };
 
 /** The same statement for assistive technology: counts, then each span with its zone. */
-export function historySummary(rows: OriginRow[]): string {
+export function historySummary(rows: OriginRow[], words?: HistoryWords): string {
   const c = originCounts(rows);
   const parts: string[] = [];
   if (c.history > 0) {
     const spans = historyIntervals(rows)
-      .map((s) => `${utc(s.start)} to ${utc(s.end)} UTC`)
+      .map((s) =>
+        words
+          ? words.say("behavior.history.span", { start: utc(s.start), end: utc(s.end) })
+          : `${utc(s.start)} to ${utc(s.end)} UTC`,
+      )
       .join("; ");
     parts.push(
-      `${c.history} of ${c.total} ${c.total === 1 ? "bucket was" : "buckets were"} ${HISTORY_TEXT} (${spans}).`,
+      words
+        ? words.say("behavior.history.summaryHistory", {
+            count: c.total,
+            history: plainCount(c.history, words.locale),
+            total: plainCount(c.total, words.locale),
+            spans,
+          })
+        : `${c.history} of ${c.total} ${c.total === 1 ? "bucket was" : "buckets were"} ${HISTORY_TEXT} (${spans}).`,
     );
   }
   if (c.unknown > 0) {
     parts.push(
-      `${c.unknown} ${c.unknown === 1 ? "bucket has" : "buckets have"} an ${ORIGIN_UNKNOWN_TEXT}: the source's bucket record is missing.`,
+      words
+        ? words.say("behavior.history.summaryUnknown", {
+            count: c.unknown,
+            unknown: plainCount(c.unknown, words.locale),
+          })
+        : `${c.unknown} ${c.unknown === 1 ? "bucket has" : "buckets have"} an ${ORIGIN_UNKNOWN_TEXT}: the source's bucket record is missing.`,
     );
   }
   return parts.join(" ");
@@ -162,12 +195,13 @@ export function historyMarkAreas(
   intervals: HistoryInterval[],
   shade: HistoryShade,
   labelled = true,
+  text: string = HISTORY_TEXT,
 ): HistoryMarkArea[] {
   const widest = intervals.reduce(
     (best, s, i) => (s.end - s.start > (intervals[best]?.end ?? 0) - (intervals[best]?.start ?? 0) ? i : best),
     0,
   );
-  return intervals.map((s, i) => historyMarkArea(s.start, s.end, shade, labelled && i === widest));
+  return intervals.map((s, i) => historyMarkArea(s.start, s.end, shade, labelled && i === widest, text));
 }
 
 /** One span between two axis values (epoch ms on a time axis, a category on a category axis). */
@@ -176,11 +210,12 @@ export function historyMarkArea<X extends number | string>(
   to: X,
   shade: HistoryShade,
   labelled: boolean,
+  text: string = HISTORY_TEXT,
 ): HistoryMarkArea<X> {
   return [
     {
       xAxis: from,
-      name: HISTORY_TEXT,
+      name: text,
       itemStyle: {
         color: shade.color,
         borderColor: shade.border,
@@ -192,7 +227,7 @@ export function historyMarkArea<X extends number | string>(
             label: {
               show: true,
               position: "insideTopLeft" as const,
-              formatter: HISTORY_TEXT,
+              formatter: text,
               color: shade.text,
               fontFamily: shade.font,
               fontSize: 12,

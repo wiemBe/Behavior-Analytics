@@ -9,16 +9,22 @@
 // names the permission and who grants it, and a watch that is not chosen or no longer exists
 // says so. The drill-down leads to the watch page in all of them.
 
+import { useLocale, useTranslations } from "next-intl";
 import { useMemo, type ReactNode } from "react";
 
 import { WidgetFrame, WidgetQualifiers } from "@/components/home/WidgetFrame";
 import { ConfigNotice } from "@/components/catalog/ConfigNotice";
 import { PropertyWatchSeriesChart } from "@/components/propertywatch/PropertyWatchSeriesChart";
-import { coverageText, eventsUnit, relativeAge } from "@/components/propertywatch/pwFormat";
+import type { PwI18n } from "@/components/propertywatch/pwText";
 import { valueText } from "@/components/propertywatch/WatchValuesTable";
 import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
-import { api, type PwBucket, type PwValueSeries } from "@/lib/api";
-import type { Qualifier } from "@/lib/home/qualifiers";
+import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
+import { englishText } from "@/widgets/englishText";
+import type { Locale } from "@/i18n/locale";
+import { useMeasures } from "@/i18n/measures";
+import { api, type PropertyWatch, type PwBucket, type PwValueSeries } from "@/lib/api";
+import { formatPercent } from "@/lib/format";
+import { worded, type Qualifier } from "@/lib/home/qualifiers";
 import { ageSeconds, earlyState, isStale, widgetSelection } from "@/widgets/pwWidgetState";
 import type { RangedProps } from "@/widgets/runtime";
 import type { WidgetState } from "@/widgets/types";
@@ -52,7 +58,7 @@ export interface PropertyWatchWidgetConfig {
 
 export const PW_WIDGET_PERMISSION = "read:property_watches";
 
-/** Refused read. Names the permission and who grants it. */
+/** Refused read, in English: names the permission and who grants it. */
 export const PW_WIDGET_FORBIDDEN =
   "Your role cannot read property watches (permission read:property_watches). An administrator grants read:property_watches. Nothing was changed.";
 
@@ -68,61 +74,104 @@ interface Drawn {
   refreshFailed: boolean;
 }
 
-const failure = (what: string, httpStatus: number | null): WidgetState<never> => ({
+/** `what` is the translated, nominative name of what could not be read ("The tracked values"). */
+const failure = (
+  t: TextTranslator,
+  what: string,
+  httpStatus: number | null,
+): WidgetState<never> => ({
   kind: "error",
-  action: `${what} could not be read. ${
-    httpStatus === null ? "The backend did not answer. " : `The backend answered with HTTP ${httpStatus}. `
-  }Nothing was changed, and the previous answer stays on screen when there is one. Use Refresh in the top bar; if it still fails, check that the backend is reachable.`,
+  action: t("widgets.propertyWatch.failed", {
+    what,
+    answer:
+      httpStatus === null
+        ? t("widgets.propertyWatch.noAnswer")
+        : t("widgets.propertyWatch.answeredWith", { status: httpStatus }),
+  }),
 });
 
 function failedRead(
+  t: TextTranslator,
   states: Array<[string, ResourceState<unknown>]>,
 ): { forbidden: boolean; error: WidgetState<never> | null; pending: boolean } {
   let pending = false;
   for (const [what, s] of states) {
     if (s.status === "forbidden") return { forbidden: true, error: null, pending };
-    if (s.status === "error") return { forbidden: false, error: failure(what, s.httpStatus), pending };
+    if (s.status === "error") {
+      return { forbidden: false, error: failure(t, what, s.httpStatus), pending };
+    }
     if (s.status !== "ok") pending = true;
   }
   return { forbidden: false, error: null, pending };
 }
 
-function qualifiersOf(buckets: PwBucket[], hours: number): Qualifier[] {
+/** The two caveats of the stored buckets, worded here (the frame shows the text as given). */
+export function qualifiersOf(
+  buckets: PwBucket[],
+  hours: number,
+  t: TextTranslator = englishText,
+): Qualifier[] {
   const out: Qualifier[] = [];
   const width = buckets[0]?.bucket_seconds ?? 300;
   const intervals = Math.floor((hours * 3600) / width);
   if (buckets.length < intervals) {
-    const have = buckets.length.toLocaleString("en-US");
-    const of = intervals.toLocaleString("en-US");
-    out.push({
-      kind: "PARTIAL",
-      have: buckets.length,
-      of: intervals,
-      unit: "five-minute intervals",
-      text: `${have} of ${of} five-minute intervals collected; the rest are gaps, not zero events`,
-    });
+    out.push(
+      worded({
+        kind: "PARTIAL",
+        have: buckets.length,
+        of: intervals,
+        unit: t("widgets.propertyWatch.fiveMinuteIntervals"),
+        text: t("widgets.propertyWatch.partialText", { have: buckets.length, of: intervals }),
+      }),
+    );
   }
   const lower = buckets.filter((b) => b.values_measurement === "LOWER_BOUND").length;
   if (lower > 0) {
-    out.push({
-      kind: "TRUNCATED",
-      shown: lower,
-      total: buckets.length,
-      text: `${lower.toLocaleString("en-US")} of ${buckets.length.toLocaleString("en-US")} collected ${lower === 1 ? "bucket is a lower bound" : "buckets are lower bounds"}; their points read "at least n" and absent values are unknown, not zero`,
-    });
+    out.push(
+      worded({
+        kind: "TRUNCATED",
+        shown: lower,
+        total: buckets.length,
+        text: t("widgets.propertyWatch.lowerBoundsText", { lower, total: buckets.length }),
+      }),
+    );
   }
   return out;
+}
+
+/** `96 %`, or `at least 88 %` when the grouped search was cut; the em dash when unmeasured. */
+function coverageText(
+  coverage: PropertyWatch["coverage"],
+  t: TextTranslator,
+  locale: Locale,
+): string {
+  if (!coverage || coverage.ratio === null) return "—";
+  const text = formatPercent(coverage.ratio, null, 0, locale);
+  return coverage.measurement === "LOWER_BOUND"
+    ? t("widgets.propertyWatch.atLeast", { value: text })
+    : text;
+}
+
+/** The unit of the Y axis: events per bucket of the series. */
+function eventsUnit(bucketSeconds: number | null | undefined, t: TextTranslator): string {
+  if (!bucketSeconds || bucketSeconds <= 0) return t("widgets.propertyWatch.perBucket");
+  const minutes = bucketSeconds / 60;
+  return Number.isInteger(minutes)
+    ? t("widgets.propertyWatch.perMinutes", { minutes })
+    : t("widgets.propertyWatch.perSeconds", { seconds: bucketSeconds });
 }
 
 /** The window of every read. The series API takes 1 to 168 h; the widget fixes 24 h, which the
  *  registry does not offer as a dashboard range (its reads are the watch page's, not the fleet's). */
 const HOURS = 24;
-const WINDOW_TEXT = "24 h";
 
 export function PropertyWatchWidget({
   id,
   config,
 }: { id: string; config: PropertyWatchWidgetConfig } & RangedProps) {
+  const t = useTranslations("widgets.propertyWatch");
+  const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   const hours = HOURS;
   const watchId =
     typeof config.watch_id === "string" && config.watch_id !== "" ? config.watch_id : null;
@@ -139,7 +188,7 @@ export function PropertyWatchWidget({
   // status to speak, and a slow one is waited for so the widget does not flash a chart first.
   const early =
     watch !== null && catalogS.status !== "idle" && catalogS.status !== "loading"
-      ? earlyState(watch, catalog)
+      ? earlyState(watch, catalog, say, locale)
       : null;
   const settled = watch !== null && catalogS.status !== "idle" && catalogS.status !== "loading";
   const reading = settled && early === null && watchId !== null;
@@ -165,13 +214,13 @@ export function PropertyWatchWidget({
   const seriesAt = seriesS.status === "ok" ? seriesS.receivedAt : null;
   const plotted = useMemo(() => {
     if (!seriesData || !items) return null;
-    const labels = new Map(items.map((v) => [v.id, valueText(v)]));
+    const labels = new Map(items.map((v) => [v.id, valueText(v, { t: say, locale })]));
     return seriesData.series.map((s) => ({
       ...s,
       value_key: labels.get(s.value_id) ?? s.value_key,
       points: s.points.filter((point) => point.origin === "LIVE"),
     }));
-  }, [seriesData, items]);
+  }, [seriesData, items, say, locale]);
   const bucketData = bucketsS.status === "ok" ? bucketsS.data : null;
   const liveBuckets = useMemo(
     () => bucketData?.filter((bucket) => bucket.origin === "LIVE") ?? null,
@@ -188,18 +237,18 @@ export function PropertyWatchWidget({
     };
   }, [seriesAt, hours]);
 
-  const title = watch?.name ?? "Property watch";
+  const title = watch?.name ?? t("defaultTitle");
   const link = {
     href: watchId ? `/behavior/watches/${watchId}` : "/behavior/watches",
-    label: "Watch",
+    label: t("link"),
   };
   const frame = (state: WidgetState<Drawn>, extra: { badge?: string; windowed?: boolean } = {}) => (
     <WidgetFrame
       id={`property-watch-${id}`}
       title={title}
-      what="property watches"
+      what={t("what")}
       permission={PW_WIDGET_PERMISSION}
-      windowText={extra.windowed ? WINDOW_TEXT : undefined}
+      windowText={extra.windowed ? say("units.range.24h") : undefined}
       badge={extra.badge}
       link={link}
       fillBody
@@ -213,7 +262,7 @@ export function PropertyWatchWidget({
     <WidgetFrame
       id={`property-watch-${id}`}
       title={title}
-      what="property watches"
+      what={t("what")}
       permission={PW_WIDGET_PERMISSION}
       link={link}
       state={{ kind: "ok", data: null, asOf: null }}
@@ -225,9 +274,9 @@ export function PropertyWatchWidget({
   if (watchId === null) {
     return note(
       <ConfigNotice
-        lead="Choose a property watch."
-        text="No watch is set for this widget, so there is nothing to chart."
-        hint="Open Customize, then Configure, to choose one."
+        lead={t("chooseLead")}
+        text={t("chooseText")}
+        hint={t("chooseHint")}
       />,
     );
   }
@@ -235,7 +284,7 @@ export function PropertyWatchWidget({
   if (watchS.status === "forbidden") {
     return note(
       <p className="tw-state" role="alert">
-        {PW_WIDGET_FORBIDDEN}
+        {t("forbidden")}
       </p>,
     );
   }
@@ -243,26 +292,28 @@ export function PropertyWatchWidget({
     if (watchS.httpStatus === 404) {
       return note(
         <ConfigNotice
-          lead="This property watch was deleted."
-          text="The watch set for this widget no longer exists."
-          hint="Open Customize, then Configure, to choose another."
+          lead={t("deletedLead")}
+          text={t("deletedText")}
+          hint={t("deletedHint")}
         />,
       );
     }
-    return frame(failure("The property watch", watchS.httpStatus));
+    return frame(failure(say, t("theWatch"), watchS.httpStatus));
   }
   if (!settled) return frame({ kind: "loading" });
   if (early !== null) return frame(withInstant(early));
 
-  const read = failedRead([
-    ["The tracked values", valuesS],
-    ["The stored buckets", bucketsS],
-    ...(selection.length > 0 ? ([["The series", seriesS]] as Array<[string, ResourceState<unknown>]>) : []),
+  const read = failedRead(say, [
+    [t("theValues"), valuesS],
+    [t("theBuckets"), bucketsS],
+    ...(selection.length > 0
+      ? ([[t("theSeries"), seriesS]] as Array<[string, ResourceState<unknown>]>)
+      : []),
   ]);
   if (read.forbidden) {
     return note(
       <p className="tw-state" role="alert">
-        {PW_WIDGET_FORBIDDEN}
+        {t("forbidden")}
       </p>,
     );
   }
@@ -271,20 +322,19 @@ export function PropertyWatchWidget({
   if (liveBuckets !== null && liveBuckets.length === 0) {
     return frame({
       kind: "empty",
-      reason: `No collected bucket exists after the history hand-off. ${watch.history.reason ?? "The watch has not collected its first current bucket yet."} Open the watch to inspect the history read.`,
+      reason: t("noCollected", {
+        reason: watch.history.reason ?? t("noFirstBucket"),
+      }),
     });
   }
   if (items === null || items.length === 0) {
     return frame(
       {
         kind: "empty",
-        reason: (
-          <>
-            No value is tracked for this watch in the last {WINDOW_TEXT}. A value appears once a
-            collected bucket admits it, and nothing is judged until then. Created{" "}
-            <UtcTime value={watch?.created_at} />.
-          </>
-        ),
+        reason: t.rich("noValues", {
+          window: say("units.range.24h"),
+          created: () => <UtcTime value={watch?.created_at} />,
+        }),
       },
       { windowed: true },
     );
@@ -293,8 +343,7 @@ export function PropertyWatchWidget({
     return frame(
       {
         kind: "empty",
-        reason:
-          "No value is pinned, and no tracked value has a counted event in the last bucket, so there is nothing to draw. This is not a reading of zero events.",
+        reason: t("nothingToDraw"),
       },
       { windowed: true },
     );
@@ -313,14 +362,14 @@ export function PropertyWatchWidget({
     windowStart: win.start,
     windowEnd: win.end,
     collected,
-    qualifiers: qualifiersOf(liveBuckets ?? [], hours),
+    qualifiers: qualifiersOf(liveBuckets ?? [], hours, say),
     lastBucket,
     refreshFailed: [watchS, valuesS, bucketsS, seriesS].some(
       (s) => s.status === "ok" && s.refreshFailed !== null,
     ),
   };
   const age = ageSeconds(lastBucket, new Date());
-  const badge = `Coverage ${coverageText(watch.coverage)}`;
+  const badge = t("coverageBadge", { value: coverageText(watch.coverage, say, locale) });
   const state: WidgetState<Drawn> =
     isStale(watch, age) && age !== null
       ? { kind: "stale", data: drawn, asOf: lastBucket, ageSeconds: age }
@@ -329,7 +378,12 @@ export function PropertyWatchWidget({
 }
 
 function PwBody({ drawn }: { drawn: Drawn }) {
-  const unit = eventsUnit(drawn.bucketSeconds);
+  const t = useTranslations("widgets.propertyWatch");
+  const say = asTextTranslator(useTranslations());
+  const measures = useMeasures();
+  const pwText = useMemo<PwI18n>(() => ({ t: say, locale: measures.locale }), [say, measures.locale]);
+  const unit = eventsUnit(drawn.bucketSeconds, say);
+  const age = measures.age(ageSeconds(drawn.lastBucket, new Date()));
   return (
     <div className="pww">
       <div className="pww-chart">
@@ -340,20 +394,22 @@ function PwBody({ drawn }: { drawn: Drawn }) {
           windowStart={drawn.windowStart}
           windowEnd={drawn.windowEnd}
           collected={drawn.collected}
-          emptyText="No value is plotted."
-          ariaLabel={`${unit} for the pinned and the top values of the last bucket, in UTC`}
+          emptyText={t("nonePlotted")}
+          ariaLabel={t("chartLabel", { unit })}
+          i18n={pwText}
         />
       </div>
       <p className="tw-note">
-        Last bucket <UtcTime value={drawn.lastBucket} />{" "}
-        <span className="pww-age">({relativeAge(drawn.lastBucket, new Date()) || "age unknown"})</span>
-        . Y axis: {unit}.
+        {t.rich("lastBucket", {
+          time: () => <UtcTime value={drawn.lastBucket} />,
+          age: () => <span className="pww-age">({age})</span>,
+          unit,
+        })}
       </p>
       <WidgetQualifiers qualifiers={drawn.qualifiers} />
       {drawn.refreshFailed ? (
         <p className="tw-note warn" role="status">
-          The latest refresh failed. The previous answer stays on screen; use Refresh in the top bar to
-          try again.
+          {t("refreshFailed")}
         </p>
       ) : null}
     </div>

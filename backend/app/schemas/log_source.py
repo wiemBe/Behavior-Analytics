@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from app.models.enums import AnomalyType, Criticality, Severity
+from app.schemas.messages import MessageParamValue
 
 
 class LogSourceSummary(BaseModel):
@@ -121,6 +122,9 @@ class AnomalySummary(BaseModel):
     detected_at: datetime
     resolved_at: datetime | None
     explanation: str | None
+    #: Stable code and raw values of `explanation` for a non-English client. Null: no code.
+    explanation_code: str | None = None
+    explanation_params: dict[str, MessageParamValue] | None = None
     suppressed: bool
 
 

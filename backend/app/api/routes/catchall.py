@@ -22,6 +22,8 @@ from app.alerts.service import AlertResolution, AlertService
 from app.api.deps import SessionDep, SettingsDep
 from app.history.origin import origin_of
 from app.history.state import HistoryFamily
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import permission_refusal
 from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.enums import CatchallReviewStatus
 from app.models.log_source import LogSource
@@ -60,7 +62,7 @@ def _guard(principal: Principal, permission: str) -> None:
     try:
         require_permission(principal, permission)
     except PermissionDenied as exc:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+        raise permission_refusal(exc) from exc
 
 
 def _escape_like(value: str) -> str:
@@ -259,7 +261,10 @@ async def _transition(
                         sender.instance_id, sender.catchall_log_source_id, sender.identifier
                     ),
                     actor=principal.subject,
-                    reason=f"catch-all sender {target.value.lower()}",
+                    reason_message=MessageRef(
+                        "alert.inventory.catchall_sender.reviewed",
+                        {"target": target.value},
+                    ),
                 )
             ],
         )

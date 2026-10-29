@@ -19,6 +19,7 @@
 
 import type { Contributor, ExplanationDimension, ExplanationPackage } from "@/lib/api";
 import { contributorsAreShowable, dimensionLabel } from "@/lib/behavior";
+import { ENGLISH_BEHAVIOR, type BehaviorI18n } from "@/lib/behaviorI18n";
 
 /**
  * The order dimensions are offered to the analyst in.
@@ -100,6 +101,7 @@ export interface HeadlineContributor {
 export function selectHeadlineContributors(
   packaged: ExplanationPackage | null,
   limit = 3,
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
 ): HeadlineContributor[] {
   if (!packaged) return [];
 
@@ -111,7 +113,7 @@ export function selectHeadlineContributors(
     if (!contributor) continue;
     picks.push({
       dimension: dimension.dimension,
-      dimensionLabel: dimensionLabel(dimension.dimension),
+      dimensionLabel: dimensionLabel(dimension.dimension, i18n),
       contributor,
       truncated: dimension.availability === "TRUNCATED",
     });

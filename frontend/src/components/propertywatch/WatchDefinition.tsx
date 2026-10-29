@@ -1,362 +1,158 @@
-// The Definition tab: what the watch is, read only. The scope as the synced inventory names it,
-// the properties, the pinned values, the detectors, and the cardinality caps in force. All of it
-// is text; none of it is an input. The generated query is not served by any read route, so it is
-// not drawn here.
+// The Definition tab: what the watch is, read only. All backend reasons remain backend text.
 
 import Link from "next/link";
 
-import type { PropertyWatch, PropertyWatchCatalog, WatchScope } from "@/lib/api";
-import { formatAge } from "@/lib/health";
-import { formatDuration } from "@/lib/searchCadence";
 import { UtcTime } from "@/components/ui/UtcTime";
-
+import { enumLabel } from "@/i18n/enumLabels";
+import { formatCount } from "@/lib/format";
+import { formatDuration } from "@/lib/behavior";
+import type { PropertyWatch, PropertyWatchCatalog, WatchScope } from "@/lib/api";
 
 import { WatchAqlSection, type AqlRead } from "./WatchAql";
-import { formatCoveragePercent, pwTypeLabel, scopeKindLabel, scopeText, statusLabel, statusReason } from "./pwFormat";
-import { HistoryGapLine } from "./WatchHonesty";
 import { historyHeaderText } from "./history";
+import {
+  formatCoveragePercent,
+  pwTypeLabel,
+  scopeKindLabel,
+  scopeText,
+  statusLabel,
+} from "./pwFormat";
+import { codedStatusReason } from "./pwReason";
+import { HistoryGapLine } from "./WatchHonesty";
+import { ENGLISH_PW, type PwI18n } from "./pwText";
+
+const RANGE_ARROW = " → ";
 
 export function WatchDefinition({
   watch,
   catalog,
   scope,
   aql = null,
+  i18n = ENGLISH_PW,
 }: {
   watch: PropertyWatch;
   catalog: PropertyWatchCatalog | null;
-  /** The resolved membership, or null when it could not be read. */
   scope: WatchScope | null;
-  /** The generated query text, or null when the read was not made or failed. */
   aql?: AqlRead | null;
+  i18n?: PwI18n;
 }) {
+  const t = i18n.t;
   const caps = catalog
     ? [
-        ["Values kept per bucket", catalog.max_values_per_bucket],
-        ["New values admitted per bucket", catalog.max_new_values_per_bucket],
-        ["Tracked values per watch", catalog.max_active_values_per_watch],
-        ["Pinned values per watch", catalog.max_pinned_values],
-        ["Longest value, in characters", catalog.value_max_length],
-        ["Sources per search", catalog.max_sources_per_search],
-        ["Searches per watch and run", catalog.max_chunks_per_watch],
-      ]
+        [t("propertyWatch.definition.cap.values"), catalog.max_values_per_bucket],
+        [t("propertyWatch.definition.cap.newValues"), catalog.max_new_values_per_bucket],
+        [t("propertyWatch.definition.cap.tracked"), catalog.max_active_values_per_watch],
+        [t("propertyWatch.definition.cap.pinned"), catalog.max_pinned_values],
+        [t("propertyWatch.definition.cap.length"), catalog.value_max_length],
+        [t("propertyWatch.definition.cap.sources"), catalog.max_sources_per_search],
+        [t("propertyWatch.definition.cap.searches"), catalog.max_chunks_per_watch],
+      ] as const
     : [];
   return (
     <div className="pw-definition stack-6">
       <section aria-labelledby="pw-def-what">
-        <h2 id="pw-def-what" className="section-title">
-          What it watches
-        </h2>
+        <h2 id="pw-def-what" className="section-title">{t("propertyWatch.definition.what")}</h2>
         <dl className="dimension-meta pw-dl">
-          <div>
-            <dt>Scope</dt>
-            <dd>{scopeText(watch)}</dd>
-          </div>
+          <div><dt>{t("propertyWatch.common.scope")}</dt><dd>{scopeText(watch, i18n)}</dd></div>
           {watch.scope.detail && (
             <div>
-              <dt>{watch.scope.kind === "LOG_SOURCE" ? "Source type" : "Path"}</dt>
+              <dt>{t(watch.scope.kind === "LOG_SOURCE" ? "propertyWatch.definition.sourceType" : "propertyWatch.definition.path")}</dt>
               <dd>{watch.scope.detail}</dd>
             </div>
           )}
+          <div><dt>{t("propertyWatch.definition.scopeKind")}</dt><dd>{scopeKindLabel(watch.scope_kind, i18n)}</dd></div>
           <div>
-            <dt>Scope kind</dt>
-            <dd>{scopeKindLabel(watch.scope_kind)}</dd>
+            <dt>{t(watch.properties.length === 1 ? "propertyWatch.common.property" : "propertyWatch.common.properties")}</dt>
+            <dd>{watch.properties.map((property) => (
+              <span key={`${property.kind}:${property.name}`} className="pw-def-prop">
+                {property.name}<span className="muted">{t(property.kind === "NORMALIZED" ? "propertyWatch.definition.normalizedField" : "propertyWatch.definition.customProperty")}</span>
+              </span>
+            ))}</dd>
           </div>
           <div>
-            <dt>{watch.properties.length === 1 ? "Property" : "Properties"}</dt>
-            <dd>
-              {watch.properties.map((p) => (
-                <span key={`${p.kind}:${p.name}`} className="pw-def-prop">
-                  {p.name}
-                  <span className="muted">
-                    {p.kind === "NORMALIZED" ? " normalized field" : " custom property"}
-                  </span>
-                </span>
-              ))}
-            </dd>
+            <dt>{t("propertyWatch.definition.alwaysCounted")}</dt>
+            <dd>{watch.pinned_values.length === 0 ? <span className="muted">{t("propertyWatch.definition.noPins")}</span> : (
+              <ul className="pw-def-pins" aria-label={t("propertyWatch.definition.pinnedValues")}>
+                {watch.pinned_values.map((tuple) => <li key={tuple.join("\u0000")}>{tuple.join(" × ")}</li>)}
+              </ul>
+            )}</dd>
           </div>
-          <div>
-            <dt>Always counted</dt>
-            <dd>
-              {watch.pinned_values.length === 0 ? (
-                <span className="muted">no pinned values</span>
-              ) : (
-                <ul className="pw-def-pins" aria-label="Pinned values">
-                  {watch.pinned_values.map((tuple) => (
-                    <li key={tuple.join("\u0000")}>{tuple.join(" × ")}</li>
-                  ))}
-                </ul>
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>Detectors</dt>
-            <dd>{watch.detectors.map(pwTypeLabel).join(", ") || "none"}</dd>
-          </div>
-          <div>
-            <dt>Incident severity</dt>
-            <dd>{watch.severity}</dd>
-          </div>
+          <div><dt>{t("propertyWatch.definition.detectors")}</dt><dd>{watch.detectors.map((type) => pwTypeLabel(type, i18n)).join(", ") || t("propertyWatch.common.none")}</dd></div>
+          <div><dt>{t("propertyWatch.definition.incidentSeverity")}</dt><dd>{i18n.locale === "en" ? watch.severity : enumLabel(i18n.t, "severity", watch.severity)}</dd></div>
         </dl>
       </section>
 
       <section aria-labelledby="pw-def-members">
-        <h2 id="pw-def-members" className="section-title">
-          Scope membership
-        </h2>
-        <Membership scope={scope} />
+        <h2 id="pw-def-members" className="section-title">{t("propertyWatch.definition.membership")}</h2>
+        <Membership scope={scope} i18n={i18n} />
       </section>
 
       <section aria-labelledby="pw-def-run">
-        <h2 id="pw-def-run" className="section-title">
-          How it is collected
-        </h2>
+        <h2 id="pw-def-run" className="section-title">{t("propertyWatch.definition.collection")}</h2>
         <dl className="dimension-meta pw-dl">
+          <div><dt>{t("propertyWatch.definition.enabled")}</dt><dd>{t(watch.enabled ? "propertyWatch.common.yes" : "propertyWatch.common.no")}</dd></div>
+          <div><dt>{t("propertyWatch.definition.version")}</dt><dd className="num">{formatCount(watch.watch_version, i18n.locale)}<span className="muted">{t("propertyWatch.definition.versionNote")}</span></dd></div>
           <div>
-            <dt>Enabled</dt>
-            <dd>{watch.enabled ? "Yes" : "No"}</dd>
+            <dt>{t("propertyWatch.definition.cadence")}</dt>
+            <dd>{t("propertyWatch.definition.cadenceBeforeLink", { duration: formatDuration(watch.cadence_seconds, i18n) })}<Link href="/admin/search-cadence">{t("propertyWatch.definition.searchCadence")}</Link>{t("propertyWatch.definition.cadenceAfterLink")}</dd>
           </div>
-          <div>
-            <dt>Version</dt>
-            <dd className="num">
-              {watch.watch_version}
-              <span className="muted"> a new scope or property set starts a new version; values of another version are never compared</span>
-            </dd>
-          </div>
-          <div>
-            <dt>Cadence</dt>
-            <dd>
-              Every {formatDuration(watch.cadence_seconds)} (the PROPERTY_WATCH family&apos;s setting
-              in <Link href="/admin/search-cadence">Search cadence</Link>); buckets are five minutes
-              wide.
-            </dd>
-          </div>
-          <div>
-            <dt>Alerting</dt>
-            <dd>
-              {watch.alerting_mode === "shadow"
-                ? "Shadow: incidents are recorded and nothing pages."
-                : "Alerting: incidents page."}
-            </dd>
-          </div>
-          <div>
-            <dt>Created</dt>
-            <dd className="num">
-              <UtcTime value={watch.created_at} />
-              {watch.created_by && <span className="muted"> by {watch.created_by}</span>}
-            </dd>
-          </div>
-          <div>
-            <dt>Last changed</dt>
-            <dd className="num">
-              <UtcTime value={watch.updated_at} />
-              {watch.updated_by && <span className="muted"> by {watch.updated_by}</span>}
-            </dd>
-          </div>
+          <div><dt>{t("propertyWatch.definition.alerting")}</dt><dd>{t(watch.alerting_mode === "shadow" ? "propertyWatch.definition.shadow" : "propertyWatch.definition.paging")}</dd></div>
+          <div><dt>{t("propertyWatch.definition.created")}</dt><dd className="num"><UtcTime value={watch.created_at} />{watch.created_by && <span className="muted">{t("propertyWatch.definition.by", { operator: watch.created_by })}</span>}</dd></div>
+          <div><dt>{t("propertyWatch.definition.changed")}</dt><dd className="num"><UtcTime value={watch.updated_at} />{watch.updated_by && <span className="muted">{t("propertyWatch.definition.by", { operator: watch.updated_by })}</span>}</dd></div>
         </dl>
       </section>
 
       <section aria-labelledby="pw-def-history">
-        <h2 id="pw-def-history" className="section-title">
-          History
-        </h2>
+        <h2 id="pw-def-history" className="section-title">{t("propertyWatch.definition.history")}</h2>
         <dl className="dimension-meta pw-dl">
-          <div>
-            <dt>State</dt>
-            <dd>{historyHeaderText(watch.history)}</dd>
-          </div>
-          <div>
-            <dt>Requested</dt>
-            <dd className="num">
-              {watch.history.days_requested === null
-                ? "No history requested"
-                : `${watch.history.days_requested} days`}
-            </dd>
-          </div>
-          <div>
-            <dt>Requested window</dt>
-            <dd className="num">
-              {watch.history.target_start && watch.history.end ? (
-                <>
-                  <UtcTime value={watch.history.target_start} />
-                  {" → "}
-                  <UtcTime value={watch.history.end} />
-                </>
-              ) : (
-                "not recorded"
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>Read from QRadar</dt>
-            <dd className="num">
-              {watch.history.floor && watch.history.through ? (
-                <>
-                  <UtcTime value={watch.history.floor} />
-                  {" → "}
-                  <UtcTime value={watch.history.through} />
-                </>
-              ) : (
-                "no readable span recorded"
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>History floor</dt>
-            <dd className="num">
-              {watch.history.floor ? <UtcTime value={watch.history.floor} /> : "not recorded"}
-            </dd>
-          </div>
-          <div>
-            <dt>Membership basis</dt>
-            <dd>The membership of a group is today&apos;s, not as it was.</dd>
-          </div>
+          <div><dt>{t("propertyWatch.common.state")}</dt><dd>{historyHeaderText(watch.history, i18n)}</dd></div>
+          <div><dt>{t("propertyWatch.definition.requested")}</dt><dd className="num">{watch.history.days_requested === null ? t("propertyWatch.definition.noHistory") : t("propertyWatch.common.days", { count: watch.history.days_requested })}</dd></div>
+          <TimeSpan label={t("propertyWatch.definition.requestedWindow")} start={watch.history.target_start} end={watch.history.end} missing={t("propertyWatch.common.notRecorded")} />
+          <TimeSpan label={t("propertyWatch.definition.readFrom")} start={watch.history.floor} end={watch.history.through} missing={t("propertyWatch.definition.readSpanMissing")} />
+          <div><dt>{t("propertyWatch.definition.historyFloor")}</dt><dd className="num">{watch.history.floor ? <UtcTime value={watch.history.floor} /> : t("propertyWatch.common.notRecorded")}</dd></div>
+          <div><dt>{t("propertyWatch.definition.membershipBasis")}</dt><dd>{t("propertyWatch.definition.membershipBasisBody")}</dd></div>
         </dl>
         {(watch.history.gaps ?? []).length > 0 && (
-          <div>
-            <h3 className="pw-subtitle">History gaps</h3>
-            <ul className="pw-def-changes" aria-label="History gaps">
-              {(watch.history.gaps ?? []).map((gap) => (
-                <li key={`${gap.start}-${gap.end}`}>
-                  <HistoryGapLine gap={gap} />
-                </li>
-              ))}
+          <div><h3 className="pw-subtitle">{t("propertyWatch.definition.historyGaps")}</h3>
+            <ul className="pw-def-changes" aria-label={t("propertyWatch.definition.historyGaps")}>
+              {(watch.history.gaps ?? []).map((gap) => <li key={`${gap.start}-${gap.end}`}><HistoryGapLine gap={gap} i18n={i18n} /></li>)}
             </ul>
           </div>
         )}
       </section>
 
-      <section aria-labelledby="pw-def-aql">
-        <h2 id="pw-def-aql" className="section-title">
-          Generated query
-        </h2>
-        <WatchAqlSection read={aql} />
-      </section>
-
+      <section aria-labelledby="pw-def-aql"><h2 id="pw-def-aql" className="section-title">{t("propertyWatch.definition.generatedQuery")}</h2><WatchAqlSection read={aql} /></section>
       {caps.length > 0 && catalog && (
         <section aria-labelledby="pw-def-caps">
-          <h2 id="pw-def-caps" className="section-title">
-            Cardinality caps in force
-          </h2>
-          <p className="subtitle">
-            A value beyond a cap is counted in its bucket and never plotted or judged. The coverage
-            floor is {formatCoveragePercent(catalog.min_coverage)}: below it, verdicts that read an
-            absence as evidence are insufficient data.
-          </p>
-          <dl className="dimension-meta pw-dl">
-            {caps.map(([label, value]) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd className="num">{value.toLocaleString("en-US")}</dd>
-              </div>
-            ))}
-          </dl>
+          <h2 id="pw-def-caps" className="section-title">{t("propertyWatch.definition.caps")}</h2>
+          <p className="subtitle">{t("propertyWatch.definition.capsBody", { floor: formatCoveragePercent(catalog.min_coverage, i18n) })}</p>
+          <dl className="dimension-meta pw-dl">{caps.map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="num">{formatCount(value, i18n.locale)}</dd></div>)}</dl>
         </section>
       )}
-      {!catalog && (
-        <div className="notice" role="alert">
-          The cardinality caps could not be read, so they are not shown. Reload the page to try again.
-        </div>
-      )}
+      {!catalog && <div className="notice" role="alert">{t("propertyWatch.definition.capsFailed")}</div>}
     </div>
   );
 }
 
-function Membership({ scope }: { scope: WatchScope | null }) {
-  if (scope === null) {
-    return (
-      <div className="notice" role="alert">
-        The scope&apos;s membership could not be loaded, so it is not shown. Reload the page to try again.
-      </div>
-    );
-  }
+function TimeSpan({ label, start, end, missing }: { label: string; start: string | null; end: string | null; missing: string }) {
+  return <div><dt>{label}</dt><dd className="num">{start && end ? <><UtcTime value={start} />{RANGE_ARROW}<UtcTime value={end} /></> : missing}</dd></div>;
+}
+
+function Membership({ scope, i18n }: { scope: WatchScope | null; i18n: PwI18n }) {
+  const t = i18n.t;
+  if (scope === null) return <div className="notice" role="alert">{t("propertyWatch.definition.membershipFailed")}</div>;
   return (
     <div className="stack-6">
-      {!scope.resolved && scope.state && (
-        <p className="banner warn">
-          <span>
-            <strong>{statusLabel(scope.state).toUpperCase()}.</strong>{" "}
-            {statusReason(scope.state, scope.reason)} What the inventory holds is shown; no count is
-            drawn from nothing.
-          </span>
-        </p>
-      )}
+      {!scope.resolved && scope.state && <p className="banner warn"><span><strong>{statusLabel(scope.state, i18n).toLocaleUpperCase(i18n.locale)}.</strong>{" "}{codedStatusReason(scope.state, scope.reason, i18n, { code: scope.reason_code, params: scope.reason_params })} {t("propertyWatch.definition.membershipWarning")}</span></p>}
       <dl className="dimension-meta pw-dl">
-        <div>
-          <dt>Members</dt>
-          <dd className="num">
-            {scope.member_count === null ? (
-              <span className="muted">not stated</span>
-            ) : (
-              <>
-                {scope.member_count.toLocaleString("en-US")}
-                <span className="muted"> sources</span>
-              </>
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>Inventory synced</dt>
-          <dd className="num">
-            {scope.inventory_synced_at ? (
-              <>
-                <UtcTime value={scope.inventory_synced_at} />
-                {scope.inventory_age_seconds !== null && (
-                  <span className="muted"> ({formatAge(scope.inventory_age_seconds)} ago)</span>
-                )}
-              </>
-            ) : (
-              <span className="muted">not recorded</span>
-            )}
-          </dd>
-        </div>
-        {scope.groups_walked.length > 0 && (
-          <div>
-            <dt>Groups walked</dt>
-            <dd>
-              <ul className="pw-def-pins" aria-label="Groups walked">
-                {scope.groups_walked.map((g) => (
-                  <li key={g.qradar_id}>{g.name}</li>
-                ))}
-              </ul>
-            </dd>
-          </div>
-        )}
+        <div><dt>{t("propertyWatch.definition.members")}</dt><dd className="num">{scope.member_count === null ? <span className="muted">{t("propertyWatch.definition.notStated")}</span> : <>{formatCount(scope.member_count, i18n.locale)}<span className="muted"> {t(scope.member_count === 1 ? "propertyWatch.definition.sourceOne" : "propertyWatch.definition.sourceMany")}</span></>}</dd></div>
+        <div><dt>{t("propertyWatch.definition.inventorySynced")}</dt><dd className="num">{scope.inventory_synced_at ? <><UtcTime value={scope.inventory_synced_at} />{scope.inventory_age_seconds !== null && <span className="muted">{t("propertyWatch.definition.ageAgo", { age: formatDuration(scope.inventory_age_seconds, i18n) })}</span>}</> : <span className="muted">{t("propertyWatch.common.notRecorded")}</span>}</dd></div>
+        {scope.groups_walked.length > 0 && <div><dt>{t("propertyWatch.definition.groupsWalked")}</dt><dd><ul className="pw-def-pins" aria-label={t("propertyWatch.definition.groupsWalked")}>{scope.groups_walked.map((group) => <li key={group.qradar_id}>{group.name}</li>)}</ul></dd></div>}
       </dl>
-
-      <div>
-        <h3 className="pw-subtitle">Membership changes</h3>
-        {scope.changes.length === 0 ? (
-          <p className="subtitle">No membership change is stored for this watch.</p>
-        ) : (
-          <ul className="pw-def-changes" aria-label="Membership changes">
-            {scope.changes.map((c) => (
-              <li key={c.bucket_start}>
-                <UtcTime value={c.bucket_start} />
-                {": "}
-                {c.member_count_before === null ? "unknown" : c.member_count_before} to{" "}
-                {c.member_count_after === null ? "unknown" : c.member_count_after} sources
-                {c.in_grace_window && <span className="muted"> (inside the grace window)</span>}
-              </li>
-            ))}
-          </ul>
-        )}
+      <div><h3 className="pw-subtitle">{t("propertyWatch.definition.membershipChanges")}</h3>
+        {scope.changes.length === 0 ? <p className="subtitle">{t("propertyWatch.definition.noChanges")}</p> : <ul className="pw-def-changes" aria-label={t("propertyWatch.definition.membershipChanges")}>{scope.changes.map((change) => <li key={change.bucket_start}><UtcTime value={change.bucket_start} />{": "}{t("propertyWatch.definition.change", { before: change.member_count_before === null ? t("propertyWatch.common.unknown") : formatCount(change.member_count_before, i18n.locale), after: change.member_count_after === null ? t("propertyWatch.common.unknown") : formatCount(change.member_count_after, i18n.locale) })}{change.in_grace_window && <span className="muted">{t("propertyWatch.definition.insideGrace")}</span>}</li>)}</ul>}
       </div>
-
-      {scope.members.length > 0 && (
-        <div>
-          <h3 className="pw-subtitle">Member names</h3>
-          <p className="subtitle">
-            {scope.members_total !== null && scope.members_total > scope.members.length
-              ? `${scope.members.length} of ${scope.members_total.toLocaleString("en-US")} are listed, sorted.`
-              : `${scope.members.length} listed, sorted.`}
-          </p>
-          <ul className="pw-def-members" aria-label="Member names" tabIndex={0}>
-            {scope.members.map((m) => (
-              <li key={m}>{m}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {scope.members.length > 0 && <div><h3 className="pw-subtitle">{t("propertyWatch.definition.memberNames")}</h3><p className="subtitle">{scope.members_total !== null && scope.members_total > scope.members.length ? t("propertyWatch.definition.membersLimited", { shown: formatCount(scope.members.length, i18n.locale), total: formatCount(scope.members_total, i18n.locale) }) : t("propertyWatch.definition.membersAll", { shown: formatCount(scope.members.length, i18n.locale) })}</p><ul className="pw-def-members" aria-label={t("propertyWatch.definition.memberNames")} tabIndex={0}>{scope.members.map((member) => <li key={member}>{member}</li>)}</ul></div>}
     </div>
   );
 }

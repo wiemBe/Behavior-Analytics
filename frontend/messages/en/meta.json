@@ -1,0 +1,5 @@
+{
+  "title": "Behavior Analytics",
+  "titleTemplate": "{title} · Behavior Analytics",
+  "description": "Behavioral anomaly detection and investigation for on-premises QRadar: seasonal volume baselines, an explicit anomaly lifecycle, and bounded evidence answering what changed during an anomalous interval."
+}

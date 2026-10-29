@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -69,6 +70,14 @@ _OPERATOR_CHECK = "('GT', 'GE', 'LT', 'LE', 'EQ')"
 _SEVERITY_CHECK = "('CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO')"
 _BREACH_STATE_CHECK = "('OPEN', 'RECOVERING', 'RESOLVED')"
 _MEASUREMENT_CHECK = "('EXACT', 'LOWER_BOUND')"
+
+
+def _i18n_parts(value: object) -> tuple[str | None, dict[str, Any] | None]:
+    from app.schemas.messages import stored_message_parts
+
+    if not isinstance(value, dict):
+        return None, None
+    return stored_message_parts(value.get("code"), value.get("params"))
 
 
 class CustomRule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -146,9 +155,20 @@ class CustomRule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_status: Mapped[str | None] = mapped_column(String(16))
     last_status_reason: Mapped[str | None] = mapped_column(Text)
+    last_status_reason_i18n: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
 
     created_by: Mapped[str | None] = mapped_column(String(255))
     updated_by: Mapped[str | None] = mapped_column(String(255))
+
+    @property
+    def last_status_reason_code(self) -> str | None:
+        return _i18n_parts(self.last_status_reason_i18n)[0]
+
+    @property
+    def last_status_reason_params(self) -> dict[str, Any] | None:
+        return _i18n_parts(self.last_status_reason_i18n)[1]
 
 
 class CustomRuleBreach(Base, UUIDPrimaryKeyMixin, TimestampMixin):

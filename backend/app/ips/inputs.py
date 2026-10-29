@@ -32,8 +32,9 @@ from enum import StrEnum
 from typing import Any
 
 from app.core.text import percent
+from app.i18n.messages import MessageRef, render
 from app.models.enums import IpsDimension, WafMeasurement
-from app.waf.inputs import HistoryFacts
+from app.waf.inputs import HistoryFacts, WafHistoryFacts
 
 #: Baseline metric names (design D.7) the IPS baseline builder will train.
 IPS_ENTITY_EVENTS_METRIC = "entity_events"
@@ -47,6 +48,12 @@ ENTITY_DIMENSIONS = (
     IpsDimension.DESTINATION_IP,
     IpsDimension.SIGNATURE,
 )
+
+
+def ips_history_incomplete(code: str, **params: object) -> WafHistoryFacts:
+    """An incomplete port history, stated by one registry sentence (`ips.*` or `waf.*`)."""
+    message = MessageRef(code, params)
+    return WafHistoryFacts(complete=False, reason=render(message), message=message)
 
 
 class IpsInput(StrEnum):

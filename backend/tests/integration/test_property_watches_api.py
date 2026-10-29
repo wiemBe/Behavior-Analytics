@@ -416,7 +416,8 @@ async def test_create_is_disabled_and_every_422_reason_comes_at_once(
     )
     assert bad.status_code == 422
     detail = bad.json()["detail"]
-    assert set(detail) == {"message", "reasons"}
+    assert set(detail) == {"message", "reasons", "reason_codes"}
+    assert len(detail["reason_codes"]) == len(detail["reasons"])
     joined = " | ".join(detail["reasons"])
     for needle in (
         "log_source_id is required",
@@ -465,6 +466,8 @@ async def test_the_source_scope_takes_its_instance_and_a_duplicate_name_is_409(
     dup = client.post(PREFIX, json=_body("by-source"))
     assert dup.status_code == 409
     assert "already exists" in dup.json()["detail"]
+    assert dup.json()["detail_code"] == "propertywatch.name_exists"
+    assert dup.json()["detail_params"] == {"name": "by-source"}
 
 
 async def test_the_patch_carries_a_version_and_a_stale_one_is_409(
@@ -863,6 +866,7 @@ async def test_catalog_scope_options_and_property_options(db_session, db_schema:
         "kind": "LOG_SOURCE_TYPE", "id": str(TYPE_ID), "qradar_id": TYPE_ID,
         "name": "Web Application Firewall", "detail": None, "synced_source_count": 2,
         "scope_state": None, "scope_reason": None,
+        "scope_reason_code": None, "scope_reason_params": None,
     }]
     groups = client.get(f"{PREFIX}/scope-options", params={"kind": "LOG_SOURCE_GROUP"}).json()
     assert [(g["name"], g["detail"]) for g in groups] == [

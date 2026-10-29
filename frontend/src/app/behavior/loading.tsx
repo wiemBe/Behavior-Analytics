@@ -1,11 +1,10 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return (
-    <BoundaryLoading
-      title="Behavioral overview"
-      what="behavioral analytics"
-      offset="small"
-    />
-  );
+  const t = useTranslations("behavior.boundary");
+  return <BoundaryLoading title={t("title")} what={t("loadingWhat")} offset="small" />;
 }

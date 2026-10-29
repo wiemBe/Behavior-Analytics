@@ -8,6 +8,9 @@
 import type { Tone } from "@/lib/health";
 import type { WafSourceBehavior } from "@/lib/api";
 
+import { ENGLISH_WAF, type BehaviorI18n } from "./wafI18n";
+import { isPlainKey } from "@/i18n/ownKey";
+
 export interface ValidationView {
   label: string;
   tone: Tone;
@@ -15,30 +18,46 @@ export interface ValidationView {
   detail: string;
 }
 
-export function validationView(s: WafSourceBehavior): ValidationView {
+/** The validation status as a pill shows it: the code in English, the capitals of the word in Turkish. */
+function labelOf(i18n: BehaviorI18n, status: string): string {
+  const key = `waf.validation.label.${status}`;
+  return isPlainKey(status) && i18n.t.has?.(key) ? i18n.t(key) : status;
+}
+
+export function validationView(
+  s: WafSourceBehavior,
+  i18n: BehaviorI18n = ENGLISH_WAF,
+): ValidationView {
+  const say = (key: string, values?: Record<string, string | number>) =>
+    i18n.t(`waf.validation.${key}`, values);
+  const version = String(s.profile_version);
   if (s.validation_status === "VALID" && s.validation_current) {
-    return { label: "VALID", tone: "ok", detail: `for profile v${s.profile_version}` };
+    return { label: labelOf(i18n, "VALID"), tone: "ok", detail: say("forProfile", { version }) };
   }
   if (s.validation_status === "VALID") {
     // Valid once, for an older mapping. Not collected until validated again.
     return {
-      label: "STALE",
+      label: labelOf(i18n, "STALE"),
       tone: "warn",
       detail:
         s.validated_profile_version != null
-          ? `VALID for v${s.validated_profile_version}; profile is now v${s.profile_version}`
-          : `VALID for an older profile; profile is now v${s.profile_version}`,
+          ? say("staleKnown", { validated: String(s.validated_profile_version), version })
+          : say("staleOlder", { version }),
     };
   }
   switch (s.validation_status) {
     case "INVALID":
-      return { label: "INVALID", tone: "crit", detail: `for profile v${s.profile_version}` };
+      return { label: labelOf(i18n, "INVALID"), tone: "crit", detail: say("forProfile", { version }) };
     case "INCONCLUSIVE":
-      return { label: "INCONCLUSIVE", tone: "warn", detail: `for profile v${s.profile_version}` };
+      return {
+        label: labelOf(i18n, "INCONCLUSIVE"),
+        tone: "warn",
+        detail: say("forProfile", { version }),
+      };
     case "UNVALIDATED":
-      return { label: "UNVALIDATED", tone: "", detail: `profile v${s.profile_version} was never validated` };
+      return { label: labelOf(i18n, "UNVALIDATED"), tone: "", detail: say("neverValidated", { version }) };
     default:
-      return { label: s.validation_status, tone: "", detail: `profile v${s.profile_version}` };
+      return { label: s.validation_status, tone: "", detail: say("profileOnly", { version }) };
   }
 }
 

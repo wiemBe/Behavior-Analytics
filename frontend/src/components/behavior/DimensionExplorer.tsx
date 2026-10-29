@@ -12,12 +12,15 @@
 // on. A hidden UNAVAILABLE dimension would read as having been checked and
 // found clean.
 
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { ContributorTable } from "@/components/behavior/ContributorTable";
 import type { ExplanationDimension } from "@/lib/api";
 import { dimensionLabel, dimensionTone } from "@/lib/behavior";
+import { availabilityCode } from "@/lib/behaviorI18n";
 import { defaultDimension, dimensionPriority } from "@/lib/contributors";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 export function DimensionExplorer({
   dimensions,
@@ -27,6 +30,8 @@ export function DimensionExplorer({
   /** The incident's evidence status; a failure is stated in full once, by the banner. */
   evidenceStatus?: string;
 }) {
+  const t = useTranslations("anomalies.dimensions");
+  const i18n = useBehaviorI18n();
   const ordered = [...dimensions].sort(
     (a, b) => dimensionPriority(a.dimension) - dimensionPriority(b.dimension),
   );
@@ -35,14 +40,9 @@ export function DimensionExplorer({
 
   if (ordered.length === 0) {
     if (evidenceStatus === "FAILED") {
-      return <div className="notice">Evidence collection failed; see the notice above.</div>;
+      return <div className="notice">{t("failed")}</div>;
     }
-    return (
-      <div className="notice">
-        No dimension analysis is stored for this anomaly. No field has been
-        examined, so nothing here has been ruled out.
-      </div>
-    );
+    return <div className="notice">{t("none")}</div>;
   }
 
   const active =
@@ -55,7 +55,7 @@ export function DimensionExplorer({
   return (
     <div className="dimension-explorer">
       <div className="dimension-list">
-        <h4 className="sr-only">Dimensions</h4>
+        <h4 className="sr-only">{t("title")}</h4>
         <ul>
           {ordered.map((d) => {
             const current = d.dimension === active.dimension;
@@ -70,10 +70,10 @@ export function DimensionExplorer({
                   onClick={() => setSelected(d.dimension)}
                 >
                   <span className="dimension-button-label">
-                    {dimensionLabel(d.dimension)}
+                    {dimensionLabel(d.dimension, i18n)}
                   </span>
                   <span className={`pill pill-quiet ${dimensionTone(d.availability)}`}>
-                    {d.availability}
+                    {availabilityCode(i18n, d.availability)}
                   </span>
                 </button>
               </li>
@@ -83,11 +83,10 @@ export function DimensionExplorer({
 
         {unchecked.length > 0 && (
           <p className="metric-note">
-            {unchecked.length} dimension
-            {unchecked.length === 1 ? " was" : "s were"} not checked:{" "}
-            {unchecked.map((d) => dimensionLabel(d.dimension)).join(", ")}. No
-            conclusion about {unchecked.length === 1 ? "it" : "them"} follows
-            from this investigation.
+            {t("unchecked", {
+              count: unchecked.length,
+              labels: unchecked.map((d) => dimensionLabel(d.dimension, i18n)).join(", "),
+            })}
           </p>
         )}
       </div>

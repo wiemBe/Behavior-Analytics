@@ -1,0 +1,69 @@
+{
+  "unit": {
+    "perBucket": "events per bucket",
+    "perMinutes": "events per {minutes} min",
+    "perSeconds": "events per {seconds} s"
+  },
+  "kind": {
+    "EXACT": "exact count",
+    "LOWER_BOUND": "lower bound: at least this many",
+    "MEASURED_ZERO": "measured zero",
+    "UNKNOWN": "unknown: not a zero",
+    "NOT_AN_OBSERVATION": "this value was not tracked then",
+    "NOT_COLLECTED": "bucket not collected"
+  },
+  "atLeast": "at least {value}",
+  "atMost": "at most ",
+  "fromHistory": "read from QRadar history, not judged",
+  "tooltip": {
+    "point": "{label}: {value} {unit} ({kind}{origin})",
+    "notPlotted": "{label}: not plotted, {kind}{origin}",
+    "origin": "; read from QRadar history, not judged",
+    "expectedRange": "Expected range for this hour of the week: {low} to {high} {unit}",
+    "expectedMedian": "Expected median: {median} {unit}",
+    "learning": "Expected range: learning, not yet reliable",
+    "noBaseline": "Expected range: no baseline for this hour",
+    "shareUnknown": "Parsed share: not known for this bucket",
+    "share": "Parsed share: {bound}{share}",
+    "unparsed": "Unparsed remainder: {bound}{value} {unit}",
+    "atLeastBound": "at least ",
+    "atMostBound": "at most "
+  },
+  "axis": {
+    "time": "Time (UTC)",
+    "share": "Parsed share (%)",
+    "floor": "Floor {percent}"
+  },
+  "area": {
+    "notCollected": "not collected",
+    "incident": "incident",
+    "history": "read from QRadar history, not judged",
+    "detection": "expected range at detection"
+  },
+  "chart": {
+    "ariaLabel": "Events per bucket for the selected values, and the parsed share of the scope",
+    "empty": "No value is plotted.",
+    "summaryValues": "{unit} for {count} {count, plural, one {value} other {values}}, in UTC.",
+    "summaryCollected": "{collected} of {window} five-minute intervals in the window were collected.",
+    "summaryTable": "The same figures are in the values table.",
+    "keyLabel": "Chart key",
+    "pinned": "pinned",
+    "bandHour": "Expected range for the hour of the week",
+    "notCollected": "Not collected",
+    "history": "Read from QRadar history, not judged",
+    "bandDetection": "Expected range at detection",
+    "incident": "Incident",
+    "lowerBound": "At least this many (lower bound)",
+    "historyTable": "QRadar history shown in the chart",
+    "historyCaption": "Intervals read from QRadar history and not judged",
+    "from": "From (UTC)",
+    "to": "To (UTC)",
+    "meaning": "Meaning",
+    "gaps": "Gaps in a line are buckets that were not collected",
+    "gapsMore": ", values that were unknown in a lower-bound bucket, or times the value was not tracked",
+    "notZero": ". They are not zero events; a line at 0 is a measured zero.",
+    "oneAtATime": " The expected range is drawn for one value at a time: select a single value to see its band.",
+    "dropped": " {count} more selected {count, plural, one {value is} other {values are}} not drawn; the chart shows at most {max}.",
+    "coveragePanel": " The lower panel is the share of the scope's events in which the property parsed."
+  }
+}

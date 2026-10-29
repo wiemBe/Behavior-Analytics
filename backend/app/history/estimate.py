@@ -41,6 +41,7 @@ from app.history.planner import (
     ticks_for,
     window_buckets,
 )
+from app.i18n.messages import MessageRef, render
 
 #: WAF breakdowns over the breakdown days: action and response code (x2), source IP (x5).
 WAF_BREAKDOWN_FACTORS: tuple[int, ...] = (2, 2, 5)
@@ -153,6 +154,21 @@ class FamilyEstimate:
     refused: bool
     reason: str
     assumptions: tuple[str, ...]
+    #: The registry reference of `reason` (MSG-8a); None for an uncoded sentence.
+    reason_message: MessageRef | None = None
+    #: One reference per assumption, parallel to `assumptions` (MSG-8a); None for a
+    #: caller that supplied plain words.
+    assumption_codes: tuple[MessageRef | None, ...] = ()
+
+
+def _assumption_text(assumption: str | MessageRef) -> str:
+    """The English words of one assumption; a plain string is already words."""
+    return assumption if isinstance(assumption, str) else render(assumption)
+
+
+def _assumption_code(assumption: str | MessageRef) -> MessageRef | None:
+    """The reference of one assumption, or None for an uncoded plain string."""
+    return None if isinstance(assumption, str) else assumption
 
 
 def estimate_family(
@@ -163,7 +179,7 @@ def estimate_family(
     end: datetime,
     ps: PlannerSettings,
     searches_per_tick: int,
-    assumptions: Sequence[str],
+    assumptions: Sequence[str | MessageRef],
 ) -> FamilyEstimate:
     """Fit the window to the budget with the core's `fit_window` (§B.6.5), at the cadence."""
     fit = fit_window(
@@ -183,7 +199,9 @@ def estimate_family(
         reduced=fit.reduced,
         refused=fit.refused,
         reason=fit.reason,
-        assumptions=tuple(assumptions),
+        assumptions=tuple(_assumption_text(item) for item in assumptions),
+        reason_message=fit.reason_message,
+        assumption_codes=tuple(_assumption_code(item) for item in assumptions),
     )
 
 
@@ -196,7 +214,7 @@ def estimate_source_family(
     ps: PlannerSettings,
     source_searches_per_tick: int,
     family_searches_per_tick: int,
-    assumptions: Sequence[str],
+    assumptions: Sequence[str | MessageRef],
 ) -> FamilyEstimate:
     """Fit independent per-source plans and summarize their console-wide cost.
 
@@ -227,31 +245,49 @@ def estimate_source_family(
         fit.days_fitted for fit in accepted if fit.days_fitted is not None
     )
 
+    message: MessageRef | None
     if all_refused:
         minimum_days = min(days_requested, 7)
-        reason = (
-            f"all {len(fits)} sources are unavailable: even {minimum_days} "
-            f"days exceed the {ps.max_hours}-hour per-source limit"
+        message = MessageRef(
+            "history.estimate.all_refused",
+            {"sources": len(fits), "days": minimum_days, "limit": ps.max_hours},
         )
     elif refused:
-        reason = (
-            f"{refused} of {len(fits)} sources are unavailable because even 7 days exceed "
-            f"the {ps.max_hours}-hour per-source limit; the remaining source windows fit"
-        )
         if reduced:
-            reason += f", with the smallest reduced from {days_requested} to {days_fitted} days"
+            message = MessageRef(
+                "history.estimate.some_refused_reduced",
+                {
+                    "refused": refused,
+                    "sources": len(fits),
+                    "limit": ps.max_hours,
+                    "asked": days_requested,
+                    "days": days_fitted,
+                },
+            )
+        else:
+            message = MessageRef(
+                "history.estimate.some_refused",
+                {"refused": refused, "sources": len(fits), "limit": ps.max_hours},
+            )
     elif reduced:
-        reason = (
-            f"window reduced from {days_requested} to {days_fitted} days for the smallest "
-            f"per-source fit: the estimate exceeded {ps.max_hours} hours"
+        message = MessageRef(
+            "history.estimate.reduced",
+            {
+                "asked": days_requested,
+                "days": days_fitted,
+                "limit": ps.max_hours,
+            },
         )
     elif len(fits) == 1:
-        reason = fits[0].reason
+        message = fits[0].reason_message
     else:
-        reason = (
-            f"all {len(fits)} per-source {days_requested}-day windows fit; the console total "
-            f"is an estimated {hours:.1f} hours"
+        message = MessageRef(
+            "history.estimate.all_fit",
+            {"sources": len(fits), "days": days_requested, "hours": hours},
         )
+    reason = render(message) if message is not None else ""
+    if message is None and len(fits) == 1:  # pragma: no cover - fit_window always codes
+        reason = fits[0].reason
     return FamilyEstimate(
         family=family,
         searches=searches,
@@ -262,7 +298,9 @@ def estimate_source_family(
         reduced=reduced,
         refused=all_refused,
         reason=reason,
-        assumptions=tuple(assumptions),
+        assumptions=tuple(_assumption_text(item) for item in assumptions),
+        reason_message=message,
+        assumption_codes=tuple(_assumption_code(item) for item in assumptions),
     )
 
 
@@ -271,8 +309,9 @@ def not_estimable(
     *,
     days_requested: int,
     reason: str,
-    assumptions: Sequence[str],
+    assumptions: Sequence[str | MessageRef],
     refused: bool = False,
+    message: MessageRef | None = None,
 ) -> FamilyEstimate:
     """No figure: the count the model needs is missing, or the family has no window.
 
@@ -288,5 +327,7 @@ def not_estimable(
         reduced=False,
         refused=refused,
         reason=reason,
-        assumptions=tuple(assumptions),
+        assumptions=tuple(_assumption_text(item) for item in assumptions),
+        reason_message=message,
+        assumption_codes=tuple(_assumption_code(item) for item in assumptions),
     )

@@ -1,0 +1,195 @@
+{
+  "severity": {
+    "CRITICAL": "Critical",
+    "HIGH": "High",
+    "MEDIUM": "Medium",
+    "LOW": "Low",
+    "INFO": "Info"
+  },
+  "anomalyState": {
+    "INSUFFICIENT_DATA": "INSUFFICIENT_DATA",
+    "NORMAL": "NORMAL",
+    "CANDIDATE": "CANDIDATE",
+    "OPEN": "OPEN",
+    "RECOVERING": "RECOVERING",
+    "RESOLVED": "RESOLVED",
+    "SUPPRESSED": "SUPPRESSED"
+  },
+  "profileValidationStatus": {
+    "UNVALIDATED": "UNVALIDATED",
+    "VALID": "VALID",
+    "INVALID": "INVALID",
+    "INCONCLUSIVE": "INCONCLUSIVE"
+  },
+  "bucketCompleteness": {
+    "COMPLETE": "complete",
+    "PARTIAL": "partial",
+    "MISSING": "missing"
+  },
+  "offenseStatus": {
+    "OPEN": "OPEN",
+    "HIDDEN": "HIDDEN",
+    "CLOSED": "CLOSED"
+  },
+  "sourceClass": {
+    "WAF": "WAF",
+    "IPS": "IPS",
+    "FIREWALL": "Firewall",
+    "PROXY": "Proxy",
+    "VPN": "VPN",
+    "LINUX": "Linux",
+    "WINDOWS": "Windows",
+    "NETWORK": "Network",
+    "DNS": "DNS",
+    "DATABASE": "Database",
+    "EMAIL": "Email",
+    "ENDPOINT": "Endpoint",
+    "CLOUD": "Cloud",
+    "IDENTITY": "Identity",
+    "APPLICATION": "Application",
+    "QRADAR_INTERNAL": "QRadar internal",
+    "OTHER": "Other",
+    "UNCLASSIFIED": "Unclassified"
+  },
+  "severityPill": {
+    "CRITICAL": "CRITICAL",
+    "HIGH": "HIGH",
+    "MEDIUM": "MEDIUM",
+    "LOW": "LOW",
+    "INFO": "INFO"
+  },
+  "anomalyType": {
+    "VOLUME_SPIKE": "Volume spike",
+    "VOLUME_DROP": "Volume drop",
+    "NO_EVENTS": "No events",
+    "WAF_REQUEST_RATE_SPIKE": "Request-rate spike",
+    "WAF_CLIENT_CONCENTRATION_SPIKE": "Client concentration spike",
+    "WAF_BLOCK_RATIO_SPIKE": "Block-ratio spike",
+    "WAF_ERROR_RATIO_SPIKE": "Server-error ratio spike",
+    "WAF_CLIENT_ERROR_RATIO_SPIKE": "Client-error ratio spike",
+    "WAF_NEW_ENDPOINT_ACCESS": "New endpoint access",
+    "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE": "Client endpoint fan-out spike",
+    "IPS_PORT_RATE_SPIKE": "Destination-port rate spike",
+    "IPS_DESTINATION_RATE_SPIKE": "Destination rate spike",
+    "IPS_SIGNATURE_BURST": "Signature burst",
+    "IPS_NEW_DESTINATION_PORT": "New destination port",
+    "IPS_SOURCE_CONCENTRATION_SPIKE": "Source concentration spike",
+    "IPS_PORT_FANOUT_SPIKE": "Port fan-out spike",
+    "IPS_BLOCK_RATIO_SHIFT": "Block-ratio shift"
+  },
+  "propertyWatchAnomalyType": {
+    "PW_VALUE_SPIKE": "Value spike",
+    "PW_VALUE_DROP": "Value drop",
+    "PW_VALUE_DISAPPEARED": "Value disappeared",
+    "PW_NEW_VALUE": "New value",
+    "PW_NEW_COMBINATION": "New combination"
+  },
+  "propertyWatchStatus": {
+    "NOT_ENABLED": "Collection off",
+    "DISABLED": "Disabled",
+    "SCOPE_EMPTY": "Scope empty",
+    "SCOPE_STALE": "Scope stale",
+    "SCOPE_TOO_LARGE": "Scope too large",
+    "NOT_APPLICABLE": "Not applicable",
+    "STALE": "Stale",
+    "READING_HISTORY": "Reading history",
+    "OPEN": "Incident open",
+    "RECOVERING": "Recovering",
+    "OK": "OK"
+  },
+  "propertyWatchHistoryState": {
+    "NOT_REQUESTED": "NOT REQUESTED",
+    "READING": "READING",
+    "COMPLETE": "COMPLETE",
+    "PARTIAL": "PARTIAL",
+    "UNAVAILABLE": "UNAVAILABLE"
+  },
+  "propertyWatchPreviewOutcome": {
+    "MEASURED": "MEASURED",
+    "PARTIAL": "PARTIAL",
+    "NOT_MEASURED": "NOT MEASURED"
+  },
+  "alertStatus": {
+    "OPEN": "Open",
+    "ACKNOWLEDGED": "Acknowledged",
+    "RESOLVED": "Resolved"
+  },
+  "alertStatusPill": {
+    "OPEN": "OPEN",
+    "ACKNOWLEDGED": "ACKNOWLEDGED",
+    "RESOLVED": "RESOLVED"
+  },
+  "notificationStatus": {
+    "PENDING": "PENDING",
+    "SENT": "SENT",
+    "FAILED": "FAILED",
+    "DEAD_LETTER": "DEAD_LETTER",
+    "SUPPRESSED": "SUPPRESSED"
+  },
+  "notificationChannel": {
+    "TEAMS": "TEAMS",
+    "EMAIL": "EMAIL",
+    "SLACK": "SLACK",
+    "WEBHOOK": "WEBHOOK",
+    "SYSLOG": "SYSLOG"
+  },
+  "alertTransition": {
+    "OPENED": "OPENED",
+    "ACKNOWLEDGED": "ACKNOWLEDGED",
+    "RESOLVED": "RESOLVED"
+  },
+  "ruleHealth": {
+    "HEALTHY": "HEALTHY",
+    "NEVER_OBSERVED": "NEVER OBSERVED",
+    "INACTIVE": "INACTIVE",
+    "NOISY": "NOISY",
+    "DISABLED": "DISABLED",
+    "DEPENDENCY_DEGRADED": "DEPENDENCY DEGRADED",
+    "INSUFFICIENT_DATA": "INSUFFICIENT DATA",
+    "UNKNOWN": "UNKNOWN"
+  },
+  "executionStatus": {
+    "PENDING": "PENDING",
+    "QUEUED": "QUEUED",
+    "RUNNING": "RUNNING",
+    "COMPLETED": "COMPLETED",
+    "FAILED": "FAILED",
+    "TIMEOUT": "TIMEOUT",
+    "CANCELLED": "CANCELLED"
+  },
+  "executionTrigger": {
+    "SCHEDULED": "SCHEDULED",
+    "MANUAL": "MANUAL"
+  },
+  "customRuleOperator": {
+    "GT": "above",
+    "GE": "at or above",
+    "LT": "below",
+    "LE": "at or below",
+    "EQ": "equal to"
+  },
+  "catchallReviewStatus": {
+    "REVIEWED": "reviewed",
+    "DISMISSED": "dismissed"
+  },
+  "role": {
+    "admin": "admin",
+    "analyst": "analyst",
+    "viewer": "viewer",
+    "detection_engineer": "detection_engineer"
+  },
+  "wafBucketCompleteness": {
+    "partial": "partial",
+    "missing": "missing",
+    "complete": "complete"
+  },
+  "historyScanStatus": {
+    "failed": "failed",
+    "truncated": "truncated",
+    "not_run": "not run"
+  },
+  "historyEmptyNoun": {
+    "tracked endpoint": "tracked endpoint",
+    "admitted entity": "admitted entity"
+  }
+}

@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.custom_rules.catalog import MeasurementRule
 from app.models.enums import CustomRuleSubjectKind, SearchFamily, Severity
+from app.schemas.messages import MessageParamValue
 from app.schemas.search_cadence import CadenceOut
 
 MeasurementLabel = Literal["EXACT", "LOWER_BOUND", "NOT_MEASURED"]
@@ -150,6 +151,8 @@ class CustomRuleOut(BaseModel):
     last_evaluated_at: datetime | None
     last_status: str | None
     last_status_reason: str | None
+    last_status_reason_code: str | None
+    last_status_reason_params: dict[str, MessageParamValue] | None
     active_breach: BreachOut | None
     alerting_mode: str
     created_at: datetime

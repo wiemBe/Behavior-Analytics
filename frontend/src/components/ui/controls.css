@@ -29,6 +29,9 @@
 .change-status.ok {
   color: var(--ok-text);
 }
+.change-status.neutral {
+  color: var(--neutral-text);
+}
 .change-status.crit {
   color: var(--crit-text);
 }

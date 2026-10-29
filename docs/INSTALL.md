@@ -406,7 +406,12 @@ the host.
 Before you enable it, check four things:
 
 - **The name.** `QRADAR_CONSOLE_FQDN` in `.env` must match a subject alternative name (SAN) of the
-  console certificate. An IP SAN works when the value is that IP address.
+  console certificate. An IP SAN works when the value is that IP address. The value must be a bare
+  host name: the installer refuses a port or a scheme. When the value is derived from the QRadar
+  URL, the port is stripped. The MCP service connects to `https://<QRADAR_CONSOLE_FQDN>/api/` on
+  port 443, so the profile requires the console's API to be on 443. The backend is not affected:
+  it reaches the console through `QRADAR_BASE_URL`, which may include a port. If the console's API
+  is not on 443, the MCP profile cannot be used as installed.
 - **The chain.** `qradar_ca.pem` in the secrets volume must hold the full chain up to the root the
   console certificate chains to. The server's Python accepted a CA without an Authority Key
   Identifier; the backend still needs `QRADAR_TLS_ALLOW_MISSING_AKI=true` for such a CA (see

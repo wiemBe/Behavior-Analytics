@@ -15,6 +15,8 @@ from app.alerts.routing import default_policy
 from app.alerts.service import AlertResolution, AlertService
 from app.api.deps import ProviderDep, SessionDep
 from app.fleet.service import reclassify_instance
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import permission_refusal
 from app.models.enums import ClassificationReviewStatus
 from app.models.fleet import LogSourceClassification
 from app.models.log_source import LogSource
@@ -48,7 +50,7 @@ def _guard(principal: Principal, permission: str) -> None:
     try:
         require_permission(principal, permission)
     except PermissionDenied as exc:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+        raise permission_refusal(exc) from exc
 
 
 def _reject_unusable_business_days(ls: LogSource, updates: dict[str, object]) -> None:
@@ -267,7 +269,7 @@ async def mark_reviewed(
                 AlertResolution(
                     fingerprint=inventory_fingerprint(ls.instance_id, ls.qradar_id),
                     actor=principal.subject,
-                    reason="log source reviewed",
+                    reason_message=MessageRef("alert.inventory.log_source.reviewed"),
                 )
             ],
         )

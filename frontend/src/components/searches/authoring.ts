@@ -3,9 +3,20 @@
 // The browser never runs AQL. These functions only shape the stored definition
 // and read the API's refusal. A reason string is copied through unchanged.
 
+import { ENGLISH_TREND } from "@/components/trendText";
+import { renderBackendMessage } from "@/i18n/backendMessage";
+import { renderRefusal } from "@/i18n/refusalMessage";
+import type { TextTranslator } from "@/i18n/textTranslator";
 import { ApiError, type CallerInfo, type ScheduledSearch, type ScheduledSearchCreate, type ScheduledSearchUpdate, type SearchExecution, type SearchVersion } from "@/lib/api";
-import { SCHEDULE_PRESETS, cronToPreset } from "@/lib/searchCadence";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { plainCount } from "@/lib/figureText";
+import type { FormatLocale } from "@/lib/format";
+import { reasonSentences, refusalSentences } from "@/lib/refusal";
+import { SCHEDULE_PRESETS, cronToPreset, everyLabel } from "@/lib/searchCadence";
 import { resultCount } from "@/lib/searchRuns";
+
+import { ENGLISH_SEARCHES } from "./searchesText";
+import { isPlainKey } from "@/i18n/ownKey";
 
 /** Platform caps (app/core/config.py: ariel_max_timeout_seconds and the two beside it). */
 export const SEARCH_CAPS = {
@@ -17,7 +28,10 @@ export const SEARCH_CAPS = {
 /** Consecutive failed runs before a search_failure alert (search_failure_alert_after). */
 export const SEARCH_FAILURE_ALERT_AFTER = 3;
 
-/** Once on the editor. A scheduled search is one Ariel run on its own cron. */
+/**
+ * Once on the editor. A scheduled search is one Ariel run on its own cron. The English of the
+ * `searches.editor.latency` message (a test pins that they are equal); the editor reads the message.
+ */
 export const SEARCH_LATENCY_STATEMENT =
   "This search runs in QRadar on its schedule; its result and any threshold breach appear after each run completes, not in real time. For alerting within seconds, use QRadar's own rules.";
 
@@ -33,17 +47,10 @@ export const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] as const
 /** Offered by the editor. PIE and HEATMAP stay only when a search already stores one. */
 export const VISUALIZATION_OFFERED = ["TABLE", "LINE", "BAR", "SINGLE_VALUE"] as const;
 
-const VISUALIZATION_LABEL: Record<string, string> = {
-  TABLE: "Table",
-  LINE: "Line",
-  BAR: "Bar",
-  SINGLE_VALUE: "Single value",
-  PIE: "Pie, stored",
-  HEATMAP: "Heatmap, stored",
-};
-
-export function visualizationLabel(value: string): string {
-  return VISUALIZATION_LABEL[value] ?? value;
+export function visualizationLabel(value: string, i18n: BehaviorI18n = ENGLISH_SEARCHES): string {
+  const key = `searches.visualization.${value}`;
+  const plain = value !== "" && !value.includes(".") && !(value in Object.prototype);
+  return plain && i18n.t.has?.(key) ? i18n.t(key) : value;
 }
 
 export function visualizationChoices(stored: string | null): string[] {
@@ -70,12 +77,16 @@ export function scheduleSelectValue(cron: string): string {
 }
 
 /** Preset crons, plus Custom when `cron` (or the stored original) is not a preset. */
-export function scheduleOptions(cron: string, originalCron: string | null): { value: string; label: string }[] {
+export function scheduleOptions(
+  cron: string,
+  originalCron: string | null,
+  i18n: BehaviorI18n = ENGLISH_SEARCHES,
+): { value: string; label: string }[] {
   const options: { value: string; label: string }[] = [];
   const custom = cronToPreset(cron) === null || (originalCron !== null && cronToPreset(originalCron) === null);
-  if (custom) options.push({ value: CUSTOM_SCHEDULE, label: "Custom" });
+  if (custom) options.push({ value: CUSTOM_SCHEDULE, label: i18n.t("cadence.schedule.custom") });
   for (const preset of SCHEDULE_PRESETS) {
-    options.push({ value: preset.cron, label: `Every ${preset.label}` });
+    options.push({ value: preset.cron, label: everyLabel(preset.seconds, i18n) });
   }
   return options;
 }
@@ -136,35 +147,53 @@ export type FieldName = "name" | "aql" | "threshold" | "timeout" | "window" | "r
 
 export type FieldError = { field: FieldName; text: string };
 
-function fieldError(field: FieldName, raw: string, min: number, max: number, unit: string): number | FieldError {
+function fieldError(
+  field: FieldName,
+  raw: string,
+  min: number,
+  max: number,
+  unit: "seconds" | "hours" | "rows",
+  i18n: BehaviorI18n,
+): number | FieldError {
   const text = raw.trim();
-  const message = `Enter a whole number of ${unit}, from ${min} to ${max}.`;
+  const message = i18n.t("searches.validation.whole", {
+    unit: i18n.t(`searches.validation.${unit}`),
+    min: plainCount(min, i18n.locale),
+    max: plainCount(max, i18n.locale),
+  });
   if (!/^\d+$/.test(text)) return { field, text: message };
   const value = Number(text);
   if (value < min || value > max) return { field, text: message };
   return value;
 }
 
-export function parseDraft(draft: EditorDraft, mode: "create" | "edit"): FieldError | null {
-  if (mode === "create" && draft.name.trim() === "") return { field: "name", text: "Name is required." };
+export function parseDraft(
+  draft: EditorDraft,
+  mode: "create" | "edit",
+  i18n: BehaviorI18n = ENGLISH_SEARCHES,
+): FieldError | null {
+  const t = i18n.t;
+  if (mode === "create" && draft.name.trim() === "") {
+    return { field: "name", text: t("searches.validation.nameRequired") };
+  }
   if (mode === "create" && draft.name.trim().length > 255) {
-    return { field: "name", text: "Name must be 255 characters or fewer." };
+    return { field: "name", text: t("searches.validation.nameLength") };
   }
   if (draft.description.trim().length > 2000) {
-    return { field: "description", text: "Description must be 2,000 characters or fewer." };
+    return { field: "description", text: t("searches.validation.descriptionLength") };
   }
-  if (draft.aql.trim() === "") return { field: "aql", text: "AQL is required." };
+  if (draft.aql.trim() === "") return { field: "aql", text: t("searches.validation.aqlRequired") };
   if (draft.changeNote.trim().length > 1000) {
-    return { field: "note", text: "The change note must be 1,000 characters or fewer." };
+    return { field: "note", text: t("searches.validation.noteLength") };
   }
   if (draft.threshold.trim() !== "" && !/^-?\d+(\.\d+)?$/.test(draft.threshold.trim())) {
-    return { field: "threshold", text: "Threshold must be a number, or empty when the search has no threshold." };
+    return { field: "threshold", text: t("searches.validation.threshold") };
   }
-  const timeout = fieldError("timeout", draft.timeout, SEARCH_CAPS.timeoutSeconds.min, SEARCH_CAPS.timeoutSeconds.max, "seconds");
+  const timeout = fieldError("timeout", draft.timeout, SEARCH_CAPS.timeoutSeconds.min, SEARCH_CAPS.timeoutSeconds.max, "seconds", i18n);
   if (typeof timeout !== "number") return timeout;
-  const windowHours = fieldError("window", draft.windowHours, SEARCH_CAPS.windowHours.min, SEARCH_CAPS.windowHours.max, "hours");
+  const windowHours = fieldError("window", draft.windowHours, SEARCH_CAPS.windowHours.min, SEARCH_CAPS.windowHours.max, "hours", i18n);
   if (typeof windowHours !== "number") return windowHours;
-  const rows = fieldError("rows", draft.rows, SEARCH_CAPS.resultRows.min, SEARCH_CAPS.resultRows.max, "rows");
+  const rows = fieldError("rows", draft.rows, SEARCH_CAPS.resultRows.min, SEARCH_CAPS.resultRows.max, "rows", i18n);
   if (typeof rows !== "number") return rows;
   return null;
 }
@@ -217,11 +246,13 @@ export type SaveRefusal =
   | { kind: "forbidden"; detail: string }
   | { kind: "error"; detail: string };
 
-function reasonList(detail: unknown): string[] | null {
+/** The reasons of a 422 authoring body in the reader's language; the server's text when uncoded. */
+function reasonList(err: ApiError, i18n: BehaviorI18n): string[] | null {
+  const detail = err.detail;
   if (typeof detail !== "object" || detail === null || !("reasons" in detail)) return null;
   const reasons = (detail as { reasons: unknown }).reasons;
   if (!Array.isArray(reasons) || reasons.some((reason) => typeof reason !== "string")) return null;
-  return reasons as string[];
+  return (reasonSentences(err) ?? []).map((reason) => renderRefusal(reason, i18n.locale, i18n.t));
 }
 
 function schemaMessages(detail: unknown): string[] | null {
@@ -235,36 +266,44 @@ function schemaMessages(detail: unknown): string[] | null {
   return messages.length > 0 ? messages : null;
 }
 
-function isCronFloor(detail: string): boolean {
+/** The code decides when the server gave one; the English wording is the fallback for an old server. */
+function isCronFloor(detail: string, code?: string | null): boolean {
+  if (code) return code.startsWith("search.cron.");
   return /schedule_cron|seconds apart|cron expression|future fire/i.test(detail);
 }
 
-export function classifySaveError(err: unknown): SaveRefusal {
+export function classifySaveError(err: unknown, i18n: BehaviorI18n = ENGLISH_SEARCHES): SaveRefusal {
+  const t = i18n.t;
   if (!(err instanceof ApiError)) {
-    return { kind: "error", detail: "The search could not be saved. Check the connection and try again." };
+    return { kind: "error", detail: t("searches.refusal.network") };
   }
   if (err.status === 409) {
     const detail = typeof err.detail === "string" && err.detail !== "" ? err.detail : err.message;
-    return { kind: "cap", detail };
+    const [sentence] = refusalSentences(err);
+    return { kind: "cap", detail: sentence ? renderRefusal(sentence, i18n.locale, i18n.t) : detail };
   }
   if (err.status === 403) {
-    return {
-      kind: "forbidden",
-      detail:
-        "Your role cannot change stored searches (permission search:write). An admin or the detection_engineer role can grant it. Nothing was saved.",
-    };
+    return { kind: "forbidden", detail: t("searches.refusal.forbidden") };
   }
   if (err.status === 422) {
-    const reasons = reasonList(err.detail);
+    const reasons = reasonList(err, i18n);
     if (reasons) return { kind: "reasons", reasons };
-    if (typeof err.detail === "string" && isCronFloor(err.detail)) return { kind: "schedule", detail: err.detail };
+    const [sentence] = refusalSentences(err);
+    if (typeof err.detail === "string" && isCronFloor(err.detail, sentence?.code)) {
+      // The timestamps and the gap of the floor sentence are raw values: the backend reader formats them.
+      return {
+        kind: "schedule",
+        detail: sentence ? renderBackendMessage(sentence, i18n.locale, i18n.t) : err.detail,
+      };
+    }
     if (typeof err.detail === "string" && err.detail !== "") return { kind: "error", detail: err.detail };
     const schema = schemaMessages(err.detail);
     if (schema) return { kind: "reasons", reasons: schema };
   }
-  if (err.status === 404) return { kind: "error", detail: "This search no longer exists. Reload the page." };
-  if (err.status >= 500) return { kind: "error", detail: "The server could not save the search. Try again shortly." };
-  const fallback = typeof err.detail === "string" && err.detail !== "" ? err.detail : "The search was not saved.";
+  if (err.status === 404) return { kind: "error", detail: t("searches.refusal.gone") };
+  if (err.status >= 500) return { kind: "error", detail: t("searches.refusal.server") };
+  const fallback =
+    typeof err.detail === "string" && err.detail !== "" ? err.detail : t("searches.refusal.notSaved");
   return { kind: "error", detail: fallback };
 }
 
@@ -272,9 +311,9 @@ export function classifySaveError(err: unknown): SaveRefusal {
  * A sentence the analyst can read. The limit clause is the server's string,
  * including its number; only a trailing period is trimmed so the sentence has one.
  */
-export function capMessage(detail: string): string {
+export function capMessage(detail: string, i18n: BehaviorI18n = ENGLISH_SEARCHES): string {
   const limit = detail.trim().replace(/\.\s*$/, "");
-  return `Not enabled: ${limit}. Disable another search, then enable this one.`;
+  return i18n.t("searches.enable.capped", { limit });
 }
 
 /** The newest stored version older than the current one. */
@@ -335,71 +374,89 @@ function lcsLengths(a: string[], b: string[]): number[][] {
   return dp;
 }
 
-const ERROR_WORDS: Record<string, string> = {
-  VALIDATION: "The query was rejected before it ran.",
-  AUTH: "QRadar refused the credentials.",
-  RATE_LIMITED: "QRadar throttled the search.",
-  TIMEOUT: "The search exceeded its timeout.",
-  SEARCH_FAILED: "QRadar reported that the search failed.",
-  NETWORK: "The connection to QRadar failed.",
-  PARSING: "The result could not be read.",
-  CANCELLED: "The run was cancelled.",
-  CAPACITY: "Not run: the Ariel search budget was full.",
-};
-
 export interface RunReadout {
   tone: "crit" | "warn" | "neutral";
   /** The status in words, including a lower bound when the run was truncated. */
   text: string;
 }
 
-/** What a run may claim. A missing count is not zero. A truncated count is a lower bound. */
-export function runReadout(execution: SearchExecution, consecutiveFailures: number | null): RunReadout {
+/**
+ * What a run may claim. A missing count is not zero. A truncated count is a lower bound. The
+ * sentences are the `trend.run` messages: `t` is the interface language's translator (full
+ * keys); without one they are English, as before. `locale` groups the counts the Turkish way
+ * (`1.204`); English prints them plain, as before.
+ */
+export function runReadout(
+  execution: SearchExecution,
+  consecutiveFailures: number | null,
+  t: TextTranslator = ENGLISH_TREND.t,
+  locale: FormatLocale = "en",
+): RunReadout {
   const failed = execution.status === "FAILED" || execution.status === "TIMEOUT" || execution.status === "CANCELLED";
   if (failed) {
+    const errorKey = execution.error_type ? `trend.run.errors.${execution.error_type}` : null;
     const named = execution.error_type
-      ? `Error type ${execution.error_type}. ${ERROR_WORDS[execution.error_type] ?? ""}`.trim()
-      : "No error type was recorded.";
+      ? t("trend.run.errorType", {
+          type: execution.error_type,
+          words:
+            errorKey && isPlainKey(execution.error_type ?? "") && t.has?.(errorKey) ? t(errorKey) : "",
+        }).trim()
+      : t("trend.run.noErrorType");
     const count =
       consecutiveFailures == null
-        ? `A search_failure alert opens after ${SEARCH_FAILURE_ALERT_AFTER} consecutive failed runs.`
-        : `Consecutive failures recorded: ${consecutiveFailures}. A search_failure alert opens after ${SEARCH_FAILURE_ALERT_AFTER}.`;
-    const word = execution.status === "FAILED" ? "failed" : `ended ${execution.status}`;
-    return {
-      tone: "crit",
-      text: `The latest run ${word}. ${named} Inspect the execution, edit the query, or wait for the retry. ${count}`,
-    };
+        ? t("trend.run.countUnknown", { after: SEARCH_FAILURE_ALERT_AFTER })
+        : t("trend.run.countKnown", {
+            failures: plainCount(consecutiveFailures, locale),
+            after: SEARCH_FAILURE_ALERT_AFTER,
+          });
+    const word =
+      execution.status === "FAILED"
+        ? t("trend.run.failedWord")
+        : t("trend.run.endedWord", { status: execution.status });
+    return { tone: "crit", text: t("trend.run.failedPrefix", { word, named, count }) };
   }
   if (execution.truncated) {
     const count = resultCount(execution);
     const bound =
       count.kind === "lower-bound"
-        ? `It counted at least ${count.value} rows.`
-        : "The row count was not recorded, so it is not shown as zero.";
+        ? t("trend.run.boundAtLeast", { count: plainCount(count.value ?? 0, locale) })
+        : t("trend.run.boundNone");
     const verdict = execution.threshold_breached
-      ? "The count already meets the threshold."
-      : "The threshold has no verdict: the true count may still be above it.";
-    return { tone: "warn", text: `The latest run was truncated. ${bound} ${verdict}` };
+      ? t("trend.run.verdictMet")
+      : t("trend.run.verdictNone");
+    return { tone: "warn", text: t("trend.run.truncated", { bound, verdict }) };
   }
   if (execution.status === "COMPLETED") {
     if (execution.result_count == null) {
-      return { tone: "neutral", text: "The latest run completed. The row count was not recorded." };
+      return { tone: "neutral", text: t("trend.run.completedNoCount") };
     }
-    const breached = execution.threshold_breached ? " The threshold was breached." : "";
+    const breached = execution.threshold_breached ? t("trend.run.breachedTail") : "";
     return {
       tone: "neutral",
-      text: `The latest run completed and returned ${execution.result_count} rows.${breached}`,
+      text: t("trend.run.completed", { count: plainCount(execution.result_count, locale), breached }),
     };
   }
-  return { tone: "neutral", text: `The latest run is ${execution.status}. There is no result yet.` };
+  return { tone: "neutral", text: t("trend.run.other", { status: execution.status }) };
 }
 
-export function runRequestFailure(err: unknown): string {
-  if (err instanceof ApiError && err.status === 403) {
-    return "Your role cannot run a stored search (permission search:execute).";
+/** The budget refusal of a manual run: the code names it; any other 503 stays the generic line. */
+const BUDGET_FULL_CODE = "search.budget.full";
+
+function asSentence(text: string, locale: FormatLocale): string {
+  const trimmed = text.trim();
+  if (trimmed === "") return trimmed;
+  const head = trimmed.charAt(0).toLocaleUpperCase(locale === "tr" ? "tr-TR" : "en-US") + trimmed.slice(1);
+  return /[.!?]$/.test(head) ? head : `${head}.`;
+}
+
+export function runRequestFailure(err: unknown, i18n: BehaviorI18n = ENGLISH_SEARCHES): string {
+  if (err instanceof ApiError && err.status === 403) return i18n.t("searches.run.forbidden");
+  if (err instanceof ApiError && err.status === 404) return i18n.t("searches.run.gone");
+  if (err instanceof ApiError && err.status === 503) {
+    const [sentence] = refusalSentences(err);
+    if (sentence?.code === BUDGET_FULL_CODE) {
+      return asSentence(renderBackendMessage(sentence, i18n.locale, i18n.t), i18n.locale);
+    }
   }
-  if (err instanceof ApiError && err.status === 404) {
-    return "This search no longer exists. Reload the page.";
-  }
-  return "The run did not start. Reload the page and try again.";
+  return i18n.t("searches.run.failed");
 }

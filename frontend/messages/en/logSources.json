@@ -1,0 +1,49 @@
+{
+  "title": "Log Sources",
+  "loadingWhat": "log sources",
+  "errorWhat": "Log sources",
+  "loadNoun": "log sources",
+  "countLead": "{count} sources.",
+  "description": "QRadar-owned fields refresh on sync; criticality, owner and maintenance are SOC-owned and preserved.",
+  "empty": "No log sources yet. Trigger an inventory sync to pull them from the configured provider.",
+  "table": {
+    "label": "Log sources",
+    "name": "Name",
+    "type": "Type",
+    "criticality": "Criticality",
+    "status": "Status",
+    "anomalies": "Anomalies",
+    "lastEvent": "Last Event",
+    "maint": "maint",
+    "never": "never"
+  },
+  "status": {
+    "unknown": "unknown",
+    "SUCCESS": "SUCCESS",
+    "WARNING": "WARNING",
+    "ERROR": "ERROR",
+    "DISABLED": "DISABLED",
+    "NA": "NA"
+  },
+  "detail": {
+    "title": "Log Source Detail",
+    "loadingWhat": "this log source",
+    "errorWhat": "This log source",
+    "forbidden": "You do not have permission to view this log source. Ask an administrator for the read:log_sources grant.",
+    "notFound": "Log source {id} is not in the inventory.",
+    "unreachable": "The backend could not be reached. Reload the page to try again.",
+    "summary": "{type} · criticality {criticality} · owner {owner}",
+    "unknownType": "unknown type",
+    "configuration": "Configuration",
+    "description": "Description: {value}",
+    "businessHours": "Business hours only: {value}",
+    "yes": "yes",
+    "no": "no",
+    "seconds": "{count} s",
+    "interval": "Expected interval: {value}",
+    "lastEvent": "Last event: <time></time>",
+    "lastEventNever": "Last event: never",
+    "qradarStatus": "QRadar status:",
+    "note": "EPS trend, anomaly timeline and baseline overlay: <link>source behavior</link>."
+  }
+}

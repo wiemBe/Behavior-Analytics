@@ -28,8 +28,8 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from app.core.text import percent
 from app.history.state import HistoryTrigger
+from app.i18n.messages import MessageRef, render
 
 # One search never covers more than a week (`validate_bucketed_metric_window`).
 HARD_MAX_SPAN_HOURS = 168
@@ -161,6 +161,10 @@ class Gap:
     start: datetime
     end: datetime
     reason: str
+    #: The registry code of `reason` and its wire parameters, when the gap was written with
+    #: one (MSG-4b); a gap stored before that has neither and keeps its English.
+    reason_code: str | None = None
+    reason_params: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -252,6 +256,8 @@ class ScanSpanResult:
 class ScanPlan:
     span: Span | None
     reason: str
+    #: The registry reference of `reason` (MSG-8a); None never happens for a scan plan.
+    reason_message: MessageRef | None = None
 
 
 @dataclass(frozen=True)
@@ -259,6 +265,8 @@ class ScanDecision:
     outcome: ScanOutcome
     progress: ScopeProgress
     reason: str
+    #: The registry reference of `reason`, beside it (MSG-8a).
+    reason_message: MessageRef | None = None
     trigger: HistoryTrigger | None = None
 
 
@@ -269,9 +277,11 @@ def plan_scan(progress: ScopeProgress, end: datetime, settings: PlannerSettings)
     if cursor is None:
         raise PlannerInputError("progress has no scan cursor")
     if cursor >= end:
-        return ScanPlan(None, "the scan reached the end of the window")
+        message = MessageRef("history.scan.end")
+        return ScanPlan(None, render(message), message)
     stop = min(end, cursor + settings.max_span_buckets * settings.bucket)
-    return ScanPlan(Span(cursor, stop), "scan for the first event of the scope")
+    message = MessageRef("history.scan.search")
+    return ScanPlan(Span(cursor, stop), render(message), message)
 
 
 def interpret_scan(
@@ -291,7 +301,8 @@ def interpret_scan(
     if progress.floor is not None or cursor is None:
         raise PlannerInputError("the floor is already known; there is nothing to scan")
     if not results:
-        return ScanDecision(ScanOutcome.RETRY, progress, "no scan result was provided")
+        message = MessageRef("history.scan.no_result")
+        return ScanDecision(ScanOutcome.RETRY, progress, render(message), message)
     # Every scan search that ran is a search spent, whatever it proved.
     progress = replace(
         progress,
@@ -303,17 +314,27 @@ def interpret_scan(
         if result.status is not SearchStatus.COMPLETE:
             failures = progress.scan_failures + 1
             if failures >= settings.max_failures:
+                message = MessageRef("history.scan.failed", {"failures": failures})
                 return ScanDecision(
                     ScanOutcome.UNAVAILABLE,
                     replace(progress, scan_failures=failures),
-                    f"the floor scan failed {failures} times; history is unavailable",
+                    render(message),
+                    message,
                     HistoryTrigger.NOTHING_TO_READ,
                 )
+            message = MessageRef(
+                "history.scan.retry",
+                {
+                    "status": result.status.lower(),
+                    "failures": failures,
+                    "max_failures": settings.max_failures,
+                },
+            )
             return ScanDecision(
                 ScanOutcome.RETRY,
                 replace(progress, scan_failures=failures),
-                f"a scan search was {result.status.lower()}; it proves nothing, so it is retried "
-                f"({failures} of {settings.max_failures})",
+                render(message),
+                message,
             )
         for bucket, total in result.totals:
             _require_aligned(bucket, "bucket", settings)
@@ -326,14 +347,21 @@ def interpret_scan(
             b0 = events[0]
             floor = max(progress.target_start, _align_up(b0 + settings.margin, settings))
             if floor >= end:
+                message = MessageRef(
+                    "history.scan.too_recent", {"margin": settings.floor_margin_hours}
+                )
                 return ScanDecision(
                     ScanOutcome.UNAVAILABLE,
                     replace(progress, first_event_bucket=b0, scan_failures=0),
-                    "the first event is too recent to prove anything older: the margin of "
-                    f"{settings.floor_margin_hours} h reaches the end of the window",
+                    render(message),
+                    message,
                     HistoryTrigger.NOTHING_TO_READ,
                 )
             cut = floor > progress.target_start + settings.bucket
+            message = MessageRef(
+                "history.scan.floor_found_late" if cut else "history.scan.floor_found",
+                {"first": b0, "floor": floor},
+            )
             return ScanDecision(
                 ScanOutcome.FLOOR_FOUND,
                 replace(
@@ -343,24 +371,22 @@ def interpret_scan(
                     scan_cursor=result.span.end,
                     scan_failures=0,
                 ),
-                (
-                    f"QRadar holds events of the scope from {b0.isoformat()}; history starts at "
-                    f"{floor.isoformat()}"
-                    + (" (later than the asked start)" if cut else "")
-                ),
+                render(message),
+                message,
             )
         cursor = result.span.end
     progress = replace(progress, scan_cursor=cursor, scan_failures=0)
     if cursor >= end:
+        message = MessageRef("history.scan.no_event_window")
         return ScanDecision(
             ScanOutcome.UNAVAILABLE,
             progress,
-            "no event of the scope in the whole window; nothing is written",
+            render(message),
+            message,
             HistoryTrigger.NOTHING_TO_READ,
         )
-    return ScanDecision(
-        ScanOutcome.CONTINUE, progress, "no event in the scanned span; scan the next one"
-    )
+    message = MessageRef("history.scan.no_event_span")
+    return ScanDecision(ScanOutcome.CONTINUE, progress, render(message), message)
 
 
 def floor_is_cut(progress: ScopeProgress, settings: PlannerSettings) -> bool:
@@ -402,6 +428,8 @@ class StepAction(StrEnum):
 class StepPlan:
     action: StepAction
     reason: str
+    #: The registry reference of `reason`, beside it (MSG-8a).
+    reason_message: MessageRef | None = None
     chunks: tuple[Span, ...] = ()
     scan_span: Span | None = None
     chunk_buckets: int | None = None
@@ -429,16 +457,22 @@ def chunk_width(progress: ScopeProgress, settings: PlannerSettings) -> int:
 
 def finish_verdict(
     progress: ScopeProgress, settings: PlannerSettings
-) -> tuple[HistoryTrigger, str]:
-    """COMPLETE or PARTIAL at the end of a reading that reached its boundary (§B.3.4)."""
-    problems: list[str] = []
+) -> tuple[HistoryTrigger, str, MessageRef]:
+    """COMPLETE or PARTIAL at the end of a reading that reached its boundary (§B.3.4).
+
+    The text is the reference rendered: the partial verdict joins its problem clauses
+    exactly as before, a semicolon list of clause references.
+    """
+    problems: list[MessageRef] = []
     if floor_is_cut(progress, settings):
-        problems.append("QRadar holds less than asked (the floor is later than the asked start)")
+        problems.append(MessageRef("history.finish.floor_cut"))
     if progress.gaps:
-        problems.append(f"{len(progress.gaps)} span(s) could not be read")
+        problems.append(MessageRef("history.finish.gaps", {"count": len(progress.gaps)}))
     if problems:
-        return HistoryTrigger.FINISHED_PARTIAL, "reached the end; " + "; ".join(problems)
-    return HistoryTrigger.FINISHED_COMPLETE, "reached the end with the whole asked window read"
+        message = MessageRef("history.finish.partial", {"problems": problems})
+        return HistoryTrigger.FINISHED_PARTIAL, render(message), message
+    message = MessageRef("history.finish.complete")
+    return HistoryTrigger.FINISHED_COMPLETE, render(message), message
 
 
 def plan_step(
@@ -455,38 +489,50 @@ def plan_step(
     _require_aligned(end, "end", settings)
     _check_aware(now, "now")
     if not enabled:
+        # The kill switch's sentence is the state table's (`SWITCHED_OFF` from READING).
+        message = MessageRef("history.state.switched_off")
         return StepPlan(
             StepAction.FINISH,
-            "history reading was switched off",
+            render(message),
+            message,
             trigger=HistoryTrigger.SWITCHED_OFF,
         )
     if stop_requested:
+        message = MessageRef("history.step.stopped")
         return StepPlan(
             StepAction.FINISH,
-            "history reading was stopped by an operator",
+            render(message),
+            message,
             trigger=HistoryTrigger.STOPPED_BY_OPERATOR,
         )
     start = next_start(progress, settings)
     if start is not None and start >= end:
-        trigger, reason = finish_verdict(progress, settings)
-        return StepPlan(StepAction.FINISH, reason, trigger=trigger)
+        trigger, reason, message = finish_verdict(progress, settings)
+        return StepPlan(StepAction.FINISH, reason, message, trigger=trigger)
     if now - progress.started_at > timedelta(hours=settings.max_hours):
+        message = MessageRef("history.step.time_limit", {"hours": settings.max_hours})
         return StepPlan(
             StepAction.FINISH,
-            f"the reading did not finish in {settings.max_hours} h",
+            render(message),
+            message,
             trigger=HistoryTrigger.TIME_LIMIT,
         )
     if budget.searches <= 0 or budget.seconds_left <= 0:
-        return StepPlan(StepAction.WAIT, "waiting for search budget")
+        message = MessageRef("history.step.wait_budget")
+        return StepPlan(StepAction.WAIT, render(message), message)
     if start is None:
         scan = plan_scan(progress, end, settings)
         if scan.span is None:
+            message = MessageRef("history.scan.no_event_window")
             return StepPlan(
                 StepAction.FINISH,
-                "no event of the scope in the whole window; nothing is written",
+                render(message),
+                message,
                 trigger=HistoryTrigger.NOTHING_TO_READ,
             )
-        return StepPlan(StepAction.SCAN, scan.reason, scan_span=scan.span)
+        return StepPlan(
+            StepAction.SCAN, scan.reason, scan.reason_message, scan_span=scan.span
+        )
     _require_aligned(start, "start", settings)
     width = chunk_width(progress, settings)
     remaining = buckets_between(start, end, settings)
@@ -499,9 +545,14 @@ def plan_step(
         chunks.append(Span(cursor, cursor + n * settings.bucket))
         cursor += n * settings.bucket
         left -= n
+    message = MessageRef(
+        "history.step.read",
+        {"buckets": span_buckets, "searches": len(chunks), "width": width},
+    )
     return StepPlan(
         StepAction.READ,
-        f"read {span_buckets} bucket(s) in {len(chunks)} search(es) of up to {width}",
+        render(message),
+        message,
         chunks=tuple(chunks),
         chunk_buckets=width,
     )
@@ -547,6 +598,8 @@ class StepSettlement:
     write_spans: tuple[Span, ...]  # the contiguous completed prefix: the only spans to persist
     advanced: bool
     reason: str
+    #: The registry reference of `reason`: the clauses joined with "; " (MSG-8a).
+    reason_message: MessageRef | None = None
     trigger: HistoryTrigger | None = None  # None: the state stays as it is
     new_gap: Gap | None = None
 
@@ -556,7 +609,7 @@ def _width_after_step(
     *,
     current: int,
     settings: PlannerSettings,
-) -> tuple[ScopeProgress, str]:
+) -> tuple[ScopeProgress, MessageRef | None]:
     """The progress and the note after a step that read what it could.
 
     The width follows the density of the step that just ended (T-149): a dense stretch
@@ -582,7 +635,7 @@ def _width_after_step(
         target = min(fit, 2 * current)
     ceiling = progress.chunk_ceiling
     successes = progress.ceiling_successes
-    note = ""
+    note: MessageRef | None = None
     if ceiling is not None:
         successes += 1
         if successes >= CEILING_RELEASE_STEPS:
@@ -592,16 +645,15 @@ def _width_after_step(
                 # The released width is the fit, and the fit is at most twice the current
                 # width: the growth bound holds here too.
                 width = min(fit, 2 * current)
-                note = (
-                    f"{CEILING_RELEASE_STEPS} clean steps brought the failure ceiling to "
-                    f"the row fit of {fit}; the ceiling is released"
+                note = MessageRef(
+                    "history.width.released", {"steps": CEILING_RELEASE_STEPS, "fit": fit}
                 )
             else:
                 ceiling = 2 * ceiling
                 width = min(target, ceiling)
-                note = (
-                    f"{CEILING_RELEASE_STEPS} clean steps doubled the failure ceiling to "
-                    f"{ceiling}"
+                note = MessageRef(
+                    "history.width.ceiling_doubled",
+                    {"steps": CEILING_RELEASE_STEPS, "ceiling": ceiling},
                 )
         else:
             width = min(target, ceiling)
@@ -669,21 +721,23 @@ def settle_step(
         # The density of this step: what the width follows (T-149).
         recent_rows_per_bucket=rows / non_silent if non_silent else None,
     )
-    reasons: list[str] = []
+    reasons: list[MessageRef] = []
     new_gap: Gap | None = None
     trigger: HistoryTrigger | None = None
 
     if blocker is None:
         updated = replace(updated, failures=0)
-        reasons.append(f"read {read} bucket(s)")
+        reasons.append(MessageRef("history.settle.read", {"count": read}))
         updated, note = _width_after_step(
             updated,
             current=chunk_width(progress, settings),
             settings=settings,
         )
-        if note:
+        if note is not None:
             reasons.append(note)
-        reasons.append(f"the width is {updated.chunk_buckets} bucket(s)")
+        reasons.append(
+            MessageRef("history.settle.width", {"count": updated.chunk_buckets})
+        )
     else:
         n = blocker.span.buckets(settings)
         if blocker.status is SearchStatus.FAILED:
@@ -699,13 +753,24 @@ def settle_step(
                 if failures >= settings.max_failures:
                     if len(updated.gaps) >= settings.max_gaps:
                         trigger = HistoryTrigger.TOO_MANY_GAPS
-                        reasons.append(f"more than {settings.max_gaps} unreadable spans")
+                        reasons.append(
+                            MessageRef(
+                                "history.settle.too_many_gaps",
+                                {"count": settings.max_gaps},
+                            )
+                        )
                         updated = replace(updated, failures=failures)
                     else:
+                        gap_message = MessageRef(
+                            "history.gap.search_failed", {"failures": failures}
+                        )
+                        gap_wire = gap_message.to_wire()
                         new_gap = Gap(
                             blocker.span.start,
                             blocker.span.end,
-                            f"search failed {failures} times at the minimum width",
+                            render(gap_message),
+                            reason_code=str(gap_wire["code"]),
+                            reason_params=dict(gap_wire["params"]),  # type: ignore[call-overload]
                         )
                         updated = replace(
                             updated,
@@ -713,24 +778,35 @@ def settle_step(
                             gaps=(*updated.gaps, new_gap),
                             through=blocker.span.end - bucket,
                         )
-                        reasons.append(f"recorded a gap: {new_gap.reason}")
+                        reasons.append(
+                            MessageRef("history.settle.gap_recorded", {"gap": gap_message})
+                        )
                 else:
                     updated = replace(updated, failures=failures)
                     reasons.append(
-                        f"a search failed at the minimum width ({failures} of "
-                        f"{settings.max_failures}); the same span is tried again"
+                        MessageRef(
+                            "history.settle.failed_minimum",
+                            {"failures": failures, "max_failures": settings.max_failures},
+                        )
                     )
             else:
-                reasons.append(f"a search of {n} buckets failed; the width halves to {narrower}")
+                reasons.append(
+                    MessageRef(
+                        "history.settle.failed_halve",
+                        {"buckets": n, "width": narrower},
+                    )
+                )
         elif blocker.status is SearchStatus.TRUNCATED:
             narrower = max(settings.min_chunk_buckets, n // 2)
             updated = replace(updated, chunk_buckets=narrower)
             reasons.append(
-                f"a search of {n} buckets was truncated and keeps nothing; the width halves "
-                f"to {narrower}"
+                MessageRef(
+                    "history.settle.truncated_halve",
+                    {"buckets": n, "width": narrower},
+                )
             )
         else:
-            reasons.append("the budget ended before this span was searched")
+            reasons.append(MessageRef("history.settle.budget_ended"))
             if read:
                 # The step read a prefix before the budget ran out: the width follows the
                 # density it observed, as after a clean step.
@@ -739,9 +815,11 @@ def settle_step(
                     current=chunk_width(progress, settings),
                     settings=settings,
                 )
-                if note:
+                if note is not None:
                     reasons.append(note)
-                reasons.append(f"the width is {updated.chunk_buckets} bucket(s)")
+                reasons.append(
+                    MessageRef("history.settle.width", {"count": updated.chunk_buckets})
+                )
 
     if trigger is None and not updated.density_checked and updated.buckets_read > 0:
         updated = replace(updated, density_checked=True)
@@ -749,21 +827,24 @@ def settle_step(
         if share > settings.max_lower_bound_share:
             trigger = HistoryTrigger.DENSITY_GATE
             reasons.append(
-                f"{percent(share)} of the buckets read are lower bounds (limit "
-                f"{percent(settings.max_lower_bound_share)}): too many distinct values per bucket, "
-                "so history would be lower bounds"
+                MessageRef(
+                    "history.settle.density",
+                    {"share": share, "limit": settings.max_lower_bound_share},
+                )
             )
 
     if trigger is None:
         nxt = next_start(updated, settings)
         if nxt is not None and nxt >= end:
-            trigger, verdict = finish_verdict(updated, settings)
-            reasons.append(verdict)
+            trigger, _verdict, verdict_message = finish_verdict(updated, settings)
+            reasons.append(verdict_message)
+    message = MessageRef("history.settle.ticked", {"clauses": reasons})
     return StepSettlement(
         progress=updated,
         write_spans=tuple(write),
         advanced=advanced,
-        reason="; ".join(reasons),
+        reason=render(message),
+        reason_message=message,
         trigger=trigger,
         new_gap=new_gap,
     )
@@ -816,6 +897,8 @@ class WindowFit:
     reduced: bool
     refused: bool
     reason: str
+    #: The registry reference of `reason`, beside it (MSG-8a).
+    reason_message: MessageRef | None = None
 
 
 def fit_window(
@@ -848,11 +931,13 @@ def fit_window(
         ticks, hours = hours_for(searches)
         if hours <= settings.max_hours:
             reduced = days < days_requested
-            reason = (
-                f"window reduced from {days_requested} to {days} days: the estimate exceeded "
-                f"{settings.max_hours} hours"
+            message = (
+                MessageRef(
+                    "history.fit.reduced",
+                    {"asked": days_requested, "days": days, "limit": settings.max_hours},
+                )
                 if reduced
-                else f"the {days}-day window fits in an estimated {hours:.1f} hours"
+                else MessageRef("history.fit.fits", {"days": days, "hours": hours})
             )
             return WindowFit(
                 days_requested,
@@ -863,10 +948,21 @@ def fit_window(
                 hours,
                 reduced,
                 False,
-                reason,
+                render(message),
+                message,
             )
     searches = searches_for_days(min_days)
     ticks, hours = hours_for(searches)
+    message = MessageRef(
+        "history.fit.refused",
+        {
+            "days": min_days,
+            "hours": hours,
+            "searches": searches,
+            "ticks": ticks,
+            "limit": settings.max_hours,
+        },
+    )
     return WindowFit(
         days_requested,
         None,
@@ -876,6 +972,6 @@ def fit_window(
         hours,
         False,
         True,
-        f"even {min_days} days need about {hours:.1f} hours ({searches} searches, {ticks} ticks), "
-        f"over the {settings.max_hours}-hour limit; history is unavailable",
+        render(message),
+        message,
     )

@@ -14,6 +14,7 @@
 // the dimension was examined and found clean — the exact inversion of the
 // truth.
 
+import { useTranslations } from "next-intl";
 import { Fragment, useState } from "react";
 
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -21,7 +22,7 @@ import type { ExplanationDimension } from "@/lib/api";
 import {
   contributorsAreShowable,
   dimensionLabel,
-  dimensionMeaning,
+  dimensionMeaningIn,
   dimensionTone,
   formatCount,
   formatDelta,
@@ -30,40 +31,51 @@ import {
   formatShare,
   newAndDisappearedAreDeterminate,
 } from "@/lib/behavior";
-
-/** What a figure reads as when a cap prevents a defensible answer. */
-const INDETERMINATE = "indeterminate";
+import { ARROW, availabilityCode } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
+import { useBackendMessage } from "@/i18n/backendMessage";
 
 export function ContributorTable({ dimension }: { dimension: ExplanationDimension }) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const t = useTranslations("anomalies.contributors");
+  const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
+  const { locale } = i18n;
 
-  const label = dimensionLabel(dimension.dimension);
+  const label = dimensionLabel(dimension.dimension, i18n);
   const checked = contributorsAreShowable(dimension.availability);
   // Truncation makes the counts an artifact of the cap rather than a finding,
   // so they are withheld even though the contributor rows are shown.
   const countsDeterminate = newAndDisappearedAreDeterminate(dimension.availability);
 
+  const lead = `${availabilityCode(i18n, dimension.availability)}.`;
+
   const countCell = (value: number | null) =>
     countsDeterminate ? (
-      formatCount(value)
+      formatCount(value, locale)
     ) : (
-      <span className="muted">{INDETERMINATE}</span>
+      <span className="muted">{t("indeterminate")}</span>
     );
 
   return (
-    <section aria-label={`${label} contributors`} className="dimension-panel">
+    <section aria-label={t("panel", { label })} className="dimension-panel">
       <div className="row dimension-panel-head">
         <h4>{label}</h4>
         <span className={`pill ${dimensionTone(dimension.availability)}`}>
-          {dimension.availability}
+          {availabilityCode(i18n, dimension.availability)}
         </span>
       </div>
-      <p className="subtitle">{dimensionMeaning(dimension.availability)}</p>
+      <p className="subtitle">{dimensionMeaningIn(dimension.availability, i18n)}</p>
 
       {dimension.detail && (
         <p className="subtitle">
           {/* Backend-sanitized: a reason, never a stack trace. */}
-          <strong>Reason:</strong> {dimension.detail}
+          <strong>{t("reason")}</strong>{" "}
+          {backendMessage({
+            text: dimension.detail,
+            code: dimension.detail_code,
+            params: dimension.detail_params,
+          })}
         </p>
       )}
 
@@ -72,26 +84,26 @@ export function ContributorTable({ dimension }: { dimension: ExplanationDimensio
           are named indeterminate rather than shown as the backend's zeroes. */}
       <dl className="dimension-meta">
         <div>
-          <dt>Baseline cardinality</dt>
+          <dt>{t("baselineCardinality")}</dt>
           <dd className="num">{countCell(dimension.baseline_distinct_count)}</dd>
         </div>
         <div>
-          <dt>Anomaly cardinality</dt>
+          <dt>{t("anomalyCardinality")}</dt>
           <dd className="num">{countCell(dimension.anomaly_distinct_count)}</dd>
         </div>
         <div>
-          <dt>Concentration</dt>
+          <dt>{t("concentration")}</dt>
           <dd className="num">
-            {formatShare(dimension.baseline_top_share)} →{" "}
-            {formatShare(dimension.anomaly_top_share)}
+            {formatShare(dimension.baseline_top_share, locale)} {ARROW}{" "}
+            {formatShare(dimension.anomaly_top_share, locale)}
           </dd>
         </div>
         <div>
-          <dt>New values</dt>
+          <dt>{t("newValues")}</dt>
           <dd className="num">{countCell(dimension.new_value_count)}</dd>
         </div>
         <div>
-          <dt>Disappeared values</dt>
+          <dt>{t("disappearedValues")}</dt>
           <dd className="num">{countCell(dimension.disappeared_value_count)}</dd>
         </div>
       </dl>
@@ -101,50 +113,42 @@ export function ContributorTable({ dimension }: { dimension: ExplanationDimensio
         // show, and an empty table would read as "checked, nothing found".
         <p className={`banner ${dimension.availability === "FAILED" ? "crit" : ""}`}>
           <span>
-            <strong>{dimension.availability}.</strong>{" "}
-            {dimension.availability === "FAILED"
-              ? "The query for this dimension did not complete, so it has not been checked."
-              : "This field was not populated by the QRadar parser for this log source, so it has not been checked. No conclusion follows from the absence of contributors here."}
+            <strong>{lead}</strong>{" "}
+            {dimension.availability === "FAILED" ? t("queryFailed") : t("notPopulated")}
           </span>
         </p>
       ) : dimension.contributors.length === 0 ? (
-        <div className="notice">
-          This dimension was collected and no value stood out as a contributor.
-        </div>
+        <div className="notice">{t("noneStandOut")}</div>
       ) : (
         <>
           {dimension.truncated && (
-            <p className="dimension-truncation">
-              Truncated at the configured value cap — this is the top of the
-              list, not the whole of it.
-            </p>
+            <p className="dimension-truncation">{t("truncated")}</p>
           )}
           {/* Distinct from the section's own label: two nested regions with
               the same accessible name are indistinguishable when navigating
               landmarks. */}
-          <TableScroll label={`${label} contributor rows`}>
+          <TableScroll label={t("rows", { label })}>
             <table>
               <caption className="sr-only">
-                {label} values ranked by their contribution to the change, with
-                baseline and anomaly counts.
+                {t("caption", { label })}
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Value</th>
+                  <th scope="col">{t("value")}</th>
                   <th scope="col" className="num">
-                    Baseline (events)
+                    {t("baselineEvents")}
                   </th>
                   <th scope="col" className="num">
-                    Anomaly (events)
+                    {t("anomalyEvents")}
                   </th>
                   <th scope="col" className="num">
-                    Delta (events)
+                    {t("deltaEvents")}
                   </th>
                   <th scope="col" className="num">
-                    Contribution
+                    {t("contribution")}
                   </th>
                   <th scope="col">
-                    <span className="sr-only">Row detail</span>
+                    <span className="sr-only">{t("rowDetail")}</span>
                   </th>
                 </tr>
               </thead>
@@ -166,14 +170,14 @@ export function ContributorTable({ dimension }: { dimension: ExplanationDimensio
                           ) : (
                             c.value
                           )}{" "}
-                          {c.is_new && <span className="pill pill-quiet warn">new</span>}
+                          {c.is_new && <span className="pill pill-quiet warn">{t("new")}</span>}
                           {c.is_disappeared && (
-                            <span className="pill pill-quiet warn">disappeared</span>
+                            <span className="pill pill-quiet warn">{t("disappeared")}</span>
                           )}
                         </td>
-                        <td className="num">{formatCount(c.baseline_count)}</td>
-                        <td className="num">{formatCount(c.anomaly_count)}</td>
-                        <td className="num">{formatDelta(c.absolute_delta)}</td>
+                        <td className="num">{formatCount(c.baseline_count, locale)}</td>
+                        <td className="num">{formatCount(c.anomaly_count, locale)}</td>
+                        <td className="num">{formatDelta(c.absolute_delta, locale)}</td>
                         <td className="num">
                           {/* Magnitude: the share is signed on a drop, and
                               "-95.9%" is not how a reduction is described. */}
@@ -181,6 +185,7 @@ export function ContributorTable({ dimension }: { dimension: ExplanationDimensio
                             c.contribution_share == null
                               ? null
                               : Math.abs(c.contribution_share),
+                            locale,
                           )}
                         </td>
                         <td>
@@ -188,10 +193,10 @@ export function ContributorTable({ dimension }: { dimension: ExplanationDimensio
                             type="button"
                             className="row-toggle"
                             aria-expanded={open}
-                            aria-label={`${open ? "Hide" : "Show"} detail for ${name}`}
+                            aria-label={t(open ? "hideDetail" : "showDetail", { name })}
                             onClick={() => setExpanded(open ? null : key)}
                           >
-                            {open ? "Less" : "More"}
+                            {open ? t("less") : t("more")}
                           </button>
                         </td>
                       </tr>
@@ -200,32 +205,32 @@ export function ContributorTable({ dimension }: { dimension: ExplanationDimensio
                           <td colSpan={6}>
                             <dl className="dimension-meta">
                               <div>
-                                <dt>Percent delta</dt>
+                                <dt>{t("percentDelta")}</dt>
                                 {/* null for a new value: there is no baseline
                                     to be a percentage of, and "0%" would
                                     assert no change. */}
                                 <dd className="num">
-                                  {formatPercentDelta(c.percent_delta)}
+                                  {formatPercentDelta(c.percent_delta, locale)}
                                 </dd>
                               </div>
                               <div>
-                                <dt>Baseline share</dt>
-                                <dd className="num">{formatShare(c.baseline_share)}</dd>
+                                <dt>{t("baselineShare")}</dt>
+                                <dd className="num">{formatShare(c.baseline_share, locale)}</dd>
                               </div>
                               <div>
-                                <dt>Anomaly share</dt>
-                                <dd className="num">{formatShare(c.anomaly_share)}</dd>
+                                <dt>{t("anomalyShare")}</dt>
+                                <dd className="num">{formatShare(c.anomaly_share, locale)}</dd>
                               </div>
                               <div>
-                                <dt>Rank, baseline to anomaly</dt>
+                                <dt>{t("rank")}</dt>
                                 <dd className="num">
-                                  {c.baseline_rank ?? "—"} → {c.anomaly_rank ?? "—"}
+                                  {c.baseline_rank ?? "—"} {ARROW} {c.anomaly_rank ?? "—"}
                                 </dd>
                               </div>
                               <div>
-                                <dt>Cardinality ratio</dt>
+                                <dt>{t("cardinalityRatio")}</dt>
                                 <dd className="num">
-                                  {formatRatio(dimension.cardinality_ratio)}
+                                  {formatRatio(dimension.cardinality_ratio, locale)}
                                 </dd>
                               </div>
                             </dl>

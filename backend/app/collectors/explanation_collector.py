@@ -336,6 +336,11 @@ def _dimension_row(
         dimension=comparison.dimension,
         availability=comparison.availability,
         detail=comparison.detail,
+        detail_i18n=(
+            comparison.detail_message.to_wire()
+            if comparison.detail_message is not None
+            else None
+        ),
         baseline_distinct_count=comparison.baseline_distinct_count,
         anomaly_distinct_count=comparison.anomaly_distinct_count,
         cardinality_ratio=comparison.cardinality_ratio,

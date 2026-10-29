@@ -12,7 +12,7 @@
 
 import type { OffenseAnalytics, OffenseSummary, Page } from "@/lib/api";
 
-import { notCollected, type Qualifier } from "./qualifiers";
+import { notCollected, type Qualifier, type ReasonCode } from "./qualifiers";
 
 export interface OffensesCard {
   open: number | null;
@@ -46,13 +46,13 @@ export function offensesCard(
   // No snapshot: every figure is unknown. A null count says that directly.
   // The probe still covers a numeric zero the client cannot confirm.
   if (countIsUnknown(active)) {
-    return unknownOffenses(base, "No offense snapshot has been collected yet.");
+    return unknownOffenses(base, "No offense snapshot has been collected yet.", "NO_SNAPSHOT");
   }
   if (probe !== null && probe.total === 0) {
-    return unknownOffenses(base, "No offense snapshot has been collected yet.");
+    return unknownOffenses(base, "No offense snapshot has been collected yet.", "NO_SNAPSHOT");
   }
   if (probe === null && active === 0) {
-    return unknownOffenses(base, "Could not confirm that an offense snapshot exists.");
+    return unknownOffenses(base, "Could not confirm that an offense snapshot exists.", "SNAPSHOT_UNCONFIRMED");
   }
 
   const critical = a.critical;
@@ -84,6 +84,7 @@ export function offensesCard(
 function unknownOffenses(
   base: { criticalMagnitude: number },
   reason: string,
+  code: ReasonCode,
 ): OffensesCard {
   return {
     ...base,
@@ -94,6 +95,6 @@ function unknownOffenses(
     criticalUnknown: null,
     ageUnknown: null,
     breakdown: null,
-    qualifiers: [notCollected(reason)],
+    qualifiers: [notCollected(reason, { code })],
   };
 }

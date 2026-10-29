@@ -9,6 +9,7 @@ import Link from "next/link";
 
 import { Suspense, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { hasAnyAccess, visibleNav } from "./access";
 import { NoRole } from "./NoRole";
@@ -25,6 +26,8 @@ function onLoginPath(pathname: string): boolean {
 }
 
 export function AppFrame({ children }: { children: ReactNode }) {
+  const t = useTranslations("auth");
+  const common = useTranslations("common");
   const pathname = usePathname() ?? "/";
   const session = useSession();
 
@@ -35,7 +38,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
   if (session.status === "ready" && session.me?.must_change_password) {
     return (
       <div className={styles.gate}>
-        <Suspense fallback={<p className="notice" role="status">Loading the password form…</p>}>
+        <Suspense fallback={<p className="notice" role="status">{t("passwordLoading")}</p>}>
           <PasswordChange required />
         </Suspense>
       </div>
@@ -54,7 +57,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
     return (
       <div className={styles.gate}>
         <p className="notice" role="status">
-          Sign-in is required.
+          {t("signInRequired")}
         </p>
       </div>
     );
@@ -65,16 +68,16 @@ export function AppFrame({ children }: { children: ReactNode }) {
       <div className={styles.gate}>
         <div className="notice" role="alert">
           <p>
-            <strong>The session could not be read.</strong>
+            <strong>{t("sessionFailed")}</strong>
           </p>
           <p>
-            Nothing is shown until the account can be confirmed.
-            {session.error ? ` ${session.error}` : ""} Try again. If it keeps failing, the
-            backend may be unreachable.
+            {t("sessionFailedDetail", {
+              reason: session.error ? ` ${session.error}` : "",
+            })}
           </p>
           <p>
             <button type="button" className="action secondary" onClick={() => void session.reload()}>
-              Try again
+              {common("tryAgain")}
             </button>
           </p>
         </div>
@@ -88,8 +91,8 @@ export function AppFrame({ children }: { children: ReactNode }) {
     <>
       <header className="shell-head">
         <Link href="/behavior" className="brand plain">
-          <span className="brand-name">Behavior Analytics</span>
-          <span className="brand-sub">QRadar Anomaly &amp; Investigation</span>
+          <span className="brand-name">{common("product")}</span>
+          <span className="brand-sub">{t("brandSubtitle")}</span>
         </Link>
         <TopBar />
       </header>

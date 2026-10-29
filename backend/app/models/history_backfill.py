@@ -127,6 +127,8 @@ class HistoryBackfillScope(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     #: Words, never a value text.
     reason: Mapped[str | None] = mapped_column(String(255))
+    #: The wire reference of `reason` (MSG-8a); NULL on an old or an uncoded row.
+    reason_i18n: Mapped[dict | None] = mapped_column(JSONB)
     #: Code only: the class of the last raised history-step fault, never its message.
     last_error_class: Mapped[str | None] = mapped_column(String(64))
     last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

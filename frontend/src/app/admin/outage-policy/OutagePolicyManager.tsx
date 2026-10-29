@@ -6,6 +6,7 @@
 // the counts beside the table are the server's, not this component's guess.
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import {
   outagePolicyApi,
@@ -15,6 +16,7 @@ import {
   type OutagePolicyRow,
 } from "@/lib/api";
 import { classLabel } from "@/lib/fleet";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { ClassTable } from "./ClassTable";
 import { PolicyForm } from "./PolicyForm";
@@ -45,6 +47,9 @@ export function OutagePolicyManager({
   /** Why the fleet summary is missing, when it is. */
   summaryNote: string | null;
 }) {
+  const t = useTranslations("outage.manager");
+  const i18n = useBehaviorI18n();
+  const fleet = { say: i18n.t, locale: i18n.locale };
   const [rows, setRows] = useState(initialRows);
   const [summary, setSummary] = useState(initialSummary);
   const [flash, setFlash] = useState<Flash>(null);
@@ -55,7 +60,7 @@ export function OutagePolicyManager({
 
   const bucketSeconds = summary ? summary.bucket_seconds : null;
   const fallback = defaultMode(summary);
-  const defaultGrace = defaultGraceText(summary);
+  const defaultGrace = defaultGraceText(summary, i18n);
 
   async function refresh(): Promise<boolean> {
     try {
@@ -78,10 +83,7 @@ export function OutagePolicyManager({
     setFlash(
       ok
         ? { kind: "ok", text }
-        : {
-            kind: "crit",
-            text: `${text} The list could not be reloaded, so the counts may be out of date. Reload the page.`,
-          },
+        : { kind: "crit", text: t("reloadFailed", { text }) },
     );
   }
 
@@ -91,7 +93,7 @@ export function OutagePolicyManager({
     const ok = await refresh();
     setFlash({
       kind: "crit",
-      text: ok ? text : `${text} The list could not be reloaded either. Reload the page.`,
+      text: ok ? text : t("reloadFailedGone", { text }),
     });
   }
 
@@ -102,7 +104,7 @@ export function OutagePolicyManager({
     return summary?.classes.find((c) => c.source_class === cls)?.outage_mode ?? fallback;
   }
 
-  const lines = classLines(summary, rows);
+  const lines = classLines(summary, rows, i18n);
   const overrides = sourceRows(rows);
   const overridden = new Set(
     overrides.filter((r) => r.instance_id === null).map((r) => r.scope_value),
@@ -123,18 +125,15 @@ export function OutagePolicyManager({
       {rows.length === 0 && (
         <div className="notice" role="status">
           <p>
-            <strong>No outage policy is set.</strong>
+            <strong>{t("emptyTitle")}</strong>
           </p>
-          <p>
-            Every monitored source raises an alert when it goes silent, which is the default. Set
-            a policy on a class, or override one source, to record its outages without alerting.
-          </p>
+          <p>{t("emptyText")}</p>
         </div>
       )}
 
       <section aria-labelledby="outage-classes">
         <h2 className="section-title" id="outage-classes">
-          Classes
+          {t("classes")}
         </h2>
         <ClassTable
           lines={lines}
@@ -153,12 +152,10 @@ export function OutagePolicyManager({
 
       <section aria-labelledby="outage-sources">
         <h2 className="section-title" id="outage-sources">
-          Source overrides
+          {t("sources")}
         </h2>
         {overrides.length === 0 ? (
-          <p className="subtitle">
-            No source is overridden. A source follows its class, or the default.
-          </p>
+          <p className="subtitle">{t("noOverrides")}</p>
         ) : (
           <SourceTable
             rows={overrides}
@@ -185,7 +182,7 @@ export function OutagePolicyManager({
                 setPicking(true);
               }}
             >
-              Add override
+              {t("addOverride")}
             </button>
           )}
           {picking && (
@@ -206,28 +203,32 @@ export function OutagePolicyManager({
           {adding && (
             <div className="panel">
               <PolicyForm
-                label={`Override for ${adding.name}`}
-                context={`${classLabel(adding.source_class)}${adding.type_name ? ` · ${adding.type_name}` : ""}. Its class resolves to ${
-                  classModeOf(adding.source_class)
-                    ? modeLabel(classModeOf(adding.source_class) as OutageMode)
-                    : "a mode the page cannot read"
-                }.`}
+                label={t("overrideFor", { name: adding.name })}
+                context={t("context", {
+                  where: `${classLabel(adding.source_class, fleet)}${adding.type_name ? ` · ${adding.type_name}` : ""}`,
+                  mode: classModeOf(adding.source_class)
+                    ? modeLabel(classModeOf(adding.source_class) as OutageMode, i18n)
+                    : t("modeUnreadable"),
+                })}
                 initialMode={classModeOf(adding.source_class) === "ALERT" ? "RECORD_ONLY" : "ALERT"}
                 initialGrace={null}
                 bucketSeconds={bucketSeconds}
                 impactFor={(mode, grace) =>
-                  sourceImpact({
-                    name: adding.name,
-                    source_class: adding.source_class,
-                    classMode: classModeOf(adding.source_class),
-                    fromMode: classModeOf(adding.source_class),
-                    fromGrace: null,
-                    toMode: mode,
-                    toGrace: grace,
-                    removal: false,
-                    bucketSeconds,
-                    defaultGrace,
-                  })
+                  sourceImpact(
+                    {
+                      name: adding.name,
+                      source_class: adding.source_class,
+                      classMode: classModeOf(adding.source_class),
+                      fromMode: classModeOf(adding.source_class),
+                      fromGrace: null,
+                      toMode: mode,
+                      toGrace: grace,
+                      removal: false,
+                      bucketSeconds,
+                      defaultGrace,
+                    },
+                    i18n,
+                  )
                 }
                 isUnchanged={(mode, grace) =>
                   grace === null && mode === classModeOf(adding.source_class)
@@ -236,7 +237,7 @@ export function OutagePolicyManager({
                   await outagePolicyApi.putSource(adding.id, body);
                   setAdding(null);
                   await changed(
-                    `Saved. ${adding.name} is now ${modeLabel(body.mode)}, set on the source.`,
+                    t("savedSource", { name: adding.name, mode: modeLabel(body.mode, i18n) }),
                   );
                 }}
                 onCancel={() => setAdding(null)}

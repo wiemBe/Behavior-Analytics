@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function WafSourcesError({
@@ -9,5 +11,13 @@ export default function WafSourcesError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <BoundaryError title="WAF sources" what="WAF sources" digest={error.digest} onRetry={reset} />;
+  const t = useTranslations("waf.boundary");
+  return (
+    <BoundaryError
+      title={t("adminTitle")}
+      what={t("adminError")}
+      digest={error.digest}
+      onRetry={reset}
+    />
+  );
 }

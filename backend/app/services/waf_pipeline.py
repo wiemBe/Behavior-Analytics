@@ -80,8 +80,10 @@ from app.history import (
     waf_source_searches,
 )
 from app.history.lifecycle import decision_view, deferred_scope_row, scope_row, scope_view, step_row
+from app.history.reasons import message_wire, semicolon_reason
 from app.history.state import HistoryTrigger
 from app.history.waf import waf_planner_settings
+from app.i18n.messages import MessageRef, render
 from app.models.enums import SearchFamily, WafBreakdown
 from app.models.history_backfill import HistoryBackfillScope
 from app.models.instance import QRadarInstance
@@ -107,6 +109,7 @@ logger = logging.getLogger("app.waf.pipeline")
 EVALUATION_COLLECTOR = "waf_endpoint_evaluation"
 SCHEDULING_RECORD = "waf_scheduling"
 PIPELINE_LOCK = "waf_pipeline"
+VOLUME_PASS_FINISHED = MessageRef("history.waf.volume_pass_finished")
 
 #: Why a scheduled run did no collection work, as recorded for operators.
 SKIP_SOURCE_LOCKED = "source_locked"
@@ -481,6 +484,7 @@ class WafSourcePipeline:
         assert view is not None
         decoded = decode_scope(view)
         fit_reason: str | None = None
+        fit_wire: dict[str, object] | None = None
         days_target: int | None
         budget = history_search_budget(self.settings, used=0)
         if decoded is None:
@@ -496,6 +500,9 @@ class WafSourcePipeline:
                     ),
                     state=change.state,
                     reason=fitted.reason or change.reason,
+                    reason_i18n=message_wire(
+                        fitted.reason_message if fitted.reason else change.reason_message
+                    ),
                     finished_at=now,
                     anchor=boundary,
                 )
@@ -524,21 +531,22 @@ class WafSourcePipeline:
                 settings=planner,
                 searches_per_tick=max(1, budget),
             )
-            zero_reason = (
-                f"fitted with no tracked endpoint yet; the "
-                f"{self.settings.history_backfill_max_hours}-hour limit still bounds the reading"
+            zero_message = (
+                MessageRef(
+                    "history.family.zero_endpoint",
+                    {"limit": self.settings.history_backfill_max_hours},
+                )
                 if endpoints == 0
                 else None
             )
-            fit_reason = "; ".join(
-                part
-                for part in (
-                    fitted.reason,
-                    fit.reason if fit.reduced or fit.refused else None,
-                    zero_reason,
-                )
-                if part
-            ) or None
+            joined_reason, fit_wire = semicolon_reason(
+                [
+                    (fitted.reason or "", fitted.reason_message),
+                    (fit.reason if fit.reduced or fit.refused else "", fit.reason_message),
+                    ("" if zero_message is None else render(zero_message), zero_message),
+                ]
+            )
+            fit_reason = joined_reason or None
             if fit.refused or fit.days_fitted is None or fit.target_start is None:
                 change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
                 values = step_row(
@@ -550,6 +558,7 @@ class WafSourcePipeline:
                     ),
                     state=change.state,
                     reason=fit_reason or fit.reason,
+                    reason_i18n=fit_wire if fit_reason else message_wire(fit.reason_message),
                     finished_at=now,
                     anchor=boundary,
                 )
@@ -558,12 +567,16 @@ class WafSourcePipeline:
                 report.history_reason = str(values["reason"])
                 return
             progress = new_progress(fit.target_start, scope.started_at or now, planner)
-            adapter = {"fit_reason": fit_reason} if fit_reason else {}
+            adapter = (
+                {"fit_reason": fit_reason, "fit_reason_i18n": fit_wire} if fit_reason else {}
+            )
             days_target = fit.days_fitted
         else:
             progress, adapter = decoded.progress, decoded.adapter
             stored_reason = adapter.get("fit_reason")
             fit_reason = stored_reason if isinstance(stored_reason, str) else None
+            stored_wire = adapter.get("fit_reason_i18n")
+            fit_wire = dict(stored_wire) if isinstance(stored_wire, dict) else None
             days_target = scope.days_target
 
         try:
@@ -606,7 +619,9 @@ class WafSourcePipeline:
                 boundary=boundary,
                 settled=outcome.progress.through is not None,
             )
-        reason = "; ".join(part for part in (fit_reason, outcome.reason) if part)
+        reason, reason_wire = semicolon_reason(
+            [(fit_reason or "", fit_wire), (outcome.reason, outcome.reason_message)]
+        )
         values = step_row(
             scope_row(
                 view,
@@ -616,6 +631,7 @@ class WafSourcePipeline:
             ),
             state=state,
             reason=reason,
+            reason_i18n=reason_wire,
             days_target=days_target,
             target_start=outcome.progress.target_start,
             floor=outcome.progress.floor,
@@ -750,7 +766,8 @@ class WafSourcePipeline:
                 scope_key=scope.scope_key,
             ),
             state=HistoryState(scope.state),
-            reason=scope.reason or "history volume pass finished",
+            reason=scope.reason or render(VOLUME_PASS_FINISHED),
+            reason_i18n=scope.reason_i18n if scope.reason else VOLUME_PASS_FINISHED.to_wire(),
             target_start=decoded.progress.target_start,
             floor=decoded.progress.floor,
             through=decoded.progress.through,

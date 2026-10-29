@@ -10,13 +10,10 @@ import type {
   HistoryScopeSource,
 } from "@/lib/api";
 
-import {
-  NOT_READ,
-  NOT_STARTED,
-  SWITCHED_OFF,
-  stateInfo,
-  type StateInfo,
-} from "./historyFormat";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+
+import { collectionReason, stateInfo, windowReason, type StateInfo } from "./historyFormat";
+import { ENGLISH_HISTORY, plainSentence, type SentenceReader } from "./historyText";
 
 export interface HistoryRow {
   key: string;
@@ -24,6 +21,8 @@ export interface HistoryRow {
   scope: string;
   scopeSub: string | null;
   state: StateInfo;
+  /** The state as the API (or the row itself) names it: what code compares, never the label. */
+  stateCode: string;
   /** Days the scope asked for, and the days the family may read when that is fewer. */
   asked: { days: number | null; of: number | null };
   /** "proved" carries the floor; "per-source" has none; "none" means nothing was measured. */
@@ -43,7 +42,13 @@ export interface HistoryRow {
   laterYes: string | null;
 }
 
-function scopeRow(console: HistoryConsole, family: HistoryFamily, scope: HistoryScope): HistoryRow {
+function scopeRow(
+  console: HistoryConsole,
+  family: HistoryFamily,
+  scope: HistoryScope,
+  i18n: BehaviorI18n,
+  read: SentenceReader,
+): HistoryRow {
   const perSource = family.sources !== null;
   const last =
     scope.through !== null || scope.finished_at !== null
@@ -53,9 +58,13 @@ function scopeRow(console: HistoryConsole, family: HistoryFamily, scope: History
   return {
     key: `${console.instance_id}:${family.family}:${scope.scope_key}`,
     family: family.family,
-    scope: perSource ? (scope.name ?? `Log source ${scope.scope_key}`) : "Whole console",
-    scopeSub: perSource && scope.name ? `Log source ${scope.scope_key}` : null,
-    state: stateInfo(scope.state),
+    scope: perSource
+      ? (scope.name ?? i18n.t("history.scope.logSource", { key: scope.scope_key }))
+      : i18n.t("history.scope.whole"),
+    scopeSub:
+      perSource && scope.name ? i18n.t("history.scope.logSource", { key: scope.scope_key }) : null,
+    state: stateInfo(scope.state, i18n),
+    stateCode: scope.state,
     asked: { days: target, of: scope.days_requested },
     proved: scope.floor_proved
       ? { kind: "proved", floor: scope.floor }
@@ -68,37 +77,53 @@ function scopeRow(console: HistoryConsole, family: HistoryFamily, scope: History
     },
     searches: scope.searches,
     last,
-    reason: scope.reason,
-    gaps: scope.gaps ?? [],
+    reason:
+      scope.reason === null
+        ? null
+        : read(scope.reason, { code: scope.reason_code, params: scope.reason_params }),
+    gaps: (scope.gaps ?? []).map((gap) => ({
+      ...gap,
+      reason: read(gap.reason, { code: gap.reason_code, params: gap.reason_params }),
+    })),
     lastErrorClass: scope.last_error_class,
     lastErrorAt: scope.last_error_at,
     sourcesCut: scope.sources_cut,
     sourcesSilent: scope.sources_silent,
     sourcesCutCount: scope.sources_cut_count,
     sourcesSilentCount: scope.sources_silent_count,
-    laterYes: scope.later_yes,
+    laterYes: read(scope.later_yes, { code: scope.later_yes_code, params: scope.later_yes_params }),
   };
 }
 
 /** The state of a row that has no scope row: why nothing is stored for it. */
-function absentState(console: HistoryConsole, family: HistoryFamily): { state: StateInfo; reason: string } {
-  if (!family.collection_enabled) return { state: SWITCHED_OFF, reason: family.collection_reason };
+interface Absent {
+  state: StateInfo;
+  stateCode: string;
+  reason: string;
+}
+
+function absentState(
+  console: HistoryConsole,
+  family: HistoryFamily,
+  i18n: BehaviorI18n,
+  read: SentenceReader,
+): Absent {
+  const t = i18n.t;
+  const absent = (code: string, reason: string): Absent => ({
+    state: stateInfo(code, i18n),
+    stateCode: code,
+    reason,
+  });
+  if (!family.collection_enabled) {
+    return absent("SWITCHED_OFF", collectionReason(family, read));
+  }
   if (!family.window.available) {
-    return {
-      state: stateInfo("UNAVAILABLE"),
-      reason: family.window.reason ?? "The window could not be fitted.",
-    };
+    return absent("UNAVAILABLE", windowReason(family, i18n, read));
   }
-  if (console.mode === "UNDECIDED") {
-    return { state: NOT_READ, reason: "No decision is recorded for this console." };
-  }
-  if (console.mode === "NO") {
-    return { state: NOT_READ, reason: "The answer is No." };
-  }
-  if (console.mode === "STOPPED") {
-    return { state: NOT_READ, reason: "Reading was stopped before this started." };
-  }
-  return { state: NOT_STARTED, reason: "It is created at the family's next collection." };
+  if (console.mode === "UNDECIDED") return absent("NOT_READ", t("history.row.noDecision"));
+  if (console.mode === "NO") return absent("NOT_READ", t("history.row.answerNo"));
+  if (console.mode === "STOPPED") return absent("NOT_READ", t("history.row.stopped"));
+  return absent("NOT_STARTED", t("history.row.created"));
 }
 
 function absentRow(
@@ -108,9 +133,11 @@ function absentRow(
   scopeSub: string | null,
   keyTail: string,
   laterYes: string | null,
-  override?: { state: StateInfo; reason: string },
+  i18n: BehaviorI18n,
+  read: SentenceReader,
+  override?: Absent,
 ): HistoryRow {
-  const { state, reason } = override ?? absentState(console, family);
+  const { state, stateCode, reason } = override ?? absentState(console, family, i18n, read);
   const window = family.window;
   return {
     key: `${console.instance_id}:${family.family}:${keyTail}`,
@@ -118,6 +145,7 @@ function absentRow(
     scope,
     scopeSub,
     state,
+    stateCode,
     asked: {
       days: window.days ?? null,
       of: window.days !== null && window.days !== window.days_requested ? window.days_requested : null,
@@ -138,17 +166,22 @@ function absentRow(
   };
 }
 
-export function rowsOf(console: HistoryConsole): HistoryRow[] {
+export function rowsOf(
+  console: HistoryConsole,
+  i18n: BehaviorI18n = ENGLISH_HISTORY,
+  read: SentenceReader = plainSentence,
+): HistoryRow[] {
   const rows: HistoryRow[] = [];
   for (const family of console.families) {
     const before = rows.length;
-    for (const scope of family.scopes) rows.push(scopeRow(console, family, scope));
+    for (const scope of family.scopes) rows.push(scopeRow(console, family, scope, i18n, read));
     for (const source of family.sources ?? []) {
-      let override: { state: StateInfo; reason: string } | undefined;
+      let override: Absent | undefined;
       if (!source.profile_enabled) {
         override = {
-          state: { label: "Profile disabled", tone: "neutral" },
-          reason: "The source's profile is disabled, so it is not collected.",
+          state: stateInfo("PROFILE_DISABLED", i18n),
+          stateCode: "PROFILE_DISABLED",
+          reason: i18n.t("history.row.profileDisabled"),
         };
       }
       rows.push(
@@ -156,9 +189,11 @@ export function rowsOf(console: HistoryConsole): HistoryRow[] {
           console,
           family,
           source.name,
-          `Log source ${source.scope_key}`,
+          i18n.t("history.scope.logSource", { key: source.scope_key }),
           `source:${source.scope_key}`,
-          source.later_yes,
+          read(source.later_yes, { code: source.later_yes_code, params: source.later_yes_params }),
+          i18n,
+          read,
           override,
         ),
       );
@@ -169,14 +204,22 @@ export function rowsOf(console: HistoryConsole): HistoryRow[] {
         absentRow(
           console,
           family,
-          none ? "No source configured" : "Whole console",
+          none ? i18n.t("history.scope.noSource") : i18n.t("history.scope.whole"),
           null,
           "all",
-          family.later_yes,
+          family.later_yes === null
+            ? null
+            : read(family.later_yes, {
+                code: family.later_yes_code,
+                params: family.later_yes_params,
+              }),
+          i18n,
+          read,
           none && family.collection_enabled
             ? {
-                state: NOT_STARTED,
-                reason: "No source is configured; a source is read when you enable its profile.",
+                state: stateInfo("NOT_STARTED", i18n),
+                stateCode: "NOT_STARTED",
+                reason: i18n.t("history.row.noSourceReason"),
               }
             : undefined,
         ),

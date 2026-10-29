@@ -5,8 +5,11 @@
 // beneath show the volume and what was and was not measured.
 
 import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
 
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
+import { fleetTextOf, type FleetText } from "@/lib/fleetText";
 import {
   ApiError,
   catchallApi,
@@ -14,30 +17,30 @@ import {
   type CatchallSourceList,
   type Page,
 } from "@/lib/api";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import { SendersQueue } from "./SendersQueue";
 import { SourceVolume } from "./SourceVolume";
 
 import "./catchall.css";
 
-export const metadata: Metadata = {
-  title: "Catch-all senders",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("catchall.meta");
+  return { title: t("title") };
+}
 
 // Rendered per request: the queue is live data.
 export const dynamic = "force-dynamic";
 
-function failureText(err: unknown): string {
-  if (err instanceof ApiError && err.status === 403) {
-    return "Your role cannot read the fleet (permission read:fleet). Nothing was changed.";
-  }
-  if (err instanceof ApiError && err.status === 401) {
-    return "Your session has expired. Sign in again to continue.";
-  }
-  return "The catch-all senders could not be loaded. The backend may be unreachable; check that it is running, then reload the page.";
+function failureText(err: unknown, text: FleetText): string {
+  if (err instanceof ApiError && err.status === 403) return text.say("fleet.errors.forbidden");
+  if (err instanceof ApiError && err.status === 401) return text.say("errors.sessionExpired");
+  return text.say("catchall.page.unreachable");
 }
 
-export default async function CatchallPage() {
+async function CatchallPage() {
+  const t = await getTranslations("catchall.page");
+  const text = fleetTextOf(await getTranslations(), await getLocale());
   let sources: CatchallSourceList | null = null;
   let initial: Page<CatchallSender> | null = null;
   let error: string | null = null;
@@ -48,34 +51,35 @@ export default async function CatchallPage() {
       initial = await catchallApi.senders({ review_status: "NEW", limit: 50 });
     }
   } catch (err) {
-    error = failureText(err);
+    error = failureText(err, text);
   }
 
   return (
     <>
       <PageHeader
-        title="Catch-all senders"
-        description="A sender is the syslog hostname QRadar recorded (logsourceidentifier) for events that landed in a catch-all source. It is often a relay, and it is a candidate unconfigured device, not a verdict. Times are UTC."
+        guide={guideFor("/fleet/catchall")}
+        title={t("title")}
+        description={t("description")}
       />
       {error ? (
         <div className="notice" role="alert">
           <p>
-            <strong>The catch-all senders could not be shown.</strong>
+            <strong>{t("noticeHeading")}</strong>
           </p>
           <p>{error}</p>
         </div>
       ) : sources === null || sources.items.length === 0 || initial === null ? (
         <div className="notice">
           <p>
-            <strong>No catch-all source is in the inventory.</strong>
+            <strong>{t("emptyHeading")}</strong>
           </p>
           <p>
-            A log source counts as catch-all when its QRadar device type is one of{" "}
-            {sources && sources.catchall_type_ids.length > 0
-              ? sources.catchall_type_ids.join(", ")
-              : "the configured catch-all types"}
-            . Run an inventory sync from the Log Sources page; a matching source appears here once
-            it is synced.
+            {t("emptyBody", {
+              types:
+                sources && sources.catchall_type_ids.length > 0
+                  ? sources.catchall_type_ids.join(", ")
+                  : t("configuredTypes"),
+            })}
           </p>
         </div>
       ) : (
@@ -87,3 +91,5 @@ export default async function CatchallPage() {
     </>
   );
 }
+
+export default withRouteMessages("/fleet/catchall", CatchallPage);

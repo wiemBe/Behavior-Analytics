@@ -1,0 +1,103 @@
+/* The Guide: long-form reading inside the standard page. Tokens only; the measure keeps a line
+   readable (guidelines §9), and nothing here is a card. */
+
+.guide-group h2 {
+  margin-top: var(--sp-7);
+}
+.guide-index {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: var(--guide-measure);
+}
+.guide-index li {
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--border);
+}
+.guide-index li:first-child {
+  border-top: 0;
+}
+.guide-entry {
+  font-weight: var(--fw-medium);
+}
+.guide-entry-answers {
+  margin: var(--sp-1) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+}
+
+.guide-article {
+  max-width: var(--guide-measure);
+  font-size: var(--fs-base);
+  line-height: var(--lh-prose);
+  overflow-wrap: break-word;
+}
+.guide-article p,
+.guide-article ul,
+.guide-article ol {
+  margin: 0 0 var(--sp-4);
+}
+.guide-article ul,
+.guide-article ol {
+  padding-left: var(--sp-6);
+}
+.guide-article li + li {
+  margin-top: var(--sp-2);
+}
+.guide-article h2 {
+  margin-top: var(--sp-7);
+}
+.guide-article h3 {
+  margin-top: var(--sp-6);
+}
+.guide-article strong {
+  font-weight: var(--fw-semibold);
+}
+.guide-steps {
+  padding-left: var(--sp-6);
+}
+.guide-steps li::marker {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.guide-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--sp-2) var(--sp-5);
+  margin: 0 0 var(--sp-6);
+  padding-bottom: var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.guide-facts > div {
+  display: contents;
+}
+.guide-facts dt {
+  font-weight: var(--fw-medium);
+}
+.guide-facts dd {
+  margin: 0;
+  min-width: 0;
+}
+.guide-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.guide-article .guide-inline {
+  margin: 0;
+  padding: 0;
+}
+.guide-article .guide-inline li + li {
+  margin-top: 0;
+}
+.guide-article .guide-related {
+  list-style: none;
+  padding-left: 0;
+}

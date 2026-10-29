@@ -14,7 +14,7 @@ from typing import Any
 from app.anomaly import statistics as rstats
 from app.anomaly.capabilities import pw_input_scope
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient
-from app.core.text import percent
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     DetectorSignal,
     PwAnomalyType,
@@ -26,11 +26,26 @@ from app.models.enums import (
 )
 from app.property_watch.baseline import PwBaselineCell
 from app.property_watch.facts import PwBucketFact, PwReading, PwReadingKind
+from app.property_watch.history import PwHistoryFacts
 from app.property_watch.inputs import PwObservation
 from app.waf.inputs import HistoryFacts
 from app.waf.measurement import ScopeDecision, WafVerdictScope
 
 EVIDENCE_VERSION = 1
+
+#: A sentence as a detector holds it: a registry reference, or the English text of a sentence
+#: that has no code (the scope decision's own wording, shared with WAF and IPS).
+Reason = MessageRef | str
+
+
+def _ref(name: str, **params: object) -> MessageRef:
+    return MessageRef(f"pw.detector.{name}", params)
+
+
+def _split(reason: Reason) -> tuple[str, MessageRef | None]:
+    if isinstance(reason, MessageRef):
+        return render(reason), reason
+    return reason, None
 
 
 @dataclass(frozen=True)
@@ -160,22 +175,25 @@ class _Guard:
             self.bucket.bucket_start + timedelta(seconds=self.bucket.bucket_seconds),
         )
 
-    def insufficient(self, reason: str, *, sample_count: int = 0) -> PwVerdict:
+    def insufficient(self, reason: Reason, *, sample_count: int = 0) -> PwVerdict:
         start, end = self._interval()
+        text, message = _split(reason)
         return self.verdict(
             insufficient(
                 self.detector_type,
                 interval_start=start,
                 interval_end=end,
-                reason=reason,
+                reason=text,
                 sample_count=sample_count,
+                reason_message=message,
             )
         )
 
     def healthy(
-        self, reason: str, *, observed: float | None = None, expected: float | None = None
+        self, reason: Reason, *, observed: float | None = None, expected: float | None = None
     ) -> PwVerdict:
         start, end = self._interval()
+        text, message = _split(reason)
         return self.verdict(
             healthy(
                 self.detector_type,
@@ -183,17 +201,25 @@ class _Guard:
                 interval_end=end,
                 observed=observed,
                 expected=expected,
-                reason=reason,
+                reason=text,
+                reason_message=message,
             )
         )
 
-    def not_proven(self, reason: str, *, observed: float, expected: float) -> PwVerdict:
+    def not_proven(self, reason: MessageRef, *, observed: float, expected: float) -> PwVerdict:
         if self.decision.scope is WafVerdictScope.INCREASE_ONLY:
             return self.insufficient(
-                f"{reason}; {self.decision.reason or 'an input is a lower bound'}, so a "
-                "normal verdict cannot be concluded"
+                _ref(
+                    "not_proven_lower_bound",
+                    reason=reason,
+                    scope=self.decision.reason or "an input is a lower bound",
+                )
             )
         return self.healthy(reason, observed=observed, expected=expected)
+
+    def scope_reason(self, fallback: str) -> Reason:
+        """The scope decision's wording (uncoded: shared with WAF and IPS), else `fallback`."""
+        return self.decision.reason or _ref(fallback)
 
     def watch(self) -> PwVerdict | None:
         blocked = {
@@ -206,34 +232,33 @@ class _Guard:
             PwWatchStatus.STALE,
         }
         if self.ctx.watch_status is None:
-            return self.insufficient("the watch has never established a collection status")
+            return self.insufficient(_ref("no_status"))
         if self.ctx.watch_status in blocked:
-            return self.insufficient(
-                f"the watch is {self.ctx.watch_status.value}: no value verdict is possible"
-            )
+            return self.insufficient(_ref("watch_blocked", status=self.ctx.watch_status.value))
         return None
 
     def bucket_guard(self) -> PwVerdict | None:
         if self.bucket is None or self.ctx.reading.kind is PwReadingKind.NO_BUCKET:
-            return self.insufficient("the bucket is missing: no count was measured")
+            return self.insufficient(_ref("bucket_missing"))
         if self.bucket.values_measurement is PwBucketMeasurement.NOT_COLLECTED:
-            return self.insufficient("the bucket was NOT_COLLECTED: its count is not zero")
+            return self.insufficient(_ref("bucket_not_collected"))
         if self.bucket.scope_changed:
-            return self.insufficient("membership changed during this bucket")
+            return self.insufficient(_ref("bucket_membership"))
         if self.bucket.property_not_parsed:
-            return self.insufficient(
-                "the property parsed on none of this bucket's events: NOT_APPLICABLE"
-            )
+            return self.insufficient(_ref("bucket_not_parsed"))
         return None
 
     def cell(self) -> PwBaselineCell | PwVerdict:
         cell = self.ctx.baseline
         if cell is None:
-            return self.insufficient("no value-events baseline for this weekday/hour cell yet")
+            return self.insufficient(_ref("no_baseline"))
         if cell.watch_version != self.bucket.watch_version:  # type: ignore[union-attr]
             return self.insufficient(
-                f"the baseline uses watch version {cell.watch_version}, not the bucket's "
-                f"{self.bucket.watch_version}"  # type: ignore[union-attr]
+                _ref(
+                    "baseline_version",
+                    baseline=cell.watch_version,
+                    bucket=self.bucket.watch_version,  # type: ignore[union-attr]
+                )
             )
         if (
             not cell.is_reliable
@@ -241,27 +266,27 @@ class _Guard:
         ):
             visits = self.thresholds.baseline_min_visits
             return self.insufficient(
-                f"the value-events baseline has {cell.sample_count} sample(s), but they come "
-                "from too few separate weekly visits of this weekday and hour: a baseline "
-                f"needs the same hour from at least {visits} different "
-                f"week{'' if visits == 1 else 's'}",
+                _ref("baseline_few_visits_one", samples=cell.sample_count)
+                if visits == 1
+                else _ref("baseline_few_visits", samples=cell.sample_count, visits=visits),
                 sample_count=cell.sample_count,
             )
         if not cell.is_reliable or cell.sample_count < self.thresholds.baseline_min_samples:
             return self.insufficient(
-                f"the value-events baseline has {cell.sample_count} sample(s), below the "
-                f"minimum of {self.thresholds.baseline_min_samples}",
+                _ref(
+                    "baseline_samples",
+                    samples=cell.sample_count,
+                    minimum=self.thresholds.baseline_min_samples,
+                ),
                 sample_count=cell.sample_count,
             )
         return cell
 
     def reading(self) -> float | PwVerdict:
         if self.ctx.reading.events is None or self.ctx.reading.measurement is None:
-            return self.insufficient("the value's count is unknown for this bucket, not zero")
+            return self.insufficient(_ref("count_unknown"))
         if self.decision.scope is WafVerdictScope.NONE:
-            return self.insufficient(
-                self.decision.reason or "the declared inputs do not support a verdict"
-            )
+            return self.insufficient(self.scope_reason("inputs_unsupported"))
         return float(self.ctx.reading.events)
 
     def baseline_preconditions(self) -> tuple[PwBaselineCell, float] | PwVerdict:
@@ -281,10 +306,16 @@ class _Guard:
         assert self.bucket is not None
         coverage = self.bucket.coverage
         if not coverage.reaches(self.thresholds.min_coverage):
-            seen = percent(coverage.ratio, missing="unknown")
+            if coverage.ratio is None:
+                return self.insufficient(
+                    _ref("coverage_unknown", floor=self.thresholds.min_coverage)
+                )
             return self.insufficient(
-                f"property coverage was {seen}, below the "
-                f"{percent(self.thresholds.min_coverage)} floor"
+                _ref(
+                    "coverage_below",
+                    seen=coverage.ratio,
+                    floor=self.thresholds.min_coverage,
+                )
             )
         return None
 
@@ -330,7 +361,7 @@ def _anomalous(
     score: float | None,
     magnitude: float,
     status: RobustScoreStatus,
-    reason: str,
+    reason: MessageRef,
     facts: dict[str, Any],
     severity: Severity = Severity.MEDIUM,
     interval_start: datetime | None = None,
@@ -353,8 +384,9 @@ def _anomalous(
             interval_start=start,
             interval_end=end,
             confidence=_confidence(cell, magnitude, guard.thresholds, status),
-            reason=reason,
+            reason=render(reason),
             extra=facts,
+            reason_message=reason,
         )
     )
 
@@ -371,7 +403,7 @@ def detect_value_spike(ctx: PwDetectionContext) -> PwVerdict:
     facts = _cell_facts(cell, observed, ctx.extra)
     if observed < thresholds.min_bucket_events:
         return guard.not_proven(
-            f"{observed:.0f} events is below the {thresholds.min_bucket_events:.0f} minimum",
+            _ref("spike_min_events", observed=observed, minimum=thresholds.min_bucket_events),
             observed=observed,
             expected=expected,
         )
@@ -379,14 +411,17 @@ def detect_value_spike(ctx: PwDetectionContext) -> PwVerdict:
     facts["ratio"] = ratio
     if ratio is not None and ratio < thresholds.spike_ratio:
         return guard.not_proven(
-            f"observed/expected ratio {ratio:.2f} has not reached {thresholds.spike_ratio:.2f}",
+            _ref("ratio_not_reached", ratio=ratio, threshold=thresholds.spike_ratio),
             observed=observed,
             expected=expected,
         )
     if delta < thresholds.min_absolute_delta_events:
         return guard.not_proven(
-            f"increase of {delta:.0f} events is below the "
-            f"{thresholds.min_absolute_delta_events:.0f} minimum absolute delta",
+            _ref(
+                "spike_delta_below_min",
+                delta=delta,
+                minimum=thresholds.min_absolute_delta_events,
+            ),
             observed=observed,
             expected=expected,
         )
@@ -397,24 +432,39 @@ def detect_value_spike(ctx: PwDetectionContext) -> PwVerdict:
     if status is RobustScoreStatus.OK:
         if score < thresholds.deviation_z:
             return guard.not_proven(
-                f"robust z={score:.2f} has not reached +{thresholds.deviation_z}",
+                _ref("z_not_reached_high", score=score, threshold=thresholds.deviation_z),
                 observed=observed,
                 expected=expected,
             )
-        basis = f"robust z={score:.2f} (threshold +{thresholds.deviation_z})"
+        basis = _ref("basis_z_high", score=score, threshold=thresholds.deviation_z)
         magnitude = score
     else:
         _, upper = _expected_band(cell, thresholds.mad_floor_ratio)
         facts["fallback_bound"] = upper
         if observed <= upper:
             return guard.not_proven(
-                f"robust score is unavailable (MAD=0) and the value is within p95 {upper:.2f}",
+                _ref("mad_within_p95", bound=upper),
                 observed=observed,
                 expected=expected,
             )
-        basis = f"robust score is unavailable (MAD=0); the value is above p95 {upper:.2f}"
+        basis = _ref("basis_above_p95", bound=upper)
         magnitude = thresholds.deviation_z
-    bound = "at least " if guard.decision.scope is WafVerdictScope.INCREASE_ONLY else ""
+    lower = guard.decision.scope is WafVerdictScope.INCREASE_ONLY
+    if ratio is not None:
+        fired = _ref(
+            "spike_fired_lower" if lower else "spike_fired",
+            observed=observed,
+            median=expected,
+            delta=delta,
+            ratio=ratio,
+            basis=basis,
+        )
+    else:
+        fired = _ref(
+            "spike_zero_median_lower" if lower else "spike_zero_median",
+            observed=observed,
+            basis=basis,
+        )
     return _anomalous(
         guard,
         cell,
@@ -423,12 +473,7 @@ def detect_value_spike(ctx: PwDetectionContext) -> PwVerdict:
         magnitude=magnitude,
         status=status,
         severity=Severity.HIGH if ratio is not None and ratio >= 4.0 else Severity.MEDIUM,
-        reason=(
-            f"{bound}{observed:.0f} events is above the median {expected:.1f} "
-            f"(+{delta:.0f}, {ratio:.2f}x); {basis}"
-            if ratio is not None
-            else f"{bound}{observed:.0f} events rose from a zero median; {basis}"
-        ),
+        reason=fired,
         facts=facts,
     )
 
@@ -445,24 +490,25 @@ def detect_value_drop(ctx: PwDetectionContext) -> PwVerdict:
     expected = cell.median
     if expected < thresholds.drop_min_median:
         return guard.not_proven(
-            f"baseline median {expected:.1f} is below the "
-            f"{thresholds.drop_min_median:.1f} traffic floor",
+            _ref("drop_median_floor", median=expected, floor=thresholds.drop_min_median),
             observed=observed,
             expected=expected,
         )
     ratio = observed / expected
     if ratio > thresholds.drop_ratio:
         return guard.not_proven(
-            f"observed/expected ratio {ratio:.2f} is above the "
-            f"{thresholds.drop_ratio:.2f} drop line",
+            _ref("drop_ratio_above", ratio=ratio, line=thresholds.drop_ratio),
             observed=observed,
             expected=expected,
         )
     delta = expected - observed
     if delta < thresholds.min_absolute_delta_events:
         return guard.not_proven(
-            f"fall of {delta:.0f} events is below the "
-            f"{thresholds.min_absolute_delta_events:.0f} minimum absolute delta",
+            _ref(
+                "drop_delta_below_min",
+                delta=delta,
+                minimum=thresholds.min_absolute_delta_events,
+            ),
             observed=observed,
             expected=expected,
         )
@@ -474,22 +520,22 @@ def detect_value_drop(ctx: PwDetectionContext) -> PwVerdict:
     if status is RobustScoreStatus.OK:
         if score > -thresholds.deviation_z:
             return guard.not_proven(
-                f"robust z={score:.2f} has not reached -{thresholds.deviation_z}",
+                _ref("z_not_reached_low", score=score, threshold=thresholds.deviation_z),
                 observed=observed,
                 expected=expected,
             )
-        basis = f"robust z={score:.2f} (threshold -{thresholds.deviation_z})"
+        basis = _ref("basis_z_low", score=score, threshold=thresholds.deviation_z)
         magnitude = abs(score)
     else:
         lower, _ = _expected_band(cell, thresholds.mad_floor_ratio)
         facts["fallback_bound"] = lower
         if observed >= lower:
             return guard.not_proven(
-                f"robust score is unavailable (MAD=0) and the value is within p05 {lower:.2f}",
+                _ref("mad_within_p05", bound=lower),
                 observed=observed,
                 expected=expected,
             )
-        basis = f"robust score is unavailable (MAD=0); the value is below p05 {lower:.2f}"
+        basis = _ref("basis_below_p05", bound=lower)
         magnitude = thresholds.deviation_z
     return _anomalous(
         guard,
@@ -498,9 +544,13 @@ def detect_value_drop(ctx: PwDetectionContext) -> PwVerdict:
         score=score,
         magnitude=magnitude,
         status=status,
-        reason=(
-            f"{observed:.0f} exact events is below the median {expected:.1f} "
-            f"(-{delta:.0f}, {ratio:.2f}x); {basis}"
+        reason=_ref(
+            "drop_fired",
+            observed=observed,
+            median=expected,
+            delta=delta,
+            ratio=ratio,
+            basis=basis,
         ),
         facts=facts,
     )
@@ -518,23 +568,26 @@ def detect_value_disappeared(ctx: PwDetectionContext) -> PwVerdict:
     assert ctx.bucket is not None
     active_after = ctx.bucket.bucket_start - timedelta(days=thresholds.value_active_days)
     if ctx.last_seen_at is None:
-        return guard.insufficient("when the value was last observed is not known")
+        return guard.insufficient(_ref("last_seen_unknown"))
     if ctx.last_seen_at < active_after:
         return guard.not_proven(
-            f"the value was not observed within the last {thresholds.value_active_days} days",
+            _ref("not_active", days=thresholds.value_active_days),
             observed=observed,
             expected=cell.median,
         )
     if cell.median < thresholds.disappear_min_median:
         return guard.not_proven(
-            f"baseline median {cell.median:.1f} is below the "
-            f"{thresholds.disappear_min_median:.1f} disappearance floor",
+            _ref(
+                "disappear_median_floor",
+                median=cell.median,
+                floor=thresholds.disappear_min_median,
+            ),
             observed=observed,
             expected=cell.median,
         )
     if observed > 0:
         return guard.not_proven(
-            f"the value carried {observed:.0f} exact events in this bucket",
+            _ref("observed_positive", observed=observed),
             observed=observed,
             expected=cell.median,
         )
@@ -547,20 +600,13 @@ def detect_value_disappeared(ctx: PwDetectionContext) -> PwVerdict:
     for _ in range(thresholds.disappear_buckets):
         point = points.get(expected_start)
         if point is None:
-            return guard.insufficient(
-                f"the bucket at {expected_start.isoformat()} inside the disappearance window "
-                "was not supplied: its count is not zero"
-            )
+            return guard.insufficient(_ref("window_bucket_missing", at=expected_start))
         if point.bucket.scope_changed:
-            return guard.insufficient("membership changed inside the disappearance window")
+            return guard.insufficient(_ref("window_membership"))
         if point.reading.events is None or point.reading.measurement is not WafMeasurement.EXACT:
-            return guard.insufficient(
-                f"the value count at {expected_start.isoformat()} is unknown, not zero"
-            )
+            return guard.insufficient(_ref("window_count_unknown", at=expected_start))
         if not point.bucket.coverage.reaches(thresholds.min_coverage):
-            return guard.insufficient(
-                f"property coverage at {expected_start.isoformat()} was below the floor"
-            )
+            return guard.insufficient(_ref("window_coverage", at=expected_start))
         if point.reading.events != 0:
             break
         streak += 1
@@ -568,8 +614,7 @@ def detect_value_disappeared(ctx: PwDetectionContext) -> PwVerdict:
         expected_start -= timedelta(seconds=ctx.bucket.bucket_seconds)
     if streak < thresholds.disappear_buckets:
         return guard.not_proven(
-            f"the value has {streak} consecutive measured-zero bucket(s), below the "
-            f"required {thresholds.disappear_buckets}",
+            _ref("streak_short", streak=streak, required=thresholds.disappear_buckets),
             observed=0.0,
             expected=cell.median,
         )
@@ -582,10 +627,7 @@ def detect_value_disappeared(ctx: PwDetectionContext) -> PwVerdict:
         score=None,
         magnitude=thresholds.deviation_z,
         status=RobustScoreStatus.OK,
-        reason=(
-            f"the value had zero parsed events for {streak} consecutive exact buckets; "
-            f"the seasonal median is {cell.median:.1f} events"
-        ),
+        reason=_ref("disappeared_fired", streak=streak, median=cell.median),
         facts=facts,
         interval_start=first,
     )
@@ -600,12 +642,14 @@ def _novelty_common(
         return early
     novelty = guard.ctx.novelty
     if novelty is None:
-        return guard.insufficient("the value's first appearance was not established")
+        return guard.insufficient(_ref("novelty_unestablished"))
     if novelty.established_at_hand_off is not None:
         return guard.healthy(
-            f"established value: first seen {novelty.first_seen_at.isoformat()} in the "
-            "history read before the watch went live at "
-            f"{novelty.established_at_hand_off.isoformat()}"
+            _ref(
+                "established_hand_off",
+                first_seen=novelty.first_seen_at,
+                hand_off=novelty.established_at_hand_off,
+            )
         )
     assert guard.bucket is not None
     thresholds = guard.thresholds
@@ -614,60 +658,80 @@ def _novelty_common(
     )
     if guard.bucket.bucket_start >= window_end:
         return guard.healthy(
-            f"established value: first admitted {novelty.first_seen_at.isoformat()}, outside "
-            f"the {thresholds.new_value_window_buckets}-bucket novelty window"
+            _ref(
+                "established_outside_window",
+                first_seen=novelty.first_seen_at,
+                buckets=thresholds.new_value_window_buckets,
+            )
         )
     if novelty.pinned:
-        return guard.healthy("pinned values are operator-named and are never classified as new")
+        return guard.healthy(_ref("pinned_never_new"))
     if novelty.watch_first_collected_at is None:
-        return guard.insufficient("learning: the watch's first collected bucket is unknown")
+        return guard.insufficient(_ref("learning_unknown"))
     learned_at = novelty.watch_first_collected_at + timedelta(
         days=thresholds.new_value_history_days
     )
     if novelty.first_seen_at < learned_at:
         elapsed = max(0, (guard.bucket.bucket_start - novelty.watch_first_collected_at).days)
         return guard.insufficient(
-            f"learning: day {min(elapsed + 1, thresholds.new_value_history_days)} of "
-            f"{thresholds.new_value_history_days}"
+            _ref(
+                "learning_day",
+                day=min(elapsed + 1, thresholds.new_value_history_days),
+                days=thresholds.new_value_history_days,
+            )
         )
     if novelty.membership_changed:
-        return guard.insufficient("membership changed inside the first-appearance grace window")
+        return guard.insufficient(_ref("grace_membership"))
     if not novelty.history.complete:
         return guard.insufficient(
-            "novelty cannot be established: "
-            + (novelty.history.reason or guard.decision.reason or "the history is incomplete")
+            _ref("history_incomplete", reason=_history_reason(guard, novelty))
         )
     if require_declared_scope and guard.decision.scope is WafVerdictScope.NONE:
-        return guard.insufficient(
-            guard.decision.reason or "the declared novelty inputs do not support a verdict"
-        )
+        return guard.insufficient(guard.scope_reason("novelty_inputs_unsupported"))
     appearance = novelty.appearance_bucket
     if appearance.admission_truncated or appearance.rejected_over_quota > 0:
-        return guard.insufficient(
-            "the first-appearance bucket had truncated admission: the value appeared in a "
-            "flood and is not individually new"
-        )
+        return guard.insufficient(_ref("admission_truncated"))
     return novelty
 
 
+def _history_reason(guard: _Guard, novelty: PwNoveltyFacts) -> MessageRef | str:
+    """Why the verified history is incomplete: the verifier's reference, else its text."""
+    history = novelty.history
+    if isinstance(history, PwHistoryFacts) and history.message is not None:
+        return history.message
+    return (
+        history.reason
+        or guard.decision.reason
+        or MessageRef("pw.history_check.incomplete")
+    )
+
+
 def _materiality(
-    guard: _Guard, novelty: PwNoveltyFacts, *, claim: str, classification: str
+    guard: _Guard, novelty: PwNoveltyFacts, *, claim: MessageRef, classification: str
 ) -> PwVerdict:
     thresholds = guard.thresholds
     events = novelty.events_since_first_seen
     buckets = novelty.buckets_with_traffic
     lower_bound = novelty.materiality_measurement is WafMeasurement.LOWER_BOUND
     if events < thresholds.new_value_min_events or buckets < thresholds.new_value_min_buckets:
-        reason = (
-            f"{events} event(s) in {buckets} bucket(s) since first appearance has not reached "
-            f"{thresholds.new_value_min_events} events in "
-            f"{thresholds.new_value_min_buckets} buckets"
+        short = _ref(
+            "materiality_short",
+            events=events,
+            buckets=buckets,
+            min_events=thresholds.new_value_min_events,
+            min_buckets=thresholds.new_value_min_buckets,
         )
         if lower_bound:
-            return guard.insufficient(f"{reason}; the materiality counts are lower bounds")
-        return guard.healthy(reason, observed=float(events), expected=0.0)
+            return guard.insufficient(_ref("materiality_lower_bound", reason=short))
+        return guard.healthy(short, observed=float(events), expected=0.0)
     assert guard.bucket is not None
-    bound = "at least " if lower_bound else ""
+    claim_wire = claim.to_wire()
+    fired = _ref(
+        "new_fired_lower" if lower_bound else "new_fired",
+        events=events,
+        buckets=buckets,
+        claim=claim,
+    )
     facts = {
         "evidence_version": EVIDENCE_VERSION,
         "classification": classification,
@@ -681,7 +745,9 @@ def _materiality(
         "events_since_first_seen": events,
         "buckets_with_traffic": buckets,
         "measurement": novelty.materiality_measurement.value,
-        "claim": claim,
+        "claim": render(claim),
+        "claim_code": claim_wire["code"],
+        "claim_params": claim_wire["params"],
         **guard.ctx.extra,
     }
     return guard.verdict(
@@ -700,11 +766,9 @@ def _materiality(
             interval_end=guard.bucket.bucket_start
             + timedelta(seconds=guard.bucket.bucket_seconds),
             confidence=0.8,
-            reason=(
-                f"{bound}{events} events across {buckets} buckets since first appearance; "
-                f"{claim}"
-            ),
+            reason=render(fired),
             extra=facts,
+            reason_message=fired,
         )
     )
 
@@ -720,14 +784,8 @@ def detect_new_value(ctx: PwDetectionContext) -> PwVerdict:
         and len(novelty.components) == 2
         and all(component.known for component in novelty.components)
     ):
-        return guard.healthy(
-            "both tuple components were tracked before: this is classified only as a "
-            "new combination"
-        )
-    claim = (
-        f"the value stayed below {ctx.thresholds.admission_min_events} events in every bucket "
-        "of the verified history"
-    )
+        return guard.healthy(_ref("new_value_is_combination"))
+    claim = _ref("claim_new_value", min_events=ctx.thresholds.admission_min_events)
     return _materiality(guard, novelty, claim=claim, classification="PW_NEW_VALUE")
 
 
@@ -739,26 +797,22 @@ def detect_new_combination(ctx: PwDetectionContext) -> PwVerdict:
         return early
     novelty = ctx.novelty
     if novelty is not None and novelty.property_count != 2:
-        return guard.insufficient("a one-property watch has nothing to combine")
+        return guard.insufficient(_ref("one_property"))
     ready = _novelty_common(guard, require_declared_scope=False)
     if isinstance(ready, PwVerdict):
         return ready
     novelty = ready
     if len(novelty.components) != 2:
-        return guard.insufficient("the tuple's two component histories were not supplied")
+        return guard.insufficient(_ref("components_missing"))
     unknown = [component for component in novelty.components if not component.known]
     if unknown:
         below = any(component.seen_below_admission for component in unknown)
-        suffix = " (seen only below the admission threshold)" if below else ""
         return guard.healthy(
-            "at least one component was not previously tracked"
-            f"{suffix}: this is classified only as a new value"
+            _ref("component_untracked_below_admission" if below else "component_untracked")
         )
     if guard.decision.scope is WafVerdictScope.NONE:
-        return guard.insufficient(
-            guard.decision.reason or "the declared combination inputs do not support a verdict"
-        )
-    claim = "both components were tracked before, but never together in the verified history"
+        return guard.insufficient(guard.scope_reason("combination_inputs_unsupported"))
+    claim = _ref("claim_new_combination")
     return _materiality(
         guard, novelty, claim=claim, classification="PW_NEW_COMBINATION"
     )

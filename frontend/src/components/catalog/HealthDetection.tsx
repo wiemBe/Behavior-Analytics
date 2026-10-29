@@ -5,10 +5,14 @@
 // an em dash with the reason. Coverage with no evaluated technique is "not evaluated", never
 // "0 % covered".
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { statusLabel } from "@/lib/coverageText";
+import { useFleetText } from "@/lib/fleetText";
 import { healthTone } from "@/lib/health";
 import { NOT_MEASURED } from "@/lib/behavior";
 import { secondary, WidgetFrame, WidgetLoading } from "@/components/home/WidgetFrame";
@@ -19,11 +23,13 @@ import { detectionView, ruleHealthView } from "./derive";
 
 import "./catalog.css";
 
-// One case for a verdict word: the coverage page's, upper case with the underscore read as a space.
-const word = (s: string) => s.replace(/_/g, " ");
-const n = (v: number) => formatCount(v);
-
 export function HealthDetection() {
+  const t = useTranslations("catalog.detection");
+  const text = useFleetText();
+  const say = asTextTranslator(useTranslations());
+  const n = (v: number) => formatCount(v, text.locale);
+  // One case for a verdict word: the coverage page's (`coverage.status`).
+  const word = (s: string) => statusLabel(say, s);
   const coverageRead = homeReads.coverageSummary();
   const rulesRead = homeReads.ruleHealthSummary();
   const coverage = useApiResource(coverageRead.key, coverageRead.fetch);
@@ -32,35 +38,34 @@ export function HealthDetection() {
   return (
     <WidgetFrame
       id="health-detection"
-      title="Detection health"
-      link={{ href: "/coverage", label: "Coverage" }}
+      title={t("title")}
+      link={{ href: "/coverage", label: t("link") }}
       state={coverage}
-      what="the detection coverage"
+      what={t("what")}
       permission="read:coverage"
     >
       {({ data }) => {
-        const r = secondary(rules);
-        if (r.pending) return <WidgetLoading what="the rule health" />;
+        const r = secondary(rules, say);
+        if (r.pending) return <WidgetLoading what={t("ruleHealthWhat")} />;
         const view = detectionView(data);
         const rv = r.data ? ruleHealthView(r.data) : null;
         return (
           <>
             {view.coveredPercent === null ? (
               <p className="tw-state">
-                <strong>Coverage has not been evaluated.</strong> No technique is mapped yet, so
-                this is not a finding of zero coverage.
+                {t.rich("notEvaluated", { b: (chunks) => <strong>{chunks}</strong> })}
               </p>
             ) : (
               <>
                 <p className="cw-figure num">
-                  {formatPercent(view.coveredPercent / 100)}
+                  {formatPercent(view.coveredPercent / 100, null, 1, text.locale)}
                   <span className="cw-unit">
-                    {n(view.covered)} of {n(view.total)} techniques covered
+                    {t("covered", { covered: n(view.covered), total: n(view.total) })}
                   </span>
                 </p>
                 {view.others.length > 0 ? (
                   <p className="tw-note">
-                    Other statuses:{" "}
+                    {t("others")}{" "}
                     {view.others.map((o, i) => (
                       <span key={o.status} className="num">
                         {i > 0 ? " · " : ""}
@@ -72,30 +77,30 @@ export function HealthDetection() {
               </>
             )}
             <table className="tw-table cw-table">
-              <caption className="sr-only">Rule health by verdict</caption>
+              <caption className="sr-only">{t("caption")}</caption>
               <colgroup>
                 <col />
                 <col className="tw-col-count" />
               </colgroup>
               <thead>
                 <tr>
-                  <th scope="col">Rule verdict</th>
+                  <th scope="col">{t("verdict")}</th>
                   <th scope="col" className="num">
-                    Rules
+                    {t("rules")}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {rv === null ? (
                   <tr>
-                    <td>All rules</td>
+                    <td>{t("allRules")}</td>
                     <td className="num">
-                      <Unmeasured reason={`Rule health is unavailable: ${r.gap}`} />
+                      <Unmeasured reason={t("unavailable", { gap: r.gap ?? "" })} />
                     </td>
                   </tr>
                 ) : rv.total === 0 ? (
                   <tr>
-                    <td>All rules</td>
+                    <td>{t("allRules")}</td>
                     <td className="num">{NOT_MEASURED}</td>
                   </tr>
                 ) : (
@@ -122,13 +127,17 @@ export function HealthDetection() {
             </table>
             {rv === null ? (
               <p className="tw-note">
-                Rule health is unavailable ({r.gap}).{" "}
-                <Link className="tw-link" href="/rules">
-                  Rules
-                </Link>
+                {t.rich("unavailableNote", {
+                  gap: r.gap ?? "",
+                  link: (chunks) => (
+                    <Link className="tw-link" href="/rules">
+                      {chunks}
+                    </Link>
+                  ),
+                })}
               </p>
             ) : rv.total === 0 ? (
-              <p className="tw-note">No rule has been synced, so no rule verdict exists.</p>
+              <p className="tw-note">{t("noRules")}</p>
             ) : null}
           </>
         );

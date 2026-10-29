@@ -1,16 +1,21 @@
 // Which IPS sources are configured, and which are collected right now.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 
 import { AddIpsSourcePicker } from "@/app/admin/ips-sources/AddIpsSourcePicker";
 import { IpsSourceTable } from "@/app/admin/ips-sources/IpsSourceTable";
 import { readError } from "@/app/admin/ips-sources/readError";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { fleetApi, ipsApi, type IpsSourceStatus } from "@/lib/api";
+import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
-export const metadata: Metadata = {
-  title: "IPS sources",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("ips.page");
+  return { title: t("metaTitle") };
+}
 
 /** The candidates route needs the instance. A profile names it; else the fleet does. */
 async function instanceFor(sources: IpsSourceStatus[]): Promise<string | null> {
@@ -22,27 +27,26 @@ async function instanceFor(sources: IpsSourceStatus[]): Promise<string | null> {
   }
 }
 
-export default async function IpsSourcesPage() {
+async function IpsSourcesPage() {
+  const t = await getTranslations("ips.page");
+  const i18n = await getBehaviorI18n();
   let sources: IpsSourceStatus[] = [];
   let error: string | null = null;
   try {
     sources = await ipsApi.sources();
   } catch (err) {
-    error = readError(err, "IPS sources");
+    error = readError(err, i18n.t("ips.read.nouns.sources"), i18n);
   }
   const instanceId = error ? null : await instanceFor(sources);
 
   return (
     <>
-      <PageHeader
-        title="IPS sources"
-        description="Which IPS sources are configured, and which are collected right now. Times are UTC."
-      />
+      <PageHeader guide={guideFor("/admin/ips-sources")} title={t("title")} description={t("description")} />
 
       {error ? (
         <div className="notice" role="alert">
           <p>
-            <strong>IPS sources could not be shown.</strong>
+            <strong>{t("loadFailedTitle")}</strong>
           </p>
           <p>{error}</p>
         </div>
@@ -50,13 +54,9 @@ export default async function IpsSourcesPage() {
         <>
           <div className="notice" role="status">
             <p>
-              <strong>No IPS source has a profile yet.</strong>
+              <strong>{t("emptyTitle")}</strong>
             </p>
-            <p>
-              Adding one starts from a preset for Cisco Firepower Threat Defense or Palo Alto
-              THREAT. The preset only fills in defaults; the profile still has to validate before
-              anything is collected.
-            </p>
+            <p>{t("emptyBody")}</p>
           </div>
           <AddIpsSourcePicker instanceId={instanceId} />
         </>
@@ -69,3 +69,5 @@ export default async function IpsSourcesPage() {
     </>
   );
 }
+
+export default withRouteMessages("/admin/ips-sources", IpsSourcesPage);

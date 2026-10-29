@@ -4,10 +4,13 @@
 // the schema defaults; a preset is chosen in the editor.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 
 import { IpsProfileEditor } from "@/app/admin/ips-sources/IpsProfileEditor";
 import { readError } from "@/app/admin/ips-sources/readError";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
+import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import {
   ApiError,
   api,
@@ -18,15 +21,17 @@ import {
   type LogSourceDetail,
   type PropertyCatalogOut,
 } from "@/lib/api";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
-export const metadata: Metadata = {
-  title: "IPS source",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("ips.detail");
+  return { title: t("metaTitle") };
+}
 
-function Problem({ title, text }: { title: string; text: string }) {
+function Problem({ header, title, text }: { header: string; title: string; text: string }) {
   return (
     <>
-      <PageHeader title="IPS source" />
+      <PageHeader guide={guideFor("/admin/ips-sources/[logSourceId]")} title={header} />
       <div className="notice" role="alert">
         <p>
           <strong>{title}</strong>
@@ -37,12 +42,14 @@ function Problem({ title, text }: { title: string; text: string }) {
   );
 }
 
-export default async function IpsSourcePage({
+async function IpsSourcePage({
   params,
 }: {
   params: Promise<{ logSourceId: string }>;
 }) {
   const { logSourceId } = await params;
+  const t = await getTranslations("ips.detail");
+  const i18n = await getBehaviorI18n();
 
   let schema: IpsMappingSchemaOut;
   try {
@@ -50,8 +57,9 @@ export default async function IpsSourcePage({
   } catch (err) {
     return (
       <Problem
-        title="This IPS source could not be shown."
-        text={readError(err, "the field-mapping schema")}
+        header={t("title")}
+        title={t("loadFailedTitle")}
+        text={readError(err, i18n.t("ips.read.nouns.schema"), i18n)}
       />
     );
   }
@@ -63,8 +71,9 @@ export default async function IpsSourcePage({
     if (!(err instanceof ApiError && err.status === 404)) {
       return (
         <Problem
-          title="This IPS source could not be shown."
-          text={readError(err, "this source’s profile")}
+          header={t("title")}
+          title={t("loadFailedTitle")}
+          text={readError(err, i18n.t("ips.read.nouns.profile"), i18n)}
         />
       );
     }
@@ -76,14 +85,12 @@ export default async function IpsSourcePage({
       logSource = await api.logSource(logSourceId);
     } catch (err) {
       return err instanceof ApiError && err.status === 404 ? (
-        <Problem
-          title="This log source does not exist."
-          text="No log source has this id, so there is nothing to configure. Choose one from the IPS sources list."
-        />
+        <Problem header={t("title")} title={t("notExistTitle")} text={t("notExistBody")} />
       ) : (
         <Problem
-          title="This IPS source could not be shown."
-          text={readError(err, "this log source")}
+          header={t("title")}
+          title={t("loadFailedTitle")}
+          text={readError(err, i18n.t("ips.read.nouns.logSource"), i18n)}
         />
       );
     }
@@ -113,3 +120,5 @@ export default async function IpsSourcePage({
     />
   );
 }
+
+export default withRouteMessages("/admin/ips-sources/[logSourceId]", IpsSourcePage);

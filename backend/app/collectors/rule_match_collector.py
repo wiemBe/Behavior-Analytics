@@ -25,6 +25,12 @@ Guarantees:
   * Every attempted window leaves a `rule_match_window` row. A provider failure
     writes a FAILED window and *no* rows: a failed search must never read as
     "nothing matched".
+  * After the live pass, a bounded repair re-reads recent FAILED windows
+    (`_repair_windows`): oldest first, at most `rule_match_repair_max_windows_per_run`
+    of them, never one the catch-up horizon skipped and never one older than
+    `rule_match_repair_max_age_seconds` — a re-read of rotated-out data would
+    be an empty COMPLETE, a false proof of silence. The watermark never moves
+    for a repair, and a repair write replaces only a row that is still FAILED.
 """
 
 from __future__ import annotations
@@ -84,6 +90,7 @@ from app.history.planner import (
     settle_step,
 )
 from app.history.progress_codec import ProgressCodecError
+from app.history.reasons import message_wire, semicolon_reason
 from app.history.rule_match import (
     RULE_MATCH_SCOPE_KEY,
     ChunkFold,
@@ -94,6 +101,7 @@ from app.history.rule_match import (
     planner_settings,
     scan_result,
 )
+from app.i18n.messages import MessageRef
 from app.models.enums import SearchFamily
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
@@ -106,6 +114,7 @@ from app.models.rule import (
 from app.providers.base import ProviderCapability, ProviderError, QRadarProvider
 from app.repositories.history_backfill import HistoryBackfillRepository
 from app.rules.matches import (
+    SKIPPED_REASON,
     MatchFold,
     MatchRowToWrite,
     WindowRecord,
@@ -126,7 +135,6 @@ logger = logging.getLogger("app.collectors.rule_match")
 COLLECTOR_NAME = "rule_match"
 #: Used for a FAILED window, which has no batch to name the query version.
 FAILED_QUERY_VERSION = "rule_match/v1"
-SKIPPED_REASON = "skipped: beyond the catch-up horizon"
 
 
 @dataclass
@@ -163,6 +171,13 @@ class RuleMatchCollectionReport:
     history_windows_written: int = 0
     history_rows_written: int = 0
     history_error: str | None = None
+    #: FAILED windows the repair pass re-read to COMPLETE or TRUNCATED.
+    windows_repaired: int = 0
+    #: Ariel searches the repair pass sent; they also count in `searches_sent`,
+    #: so the tick cap and the history step both see them.
+    repair_searches: int = 0
+    #: Repair re-reads that failed again; the row stays FAILED.
+    repair_failed: int = 0
     error: str | None = None
     duration_ms: int = 0
     watermark_at: datetime | None = None
@@ -289,6 +304,16 @@ class RuleMatchCollector:
                 "settle_lag_seconds": self.settings.rule_match_settle_lag_seconds,
             }
             report.watermark_at = watermark.watermark_at
+            # The repair pass (RM-2) runs after the live pass, under the same
+            # lock and in the same transaction, and before the history step so
+            # the searches it sends are part of the budget the step reads.
+            await self._repair_windows(
+                instance,
+                started,
+                report,
+                window_seconds=window_seconds,
+                rule_ids=rule_ids,
+            )
             # History runs after the live pass, under the same lock and in the
             # same transaction, and never touches the live report's status.
             # What the report said before the step: a fault the savepoint rolls
@@ -377,6 +402,9 @@ class RuleMatchCollector:
                 "windows_failed": report.windows_failed,
                 "rows_written": report.rows_written,
                 "unknown_ids": report.unknown_ids,
+                "windows_repaired": report.windows_repaired,
+                "repair_searches": report.repair_searches,
+                "repair_failed": report.repair_failed,
                 "duration_ms": report.duration_ms,
                 "history_state": report.history_state,
                 "history_searches": report.history_searches,
@@ -533,6 +561,7 @@ class RuleMatchCollector:
         target_start = row.target_start
         started_at = row.started_at
         fit_reason: str | None = None
+        fit_message: MessageRef | None = None
 
         if progress is None:
             # A fresh window (§B.6.5): the family's own lookback, reduced to
@@ -547,6 +576,7 @@ class RuleMatchCollector:
                     state=next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL).state,
                     trigger=HistoryTrigger.WINDOW_TOO_SMALL,
                     reason=family.reason or "history is unavailable for this console",
+                    reason_message=family.reason_message,
                     now=now,
                     progress=None,
                 )
@@ -561,6 +591,7 @@ class RuleMatchCollector:
                     state=next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL).state,
                     trigger=HistoryTrigger.WINDOW_TOO_SMALL,
                     reason=fitted.reason,
+                    reason_message=fitted.reason_message,
                     now=now,
                     progress=None,
                 )
@@ -570,6 +601,7 @@ class RuleMatchCollector:
             started_at = started_at or now
             progress = new_progress(target_start, started_at, settings)
             fit_reason = fitted.reason
+            fit_message = fitted.reason_message
 
         # A scan may be followed by a read in the same tick, while budget and
         # time remain; a read ends the step.
@@ -587,10 +619,15 @@ class RuleMatchCollector:
                 enabled=bool(self.settings.history_backfill_enabled),
             )
             if plan.action is StepAction.WAIT:
-                report.history_reason = self._with_fit(fit_reason, plan.reason)
+                report.history_reason, _ = self._with_fit(
+                    fit_reason, fit_message, plan.reason, plan.reason_message
+                )
                 return
             if plan.action is StepAction.FINISH:
                 trigger = plan.trigger or HistoryTrigger.FINISHED_PARTIAL
+                finish_reason, finish_message = self._with_fit(
+                    fit_reason, fit_message, plan.reason, plan.reason_message
+                )
                 await self._finish_history(
                     instance,
                     row,
@@ -598,7 +635,8 @@ class RuleMatchCollector:
                     report,
                     state=next_state(HistoryState.READING, trigger).state,
                     trigger=trigger,
-                    reason=self._with_fit(fit_reason, plan.reason),
+                    reason=finish_reason,
+                    reason_message=finish_message,
                     now=now,
                     progress=progress,
                     days_target=days_target,
@@ -624,7 +662,9 @@ class RuleMatchCollector:
                     result = failed_scan(span)
                 scan = interpret_scan(progress, [result], end=anchor, settings=settings)
                 progress = scan.progress
-                report.history_reason = self._with_fit(fit_reason, scan.reason)
+                report.history_reason, scan_message = self._with_fit(
+                    fit_reason, fit_message, scan.reason, scan.reason_message
+                )
                 progress_json = encode_progress(progress)
                 if scan.trigger is not None:
                     await self._finish_history(
@@ -635,6 +675,7 @@ class RuleMatchCollector:
                         state=next_state(HistoryState.READING, scan.trigger).state,
                         trigger=scan.trigger,
                         reason=report.history_reason,
+                        reason_message=scan_message,
                         now=now,
                         progress=progress,
                         days_target=days_target,
@@ -649,6 +690,7 @@ class RuleMatchCollector:
                     state=HistoryState.READING,
                     trigger=None,
                     reason=report.history_reason,
+                    reason_message=scan_message,
                     now=now,
                     progress=progress,
                     days_target=days_target,
@@ -738,7 +780,9 @@ class RuleMatchCollector:
             await self._write_history_rows(window_rows, metric_rows)
             report.history_windows_written += len(window_rows)
             report.history_rows_written += len(metric_rows)
-            report.history_reason = self._with_fit(fit_reason, settlement.reason)
+            report.history_reason, settled_message = self._with_fit(
+                fit_reason, fit_message, settlement.reason, settlement.reason_message
+            )
 
             if settlement.trigger is not None:
                 await self._finish_history(
@@ -749,6 +793,7 @@ class RuleMatchCollector:
                     state=next_state(HistoryState.READING, settlement.trigger).state,
                     trigger=settlement.trigger,
                     reason=report.history_reason,
+                    reason_message=settled_message,
                     now=now,
                     progress=settlement.progress,
                     days_target=days_target,
@@ -763,6 +808,7 @@ class RuleMatchCollector:
                     state=HistoryState.READING,
                     trigger=None,
                     reason=report.history_reason,
+                    reason_message=settled_message,
                     now=now,
                     progress=settlement.progress,
                     days_target=days_target,
@@ -784,6 +830,7 @@ class RuleMatchCollector:
         reason: str,
         now: datetime,
         progress: ScopeProgress | None,
+        reason_message: MessageRef | dict[str, object] | None = None,
         days_target: int | None = None,
         target_start: datetime | None = None,
         started_at: datetime | None = None,
@@ -796,6 +843,7 @@ class RuleMatchCollector:
             state=state,
             trigger=trigger,
             reason=reason,
+            reason_message=reason_message,
             now=now,
             progress=progress,
             days_target=days_target,
@@ -819,6 +867,7 @@ class RuleMatchCollector:
         days_target: int | None,
         target_start: datetime | None,
         started_at: datetime | None,
+        reason_message: MessageRef | dict[str, object] | None = None,
     ) -> None:
         """Write the scope row: the lifecycle's columns, then the planner's fields."""
         if trigger is None:
@@ -835,6 +884,8 @@ class RuleMatchCollector:
                     state,
                     trigger,
                     bounded_reason(reason),
+                    None,
+                    message_wire(reason_message),
                 ),
                 instance_id=instance.id,
                 family=HistoryFamily.RULE_MATCH,
@@ -844,7 +895,12 @@ class RuleMatchCollector:
                 at=now,
             )
         if progress is None:
-            scope_values = step_row(scope_values, state=state, reason=reason)
+            scope_values = step_row(
+                scope_values,
+                state=state,
+                reason=reason,
+                reason_i18n=message_wire(reason_message),
+            )
         else:
             scope_values = step_row(
                 scope_values,
@@ -856,6 +912,7 @@ class RuleMatchCollector:
                 started_at=started_at,
                 finished_at=now if trigger is not None else None,
                 reason=reason,
+                reason_i18n=message_wire(reason_message),
                 progress=encode_progress(progress),
             )
         await HistoryBackfillRepository(self.session).write_scopes([scope_values])
@@ -897,11 +954,16 @@ class RuleMatchCollector:
             )
 
     @staticmethod
-    def _with_fit(fit_reason: str | None, step_reason: str) -> str:
-        """The window's reason once, followed by this step's reason."""
+    def _with_fit(
+        fit_reason: str | None,
+        fit_message: MessageRef | None,
+        step_reason: str,
+        step_message: MessageRef | None,
+    ) -> tuple[str, dict[str, object] | None]:
+        """The window's reason once, followed by this step's reason, and their reference."""
         if fit_reason is None:
-            return step_reason
-        return f"{fit_reason}; {step_reason}"
+            return step_reason, message_wire(step_message)
+        return semicolon_reason([(fit_reason, fit_message), (step_reason, step_message)])
 
     async def _oldest_live_window(self, instance_id: uuid.UUID) -> datetime | None:
         """The anchor: the oldest live `rule_match_window`, whatever its status."""
@@ -1000,6 +1062,140 @@ class RuleMatchCollector:
         )
         return dict(rows.all())
 
+    async def _repair_starts(self, instance_id: uuid.UUID, now: datetime) -> list[datetime]:
+        """FAILED windows this run may re-read, oldest first: one SELECT.
+
+        A window qualifies when the live pass burned it (not when the catch-up
+        horizon skipped it: those windows were never searched and their events
+        may be gone, so re-reading them could record an empty COMPLETE — a
+        false proof of silence), when it is inside the repair age bound for the
+        same reason, and while it still has repair attempts left. `attempts`
+        counts every Ariel search tried for the window, live and repair, so the
+        ceiling is the live maximum plus the repair maximum.
+        """
+        if not (
+            self.settings.rule_match_collection_enabled
+            and self.settings.rule_match_repair_enabled
+        ):
+            return []
+        ceiling = (
+            self.settings.rule_match_max_window_attempts
+            + self.settings.rule_match_repair_max_attempts
+        )
+        rows = await self.session.scalars(
+            select(RuleMatchWindow.window_start)
+            .where(
+                RuleMatchWindow.instance_id == instance_id,
+                RuleMatchWindow.status == RuleMatchWindowStatus.FAILED,
+                is_live_clause(RuleMatchWindow),
+                RuleMatchWindow.last_error.is_distinct_from(SKIPPED_REASON),
+                RuleMatchWindow.window_start
+                >= now - timedelta(seconds=self.settings.rule_match_repair_max_age_seconds),
+                RuleMatchWindow.attempts < ceiling,
+            )
+            .order_by(RuleMatchWindow.window_start.asc())
+            .limit(self.settings.rule_match_repair_max_windows_per_run)
+        )
+        return list(rows.all())
+
+    @staticmethod
+    def _contiguous_groups(starts: list[datetime], window_seconds: int) -> list[list[datetime]]:
+        """Split sorted window starts into runs of grid-adjacent windows."""
+        step = timedelta(seconds=window_seconds)
+        groups: list[list[datetime]] = []
+        for start in starts:
+            if groups and start - groups[-1][-1] == step:
+                groups[-1].append(start)
+            else:
+                groups.append([start])
+        return groups
+
+    async def _repair_windows(
+        self,
+        instance: QRadarInstance,
+        now: datetime,
+        report: RuleMatchCollectionReport,
+        *,
+        window_seconds: int,
+        rule_ids: dict[int, uuid.UUID] | None,
+    ) -> None:
+        """Re-read recent FAILED windows through the live search path.
+
+        One keyed search per contiguous group, splitting only as the live pass
+        does. The watermark never moves: it is already ahead of every window
+        here, and a repair must not make the live pass walk backwards. A repair
+        write can only replace a row that is still FAILED, so a window another
+        writer completed stays as it is. The pass is skipped when the live pass
+        failed this tick: a provider that is down would only burn the repair
+        attempts a later, healthy tick needs to fix the window.
+        """
+        if report.partial_failure:
+            return
+        starts = await self._repair_starts(instance.id, now)
+        if not starts:
+            return
+        prior_attempts = await self._prior_attempts(instance.id, starts)
+        if rule_ids is None:
+            rule_ids = await self._rule_id_map(instance.id)
+        searches_before = report.searches_sent
+        cap = self.settings.search_cadence_max_searches_per_tick
+        for group in self._contiguous_groups(starts, window_seconds):
+            worst = 2 * len(group) - 1  # the split bound, as the live search's
+            if report.searches_sent + worst > cap:
+                # The tick cap rules what is left; the next tick retries from
+                # the oldest group, so order is preserved.
+                break
+            provider_down = False
+            async with aclosing(
+                self._search_windows(group, window_seconds, rule_ids, report)
+            ) as outcomes:
+                async for outcome in outcomes:
+                    start = outcome.start
+                    if outcome.error is not None or outcome.fold is None:
+                        exc = outcome.error
+                        attempts = prior_attempts.get(start, 0) + 1
+                        error = f"{type(exc).__name__}: {exc}"[:512]
+                        written = await self._write_window(
+                            instance.id,
+                            failed_window(
+                                window_start=start,
+                                window_seconds=window_seconds,
+                                row_cap=self.settings.rule_match_max_rows,
+                                query_version=FAILED_QUERY_VERSION,
+                            ),
+                            duration_ms=None,
+                            attempts=attempts,
+                            error=error,
+                            repair=True,
+                        )
+                        if written:
+                            report.repair_failed += 1
+                        logger.warning(
+                            "rule match window repair failed",
+                            extra={
+                                "instance_id": str(instance.id),
+                                "window_start": start.isoformat(),
+                                "attempts": attempts,
+                                "error_class": type(exc).__name__,
+                            },
+                        )
+                        # As the live pass: the provider is most likely down,
+                        # and the windows after this one keep their attempts.
+                        provider_down = True
+                        break
+                    await self._record_window(
+                        instance.id,
+                        outcome,
+                        window_seconds,
+                        prior_attempts.get(start, 0) + 1,
+                        report,
+                        None,
+                        repair=True,
+                    )
+            if provider_down:
+                break
+        report.repair_searches = report.searches_sent - searches_before
+
     def _windows_to_collect(
         self, watermark: CollectionWatermark, now: datetime, window_seconds: int, limit: int
     ) -> list[datetime]:
@@ -1026,18 +1222,47 @@ class RuleMatchCollector:
         window_seconds: int,
         attempts: int,
         report: RuleMatchCollectionReport,
-        watermark: CollectionWatermark,
+        watermark: CollectionWatermark | None,
+        *,
+        repair: bool = False,
     ) -> None:
-        """Persist one answered window and move the watermark onto it."""
+        """Persist one answered window; a live pass also moves the watermark onto it.
+
+        A repair (`repair=True`, `watermark=None`) rewrites the window's rows
+        through the same path but never touches the watermark, which is already
+        ahead of it, and counts into the report's repair fields.
+        """
         fold = outcome.fold
         assert fold is not None
+        if repair:
+            # Take the row lock and apply the FAILED-only guard before touching
+            # its metrics. Otherwise a forged race could keep a COMPLETE or
+            # TRUNCATED window row while `_write_rows` silently replaced the
+            # evidence underneath it.
+            written = await self._write_window(
+                instance_id,
+                fold.window,
+                duration_ms=outcome.duration_ms,
+                attempts=attempts,
+                repair=True,
+            )
+            if not written:
+                return
         report.rows_written += await self._write_rows(
             instance_id, outcome.start, window_seconds, fold.rows
         )
-        await self._write_window(
-            instance_id, fold.window, duration_ms=outcome.duration_ms, attempts=attempts
-        )
+        if not repair:
+            await self._write_window(
+                instance_id,
+                fold.window,
+                duration_ms=outcome.duration_ms,
+                attempts=attempts,
+            )
         report.unknown_ids += fold.window.unknown_ids
+        if repair:
+            report.windows_repaired += 1
+            return
+        assert watermark is not None
         if fold.window.status == RuleMatchWindowStatus.COMPLETE:
             report.windows_complete += 1
         else:
@@ -1197,7 +1422,8 @@ class RuleMatchCollector:
         duration_ms: int | None,
         attempts: int,
         error: str | None = None,
-    ) -> None:
+        repair: bool = False,
+    ) -> bool:
         values = {
             "instance_id": instance_id,
             "window_start": window.window_start,
@@ -1223,15 +1449,22 @@ class RuleMatchCollector:
         stmt = stmt.on_conflict_do_update(
             index_elements=["instance_id", "window_start"],
             set_=update,
-            # A failed retry never downgrades a window that was collected
-            # whole: its rows are still there and still true.
             where=(
-                RuleMatchWindow.status != RuleMatchWindowStatus.COMPLETE
+                # A repair replaces only a row that is still FAILED: whatever
+                # completed or truncated the window in the meantime is a better
+                # answer than a re-read, and the guard is symmetric with the
+                # failed-retry one below.
+                RuleMatchWindow.status == RuleMatchWindowStatus.FAILED
+                if repair
+                # A failed retry never downgrades a window that was collected
+                # whole: its rows are still there and still true.
+                else RuleMatchWindow.status != RuleMatchWindowStatus.COMPLETE
                 if window.status == RuleMatchWindowStatus.FAILED
                 else None
             ),
         )
-        await self.session.execute(stmt)
+        result = await self.session.execute(stmt.returning(RuleMatchWindow.window_start))
+        return result.scalar_one_or_none() is not None
 
     async def _rule_id_map(self, instance_id: uuid.UUID) -> dict[int, uuid.UUID]:
         rows = await self.session.execute(

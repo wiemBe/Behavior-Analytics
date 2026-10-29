@@ -498,6 +498,8 @@ class TestEnumFieldJsonBodies:
                 "last_evaluated_at": None,
                 "logic_version": 1,
                 "reason": None,
+                "reason_code": None,
+                "reason_params": None,
             }
         ]
 
@@ -521,6 +523,8 @@ class TestEnumFieldJsonBodies:
             "health_status": "UNKNOWN",
             "health_evaluated_at": None,
             "health_reason": None,
+            "health_reason_code": None,
+            "health_reason_params": None,
             "last_fired_at": None,
             "offense_contribution_count": 0,
             "event_contribution_count": 0,

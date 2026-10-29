@@ -54,6 +54,7 @@ from app.anomaly.lifecycle import (
 )
 from app.anomaly.seasonal import in_maintenance
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     AnomalyState,
@@ -85,14 +86,16 @@ from app.waf.behavior import (
     detect_new_endpoint_access,
 )
 from app.waf.detector import (
+    Reason,
     WafBaselineCell,
     WafDetectionContext,
     WafPoint,
     WafSpikeVerdict,
     WafThresholds,
     detect_request_rate_spike,
+    semantics_message,
 )
-from app.waf.inputs import HistoryFacts
+from app.waf.inputs import HistoryFacts, history_incomplete
 from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 from app.waf.novelty import semantics_normalizer_version, verify_endpoint_history
 from app.waf.observations import BucketFacts, EndpointObservation, RowFacts, observe
@@ -124,8 +127,17 @@ _STATE_COLUMNS = (
 _ANOMALY_COLUMNS = (
     "state", "severity", "opened_at", "anomaly_end", "resolved_at", "observed_value",
     "observed_measurement", "deviation_score", "deviation_ratio", "robust_z", "absolute_delta",
-    "consecutive_buckets", "explanation", "details", "suppressed", "suppression_reason",
+    "consecutive_buckets", "explanation", "explanation_i18n", "details", "suppressed",
+    "suppression_reason", "suppression_reason_i18n",
 )
+
+#: The suppression reason a maintenance window writes (MSG-6; stored beside its `_i18n` form).
+_MAINTENANCE = MessageRef("waf.suppression.maintenance_window")
+
+
+def _wire(message: MessageRef | None) -> dict[str, object] | None:
+    """The `{code, params}` an `_i18n` column stores, or None for a sentence with no code."""
+    return None if message is None else message.to_wire()
 
 
 @dataclass
@@ -505,9 +517,7 @@ class WafAnomalyEngine:
                     first_seen_at=endpoint.first_seen_at,
                     window_end=window_end,
                     within_window=False,
-                    history=HistoryFacts(
-                        complete=False, reason="history was not loaded for an established endpoint"
-                    ),
+                    history=history_incomplete("not_loaded"),
                     history_start=endpoint.first_seen_at - history_delta,
                     history_end=(
                         hand_off if hand_off is not None else endpoint.first_seen_at
@@ -540,7 +550,7 @@ class WafAnomalyEngine:
         traffic = await self._load_novelty_traffic(in_window)
 
         # Endpoints first seen in the same bucket under one normalizer share a history.
-        verified: dict[tuple[datetime, int], tuple[HistoryFacts, int, str | None]] = {}
+        verified: dict[tuple[datetime, int], tuple[HistoryFacts, int, Reason | None]] = {}
         for subject in in_window:
             endpoint = subject.endpoint
             first_seen = endpoint.first_seen_at
@@ -575,7 +585,7 @@ class WafAnomalyEngine:
         buckets: Sequence[BucketFacts],
         starts: Sequence[datetime],
         by_start: dict[datetime, BucketFacts],
-    ) -> tuple[HistoryFacts, int, str | None]:
+    ) -> tuple[HistoryFacts, int, Reason | None]:
         """History facts, verified bucket count and appearance flood for one first sighting."""
         history_start = first_seen - history_delta
         history_rows = buckets[
@@ -583,14 +593,11 @@ class WafAnomalyEngine:
         ]
         appearance = by_start.get(first_seen)
         if appearance is None:
-            reason = "the first-appearance bucket was never collected"
+            incomplete = history_incomplete("appearance_never_collected")
         elif appearance.profile_version is None:
-            reason = "the first-appearance bucket carries no profile version"
+            incomplete = history_incomplete("appearance_no_profile")
         elif semantics_normalizer_version(appearance.metric_semantics) != normalizer_version:
-            reason = (
-                "the first-appearance bucket is incompatible with endpoint normalizer "
-                f"version {normalizer_version}"
-            )
+            incomplete = history_incomplete("appearance_normalizer", version=normalizer_version)
         else:
             history = verify_endpoint_history(
                 history_rows,
@@ -600,13 +607,13 @@ class WafAnomalyEngine:
                 profile_version=appearance.profile_version,
                 normalizer_version=normalizer_version,
             )
-            flood: str | None = None
+            flood: Reason | None = None
             if appearance.groups_truncated:
-                flood = "endpoint discovery was truncated in the first-appearance bucket"
+                flood = MessageRef("waf.novelty.flood_discovery")
             elif appearance.admission_truncated:
-                flood = "endpoint admission was truncated in the first-appearance bucket"
+                flood = MessageRef("waf.novelty.flood_admission")
             return history, len(history_rows), flood
-        return HistoryFacts(complete=False, reason=reason), len(history_rows), None
+        return incomplete, len(history_rows), None
 
     # --------------------------------------------------------------- evaluation
     async def _evaluate(
@@ -752,10 +759,13 @@ class WafAnomalyEngine:
         elif spec.breakdowns == frozenset({WafBreakdown.SOURCE_IP}):
             bucket_semantics = obs.breakdowns.client_semantics
         incompatibility: str | None = None
+        incompatibility_message: MessageRef | None = None
         if bucket_semantics is None:
             incompatibility = semantics_incompatibility(None, None)
+            incompatibility_message = semantics_message(None, None)
         elif row is not None:
             incompatibility = semantics_incompatibility(bucket_semantics, row.metric_semantics)
+            incompatibility_message = semantics_message(bucket_semantics, row.metric_semantics)
         if detector_type is WafAnomalyType.WAF_REQUEST_RATE_SPIKE or not spec.inputs:
             scope = waf_verdict_scope(detector_type, obs.measurement)
         else:
@@ -788,6 +798,7 @@ class WafAnomalyEngine:
                 },
             },
             baseline_incompatibility=incompatibility,
+            baseline_incompatibility_message=incompatibility_message,
             verdict_scope=scope.scope,
             scope_reason=scope.reason,
             observation=obs,
@@ -915,7 +926,7 @@ class WafAnomalyEngine:
         if target is AnomalyState.CANDIDATE:
             created = self._create_incident(endpoint, obs, detector_type, evidence, anomalies)
             state.active_anomaly_id = created.id
-            self._record_transition(created, previous, target, obs, decision.reason, evidence)
+            self._record_transition(created, previous, target, obs, decision.message, evidence)
             report.candidates.append(detector_type.value)
             return
 
@@ -934,7 +945,7 @@ class WafAnomalyEngine:
             state.active_anomaly_id = incident.id
             state.open_anomaly_id = incident.id
             self._touch(state, obs, evidence, anomalies)
-            self._record_transition(incident, previous, target, obs, decision.reason, evidence)
+            self._record_transition(incident, previous, target, obs, decision.message, evidence)
             report.opened.append(detector_type.value)
             if self.settings.waf_alerting_enabled and not report.in_maintenance:
                 alert_actions.append(
@@ -943,7 +954,7 @@ class WafAnomalyEngine:
             return
 
         if anomaly is not None:
-            self._record_transition(anomaly, previous, target, obs, decision.reason, evidence)
+            self._record_transition(anomaly, previous, target, obs, decision.message, evidence)
 
         if target is AnomalyState.RECOVERING:
             if anomaly is not None:
@@ -971,7 +982,9 @@ class WafAnomalyEngine:
             if anomaly is not None:
                 anomaly.state = AnomalyState.SUPPRESSED
                 anomaly.suppressed = True
-                anomaly.suppression_reason = anomaly.suppression_reason or "maintenance window"
+                if not anomaly.suppression_reason:
+                    anomaly.suppression_reason = render(_MAINTENANCE)
+                    anomaly.suppression_reason_i18n = _wire(_MAINTENANCE)
             return
 
         # NORMAL or INSUFFICIENT_DATA: no incident is live. A CANDIDATE that
@@ -1116,6 +1129,7 @@ class WafAnomalyEngine:
             normalizer_version=obs.normalizer_version,
             evidence_status=EvidenceStatus.NOT_REQUESTED,
             explanation=evidence.reason,
+            explanation_i18n=_wire(evidence.reason_message),
             details=evidence.to_dict(),
             suppressed=False,
         )
@@ -1156,6 +1170,7 @@ class WafAnomalyEngine:
             anomaly.robust_z = _as_float(facts.get("robust_z"))
             anomaly.absolute_delta = _absolute_delta(facts)
             anomaly.explanation = evidence.reason
+            anomaly.explanation_i18n = _wire(evidence.reason_message)
             anomaly.details = evidence.to_dict()
 
     @staticmethod
@@ -1172,7 +1187,7 @@ class WafAnomalyEngine:
         from_state: AnomalyState,
         to_state: AnomalyState,
         obs: EndpointObservation,
-        reason: str,
+        message: MessageRef,
         evidence: AnomalyEvidence,
     ) -> None:
         self.session.add(
@@ -1183,7 +1198,8 @@ class WafAnomalyEngine:
                 to_state=to_state,
                 occurred_at=self._clock(),
                 bucket_start=obs.bucket_start,
-                reason=reason,
+                reason=render(message),
+                reason_i18n=message.to_wire(),
                 actor="waf-anomaly-engine",
                 observed_value=evidence.observed_value,
                 observed_measurement=_measurement(evidence),

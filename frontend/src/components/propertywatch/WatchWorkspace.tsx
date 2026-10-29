@@ -24,7 +24,9 @@ import {
   type PwValueSeries,
   type WatchScope,
 } from "@/lib/api";
-import { UtcTime } from "@/components/ui/UtcTime";
+import { utcTimeText } from "@/components/ui/UtcTime";
+import { formatCount } from "@/lib/format";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { PropertyWatchSeriesChart } from "./PropertyWatchSeriesChart";
 import { honestyNotes, WatchHonesty } from "./WatchHonesty";
@@ -38,9 +40,10 @@ import {
   WatchValuesTable,
   type ValueSort,
 } from "./WatchValuesTable";
-import { PW_RANGES, VALUES_PAGE_SIZE } from "./pwRange";
+import { PW_RANGES, pwRangeLabel, VALUES_PAGE_SIZE } from "./pwRange";
 import { PW_MAX_SERIES } from "./pwSeries";
 import { relativeAge } from "./pwFormat";
+import { ENGLISH_PW, type PwI18n } from "./pwText";
 
 import "./propertywatch.css";
 
@@ -66,12 +69,16 @@ export interface WatchWorkspaceProps {
   /** The window the axis covers (ISO), taken once by the server so the page renders one view. */
   windowStart: string;
   windowEnd: string;
+  i18n?: PwI18n;
 }
 
 const byId = (list: PwValueSeries[]) => Object.fromEntries(list.map((s) => [s.value_id, s]));
 
 export function WatchWorkspace(props: WatchWorkspaceProps) {
   const { watch, catalog, hours, buckets, values, incidents } = props;
+  const runtimeI18n = useBehaviorI18n();
+  const i18n = props.i18n ?? runtimeI18n ?? ENGLISH_PW;
+  const t = i18n.t;
   const [selected, setSelected] = useState<string[]>(props.initialSelected);
   const [cache, setCache] = useState<Record<string, PwValueSeries>>(() => byId(props.initialSeries));
   const [failed, setFailed] = useState(false);
@@ -119,9 +126,9 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
   const items = useMemo(() => values?.items ?? [], [values]);
   const labels = useMemo(() => {
     const map = new Map<string, string>();
-    for (const v of items) map.set(v.id, valueText(v));
+    for (const v of items) map.set(v.id, valueText(v, i18n));
     return map;
-  }, [items]);
+  }, [items, i18n]);
   const latest = buckets && buckets.length > 0 ? buckets[buckets.length - 1] : null;
   const bucketSeconds = latest?.bucket_seconds ?? 300;
 
@@ -143,7 +150,7 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
       end: a.anomaly_end ?? a.resolved_at,
     }));
 
-  const notes = honestyNotes({ watch, catalog, buckets, hours });
+  const notes = honestyNotes({ watch, catalog, buckets, hours, i18n });
   const valuesPath = `/behavior/watches/${watch.id}`;
   const baseParams = { range: props.rangeKey === "24h" ? undefined : props.rangeKey };
   const sortHref = (sort: ValueSort) => {
@@ -156,16 +163,16 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
 
   const emptyChart =
     buckets !== null && buckets.length === 0
-      ? "No bucket has been collected for this watch in this window. This is an absence of collection, not an observation of zero events."
+      ? t("propertyWatch.workspace.emptyChartNoBucket")
       : items.length === 0
-        ? "No value is tracked, so there is nothing to plot."
-        : "Select up to five values in the table to plot them. The default is the pinned values, then the most frequent in the latest bucket.";
+        ? t("propertyWatch.workspace.emptyChartNoValues")
+        : t("propertyWatch.workspace.emptyChartSelect");
 
   const valuesTab = () => (
     <div className="stack-6">
       <div className="pw-range">
-        <nav className="range-selector" aria-label="Window">
-          <span className="muted">Window</span>
+        <nav className="range-selector" aria-label={t("propertyWatch.workspace.window")}>
+          <span className="muted">{t("propertyWatch.workspace.window")}</span>
           {PW_RANGES.map((r) => (
             <Link
               key={r.key}
@@ -177,18 +184,27 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
               className={`range-option${r.hours === hours ? " range-option-active" : ""}`}
               aria-current={r.hours === hours ? "page" : undefined}
             >
-              {r.label}
+              {pwRangeLabel(r, i18n)}
             </Link>
           ))}
         </nav>
         <p className="subtitle">
-          Last {hours === 168 ? "7 days" : `${hours} h`} to{" "}
-          <UtcTime value={props.windowEnd} />.
+          {t("propertyWatch.workspace.lastTo", {
+            range:
+              i18n.locale === "en"
+                ? hours === 168 ? "7 days" : `${hours} h`
+                : hours === 168
+                  ? t("propertyWatch.common.days", { count: 7 })
+                  : t("propertyWatch.common.hours", { count: hours }),
+            time: utcTimeText(props.windowEnd),
+          })}
           {latest && (
             <>
-              {" "}Latest bucket{latest.origin === "HISTORY" ? " read from QRadar history" : ""}{" "}
-              <UtcTime value={latest.bucket_start} />{" "}
-              <span className="muted">({relativeAge(latest.bucket_start, new Date(props.windowEnd))})</span>.
+              {t("propertyWatch.workspace.latestBucket", {
+                origin: latest.origin === "HISTORY" ? t("propertyWatch.workspace.historyOrigin") : "",
+                time: utcTimeText(latest.bucket_start),
+                age: `(${relativeAge(latest.bucket_start, new Date(props.windowEnd), i18n)})`,
+              })}
             </>
           )}
         </p>
@@ -197,26 +213,25 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
       {failed && (
         <div className="notice" role="alert">
           <p>
-            <strong>The series of the selected values could not be loaded.</strong>
+            <strong>{t("propertyWatch.workspace.seriesFailedTitle")}</strong>
           </p>
           <p>
-            The values already drawn stay on screen. The backend may be unreachable; try again, or
-            change the selection. Nothing was changed.{" "}
+            {t("propertyWatch.workspace.seriesFailedBody")}{" "}
             <button type="button" className="action secondary" onClick={() => setRetry((n) => n + 1)}>
-              Try again
+              {t("propertyWatch.workspace.tryAgain")}
             </button>
           </p>
         </div>
       )}
       {waiting.length > 0 && !failed && (
         <p className="notice" role="status" aria-live="polite">
-          Loading the series of {waiting.length} selected {waiting.length === 1 ? "value" : "values"}…
+          {t("propertyWatch.workspace.seriesLoading", { count: waiting.length })}
         </p>
       )}
 
-      <WatchHonesty notes={notes} />
+      <WatchHonesty notes={notes} i18n={i18n} />
 
-      <section aria-label="Series chart">
+      <section aria-label={t("propertyWatch.workspace.chartLabel")}>
         <PropertyWatchSeriesChart
           series={plotted}
           bucketSeconds={bucketSeconds}
@@ -226,47 +241,47 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
           coverage={buckets ? { buckets, floor: catalog?.min_coverage ?? null } : null}
           incidents={spans}
           emptyText={emptyChart}
+          i18n={i18n}
         />
         {latest && latest.unparsed_events !== null && latest.total_events !== null && (
           <p className="subtitle pw-remainder">
-            In the latest bucket, {latest.unparsed_events.toLocaleString("en-US")} of{" "}
-            {latest.total_events.toLocaleString("en-US")} events in scope carried no{" "}
-            {watch.properties.length === 1 ? "" : "complete set of "}
-            <span className="pw-prop-name">{watch.properties.map((p) => p.name).join(" and ")}</span>
-            {latest.values_measurement === "LOWER_BOUND" ? " (at most, the bucket is a lower bound)" : ""}.
-            They are counted here, not as a value, and never as a zero.
+            {t("propertyWatch.workspace.remainder", {
+              unparsed: formatCount(latest.unparsed_events, i18n.locale),
+              total: formatCount(latest.total_events, i18n.locale),
+              complete: watch.properties.length === 1 ? "" : t("propertyWatch.workspace.completeSet"),
+              property: watch.properties.map((property) => property.name).join(t("propertyWatch.format.propertyJoin")),
+              bound: latest.values_measurement === "LOWER_BOUND" ? t("propertyWatch.workspace.lowerBound") : "",
+            })}
           </p>
         )}
       </section>
 
       <section aria-labelledby="pw-values-title">
         <h2 id="pw-values-title" className="section-title">
-          Values
+          {t("propertyWatch.common.values")}
         </h2>
         {values === null ? (
           <div className="notice" role="alert">
             <p>
-              <strong>The tracked values could not be loaded.</strong>
+              <strong>{t("propertyWatch.workspace.valuesFailedTitle")}</strong>
             </p>
-            <p>The chart and the table need them. Reload the page to try again. Nothing was changed.</p>
+            <p>{t("propertyWatch.workspace.valuesFailedBody")}</p>
           </div>
         ) : items.length === 0 ? (
           <div className="notice" role="status">
             <p>
-              <strong>No value is tracked for this watch in this window.</strong>
+              <strong>{t("propertyWatch.workspace.valuesEmptyTitle")}</strong>
             </p>
             <p>
-              A value appears once a collected bucket admits it. Until then nothing is judged, and
-              this is not a statement that the property takes no values.
+              {t("propertyWatch.workspace.valuesEmptyBody")}
             </p>
           </div>
         ) : (
           <>
             <p className="subtitle">
-              {selected.length} of at most {PW_MAX_SERIES} values plotted. Counts are events per
-              5-minute bucket.
+              {t("propertyWatch.workspace.plotted", { selected: formatCount(selected.length, i18n.locale), max: formatCount(PW_MAX_SERIES, i18n.locale) })}
             </p>
-            <TableScroll label="Tracked values">
+            <TableScroll label={t("propertyWatch.valuesTable.label")}>
               <WatchValuesTable
                 values={items}
                 latest={latest}
@@ -295,19 +310,23 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
 
   return (
     <Tabs
-      label="Watch detail"
+      label={t("propertyWatch.workspace.tabsLabel")}
       tabs={[
-        { id: "values", label: "Values", content: valuesTab },
+        { id: "values", label: t("propertyWatch.workspace.tabValues"), content: valuesTab },
         {
           id: "incidents",
-          label: incidents ? `Incidents (${props.incidentsTotal ?? incidents.length})` : "Incidents",
+          label: incidents
+            ? t("propertyWatch.workspace.tabIncidentsCount", { count: props.incidentsTotal ?? incidents.length })
+            : t("propertyWatch.workspace.tabIncidents"),
           content: () => (
             <WatchIncidents incidents={incidents} total={props.incidentsTotal} watchId={watch.id} />
           ),
         },
         {
           id: "rules",
-          label: watch.threshold_rules ? `Threshold rules (${watch.threshold_rules.length})` : "Threshold rules",
+          label: watch.threshold_rules
+            ? t("propertyWatch.workspace.tabRulesCount", { count: watch.threshold_rules.length })
+            : t("propertyWatch.workspace.tabRules"),
           content: () => (
             <ThresholdRules
               rules={watch.threshold_rules ?? null}
@@ -317,9 +336,9 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
         },
         {
           id: "definition",
-          label: "Definition",
+          label: t("propertyWatch.workspace.tabDefinition"),
           content: () => (
-            <WatchDefinition watch={watch} catalog={catalog} scope={props.scope} aql={props.aql ?? null} />
+            <WatchDefinition watch={watch} catalog={catalog} scope={props.scope} aql={props.aql ?? null} i18n={i18n} />
           ),
         },
       ]}

@@ -1,32 +1,40 @@
 import { api, type OffenseDetail, type OffenseHistoryPoint } from "@/lib/api";
 import Link from "next/link";
+import { getLocale, getTranslations } from "next-intl/server";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { formatAge, magnitudeTone, offenseStatusTone } from "@/lib/health";
+import { formatDuration } from "@/lib/behavior";
+import { magnitudeTone, offenseStatusTone } from "@/lib/health";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { formatCount } from "@/lib/format";
+import type { Locale } from "@/i18n/locale";
+import { enumLabel } from "@/i18n/enumLabels";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "../offenses.css";
 import "./offense-detail.css";
 
 /** A count that was not measured is a dash, never a zero. */
-function count(n: number | null | undefined): string {
-  return n == null ? "—" : n.toLocaleString("en-US");
+function count(n: number | null | undefined, locale: Locale): string {
+  return n == null ? "—" : formatCount(n, locale);
 }
 
 /** A 0–10 score. Null is an em dash, with no unit attached to a missing measurement. */
-function scoreOfTen(value: number | null | undefined): string {
-  return value == null ? "—" : `${value} of 10`;
+function scoreOfTen(value: number | null | undefined, label: (value: number) => string): string {
+  return value == null ? "—" : label(value);
 }
 
-function List({ label, values }: { label: string; values: (string | number)[] }) {
+function List({ label, values, empty }: { label: string; values: (string | number)[]; empty: string }) {
   return (
     <div className="detail-block">
       <h4>
         {label} <span className="muted">({values.length})</span>
       </h4>
       {values.length === 0 ? (
-        <p className="muted">None recorded.</p>
+        <p className="muted">{empty}</p>
       ) : (
         <ul className="chips">
           {values.map((v) => (
@@ -40,24 +48,32 @@ function List({ label, values }: { label: string; values: (string | number)[] })
   );
 }
 
-export default async function OffenseDetailPage({
+export async function generateMetadata() {
+  const t = await getTranslations("offenses.meta");
+  return { title: t("detail") };
+}
+
+async function OffenseDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
   const offenseId = Number(id);
+  const t = await getTranslations("offenses.detail");
+  const say = asTextTranslator(await getTranslations());
+  const locale = (await getLocale()) as Locale;
 
   if (!Number.isFinite(offenseId)) {
     return (
       <>
-        <PageHeader title="Offense" />
+        <PageHeader guide={guideFor("/offenses/[id]")} title={t("title")} />
         <div className="notice" role="alert">
-          <p>Not a valid offense id.</p>
-          <p>Offense ids are numbers. Open the offense from the list.</p>
+          <p>{t("invalid")}</p>
+          <p>{t("invalidHelp")}</p>
         </div>
         <p>
-          <Link href="/offenses">Back to offenses</Link>
+          <Link href="/offenses">{t("back")}</Link>
         </p>
       </>
     );
@@ -80,16 +96,16 @@ export default async function OffenseDetailPage({
   if (missing || error) {
     return (
       <>
-        <PageHeader title={`Offense ${offenseId}`} />
+        <PageHeader guide={guideFor("/offenses/[id]")} title={t("detailTitle", { id: offenseId })} />
         <div className="notice" role={missing ? "status" : "alert"}>
           <p>
             {missing
-              ? "This offense has not been collected. It may be outside the collection window."
-              : "Could not load this offense. Try again shortly."}
+              ? t("missing")
+              : t("failed")}
           </p>
         </div>
         <p>
-          <Link href="/offenses">Back to offenses</Link>
+          <Link href="/offenses">{t("back")}</Link>
         </p>
       </>
     );
@@ -100,20 +116,23 @@ export default async function OffenseDetailPage({
   return (
     <>
       <p className="muted">
-        <Link href="/offenses">← Offenses</Link>
+        <Link href="/offenses">{t("crumb")}</Link>
       </p>
       {/* Text only. QRadar-sourced, sanitized server-side, escaped by React. */}
       <PageHeader
-        title={`Offense ${o.qradar_offense_id}`}
-        description={o.description?.trim() || "No description."}
+        guide={guideFor("/offenses/[id]")}
+        title={t("detailTitle", { id: o.qradar_offense_id })}
+        description={o.description?.trim() || t("noDescription")}
       />
 
-      <h2>Scores</h2>
-      <dl className="dimension-meta" aria-label="Offense scores">
+      <h2>{t("scores")}</h2>
+      <dl className="dimension-meta" aria-label={t("scoreLabel")}>
         <div>
-          <dt>Magnitude</dt>
+          <dt>{t("magnitude")}</dt>
           <dd>
-            <span className={`pill ${magnitudeTone(o.magnitude)}`}>{scoreOfTen(o.magnitude)}</span>
+            <span className={`pill ${magnitudeTone(o.magnitude)}`}>
+              {scoreOfTen(o.magnitude, (value) => t("ofTen", { value }))}
+            </span>
             {o.magnitude != null && (
               <span
                 className={`mag-bar ${magnitudeTone(o.magnitude)} mag-w-${Math.min(10, Math.max(0, Math.round(o.magnitude)))}`}
@@ -123,129 +142,129 @@ export default async function OffenseDetailPage({
           </dd>
         </div>
         <div>
-          <dt>Status</dt>
+          <dt>{t("status")}</dt>
           <dd>
-            <span className={`pill ${offenseStatusTone(o.status)}`}>{o.status}</span>
+            <span className={`pill ${offenseStatusTone(o.status)}`}>
+              {enumLabel(say, "offenseStatus", o.status)}
+            </span>
           </dd>
         </div>
         <div>
-          <dt>Severity</dt>
-          <dd>{scoreOfTen(o.severity)}</dd>
+          <dt>{t("severity")}</dt>
+          <dd>{scoreOfTen(o.severity, (value) => t("ofTen", { value }))}</dd>
         </div>
         <div>
-          <dt>Credibility</dt>
-          <dd>{scoreOfTen(o.credibility)}</dd>
+          <dt>{t("credibility")}</dt>
+          <dd>{scoreOfTen(o.credibility, (value) => t("ofTen", { value }))}</dd>
         </div>
         <div>
-          <dt>Relevance</dt>
-          <dd>{scoreOfTen(o.relevance)}</dd>
+          <dt>{t("relevance")}</dt>
+          <dd>{scoreOfTen(o.relevance, (value) => t("ofTen", { value }))}</dd>
         </div>
         <div>
-          <dt>Age</dt>
-          <dd>{formatAge(o.age_seconds)}</dd>
+          <dt>{t("age")}</dt>
+          <dd>{formatDuration(o.age_seconds, { t: say, locale })}</dd>
         </div>
       </dl>
 
-      <h3>Attributes</h3>
-      <TableScroll label="Offense attributes">
-      <table className="kv-table" aria-label="Offense attributes">
+      <h3>{t("attributes")}</h3>
+      <TableScroll label={t("attributesLabel")}>
+      <table className="kv-table" aria-label={t("attributesLabel")}>
         <tbody>
           <tr>
-            <th>Assigned to</th>
-            <td>{o.assigned_to ?? <span className="muted">unassigned</span>}</td>
+            <th>{t("assignedTo")}</th>
+            <td>{o.assigned_to ?? <span className="muted">{t("unassigned")}</span>}</td>
           </tr>
           <tr>
-            <th>Offense type</th>
+            <th>{t("offenseType")}</th>
             <td>{o.offense_type_name ?? "—"}</td>
           </tr>
           <tr>
-            <th>Offense source</th>
+            <th>{t("offenseSource")}</th>
             <td>{o.offense_source ?? "—"}</td>
           </tr>
           <tr>
-            <th>Source network</th>
+            <th>{t("sourceNetwork")}</th>
             <td>{o.source_network ?? "—"}</td>
           </tr>
           <tr>
-            <th>Events / Flows</th>
+            <th>{t("eventsFlows")}</th>
             <td>
-              {count(o.event_count)} / {count(o.flow_count)}
+              {count(o.event_count, locale)} / {count(o.flow_count, locale)}
             </td>
           </tr>
           <tr>
-            <th>Sources / Destinations</th>
+            <th>{t("sourcesDestinations")}</th>
             <td>
-              {count(o.source_count)} / {count(o.destination_count)}
+              {count(o.source_count, locale)} / {count(o.destination_count, locale)}
             </td>
           </tr>
           <tr>
-            <th>Started</th>
+            <th>{t("started")}</th>
             <td>{<UtcTime value={o.start_time} />}</td>
           </tr>
           <tr>
-            <th>Last updated</th>
+            <th>{t("lastUpdated")}</th>
             <td>{<UtcTime value={o.last_updated_time} />}</td>
           </tr>
           <tr>
-            <th>Closed</th>
+            <th>{t("closed")}</th>
             <td>{<UtcTime value={o.close_time} />}</td>
           </tr>
           <tr>
-            <th>Last collected</th>
+            <th>{t("lastCollected")}</th>
             <td>{<UtcTime value={o.captured_at} />}</td>
           </tr>
         </tbody>
       </table>
       </TableScroll>
 
-      <h3>Entities</h3>
+      <h3>{t("entities")}</h3>
       <div className="detail-grid">
-        <List label="Usernames" values={o.usernames ?? []} />
-        <List label="Source addresses" values={o.source_addresses ?? []} />
-        <List label="Destination addresses" values={o.local_destination_addresses ?? []} />
-        <List label="Categories" values={o.categories ?? []} />
-        <List label="Contributing rule IDs" values={o.rule_ids ?? []} />
-        <List label="Log source IDs" values={o.log_source_ids ?? []} />
+        <List label={t("usernames")} values={o.usernames ?? []} empty={t("noneRecorded")} />
+        <List label={t("sourceAddresses")} values={o.source_addresses ?? []} empty={t("noneRecorded")} />
+        <List label={t("destinationAddresses")} values={o.local_destination_addresses ?? []} empty={t("noneRecorded")} />
+        <List label={t("categories")} values={o.categories ?? []} empty={t("noneRecorded")} />
+        <List label={t("ruleIds")} values={o.rule_ids ?? []} empty={t("noneRecorded")} />
+        <List label={t("logSourceIds")} values={o.log_source_ids ?? []} empty={t("noneRecorded")} />
       </div>
 
-      <h3>History</h3>
+      <h3>{t("history")}</h3>
       {history === null ? (
         <div className="notice" role="alert">
           <p>
-            <strong>The history could not be loaded.</strong>
+            <strong>{t("historyFailedTitle")}</strong>
           </p>
           <p>
-            Nothing was changed, and this does not mean the offense has no history. Reload the
-            page; if it keeps failing, check that the backend is reachable.
+            {t("historyFailedHelp")}
           </p>
         </div>
       ) : history.length === 0 ? (
         <div className="notice">
-          No history yet. A second snapshot is written only when the offense
-          changes, so a stable offense has a single entry.
+          {t("historyEmpty")}
         </div>
       ) : (
-        <TableScroll label="Offense history">
-        <table aria-label="Offense history">
+        <TableScroll label={t("historyLabel")}>
+        <table aria-label={t("historyLabel")}>
           <thead>
             <tr>
-              <th>Captured</th>
-              <th>Status</th>
-              <th className="num">Magnitude</th>
-              <th className="num">Severity</th>
-              <th className="num">Events</th>
-              <th>Assigned</th>
+              <th>{t("captured")}</th>
+              <th>{t("status")}</th>
+              <th className="num">{t("magnitude")}</th>
+              <th className="num">{t("severity")}</th>
+              <th className="num">{t("events")}</th>
+              <th>{t("assigned")}</th>
             </tr>
           </thead>
           <tbody>
             {history.map((h) => (
               <tr key={h.captured_at}>
                 <td className="nowrap">{<UtcTime value={h.captured_at} />}</td>
-                <td>{h.status}</td>
+                <td>{enumLabel(say, "offenseStatus", h.status)}</td>
                 <td className="num">{h.magnitude ?? "—"}</td>
                 <td className="num">{h.severity ?? "—"}</td>
-                <td className="num">{count(h.event_count)}</td>
-                <td>{h.assigned_to ?? <span className="muted">unassigned</span>}</td>
+                <td className="num">{count(h.event_count, locale)}</td>
+                <td>{h.assigned_to ?? <span className="muted">{t("unassigned")}</span>}</td>
               </tr>
             ))}
           </tbody>
@@ -255,3 +274,5 @@ export default async function OffenseDetailPage({
     </>
   );
 }
+
+export default withRouteMessages("/offenses/[id]", OffenseDetailPage);

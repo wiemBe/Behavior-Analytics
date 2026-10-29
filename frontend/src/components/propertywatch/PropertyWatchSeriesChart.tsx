@@ -23,6 +23,8 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef } from "react";
 
+import { TURKISH_ECHARTS_LOCALE } from "@/components/home/chartLocale";
+
 import type { PwBucket, PwValueSeries } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
 
@@ -34,8 +36,8 @@ import {
   type DetectionBand,
   type PwPalette,
 } from "./pwChartOption";
-import { eventsUnit } from "./pwFormat";
 import { buildPlot, PW_MAX_SERIES } from "./pwSeries";
+import { ENGLISH_PW, pwUnit, type PwI18n } from "./pwText";
 
 echarts.use([
   LineChart,
@@ -90,6 +92,8 @@ export interface PropertyWatchSeriesChartProps {
   ariaLabel?: string;
   /** Shown instead of the chart when no value is plotted. */
   emptyText?: string;
+  /** The interface language; without it the chart is in English (the watch pages). */
+  i18n?: PwI18n;
 }
 
 export function PropertyWatchSeriesChart({
@@ -102,9 +106,13 @@ export function PropertyWatchSeriesChart({
   incidents = [],
   detectionBand = null,
   compact = false,
-  ariaLabel = "Events per bucket for the selected values, and the parsed share of the scope",
-  emptyText = "No value is plotted.",
+  ariaLabel: ariaLabelProp,
+  emptyText: emptyTextProp,
+  i18n: x = ENGLISH_PW,
 }: PropertyWatchSeriesChartProps) {
+  const { t } = x;
+  const ariaLabel = ariaLabelProp ?? t("pwchart.chart.ariaLabel");
+  const emptyText = emptyTextProp ?? t("pwchart.chart.empty");
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const model = useMemo(
@@ -115,7 +123,7 @@ export function PropertyWatchSeriesChart({
     () => (coverage ? buildCoverage(model.slots, coverage.buckets, coverage.floor) : null),
     [coverage, model.slots],
   );
-  const unit = eventsUnit(bucketSeconds);
+  const unit = pwUnit(x, bucketSeconds);
   const showCoverage = coverageModel !== null && !compact;
 
   useEffect(() => {
@@ -125,7 +133,12 @@ export function PropertyWatchSeriesChart({
       typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const chart = echarts.init(el);
+    // ECharts names months from its locale; English is its default, Turkish is given here.
+    const chart = echarts.init(
+      el,
+      null,
+      x.locale === "tr" ? { locale: TURKISH_ECHARTS_LOCALE as never } : undefined,
+    );
     chart.setOption(
       buildPwOption({
         model,
@@ -135,6 +148,7 @@ export function PropertyWatchSeriesChart({
         coverage: coverageModel,
         compact,
         reduceMotion,
+        i18n: x,
       }),
     );
     const observer = new ResizeObserver(() => chart.resize());
@@ -143,7 +157,7 @@ export function PropertyWatchSeriesChart({
       observer.disconnect();
       chart.dispose();
     };
-  }, [model, coverageModel, incidents, detectionBand, compact, showCoverage]);
+  }, [model, coverageModel, incidents, detectionBand, compact, showCoverage, x]);
 
   if (model.lines.length === 0 && !showCoverage) {
     return (
@@ -158,11 +172,14 @@ export function PropertyWatchSeriesChart({
     l.points.some((p) => p.value === null && p.kind !== "NOT_COLLECTED"),
   );
   const summary = [
-    `${unit} for ${model.lines.length} ${model.lines.length === 1 ? "value" : "values"}, in UTC.`,
+    t("pwchart.chart.summaryValues", { unit, count: model.lines.length }),
     model.collectedSlots !== null
-      ? `${model.collectedSlots} of ${model.windowSlots} five-minute intervals in the window were collected.`
+      ? t("pwchart.chart.summaryCollected", {
+          collected: model.collectedSlots,
+          window: model.windowSlots,
+        })
       : "",
-    "The same figures are in the values table.",
+    t("pwchart.chart.summaryTable"),
   ]
     .filter(Boolean)
     .join(" ");
@@ -187,75 +204,81 @@ export function PropertyWatchSeriesChart({
         aria-label={ariaLabel}
       />
       <p className="sr-only">{summary}</p>
-      <ul className="chart-legend" aria-label="Chart key">
+      <ul className="chart-legend" aria-label={t("pwchart.chart.keyLabel")}>
         {model.lines.map((line, i) => (
           <li key={line.valueId}>
             <span className={`chart-key pw-key pw-key-${(i % PW_MAX_SERIES) + 1}`} aria-hidden="true" />
             {/* The value is attacker-controlled text: React renders it as text. */}
             <span className="pw-key-label">{line.label}</span>
-            {line.pinned && <span className="muted">pinned</span>}
+            {line.pinned && <span className="muted">{t("pwchart.chart.pinned")}</span>}
           </li>
         ))}
         {model.hasBand && (
           <li>
             <span className="chart-key chart-key-band" aria-hidden="true" />
-            Expected range for the hour of the week
+            {t("pwchart.chart.bandHour")}
           </li>
         )}
         {model.uncollected.length > 0 && (
           <li>
             <span className="chart-key chart-key-gap" aria-hidden="true" />
-            Not collected
+            {t("pwchart.chart.notCollected")}
           </li>
         )}
         {model.history.length > 0 && (
           <li>
             <span className="chart-key pw-key-history" aria-hidden="true" />
-            Read from QRadar history, not judged
+            {t("pwchart.chart.history")}
           </li>
         )}
         {detectionBand && model.lines.length > 0 && (
           <li>
             <span className="chart-key chart-key-band" aria-hidden="true" />
-            Expected range at detection
+            {t("pwchart.chart.bandDetection")}
           </li>
         )}
         {incidents.length > 0 && (
           <li>
             <span className="chart-key chart-key-anomaly" aria-hidden="true" />
-            Incident
+            {t("pwchart.chart.incident")}
           </li>
         )}
         {hasLowerBound && (
           <li>
             <span className="chart-key pw-key-bound" aria-hidden="true" />
-            At least this many (lower bound)
+            {t("pwchart.chart.lowerBound")}
           </li>
         )}
       </ul>
       {model.history.length > 0 && (
-        <table className="sr-only" aria-label="QRadar history shown in the chart">
-          <caption>Intervals read from QRadar history and not judged</caption>
-          <thead><tr><th scope="col">From (UTC)</th><th scope="col">To (UTC)</th><th scope="col">Meaning</th></tr></thead>
+        <table className="sr-only" aria-label={t("pwchart.chart.historyTable")}>
+          <caption>{t("pwchart.chart.historyCaption")}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t("pwchart.chart.from")}</th>
+              <th scope="col">{t("pwchart.chart.to")}</th>
+              <th scope="col">{t("pwchart.chart.meaning")}</th>
+            </tr>
+          </thead>
           <tbody>
             {model.history.map((span) => (
               <tr key={`${span.start}-${span.end}`}>
                 <td>{new Date(span.start).toISOString()}</td>
                 <td>{new Date(span.end).toISOString()}</td>
-                <td>Read from QRadar history, not judged</td>
+                <td>{t("pwchart.chart.history")}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
       <p className={compact ? "sr-only" : "subtitle chart-note"}>
-        Gaps in a line are buckets that were not collected
-        {hasGap ? ", values that were unknown in a lower-bound bucket, or times the value was not tracked" : ""}.
-        They are not zero events; a line at 0 is a measured zero.
-        {model.lines.length > 1 &&
-          " The expected range is drawn for one value at a time: select a single value to see its band."}
-        {model.dropped > 0 && ` ${model.dropped} more selected ${model.dropped === 1 ? "value is" : "values are"} not drawn; the chart shows at most ${PW_MAX_SERIES}.`}
-        {showCoverage && " The lower panel is the share of the scope's events in which the property parsed."}
+        {t("pwchart.chart.gaps")}
+        {hasGap ? t("pwchart.chart.gapsMore") : ""}
+        {t("pwchart.chart.notZero")}
+        {model.lines.length > 1 && t("pwchart.chart.oneAtATime")}
+        {model.dropped > 0 &&
+          t("pwchart.chart.dropped", { count: model.dropped, max: PW_MAX_SERIES })}
+        {showCoverage && t("pwchart.chart.coveragePanel")}
       </p>
     </div>
   );

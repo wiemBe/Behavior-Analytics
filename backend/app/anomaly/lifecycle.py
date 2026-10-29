@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import AnomalyState, DetectorSignal
 
 
@@ -45,10 +46,25 @@ class LifecycleInput:
     suppressed: bool = False
 
 
+def _ref(name: str, **params: object) -> MessageRef:
+    """A lifecycle transition reason (`anomaly.lifecycle.<name>`), by its registry reference."""
+    return MessageRef(f"anomaly.lifecycle.{name}", params)
+
+
 @dataclass(frozen=True)
 class LifecycleDecision:
+    """The next state and why. The reason is the registry sentence of `message`.
+
+    Every engine records both: the English text (`reason`) and the reference, which a client in
+    another language renders. The text is derived from the reference, so they cannot disagree.
+    """
+
     state: AnomalyState
-    reason: str
+    message: MessageRef
+
+    @property
+    def reason(self) -> str:
+        return render(self.message)
 
 
 def advance_counters(
@@ -75,26 +91,24 @@ def next_state(inp: LifecycleInput) -> LifecycleDecision:
     # said "do not act on this source". Evidence is retained, not deleted.
     if inp.suppressed:
         if current is AnomalyState.SUPPRESSED:
-            return LifecycleDecision(current, "already suppressed")
-        return LifecycleDecision(AnomalyState.SUPPRESSED, "suppressed")
+            return LifecycleDecision(current, _ref("already_suppressed"))
+        return LifecycleDecision(AnomalyState.SUPPRESSED, _ref("suppressed"))
 
     # Leaving suppression returns to the neutral state; the counters resume
     # from whatever the detectors report next.
     if current is AnomalyState.SUPPRESSED:
-        return LifecycleDecision(AnomalyState.NORMAL, "suppression lifted")
+        return LifecycleDecision(AnomalyState.NORMAL, _ref("suppression_lifted"))
 
     if inp.insufficient_data:
         if current in (AnomalyState.NORMAL, AnomalyState.INSUFFICIENT_DATA):
-            return LifecycleDecision(
-                AnomalyState.INSUFFICIENT_DATA, "no verdict possible"
-            )
+            return LifecycleDecision(AnomalyState.INSUFFICIENT_DATA, _ref("no_verdict"))
         # An active incident is NOT downgraded because one bucket was
         # unreadable. Losing visibility mid-incident is not recovery, and
         # collapsing to INSUFFICIENT_DATA here would silently close it.
-        return LifecycleDecision(current, "holding state; bucket not judgeable")
+        return LifecycleDecision(current, _ref("hold_not_judgeable"))
 
     if inp.signal is DetectorSignal.UNKNOWN:
-        return LifecycleDecision(current, "holding state; detector returned unknown")
+        return LifecycleDecision(current, _ref("hold_unknown"))
 
     if inp.signal is DetectorSignal.ANOMALOUS:
         return _on_anomalous(inp, current)
@@ -111,48 +125,45 @@ def _on_anomalous(inp: LifecycleInput, current: AnomalyState) -> LifecycleDecisi
         # Promoting immediately is how a detector flaps on a one-bucket blip.
         if inp.consecutive_anomalous >= inp.open_after:
             return LifecycleDecision(
-                AnomalyState.OPEN,
-                f"{inp.consecutive_anomalous} consecutive abnormal bucket(s)",
+                AnomalyState.OPEN, _ref("opened", count=inp.consecutive_anomalous)
             )
-        return LifecycleDecision(AnomalyState.CANDIDATE, "first abnormal bucket")
+        return LifecycleDecision(AnomalyState.CANDIDATE, _ref("first_abnormal"))
 
     if current is AnomalyState.CANDIDATE:
         if inp.consecutive_anomalous >= inp.open_after:
             return LifecycleDecision(
                 AnomalyState.OPEN,
-                f"{inp.consecutive_anomalous} consecutive abnormal bucket(s) "
-                f"reached the confirmation threshold of {inp.open_after}",
+                _ref("confirmed", count=inp.consecutive_anomalous, threshold=inp.open_after),
             )
-        return LifecycleDecision(current, "still confirming")
+        return LifecycleDecision(current, _ref("still_confirming"))
 
     if current is AnomalyState.RECOVERING:
         # Relapse before the recovery completed. The same incident reopens
         # rather than a second one being created alongside it.
-        return LifecycleDecision(AnomalyState.OPEN, "relapsed before recovery completed")
+        return LifecycleDecision(AnomalyState.OPEN, _ref("relapsed"))
 
-    return LifecycleDecision(current, "still abnormal")
+    return LifecycleDecision(current, _ref("still_abnormal"))
 
 
 def _on_healthy(inp: LifecycleInput, current: AnomalyState) -> LifecycleDecision:
     if current is AnomalyState.CANDIDATE:
         # Never promoted, so this was never an incident.
-        return LifecycleDecision(AnomalyState.NORMAL, "returned to normal before opening")
+        return LifecycleDecision(AnomalyState.NORMAL, _ref("returned_to_normal"))
 
     if current is AnomalyState.OPEN:
         if inp.resolve_after <= 1:
-            return LifecycleDecision(AnomalyState.RESOLVED, "1 normal bucket observed")
-        return LifecycleDecision(AnomalyState.RECOVERING, "normal bucket observed")
+            return LifecycleDecision(AnomalyState.RESOLVED, _ref("resolved_one_normal"))
+        return LifecycleDecision(AnomalyState.RECOVERING, _ref("normal_observed"))
 
     if current is AnomalyState.RECOVERING:
         if inp.consecutive_healthy >= inp.resolve_after:
             return LifecycleDecision(
                 AnomalyState.RESOLVED,
-                f"{inp.consecutive_healthy} consecutive normal bucket(s) reached the "
-                f"recovery threshold of {inp.resolve_after}",
+                _ref("recovered", count=inp.consecutive_healthy, threshold=inp.resolve_after),
             )
-        return LifecycleDecision(current, "still recovering")
+        return LifecycleDecision(current, _ref("still_recovering"))
 
     if current is AnomalyState.INSUFFICIENT_DATA:
-        return LifecycleDecision(AnomalyState.NORMAL, "baseline became adequate")
+        return LifecycleDecision(AnomalyState.NORMAL, _ref("baseline_adequate"))
 
-    return LifecycleDecision(AnomalyState.NORMAL, "within expected range")
+    return LifecycleDecision(AnomalyState.NORMAL, _ref("within_range"))

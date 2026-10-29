@@ -6,29 +6,38 @@
 // that is said in the first line, not left for the analyst to infer from rows.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { WafRangeSelector } from "@/components/waf/WafRangeSelector";
 import { WafSourcesTable } from "@/components/waf/WafSourcesTable";
 import { isJudged } from "@/components/waf/wafSourceHealth";
 import { parseWafRange } from "@/components/waf/wafRange";
 import { ApiError, api, type PagedWafSources } from "@/lib/api";
+import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { plainCount } from "@/lib/figureText";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "./waf.css";
 
-export const metadata: Metadata = {
-  title: "WAF behavior",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("waf.meta");
+  return { title: t("behavior") };
+}
 
 const PAGE_SIZE = 50;
 
-export default async function WafBehaviorPage({
+async function WafBehaviorPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  const t = await getTranslations("waf.behavior");
+  const i18n = await getBehaviorI18n();
+  const count = (value: number) => plainCount(value, i18n.locale);
   const params = await searchParams;
   const range = parseWafRange(params.range);
   const parsedOffset = Number(params.offset ?? 0);
@@ -49,10 +58,10 @@ export default async function WafBehaviorPage({
   } catch (err) {
     error =
       err instanceof ApiError && err.status === 403
-        ? "You do not have permission to view WAF behavior."
+        ? t("forbidden")
         : err instanceof ApiError && err.status === 401
-          ? "Your session has expired. Sign in again to continue."
-          : "WAF sources could not be loaded, so nothing is shown. The backend may be unreachable; check that it is running, then reload the page. Nothing was changed.";
+          ? t("expired")
+          : t("failed");
   }
 
   const items = page?.items ?? [];
@@ -66,47 +75,45 @@ export default async function WafBehaviorPage({
   return (
     <>
       <PageHeader
-        title="WAF behavior"
-        description="Whether each WAF source is collected and judged, and where endpoint admission is overflowing. Times are UTC."
+        guide={guideFor("/behavior/waf")}
+        title={t("title")}
+        description={t("description")}
       />
 
       {error ? (
         <div className="notice" role="alert">
           <p>
-            <strong>WAF behavior could not be shown.</strong>
+            <strong>{t("errorTitle")}</strong>
           </p>
           <p>{error}</p>
         </div>
       ) : items.length === 0 ? (
         <div className="notice" role="status">
           <p>
-            <strong>No WAF source has a behavior profile.</strong>
+            <strong>{t("emptyTitle")}</strong>
           </p>
-          <p>
-            Nothing is collected or judged until a log source is mapped and validated in WAF
-            sources administration. An empty list here is not a statement that WAF traffic is
-            normal.
-          </p>
+          <p>{t("emptyText")}</p>
         </div>
       ) : (
         <div className="stack-6">
           <p className="waf-lead">
-            <strong className="num">
-              {judged} of {listed}
-            </strong>{" "}
-            {listed === 1 ? "source is" : "sources are"}
-            {paginated ? " listed on this page and" : ""} collected and judged: profile enabled and
-            valid for its current version. The others produce no verdicts.
-            {paginated && ` The list has ${total} sources in all; the other pages are not counted here.`}
+            {t.rich("lead", {
+              judged: count(judged),
+              listed: count(listed),
+              total: count(total),
+              pages: paginated ? "page" : "one",
+              num: (chunks) => <strong className="num">{chunks}</strong>,
+            })}
           </p>
 
           <div className="waf-range">
             <WafRangeSelector active={range.key} />
             {page && (
               <p className="subtitle">
-                Admission overflow covers{" "}
-                <UtcTime value={page.range_start} /> to{" "}
-                <UtcTime value={page.range_end} />.
+                {t.rich("covers", {
+                  start: () => <UtcTime value={page.range_start} />,
+                  end: () => <UtcTime value={page.range_end} />,
+                })}
               </p>
             )}
           </div>
@@ -127,3 +134,5 @@ export default async function WafBehaviorPage({
     </>
   );
 }
+
+export default withRouteMessages("/behavior/waf", WafBehaviorPage);

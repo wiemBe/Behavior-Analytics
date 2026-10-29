@@ -16,10 +16,14 @@ import Link from "next/link";
 // render quietly. All three state their value as text, so none of them depends
 // on colour to be understood.
 
+import { useTranslations } from "next-intl";
 import { Fragment, useState } from "react";
 
+import { useEnumLabels } from "@/i18n/enumLabels";
+import { unitGap } from "@/i18n/measures";
 import { sevTone, type AnomalySummary } from "@/lib/api";
 import {
+  detectorLabel,
   evidenceTone,
   formatDelta,
   formatDuration,
@@ -27,17 +31,20 @@ import {
   formatRatio,
   stateTone,
 } from "@/lib/behavior";
+import { ARROW, evidenceWord, type BehaviorI18n } from "@/lib/behaviorI18n";
+import { formatCount } from "@/lib/format";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import "@/components/ips/ips.css";
 import { expectsNone, ipsFigures } from "@/components/ips/ipsDetectors";
 import { formatFigure } from "@/components/ips/ipsFormat";
 import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
 import { isPwRow, pwTypeLabel } from "@/components/propertywatch/pwFormat";
 import { valueText } from "@/components/propertywatch/WatchValuesTable";
-import { formatRequests, SINCE_UNIT } from "@/components/waf/wafFormat";
+import { formatRequests, listUnit, sinceUnit } from "@/components/waf/wafFormat";
 import { formatPercent } from "@/lib/format";
 import {
+  anomalyTypeLabel,
   endpointLabel,
-  evidenceLabel,
   isWafRow,
   subjectText,
 } from "@/components/waf/wafLabels";
@@ -57,12 +64,16 @@ import "@/components/ui/controls.css";
  * separator the old single line carried is kept for assistive technology only.
  */
 function SubjectCell({ a }: { a: AnomalySummary }) {
+  const t = useTranslations("anomalies.rows");
+  const ipsI18n = useBehaviorI18n();
   // A property-watch row has no source of its own: its watch names it.
-  const source = a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? "Unnamed subject";
+  const source = a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? t("unnamed");
   // Below 1100 px the Started column folds under the subject.
   const started = (
     <span className="cell-sub cell-fold fold-sm fold-started">
-      Started {<UtcTime value={a.anomaly_start ?? a.detected_at} variant="compact" />}
+      {t.rich("started", {
+        time: () => <UtcTime value={a.anomaly_start ?? a.detected_at} variant="compact" />,
+      })}
     </span>
   );
   if (isPwRow(a) && a.pw_value) {
@@ -88,7 +99,7 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
     // the page that administers it needs a grant the list cannot know the caller has.
     return (
       <td className="cell-name cell-subject">
-        <span className="subject-endpoint ips-subject-name">{ipsSubjectText(a)}</span>
+        <span className="subject-endpoint ips-subject-name">{ipsSubjectText(a, ipsI18n)}</span>
         <span className="sr-only"> · </span>
         <span className="subject-source" title={source}>
           {source}
@@ -125,7 +136,9 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
         {source}
       </Link>
       {a.waf_endpoint.virtual_host && (
-        <span className="cell-sub subject-host">Virtual host {a.waf_endpoint.virtual_host}</span>
+        <span className="cell-sub subject-host">
+          {t("virtualHost", { host: a.waf_endpoint.virtual_host })}
+        </span>
       )}
       {started}
     </td>
@@ -143,24 +156,29 @@ export const WAF_LIST_UNIT = "req / 5 min";
 
 /** Observed → expected, each cell in the unit of its own row's detector. */
 function ObservedCell({ a }: { a: AnomalySummary }) {
+  const t = useTranslations("anomalies.rows");
+  const common = useTranslations("common");
+  const units = useTranslations("units");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
   if (isPwRow(a)) {
     // Volume detectors count events per 5-minute bucket. The figure of a new-value detector has
     // no unit this list knows, so it shows none rather than a number under a guessed one.
     if (!isPwVolumeType(a.anomaly_type)) {
       return (
         <span className="muted">
-          —<span className="sr-only"> this detector has no per-bucket figure; open the incident</span>
+          —<span className="sr-only"> {t("noBucketFigure")}</span>
         </span>
       );
     }
     return (
       <>
         <span className="ips-figures">
-          {formatRequests(a.observed_value, a.observed_measurement)}
-          <span className="muted"> → </span>
-          {formatRequests(a.expected_value)}
+          {formatRequests(a.observed_value, a.observed_measurement, locale)}
+          <span className="muted"> {ARROW} </span>
+          {formatRequests(a.expected_value, null, locale)}
         </span>
-        <span className="cell-sub ips-unit">events per 5 min</span>
+        <span className="cell-sub ips-unit">{t("eventsPer5Min")}</span>
       </>
     );
   }
@@ -172,7 +190,7 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
     if (f.unit == null) {
       return (
         <span className="muted">
-          —<span className="sr-only"> the unit of this detector is not known to this build</span>
+          —<span className="sr-only"> {t("unitUnknown")}</span>
         </span>
       );
     }
@@ -181,18 +199,18 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
     // column's edge. A new port expects none; the column header already says Expected.
     const unitWords =
       f.unit === "events"
-        ? "events / bucket"
+        ? t("unitEvents")
         : f.unit === "ports"
-          ? "distinct ports"
+          ? t("unitPorts")
           : f.unit === "since"
-            ? "events since first appeared"
+            ? t("unitSince")
             : null;
     return (
       <>
         <span className="ips-figures">
-          {formatFigure(f.unit, f.observed, m)}
-          <span className="muted"> → </span>
-          {expectsNone(a.anomaly_type) ? "none" : formatFigure(f.unit, f.expected)}
+          {formatFigure(f.unit, f.observed, m, i18n)}
+          <span className="muted"> {ARROW} </span>
+          {expectsNone(a.anomaly_type) ? common("none") : formatFigure(f.unit, f.expected, undefined, i18n)}
         </span>
         {unitWords && <span className="cell-sub ips-unit">{unitWords}</span>}
       </>
@@ -201,10 +219,13 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
   if (!isWafRow(a)) {
     return (
       <>
-        {formatMetric(a.observed_value)}
-        <span className="muted"> → </span>
-        {formatMetric(a.expected_value)}
-        <span className="unit"> EPS</span>
+        {formatMetric(a.observed_value, 2, locale)}
+        <span className="muted"> {ARROW} </span>
+        {formatMetric(a.expected_value, 2, locale)}
+        <span className="unit">
+          {unitGap(locale)}
+          {units("eps")}
+        </span>
       </>
     );
   }
@@ -216,21 +237,24 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
     return (
       <>
         <span className="ips-figures">
-          {formatRequests(a.observed_value, a.observed_measurement)}
-          <span className="muted"> → </span>none
+          {formatRequests(a.observed_value, a.observed_measurement, locale)}
+          <span className="muted"> {ARROW} </span>
+          {common("none")}
         </span>
-        <span className="cell-sub ips-unit">{SINCE_UNIT}</span>
+        <span className="cell-sub ips-unit">{sinceUnit(i18n)}</span>
       </>
     );
   }
   return (
     <>
       {ratio
-        ? formatPercent(a.observed_value, a.observed_measurement)
-        : formatRequests(a.observed_value, a.observed_measurement)}
-      <span className="muted"> → </span>
-      {ratio ? formatPercent(a.expected_value) : formatRequests(a.expected_value)}
-      {!ratio && <span className="unit"> {WAF_LIST_UNIT}</span>}
+        ? formatPercent(a.observed_value, a.observed_measurement, 1, locale)
+        : formatRequests(a.observed_value, a.observed_measurement, locale)}
+      <span className="muted"> {ARROW} </span>
+      {ratio
+        ? formatPercent(a.expected_value, null, 1, locale)
+        : formatRequests(a.expected_value, null, locale)}
+      {!ratio && <span className="unit"> {listUnit(i18n)}</span>}
     </>
   );
 }
@@ -241,8 +265,12 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
  * so a word there would read as something the analyst could ask for.
  */
 function EvidenceCell({ a }: { a: AnomalySummary }) {
+  const t = useTranslations("anomalies.rows");
+  const i18n = useBehaviorI18n();
   if (isWafRow(a) || isIpsRow(a) || isPwRow(a)) {
-    const meaning = `Evidence collection does not apply to ${isPwRow(a) ? "property watch" : isIpsRow(a) ? "IPS" : "WAF"} anomalies`;
+    const meaning = t("evidenceNotApplicable", {
+      family: isPwRow(a) ? "pw" : isIpsRow(a) ? "ips" : "waf",
+    });
     return (
       <span className="muted" title={meaning}>
         —<span className="sr-only"> {meaning}</span>
@@ -251,7 +279,7 @@ function EvidenceCell({ a }: { a: AnomalySummary }) {
   }
   return (
     <span className={`pill pill-quiet ${evidenceTone(a.evidence_status)}`}>
-      {evidenceLabel(a.evidence_status)}
+      {evidenceWord(i18n, a.evidence_status)}
     </span>
   );
 }
@@ -263,8 +291,20 @@ function ipsDeltaHidden(a: AnomalySummary): boolean {
   return unit !== "events" && unit !== "ports";
 }
 
+/** The detector's name in a row: Phase A in the interface language; the other families' own labels. */
+function typeText(a: AnomalySummary, i18n: BehaviorI18n): string {
+  if (isPwRow(a)) return pwTypeLabel(a.anomaly_type, i18n);
+  if (isWafRow(a)) return anomalyTypeLabel(a.anomaly_type, i18n);
+  if (!isIpsRow(a)) return detectorLabel(a.anomaly_type, i18n);
+  return rowTypeLabel(a, i18n);
+}
+
 export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const t = useTranslations("anomalies.rows");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
+  const { statePill, severityPill } = useEnumLabels();
 
   return (
     <tbody>
@@ -275,31 +315,33 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
             <tr>
               <SubjectCell a={a} />
               <td className="cell-detector">
-                {isPwRow(a) ? pwTypeLabel(a.anomaly_type) : rowTypeLabel(a)}
+                {typeText(a, i18n)}
                 {/* Below 1100 px severity folds under the detector. */}
-                <span className="cell-sub cell-fold fold-sm">Severity {a.severity}</span>
+                <span className="cell-sub cell-fold fold-sm">
+                  {t("severityFold", { value: severityPill(a.severity) })}
+                </span>
               </td>
               <td>
                 <span className={`pill pill-strong ${stateTone(a.state)}`}>
-                  {a.state}
+                  {statePill(a.state)}
                 </span>
                 {/* Up to 1280 px the Evidence column folds under the state. */}
                 {!isWafRow(a) && !isIpsRow(a) && !isPwRow(a) && (
                   <span className="cell-sub cell-fold fold-md">
-                    Evidence: {evidenceLabel(a.evidence_status)}
+                    {t("evidenceFold", { value: evidenceWord(i18n, a.evidence_status) })}
                   </span>
                 )}
               </td>
               <td className="num">
                 <ObservedCell a={a} />
                 <span className="cell-sub cell-fold fold-md fold-dev">
-                  Deviation {formatRatio(a.deviation_ratio)}
+                  {t("deviationFold", { value: formatRatio(a.deviation_ratio, locale) })}
                 </span>
               </td>
-              <td className="num col-md col-dev">{formatRatio(a.deviation_ratio)}</td>
+              <td className="num col-md col-dev">{formatRatio(a.deviation_ratio, locale)}</td>
               <td className="col-sm">
                 <span className={`pill pill-quiet ${sevTone(a.severity)}`}>
-                  {a.severity}
+                  {severityPill(a.severity)}
                 </span>
               </td>
               <td className="num col-sm col-started">
@@ -312,15 +354,23 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                   extra column was pushing the detail link out of view. */}
               <td className="row-actions">
                 <div className="row-actions-inner">
-                  <Link href={`/anomalies/${a.id}`}>Open</Link>
+                  <Link href={`/anomalies/${a.id}`}>{t("open")}</Link>
                   <button
                     type="button"
                     className="row-toggle"
                     aria-expanded={open}
-                    aria-label={`${open ? "Hide" : "Show"} technical detail for the ${(isPwRow(a) ? pwTypeLabel(a.anomaly_type) : rowTypeLabel(a)).toLowerCase()} on ${isPwRow(a) && a.pw_value ? `${valueText(a.pw_value)} · ${a.pw_value.watch_name}` : isIpsRow(a) ? `${ipsSubjectText(a)} · ${a.log_source_name ?? a.log_source_id}` : subjectText(a)}`}
+                    aria-label={t(open ? "hideDetail" : "showDetail", {
+                      type: typeText(a, i18n).toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-US"),
+                      subject:
+                        isPwRow(a) && a.pw_value
+                          ? `${valueText(a.pw_value)} · ${a.pw_value.watch_name}`
+                          : isIpsRow(a)
+                            ? `${ipsSubjectText(a, i18n)} · ${a.log_source_name ?? a.log_source_id}`
+                            : subjectText(a, i18n),
+                    })}
                     onClick={() => setExpanded(open ? null : a.id)}
                   >
-                    {open ? "Less" : "More"}
+                    {open ? t("less") : t("more")}
                   </button>
                 </div>
               </td>
@@ -337,19 +387,20 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                       !(isWafRow(a) && (isRatioType(a.anomaly_type) || isNewEndpointType(a.anomaly_type))) &&
                       !ipsDeltaHidden(a) && (
                       <div>
-                        <dt>Absolute delta</dt>
+                        <dt>{t("absoluteDelta")}</dt>
                         <dd className="num">
                           {a.absolute_delta == null ? (
-                            formatDelta(a.absolute_delta)
+                            formatDelta(a.absolute_delta, locale)
                           ) : (
                             <>
-                              {formatDelta(a.absolute_delta)}
+                              {formatDelta(a.absolute_delta, locale)}
                               <span className="muted">
+                                {" "}
                                 {isWafRow(a)
-                                  ? " requests"
+                                  ? t("deltaRequests")
                                   : isIpsRow(a) && ipsFigures(a, null).unit === "ports"
-                                    ? " ports"
-                                    : " events"}
+                                    ? t("deltaPorts")
+                                    : t("deltaEvents")}
                               </span>
                             </>
                           )}
@@ -357,38 +408,38 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                       </div>
                     )}
                     <div>
-                      <dt>Duration</dt>
+                      <dt>{t("duration")}</dt>
                       {/* Null while still running. Not "0s", and not "now
                           minus start", which would grow on every refresh. */}
                       <dd className="num">
                         {a.duration_seconds != null ? (
-                          formatDuration(a.duration_seconds)
+                          formatDuration(a.duration_seconds, i18n)
                         ) : (
-                          <span className="muted">running</span>
+                          <span className="muted">{t("running")}</span>
                         )}
                       </dd>
                     </div>
                     <div>
-                      <dt>Confidence</dt>
-                      <dd className="num">{formatMetric(a.confidence)}</dd>
+                      <dt>{t("confidence")}</dt>
+                      <dd className="num">{formatMetric(a.confidence, 2, locale)}</dd>
                     </div>
                     <div>
-                      <dt>Anomaly end</dt>
+                      <dt>{t("anomalyEnd")}</dt>
                       <dd className="num">
                         {a.anomaly_end ? (
                           <UtcTime value={a.anomaly_end} />
                         ) : (
-                          <span className="muted">still running</span>
+                          <span className="muted">{t("stillRunning")}</span>
                         )}
                       </dd>
                     </div>
                     <div>
-                      <dt>Resolved</dt>
+                      <dt>{t("resolved")}</dt>
                       <dd className="num">{<UtcTime value={a.resolved_at} />}</dd>
                     </div>
                     <div>
-                      <dt>Consecutive buckets</dt>
-                      <dd className="num">{a.consecutive_buckets}</dd>
+                      <dt>{t("consecutive")}</dt>
+                      <dd className="num">{formatCount(a.consecutive_buckets, locale)}</dd>
                     </div>
                   </dl>
                 </td>

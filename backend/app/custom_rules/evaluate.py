@@ -17,6 +17,7 @@ from enum import StrEnum
 
 from app.custom_rules.alerts import CustomRuleAlertEvent
 from app.custom_rules.catalog import CUSTOM_RULE_METRICS, MeasurementRule, catalog_entry
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     AnomalyState,
     BucketCompleteness,
@@ -124,7 +125,40 @@ def collection_silence(
     lag = int((closed - watermark).total_seconds())
     if lag <= bound_seconds:
         return None
-    return _stale_reason(watermark, now)
+    message = collection_silence_message(
+        watermark=watermark,
+        closed=closed,
+        now=now,
+        bound_seconds=bound_seconds,
+    )
+    return render(message) if message is not None else None
+
+
+def collection_silence_message(
+    *,
+    watermark: datetime,
+    closed: datetime,
+    now: datetime,
+    bound_seconds: int,
+) -> MessageRef | None:
+    """Coded stale reason; the string API above remains for existing callers."""
+    for moment in (watermark, closed, now):
+        if moment.tzinfo is None or moment.utcoffset() is None:
+            raise ValueError("timestamps must be timezone-aware")
+    if int((closed - watermark).total_seconds()) <= bound_seconds:
+        return None
+    code = (
+        "custom_rule.status.stale.second"
+        if watermark.second or watermark.microsecond
+        else "custom_rule.status.stale.minute"
+    )
+    return MessageRef(
+        code,
+        {
+            "bucket": watermark,
+            "age": max(0, int((now - watermark).total_seconds())),
+        },
+    )
 
 
 def _stale_reason(last_bucket: datetime, now: datetime) -> str:
@@ -241,6 +275,7 @@ class InterpretedReading:
     measurement: str | None
     in_maintenance: bool
     reason: str | None
+    reason_message: MessageRef | None = None
 
 
 def interpret(metric: CustomRuleMetric, facts: BucketFacts) -> InterpretedReading:
@@ -253,7 +288,8 @@ def interpret(metric: CustomRuleMetric, facts: BucketFacts) -> InterpretedReadin
             value=reading.value,
             measurement=reading.measurement,
             in_maintenance=True,
-            reason="the source is in maintenance",
+            reason=render(MessageRef("custom_rule.status.maintenance")),
+            reason_message=MessageRef("custom_rule.status.maintenance"),
         )
     return reading
 
@@ -309,6 +345,10 @@ class FoldInput:
     now: datetime
     #: Set when the kind's collection has stopped. Readings are not judged.
     collection_stale_reason: str | None = None
+    previous_reason_message: MessageRef | None = None
+    retired_reason_message: MessageRef | None = None
+    family_reason_message: MessageRef | None = None
+    collection_stale_reason_message: MessageRef | None = None
 
 
 @dataclass(frozen=True)
@@ -317,6 +357,7 @@ class FoldOutput:
 
     status: str | None
     status_reason: str | None
+    status_reason_message: MessageRef | None
     consecutive_breaching: int
     consecutive_under: int
     last_evaluated_bucket_start: datetime | None
@@ -352,6 +393,7 @@ class _Fold:
         self.judged = 0
         self.last_kind: str | None = None
         self.last_reason: str | None = None
+        self.last_reason_message: MessageRef | None = None
         self._requirement = WafMeasurementRequirement.EXACT
         self._unit = ""
 
@@ -364,7 +406,10 @@ class _Fold:
             # cannot resolve. Exact unders are the only way out (§F.5 rules 1
             # and 3); a stopped collector is not an under.
             return self._output(
-                RuleStatus.STALE.value, self.spec.collection_stale_reason, False
+                RuleStatus.STALE.value,
+                self.spec.collection_stale_reason,
+                self.spec.collection_stale_reason_message,
+                False,
             )
         entry = catalog_entry(self.spec.metric)
         self._requirement = _REQUIREMENT[entry.measurement]
@@ -378,15 +423,33 @@ class _Fold:
         # Readings passed in are ignored, including ones that would recover.
         spec = self.spec
         if not spec.platform_enabled:
-            return self._output(RuleStatus.NOT_ENABLED.value, "CUSTOM_RULES_ENABLED is off", False)
+            return self._coded_output(
+                RuleStatus.NOT_ENABLED.value, MessageRef("custom_rule.status.platform_off")
+            )
         if not spec.enabled:
-            return self._output(RuleStatus.DISABLED.value, "the rule is disabled", False)
+            return self._coded_output(
+                RuleStatus.DISABLED.value, MessageRef("custom_rule.status.disabled")
+            )
         if spec.retired:
-            reason = spec.retired_reason or "the subject is retired"
-            return self._output(RuleStatus.SUBJECT_RETIRED.value, reason, False)
+            message = spec.retired_reason_message or MessageRef(
+                "custom_rule.status.subject_retired"
+            )
+            return self._output(
+                RuleStatus.SUBJECT_RETIRED.value,
+                spec.retired_reason or render(message),
+                message,
+                False,
+            )
         if not spec.family_collected:
-            reason = spec.family_reason or "the subject's family is not collected"
-            return self._output(RuleStatus.NOT_COLLECTED.value, reason, False)
+            message = spec.family_reason_message or MessageRef(
+                "custom_rule.status.family_not_collected"
+            )
+            return self._output(
+                RuleStatus.NOT_COLLECTED.value,
+                spec.family_reason or render(message),
+                message,
+                False,
+            )
         return None
 
     def _consume(self, reading: InterpretedReading) -> None:
@@ -398,28 +461,44 @@ class _Fold:
             # §F.5 rule 1, applied to maintenance by §F.6: pause both counters.
             # Do not open, refresh or resolve, and do not count it as unmeasured.
             self.last_kind = "maintenance"
-            self.last_reason = reading.reason or "the source is in maintenance"
+            message = reading.reason_message or MessageRef("custom_rule.status.maintenance")
+            self.last_reason = reading.reason or render(message)
+            self.last_reason_message = message
             return
         if (
             reading.value is None
             or reading.measurement is None
             or not math.isfinite(reading.value)
         ):
-            self._unmeasured(reading.reason or "the bucket was not measured")
+            message = reading.reason_message or MessageRef(
+                "custom_rule.status.bucket_not_measured"
+            )
+            self._unmeasured(reading.reason or render(message), message)
             return
         if not math.isfinite(self.spec.threshold_value):
             # A non-finite threshold compares true against nothing. That must
             # not be read as "under" and used to resolve the breach.
-            self._unmeasured("threshold_value is not finite")
+            message = MessageRef("custom_rule.status.threshold_not_finite")
+            self._unmeasured(render(message), message)
             return
         measured = _waf_measurement(reading.measurement)
         decision = verdict_scope(self._requirement, measured)
         direction = _breaches(self.spec.operator, reading.value, self.spec.threshold_value)
         if direction is None:
-            self._unmeasured(f"operator {self.spec.operator!r} is not known")
+            message = MessageRef(
+                "custom_rule.status.operator_unknown",
+                {"operator": repr(self.spec.operator)},
+            )
+            self._unmeasured(render(message), message)
             return
         if decision.scope is WafVerdictScope.NONE:
-            self._unmeasured(decision.reason or "the bucket supports no verdict")
+            if measured is None:
+                message = MessageRef("custom_rule.reading.count_semantics_unknown")
+            elif self._requirement is WafMeasurementRequirement.EXACT:
+                message = MessageRef("custom_rule.reading.exact_required")
+            else:
+                message = MessageRef("custom_rule.status.no_verdict")
+            self._unmeasured(decision.reason or render(message), message)
             return
         if decision.scope is WafVerdictScope.INCREASE_ONLY and (
             self.spec.operator not in _INCREASE_OPERATORS or not direction
@@ -427,29 +506,31 @@ class _Fold:
             # A lower bound proves "above" only. It never proves under, and a
             # bound that does not itself cross the line proves nothing.
             if self.spec.operator in _INCREASE_OPERATORS:
-                reason = "a lower bound below the threshold proves nothing"
+                message = MessageRef("custom_rule.status.lower_bound_below_threshold")
             else:
-                reason = "a lower bound cannot prove the reading is under the threshold"
-            self._unmeasured(reason)
+                message = MessageRef("custom_rule.status.lower_bound_cannot_prove_under")
+            self._unmeasured(render(message), message)
             return
         if direction:
             self._on_breach(reading)
         else:
             self._on_under(reading)
 
-    def _unmeasured(self, reason: str) -> None:
+    def _unmeasured(self, reason: str, reason_message: MessageRef | None = None) -> None:
         # §F.5 rule 1: advance neither counter. Count the bucket only while a
         # breach is already open — an unmeasured reading never opens one.
         if self.breach is not None:
             self.breach.unmeasured_buckets += 1
         self.last_kind = "insufficient"
         self.last_reason = reason
+        self.last_reason_message = reason_message
 
     def _on_breach(self, reading: InterpretedReading) -> None:
         self.breaching += 1
         self.under = 0
         self.last_kind = "breach"
         self.last_reason = None
+        self.last_reason_message = None
         if self.breach is None:
             if self.breaching >= self.spec.sustain_buckets:
                 opened = self._open(reading)
@@ -468,6 +549,7 @@ class _Fold:
         self.under += 1
         self.last_kind = "under"
         self.last_reason = None
+        self.last_reason_message = None
         if self.breach is None:
             return
         _note_last(self.breach, reading)
@@ -475,7 +557,13 @@ class _Fold:
             self.breach.state = AnomalyState.RESOLVED.value
             self.breach.resolved_at = self.spec.now
             self.events.append(
-                self._event("resolve", self.breach, reading, "condition recovered")
+                self._event(
+                    "resolve",
+                    self.breach,
+                    reading,
+                    render(MessageRef("alert.custom_rule.recovered")),
+                    MessageRef("alert.custom_rule.recovered"),
+                )
             )
             self.resolved = self.breach
             self.breach = None
@@ -524,6 +612,7 @@ class _Fold:
         breach: BreachState,
         reading: InterpretedReading,
         reason: str | None,
+        reason_message: MessageRef | None = None,
     ) -> CustomRuleAlertEvent:
         return CustomRuleAlertEvent(
             action=action,
@@ -543,26 +632,52 @@ class _Fold:
             last_bucket_start=breach.last_bucket_start,
             unmeasured_buckets=breach.unmeasured_buckets,
             reason=reason,
+            reason_message=reason_message,
         )
 
     def _finish(self) -> FoldOutput:
         if self.judged == 0:
-            return self._output(self.spec.previous_status, self.spec.previous_reason, True)
+            return self._output(
+                self.spec.previous_status,
+                self.spec.previous_reason,
+                self.spec.previous_reason_message,
+                True,
+            )
         if self.breach is not None:
             reason = (
                 self.last_reason
                 if self.last_kind in ("insufficient", "maintenance")
                 else None
             )
-            return self._output(self.breach.state, reason, False)
+            message = (
+                self.last_reason_message
+                if self.last_kind in ("insufficient", "maintenance")
+                else None
+            )
+            return self._output(self.breach.state, reason, message, False)
         if self.last_kind in ("insufficient", "maintenance"):
-            return self._output(RuleStatus.NO_VERDICT.value, self.last_reason, False)
-        return self._output(RuleStatus.OK.value, None, False)
+            return self._output(
+                RuleStatus.NO_VERDICT.value,
+                self.last_reason,
+                self.last_reason_message,
+                False,
+            )
+        return self._output(RuleStatus.OK.value, None, None, False)
 
-    def _output(self, status: str | None, reason: str | None, preserve: bool) -> FoldOutput:
+    def _coded_output(self, status: str, message: MessageRef) -> FoldOutput:
+        return self._output(status, render(message), message, False)
+
+    def _output(
+        self,
+        status: str | None,
+        reason: str | None,
+        reason_message: MessageRef | None,
+        preserve: bool,
+    ) -> FoldOutput:
         return FoldOutput(
             status=status,
             status_reason=reason,
+            status_reason_message=reason_message,
             consecutive_breaching=self.breaching,
             consecutive_under=self.under,
             last_evaluated_bucket_start=self.last_evaluated,
@@ -653,18 +768,21 @@ def _note_last(breach: BreachState, reading: InterpretedReading) -> None:
 
 
 def _absent(facts: BucketFacts) -> InterpretedReading:
+    message = MessageRef("custom_rule.reading.subject_missing")
     return InterpretedReading(
-        facts.bucket_start, None, None, False, "no row for this subject in the bucket"
+        facts.bucket_start, None, None, False, render(message), message
     )
 
 
-def _none(facts: BucketFacts, reason: str) -> InterpretedReading:
-    return InterpretedReading(facts.bucket_start, None, None, False, reason)
+def _none(facts: BucketFacts, message: MessageRef) -> InterpretedReading:
+    return InterpretedReading(
+        facts.bucket_start, None, None, False, render(message), message
+    )
 
 
 def _measured(facts: BucketFacts, value: float, *, lower: bool) -> InterpretedReading:
     if not math.isfinite(value):
-        return _none(facts, "the reading is not finite")
+        return _none(facts, MessageRef("custom_rule.reading.not_finite"))
     label = WafMeasurement.LOWER_BOUND.value if lower else WafMeasurement.EXACT.value
     return InterpretedReading(facts.bucket_start, value, label, False, None)
 
@@ -674,9 +792,9 @@ def _phase_a(facts: BucketFacts, value: float | None) -> InterpretedReading:
     if not facts.present:
         return _absent(facts)
     if facts.completeness == BucketCompleteness.PARTIAL.value:
-        return _none(facts, "the bucket is PARTIAL")
+        return _none(facts, MessageRef("custom_rule.reading.bucket_partial"))
     if facts.completeness != BucketCompleteness.COMPLETE.value or value is None:
-        return _none(facts, "the bucket is not COMPLETE")
+        return _none(facts, MessageRef("custom_rule.reading.bucket_not_complete"))
     return _measured(facts, float(value), lower=False)
 
 
@@ -696,9 +814,9 @@ def _fleet(facts: BucketFacts) -> InterpretedReading:
     seconds = facts.class_seconds or 0
     events = facts.class_events or 0
     if expected <= 0:
-        return _none(facts, "the class has no enabled, monitored source")
+        return _none(facts, MessageRef("custom_rule.reading.class_no_enabled_source"))
     if complete <= 0 or seconds <= 0:
-        return _none(facts, "the class has no COMPLETE source bucket")
+        return _none(facts, MessageRef("custom_rule.reading.class_no_complete_source"))
     # Missing sources can only add events, so a partial class is a lower bound
     # — including a lower bound of zero.
     return _measured(facts, events / seconds, lower=complete != expected)
@@ -709,14 +827,20 @@ def _request_count(facts: BucketFacts) -> InterpretedReading:
         return _absent(facts)
     measurement = facts.request_count_measurement
     if measurement is None:
-        return _none(facts, "the bucket does not state whether the request count is exact")
+        return _none(
+            facts, MessageRef("custom_rule.reading.request_count_semantics_missing")
+        )
     if facts.request_count is None:
-        return _none(facts, "the bucket does not state whether the request count is exact")
+        return _none(
+            facts, MessageRef("custom_rule.reading.request_count_semantics_missing")
+        )
     if measurement == WafMeasurement.EXACT.value:
         return _measured(facts, float(facts.request_count), lower=False)
     if measurement == WafMeasurement.LOWER_BOUND.value:
         return _measured(facts, float(facts.request_count), lower=True)
-    return _none(facts, "the bucket does not state whether the request count is exact")
+    return _none(
+        facts, MessageRef("custom_rule.reading.request_count_semantics_missing")
+    )
 
 
 def _ratio(
@@ -726,9 +850,9 @@ def _ratio(
     *,
     measurement: str | None,
     remainder: int | None,
-    collected_reason: str,
-    lower_reason: str,
-    zero_reason: str,
+    collected_reason: MessageRef,
+    lower_reason: MessageRef,
+    zero_reason: MessageRef,
 ) -> InterpretedReading:
     """A share. The denominator must be exact and positive; a remainder lowers the numerator."""
     if not facts.present:
@@ -740,11 +864,11 @@ def _ratio(
     if measurement != WafMeasurement.EXACT.value:
         return _none(facts, collected_reason)
     if numerator is None:
-        return _none(facts, "the numerator was not collected")
+        return _none(facts, MessageRef("custom_rule.reading.numerator_missing"))
     if denominator is None or denominator <= 0:
         return _none(facts, zero_reason)
     if remainder is None:
-        return _none(facts, "the unmapped remainder was not collected")
+        return _none(facts, MessageRef("custom_rule.reading.unmapped_remainder_missing"))
     return _measured(facts, numerator / denominator, lower=remainder > 0)
 
 
@@ -755,9 +879,9 @@ def _block_ratio(facts: BucketFacts) -> InterpretedReading:
         facts.action_events,
         measurement=facts.action_measurement,
         remainder=facts.unmapped_action_count,
-        collected_reason="the action breakdown was not collected",
-        lower_reason="the action denominator is a lower bound",
-        zero_reason="the action denominator is zero",
+        collected_reason=MessageRef("custom_rule.reading.action_breakdown_missing"),
+        lower_reason=MessageRef("custom_rule.reading.action_denominator_lower_bound"),
+        zero_reason=MessageRef("custom_rule.reading.action_denominator_zero"),
     )
 
 
@@ -768,9 +892,9 @@ def _server_error_ratio(facts: BucketFacts) -> InterpretedReading:
         facts.response_code_events,
         measurement=facts.response_code_measurement,
         remainder=facts.unclassified_response_count,
-        collected_reason="the response-code breakdown was not collected",
-        lower_reason="the response-code denominator is a lower bound",
-        zero_reason="the response-code denominator is zero",
+        collected_reason=MessageRef("custom_rule.reading.response_breakdown_missing"),
+        lower_reason=MessageRef("custom_rule.reading.response_denominator_lower_bound"),
+        zero_reason=MessageRef("custom_rule.reading.response_denominator_zero"),
     )
 
 
@@ -781,9 +905,9 @@ def _client_error_ratio(facts: BucketFacts) -> InterpretedReading:
         facts.response_code_events,
         measurement=facts.response_code_measurement,
         remainder=facts.unclassified_response_count,
-        collected_reason="the response-code breakdown was not collected",
-        lower_reason="the response-code denominator is a lower bound",
-        zero_reason="the response-code denominator is zero",
+        collected_reason=MessageRef("custom_rule.reading.response_breakdown_missing"),
+        lower_reason=MessageRef("custom_rule.reading.response_denominator_lower_bound"),
+        zero_reason=MessageRef("custom_rule.reading.response_denominator_zero"),
     )
 
 
@@ -792,12 +916,12 @@ def _entity_events(facts: BucketFacts) -> InterpretedReading:
         return _absent(facts)
     measurement = facts.dimension_measurement
     if facts.events is None or measurement is None:
-        return _none(facts, "the dimension was not collected")
+        return _none(facts, MessageRef("custom_rule.reading.dimension_missing"))
     if measurement == WafMeasurement.EXACT.value:
         return _measured(facts, float(facts.events), lower=False)
     if measurement == WafMeasurement.LOWER_BOUND.value:
         return _measured(facts, float(facts.events), lower=True)
-    return _none(facts, "the dimension was not collected")
+    return _none(facts, MessageRef("custom_rule.reading.dimension_missing"))
 
 
 def _total_events(facts: BucketFacts) -> InterpretedReading:
@@ -816,16 +940,18 @@ def _blocked_share(facts: BucketFacts) -> InterpretedReading:
     if (
         facts.action_measurement in (None, "NOT_COLLECTED", "FAILED", "REJECTED")
     ):
-        return _none(facts, "the action breakdown was not collected")
+        return _none(facts, MessageRef("custom_rule.reading.action_breakdown_missing"))
     if facts.action_measurement == WafMeasurement.LOWER_BOUND.value:
-        return _none(facts, "the action denominator is a lower bound")
+        return _none(
+            facts, MessageRef("custom_rule.reading.action_denominator_lower_bound")
+        )
     if facts.action_measurement != WafMeasurement.EXACT.value:
-        return _none(facts, "the action breakdown was not collected")
+        return _none(facts, MessageRef("custom_rule.reading.action_breakdown_missing"))
     if blocked is None or allowed is None or unmapped is None:
-        return _none(facts, "the numerator was not collected")
+        return _none(facts, MessageRef("custom_rule.reading.numerator_missing"))
     denominator = blocked + allowed + unmapped
     if denominator <= 0:
-        return _none(facts, "the action denominator is zero")
+        return _none(facts, MessageRef("custom_rule.reading.action_denominator_zero"))
     return _measured(facts, blocked / denominator, lower=unmapped > 0)
 
 

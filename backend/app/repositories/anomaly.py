@@ -152,6 +152,7 @@ class AnomalyRepository:
                 a.evidence_status, a.suppressed,
                 cast(null(), String).label("observed_measurement"),
                 a.explanation,
+                a.explanation_i18n.label("explanation_i18n"),
             )
             .select_from(a)
             .outerjoin(LogSource, LogSource.id == a.log_source_id)
@@ -198,6 +199,7 @@ class AnomalyRepository:
                 w.evidence_status, w.suppressed,
                 w.observed_measurement.label("observed_measurement"),
                 w.explanation,
+                w.explanation_i18n.label("explanation_i18n"),
             )
             .select_from(w)
             .join(e, e.id == w.waf_endpoint_id)
@@ -242,6 +244,7 @@ class AnomalyRepository:
                 a.evidence_status, a.suppressed,
                 a.observed_measurement.label("observed_measurement"),
                 a.explanation,
+                a.explanation_i18n.label("explanation_i18n"),
             )
             .select_from(a)
             .outerjoin(e, e.id == a.ips_entity_id)
@@ -282,6 +285,7 @@ class AnomalyRepository:
                 a.evidence_status, a.suppressed,
                 a.observed_measurement.label("observed_measurement"),
                 a.explanation,
+                a.explanation_i18n.label("explanation_i18n"),
             )
             .select_from(a)
             .join(w, w.id == a.watch_id)

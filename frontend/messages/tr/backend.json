@@ -1,0 +1,1046 @@
+{
+  "alert": {
+    "custom_rule": {
+      "deleted": "Kural silindi",
+      "description": {
+        "exact": "{name}, {observed} değerini gözlemledi (eşik {operator} {threshold})",
+        "exact_unit": "{name}, {observed} {unit} değerini gözlemledi (eşik {operator} {threshold} {unit})",
+        "lower_bound": "{name}, en az {observed} değerini gözlemledi (eşik {operator} {threshold})",
+        "lower_bound_unit": "{name}, en az {observed} {unit} değerini gözlemledi (eşik {operator} {threshold} {unit})",
+        "unmeasured": "{name}, ölçülmemiş bir değer gözlemledi (eşik {operator} {threshold})",
+        "unmeasured_unit": "{name}, ölçülmemiş bir değer gözlemledi (eşik {operator} {threshold} {unit})"
+      },
+      "recovered": "Koşul düzeldi"
+    },
+    "inventory": {
+      "catchall_sender": {
+        "description": "Yapılandırılmış bir log source olmayan cihaz, catch-all log source'a veri gönderiyor ve SOC incelemesi gerektiriyor.",
+        "reviewed": "Catch-all gönderici {target}",
+        "title": "{source} üzerinde yeni gönderici: {identifier}"
+      },
+      "log_source": {
+        "description": "Yeni ve dahili olmayan log source, SOC incelemesi gerektiriyor.",
+        "reviewed": "Log source incelendi",
+        "title": "Yeni log source: {name}"
+      }
+    },
+    "offense_collection": {
+      "recovered": "Offense toplama güncelliği düzeldi.",
+      "stale": {
+        "description": "Salt okunur offense toplayıcı, yapılandırılmış güncellik eşiği içinde tamamlanmadı.",
+        "title": "{instance} için offense toplama güncel değil"
+      }
+    },
+    "search": {
+      "failure": {
+        "description": "{name}, art arda {failures} çalıştırmada başarısız oldu ({error_type})",
+        "recovered": "Arama başarıyla çalıştırıldı",
+        "title": "{name} çalıştırılamıyor"
+      },
+      "threshold": {
+        "exact": "{name}, {observed} sonucunu döndürdü (eşik {operator} {threshold})",
+        "lower_bound": "{name}, en az {observed} sonucunu döndürdü (eşik {operator} {threshold})",
+        "recovered": "Sonuç yeniden eşik içinde"
+      }
+    },
+    "threshold": {
+      "crossed": "{name} eşiğini aştı"
+    }
+  },
+  "custom_rule": {
+    "family": {
+      "collection_off": "{setting} kapalı",
+      "unknown": "{kind} konu türü için bilinen bir toplama ailesi yok"
+    },
+    "reading": {
+      "action_breakdown_missing": "Eylem dağılımı toplanmadı",
+      "action_denominator_lower_bound": "Eylem paydası bir alt sınır",
+      "action_denominator_zero": "Eylem paydası sıfır",
+      "bucket_not_complete": "Zaman dilimi COMPLETE değil",
+      "bucket_partial": "Zaman dilimi PARTIAL",
+      "class_no_complete_source": "Sınıfta COMPLETE zaman dilimine sahip kaynak yok",
+      "class_no_enabled_source": "Sınıfta etkin ve izlenen kaynak yok",
+      "count_semantics_unknown": "Zaman dilimi, sayımlarının kesin mi yoksa alt sınır mı olduğunu belirtmiyor",
+      "dimension_missing": "Boyut toplanmadı",
+      "exact_required": "Tespit kesin sayım gerektiriyor ve bu sayım bir alt sınır",
+      "not_finite": "Okuma sonlu değil",
+      "numerator_missing": "Pay toplanmadı",
+      "request_count_semantics_missing": "Zaman dilimi, istek sayısının kesin olup olmadığını belirtmiyor",
+      "response_breakdown_missing": "Yanıt kodu dağılımı toplanmadı",
+      "response_denominator_lower_bound": "Yanıt kodu paydası bir alt sınır",
+      "response_denominator_zero": "Yanıt kodu paydası sıfır",
+      "subject_missing": "Bu konu için zaman diliminde satır yok",
+      "unmapped_remainder_missing": "Eşlenmemiş kalan toplanmadı"
+    },
+    "status": {
+      "bucket_not_measured": "Zaman dilimi ölçülmedi",
+      "disabled": "Kural devre dışı",
+      "family_not_collected": "Konunun ailesi toplanmıyor",
+      "lower_bound_below_threshold": "Eşiğin altındaki bir alt sınır hiçbir şeyi kanıtlamaz",
+      "lower_bound_cannot_prove_under": "Bir alt sınır, okumanın eşiğin altında olduğunu kanıtlayamaz",
+      "maintenance": "Kaynak bakımda",
+      "no_verdict": "Zaman dilimi hiçbir hükmü desteklemiyor",
+      "operator_unknown": "{operator} işleci bilinmiyor",
+      "platform_off": "CUSTOM_RULES_ENABLED kapalı",
+      "stale": {
+        "minute": "Bu tür için {bucket} tarihinden beri zaman dilimi toplanmadı ({age})",
+        "second": "Bu tür için {bucket} tarihinden beri zaman dilimi toplanmadı ({age})"
+      },
+      "subject_retired": "Konu kullanımdan kaldırıldı",
+      "threshold_not_finite": "threshold_value sonlu değil"
+    },
+    "subject": {
+      "endpoint_retired": "Endpoint kullanımdan kaldırıldı",
+      "endpoint_retired_at": "Endpoint {retired_at} tarihinde kullanımdan kaldırıldı",
+      "entity_retired": "Varlık kullanımdan kaldırıldı",
+      "entity_retired_at": "Varlık {retired_at} tarihinde kullanımdan kaldırıldı",
+      "missing": "Konu artık mevcut değil",
+      "unknown_retirement": "{kind} konu türü için bilinen bir kullanımdan kaldırma kuralı yok",
+      "value_retired": "Değer kullanımdan kaldırıldı",
+      "value_unpinned": "Değer artık sabitlenmiş değil"
+    }
+  },
+  "explanation": {
+    "dimension": {
+      "unpopulated": "Bu alan, bu log source'un olaylarında dolu değil"
+    }
+  },
+  "validation": {
+    "field": {
+      "insufficient_coverage": "Olayların {populated} oranında doldurulmuş; gerekli {required} oranının altında",
+      "no_events": "Kaynak pencerede olay üretmedi; bir sonuca varılamaz",
+      "population_not_measured": "Doldurulma ölçülmedi",
+      "total_not_measured": "Kaynağın toplam olay hacmi ölçülmedi"
+    },
+    "ips": {
+      "field": {
+        "not_mapped": "Bu mantıksal alana hiçbir QRadar alanı eşlenmemiş",
+        "rejected": "QRadar eşlenen alanı belirtilen adıyla reddetti",
+        "unpopulated": "Alan mevcut ancak penceredeki hiçbir olay kullanılabilir bir değer taşımadı"
+      },
+      "profile": {
+        "truncated": "Sınırlı doğrulama yoklaması kırpıldı"
+      },
+      "input": {
+        "normalized_field": "Normalize alan IPS izin listesinde yok",
+        "property_name": "Geçersiz QRadar özellik adı: yalnızca harf, rakam, alt çizgi, boşluk ve tire; en çok 64 karakter",
+        "action_count": "{outcome} eylem değerleri {max_count} değer sınırını aşıyor",
+        "action_value": "Geçersiz {outcome} eylem değeri: en çok {max_length} karakterlik yazdırılabilir bir belirteç kullanın",
+        "action_overlap": "Bir eylem değeri hem BLOCKED hem ALLOWED olarak eşlenmiş",
+        "action_needs_field": "Eylem eşlemesi için bir ACTION alan eşlemesi gerekir"
+      }
+    },
+    "profile": {
+      "field_reason": "Alan {field}: {status} ({detail})",
+      "ineligible": {
+        "disabled": "Profil devre dışı",
+        "status": "Profil doğrulama durumu: {validation_status}",
+        "version_never_validated": "Profil sürümü {profile_version} hiç doğrulanmadı",
+        "version_not_validated": "Profil sürümü {profile_version} doğrulanmadı (son doğrulanan: {validated_profile_version})"
+      },
+      "lookup_failed": "Log source araması başarısız oldu ({error})",
+      "source_missing": "Bu log source QRadar'da mevcut değil",
+      "total_not_measured": "Toplam olay hacmi ölçülmedi ({error})",
+      "conflict": {
+        "missing": "Profil mevcut değil; expected_profile_version null olarak oluşturun",
+        "version": "Profil sürümü çakışması; geçerli sürüm {current}",
+        "running": "{profile_version} sürümünün doğrulaması {since} tarihinden beri zaten çalışıyor",
+        "not_validated": "Profil sürümü {profile_version} doğrulanmadı (durum: {validation_status}); önce doğrulamayı çalıştırın"
+      }
+    },
+    "waf": {
+      "field": {
+        "implausible_no_values": "Örneklenen hiçbir olay makul bir {logical} değeri taşımıyor; gerekli {required} oranının altında",
+        "implausible_ratio": "Örneklenen olayların {plausible} oranı makul bir {logical} değeri taşıyor; gerekli {required} oranının altında",
+        "not_mapped": "Bu alana hiçbir QRadar özelliği eşlenmemiş",
+        "property_rejected": "QRadar bu özelliği adıyla kullanan sorguyu reddetti; bu adla mevcut değil",
+        "unpopulated": "Özellik mevcut ancak penceredeki hiçbir olay değer taşımadı"
+      },
+      "ineligible": {
+        "collection_disabled": "WAF toplaması devre dışı (WAF_COLLECTION_ENABLED=false)",
+        "monitoring_disabled": "Log source için izleme devre dışı",
+        "source_missing": "Profilin log source'u artık mevcut değil"
+      },
+      "input": {
+        "property_name": "{name} geçerli bir QRadar özellik adı değil: yalnızca harf, rakam, alt çizgi, boşluk ve tire; en çok 64 karakter",
+        "action_value": "{value} geçerli bir {outcome} eylem değeri değil: en çok {max_length} karakterlik yazdırılabilir bir belirteç olmalı",
+        "action_overlap": "Hem BLOCKED hem ALLOWED olarak eşlenen eylem değerleri: {values}",
+        "action_needs_property": "Eylem eşlemesi için bir eylem özelliği gerekir"
+      }
+    }
+  },
+  "auth": {
+    "permission": {
+      "missing": "Gerekli izin eksik: {permission}"
+    },
+    "password": {
+      "too_short": "Parola en az 12 karakter olmalıdır",
+      "too_long": "Parola en fazla 72 bayt olmalıdır",
+      "equals_username": "Parola kullanıcı adıyla aynı olmamalıdır",
+      "ldap_directory": "LDAP hesapları parolalarını burada değil, dizinde değiştirir.",
+      "local_only": "Parolayı yalnızca yerel bir hesap değiştirebilir",
+      "current_wrong": "Mevcut parola yanlış"
+    },
+    "username": {
+      "shape": "Kullanıcı adı 1 ile 255 karakter arasında olmalı; boşluk veya denetim karakteri içermemelidir"
+    },
+    "login": {
+      "invalid_credentials": "Kullanıcı adı veya parola geçersiz",
+      "directory_unavailable": "Dizin sunucusuna ulaşılamıyor. Oturum açma tamamlanmadı."
+    },
+    "session": {
+      "required": "Oturum açmanız gerekiyor.",
+      "must_change_password": "Başka bir istekten önce parolanın değiştirilmesi gerekiyor."
+    },
+    "csrf": {
+      "origin_missing": "Siteler arası istek reddedildi: istekte Origin veya Referer üst bilgisi yok.",
+      "origin_mismatch": "Siteler arası istek reddedildi: {origin} kaynağı yapılandırılmış genel kaynak değil."
+    },
+    "user": {
+      "last_admin": "admin:* iznine sahip son etkin kullanıcı devre dışı bırakılamaz ve bu rolü kaybedemez",
+      "not_found": "Bu kimliğe sahip bir kullanıcı yok.",
+      "ldap_no_password": "Bir LDAP kullanıcısının burada parolası olmaz.",
+      "local_needs_password": "Yerel bir kullanıcı için ilk parola gerekir.",
+      "source_invalid": "auth_source değeri LOCAL veya LDAP olmalıdır",
+      "exists": "Bu kullanıcı adına veya e-postaya sahip bir kullanıcı zaten var.",
+      "username_taken": "Bu kullanıcı adına sahip bir kullanıcı zaten var.",
+      "email_taken": "Bu e-postaya sahip bir kullanıcı zaten var.",
+      "email_unusable": "E-posta adresi kullanılamaz",
+      "reset_local_only": "Burada yalnızca yerel bir hesabın parolası sıfırlanabilir.",
+      "role_unknown": "Bilinmeyen rol: {name}"
+    },
+    "directory": {
+      "stale": "Dizin yapılandırması güncel değil. Yeniden yükleyip tekrar deneyin.",
+      "test_needs_url": "Test için bir dizin URL adresi gerekir",
+      "urls_max": "En fazla {max} dizin URL adresine izin verilir",
+      "url_empty": "Bir dizin URL adresi boş",
+      "url_too_long": "Bir dizin URL adresi 512 karakterden uzun",
+      "url_scheme": "{url} ldap:// veya ldaps:// kullanmalıdır",
+      "url_credentials": "{url} kimlik bilgisi içermemelidir",
+      "url_host": "{url} bir ana makine adı içermelidir",
+      "url_path": "{url} yol içermemelidir",
+      "url_query": "{url} sorgu içermemelidir",
+      "url_fragment": "{url} parça içermemelidir",
+      "start_tls_with_ldaps": "ldaps:// URL adresi için start_tls kapalı olmalıdır",
+      "start_tls_needs_ldap": "start_tls için ldap:// URL adresi gerekir",
+      "ldap_needs_start_tls": "ldap:// URL adresi için start_tls gerekir",
+      "enabled_needs_url": "Etkin bir yapılandırmanın en az bir dizin URL adresi olmalıdır",
+      "enabled_needs_valid_url": "Etkin bir yapılandırmanın en az bir geçerli dizin URL adresi olmalıdır",
+      "template_too_long": "bind_template 512 karakterden uzun",
+      "template_username": "bind_template içinde '{'username'}' bulunmalıdır",
+      "timeout_range": "timeout_seconds 1 ile 30 arasında olmalıdır",
+      "ca_too_long": "ca_pem çok uzun",
+      "ca_private_key": "ca_pem bir sertifika olmalıdır, özel anahtar olamaz",
+      "ca_invalid": "ca_pem bir PEM X.509 sertifikası değil",
+      "cert_not_yet_valid": "{subject} sertifikası henüz geçerli değil (not_before {not_before})",
+      "cert_expired": "{subject} sertifikasının süresi dolmuş (not_after {not_after})",
+      "base_too_long": "user_search_base 1024 karakterden uzun",
+      "base_control_character": "user_search_base bir denetim karakteri içeriyor"
+    }
+  },
+  "dashboard": {
+    "not_found": "Gösterge paneli bulunamadı",
+    "name_taken": "''{name}'' adlı bir gösterge paneliniz zaten var",
+    "owner_limit": "Sahip başına en fazla {limit} gösterge paneli olabilir",
+    "owner_only": "Bu gösterge panelini yalnızca sahibi veya bir yönetici değiştirebilir",
+    "visibility_needs_permission": "Görünürlüğü değiştirmek için {permission} izni gerekir",
+    "changed_since_opened": "Bu gösterge paneli siz açtıktan sonra değişti"
+  },
+  "propertywatch": {
+    "name_exists": "''{name}'' adlı bir özellik izleme zaten var",
+    "action": {
+      "change_pins": "scope, özellikleri veya sabitlenmiş değerleri değiştirme",
+      "change_scope": "scope veya özellikleri değiştirme (izleme sürümü değişir)",
+      "unpin": "bir değerin sabitlemesini kaldırma",
+      "delete": "izlemeyi silme"
+    },
+    "dependency": {
+      "refused": "{action} işlemi yapılamıyor: {names} özel kuralları bu izlemenin bir değerini sabitliyor; önce kuralları ayırın veya silin",
+      "raced": "{action} işlemi yapılamıyor: istek çalışırken bir özel kural bu izlemenin bir değerini sabitledi; yeniden yükleyip tekrar deneyin"
+    }
+  },
+  "customrule": {
+    "name_exists": "''{name}'' adlı bir özel kural zaten var",
+    "watch_value_gone": "Özellik izleme değeri artık yok (kural kaydedilirken izleme değişti veya silindi); yeniden yükleyip bir değer seçin"
+  },
+  "coverage": {
+    "rollup": {
+      "unmapped": "Bu tekniğe eşlenmiş kural yok.",
+      "all_excluded": "Bu tekniğe eşlenen her kural devre dışı ya da sayım dışı bırakılmış; bu yüzden etkin algılama yok.",
+      "none_detecting": "{degraded} / {enabled} etkin kural şu anda algılama yapmıyor.",
+      "not_established": "Eşlenen kurallar için kural sağlığı henüz belirlenmedi.",
+      "some_degraded": "{working} / {enabled} etkin kural algılıyor; {degraded} kural bozulmuş.",
+      "some_unestablished": "{working} / {enabled} etkin kural algılıyor; geri kalanların durumu henüz belirlenmedi.",
+      "all_detecting": "Bu tekniğe eşlenen {enabled} etkin kuralın tümü algılıyor."
+    },
+    "evidence": {
+      "below_floor": "Eşleme güveni {confidence}, {floor} tabanının altında; kaydedildi ancak coverage'a sayılmadı.",
+      "disabled": "Kural devre dışı olduğu için etkin coverage sağlamıyor.",
+      "acceptable": "Kural etkin ve sağlığı kabul edilebilir.",
+      "dependency_degraded": "Kuralın gerektirdiği telemetri kullanılamıyor; bu yüzden tetiklenemez.",
+      "never_observed": "Kuralın hiç tetiklendiği gözlenmedi.",
+      "inactive": "Kural, hareketsizlik penceresi içinde tetiklenmedi.",
+      "not_established": "Kuralın sağlığı henüz belirlenmedi."
+    }
+  },
+  "rule_health": {
+    "age_unknown": "Kuralın yaşı bilinmediği için hareketsizlik değerlendirilemez.",
+    "dependency": {
+      "disabled": "{label} devre dışı",
+      "not_delivering": "{label} olay göndermiyor",
+      "not_observed": "{label} gözlenmedi"
+    },
+    "dependency_degraded": "Kural güvenilir biçimde tetiklenemez: {dependencies}. Kuralın sessizliği, kuralın kendisi hakkında kanıt değildir.",
+    "dependency_unobserved": "Bir bağımlılık gözlenmediği için kural hakkında karar verilemiyor: {dependencies}.",
+    "disabled": "Kural QRadar'da devre dışı olduğu için tespit üretmez.",
+    "grace": "Kural {age_days} gün yaşında; {grace_days} günlük değerlendirme muafiyeti içinde.",
+    "healthy": {
+      "direct": "Kural, bağımlılıkların sağlıklı olduğu değerlendirme penceresinde {count} kez tetiklendi.",
+      "inferred": "Değerlendirme penceresinde, bağımlılıklar sağlıklıyken offense'e katkı veren en az {count} tetiklenme gözlendi.",
+      "lower_bound": "Değerlendirme penceresinde, bağımlılıklar sağlıklıyken en az {count} eşleşen olay ölçüldü."
+    },
+    "inactive": "Kuralın son tetiklenmesi {quiet_days} gün önceydi; {inactivity_days} günlük hareketsizlik penceresinin dışında.",
+    "incomplete": {
+      "cause": {
+        "failed_many": "{count} pencere toplanamadı",
+        "failed_many_class": "{count} pencere toplanamadı (son hata sınıfı: {error_class})",
+        "failed_one": "1 pencere toplanamadı",
+        "failed_one_class": "1 pencere toplanamadı (son hata sınıfı: {error_class})",
+        "skipped_many": "{count} pencere, yakalama ufkunun ötesinde bırakıldığı için hiç aranmadı",
+        "skipped_one": "1 pencere, yakalama ufkunun ötesinde bırakıldığı için hiç aranmadı"
+      },
+      "detail_many": "Değerlendirme penceresinin ölçülen kural eşleşmesi coverage'ı eksiksiz değil ({complete} / {expected} pencere eksiksiz): {causes}. Etkilenen pencereler: {first_start} ile {last_start} arasında. Ölçülen eşleşmelerin yokluğu, kuralın hiç tetiklenmediğinin kanıtı değildir. Değerlendirme penceresi, etkilenen son pencereyi {until} tarihine kadar tutuyor.",
+      "detail_one": "Değerlendirme penceresinin ölçülen kural eşleşmesi coverage'ı eksiksiz değil ({complete} / {expected} pencere eksiksiz): {causes}. Etkilenen pencere: {first_start}. Ölçülen eşleşmelerin yokluğu, kuralın hiç tetiklenmediğinin kanıtı değildir. Değerlendirme penceresi, etkilenen son pencereyi {until} tarihine kadar tutuyor.",
+      "head": "Değerlendirme penceresinin ölçülen kural eşleşmesi coverage'ı eksiksiz değil ({complete} / {expected} pencere eksiksiz); bu yüzden ölçülen eşleşmelerin yokluğu, kuralın hiç tetiklenmediğinin kanıtı değildir.",
+      "no_collection": "Değerlendirme penceresini kapsayan tamamlanmış bir kural metriği toplaması yok; bu yüzden gözlenen tetiklenmelerin yokluğu, kuralın hiç tetiklenmediğinin kanıtı değildir."
+    },
+    "label": {
+      "building_block": "yapı taşı {ref}",
+      "log_source_type": "log source türü {ref}",
+      "named": "{name}"
+    },
+    "min_history": "Bu kuralı sınıflandırmak için yeterli gözlenmiş geçmiş yok.",
+    "never_observed": {
+      "measured": "Kural etkin ve bağımlılıkları sağlıklı; ancak değerlendirme aralığındaki {expected} eksiksiz pencerenin hiçbirinde eşleşen olay ölçülmedi.",
+      "unmeasured": "Kural etkin ve bağımlılıkları sağlıklı; ancak {age_days} gündür tetiklendiği hiç gözlenmedi."
+    },
+    "noisy": "Kural günde {per_day} kez tetiklendi (son {window_days} gün); bu, beklenen {threshold} değerinin üzerinde."
+  },
+  "rule_statistics": {
+    "window": {
+      "none": "Bu instance için hiçbir kural eşleşmesi penceresi toplanmadı: toplama devre dışı ya da henüz çalışmadı; bu yüzden hiçbir şey ölçülmüyor.",
+      "unsettled": "İstenen aralıkta henüz kesinleşmiş bir kural eşleşmesi penceresi yok.",
+      "incomplete": "Aralıkta {complete} / {expected} pencere eksiksiz ({missing} eksik, {truncated} kırpılmış, {failed} başarısız). Eksiksiz olmayan bir penceredeki yokluk hiçbir şeyi kanıtlamaz."
+    },
+    "top": {
+      "no_complete_window": "Ölçülecek eksiksiz pencere yok."
+    },
+    "silent": {
+      "excluded": "EVENT kuralları ve EVENT yapı taşları değerlendirilen tek türdür: olay araması bunların her eşleşmesini görür. COMMON kuralları akışlarda da eşleşir, ancak akışlar aranmaz; bu yüzden sessizlikleri bilinmez. FLOW ve OFFENSE kuralları hiç aranmaz."
+    },
+    "cost": {
+      "label": "QRadar kapasite ölçütü: kuralın ne kadar hızlı değerlendirilebileceği. Düşük değer, değerlendirmenin daha maliyetli olduğunu gösterir. Bu bir tetiklenme hızı değildir.",
+      "unit": "saniyede milyon olay (QRadar birimi)"
+    }
+  },
+  "history": {
+    "assumption": {
+      "budget_ips": "tur başına paylaşılan {per_tick} geçmiş arama",
+      "budget_plain": "tur başına {per_tick} geçmiş arama",
+      "budget_waf": "kaynak turu başına {per_source} geçmiş arama, aynı anda {sources} kaynakla çarpılır",
+      "cadence": "her {interval} bir tur (ailenin Arama sıklığı)",
+      "catchall_rows": "arama başına {rows} satır",
+      "catchall_senders": "zaman dilimi başına {senders} gönderen (son {days} günün {buckets} ortalaması)",
+      "ips_fair_share": "kaynak başına her plan, tur başına paylaşılan {per_tick} aramanın {share} aramalık adil payıyla sığdırılır",
+      "ips_sources": "{plans} içinde {count} IPS kaynağı",
+      "ips_values": "kaynak ve zaman dilimi başına {source_ips} kaynak IP, {action_values} eylem değeri ve {fanout} port yayılım satırı varsayılır",
+      "opening": "{shape}, {budget}",
+      "phase_a_rows": "{sources} izlenen kaynak, zaman dilimi başına her biri için bir satır",
+      "qradar_time": "Arama başına QRadar süresi bu console'da ölçülmedi",
+      "rule_rows": "arama başına {rows} satır, artı bir console toplamı",
+      "rules": "{rules} etkin kural; her birinin her pencerede eşleştiği varsayılır",
+      "shape_buckets": "{minutes} dakikalık zaman dilimleri",
+      "shape_windows": "saatlik pencereler",
+      "waf_breakdown": "eylem, yanıt kodu ve kaynak IP yalnızca {days} gün boyunca okunur",
+      "waf_sources": "{endpoints} izlenen endpoint'e sahip {count} WAF kaynağı"
+    },
+    "catchall": {
+      "anchor_gone": "canlı çapa kayboldu: geçmişin okunacağı bir son nokta kalmadı",
+      "no_event": "pencerede hiçbir catch-all kaynağının olayı yoktu; hiçbir şey yazılmadı",
+      "unreadable": "kayıtlı geçmiş ilerlemesi geri okunamadı"
+    },
+    "decide": {
+      "meantime": "bu arada bir karar kaydedildi; burada gösteriliyor",
+      "never_reversed": "Evet yanıtı hiçbir zaman geri alınmaz; bunun yerine okumayı durdurun"
+    },
+    "estimate": {
+      "all_fit": "kaynak başına {days} günlük {sources} pencerenin tümü sığıyor; console toplamı tahminen {hours} saat",
+      "all_refused": "{sources} kaynağın tümü kullanılamıyor: {days} gün bile kaynak başına {limit} saatlik sınırı aşıyor",
+      "empty_sources": "{reason}; {count} kaynak henüz {noun} olmadan sığdırıldı; {limit} saatlik sınır okumayı yine de sınırlar",
+      "no_catchall": "tahmin yok: son {days} günde hiçbir catch-all zaman dilimi toplanmadı",
+      "no_collection": "tahmin yok: toplama kapalı ({reason})",
+      "no_ips": "tahmin yok: bu console'da etkin bir IPS kaynağı yok",
+      "no_monitored": "tahmin yok: console'da henüz izlenen bir log source yok",
+      "no_rules": "tahmin yok: console'da etkin kural yok",
+      "no_waf": "tahmin yok: bu console'da etkin bir WAF kaynağı yok",
+      "planner_refused": "tahmin yok: planlayıcı ayarları reddetti ({error})",
+      "reduced": "pencere, kaynak başına en küçük sığdırma için {asked} günden {days} güne indirildi: tahmin {limit} saati aştı",
+      "some_refused": "{refused} / {sources} kaynak kullanılamıyor çünkü 7 gün bile kaynak başına {limit} saatlik sınırı aşıyor; kalan kaynak pencereleri sığıyor",
+      "some_refused_reduced": "{refused} / {sources} kaynak kullanılamıyor çünkü 7 gün bile kaynak başına {limit} saatlik sınırı aşıyor; kalan kaynak pencereleri sığıyor, en küçüğü {asked} günden {days} güne indirildi",
+      "window_limited": "{window}; {fit}"
+    },
+    "family": {
+      "always_on": "kaynak hacmi toplaması platformun temel toplamasıdır",
+      "fair_share": "tur başına paylaşılan {total} geçmiş aramanın {share} aramalık adil payıyla sığdırıldı",
+      "switch_off": "{setting} kapalı",
+      "switch_on": "{setting} açık",
+      "zero_endpoint": "henüz izlenen endpoint yokken sığdırıldı; {limit} saatlik sınır okumayı yine de sınırlar",
+      "zero_entity": "henüz kabul edilmiş varlık yokken sığdırıldı; {limit} saatlik sınır okumayı yine de sınırlar"
+    },
+    "finish": {
+      "complete": "sona ulaşıldı; istenen pencerenin tamamı okundu",
+      "cut_sources": "QRadar, {cut} / {total} için istenenden azını tutuyor",
+      "floor_cut": "QRadar istenenden azını tutuyor (taban, istenen başlangıçtan sonra)",
+      "gaps": "{count} aralık okunamadı",
+      "partial": "sona ulaşıldı; {problems}",
+      "silent_sources": "{sources} için pencerede olay yoktu"
+    },
+    "fit": {
+      "fits": "{days} günlük pencere tahminen {hours} saate sığıyor",
+      "reduced": "pencere {asked} günden {days} güne indirildi: tahmin {limit} saati aştı",
+      "refused": "{days} gün bile yaklaşık {hours} saat gerektiriyor ({searches} arama, {ticks} tur), {limit} saatlik sınırın üzerinde; geçmiş kullanılamıyor"
+    },
+    "gap": {
+      "search_failed": "Arama en küçük genişlikte {failures} kez başarısız oldu"
+    },
+    "interval": {
+      "day_many": "{count} gün",
+      "day_one": "1 gün",
+      "hour_many": "{count} saat",
+      "hour_one": "1 saat",
+      "minute_many": "{count} dakika",
+      "minute_one": "1 dakika"
+    },
+    "later_yes": {
+      "has_scope": "gerekmez: bu kaynağın geçmiş kapsamı var",
+      "not_possible": "olanaksız: bu kaynak zaten veri topladı",
+      "possible": "mümkün"
+    },
+    "lifecycle": {
+      "not_eligible": "bu kaynak daha önce canlı veri topladı; ondan önceki geçmiş okunamaz (geçmişini okumak için profili devre dışı bırakıp yeniden oluşturun)",
+      "restart": "geçmişi şimdi oku: eksikler tamamlanıyor",
+      "stopped_by": "durduran: {by}"
+    },
+    "phase_a": {
+      "no_event": "QRadar'da pencerede izlenen hiçbir kaynağın olayı yok; hiçbir şey yazılmadı",
+      "no_monitored": "izlenen log source yok; bu yüzden geçmişi okunacak bir şey yok"
+    },
+    "reason": {
+      "joined": "{clauses}"
+    },
+    "request": {
+      "refused": "önce Evet yanıtını kaydedin: console'da başlatılacak veya durdurulacak bir Evet yanıtı yok",
+      "start": "“Geçmişi şimdi oku” kaydedildi. Her aile bunu sonraki toplamasında uygular; henüz hiçbir scope değişmedi.",
+      "stop": "“Okumayı durdur” kaydedildi. Her aile okuyan scope'larını sonraki toplamasında sonlandırır; henüz hiçbir scope değişmedi."
+    },
+    "scan": {
+      "end": "tarama pencerenin sonuna ulaştı",
+      "failed": "taban taraması {failures} kez başarısız oldu; geçmiş kullanılamıyor",
+      "floor_found": "QRadar, scope'un olaylarını {first} zamanından itibaren tutuyor; geçmiş {floor} zamanında başlıyor",
+      "floor_found_late": "QRadar, scope'un olaylarını {first} zamanından itibaren tutuyor; geçmiş {floor} zamanında başlıyor (istenen başlangıçtan sonra)",
+      "no_event_span": "taranan aralıkta olay yok; sonraki aralık taranacak",
+      "no_event_window": "pencerenin tamamında scope'a ait olay yok; hiçbir şey yazılmadı",
+      "no_result": "tarama sonucu verilmedi",
+      "retry": "bir tarama araması {status}; hiçbir şey kanıtlamaz, bu yüzden yeniden denenir ({failures} / {max_failures})",
+      "search": "scope'un ilk olayı için tarama",
+      "too_recent": "ilk olay, daha eskisini kanıtlamak için çok yeni: {margin} saatlik pay pencerenin sonuna ulaşıyor"
+    },
+    "settle": {
+      "budget_ended": "bütçe, bu aralık aranmadan bitti",
+      "density": "okunan zaman dilimlerinin {share} kadarı alt sınır (sınır: {limit}): zaman dilimi başına çok fazla ayrık değer var, bu yüzden geçmiş alt sınırlardan oluşurdu",
+      "failed_halve": "{buckets} zaman dilimini kapsayan arama başarısız oldu; genişlik yarıya inip {width} zaman dilimi oluyor",
+      "failed_minimum": "bir arama en küçük genişlikte başarısız oldu ({failures} / {max_failures}); aynı aralık yeniden denenir",
+      "gap_recorded": "boşluk kaydedildi: {gap}",
+      "read": "{count} zaman dilimi okundu",
+      "ticked": "{clauses}",
+      "too_many_gaps": "okunamayan aralıklar {count} sınırını aştı",
+      "truncated_halve": "{buckets} zaman dilimini kapsayan arama kırpıldı ve hiçbir şey saklamıyor; genişlik yarıya inip {width} zaman dilimi oluyor",
+      "width": "genişlik {count} zaman dilimi"
+    },
+    "state": {
+      "anchor_found": "ilk canlı zaman dilimi var; okuma başlayabilir",
+      "density_gate": "çok fazla zaman dilimi alt sınır olurdu; daha fazla okumak yalnızca bunları saklardı",
+      "finished_complete": "okuma sona ulaştı; taban, istenen başlangıca bir zaman diliminden az uzaklıkta ve boşluk yok",
+      "finished_partial": "okuma sona ulaştı, ancak QRadar istenenden azını tutuyor veya bir boşluk var",
+      "not_eligible_late": "scope'un, geçmişin öncesine geçemeyeceği canlı zaman dilimleri olduğu anlaşıldı",
+      "not_eligible_preceded": "scope'un zaten canlı zaman dilimleri var ve başa ekleme first_seen_at değerini kaydırırdı (§B.5)",
+      "nothing_to_read": "QRadar'da pencerede scope'a ait olay yok",
+      "nothing_to_read_scan": "QRadar'da pencerede scope'a ait olay yok veya taban taraması yapılamadı",
+      "request_awaiting_anchor": "geçmiş istendi; scope ilk canlı zaman dilimini (çapa) bekliyor",
+      "request_ready": "geçmiş istendi; scope sonraki toplamada planlanabilir",
+      "restart": "okuma yeniden başlıyor: yeni bir yanıt, eksikleri tamamlanan bir kaynak veya yeni bir izleme sürümü",
+      "stopped": "bir operatör tarafından durduruldu",
+      "stopped_waiting": "beklerken bir operatör tarafından durduruldu",
+      "switched_off": "geçmiş okuma kapatıldı",
+      "switched_off_start": "geçmiş okuma kapalı; scope canlı başlıyor",
+      "switched_off_waiting": "geçmiş okuma, beklenirken kapatıldı",
+      "time_limit": "okuma süre sınırı içinde bitmedi",
+      "too_many_gaps": "boşluk listesi dolu; scope'ta okunamayan çok fazla aralık var",
+      "window_too_small": "tahmin, en küçük pencerede bile süre sınırını aşıyor"
+    },
+    "step": {
+      "read": "{searches} aramada, her biri en çok {width} zaman dilimi olmak üzere {buckets} zaman dilimi okundu",
+      "stopped": "geçmiş okuma bir operatör tarafından durduruldu",
+      "time_limit": "okuma {hours} saat içinde bitmedi",
+      "wait_budget": "arama bütçesi bekleniyor"
+    },
+    "waf": {
+      "volume_pass_finished": "geçmiş hacim geçişi bitti",
+      "wait_time_budget": "geçmiş süre bütçesi bekleniyor"
+    },
+    "width": {
+      "ceiling_doubled": "{steps} temiz adım, hata tavanını {ceiling} değerine katladı",
+      "released": "{steps} temiz adım, hata tavanını {fit} satırlık sığdırma değerine getirdi; tavan kaldırıldı"
+    },
+    "window": {
+      "limit_retention": "{setting} {days} gün ve {hours_setting} {hours} saat olduğundan okuma saklama süresini aşardı",
+      "limit_setting": "{setting} {days} gün",
+      "reduced": "pencere {asked} günden {days} güne indirildi: {limits}",
+      "unavailable": "geçmiş kullanılamıyor: pencere {days} gün olurdu, bu {minimum} günlük en düşük sınırın altında; {limits}"
+    },
+    "words": {
+      "bucket_many": "{count} canlı zaman dilimi",
+      "bucket_one": "1 canlı zaman dilimi",
+      "plan_many": "kaynak başına {count} plan",
+      "plan_one": "kaynak başına 1 plan",
+      "source_many": "{count} kaynak",
+      "source_one": "1 kaynak"
+    }
+  },
+  "pw": {
+    "detector": {
+      "admission_truncated": "İlk görünme zaman diliminde kabul kırpılmıştı: değer ani bir yığılmada göründü ve tek başına yeni sayılmaz",
+      "baseline_few_visits": "Değer olayı baseline'ında {samples} örnek var, ancak bunlar haftanın bu günü ve saatinin çok az ayrı haftalık ziyaretinden geliyor: baseline için aynı saatin en az {visits} farklı haftadan olması gerekir",
+      "baseline_few_visits_one": "Değer olayı baseline'ında {samples} örnek var, ancak bunlar haftanın bu günü ve saatinin çok az ayrı haftalık ziyaretinden geliyor: baseline için aynı saatin en az 1 farklı haftadan olması gerekir",
+      "baseline_samples": "Değer olayı baseline'ında {samples} örnek var; asgari {minimum} gerekir",
+      "baseline_version": "Baseline, zaman diliminin {bucket} sürümü yerine izleme sürümü {baseline} ile oluşturulmuş",
+      "basis_above_p95": "sağlam skor kullanılamıyor (MAD=0); değer p95 {bound} değerinin üzerinde",
+      "basis_below_p05": "sağlam skor kullanılamıyor (MAD=0); değer p05 {bound} değerinin altında",
+      "basis_z_high": "sağlam z={score} (eşik +{threshold})",
+      "basis_z_low": "sağlam z={score} (eşik -{threshold})",
+      "bucket_membership": "Üyelik bu zaman diliminde değişti",
+      "bucket_missing": "Zaman dilimi yok: hiçbir sayı ölçülmedi",
+      "bucket_not_collected": "Zaman dilimi toplanmadı: sayısı sıfır değil",
+      "bucket_not_parsed": "Özellik bu zaman dilimindeki hiçbir olayda ayrıştırılmadı: durum uygulanamaz",
+      "claim_new_combination": "İki bileşen de daha önce izlendi, ancak doğrulanmış geçmişte hiç birlikte izlenmedi",
+      "claim_new_value": "Değer, doğrulanmış geçmişin her zaman diliminde {min_events} olayın altında kaldı",
+      "combination_inputs_unsupported": "Bildirilen birleşim girdileri bir karara izin vermiyor",
+      "component_untracked": "Bileşenlerden en az biri daha önce izlenmedi: bu yalnızca yeni değer olarak sınıflandırılır",
+      "component_untracked_below_admission": "Bileşenlerden en az biri daha önce izlenmedi (yalnızca kabul eşiğinin altında görüldü): bu yalnızca yeni değer olarak sınıflandırılır",
+      "components_missing": "Demetin iki bileşen geçmişi sağlanmadı",
+      "count_unknown": "Değerin sayısı bu zaman dilimi için bilinmiyor; sıfır değil",
+      "coverage_below": "Özellik coverage'ı {seen} idi; {floor} tabanının altında",
+      "coverage_unknown": "Özellik coverage'ı bilinmiyordu; {floor} tabanının altında",
+      "disappear_median_floor": "Baseline medyanı {median}, {floor} kaybolma tabanının altında",
+      "disappeared_fired": "Değerde art arda {streak} kesin zaman diliminde ayrıştırılmış sıfır olay vardı; mevsimsel medyan {median} olay",
+      "drop_delta_below_min": "{delta} olaylık düşüş, {minimum} asgari mutlak farkın altında",
+      "drop_fired": "{observed} kesin olay, {median} medyanın altında (-{delta}, {ratio}x); {basis}",
+      "drop_median_floor": "Baseline medyanı {median}, {floor} trafik tabanının altında",
+      "drop_ratio_above": "Gözlenen/beklenen oran {ratio}, {line} düşüş çizgisinin üstünde",
+      "established_hand_off": "Yerleşik değer: ilk olarak {first_seen} tarihinde, izleme {hand_off} tarihinde devreye girmeden önce okunan geçmişte görüldü",
+      "established_outside_window": "Yerleşik değer: ilk olarak {first_seen} tarihinde kabul edildi; {buckets} zaman dilimlik yenilik penceresinin dışında",
+      "grace_membership": "Üyelik ilk görünme tolerans penceresi içinde değişti",
+      "history_incomplete": "Yenilik belirlenemiyor: {reason}",
+      "inputs_unsupported": "Bildirilen girdiler bir karara izin vermiyor",
+      "last_seen_unknown": "Değerin en son ne zaman gözlendiği bilinmiyor",
+      "learning_day": "Öğrenme: gün {day} / {days}",
+      "learning_unknown": "Öğrenme: izlemenin ilk toplanan zaman dilimi bilinmiyor",
+      "mad_within_p05": "Sağlam skor kullanılamıyor (MAD=0) ve değer p05 {bound} sınırı içinde",
+      "mad_within_p95": "Sağlam skor kullanılamıyor (MAD=0) ve değer p95 {bound} sınırı içinde",
+      "materiality_lower_bound": "{reason}; önemlilik sayıları alt sınırdır",
+      "materiality_short": "İlk görünmeden bu yana {buckets} zaman diliminde {events} olay, {min_buckets} zaman diliminde {min_events} olaya ulaşmadı",
+      "new_fired": "İlk görünmeden bu yana {buckets} zaman diliminde {events} olay. {claim}",
+      "new_fired_lower": "İlk görünmeden bu yana {buckets} zaman diliminde en az {events} olay. {claim}",
+      "new_value_is_combination": "İki demet bileşeni de daha önce izlendi: bu yalnızca yeni birleşim olarak sınıflandırılır",
+      "no_baseline": "Haftanın bu günü ve saati hücresi için henüz değer olayı baseline'ı yok",
+      "no_status": "İzleme henüz bir toplama durumu oluşturmadı",
+      "not_active": "Değer son {days} gün içinde gözlenmedi",
+      "not_proven_lower_bound": "{reason}; {scope}, bu nedenle normal bir karar verilemez",
+      "novelty_inputs_unsupported": "Bildirilen yenilik girdileri bir karara izin vermiyor",
+      "novelty_unestablished": "Değerin ilk görünmesi belirlenemedi",
+      "observed_positive": "Değer bu zaman diliminde {observed} kesin olay taşıdı",
+      "one_property": "Tek özellikli bir izlemede birleştirilecek bir şey yok",
+      "pinned_never_new": "Sabitlenmiş değerleri operatör adlandırır; hiçbir zaman yeni olarak sınıflandırılmaz",
+      "ratio_not_reached": "Gözlenen/beklenen oran {ratio}, {threshold} değerine ulaşmadı",
+      "spike_delta_below_min": "{delta} olaylık artış, {minimum} asgari mutlak farkın altında",
+      "spike_fired": "{observed} olay, {median} medyanın üzerinde (+{delta}, {ratio}x); {basis}",
+      "spike_fired_lower": "En az {observed} olay, {median} medyanın üzerinde (+{delta}, {ratio}x); {basis}",
+      "spike_min_events": "{observed} olay, {minimum} asgari değerin altında",
+      "spike_zero_median": "{observed} olay, sıfır medyandan yükseldi; {basis}",
+      "spike_zero_median_lower": "En az {observed} olay, sıfır medyandan yükseldi; {basis}",
+      "streak_short": "Değerin art arda ölçülmüş sıfırlı {streak} zaman dilimi var; gereken {required} değerinin altında",
+      "watch_blocked": "İzleme durumu {status}: değer kararı verilemez",
+      "window_bucket_missing": "Kaybolma penceresi içindeki {at} zaman dilimi sağlanmadı: sayısı sıfır değil",
+      "window_count_unknown": "{at} anındaki değer sayısı bilinmiyor; sıfır değil",
+      "window_coverage": "{at} anındaki özellik coverage'ı tabanın altındaydı",
+      "window_membership": "Üyelik kaybolma penceresi içinde değişti",
+      "z_not_reached_high": "Sağlam z={score}, +{threshold} değerine ulaşmadı",
+      "z_not_reached_low": "Sağlam z={score}, -{threshold} değerine ulaşmadı"
+    },
+    "draft": {
+      "combination_needs_two": "PW_NEW_COMBINATION için iki özellikli bir izleme gerekir",
+      "detector_required": "Bir izleme en az bir algılayıcı değerlendirir",
+      "field_null": "Alan {name} boş olamaz",
+      "group_missing": "Log source grubu {id} eşitlenmiş envanterde yok",
+      "history_days_null": "Alan history_days boş olamaz; geçmiş istemiyorsanız 0 girin",
+      "history_days_range": "Alan history_days 0 (geçmiş yok) ya da {low} ile {high} arasında olmalıdır; {days} verildi",
+      "instance_differs": "Alan instance_id, log source'un instance'ından farklı",
+      "log_source_missing": "Log source {id} mevcut değil",
+      "no_instance": "Kayıtlı QRadar instance'ı yok",
+      "pin_count": "Bir izleme en çok {max} değer sabitleyebilir; {count} verildi",
+      "pin_invalid": "Sabitlenmiş değer {index}, bölüm {part}: {reason}",
+      "pin_parts": "Sabitlenmiş değer {index}: özellik başına bir metin, toplam {count} metin gerekir",
+      "pin_twice": "Sabitlenmiş değer {index}: iki kez sabitlenmiş",
+      "pinned_rows": "Sabitlenmiş değerler zaman dilimi başına en çok {rows} satır döndürebilir; bu, tek bir geçmiş aramasının taşıyabileceği {target} satırı aşıyor. Değerlerin sabitlemesini kaldırın ya da geçmiş istemeyin",
+      "property_count": "Bir izleme bir veya iki özellik adlandırır; {count} verildi",
+      "property_invalid": "Özellik {index}: {reason}",
+      "property_twice": "Bir izleme aynı özelliği iki kez adlandıramaz",
+      "scope_id_number": "{kind} scope'unda scope_id bir sayıdır",
+      "scope_id_uuid": "LOG_SOURCE scope'unda scope_id, kaynağın kimliğidir",
+      "scope_must_be_empty": "{kind} scope'u için {column} boş olmalıdır",
+      "scope_negative": "Negatif olamaz: {column}",
+      "scope_required": "{kind} scope'u için {column} gereklidir",
+      "series_max": "İstek başına en çok {max} değer istenebilir; {count} istendi",
+      "series_untracked": "Değer {value}, bu izlemenin geçerli sürümünde izlenen bir değer değil",
+      "type_missing": "Log source türü {id} eşitlenmiş envanterde yok"
+    },
+    "history": {
+      "starts_next": "Okuma bir sonraki toplamada başlar",
+      "switched_off": "Geçmiş okuma kapalı",
+      "unreadable": "Saklanan geçmiş ilerlemesi geri okunamadı"
+    },
+    "history_change": {
+      "already_collected": "Bu izleme zaten topladı ({marks} ayarlı). Geçmişi okumak için yeni bir izleme oluşturun",
+      "already_requested": "Bu izlemede geçmiş durumu {state}; yeniden istenemez. Geçmişi okumak için yeni bir izleme oluşturun",
+      "holds_buckets": "Bu izleme geçerli sürümüne ait {stored} zaman dilimi saklıyor. Geçmişi okumak için yeni bir izleme oluşturun"
+    },
+    "history_check": {
+      "admission_truncated": "geçmiş zaman dilimi {bucket} değer kabulünde kırpılmıştı",
+      "bucket_coverage": "geçmiş zaman dilimi {bucket} ayrıştırma coverage'ının tabanın altında kaldı",
+      "bucket_never_collected": "geçmiş zaman dilimi {bucket} hiç toplanmadı ({missing} / {expected} eksik)",
+      "bucket_not_collected": "geçmiş zaman dilimi {bucket} toplanmadı",
+      "bucket_version": "geçmiş zaman dilimi {bucket}, ilk görünme sürümü {version} yerine başka bir izleme sürümü kullandı",
+      "bucket_width": "geçmiş zaman dilimi {bucket} farklı bir toplama zaman dilimi genişliği kullandı",
+      "discovery_truncated": "geçmiş zaman dilimi {bucket} değer keşfinde kırpılmıştı",
+      "first_bucket_never_collected": "ilk görünme zaman dilimi hiç toplanmadı",
+      "incomplete": "geçmiş eksik",
+      "not_divisible": "geçmiş penceresi toplama zaman diliminin genişliğine tam bölünmüyor",
+      "outside_window": "yenilik penceresinin dışında",
+      "record_count": "geçmiş, beklenen {expected} zaman dilimi için {records} zaman dilimi kaydı içeriyor"
+    },
+    "preview": {
+      "cut_at_row_limit": "Gruplanmış arama satır sınırında kesildi ve önizleme onu bölmez; scope'u daraltın ya da bir tür veya kaynak önizleyin",
+      "group_too_large": "Grup {members} log source'a çözümleniyor; önizleme en çok {max} log source'luk tek bir arama parçasını kapsar. Daha küçük bir grup, bir tür ya da bir kaynak önizleyin",
+      "lower_bound": "Bir zaman dilimi satır sınırında kesildi: sayıları alt sınırdır",
+      "scope_unresolved": "{status} — {reason}",
+      "search_failed": "Bir arama başarısız oldu; bu yüzden zaman dilimleri ölçülmedi",
+      "unsearchable": "Saklanan izleme aranamıyor: {error}"
+    },
+    "reference": {
+      "kind_unknown": "Bilinmeyen özellik başvuru türü",
+      "name_invalid": "Geçersiz QRadar özellik adı: yalnızca harf, rakam, alt çizgi, boşluk ve kısa çizgi kullanılabilir; en çok 64 karakter",
+      "name_not_text": "Özellik başvurusunun adı metin olmalıdır",
+      "normalized_not_allowed": "Normalize edilmiş alan özellik izleme izin listesinde yok",
+      "not_an_object": "Özellik başvurusu, bir tür ve bir ad içeren nesnedir",
+      "pin_characters": "Değer tırnak işareti, ters eğik çizgi, denetim karakteri ya da baştaki veya sondaki boşluk içeremez",
+      "pin_empty": "Değer boş olamaz",
+      "pin_length": "Değer en çok {max} karakter olabilir",
+      "pin_not_text": "Değer metin olmalıdır"
+    },
+    "scope": {
+      "group_empty": "Grup ve alt grupları eşitlenmiş hiçbir log source içermiyor",
+      "group_missing": "Log source grubu envanterde yok",
+      "group_stale": "Grup envanteri en son {synced} tarihinde eşitlendi; bu, {limit} sınırından daha eski",
+      "names_no_group": "İzleme bir log source grubu belirtmiyor",
+      "names_no_type": "İzleme bir log source türü belirtmiyor",
+      "source_missing": "Log source envanterde yok",
+      "too_large": "{sources} log source {searches} arama gerektiriyor; sınır {limit}",
+      "type_empty": "Bu türde eşitlenmiş log source yok"
+    },
+    "status": {
+      "disabled_by": "Kapatan: {actor}",
+      "evaluated": "Son toplanan zaman dilimi değerlendirildi",
+      "latest_search_failed": "Son arama başarısız oldu; {bucket} zaman dilimi toplanmadı olarak kaydedildi",
+      "not_applicable": "Özellik scope'taki hiçbir olayda ayrıştırılmadı; değerler ölçülmüyor",
+      "open": "Bir veya daha fazla değer vakası açık",
+      "reading_history": "QRadar geçmişi okunuyor: {done} / {total} gün; okuma bitene kadar hiçbir şey değerlendirilmez",
+      "recovering": "Bir veya daha fazla değer vakası düzeliyor"
+    },
+    "transition": {
+      "definition_changed": "İzleme tanımı değişti",
+      "recovered": "Koşul düzeldi",
+      "value_retired": "Değer kullanımdan kaldırıldı; artık değerlendirilmiyor",
+      "watch_deleted": "İzleme silindi",
+      "watch_disabled": "İzleme kapatıldı; artık değerlendirilmiyor"
+    }
+  },
+  "ruledraft": {
+    "subject_needs_column": "{kind} kuralları için {column} ayarlanmalıdır",
+    "column_must_be_empty": "{kind} kuralı için {column} boş kalmalıdır",
+    "source_class_unknown": "source_class {value} bilinen bir kaynak sınıfı değildir",
+    "metric_unknown": "{metric} metriği özel kural kataloğunda yok",
+    "metric_wrong_kind": "{metric} metriği {metric_kind} konusunu ölçer, {kind} konusunu değil",
+    "threshold_not_finite": "threshold_value sonlu bir sayı olmalıdır",
+    "threshold_negative": "threshold_value en az 0 olmalıdır",
+    "threshold_share": "{metric} eşiği bir paydır ve 0 ile 1 arasında olmalıdır (uçlar hariç)",
+    "operator_unknown": "{operator} işleci GT, GE, LT, LE, EQ değerlerinden biri değildir",
+    "sustain_min": "sustain_buckets en az 1 olmalıdır",
+    "recovery_min": "recovery_buckets en az 1 olmalıdır",
+    "enabled_cap": "Aynı anda en fazla {max_enabled} kural etkin olabilir (şu an {enabled_count} etkin)",
+    "null_field": "{field} boş (null) olamaz",
+    "log_source_missing": "{id} kimlikli log source mevcut değil",
+    "waf_endpoint_missing": "{id} kimlikli WAF endpoint mevcut değil",
+    "ips_entity_missing": "{id} kimlikli IPS varlığı mevcut değil",
+    "pw_value_missing": "{id} kimlikli özellik izleme değeri mevcut değil",
+    "pw_value_not_pinned": "{id} kimlikli özellik izleme değeri sabitlenmemiş; bir kural yalnızca sabitlenmiş bir değeri izleyebilir, bu yüzden önce özellik izlemesinde sabitleyin"
+  },
+  "search": {
+    "aql": {
+      "empty": "Sorgu boş",
+      "multiple_statements": "Birden çok deyime izin verilmez",
+      "not_select": "Sorgu tek bir SELECT deyimi olmalıdır",
+      "disallowed_keywords": "İzin verilmeyen anahtar sözcükler: {keywords}",
+      "no_dataset": "Sorgu FROM ile events veya flows seçmelidir",
+      "dataset_not_permitted": "İzin verilmeyen veri kümeleri: {datasets}",
+      "no_time_window": "Sorgu sınırlı bir zaman penceresi içermelidir (LAST N ... veya START/STOP)",
+      "time_range_exceeded": "{window_hours} sa uzunluğundaki zaman aralığı en fazla {max_hours} sa olabilir",
+      "limit_exceeded": "LIMIT {limit}, en fazla {max_rows} satırlık üst sınırı aşıyor"
+    },
+    "threshold": {
+      "unreachable": "{operator} {threshold} eşiğine hiçbir zaman ulaşılamaz: bir çalıştırma en fazla max_result_rows ({max_result_rows}) satır sayar; max_result_rows değerini eşiğin üzerine çıkarın veya eşiği düşürün"
+    },
+    "enabled_cap": "Etkin arama sınırı {limit}",
+    "cron": {
+      "invalid": "schedule_cron {cron} ({timezone}) geçerli bir cron ifadesi değil: {error}",
+      "no_future_fire": "schedule_cron {cron} ({timezone}) için gelecekte tetiklenme zamanı yok",
+      "below_floor": "schedule_cron {cron} ({timezone}) {gap} sn arayla tetikleniyor ({previous}, ardından {next}); bir arama en az {min_seconds} sn arayla tetiklenmelidir",
+      "floor_missed": "schedule_cron izin verilen en kısa aralığın altında"
+    },
+    "budget": {
+      "held_of": "{held} / {cap}",
+      "held_cap": "üst sınır {cap}",
+      "full": "Ariel arama bütçesi dolu (eşzamanlı çalışan: {held}); {waited} sn beklendi; QRadar'a hiçbir şey gönderilmedi"
+    },
+    "run": {
+      "failed": "Ariel araması başarısız oldu",
+      "timeout": "Arama, {timeout} sn zaman aşımını aştı",
+      "capacity": "{waited} sn içinde Ariel arama izni alınamadı (konsol başına üst sınır {instance_cap}, genel üst sınır {global_cap})",
+      "no_aql_execution": "Yapılandırılmış sağlayıcı AQL çalıştıramıyor",
+      "parse_failed": "Sonuçlar alınamadı veya ayrıştırılamadı: {detail}",
+      "validation": "{reasons}"
+    }
+  },
+  "classification": {
+    "rule": {
+      "duplicate": "Bu instance, tür ve desene sahip bir kural zaten var",
+      "built_in_edit": "Yerleşik bir kural yalnızca açılıp kapatılabilir",
+      "built_in_delete": "Yerleşik bir kural silinemez; bunun yerine kapatın"
+    }
+  },
+  "anomaly": {
+    "detector": {
+      "no_events_bucket_incomplete": "Zaman dilimi {completeness}; olay yokluğu sessizliğin kanıtı değildir",
+      "no_events_not_expected": "Kaynağın bu zaman diliminde etkin olması beklenmiyor",
+      "no_events_normally_inactive": "Bu kaynak bu saatte normalde etkin değil",
+      "no_events_no_baseline": "Haftanın bu günü ve saati hücresi için henüz güvenilir bir etkinlik baseline'ı yok",
+      "no_events_grace": "Boş zaman dilimi, {grace} zaman dilimlik sessizlik tolerans süresi içinde",
+      "no_events_streak": "Art arda {streak} zaman diliminde olay yok; baseline yaklaşık {expected} olay bekliyor",
+      "volume_bucket_incomplete": "Metrik zaman dilimi {completeness}; tam bir gözlem değil",
+      "volume_no_baseline": "Haftanın bu günü ve saati hücresi için henüz hacim baseline'ı yok",
+      "volume_baseline_samples": "Baseline'da {samples} örnek var; savunulabilir bir karar için gereken asgarinin altında",
+      "volume_min_events": "{events} olay/zaman dilimi, savunulabilir bir hacim kararı için gereken {minimum} asgari değerin altında",
+      "volume_drop_undefined": "Baseline trafik beklemiyor; düşüş tanımsız",
+      "volume_ratio_not_reached": "Gözlenen/beklenen oran {ratio}, {limit} değerine ulaşmadı",
+      "volume_ratio_not_fallen": "Gözlenen/beklenen oran {ratio}, {limit} değerine düşmedi",
+      "volume_delta_below_min": "{delta} olay/zaman dilimi değişim, {minimum} asgari mutlak farkın altında",
+      "volume_z_not_reached": "Sağlam z={score}, ±{threshold} eşiğine ulaşmadı",
+      "volume_mad_inside_band": "Sağlam skor kullanılamıyor (MAD=0) ve gözlenen değer beklenen aralık [{lower}, {upper}] içinde",
+      "basis_z": "sağlam z={score} (eşik ±{threshold})",
+      "basis_mad_outside": "sağlam skor kullanılamıyor (MAD=0); gözlenen değer beklenen aralık [{lower}, {upper}] dışında",
+      "ratio_times_expected": "beklenenin {ratio} katı",
+      "ratio_no_traffic": "trafik beklenmiyordu",
+      "volume_above": "Ortalama EPS {observed}, baseline medyanı {expected} değerinin üzerinde ({ratio_text}, {delta} olay/zaman dilimi); {basis}",
+      "volume_below": "Ortalama EPS {observed}, baseline medyanı {expected} değerinin altında ({ratio_text}, {delta} olay/zaman dilimi); {basis}",
+      "parsing_no_data": "Ayrıştırma oranı verisi yok",
+      "parsing_below_floor": "Alan çıkarma oranı {ratio}, {floor} tabanının altına düştü",
+      "unknown_no_events": "Sınıflandırılacak olay yok",
+      "unknown_above_ceiling": "Bilinmeyen olay oranı {ratio}, {ceiling} üst sınırını aşıyor",
+      "delay_no_measurement": "Gecikme ölçümü yok",
+      "delay_exceeds": "Olay gecikmesi {delay} sn, {limit} sn sınırını aşıyor",
+      "cardinality_no_baseline": "Güvenilir bir kardinalite baseline'ı yok",
+      "cardinality_dropped": "Ayrı kaynak IP sayısı {count}, baseline medyanı {median} değerinin {fraction} eşiğinin altına düştü",
+      "collection_errors": "Zaman diliminde {count} toplama hatası",
+      "payload_no_signature": "Yük imzası yok",
+      "payload_repeated": "Aynı yük imzası art arda {streak} zaman diliminde tekrarlandı",
+      "within_range": "Beklenen aralık içinde",
+      "suppressed_by_no_events": "Bastırıldı: bu zaman diliminde olay yok"
+    },
+    "lifecycle": {
+      "already_suppressed": "Zaten bastırılmış",
+      "suppressed": "Bastırıldı",
+      "suppression_lifted": "Bastırma kaldırıldı",
+      "no_verdict": "Karar verilemiyor",
+      "hold_not_judgeable": "Durum korunuyor; zaman dilimi değerlendirilemiyor",
+      "hold_unknown": "Durum korunuyor; algılayıcı bilinmiyor sonucunu döndürdü",
+      "opened": "Art arda {count} anormal zaman dilimi",
+      "first_abnormal": "İlk anormal zaman dilimi",
+      "confirmed": "Art arda {count} anormal zaman dilimi, {threshold} olan doğrulama eşiğine ulaştı",
+      "still_confirming": "Doğrulama sürüyor",
+      "relapsed": "İyileşme tamamlanmadan yeniden bozuldu",
+      "still_abnormal": "Hâlâ anormal",
+      "returned_to_normal": "Açılmadan önce normale döndü",
+      "resolved_one_normal": "1 normal zaman dilimi gözlendi",
+      "normal_observed": "Normal zaman dilimi gözlendi",
+      "recovered": "Art arda {count} normal zaman dilimi, {threshold} olan düzelme eşiğine ulaştı",
+      "still_recovering": "Düzelme sürüyor",
+      "baseline_adequate": "Baseline yeterli hale geldi",
+      "within_range": "Beklenen aralık içinde"
+    },
+    "suppression": {
+      "maintenance": "Bakım penceresi"
+    },
+    "resolution": {
+      "recovered": "Koşul düzeldi"
+    }
+  },
+  "ips": {
+    "basis": {
+      "mad_above_p95_events": "MAD=0 olduğundan robust skor kullanılamıyor; {observed}, geçmiş p95 değeri olan {bound} sınırının üzerinde",
+      "mad_within_p95_events": "MAD=0 olduğundan robust skor kullanılamıyor ve {observed}, geçmiş p95 değeri olan {bound} sınırının içinde"
+    },
+    "block": {
+      "denominator_below_min": "Eylem taşıyan {count} olay, oran kararı için gereken {minimum} asgari paydanın altında",
+      "fired": "Eylem taşıyan {count} / {total} olay engellendi ({share}); {history} geçmiş olaydan beklenen oran {expected} idi ({rise}, {multiple}x); {basis}",
+      "fired_lower": "Eylem taşıyan en az {count} / {total} olay engellendi (en az {share}); {history} geçmiş olaydan beklenen oran {expected} idi ({rise}, {multiple}x); {basis}",
+      "fired_lower_no_multiple": "Eylem taşıyan en az {count} / {total} olay engellendi (en az {share}); {history} geçmiş olaydan beklenen oran {expected} idi ({rise}); {basis}",
+      "fired_no_multiple": "Eylem taşıyan {count} / {total} olay engellendi ({share}); {history} geçmiş olaydan beklenen oran {expected} idi ({rise}); {basis}",
+      "numerator_below_min": "{count} engellenen olay, {minimum} asgari değerin altında; oranda anlamlı bir artış mümkün değil"
+    },
+    "caveat": {
+      "block_ratio": "Engelleme, profilin eylem eşlemesi üzerinden değerlendirilir. Daha yüksek bir engelleme oranı IPS kararlarını tanımlar; bir saldırının başarılı olduğunu göstermez.",
+      "destination_rate": "Bir hedefe yönelik daha fazla olay trafik hacmini tanımlar; o hedefe yönelik bir saldırıyı değil.",
+      "new_port": "Yeni yoğunlaşan bir hedef port, bir yoklama kadar kolayca bir dağıtım da olabilir. Katkıda bulunanlar zaman diliminin en yoğun kaynak IP'leridir; bunlar bu portun en yoğun kaynakları olmak zorunda değildir.",
+      "port_fanout": "Tek bir kaynak IP'den gelen çok sayıda farklı hedef port bir trafik biçimidir, saldırı kararı değildir: bir tarama, bir güvenlik açığı değerlendirmesi ve portları döndüren bir hizmet burada birbirine benzer.",
+      "port_rate": "Bir porttaki daha fazla olay trafik hacmini tanımlar, niyeti değil: bir tarama, bir dağıtım ve yanlış yapılandırılmış bir istemci burada birbirine benzer.",
+      "signature_burst": "Bir imzanın patlaması, IPS'in onu ne sıklıkla eşleştirdiğini tanımlar; eşleşen etkinliğin başarılı olduğunu değil.",
+      "source_concentration": "Baskın bir kaynak IP trafik bileşimini tanımlar, niyeti değil. Bir proxy veya NAT arkasında bu, aracı cihazın adresidir."
+    },
+    "concentration": {
+      "fired": "En büyük kaynak IP {top} / {total} olay gönderdi ({share}); beklenen pay {expected} idi ({rise}); en büyük beş kaynak {top5} gönderdi; {basis}",
+      "fired_no_top5": "En büyük kaynak IP {top} / {total} olay gönderdi ({share}); beklenen pay {expected} idi ({rise}); en büyük beş kaynağın payı bilinmiyor; {basis}",
+      "top_below_min": "En büyük kaynak IP {top} olay gönderdi; bu, anlamlı bir yoğunlaşma için gereken {minimum} asgari değerin altında",
+      "total_below_min": "{total} olay, bileşim kararı için gereken {minimum} asgari değerin altında"
+    },
+    "guard": {
+      "absent_port": "0 numaralı port ve 255 numaralı protokol bulunmayan değerlerdir, bir hizmet değildir: bunlar hakkında hiçbir iddia öne sürülmez",
+      "action_counts_unstated": "Zaman dilimi engellenen ve eylem taşıyan olay sayılarını belirtmiyor",
+      "action_unmapped": "Eşlenmiş bir eylem özelliği yok",
+      "baseline_samples": "{metric} baseline'ı {samples} örnek içeriyor; bu, savunulabilir bir karar için gereken {minimum} asgari değerin altında",
+      "baseline_versions": "{metric} baseline'ı {profile} profil sürümü ve {normalizer} normalizer sürümü altında oluşturuldu; zaman diliminin sürümleri ise {bucket_profile} ve {bucket_normalizer}",
+      "count_unknown": "Varlığın sayımı bu zaman dilimi için bilinmiyor",
+      "coverage_low": "Coverage {covered} oldu ({label}); bu, {floor} tabanının altında: değeri olmayan olaylar değeri olanlardan farklı türde olabilir, bu yüzden görünen sayılar hiçbir şeyi sınırlamaz",
+      "coverage_unmeasurable": "Coverage ölçülemedi ({label}); bu, {floor} tabanının altında: değeri olmayan olaylar değeri olanlardan farklı türde olabilir, bu yüzden görünen sayılar hiçbir şeyi sınırlamaz",
+      "dimension_unmeasured": "Bu zaman dilimi için {label} araması {state}: değer kullanılamıyor, sıfır değil",
+      "entity_not_judged": "{dimension} varlığı {detector} tarafından değerlendirilmez",
+      "fanout_unstated": "Zaman dilimi en büyük farklı port sayısını belirtmiyor",
+      "generic_signature": "İmzanın adı genel: belirli bir imza hakkında iddia öne sürmek güvenli değil",
+      "maintenance": "Kaynak bu zaman diliminde bakımdaydı",
+      "no_entity": "Bu karar için {label} varlığı sağlanmadı",
+      "not_proven_lower_bound": "{reason}; sayım bir alt sınırdır ({scope}), bu nedenle ondan normal bir karar çıkarılamaz",
+      "source_totals_unstated": "Zaman dilimi kaynak IP toplamlarını belirtmiyor"
+    },
+    "history_check": {
+      "admission_unrecorded": "{bucket} geçmiş zaman diliminde hedef port kabulü kırpılmıştı ya da kaydedilmemişti",
+      "before_hand_off": "port, {hand_off} tarihindeki geçmiş devrinden önce kabul edilmişti",
+      "coverage_low": "{bucket} geçmiş zaman dilimindeki hedef port coverage'ı {floor} tabanının altındaydı",
+      "maintenance": "{bucket} geçmiş zaman dilimi bakımdaydı",
+      "normalizer_version": "{bucket} geçmiş zaman dilimi {version} normalizer sürümüyle uyumsuz",
+      "not_loaded": "yerleşik bir port için geçmiş yüklenmedi",
+      "port_search_not_exact": "{bucket} geçmiş zaman diliminin hedef port araması kesin değildi: {state}"
+    },
+    "label": {
+      "action": "eylem",
+      "destination_ip": "hedef IP",
+      "destination_port": "hedef port",
+      "destination_port_hyphenated": "hedef port",
+      "port_fanout": "port fan-out",
+      "signature": "imza",
+      "source_ip_hyphenated": "kaynak IP"
+    },
+    "noun": {
+      "distinct_ports": "farklı port",
+      "events": "olay"
+    },
+    "novelty": {
+      "below_materiality": "İlk göründüğünden bu yana {buckets} zaman diliminde {events} olay, {min_buckets} zaman diliminde {min_events} olaya ulaşmadı",
+      "below_materiality_lower": "{reason}; sayımlar alt sınırdır",
+      "cannot_establish": "Yenilik belirlenemiyor: {cause}",
+      "established_hand_off": "Yerleşik port: ilk olarak {first_seen} tarihinde kabul edildi; bu, geçmiş devri olan {hand_off} tarihinden önce",
+      "established_outside_window": "Yerleşik port: ilk olarak {first_seen} tarihinde kabul edildi; {buckets} zaman dilimlik yenilik penceresinin dışında",
+      "fired": "İlk göründüğü {first_seen} tarihinden bu yana {port} hedef portu {buckets} zaman diliminde {events} olay taşıdı; doğrulanmış {history_start} – {history_end} geçmişinde her zaman diliminde {admission} olayın altında kaldı",
+      "fired_lower": "İlk göründüğü {first_seen} tarihinden bu yana {port} hedef portu {buckets} zaman diliminde en az {events} olay taşıdı; doğrulanmış {history_start} – {history_end} geçmişinde her zaman diliminde {admission} olayın altında kaldı",
+      "flood_admission": "İlk görünme zaman diliminde hedef port kabulü kırpıldı: port, yeni portlardan oluşan bir akının içinde göründü ve tek başına yeni değil",
+      "flood_discovery": "İlk görünme zaman diliminde hedef port keşfi eksikti: port, yeni portlardan oluşan bir akından ayırt edilemiyor",
+      "not_established": "Portun ilk görünümü belirlenemedi",
+      "readmitted": "Yeniden kabul edilen port: kullanımdan kaldırılıp yeniden görüldü, bu yüzden yeni değil"
+    },
+    "role": {
+      "coverage": "coverage",
+      "denominator": "payda",
+      "destination_port_coverage": "hedef port coverage'ı",
+      "history": "geçmiş",
+      "largest_contributor": "en büyük katkıda bulunan",
+      "largest_fanout": "en büyük fan-out",
+      "materiality": "anlamlılık",
+      "numerator": "pay",
+      "total": "toplam",
+      "volume": "hacim"
+    },
+    "scope": {
+      "role": "{role}: {reason}"
+    },
+    "spike": {
+      "below_min": "{observed} {unit}/zaman dilimi, savunulabilir bir karar için gereken {minimum} asgari değerin altında",
+      "delta_below_min": "{delta} {unit}/zaman dilimi artış, {minimum} asgari mutlak farkın altında",
+      "fired": "{observed} {unit}, {subject} için baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} {unit}/zaman dilimi); {basis}",
+      "fired_lower": "En az {observed} {unit} (alt sınır: {scope}), {subject} için baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} {unit}/zaman dilimi); {basis}",
+      "ratio_none": "beklenen yok"
+    },
+    "state": {
+      "failed": "başarısız oldu",
+      "lower_bound": "alt sınır",
+      "not_collected": "toplanmadı",
+      "rejected": "reddedildi"
+    },
+    "subject": {
+      "busiest_fanout": "en yoğun kaynak IP'nin farklı portları",
+      "named": "{kind} {name}"
+    }
+  },
+  "waf": {
+    "basis": {
+      "mad_above_p95": "MAD=0 olduğundan robust skor kullanılamıyor; {observed}, geçmiş p95 değeri olan {bound} sınırının üzerinde",
+      "mad_outside_band": "MAD=0 olduğundan robust skor kullanılamıyor; gözlenen değer beklenen [{lower}, {upper}] aralığının dışında",
+      "mad_within_p95": "MAD=0 olduğundan robust skor kullanılamıyor ve {observed}, geçmiş p95 değeri olan {bound} sınırının içinde",
+      "z": "robust z={score} (eşik +{threshold})",
+      "z_not_reached": "Robust z={score}, +{threshold} değerine ulaşmadı"
+    },
+    "caveat": {
+      "block_ratio": "Engelleme, profilin eylem eşlemesi üzerinden değerlendirilir. Daha yüksek bir engelleme oranı WAF kararlarını tanımlar; bir saldırının başarılı olduğunu göstermez.",
+      "client_concentration": "Baskın bir kaynak IP trafik bileşimini tanımlar; niyeti değil.",
+      "client_error_ratio": "HTTP 4xx yanıtları yanıt kodlarıdır, WAF kararları değildir: 403 tek başına bir engelleme sayılmaz ve WAF engellemesi ayrıca raporlanır.",
+      "new_endpoint": "Yeni istenen bir endpoint, bir yoklama kadar kolayca bir dağıtım da olabilir.",
+      "server_error_ratio": "HTTP 5xx yanıtları sunucu tarafındaki hataları tanımlar. Trafiğin kötü amaçlı olduğunu göstermez."
+    },
+    "concentration": {
+      "attributed_low": "Endpoint isteklerinin yalnızca {covered} kadarı bir kaynak IP'ye atfedildi; bu, {floor} coverage tabanının altında",
+      "endpoint_below_min": "{count} istek, bileşim kararı için gereken {minimum} asgari değerin altında",
+      "fired": "En büyük kaynak IP, {subject} için {top} / {total} isteği gönderdi ({share}); beklenen pay {expected} idi ({rise}); en büyük beş kaynak {top5} gönderdi; {volume}; {basis}",
+      "rise_below_min": "En büyük kaynak IP'nin payı {share}, beklenen {expected} payından {rise} farklı; bu, {minimum} asgari artışın altında",
+      "top_below_min": "En büyük kaynak IP {top} istek gönderdi; bu, anlamlı bir yoğunlaşma için gereken {minimum} asgari değerin altında",
+      "volume_no_baseline": "endpoint hacmi {requests} istek (güvenilir bir hacim baseline'ı yok)",
+      "volume_with_baseline": "endpoint hacmi {requests} istek, beklenen {expected}"
+    },
+    "guard": {
+      "baseline_no_denominator": "{metric} baseline'ında birleştirilmiş payda yok",
+      "baseline_samples": "{metric} baseline'ı {samples} anlamlı zaman dilimi içeriyor; bu, savunulabilir bir karar için gereken asgari değerin altında",
+      "breakdown_failed": "{breakdown} dökümü bu zaman dilimi için başarısız oldu: değer kullanılamıyor, sıfır değil",
+      "breakdown_not_collected": "{breakdown} dökümü bu zaman dilimi için toplanmadı: değer kullanılamıyor, sıfır değil",
+      "no_baseline": "Haftanın bu günü ve saati hücresi için henüz {metric} baseline'ı yok",
+      "not_proven_lower_bound": "{reason}; oranın payı bir alt sınırdır ({scope}), bu nedenle ondan normal bir karar çıkarılamaz",
+      "source_coverage_low": "Bu kaynağın olaylarının yalnızca {covered} kadarı bir endpoint'e ayrıştırıldı; bu, {floor} coverage tabanının altında: ayrıştırılmayan istekler ayrıştırılanlardan farklı türde olabilir, bu yüzden görünen oran hiçbir şeyi sınırlamaz"
+    },
+    "history_check": {
+      "admission_truncated": "{bucket} geçmiş zaman diliminde endpoint kabulü kırpıldı",
+      "appearance_never_collected": "ilk görünme zaman dilimi hiç toplanmadı",
+      "appearance_no_profile": "ilk görünme zaman diliminde profil sürümü yok",
+      "appearance_normalizer": "ilk görünme zaman dilimi {version} normalizer sürümüyle uyumsuz",
+      "bucket_width": "{bucket} geçmiş zaman dilimi farklı bir toplama zaman dilimi genişliği kullandı",
+      "discovery_truncated": "{bucket} geçmiş zaman diliminde endpoint keşfi kırpıldı",
+      "never_collected": "{missing} / {expected} geçmiş zaman dilimi hiç toplanmadı",
+      "normalizer_version": "{bucket} geçmiş zaman dilimi {version} normalizer sürümüyle uyumsuz",
+      "not_divisible": "geçmiş penceresi toplama zaman dilimi genişliğine tam bölünmüyor",
+      "not_loaded": "yerleşik bir endpoint için geçmiş yüklenmedi",
+      "profile_version": "{bucket} geçmiş zaman dilimi {found} profil sürümünü kullandı; ilk görünme sürümü {expected} idi",
+      "record_count": "geçmiş, beklenen {expected} zaman dilimi için {records} zaman dilimi kaydı içeriyor"
+    },
+    "noun": {
+      "blocked_requests": "engellenen istekler",
+      "http_4xx": "HTTP 4xx yanıtları",
+      "http_5xx": "HTTP 5xx yanıtları",
+      "response_code_requests": "yanıt kodu taşıyan istekler",
+      "waf_action_requests": "WAF eylemi taşıyan istekler"
+    },
+    "novelty": {
+      "below_materiality": "İlk göründüğünden bu yana {buckets} zaman diliminde {requests} istek, {min_buckets} zaman diliminde {min_requests} isteğe ulaşmadı",
+      "below_materiality_lower": "{reason}; sayımlar alt sınırdır",
+      "cannot_establish": "Yenilik belirlenemiyor: {cause}",
+      "established_hand_off": "Yerleşik endpoint: ilk olarak {first_seen} tarihinde kabul edildi; bu, geçmiş devri olan {hand_off} tarihinden önce",
+      "established_outside_window": "Yerleşik endpoint: ilk olarak {first_seen} tarihinde kabul edildi; {buckets} zaman dilimlik yenilik penceresinin dışında",
+      "fired": "İlk göründüğü {first_seen} tarihinden bu yana {subject}, {buckets} zaman diliminde {requests} istek aldı; doğrulanmış {history_start} – {history_end} geçmişinde bir zaman diliminde hiçbir zaman {admission} veya daha fazla kez istenmedi",
+      "fired_lower": "İlk göründüğü {first_seen} tarihinden bu yana {subject}, {buckets} zaman diliminde en az {requests} istek aldı; doğrulanmış {history_start} – {history_end} geçmişinde bir zaman diliminde hiçbir zaman {admission} veya daha fazla kez istenmedi",
+      "flood_admission": "Endpoint kabulü, ilk görünme zaman diliminde kırpıldı",
+      "flood_discovery": "Endpoint keşfi, ilk görünme zaman diliminde kırpıldı",
+      "history_incomplete": "geçmiş eksik",
+      "not_established": "Endpoint'in ilk görünümü belirlenemedi"
+    },
+    "rate": {
+      "baseline_samples": "Baseline'da {samples} örnek var; bu, savunulabilir bir karar için gereken asgari değerin altında",
+      "below_min_volume": "{observed} istek/zaman dilimi, savunulabilir bir karar için gereken {minimum} asgari değerin altında",
+      "bucket_not_whole": "Zaman dilimi {completeness}; bütün bir gözlem sayılmaz",
+      "coverage_low": "Bu kaynağın olaylarının yalnızca {covered} kadarı bu zaman diliminde ayrıştırılabilir bir endpoint taşıdı",
+      "delta_below_min": "{delta} istek/zaman dilimi artış, {minimum} asgari mutlak farkın altında",
+      "fired": "{observed} istek, baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} istek/zaman dilimi); {basis}",
+      "fired_lower": "En az {observed} istek (alt sınır: {scope}), baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} istek/zaman dilimi); {basis}",
+      "mad_within_band": "MAD=0 olduğundan robust skor kullanılamıyor ve gözlenen değer beklenen [{lower}, {upper}] aralığının içinde",
+      "no_baseline": "Haftanın bu günü ve saati hücresi için henüz istek hızı baseline'ı yok",
+      "not_proven_lower_bound": "En az {observed} istek bu endpoint'e atfedildi, ancak sayım bir alt sınırdır ve {reason}; alt sınırdan normal bir karar çıkarılamaz",
+      "ratio_multiple": "beklenenin {ratio}x katı",
+      "ratio_none": "hiç trafik beklenmiyordu",
+      "ratio_not_reached": "{ratio} olan gözlenen/beklenen oran, {threshold} değerine ulaşmadı",
+      "z_not_reached": "z={score} robust skoru, +{threshold} eşiğine ulaşmadı"
+    },
+    "ratio": {
+      "denominator_below_min": "{count} {noun}, oran kararı için gereken {minimum} asgari paydanın altında",
+      "field_coverage_low": "Endpoint isteklerinin yalnızca {covered} kadarı {field} alanını taşıdı; bu, {floor} coverage tabanının altında",
+      "fired": "{count} / {total} {denominator}, {subject} için {numerator} idi ({share}); {history} geçmiş istekten beklenen oran {expected} idi ({rise}, {multiple}x); {basis}",
+      "fired_lower": "En az {count} / {total} {denominator}, {subject} için {numerator} idi (en az {share}); {history} geçmiş istekten beklenen oran {expected} idi ({rise}, {multiple}x); {basis}",
+      "fired_lower_no_multiple": "En az {count} / {total} {denominator}, {subject} için {numerator} idi (en az {share}); {history} geçmiş istekten beklenen oran {expected} idi ({rise}); {basis}",
+      "fired_no_multiple": "{count} / {total} {denominator}, {subject} için {numerator} idi ({share}); {history} geçmiş istekten beklenen oran {expected} idi ({rise}); {basis}",
+      "multiple_below_min": "{observed}, beklenen {expected} değerinin {multiple}x katı; bu, {minimum}x değerinin altında",
+      "numerator_below_min": "{count} {noun}, {minimum} asgari değerin altında; oranda anlamlı bir artış mümkün değil",
+      "rise_below_min": "{observed}, beklenen {expected} değerinden {rise} farklı; bu, {minimum} asgari artışın altında"
+    },
+    "scope": {
+      "composition_exact": "Bileşim kararı için kesin ölçümler gerekir",
+      "inputs_unsupported": "Girdiler bir karara izin vermiyor",
+      "lower_bound_increase": "Sayım bir alt sınırdır: artış kanıtlanabilir, normal davranış kanıtlanamaz",
+      "needs_exact": "Algılayıcı kesin sayımlar gerektirir ve bu sayım bir alt sınırdır",
+      "unattributed": "Bazı olaylar atfedilemedi",
+      "unclassified": "Bazı değerler sınıflandırılamadı",
+      "unstated": "Zaman dilimi, sayımlarının kesin mi yoksa alt sınır mı olduğunu belirtmiyor"
+    },
+    "semantics": {
+      "baseline_unidentified": "Baseline hücresinin metrik-semantik kimliği yok; yeniden oluşturulması gerekir",
+      "bucket_unidentified": "Zaman diliminin metrik-semantik kimliği yok; kimlikler kaydedilmeden önce toplandı ve değerlendirilemez",
+      "mismatch": "Baseline ''{baseline}'' altında oluşturuldu, ancak zaman dilimi ''{bucket}'' altında toplandı; yeniden oluşturulması gerekir"
+    },
+    "subject": {
+      "named": "{method} {endpoint}",
+      "this_endpoint": "bu endpoint"
+    },
+    "suppression": {
+      "maintenance_window": "Bakım penceresi"
+    }
+  }
+}

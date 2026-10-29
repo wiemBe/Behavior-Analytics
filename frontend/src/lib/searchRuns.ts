@@ -101,11 +101,26 @@ export function isolatedIndices(values: (number | null)[]): number[] {
   return out;
 }
 
+/** The `units` namespace's translator, as `formatRunDuration` takes it. */
+export type RunUnits = (key: string, values: { count: number | string }) => string;
+
 /** A run duration with its unit: `850 ms`, `41.2 s`, `5 min 0 s`. Null is not zero. */
-export function formatRunDuration(ms: number | null): string {
+export function formatRunDuration(
+  ms: number | null,
+  units?: RunUnits,
+  locale: "en" | "tr" = "en",
+): string {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
   if (ms < 1000) return `${Math.round(ms)} ms`;
-  if (ms < 60000) return `${(Math.round(ms / 100) / 10).toString()} s`;
+  // `units` is the `units` namespace's translator (`second`, `minute`); without it, English.
+  const second = (n: number | string) => (units ? units("second", { count: n }) : `${n} s`);
+  if (ms < 60000) {
+    const seconds = (Math.round(ms / 100) / 10).toString();
+    return second(locale === "tr" ? seconds.replace(".", ",") : seconds);
+  }
   const total = Math.round(ms / 1000);
-  return `${Math.floor(total / 60)} min ${total % 60} s`;
+  const minutes = Math.floor(total / 60);
+  return units
+    ? `${units("minute", { count: minutes })} ${second(total % 60)}`
+    : `${minutes} min ${total % 60} s`;
 }

@@ -1,0 +1,15 @@
+{
+  "sessionExpired": "Oturumunuzun süresi doldu. Devam etmek için yeniden giriş yapın.",
+  "forbidden": "Bu işlemi yapma izniniz yok.",
+  "forbiddenPermission": "Bunun için {permission} iznine sahip olmanız gerekir.",
+  "notFound": "Bu öğe artık yok. Sayfayı yenileyin.",
+  "conflict": "Bu, geçerli durumla çelişiyor. Sayfayı yenileyip yeniden deneyin.",
+  "invalid": "İstek geçersiz bulunarak reddedildi.",
+  "server": "Sunucu isteği tamamlayamadı. Kısa süre sonra yeniden deneyin.",
+  "failed": "İstek başarısız oldu.",
+  "notSent": "İstek gönderilemedi. Bağlantınızı kontrol edip yeniden deneyin.",
+  "notReached": "İstek sunucuya ulaşmadı. Backend'e erişilebildiğini kontrol edip yeniden deneyin.",
+  "httpStatus": "Sunucu HTTP {status} ile yanıt verdi.",
+  "loadForbidden": "İzin yok: {noun} görüntülenemez. {grant} izni için bir yöneticiye başvurun.",
+  "loadFailed": "Yüklenemedi: {noun}. Backend'e erişilemiyor olabilir; yeniden denemek için sayfayı yenileyin."
+}

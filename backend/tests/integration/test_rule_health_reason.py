@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.models.enums import RuleHealthStatus
@@ -156,6 +157,60 @@ async def test_the_list_reads_every_reason_in_one_statement(db_session, db_schem
         assert all(i["health_reason"] for i in items)
         assert len(statements) == small, (small, statements)
         assert len([s for s in statements if "rule_health_snapshot" in s]) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_held_back_badge_keeps_the_reason_of_the_verdict_shown(
+    db_session, db_schema
+) -> None:
+    """RM-1 open point 3: between two evaluations, the reason belongs to the badge.
+
+    `health_status` moves only after `rule_health_flap_threshold` agreeing
+    evaluations, while a snapshot is written on every one. The reason shown is
+    read at `health_evaluated_at`, so a held-back verdict must hold that
+    timestamp back with it — or an analyst reads a HEALTHY rule explained by an
+    INSUFFICIENT_DATA sentence (RULE-1: the reason belongs to the verdict shown).
+    """
+    from app.core.config import get_settings
+    from app.services.rule_health import RuleHealthEvaluator
+
+    inst = await make_instance(db_session)
+    held = await _rule(
+        db_session, inst, 1, evaluated_at=EVALUATED, status=RuleHealthStatus.HEALTHY
+    )
+    db_session.add(
+        _snapshot(held, EVALUATED, RuleHealthStatus.HEALTHY, "Working when last settled.")
+    )
+    await db_session.commit()
+
+    # One disagreeing evaluation: the badge stays HEALTHY (flap threshold 2).
+    evaluator = RuleHealthEvaluator(
+        db_session,
+        settings=get_settings().model_copy(update={"rule_health_flap_threshold": 2}),
+        clock=lambda: EVALUATED + timedelta(hours=1),
+    )
+    await evaluator.evaluate_instance(inst)
+    await db_session.commit()
+    await db_session.refresh(held)
+    assert held.health_status == RuleHealthStatus.HEALTHY
+    # The newest snapshot disagrees with the badge; it must not be the reason.
+    assert (await latest_reason_row(db_session, held)).status == RuleHealthStatus.INSUFFICIENT_DATA
+
+    api = reader_client(db_schema)
+    row = api.get(f"/api/v1/rules/{held.id}").json()
+    assert row["health_status"] == "HEALTHY"
+    assert row["health_reason"] == "Working when last settled."
+    listed = api.get("/api/v1/rules").json()["items"]
+    assert listed[0]["health_reason"] == "Working when last settled."
+
+
+async def latest_reason_row(session, rule) -> RuleHealthSnapshot:
+    return await session.scalar(
+        select(RuleHealthSnapshot)
+        .where(RuleHealthSnapshot.rule_id == rule.id)
+        .order_by(RuleHealthSnapshot.evaluated_at.desc())
+        .limit(1)
+    )
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     DateTime,
@@ -61,7 +62,11 @@ class Alert(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     fingerprint: Mapped[str] = mapped_column(String(255), nullable=False)
 
     title: Mapped[str] = mapped_column(String(512), nullable=False)
+    title_i18n: Mapped[dict[str, object] | None] = mapped_column(JSONB(none_as_null=True))
     description: Mapped[str | None] = mapped_column(Text)
+    description_i18n: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
     severity: Mapped[Severity] = mapped_column(String(16), nullable=False)
     status: Mapped[AlertStatus] = mapped_column(
         String(16), default=AlertStatus.OPEN, nullable=False
@@ -80,6 +85,9 @@ class Alert(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_by: Mapped[str | None] = mapped_column(String(255))
     resolution_reason: Mapped[str | None] = mapped_column(Text)
+    resolution_reason_i18n: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
 
     # Number of times the condition re-fired while this alert stayed open.
     # Incremented instead of creating a new alert — the count is useful signal,
@@ -97,6 +105,41 @@ class Alert(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     notifications: Mapped[list[AlertNotification]] = relationship(
         back_populates="alert", cascade="all, delete-orphan"
     )
+
+    @staticmethod
+    def _message_parts(
+        value: object,
+    ) -> tuple[str | None, dict[str, Any] | None]:
+        from app.schemas.messages import stored_message_parts
+
+        if not isinstance(value, dict):
+            return None, None
+        code, params = stored_message_parts(value.get("code"), value.get("params"))
+        return code, params
+
+    @property
+    def title_code(self) -> str | None:
+        return self._message_parts(self.title_i18n)[0]
+
+    @property
+    def title_params(self) -> dict[str, Any] | None:
+        return self._message_parts(self.title_i18n)[1]
+
+    @property
+    def description_code(self) -> str | None:
+        return self._message_parts(self.description_i18n)[0]
+
+    @property
+    def description_params(self) -> dict[str, Any] | None:
+        return self._message_parts(self.description_i18n)[1]
+
+    @property
+    def resolution_reason_code(self) -> str | None:
+        return self._message_parts(self.resolution_reason_i18n)[0]
+
+    @property
+    def resolution_reason_params(self) -> dict[str, Any] | None:
+        return self._message_parts(self.resolution_reason_i18n)[1]
 
     def __repr__(self) -> str:
         return f"<Alert {self.dedup_key} status={self.status}>"

@@ -273,9 +273,9 @@ a {
 }
 .topsearch-option {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-3);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
   min-width: 0;
   padding: var(--sp-2) var(--sp-3);
   font-size: var(--fs-sm);
@@ -285,18 +285,17 @@ a {
 .topsearch-option.is-active {
   background: var(--surface-3);
 }
+/* The subject, then what it is and where: each line wraps between words, so the source and the
+   state are never cut off in the narrow panel. */
 .topsearch-title {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .topsearch-sub {
-  flex: 0 1 auto;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
@@ -437,6 +436,13 @@ a {
   align-items: center;
   gap: var(--sp-2);
   flex-wrap: wrap;
+}
+/* The header's text link to the page's guide section (PageHeader `guide`). */
+.guide-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
+  font-size: var(--fs-sm);
 }
 
 /* --- sections --------------------------------------------------------------

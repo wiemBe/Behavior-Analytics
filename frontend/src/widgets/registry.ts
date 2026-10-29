@@ -1,5 +1,9 @@
 // The widget registry (UR.5.1): every widget the catalog can place, in one list.
 //
+// The English `title`, `description` and `blockedBy` here are the source text: what a test reads
+// and what shows for a type with no message. The interface shows `widgets.registry.<type>` from
+// the catalog (see `copy.ts`), so a new widget adds its text to both languages.
+//
 // The Home components (the Home is the widget system) are registered as they are: each one reads its own data through
 // `useApiResource` and renders its own frame and states, so the registry wraps them and does
 // not rewrite them. The catalog lists only what exists. A `blocked` entry is a widget whose
@@ -35,13 +39,13 @@ type NoConfig = Record<string, never>;
 
 /** Loads a Home component with `next/dynamic`, `ssr: false`, under a text-only state. */
 function load(
-  title: string,
+  def: Pick<AnyWidgetDef, "type" | "title">,
   kpi: boolean,
   loader: () => Promise<ComponentType<any>>,
 ): ComponentType<WidgetProps<NoConfig>> {
   return dynamic(loader, {
     ssr: false,
-    loading: placeholderFor(title, kpi),
+    loading: placeholderFor(def, kpi),
   }) as unknown as ComponentType<WidgetProps<NoConfig>>;
 }
 
@@ -76,7 +80,7 @@ function live<C = NoConfig>(input: LiveInput<C>): AnyWidgetDef {
     config: config ?? {},
     defaultConfig: defaultConfig ?? {},
     drillDown: typeof drillDown === "string" ? () => drillDown : drillDown,
-    Component: load(def.title, def.category === "KPI", loader),
+    Component: load(def, def.category === "KPI", loader),
   };
 }
 
@@ -96,12 +100,12 @@ function blocked(
     defaultConfig: {},
     drillDown: () => null,
     // A blocked widget is never placed, so it has nothing to render.
-    Component: placeholderFor(input.title, false) as unknown as ComponentType<WidgetProps<NoConfig>>,
+    Component: placeholderFor(input, false) as unknown as ComponentType<WidgetProps<NoConfig>>,
   };
 }
 
 // Sizes are grid cells of the 12-column layout (row heights: `--dash-row` in tokens.css).
-const KPI: WidgetSize = { w: 3, h: 7, minW: 2, minH: 6, maxW: 6 };
+const KPI: WidgetSize = { w: 3, h: 8, minW: 2, minH: 6, maxW: 6 };
 const WIDE: WidgetSize = { w: 8, h: 14, minW: 6, minH: 10 };
 // 14 rows hold the donut, the completeness note and five class rows of EPS by source class.
 const THIRD: WidgetSize = { w: 4, h: 14, minW: 3, minH: 10 };
@@ -253,7 +257,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     category: "Health",
     requires: ["read:search_cadence"],
     sources: ["/admin/search-cadence"],
-    size: { w: 6, h: 15, minW: 4, minH: 10 },
+    size: { w: 6, h: 18, minW: 4, minH: 10 },
     drillDown: "/admin/search-cadence",
     loader: () => import("@/components/catalog/HealthCollection").then((m) => m.HealthCollection),
   }),

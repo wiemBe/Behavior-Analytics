@@ -1,0 +1,15 @@
+{
+  "sessionExpired": "Your session has expired. Sign in again to continue.",
+  "forbidden": "You do not have permission to perform this action.",
+  "forbiddenPermission": "You need the {permission} permission for this.",
+  "notFound": "This item no longer exists. Refresh the page.",
+  "conflict": "This conflicts with the current state. Refresh and try again.",
+  "invalid": "The request was rejected as invalid.",
+  "server": "The server could not complete the request. Try again shortly.",
+  "failed": "The request failed.",
+  "notSent": "The request could not be sent. Check your connection and try again.",
+  "notReached": "The request did not reach the server. Check that the backend is reachable and try again.",
+  "httpStatus": "The server answered HTTP {status}.",
+  "loadForbidden": "You do not have permission to view {noun}. Ask an administrator for the {grant} grant.",
+  "loadFailed": "{noun} could not be loaded. The backend may be unreachable; reload the page to try again."
+}

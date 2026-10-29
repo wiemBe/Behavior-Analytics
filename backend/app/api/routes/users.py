@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import select
 
 from app.api.deps import SessionDep, requires
+from app.api.request_meta import client_ip, user_agent
 from app.models.identity import Role, User
 from app.schemas.users import PasswordResetIn, RoleOut, RolesIn, UserCreate, UserOut
 from app.security.auth import get_principal
@@ -30,13 +31,11 @@ router = APIRouter(
 
 
 def _actor(request: Request, principal: Principal) -> Actor:
-    host = request.client.host[:64] if request.client is not None and request.client.host else None
-    agent = request.headers.get("user-agent")
     return Actor(
         username=principal.username or principal.subject,
         user_id=principal.user_id,
-        source_ip=host,
-        user_agent=agent[:512] if agent else None,
+        source_ip=client_ip(request),
+        user_agent=user_agent(request),
     )
 
 

@@ -1,8 +1,10 @@
 // Against what normal: the detector's own working for a WAF incident.
 //
 // Projected by the API from the stored evidence by whitelist
-// (`WafDetectionDetailOut`); the UI renders it and never recomputes it. A field
-// the detector did not compute is an em dash, which is not a zero.
+// (`WafDetectionDetailOut`); the UI renders it and never recomputes it. A
+// field the detector did not compute is an em dash, which is not a zero.
+
+import { useTranslations } from "next-intl";
 
 import type { WafAnomalyDetail } from "@/lib/api";
 import {
@@ -11,9 +13,13 @@ import {
   formatShare,
   robustScoreMeaning,
 } from "@/lib/behavior";
+import { useBackendMessage } from "@/i18n/backendMessage";
+import { scoreStatusCode, versionLabel } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { formatPercent } from "@/lib/format";
 import { formatRequests, requestsUnit } from "./wafFormat";
+import { RANGE_SEP } from "./wafI18n";
 import { isNewEndpointType, isRatioType } from "./wafSummary";
 
 function Missing({ reason }: { reason: string }) {
@@ -41,42 +47,58 @@ export function WafDetectionBlock({
   /** Bucket width from the stored buckets, for the unit; null when unknown. */
   bucketSeconds?: number | null;
 }) {
+  const t = useTranslations("waf.detection");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
+  // The detector's own sentences, in the reader's language when the API sent their code.
+  const say = useBackendMessage();
   const d = anomaly.detection;
   if (!d) {
-    return (
-      <div className="notice">
-        No detector working was recorded for this incident, so its expected range and baseline
-        cannot be shown. This is a missing record, not a normal baseline.
-      </div>
-    );
+    return <div className="notice">{t("none")}</div>;
   }
 
-  const reason = d.reason ?? anomaly.explanation;
+  const reason =
+    d.reason != null
+      ? say({ text: d.reason, code: d.reason_code, params: d.reason_params })
+      : anomaly.explanation != null
+        ? say({
+            text: anomaly.explanation,
+            code: anomaly.explanation_code,
+            params: anomaly.explanation_params,
+          })
+        : null;
+  const caveat = d.caveat
+    ? say({ text: d.caveat, code: d.caveat_code, params: d.caveat_params })
+    : null;
   const ratio = isRatioType(anomaly.anomaly_type);
   const robustZ =
     d.robust_score_status === "DEGENERATE" ? (
-      <Missing reason="not used: MAD was zero" />
+      <Missing reason={t("zNotUsed")} />
     ) : d.robust_score_status === "UNAVAILABLE" ? (
-      <Missing reason="not computed" />
+      <Missing reason={t("zNotComputed")} />
     ) : (
-      formatMetric(d.robust_z)
+      formatMetric(d.robust_z, 2, locale)
     );
   const hasRange = d.expected_low != null && d.expected_high != null;
   // A range carries its unit; a missing one says it was not recorded rather than
   // standing as a bare dash.
   const range = !hasRange ? (
     <span className="muted">
-      —<span className="sr-only"> not recorded for this incident</span>
+      —<span className="sr-only"> {t("rangeNotRecorded")}</span>
     </span>
   ) : ratio ? (
     <>
-      {formatPercent(d.expected_low)} – {formatPercent(d.expected_high)}
-      <span className="muted"> of bucket requests</span>
+      {formatPercent(d.expected_low, null, 1, locale)}
+      {RANGE_SEP}
+      {formatPercent(d.expected_high, null, 1, locale)}
+      <span className="muted"> {t("ofBucketRequests")}</span>
     </>
   ) : (
     <>
-      {formatRequests(d.expected_low)} – {formatRequests(d.expected_high)}
-      <span className="muted"> {requestsUnit(bucketSeconds)}</span>
+      {formatRequests(d.expected_low, null, locale)}
+      {RANGE_SEP}
+      {formatRequests(d.expected_high, null, locale)}
+      <span className="muted"> {requestsUnit(bucketSeconds, i18n)}</span>
     </>
   );
   if (isNewEndpointType(anomaly.anomaly_type)) {
@@ -87,31 +109,34 @@ export function WafDetectionBlock({
         {reason && <p className="waf-reason">{reason}</p>}
         <dl className="dimension-meta">
           <Row
-            label="Materiality floor"
+            label={t("floor")}
             value={
               d.threshold != null ? (
-                <>material at ≥ {formatCount(d.threshold)} requests</>
+                <>{t("floorValue", { count: formatCount(d.threshold, locale) })}</>
               ) : (
-                <Missing reason="no materiality floor was recorded" />
+                <Missing reason={t("floorMissing")} />
               )
             }
           />
           <Row
-            label="Verified history"
+            label={t("history")}
             value={
               d.baseline_sample_count != null ? (
                 <>
-                  {formatCount(d.baseline_sample_count)} buckets
-                  <span className="muted"> below the admission threshold</span>
+                  {t("historyBuckets", { count: formatCount(d.baseline_sample_count, locale) })}
+                  <span className="muted"> {t("historyBelow")}</span>
                 </>
               ) : (
-                <Missing reason="no history length was recorded" />
+                <Missing reason={t("historyMissing")} />
               )
             }
           />
-          <Row label="Consecutive abnormal buckets" value={formatCount(anomaly.consecutive_buckets)} />
+          <Row
+            label={t("consecutive")}
+            value={formatCount(anomaly.consecutive_buckets, locale)}
+          />
         </dl>
-        {d.caveat && <p className="subtitle">{d.caveat}</p>}
+        {caveat && <p className="subtitle">{caveat}</p>}
       </div>
     );
   }
@@ -121,30 +146,36 @@ export function WafDetectionBlock({
       {reason && <p className="waf-reason">{reason}</p>}
 
       <dl className="dimension-meta">
-        <Row label={ratio ? "Seasonal p05–p95 at detection" : "Expected range at detection"} value={range} />
+        <Row label={ratio ? t("seasonalRange") : t("expectedRange")} value={range} />
         {/* One-sided: the detectors fire on an increase only. */}
         <Row
-          label="Robust z threshold"
-          value={d.threshold != null ? `+${formatMetric(d.threshold)}` : "—"}
+          label={t("threshold")}
+          value={d.threshold != null ? `+${formatMetric(d.threshold, 2, locale)}` : "—"}
         />
-        <Row label="Baseline samples" value={formatCount(d.baseline_sample_count)} />
-        <Row label="Baseline completeness" value={formatShare(d.baseline_completeness)} />
-        <Row label="Baseline version" value={d.baseline_version != null ? `v${d.baseline_version}` : "—"} />
+        <Row label={t("samples")} value={formatCount(d.baseline_sample_count, locale)} />
+        <Row label={t("completeness")} value={formatShare(d.baseline_completeness, locale)} />
         <Row
-          label="Normalizer version"
-          value={d.normalizer_version != null ? `v${d.normalizer_version}` : "—"}
+          label={t("baselineVersion")}
+          value={d.baseline_version != null ? versionLabel(d.baseline_version) : "—"}
         />
-        <Row label="Robust z" value={robustZ} />
-        <Row label="Consecutive abnormal buckets" value={formatCount(anomaly.consecutive_buckets)} />
+        <Row
+          label={t("normalizerVersion")}
+          value={d.normalizer_version != null ? versionLabel(d.normalizer_version) : "—"}
+        />
+        <Row label={t("robustZ")} value={robustZ} />
+        <Row
+          label={t("consecutive")}
+          value={formatCount(anomaly.consecutive_buckets, locale)}
+        />
       </dl>
 
       {d.robust_score_status && (
         <p className="subtitle">
-          <strong>Robust score {d.robust_score_status}.</strong>{" "}
-          {robustScoreMeaning(d.robust_score_status)}
+          <strong>{t("scoreStatus", { status: scoreStatusCode(i18n, d.robust_score_status) })}</strong>{" "}
+          {robustScoreMeaning(d.robust_score_status, i18n)}
         </p>
       )}
-      {d.caveat && <p className="subtitle">{d.caveat}</p>}
+      {caveat && <p className="subtitle">{caveat}</p>}
     </div>
   );
 }

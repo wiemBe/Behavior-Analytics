@@ -1,11 +1,14 @@
 # Phase B — WAF Behavioral Analytics
 
-**Status (2026-09-16):** the B1/B2 backend vertical slice — normalizer, persistence, collector,
+**Status (2026-09-16; updated 2026-10-25):** the B1/B2 backend vertical slice — normalizer, persistence, collector,
 baseline, `WAF_REQUEST_RATE_SPIKE`, lifecycle — is **implemented and validated against live lab
 telemetry** (§26). **Phase B.1 made it schedulable (§28):** per-source profiles and validation,
 bounded admission, recorded maintenance decisions, metric-semantics identities, retention and
-per-source scheduled runs. It is off by default and has **no analyst API or UI**. Production WAF
-onboarding is **NO-GO**.
+per-source scheduled runs. **Phase B.2 added the five behavioral detectors, the breakdowns they
+read and opt-in alerting (§30, [BUILT]).** The analyst API and UI (§27.14–§27.15) and the source
+administration UI with the field-mapping editor are **built** (2026-10-13). Everything above first shipped in release `v0.1.0`. It is off by default
+(`waf_collection_enabled`, `waf_alerting_enabled` — both default `false`), and production WAF
+onboarding is **NO-GO** (§30.14).
 
 **Phase B.1.5 (§29)** made collection resilient and bounded before detector expansion: path floods
 above the group cap now yield explicit lower bounds instead of blinding the source, endpoint storage
@@ -2233,7 +2236,12 @@ nothing ever drops it.
 Applied through the existing non-destructive `app/services/timescale.py` path and never inside a
 migration, as Phase A does.
 
-### 27.14 API shape [DESIGN]
+### 27.14 API shape [BUILT]
+
+> **As built (2026-10-13).** Every route below exists: `behavior_router` in
+> `app/api/routes/anomalies.py` serves `/behavior/waf/sources`,
+> `/behavior/waf/sources/{log_source_id}`, `.../endpoints`, `.../metrics` and `.../baselines`, and
+> `GET /behavior/detectors` serves both domains.
 
 Every route is `GET`, behind `read:anomalies`, paginated and range-bounded by `API_MAX_RANGE_DAYS`,
 and joins the existing GET-only route test.
@@ -2268,7 +2276,11 @@ GET /api/v1/behavior/detectors                                  [BUILT] detector
 No route writes to QRadar. Profile writes go through the CLI or the `admin:waf` API of
 [`FIELD-MAPPING.md`](FIELD-MAPPING.md) §FM.4 (built 2026-10-13); the routes above stay read-only.
 
-### 27.15 UI shape [DESIGN]
+### 27.15 UI shape [BUILT]
+
+> **As built (2026-10-13).** The anomaly-list subject column and subject-kind filter, the
+> WAF investigation detail and the `/behavior/waf` and `/behavior/waf/sources/[id]` pages are
+> built (`frontend/src/app/behavior/waf`, `frontend/src/components/waf`).
 
 Reuses the investigation components that are generic over evidence (§3.4). No new visual system.
 
@@ -3301,6 +3313,11 @@ open. It is written from the code, not from the plan: **[BUILT]** means present 
 commit. Where it supersedes §27–§29 it says so. **No analyst API or UI for WAF incidents was
 added**, and production WAF onboarding is still unvalidated.
 
+> **As built (2026-10-13, the day after this section).** The analyst API and UI did follow: WAF
+> subjects on `/api/v1/anomalies` with the detection detail (`app/api/routes/anomalies.py`
+> `_waf_detail`) and the `/behavior/waf` pages (§27.14, §27.15). Production onboarding is
+> still **NO-GO**.
+
 Every detector follows the §29 rules it inherits. A missing, failed or truncated input is
 `INSUFFICIENT_DATA` and never a zero or a normal verdict. A detector never grants itself
 lower-bound reasoning: its verdict scope is computed by the engine from the per-input requirements
@@ -3897,3 +3914,7 @@ Measured on `feat/phase-b2` immediately before the merge to `main`
 > under three extra searches per bucket is unmeasured (item 1), and the alert-storm risk with many
 > endpoints opening at once has no cap (item 3). Assumption A1 and the 422 assumption from §29.15
 > remain unverified. There is still no analyst API or UI for WAF incidents.
+
+> **As built.** The last sentence no longer holds: the analyst API and UI shipped on 2026-10-13
+> (§27.14–§27.15, which this section predates). The **NO-GO** itself stands — items 1 and 2
+> above and the §29.15 assumptions have had nothing newer recorded.

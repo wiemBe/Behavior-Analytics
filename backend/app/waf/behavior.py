@@ -38,7 +38,7 @@ from typing import Any
 
 from app.anomaly import statistics as rstats
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient
-from app.core.text import percent
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     DetectorSignal,
     RobustScoreStatus,
@@ -54,7 +54,15 @@ from app.waf.baseline import (
     TOP_CLIENT_SHARE_METRIC,
     WAF_BASELINE_METRIC,
 )
-from app.waf.detector import WafBaselineCell, WafDetectionContext, WafSpikeVerdict
+from app.waf.detector import (
+    Reason,
+    WafBaselineCell,
+    WafDetectionContext,
+    WafSpikeVerdict,
+    _paired,
+    scope_reason_ref,
+    split_reason,
+)
 from app.waf.inputs import HistoryFacts
 from app.waf.measurement import WafVerdictScope
 from app.waf.observations import BreakdownCounts, BreakdownStatus, EndpointObservation
@@ -95,8 +103,9 @@ class NoveltyFacts:
     history_start: datetime
     history_end: datetime
     history_buckets: int
-    #: Set when the first-appearance bucket had truncated discovery or admission.
-    appearance_flood: str | None
+    #: Set when the first-appearance bucket had truncated discovery or admission: a reference
+    #: from the engine, or the English text of a caller that has no code.
+    appearance_flood: Reason | None
     requests_since_first_seen: int
     buckets_with_traffic: int
     #: Some bucket since first appearance counted only a lower bound.
@@ -108,19 +117,20 @@ def _result(dt: WafAnomalyType, ev: AnomalyEvidence[WafAnomalyType]) -> WafSpike
     return WafSpikeVerdict(detector_type=dt, evidence=ev)
 
 
-def _pct(value: float | None) -> str:
-    """The share spelling for WAF sentences: one decimal of the shared helper."""
-    return percent(value, precision=1)
+def _ref(name: str, **params: object) -> MessageRef:
+    return MessageRef(f"waf.{name}", params)
 
 
 def _entity(ctx: WafDetectionContext) -> dict[str, Any] | None:
     return ctx.extra.get("entity")
 
 
-def _subject(ctx: WafDetectionContext) -> str:
+def _subject(ctx: WafDetectionContext) -> MessageRef:
     entity = _entity(ctx) or {}
     method, endpoint = entity.get("http_method"), entity.get("normalized_endpoint")
-    return f"{method} {endpoint}" if method and endpoint else "this endpoint"
+    if method and endpoint:
+        return _ref("subject.named", method=str(method), endpoint=str(endpoint))
+    return _ref("subject.this_endpoint")
 
 
 def contributors(obs: EndpointObservation, *, min_top_requests: int) -> dict[str, Any]:
@@ -182,6 +192,14 @@ def _cell_facts(cell: WafBaselineCell, expected: float) -> dict[str, Any]:
     }
 
 
+def _caveat_message(message: MessageRef | None) -> dict[str, Any]:
+    """The `caveat_code` / `caveat_params` that sit beside `caveat` in the evidence."""
+    if message is None:
+        return {}
+    wire = message.to_wire()
+    return {"caveat_code": wire["code"], "caveat_params": wire["params"]}
+
+
 def _volume_context(ctx: WafDetectionContext, obs: EndpointObservation) -> dict[str, Any]:
     cell = ctx.baselines.get(WAF_BASELINE_METRIC)
     expected = cell.median if cell is not None and cell.is_reliable else None
@@ -199,7 +217,7 @@ def _volume_context(ctx: WafDetectionContext, obs: EndpointObservation) -> dict[
 
 def _surprise(
     observed: float, cell: WafBaselineCell, thr: WafBehaviorThresholds, facts: dict[str, Any]
-) -> tuple[bool, str, float]:
+) -> tuple[bool, MessageRef, float]:
     """The seasonal score guard: (passed, basis or reason, magnitude)."""
     z, status = rstats.robust_z_with_status(
         observed, cell.median, cell.mad, mad_floor_ratio=thr.mad_floor_ratio
@@ -208,21 +226,21 @@ def _surprise(
     facts["robust_z"] = round(z, 3)
     if status is RobustScoreStatus.OK:
         if z < thr.deviation_z:
-            return False, f"robust z={z:.2f} has not reached +{thr.deviation_z}", z
-        return True, f"robust z={z:.2f} (threshold +{thr.deviation_z})", z
+            return (
+                False, _ref("basis.z_not_reached", score=z, threshold=thr.deviation_z), z
+            )
+        return True, _ref("basis.z", score=z, threshold=thr.deviation_z), z
     upper = cell.p95 if cell.p95 is not None else cell.median
     facts["fallback_bound"] = round(upper, 6)
     if observed <= upper:
         return (
             False,
-            f"robust score unavailable (MAD=0) and {_pct(observed)} is within the "
-            f"historical p95 {_pct(upper)}",
+            _ref("basis.mad_within_p95", observed=observed, bound=upper),
             thr.deviation_z,
         )
     return (
         True,
-        f"robust score unavailable (MAD=0); {_pct(observed)} is above the historical "
-        f"p95 {_pct(upper)}",
+        _ref("basis.mad_above_p95", observed=observed, bound=upper),
         thr.deviation_z,
     )
 
@@ -235,42 +253,52 @@ class _Guard:
         self.obs: EndpointObservation = ctx.observation
         self.lower_bound = ctx.effective_scope is WafVerdictScope.INCREASE_ONLY
 
-    def insufficient(self, reason: str, sample_count: int = 0) -> WafSpikeVerdict:
+    def insufficient(self, reason: Reason, sample_count: int = 0) -> WafSpikeVerdict:
+        text, message = split_reason(reason)
         return _result(self.dt, insufficient(
             self.dt, interval_start=self.obs.bucket_start, interval_end=self.obs.bucket_end,
-            reason=reason, sample_count=sample_count,
+            reason=text, sample_count=sample_count, reason_message=message,
         ))
 
     def not_proven(
-        self, reason: str, *, observed: float, expected: float | None
+        self, reason: MessageRef, *, observed: float, expected: float | None
     ) -> WafSpikeVerdict:
         if self.lower_bound:
             return self.insufficient(
-                f"{reason}; the numerator is a lower bound "
-                f"({self.ctx.scope_reason or 'some values were unclassified'}), so a normal "
-                "verdict cannot be concluded from it"
+                _ref(
+                    "guard.not_proven_lower_bound",
+                    reason=reason,
+                    scope=(
+                        scope_reason_ref(self.ctx.scope_reason)
+                        or _ref("scope.unclassified")
+                    ),
+                )
             )
+        text, message = split_reason(reason)
         return _result(self.dt, healthy(
             self.dt, interval_start=self.obs.bucket_start, interval_end=self.obs.bucket_end,
             observed=round(observed, 6),
             expected=round(expected, 6) if expected is not None else None,
-            reason=reason,
+            reason=text, reason_message=message,
         ))
 
     def baseline(self, metric: str) -> WafBaselineCell | WafSpikeVerdict:
         if self.ctx.baseline_incompatibility is not None:
-            return self.insufficient(self.ctx.baseline_incompatibility)
+            return self.insufficient(
+                _paired(
+                    self.ctx.baseline_incompatibility, self.ctx.baseline_incompatibility_message
+                )
+            )
         cell = self.ctx.baseline
         if cell is None:
-            return self.insufficient(f"no {metric} baseline for this weekday/hour cell yet")
+            return self.insufficient(_ref("guard.no_baseline", metric=metric))
         if not cell.is_reliable:
             return self.insufficient(
-                f"the {metric} baseline has {cell.sample_count} material bucket(s), below the "
-                "minimum for a defensible verdict",
+                _ref("guard.baseline_samples", metric=metric, samples=cell.sample_count),
                 sample_count=cell.sample_count,
             )
         if not cell.denominator_sum:
-            return self.insufficient(f"the {metric} baseline has no pooled denominator")
+            return self.insufficient(_ref("guard.baseline_no_denominator", metric=metric))
         return cell
 
 
@@ -290,7 +318,37 @@ class RatioDefinition:
     uncertain_noun: str
     #: Neutral statement of what the finding is not.
     caveat: str
+    #: The registry references behind the noun phrases and the caveat, when the definition has
+    #: them (the sentence takes the reference; the text stays the stored English).
+    numerator_ref: MessageRef | None = None
+    denominator_ref: MessageRef | None = None
+    caveat_ref: MessageRef | None = None
 
+    @property
+    def numerator_phrase(self) -> Reason:
+        return self.numerator_ref or self.numerator_noun
+
+    @property
+    def denominator_phrase(self) -> Reason:
+        return self.denominator_ref or self.denominator_noun
+
+
+def _fixed_ref(code: str) -> tuple[str, MessageRef]:
+    """A fixed phrase of the registry: its English and its reference."""
+    ref = MessageRef(code)
+    return render(ref), ref
+
+
+_BLOCKED, _BLOCKED_REF = _fixed_ref("waf.noun.blocked_requests")
+_WAF_ACTION, _WAF_ACTION_REF = _fixed_ref("waf.noun.waf_action_requests")
+_HTTP_5XX, _HTTP_5XX_REF = _fixed_ref("waf.noun.http_5xx")
+_HTTP_4XX, _HTTP_4XX_REF = _fixed_ref("waf.noun.http_4xx")
+_WITH_CODE, _WITH_CODE_REF = _fixed_ref("waf.noun.response_code_requests")
+_CAVEAT_BLOCK, _CAVEAT_BLOCK_REF = _fixed_ref("waf.caveat.block_ratio")
+_CAVEAT_5XX, _CAVEAT_5XX_REF = _fixed_ref("waf.caveat.server_error_ratio")
+_CAVEAT_4XX, _CAVEAT_4XX_REF = _fixed_ref("waf.caveat.client_error_ratio")
+_CAVEAT_CONCENTRATION, _CAVEAT_CONCENTRATION_REF = _fixed_ref("waf.caveat.client_concentration")
+_CAVEAT_NEW_ENDPOINT, _CAVEAT_NEW_ENDPOINT_REF = _fixed_ref("waf.caveat.new_endpoint")
 
 BLOCK_RATIO = RatioDefinition(
     detector_type=WafAnomalyType.WAF_BLOCK_RATIO_SPIKE,
@@ -301,13 +359,13 @@ BLOCK_RATIO = RatioDefinition(
     numerator=lambda c: c.blocked,
     denominator=lambda c: c.action_events,
     uncertain=lambda c: c.unmapped_actions,
-    numerator_noun="blocked requests",
-    denominator_noun="requests carrying a WAF action",
+    numerator_noun=_BLOCKED,
+    denominator_noun=_WAF_ACTION,
     uncertain_noun="requests with an action value the profile's map does not name",
-    caveat=(
-        "Blocking is judged through the profile's action map. A higher block ratio "
-        "describes WAF decisions; it does not establish that an attack succeeded."
-    ),
+    caveat=_CAVEAT_BLOCK,
+    numerator_ref=_BLOCKED_REF,
+    denominator_ref=_WAF_ACTION_REF,
+    caveat_ref=_CAVEAT_BLOCK_REF,
 )
 SERVER_ERROR_RATIO = RatioDefinition(
     detector_type=WafAnomalyType.WAF_ERROR_RATIO_SPIKE,
@@ -318,13 +376,13 @@ SERVER_ERROR_RATIO = RatioDefinition(
     numerator=lambda c: c.server_errors,
     denominator=lambda c: c.response_code_events,
     uncertain=lambda c: c.unclassified_responses,
-    numerator_noun="HTTP 5xx responses",
-    denominator_noun="requests carrying a response code",
+    numerator_noun=_HTTP_5XX,
+    denominator_noun=_WITH_CODE,
     uncertain_noun="response-code values that are not a three-digit status",
-    caveat=(
-        "HTTP 5xx responses describe server-side failures. They do not establish that "
-        "the traffic was malicious."
-    ),
+    caveat=_CAVEAT_5XX,
+    numerator_ref=_HTTP_5XX_REF,
+    denominator_ref=_WITH_CODE_REF,
+    caveat_ref=_CAVEAT_5XX_REF,
 )
 CLIENT_ERROR_RATIO = RatioDefinition(
     detector_type=WafAnomalyType.WAF_CLIENT_ERROR_RATIO_SPIKE,
@@ -335,13 +393,13 @@ CLIENT_ERROR_RATIO = RatioDefinition(
     numerator=lambda c: c.client_errors,
     denominator=lambda c: c.response_code_events,
     uncertain=lambda c: c.unclassified_responses,
-    numerator_noun="HTTP 4xx responses",
-    denominator_noun="requests carrying a response code",
+    numerator_noun=_HTTP_4XX,
+    denominator_noun=_WITH_CODE,
     uncertain_noun="response-code values that are not a three-digit status",
-    caveat=(
-        "HTTP 4xx responses are response codes, not WAF decisions: a 403 is not by "
-        "itself a block, and WAF blocking is reported separately."
-    ),
+    caveat=_CAVEAT_4XX,
+    numerator_ref=_HTTP_4XX_REF,
+    denominator_ref=_WITH_CODE_REF,
+    caveat_ref=_CAVEAT_4XX_REF,
 )
 
 
@@ -349,17 +407,17 @@ def _measured(status: WafTelemetryStatus) -> bool:
     return status in (WafTelemetryStatus.EXACT, WafTelemetryStatus.LOWER_BOUND)
 
 
-def _unavailable(breakdown: str, status: WafTelemetryStatus) -> str:
-    what = "was not collected" if status is WafTelemetryStatus.NOT_COLLECTED else "failed"
-    return f"the {breakdown} breakdown {what} for this bucket: the value is unavailable, not zero"
-
-
-def _low_source_coverage(ratio: float, floor: float) -> str:
-    return (
-        f"only {percent(ratio)} of this source's events parsed to an endpoint, below the "
-        f"{percent(floor)} coverage floor: the unparsed requests may differ in kind from "
-        "the parsed ones, so the visible proportion bounds nothing"
+def _unavailable(breakdown: str, status: WafTelemetryStatus) -> MessageRef:
+    name = (
+        "guard.breakdown_not_collected"
+        if status is WafTelemetryStatus.NOT_COLLECTED
+        else "guard.breakdown_failed"
     )
+    return _ref(name, breakdown=breakdown)
+
+
+def _low_source_coverage(ratio: float, floor: float) -> MessageRef:
+    return _ref("guard.source_coverage_low", covered=ratio, floor=floor)
 
 
 def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdict:
@@ -370,7 +428,9 @@ def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdic
     if not _measured(status):
         return g.insufficient(_unavailable(d.breakdown, status))
     if ctx.effective_scope is WafVerdictScope.NONE:
-        return g.insufficient(ctx.scope_reason or "the inputs do not support a verdict")
+        return g.insufficient(
+            scope_reason_ref(ctx.scope_reason) or _ref("scope.inputs_unsupported")
+        )
     k = d.numerator(obs.counts) or 0
     n = d.denominator(obs.counts) or 0
     uncertain = d.uncertain(obs.counts) or 0
@@ -382,8 +442,12 @@ def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdic
     # requests. The request count is exact here: the scope requires it.
     if obs.request_count > 0 and min(1.0, n / obs.request_count) < thr.min_coverage:
         return g.insufficient(
-            f"only {percent(min(1.0, n / obs.request_count))} of the endpoint's requests carried "
-            f"the {d.breakdown.lower()} field, below the {percent(thr.min_coverage)} coverage floor"
+            _ref(
+                "ratio.field_coverage_low",
+                covered=min(1.0, n / obs.request_count),
+                field=d.breakdown.lower(),
+                floor=thr.min_coverage,
+            )
         )
     cell_or_exit = g.baseline(d.metric)
     if isinstance(cell_or_exit, WafSpikeVerdict):
@@ -393,14 +457,18 @@ def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdic
 
     if k < thr.ratio_min_numerator:
         return g.not_proven(
-            f"{k} {d.numerator_noun} is below the {thr.ratio_min_numerator} minimum; no "
-            "material rise in the proportion is possible",
+            _ref(
+                "ratio.numerator_below_min",
+                count=k, noun=d.numerator_phrase, minimum=thr.ratio_min_numerator,
+            ),
             observed=k / n if n else 0.0, expected=expected,
         )
     if n < thr.ratio_min_denominator:
         return g.insufficient(
-            f"{n} {d.denominator_noun} is below the {thr.ratio_min_denominator} minimum "
-            "denominator for a ratio verdict"
+            _ref(
+                "ratio.denominator_below_min",
+                count=n, noun=d.denominator_phrase, minimum=thr.ratio_min_denominator,
+            )
         )
     observed = k / n
     rise = observed - expected
@@ -442,33 +510,42 @@ def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdic
         "observed_measurement": measurement.value,
         "absolute_delta": round(rise, 6),
         "caveat": d.caveat,
+        **_caveat_message(d.caveat_ref),
     }
 
     if rise < thr.ratio_min_increase:
         return g.not_proven(
-            f"{_pct(observed)} is {rise * 100:+.1f} pp from the expected {_pct(expected)}, below "
-            f"the {thr.ratio_min_increase * 100:.0f} pp minimum rise",
+            _ref(
+                "ratio.rise_below_min",
+                observed=observed, rise=rise, expected=expected, minimum=thr.ratio_min_increase,
+            ),
             observed=observed, expected=expected,
         )
     if multiple is not None and multiple < thr.ratio_min_multiple:
         return g.not_proven(
-            f"{_pct(observed)} is {multiple:.2f}x the expected {_pct(expected)}, below "
-            f"{thr.ratio_min_multiple:.2f}x",
+            _ref(
+                "ratio.multiple_below_min",
+                observed=observed, multiple=multiple, expected=expected,
+                minimum=thr.ratio_min_multiple,
+            ),
             observed=observed, expected=expected,
         )
     passed, basis, magnitude = _surprise(observed, cell, thr, facts)
     if not passed:
         return g.not_proven(basis, observed=observed, expected=expected)
 
-    bound = "at least " if g.lower_bound else ""
-    reason = (
-        f"{bound}{k} of {n} {d.denominator_noun} to {_subject(ctx)} were {d.numerator_noun} "
-        f"({bound}{_pct(observed)}), against an expected {_pct(expected)} from "
-        f"{cell.denominator_sum:.0f} historical requests "
-        f"({rise * 100:+.1f} pp"
-        + (f", {multiple:.1f}x" if multiple is not None else "")
-        + f"); {basis}"
+    name = ("fired_lower" if g.lower_bound else "fired") + (
+        "_no_multiple" if multiple is None else ""
     )
+    fired = _ref(
+        f"ratio.{name}",
+        count=k, total=n, denominator=d.denominator_phrase, subject=_subject(ctx),
+        numerator=d.numerator_phrase, share=observed, expected=expected,
+        history=cell.denominator_sum, rise=rise,
+        **({"multiple": multiple} if multiple is not None else {}),
+        basis=basis,
+    )
+    reason = render(fired)
     severity = Severity.HIGH if (
         rise >= 2 * thr.ratio_min_increase
         and (multiple is None or multiple >= 2 * thr.ratio_min_multiple)
@@ -488,6 +565,7 @@ def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdic
         interval_end=obs.bucket_end,
         confidence=_confidence(cell, magnitude, thr),
         reason=reason,
+        reason_message=fired,
         extra=facts,
     ))
 
@@ -521,7 +599,9 @@ def detect_client_concentration_spike(ctx: WafDetectionContext) -> WafSpikeVerdi
     if not _measured(status):
         return g.insufficient(_unavailable("SOURCE_IP", status))
     if ctx.effective_scope is not WafVerdictScope.FULL:
-        return g.insufficient(ctx.scope_reason or "composition needs exact measurements")
+        return g.insufficient(
+            scope_reason_ref(ctx.scope_reason) or _ref("scope.composition_exact")
+        )
     if obs.endpoint_coverage_ratio < thr.min_coverage:
         return g.insufficient(_low_source_coverage(obs.endpoint_coverage_ratio, thr.min_coverage))
 
@@ -530,8 +610,10 @@ def detect_client_concentration_spike(ctx: WafDetectionContext) -> WafSpikeVerdi
     n = obs.counts.client_events or 0
     if obs.request_count > 0 and min(1.0, n / obs.request_count) < thr.min_coverage:
         return g.insufficient(
-            f"only {percent(min(1.0, n / obs.request_count))} of the endpoint's requests were "
-            f"attributed to a source IP, below the {percent(thr.min_coverage)} coverage floor"
+            _ref(
+                "concentration.attributed_low",
+                covered=min(1.0, n / obs.request_count), floor=thr.min_coverage,
+            )
         )
     cell_or_exit = g.baseline(TOP_CLIENT_SHARE_METRIC)
     if isinstance(cell_or_exit, WafSpikeVerdict):
@@ -541,14 +623,18 @@ def detect_client_concentration_spike(ctx: WafDetectionContext) -> WafSpikeVerdi
 
     if top1 < thr.concentration_min_client_requests:
         return g.not_proven(
-            f"the largest source IP sent {top1} requests, below the "
-            f"{thr.concentration_min_client_requests} minimum for a material concentration",
+            _ref(
+                "concentration.top_below_min",
+                top=top1, minimum=thr.concentration_min_client_requests,
+            ),
             observed=top1 / n if n else 0.0, expected=expected,
         )
     if n < thr.concentration_min_endpoint_requests:
         return g.insufficient(
-            f"{n} requests is below the {thr.concentration_min_endpoint_requests} minimum "
-            "for a composition verdict"
+            _ref(
+                "concentration.endpoint_below_min",
+                count=n, minimum=thr.concentration_min_endpoint_requests,
+            )
         )
     share = top1 / n
     rise = share - expected
@@ -589,13 +675,16 @@ def detect_client_concentration_spike(ctx: WafDetectionContext) -> WafSpikeVerdi
                        "breakdown": "SOURCE_IP"},
         "observed_measurement": "EXACT",
         "absolute_delta": round(rise, 6),
-        "caveat": "A dominant source IP describes traffic composition, not intent.",
+        "caveat": _CAVEAT_CONCENTRATION,
+        **_caveat_message(_CAVEAT_CONCENTRATION_REF),
     }
     if rise < thr.concentration_min_increase:
         return g.not_proven(
-            f"the largest source IP's share {_pct(share)} is {rise * 100:+.1f} pp from the "
-            f"expected {_pct(expected)}, below the "
-            f"{thr.concentration_min_increase * 100:.0f} pp minimum rise",
+            _ref(
+                "concentration.rise_below_min",
+                share=share, rise=rise, expected=expected,
+                minimum=thr.concentration_min_increase,
+            ),
             observed=share, expected=expected,
         )
     passed, basis, magnitude = _surprise(share, cell, thr, facts)
@@ -603,17 +692,20 @@ def detect_client_concentration_spike(ctx: WafDetectionContext) -> WafSpikeVerdi
         return g.not_proven(basis, observed=share, expected=expected)
 
     volume = facts["volume"]
-    volume_text = (
-        f"; endpoint volume {obs.request_count} requests against an expected "
-        f"{volume['expected_requests']}"
+    volume_ref = (
+        _ref(
+            "concentration.volume_with_baseline",
+            requests=obs.request_count, expected=volume["expected_requests"],
+        )
         if volume["expected_requests"] is not None
-        else f"; endpoint volume {obs.request_count} requests (no reliable volume baseline)"
+        else _ref("concentration.volume_no_baseline", requests=obs.request_count)
     )
-    reason = (
-        f"the largest source IP sent {top1} of {n} requests to {_subject(ctx)} "
-        f"({_pct(share)}), against an expected share of {_pct(expected)} "
-        f"({rise * 100:+.1f} pp); the five largest sent {_pct(top5 / n)}{volume_text}; {basis}"
+    fired = _ref(
+        "concentration.fired",
+        top=top1, total=n, subject=_subject(ctx), share=share, expected=expected, rise=rise,
+        top5=top5 / n, volume=volume_ref, basis=basis,
     )
+    reason = render(fired)
     return _result(dt, AnomalyEvidence(
         anomaly_type=dt,
         signal=DetectorSignal.ANOMALOUS,
@@ -629,6 +721,7 @@ def detect_client_concentration_spike(ctx: WafDetectionContext) -> WafSpikeVerdi
         interval_end=obs.bucket_end,
         confidence=_confidence(cell, magnitude, thr),
         reason=reason,
+        reason_message=fired,
         extra=facts,
     ))
 
@@ -650,33 +743,26 @@ def detect_new_endpoint_access(ctx: WafDetectionContext) -> WafSpikeVerdict:
     obs, thr, novelty = g.obs, ctx.behavior, ctx.novelty
     assert obs is not None and thr is not None, "the engine supplies observation and thresholds"
     if not isinstance(novelty, NoveltyFacts):
-        return g.insufficient("the endpoint's first appearance was not established")
+        return g.insufficient(_ref("novelty.not_established"))
     if not novelty.within_window:
         if novelty.history_end > novelty.first_seen_at:
             # The engine carries the source's history hand-off in ``history_end``; an
             # endpoint first seen before it is established whatever its age. The reason
             # names both real times and never invents an older first sighting.
-            return _result(dt, healthy(
-                dt, interval_start=obs.bucket_start, interval_end=obs.bucket_end,
-                observed=None, expected=None,
-                reason=(
-                    f"established endpoint: first admitted {novelty.first_seen_at.isoformat()} "
-                    f"before the history hand-off {novelty.history_end.isoformat()}"
+            return _established(
+                ctx, _ref(
+                    "novelty.established_hand_off",
+                    first_seen=novelty.first_seen_at, hand_off=novelty.history_end,
                 ),
-            ))
-        return _result(dt, healthy(
-            dt, interval_start=obs.bucket_start, interval_end=obs.bucket_end,
-            observed=None, expected=None,
-            reason=(
-                f"established endpoint: first admitted {novelty.first_seen_at.isoformat()}, "
-                f"outside the {thr.new_endpoint_window_buckets}-bucket novelty window"
+            )
+        return _established(
+            ctx, _ref(
+                "novelty.established_outside_window",
+                first_seen=novelty.first_seen_at, buckets=thr.new_endpoint_window_buckets,
             ),
-        ))
-    if ctx.effective_scope is WafVerdictScope.NONE:
-        return g.insufficient(
-            "novelty cannot be established: "
-            + (novelty.history.reason or ctx.scope_reason or "the history is incomplete")
         )
+    if ctx.effective_scope is WafVerdictScope.NONE:
+        return g.insufficient(_cannot_establish(ctx, novelty))
     if novelty.appearance_flood is not None:
         return g.insufficient(novelty.appearance_flood)
 
@@ -725,26 +811,29 @@ def detect_new_endpoint_access(ctx: WafDetectionContext) -> WafSpikeVerdict:
             WafMeasurement.LOWER_BOUND if lower_bound else WafMeasurement.EXACT
         ).value,
         "absolute_delta": float(requests),
-        "caveat": "A newly requested endpoint may be a deployment as easily as a probe.",
+        "caveat": _CAVEAT_NEW_ENDPOINT,
+        **_caveat_message(_CAVEAT_NEW_ENDPOINT_REF),
     }
     if requests < thr.new_endpoint_min_requests or buckets < thr.new_endpoint_min_buckets:
-        reason = (
-            f"{requests} request(s) in {buckets} bucket(s) since first appearance has not reached "
-            f"{thr.new_endpoint_min_requests} requests in {thr.new_endpoint_min_buckets} buckets"
+        short = _ref(
+            "novelty.below_materiality",
+            requests=requests, buckets=buckets,
+            min_requests=thr.new_endpoint_min_requests, min_buckets=thr.new_endpoint_min_buckets,
         )
         if lower_bound:
-            return g.insufficient(f"{reason}; the counts are lower bounds")
+            return g.insufficient(_ref("novelty.below_materiality_lower", reason=short))
+        text, message = split_reason(short)
         return _result(dt, healthy(
             dt, interval_start=obs.bucket_start, interval_end=obs.bucket_end,
-            observed=float(requests), expected=0.0, reason=reason,
+            observed=float(requests), expected=0.0, reason=text, reason_message=message,
         ))
-    bound = "at least " if lower_bound else ""
-    reason = (
-        f"{_subject(ctx)} received {bound}{requests} requests across {buckets} buckets since it "
-        f"first appeared at {novelty.first_seen_at.isoformat()}; in the verified history "
-        f"{novelty.history_start.isoformat()} to {novelty.history_end.isoformat()} it was never "
-        f"requested {thr.admission_min_requests} or more times in one bucket"
+    fired = _ref(
+        "novelty.fired_lower" if lower_bound else "novelty.fired",
+        subject=_subject(ctx), requests=requests, buckets=buckets,
+        first_seen=novelty.first_seen_at, history_start=novelty.history_start,
+        history_end=novelty.history_end, admission=thr.admission_min_requests,
     )
+    reason = render(fired)
     return _result(dt, AnomalyEvidence(
         anomaly_type=dt,
         signal=DetectorSignal.ANOMALOUS,
@@ -760,8 +849,33 @@ def detect_new_endpoint_access(ctx: WafDetectionContext) -> WafSpikeVerdict:
         interval_end=obs.bucket_end,
         confidence=0.8,
         reason=reason,
+        reason_message=fired,
         extra=facts,
     ))
+
+
+def _established(ctx: WafDetectionContext, reason: MessageRef) -> WafSpikeVerdict:
+    """The healthy verdict of an endpoint that was already established."""
+    obs = ctx.observation
+    dt = WafAnomalyType.WAF_NEW_ENDPOINT_ACCESS
+    return _result(dt, healthy(
+        dt, interval_start=obs.bucket_start, interval_end=obs.bucket_end,
+        observed=None, expected=None, reason=render(reason), reason_message=reason,
+    ))
+
+
+def _cannot_establish(ctx: WafDetectionContext, novelty: NoveltyFacts) -> MessageRef:
+    """Why novelty cannot be established: the history's reason, else the scope's, else a default."""
+    history = novelty.history
+    cause: Reason
+    if history.reason:
+        message = getattr(history, "message", None)
+        cause = _paired(history.reason, message)
+    elif ctx.scope_reason:
+        cause = scope_reason_ref(ctx.scope_reason) or ctx.scope_reason
+    else:
+        cause = _ref("novelty.history_incomplete")
+    return _ref("novelty.cannot_establish", cause=cause)
 
 
 def _confidence(cell: WafBaselineCell, magnitude: float, thr: WafBehaviorThresholds) -> float:

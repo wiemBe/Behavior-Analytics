@@ -5,6 +5,7 @@
 // depend on the tone.
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 import "./controls.css";
 
@@ -12,6 +13,7 @@ export type ChangeOutcome =
   | { kind: "idle" }
   | { kind: "pending" }
   | { kind: "ok"; text: ReactNode }
+  | { kind: "notice"; text: ReactNode }
   | { kind: "forbidden"; text: string }
   | { kind: "error"; text: string };
 
@@ -29,17 +31,25 @@ function withPermissionCode(text: string): ReactNode[] {
 }
 
 export function ChangeStatus({ outcome }: { outcome: ChangeOutcome }) {
+  const t = useTranslations("common");
   if (outcome.kind === "idle") return null;
   if (outcome.kind === "pending") {
     return (
       <p className="change-status" role="status">
-        Saving…
+        {t("saving")}
       </p>
     );
   }
   if (outcome.kind === "ok") {
     return (
       <p className="change-status ok" role="status">
+        {typeof outcome.text === "string" ? withPermissionCode(outcome.text) : outcome.text}
+      </p>
+    );
+  }
+  if (outcome.kind === "notice") {
+    return (
+      <p className="change-status neutral" role="status">
         {typeof outcome.text === "string" ? withPermissionCode(outcome.text) : outcome.text}
       </p>
     );

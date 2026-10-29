@@ -8,6 +8,7 @@
 // message is shown at the field it concerns.
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useTranslations } from "next-intl";
 
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 import { Disclosure } from "@/components/ui/Disclosure";
@@ -21,14 +22,17 @@ import {
 import {
   ASSIGNABLE_CLASSES,
   RULE_KINDS,
-  RULE_KIND_LABELS,
   RULE_LEVELS,
   classLabel,
   patternHint,
   ruleFailure,
+  ruleKindLabel,
+  ruleLevelTitle,
   rulesAtLevel,
   sortRules,
 } from "@/lib/fleet";
+import { useFleetText } from "@/lib/fleetText";
+import { plainCount } from "@/lib/figureText";
 
 import "@/components/ui/controls.css";
 
@@ -57,6 +61,8 @@ function RuleEditor({
   onSaved: (rule: ClassificationRule) => void;
   onCancel: () => void;
 }) {
+  const t = useTranslations("classification.manager");
+  const text = useFleetText();
   const uid = useId();
   const [draft, setDraft] = useState<RuleDraft>({
     pattern: rule.pattern,
@@ -83,7 +89,7 @@ function RuleEditor({
       });
       onSaved(saved);
     } catch (err) {
-      const failure = ruleFailure(err);
+      const failure = ruleFailure(err, text);
       if (failure.field === "pattern") {
         setPatternError(failure.text);
         setOutcome({ kind: "idle" });
@@ -96,9 +102,13 @@ function RuleEditor({
   }
 
   return (
-    <form className="rule-form" onSubmit={(e) => void submit(e)} aria-label={`Edit rule ${rule.pattern}`}>
+    <form
+      className="rule-form"
+      onSubmit={(e) => void submit(e)}
+      aria-label={t("editAria", { pattern: rule.pattern })}
+    >
       <div className="rule-form-grid">
-        <label htmlFor={`${uid}-pattern`}>Pattern</label>
+        <label htmlFor={`${uid}-pattern`}>{t("pattern")}</label>
         <div>
           <input
             id={`${uid}-pattern`}
@@ -110,7 +120,7 @@ function RuleEditor({
           />
           <FieldError id={`${uid}-pattern-err`} message={patternError} />
         </div>
-        <label htmlFor={`${uid}-class`}>Target class</label>
+        <label htmlFor={`${uid}-class`}>{t("targetClass")}</label>
         <select
           id={`${uid}-class`}
           className="select-control"
@@ -119,11 +129,11 @@ function RuleEditor({
         >
           {ASSIGNABLE_CLASSES.map((c) => (
             <option key={c} value={c}>
-              {classLabel(c)}
+              {classLabel(c, text)}
             </option>
           ))}
         </select>
-        <label htmlFor={`${uid}-priority`}>Priority</label>
+        <label htmlFor={`${uid}-priority`}>{t("priority")}</label>
         <input
           id={`${uid}-priority`}
           className="field field-narrow"
@@ -133,7 +143,7 @@ function RuleEditor({
           value={draft.priority}
           onChange={(e) => setDraft({ ...draft, priority: e.target.value })}
         />
-        <label htmlFor={`${uid}-desc`}>Description</label>
+        <label htmlFor={`${uid}-desc`}>{t("description")}</label>
         <input
           id={`${uid}-desc`}
           className="field"
@@ -143,10 +153,10 @@ function RuleEditor({
       </div>
       <div className="actions">
         <button type="submit" className="action" disabled={pending}>
-          Save rule
+          {t("saveRule")}
         </button>
         <button type="button" className="action secondary" disabled={pending} onClick={onCancel}>
-          Cancel
+          {t("cancel")}
         </button>
       </div>
       <ChangeStatus outcome={outcome} />
@@ -163,6 +173,8 @@ function RuleRow({
   onChange: (rule: ClassificationRule) => void;
   onRemove: (id: string) => void;
 }) {
+  const t = useTranslations("classification.manager");
+  const text = useFleetText();
   const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -193,10 +205,10 @@ function RuleRow({
       onChange(await fleetApi.updateRule(rule.id, { enabled }));
       setOutcome({
         kind: "ok",
-        text: enabled ? "Enabled. Sources are re-classified." : "Disabled. Sources are re-classified.",
+        text: enabled ? t("enabledDone") : t("disabledDone"),
       });
     } catch (err) {
-      const failure = ruleFailure(err);
+      const failure = ruleFailure(err, text);
       setOutcome({ kind: failure.kind, text: failure.text });
     } finally {
       setPending(false);
@@ -211,7 +223,7 @@ function RuleRow({
       await fleetApi.deleteRule(rule.id);
       onRemove(rule.id);
     } catch (err) {
-      const failure = ruleFailure(err);
+      const failure = ruleFailure(err, text);
       setOutcome({ kind: failure.kind, text: failure.text });
       setConfirming(false);
     } finally {
@@ -219,24 +231,24 @@ function RuleRow({
     }
   }
 
-  const label = `${RULE_KIND_LABELS[rule.kind]} ${rule.pattern}`;
+  const label = `${ruleKindLabel(rule.kind, text)} ${rule.pattern}`;
 
   return (
     <>
       <tr className={rule.enabled ? undefined : "rule-off"}>
-        <td className="num">{rule.priority}</td>
+        <td className="num">{plainCount(rule.priority, text.locale)}</td>
         <th scope="row" className="cell-rule">
           <code>{rule.pattern}</code>
           <span className="cell-sub">
-            {RULE_KIND_LABELS[rule.kind]}
+            {ruleKindLabel(rule.kind, text)}
             {rule.description ? ` · ${rule.description}` : ""}
           </span>
         </th>
-        <td>{classLabel(rule.target_class)}</td>
+        <td>{classLabel(rule.target_class, text)}</td>
         <td>
-          {rule.built_in ? "Built-in" : "Custom"}
+          {rule.built_in ? t("builtIn") : t("custom")}
           <span className="cell-sub">
-            {rule.instance_id ? "One instance" : "All instances"}
+            {rule.instance_id ? t("oneInstance") : t("allInstances")}
             {rule.created_by ? ` · ${rule.created_by}` : ""}
           </span>
         </td>
@@ -246,10 +258,10 @@ function RuleRow({
               type="checkbox"
               checked={rule.enabled}
               disabled={pending}
-              aria-label={`Enabled: ${label}`}
+              aria-label={t("enabledAria", { label })}
               onChange={(e) => void toggle(e.target.checked)}
             />
-            <span>{rule.enabled ? "On" : "Off"}</span>
+            <span>{rule.enabled ? t("on") : t("off")}</span>
           </label>
         </td>
         <td className="cell-actions">
@@ -271,7 +283,7 @@ function RuleRow({
                 disabled={pending}
                 onClick={() => void remove()}
               >
-                Confirm delete
+                {t("confirmDelete")}
               </button>
               <button
                 type="button"
@@ -280,7 +292,7 @@ function RuleRow({
                 disabled={pending}
                 onClick={closeDelete}
               >
-                Keep
+                {t("keep")}
               </button>
             </div>
           ) : (
@@ -288,24 +300,24 @@ function RuleRow({
               <button
                 type="button"
                 className="action secondary"
-                aria-label={`Edit ${label}`}
+                aria-label={t("editRowAria", { label })}
                 disabled={pending}
                 onClick={() => setEditing(true)}
               >
-                Edit
+                {t("edit")}
               </button>
               <button
                 type="button"
                 ref={deleteRef}
                 className="action secondary"
-                aria-label={`Delete ${label}`}
+                aria-label={t("deleteRowAria", { label })}
                 disabled={pending}
                 onClick={() => {
                   setOutcome({ kind: "idle" });
                   setConfirming(true);
                 }}
               >
-                Delete
+                {t("delete")}
               </button>
             </div>
           )}
@@ -321,7 +333,7 @@ function RuleRow({
                 onSaved={(saved) => {
                   setEditing(false);
                   onChange(saved);
-                  setOutcome({ kind: "ok", text: "Saved. Sources are re-classified." });
+                  setOutcome({ kind: "ok", text: t("saved") });
                 }}
               />
             ) : (
@@ -335,6 +347,8 @@ function RuleRow({
 }
 
 function CreateRule({ onCreated }: { onCreated: (rule: ClassificationRule) => void }) {
+  const t = useTranslations("classification.manager");
+  const text = useFleetText();
   const uid = useId();
   const [kind, setKind] = useState<ClassificationRuleKind>("NAME_REGEX");
   const [pattern, setPattern] = useState("");
@@ -362,9 +376,9 @@ function CreateRule({ onCreated }: { onCreated: (rule: ClassificationRule) => vo
       onCreated(created);
       setPattern("");
       setDescription("");
-      setOutcome({ kind: "ok", text: "Rule added. Sources it matches are re-classified." });
+      setOutcome({ kind: "ok", text: t("added") });
     } catch (err) {
-      const failure = ruleFailure(err);
+      const failure = ruleFailure(err, text);
       if (failure.field === "pattern") {
         setPatternError(failure.text);
         setOutcome({ kind: "idle" });
@@ -377,9 +391,9 @@ function CreateRule({ onCreated }: { onCreated: (rule: ClassificationRule) => vo
   }
 
   return (
-    <form className="rule-form" onSubmit={(e) => void submit(e)} aria-label="Add a custom rule">
+    <form className="rule-form" onSubmit={(e) => void submit(e)} aria-label={t("addTitle")}>
       <div className="rule-form-grid">
-        <label htmlFor={`${uid}-kind`}>Matches</label>
+        <label htmlFor={`${uid}-kind`}>{t("matches")}</label>
         <select
           id={`${uid}-kind`}
           className="select-control"
@@ -388,11 +402,11 @@ function CreateRule({ onCreated }: { onCreated: (rule: ClassificationRule) => vo
         >
           {RULE_KINDS.map((k) => (
             <option key={k} value={k}>
-              {RULE_KIND_LABELS[k]}
+              {ruleKindLabel(k, text)}
             </option>
           ))}
         </select>
-        <label htmlFor={`${uid}-pattern`}>Pattern</label>
+        <label htmlFor={`${uid}-pattern`}>{t("pattern")}</label>
         <div>
           <input
             id={`${uid}-pattern`}
@@ -403,11 +417,11 @@ function CreateRule({ onCreated }: { onCreated: (rule: ClassificationRule) => vo
             onChange={(e) => setPattern(e.target.value)}
           />
           <p id={`${uid}-hint`} className="field-hint">
-            {patternHint(kind)}
+            {patternHint(kind, text)}
           </p>
           <FieldError id={`${uid}-pattern-err`} message={patternError} />
         </div>
-        <label htmlFor={`${uid}-class`}>Target class</label>
+        <label htmlFor={`${uid}-class`}>{t("targetClass")}</label>
         <select
           id={`${uid}-class`}
           className="select-control"
@@ -416,11 +430,11 @@ function CreateRule({ onCreated }: { onCreated: (rule: ClassificationRule) => vo
         >
           {ASSIGNABLE_CLASSES.map((c) => (
             <option key={c} value={c}>
-              {classLabel(c)}
+              {classLabel(c, text)}
             </option>
           ))}
         </select>
-        <label htmlFor={`${uid}-priority`}>Priority</label>
+        <label htmlFor={`${uid}-priority`}>{t("priority")}</label>
         <div>
           <input
             id={`${uid}-priority`}
@@ -431,9 +445,9 @@ function CreateRule({ onCreated }: { onCreated: (rule: ClassificationRule) => vo
             value={priority}
             onChange={(e) => setPriority(e.target.value)}
           />
-          <p className="field-hint">0 to 10000. The highest priority at a level decides.</p>
+          <p className="field-hint">{t("priorityHint")}</p>
         </div>
-        <label htmlFor={`${uid}-desc`}>Description</label>
+        <label htmlFor={`${uid}-desc`}>{t("description")}</label>
         <input
           id={`${uid}-desc`}
           className="field"
@@ -443,7 +457,7 @@ function CreateRule({ onCreated }: { onCreated: (rule: ClassificationRule) => vo
       </div>
       <div className="actions">
         <button type="submit" className="action" disabled={pending || pattern.trim() === ""}>
-          Add rule
+          {t("addRule")}
         </button>
       </div>
       <ChangeStatus outcome={outcome} />
@@ -452,6 +466,8 @@ function CreateRule({ onCreated }: { onCreated: (rule: ClassificationRule) => vo
 }
 
 export function RulesManager({ initial }: { initial: ClassificationRule[] }) {
+  const t = useTranslations("classification.manager");
+  const text = useFleetText();
   const [rules, setRules] = useState(() => sortRules(initial));
 
   const replace = (rule: ClassificationRule) =>
@@ -462,34 +478,39 @@ export function RulesManager({ initial }: { initial: ClassificationRule[] }) {
     <>
       {RULE_LEVELS.map((level) => {
         const atLevel = rulesAtLevel(rules, level);
+        const title = ruleLevelTitle(level, text);
         return (
           <section key={level.id} aria-labelledby={`level-${level.id}`}>
             <h2 className="section-title" id={`level-${level.id}`}>
-              {level.title}
+              {title}
             </h2>
             {atLevel.length === 0 ? (
               <div className="notice">
                 <p>
-                  <strong>No {level.title.toLowerCase()} exist.</strong>
+                  <strong>
+                    {t("levelEmptyTitle", {
+                      level: text.locale === "tr" ? title : title.toLowerCase(),
+                    })}
+                  </strong>
                 </p>
-                <p>Sources are not classified at this level until a rule is added below.</p>
+                <p>{t("levelEmptyText")}</p>
               </div>
             ) : (
-              <TableScroll label={level.title}>
+              <TableScroll label={title}>
                 <table className="fleet-table rules-table">
                   <caption className="sr-only">
-                    {level.title}, highest priority first. A rule that is off is skipped.
+                    {t("caption", { level: title })}
                   </caption>
                   <thead>
                     <tr>
                       <th scope="col" className="num">
-                        Priority
+                        {t("priority")}
                       </th>
-                      <th scope="col">Pattern</th>
-                      <th scope="col">Class</th>
-                      <th scope="col">Origin</th>
-                      <th scope="col">Enabled</th>
-                      <th scope="col">Actions</th>
+                      <th scope="col">{t("pattern")}</th>
+                      <th scope="col">{t("class")}</th>
+                      <th scope="col">{t("origin")}</th>
+                      <th scope="col">{t("enabled")}</th>
+                      <th scope="col">{t("actions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -504,8 +525,8 @@ export function RulesManager({ initial }: { initial: ClassificationRule[] }) {
         );
       })}
 
-      <section aria-label="Add a custom rule" className="rule-add">
-        <Disclosure summary="Add a custom rule" note="Admin only, audited">
+      <section aria-label={t("addTitle")} className="rule-add">
+        <Disclosure summary={t("addTitle")} note={t("addNote")}>
           <CreateRule
             onCreated={(rule) => setRules((prev) => sortRules([...prev, rule]))}
           />

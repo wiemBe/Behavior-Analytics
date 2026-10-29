@@ -44,6 +44,7 @@ from app.core.config import Settings, get_settings
 from app.core.database import dispose_engine, get_sessionmaker
 from app.custom_rules.engine import CustomRuleEngine
 from app.custom_rules.retention import CustomRuleRetention
+from app.i18n.messages import MessageRef, render
 from app.models.enums import EvidenceStatus, Severity
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
@@ -620,14 +621,19 @@ async def detect_stale_offense_collection(instance_name: str | None = None) -> d
             )
             transition = None
             if stale:
+                title_message = MessageRef(
+                    "alert.offense_collection.stale.title", {"instance": instance.name}
+                )
+                description_message = MessageRef(
+                    "alert.offense_collection.stale.description"
+                )
                 result = await alerts.open_or_update(
                     AlertInput(
                         fingerprint=fingerprint,
-                        title=f"Offense collection is stale for {instance.name}",
-                        description=(
-                            "The read-only offense collector has not completed within "
-                            "its configured freshness threshold."
-                        ),
+                        title=render(title_message),
+                        title_message=title_message,
+                        description=render(description_message),
+                        description_message=description_message,
                         severity=Severity.HIGH,
                         source_type="qradar_instance",
                         source_id=instance.id,
@@ -646,7 +652,7 @@ async def detect_stale_offense_collection(instance_name: str | None = None) -> d
                 resolved = await alerts.resolve_by_fingerprint(
                     fingerprint,
                     actor="system:offense-collection-monitor",
-                    reason="Offense collection freshness recovered.",
+                    reason_message=MessageRef("alert.offense_collection.recovered"),
                 )
                 if resolved is not None and resolved.transition is not None:
                     transition = resolved.transition

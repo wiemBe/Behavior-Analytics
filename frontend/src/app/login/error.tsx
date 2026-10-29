@@ -1,6 +1,7 @@
 "use client";
 
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
+import { useTranslations } from "next-intl";
 
 export default function LoginError({
   error,
@@ -9,5 +10,6 @@ export default function LoginError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <BoundaryError title="Sign in" what="Sign in" digest={error.digest} onRetry={reset} />;
+  const t = useTranslations("login");
+  return <BoundaryError title={t("title")} what={t("title")} digest={error.digest} onRetry={reset} />;
 }

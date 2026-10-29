@@ -345,6 +345,8 @@ WAF_DETECTION_KEYS = {
     "request_count_measurement", "observed_proportion", "expected_proportion",
     "observed_numerator", "observed_denominator", "percentage_point_change", "caveat", "ratio",
     "ratio_basis", "robust_score_status", "robust_z", "fallback_bound",
+    # MSG-6: the message reference beside `reason` and `caveat` (null on a row without one).
+    "reason_code", "reason_params", "caveat_code", "caveat_params",
 }
 
 
@@ -442,8 +444,9 @@ def test_phase_a_detail_is_unchanged_by_the_unification(db_schema) -> None:
     body = Client(READER).get(f"/api/v1/anomalies/{run(setup)}").json()
     assert body["subject_kind"] == "LOG_SOURCE" and body["waf_endpoint"] is None
     assert set(body["detection"]) == {
-        "reason", "expected_low", "expected_high", "threshold", "baseline_sample_count",
-        "baseline_completeness", "baseline_version", "observed_eps", "expected_eps",
+        "reason", "reason_code", "reason_params", "expected_low", "expected_high", "threshold",
+        "baseline_sample_count", "baseline_completeness", "baseline_version", "observed_eps",
+        "expected_eps",
         "observed_events", "expected_events", "absolute_delta_events", "bucket_seconds",
         "ratio", "ratio_basis", "robust_score_status", "robust_z", "fallback_bound",
     }
@@ -606,14 +609,17 @@ def test_waf_source_detail_serves_counts_only(db_schema) -> None:
     assert set(body) == SOURCE_KEYS | {"validation_report"}
     report = body["validation_report"]
     assert set(report) == {
-        "status", "reasons", "log_source_found", "total_events", "window_start", "window_end",
-        "profile_version", "validated_at", "fields",
+        "status", "reasons", "reason_codes", "log_source_found", "total_events",
+        "window_start", "window_end", "profile_version", "validated_at", "fields",
     }
     assert set(report["fields"][0]) == {
         "field", "property_name", "status", "used_by_collection", "populated_events",
         "populated_ratio", "distinct_values", "plausible_ratio", "sampled_events",
-        "values_truncated", "discovered_value_count", "detail",
+        "values_truncated", "discovered_value_count", "detail", "detail_code", "detail_params",
     }
+    assert report["reason_codes"] is None
+    assert report["fields"][0]["detail_code"] is None
+    assert report["fields"][0]["detail_params"] is None
     assert report["fields"][0]["discovered_value_count"] == 2
     assert report["total_events"] == 9000
     for forbidden in ("queries", "SELECT", "total_query", "discovered_values", "GET"):

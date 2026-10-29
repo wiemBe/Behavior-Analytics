@@ -1,0 +1,72 @@
+{
+  "meta": {
+    "title": "Directory"
+  },
+  "boundary": {
+    "title": "Directory",
+    "errorWhat": "Directory",
+    "loadingWhat": "the directory configuration",
+    "description": "Where directory accounts bind, and a connection test that stores nothing."
+  },
+  "page": {
+    "title": "Directory",
+    "description": "Where directory accounts bind, and a connection test that stores nothing.",
+    "forbidden": "Your role cannot change the directory (permission admin:auth).",
+    "loadFailed": "The directory configuration could not be loaded.",
+    "tryAgain": "Try again"
+  },
+  "outcome": {
+    "saved": "Saved the directory configuration as version {version}.",
+    "conflict": "Someone else changed the directory configuration.",
+    "notSaved": "The directory configuration was not saved.",
+    "reloaded": "Reloaded the directory configuration.",
+    "notReloaded": "The directory configuration could not be reloaded."
+  },
+  "unsaved": {
+    "title": "No directory configuration is saved yet.",
+    "text": "Saving creates the first one. The version starts at 0 until that save."
+  },
+  "version": {
+    "line": "Version {version}{hasSaved, select, yes {, last saved <time></time>} other {}}{hasBy, select, yes { by {name}} other {}}."
+  },
+  "reload": "Reload",
+  "reloading": "Reloading",
+  "form": {
+    "label": "Directory configuration",
+    "enabled": "Directory sign-in enabled",
+    "urls": "URLs, in bind order",
+    "url": "URL {n}",
+    "removeUrl": "Remove URL {n}",
+    "addUrl": "Add URL",
+    "startTls": "StartTLS",
+    "caPem": "CA certificate (PEM)",
+    "caPemHint": "Empty uses the system trust store.",
+    "bindTemplate": "Bind template",
+    "previewUser": "Preview username",
+    "bindName": "Bind name: {name}",
+    "timeout": "Timeout (seconds)",
+    "searchBase": "User search base",
+    "searchBaseHint": "Optional. Empty sends no search base.",
+    "saving": "Saving",
+    "save": "Save directory"
+  },
+  "test": {
+    "title": "Test connection",
+    "note": "The username and password are sent with the form above and then cleared. They are not saved.",
+    "username": "Test username",
+    "password": "Test password",
+    "testing": "Testing connection",
+    "submit": "Test connection",
+    "failed": "The connection test failed.",
+    "tls": "TLS",
+    "trust": "Trust",
+    "subject": "Certificate subject",
+    "issuer": "Certificate issuer",
+    "expiry": "Certificate expiry (UTC)",
+    "certificate": "Certificate",
+    "noCertificate": "No certificate was returned.",
+    "bind": "Bind",
+    "latency": "Latency",
+    "ms": "{ms} ms"
+  }
+}

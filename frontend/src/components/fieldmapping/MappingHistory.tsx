@@ -1,17 +1,43 @@
 // The audit trail of one profile: when, who, and what changed.
 
+import { useTranslations } from "next-intl";
+
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { MappingSchemaOut, WafProfileHistoryEntryOut } from "@/lib/api";
 import { MISSING, historyActionLabel, historyChanges, reasonText } from "@/lib/fieldMapping";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { versionLabel } from "@/lib/behaviorI18n";
+import { plainCount } from "@/lib/figureText";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
+import type { TextTranslator } from "@/i18n/textTranslator";
+import { useBackendMessage } from "@/i18n/backendMessage";
 
+// Punctuation between parts of one line; the same in both languages.
+const ARROW = " → ";
+const MID = " · ";
+
+// The results a history row can record, with their labels in `fieldMapping.report` and
+// `fieldMapping.history.outcomes`. Lists, not catalog lookups: next-intl's `has()` follows the
+// prototype chain, so a recorded value such as "constructor" must never be looked up as a key.
+const VALIDATION_OUTCOMES = ["VALID", "INVALID", "INCONCLUSIVE", "UNVALIDATED"];
+// The results the backend records for a validation run: it finished, failed, or the source was busy.
+const RUN_OUTCOMES = ["SUCCESS", "SOURCE_BUSY", "FAILURE"];
+
+/** English keeps the recorded code in lower case ("invalid"); Turkish reads its label. */
+export function outcomeText(outcome: string, i18n: { t: TextTranslator; locale: string }): string {
+  if (i18n.locale === "en") return outcome.toLowerCase();
+  if (VALIDATION_OUTCOMES.includes(outcome)) return i18n.t(`fieldMapping.report.${outcome}`);
+  if (RUN_OUTCOMES.includes(outcome)) return i18n.t(`fieldMapping.history.outcomes.${outcome}`);
+  return outcome.toLowerCase();
+}
 
 function Change({ from, to }: { from: string | null; to: string | null }) {
+  const t = useTranslations("fieldMapping.history");
   return (
     <>
-      {from === null ? <span className="muted">not mapped</span> : <code>{from}</code>}
-      {" → "}
-      {to === null ? <span className="muted">not mapped</span> : <code>{to}</code>}
+      {from === null ? <span className="muted">{t("notMapped")}</span> : <code>{from}</code>}
+      {ARROW}
+      {to === null ? <span className="muted">{t("notMapped")}</span> : <code>{to}</code>}
     </>
   );
 }
@@ -19,7 +45,7 @@ function Change({ from, to }: { from: string | null; to: string | null }) {
 export function MappingHistory({
   schema,
   entries,
-  actionLabel = historyActionLabel,
+  actionLabel,
   outcomeNote,
 }: {
   schema: MappingSchemaOut;
@@ -30,25 +56,22 @@ export function MappingHistory({
   /** Replaces the plain "Outcome: …" line for an outcome that needs a sentence. */
   outcomeNote?: (entry: WafProfileHistoryEntryOut) => string | null;
 }) {
+  const t = useTranslations("fieldMapping.history");
+  const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
+  const labelOf = actionLabel ?? ((action: string) => historyActionLabel(action, i18n));
   if (entries.length === 0) {
-    return (
-      <p className="fm-empty">
-        No changes are recorded for this profile yet. Creating it, changing its mapping,
-        validating it and enabling it each add a line here.
-      </p>
-    );
+    return <p className="fm-empty">{t("empty")}</p>;
   }
   return (
-    <TableScroll label="Profile history">
+    <TableScroll label={t("tableLabel")}>
       <table className="table-dense">
-        <caption className="sr-only">
-          Changes to this profile, newest first. Times are UTC.
-        </caption>
+        <caption className="sr-only">{t("caption")}</caption>
         <thead>
           <tr>
-            <th scope="col">Time (UTC)</th>
-            <th scope="col">Actor</th>
-            <th scope="col">What changed</th>
+            <th scope="col">{t("time")}</th>
+            <th scope="col">{t("actor")}</th>
+            <th scope="col">{t("what")}</th>
           </tr>
         </thead>
         <tbody>
@@ -61,15 +84,20 @@ export function MappingHistory({
                 </td>
                 <td className="cell-name">{e.actor || MISSING}</td>
                 <td>
-                  <strong className="fm-event">{actionLabel(e.action)}</strong>
-                  {e.profile_version != null && <span className="muted"> · v{e.profile_version}</span>}
+                  <strong className="fm-event">{labelOf(e.action)}</strong>
+                  {e.profile_version != null && (
+                    <span className="muted">
+                      {MID}
+                      {versionLabel(plainCount(e.profile_version, i18n.locale))}
+                    </span>
+                  )}
                   {e.outcome && (
                     <span className="cell-sub">
-                      {outcomeNote?.(e) ?? `Outcome: ${e.outcome.toLowerCase()}`}
+                      {outcomeNote?.(e) ?? t("outcome", { outcome: outcomeText(e.outcome, i18n) })}
                     </span>
                   )}
                   {changes.length > 0 && (
-                    <ul className="fm-changes" aria-label="Mapping changes">
+                    <ul className="fm-changes" aria-label={t("changesLabel")}>
                       {changes.map((c) => (
                         <li key={c.key}>
                           {c.label}: <Change from={c.from} to={c.to} />
@@ -78,10 +106,27 @@ export function MappingHistory({
                     </ul>
                   )}
                   {e.reasons && e.reasons.length > 0 && (
-                    <ul className="fm-changes" aria-label="Reasons">
-                      {e.reasons.map((r) => (
-                        <li key={r}>{reasonText(r, schema, schema.min_coverage_ratio)}</li>
-                      ))}
+                    <ul className="fm-changes" aria-label={t("reasonsLabel")}>
+                      {e.reasons.map((r, index) => {
+                        const coded = e.reason_codes?.[index];
+                        const sentence = {
+                          text: r,
+                          code: coded?.code,
+                          params: coded?.params,
+                        };
+                        const existing = reasonText(
+                          r,
+                          schema,
+                          schema.min_coverage_ratio,
+                          undefined,
+                          i18n,
+                        );
+                        return (
+                          <li key={`${r}-${index}`}>
+                            {existing === r ? backendMessage(sentence) : existing}
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </td>

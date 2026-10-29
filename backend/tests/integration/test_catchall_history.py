@@ -33,6 +33,7 @@ from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.locks import collector_lock_key
 from tests.integration.factories import FakeClock, make_instance, make_log_source
+from tests.integration.history_reason_support import assert_coded
 
 pytestmark = pytest.mark.integration
 
@@ -286,6 +287,7 @@ class TestLifecycle:
         stopped = await scope(db_session, inst)
         assert stopped is not None and stopped.state == "PARTIAL"
         assert stopped.reason and "switched off" in stopped.reason
+        assert_coded(stopped)
 
     async def test_a_stop_request_ends_the_reading_partial(self, db_session) -> None:
         inst, _ = await setup(db_session)
@@ -354,6 +356,7 @@ class TestLifecycle:
         stopped = await scope(db_session, inst)
         assert stopped is not None and stopped.state == "PARTIAL"
         assert stopped.reason == "stopped by the operator"
+        assert_coded(stopped)
         assert stopped.progress == previous_progress
         assert (stopped.days_target, stopped.target_start, stopped.floor, stopped.through) == (
             evidence
@@ -556,6 +559,7 @@ class TestLifecycle:
         assert yielded.last_error_class == "EarlierProviderError"
         assert yielded.last_error_at == NOW
         assert yielded.reason == "deferred: no Ariel permit within 7 s"
+        assert yielded.reason_i18n is None
         assert await buckets(db_session, "HISTORY") == []
         assert _ARIEL_PRIORITY.get() == "live"
 
@@ -844,6 +848,7 @@ class TestFloors:
         finished = await scope(db_session, inst)
         assert finished is not None and finished.state == "PARTIAL"
         assert finished.reason and "1 source" in finished.reason
+        assert_coded(finished)
         # The quiet source has no floor, so it has no history row at all.
         owners = {b.catchall_log_source_id for b in await buckets(db_session, "HISTORY")}
         assert quiet.id not in owners
@@ -870,6 +875,7 @@ class TestFloors:
         finished = await scope(db_session, inst)
         assert finished is not None and finished.state == "UNAVAILABLE"
         assert finished.reason and "no catch-all source had an event" in finished.reason
+        assert_coded(finished)
 
 
 # --------------------------------------------------------------------------- the prepend

@@ -69,11 +69,11 @@ export function recentOffenses(
   }
   if (probe !== null && probe.total === 0) {
     const reason = "No offense snapshot has been collected yet.";
-    return { ...base, shown: null, empty: null, qualifiers: [notCollected(reason)] };
+    return { ...base, shown: null, empty: null, qualifiers: [notCollected(reason, { code: "NO_SNAPSHOT" })] };
   }
   if (probe === null) {
     const reason = "Could not confirm that an offense snapshot exists.";
-    return { ...base, shown: null, empty: null, qualifiers: [notCollected(reason)] };
+    return { ...base, shown: null, empty: null, qualifiers: [notCollected(reason, { code: "SNAPSHOT_UNCONFIRMED" })] };
   }
   return {
     ...base,

@@ -10,16 +10,27 @@
 
 const MISSING = "—";
 
+/**
+ * The age words of the interface language: the translator of the `format` namespace
+ * (`underMinuteAgo`, `minutesAgo`, `hoursAgo`, `daysAgo`). Without one every function here keeps
+ * its English, so a caller that is not converted yet is unchanged.
+ */
+export type AgeWords = (key: string, values?: { count: number }) => string;
+
 /** "under 1 min ago", "12 min ago", "3 h ago", "2 d ago". */
-export function relativeAgeFromSeconds(seconds: number | null | undefined): string {
+export function relativeAgeFromSeconds(
+  seconds: number | null | undefined,
+  say?: AgeWords,
+): string {
   if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return MISSING;
   const whole = Math.floor(seconds);
-  if (whole < 60) return "under 1 min ago";
+  if (whole < 60) return say ? say("underMinuteAgo") : "under 1 min ago";
   const minutes = Math.floor(whole / 60);
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return say ? say("minutesAgo", { count: minutes }) : `${minutes} min ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return `${Math.floor(hours / 24)} d ago`;
+  if (hours < 24) return say ? say("hoursAgo", { count: hours }) : `${hours} h ago`;
+  const days = Math.floor(hours / 24);
+  return say ? say("daysAgo", { count: days }) : `${days} d ago`;
 }
 
 /**
@@ -27,14 +38,18 @@ export function relativeAgeFromSeconds(seconds: number | null | undefined): stri
  * A missing, unparsable or future instant is an em dash: a future clock skew
  * is not "0 min ago".
  */
-export function relativeAge(iso: string | null | undefined, now: Date | number): string {
+export function relativeAge(
+  iso: string | null | undefined,
+  now: Date | number,
+  say?: AgeWords,
+): string {
   if (!iso) return MISSING;
   const then = Date.parse(iso);
   const nowMs = typeof now === "number" ? now : now.getTime();
   if (!Number.isFinite(then) || !Number.isFinite(nowMs)) return MISSING;
   const seconds = Math.floor((nowMs - then) / 1000);
   if (seconds < 0) return MISSING;
-  return relativeAgeFromSeconds(seconds);
+  return relativeAgeFromSeconds(seconds, say);
 }
 
 /**

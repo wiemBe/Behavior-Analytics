@@ -1,15 +1,22 @@
 import Link from "next/link";
+import { getLocale, getTranslations } from "next-intl/server";
 import { api, type OffenseAggregates, type OffenseSummary, type Page } from "@/lib/api";
 import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
 import { formatCount } from "@/lib/format";
-import { formatAge, magnitudeTone, offenseStatusTone } from "@/lib/health";
+import { formatDuration } from "@/lib/behavior";
+import { magnitudeTone, offenseStatusTone } from "@/lib/health";
 import { Pagination } from "@/components/Pagination";
 import { OffenseFilters } from "@/components/OffenseFilters";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { enumLabel } from "@/i18n/enumLabels";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import type { Locale } from "@/i18n/locale";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "@/components/ui/controls.css";
 
@@ -17,10 +24,10 @@ import "./offenses.css";
 
 const PAGE_SIZE = 25;
 
-const NOT_COLLECTED = "No offense snapshot has been collected yet.";
-
-const EMPTY_LIST =
-  "No offenses have been collected from QRadar yet, so this list is empty. Offense collection is set up by an administrator.";
+export async function generateMetadata() {
+  const t = await getTranslations("offenses.meta");
+  return { title: t("list") };
+}
 
 /** A nullable open count. Null is an em dash; the group states why once. A measured 0 stays 0. */
 function offenseStat(
@@ -28,17 +35,20 @@ function offenseStat(
   count: number | null,
   alarm?: "crit" | "warn",
   unknown?: { count: number | null | undefined; what: string },
+  locale: Locale = "en",
+  unknownText?: (count: number, what: string) => string,
 ) {
   if (count == null) return <StatCard label={label} value="—" />;
   // Open offenses the count could not classify: said beside the figure, in words.
   const note =
     unknown && typeof unknown.count === "number" && unknown.count > 0
-      ? `+\u00a0${formatCount(unknown.count)}\u00a0with unknown ${unknown.what}`
+      ? unknownText?.(unknown.count, unknown.what) ??
+        `+\u00a0${formatCount(unknown.count)}\u00a0with unknown ${unknown.what}`
       : undefined;
   return (
     <StatCard
       label={label}
-      value={formatCount(count)}
+      value={formatCount(count, locale)}
       tone={alarm && count > 0 ? alarm : undefined}
       note={note}
     />
@@ -50,7 +60,7 @@ function magnitudeStep(magnitude: number): number {
   return Math.min(10, Math.max(0, Math.round(magnitude)));
 }
 
-export default async function OffensesPage({
+async function OffensesPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -59,6 +69,9 @@ export default async function OffensesPage({
   const offset = Math.max(0, Number(params.offset ?? 0) || 0);
   const search = params.search ?? "";
   const status = params.status ?? "";
+  const t = await getTranslations("offenses");
+  const say = asTextTranslator(await getTranslations());
+  const locale = (await getLocale()) as Locale;
 
   let page: Page<OffenseSummary> | null = null;
   let aggregates: OffenseAggregates | null = null;
@@ -72,13 +85,13 @@ export default async function OffensesPage({
       api.offenseAggregates(),
     ]);
   } catch (err) {
-    error = loadErrorMessage(err, "offenses", "read:offenses");
+    error = loadErrorMessage(err, t("loadNoun"), "read:offenses", say);
   }
 
   if (error) {
     return (
       <>
-        <PageHeader title="Offenses" />
+        <PageHeader guide={guideFor("/offenses")} title={t("title")} />
         <div className="notice" role="alert">
           <p>{error}</p>
         </div>
@@ -93,39 +106,46 @@ export default async function OffensesPage({
       {/* Neither read says how far the offense snapshots reach: the page has no data time. */}
       <ReportDataAge iso={null} />
       <PageHeader
-        title="Offenses"
-        description="Read-only view of offenses collected from QRadar. This page issues no writes: offenses are triaged in QRadar, not here."
+        guide={guideFor("/offenses")}
+        title={t("title")}
+        description={t("description")}
       />
 
       {aggregates && (
         <>
           <div className="cards offenses-matching">
-            <StatCard label="Matching offenses" value={formatCount(page?.total ?? 0)} />
+            <StatCard label={t("matching")} value={formatCount(page?.total ?? 0, locale)} />
           </div>
-          <h2>Open offenses, whole instance</h2>
+          <h2>{t("openWhole")}</h2>
           {(aggregates.active == null ||
             aggregates.critical == null ||
             aggregates.unassigned == null ||
             aggregates.exceeding_sla == null ||
             aggregates.oldest_age_seconds == null) && (
             <p className="notice" role="status">
-              Not collected. {NOT_COLLECTED}
+              {t("notCollectedNotice", { reason: t("notCollected") })}
             </p>
           )}
           <div className="cards offenses-open">
-            {offenseStat("Active", aggregates.active)}
+            {offenseStat(t("stats.active"), aggregates.active, undefined, undefined, locale)}
             {offenseStat(
-              `Critical (mag ${aggregates.critical_magnitude}+)`,
+              t("stats.critical", { magnitude: aggregates.critical_magnitude }),
               aggregates.critical,
               "crit",
-              { count: aggregates.critical_unknown, what: "magnitude" },
+              { count: aggregates.critical_unknown, what: t("stats.magnitude") },
+              locale,
+              (count, what) => t("stats.unknown", { count, what }),
             )}
-            {offenseStat("Unassigned", aggregates.unassigned, "warn")}
-            {offenseStat(`Over ${aggregates.sla_hours}h SLA`, aggregates.exceeding_sla, "warn", {
-              count: aggregates.age_unknown,
-              what: "age",
-            })}
-            <StatCard label="Oldest" value={formatAge(aggregates.oldest_age_seconds)} />
+            {offenseStat(t("stats.unassigned"), aggregates.unassigned, "warn", undefined, locale)}
+            {offenseStat(
+              t("stats.overSla", { hours: aggregates.sla_hours }),
+              aggregates.exceeding_sla,
+              "warn",
+              { count: aggregates.age_unknown, what: t("stats.age") },
+              locale,
+              (count, what) => t("stats.unknown", { count, what }),
+            )}
+            <StatCard label={t("stats.oldest")} value={formatDuration(aggregates.oldest_age_seconds, { t: say, locale })} />
           </div>
         </>
       )}
@@ -135,26 +155,26 @@ export default async function OffensesPage({
       {items.length === 0 ? (
         <div className="notice">
           {search || status
-            ? "No offenses match these filters."
-            : EMPTY_LIST}
+            ? t("emptyFiltered")
+            : t("empty")}
         </div>
       ) : (
         <>
-          <TableScroll label="Offenses">
-          <table className="offenses-table table-dense" aria-label="Offenses">
+          <TableScroll label={t("table.label")}>
+          <table className="offenses-table table-dense" aria-label={t("table.label")}>
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Description</th>
-                <th title="Magnitude, 0 to 10">Mag</th>
-                <th className="num" title="Severity, 0 to 10">
-                  Sev
+                <th>{t("table.id")}</th>
+                <th>{t("table.description")}</th>
+                <th title={t("table.magnitudeTitle")}>{t("table.magnitude")}</th>
+                <th className="num" title={t("table.severityTitle")}>
+                  {t("table.severity")}
                 </th>
-                <th>Status</th>
-                <th>Assigned</th>
-                <th className="num">Events</th>
-                <th>Started (UTC)</th>
-                <th className="num">Age</th>
+                <th>{t("table.status")}</th>
+                <th>{t("table.assigned")}</th>
+                <th className="num">{t("table.events")}</th>
+                <th>{t("table.started")}</th>
+                <th className="num">{t("table.age")}</th>
               </tr>
             </thead>
             <tbody>
@@ -180,15 +200,15 @@ export default async function OffensesPage({
                   <td className="num">{o.severity ?? "—"}</td>
                   <td>
                     <span className={`pill ${offenseStatusTone(o.status)}`}>
-                      {o.status}
+                      {enumLabel(say, "offenseStatus", o.status)}
                     </span>
                   </td>
-                  <td>{o.assigned_to ?? <span className="muted">unassigned</span>}</td>
+                  <td>{o.assigned_to ?? <span className="muted">{t("table.unassigned")}</span>}</td>
                   <td className="num">
-                    {o.event_count == null ? "—" : o.event_count.toLocaleString("en-US")}
+                    {o.event_count == null ? "—" : formatCount(o.event_count, locale)}
                   </td>
                   <td>{o.start_time ? <UtcTime value={o.start_time} wrapZone /> : "—"}</td>
-                  <td className="num">{formatAge(o.age_seconds)}</td>
+                  <td className="num">{formatDuration(o.age_seconds, { t: say, locale })}</td>
                 </tr>
               ))}
             </tbody>
@@ -207,3 +227,5 @@ export default async function OffensesPage({
     </>
   );
 }
+
+export default withRouteMessages("/offenses", OffensesPage);

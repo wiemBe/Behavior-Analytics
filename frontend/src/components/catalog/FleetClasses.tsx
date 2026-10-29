@@ -4,11 +4,16 @@
 // silence incidents, one row per class that has sources. A class with no complete bucket has
 // no EPS (an em dash), and a class with no monitored source has no silence figure.
 
+import { useTranslations } from "next-intl";
+
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
 import { fleetDrillHref, formatEpsValue } from "@/lib/fleet";
+import { plainCount, useFleetText } from "@/lib/fleetText";
+import { formatCount } from "@/lib/format";
 import { partial } from "@/lib/home/qualifiers";
-import { RANGE_TEXT, useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
+import { useWidgetCopy } from "@/widgets/copy";
+import { useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 import { WidgetFrame, WidgetQualifiers } from "@/components/home/WidgetFrame";
 import { Unmeasured } from "@/components/home/WidgetParts";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -18,6 +23,10 @@ import { classRows } from "./derive";
 import "./catalog.css";
 
 export function FleetClasses({ range, expanded: expandedProp }: RangedProps = {}) {
+  const t = useTranslations("catalog.fleetClasses");
+  const copy = useWidgetCopy();
+  const text = useFleetText();
+  const { locale } = text;
   const expanded = useExpanded(expandedProp);
   const window = useEffectiveRange(range);
   const read = homeReads.fleetSummary(window);
@@ -26,28 +35,26 @@ export function FleetClasses({ range, expanded: expandedProp }: RangedProps = {}
   return (
     <WidgetFrame
       id="fleet-classes"
-      title="Source classes"
-      windowText={RANGE_TEXT[window]}
-      link={{ href: fleetDrillHref(window), label: "Fleet" }}
+      title={t("title")}
+      windowText={copy.range(window)}
+      link={{ href: fleetDrillHref(window), label: t("link") }}
       state={state}
-      what="the fleet summary"
+      what={t("what")}
       permission="read:fleet"
     >
       {({ data }) => {
-        const { rows, hidden, incomplete } = classRows(data, expanded ? Infinity : undefined);
+        const { rows, hidden, incomplete } = classRows(data, expanded ? Infinity : undefined, text);
         if (rows.length === 0) {
           return (
-            <p className="tw-state">
-              No source class has a source yet. Sync the log sources to classify them.
-            </p>
+            <p className="tw-state">{t("empty")}</p>
           );
         }
         const expected = data.classes.reduce((s, c) => s + c.buckets.expected, 0);
         const complete = data.classes.reduce((s, c) => s + c.buckets.complete, 0);
         return (
           <>
-            <TableScroll label="Source classes">
-              <table className="tw-table cw-table" aria-label="Source classes">
+            <TableScroll label={t("label")}>
+              <table className="tw-table cw-table" aria-label={t("label")}>
                 <colgroup>
                   <col />
                   <col className="tw-col-count" />
@@ -56,15 +63,15 @@ export function FleetClasses({ range, expanded: expandedProp }: RangedProps = {}
                 </colgroup>
                 <thead>
                   <tr>
-                    <th scope="col">Class</th>
+                    <th scope="col">{t("class")}</th>
                     <th scope="col" className="num">
-                      Sources
+                      {t("sources")}
                     </th>
                     <th scope="col" className="num">
-                      Mean EPS
+                      {t("meanEps")}
                     </th>
                     <th scope="col" className="num">
-                      Silent
+                      {t("silent")}
                     </th>
                   </tr>
                 </thead>
@@ -72,20 +79,20 @@ export function FleetClasses({ range, expanded: expandedProp }: RangedProps = {}
                   {rows.map((r) => (
                     <tr key={r.key}>
                       <td className="tw-name">{r.label}</td>
-                      <td className="num">{r.sources.toLocaleString("en-US")}</td>
+                      <td className="num">{formatCount(r.sources, locale)}</td>
                       <td className="num">
                         {r.meanEps === null ? (
-                          <Unmeasured reason="No complete bucket in this window" />
+                          <Unmeasured reason={t("noCompleteBucket")} />
                         ) : (
-                          formatEpsValue(r.meanEps)
+                          formatEpsValue(r.meanEps, locale)
                         )}
                       </td>
                       <td className="num">
                         {r.silent === null ? (
-                          <Unmeasured reason="No monitored source in this class" />
+                          <Unmeasured reason={t("noMonitored")} />
                         ) : (
                           <span className={r.silent > 0 ? "tw-state-word crit" : undefined}>
-                            {r.silent.toLocaleString("en-US")}
+                            {formatCount(r.silent, locale)}
                           </span>
                         )}
                       </td>
@@ -99,12 +106,18 @@ export function FleetClasses({ range, expanded: expandedProp }: RangedProps = {}
             ) : null}
             {expanded ? (
               <p className="tw-note">
-                Showing {rows.length} of {rows.length + hidden} classes.
+                {t("showingAll", {
+                  shown: plainCount(rows.length, locale),
+                  total: plainCount(rows.length + hidden, locale),
+                })}
               </p>
             ) : null}
             {!expanded && hidden > 0 ? (
               <p className="tw-note">
-                Showing the {rows.length} busiest of {rows.length + hidden} classes.
+                {t("showingBusiest", {
+                  shown: plainCount(rows.length, locale),
+                  total: plainCount(rows.length + hidden, locale),
+                })}
               </p>
             ) : null}
           </>

@@ -6,11 +6,14 @@
 // row. Permissions are never judged here: the API answers, and a 403 reverts
 // the select and says which permission is missing.
 
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, type SearchCadenceItem } from "@/lib/api";
+import { plainCount } from "@/lib/figureText";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import {
   cadenceLabel,
   changeFailure,
@@ -24,7 +27,7 @@ import { UtcTime } from "@/components/ui/UtcTime";
 import "@/components/ui/controls.css";
 
 function Outcome({ value }: { value: string }) {
-  const info = outcomeInfo(value);
+  const info = outcomeInfo(value, useBehaviorI18n());
   if (info === null) {
     // An outcome this build does not know is shown as recorded, not guessed at.
     return (
@@ -43,12 +46,19 @@ function Outcome({ value }: { value: string }) {
 }
 
 function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
+  const t = useTranslations("cadence.table");
+  const i18n = useBehaviorI18n();
   const [item, setItem] = useState(initial);
   const [pending, setPending] = useState<number | null>(null);
   const [outcome, setOutcome] = useState<ChangeOutcome>({ kind: "idle" });
 
-  const info = familyInfo(item.family);
-  const delay = worstCaseDelay(item.cadence_seconds, item.bucket_seconds, item.settle_seconds);
+  const info = familyInfo(item.family, i18n);
+  const delay = worstCaseDelay(
+    item.cadence_seconds,
+    item.bucket_seconds,
+    item.settle_seconds,
+    i18n,
+  );
   const lastRun = item.last_run;
 
   async function change(value: string) {
@@ -60,21 +70,16 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
     try {
       const updated = await api.setSearchCadence(item.family, next);
       setItem(updated);
-      const by = updated.updated_by ? `by ${updated.updated_by} ` : "";
+      const time = () => <UtcTime value={updated.updated_at} />;
       setOutcome({
         kind: "ok",
-        text: (
-          <>
-            Saved. Changed {by}at <UtcTime value={updated.updated_at} />.
-          </>
-        ),
+        text: updated.updated_by
+          ? t.rich("savedBy", { user: updated.updated_by, time })
+          : t.rich("saved", { time }),
       });
     } catch (err) {
       setOutcome(
-        changeFailure(
-          err,
-          "Your role cannot change search cadence (permission admin:search_cadence).",
-        ),
+        changeFailure(err, t("forbidden"), i18n),
       );
     } finally {
       setPending(null);
@@ -93,7 +98,7 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
         <td className="cadence-cell">
           <select
             className="select-control"
-            aria-label={`Cadence for ${info.name}`}
+            aria-label={t("cadenceFor", { name: info.name })}
             value={pending ?? item.cadence_seconds}
             disabled={pending !== null}
             aria-busy={pending !== null}
@@ -101,18 +106,18 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
           >
             {item.allowed_cadences_seconds.map((s) => (
               <option key={s} value={s}>
-                {cadenceLabel(s)}
+                {cadenceLabel(s, i18n)}
               </option>
             ))}
           </select>
         </td>
         <td className="num">
           {item.bucket_seconds == null ? (
-            <span className="muted" title="This family has no buckets">
+            <span className="muted" title={t("noBucketsTitle")}>
               {formatBucket(null)}
             </span>
           ) : (
-            formatBucket(item.bucket_seconds)
+            formatBucket(item.bucket_seconds, i18n)
           )}
         </td>
         <td className="num">
@@ -125,7 +130,7 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
               {lastRun.outcome && <Outcome value={lastRun.outcome} />}
             </>
           ) : (
-            <span className="muted">Not run since upgrade</span>
+            <span className="muted">{t("notRun")}</span>
           )}
         </td>
         <td className="num">
@@ -133,16 +138,13 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
         </td>
         <td className="num">
           {lastRun === null ? (
-            <span className="muted">No run yet</span>
+            <span className="muted">{t("noRunYet")}</span>
           ) : lastRun.searches_sent === null ? (
-            <span
-              className="muted"
-              title="This family does not count its searches yet"
-            >
-              not counted
+            <span className="muted" title={t("notCountedTitle")}>
+              {t("notCounted")}
             </span>
           ) : (
-            lastRun.searches_sent
+            plainCount(lastRun.searches_sent, i18n.locale)
           )}
         </td>
       </tr>
@@ -158,60 +160,48 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
 }
 
 export function SearchCadenceTable({ items }: { items: SearchCadenceItem[] }) {
+  const t = useTranslations("cadence.table");
   return (
     <>
-        <TableScroll label="Search cadence by family">
-          <table className="table-dense">
-            <caption className="sr-only">
-              Search families with their cadence, bucket width, worst-case delay, last run,
-              next run and searches sent in the last run. Times are UTC.
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Family</th>
-                <th scope="col">Cadence</th>
-                <th scope="col" className="num">
-                  Bucket
-                  <span className="cell-sub">— = no buckets</span>
-                </th>
-                <th scope="col" className="num">
-                  Worst-case detection delay
-                  <span className="cell-sub">cadence + bucket + settle</span>
-                </th>
-                <th scope="col" className="num">
-                  Last run (UTC)
-                </th>
-                <th scope="col" className="num">
-                  Next run (UTC)
-                </th>
-                <th scope="col" className="num">
-                  Searches in last run
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <CadenceRow key={item.family} initial={item} />
-              ))}
-            </tbody>
-          </table>
-        </TableScroll>
+      <TableScroll label={t("label")}>
+        <table className="table-dense">
+          <caption className="sr-only">{t("caption")}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t("family")}</th>
+              <th scope="col">{t("cadence")}</th>
+              <th scope="col" className="num">
+                {t("bucket")}
+                <span className="cell-sub">{t("noBuckets")}</span>
+              </th>
+              <th scope="col" className="num">
+                {t("worstCase")}
+                <span className="cell-sub">{t("formula")}</span>
+              </th>
+              <th scope="col" className="num">
+                {t("lastRun")}
+              </th>
+              <th scope="col" className="num">
+                {t("nextRun")}
+              </th>
+              <th scope="col" className="num">
+                {t("searchesSent")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <CadenceRow key={item.family} initial={item} />
+            ))}
+          </tbody>
+        </table>
+      </TableScroll>
 
-        <ul className="table-notes" aria-label="How to read the table">
-          <li>
-            Cadence sets when a family searches QRadar. The bucket width it stores does not
-            change.
-          </li>
-          <li>
-            Anomaly explanations have no buckets, so their delay bounds how late evidence
-            arrives, not how late a detection does.
-          </li>
-          <li>
-            “Not run since upgrade” means the family has not run since the cadence tracking was
-            introduced. “Not counted” means the family does not count its searches yet. Neither
-            is zero.
-          </li>
-        </ul>
+      <ul className="table-notes" aria-label={t("notesLabel")}>
+        <li>{t("noteCadence")}</li>
+        <li>{t("noteExplanation")}</li>
+        <li>{t("noteMissing")}</li>
+      </ul>
     </>
   );
 }

@@ -1,0 +1,12 @@
+{
+  "loading": "{what} yükleniyor…",
+  "couldNotDisplay": "{what} gösterilemedi.",
+  "renderFailed": "Sayfa oluşturulurken hata oluştu. Sayfadaki hiçbir şey değiştirilmedi. Tekrar deneyin; hata sürerse backend'e erişilebildiğini denetleyin.",
+  "reference": " Referans: {digest}.",
+  "insufficientData": "Yetersiz veri",
+  "partial": "Kısmi",
+  "truncated": "Kırpılmış",
+  "notCollected": "Toplanmadı",
+  "stale": "Güncel değil",
+  "forbidden": "İzin yok"
+}

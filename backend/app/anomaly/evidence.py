@@ -17,6 +17,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import StrEnum
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import DetectorSignal, Severity
 
 
@@ -43,19 +44,52 @@ class AnomalyEvidence[T: StrEnum]:
     # INSUFFICIENT_DATA — an operator must be able to tell "this source is fine"
     # apart from "we cannot yet say whether this source is fine".
     insufficient_data: bool = False
+    # The registry reference `reason` was rendered from, when the detector has one. The text
+    # stays the stored and served sentence; the reference travels beside it in `to_dict()` as
+    # `reason_code` / `reason_params` (and a writer may store it in an `_i18n` column).
+    reason_message: MessageRef | None = None
 
     @property
     def is_anomalous(self) -> bool:
         return self.signal is DetectorSignal.ANOMALOUS
 
+    @property
+    def reason_wire(self) -> dict[str, object] | None:
+        """`{code, params}` of `reason` for an `_i18n` column; None for an uncoded sentence."""
+        return self.reason_message.to_wire() if self.reason_message is not None else None
+
     def to_dict(self) -> dict:
         d = asdict(self)
+        # `asdict` would turn the reference into a nested dict of raw values; the wire form is
+        # JSON-safe (timestamps as text) and sits beside `reason`.
+        d.pop("reason_message", None)
+        if self.reason_message is not None:
+            wire = self.reason_message.to_wire()
+            d["reason_code"] = wire["code"]
+            d["reason_params"] = wire["params"]
         d["anomaly_type"] = self.anomaly_type.value
         d["signal"] = self.signal.value
         d["severity"] = self.severity.value
         d["interval_start"] = self.interval_start.isoformat()
         d["interval_end"] = self.interval_end.isoformat()
         return d
+
+
+def sentence(reason: str | None, message: MessageRef | None) -> str:
+    """The stored English sentence of a verdict, from its text, its reference, or both.
+
+    A reference is the source of its sentence: the text is rendered from it, so the two can
+    never disagree. Passing both is allowed only when they already agree (a caller that holds
+    the rendered text); a text with no reference is an uncoded sentence (WAF, IPS).
+    """
+    if message is None:
+        if reason is None:
+            raise ValueError("a verdict needs a reason or a message reference")
+        return reason
+    rendered = render(message)
+    if reason is not None and reason != rendered:
+        raise ValueError("the reason text differs from the sentence its reference renders")
+    return rendered
 
 
 def healthy[T: StrEnum](
@@ -65,8 +99,15 @@ def healthy[T: StrEnum](
     interval_end: datetime,
     observed: float | None = None,
     expected: float | None = None,
-    reason: str = "within expected range",
+    reason: str | None = None,
+    reason_message: MessageRef | None = None,
 ) -> AnomalyEvidence[T]:
+    # A caller with neither keeps the uncoded default; a Phase A detector passes its reference.
+    text = (
+        "within expected range"
+        if reason is None and reason_message is None
+        else sentence(reason, reason_message)
+    )
     return AnomalyEvidence(
         anomaly_type=anomaly_type,
         signal=DetectorSignal.HEALTHY,
@@ -81,7 +122,8 @@ def healthy[T: StrEnum](
         interval_start=interval_start,
         interval_end=interval_end,
         confidence=1.0,
-        reason=reason,
+        reason=text,
+        reason_message=reason_message,
     )
 
 
@@ -90,7 +132,8 @@ def unknown[T: StrEnum](
     *,
     interval_start: datetime,
     interval_end: datetime,
-    reason: str,
+    reason: str | None = None,
+    reason_message: MessageRef | None = None,
 ) -> AnomalyEvidence[T]:
     return AnomalyEvidence(
         anomaly_type=anomaly_type,
@@ -106,7 +149,8 @@ def unknown[T: StrEnum](
         interval_start=interval_start,
         interval_end=interval_end,
         confidence=0.0,
-        reason=reason,
+        reason=sentence(reason, reason_message),
+        reason_message=reason_message,
     )
 
 
@@ -115,8 +159,9 @@ def insufficient[T: StrEnum](
     *,
     interval_start: datetime,
     interval_end: datetime,
-    reason: str,
+    reason: str | None = None,
     sample_count: int = 0,
+    reason_message: MessageRef | None = None,
 ) -> AnomalyEvidence[T]:
     """No verdict is possible: the baseline or the bucket is inadequate.
 
@@ -129,6 +174,7 @@ def insufficient[T: StrEnum](
         interval_start=interval_start,
         interval_end=interval_end,
         reason=reason,
+        reason_message=reason_message,
     )
     ev.insufficient_data = True
     ev.sample_count = sample_count

@@ -3,6 +3,10 @@
 // keeps the server's `detail` text ("you already have a dashboard named 'X'", "the limit is
 // 20 dashboards per owner") for the UI to show as it is.
 
+import { renderRefusal } from "@/i18n/refusalMessage";
+import type { Locale } from "@/i18n/locale";
+import type { TextTranslator } from "@/i18n/textTranslator";
+import { missingPermission, refusalSentences } from "@/lib/refusal";
 import type { DashboardLayout, LayoutWidget, WidgetRange } from "@/widgets/types";
 
 import { ApiError, request } from "./api";
@@ -74,7 +78,14 @@ export interface DashboardReplace {
 /** What a `PUT` answers: the saved dashboard, or a stale write (the server's `409`). */
 export type ReplaceResult =
   | { kind: "saved"; dashboard: DashboardOut }
-  | { kind: "conflict"; message: string; current_revision: number };
+  | {
+      kind: "conflict";
+      message: string;
+      current_revision: number;
+      /** The message's code and params, when the server coded it (MSG-1). */
+      code?: string;
+      params?: Record<string, unknown>;
+    };
 
 /** One more than the 20 a person may own, plus every shared one: the list is read whole. */
 const LIST_LIMIT = 200;
@@ -125,12 +136,13 @@ export async function replaceDashboard(
     if (error instanceof ApiError && error.status === 409) {
       const detail = error.detail;
       if (detail !== null && typeof detail === "object") {
-        const { message, current_revision } = detail as Record<string, unknown>;
+        const { message, current_revision, code, params } = detail as Record<string, unknown>;
         if (typeof current_revision === "number") {
           return {
             kind: "conflict",
             message: typeof message === "string" ? message : error.message,
             current_revision,
+            ...(typeof code === "string" && isObject(params) ? { code, params } : {}),
           };
         }
       }
@@ -211,8 +223,8 @@ export function readLayout(raw: unknown): LayoutRead {
  * one (a duplicate name, the 20-dashboard limit, a validation message), and otherwise what is
  * known. An exception's message is never shown.
  */
-export function describeRefusal(error: unknown): string {
-  return asSentence(refusalWords(error));
+export function describeRefusal(error: unknown, t?: TextTranslator, locale?: Locale): string {
+  return asSentence(refusalWords(error, t, locale));
 }
 
 /** The server's words as a sentence: first character capitalised, a full stop if none ends it. */
@@ -223,12 +235,25 @@ export function asSentence(text: string): string {
   return /[.!?]$/.test(head) ? head : `${head}.`;
 }
 
-function refusalWords(error: unknown): string {
+// The server's own `detail` stays as it sent it in English. In another language a refusal that
+// carries a message code is worded from its catalog entry (`locale` says which), and a 403 that
+// names the missing permission says which one (`errors.forbiddenPermission`); only the fixed
+// fallbacks otherwise take `t` (`errors.*`).
+function refusalWords(error: unknown, t?: TextTranslator, locale?: Locale): string {
   if (!(error instanceof ApiError)) {
-    return "The request did not reach the server. Check that the backend is reachable and try again.";
+    return t
+      ? t("errors.notReached")
+      : "The request did not reach the server. Check that the backend is reachable and try again.";
   }
+  const permission = missingPermission(error);
+  if (permission !== null) {
+    return t ? t("errors.forbiddenPermission", { permission }) : `You need the ${permission} permission for this.`;
+  }
+  const [sentence] = refusalSentences(error);
+  const said = (text: string) =>
+    sentence && t && locale ? renderRefusal(sentence, locale, t) : text;
   const detail = error.detail;
-  if (typeof detail === "string" && detail) return detail;
+  if (typeof detail === "string" && detail) return said(detail);
   if (Array.isArray(detail)) {
     const messages = detail
       .map((entry) =>
@@ -239,6 +264,6 @@ function refusalWords(error: unknown): string {
       .filter((text): text is string => text !== null);
     if (messages.length > 0) return messages.join("; ");
   }
-  if (isObject(detail) && typeof detail.message === "string") return detail.message;
-  return `The server answered HTTP ${error.status}.`;
+  if (isObject(detail) && typeof detail.message === "string") return said(detail.message);
+  return t ? t("errors.httpStatus", { status: error.status }) : `The server answered HTTP ${error.status}.`;
 }

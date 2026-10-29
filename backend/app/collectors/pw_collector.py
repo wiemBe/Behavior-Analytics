@@ -52,6 +52,7 @@ from app.history.planner import (
 )
 from app.history.progress_codec import ProgressCodecError, decode_progress, encode_progress
 from app.history.state import HistoryFamily, HistoryTrigger
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     PwBucketMeasurement,
     PwHistoryState,
@@ -137,9 +138,8 @@ _COLLECTION_STATUSES = frozenset(
 #: `NOT_APPLICABLE` needs this many consecutive collected buckets on which the property
 #: parsed on no event, counted across ticks, whatever the cadence.
 _NOT_APPLICABLE_MIN_BUCKETS = 12
-_NOT_APPLICABLE_REASON = (
-    "the property parsed on no event in scope; the values are not measured"
-)
+_NOT_APPLICABLE_MESSAGE = MessageRef("pw.status.not_applicable")
+_NOT_APPLICABLE_REASON = render(_NOT_APPLICABLE_MESSAGE)
 
 
 @dataclass
@@ -354,17 +354,34 @@ def _chunk_result(span: Span, outcomes: Sequence[PwBucketOutcome], searches: int
     )
 
 
-def _days_sentence(progress: ScopeProgress, boundary: datetime, settings: PlannerSettings) -> str:
-    """The status sentence, "n of m days" to one decimal: from the floor (or the asked
-    start), `through` and the boundary. Never an ETA (§H.5.1)."""
+def _set_reason(row: dict[str, Any], message: MessageRef | None) -> None:
+    """The status sentence of a watch row and its message reference, written together.
+
+    The text and the reference are one fact: a row never keeps the reference of an earlier
+    sentence beside a new text, and `None` clears both.
+    """
+    row["last_status_reason"] = None if message is None else render(message)
+    row["last_status_reason_i18n"] = None if message is None else message.to_wire()
+
+
+def _set_scope_reason(row: dict[str, Any], scope: ResolvedScope) -> None:
+    """The reason an unresolved scope gives, with its reference."""
+    row["last_status_reason"] = scope.reason
+    row["last_status_reason_i18n"] = None if scope.message is None else scope.message.to_wire()
+
+
+def _days_message(
+    progress: ScopeProgress, boundary: datetime, settings: PlannerSettings
+) -> MessageRef:
+    """The status sentence, "n of m days": from the floor (or the asked start), `through`
+    and the boundary. Never an ETA (§H.5.1)."""
     start = progress.floor or progress.target_start
     total = max(0.0, (boundary - start).total_seconds() / 86400)
     done = 0.0
     if progress.through is not None:
         done = max(0.0, (progress.through + settings.bucket - start).total_seconds() / 86400)
-    return (
-        f"Reading history from QRadar: {min(done, total):.1f} of {total:.1f} days; "
-        "nothing is judged until it finishes"
+    return MessageRef(
+        "pw.status.reading_history", {"done": min(done, total), "total": total}
     )
 
 
@@ -685,6 +702,7 @@ class PwCollector:
                         "collected_through": loaded.collected_through,
                         "last_status": loaded.last_status,
                         "last_status_reason": loaded.last_status_reason,
+                        "last_status_reason_i18n": loaded.last_status_reason_i18n,
                         "last_run_at": now,
                         **columns,
                     }
@@ -803,6 +821,7 @@ class PwCollector:
             "collected_through": watch.collected_through,
             "last_status": watch.last_status,
             "last_status_reason": watch.last_status_reason,
+            "last_status_reason_i18n": watch.last_status_reason_i18n,
             "last_run_at": now,
             # Staged by the history classification (a reading switched off): rides along.
             **(extra_columns or {}),
@@ -823,7 +842,7 @@ class PwCollector:
         if not scope.resolved:
             # No bucket and no zero: the watch takes the reason and the next tick retries.
             status_row["last_status"] = scope.status.value if scope.status else None
-            status_row["last_status_reason"] = scope.reason
+            _set_scope_reason(status_row, scope)
             writes.watches.append(status_row)
             return PwWatchReport(watch.id, "scope", reason=scope.reason)
 
@@ -912,6 +931,7 @@ class PwCollector:
             "collected_through": watch.collected_through,
             "last_status": watch.last_status,
             "last_status_reason": watch.last_status_reason,
+            "last_status_reason_i18n": watch.last_status_reason_i18n,
             "last_run_at": now,
             **entry.columns,
         }
@@ -938,13 +958,13 @@ class PwCollector:
                 _stamp(columns, progress, reason=reason, version=version)
                 if status_row["last_status"] in _COLLECTION_STATUSES:
                     status_row["last_status"] = None
-                    status_row["last_status_reason"] = None
+                    _set_reason(status_row, None)
             else:
                 assert progress is not None
                 columns = history_columns(progress, state=PwHistoryState.READING, reason=reason)
                 _stamp(columns, progress, reason=reason, version=version)
                 status_row["last_status"] = PwWatchStatus.READING_HISTORY.value
-                status_row["last_status_reason"] = _days_sentence(progress, boundary, planner)
+                _set_reason(status_row, _days_message(progress, boundary, planner))
             status_row.update(columns)
             writes.watches.append(status_row)
             if staged is not None:
@@ -991,7 +1011,7 @@ class PwCollector:
             _stamp(columns, rebuilt, reason=UNREADABLE_PROGRESS, version=version)
             if status_row["last_status"] in _COLLECTION_STATUSES:
                 status_row["last_status"] = None
-                status_row["last_status_reason"] = None
+                _set_reason(status_row, None)
             status_row.update(columns)
             writes.watches.append(status_row)
             return PwWatchReport(watch.id, "handed_off", reason=UNREADABLE_PROGRESS)
@@ -1030,7 +1050,7 @@ class PwCollector:
         if not scope.resolved:
             # No step and no bucket (§H.6 row 7): `history_through` stays where it is.
             status_row["last_status"] = scope.status.value if scope.status else None
-            status_row["last_status_reason"] = scope.reason
+            _set_scope_reason(status_row, scope)
             writes.watches.append(status_row)
             return PwWatchReport(watch.id, "scope", reason=scope.reason)
 
@@ -1449,9 +1469,12 @@ class PwCollector:
                     # keep reading OK. A later collected bucket clears this (STALE is one of
                     # collection's own statuses).
                     status_row["last_status"] = PwWatchStatus.STALE.value
-                    status_row["last_status_reason"] = (
-                        "the latest search failed; bucket "
-                        f"{grouped[held].bucket_start.isoformat()} is stored NOT_COLLECTED"
+                    _set_reason(
+                        status_row,
+                        MessageRef(
+                            "pw.status.latest_search_failed",
+                            {"bucket": grouped[held].bucket_start},
+                        ),
                     )
         if count == 0:
             return _Staged()
@@ -1575,10 +1598,10 @@ class PwCollector:
             trailing += unparsed_before
         if trailing >= _NOT_APPLICABLE_MIN_BUCKETS:
             status_row["last_status"] = PwWatchStatus.NOT_APPLICABLE.value
-            status_row["last_status_reason"] = _NOT_APPLICABLE_REASON
+            _set_reason(status_row, _NOT_APPLICABLE_MESSAGE)
         elif status in _COLLECTION_STATUSES:
             status_row["last_status"] = None
-            status_row["last_status_reason"] = None
+            _set_reason(status_row, None)
         return _Staged(
             admitted=sum(f.fact.admitted_values for f in facts), retired=len(retired)
         )

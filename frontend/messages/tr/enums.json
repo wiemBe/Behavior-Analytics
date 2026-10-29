@@ -1,0 +1,195 @@
+{
+  "severity": {
+    "CRITICAL": "Kritik",
+    "HIGH": "Yüksek",
+    "MEDIUM": "Orta",
+    "LOW": "Düşük",
+    "INFO": "Bilgi"
+  },
+  "anomalyState": {
+    "INSUFFICIENT_DATA": "YETERSİZ VERİ",
+    "NORMAL": "NORMAL",
+    "CANDIDATE": "ADAY",
+    "OPEN": "AÇIK",
+    "RECOVERING": "DÜZELİYOR",
+    "RESOLVED": "ÇÖZÜLDÜ",
+    "SUPPRESSED": "BASTIRILDI"
+  },
+  "profileValidationStatus": {
+    "UNVALIDATED": "Doğrulanmadı",
+    "VALID": "Geçerli",
+    "INVALID": "Geçersiz",
+    "INCONCLUSIVE": "Sonuçsuz"
+  },
+  "bucketCompleteness": {
+    "COMPLETE": "tam",
+    "PARTIAL": "kısmi",
+    "MISSING": "eksik"
+  },
+  "offenseStatus": {
+    "OPEN": "Açık",
+    "HIDDEN": "Gizli",
+    "CLOSED": "Kapalı"
+  },
+  "sourceClass": {
+    "WAF": "WAF",
+    "IPS": "IPS",
+    "FIREWALL": "Güvenlik duvarı",
+    "PROXY": "Proxy",
+    "VPN": "VPN",
+    "LINUX": "Linux",
+    "WINDOWS": "Windows",
+    "NETWORK": "Ağ",
+    "DNS": "DNS",
+    "DATABASE": "Veritabanı",
+    "EMAIL": "E-posta",
+    "ENDPOINT": "Uç nokta",
+    "CLOUD": "Bulut",
+    "IDENTITY": "Kimlik",
+    "APPLICATION": "Uygulama",
+    "QRADAR_INTERNAL": "QRadar dahili",
+    "OTHER": "Diğer",
+    "UNCLASSIFIED": "Sınıflanmamış"
+  },
+  "severityPill": {
+    "CRITICAL": "KRİTİK",
+    "HIGH": "YÜKSEK",
+    "MEDIUM": "ORTA",
+    "LOW": "DÜŞÜK",
+    "INFO": "BİLGİ"
+  },
+  "anomalyType": {
+    "VOLUME_SPIKE": "Hacim artışı",
+    "VOLUME_DROP": "Hacim düşüşü",
+    "NO_EVENTS": "Olay yok",
+    "WAF_REQUEST_RATE_SPIKE": "İstek hızı artışı",
+    "WAF_CLIENT_CONCENTRATION_SPIKE": "İstemci yoğunlaşması artışı",
+    "WAF_BLOCK_RATIO_SPIKE": "Engelleme oranı artışı",
+    "WAF_ERROR_RATIO_SPIKE": "Sunucu hata oranı artışı",
+    "WAF_CLIENT_ERROR_RATIO_SPIKE": "İstemci hata oranı artışı",
+    "WAF_NEW_ENDPOINT_ACCESS": "Yeni endpoint erişimi",
+    "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE": "İstemci endpoint dağılımı artışı",
+    "IPS_PORT_RATE_SPIKE": "Hedef port hızı artışı",
+    "IPS_DESTINATION_RATE_SPIKE": "Hedef hızı artışı",
+    "IPS_SIGNATURE_BURST": "İmza patlaması",
+    "IPS_NEW_DESTINATION_PORT": "Yeni hedef port",
+    "IPS_SOURCE_CONCENTRATION_SPIKE": "Kaynak yoğunlaşması artışı",
+    "IPS_PORT_FANOUT_SPIKE": "Port dağılımı artışı",
+    "IPS_BLOCK_RATIO_SHIFT": "Engelleme oranı kayması"
+  },
+  "propertyWatchAnomalyType": {
+    "PW_VALUE_SPIKE": "Değer ani artışı",
+    "PW_VALUE_DROP": "Değer ani düşüşü",
+    "PW_VALUE_DISAPPEARED": "Değer kayboldu",
+    "PW_NEW_VALUE": "Yeni değer",
+    "PW_NEW_COMBINATION": "Yeni birleşim"
+  },
+  "propertyWatchStatus": {
+    "NOT_ENABLED": "Toplama kapalı",
+    "DISABLED": "Devre dışı",
+    "SCOPE_EMPTY": "Scope boş",
+    "SCOPE_STALE": "Scope güncel değil",
+    "SCOPE_TOO_LARGE": "Scope çok büyük",
+    "NOT_APPLICABLE": "Uygulanamaz",
+    "STALE": "Güncel değil",
+    "READING_HISTORY": "Geçmiş okunuyor",
+    "OPEN": "Vaka açık",
+    "RECOVERING": "Düzeliyor",
+    "OK": "Uygun"
+  },
+  "propertyWatchHistoryState": {
+    "NOT_REQUESTED": "İSTENMEDİ",
+    "READING": "OKUNUYOR",
+    "COMPLETE": "TAMAMLANDI",
+    "PARTIAL": "KISMİ",
+    "UNAVAILABLE": "KULLANILAMIYOR"
+  },
+  "propertyWatchPreviewOutcome": {
+    "MEASURED": "ÖLÇÜLDÜ",
+    "PARTIAL": "KISMİ",
+    "NOT_MEASURED": "ÖLÇÜLMEDİ"
+  },
+  "alertStatus": {
+    "OPEN": "Açık",
+    "ACKNOWLEDGED": "Alındı",
+    "RESOLVED": "Çözüldü"
+  },
+  "alertStatusPill": {
+    "OPEN": "AÇIK",
+    "ACKNOWLEDGED": "ALINDI",
+    "RESOLVED": "ÇÖZÜLDÜ"
+  },
+  "notificationStatus": {
+    "PENDING": "Bekliyor",
+    "SENT": "Gönderildi",
+    "FAILED": "Başarısız",
+    "DEAD_LETTER": "Teslim edilemedi",
+    "SUPPRESSED": "Bastırıldı"
+  },
+  "notificationChannel": {
+    "TEAMS": "Teams kanalı",
+    "EMAIL": "E-posta",
+    "SLACK": "Slack kanalı",
+    "WEBHOOK": "Webhook kanalı",
+    "SYSLOG": "Syslog kanalı"
+  },
+  "alertTransition": {
+    "OPENED": "Açıldı",
+    "ACKNOWLEDGED": "Alındı",
+    "RESOLVED": "Çözüldü"
+  },
+  "ruleHealth": {
+    "HEALTHY": "Sağlıklı",
+    "NEVER_OBSERVED": "Hiç gözlenmedi",
+    "INACTIVE": "Etkin değil",
+    "NOISY": "Gürültülü",
+    "DISABLED": "Devre dışı",
+    "DEPENDENCY_DEGRADED": "Bağımlılık bozulmuş",
+    "INSUFFICIENT_DATA": "Yetersiz veri",
+    "UNKNOWN": "Bilinmiyor"
+  },
+  "executionStatus": {
+    "PENDING": "BEKLİYOR",
+    "QUEUED": "SIRADA",
+    "RUNNING": "ÇALIŞIYOR",
+    "COMPLETED": "TAMAMLANDI",
+    "FAILED": "BAŞARISIZ",
+    "TIMEOUT": "ZAMAN AŞIMI",
+    "CANCELLED": "İPTAL EDİLDİ"
+  },
+  "executionTrigger": {
+    "SCHEDULED": "Zamanlanmış",
+    "MANUAL": "Elle"
+  },
+  "customRuleOperator": {
+    "GT": ">",
+    "GE": "≥",
+    "LT": "<",
+    "LE": "≤",
+    "EQ": "="
+  },
+  "catchallReviewStatus": {
+    "REVIEWED": "incelendi",
+    "DISMISSED": "reddedildi"
+  },
+  "role": {
+    "admin": "Yönetici (admin)",
+    "analyst": "Analist (analyst)",
+    "viewer": "Görüntüleyici (viewer)",
+    "detection_engineer": "Tespit mühendisi (detection_engineer)"
+  },
+  "wafBucketCompleteness": {
+    "partial": "kısmi",
+    "missing": "eksik",
+    "complete": "eksiksiz"
+  },
+  "historyScanStatus": {
+    "failed": "başarısız oldu",
+    "truncated": "kırpıldı",
+    "not_run": "çalıştırılmadı"
+  },
+  "historyEmptyNoun": {
+    "tracked endpoint": "izlenen endpoint",
+    "admitted entity": "kabul edilmiş varlık"
+  }
+}

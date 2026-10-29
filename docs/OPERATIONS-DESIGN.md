@@ -1,6 +1,14 @@
 # Operations design — install, release, upgrade, backup, rollback, diagnosis
 
-Status: design, 2026-10-16. No code in this task. The implementation split is §10.
+Status: **built, first shipped in `v0.1.0`** (designed 2026-10-16). The implementation split is §10:
+the §10 safety cut OPS-1 to OPS-10 is built, and the later operations rounds (OPS-17 onward, in the git
+history) followed it.
+`./qradar-dash` provides every command the design specifies — `install`, `status`, `logs`,
+`doctor`, `backup`, `restore`, `support-bundle`, `upgrade`, `bundle`, `rollback` and
+`repair-state` — the release pipeline of §1–§2 runs on a tag push (`.github/workflows/release.yml`),
+and [`docs/OPERATIONS.md`](OPERATIONS.md) is the Turkish runbook §8 specified. §10.3's items remain
+not built except OPS-13: the MCP image bakes its feature toggles in (`deploy/mcp/Dockerfile`) and
+release `v0.1.6` shipped the production MCP profile.
 The production host has no AI. An operator (efe) installs, upgrades, diagnoses and recovers
 from this document, the runbook it specifies, `./qradar-dash`, and the logs.
 
@@ -188,6 +196,14 @@ New file `.github/workflows/release.yml`. Trigger: a tag `v*`. The workflow:
 
 `GITHUB_TOKEN` needs `packages:write`. No extra secret is stored in the repository.
 
+**[design]** The workflow also runs on demand, as a dry run:
+`gh workflow run release.yml --ref <branch>`. The dispatched run is the release
+workflow itself, not a copy of it: the pin, VERSION and notes checks, the gates,
+every image build (including the frontend bundle check) and the digest check all
+run; nothing is pushed to ghcr.io and no GitHub Release is written. It is run on
+the release commit before the tag is pushed, so a release is never the
+workflow's first run (`v0.1.5` was, and failed).
+
 ### 2.2 Images
 
 | Compose service | Image | Notes |
@@ -197,7 +213,7 @@ New file `.github/workflows/release.yml`. Trigger: a tag `v*`. The workflow:
 | postgres | `ghcr.io/wiembe/behavior-analytics/postgres` | Built from `deploy/postgres/Dockerfile:10-12` on `timescale/timescaledb:2.17.2-pg16`. Also tagged `2.17.2-pg16` when the Dockerfile has not changed. |
 | qradar-mcp | `ghcr.io/wiembe/behavior-analytics/qradar-mcp` | Built from the pinned submodule. Not started unless the `mcp` profile is requested (`docker-compose.yml:121`). |
 | proxy | `ghcr.io/wiembe/behavior-analytics/proxy` | New. Nginx config baked into the image (§3.4). |
-| redis | `redis:7.4-alpine@sha256:<digest>` | Not built. The release resolves the digest and the production compose file pins it. Today's file floats on the tag (`docker-compose.yml:71`). |
+| redis | `redis:7.4-alpine@sha256:<digest>` | Not built (pulled). As built: the pin lives in the production compose file (`docker-compose.prod.yml:61`), and the release's `redis` job fails the release when it no longer resolves (`.github/workflows/release.yml:203`). The development file still floats on the tag (`docker-compose.yml:75`). |
 
 GHCR lowercases the owner and the image name. The repository is
 `wiemBe/Behavior-Analytics`, so the image prefix is
@@ -1701,6 +1717,12 @@ Not in the safety cut:
 - **OPS-11.** Image signing (cosign) and an SBOM. Pull still verifies the digest recorded in the state file, which is the rollback property. Signing is the next step.
 - **OPS-12.** Redis `requirepass` and a review of whether loopback 3000/8000 should stay published. Both are internal today (`docker-compose.yml:70-80` has no host port for Redis).
 - **OPS-13.** Bake `deploy/mcp/feature_toggles.json` and the MCP config into an image so the profile can be enabled without a bind mount. POST and DELETE stay off (`deploy/mcp/feature_toggles.json:3-7`). Not required while the profile stays off.
+
+  > **As built (release `v0.1.6`, 2026-10-25).** This one is done: `deploy/mcp/Dockerfile` bakes
+  > `feature_toggles.json` into the image, and the production MCP profile shipped — the server
+  > certificate is verified against the backend's CA and the token travels in an `SEC` header, so
+  > `deploy/mcp/config.json` is gone. `docs/INSTALL.md` "Enable the profile on a production host"
+  > is the procedure now.
 - **OPS-14.** A copy of the backup directory off the host.
 - **OPS-15.** An exporter for the `doctor` checks. §9 is the watch until then.
 - **OPS-16.** `ALTER ROLE` for a Postgres password change, if it is ever needed. Symptom 35's fix is to put the old password back.

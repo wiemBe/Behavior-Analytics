@@ -95,6 +95,7 @@ class TestScopeView:
             "started_at": NOW - HOUR,
             "finished_at": None,
             "reason": "the scope reads its next step",
+            "reason_i18n": None,
             "last_error_class": None,
             "last_error_at": None,
             "progress": PROGRESS,

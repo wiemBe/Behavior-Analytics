@@ -1,22 +1,41 @@
 import Link from "next/link";
+import { getLocale, getTranslations } from "next-intl/server";
 
-import { CadenceLatency, canReadSearchCadence } from "@/components/cadence/CadenceLatency";
+import { canReadSearchCadence } from "@/components/cadence/CadenceLatency";
+import { CustomRuleLatency } from "@/components/customrules/CustomRuleLatency";
 import { RuleStatus } from "@/components/customrules/RuleStatus";
 import {
   conditionText,
-  customRuleLatencyFor,
   customRuleAccessFrom,
   type CustomRuleAccess,
-  SUBJECT_KIND_LABELS,
+  subjectKindLabel,
 } from "@/components/customrules/authoring";
 import { resolveRuleSubjects } from "@/components/customrules/subjects";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { ApiError, api, sevTone, type CallerInfo, type CustomRule, type CustomRuleCatalog } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
+import type { Locale } from "@/i18n/locale";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { enumLabel } from "@/i18n/enumLabels";
+import { withRouteMessages } from "@/i18n/RouteMessages";
+
+const EVALUATION_SETTING = "CUSTOM_RULES_ENABLED";
+const ALERTING_SETTING = "CUSTOM_RULES_ALERTING_ENABLED";
+const WRITE_PERMISSION = "custom_rule:write";
+const ENGINEER_ROLE = "detection_engineer";
+
+export async function generateMetadata() {
+  const t = await getTranslations("customRules.meta");
+  return { title: t("list") };
+}
 
 
-export default async function CustomRulesPage() {
+async function CustomRulesPage() {
+  const t = await getTranslations("customRules");
+  const say = asTextTranslator(await getTranslations());
+  const locale = (await getLocale()) as Locale;
   let rules: CustomRule[] = [];
   let catalog: CustomRuleCatalog | null = null;
   let access: CustomRuleAccess = "unknown";
@@ -41,63 +60,67 @@ export default async function CustomRulesPage() {
       access = "unknown";
     }
   }
-  const subjects = failed || forbidden ? new Map() : await resolveRuleSubjects(rules);
+  const subjects = failed || forbidden ? new Map() : await resolveRuleSubjects(rules, say);
 
   return (
     <>
       <PageHeader
-        title="Custom rules"
-        actions={access === "writer" && !forbidden ? <Link className="action secondary" href="/custom-rules/new">New rule</Link> : null}
+        guide={guideFor("/custom-rules")}
+        title={t("title")}
+        actions={access === "writer" && !forbidden ? <Link className="action secondary" href="/custom-rules/new">{t("newRule")}</Link> : null}
       />
 
       {forbidden ? (
         <div className="notice" role="alert">
-          <p><strong>Custom rules are forbidden for this account.</strong></p>
-          <p>Reading this route needs <code>read:custom_rules</code>. Ask an admin to grant a role that includes it.</p>
+          <p><strong>{t("forbiddenTitle")}</strong></p>
+          <p>{t("forbiddenHelp")}</p>
         </div>
       ) : failed || catalog === null ? (
         <div className="notice" role="alert">
-          <p><strong>Custom rules could not be loaded.</strong></p>
-          <p>Check that the backend is reachable, then reload the page. No rule was changed.</p>
+          <p><strong>{t("failedTitle")}</strong></p>
+          <p>{t("failedHelp")}</p>
         </div>
       ) : (
         <>
           <div className="cr-page-notices">
             {!catalog.evaluation_enabled && (
               <div className="banner warn" role="status">
-                Rule evaluation is off because <code>CUSTOM_RULES_ENABLED</code> is false. Enabled rules are not being judged.
+                {t("evaluationOffBefore")}<code>{EVALUATION_SETTING}</code>{t("evaluationOffAfter")}.
               </div>
             )}
             {catalog.alerting_mode === "shadow" && (
               <div className="banner" role="status">
-                Breaches are recorded and nothing pages until <code>CUSTOM_RULES_ALERTING_ENABLED</code> is on.
+                {t("shadowBefore")}<code>{ALERTING_SETTING}</code>{t("shadowAfter")}.
               </div>
             )}
-            <CadenceLatency className="cr-latency" parts={customRuleLatencyFor(catalog)} canLink={canLink} />
+            <CustomRuleLatency className="cr-latency" catalog={catalog} canLink={canLink} />
           </div>
 
           {rules.length === 0 ? (
             <div className="notice">
-              <p><strong>No custom rules exist yet.</strong></p>
-              <p>A custom rule judges one collected metric for one subject over consecutive 5-minute buckets.</p>
+              <p><strong>{t("emptyTitle")}</strong></p>
+              <p>{t("emptyHelp")}</p>
               {access === "writer" ? (
-                <p><Link href="/custom-rules/new">Create the first rule</Link> and preview it over stored data before enabling it.</p>
+                <p><Link href="/custom-rules/new">{t("emptyWriter")}</Link> {t("emptyWriterAfter")}</p>
               ) : (
-                <p>Creating one needs <code>custom_rule:write</code>. An admin or the <code>detection_engineer</code> role can grant it.</p>
+                <p>
+                  {t("emptyReaderBefore")}<code>{WRITE_PERMISSION}</code>{t("emptyReaderMiddle")}
+                  <code>{ENGINEER_ROLE}</code>{t("emptyReaderAfter")}.
+                </p>
               )}
             </div>
           ) : (
-            <TableScroll label="Custom rules">
-              <table className="table-dense cr-rule-table" aria-label="Custom rules">
+            <TableScroll label={t("table.label")}>
+              <table className="table-dense cr-rule-table" aria-label={t("table.label")}>
                 <thead>
                   <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Status and reason</th>
-                    <th scope="col">Subject</th>
-                    <th scope="col">Condition</th>
-                    <th scope="col">Severity</th>
-                    <th scope="col">Enabled</th>
-                    <th scope="col">Last evaluated (UTC)</th>
+                    <th scope="col">{t("table.name")}</th>
+                    <th scope="col">{t("table.status")}</th>
+                    <th scope="col">{t("table.subject")}</th>
+                    <th scope="col">{t("table.condition")}</th>
+                    <th scope="col">{t("table.severity")}</th>
+                    <th scope="col">{t("table.enabled")}</th>
+                    <th scope="col">{t("table.lastEvaluated")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -106,16 +129,16 @@ export default async function CustomRulesPage() {
                     return (
                       <tr key={rule.id}>
                         <td className="cell-name"><Link href={`/custom-rules/${rule.id}`}>{rule.name}</Link></td>
-                        <td><RuleStatus status={rule.last_status} reason={rule.last_status_reason} /></td>
+                        <td><RuleStatus status={rule.last_status} reason={rule.last_status_reason} reasonCode={rule.last_status_reason_code} reasonParams={rule.last_status_reason_params} /></td>
                         <td className="cell-name">
-                          <span className="cr-cell-kicker">{SUBJECT_KIND_LABELS[rule.subject_kind]}</span>
+                          <span className="cr-cell-kicker">{subjectKindLabel(rule.subject_kind, say)}</span>
                           {subject ? <Link href={subject.href}>{subject.label}</Link> : "—"}
                         </td>
-                        <td>{conditionText(rule)}</td>
-                        <td><span className={`pill ${sevTone(rule.severity)}`}>{rule.severity}</span></td>
-                        <td>{rule.enabled ? "Yes" : "No"}</td>
+                        <td>{conditionText(rule, locale, say)}</td>
+                        <td><span className={`pill ${sevTone(rule.severity)}`}>{enumLabel(say, "severityPill", rule.severity)}</span></td>
+                        <td>{rule.enabled ? t("table.yes") : t("table.no")}</td>
                         <td className="num cell-when">
-                          {rule.last_evaluated_at ? <UtcTime value={rule.last_evaluated_at} /> : "Never evaluated"}
+                          {rule.last_evaluated_at ? <UtcTime value={rule.last_evaluated_at} /> : t("table.never")}
                         </td>
                       </tr>
                     );
@@ -129,3 +152,5 @@ export default async function CustomRulesPage() {
     </>
   );
 }
+
+export default withRouteMessages("/custom-rules", CustomRulesPage);

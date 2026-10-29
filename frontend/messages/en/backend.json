@@ -1,0 +1,1046 @@
+{
+  "alert": {
+    "custom_rule": {
+      "deleted": "the rule was deleted",
+      "description": {
+        "exact": "{name} observed {observed} ({operator} {threshold})",
+        "exact_unit": "{name} observed {observed} {unit} ({operator} {threshold} {unit})",
+        "lower_bound": "{name} observed at least {observed} ({operator} {threshold})",
+        "lower_bound_unit": "{name} observed at least {observed} {unit} ({operator} {threshold} {unit})",
+        "unmeasured": "{name} observed unmeasured ({operator} {threshold})",
+        "unmeasured_unit": "{name} observed unmeasured ({operator} {threshold} {unit})"
+      },
+      "recovered": "condition recovered"
+    },
+    "inventory": {
+      "catchall_sender": {
+        "description": "A device that is not a configured log source is sending to a catch-all log source and requires SOC review.",
+        "reviewed": "catch-all sender {target}",
+        "title": "New sender on {source}: {identifier}"
+      },
+      "log_source": {
+        "description": "A new non-internal log source requires SOC review.",
+        "reviewed": "log source reviewed",
+        "title": "New log source: {name}"
+      }
+    },
+    "offense_collection": {
+      "recovered": "Offense collection freshness recovered.",
+      "stale": {
+        "description": "The read-only offense collector has not completed within its configured freshness threshold.",
+        "title": "Offense collection is stale for {instance}"
+      }
+    },
+    "search": {
+      "failure": {
+        "description": "{name} failed {failures} consecutive runs ({error_type})",
+        "recovered": "search executed successfully",
+        "title": "{name} is failing to run"
+      },
+      "threshold": {
+        "exact": "{name} returned {observed} ({operator} {threshold})",
+        "lower_bound": "{name} returned at least {observed} ({operator} {threshold})",
+        "recovered": "result back within threshold"
+      }
+    },
+    "threshold": {
+      "crossed": "{name} crossed its threshold"
+    }
+  },
+  "anomaly": {
+    "detector": {
+      "basis_mad_outside": "robust score unavailable (MAD=0); observed value is outside the expected band [{lower}, {upper}]",
+      "basis_z": "robust z={score} (threshold ±{threshold})",
+      "cardinality_dropped": "distinct source IPs {count} dropped below {fraction} of baseline median {median}",
+      "cardinality_no_baseline": "no reliable cardinality baseline",
+      "collection_errors": "{count} collection error(s) in the interval",
+      "delay_exceeds": "event delay {delay}s exceeds {limit}s",
+      "delay_no_measurement": "no delay measurement",
+      "no_events_bucket_incomplete": "bucket is {completeness}; absence of events is not evidence of silence",
+      "no_events_grace": "empty bucket within the {grace}-bucket silence grace period",
+      "no_events_no_baseline": "no reliable activity baseline for this weekday/hour cell yet",
+      "no_events_normally_inactive": "this source is normally inactive at this hour",
+      "no_events_not_expected": "source is not expected to be active this interval",
+      "no_events_streak": "no events for {streak} consecutive bucket(s) where the baseline expects about {expected} events",
+      "parsing_below_floor": "field-extraction ratio {ratio} fell below floor {floor}",
+      "parsing_no_data": "no parse-ratio data",
+      "payload_no_signature": "no payload signature",
+      "payload_repeated": "identical payload signature repeated for {streak} consecutive intervals",
+      "ratio_no_traffic": "expected no traffic",
+      "ratio_times_expected": "{ratio}x expected",
+      "suppressed_by_no_events": "suppressed: no events this interval",
+      "unknown_above_ceiling": "unknown-event ratio {ratio} exceeds ceiling {ceiling}",
+      "unknown_no_events": "no events to classify",
+      "volume_above": "average EPS {observed} is above the baseline median {expected} ({ratio_text}, {delta} events/bucket); {basis}",
+      "volume_baseline_samples": "baseline has {samples} sample(s), below the minimum required for a defensible verdict",
+      "volume_below": "average EPS {observed} is below the baseline median {expected} ({ratio_text}, {delta} events/bucket); {basis}",
+      "volume_bucket_incomplete": "metric bucket is {completeness}, not a whole observation",
+      "volume_delta_below_min": "change of {delta} events/bucket is below the {minimum} minimum absolute delta",
+      "volume_drop_undefined": "baseline expects no traffic; a drop is not defined",
+      "volume_mad_inside_band": "robust score unavailable (MAD=0) and observed value is inside the expected band [{lower}, {upper}]",
+      "volume_min_events": "{events} events/bucket is below the {minimum} minimum for a defensible volume verdict",
+      "volume_no_baseline": "no volume baseline for this weekday/hour cell yet",
+      "volume_ratio_not_fallen": "observed/expected ratio {ratio} has not fallen to {limit}",
+      "volume_ratio_not_reached": "observed/expected ratio {ratio} has not reached {limit}",
+      "volume_z_not_reached": "robust z={score} has not reached the ±{threshold} threshold",
+      "within_range": "within expected range"
+    },
+    "lifecycle": {
+      "already_suppressed": "already suppressed",
+      "baseline_adequate": "baseline became adequate",
+      "confirmed": "{count} consecutive abnormal bucket(s) reached the confirmation threshold of {threshold}",
+      "first_abnormal": "first abnormal bucket",
+      "hold_not_judgeable": "holding state; bucket not judgeable",
+      "hold_unknown": "holding state; detector returned unknown",
+      "no_verdict": "no verdict possible",
+      "normal_observed": "normal bucket observed",
+      "opened": "{count} consecutive abnormal bucket(s)",
+      "recovered": "{count} consecutive normal bucket(s) reached the recovery threshold of {threshold}",
+      "relapsed": "relapsed before recovery completed",
+      "resolved_one_normal": "1 normal bucket observed",
+      "returned_to_normal": "returned to normal before opening",
+      "still_abnormal": "still abnormal",
+      "still_confirming": "still confirming",
+      "still_recovering": "still recovering",
+      "suppressed": "suppressed",
+      "suppression_lifted": "suppression lifted",
+      "within_range": "within expected range"
+    },
+    "resolution": {
+      "recovered": "condition recovered"
+    },
+    "suppression": {
+      "maintenance": "maintenance window"
+    }
+  },
+  "auth": {
+    "csrf": {
+      "origin_mismatch": "Cross-site request refused: origin {origin} is not the configured public origin.",
+      "origin_missing": "Cross-site request refused: the request has no Origin or Referer header."
+    },
+    "directory": {
+      "base_control_character": "user_search_base contains a control character",
+      "base_too_long": "user_search_base is longer than 1024 characters",
+      "ca_invalid": "ca_pem is not a PEM X.509 certificate",
+      "ca_private_key": "ca_pem must be a certificate, not a private key",
+      "ca_too_long": "ca_pem is too long",
+      "cert_expired": "certificate {subject} is expired (not_after {not_after})",
+      "cert_not_yet_valid": "certificate {subject} is not yet valid (not_before {not_before})",
+      "enabled_needs_url": "an enabled configuration needs at least one directory URL",
+      "enabled_needs_valid_url": "an enabled configuration needs at least one valid directory URL",
+      "ldap_needs_start_tls": "an ldap:// URL requires start_tls",
+      "stale": "The directory configuration is stale. Reload it and retry.",
+      "start_tls_needs_ldap": "start_tls requires an ldap:// URL",
+      "start_tls_with_ldaps": "start_tls must be false for an ldaps:// URL",
+      "template_too_long": "bind_template is longer than 512 characters",
+      "template_username": "bind_template must contain '{'username'}'",
+      "test_needs_url": "the test needs a directory URL",
+      "timeout_range": "timeout_seconds must be between 1 and 30",
+      "url_credentials": "{url} must not contain credentials",
+      "url_empty": "a directory URL is empty",
+      "url_fragment": "{url} must not have a fragment",
+      "url_host": "{url} must name a host",
+      "url_path": "{url} must not have a path",
+      "url_query": "{url} must not have a query",
+      "url_scheme": "{url} must use ldap:// or ldaps://",
+      "url_too_long": "a directory URL is longer than 512 characters",
+      "urls_max": "at most {max} directory URLs are allowed"
+    },
+    "login": {
+      "directory_unavailable": "The directory server is unavailable. Sign-in was not completed.",
+      "invalid_credentials": "Invalid username or password"
+    },
+    "password": {
+      "current_wrong": "current password is wrong",
+      "equals_username": "password must not equal the username",
+      "ldap_directory": "LDAP accounts change their password in the directory, not here.",
+      "local_only": "only a local account can change its password",
+      "too_long": "password must be at most 72 bytes",
+      "too_short": "password must be at least 12 characters"
+    },
+    "permission": {
+      "missing": "missing required permission: {permission}"
+    },
+    "session": {
+      "must_change_password": "A password change is required before any other request.",
+      "required": "Authentication required."
+    },
+    "user": {
+      "email_taken": "A user with that email already exists.",
+      "email_unusable": "email is not usable",
+      "exists": "A user with that username or email already exists.",
+      "last_admin": "the last active user holding admin:* cannot be disabled or lose that role",
+      "ldap_no_password": "An LDAP user has no password here.",
+      "local_needs_password": "A local user needs an initial password.",
+      "not_found": "No user has that id.",
+      "reset_local_only": "Only a local account can have its password reset here.",
+      "role_unknown": "unknown role: {name}",
+      "source_invalid": "auth_source must be LOCAL or LDAP",
+      "username_taken": "A user with that username already exists."
+    },
+    "username": {
+      "shape": "username must be 1 to 255 characters without spaces or control characters"
+    }
+  },
+  "classification": {
+    "rule": {
+      "built_in_delete": "a built-in rule cannot be deleted; disable it instead",
+      "built_in_edit": "a built-in rule can only be enabled or disabled",
+      "duplicate": "a rule with this instance, kind and pattern already exists"
+    }
+  },
+  "coverage": {
+    "evidence": {
+      "acceptable": "The rule is enabled and its health is acceptable.",
+      "below_floor": "Mapping confidence {confidence} is below the {floor} floor; recorded but not counted toward coverage.",
+      "dependency_degraded": "The rule''s required telemetry is unavailable, so it cannot fire.",
+      "disabled": "The rule is disabled, so it provides no active coverage.",
+      "inactive": "The rule has not fired within the inactivity window.",
+      "never_observed": "The rule has never been observed firing.",
+      "not_established": "The rule''s health has not been established yet."
+    },
+    "rollup": {
+      "all_detecting": "All {enabled} enabled rules mapped to this technique are detecting.",
+      "all_excluded": "Every rule mapped to this technique is disabled or discounted, so there is no active detection.",
+      "none_detecting": "{degraded} of {enabled} enabled rules are not currently detecting.",
+      "not_established": "Rule health has not been established for the mapped rules.",
+      "some_degraded": "{working} of {enabled} enabled rules are detecting; {degraded} are degraded.",
+      "some_unestablished": "{working} of {enabled} enabled rules are detecting; the rest are not yet established.",
+      "unmapped": "No rule is mapped to this technique."
+    }
+  },
+  "custom_rule": {
+    "family": {
+      "collection_off": "{setting} is off",
+      "unknown": "no collection family is known for subject kind {kind}"
+    },
+    "reading": {
+      "action_breakdown_missing": "the action breakdown was not collected",
+      "action_denominator_lower_bound": "the action denominator is a lower bound",
+      "action_denominator_zero": "the action denominator is zero",
+      "bucket_not_complete": "the bucket is not COMPLETE",
+      "bucket_partial": "the bucket is PARTIAL",
+      "class_no_complete_source": "the class has no COMPLETE source bucket",
+      "class_no_enabled_source": "the class has no enabled, monitored source",
+      "count_semantics_unknown": "the bucket does not state whether its counts are exact or lower bounds",
+      "dimension_missing": "the dimension was not collected",
+      "exact_required": "the detector needs exact counts and this count is a lower bound",
+      "not_finite": "the reading is not finite",
+      "numerator_missing": "the numerator was not collected",
+      "request_count_semantics_missing": "the bucket does not state whether the request count is exact",
+      "response_breakdown_missing": "the response-code breakdown was not collected",
+      "response_denominator_lower_bound": "the response-code denominator is a lower bound",
+      "response_denominator_zero": "the response-code denominator is zero",
+      "subject_missing": "no row for this subject in the bucket",
+      "unmapped_remainder_missing": "the unmapped remainder was not collected"
+    },
+    "status": {
+      "bucket_not_measured": "the bucket was not measured",
+      "disabled": "the rule is disabled",
+      "family_not_collected": "the subject''s family is not collected",
+      "lower_bound_below_threshold": "a lower bound below the threshold proves nothing",
+      "lower_bound_cannot_prove_under": "a lower bound cannot prove the reading is under the threshold",
+      "maintenance": "the source is in maintenance",
+      "no_verdict": "the bucket supports no verdict",
+      "operator_unknown": "operator {operator} is not known",
+      "platform_off": "CUSTOM_RULES_ENABLED is off",
+      "stale": {
+        "minute": "no bucket collected for this kind since {bucket} ({age})",
+        "second": "no bucket collected for this kind since {bucket} ({age})"
+      },
+      "subject_retired": "the subject is retired",
+      "threshold_not_finite": "threshold_value is not finite"
+    },
+    "subject": {
+      "endpoint_retired": "the endpoint is retired",
+      "endpoint_retired_at": "the endpoint was retired at {retired_at}",
+      "entity_retired": "the entity is retired",
+      "entity_retired_at": "the entity was retired at {retired_at}",
+      "missing": "the subject no longer exists",
+      "unknown_retirement": "no retirement rule is known for subject kind {kind}",
+      "value_retired": "the value is retired",
+      "value_unpinned": "the value is no longer pinned"
+    }
+  },
+  "customrule": {
+    "name_exists": "a custom rule named ''{name}'' already exists",
+    "watch_value_gone": "the property-watch value no longer exists (its watch changed or was deleted while the rule was saved); reload and choose a value again"
+  },
+  "dashboard": {
+    "changed_since_opened": "this dashboard changed since you opened it",
+    "name_taken": "you already have a dashboard named ''{name}''",
+    "not_found": "dashboard not found",
+    "owner_limit": "the limit is {limit} dashboards per owner",
+    "owner_only": "only the owner or an administrator can change this dashboard",
+    "visibility_needs_permission": "changing visibility needs the {permission} permission"
+  },
+  "explanation": {
+    "dimension": {
+      "unpopulated": "field is not populated for this log source"
+    }
+  },
+  "history": {
+    "assumption": {
+      "budget_ips": "{per_tick} history searches shared per tick",
+      "budget_plain": "{per_tick} history searches per tick",
+      "budget_waf": "{per_source} history searches per source tick times {sources} sources at once",
+      "cadence": "one tick every {interval} (the family''s Search cadence)",
+      "catchall_rows": "{rows} rows per search",
+      "catchall_senders": "{senders} senders per bucket (the mean of {buckets} of the last {days} days)",
+      "ips_fair_share": "each per-source plan is fitted with a fair share of {share} of the {per_tick} shared searches per tick",
+      "ips_sources": "{count} IPS sources in {plans}",
+      "ips_values": "{source_ips} source IPs, {action_values} action values and {fanout} port fan-out rows per source and bucket assumed",
+      "opening": "{shape}, {budget}",
+      "phase_a_rows": "{sources} monitored sources, one row each per bucket",
+      "qradar_time": "QRadar time per search not measured on this console",
+      "rule_rows": "{rows} rows per search, plus one console total",
+      "rules": "{rules} enabled rules, every one assumed to match in each window",
+      "shape_buckets": "{minutes}-minute buckets",
+      "shape_windows": "hourly windows",
+      "waf_breakdown": "action, response code and source IP read over {days} days only",
+      "waf_sources": "{count} WAF sources with {endpoints} tracked endpoints"
+    },
+    "catchall": {
+      "anchor_gone": "the live anchor is gone: the history has no end to read up to",
+      "no_event": "no catch-all source had an event in the window; nothing is written",
+      "unreadable": "the stored history progress could not be read back"
+    },
+    "decide": {
+      "meantime": "a decision was recorded in the meantime; it is shown here",
+      "never_reversed": "a Yes is never reversed; stop the reading instead"
+    },
+    "estimate": {
+      "all_fit": "all {sources} per-source {days}-day windows fit; the console total is an estimated {hours} hours",
+      "all_refused": "all {sources} sources are unavailable: even {days} days exceed the {limit}-hour per-source limit",
+      "empty_sources": "{reason}; {count} source(s) fitted with no {noun} yet; the {limit}-hour limit still bounds the reading",
+      "no_catchall": "no estimate: no catch-all bucket has been collected in the last {days} days",
+      "no_collection": "no estimate: collection is switched off ({reason})",
+      "no_ips": "no estimate: no IPS source is enabled on this console",
+      "no_monitored": "no estimate: the console has no monitored log source yet",
+      "no_rules": "no estimate: the console has no enabled rule",
+      "no_waf": "no estimate: no WAF source is enabled on this console",
+      "planner_refused": "no estimate: the planner refused the settings ({error})",
+      "reduced": "window reduced from {asked} to {days} days for the smallest per-source fit: the estimate exceeded {limit} hours",
+      "some_refused": "{refused} of {sources} sources are unavailable because even 7 days exceed the {limit}-hour per-source limit; the remaining source windows fit",
+      "some_refused_reduced": "{refused} of {sources} sources are unavailable because even 7 days exceed the {limit}-hour per-source limit; the remaining source windows fit, with the smallest reduced from {asked} to {days} days",
+      "window_limited": "{window}; {fit}"
+    },
+    "family": {
+      "always_on": "source-volume collection is the platform''s base collection",
+      "fair_share": "fitted with a fair share of {share} of the {total} shared history searches per tick",
+      "switch_off": "{setting} is off",
+      "switch_on": "{setting} is on",
+      "zero_endpoint": "fitted with no tracked endpoint yet; the {limit}-hour limit still bounds the reading",
+      "zero_entity": "fitted with no admitted entity yet; the {limit}-hour limit still bounds the reading"
+    },
+    "finish": {
+      "complete": "reached the end with the whole asked window read",
+      "cut_sources": "QRadar holds less than asked for {cut} of {total}",
+      "floor_cut": "QRadar holds less than asked (the floor is later than the asked start)",
+      "gaps": "{count} span(s) could not be read",
+      "partial": "reached the end; {problems}",
+      "silent_sources": "{sources} had no event in the window"
+    },
+    "fit": {
+      "fits": "the {days}-day window fits in an estimated {hours} hours",
+      "reduced": "window reduced from {asked} to {days} days: the estimate exceeded {limit} hours",
+      "refused": "even {days} days need about {hours} hours ({searches} searches, {ticks} ticks), over the {limit}-hour limit; history is unavailable"
+    },
+    "gap": {
+      "search_failed": "search failed {failures} times at the minimum width"
+    },
+    "interval": {
+      "day_many": "{count} days",
+      "day_one": "1 day",
+      "hour_many": "{count} hours",
+      "hour_one": "1 hour",
+      "minute_many": "{count} minutes",
+      "minute_one": "1 minute"
+    },
+    "later_yes": {
+      "has_scope": "not needed: this source has a history scope",
+      "not_possible": "not possible: this source already collected",
+      "possible": "possible"
+    },
+    "lifecycle": {
+      "not_eligible": "this source already collected live data; history cannot be read before it (disable the profile and create it again to read its history)",
+      "restart": "read history now: topping up",
+      "stopped_by": "stopped by {by}"
+    },
+    "phase_a": {
+      "no_event": "QRadar holds no event of a monitored source in the window; nothing is written",
+      "no_monitored": "no log source is monitored, so there is nothing to read history for"
+    },
+    "reason": {
+      "joined": "{clauses}"
+    },
+    "request": {
+      "refused": "record Yes first: the console has no Yes answer to start or stop",
+      "start": "Read history now is recorded. Each family applies it at its next collection; no scope has changed yet.",
+      "stop": "Stop reading is recorded. Each family ends its reading scopes at its next collection; no scope has changed yet."
+    },
+    "scan": {
+      "end": "the scan reached the end of the window",
+      "failed": "the floor scan failed {failures} times; history is unavailable",
+      "floor_found": "QRadar holds events of the scope from {first}; history starts at {floor}",
+      "floor_found_late": "QRadar holds events of the scope from {first}; history starts at {floor} (later than the asked start)",
+      "no_event_span": "no event in the scanned span; scan the next one",
+      "no_event_window": "no event of the scope in the whole window; nothing is written",
+      "no_result": "no scan result was provided",
+      "retry": "a scan search was {status}; it proves nothing, so it is retried ({failures} of {max_failures})",
+      "search": "scan for the first event of the scope",
+      "too_recent": "the first event is too recent to prove anything older: the margin of {margin} h reaches the end of the window"
+    },
+    "settle": {
+      "budget_ended": "the budget ended before this span was searched",
+      "density": "{share} of the buckets read are lower bounds (limit {limit}): too many distinct values per bucket, so history would be lower bounds",
+      "failed_halve": "a search of {buckets} buckets failed; the width halves to {width}",
+      "failed_minimum": "a search failed at the minimum width ({failures} of {max_failures}); the same span is tried again",
+      "gap_recorded": "recorded a gap: {gap}",
+      "read": "read {count} bucket(s)",
+      "ticked": "{clauses}",
+      "too_many_gaps": "more than {count} unreadable spans",
+      "truncated_halve": "a search of {buckets} buckets was truncated and keeps nothing; the width halves to {width}",
+      "width": "the width is {count} bucket(s)"
+    },
+    "state": {
+      "anchor_found": "the first live bucket exists; reading can start",
+      "density_gate": "too many buckets would be lower bounds; reading further would store only those",
+      "finished_complete": "the reading reached the end; the floor is within one bucket of the asked start and no gap exists",
+      "finished_partial": "the reading reached the end, but QRadar holds less than asked or a gap exists",
+      "not_eligible_late": "the scope turned out to have live buckets that history cannot precede",
+      "not_eligible_preceded": "the scope already has live buckets, and a prepend would move first_seen_at (§B.5)",
+      "nothing_to_read": "QRadar holds no event of the scope in the window",
+      "nothing_to_read_scan": "QRadar holds no event of the scope in the window, or the floor scan could not be done",
+      "request_awaiting_anchor": "history was requested, and the scope waits for its first live bucket (the anchor)",
+      "request_ready": "history was requested, and the scope can be planned at its next collection",
+      "restart": "the reading restarts: a new answer, a topped-up source or a new watch version",
+      "stopped": "stopped by an operator",
+      "stopped_waiting": "stopped by an operator while waiting",
+      "switched_off": "history reading was switched off",
+      "switched_off_start": "history reading is switched off; the scope starts live",
+      "switched_off_waiting": "history reading was switched off while waiting",
+      "time_limit": "the reading did not finish inside its time limit",
+      "too_many_gaps": "the gap list is full; the scope has too many unreadable spans",
+      "window_too_small": "the estimate exceeds the time limit even at the smallest window"
+    },
+    "step": {
+      "read": "read {buckets} bucket(s) in {searches} search(es) of up to {width}",
+      "stopped": "history reading was stopped by an operator",
+      "time_limit": "the reading did not finish in {hours} h",
+      "wait_budget": "waiting for search budget"
+    },
+    "waf": {
+      "volume_pass_finished": "history volume pass finished",
+      "wait_time_budget": "waiting for the history time budget"
+    },
+    "width": {
+      "ceiling_doubled": "{steps} clean steps doubled the failure ceiling to {ceiling}",
+      "released": "{steps} clean steps brought the failure ceiling to the row fit of {fit}; the ceiling is released"
+    },
+    "window": {
+      "limit_retention": "{setting} is {days} days and {hours_setting} is {hours} hours, so the reading would outlive the retention",
+      "limit_setting": "{setting} is {days} days",
+      "reduced": "window reduced from {asked} to {days} days: {limits}",
+      "unavailable": "history unavailable: the window would be {days} days, below the {minimum}-day minimum; {limits}"
+    },
+    "words": {
+      "bucket_many": "{count} live buckets",
+      "bucket_one": "1 live bucket",
+      "plan_many": "{count} per-source plans",
+      "plan_one": "1 per-source plan",
+      "source_many": "{count} sources",
+      "source_one": "1 source"
+    }
+  },
+  "ips": {
+    "basis": {
+      "mad_above_p95_events": "robust score unavailable (MAD=0); {observed} is above the historical p95 {bound}",
+      "mad_within_p95_events": "robust score unavailable (MAD=0) and {observed} is within the historical p95 {bound}"
+    },
+    "block": {
+      "denominator_below_min": "{count} events carrying an action is below the {minimum} minimum denominator for a ratio verdict",
+      "fired": "{count} of {total} events carrying an action were blocked ({share}), against an expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}",
+      "fired_lower": "at least {count} of {total} events carrying an action were blocked (at least {share}), against an expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}",
+      "fired_lower_no_multiple": "at least {count} of {total} events carrying an action were blocked (at least {share}), against an expected {expected} from {history} historical events ({rise}); {basis}",
+      "fired_no_multiple": "{count} of {total} events carrying an action were blocked ({share}), against an expected {expected} from {history} historical events ({rise}); {basis}",
+      "numerator_below_min": "{count} blocked events is below the {minimum} minimum; no material rise in the proportion is possible"
+    },
+    "caveat": {
+      "block_ratio": "Blocking is judged through the profile''s action map. A higher block ratio describes the IPS''s decisions; it does not establish that an attack succeeded.",
+      "destination_rate": "More events towards a destination describe traffic volume, not an attack on it.",
+      "new_port": "A newly busy destination port may be a deployment as easily as a probe. The contributors are the bucket''s busiest source IPs, not necessarily this port''s.",
+      "port_fanout": "Many distinct destination ports from one source IP is a traffic shape, not an attack verdict: a scan, a vulnerability assessment and a service that rotates ports look alike.",
+      "port_rate": "More events on a port describe traffic volume, not intent: a scan, a deployment and a misconfigured client look alike here.",
+      "signature_burst": "A burst of one signature describes how often the IPS matched it, not that the matched activity succeeded.",
+      "source_concentration": "A dominant source IP describes traffic composition, not intent. Behind a proxy or NAT it is the intermediary''s address."
+    },
+    "concentration": {
+      "fired": "the largest source IP sent {top} of {total} events ({share}), against an expected share of {expected} ({rise}); the five largest sent {top5}; {basis}",
+      "fired_no_top5": "the largest source IP sent {top} of {total} events ({share}), against an expected share of {expected} ({rise}); the five largest sent n/a; {basis}",
+      "top_below_min": "the largest source IP sent {top} events, below the {minimum} minimum for a material concentration",
+      "total_below_min": "{total} events is below the {minimum} minimum for a composition verdict"
+    },
+    "guard": {
+      "absent_port": "port 0 and protocol 255 are absent values, not a service: no claim about them",
+      "action_counts_unstated": "the bucket does not state its blocked and action event counts",
+      "action_unmapped": "no action property mapped",
+      "baseline_samples": "the {metric} baseline has {samples} sample(s), below the minimum of {minimum} for a defensible verdict",
+      "baseline_versions": "the {metric} baseline was built under profile version {profile} and normalizer version {normalizer}, not the bucket''s {bucket_profile} and {bucket_normalizer}",
+      "count_unknown": "the entity''s count is unknown for this bucket",
+      "coverage_low": "{label} coverage was {covered}, below the {floor} floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing",
+      "coverage_unmeasurable": "{label} coverage was not measurable, below the {floor} floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing",
+      "dimension_unmeasured": "the {label} search was {state} for this bucket: the value is unavailable, not zero",
+      "entity_not_judged": "a {dimension} entity is not judged by {detector}",
+      "fanout_unstated": "the bucket does not state its largest distinct-port count",
+      "generic_signature": "the signature''s name is generic: a claim about a specific signature is not safe",
+      "maintenance": "the source was in maintenance during this bucket",
+      "no_entity": "no {label} entity was supplied for this verdict",
+      "not_proven_lower_bound": "{reason}; the count is a lower bound ({scope}), so a normal verdict cannot be concluded from it",
+      "source_totals_unstated": "the bucket does not state its source-IP totals"
+    },
+    "history_check": {
+      "admission_unrecorded": "history bucket {bucket} had truncated or unrecorded destination-port admission",
+      "before_hand_off": "the port was first admitted before the history hand-off at {hand_off}",
+      "coverage_low": "history bucket {bucket} had destination-port coverage below the {floor} floor",
+      "maintenance": "history bucket {bucket} was in maintenance",
+      "normalizer_version": "history bucket {bucket} is incompatible with normalizer version {version}",
+      "not_loaded": "history was not loaded for an established port",
+      "port_search_not_exact": "history bucket {bucket} had a destination-port search that was {state}, not exact"
+    },
+    "label": {
+      "action": "action",
+      "destination_ip": "destination IP",
+      "destination_port": "destination port",
+      "destination_port_hyphenated": "destination-port",
+      "port_fanout": "port fan-out",
+      "signature": "signature",
+      "source_ip_hyphenated": "source-IP"
+    },
+    "noun": {
+      "distinct_ports": "distinct ports",
+      "events": "events"
+    },
+    "novelty": {
+      "below_materiality": "{events} event(s) in {buckets} bucket(s) since first appearance has not reached {min_events} events in {min_buckets} buckets",
+      "below_materiality_lower": "{reason}; the counts are lower bounds",
+      "cannot_establish": "novelty cannot be established: {cause}",
+      "established_hand_off": "established port: first admitted {first_seen}, before history hand-off {hand_off}",
+      "established_outside_window": "established port: first admitted {first_seen}, outside the {buckets}-bucket novelty window",
+      "fired": "destination port {port} carried {events} events across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it stayed below {admission} events in every bucket",
+      "fired_lower": "destination port {port} carried at least {events} events across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it stayed below {admission} events in every bucket",
+      "flood_admission": "the first-appearance bucket''s destination-port admission was truncated: the port appeared in a flood of new ports and is not individually new",
+      "flood_discovery": "the first-appearance bucket''s destination-port discovery was incomplete: the port cannot be told apart from a flood of new ports",
+      "not_established": "the port''s first appearance was not established",
+      "readmitted": "re-admitted port: it was retired and seen again, so it is not new"
+    },
+    "role": {
+      "coverage": "coverage",
+      "denominator": "denominator",
+      "destination_port_coverage": "destination-port coverage",
+      "history": "history",
+      "largest_contributor": "largest contributor",
+      "largest_fanout": "largest fan-out",
+      "materiality": "materiality",
+      "numerator": "numerator",
+      "total": "total",
+      "volume": "volume"
+    },
+    "scope": {
+      "role": "{role}: {reason}"
+    },
+    "spike": {
+      "below_min": "{observed} {unit}/bucket is below the {minimum} minimum for a defensible verdict",
+      "delta_below_min": "increase of {delta} {unit}/bucket is below the {minimum} minimum absolute delta",
+      "fired": "{observed} {unit} for {subject} is above the baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}",
+      "fired_lower": "at least {observed} {unit} (a lower bound: {scope}) for {subject} is above the baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}",
+      "ratio_none": "expected none"
+    },
+    "state": {
+      "failed": "failed",
+      "lower_bound": "lower_bound",
+      "not_collected": "not collected",
+      "rejected": "rejected"
+    },
+    "subject": {
+      "busiest_fanout": "the busiest source IP''s distinct ports",
+      "named": "{kind} {name}"
+    }
+  },
+  "propertywatch": {
+    "action": {
+      "change_pins": "change the scope, properties or pins",
+      "change_scope": "change the scope or properties (the watch version would change)",
+      "delete": "delete the watch",
+      "unpin": "unpin a value"
+    },
+    "dependency": {
+      "raced": "cannot {action}: a custom rule pinned a value of this watch while the request ran; reload and try again",
+      "refused": "cannot {action}: custom rule(s) {names} pin a value of this watch; detach or delete the rule(s) first"
+    },
+    "name_exists": "a property watch named ''{name}'' already exists"
+  },
+  "pw": {
+    "detector": {
+      "admission_truncated": "the first-appearance bucket had truncated admission: the value appeared in a flood and is not individually new",
+      "baseline_few_visits": "the value-events baseline has {samples} sample(s), but they come from too few separate weekly visits of this weekday and hour: a baseline needs the same hour from at least {visits} different weeks",
+      "baseline_few_visits_one": "the value-events baseline has {samples} sample(s), but they come from too few separate weekly visits of this weekday and hour: a baseline needs the same hour from at least 1 different week",
+      "baseline_samples": "the value-events baseline has {samples} sample(s), below the minimum of {minimum}",
+      "baseline_version": "the baseline uses watch version {baseline}, not the bucket''s {bucket}",
+      "basis_above_p95": "robust score is unavailable (MAD=0); the value is above p95 {bound}",
+      "basis_below_p05": "robust score is unavailable (MAD=0); the value is below p05 {bound}",
+      "basis_z_high": "robust z={score} (threshold +{threshold})",
+      "basis_z_low": "robust z={score} (threshold -{threshold})",
+      "bucket_membership": "membership changed during this bucket",
+      "bucket_missing": "the bucket is missing: no count was measured",
+      "bucket_not_collected": "the bucket was NOT_COLLECTED: its count is not zero",
+      "bucket_not_parsed": "the property parsed on none of this bucket''s events: NOT_APPLICABLE",
+      "claim_new_combination": "both components were tracked before, but never together in the verified history",
+      "claim_new_value": "the value stayed below {min_events} events in every bucket of the verified history",
+      "combination_inputs_unsupported": "the declared combination inputs do not support a verdict",
+      "component_untracked": "at least one component was not previously tracked: this is classified only as a new value",
+      "component_untracked_below_admission": "at least one component was not previously tracked (seen only below the admission threshold): this is classified only as a new value",
+      "components_missing": "the tuple''s two component histories were not supplied",
+      "count_unknown": "the value''s count is unknown for this bucket, not zero",
+      "coverage_below": "property coverage was {seen}, below the {floor} floor",
+      "coverage_unknown": "property coverage was unknown, below the {floor} floor",
+      "disappear_median_floor": "baseline median {median} is below the {floor} disappearance floor",
+      "disappeared_fired": "the value had zero parsed events for {streak} consecutive exact buckets; the seasonal median is {median} events",
+      "drop_delta_below_min": "fall of {delta} events is below the {minimum} minimum absolute delta",
+      "drop_fired": "{observed} exact events is below the median {median} (-{delta}, {ratio}x); {basis}",
+      "drop_median_floor": "baseline median {median} is below the {floor} traffic floor",
+      "drop_ratio_above": "observed/expected ratio {ratio} is above the {line} drop line",
+      "established_hand_off": "established value: first seen {first_seen} in the history read before the watch went live at {hand_off}",
+      "established_outside_window": "established value: first admitted {first_seen}, outside the {buckets}-bucket novelty window",
+      "grace_membership": "membership changed inside the first-appearance grace window",
+      "history_incomplete": "novelty cannot be established: {reason}",
+      "inputs_unsupported": "the declared inputs do not support a verdict",
+      "last_seen_unknown": "when the value was last observed is not known",
+      "learning_day": "learning: day {day} of {days}",
+      "learning_unknown": "learning: the watch''s first collected bucket is unknown",
+      "mad_within_p05": "robust score is unavailable (MAD=0) and the value is within p05 {bound}",
+      "mad_within_p95": "robust score is unavailable (MAD=0) and the value is within p95 {bound}",
+      "materiality_lower_bound": "{reason}; the materiality counts are lower bounds",
+      "materiality_short": "{events} event(s) in {buckets} bucket(s) since first appearance has not reached {min_events} events in {min_buckets} buckets",
+      "new_fired": "{events} events across {buckets} buckets since first appearance; {claim}",
+      "new_fired_lower": "at least {events} events across {buckets} buckets since first appearance; {claim}",
+      "new_value_is_combination": "both tuple components were tracked before: this is classified only as a new combination",
+      "no_baseline": "no value-events baseline for this weekday/hour cell yet",
+      "no_status": "the watch has never established a collection status",
+      "not_active": "the value was not observed within the last {days} days",
+      "not_proven_lower_bound": "{reason}; {scope}, so a normal verdict cannot be concluded",
+      "novelty_inputs_unsupported": "the declared novelty inputs do not support a verdict",
+      "novelty_unestablished": "the value''s first appearance was not established",
+      "observed_positive": "the value carried {observed} exact events in this bucket",
+      "one_property": "a one-property watch has nothing to combine",
+      "pinned_never_new": "pinned values are operator-named and are never classified as new",
+      "ratio_not_reached": "observed/expected ratio {ratio} has not reached {threshold}",
+      "spike_delta_below_min": "increase of {delta} events is below the {minimum} minimum absolute delta",
+      "spike_fired": "{observed} events is above the median {median} (+{delta}, {ratio}x); {basis}",
+      "spike_fired_lower": "at least {observed} events is above the median {median} (+{delta}, {ratio}x); {basis}",
+      "spike_min_events": "{observed} events is below the {minimum} minimum",
+      "spike_zero_median": "{observed} events rose from a zero median; {basis}",
+      "spike_zero_median_lower": "at least {observed} events rose from a zero median; {basis}",
+      "streak_short": "the value has {streak} consecutive measured-zero bucket(s), below the required {required}",
+      "watch_blocked": "the watch is {status}: no value verdict is possible",
+      "window_bucket_missing": "the bucket at {at} inside the disappearance window was not supplied: its count is not zero",
+      "window_count_unknown": "the value count at {at} is unknown, not zero",
+      "window_coverage": "property coverage at {at} was below the floor",
+      "window_membership": "membership changed inside the disappearance window",
+      "z_not_reached_high": "robust z={score} has not reached +{threshold}",
+      "z_not_reached_low": "robust z={score} has not reached -{threshold}"
+    },
+    "draft": {
+      "combination_needs_two": "PW_NEW_COMBINATION needs a watch with two properties",
+      "detector_required": "a watch evaluates at least one detector",
+      "field_null": "{name} must not be null",
+      "group_missing": "log source group {id} is not in the synced inventory",
+      "history_days_null": "history_days must not be null; use 0 for no history",
+      "history_days_range": "history_days must be 0 (no history) or between {low} and {high}, not {days}",
+      "instance_differs": "instance_id differs from the log source''s instance",
+      "log_source_missing": "log source {id} does not exist",
+      "no_instance": "no QRadar instance is registered",
+      "pin_count": "a watch pins at most {max} values, not {count}",
+      "pin_invalid": "pinned value {index}, part {part}: {reason}",
+      "pin_parts": "pinned value {index}: needs {count} string(s), one per property",
+      "pin_twice": "pinned value {index}: pinned twice",
+      "pinned_rows": "the pinned values can return up to {rows} rows per bucket, above the {target} rows one history search may carry; unpin values or request no history",
+      "property_count": "a watch names one or two properties, not {count}",
+      "property_invalid": "property {index}: {reason}",
+      "property_twice": "a watch cannot name the same property twice",
+      "scope_id_number": "scope_id of a {kind} scope is a number",
+      "scope_id_uuid": "scope_id of a LOG_SOURCE scope is the source''s id",
+      "scope_must_be_empty": "{column} must be empty for a {kind} scope",
+      "scope_negative": "{column} must not be negative",
+      "scope_required": "{column} is required for a {kind} scope",
+      "series_max": "at most {max} values per request, not {count}",
+      "series_untracked": "value {value} is not a tracked value of this watch''s current version",
+      "type_missing": "log source type {id} is not in the synced inventory"
+    },
+    "history": {
+      "starts_next": "the reading starts at the next collection",
+      "switched_off": "history reading is switched off",
+      "unreadable": "the stored history progress could not be read back"
+    },
+    "history_change": {
+      "already_collected": "this watch has already collected ({marks} set); create a new watch to read history",
+      "already_requested": "history is {state} on this watch and cannot be requested again; create a new watch to read history",
+      "holds_buckets": "this watch holds {stored} stored bucket(s) of its current version; create a new watch to read history"
+    },
+    "history_check": {
+      "admission_truncated": "history bucket {bucket} had truncated value admission",
+      "bucket_coverage": "history bucket {bucket} had parsing coverage below the floor",
+      "bucket_never_collected": "history bucket {bucket} was never collected ({missing} of {expected} missing)",
+      "bucket_not_collected": "history bucket {bucket} was NOT_COLLECTED",
+      "bucket_version": "history bucket {bucket} used another watch version, not first-appearance version {version}",
+      "bucket_width": "history bucket {bucket} used a different collection bucket width",
+      "discovery_truncated": "history bucket {bucket} had truncated value discovery",
+      "first_bucket_never_collected": "the first-appearance bucket was never collected",
+      "incomplete": "the history is incomplete",
+      "not_divisible": "the history window is not divisible by the collection bucket width",
+      "outside_window": "outside the novelty window",
+      "record_count": "the history contains {records} bucket records for {expected} expected buckets"
+    },
+    "preview": {
+      "cut_at_row_limit": "the grouped search was cut at the row limit and a preview does not split it; narrow the scope or preview a type or a source",
+      "group_too_large": "the group resolves to {members} sources and a preview covers one search chunk of at most {max}; preview a smaller group, a type or a source",
+      "lower_bound": "a bucket was cut at the row limit: its counts are lower bounds",
+      "scope_unresolved": "{status}: {reason}",
+      "search_failed": "a search failed, so its buckets were not measured",
+      "unsearchable": "the stored watch cannot be searched: {error}"
+    },
+    "reference": {
+      "kind_unknown": "unknown property reference kind",
+      "name_invalid": "invalid QRadar property name: letters, digits, underscore, space and hyphen only, at most 64 characters",
+      "name_not_text": "property reference name must be text",
+      "normalized_not_allowed": "normalized field is not in the property-watch allowlist",
+      "not_an_object": "a property reference is an object with a kind and a name",
+      "pin_characters": "a pinned value cannot hold a quote, a backslash, a control character or leading or trailing whitespace",
+      "pin_empty": "a pinned value cannot be empty",
+      "pin_length": "a pinned value is at most {max} characters",
+      "pin_not_text": "a pinned value is text"
+    },
+    "scope": {
+      "group_empty": "the group and its descendants hold no synced log source",
+      "group_missing": "the log source group is not in the inventory",
+      "group_stale": "the group inventory was last synced at {synced}, older than {limit}",
+      "names_no_group": "the watch names no log source group",
+      "names_no_type": "the watch names no log source type",
+      "source_missing": "the log source is not in the inventory",
+      "too_large": "{sources} sources need {searches} searches; the limit is {limit}",
+      "type_empty": "no synced log source has this type"
+    },
+    "status": {
+      "disabled_by": "disabled by {actor}",
+      "evaluated": "the latest collected bucket was evaluated",
+      "latest_search_failed": "the latest search failed; bucket {bucket} is stored NOT_COLLECTED",
+      "not_applicable": "the property parsed on no event in scope; the values are not measured",
+      "open": "one or more value incidents are open",
+      "reading_history": "Reading history from QRadar: {done} of {total} days; nothing is judged until it finishes",
+      "recovering": "one or more value incidents are recovering"
+    },
+    "transition": {
+      "definition_changed": "watch definition changed",
+      "recovered": "condition recovered",
+      "value_retired": "value retired; no longer evaluated",
+      "watch_deleted": "the watch was deleted",
+      "watch_disabled": "watch disabled; no longer evaluated"
+    }
+  },
+  "rule_health": {
+    "age_unknown": "The rule''s age is unknown, so inactivity cannot be assessed.",
+    "dependency": {
+      "disabled": "{label} is disabled",
+      "not_delivering": "{label} is not delivering events",
+      "not_observed": "{label} has not been observed"
+    },
+    "dependency_degraded": "The rule cannot fire reliably: {dependencies}. Its silence is not evidence about the rule itself.",
+    "dependency_unobserved": "A dependency has not been observed, so the rule cannot be judged: {dependencies}.",
+    "disabled": "The rule is disabled in QRadar, so it cannot produce detections.",
+    "grace": "The rule is {age_days} days old, inside the {grace_days}-day grace period.",
+    "healthy": {
+      "direct": "The rule fired {count} times in the evaluation window with healthy dependencies.",
+      "inferred": "At least {count} offense-contributing firings were observed in the evaluation window with healthy dependencies.",
+      "lower_bound": "At least {count} matching events were measured in the evaluation window with healthy dependencies."
+    },
+    "inactive": "The rule last fired {quiet_days} days ago, beyond the {inactivity_days}-day inactivity window.",
+    "incomplete": {
+      "cause": {
+        "failed_many": "{count} windows failed to collect",
+        "failed_many_class": "{count} windows failed to collect (latest error class: {error_class})",
+        "failed_one": "1 window failed to collect",
+        "failed_one_class": "1 window failed to collect (latest error class: {error_class})",
+        "skipped_many": "{count} windows were skipped beyond the catch-up horizon and never searched",
+        "skipped_one": "1 window was skipped beyond the catch-up horizon and never searched"
+      },
+      "detail_many": "Measured rule-match coverage of the evaluation window is incomplete ({complete} of {expected} windows are COMPLETE): {causes}. Affected windows: {first_start} to {last_start}. The absence of measured matches is not evidence that the rule has never fired. The evaluation window stops holding the last affected window at {until}.",
+      "detail_one": "Measured rule-match coverage of the evaluation window is incomplete ({complete} of {expected} windows are COMPLETE): {causes}. Affected window: {first_start}. The absence of measured matches is not evidence that the rule has never fired. The evaluation window stops holding the last affected window at {until}.",
+      "head": "Measured rule-match coverage of the evaluation window is incomplete ({complete} of {expected} windows are COMPLETE), so the absence of measured matches is not evidence that the rule has never fired.",
+      "no_collection": "No completed rule-metric collection covers the evaluation window, so the absence of observed firings is not evidence that the rule has never fired."
+    },
+    "label": {
+      "building_block": "building block {ref}",
+      "log_source_type": "log source type {ref}",
+      "named": "{name}"
+    },
+    "min_history": "Not enough observed history to classify this rule.",
+    "never_observed": {
+      "measured": "The rule is enabled and its dependencies are healthy, but no matching event was measured in any of the {expected} COMPLETE windows of the evaluation span.",
+      "unmeasured": "The rule is enabled and its dependencies are healthy, but it has never been observed firing in {age_days} days."
+    },
+    "noisy": "The rule fired {per_day} times a day over the last {window_days} days, above the expected {threshold}."
+  },
+  "rule_statistics": {
+    "cost": {
+      "label": "QRadar capacity benchmark: how fast the rule could be evaluated. Lower is costlier to evaluate. This is not a firing rate.",
+      "unit": "millions of events per second (QRadar''s unit)"
+    },
+    "silent": {
+      "excluded": "Only EVENT rules and EVENT building blocks are judged: an event search sees every one of their matches. COMMON rules also match on flows, which are not searched, so their silence is unknown. FLOW and OFFENSE rules are not searched at all."
+    },
+    "top": {
+      "no_complete_window": "No complete window to measure."
+    },
+    "window": {
+      "incomplete": "Only {complete} of {expected} windows in the span are complete ({missing} missing, {truncated} truncated, {failed} failed). Absence from an incomplete window proves nothing.",
+      "none": "No rule-match window has been collected for this instance: collection is disabled or has not run yet, so nothing is measured.",
+      "unsettled": "No rule-match window in the requested span has settled yet."
+    }
+  },
+  "ruledraft": {
+    "column_must_be_empty": "{column} must stay empty for a {kind} rule",
+    "enabled_cap": "at most {max_enabled} rules may be enabled at once ({enabled_count} already are)",
+    "ips_entity_missing": "ips entity {id} does not exist",
+    "log_source_missing": "log source {id} does not exist",
+    "metric_unknown": "metric {metric} is not in the custom-rule catalog",
+    "metric_wrong_kind": "metric {metric} measures a {metric_kind} subject, not a {kind} one",
+    "null_field": "{field} must not be null",
+    "operator_unknown": "operator {operator} is not one of GT, GE, LT, LE, EQ",
+    "pw_value_missing": "property-watch value {id} does not exist",
+    "pw_value_not_pinned": "property-watch value {id} is not pinned; a rule can watch only a pinned value, so pin it on its property watch first",
+    "recovery_min": "recovery_buckets must be at least 1",
+    "source_class_unknown": "source_class {value} is not a known source class",
+    "subject_needs_column": "{kind} rules need {column} set",
+    "sustain_min": "sustain_buckets must be at least 1",
+    "threshold_negative": "threshold_value must be at least 0",
+    "threshold_not_finite": "threshold_value must be a finite number",
+    "threshold_share": "a {metric} threshold is a share and must lie strictly between 0 and 1",
+    "waf_endpoint_missing": "waf endpoint {id} does not exist"
+  },
+  "search": {
+    "aql": {
+      "dataset_not_permitted": "dataset(s) not permitted: {datasets}",
+      "disallowed_keywords": "disallowed keyword(s): {keywords}",
+      "empty": "query is empty",
+      "limit_exceeded": "LIMIT {limit} exceeds the maximum {max_rows} rows",
+      "multiple_statements": "multiple statements are not allowed",
+      "no_dataset": "query must select FROM events or flows",
+      "no_time_window": "query must include a bounded time window (LAST N ..., or START/STOP)",
+      "not_select": "query must be a single SELECT statement",
+      "time_range_exceeded": "time range {window_hours}h exceeds the maximum {max_hours}h"
+    },
+    "budget": {
+      "full": "the Ariel search budget is full ({held} in flight); waited {waited} s; nothing was sent to QRadar",
+      "held_cap": "cap {cap}",
+      "held_of": "{held} of {cap}"
+    },
+    "cron": {
+      "below_floor": "schedule_cron {cron} ({timezone}) fires {gap} seconds apart ({previous} then {next}); a search must fire at least {min_seconds} seconds apart",
+      "floor_missed": "schedule_cron is below the floor",
+      "invalid": "schedule_cron {cron} ({timezone}) is not a valid cron expression: {error}",
+      "no_future_fire": "schedule_cron {cron} ({timezone}) has no future fire time"
+    },
+    "enabled_cap": "the limit is {limit} enabled searches",
+    "run": {
+      "capacity": "No Ariel permit became available within {waited} seconds (per-console cap {instance_cap}, global cap {global_cap})",
+      "failed": "Ariel search failed",
+      "no_aql_execution": "configured provider cannot execute AQL",
+      "parse_failed": "failed to fetch/parse results: {detail}",
+      "timeout": "search exceeded timeout of {timeout}s",
+      "validation": "{reasons}"
+    },
+    "threshold": {
+      "unreachable": "threshold {operator} {threshold} can never be reached: a run counts at most max_result_rows ({max_result_rows}) rows; raise max_result_rows above the threshold or lower the threshold"
+    }
+  },
+  "validation": {
+    "field": {
+      "insufficient_coverage": "populated on {populated} of events, below the required {required}",
+      "no_events": "the source produced no events in the window; nothing can be concluded",
+      "population_not_measured": "population was not measured",
+      "total_not_measured": "the source''s total event volume was not measured"
+    },
+    "ips": {
+      "field": {
+        "not_mapped": "no QRadar field is mapped to this logical field",
+        "rejected": "QRadar rejected the mapped field as named",
+        "unpopulated": "the field exists but no event in the window carried a usable value"
+      },
+      "input": {
+        "action_count": "{outcome} action values exceed the {max_count}-value limit",
+        "action_needs_field": "an action map needs an ACTION field mapping",
+        "action_overlap": "an action value is mapped to both BLOCKED and ALLOWED",
+        "action_value": "invalid {outcome} action value: use a printable token of at most {max_length} characters",
+        "normalized_field": "normalized field is not in the IPS allowlist",
+        "property_name": "invalid QRadar property name: letters, digits, underscore, space and hyphen only, at most 64 characters"
+      },
+      "profile": {
+        "truncated": "the bounded validation probe was truncated"
+      }
+    },
+    "profile": {
+      "conflict": {
+        "missing": "the profile does not exist; create it with expected_profile_version null",
+        "not_validated": "profile version {profile_version} has not validated (status {validation_status}); run validation first",
+        "running": "validation of version {profile_version} is already running since {since}",
+        "version": "profile version conflict; current version is {current}"
+      },
+      "field_reason": "{field}: {status} ({detail})",
+      "ineligible": {
+        "disabled": "the profile is disabled",
+        "status": "profile validation is {validation_status}",
+        "version_never_validated": "profile version {profile_version} has never been validated",
+        "version_not_validated": "profile version {profile_version} has not been validated (last validated: {validated_profile_version})"
+      },
+      "lookup_failed": "the log source lookup failed ({error})",
+      "source_missing": "the log source does not exist in QRadar",
+      "total_not_measured": "total event volume was not measured ({error})"
+    },
+    "waf": {
+      "field": {
+        "implausible_no_values": "no values of sampled events carry a plausible {logical} value, below the required {required}",
+        "implausible_ratio": "{plausible} of sampled events carry a plausible {logical} value, below the required {required}",
+        "not_mapped": "no QRadar property is mapped to this field",
+        "property_rejected": "QRadar rejected a query naming this property; it does not exist as named",
+        "unpopulated": "the property exists but no event in the window carried a value"
+      },
+      "ineligible": {
+        "collection_disabled": "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)",
+        "monitoring_disabled": "monitoring is disabled for the log source",
+        "source_missing": "the profile''s log source no longer exists"
+      },
+      "input": {
+        "action_needs_property": "an action map needs an action property",
+        "action_overlap": "action values mapped to both BLOCKED and ALLOWED: {values}",
+        "action_value": "invalid {outcome} action value {value}: a printable token of at most {max_length} characters",
+        "property_name": "invalid QRadar property name {name}: letters, digits, underscore, space and hyphen only, at most 64 characters"
+      }
+    }
+  },
+  "waf": {
+    "basis": {
+      "mad_above_p95": "robust score unavailable (MAD=0); {observed} is above the historical p95 {bound}",
+      "mad_outside_band": "robust score unavailable (MAD=0); observed value is outside the expected band [{lower}, {upper}]",
+      "mad_within_p95": "robust score unavailable (MAD=0) and {observed} is within the historical p95 {bound}",
+      "z": "robust z={score} (threshold +{threshold})",
+      "z_not_reached": "robust z={score} has not reached +{threshold}"
+    },
+    "caveat": {
+      "block_ratio": "Blocking is judged through the profile''s action map. A higher block ratio describes WAF decisions; it does not establish that an attack succeeded.",
+      "client_concentration": "A dominant source IP describes traffic composition, not intent.",
+      "client_error_ratio": "HTTP 4xx responses are response codes, not WAF decisions: a 403 is not by itself a block, and WAF blocking is reported separately.",
+      "new_endpoint": "A newly requested endpoint may be a deployment as easily as a probe.",
+      "server_error_ratio": "HTTP 5xx responses describe server-side failures. They do not establish that the traffic was malicious."
+    },
+    "concentration": {
+      "attributed_low": "only {covered} of the endpoint''s requests were attributed to a source IP, below the {floor} coverage floor",
+      "endpoint_below_min": "{count} requests is below the {minimum} minimum for a composition verdict",
+      "fired": "the largest source IP sent {top} of {total} requests to {subject} ({share}), against an expected share of {expected} ({rise}); the five largest sent {top5}; {volume}; {basis}",
+      "rise_below_min": "the largest source IP''s share {share} is {rise} from the expected {expected}, below the {minimum} minimum rise",
+      "top_below_min": "the largest source IP sent {top} requests, below the {minimum} minimum for a material concentration",
+      "volume_no_baseline": "endpoint volume {requests} requests (no reliable volume baseline)",
+      "volume_with_baseline": "endpoint volume {requests} requests against an expected {expected}"
+    },
+    "guard": {
+      "baseline_no_denominator": "the {metric} baseline has no pooled denominator",
+      "baseline_samples": "the {metric} baseline has {samples} material bucket(s), below the minimum for a defensible verdict",
+      "breakdown_failed": "the {breakdown} breakdown failed for this bucket: the value is unavailable, not zero",
+      "breakdown_not_collected": "the {breakdown} breakdown was not collected for this bucket: the value is unavailable, not zero",
+      "no_baseline": "no {metric} baseline for this weekday/hour cell yet",
+      "not_proven_lower_bound": "{reason}; the numerator is a lower bound ({scope}), so a normal verdict cannot be concluded from it",
+      "source_coverage_low": "only {covered} of this source''s events parsed to an endpoint, below the {floor} coverage floor: the unparsed requests may differ in kind from the parsed ones, so the visible proportion bounds nothing"
+    },
+    "history_check": {
+      "admission_truncated": "history bucket {bucket} had truncated endpoint admission",
+      "appearance_never_collected": "the first-appearance bucket was never collected",
+      "appearance_no_profile": "the first-appearance bucket carries no profile version",
+      "appearance_normalizer": "the first-appearance bucket is incompatible with endpoint normalizer version {version}",
+      "bucket_width": "history bucket {bucket} used a different collection bucket width",
+      "discovery_truncated": "history bucket {bucket} had truncated endpoint discovery",
+      "never_collected": "{missing} of {expected} history buckets were never collected",
+      "normalizer_version": "history bucket {bucket} is incompatible with endpoint normalizer version {version}",
+      "not_divisible": "the history window is not divisible by the collection bucket width",
+      "not_loaded": "history was not loaded for an established endpoint",
+      "profile_version": "history bucket {bucket} used profile version {found}, not first-appearance version {expected}",
+      "record_count": "the history contains {records} bucket records for {expected} expected buckets"
+    },
+    "noun": {
+      "blocked_requests": "blocked requests",
+      "http_4xx": "HTTP 4xx responses",
+      "http_5xx": "HTTP 5xx responses",
+      "response_code_requests": "requests carrying a response code",
+      "waf_action_requests": "requests carrying a WAF action"
+    },
+    "novelty": {
+      "below_materiality": "{requests} request(s) in {buckets} bucket(s) since first appearance has not reached {min_requests} requests in {min_buckets} buckets",
+      "below_materiality_lower": "{reason}; the counts are lower bounds",
+      "cannot_establish": "novelty cannot be established: {cause}",
+      "established_hand_off": "established endpoint: first admitted {first_seen} before the history hand-off {hand_off}",
+      "established_outside_window": "established endpoint: first admitted {first_seen}, outside the {buckets}-bucket novelty window",
+      "fired": "{subject} received {requests} requests across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it was never requested {admission} or more times in one bucket",
+      "fired_lower": "{subject} received at least {requests} requests across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it was never requested {admission} or more times in one bucket",
+      "flood_admission": "endpoint admission was truncated in the first-appearance bucket",
+      "flood_discovery": "endpoint discovery was truncated in the first-appearance bucket",
+      "history_incomplete": "the history is incomplete",
+      "not_established": "the endpoint''s first appearance was not established"
+    },
+    "rate": {
+      "baseline_samples": "baseline has {samples} sample(s), below the minimum required for a defensible verdict",
+      "below_min_volume": "{observed} requests/bucket is below the {minimum} minimum for a defensible verdict",
+      "bucket_not_whole": "bucket is {completeness}, not a whole observation",
+      "coverage_low": "only {covered} of this source''s events carried a parseable endpoint in this bucket",
+      "delta_below_min": "increase of {delta} requests/bucket is below the {minimum} minimum absolute delta",
+      "fired": "{observed} requests is above the baseline median {expected} ({ratio_text}, +{delta} requests/bucket); {basis}",
+      "fired_lower": "at least {observed} requests (a lower bound: {scope}) is above the baseline median {expected} ({ratio_text}, +{delta} requests/bucket); {basis}",
+      "mad_within_band": "robust score unavailable (MAD=0) and observed value is inside the expected band [{lower}, {upper}]",
+      "no_baseline": "no request-rate baseline for this weekday/hour cell yet",
+      "not_proven_lower_bound": "at least {observed} requests were attributed to this endpoint, but the count is a lower bound and {reason}; a normal verdict cannot be concluded from a lower bound",
+      "ratio_multiple": "{ratio}x expected",
+      "ratio_none": "expected no traffic",
+      "ratio_not_reached": "observed/expected ratio {ratio} has not reached {threshold}",
+      "z_not_reached": "robust z={score} has not reached the +{threshold} threshold"
+    },
+    "ratio": {
+      "denominator_below_min": "{count} {noun} is below the {minimum} minimum denominator for a ratio verdict",
+      "field_coverage_low": "only {covered} of the endpoint''s requests carried the {field} field, below the {floor} coverage floor",
+      "fired": "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against an expected {expected} from {history} historical requests ({rise}, {multiple}x); {basis}",
+      "fired_lower": "at least {count} of {total} {denominator} to {subject} were {numerator} (at least {share}), against an expected {expected} from {history} historical requests ({rise}, {multiple}x); {basis}",
+      "fired_lower_no_multiple": "at least {count} of {total} {denominator} to {subject} were {numerator} (at least {share}), against an expected {expected} from {history} historical requests ({rise}); {basis}",
+      "fired_no_multiple": "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against an expected {expected} from {history} historical requests ({rise}); {basis}",
+      "multiple_below_min": "{observed} is {multiple}x the expected {expected}, below {minimum}x",
+      "numerator_below_min": "{count} {noun} is below the {minimum} minimum; no material rise in the proportion is possible",
+      "rise_below_min": "{observed} is {rise} from the expected {expected}, below the {minimum} minimum rise"
+    },
+    "scope": {
+      "composition_exact": "composition needs exact measurements",
+      "inputs_unsupported": "the inputs do not support a verdict",
+      "lower_bound_increase": "the count is a lower bound: an increase can be proven, normal behaviour cannot",
+      "needs_exact": "the detector needs exact counts and this count is a lower bound",
+      "unattributed": "some events could not be attributed",
+      "unclassified": "some values were unclassified",
+      "unstated": "the bucket does not state whether its counts are exact or lower bounds"
+    },
+    "semantics": {
+      "baseline_unidentified": "the baseline cell carries no metric-semantics identity; rebuild required",
+      "bucket_unidentified": "the bucket carries no metric-semantics identity; it was collected before identities were recorded and cannot be judged",
+      "mismatch": "the baseline was built under ''{baseline}'' but the bucket was collected under ''{bucket}''; rebuild required"
+    },
+    "subject": {
+      "named": "{method} {endpoint}",
+      "this_endpoint": "this endpoint"
+    },
+    "suppression": {
+      "maintenance_window": "maintenance window"
+    }
+  }
+}

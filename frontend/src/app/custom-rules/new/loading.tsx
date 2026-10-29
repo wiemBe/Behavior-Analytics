@@ -1,5 +1,7 @@
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
+import { useTranslations } from "next-intl";
 
 export default function Loading() {
-  return <BoundaryLoading title="New custom rule" what="the rule editor" />;
+  const t = useTranslations("customRules.boundary");
+  return <BoundaryLoading title={t("newTitle")} what={t("newWhat")} />;
 }

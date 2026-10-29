@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -87,6 +88,24 @@ PROPERTY_WATCH_PROPERTIES_CHECK = (
     "THEN jsonb_array_length(properties) BETWEEN 1 AND 2 ELSE false END"
 )
 _ARRAY_CHECK = "jsonb_typeof({column}) = 'array'"
+
+
+
+def _i18n_code(value: object) -> str | None:
+    """The code of a stored `{code, params}` message reference; None when absent or malformed."""
+    from app.schemas.messages import stored_message_parts
+
+    if not isinstance(value, dict):
+        return None
+    return stored_message_parts(value.get("code"), value.get("params"))[0]
+
+
+def _i18n_params(value: object) -> dict[str, Any] | None:
+    from app.schemas.messages import stored_message_parts
+
+    if not isinstance(value, dict):
+        return None
+    return stored_message_parts(value.get("code"), value.get("params"))[1]
 
 
 class PropertyWatch(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -153,6 +172,11 @@ class PropertyWatch(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     #: A `PwWatchStatus`; NULL means the watch has never run, which is not `OK`.
     last_status: Mapped[PwWatchStatus | None] = mapped_column(String(16))
     last_status_reason: Mapped[str | None] = mapped_column(Text)
+    #: `{code, params}` of `last_status_reason`, when the writer had a message code (NULL on rows
+    #: written earlier: they render their stored English).
+    last_status_reason_i18n: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     #: Requested bootstrap window. NULL means the watch has no history request.
@@ -172,6 +196,14 @@ class PropertyWatch(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     created_by: Mapped[str | None] = mapped_column(String(255))
     updated_by: Mapped[str | None] = mapped_column(String(255))
+
+    @property
+    def status_reason_code(self) -> str | None:
+        return _i18n_code(self.last_status_reason_i18n)
+
+    @property
+    def status_reason_params(self) -> dict[str, Any] | None:
+        return _i18n_params(self.last_status_reason_i18n)
 
 
 class PwBucket(Base):
@@ -441,15 +473,38 @@ class PwAnomaly(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     policy_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     watch_version: Mapped[int] = mapped_column(Integer, nullable=False)
     explanation: Mapped[str | None] = mapped_column(Text)
+    #: `{code, params}` of `explanation` (NULL on earlier rows and for an uncoded sentence).
+    explanation_i18n: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     details: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     evidence_status: Mapped[EvidenceStatus] = mapped_column(
         String(16), default=EvidenceStatus.NOT_REQUESTED, nullable=False
     )
     suppressed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     suppression_reason: Mapped[str | None] = mapped_column(String(255))
+    #: `{code, params}` of `suppression_reason`. The property-watch engine writes no suppression
+    #: reason today, so this stays NULL until it does.
+    suppression_reason_i18n: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
     observed_measurement: Mapped[WafMeasurement] = mapped_column(
         String(16), default=WafMeasurement.EXACT, nullable=False
     )
+
+    @property
+    def explanation_code(self) -> str | None:
+        return _i18n_code(self.explanation_i18n)
+
+    @property
+    def explanation_params(self) -> dict[str, Any] | None:
+        return _i18n_params(self.explanation_i18n)
+
+    @property
+    def suppression_reason_code(self) -> str | None:
+        return _i18n_code(self.suppression_reason_i18n)
+
+    @property
+    def suppression_reason_params(self) -> dict[str, Any] | None:
+        return _i18n_params(self.suppression_reason_i18n)
 
 
 class PwAnomalyTransition(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -469,9 +524,20 @@ class PwAnomalyTransition(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     bucket_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reason: Mapped[str | None] = mapped_column(Text)
+    #: `{code, params}` of `reason` when the engine had a message code (the lifecycle's own
+    #: reasons are uncoded, so NULL).
+    reason_i18n: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     actor: Mapped[str] = mapped_column(String(64), default="pw-engine", nullable=False)
     observed_value: Mapped[float | None] = mapped_column(Float)
     expected_value: Mapped[float | None] = mapped_column(Float)
     observed_measurement: Mapped[WafMeasurement] = mapped_column(
         String(16), default=WafMeasurement.EXACT, nullable=False
     )
+
+    @property
+    def reason_code(self) -> str | None:
+        return _i18n_code(self.reason_i18n)
+
+    @property
+    def reason_params(self) -> dict[str, Any] | None:
+        return _i18n_params(self.reason_i18n)

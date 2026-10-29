@@ -1,5 +1,10 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return <BoundaryLoading title="Outage alerts" what="the outage alert policy" />;
+  const t = useTranslations("outage.boundary");
+  return <BoundaryLoading title={t("title")} what={t("loadingWhat")} />;
 }

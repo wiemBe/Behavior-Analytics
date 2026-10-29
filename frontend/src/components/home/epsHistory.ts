@@ -5,11 +5,10 @@
 // history charts use. A zero (or an absent field) adds nothing.
 
 import type { FleetEpsSeries } from "@/lib/api";
-import {
-  HISTORY_TEXT,
-  type HistoryInterval,
-} from "@/components/behavior/historyOrigin";
-import { formatCount } from "@/lib/format";
+import type { HistoryInterval } from "@/components/behavior/historyOrigin";
+import { type TextTranslator } from "@/i18n/textTranslator";
+import { englishText } from "@/widgets/englishText";
+import { formatCount, type FormatLocale } from "@/lib/format";
 
 export interface EpsHistoryStep {
   /** Epoch ms of the step start. */
@@ -56,21 +55,27 @@ export function epsHistory(series: FleetEpsSeries, labelled = true): EpsHistory 
 }
 
 /** The tooltip line of one step; empty when no cell of it came from history. */
-export function epsHistoryLine(history: EpsHistory | undefined, t: number): string {
+export function epsHistoryLine(
+  history: EpsHistory | undefined,
+  t: number,
+  say: TextTranslator = englishText,
+  locale: FormatLocale = "en",
+): string {
   const s = history?.steps.get(t);
   if (!s) return "";
-  const n = (v: number) => formatCount(v);
-  return `${n(s.fromHistory)} of ${n(s.complete)} cells read from QRadar history`;
+  return say("home.history.cells", {
+    from: formatCount(s.fromHistory, locale),
+    complete: formatCount(s.complete, locale),
+  });
 }
 
 /** The same statement for assistive technology. */
-export function epsHistorySummary(history: EpsHistory | undefined): string {
+export function epsHistorySummary(
+  history: EpsHistory | undefined,
+  say: TextTranslator = englishText,
+): string {
   if (!history || history.partlyOrWholly === 0) return "";
-  const n = history.partlyOrWholly.toLocaleString("en-US");
   const whole = history.spans.reduce((a, s) => a + s.buckets, 0);
-  const wholly =
-    whole > 0
-      ? ` ${whole.toLocaleString("en-US")} of them ${whole === 1 ? "is" : "are"} wholly ${HISTORY_TEXT} and shaded.`
-      : "";
-  return `${n} ${history.partlyOrWholly === 1 ? "step holds" : "steps hold"} cells ${HISTORY_TEXT}.${wholly}`;
+  const wholly = whole > 0 ? ` ${say("home.history.wholly", { count: whole })}` : "";
+  return `${say("home.history.holds", { count: history.partlyOrWholly })}${wholly}`;
 }

@@ -1,0 +1,419 @@
+{
+  "registry": {
+    "kpi_total_eps": {
+      "title": "Toplam EPS",
+      "description": "Seçilen aralıkta filonun saniyedeki olay sayısı, mevcut baseline'larla karşılaştırmalı."
+    },
+    "kpi_log_sources": {
+      "title": "Log source'lar",
+      "description": "Kaç kaynağın izlendiği ve kaçının normal olarak değerlendirildiği."
+    },
+    "kpi_offenses": {
+      "title": "Açık offense'lar",
+      "description": "Son anlık görüntüdeki açık offense'lar, önem derecesine göre."
+    },
+    "kpi_anomalies": {
+      "title": "Etkin anomaliler",
+      "description": "Şu anda etkin olan anomaliler, algılayıcıya ve yaşam döngüsüne göre."
+    },
+    "chart_eps_fleet_total": {
+      "title": "Filo EPS",
+      "description": "Gözlenen filo EPS değeri ile kaynak başına beklenen EPS toplamı, 1 saatten 7 güne."
+    },
+    "chart_eps_by_class": {
+      "title": "Kaynak sınıfına göre EPS",
+      "description": "Seçilen aralıkta her kaynak sınıfının ortalama EPS değeri ve filodaki payı."
+    },
+    "table_top_sources": {
+      "title": "EPS'e göre en yoğun log source'lar",
+      "description": "Seçilen aralıkta en yoğun beş kaynak ve beklenen değerden sapmaları."
+    },
+    "chart_anomaly_severity": {
+      "title": "Önem derecesine göre anomaliler",
+      "description": "24 saat boyunca saat başına anomaliler, önem derecesine göre yığılmış (son 200 kayıt okunur)."
+    },
+    "health_log_sources": {
+      "title": "Log source sağlığı",
+      "description": "Kaynakların güncel karara göre dağılımı ve karar gerektiren kategoriler."
+    },
+    "table_recent_anomalies": {
+      "title": "Son anomaliler",
+      "description": "Etkin son anomaliler, sapmaları ve inceleme bağlantısıyla."
+    },
+    "table_recent_offenses": {
+      "title": "Son offense'lar",
+      "description": "Son güncellemeye göre en yeni açık offense'lar ve büyüklükleri."
+    },
+    "health_detection": {
+      "title": "Algılama sağlığı",
+      "description": "Teknik coverage'ı ve kural kararları: algılama sağlam mı?"
+    },
+    "health_collection": {
+      "title": "Zamanlanmış aramalar",
+      "description": "Arama ailesi başına: sıklık, son çalışma ve gecikme."
+    },
+    "health_evidence": {
+      "title": "Kanıt toplama",
+      "description": "Kanıtı bekleyen veya toplanamayan anomaliler."
+    },
+    "table_catchall_senders": {
+      "title": "İncelenecek catch-all gönderenleri",
+      "description": "Catch-all kaynaklarını besleyen, henüz incelenmemiş en yeni gönderenler."
+    },
+    "table_fleet_classes": {
+      "title": "Kaynak sınıfları",
+      "description": "Kaynak sınıfı başına kaynaklar, seçilen aralıktaki ortalama EPS ve açık sessizlik."
+    },
+    "table_outage_policy": {
+      "title": "Kesinti politikası",
+      "description": "Varsayılan kesinti modu, bundan ayrılan sınıflar ve geçersiz kılmalar."
+    },
+    "waf_sources": {
+      "title": "WAF kaynakları",
+      "description": "Profil kararı, endpoint coverage'ı ve üst sınıra karşı etkin endpoint'ler."
+    },
+    "table_recent_waf_anomalies": {
+      "title": "Son WAF anomalileri",
+      "description": "WAF endpoint'lerinin etkin son anomalileri."
+    },
+    "waf_endpoint_traffic": {
+      "title": "WAF endpoint trafiği",
+      "description": "Bir WAF endpoint'inin zaman dilimi başına istekleri ve dönemsel beklenen aralığı. Endpoint'i siz seçersiniz.",
+      "fields": {
+        "waf_source": "WAF kaynağı",
+        "endpoint": "WAF endpoint"
+      }
+    },
+    "chart_eps_observed_expected": {
+      "title": "Log source EPS değeri",
+      "description": "Bir log source'un EPS değeri ve dönemsel beklenen aralığı. Kaynağı siz seçersiniz; filo toplamı Filo EPS bileşenindedir.",
+      "fields": {
+        "source": "İzlenen log source"
+      }
+    },
+    "chart_search_results": {
+      "title": "Arama sonuçları",
+      "description": "Bir zamanlanmış aramanın kayıtlı sonuçları: çizgi, çubuklar, son toplam veya son çalışmanın en üst satırları.",
+      "fields": {
+        "search_id": "Arama",
+        "metric_key": "Metrik"
+      }
+    },
+    "chart_property_watch": {
+      "title": "Özellik izleme",
+      "description": "Bir özellik izleme: sabitlenmiş değerleri ve son zaman diliminin en yüksek değerleri, zaman dilimi başına olay olarak, scope'un coverage oranıyla.",
+      "fields": {
+        "watch_id": "Özellik izleme"
+      }
+    },
+    "ips_source_anomalies": {
+      "title": "Son IPS anomalileri",
+      "description": "IPS varlıklarının ve IPS kaynaklarının etkin son anomalileri, her algılayıcının kendi biriminde."
+    },
+    "map_geography": {
+      "title": "Coğrafya",
+      "description": "Trafiğin ülkelere göre nereden geldiği.",
+      "blockedBy": "harita bileşeni henüz hazır değil; coğrafi toplama hazır"
+    }
+  },
+  "categories": {
+    "KPI": "Ana göstergeler",
+    "Chart": "Grafik",
+    "Table": "Tablo",
+    "Health": "Sağlık",
+    "Admin": "Yönetim"
+  },
+  "notAvailable": "Kullanılamıyor: {reason}.",
+  "templates": {
+    "soc_overview": {
+      "name": "SOC Genel Bakışı",
+      "description": "Filo hacmi, kaynak sağlığı, anomaliler ve offense'lar. Harita hazır olana kadar coğrafya bileşeni yer almaz."
+    },
+    "qradar_administration": {
+      "name": "QRadar Yönetimi",
+      "description": "Arama sıklığı, kaynak sınıflandırması, kesinti politikası ve algılama kanıtı sağlığı."
+    },
+    "behavioral_analytics": {
+      "name": "Davranış Analitiği",
+      "description": "Etkin anomaliler, kanıt sağlığı ve anomali iş listesi. Gözlenen ve beklenen grafiği yer almaz: gösterge paneli başına seçilmiş bir log source gerektirir."
+    },
+    "log_source_monitoring": {
+      "name": "Log Source İzleme",
+      "description": "Kaynak kararları, trafik dağılımı, kaynak sınıfları ve incelenmesi gereken catch-all gönderenleri."
+    },
+    "waf_ips_monitoring": {
+      "name": "WAF / IPS İzleme",
+      "description": "WAF kaynakları ile son WAF ve IPS anomalileri yan yana. Endpoint trafiği grafiği yer almaz: gösterge paneli başına seçilmiş bir endpoint gerektirir."
+    }
+  },
+  "range": {
+    "window": "Pencere",
+    "windowFor": "{title} için pencere"
+  },
+  "expand": {
+    "close": "Kapat"
+  },
+  "view": {
+    "loadingEditor": "Gösterge paneli düzenleyicisi yükleniyor…",
+    "unsupportedTitle": "Desteklenmeyen bileşen",
+    "unsupportedText": "Bu gösterge paneli, bu sürümün tanımadığı {type} türünde bir bileşen içeriyor. Bileşen düzende korunuyor ve hiçbir şey değiştirilmedi.",
+    "removed": "Bileşen kaldırıldı.",
+    "applied": "Bileşen yapılandırması uygulandı.",
+    "added": "{title} eklendi.",
+    "discard": "Vazgeç",
+    "widen": "Özelleştirmek için pencereyi genişletin",
+    "customize": "Özelleştir",
+    "addWidget": "Bileşen ekle",
+    "done": "Bitti",
+    "unsaved": "Kaydedilmemiş değişiklikler var.",
+    "unsavedSession": "Kaydedilmemiş değişiklikler var. Yalnızca bu oturumda geçerlidir."
+  },
+  "catalog": {
+    "title": "Bileşen ekle",
+    "close": "Kapat",
+    "checking": "Rolünüzün neleri okuyabildiği denetleniyor…",
+    "permissionsUnread": "İzinleriniz okunamadı, bu yüzden tüm bileşenler listeleniyor. Rolünüzün okuyamadığı bir bileşen bunu gösterge panelinde belirtir.",
+    "reads": "Okuduğu",
+    "needs": "Gerektirdiği",
+    "add": "Ekle",
+    "addNamed": "{title} bileşenini ekle",
+    "alreadyPlaced": "Zaten bu gösterge panelinde.",
+    "roleLacks": "Rolünüzde şu {count, plural, one {izin} other {izinler}} eksik: {permissions}.",
+    "full": "Bir gösterge paneli en fazla {max} bileşen içerebilir."
+  },
+  "configure": {
+    "title": "{title} bileşenini yapılandır",
+    "timeRange": "Pencere",
+    "follow": "Gösterge panelini izle ({range})",
+    "applyOff": "Yukarıdaki her seçim, okumanın döndürdüğü değerlerden yapılana kadar Uygula kapalıdır.",
+    "sessionOnly": "Yalnızca bu oturumda geçerlidir; kaydetme henüz hazır değil.",
+    "cancel": "İptal",
+    "apply": "Uygula",
+    "chooseAbove": "Önce yukarıdaki seçeneği belirleyin",
+    "loadingWhat": "Yükleniyor: {what}…",
+    "forbiddenWhat": "Rolünüz bunu okuyamıyor, bu yüzden burada seçim yapılamaz: {what}.",
+    "readFailed": "Okunamadı: {what}.",
+    "noAnswer": "Backend yanıt vermedi.",
+    "answeredWith": "Backend HTTP {status} ile yanıt verdi.",
+    "reopen": "Bu paneli kapatıp yeniden açın; hata sürerse backend'e erişilebildiğini denetleyin.",
+    "noneWhat": "Yok: {what}.",
+    "filter": "Filtrele: {what}",
+    "shownOf": "{shown, number} / {total, number} sonuç gösteriliyor",
+    "countWhat": "{count, number} {what}",
+    "choose": "Seçin…",
+    "firstOf": "Okuma ilk {count, number} / {total, number} kaydı döndürdü ({what}); burada yalnızca bunlar seçilebilir."
+  },
+  "options": {
+    "retired": "kullanımdan kaldırıldı",
+    "disabled": "devre dışı",
+    "monitoredSources": {
+      "what": "izlenen log source'lar",
+      "emptyReason": "Henüz izlenen bir log source yok, bu yüzden grafiği çizilecek EPS yok."
+    },
+    "wafSources": {
+      "what": "WAF kaynakları",
+      "emptyReason": "Henüz hiçbir WAF kaynağının davranış profili yok, bu yüzden izlenen endpoint yok."
+    },
+    "wafSourceEndpoints": {
+      "what": "endpoint'ler",
+      "emptyReason": "Bu kaynak henüz hiçbir endpoint izlemedi.",
+      "needs": "Önce bir WAF kaynağı seçin"
+    },
+    "propertyWatches": {
+      "what": "özellik izlemeleri",
+      "emptyReason": "Henüz özellik izleme yok, bu yüzden grafiği çizilecek bir şey yok."
+    },
+    "scheduledSearches": {
+      "what": "zamanlanmış aramalar",
+      "emptyReason": "Henüz zamanlanmış arama yok, bu yüzden grafiği çizilecek bir şey yok."
+    },
+    "searchMetricKeys": {
+      "what": "metrik anahtarları",
+      "emptyReason": "Bu arama henüz hiçbir metrik anahtarı kaydetmedi.",
+      "needs": "Önce bir arama seçin"
+    }
+  },
+  "grid": {
+    "arrange": "{title} bileşenini düzenle",
+    "edit": "Düzenle",
+    "move": "Taşı",
+    "resize": "Yeniden boyutlandır",
+    "moveButton": {
+      "left": "Sol",
+      "right": "Sağ",
+      "up": "Yukarı",
+      "down": "Aşağı"
+    },
+    "moveNamed": {
+      "left": "{title} bileşenini sola taşı",
+      "right": "{title} bileşenini sağa taşı",
+      "up": "{title} bileşenini yukarı taşı",
+      "down": "{title} bileşenini aşağı taşı"
+    },
+    "resizeButton": {
+      "wider": "Genişlet",
+      "narrower": "Daralt",
+      "taller": "Uzat",
+      "shorter": "Kısalt"
+    },
+    "resizeNamed": {
+      "wider": "{title} bileşenini genişlet",
+      "narrower": "{title} bileşenini daralt",
+      "taller": "{title} bileşenini uzat",
+      "shorter": "{title} bileşenini kısalt"
+    },
+    "configure": "Yapılandır",
+    "configureNamed": "{title} bileşenini yapılandır",
+    "expand": "Büyüt",
+    "expandNamed": "{title} bileşenini büyüt",
+    "remove": "Bileşeni kaldır",
+    "removeNamed": "{title} bileşenini kaldır"
+  },
+  "menu": {
+    "permissionsUnread": "İzinleriniz okunamadı ({reason}), bu yüzden buradaki gösterge panelleri salt okunurdur.",
+    "cannotSave": "Rolünüz gösterge panellerini kaydedemez; {permission} izni gerekir.",
+    "refused": "Sunucu değişikliği reddetti: {detail} Sayfayı yenileyene kadar denetimler gizli kalır.",
+    "sharedBy": "{owner} tarafından paylaşıldı; okuyabilir ve kendi gösterge panellerinize kopyalayabilirsiniz.",
+    "nameRequired": "Bir ad girin.",
+    "nameTooLong": "Ad en fazla {max} karakter olabilir.",
+    "nameHint": "1 ile {max} karakter arası, gösterge panelleriniz arasında benzersiz.",
+    "template": "Şablon",
+    "name": "Ad",
+    "cancel": "İptal",
+    "close": "Kapat",
+    "deleteTitle": "\"{name}\" silinsin mi?",
+    "deleteText": "Gösterge paneli ve düzeni kalıcı olarak silinir; paylaşıldığı herkesten de kaybolur.",
+    "deleteDefault": "Bu panel sizin varsayılanınız; sonrasında başlangıç sayfasında SOC Genel Bakışı şablonu gösterilir.",
+    "deleting": "Siliniyor…",
+    "deleteConfirm": "Gösterge panelini sil",
+    "duplicateFailed": "\"{name}\" kopyalanamadı",
+    "clearDefaultFailed": "Varsayılan temizlenemedi",
+    "setDefaultFailed": "\"{name}\" varsayılanınız yapılamadı",
+    "makePrivateFailed": "\"{name}\" özel yapılamadı",
+    "shareFailed": "\"{name}\" paylaşılamadı",
+    "rename": "Yeniden adlandır…",
+    "duplicateIntoMine": "Gösterge panellerime kopyala",
+    "duplicate": "Kopyala",
+    "clearDefault": "Varsayılanı temizle",
+    "setDefault": "Varsayılan yap",
+    "makePrivate": "Özel yap",
+    "shareWithEveryone": "Herkesle paylaş",
+    "newFromTemplate": "Şablondan yeni gösterge paneli…",
+    "delete": "Sil…",
+    "manage": "Yönet",
+    "actions": "Gösterge paneli eylemleri",
+    "restoreOpen": "Varsayılanları geri yükle…",
+    "resetOpen": "Boşa sıfırla…",
+    "unknownTemplate": "Bu istemci {key} şablonunu tanımadığı için varsayılanlar geri yüklenemiyor.",
+    "newTitle": "Şablondan yeni gösterge paneli",
+    "newSubmit": "Gösterge panelini oluştur",
+    "renameTitle": "Gösterge panelini yeniden adlandır",
+    "renameSubmit": "Yeniden adlandır",
+    "restoreTitle": "{name} varsayılanları geri yüklensin mi?",
+    "restoreText": "Geçerli düzen, {name} şablonunun {version}. sürümüyle değiştirilir. Bitti'yi seçene kadar hiçbir şey kaydedilmez.",
+    "restoreConfirm": "Varsayılanları geri yükle",
+    "resetTitle": "\"{name}\" boşa sıfırlansın mı?",
+    "resetText": "Geçerli düzendeki tüm bileşenler kaldırılır. Bitti'yi seçene kadar hiçbir şey kaydedilmez.",
+    "resetConfirm": "Boşa sıfırla"
+  },
+  "switcher": {
+    "trigger": "Gösterge panelleri",
+    "loading": "Gösterge panelleri yükleniyor…",
+    "failed": "Kayıtlı gösterge panelleri yüklenemedi: {reason}.",
+    "none": "Kayıtlı gösterge paneliniz yok ve sizinle paylaşılan da yok.",
+    "saved": "Kayıtlı gösterge panelleri",
+    "default": "Varsayılan",
+    "shared": "Paylaşılan",
+    "widgetCount": "{count} bileşen",
+    "ownedBy": "sahibi: {owner}",
+    "templateGroup": "Şablon",
+    "templateEntry": "{name} (şablon)",
+    "notSaved": "Kaydedilmedi"
+  },
+  "saveDialogs": {
+    "nameTakenTitle": "Başka bir gösterge paneli adı seçin",
+    "name": "Ad",
+    "cancel": "İptal",
+    "saveDashboard": "Gösterge panelini kaydet",
+    "copyName": "{name} kopyası",
+    "conflictTitle": "Bu gösterge paneli siz açtıktan sonra değişti",
+    "conflictReload": "<b>Yeniden yükle</b> değişikliklerinizi atar ve kayıtlı sürümü gösterir.",
+    "conflictCopy": "<b>Kopya olarak kaydet</b> değişikliklerinizi aşağıdaki adla saklar.",
+    "conflictKeep": "<b>Düzenlemeye devam et</b> her ikisini de olduğu gibi bırakır.",
+    "copyLabel": "Kopya adı",
+    "keepEditing": "Düzenlemeye devam et",
+    "reload": "Yeniden yükle",
+    "saveCopy": "Kopya olarak kaydet",
+    "discardTitle": "{name} üzerindeki kaydedilmemiş değişikliklerden vazgeçilsin mi?",
+    "discardChoice": "<b>Vazgeç</b> değişikliklerinizi atar ve kayıtlı düzeni gösterir.",
+    "keepChoice": "<b>Düzenlemeye devam et</b> gösterge panelini olduğu gibi bırakır.",
+    "discard": "Vazgeç"
+  },
+  "save": {
+    "failedKept": "Kaydedilemedi; değişiklikleriniz burada duruyor.",
+    "unsavedKept": "Kaydedilmemiş değişiklikleriniz burada duruyor."
+  },
+  "propertyWatch": {
+    "defaultTitle": "Özellik izleme",
+    "link": "İzleme",
+    "what": "özellik izlemeleri",
+    "theWatch": "Özellik izleme",
+    "theValues": "İzlenen değerler",
+    "theBuckets": "Kayıtlı zaman dilimleri",
+    "theSeries": "Seri",
+    "chooseLead": "Bir özellik izleme seçin.",
+    "chooseText": "Bu bileşen için izleme ayarlanmadı, bu yüzden grafiği çizilecek bir şey yok.",
+    "chooseHint": "Seçmek için Özelleştir'i, ardından Yapılandır'ı açın.",
+    "deletedLead": "Bu özellik izleme silindi.",
+    "deletedText": "Bu bileşen için ayarlanan izleme artık yok.",
+    "deletedHint": "Başka birini seçmek için Özelleştir'i, ardından Yapılandır'ı açın.",
+    "forbidden": "Rolünüz özellik izlemelerini okuyamaz (izin: read:property_watches). Bu izni bir yönetici verir. Hiçbir şey değiştirilmedi.",
+    "failed": "Okunamadı: {what}. {answer} Hiçbir şey değiştirilmedi; varsa önceki yanıt ekranda kalır. Üst çubuktaki Yenile'yi kullanın; hata sürerse backend'e erişilebildiğini denetleyin.",
+    "noAnswer": "Backend yanıt vermedi.",
+    "answeredWith": "Backend HTTP {status} ile yanıt verdi.",
+    "collectionOff": "PW_COLLECTION_ENABLED false olduğu için hiçbir izleme için arama gönderilmiyor. Yeni bir şey toplanmıyor ve burada önceki zaman dilimleri çizilmiyor. Geçmişi görmek için izlemeyi açın.",
+    "settingOff": "PW_COLLECTION_ENABLED false olduğu için hiçbir izleme için arama gönderilmiyor.",
+    "openHistory": "Geçmişi görmek için izlemeyi açın.",
+    "historyProgress": "{requested} günün {read} günü",
+    "unknownDays": "bilinmeyen sayıda",
+    "theRequested": "istenen",
+    "reading": "Geçmiş QRadar'dan okunuyor: {progress}. Okuma bitene kadar hiçbir şey değerlendirilmez.",
+    "disabled": "İzleme devre dışı olduğu için bunun için arama gönderilmiyor.",
+    "notRunYet": "Henüz çalışmadı: ilk toplama bir sonraki sıklık diliminde yapılır.",
+    "noBucket": "Bu izleme için henüz zaman dilimi toplanmadı. {why} Oluşturulma: {at}.",
+    "inScope": "(scope'taki {parsed, number} / {total, number} olay)",
+    "notApplicable": "{at} zaman dilimi toplandı, ancak özellik hiçbir olayda ayrıştırılamadı{events}: coverage oranı {coverage}. Hiçbir değer ölçülmedi ve hiçbiri değerlendirilmedi.",
+    "fiveMinuteIntervals": "beş dakikalık aralık",
+    "partialText": "{have, number} / {of, number} beş dakikalık aralık toplandı; kalanlar boşluktur, sıfır olay değildir",
+    "lowerBoundsText": "Toplanan zaman dilimlerinden {lower, number} / {total, number} alt sınırdır; noktaları \"en az n\" olarak okunur ve olmayan değerler bilinmiyor demektir, sıfır değildir",
+    "atLeast": "en az {value}",
+    "perBucket": "zaman dilimi başına olay",
+    "perMinutes": "{minutes} dk başına olay",
+    "perSeconds": "{seconds} sn başına olay",
+    "noCollected": "Geçmiş devrinden sonra toplanmış zaman dilimi yok. {reason} Geçmiş okumasını incelemek için izlemeyi açın.",
+    "noFirstBucket": "İzleme ilk güncel zaman dilimini henüz toplamadı.",
+    "noValues": "Bu izleme için son {window} içinde izlenen değer yok. Toplanan bir zaman dilimi değeri kabul ettiğinde değer görünür; o zamana kadar hiçbir şey değerlendirilmez. Oluşturulma: <created></created>.",
+    "nothingToDraw": "Sabitlenmiş değer yok ve izlenen hiçbir değerin son zaman diliminde sayılmış olayı yok, bu yüzden çizilecek bir şey yok. Bu, sıfır olay ölçümü değildir.",
+    "coverageBadge": "Coverage {value}",
+    "nonePlotted": "Çizilen değer yok.",
+    "chartLabel": "Sabitlenmiş değerler ve son zaman diliminin en yüksek değerleri için {unit}, UTC",
+    "lastBucket": "Son zaman dilimi <time></time> <age></age>. Y ekseni: {unit}.",
+    "refreshFailed": "Son yenileme başarısız oldu. Önceki yanıt ekranda kalır; tekrar denemek için üst çubuktaki Yenile'yi kullanın."
+  },
+  "searchResults": {
+    "defaultTitle": "Arama sonuçları",
+    "link": "Arama",
+    "what": "arama sonuçları",
+    "chooseLead": "Bir arama seçin.",
+    "chooseText": "Bu bileşen için arama ayarlanmadı, bu yüzden grafiği çizilecek bir şey yok.",
+    "chooseHint": "Seçmek için Özelleştir'i, ardından Yapılandır'ı açın.",
+    "loading": "Sonuç eğilimi yükleniyor…",
+    "forbidden": "Rolünüz arama sonuçlarını okuyamaz (izin: read:searches). Bu izni bir yönetici verir. Hiçbir şey değiştirilmedi.",
+    "deletedLead": "Bu arama silindi.",
+    "deletedText": "Bu bileşen için ayarlanan arama artık yok.",
+    "deletedHint": "Başka birini seçmek için Özelleştir'i, ardından Yapılandır'ı açın."
+  },
+  "configNotice": {
+    "configure": "Yapılandır"
+  }
+}

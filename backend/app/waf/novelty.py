@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
-from app.waf.inputs import HistoryFacts
+from app.waf.inputs import HistoryFacts, history_incomplete
 from app.waf.observations import BucketFacts
 
 
@@ -40,10 +40,7 @@ def verify_endpoint_history(
     """
     window_seconds = int((history_end - history_start).total_seconds())
     if bucket_seconds <= 0 or window_seconds % bucket_seconds:
-        return HistoryFacts(
-            complete=False,
-            reason="the history window is not divisible by the collection bucket width",
-        )
+        return history_incomplete("not_divisible")
     expected_count = window_seconds // bucket_seconds
     expected_starts = {
         history_start + timedelta(seconds=bucket_seconds * index)
@@ -52,64 +49,32 @@ def verify_endpoint_history(
     starts = {bucket.bucket_start for bucket in buckets}
     missing = len(expected_starts - starts)
     if missing:
-        return HistoryFacts(
-            complete=False,
-            reason=f"{missing} of {expected_count} history buckets were never collected",
-        )
+        return history_incomplete("never_collected", missing=missing, expected=expected_count)
     if len(buckets) != expected_count:
-        return HistoryFacts(
-            complete=False,
-            reason=(
-                f"the history contains {len(buckets)} bucket records for "
-                f"{expected_count} expected buckets"
-            ),
-        )
+        return history_incomplete("record_count", records=len(buckets), expected=expected_count)
 
     ordered = sorted(buckets, key=lambda bucket: bucket.bucket_start)
     for bucket in ordered:
         if bucket.bucket_seconds != bucket_seconds:
-            return HistoryFacts(
-                complete=False,
-                reason=(
-                    f"history bucket {bucket.bucket_start.isoformat()} used a different "
-                    "collection bucket width"
-                ),
-            )
+            return history_incomplete("bucket_width", bucket=bucket.bucket_start)
     for bucket in ordered:
         if bucket.groups_truncated:
-            return HistoryFacts(
-                complete=False,
-                reason=(
-                    f"history bucket {bucket.bucket_start.isoformat()} had truncated "
-                    "endpoint discovery"
-                ),
-            )
+            return history_incomplete("discovery_truncated", bucket=bucket.bucket_start)
     for bucket in ordered:
         if bucket.admission_truncated:
-            return HistoryFacts(
-                complete=False,
-                reason=(
-                    f"history bucket {bucket.bucket_start.isoformat()} had truncated "
-                    "endpoint admission"
-                ),
-            )
+            return history_incomplete("admission_truncated", bucket=bucket.bucket_start)
     for bucket in ordered:
         if bucket.profile_version != profile_version:
-            return HistoryFacts(
-                complete=False,
-                reason=(
-                    f"history bucket {bucket.bucket_start.isoformat()} used profile version "
-                    f"{bucket.profile_version}, not first-appearance version {profile_version}"
-                ),
+            return history_incomplete(
+                "profile_version",
+                bucket=bucket.bucket_start,
+                found=str(bucket.profile_version),
+                expected=profile_version,
             )
 
     for bucket in ordered:
         if semantics_normalizer_version(bucket.metric_semantics) != normalizer_version:
-            return HistoryFacts(
-                complete=False,
-                reason=(
-                    f"history bucket {bucket.bucket_start.isoformat()} is incompatible with "
-                    f"endpoint normalizer version {normalizer_version}"
-                ),
+            return history_incomplete(
+                "normalizer_version", bucket=bucket.bucket_start, version=normalizer_version
             )
     return HistoryFacts(complete=True)

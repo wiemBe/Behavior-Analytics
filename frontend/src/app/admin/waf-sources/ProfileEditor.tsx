@@ -10,12 +10,15 @@
 // pending validation is polled every five seconds until it ends.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { FieldMappingForm } from "@/components/fieldmapping/FieldMappingForm";
 import { MappingHistory } from "@/components/fieldmapping/MappingHistory";
 import { ValidationReport } from "@/components/fieldmapping/ValidationReport";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { ValueMapEditor, outcomeLabel } from "@/components/fieldmapping/ValueMapEditor";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import {
   ApiError,
   actionErrorMessage,
@@ -44,6 +47,11 @@ import {
   type MappingDraft,
 } from "@/lib/fieldMapping";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
+import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { ARROW_SEP, ENGLISH_WAF } from "@/components/waf/wafI18n";
+import { formatCount } from "@/lib/format";
+import { versionLabel } from "@/lib/behaviorI18n";
 
 import "@/components/ui/controls.css";
 
@@ -58,10 +66,16 @@ export interface EditorSource {
 export interface Prefill {
   draft: MappingDraft;
   /** Where the form's starting values came from, in words. */
-  origin: string;
+  origin:
+    | string
+    | { kind: "seeded"; name: string; version: number }
+    | { kind: "defaults" };
 }
 
 type Msg = { tone: "ok" | "crit" | "warn" | "info"; text: string } | null;
+
+const ADD_MARK = "+";
+const REMOVE_MARK = "−";
 
 function Notice({ msg }: { msg: Msg }) {
   if (!msg) return null;
@@ -75,14 +89,21 @@ function Notice({ msg }: { msg: Msg }) {
   );
 }
 
-function failure(err: unknown, verb: string): Msg {
+function failure(
+  err: unknown,
+  action: "change" | "read" | "validate",
+  i18n: BehaviorI18n = ENGLISH_WAF,
+): Msg {
   if (err instanceof ApiError && err.status === 403) {
     return {
       tone: "crit",
-      text: `Your role cannot ${verb} WAF sources (permission admin:waf). Nothing was changed.`,
+      text: i18n.t(`waf.editor.cannot${action[0].toUpperCase()}${action.slice(1)}`),
     };
   }
-  return { tone: "crit", text: `Not changed. ${actionErrorMessage(err)}` };
+  return {
+    tone: "crit",
+    text: i18n.t("waf.editor.notChanged", { message: actionErrorMessage(err, i18n.t) }),
+  };
 }
 
 export function ProfileEditor({
@@ -108,6 +129,13 @@ export function ProfileEditor({
   prefill: Prefill | null;
   pollMs?: number;
 }) {
+  const t = useTranslations("waf.editor");
+  const pageT = useTranslations("waf.admin.page");
+  const common = useTranslations("common");
+  const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
+  const { locale } = i18n;
+  const count = (value: number) => formatCount(value, locale);
   const [profile, setProfile] = useState<WafProfileOut | null>(initialProfile);
   const [catalog, setCatalog] = useState<PropertyCatalogOut | null>(initialCatalog);
   const [history, setHistory] = useState(initialHistory);
@@ -141,7 +169,7 @@ export function ProfileEditor({
   const confirmTrigger = useRef<HTMLButtonElement | null>(null);
 
   const changes = useMemo(() => draftChanges(schema, baseDraft, draft), [schema, baseDraft, draft]);
-  const errors = useMemo(() => draftErrors(schema, draft), [schema, draft]);
+  const errors = useMemo(() => draftErrors(schema, draft, i18n), [schema, draft, i18n]);
   const dirty = changes.total > 0;
 
   const typeName = profile?.log_source_type_name ?? source.typeName;
@@ -197,7 +225,7 @@ export function ProfileEditor({
     if (Object.keys(errors).length > 0) {
       setSaveMsg({
         tone: "crit",
-        text: "Not saved. Fix the fields marked below; nothing was sent.",
+        text: t("fixFields"),
       });
       return;
     }
@@ -239,17 +267,17 @@ export function ProfileEditor({
       if (previousVersion === null) {
         setSaveMsg({
           tone: "ok",
-          text: `Created version ${out.profile_version}. Collection stays off. Validation of version ${out.profile_version} has been requested.`,
+          text: t("createdVersion", { version: count(out.profile_version) }),
         });
       } else if (out.profile_version === previousVersion) {
         setSaveMsg({
           tone: "ok",
-          text: "Saved. This was a label change only, so the version and its validation are unchanged.",
+          text: t("savedLabel"),
         });
       } else {
         setSaveMsg({
           tone: "ok",
-          text: `Saved as version ${out.profile_version}. Collection is paused until it validates. Validation has been requested.`,
+          text: t("savedVersion", { version: count(out.profile_version) }),
         });
       }
       void refreshHistory();
@@ -258,13 +286,14 @@ export function ProfileEditor({
       if (err instanceof ApiError && err.status === 409) {
         setConflict(conflictInfo(err));
       } else if (err instanceof ApiError && err.status === 422) {
-        const text = serverMessage(err) || "The server rejected this mapping.";
-        const key = fieldForMessage(schema, draft, text);
+        const text = serverMessage(err, backendMessage) || t("serverRejected");
+        // The field is found in the server's own English: the property name is in it verbatim.
+        const key = fieldForMessage(schema, draft, serverMessage(err));
         if (key) setFieldErrors({ [key]: text });
         else setFormError(text);
-        setSaveMsg({ tone: "crit", text: "Not saved. The server rejected the mapping; see the message below." });
+        setSaveMsg({ tone: "crit", text: t("formRejected") });
       } else {
-        setSaveMsg(failure(err, "change"));
+        setSaveMsg(failure(err, "change", i18n));
       }
     } finally {
       setBusy(null);
@@ -281,11 +310,11 @@ export function ProfileEditor({
       setConflict(null);
       setSaveMsg({
         tone: "info",
-        text: `Loaded version ${next.profile_version}. Your edits are still in the form; review them against it.`,
+        text: t("loadedTheirs", { version: count(next.profile_version) }),
       });
       void refreshHistory();
     } catch (err) {
-      setSaveMsg(failure(err, "read"));
+      setSaveMsg(failure(err, "read", i18n));
     } finally {
       setBusy(null);
     }
@@ -298,16 +327,21 @@ export function ProfileEditor({
     try {
       const out = await api.validateWafProfile(source.id);
       setProfile(out);
-      setValidateMsg({ tone: "ok", text: `Validation of version ${out.profile_version} has been requested.` });
+      setValidateMsg({
+        tone: "ok",
+        text: t("validationRequested", { version: count(out.profile_version) }),
+      });
       void refreshHistory();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setValidateMsg({
           tone: "warn",
-          text: `Validation was not started. ${serverMessage(err) || "A validation is already running."}`,
+          text: t("validationNotStarted", {
+            message: serverMessage(err, backendMessage) || t("alreadyRunning"),
+          }),
         });
       } else {
-        setValidateMsg(failure(err, "validate"));
+        setValidateMsg(failure(err, "validate", i18n));
       }
     } finally {
       setBusy(null);
@@ -326,15 +360,20 @@ export function ProfileEditor({
       setCollectMsg({
         tone: "ok",
         text: enable
-          ? `Collection is enabled for version ${out.profile_version}.`
-          : "Collection is disabled. No searches run for this source.",
+          ? t("collectionOn", { version: count(out.profile_version) })
+          : t("collectionOff"),
       });
       void refreshHistory();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        setCollectMsg({ tone: "warn", text: `Not enabled. ${serverMessage(err) || "The current version is not valid."}` });
+        setCollectMsg({
+          tone: "warn",
+          text: t("notEnabled", {
+            message: serverMessage(err, backendMessage) || t("currentNotValid"),
+          }),
+        });
       } else {
-        setCollectMsg(failure(err, "change"));
+        setCollectMsg(failure(err, "change", i18n));
       }
     } finally {
       setBusy(null);
@@ -347,11 +386,12 @@ export function ProfileEditor({
     } catch (err) {
       setSaveMsg({
         tone: "warn",
-        text: `The property list could not be refreshed. ${
-          err instanceof ApiError && err.status === 403
-            ? "Your role cannot read it (permission admin:waf)."
-            : "The previous list is still shown."
-        }`,
+        text: t("catalogFailed", {
+          reason:
+            err instanceof ApiError && err.status === 403
+              ? t("catalogForbidden")
+              : t("catalogPrevious"),
+        }),
       });
     }
   }
@@ -363,9 +403,9 @@ export function ProfileEditor({
         .filter((s) => (instanceId ? s.instance_id === instanceId : true))
         .map((s) => ({
           id: s.log_source_id,
-          label: `${s.log_source_name} (v${s.profile_version})`,
+          label: `${s.log_source_name} (${versionLabel(formatCount(s.profile_version, locale))})`,
         })),
-    [siblings, source.id, instanceId],
+    [siblings, source.id, instanceId, locale],
   );
 
   async function copyFrom(id: string): Promise<string> {
@@ -373,27 +413,36 @@ export function ProfileEditor({
     try {
       other = await api.wafProfile(id);
     } catch (err) {
-      throw new Error(`Not copied. ${actionErrorMessage(err)}`);
+      throw new Error(t("notCopied", { message: actionErrorMessage(err, i18n.t) }));
     }
     const copied = draftFromProfile(schema, other);
     setDraft((d) => ({ ...copied, productLabel: d.productLabel }));
     setConfirmAt(null);
-    return `Copied from ${other.log_source_name} (version ${other.profile_version}). Nothing is saved until you save.`;
+    return t("copied", {
+      name: other.log_source_name,
+      version: count(other.profile_version),
+    });
   }
 
   // --- header ---------------------------------------------------------------
-  const stateInput = profile ? { ...profile, fields: profile.validation?.fields } : null;
-  const vState = stateInput ? validationState(stateInput, schema) : null;
-  const cState = stateInput ? collectionState(stateInput) : null;
+  const stateInput = profile
+    ? {
+        ...profile,
+        fields: profile.validation?.fields,
+        renderBackendMessage: backendMessage,
+      }
+    : null;
+  const vState = stateInput ? validationState(stateInput, schema, i18n) : null;
+  const cState = stateInput ? collectionState(stateInput, i18n) : null;
 
   const meta = (
     <>
-      <span className="muted num">QRadar id {source.qradarId}</span>
-      <span className="muted">{typeName ?? "log-source type unknown"}</span>
+      <span className="muted num">{t("qradarId", { id: count(source.qradarId) })}</span>
+      <span className="muted">{typeName ?? t("typeUnknown")}</span>
       {profile?.product_label && <span className="muted">{profile.product_label}</span>}
       {profile ? (
         <>
-          <span className="pill">Version {profile.profile_version}</span>
+          <span className="pill">{t("version", { version: count(profile.profile_version) })}</span>
           {vState && (
             <span className={`pill ${vState.tone === "neutral" ? "" : vState.tone}`}>
               {vState.label}
@@ -404,7 +453,7 @@ export function ProfileEditor({
           )}
         </>
       ) : (
-        <span className="pill">No profile yet</span>
+        <span className="pill">{t("noProfileYet")}</span>
       )}
     </>
   );
@@ -427,7 +476,7 @@ export function ProfileEditor({
       <div
         className="fm-confirm"
         role="region"
-        aria-label="Confirm the change"
+        aria-label={t("confirmLabel")}
         tabIndex={-1}
         ref={confirmRef}
         onKeyDown={(event) => {
@@ -437,32 +486,32 @@ export function ProfileEditor({
           }
         }}
       >
-        <h3>{creating ? "Create this profile?" : "Save this change?"}</h3>
+        <h3>{creating ? t("createQuestion") : t("saveQuestion")}</h3>
         {changeRows.length > 0 && (
-          <ul className="fm-changes" aria-label="Changed fields">
+          <ul className="fm-changes" aria-label={t("changedFields")}>
             {changeRows.map((c) => (
               <li key={c.key}>
                 {c.label}:{" "}
-                {c.from === null ? <span className="muted">not mapped</span> : <code>{c.from}</code>}
-                {" → "}
-                {c.to === null ? <span className="muted">not mapped</span> : <code>{c.to}</code>}
+                {c.from === null ? <span className="muted">{t("notMapped")}</span> : <code>{c.from}</code>}
+                {ARROW_SEP}
+                {c.to === null ? <span className="muted">{t("notMapped")}</span> : <code>{c.to}</code>}
               </li>
             ))}
           </ul>
         )}
         {changes.values.length > 0 && (
-          <ul className="fm-changes" aria-label="Changed values">
+          <ul className="fm-changes" aria-label={t("changedValues")}>
             {changes.values.map((v) => (
               <li key={v.outcome}>
-                {outcomeLabel(v.outcome)} values:{" "}
+                {t("valuesLine", { outcome: outcomeLabel(v.outcome, i18n) })}
                 {v.added.map((a) => (
                   <span key={`a-${a}`}>
-                    + <code>{a}</code>{" "}
+                    {ADD_MARK} <code>{a}</code>{" "}
                   </span>
                 ))}
                 {v.removed.map((r) => (
                   <span key={`r-${r}`}>
-                    − <code>{r}</code>{" "}
+                    {REMOVE_MARK} <code>{r}</code>{" "}
                   </span>
                 ))}
               </li>
@@ -470,34 +519,26 @@ export function ProfileEditor({
           </ul>
         )}
         {changes.labelChanged && !creating && (
-          <p className="fm-note">The product label changes to “{draft.productLabel.trim() || "none"}”.</p>
+          <p className="fm-note">
+            {t("labelChangesTo", { label: draft.productLabel.trim() || common("none") })}
+          </p>
         )}
         {creating ? (
-          <p>
-            The profile is created disabled. Collection from this source stays off until version 1
-            validates and you enable it. Validation starts now and runs a few bounded searches
-            against QRadar.
-          </p>
+          <p>{t("createExplains")}</p>
         ) : mapped ? (
-          <p>
-            Collection from this source pauses until version {nextVersion} validates. Validation
-            starts now and runs a few bounded searches against QRadar.
-          </p>
+          <p>{t("mappingExplains", { version: count(nextVersion) })}</p>
         ) : (
-          <p>
-            Only the product label changes. The version, its validation and collection are
-            unaffected.
-          </p>
+          <p>{t("labelExplains")}</p>
         )}
         <div className="actions">
           <button type="button" className="action" disabled={busy !== null} onClick={() => void save()}>
             {busy === "save"
-              ? "Saving…"
+              ? common("saving")
               : creating
-                ? "Create profile"
+                ? t("createProfile")
                 : labelOnly
-                  ? "Save label"
-                  : `Save as version ${nextVersion}`}
+                  ? t("saveLabel")
+                  : t("saveAsVersion", { version: count(nextVersion) })}
           </button>
           <button
             type="button"
@@ -505,7 +546,7 @@ export function ProfileEditor({
             disabled={busy !== null}
             onClick={closeConfirmation}
           >
-            Cancel
+            {t("cancel")}
           </button>
         </div>
       </div>
@@ -516,10 +557,12 @@ export function ProfileEditor({
     <div className="fm-bar">
       <p className="fm-bar-state">
         {creating
-          ? "A new profile. Nothing is saved yet."
+          ? t("newProfile")
           : dirty
-            ? `${changes.total} unsaved ${changes.total === 1 ? "change" : "changes"}.`
-            : "No unsaved changes."}
+            ? t(changes.total === 1 ? "unsavedOne" : "unsavedMany", {
+                count: count(changes.total),
+              })
+            : t("noChanges")}
       </p>
       <div className="actions">
         <button
@@ -528,7 +571,7 @@ export function ProfileEditor({
           disabled={busy !== null || (!creating && !dirty) || confirmAt === where}
           onClick={(event) => review(where, event.currentTarget)}
         >
-          {creating ? "Review and create" : "Review and save"}
+          {creating ? t("reviewCreate") : t("reviewSave")}
         </button>
         {!creating && (
           <button
@@ -537,49 +580,55 @@ export function ProfileEditor({
             disabled={busy !== null || !dirty}
             onClick={discard}
           >
-            Discard changes
+            {t("discard")}
           </button>
         )}
       </div>
     </div>
   );
 
-  const block = profile ? enableBlockReason(profile) : null;
+  const block = profile ? enableBlockReason(profile, i18n) : null;
+  const prefillOrigin =
+    typeof prefill?.origin === "string"
+      ? prefill.origin
+      : prefill?.origin.kind === "seeded"
+        ? pageT("prefillSeeded", {
+            name: prefill.origin.name,
+            version: count(prefill.origin.version),
+          })
+        : prefill?.origin.kind === "defaults"
+          ? pageT("prefillDefaults")
+          : t("defaultsOrigin");
 
   return (
     <>
-      <PageHeader title={source.name} meta={meta} />
+      <PageHeader guide={guideFor("/admin/waf-sources/[logSourceId]")} title={source.name} meta={meta} />
 
       {creating && (
         <p className="fm-banner is-info" role="status">
           <span>
-            <strong>This log source has no WAF profile.</strong>{" "}
-            {prefill?.origin ?? "Prefilled from the schema defaults."} Review the mapping, then
-            create the profile. Nothing is saved until you confirm.
+            <strong>{t("noProfile")}</strong> {prefillOrigin} {t("createTail")}
           </span>
         </p>
       )}
 
       {conflict && (
         <div className="fm-banner is-warn" role="alert">
-          <span>{conflictMessage(conflict)}</span>
+          <span>{conflictMessage(conflict, i18n, backendMessage)}</span>
           <button
             type="button"
             className="action secondary"
             disabled={busy !== null}
             onClick={() => void reloadTheirs()}
           >
-            {busy === "reload" ? "Loading…" : "Reload their version"}
+            {busy === "reload" ? t("conflictLoading") : t("conflictReload")}
           </button>
         </div>
       )}
 
       <section aria-labelledby="fm-mapping-h" className="fm-section">
-        <h2 id="fm-mapping-h">Field mapping</h2>
-        <p className="subtitle">
-          The QRadar property each logical field is read from for this source. Changing a
-          property pauses collection until the new version validates.
-        </p>
+        <h2 id="fm-mapping-h">{t("mappingTitle")}</h2>
+        <p className="subtitle">{t("mappingNote")}</p>
         <FieldMappingForm
           schema={schema}
           draft={draft}
@@ -597,7 +646,7 @@ export function ProfileEditor({
           copyFrom={{ options: copyOptions, onCopy: copyFrom }}
         />
         <div className="fm-label-row">
-          <label htmlFor="fm-product-label">Product label</label>
+          <label htmlFor="fm-product-label">{t("productLabel")}</label>
           <input
             id="fm-product-label"
             className="field fm-input"
@@ -609,7 +658,7 @@ export function ProfileEditor({
             onChange={(e) => setDraft({ ...draft, productLabel: e.target.value })}
           />
           <span id="fm-product-label-d" className="muted">
-            An operator note, for example the WAF product. Never parsed.
+            {t("productLabelNote")}
           </span>
         </div>
         {formError && (
@@ -624,7 +673,7 @@ export function ProfileEditor({
 
       {profile && (
         <section aria-labelledby="fm-validation-h" className="fm-section">
-          <h2 id="fm-validation-h">Validation</h2>
+          <h2 id="fm-validation-h">{t("validationTitle")}</h2>
           <div className="fm-actions-line">
             <button
               type="button"
@@ -632,11 +681,15 @@ export function ProfileEditor({
               disabled={busy !== null || pending}
               onClick={() => void validateNow()}
             >
-              {busy === "validate" ? "Requesting…" : pending ? "Validation running" : "Validate again"}
+              {busy === "validate"
+                ? t("requesting")
+                : pending
+                  ? t("validationRunning")
+                  : t("validateAgain")}
             </button>
             {dirty && (
               <span className="muted">
-                Validates the saved version {profile.profile_version}, not your unsaved edits.
+                {t("validatesSaved", { version: count(profile.profile_version) })}
               </span>
             )}
           </div>
@@ -659,10 +712,16 @@ export function ProfileEditor({
         const now = (draft.mapping[vm.field] ?? "").trim();
         return (
           <section key={vm.field} aria-labelledby={`fm-values-${vm.field}`} className="fm-section">
-            <h2 id={`fm-values-${vm.field}`}>{label} values</h2>
+            <h2 id={`fm-values-${vm.field}`}>{t("valuesTitle", { label })}</h2>
             <p className="subtitle">
-              Which raw {label.toLowerCase()} values count as {vm.outcomes.map((o) => outcomeLabel(o).toLowerCase()).join(" and ")}.
-              Saving this map is a mapping change: it bumps the version and validates again.
+              {t("valuesNote", {
+                label: label.toLocaleLowerCase(i18n.locale === "tr" ? "tr-TR" : "en-US"),
+                outcomes: vm.outcomes
+                  .map((o) =>
+                    outcomeLabel(o, i18n).toLocaleLowerCase(i18n.locale === "tr" ? "tr-TR" : "en-US"),
+                  )
+                  .join(i18n.locale === "tr" ? " ve " : " and "),
+              })}
             </p>
             <ValueMapEditor
               fieldLabel={label}
@@ -673,12 +732,12 @@ export function ProfileEditor({
               disabled={busy !== null}
               blockedReason={
                 unmapped
-                  ? `No property is mapped for ${label}, so values cannot be assigned yet.`
+                  ? t("blockedReason", { label })
                   : null
               }
               discoveredNote={
                 actionReport && seenUnder && now && seenUnder !== now
-                  ? `These values were counted under ${seenUnder}; the mapping now reads ${now}. Validate again to refresh them.`
+                  ? t("discoveredNote", { seen: seenUnder, now })
                   : null
               }
               onChange={(next) => setDraft({ ...draft, actionMap: next })}
@@ -696,14 +755,15 @@ export function ProfileEditor({
 
       {profile && (
         <section aria-labelledby="fm-collection-h" className="fm-section">
-          <h2 id="fm-collection-h">Collection</h2>
+          <h2 id="fm-collection-h">{t("collectionTitle")}</h2>
           <p className="fm-state-line">
             <strong>{cState?.label}</strong>
             {profile.validated_at && vState?.kind === "valid" && (
               <span className="muted">
-                {" "}
-                · version {profile.profile_version} validated{" "}
-                <UtcTime value={profile.validated_at} />
+                {t.rich("validatedAt", {
+                  version: count(profile.profile_version),
+                  time: () => <UtcTime value={profile.validated_at as string} />,
+                })}
               </span>
             )}
           </p>
@@ -715,7 +775,7 @@ export function ProfileEditor({
                 disabled={busy !== null}
                 onClick={() => void toggleCollection(false)}
               >
-                Disable collection
+                {t("disableCollection")}
               </button>
             ) : (
               <button
@@ -725,7 +785,7 @@ export function ProfileEditor({
                 aria-describedby={block ? "fm-enable-why" : undefined}
                 onClick={() => void toggleCollection(true)}
               >
-                Enable collection
+                {t("enableCollection")}
               </button>
             )}
             {!profile.enabled && block && (
@@ -740,11 +800,10 @@ export function ProfileEditor({
 
       {profile && (
         <section aria-labelledby="fm-history-h" className="fm-section">
-          <h2 id="fm-history-h">History</h2>
+          <h2 id="fm-history-h">{t("historyTitle")}</h2>
           {history === null ? (
             <p className="fm-note is-crit" role="alert">
-              The history could not be loaded. Reload the page to try again; the profile itself is
-              unaffected.
+              {t("historyFailed")}
             </p>
           ) : (
             <MappingHistory schema={schema} entries={history} />

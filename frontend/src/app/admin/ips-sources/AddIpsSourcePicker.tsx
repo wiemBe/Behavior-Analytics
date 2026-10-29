@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 
 // Choosing which log source to configure.
@@ -31,6 +32,7 @@ export function AddIpsSourcePicker({
   instanceId: string | null;
   defaultOpen?: boolean;
 }) {
+  const t = useTranslations("ips.picker");
   const [open, setOpen] = useState(defaultOpen);
   const [q, setQ] = useState("");
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -51,9 +53,9 @@ export function AddIpsSourcePicker({
             if (!cancelled) {
               setState({
                 kind: "error",
-                text: `The log sources could not be listed. ${
+                text: `${t("listFailed")} ${
                   err instanceof ApiError && err.status === 403
-                    ? "Your role cannot list them (permission admin:ips)."
+                    ? t("forbiddenList")
                     : actionErrorMessage(err)
                 }`,
               });
@@ -66,7 +68,7 @@ export function AddIpsSourcePicker({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [open, q, instanceId]);
+  }, [open, q, instanceId, t]);
 
   return (
     <div className="fm-add">
@@ -77,19 +79,18 @@ export function AddIpsSourcePicker({
         aria-controls="fm-picker"
         onClick={() => setOpen((o) => !o)}
       >
-        Add IPS source
+        {t("add")}
       </button>
       {open && (
-        <div id="fm-picker" className="fm-picker panel" role="region" aria-label="Choose a log source">
+        <div id="fm-picker" className="fm-picker panel" role="region" aria-label={t("region")}>
           {!instanceId ? (
             <p className="fm-note is-crit" role="alert">
-              The log sources cannot be listed: no QRadar instance is known yet, because the
-              platform has not collected any log source. Run a log-source sync first.
+              {t("noInstance")}
             </p>
           ) : (
             <>
               <div className="fm-picker-search">
-                <label htmlFor={searchId}>Search log sources by name</label>
+                <label htmlFor={searchId}>{t("searchLabel")}</label>
                 <input
                   id={searchId}
                   type="search"
@@ -101,7 +102,7 @@ export function AddIpsSourcePicker({
               </div>
               {state.kind === "loading" && (
                 <p className="fm-note" role="status">
-                  Searching log sources…
+                  {t("searching")}
                 </p>
               )}
               {state.kind === "error" && (
@@ -111,29 +112,25 @@ export function AddIpsSourcePicker({
               )}
               {state.kind === "ready" && state.items.length === 0 && (
                 <p className="fm-empty" role="status">
-                  {q.trim()
-                    ? `No log source without an IPS profile has a name containing “${q.trim()}”.`
-                    : "Every known log source already has an IPS profile."}
+                  {q.trim() ? t("emptyQuery", { q: q.trim() }) : t("emptyAll")}
                 </p>
               )}
               {state.kind === "ready" && state.items.length > 0 && (
                 <>
-                  <ul className="fm-candidates" aria-label="Log sources without an IPS profile">
+                  <ul className="fm-candidates" aria-label={t("listLabel")}>
                     {state.items.map((c) => (
                       <li key={c.log_source_id}>
                         <Link href={`/admin/ips-sources/${c.log_source_id}`}>{c.name}</Link>
                         <span className="muted">
-                          QRadar id {c.qradar_id}
+                          {t("qradarId", { id: c.qradar_id })}
                           {c.type_name ? ` · ${c.type_name}` : ""}
                         </span>
-                        {c.source_class === "IPS" && <span className="pill info">Classed as IPS</span>}
+                        {c.source_class === "IPS" && <span className="pill info">{t("classedIps")}</span>}
                       </li>
                     ))}
                   </ul>
                   {state.items.length >= LIMIT && (
-                    <p className="fm-note">
-                      Showing the first {LIMIT}. Narrow the search to see others.
-                    </p>
+                    <p className="fm-note">{t("limited", { limit: LIMIT })}</p>
                   )}
                 </>
               )}

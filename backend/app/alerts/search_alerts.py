@@ -30,6 +30,7 @@ from app.alerts.dispatcher import AlertEnqueuer
 from app.alerts.fingerprint import search_failure_fingerprint, search_threshold_fingerprint
 from app.alerts.service import AlertInput, AlertResult, AlertService
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef, render
 from app.models.enums import ExecutionStatus, Severity
 from app.models.search import ScheduledSearch, SearchExecution
 
@@ -84,21 +85,36 @@ class SearchAlertEvaluator:
             if execution.truncated:
                 return None
             return await self.alerts.resolve_by_fingerprint(
-                fingerprint, actor="search-scheduler", reason="result back within threshold"
+                fingerprint,
+                actor="search-scheduler",
+                reason_message=MessageRef("alert.search.threshold.recovered"),
             )
 
         observed = float(execution.result_count or 0)
+        title_message = MessageRef("alert.threshold.crossed", {"name": search.name})
+        description_message = MessageRef(
+            (
+                "alert.search.threshold.lower_bound"
+                if execution.truncated
+                else "alert.search.threshold.exact"
+            ),
+            {
+                "name": search.name,
+                "observed": observed,
+                "operator": search.threshold_operator,
+                "threshold": search.threshold_value,
+            },
+        )
         return await self.alerts.open_or_update(
             AlertInput(
                 fingerprint=fingerprint,
-                title=f"{search.name} crossed its threshold",
+                title=render(title_message),
+                title_message=title_message,
                 severity=search.severity,
                 source_type="scheduled_search",
                 source_id=search.id,
-                description=(
-                    f"{search.name} returned {'at least ' if execution.truncated else ''}"
-                    f"{observed:g} ({search.threshold_operator} {search.threshold_value:g})"
-                ),
+                description=render(description_message),
+                description_message=description_message,
                 evidence={
                     "observed_value": observed,
                     "expected_value": search.threshold_value,
@@ -123,26 +139,36 @@ class SearchAlertEvaluator:
 
         if execution.status == ExecutionStatus.COMPLETED:
             return await self.alerts.resolve_by_fingerprint(
-                fingerprint, actor="search-scheduler", reason="search executed successfully"
+                fingerprint,
+                actor="search-scheduler",
+                reason_message=MessageRef("alert.search.failure.recovered"),
             )
 
         if search.consecutive_failures < self.settings.search_failure_alert_after:
             return None
 
+        title_message = MessageRef("alert.search.failure.title", {"name": search.name})
+        description_message = MessageRef(
+            "alert.search.failure.description",
+            {
+                "name": search.name,
+                "failures": search.consecutive_failures,
+                "error_type": str(execution.error_type or execution.status),
+            },
+        )
         return await self.alerts.open_or_update(
             AlertInput(
                 fingerprint=fingerprint,
                 # A detection that is not running is a control failure, not a
                 # finding; severity is fixed rather than inherited from the
                 # search's own finding severity.
-                title=f"{search.name} is failing to run",
+                title=render(title_message),
+                title_message=title_message,
                 severity=Severity.HIGH,
                 source_type="scheduled_search",
                 source_id=search.id,
-                description=(
-                    f"{search.name} failed {search.consecutive_failures} consecutive runs "
-                    f"({execution.error_type or execution.status})"
-                ),
+                description=render(description_message),
+                description_message=description_message,
                 evidence={
                     "observed_value": float(search.consecutive_failures),
                     "reason": execution.error_message,

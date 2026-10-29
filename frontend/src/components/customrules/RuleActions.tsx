@@ -2,11 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { api, type CustomRule } from "@/lib/api";
 
 export function RuleActions({ rule }: { rule: CustomRule }) {
   const router = useRouter();
+  const t = useTranslations("customRules.actions");
   const [pending, setPending] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +24,9 @@ export function RuleActions({ rule }: { rule: CustomRule }) {
       });
       router.refresh();
     } catch {
-      setError(`The rule could not be ${rule.enabled ? "disabled" : "enabled"}. Reload it and try again.`);
+      setError(t("toggleFailed", {
+        action: rule.enabled ? t("disabledAction") : t("enabledAction"),
+      }));
     } finally {
       setPending(false);
     }
@@ -36,7 +40,7 @@ export function RuleActions({ rule }: { rule: CustomRule }) {
       await api.deleteCustomRule(rule.id);
       router.push("/custom-rules");
     } catch {
-      setError("The rule could not be deleted. Reload it and try again.");
+      setError(t("deleteFailed"));
       setPending(false);
     }
   }
@@ -44,18 +48,18 @@ export function RuleActions({ rule }: { rule: CustomRule }) {
   return (
     <div className="cr-actions">
       <button type="button" className="action secondary" disabled={pending} onClick={() => void toggle()}>
-        {pending ? "Saving…" : rule.enabled ? "Disable" : "Enable"}
+        {pending ? t("saving") : rule.enabled ? t("disable") : t("enable")}
       </button>
       {!confirming ? (
         <button type="button" className="action secondary" disabled={pending} onClick={() => setConfirming(true)}>
-          Delete
+          {t("delete")}
         </button>
       ) : (
         <div className="cr-delete-confirm" role="alert">
-          <p>Delete this rule? If it has an open alert, the alert will be resolved before the rule and its breach history are removed.</p>
+          <p>{t("confirm")}</p>
           <div className="actions">
-            <button type="button" className="action" disabled={pending} onClick={() => void remove()}>Delete rule</button>
-            <button type="button" className="action secondary" disabled={pending} onClick={() => setConfirming(false)}>Keep rule</button>
+            <button type="button" className="action" disabled={pending} onClick={() => void remove()}>{t("deleteRule")}</button>
+            <button type="button" className="action secondary" disabled={pending} onClick={() => setConfirming(false)}>{t("keepRule")}</button>
           </div>
         </div>
       )}

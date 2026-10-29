@@ -41,6 +41,7 @@ from app.custom_rules.alerts import (
     CustomRuleAlertSink,
     NoOpCustomRuleAlertSink,
     alerting_mode,
+    extra_resolve_message,
     extra_resolve_reason,
 )
 from app.custom_rules.catalog import catalog_entry
@@ -51,6 +52,7 @@ from app.custom_rules.evaluate import (
     FoldOutput,
     InterpretedReading,
     collection_silence,
+    collection_silence_message,
     fold_rule,
     interpret,
     latest_closed_bucket,
@@ -65,6 +67,7 @@ from app.custom_rules.loaders import (
     load_pw_values,
     load_waf_endpoints,
 )
+from app.i18n.messages import MessageRef, render
 from app.models.custom_rule import CustomRule, CustomRuleBreach, CustomRuleWatermark
 from app.models.enums import (
     AnomalyState,
@@ -88,6 +91,7 @@ _RULE_COLUMNS = (
     "last_evaluated_at",
     "last_status",
     "last_status_reason",
+    "last_status_reason_i18n",
 )
 _BREACH_COLUMNS = (
     "state",
@@ -169,6 +173,7 @@ class _KindPlan:
     write_through: datetime | None
     #: Set when the kind has gone silent past its collection bound.
     stale_reason: str | None = None
+    stale_reason_message: MessageRef | None = None
 
 
 class CustomRuleEngine:
@@ -336,6 +341,14 @@ class CustomRuleEngine:
                     now=now,
                     bound_seconds=stale_bound_seconds(cadences[kind], settle, interval),
                 )
+                plans[kind].stale_reason_message = collection_silence_message(
+                    watermark=watermark,
+                    closed=closed,
+                    now=now,
+                    bound_seconds=stale_bound_seconds(
+                        cadences[kind], settle, interval
+                    ),
+                )
         return plans
 
     async def _cadence_seconds(self, kinds: list[str]) -> dict[str, int]:
@@ -408,15 +421,23 @@ class CustomRuleEngine:
     def _fold(self, item: _Loaded, plans: dict[str, _KindPlan], now: datetime) -> FoldOutput:
         rule = item.rule
         kind = _value(rule.subject_kind)
-        retired, retired_reason = _retired(item)
-        collected, family_reason = _family_collected(kind, self.settings)
+        retired, retired_reason_message = _retired_message(item)
+        retired_reason = (
+            render(retired_reason_message) if retired_reason_message is not None else None
+        )
+        collected, family_reason_message = _family_collected_message(kind, self.settings)
+        family_reason = (
+            render(family_reason_message) if family_reason_message is not None else None
+        )
         plan = plans.get(kind)
         readings: tuple[InterpretedReading, ...] = ()
         stale_reason = None
+        stale_reason_message = None
         if _evaluable(item, self.settings) and plan is not None and not plan.seeded:
             # A stale kind has an empty grid. Readings are not judged, and a
             # disabled or retired rule never takes the kind's stale status.
             stale_reason = plan.stale_reason
+            stale_reason_message = plan.stale_reason_message
             if stale_reason is None:
                 readings = tuple(self._readings(item, plan))
         breach = _breach_state(item.breach_row) if item.breach_row is not None else None
@@ -447,6 +468,9 @@ class CustomRuleEngine:
                 readings=readings,
                 now=now,
                 collection_stale_reason=stale_reason,
+                retired_reason_message=retired_reason_message,
+                family_reason_message=family_reason_message,
+                collection_stale_reason_message=stale_reason_message,
             )
         )
 
@@ -468,7 +492,8 @@ class CustomRuleEngine:
                     value=reading.value,
                     measurement=reading.measurement,
                     in_maintenance=True,
-                    reason="the source is in maintenance",
+                    reason=render(MessageRef("custom_rule.status.maintenance")),
+                    reason_message=MessageRef("custom_rule.status.maintenance"),
                 )
             readings.append(reading)
         return readings
@@ -493,6 +518,11 @@ class CustomRuleEngine:
             if not output.preserve_status:
                 rule.last_status = output.status
                 rule.last_status_reason = output.status_reason
+                rule.last_status_reason_i18n = (
+                    output.status_reason_message.to_wire()
+                    if output.status_reason_message is not None
+                    else None
+                )
             rule.active_breach_id = None if output.breach is None else output.breach.id
             for column in _RULE_COLUMNS:
                 flag_modified(rule, column)
@@ -590,14 +620,25 @@ class CustomRuleEngine:
                 breach_open=output.breach is not None,
                 alerting_enabled=paging,
             )
+            reason_message = extra_resolve_message(
+                output.status,
+                output.status_reason_message,
+                breach_open=output.breach is not None,
+                alerting_enabled=paging,
+            )
             if reason is None or item.rule.id in seen:
                 continue
-            await self.sink.resolve(self._halt_event(item, reason))
+            await self.sink.resolve(self._halt_event(item, reason, reason_message))
             seen.add(item.rule.id)
         if paging and alerting_sink is not None:
             await alerting_sink.flush()
 
-    def _halt_event(self, item: _Loaded, reason: str) -> CustomRuleAlertEvent:
+    def _halt_event(
+        self,
+        item: _Loaded,
+        reason: str,
+        reason_message: MessageRef | None,
+    ) -> CustomRuleAlertEvent:
         """A resolve the fold did not emit. The breach row is left as the fold wrote it."""
         rule = item.rule
         breach = item.breach_row
@@ -637,6 +678,7 @@ class CustomRuleEngine:
             last_bucket_start=end,
             unmeasured_buckets=unmeasured,
             reason=reason,
+            reason_message=reason_message,
         )
 
 
@@ -676,63 +718,87 @@ _FAMILY_ALWAYS_COLLECTED = frozenset({_LOG_SOURCE, _FLEET_CLASS})
 
 
 def _family_collected(kind: str, settings: Settings) -> tuple[bool, str | None]:
+    collected, message = _family_collected_message(kind, settings)
+    return collected, render(message) if message is not None else None
+
+
+def _family_collected_message(
+    kind: str, settings: Settings
+) -> tuple[bool, MessageRef | None]:
     if kind == _WAF_ENDPOINT:
         if settings.waf_collection_enabled:
             return True, None
-        return False, "waf_collection_enabled is off"
+        return False, MessageRef(
+            "custom_rule.family.collection_off", {"setting": "waf_collection_enabled"}
+        )
     if kind in (_IPS_ENTITY, _IPS_SOURCE):
         if settings.ips_collection_enabled:
             return True, None
-        return False, "ips_collection_enabled is off"
+        return False, MessageRef(
+            "custom_rule.family.collection_off", {"setting": "ips_collection_enabled"}
+        )
     if kind == _PW_VALUE:
         if settings.pw_collection_enabled:
             return True, None
-        return False, "pw_collection_enabled is off"
+        return False, MessageRef(
+            "custom_rule.family.collection_off", {"setting": "pw_collection_enabled"}
+        )
     if kind in _FAMILY_ALWAYS_COLLECTED:
         return True, None
     # An unknown kind is never judged: the default must not be "collected".
-    return False, f"no collection family is known for subject kind {kind}"
+    return False, MessageRef("custom_rule.family.unknown", {"kind": kind})
 
 
 def _retired(item: _Loaded) -> tuple[bool, str | None]:
+    retired, message = _retired_message(item)
+    return retired, render(message) if message is not None else None
+
+
+def _retired_message(item: _Loaded) -> tuple[bool, MessageRef | None]:
     kind = _value(item.rule.subject_kind)
     if kind == _FLEET_CLASS:
         return False, None
     if kind == _WAF_ENDPOINT:
         endpoint = item.endpoint
         if endpoint is None:
-            return True, "the subject no longer exists"
+            return True, MessageRef("custom_rule.subject.missing")
         if not endpoint.is_active:
             if endpoint.retired_at is not None:
-                return True, f"the endpoint was retired at {endpoint.retired_at.isoformat()}"
-            return True, "the endpoint is retired"
+                return True, MessageRef(
+                    "custom_rule.subject.endpoint_retired_at",
+                    {"retired_at": endpoint.retired_at},
+                )
+            return True, MessageRef("custom_rule.subject.endpoint_retired")
         return False, None
     if kind == _IPS_ENTITY:
         entity = item.entity
         if entity is None:
-            return True, "the subject no longer exists"
+            return True, MessageRef("custom_rule.subject.missing")
         if not entity.active:
             if entity.retired_at is not None:
-                return True, f"the entity was retired at {entity.retired_at.isoformat()}"
-            return True, "the entity is retired"
+                return True, MessageRef(
+                    "custom_rule.subject.entity_retired_at",
+                    {"retired_at": entity.retired_at},
+                )
+            return True, MessageRef("custom_rule.subject.entity_retired")
         return False, None
     if kind == _PW_VALUE:
         value = item.pw_value
         if value is None:
-            return True, "the subject no longer exists"
+            return True, MessageRef("custom_rule.subject.missing")
         # A pinned value is never retired by idleness. One that is no longer pinned is a
         # value the rule may not depend on (design §G.10.2): fail closed.
         if not value.pinned:
-            return True, "the value is no longer pinned"
+            return True, MessageRef("custom_rule.subject.value_unpinned")
         if not value.active:
-            return True, "the value is retired"
+            return True, MessageRef("custom_rule.subject.value_retired")
         return False, None
     if kind in (_LOG_SOURCE, _IPS_SOURCE):
         if item.source is None:
-            return True, "the subject no longer exists"
+            return True, MessageRef("custom_rule.subject.missing")
         return False, None
     # An unknown kind has no retirement branch: it is retired, never evaluated.
-    return True, f"no retirement rule is known for subject kind {kind}"
+    return True, MessageRef("custom_rule.subject.unknown_retirement", {"kind": kind})
 
 
 def _label(item: _Loaded) -> str:

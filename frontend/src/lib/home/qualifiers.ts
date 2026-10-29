@@ -18,12 +18,58 @@ export type Qualifier =
 
 const n = (value: number) => formatCount(value);
 
-export function insufficient(reason: string): Qualifier {
-  return { kind: "INSUFFICIENT_DATA", reason };
+/**
+ * Why a derivation has nothing to show, as a code with its values. The components translate the
+ * code; the English `reason` stays on the qualifier for callers that print it as it is. The code
+ * rides beside the object (a side table), not in it, because callers compare qualifiers
+ * structurally.
+ */
+export type ReasonCode =
+  | "NO_CLASS_COMPLETE"
+  | "NO_STEP"
+  | "NO_STEP_COMPLETE"
+  | "NO_MONITORED"
+  | "NO_VERDICT"
+  | "NO_SNAPSHOT"
+  | "SNAPSHOT_UNCONFIRMED"
+  | "INVALID_RANGE";
+
+export interface ReasonInfo {
+  code: ReasonCode;
+  values?: Record<string, number>;
 }
 
-export function notCollected(reason: string): Qualifier {
-  return { kind: "NOT_COLLECTED", reason };
+const REASONS = new WeakMap<object, ReasonInfo>();
+const WORDED = new WeakSet<object>();
+
+/** The code (and values) a derivation gave a qualifier, or null for a qualifier worded elsewhere. */
+export function reasonInfo(q: Qualifier): ReasonInfo | null {
+  return REASONS.get(q) ?? null;
+}
+
+/**
+ * Marks a qualifier whose `text` a widget already wrote in the interface language, so the frame
+ * shows that text as it is. Every other PARTIAL / TRUNCATED qualifier is worded from its values.
+ */
+export function worded<Q extends Qualifier>(q: Q): Q {
+  WORDED.add(q);
+  return q;
+}
+
+export function isWorded(q: Qualifier): boolean {
+  return WORDED.has(q);
+}
+
+export function insufficient(reason: string, code?: ReasonInfo): Qualifier {
+  const q: Qualifier = { kind: "INSUFFICIENT_DATA", reason };
+  if (code) REASONS.set(q, code);
+  return q;
+}
+
+export function notCollected(reason: string, code?: ReasonInfo): Qualifier {
+  const q: Qualifier = { kind: "NOT_COLLECTED", reason };
+  if (code) REASONS.set(q, code);
+  return q;
 }
 
 /** "270 of 288 intervals collected" */

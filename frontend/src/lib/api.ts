@@ -3,6 +3,9 @@
 // All requests go through the backend API. The browser holds no QRadar
 // credentials and never contacts QRadar or the MCP service directly.
 
+import type { TextTranslator } from "@/i18n/textTranslator";
+import { missingPermission } from "@/lib/refusal";
+
 const PUBLIC_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
 function baseUrl(): string {
@@ -251,12 +254,18 @@ export interface HistoryWindow {
   available: boolean;
   limited_by: string[];
   reason: string | null;
+  /** The registry code of `reason` and its raw values (MSG-8a); null when it has none. */
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
 }
 
 export interface HistoryGap {
   start: string;
   end: string;
   reason: string;
+  /** Null on a gap stored before codes existed. */
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
 }
 
 /** One log source of a console-wide reading: its key and, when known, its name. */
@@ -283,6 +292,9 @@ export interface HistoryScope {
   started_at: string | null;
   finished_at: string | null;
   reason: string | null;
+  /** Null on a row written before codes existed, and on a sentence that has none. */
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   last_error_class: string | null;
   last_error_at: string | null;
   searches: number | null;
@@ -301,6 +313,8 @@ export interface HistoryScope {
   sources_silent_count: number | null;
   progress_unreadable: boolean;
   later_yes: string;
+  later_yes_code?: string | null;
+  later_yes_params?: Record<string, unknown> | null;
 }
 
 export interface HistorySource {
@@ -308,16 +322,22 @@ export interface HistorySource {
   name: string;
   profile_enabled: boolean;
   later_yes: string;
+  later_yes_code?: string | null;
+  later_yes_params?: Record<string, unknown> | null;
 }
 
 export interface HistoryFamily {
   family: HistoryFamilyKey | string;
   collection_enabled: boolean;
   collection_reason: string;
+  collection_reason_code?: string | null;
+  collection_reason_params?: Record<string, unknown> | null;
   window: HistoryWindow;
   scopes: HistoryScope[];
   sources: HistorySource[] | null;
   later_yes: string | null;
+  later_yes_code?: string | null;
+  later_yes_params?: Record<string, unknown> | null;
 }
 
 export interface HistoryConsole {
@@ -327,6 +347,8 @@ export interface HistoryConsole {
   mode: HistoryConsoleMode;
   families: HistoryFamily[];
   message: string | null;
+  message_code?: string | null;
+  message_params?: Record<string, unknown> | null;
 }
 
 export interface HistoryFamilyEstimate {
@@ -339,7 +361,11 @@ export interface HistoryFamilyEstimate {
   reduced: boolean;
   refused: boolean;
   reason: string;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   assumptions: string[];
+  /** One reference per assumption, parallel to `assumptions`; null for words without a code. */
+  assumption_codes?: ({ code: string; params: Record<string, unknown> } | null)[];
 }
 
 export interface HistoryConsoleEstimate {
@@ -475,6 +501,9 @@ export interface SearchExecution {
   truncated: boolean;
   error_type: string | null;
   error_message: string | null;
+  /** The code and raw values of a fixed `error_message` (MSG-8b); absent for free text. */
+  error_message_code?: string | null;
+  error_message_params?: Record<string, unknown> | null;
   retry_count: number;
   threshold_breached: boolean;
 }
@@ -573,6 +602,11 @@ export interface DiscoveredValue {
   events: number;
 }
 
+export interface BackendMessageRef {
+  code: string;
+  params: Record<string, unknown>;
+}
+
 export interface FieldValidationOut {
   field: string;
   property_name: string | null;
@@ -589,11 +623,14 @@ export interface FieldValidationOut {
   values_truncated: boolean;
   discovered_values: DiscoveredValue[];
   detail: string | null;
+  detail_code?: string | null;
+  detail_params?: Record<string, unknown> | null;
 }
 
 export interface ValidationReportOut {
   status: WafValidationStatus;
   reasons: string[];
+  reason_codes?: (BackendMessageRef | null)[] | null;
   total_events: number | null;
   window_start: string;
   window_end: string;
@@ -630,6 +667,8 @@ export interface WafProfileOut {
   validation_requested_by: string | null;
   collection_eligible: boolean;
   ineligible_reason: string | null;
+  ineligible_reason_code?: string | null;
+  ineligible_reason_params?: Record<string, unknown> | null;
   updated_by: string | null;
   updated_at: string;
 }
@@ -645,6 +684,7 @@ export interface WafProfileHistoryEntryOut {
   mapping_after: FieldMapping | null;
   outcome: string | null;
   reasons: string[] | null;
+  reason_codes?: (BackendMessageRef | null)[] | null;
 }
 
 export interface WafCandidateOut {
@@ -687,6 +727,8 @@ export interface WafSourceStatus {
   validation_fields: { field: string; property_name: string | null; status: string }[];
   collection_eligible: boolean;
   ineligible_reason: string | null;
+  ineligible_reason_code?: string | null;
+  ineligible_reason_params?: Record<string, unknown> | null;
   validation_pending: boolean;
   validation_requested_at: string | null;
   validation_requested_by: string | null;
@@ -704,7 +746,11 @@ export interface Alert {
   id: string;
   fingerprint: string;
   title: string;
+  title_code?: string | null;
+  title_params?: Record<string, unknown> | null;
   description: string | null;
+  description_code?: string | null;
+  description_params?: Record<string, unknown> | null;
   severity: string;
   status: string;
   source_type: string;
@@ -714,6 +760,8 @@ export interface Alert {
   acknowledged_by: string | null;
   resolved_by: string | null;
   resolution_reason: string | null;
+  resolution_reason_code?: string | null;
+  resolution_reason_params?: Record<string, unknown> | null;
   occurrence_count: number;
   evidence_snapshot: Record<string, unknown>;
   source_anomaly_ids: string[];
@@ -903,6 +951,10 @@ export interface RuleSummary {
   health_evaluated_at: string | null;
   // The reason stored with the verdict above; null when that evaluation recorded none.
   health_reason: string | null;
+  // The code and raw values `health_reason` was rendered from; null on a snapshot written
+  // before they were stored.
+  health_reason_code?: string | null;
+  health_reason_params?: Record<string, unknown> | null;
   last_fired_at: string | null;
   offense_contribution_count: number;
   event_contribution_count: number;
@@ -939,6 +991,8 @@ export interface RuleHealthSnapshot {
   logic_version: number;
   confidence: number;
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   window_start: string | null;
   window_end: string | null;
   last_triggered_at: string | null;
@@ -973,6 +1027,9 @@ export interface TechniqueCoverage {
   coverage_score: number | null;
   confidence: number | null;
   reason: string | null;
+  // The code and raw values `reason` was built from; absent or null on a row stored before them.
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   mapped_rule_count: number;
   enabled_rule_count: number;
   firing_rule_count: number;
@@ -1136,6 +1193,9 @@ export interface AnomalyTransition {
   occurred_at: string;
   bucket_start: string | null;
   reason: string | null;
+  // The registry code of `reason` and its raw values (absent or null: no code, show `reason`).
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   actor: string;
   observed_value: number | null;
   expected_value: number | null;
@@ -1166,6 +1226,9 @@ export interface AnomalySummary {
   evidence_status: EvidenceStatus;
   suppressed: boolean;
   explanation: string | null;
+  // The registry code of `explanation` and its raw values (Phase A and property-watch rows).
+  explanation_code?: string | null;
+  explanation_params?: Record<string, unknown> | null;
   // The unified list (T-057). Absent on a Phase A row from an older response, so
   // a missing `subject_kind` is read as LOG_SOURCE.
   subject_kind?: SubjectKind;
@@ -1202,6 +1265,8 @@ export interface ExplanationDimension {
   dimension: string;
   availability: DimensionAvailability;
   detail: string | null;
+  detail_code?: string | null;
+  detail_params?: Record<string, unknown> | null;
   baseline_distinct_count: number | null;
   anomaly_distinct_count: number | null;
   cardinality_ratio: number | null;
@@ -1256,6 +1321,9 @@ export interface ExplanationPackage {
 // which must render as "not recorded" rather than as 0.
 export interface DetectionDetail {
   reason: string | null;
+  // The registry code of `reason` and its raw values (absent or null: no code, show `reason`).
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   expected_low: number | null;
   expected_high: number | null;
   threshold: number | null;
@@ -1353,6 +1421,9 @@ export interface WafEndpointRef {
 
 export interface WafDetectionDetail {
   reason: string | null;
+  // The registry code of `reason` and its raw values; absent on a row stored before codes.
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   expected_low: number | null;
   expected_high: number | null;
   threshold: number | null;
@@ -1371,6 +1442,8 @@ export interface WafDetectionDetail {
   observed_denominator: number | null;
   percentage_point_change: number | null;
   caveat?: string | null;
+  caveat_code?: string | null;
+  caveat_params?: Record<string, unknown> | null;
   ratio: number | null;
   ratio_basis: string | null;
   robust_score_status: RobustScoreStatus | null;
@@ -1498,7 +1571,39 @@ export interface WafSourceBehavior {
   admission: WafAdmissionOverflow;
 }
 
-export type WafSourceDetail = WafSourceBehavior;
+export interface WafAnalystValidationField {
+  field: string;
+  property_name: string | null;
+  status: string;
+  used_by_collection: boolean;
+  populated_events: number | null;
+  populated_ratio: number | null;
+  distinct_values: number | null;
+  plausible_ratio: number | null;
+  sampled_events: number | null;
+  values_truncated: boolean | null;
+  discovered_value_count: number | null;
+  detail: string | null;
+  detail_code?: string | null;
+  detail_params?: Record<string, unknown> | null;
+}
+
+export interface WafAnalystValidationReport {
+  status: string | null;
+  reasons: string[];
+  reason_codes?: (BackendMessageRef | null)[] | null;
+  log_source_found: boolean | null;
+  total_events: number | null;
+  window_start: string | null;
+  window_end: string | null;
+  profile_version: number | null;
+  validated_at: string | null;
+  fields: WafAnalystValidationField[];
+}
+
+export interface WafSourceDetail extends WafSourceBehavior {
+  validation_report?: WafAnalystValidationReport | null;
+}
 
 export interface PagedWafSources {
   items: WafSourceBehavior[];
@@ -1559,6 +1664,9 @@ export interface IpsEntityRef {
 
 export interface IpsDetectionDetail {
   reason: string | null;
+  // The registry code of `reason` and its raw values; absent on a row stored before codes.
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   expected_low: number | null;
   expected_high: number | null;
   threshold: number | null;
@@ -1580,6 +1688,8 @@ export interface IpsDetectionDetail {
   observed_measurement: MeasurementKind | null;
   absolute_delta: number | null;
   caveat: string | null;
+  caveat_code?: string | null;
+  caveat_params?: Record<string, unknown> | null;
   ratio: number | null;
   ratio_basis: string | null;
   robust_score_status: RobustScoreStatus | null;
@@ -1668,6 +1778,8 @@ export interface PwScopeOption {
   synced_source_count: number | null;
   scope_state: PwWatchStatus | null;
   scope_reason: string | null;
+  scope_reason_code?: string | null;
+  scope_reason_params?: Record<string, unknown> | null;
 }
 
 export interface PwPropertyOption {
@@ -1708,6 +1820,8 @@ export interface WatchScope {
   resolved: boolean;
   state: PwWatchStatus | null;
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   member_count: number | null;
   members: string[];
   members_total: number | null;
@@ -1737,6 +1851,9 @@ export interface PwHistoryGap {
   start: string;
   end: string;
   reason: string;
+  // A gap stored before codes carries none.
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
 }
 
 export interface PwHistoryEstimate {
@@ -1760,6 +1877,8 @@ export interface PwWatchHistory {
   buckets_read: number | null;
   gaps: PwHistoryGap[] | null;
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   progress_unreadable: boolean;
   started_at: string | null;
   finished_at: string | null;
@@ -1785,6 +1904,8 @@ export interface PropertyWatch {
   // null: the watch has never run, which is not OK.
   status: PwWatchStatus | null;
   status_reason: string | null;
+  status_reason_code?: string | null;
+  status_reason_params?: Record<string, unknown> | null;
   collected_through: string | null;
   evaluated_through: string | null;
   last_run_at: string | null;
@@ -1831,6 +1952,8 @@ export interface WatchAql {
   bucket_seconds: number | null;
   current: PwAqlQuery[];
   current_unavailable: string | null;
+  current_unavailable_code?: string | null;
+  current_unavailable_params?: Record<string, unknown> | null;
   last_bucket: {
     bucket_start: string;
     collected_at: string;
@@ -1995,6 +2118,8 @@ export interface PwPreview {
   searches_sent: number;
   outcome: "MEASURED" | "PARTIAL" | "NOT_MEASURED";
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   buckets_measured: number;
   buckets_lower_bound: number;
   buckets_unmeasured: number;
@@ -2026,6 +2151,8 @@ export interface PwValueRef {
  *  counts and the API declares no unit for them (see `newValueFigures` in `components/propertywatch/pwFormat.ts`). */
 export interface PwDetectionDetail {
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   expected_low: number | null;
   expected_high: number | null;
   threshold: number | null;
@@ -2049,6 +2176,8 @@ export interface PwDetectionDetail {
   events_since_first_seen: number | null;
   buckets_with_traffic: number | null;
   claim: string | null;
+  claim_code?: string | null;
+  claim_params?: Record<string, unknown> | null;
 }
 
 /** A property-watch value's incident, as `GET /anomalies/{id}` serves it (PW-5c). */
@@ -2279,6 +2408,8 @@ export interface CustomRule {
   last_evaluated_at: string | null;
   last_status: string | null;
   last_status_reason: string | null;
+  last_status_reason_code?: string | null;
+  last_status_reason_params?: Record<string, unknown> | null;
   active_breach: CustomRuleBreach | null;
   alerting_mode: "shadow" | "alerting";
   created_at: string;
@@ -2695,28 +2826,41 @@ export const api = {
 // or an upstream URL, and this text goes straight into the DOM. Known HTTP
 // statuses get an actionable message; everything else degrades to a fixed
 // string.
-export function actionErrorMessage(err: unknown): string {
+export function actionErrorMessage(err: unknown, t?: TextTranslator): string {
+  // The sentences are fixed; `t` (the interface language's translator, full keys) words them
+  // from the `errors` namespace. Without it they stay English. A backend validation detail is
+  // shown as the server sent it.
+  const say = (key: string, english: string) => (t ? t(`errors.${key}`) : english);
   if (err instanceof ApiError) {
     switch (err.status) {
       case 401:
-        return "Your session has expired. Sign in again to continue.";
-      case 403:
-        return "You do not have permission to perform this action.";
+        return say("sessionExpired", "Your session has expired. Sign in again to continue.");
+      case 403: {
+        // A refusal that names the missing permission by code says which one (MSG-1); any other
+        // 403 keeps the general sentence.
+        const permission = missingPermission(err);
+        if (permission !== null) {
+          return t
+            ? t("errors.forbiddenPermission", { permission })
+            : `You need the ${permission} permission for this.`;
+        }
+        return say("forbidden", "You do not have permission to perform this action.");
+      }
       case 404:
-        return "This item no longer exists. Refresh the page.";
+        return say("notFound", "This item no longer exists. Refresh the page.");
       case 409:
-        return "This conflicts with the current state. Refresh and try again.";
+        return say("conflict", "This conflicts with the current state. Refresh and try again.");
       case 422:
         // The backend's validation detail is generated from the schema and is
         // safe to show; it tells the operator what to correct.
-        return err.message || "The request was rejected as invalid.";
+        return err.message || say("invalid", "The request was rejected as invalid.");
       default:
         return err.status >= 500
-          ? "The server could not complete the request. Try again shortly."
-          : err.message || "The request failed.";
+          ? say("server", "The server could not complete the request. Try again shortly.")
+          : err.message || say("failed", "The request failed.");
     }
   }
-  return "The request could not be sent. Check your connection and try again.";
+  return say("notSent", "The request could not be sent. Check your connection and try again.");
 }
 
 // Severity → CSS pill class, shared by the views that show a severity.
@@ -2935,12 +3079,16 @@ async function fleetRequest<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     let detail = res.statusText;
+    let raw: unknown;
+    let body: unknown;
     try {
-      detail = detailText((await res.json()).detail, detail);
+      body = await res.json();
+      raw = (body as { detail?: unknown } | null)?.detail;
+      detail = detailText(raw, detail);
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, raw, body);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -3162,6 +3310,8 @@ export interface RuleStatisticsWindow {
   measured_seconds: number;
   complete: boolean;
   reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
 }
 
 export interface SilentRule {
@@ -3188,6 +3338,8 @@ export interface SilentSection {
   excluded: SilentExclusion[];
   excluded_count: number;
   excluded_reason: string;
+  excluded_reason_code?: string | null;
+  excluded_reason_params?: Record<string, unknown> | null;
 }
 
 export interface MatchRankRow {
@@ -3214,7 +3366,11 @@ export interface CostRow {
 
 export interface CostSection {
   label: string;
+  label_code?: string | null;
+  label_params?: Record<string, unknown> | null;
   unit: string;
+  unit_code?: string | null;
+  unit_params?: Record<string, unknown> | null;
   items: CostRow[];
   no_benchmark_count: number;
 }
@@ -3225,9 +3381,13 @@ export interface RuleStatistics {
   window: RuleStatisticsWindow;
   silent: SilentSection | null;
   silent_reason: string | null;
+  silent_reason_code?: string | null;
+  silent_reason_params?: Record<string, unknown> | null;
   top_by_matches: MatchRankRow[] | null;
   top_by_events: MatchRankRow[] | null;
   top_reason: string | null;
+  top_reason_code?: string | null;
+  top_reason_params?: Record<string, unknown> | null;
   costliest_by_benchmark: CostSection;
 }
 
@@ -3313,12 +3473,15 @@ export interface IpsValidationFieldOut {
   values_truncated: boolean;
   discovered_values: DiscoveredValue[];
   detail: string | null;
+  detail_code?: string | null;
+  detail_params?: Record<string, unknown> | null;
   warnings: string[];
 }
 
 export interface IpsValidationReportOut {
   status: WafValidationStatus;
   reasons: string[];
+  reason_codes?: (BackendMessageRef | null)[] | null;
   warnings: string[];
   total_events: number | null;
   window_start: string;
@@ -3351,6 +3514,8 @@ export interface IpsProfileOut {
   validation_requested_by: string | null;
   collection_eligible: boolean;
   ineligible_reason: string | null;
+  ineligible_reason_code?: string | null;
+  ineligible_reason_params?: Record<string, unknown> | null;
   updated_by: string | null;
   updated_at: string;
 }
@@ -3375,6 +3540,17 @@ export interface IpsSourceStatus {
   validation_requested_by: string | null;
   collection_eligible: boolean;
   ineligible_reason: string | null;
+  ineligible_reason_code?: string | null;
+  ineligible_reason_params?: Record<string, unknown> | null;
+  validation_fields?: {
+    field: string;
+    status: string;
+    detail: string | null;
+    detail_code?: string | null;
+    detail_params?: Record<string, unknown> | null;
+  }[];
+  validation_reasons?: string[];
+  validation_reason_codes?: (BackendMessageRef | null)[] | null;
   updated_by: string | null;
   updated_at: string;
 }
@@ -3400,6 +3576,7 @@ export interface IpsProfileHistoryEntryOut {
   /** SUCCESS, FAILURE, SOURCE_BUSY, ... */
   outcome: string;
   reasons: string[] | null;
+  reason_codes?: (BackendMessageRef | null)[] | null;
 }
 
 export const ipsApi = {
@@ -3538,6 +3715,16 @@ export interface CallerInfo {
   auth_source?: string | null;
   must_change_password?: boolean;
   roles?: string[];
+  /** Stored interface preference. Older backends omit it. */
+  ui_language?: "en" | "tr";
+}
+
+/** Store the signed-in account's interface language. */
+export function updateUiLanguage(uiLanguage: "en" | "tr") {
+  return request<CallerInfo>("/me/preferences", {
+    method: "PUT",
+    body: JSON.stringify({ ui_language: uiLanguage }),
+  });
 }
 
 // The configurable catalog widgets (UI-3.5b). A window is a preset the widget's range names;

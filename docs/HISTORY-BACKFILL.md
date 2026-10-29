@@ -1,6 +1,6 @@
 # History backfill: every baseline reads its past from Ariel once, for learning only
 
-Status: **built, 2026-10-20.** The design is implemented: the shared core, the five family
+Status: **built, first shipped in `v0.1.2`** (built 2026-10-20). The design is implemented: the shared core, the five family
 adapters, the admin API, the installer question and the admin page. It generalises
 [`PHASE-G-HISTORY-BOOTSTRAP.md`](PHASE-G-HISTORY-BOOTSTRAP.md)
 (cited as §H.n, the model for property watches) to the platform-wide baselines, and changes none of its text.
@@ -362,14 +362,22 @@ so a reader never writes either by hand and a guard test can find them (§B.4.7)
   span (`rule_health.py` `RuleHealthEvaluator.classify`), and it has no alert path (nothing under `app/alerts` or `app/custom_rules`
   reads `RuleHealthSnapshot`, which this design verified). History windows are exactly the evidence it needs, so
   all readers **read both**. The learning-only property is that the verdict is about the rule today.
-- **The one guard that is needed:** history writes `RuleMatchWindow` rows with `ON CONFLICT DO NOTHING`
+- **The history guard:** history writes `RuleMatchWindow` rows with `ON CONFLICT DO NOTHING`
   (`_write_history_rows` in `backend/app/collectors/rule_match_collector.py`), the same clause the live horizon
   rule uses for the windows it skips (`_skip_beyond_horizon`). A history step therefore never replaces a live
-  window, and a `FAILED` live window is **not** repaired: the code has no `DO UPDATE` clause, and the span
-  history reads does not need one. A skipped `FAILED` record is written only after the first live window, so a
-  reading of `[T0, anchor)` never meets one, and the windows after the anchor are never read by history. A live
-  window that failed for good, or that the horizon rule skipped, stays `FAILED`, and rule health reads any span
-  holding one as unmeasured: the verdict over that span stays `INSUFFICIENT_DATA` (fail closed).
+  window. Instead, the live collector's bounded repair pass (`_repair_windows`) runs after the live pass under
+  the same lock. It selects recent `FAILED`, `LIVE` windows oldest first, up to
+  `RULE_MATCH_REPAIR_MAX_WINDOWS_PER_RUN`, and reuses the keyed live search path. The repair age defaults to 24 h,
+  is at most seven days and must remain inside the console's event retention; otherwise an empty read after
+  QRadar rotated the events out could become false proof of silence. A repair writes only while the row is still
+  `FAILED`, never moves the watermark, shares the tick search budget, and stops selecting a window after
+  `RULE_MATCH_REPAIR_MAX_ATTEMPTS` additional searches. A successful full read becomes `COMPLETE`; a full-page
+  read stays honestly `TRUNCATED`.
+- **What stays unrepaired:** a `FAILED` row whose error is `skipped: beyond the catch-up horizon` was never
+  searched and is never repaired automatically; neither is a row outside the age bound or past its repair
+  ceiling. History still reads only `[T0, anchor)`, so it cannot meet a post-anchor live gap. Rule health therefore
+  continues to treat any span holding one of these rows as unmeasured and returns `INSUFFICIENT_DATA` for silence
+  (fail closed). The reason and `doctor` name the operational cost until the row ages out of the health span.
 - **Hand-off:** the anchor is the oldest live window; the live first run reads only the latest settled window
   (`rule_match_collector.py` `RuleMatchCollector._windows_to_collect`). Zero gap, zero overlap, and a
   window the history could not prove is **absent**, which
@@ -1001,7 +1009,7 @@ backfill defaults stay as described until HB-9 has been read.
 | **HB-2** | Foundations: migration `0030` (two tables, `origin` on four tables, enums), models, settings with validators, `HistoryFamily` registry, the `decide` CLI, RBAC permissions, audit | M | `alembic/versions/0030_history_backfill.py`, `app/models/history_backfill.py`, `models/{waf,ips,catchall,rule}.py`, `core/config.py`, `security/rbac.py`, `cli/history_backfill.py` | HB-1 (enums), PW-13a (migration `0029`) | migration round trip with data, `alembic check`, no server default left, CLI write-once on every path including the audit row and the missing-instance warning |
 | **HB-3** | Phase A adapter and guards: scope planner (`WAITING` until a live bucket), history step in `collect_metrics`, `ariel_history` writer with `DO NOTHING`, per-source floor and zero-fill from `F_s`, the guards of §B.4.1 (both `evaluate_pending` branches, streak, F.1 loaders), baseline rebuild trigger, retention check | L | `collectors/metric_collector.py`, `anomaly/engine.py`, `custom_rules/loaders.py`, `workers/tasks.py`, new `history/phase_a.py` | HB-1, HB-2 | equivalence (live bucket by bucket vs history in chunks, equal except marker and provenance); history never pending (watermark NULL, after, predicate removed on purpose); first-run branch; run through `collect_metrics` on every exit path; statement count constant in sources and buckets |
 | **HB-4** | Catch-all adapter: ledger-seeded history, per-source floor, forced `REVIEWED`, bootstrap hold while `READING`, `origin` | M | `collectors/catchall_collector.py`, new `history/catchall.py` | HB-1, HB-2 | equivalence; no alert from a history step even with alerts on; a live sender during the reading is `REVIEWED`; prepend with existing live senders; retirement at write |
-| **HB-5** | Rule-match adapter: console-total floor, history windows `DO NOTHING` (a skipped `FAILED` live window is not repaired) | M | `collectors/rule_match_collector.py`, new `history/rule_match.py` | HB-1, HB-2 | equivalence; coverage `COMPLETE` after a full read; a gap stays `missing`; `COMMON` stays a lower bound |
+| **HB-5** | Rule-match adapter: console-total floor and history windows `DO NOTHING`; RM-2 separately repairs only recent searched `FAILED` live windows, never horizon-skipped ones | M | `collectors/rule_match_collector.py`, new `history/rule_match.py` | HB-1, HB-2 | equivalence; coverage `COMPLETE` after a full read; a gap stays `missing`; `COMMON` stays a lower bound |
 | **HB-6** | WAF adapter: bulk history persist (in-memory admission, per-bucket retirement, one statement per table), two passes, hand-off with the two watermarks, evaluation and F.1 guards, the `first_seen_at < history_end` rule | L | `collectors/waf_endpoint_collector.py`, `services/waf_pipeline.py`, `waf/engine.py`, `waf/detector.py`, `custom_rules/loaders.py`, new `history/waf.py` | HB-1, HB-2 | equivalence against the live persist with the same scripted provider; guards 1 to 3 with breaking each on purpose; statement-count pin (§B.8.4); novelty: history-time first appearance is `HEALTHY`/established; a flood in history blocks novelty for 7 days; resume after a worker restart |
 | **HB-7** | IPS adapter: group-level history, hand-off, per-bucket retirement, guards, novelty rule | L | `collectors/ips_collector.py`, `services/ips_pipeline.py`, `ips/engine.py`, `custom_rules/loaders.py`, new `history/ips.py` | HB-1, HB-2 | as HB-6 for IPS |
 | **HB-8** | API and service: the five routes, estimate, audit, permissions, eligibility per family (§B.5) | M | `api/routes/history_backfill.py`, `services/history_backfill.py`, `schemas/history_backfill.py` | HB-2 | permission matrix 401/403/404/409/422; write-once; NO to YES; start and stop; eligibility of a WAF source with live buckets |

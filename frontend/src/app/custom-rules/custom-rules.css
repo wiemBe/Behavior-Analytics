@@ -247,7 +247,10 @@
 
 .cr-chart {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   height: var(--cw-chart-h);
+  overflow: hidden;
 }
 
 .cr-preview-content {

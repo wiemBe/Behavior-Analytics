@@ -1,11 +1,18 @@
 import Link from "next/link";
+import { getLocale, getTranslations } from "next-intl/server";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type Alert, type Page } from "@/lib/api";
 import { formatCount } from "@/lib/format";
 import { loadErrorMessage } from "@/lib/loadError";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { enumLabel } from "@/i18n/enumLabels";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import type { Locale } from "@/i18n/locale";
+import { withRouteMessages } from "@/i18n/RouteMessages";
+import { renderBackendMessage } from "@/i18n/backendMessage";
 
 import "./alerts.css";
 
@@ -22,14 +29,12 @@ function alertStatus(value: string | undefined): string {
   return ALERT_STATUSES.includes(value as (typeof ALERT_STATUSES)[number]) ? value! : "";
 }
 
-function emptyMessage(status: string): string {
-  if (status === "OPEN") return "No open alerts.";
-  if (status === "ACKNOWLEDGED") return "No acknowledged alerts.";
-  if (status === "RESOLVED") return "No resolved alerts.";
-  return "No alerts have been raised.";
+export async function generateMetadata() {
+  const t = await getTranslations("alerts.meta");
+  return { title: t("list") };
 }
 
-export default async function AlertsPage({
+async function AlertsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -37,6 +42,9 @@ export default async function AlertsPage({
   const params = await searchParams;
   const offset = Math.max(0, Number(params.offset ?? 0) || 0);
   const status = alertStatus(params.status);
+  const t = await getTranslations("alerts");
+  const say = asTextTranslator(await getTranslations());
+  const locale = (await getLocale()) as Locale;
   let page: Page<Alert> | null = null;
   let error: string | null = null;
   try {
@@ -46,29 +54,30 @@ export default async function AlertsPage({
       offset,
     });
   } catch (err) {
-    error = loadErrorMessage(err, "alerts", "read:alerts");
+    error = loadErrorMessage(err, t("loadNoun"), "read:alerts", say);
   }
   const alerts = page?.items ?? [];
 
   return (
     <>
       <PageHeader
-        title="Alerts"
-        description="Lifecycle OPEN → ACKNOWLEDGED → RESOLVED. Repeated detections update the open alert and bump its occurrence count rather than creating duplicates. Times are UTC."
+        guide={guideFor("/alerts")}
+        title={t("title")}
+        description={t("description")}
       />
 
       <form className="filters" method="get" action="/alerts">
         <label className="sr-only" htmlFor="alert-status">
-          Alert status
+          {t("filters.label")}
         </label>
         <select id="alert-status" name="status" defaultValue={status}>
-          <option value="">All statuses</option>
-          <option value="OPEN">Open</option>
-          <option value="ACKNOWLEDGED">Acknowledged</option>
-          <option value="RESOLVED">Resolved</option>
+          <option value="">{t("filters.all")}</option>
+          <option value="OPEN">{t("filters.status.OPEN")}</option>
+          <option value="ACKNOWLEDGED">{t("filters.status.ACKNOWLEDGED")}</option>
+          <option value="RESOLVED">{t("filters.status.RESOLVED")}</option>
         </select>
-        <button type="submit">Filter</button>
-        {status && <Link href="/alerts">Clear</Link>}
+        <button type="submit">{t("filters.filter")}</button>
+        {status && <Link href="/alerts">{t("filters.clear")}</Link>}
       </form>
 
       {error ? (
@@ -76,35 +85,52 @@ export default async function AlertsPage({
           <p>{error}</p>
         </div>
       ) : alerts.length === 0 ? (
-        <div className="notice">{emptyMessage(status)}</div>
+        <div className="notice">
+          {status === "OPEN"
+            ? t("empty.OPEN")
+            : status === "ACKNOWLEDGED"
+              ? t("empty.ACKNOWLEDGED")
+              : status === "RESOLVED"
+                ? t("empty.RESOLVED")
+                : t("empty.all")}
+        </div>
       ) : (
         <>
           {page && page.total > alerts.length && (
             <p className="subtitle">
-              Showing {formatCount(alerts.length)} of {formatCount(page.total)} alerts.
+              {t("showing", {
+                shown: formatCount(alerts.length, locale),
+                total: formatCount(page.total, locale),
+              })}
             </p>
           )}
-          <TableScroll label="Alerts">
-            <table className="table-dense" aria-label="Alerts">
+          <TableScroll label={t("table.label")}>
+            <table className="table-dense" aria-label={t("table.label")}>
               <thead>
                 <tr>
-                  <th>Title</th>
-                  <th>Severity</th>
-                  <th>Status</th>
-                  <th className="num">Occurrences</th>
-                  <th>First seen</th>
-                  <th>Last seen</th>
+                  <th>{t("table.title")}</th>
+                  <th>{t("table.severity")}</th>
+                  <th>{t("table.status")}</th>
+                  <th className="num">{t("table.occurrences")}</th>
+                  <th>{t("table.firstSeen")}</th>
+                  <th>{t("table.lastSeen")}</th>
                 </tr>
               </thead>
               <tbody>
                 {alerts.map((a) => (
                   <tr key={a.id}>
                     <td className="alert-title">
-                      <Link href={`/alerts/${a.id}`}>{a.title}</Link>
+                      <Link href={`/alerts/${a.id}`}>
+                        {renderBackendMessage(
+                          { text: a.title, code: a.title_code, params: a.title_params },
+                          locale,
+                          say,
+                        )}
+                      </Link>
                     </td>
-                    <td><span className={`pill ${sevTone(a.severity)}`}>{a.severity}</span></td>
-                    <td><span className={`pill ${statusTone(a.status)}`}>{a.status}</span></td>
-                    <td className="num">{formatCount(a.occurrence_count)}</td>
+                    <td><span className={`pill ${sevTone(a.severity)}`}>{enumLabel(say, "severityPill", a.severity)}</span></td>
+                    <td><span className={`pill ${statusTone(a.status)}`}>{enumLabel(say, "alertStatusPill", a.status)}</span></td>
+                    <td className="num">{formatCount(a.occurrence_count, locale)}</td>
                     <td className="nowrap">{<UtcTime value={a.first_seen_at} variant="compact" />}</td>
                     <td className="nowrap">{<UtcTime value={a.last_seen_at} variant="compact" />}</td>
                   </tr>
@@ -124,3 +150,5 @@ export default async function AlertsPage({
     </>
   );
 }
+
+export default withRouteMessages("/alerts", AlertsPage);

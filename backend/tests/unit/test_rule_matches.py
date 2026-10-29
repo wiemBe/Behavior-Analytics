@@ -15,10 +15,12 @@ import pytest
 from app.models.rule import RuleMatchWindowStatus
 from app.providers.dto import RuleMatchBatch, RuleMatchRow
 from app.rules.matches import (
+    SKIPPED_REASON,
     CoverageState,
     MatchEvidence,
     assess_coverage,
     failed_window,
+    failed_window_facts,
     floor_to_window,
     fold_rule_matches,
     match_evidence,
@@ -226,3 +228,118 @@ class TestCoverage:
 
 def test_floor_to_window_aligns_to_the_utc_grid() -> None:
     assert floor_to_window(datetime(2026, 10, 12, 10, 59, 59, tzinfo=UTC), HOUR) == START
+
+
+def failed_rows(
+    count: int, *, first: datetime = START, error: str | None = "ProviderError: boom"
+) -> list[tuple[datetime, int, str, str | None]]:
+    return [
+        (first + timedelta(seconds=HOUR * i), HOUR, "FAILED", error)
+        for i in range(count)
+    ]
+
+
+class TestFailedWindowFacts:
+    SPAN = timedelta(days=30)
+
+    def test_no_failed_window_is_none(self) -> None:
+        rows = [
+            (START, HOUR, "COMPLETE", None),
+            (START + timedelta(hours=1), HOUR, "TRUNCATED", None),
+        ]
+        assert failed_window_facts(rows, window_seconds=HOUR, span=self.SPAN) is None
+
+    def test_failed_windows_are_counted_with_their_span(self) -> None:
+        facts = failed_window_facts(
+            failed_rows(2), window_seconds=HOUR, span=self.SPAN
+        )
+
+        assert facts is not None
+        assert (facts.failed, facts.skipped) == (2, 0)
+        assert facts.first_start == START
+        assert facts.last_start == START + timedelta(hours=1)
+        assert facts.last_error_class == "ProviderError"
+
+    def test_the_until_date_is_the_span_past_the_last_window(self) -> None:
+        facts = failed_window_facts(
+            failed_rows(2), window_seconds=HOUR, span=self.SPAN
+        )
+
+        assert facts is not None
+        assert facts.until == START + timedelta(hours=1) + self.SPAN
+
+    def test_a_single_window_is_not_its_own_range(self) -> None:
+        facts = failed_window_facts(
+            failed_rows(1), window_seconds=HOUR, span=self.SPAN
+        )
+
+        assert facts is not None
+        assert facts.first_start == facts.last_start
+
+    def test_horizon_skipped_windows_are_counted_apart(self) -> None:
+        rows = [
+            (START, HOUR, "FAILED", SKIPPED_REASON),
+            (START + timedelta(hours=1), HOUR, "FAILED", SKIPPED_REASON),
+            (START + timedelta(hours=2), HOUR, "FAILED", "ProviderError: boom"),
+        ]
+
+        facts = failed_window_facts(rows, window_seconds=HOUR, span=self.SPAN)
+
+        assert facts is not None
+        assert (facts.failed, facts.skipped) == (1, 2)
+        assert facts.last_error_class == "ProviderError"
+        assert facts.first_start == START
+        assert facts.last_start == START + timedelta(hours=2)
+
+    def test_the_error_class_is_the_newest_failed_window_and_never_the_message(
+        self,
+    ) -> None:
+        rows = [
+            (START, HOUR, "FAILED", "ProviderError: older secret-ish text"),
+            (START + timedelta(hours=1), HOUR, "FAILED", "ArielPermitUnavailable: newer"),
+        ]
+
+        facts = failed_window_facts(rows, window_seconds=HOUR, span=self.SPAN)
+
+        assert facts is not None
+        assert facts.last_error_class == "ArielPermitUnavailable"
+        assert "newer" not in str(facts)
+
+    def test_a_failed_window_without_an_error_has_no_class(self) -> None:
+        facts = failed_window_facts(
+            [(START, HOUR, "FAILED", None)], window_seconds=HOUR, span=self.SPAN
+        )
+
+        assert facts is not None
+        assert facts.last_error_class is None
+
+    def test_the_input_order_does_not_decide_the_span(self) -> None:
+        rows = [
+            (START + timedelta(hours=2), HOUR, "FAILED", "ProviderError: boom"),
+            (START, HOUR, "FAILED", "ProviderError: boom"),
+        ]
+
+        facts = failed_window_facts(rows, window_seconds=HOUR, span=self.SPAN)
+
+        assert facts is not None
+        assert facts.first_start == START
+        assert facts.last_start == START + timedelta(hours=2)
+
+    def test_an_obsolete_window_width_is_not_named_as_a_failed_current_window(self) -> None:
+        facts = failed_window_facts(
+            [(START, HOUR // 2, "FAILED", "ProviderError: boom")],
+            window_seconds=HOUR,
+            span=self.SPAN,
+        )
+
+        assert facts is None
+
+    def test_a_malformed_error_never_leaks_as_an_error_class(self) -> None:
+        facts = failed_window_facts(
+            [(START, HOUR, "FAILED", "secret-ish appliance message")],
+            window_seconds=HOUR,
+            span=self.SPAN,
+        )
+
+        assert facts is not None
+        assert facts.last_error_class is None

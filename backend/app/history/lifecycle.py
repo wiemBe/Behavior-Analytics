@@ -30,6 +30,7 @@ from typing import Any, overload
 
 from app.history.planner import ScopeProgress
 from app.history.progress_codec import DecodedProgress, decode_progress
+from app.history.reasons import message_wire
 from app.history.state import (
     SCOPE_TABLE_FAMILIES,
     HistoryFamily,
@@ -37,6 +38,7 @@ from app.history.state import (
     HistoryTrigger,
     next_state,
 )
+from app.i18n.messages import MessageRef
 
 #: The `reason` column is a `String(255)`.
 MAX_REASON_LENGTH = 255
@@ -59,6 +61,7 @@ SCOPE_COLUMNS: tuple[str, ...] = (
     "started_at",
     "finished_at",
     "reason",
+    "reason_i18n",
     "last_error_class",
     "last_error_at",
     "progress",
@@ -76,6 +79,10 @@ NOT_ELIGIBLE_REASON = (
 RESTART_REASON = "read history now: topping up"
 SWITCHED_OFF_REASON = "history reading was switched off"
 
+NOT_ELIGIBLE_MESSAGE = MessageRef("history.lifecycle.not_eligible")
+RESTART_MESSAGE = MessageRef("history.lifecycle.restart")
+SWITCHED_OFF_MESSAGE = MessageRef("history.state.switched_off")
+
 
 class LifecycleError(ValueError):
     """An input that contradicts itself; the caller must not guess."""
@@ -86,6 +93,20 @@ def bounded_reason(text: str, limit: int = MAX_REASON_LENGTH) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1] + "…"
+
+
+def coded_reason(
+    text: str, message: MessageRef | dict[str, object] | None
+) -> tuple[str, dict[str, object] | None]:
+    """The bounded text and its wire reference, or no code when the text was cut.
+
+    A truncated sentence has no faithful reference: the code would re-render the
+    whole sentence in Turkish while the stored English is only its start.
+    """
+    bounded = bounded_reason(text)
+    if message is None or bounded != text:
+        return bounded, None
+    return bounded, message_wire(message)
 
 
 def _aware(value: datetime | None, name: str) -> None:
@@ -194,6 +215,8 @@ class ScopeRowView:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     reason: str | None = None
+    #: The wire reference of `reason` (MSG-8a); None on an old row or an uncoded one.
+    reason_i18n: Mapping[str, Any] | None = None
     progress: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -217,9 +240,12 @@ class ScopeAction:
     trigger: HistoryTrigger | None = None
     reason: str = ""
     anchor: datetime | None = None
+    #: The registry reference of `reason` (MSG-8a); None for an internal sentence.
+    reason_message: dict[str, object] | None = None
 
 
 def _none(reason: str) -> ScopeAction:
+    # Not written and never shown: every NONE action is a tick with nothing to do.
     return ScopeAction(ActionKind.NONE, reason=reason)
 
 
@@ -229,11 +255,17 @@ def _moving(
     trigger: HistoryTrigger,
     reason: str | None = None,
     anchor: datetime | None = None,
+    *,
+    reason_message: MessageRef | None = None,
 ) -> ScopeAction:
     change = next_state(current, trigger)
-    return ScopeAction(
-        kind, change.state, trigger, bounded_reason(reason or change.reason), anchor
-    )
+    if reason:
+        # A caller's own words keep only the caller's own reference: the table's code
+        # would re-render a different sentence.
+        text, message = coded_reason(reason, reason_message)
+    else:
+        text, message = coded_reason(change.reason, reason_message or change.reason_message)
+    return ScopeAction(kind, change.state, trigger, text, anchor, message)
 
 
 def _check_live(has_live_data: bool, live_anchor: datetime | None, family: HistoryFamily) -> None:
@@ -273,7 +305,11 @@ def scope_action(
     if not switch_on:
         if current in _READING_OR_WAITING:
             return _moving(
-                ActionKind.TRANSITION, current, HistoryTrigger.SWITCHED_OFF, SWITCHED_OFF_REASON
+                ActionKind.TRANSITION,
+                current,
+                HistoryTrigger.SWITCHED_OFF,
+                SWITCHED_OFF_REASON,
+                reason_message=SWITCHED_OFF_MESSAGE,
             )
         return _none("history reading is switched off")
 
@@ -286,6 +322,7 @@ def scope_action(
                 current,
                 HistoryTrigger.STOPPED_BY_OPERATOR,
                 f"stopped by {by}",
+                reason_message=MessageRef("history.lifecycle.stopped_by", {"by": by}),
             )
         return _none("an operator stopped history reading")
 
@@ -302,7 +339,11 @@ def scope_action(
             return _moving(ActionKind.CREATE, current, HistoryTrigger.REQUEST_AWAITING_ANCHOR)
         if has_live_data:
             return _moving(
-                ActionKind.CREATE, current, HistoryTrigger.NOT_ELIGIBLE, NOT_ELIGIBLE_REASON
+                ActionKind.CREATE,
+                current,
+                HistoryTrigger.NOT_ELIGIBLE,
+                NOT_ELIGIBLE_REASON,
+                reason_message=NOT_ELIGIBLE_MESSAGE,
             )
         return _moving(ActionKind.CREATE, current, HistoryTrigger.REQUEST_READY)
 
@@ -333,6 +374,7 @@ def scope_action(
             HistoryTrigger.RESTART,
             RESTART_REASON,
             anchor=live_anchor,
+            reason_message=RESTART_MESSAGE,
         )
     return _none("the scope is not eligible for history")
 
@@ -370,6 +412,7 @@ def new_scope_row(
     days = _require_decision(decision)
     reading = action.state is HistoryState.READING
     finished = action.state is HistoryState.NOT_ELIGIBLE
+    reason, reason_i18n = coded_reason(action.reason, action.reason_message)
     return {
         "instance_id": instance_id,
         "family": family.value,
@@ -383,7 +426,8 @@ def new_scope_row(
         "anchor": action.anchor,
         "started_at": at if reading else None,
         "finished_at": at if finished else None,
-        "reason": bounded_reason(action.reason),
+        "reason": reason,
+        "reason_i18n": reason_i18n,
         "last_error_class": None,
         "last_error_at": None,
         "progress": {},
@@ -405,6 +449,7 @@ def transition_row(
         raise LifecycleError("transition_row needs a TRANSITION action")
     _check_key(family, scope_key)
     _aware(at, "at")
+    reason, reason_i18n = coded_reason(action.reason, action.reason_message)
     values: dict[str, Any] = {
         "instance_id": instance_id,
         "family": family.value,
@@ -418,7 +463,8 @@ def transition_row(
         "anchor": row.anchor,
         "started_at": row.started_at,
         "finished_at": row.finished_at,
-        "reason": bounded_reason(action.reason),
+        "reason": reason,
+        "reason_i18n": reason_i18n,
         "last_error_class": None,
         "last_error_at": None,
         "progress": dict(row.progress) if row.progress is not None else {},
@@ -473,6 +519,7 @@ def scope_view(row: object | None) -> ScopeRowView | None:
         started_at=source.started_at,
         finished_at=source.finished_at,
         reason=source.reason,
+        reason_i18n=getattr(source, "reason_i18n", None),
         progress=source.progress,
     )
 
@@ -507,6 +554,7 @@ def scope_row(
         "started_at": view.started_at,
         "finished_at": view.finished_at,
         "reason": view.reason,
+        "reason_i18n": dict(view.reason_i18n) if view.reason_i18n else None,
         "last_error_class": None,
         "last_error_at": None,
         "progress": dict(view.progress) if view.progress else {},
@@ -519,8 +567,10 @@ def step_row(base: Mapping[str, Any], **changes: Any) -> dict[str, Any]:
     A step names at its call site the columns it changes; everything else stays
     as the base holds it. `reason` always goes through `bounded_reason`, `state`
     accepts a `HistoryState`, `progress` is copied, never aliased, and the error
-    marker is cleared (a written step clears it, HB-16). An unknown column name
-    raises `LifecycleError`, and the result must hold exactly `SCOPE_COLUMNS`.
+    marker is cleared (a written step clears it, HB-16). A new `reason` without a
+    `reason_i18n` clears the stored code: a sentence the caller did not code must
+    not keep the code of the sentence it replaced. An unknown column name raises
+    `LifecycleError`, and the result must hold exactly `SCOPE_COLUMNS`.
     """
     unknown = set(changes) - set(SCOPE_COLUMNS)
     if unknown:
@@ -530,7 +580,9 @@ def step_row(base: Mapping[str, Any], **changes: Any) -> dict[str, Any]:
     if isinstance(values.get("state"), HistoryState):
         values["state"] = values["state"].value
     if "reason" in changes:
-        values["reason"] = bounded_reason(changes["reason"])
+        text, reason_i18n = coded_reason(changes["reason"], changes.get("reason_i18n"))
+        values["reason"] = text
+        values["reason_i18n"] = reason_i18n
     if "progress" in changes:
         values["progress"] = dict(changes["progress"]) if changes["progress"] else {}
     values["last_error_class"] = None
@@ -568,6 +620,8 @@ def deferred_scope_row(
         scope_key=scope_key,
     )
     values["reason"] = bounded_reason(reason)
+    # The deferral names a provider refusal in its own words, never a coded sentence.
+    values["reason_i18n"] = None
     values["last_error_class"] = stored.last_error_class
     values["last_error_at"] = stored.last_error_at
     return values

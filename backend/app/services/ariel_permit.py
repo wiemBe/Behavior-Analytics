@@ -48,6 +48,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
 from app.core.config import Settings
+from app.i18n.messages import MessageRef, render
 from app.providers.base import ProviderUnavailableError
 
 _ArielPriority = Literal["live", "background"]
@@ -90,11 +91,12 @@ class ArielPermitUnavailable(ProviderUnavailableError):
         self.waited_seconds = waited_seconds
         self.instance_cap = instance_cap
         self.global_cap = global_cap
-        super().__init__(
-            "No Ariel permit became available within "
-            f"{waited_seconds:g} seconds (per-console cap {instance_cap}, "
-            f"global cap {global_cap})"
+        #: The sentence as a message code: a run refused for capacity stores it beside its text.
+        self.ref = MessageRef(
+            "search.run.capacity",
+            {"waited": waited_seconds, "instance_cap": instance_cap, "global_cap": global_cap},
         )
+        super().__init__(render(self.ref))
 
 
 def ariel_history_deferred_reason(exc: ArielPermitUnavailable) -> str:

@@ -14,8 +14,8 @@ import {
   type CatchallReviewStatus,
   type CatchallSender,
 } from "@/lib/api";
+import { englishFleetText, plainCount, type FleetText } from "@/lib/fleetText";
 import { formatCount } from "@/lib/format";
-
 
 export { formatCount };
 
@@ -24,25 +24,28 @@ export const UNKNOWN = "unknown";
 // --- figures -------------------------------------------------------------------
 
 /** The 24 h figure of a sender: a lower bound, or `unknown` when no top list named it. */
-export function formatEvents24h(value: number | null): string {
-  return value == null ? UNKNOWN : formatCount(value);
+export function formatEvents24h(value: number | null, text: FleetText = englishFleetText): string {
+  return value == null ? text.say("catchall.unknown") : formatCount(value, text.locale);
 }
 
+/** English; the catalog (`catchall.events24hNote`) carries both languages. */
 export const EVENTS_24H_NOTE =
   "A lower bound: the sum of the stored top-sender lists that name this sender. " +
   "Unknown means no stored top list named it; that is not zero.";
 
 /** `5 min`, `1 h`, `30 s` — the unit on the chart axis. */
-export function bucketUnit(seconds: number): string {
-  if (seconds % 3600 === 0) return `${seconds / 3600} h`;
-  if (seconds % 60 === 0) return `${seconds / 60} min`;
-  return `${seconds} s`;
+export function bucketUnit(seconds: number, text: FleetText = englishFleetText): string {
+  const count = (n: number) => plainCount(n, text.locale);
+  if (seconds % 3600 === 0) return text.say("units.hour", { count: count(seconds / 3600) });
+  if (seconds % 60 === 0) return text.say("units.minute", { count: count(seconds / 60) });
+  return text.say("units.second", { count: count(seconds) });
 }
 
 // --- review status -------------------------------------------------------------
 
 export type StatusFilter = CatchallReviewStatus | "ALL";
 
+/** English; `statusLabel` reads the catalog. */
 export const STATUS_LABELS: Record<CatchallReviewStatus, string> = {
   NEW: "New",
   REVIEWED: "Reviewed",
@@ -51,8 +54,14 @@ export const STATUS_LABELS: Record<CatchallReviewStatus, string> = {
 
 export const STATUS_FILTERS: StatusFilter[] = ["NEW", "REVIEWED", "DISMISSED", "ALL"];
 
-export function statusFilterLabel(value: StatusFilter): string {
-  return value === "ALL" ? "All statuses" : STATUS_LABELS[value];
+export function statusLabel(value: CatchallReviewStatus, text: FleetText = englishFleetText): string {
+  if (!Object.hasOwn(STATUS_LABELS, value)) return value;
+  const key = `catchall.status.${value}`;
+  return text.say.has?.(key) ? text.say(key) : STATUS_LABELS[value];
+}
+
+export function statusFilterLabel(value: StatusFilter, text: FleetText = englishFleetText): string {
+  return value === "ALL" ? text.say("catchall.status.ALL") : statusLabel(value, text);
 }
 
 /** Only NEW asks for attention; the other two are decisions already taken. */
@@ -63,25 +72,31 @@ export function statusTone(value: CatchallReviewStatus): "warn" | "" {
 /** The permission both actions need. */
 export const WRITE_PERMISSION = "log_source:write";
 
+/** English; `deniedNote` reads the catalog. */
 export const DENIED_NOTE =
   `Review and Dismiss need the permission ${WRITE_PERMISSION}, which your role does not have. ` +
   "The queue is read-only for you.";
 
+export function deniedNote(text: FleetText = englishFleetText): string {
+  return text.say("catchall.deniedNote", { permission: WRITE_PERMISSION });
+}
+
 /** Why an action did not change the sender. Always says it did not. */
-export function senderFailure(err: unknown): { kind: "forbidden" | "error"; text: string } {
+export function senderFailure(
+  err: unknown,
+  text: FleetText = englishFleetText,
+): { kind: "forbidden" | "error"; text: string } {
+  const { say } = text;
   if (err instanceof ApiError && err.status === 403) {
-    return {
-      kind: "forbidden",
-      text: `Your role cannot review senders (permission ${WRITE_PERMISSION}). Nothing was changed.`,
-    };
+    return { kind: "forbidden", text: say("catchall.failure.forbidden", { permission: WRITE_PERMISSION }) };
   }
   if (err instanceof ApiError && err.status === 404) {
-    return {
-      kind: "error",
-      text: "Not changed. This sender no longer exists; reload the list.",
-    };
+    return { kind: "error", text: say("catchall.failure.notFound") };
   }
-  return { kind: "error", text: `Not changed. ${actionErrorMessage(err)}` };
+  return {
+    kind: "error",
+    text: say("catchall.failure.notChanged", { reason: actionErrorMessage(err, say) }),
+  };
 }
 
 export function reviewedBy(sender: CatchallSender): string | null {
@@ -249,8 +264,13 @@ export function axisLabel(ms: number): string {
 
 export interface RangeOption {
   key: "6h" | "24h" | "7d";
+  /** English; `rangeLabel` reads the catalog. */
   label: string;
   ms: number;
+}
+
+export function rangeLabel(range: RangeOption, text: FleetText = englishFleetText): string {
+  return text.say(`catchall.range.${range.key}`);
 }
 
 /** The longest range is exactly what the API accepts (7 days). */
@@ -262,31 +282,33 @@ export const RANGES: RangeOption[] = [
 
 // --- the admission counts, in words ---------------------------------------------
 
-export function admissionSentences(b: CatchallBucket): string[] {
-  const n = (v: number, one: string, many: string) => `${formatCount(v)} ${v === 1 ? one : many}`;
+export function admissionSentences(b: CatchallBucket, text: FleetText = englishFleetText): string[] {
+  const { say } = text;
   return [
-    `${n(b.admitted, "new sender was", "new senders were")} admitted in this bucket and are now tracked by name.`,
-    `${n(b.below_admission_threshold, "sender was", "senders were")} below the admission threshold and counted only.`,
-    `${n(b.rejected_over_quota, "sender was", "senders were")} refused because the new-sender quota was full.`,
-    `${n(b.untracked_senders, "sender", "senders")} (${n(b.untracked_events, "event", "events")}) ${
-      b.untracked_senders === 1 ? "is" : "are"
-    } not tracked by name.`,
+    say("catchall.admission.admitted", { count: b.admitted }),
+    say("catchall.admission.below", { count: b.below_admission_threshold }),
+    say("catchall.admission.rejected", { count: b.rejected_over_quota }),
+    say("catchall.admission.untracked", {
+      senders: b.untracked_senders,
+      events: b.untracked_events,
+    }),
   ];
 }
 
+/** English; `catchall.admission.refusedNote` carries both languages. */
 export const REFUSED_NOTE =
   "Refused and invalid senders are counted and never stored by name, so they cannot appear in the top senders.";
 
 /** The explanation of a measurement the pill alone does not carry; null for EXACT. */
-export function measurementText(b: CatchallBucket): string | null {
+export function measurementText(b: CatchallBucket, text: FleetText = englishFleetText): string | null {
   switch (b.measurement) {
     case "EXACT":
       return null;
     case "LOWER_BOUND":
-      return "At least (the search was truncated; more events may exist)";
+      return text.say("catchall.measurement.lowerBound");
     case "FAILED":
-      return "Not measured (the collection failed)";
+      return text.say("catchall.measurement.failed");
     default:
-      return "Not measured";
+      return text.say("catchall.measurement.notMeasured");
   }
 }

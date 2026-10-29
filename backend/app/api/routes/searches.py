@@ -20,6 +20,8 @@ from app.alerts.routing import default_policy
 from app.alerts.search_alerts import SearchAlertEvaluator
 from app.api.deps import ProviderDep, SessionDep, SettingsDep
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import CodedHTTPException, permission_refusal
 from app.models.enums import ExecutionErrorType
 from app.models.search import (
     ScheduledSearch,
@@ -154,7 +156,7 @@ def _guard(principal: Principal, permission: str) -> None:
     try:
         require_permission(principal, permission)
     except PermissionDenied as exc:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+        raise permission_refusal(exc) from exc
 
 
 def _is_authoring_error(error: Any) -> bool:
@@ -190,6 +192,13 @@ def _request_validation(exc: ValidationError) -> RequestValidationError:
 
 def _authoring_http(detail: AuthoringDetail) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, dict(detail))
+
+
+def _cron_floor_refusal(exc: CronFloorError) -> HTTPException:
+    """The 422 of a schedule that cannot be accepted, with its message code when it has one."""
+    if exc.ref is None:
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
+    return CodedHTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.ref)
 
 
 def _parse_create(body: dict[str, Any]) -> ScheduledSearchCreate:
@@ -282,9 +291,9 @@ async def create_search(
     try:
         search = await svc.create(payload, actor=principal.subject)
     except CronFloorError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+        raise _cron_floor_refusal(exc) from exc
     except EnabledSearchLimitError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        raise CodedHTTPException(status.HTTP_409_CONFLICT, exc.ref) from exc
     await record_audit(
         session, action="search.create", actor=principal.subject,
         object_type="scheduled_search", object_id=str(search.id),
@@ -392,12 +401,16 @@ async def update_search(
         sentence = str(exc)
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
-            {"message": sentence, "reasons": [sentence]},
+            {
+                "message": sentence,
+                "reasons": [sentence],
+                "reason_codes": [None if exc.ref is None else exc.ref.to_wire()],
+            },
         ) from exc
     except CronFloorError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+        raise _cron_floor_refusal(exc) from exc
     except EnabledSearchLimitError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        raise CodedHTTPException(status.HTTP_409_CONFLICT, exc.ref) from exc
     if set(changed) == {"enabled"}:
         action = "search.enable" if search.enabled else "search.disable"
         detail: dict[str, object] = {"before": before_enabled, "after": search.enabled}
@@ -748,13 +761,14 @@ async def run_search(
         counts = await permit.active_permits(session)
         await session.commit()
         held = (
-            f"{counts.global_held} of {counts.global_cap}"
+            MessageRef(
+                "search.budget.held_of", {"held": counts.global_held, "cap": counts.global_cap}
+            )
             if counts
-            else f"cap {permit.global_limit}"
+            else MessageRef("search.budget.held_cap", {"cap": permit.global_limit})
         )
-        raise HTTPException(
+        raise CodedHTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            f"the Ariel search budget is full ({held} in flight); "
-            f"waited {permit.wait_seconds:g} s; nothing was sent to QRadar",
+            MessageRef("search.budget.full", {"held": held, "waited": permit.wait_seconds}),
         )
     return ExecutionOut.model_validate(execution)

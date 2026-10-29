@@ -1,6 +1,6 @@
 # Phase F — custom detections and custom AQL (2026-10-15)
 
-Status: **built, 2026-10-16** (designed 2026-10-15 by T-108). F-1 through F-7 and F-6a are built
+Status: **built, first shipped in `v0.1.0`** (designed 2026-10-15 by T-108, built 2026-10-16). F-1 through F-7 and F-6a are built
 and their sections are marked **[BUILT]**. An "As built" note under a section marks where the
 code differs from the design text. It follows the shape of
 [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) and rests

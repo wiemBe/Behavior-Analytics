@@ -1,33 +1,45 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 
-import { ResultTrend } from "@/components/ResultTrend";
 import { ExecutionsTable } from "@/components/searches/ExecutionsTable";
 import { ScheduleControl } from "@/components/searches/ScheduleControl";
 import { SearchEditor } from "@/components/searches/SearchEditor";
 import { SearchEnableControl } from "@/components/searches/SearchEnableControl";
+import { SearchResultTrend } from "@/components/searches/SearchResultTrend";
 import { SearchRunControl } from "@/components/searches/SearchRunControl";
 import { SearchWriteNotice } from "@/components/searches/SearchWriteNotice";
 import { previousVersion, queryDiffText, searchAccessFrom, type SearchAccess } from "@/components/searches/authoring";
+import { versionTag } from "@/components/searches/searchesText";
 import { CodePanel } from "@/components/ui/CodePanel";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
+import { enumLabel } from "@/i18n/enumLabels";
+import { asTextTranslator } from "@/i18n/textTranslator";
 import { api, type SearchExecution, type SearchVersion } from "@/lib/api";
 import { axisTimeLabel, truncatedRunTimes } from "@/lib/searchRuns";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 
 import "./search-detail.css";
 
-export const metadata: Metadata = {
-  title: "Search",
-};
+// The trend is ResultTrend, mounted by SearchResultTrend: a server page cannot hand a translator
+// function to a client component, so the client wrapper reads the interface language and passes it.
 
-export default async function SearchDetailPage({
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("searches.meta");
+  return { title: t("detail") };
+}
+
+async function SearchDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const t = await getTranslations("searches.detail");
+  const say = asTextTranslator(await getTranslations());
   let search;
   let versions: SearchVersion[] = [];
   let executions: SearchExecution[] = [];
@@ -46,12 +58,12 @@ export default async function SearchDetailPage({
   } catch {
     return (
       <>
-        <PageHeader title="Search detail" />
+        <PageHeader guide={guideFor("/searches/[id]")} title={t("title")} />
         <div className="notice" role="alert">
           <p>
-            <strong>Search {id} could not be loaded.</strong>
+            <strong>{t("loadFailed", { id })}</strong>
           </p>
-          <p>It may have been removed, or the backend may be unreachable. Reload the page to try again.</p>
+          <p>{t("loadFailedHelp")}</p>
         </div>
       </>
     );
@@ -64,24 +76,23 @@ export default async function SearchDetailPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/searches/[id]")}
         title={search.name}
         meta={
           <span className={search.enabled ? "pill" : "pill warn"}>
-            {search.enabled ? "Enabled" : "Disabled"}
+            {search.enabled ? t("enabled") : t("disabled")}
           </span>
         }
         description={
           <>
-            {search.category ?? "uncategorised"} · severity {search.severity} · v
-            {search.query_version}
-            {search.next_run_at ? (
-              <>
-                {" · next run "}
-                <UtcTime value={search.next_run_at} />
-              </>
-            ) : (
-              ""
-            )}
+            {t("meta", {
+              category: search.category ?? t("uncategorised"),
+              severity: enumLabel(say, "severityPill", search.severity),
+              version: search.query_version,
+            })}
+            {search.next_run_at
+              ? t.rich("nextRun", { time: () => <UtcTime value={search.next_run_at} /> })
+              : ""}
           </>
         }
       />
@@ -103,14 +114,14 @@ export default async function SearchDetailPage({
       {writer ? (
         <section aria-labelledby="definition-title">
           <h2 id="definition-title" className="section-title">
-            Definition
+            {t("definition")}
           </h2>
           <SearchEditor mode="edit" search={search} />
         </section>
       ) : (
         <section aria-labelledby="schedule-title">
           <h2 id="schedule-title" className="section-title">
-            Schedule
+            {t("schedule")}
           </h2>
           <ScheduleControl searchId={search.id} cron={search.schedule_cron} />
         </section>
@@ -118,27 +129,28 @@ export default async function SearchDetailPage({
 
       <section aria-labelledby="aql-title">
         <h2 id="aql-title" className="section-title">
-          Current AQL (v{search.query_version})
+          {t("currentAql", { version: search.query_version })}
         </h2>
-        <CodePanel label={`Stored query, v${search.query_version}`} code={search.aql_query} meta="read-only" />
+        <CodePanel
+          label={t("storedQuery", { version: search.query_version })}
+          code={search.aql_query}
+          meta={t("readOnly")}
+        />
         {diff && previous && (
           <CodePanel
-            label={`Query change, v${previous.version} to v${search.query_version}`}
+            label={t("queryChange", { from: previous.version, to: search.query_version })}
             code={diff}
-            meta="text"
+            meta={t("text")}
           />
         )}
       </section>
 
       <section aria-labelledby="exec-title">
         <h2 id="exec-title" className="section-title">
-          Execution history
+          {t("executionHistory")}
         </h2>
         {executions.length === 0 ? (
-          <div className="notice">
-            No executions yet. The first appears after this search runs on its schedule or is run
-            now.
-          </div>
+          <div className="notice">{t("noExecutions")}</div>
         ) : (
           <ExecutionsTable executions={executions} />
         )}
@@ -146,22 +158,22 @@ export default async function SearchDetailPage({
 
       <section aria-labelledby="versions-title">
         <h2 id="versions-title" className="section-title">
-          Query version history
+          {t("versionHistory")}
         </h2>
-        <TableScroll label="Query version history">
-          <table className="table-dense" aria-label="Query version history">
+        <TableScroll label={t("versionHistory")}>
+          <table className="table-dense" aria-label={t("versionHistory")}>
             <thead>
               <tr>
-                <th scope="col">Version</th>
-                <th scope="col">Changed by</th>
-                <th scope="col">Note</th>
-                <th scope="col">When (UTC)</th>
+                <th scope="col">{t("version")}</th>
+                <th scope="col">{t("changedBy")}</th>
+                <th scope="col">{t("note")}</th>
+                <th scope="col">{t("when")}</th>
               </tr>
             </thead>
             <tbody>
               {versions.map((v) => (
                 <tr key={v.version}>
-                  <td>v{v.version}</td>
+                  <td>{versionTag(v.version)}</td>
                   <td>{v.changed_by ?? "—"}</td>
                   <td>{v.change_note ?? "—"}</td>
                   <td className="nowrap">{axisTimeLabel(v.created_at)}</td>
@@ -174,10 +186,10 @@ export default async function SearchDetailPage({
 
       <section aria-labelledby="trend-title">
         <h2 id="trend-title" className="section-title">
-          Result trend
+          {t("resultTrend")}
         </h2>
         <div className="card">
-          <ResultTrend
+          <SearchResultTrend
             searchId={search.id}
             visualization={search.visualization_type}
             search={search}
@@ -197,3 +209,5 @@ export default async function SearchDetailPage({
     </>
   );
 }
+
+export default withRouteMessages("/searches/[id]", SearchDetailPage);

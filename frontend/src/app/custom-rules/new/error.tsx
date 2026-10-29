@@ -1,7 +1,9 @@
 "use client";
 
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
+import { useTranslations } from "next-intl";
 
 export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  return <BoundaryError title="New custom rule" what="The rule editor" digest={error.digest} onRetry={reset} />;
+  const t = useTranslations("customRules.boundary");
+  return <BoundaryError title={t("newTitle")} what={t("newWhatError")} digest={error.digest} onRetry={reset} />;
 }

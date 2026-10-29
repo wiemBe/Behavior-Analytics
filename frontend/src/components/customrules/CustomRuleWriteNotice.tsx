@@ -1,12 +1,18 @@
+import { useTranslations } from "next-intl";
+
+const WRITE_PERMISSION = "custom_rule:write";
+const ENGINEER_ROLE = "detection_engineer";
+
 export function CustomRuleWriteNotice({ unknown = false }: { unknown?: boolean }) {
+  const t = useTranslations("customRules.writeNotice");
   return (
     <div className="notice" role={unknown ? "alert" : undefined}>
       <p>
-        <strong>{unknown ? "Permissions could not be read." : "The rule editor is hidden."}</strong>
+        <strong>{unknown ? t("unknown") : t("hidden")}</strong>
       </p>
       <p>
-        Creating, editing, enabling and deleting rules needs <code>custom_rule:write</code>. An
-        admin or the <code>detection_engineer</code> role can grant it.
+        {t("beforePermission")}<code>{WRITE_PERMISSION}</code>{t("betweenCodes")}
+        <code>{ENGINEER_ROLE}</code>{t("afterRole")}.
       </p>
     </div>
   );

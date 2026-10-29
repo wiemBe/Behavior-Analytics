@@ -16,6 +16,8 @@
 
 import type { PwBaselineState, PwSeriesPoint, PwValueSeries } from "@/lib/api";
 
+import { ENGLISH_PW, type PwI18n } from "./pwText";
+
 /** The chart draws at most this many values: five overlapping lines are the most one can read. */
 export const PW_MAX_SERIES = 5;
 
@@ -219,20 +221,7 @@ export function isolated(points: PlotPoint[], index: number): boolean {
 }
 
 /** A measurement as the words the tooltip and the table use. */
-export function kindWords(kind: PlotKind): string {
-  switch (kind) {
-    case "EXACT":
-      return "exact count";
-    case "LOWER_BOUND":
-      return "lower bound: at least this many";
-    case "MEASURED_ZERO":
-      return "measured zero";
-    case "UNKNOWN":
-      return "unknown: not a zero";
-    case "NOT_AN_OBSERVATION":
-      return "this value was not tracked then";
-    case "NOT_COLLECTED":
-      return "bucket not collected";
-  }
+export function kindWords(kind: PlotKind, i18n: PwI18n = ENGLISH_PW): string {
+  return i18n.t(`pwchart.kind.${kind}`);
 }
 

@@ -54,6 +54,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef, render
 from app.models.enums import RuleDependencyKind, RuleHealthStatus
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
@@ -68,14 +69,26 @@ from app.models.rule import (
 )
 from app.rules.matches import (
     CoverageState,
+    FailedWindowFacts,
     MatchCoverage,
     MatchEvidence,
     assess_coverage,
+    failed_window_facts,
     floor_to_window,
     match_evidence,
 )
 
 logger = logging.getLogger("app.services.rule_health")
+
+
+def _rounded(value: float, digits: int) -> float:
+    """`value` rounded the way a ``:.{digits}f`` format spec rounds it.
+
+    A reason carries the rounded number, so the English render and the frontend's rendering
+    in another locale show the same digits (Python rounds half to even on the exact binary
+    value; an ``Intl`` formatter rounds half up).
+    """
+    return float(f"{value:.{digits}f}")
 
 
 def _kind_summary(seen: bool, any_degraded: bool, any_unknown: bool) -> bool | None:
@@ -113,6 +126,8 @@ class HealthVerdict:
     required_log_sources_healthy: bool | None = None
     missing_dependencies: list[str] = field(default_factory=list)
     evidence: dict = field(default_factory=dict)
+    #: The code and raw values `reason` was rendered from (stored as `reason_i18n`).
+    reason_message: MessageRef | None = None
 
 
 @dataclass(frozen=True)
@@ -125,6 +140,10 @@ class MeasuredMatches:
     #: coverage: a stored row is a match that happened.
     events: int = 0
     last_match_at: datetime | None = None
+    #: The span's FAILED windows, summarized for the reason sentence. None when
+    #: no FAILED window is in the span (a truncated or missing window has no
+    #: window to name).
+    failed_facts: FailedWindowFacts | None = None
 
 
 @dataclass
@@ -182,7 +201,7 @@ class RuleHealthEvaluator:
         ls_health = await self._log_source_type_health(instance.id, now)
         observation_status = await self._observation_status(instance.id, window_start)
         observation_complete = observation_status == "complete"
-        coverage = await self._match_coverage(instance.id, window_start, now)
+        coverage, failed_facts = await self._match_coverage(instance.id, window_start, now)
         match_sums = (
             await self._match_sums([r.id for r in rules], window_start)
             if coverage.state != CoverageState.NONE
@@ -205,7 +224,7 @@ class RuleHealthEvaluator:
                 observation_complete=observation_complete,
                 observation_status=observation_status,
                 matches=(
-                    MeasuredMatches(evidence, coverage, events, last_match)
+                    MeasuredMatches(evidence, coverage, events, last_match, failed_facts)
                     if coverage.state != CoverageState.NONE
                     else None
                 ),
@@ -313,7 +332,7 @@ class RuleHealthEvaluator:
 
         def verdict(
             status: RuleHealthStatus,
-            reason: str,
+            message: MessageRef,
             *,
             confidence: float = 1.0,
             building_blocks_healthy: bool | None = None,
@@ -328,7 +347,8 @@ class RuleHealthEvaluator:
             """
             return HealthVerdict(
                 status=status,
-                reason=reason,
+                reason=render(message),
+                reason_message=message,
                 confidence=confidence,
                 window_start=window_start,
                 window_end=now,
@@ -347,7 +367,7 @@ class RuleHealthEvaluator:
         if not rule.enabled:
             return verdict(
                 RuleHealthStatus.DISABLED,
-                "The rule is disabled in QRadar, so it cannot produce detections.",
+                MessageRef("rule_health.disabled"),
             )
 
         # 2. Too new, or too little observed history, to judge fairly.
@@ -355,15 +375,18 @@ class RuleHealthEvaluator:
         if age_days is None:
             return verdict(
                 RuleHealthStatus.INSUFFICIENT_DATA,
-                "The rule's age is unknown, so inactivity cannot be assessed.",
+                MessageRef("rule_health.age_unknown"),
                 confidence=0.3,
             )
         if age_days < self.settings.rule_health_grace_period_days:
             return verdict(
                 RuleHealthStatus.INSUFFICIENT_DATA,
-                (
-                    f"The rule is {age_days:.1f} days old, inside the "
-                    f"{self.settings.rule_health_grace_period_days}-day grace period."
+                MessageRef(
+                    "rule_health.grace",
+                    {
+                        "age_days": _rounded(age_days, 1),
+                        "grace_days": self.settings.rule_health_grace_period_days,
+                    },
                 ),
                 confidence=0.6,
                 evidence={"age_days": round(age_days, 2)},
@@ -371,7 +394,7 @@ class RuleHealthEvaluator:
         if age_days < self.settings.rule_health_min_history_days:
             return verdict(
                 RuleHealthStatus.INSUFFICIENT_DATA,
-                "Not enough observed history to classify this rule.",
+                MessageRef("rule_health.min_history"),
                 confidence=0.5,
                 evidence={"age_days": round(age_days, 2)},
             )
@@ -386,28 +409,20 @@ class RuleHealthEvaluator:
         if missing:
             return verdict(
                 RuleHealthStatus.DEPENDENCY_DEGRADED,
-                (
-                    "The rule cannot fire reliably: "
-                    + "; ".join(missing[:5])
-                    + ". Its silence is not evidence about the rule itself."
-                ),
+                MessageRef("rule_health.dependency_degraded", {"dependencies": missing[:5]}),
                 confidence=0.9,
                 building_blocks_healthy=bb_ok,
                 required_log_sources_healthy=ls_ok,
-                missing_dependencies=missing,
+                missing_dependencies=[render(ref) for ref in missing],
             )
         if unknown:
             return verdict(
                 RuleHealthStatus.INSUFFICIENT_DATA,
-                (
-                    "A dependency has not been observed, so the rule cannot be judged: "
-                    + "; ".join(unknown[:5])
-                    + "."
-                ),
+                MessageRef("rule_health.dependency_unobserved", {"dependencies": unknown[:5]}),
                 confidence=0.4,
                 building_blocks_healthy=bb_ok,
                 required_log_sources_healthy=ls_ok,
-                missing_dependencies=unknown,
+                missing_dependencies=[render(ref) for ref in unknown],
             )
 
         # 4. Noisy — firing far above the configured expectation.
@@ -421,9 +436,13 @@ class RuleHealthEvaluator:
         if trigger_count > 0 and per_day > threshold:
             return verdict(
                 RuleHealthStatus.NOISY,
-                (
-                    f"The rule fired {per_day:.1f} times a day over the last "
-                    f"{window_days:.0f} days, above the expected {threshold:.1f}."
+                MessageRef(
+                    "rule_health.noisy",
+                    {
+                        "per_day": _rounded(per_day, 1),
+                        "window_days": _rounded(window_days, 0),
+                        "threshold": _rounded(threshold, 1),
+                    },
                 ),
                 building_blocks_healthy=bb_ok,
                 required_log_sources_healthy=ls_ok,
@@ -440,23 +459,7 @@ class RuleHealthEvaluator:
                 # remove.
                 return verdict(
                     RuleHealthStatus.INSUFFICIENT_DATA,
-                    (
-                        (
-                            "Measured rule-match coverage of the evaluation window is "
-                            f"incomplete ({matches.coverage.complete} of "
-                            f"{matches.coverage.expected} windows are COMPLETE), so the "
-                            "absence of measured matches is not evidence that the rule "
-                            "has never fired."
-                        )
-                        if matches is not None
-                        and measurement
-                        and matches.evidence == MatchEvidence.EXACT
-                        else (
-                            "No completed rule-metric collection covers the evaluation "
-                            "window, so the absence of observed firings is not evidence "
-                            "that the rule has never fired."
-                        )
-                    ),
+                    self._incomplete_coverage_message(matches),
                     confidence=0.2,
                     building_blocks_healthy=bb_ok,
                     required_log_sources_healthy=ls_ok,
@@ -469,16 +472,14 @@ class RuleHealthEvaluator:
             return verdict(
                 RuleHealthStatus.NEVER_OBSERVED,
                 (
-                    (
-                        "The rule is enabled and its dependencies are healthy, but no "
-                        "matching event was measured in any of the "
-                        f"{matches.coverage.expected} COMPLETE windows of the evaluation "
-                        "span."
+                    MessageRef(
+                        "rule_health.never_observed.measured",
+                        {"expected": matches.coverage.expected},
                     )
                     if measured_exact and matches is not None
-                    else (
-                        f"The rule is enabled and its dependencies are healthy, but it "
-                        f"has never been observed firing in {age_days:.0f} days."
+                    else MessageRef(
+                        "rule_health.never_observed.unmeasured",
+                        {"age_days": _rounded(age_days, 0)},
                     )
                 ),
                 building_blocks_healthy=bb_ok,
@@ -495,9 +496,12 @@ class RuleHealthEvaluator:
             if quiet_days > self.settings.rule_health_inactivity_days:
                 return verdict(
                     RuleHealthStatus.INACTIVE,
-                    (
-                        f"The rule last fired {quiet_days:.0f} days ago, beyond the "
-                        f"{self.settings.rule_health_inactivity_days}-day inactivity window."
+                    MessageRef(
+                        "rule_health.inactive",
+                        {
+                            "quiet_days": _rounded(quiet_days, 0),
+                            "inactivity_days": self.settings.rule_health_inactivity_days,
+                        },
                     ),
                     building_blocks_healthy=bb_ok,
                     required_log_sources_healthy=ls_ok,
@@ -509,20 +513,11 @@ class RuleHealthEvaluator:
         return verdict(
             RuleHealthStatus.HEALTHY,
             (
-                (
-                    f"At least {trigger_count} matching events were measured in the "
-                    "evaluation window with healthy dependencies."
-                )
+                MessageRef("rule_health.healthy.lower_bound", {"count": trigger_count})
                 if measured_lower_bound
-                else (
-                    f"At least {trigger_count} offense-contributing firings were "
-                    "observed in the evaluation window with healthy dependencies."
-                )
+                else MessageRef("rule_health.healthy.inferred", {"count": trigger_count})
                 if metric_inferred
-                else (
-                    f"The rule fired {trigger_count} times in the evaluation window "
-                    f"with healthy dependencies."
-                )
+                else MessageRef("rule_health.healthy.direct", {"count": trigger_count})
             ),
             building_blocks_healthy=bb_ok,
             required_log_sources_healthy=ls_ok,
@@ -538,6 +533,59 @@ class RuleHealthEvaluator:
 
     # ------------------------------------------------------------- helpers
     @staticmethod
+    def _incomplete_coverage_message(matches: MeasuredMatches | None) -> MessageRef:
+        """Why a zero count proves nothing: the measurement, not the rule.
+
+        With measured matches and FAILED windows in the span, the sentence
+        names what an unrepaired window costs — how many windows, which span,
+        skipped or failed, the newest error's class (never its message), and
+        the moment the span stops holding them, after which the verdict heals
+        on its own.
+        """
+        if (
+            matches is None
+            # The match collector never ran (coverage NONE): as before, the
+            # sentence is about the rule-metric collection.
+            or matches.coverage.state == CoverageState.NONE
+            or matches.evidence != MatchEvidence.EXACT
+        ):
+            return MessageRef("rule_health.incomplete.no_collection")
+        coverage = matches.coverage
+        counts = {"complete": coverage.complete, "expected": coverage.expected}
+        facts = matches.failed_facts
+        if facts is None:
+            return MessageRef("rule_health.incomplete.head", counts)
+        causes: list[MessageRef] = []
+        if facts.failed:
+            one = facts.failed == 1
+            shape = "failed_one" if one else "failed_many"
+            params: dict[str, object] = {} if one else {"count": facts.failed}
+            if facts.last_error_class:
+                shape += "_class"
+                params["error_class"] = facts.last_error_class
+            causes.append(MessageRef(f"rule_health.incomplete.cause.{shape}", params))
+        if facts.skipped:
+            if facts.skipped == 1:
+                causes.append(MessageRef("rule_health.incomplete.cause.skipped_one"))
+            else:
+                causes.append(
+                    MessageRef(
+                        "rule_health.incomplete.cause.skipped_many", {"count": facts.skipped}
+                    )
+                )
+        detail = {
+            **counts,
+            "causes": causes,
+            "first_start": facts.first_start,
+            "until": facts.until,
+        }
+        if facts.last_start == facts.first_start:
+            return MessageRef("rule_health.incomplete.detail_one", detail)
+        return MessageRef(
+            "rule_health.incomplete.detail_many", {**detail, "last_start": facts.last_start}
+        )
+
+    @staticmethod
     def _aware(value: datetime) -> datetime:
         return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
@@ -547,21 +595,28 @@ class RuleHealthEvaluator:
             return None
         return max(0.0, (now - self._aware(anchor)).total_seconds() / 86400.0)
 
+    @staticmethod
+    def _dependency_label(dep: RuleDependency, fallback_code: str) -> dict[str, MessageRef]:
+        """The `label` param of a dependency clause: its QRadar name, else the coded fallback."""
+        if dep.target_name:
+            return {"label": MessageRef("rule_health.label.named", {"name": dep.target_name})}
+        return {"label": MessageRef(fallback_code, {"ref": dep.target_ref})}
+
     def _dependency_state(
         self,
         dependencies: list[RuleDependency],
         building_block_enabled: dict[str, bool],
         log_source_type_healthy: dict[str, bool],
-    ) -> tuple[list[str], list[str], bool | None, bool | None]:
-        """Known-degraded labels, unobserved labels, and per-kind summaries.
+    ) -> tuple[list[MessageRef], list[MessageRef], bool | None, bool | None]:
+        """Known-degraded clauses, unobserved clauses, and per-kind summaries.
 
         Inferred dependencies below the confidence floor are ignored: acting on
         a low-confidence guess would judge a healthy rule on no real evidence.
         A ref that is not in the map has not been observed. It is not healthy.
         A known failure (`False`) is recorded separately and outranks it.
         """
-        missing: list[str] = []
-        unknown: list[str] = []
+        missing: list[MessageRef] = []
+        unknown: list[MessageRef] = []
         bb_seen = ls_seen = False
         bb_degraded = ls_degraded = False
         bb_unknown = ls_unknown = False
@@ -572,26 +627,26 @@ class RuleHealthEvaluator:
             if dep.kind == RuleDependencyKind.BUILDING_BLOCK:
                 bb_seen = True
                 enabled = building_block_enabled.get(dep.target_ref)
-                label = dep.target_name or f"building block {dep.target_ref}"
+                label = self._dependency_label(dep, "rule_health.label.building_block")
                 if enabled is None:
                     bb_unknown = True
-                    unknown.append(f"{label} has not been observed")
+                    unknown.append(MessageRef("rule_health.dependency.not_observed", label))
                 elif enabled is False:
                     bb_degraded = True
-                    missing.append(f"{label} is disabled")
+                    missing.append(MessageRef("rule_health.dependency.disabled", label))
             elif dep.kind in (
                 RuleDependencyKind.LOG_SOURCE_TYPE,
                 RuleDependencyKind.LOG_SOURCE,
             ):
                 ls_seen = True
                 healthy = log_source_type_healthy.get(dep.target_ref)
-                label = dep.target_name or f"log source type {dep.target_ref}"
+                label = self._dependency_label(dep, "rule_health.label.log_source_type")
                 if healthy is None:
                     ls_unknown = True
-                    unknown.append(f"{label} has not been observed")
+                    unknown.append(MessageRef("rule_health.dependency.not_observed", label))
                 elif healthy is False:
                     ls_degraded = True
-                    missing.append(f"{label} is not delivering events")
+                    missing.append(MessageRef("rule_health.dependency.not_delivering", label))
 
         return (
             missing,
@@ -626,10 +681,12 @@ class RuleHealthEvaluator:
 
     async def _match_coverage(
         self, instance_id: uuid.UUID, window_start: datetime, now: datetime
-    ) -> MatchCoverage:
-        """How much of the evaluation span the match windows cover.
+    ) -> tuple[MatchCoverage, FailedWindowFacts | None]:
+        """Coverage of the evaluation span, and its FAILED windows' story.
 
-        Two queries for the whole instance, whatever the number of rules.
+        Two queries for the whole instance, whatever the number of rules. The
+        `last_error` column rides the rows coverage already reads, so naming
+        the failed windows in a reason adds no query.
         """
         ever = (
             await self.session.scalar(
@@ -639,19 +696,31 @@ class RuleHealthEvaluator:
             )
         ) is not None
         rows: list[tuple[datetime, int, str]] = []
+        errors: list[tuple[datetime, int, str, str | None]] = []
         if ever:
+            settled_until = floor_to_window(
+                now - timedelta(seconds=self.settings.rule_match_settle_lag_seconds),
+                self.settings.rule_match_window_seconds,
+            )
             result = await self.session.execute(
                 select(
                     RuleMatchWindow.window_start,
                     RuleMatchWindow.window_seconds,
                     RuleMatchWindow.status,
+                    RuleMatchWindow.last_error,
                 ).where(
                     RuleMatchWindow.instance_id == instance_id,
                     RuleMatchWindow.window_start >= window_start,
+                    RuleMatchWindow.window_start < settled_until,
                 )
             )
-            rows = [(start, seconds, str(status)) for start, seconds, status in result.all()]
-        return assess_coverage(
+            fetched = result.all()
+            rows = [(start, seconds, str(status)) for start, seconds, status, _ in fetched]
+            errors = [
+                (start, seconds, str(status), error)
+                for start, seconds, status, error in fetched
+            ]
+        coverage = assess_coverage(
             rows,
             evaluation_start=window_start,
             now=now,
@@ -659,6 +728,16 @@ class RuleHealthEvaluator:
             settle_seconds=self.settings.rule_match_settle_lag_seconds,
             ever_collected=ever,
         )
+        facts = (
+            failed_window_facts(
+                errors,
+                window_seconds=self.settings.rule_match_window_seconds,
+                span=timedelta(days=self.settings.rule_health_window_days),
+            )
+            if ever
+            else None
+        )
+        return coverage, facts
 
     async def _match_sums(
         self, rule_ids: list[uuid.UUID], window_start: datetime
@@ -786,6 +865,9 @@ class RuleHealthEvaluator:
             "logic_version": self.logic_version,
             "confidence": verdict.confidence,
             "reason": verdict.reason,
+            "reason_i18n": (
+                verdict.reason_message.to_wire() if verdict.reason_message is not None else None
+            ),
             "window_start": verdict.window_start,
             "window_end": verdict.window_end,
             "last_triggered_at": verdict.last_triggered_at,
@@ -814,7 +896,14 @@ class RuleHealthEvaluator:
         A rule that fires every few weeks would otherwise oscillate between
         HEALTHY and INACTIVE on each evaluation, and anything alerting on the
         stored status would flap with it.
+
+        While a verdict is held back, `health_evaluated_at` is held back with
+        it: the reason shown beside the badge is read from the snapshot at
+        `health_evaluated_at` (RULE-1), so the column must keep naming the
+        evaluation that produced the verdict shown, never a newer one that
+        disagrees with it.
         """
+        previous_evaluated_at = rule.health_evaluated_at
         rule.health_evaluated_at = now
         if rule.health_status == verdict.status:
             return False
@@ -837,4 +926,7 @@ class RuleHealthEvaluator:
         if len(recent) >= threshold and all(s == verdict.status for s in recent):
             rule.health_status = verdict.status
             return True
+        # Held: the badge keeps the previous verdict, and its reason keeps the
+        # evaluation that verdict came from.
+        rule.health_evaluated_at = previous_evaluated_at
         return False

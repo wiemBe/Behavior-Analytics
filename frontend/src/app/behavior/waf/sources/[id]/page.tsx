@@ -2,9 +2,11 @@
 // baseline?
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { WafEndpointsTable } from "@/components/waf/WafEndpointsTable";
 import { validationView } from "@/components/waf/wafSourceHealth";
 import {
@@ -14,20 +16,23 @@ import {
   type WafSourceDetail,
 } from "@/lib/api";
 import { formatCount } from "@/lib/behavior";
+import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 import Link from "next/link";
 
 import "../../waf.css";
 
-export const metadata: Metadata = {
-  title: "WAF source endpoints",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("waf.source");
+  return { title: t("metaTitle") };
+}
 
 const PAGE_SIZE = 50;
 
-function Problem({ title, text }: { title: string; text: React.ReactNode }) {
+function Problem({ title, text, pageTitle }: { title: string; text: React.ReactNode; pageTitle: string }) {
   return (
     <>
-      <PageHeader title="WAF source endpoints" />
+      <PageHeader guide={guideFor("/behavior/waf/sources/[id]")} title={pageTitle} />
       <div className="notice" role="alert">
         <p>
           <strong>{title}</strong>
@@ -38,13 +43,16 @@ function Problem({ title, text }: { title: string; text: React.ReactNode }) {
   );
 }
 
-export default async function WafSourceEndpointsPage({
+async function WafSourceEndpointsPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  const t = await getTranslations("waf.source");
+  const i18n = await getBehaviorI18n();
+  const { locale } = i18n;
   const { id } = await params;
   const query = await searchParams;
   const activeOnly = query.active === "1";
@@ -66,12 +74,11 @@ export default async function WafSourceEndpointsPage({
     if (err instanceof ApiError && err.status === 404) {
       return (
         <Problem
-          title="This WAF source does not exist."
+          pageTitle={t("title")}
+          title={t("notFoundTitle")}
           text={
             <>
-              No WAF behavior profile matches this address. It may have been removed, or the link
-              may be wrong. <Link href="/behavior/waf">Open WAF behavior</Link> to see the sources
-              that exist.
+              {t("notFoundText")} <Link href="/behavior/waf">{t("openBehavior")}</Link>
             </>
           }
         />
@@ -80,35 +87,39 @@ export default async function WafSourceEndpointsPage({
     if (err instanceof ApiError && err.status === 403) {
       return (
         <Problem
-          title="You do not have permission to view WAF behavior."
-          text="Ask an administrator for the read:anomalies permission. Nothing was changed."
+          pageTitle={t("title")}
+          title={t("forbiddenTitle")}
+          text={t("forbiddenText")}
         />
       );
     }
     if (err instanceof ApiError && err.status === 401) {
       return (
         <Problem
-          title="Your session has expired."
-          text="Sign in again to continue. Nothing was changed."
+          pageTitle={t("title")}
+          title={t("expiredTitle")}
+          text={t("expiredText")}
         />
       );
     }
     return (
       <Problem
-        title="This source's endpoints could not be loaded."
-        text="The backend may be unreachable. Check that it is running, then reload the page. Nothing was changed."
+        pageTitle={t("title")}
+        title={t("failedTitle")}
+        text={t("failedText")}
       />
     );
   }
 
-  const v = validationView(source);
+  const v = validationView(source, i18n);
   const filterParams = { active: activeOnly ? "1" : undefined };
 
   return (
     <>
       <PageHeader
+        guide={guideFor("/behavior/waf/sources/[id]")}
         title={source.log_source_name}
-        description="Tracked endpoints and the adequacy of each baseline. Times are UTC."
+        description={t("description")}
         meta={
           <>
             <span className={`pill pill-strong ${v.tone}`}>{v.label}</span>
@@ -116,45 +127,46 @@ export default async function WafSourceEndpointsPage({
             <span className="muted" aria-hidden="true">
               ·
             </span>
-            <span>{source.enabled ? "Profile enabled" : "Profile disabled"}</span>
+            <span>{source.enabled ? t("profileEnabled") : t("profileDisabled")}</span>
             <span className="muted" aria-hidden="true">
               ·
             </span>
             <span className="num">
-              {formatCount(source.active_endpoints)} of {formatCount(source.active_endpoint_ceiling)}{" "}
-              endpoints active
+              {t("endpointsActive", {
+                active: formatCount(source.active_endpoints, locale),
+                ceiling: formatCount(source.active_endpoint_ceiling, locale),
+              })}
             </span>
           </>
         }
         actions={
           <Link href="/behavior/waf" className="action secondary button-link">
-            All WAF sources
+            {t("allSources")}
           </Link>
         }
       />
 
       {!source.virtual_host_available && (
         <p className="banner">
-          This source does not expose a virtual host, so an endpoint may combine traffic for
-          different applications that share the path.
+          {t("noVirtualHost")}
         </p>
       )}
 
-      <nav className="range-selector waf-filter" aria-label="Endpoint filter">
-        <span className="muted">Show</span>
+      <nav className="range-selector waf-filter" aria-label={t("filterLabel")}>
+        <span className="muted">{t("show")}</span>
         <Link
           href={`/behavior/waf/sources/${id}`}
           className={`range-option${activeOnly ? "" : " range-option-active"}`}
           aria-current={activeOnly ? undefined : "page"}
         >
-          All endpoints
+          {t("all")}
         </Link>
         <Link
           href={`/behavior/waf/sources/${id}?active=1`}
           className={`range-option${activeOnly ? " range-option-active" : ""}`}
           aria-current={activeOnly ? "page" : undefined}
         >
-          Active only
+          {t("activeOnly")}
         </Link>
       </nav>
 
@@ -162,13 +174,13 @@ export default async function WafSourceEndpointsPage({
         <div className="notice" role="status">
           <p>
             <strong>
-              {activeOnly ? "No active endpoint is tracked for this source." : "No endpoint is tracked for this source."}
+              {activeOnly ? t("emptyActiveTitle") : t("emptyTitle")}
             </strong>
           </p>
           <p>
             {source.validation_current && source.enabled
-              ? "Endpoints appear once a collected bucket admits them. None has been admitted yet, so nothing is being judged."
-              : "This source is not collected (its profile is disabled or not VALID for the current version), so no endpoint can be tracked."}
+              ? t("emptyCollected")
+              : t("emptyNotCollected")}
           </p>
         </div>
       ) : (
@@ -188,3 +200,5 @@ export default async function WafSourceEndpointsPage({
     </>
   );
 }
+
+export default withRouteMessages("/behavior/waf/sources/[id]", WafSourceEndpointsPage);

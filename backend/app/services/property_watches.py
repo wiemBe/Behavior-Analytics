@@ -32,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from typing import Any, Literal, cast
 
+from fastapi import HTTPException
 from sqlalchemy import and_, func, null, select, tuple_
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +40,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.alerts.dispatcher import AlertEnqueuer
 from app.alerts.service import AlertResolution, AlertService
 from app.core.config import Settings
+from app.history.planner import Gap
+from app.i18n.messages import MessageRef, render
+from app.i18n.refusal import CodedHTTPException
 from app.models.alert import Alert
 from app.models.custom_rule import CustomRule
 from app.models.enums import (
@@ -64,7 +68,6 @@ from app.models.property_watch import (
 )
 from app.property_watch.aql import build_query, pinned_rows_per_bucket, validate_query_inputs
 from app.property_watch.bootstrap import (
-    UNREADABLE_PROGRESS,
     BootstrapStateError,
     history_budget_sentence,
     history_step_parts,
@@ -101,6 +104,7 @@ from app.property_watch.scope import ResolvedScope, resolve_scope
 from app.providers.base import QRadarProvider
 from app.providers.dto import PwSearchKind
 from app.repositories.property_watch import PropertyWatchRepository
+from app.schemas.messages import stored_message_parts
 from app.schemas.property_watch import (
     BaselineState,
     CoverageOut,
@@ -162,7 +166,14 @@ def default_detectors(property_count: int) -> list[PwAnomalyType]:
 
 
 class PreviewRefused(Exception):
-    """The stored watch cannot be previewed as it stands; the message is the reason."""
+    """The stored watch cannot be previewed as it stands; the message is the reason.
+
+    `ref` is the registry reference the message was rendered from.
+    """
+
+    def __init__(self, ref: MessageRef) -> None:
+        self.ref = ref
+        super().__init__(render(ref))
 
 
 # ------------------------------------------------------------------------ validation
@@ -179,8 +190,20 @@ class WatchDraft:
     detectors: Sequence[str]
 
 
-def _scope_reasons(draft: WatchDraft) -> list[str]:
-    reasons: list[str] = []
+def wire_parts(message: MessageRef | None) -> tuple[str | None, dict[str, Any] | None]:
+    """The `(code, params)` siblings of a sentence on the wire; `(None, None)` for no code."""
+    if message is None:
+        return None, None
+    wire = message.to_wire()
+    return cast(str, wire["code"]), cast(dict[str, Any], wire["params"])
+
+
+def _draft(name: str, **params: object) -> MessageRef:
+    return MessageRef(f"pw.draft.{name}", params)
+
+
+def _scope_refs(draft: WatchDraft) -> list[MessageRef]:
+    reasons: list[MessageRef] = []
     wanted = _SCOPE_COLUMNS[draft.scope_kind]
     values: dict[str, object] = {
         "log_source_id": draft.log_source_id,
@@ -189,74 +212,93 @@ def _scope_reasons(draft: WatchDraft) -> list[str]:
     }
     for column, value in values.items():
         if column == wanted and value is None:
-            reasons.append(f"{column} is required for a {draft.scope_kind.value} scope")
+            reasons.append(_draft("scope_required", column=column, kind=draft.scope_kind.value))
         elif column != wanted and value is not None:
-            reasons.append(f"{column} must be empty for a {draft.scope_kind.value} scope")
+            reasons.append(
+                _draft("scope_must_be_empty", column=column, kind=draft.scope_kind.value)
+            )
     for column in ("scope_type_id", "scope_group_id"):
         value = values[column]
         if isinstance(value, int) and value < 0:
-            reasons.append(f"{column} must not be negative")
+            reasons.append(_draft("scope_negative", column=column))
     return reasons
 
 
-def _property_reasons(properties: Sequence[dict[str, str]]) -> list[str]:
-    reasons: list[str] = []
+def _reference_reason(exc: PwReferenceError) -> MessageRef | str:
+    """A reference refusal as a nested reason: its reference, else its own text."""
+    return exc.ref if exc.ref is not None else str(exc)
+
+
+def _property_refs(properties: Sequence[dict[str, str]]) -> list[MessageRef]:
+    reasons: list[MessageRef] = []
     if not 1 <= len(properties) <= PW_MAX_PROPERTIES:
-        reasons.append(f"a watch names one or two properties, not {len(properties)}")
+        reasons.append(_draft("property_count", count=len(properties)))
     references: list[PwFieldReference] = []
     for index, item in enumerate(properties, start=1):
         try:
             references.append(PwFieldReference.from_dict(item))
         except PwReferenceError as exc:
-            reasons.append(f"property {index}: {exc}")
+            reasons.append(_draft("property_invalid", index=index, reason=_reference_reason(exc)))
     if len(set(references)) != len(references):
-        reasons.append("a watch cannot name the same property twice")
+        reasons.append(_draft("property_twice"))
+    return reasons
+
+
+def pin_reason_refs(
+    pins: Sequence[Sequence[str]], property_count: int, max_pinned: int
+) -> list[MessageRef]:
+    """Every problem of the pinned list. No reason echoes a pinned value."""
+    reasons: list[MessageRef] = []
+    if len(pins) > max_pinned:
+        reasons.append(_draft("pin_count", max=max_pinned, count=len(pins)))
+    seen: set[tuple[str, ...]] = set()
+    for index, entry in enumerate(pins, start=1):
+        if 1 <= property_count <= PW_MAX_PROPERTIES and len(entry) != property_count:
+            reasons.append(_draft("pin_parts", index=index, count=property_count))
+        for part, component in enumerate(entry, start=1):
+            try:
+                validate_pinned_value(component)
+            except PwReferenceError as exc:
+                reasons.append(
+                    _draft("pin_invalid", index=index, part=part, reason=_reference_reason(exc))
+                )
+        key = tuple(entry)
+        if key in seen:
+            reasons.append(_draft("pin_twice", index=index))
+        seen.add(key)
     return reasons
 
 
 def pin_reasons(
     pins: Sequence[Sequence[str]], property_count: int, max_pinned: int
 ) -> list[str]:
-    """Every problem of the pinned list. No reason echoes a pinned value."""
-    reasons: list[str] = []
-    if len(pins) > max_pinned:
-        reasons.append(f"a watch pins at most {max_pinned} values, not {len(pins)}")
-    seen: set[tuple[str, ...]] = set()
-    for index, entry in enumerate(pins, start=1):
-        if 1 <= property_count <= PW_MAX_PROPERTIES and len(entry) != property_count:
-            reasons.append(
-                f"pinned value {index}: needs {property_count} string(s), one per property"
-            )
-        for part, component in enumerate(entry, start=1):
-            try:
-                validate_pinned_value(component)
-            except PwReferenceError as exc:
-                reasons.append(f"pinned value {index}, part {part}: {exc}")
-        key = tuple(entry)
-        if key in seen:
-            reasons.append(f"pinned value {index}: pinned twice")
-        seen.add(key)
-    return reasons
+    """`pin_reason_refs` as the English sentences."""
+    return [render(ref) for ref in pin_reason_refs(pins, property_count, max_pinned)]
 
 
-def validate_draft(draft: WatchDraft, *, max_pinned: int) -> list[str]:
+def validate_draft_refs(draft: WatchDraft, *, max_pinned: int) -> list[MessageRef]:
     """Every reason a watch cannot be saved as drafted, in a stable order."""
-    reasons = _scope_reasons(draft)
-    reasons.extend(_property_reasons(draft.properties))
-    reasons.extend(pin_reasons(draft.pinned_values, len(draft.properties), max_pinned))
+    reasons = _scope_refs(draft)
+    reasons.extend(_property_refs(draft.properties))
+    reasons.extend(pin_reason_refs(draft.pinned_values, len(draft.properties), max_pinned))
     if not draft.detectors:
-        reasons.append("a watch evaluates at least one detector")
+        reasons.append(_draft("detector_required"))
     if (
         PwAnomalyType.PW_NEW_COMBINATION.value in draft.detectors
         and len(draft.properties) != PW_MAX_PROPERTIES
     ):
-        reasons.append("PW_NEW_COMBINATION needs a watch with two properties")
+        reasons.append(_draft("combination_needs_two"))
     return reasons
 
 
-async def scope_existence_reasons(
+def validate_draft(draft: WatchDraft, *, max_pinned: int) -> list[str]:
+    """`validate_draft_refs` as the English sentences."""
+    return [render(ref) for ref in validate_draft_refs(draft, max_pinned=max_pinned)]
+
+
+async def scope_existence_refs(
     session: AsyncSession, draft: WatchDraft, instance_id: uuid.UUID
-) -> list[str]:
+) -> list[MessageRef]:
     """The scope's subject is not in the synced inventory of the instance."""
     if draft.scope_kind is PwScopeKind.LOG_SOURCE and draft.log_source_id is not None:
         found = await session.scalar(
@@ -264,7 +306,7 @@ async def scope_existence_reasons(
                 LogSource.id == draft.log_source_id, LogSource.instance_id == instance_id
             )
         )
-        return [] if found else [f"log source {draft.log_source_id} does not exist"]
+        return [] if found else [_draft("log_source_missing", id=str(draft.log_source_id))]
     if draft.scope_kind is PwScopeKind.LOG_SOURCE_TYPE and draft.scope_type_id is not None:
         found = await session.scalar(
             select(LogSourceType.type_id).where(
@@ -272,9 +314,7 @@ async def scope_existence_reasons(
                 LogSourceType.type_id == draft.scope_type_id,
             )
         )
-        return [] if found is not None else [
-            f"log source type {draft.scope_type_id} is not in the synced inventory"
-        ]
+        return [] if found is not None else [_draft("type_missing", id=draft.scope_type_id)]
     if draft.scope_kind is PwScopeKind.LOG_SOURCE_GROUP and draft.scope_group_id is not None:
         found = await session.scalar(
             select(LogSourceGroup.qradar_id).where(
@@ -282,10 +322,15 @@ async def scope_existence_reasons(
                 LogSourceGroup.qradar_id == draft.scope_group_id,
             )
         )
-        return [] if found is not None else [
-            f"log source group {draft.scope_group_id} is not in the synced inventory"
-        ]
+        return [] if found is not None else [_draft("group_missing", id=draft.scope_group_id)]
     return []
+
+
+async def scope_existence_reasons(
+    session: AsyncSession, draft: WatchDraft, instance_id: uuid.UUID
+) -> list[str]:
+    """`scope_existence_refs` as the English sentences."""
+    return [render(ref) for ref in await scope_existence_refs(session, draft, instance_id)]
 
 
 # --------------------------------------------------------------------------- snapshot
@@ -613,17 +658,25 @@ async def history_budget_reasons(
 
 
 # ---------------------------------------------------------------- history requests
-REASON_HISTORY_SWITCHED_OFF = "history reading is switched off"
-REASON_HISTORY_STARTS = "the reading starts at the next collection"
+MESSAGE_HISTORY_SWITCHED_OFF = MessageRef("pw.history.switched_off")
+MESSAGE_HISTORY_STARTS = MessageRef("pw.history.starts_next")
+MESSAGE_HISTORY_UNREADABLE = MessageRef("pw.history.unreadable")
+REASON_HISTORY_SWITCHED_OFF = render(MESSAGE_HISTORY_SWITCHED_OFF)
+REASON_HISTORY_STARTS = render(MESSAGE_HISTORY_STARTS)
 
 
-def history_days_reasons(days: int, settings: Settings) -> list[str]:
+def history_days_refs(days: int, settings: Settings) -> list[MessageRef]:
     """422 reasons for a `history_days` value: `0`, or `pw_new_value_history_days` to
     `pw_bootstrap_days` inclusive (design §H.6 row 13)."""
     low, high = settings.pw_new_value_history_days, settings.pw_bootstrap_days
     if days == 0 or low <= days <= high:
         return []
-    return [f"history_days must be 0 (no history) or between {low} and {high}, not {days}"]
+    return [_draft("history_days_range", low=low, high=high, days=days)]
+
+
+def history_days_reasons(days: int, settings: Settings) -> list[str]:
+    """`history_days_refs` as the English sentences."""
+    return [render(ref) for ref in history_days_refs(days, settings)]
 
 
 def pinned_rows(watch_like: PropertyWatch | WatchDraft, settings: Settings) -> int | None:
@@ -649,13 +702,13 @@ def pinned_rows(watch_like: PropertyWatch | WatchDraft, settings: Settings) -> i
     return pinned_rows_per_bucket(spec)
 
 
-async def pinned_rows_reasons(
+async def pinned_rows_refs(
     session: AsyncSession,
     watch_like: PropertyWatch | WatchDraft,
     settings: Settings,
     *,
     cadence: CadenceOut | None = None,
-) -> list[str]:
+) -> list[MessageRef]:
     """422 when the pinned search could return more rows per bucket than a search may carry.
 
     Such a watch would end `PARTIAL` with every span a gap (PW-13b open point 5): refused
@@ -671,29 +724,42 @@ async def pinned_rows_reasons(
     ).row_target_rows
     if rows <= target:
         return []
-    return [
-        f"the pinned values can return up to {rows} rows per bucket, above the {target} rows "
-        "one history search may carry; unpin values or request no history"
-    ]
+    return [_draft("pinned_rows", rows=rows, target=target)]
 
 
-async def history_change_reasons(session: AsyncSession, watch: PropertyWatch) -> list[str]:
+async def pinned_rows_reasons(
+    session: AsyncSession,
+    watch_like: PropertyWatch | WatchDraft,
+    settings: Settings,
+    *,
+    cadence: CadenceOut | None = None,
+) -> list[str]:
+    """`pinned_rows_refs` as the English sentences."""
+    refs = await pinned_rows_refs(session, watch_like, settings, cadence=cadence)
+    return [render(ref) for ref in refs]
+
+
+def _history_change(name: str, **params: object) -> MessageRef:
+    return MessageRef(f"pw.history_change.{name}", params)
+
+
+async def history_change_reasons(session: AsyncSession, watch: PropertyWatch) -> list[MessageRef]:
     """409 reasons against changing `history_days` (design §H.5.5): empty when it may change.
+    Each is a registry reference; `render` gives the English sentence.
 
     Only a watch that never read, holds no bucket of its current version and has no watermark
     can ask. Anything else would prepend history to values and incidents already in use.
     """
-    advice = "create a new watch to read history"
     state = PwHistoryState(str(watch.history_state))
     if state is not PwHistoryState.NOT_REQUESTED:
-        return [f"history is {state.value} on this watch and cannot be requested again; {advice}"]
+        return [_history_change("already_requested", state=state.value)]
     marks = [
         name
         for name in ("collected_through", "evaluated_through")
         if getattr(watch, name) is not None
     ]
     if marks:
-        return [f"this watch has already collected ({' and '.join(marks)} set); {advice}"]
+        return [_history_change("already_collected", marks=marks)]
     stored = int(
         await session.scalar(
             select(func.count())
@@ -703,10 +769,9 @@ async def history_change_reasons(session: AsyncSession, watch: PropertyWatch) ->
         or 0
     )
     if stored:
-        return [
-            f"this watch holds {stored} stored bucket(s) of its current version; {advice}"
-        ]
+        return [_history_change("holds_buckets", stored=stored)]
     return []
+
 
 
 # ----------------------------------------------------------------------------- reads
@@ -970,6 +1035,7 @@ async def watch_scope(
     names = await _member_names(session, subject, scope)
     changes = await _scope_changes(session, watch)
     age = None if synced_at is None else int((now - _as_utc(synced_at)).total_seconds())
+    reason_code, reason_params = wire_parts(scope.message)
     return WatchScopeOut(
         watch_id=watch.id,
         watch_version=int(watch.watch_version),
@@ -977,6 +1043,8 @@ async def watch_scope(
         resolved=scope.resolved,
         state=scope.status,
         reason=scope.reason,
+        reason_code=reason_code,
+        reason_params=reason_params,
         member_count=scope.member_count,
         members=names,
         members_total=scope.member_count,
@@ -1017,6 +1085,14 @@ def days_read(
     return round(buckets * bucket_seconds / 86400, 1)
 
 
+def _gap_out(gap: Gap) -> HistoryGapOut:
+    """A stored gap with its message code, when it has one that reads back as a wire value."""
+    code, params = stored_message_parts(gap.reason_code, gap.reason_params)
+    return HistoryGapOut(
+        start=gap.start, end=gap.end, reason=gap.reason, reason_code=code, reason_params=params
+    )
+
+
 def watch_history(
     watch: PropertyWatch,
     settings: Settings,
@@ -1035,25 +1111,28 @@ def watch_history(
     buckets_read: int | None = None
     gaps: list[HistoryGapOut] | None = None
     reason: str | None = None
+    message: MessageRef | None = None
     unreadable = False
     try:
         stored = read_progress(cast(Any, watch))
     except BootstrapStateError:
         stored = None
         unreadable = True
-        reason = UNREADABLE_PROGRESS
+        message = MESSAGE_HISTORY_UNREADABLE
     if unreadable:
-        pass
+        reason = render(MESSAGE_HISTORY_UNREADABLE)
     elif stored is None:
         if state is PwHistoryState.PARTIAL and watch.history_target_start is None:
-            reason = REASON_HISTORY_SWITCHED_OFF
+            message = MESSAGE_HISTORY_SWITCHED_OFF
         elif state is PwHistoryState.READING:
-            reason = REASON_HISTORY_STARTS
+            message = MESSAGE_HISTORY_STARTS
+        reason = None if message is None else render(message)
     else:
         progress, reason = stored
         searches = progress.searches
         buckets_read = progress.buckets_read
-        gaps = [HistoryGapOut(start=g.start, end=g.end, reason=g.reason) for g in progress.gaps]
+        gaps = [_gap_out(g) for g in progress.gaps]
+    reason_code, reason_params = wire_parts(message)
     return WatchHistoryOut(
         state=state.value,
         days_requested=watch.history_days,
@@ -1072,6 +1151,8 @@ def watch_history(
         buckets_read=buckets_read,
         gaps=gaps,
         reason=reason,
+        reason_code=reason_code,
+        reason_params=reason_params,
         progress_unreadable=unreadable,
         started_at=watch.history_started_at,
         finished_at=watch.history_finished_at,
@@ -1193,6 +1274,8 @@ async def watch_outs(
                 enabled=bool(watch.enabled),
                 status=watch.last_status,
                 status_reason=watch.last_status_reason,
+                status_reason_code=watch.status_reason_code,
+                status_reason_params=watch.status_reason_params,
                 collected_through=watch.collected_through,
                 evaluated_through=watch.evaluated_through,
                 last_run_at=watch.last_run_at,
@@ -1600,12 +1683,21 @@ async def preview_scope_ids(
     scope = (await resolve_subjects(session, settings, [ScopeSubject.of(watch)], now=now))[0]
     if not scope.resolved:
         status = scope.status.value if scope.status is not None else "SCOPE_UNRESOLVED"
-        raise PreviewRefused(f"{status}: {scope.reason}")
+        raise PreviewRefused(
+            MessageRef(
+                "pw.preview.scope_unresolved",
+                {"status": status, "reason": scope.message or str(scope.reason)},
+            )
+        )
     if kind is PwScopeKind.LOG_SOURCE_GROUP and len(scope.chunks) > 1:
         raise PreviewRefused(
-            f"the group resolves to {scope.member_count} sources and a preview covers one "
-            f"search chunk of at most {settings.pw_max_sources_per_search}; preview a smaller "
-            "group, a type or a source"
+            MessageRef(
+                "pw.preview.group_too_large",
+                {
+                    "members": scope.member_count,
+                    "max": settings.pw_max_sources_per_search,
+                },
+            )
         )
     return scope.chunks[0]
 
@@ -1651,7 +1743,7 @@ async def run_preview(
                 **common,
             )
     except ValueError as exc:  # a reference or a window the validators refuse
-        raise PreviewRefused(f"the stored watch cannot be searched: {exc}") from exc
+        raise PreviewRefused(_unsearchable(exc)) from exc
     facts = [
         fold_bucket(
             bucket_start=g.bucket_start,
@@ -1668,17 +1760,18 @@ async def run_preview(
     return _preview_out(watch, facts, grouped, totals, budget.used, (start, end), bucket_seconds)
 
 
-def _preview_reason(outcomes: Sequence[PwBucketOutcome], lower: int) -> str | None:
+def _unsearchable(exc: ValueError) -> MessageRef:
+    return MessageRef("pw.preview.unsearchable", {"error": str(exc)})
+
+
+def _preview_reason(outcomes: Sequence[PwBucketOutcome], lower: int) -> MessageRef | None:
     states = {o.state for o in outcomes}
     if PwCellState.FAILED in states:
-        return "a search failed, so its buckets were not measured"
+        return MessageRef("pw.preview.search_failed")
     if PwCellState.NOT_COLLECTED in states:
-        return (
-            "the grouped search was cut at the row limit and a preview does not split it; "
-            "narrow the scope or preview a type or a source"
-        )
+        return MessageRef("pw.preview.cut_at_row_limit")
     if lower:
-        return "a bucket was cut at the row limit: its counts are lower bounds"
+        return MessageRef("pw.preview.lower_bound")
     return None
 
 
@@ -1729,6 +1822,8 @@ def _preview_out(
         )
         if text:
             queries.append(PreviewQueryOut(search=search, text=text))
+    reason = _preview_reason([*grouped, *totals], len(lower))
+    reason_code, reason_params = wire_parts(reason)
     return PreviewOut(
         watch_id=watch.id,
         watch_version=int(watch.watch_version),
@@ -1737,7 +1832,9 @@ def _preview_out(
         bucket_seconds=bucket_seconds,
         searches_sent=searches,
         outcome=outcome,
-        reason=_preview_reason([*grouped, *totals], len(lower)),
+        reason=None if reason is None else render(reason),
+        reason_code=reason_code,
+        reason_params=reason_params,
         buckets_measured=len(exact),
         buckets_lower_bound=len(lower),
         buckets_unmeasured=len(unmeasured),
@@ -1800,7 +1897,7 @@ async def watch_aql(
     """
     start, end, bucket_seconds = preview_window(settings, now)
     current: list[WatchAqlQueryOut] = []
-    unavailable: str | None = None
+    unavailable: MessageRef | None = None
     try:
         scope_ids = await preview_scope_ids(session, watch, settings, now)
         scope_kind = PwScopeKind(str(watch.scope_kind))
@@ -1823,9 +1920,9 @@ async def watch_aql(
             )
             current.append(WatchAqlQueryOut(search=kind.value, text=text))
     except PreviewRefused as exc:
-        current, unavailable = [], str(exc)
+        current, unavailable = [], exc.ref
     except ValueError as exc:  # a stored reference the validators now refuse
-        current, unavailable = [], f"the stored watch cannot be searched: {exc}"
+        current, unavailable = [], _unsearchable(exc)
     newest = (
         await session.execute(
             select(
@@ -1846,7 +1943,9 @@ async def watch_aql(
         window_end=None if unavailable else end,
         bucket_seconds=None if unavailable else bucket_seconds,
         current=current,
-        current_unavailable=unavailable,
+        current_unavailable=None if unavailable is None else render(unavailable),
+        current_unavailable_code=wire_parts(unavailable)[0],
+        current_unavailable_params=wire_parts(unavailable)[1],
         last_bucket=(
             None
             if newest is None
@@ -1917,23 +2016,80 @@ def removed_pin_keys(
     return [join_tuple_key(tuple(pin)) for pin in current if tuple(pin) not in keep]
 
 
-def dependency_refusal(rules: Sequence[DependentRule], action: str) -> dict[str, Any]:
-    """The 409 body: what was refused, why, and the rules to detach first."""
+# The actions a dependency refusal names, as the English phrase the callers pass and the
+# registry's ``propertywatch.action.*`` code it is coded as.
+_ACTION_CODES = {
+    "change the scope, properties or pins": "propertywatch.action.change_pins",
+    "change the scope or properties (the watch version would change)": (
+        "propertywatch.action.change_scope"
+    ),
+    "unpin a value": "propertywatch.action.unpin",
+    "delete the watch": "propertywatch.action.delete",
+}
+ACTION_CHANGE_PINS = "change the scope, properties or pins"
+ACTION_CHANGE_SCOPE = "change the scope or properties (the watch version would change)"
+ACTION_UNPIN = "unpin a value"
+ACTION_DELETE = "delete the watch"
+
+
+def action_ref(action: str) -> MessageRef | None:
+    """The code of an action phrase, or None for a phrase the registry does not know."""
+    code = _ACTION_CODES.get(action)
+    return None if code is None else MessageRef(code)
+
+
+def dependency_refusal(rules: Sequence[DependentRule], action: str) -> HTTPException:
+    """The 409: what was refused, why, and the rules to detach first.
+
+    An action phrase the registry does not know keeps the plain English body, uncoded.
+    """
     names = ", ".join(f"'{rule.name}'" for rule in rules)
-    return {
-        "message": (
-            f"cannot {action}: custom rule(s) {names} pin a value of this watch; "
-            "detach or delete the rule(s) first"
-        ),
-        "rules": [{"id": str(rule.id), "name": rule.name} for rule in rules],
-    }
+    listed = [{"id": str(rule.id), "name": rule.name} for rule in rules]
+    ref = action_ref(action)
+    if ref is None:
+        return HTTPException(
+            409,
+            {
+                "message": (
+                    f"cannot {action}: custom rule(s) {names} pin a value of this watch; "
+                    "detach or delete the rule(s) first"
+                ),
+                "rules": listed,
+            },
+        )
+    return CodedHTTPException(
+        409,
+        MessageRef("propertywatch.dependency.refused", {"action": ref, "names": names}),
+        fields={"rules": listed},
+    )
+
+
+def dependency_raced(action: str) -> HTTPException:
+    """The 409 for a rule that pinned a value after the check: no rule is left to name."""
+    ref = action_ref(action)
+    if ref is None:
+        return HTTPException(
+            409,
+            {
+                "message": f"cannot {action}: a custom rule pinned a value of this watch while "
+                "the request ran; reload and try again",
+                "rules": [],
+            },
+        )
+    return CodedHTTPException(
+        409,
+        MessageRef("propertywatch.dependency.raced", {"action": ref}),
+        fields={"rules": []},
+    )
 
 
 # ------------------------------------------- alerts of a deleted or disabled watch (PW-4, G.10.1)
 ALERT_SOURCE_TYPE = "pw_value"
-REASON_WATCH_DELETED = "the watch was deleted"
+MESSAGE_WATCH_DELETED = MessageRef("pw.transition.watch_deleted")
+REASON_WATCH_DELETED = render(MESSAGE_WATCH_DELETED)
 #: The reason a `PATCH` that disables a watch resolves its incidents and alerts with.
-REASON_WATCH_DISABLED = "watch disabled; no longer evaluated"
+MESSAGE_WATCH_DISABLED = MessageRef("pw.transition.watch_disabled")
+REASON_WATCH_DISABLED = render(MESSAGE_WATCH_DISABLED)
 
 
 async def resolve_watch_alerts(
@@ -1942,6 +2098,7 @@ async def resolve_watch_alerts(
     *,
     actor: str,
     reason: str = REASON_WATCH_DELETED,
+    reason_message: MessageRef | None = None,
     enqueuer: AlertEnqueuer | None = None,
     clock: Any = None,
 ) -> int:
@@ -1954,6 +2111,8 @@ async def resolve_watch_alerts(
     """
     if not actor.strip():
         raise ValueError("actor is required")
+    if reason_message is None and reason == REASON_WATCH_DELETED:
+        reason_message = MESSAGE_WATCH_DELETED
     fingerprints = list(
         (
             await session.scalars(
@@ -1970,7 +2129,12 @@ async def resolve_watch_alerts(
     _, resolved = await AlertService(session, clock=clock).apply_bulk(
         [],
         [
-            AlertResolution(fingerprint=item, actor=actor, reason=reason)
+            AlertResolution(
+                fingerprint=item,
+                actor=actor,
+                reason=reason,
+                reason_message=reason_message,
+            )
             for item in fingerprints
         ],
     )

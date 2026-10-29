@@ -1,18 +1,28 @@
+import { getLocale, getTranslations } from "next-intl/server";
 import Link from "next/link";
+import { enumLabel } from "@/i18n/enumLabels";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { plainCount } from "@/lib/fleetText";
+import type { FormatLocale } from "@/lib/format";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, api, type LogSourceDetail } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import { qradarStatusLabel, qradarStatusTone } from "../qradarStatus";
 
 import "./log-source-detail.css";
 
-export default async function LogSourceDetailPage({
+async function LogSourceDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const t = await getTranslations("logSources.detail");
+  const say = asTextTranslator(await getTranslations());
+  const locale = (await getLocale()) as FormatLocale;
   let d: LogSourceDetail | null = null;
   let status = 0;
   try {
@@ -23,15 +33,15 @@ export default async function LogSourceDetailPage({
   if (!d) {
     const message =
       status === 401
-        ? "Your session has expired. Sign in again to continue."
+        ? say("errors.sessionExpired")
         : status === 403
-          ? "You do not have permission to view this log source. Ask an administrator for the read:log_sources grant."
+          ? t("forbidden")
           : status === 404
-            ? `Log source ${id} is not in the inventory.`
-            : "The backend could not be reached. Reload the page to try again.";
+            ? t("notFound", { id })
+            : t("unreachable");
     return (
       <>
-        <PageHeader title="Log Source Detail" />
+        <PageHeader guide={guideFor("/log-sources/[id]")} title={t("title")} />
         <div className="notice" role="alert">
           <p>{message}</p>
         </div>
@@ -42,35 +52,49 @@ export default async function LogSourceDetailPage({
   return (
     <>
       <PageHeader
+        guide={guideFor("/log-sources/[id]")}
         title={d.name}
         description={
-          <>
-            {d.type_name ?? "unknown type"} · criticality {d.criticality} · owner {d.owner ?? "—"}
-          </>
+          t("summary", {
+            type: d.type_name ?? t("unknownType"),
+            criticality: enumLabel(say, "severityPill", d.criticality),
+            owner: d.owner ?? "—",
+          })
         }
       />
 
       <div className="card detail-card">
-        <div className="k">Configuration</div>
-        <p>Description: {d.description ?? "—"}</p>
-        <p>Business hours only: {d.business_hours_only ? "yes" : "no"}</p>
+        <div className="k">{t("configuration")}</div>
+        <p>{t("description", { value: d.description ?? "—" })}</p>
+        <p>{t("businessHours", { value: d.business_hours_only ? t("yes") : t("no") })}</p>
         <p>
-          Expected interval:{" "}
-          {d.expected_interval_seconds == null ? "—" : `${d.expected_interval_seconds} s`}
+          {t("interval", {
+            value:
+              d.expected_interval_seconds == null
+                ? "—"
+                : t("seconds", { count: plainCount(d.expected_interval_seconds, locale) }),
+          })}
         </p>
-        <p>Last event: {d.last_event_time ? <UtcTime value={d.last_event_time} /> : "never"}</p>
         <p>
-          QRadar status:{" "}
+          {d.last_event_time
+            ? t.rich("lastEvent", { time: () => <UtcTime value={d.last_event_time} /> })
+            : t("lastEventNever")}
+        </p>
+        <p>
+          {t("qradarStatus")}{" "}
           <span className={`pill ${qradarStatusTone(d.qradar_status)}`}>
-            {qradarStatusLabel(d.qradar_status)}
+            {qradarStatusLabel(d.qradar_status, say)}
           </span>
         </p>
       </div>
 
       <p className="subtitle detail-note">
-        EPS trend, anomaly timeline and baseline overlay:{" "}
-        <Link href={`/behavior/sources/${d.id}`}>source behavior</Link>.
+        {t.rich("note", {
+          link: (chunks) => <Link href={`/behavior/sources/${d.id}`}>{chunks}</Link>,
+        })}
       </p>
     </>
   );
 }
+
+export default withRouteMessages("/log-sources/[id]", LogSourceDetailPage);

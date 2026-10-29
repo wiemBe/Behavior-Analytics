@@ -6,6 +6,7 @@
 // bill: an IPS subject without a reliable baseline is not judged.
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { WidgetFrame } from "@/components/home/WidgetFrame";
 import { Unmeasured, When } from "@/components/home/WidgetParts";
@@ -14,24 +15,17 @@ import { statePillText } from "@/components/waf/wafLabels";
 import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
 import { homeReads, sevTone, type AnomalySummary, type Page } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
+import { ARROW } from "@/lib/behaviorI18n";
 import { combine2 } from "@/lib/home/combine";
+import { useEnumLabels } from "@/i18n/enumLabels";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { useExpanded } from "@/widgets/runtime";
 import type { WidgetState } from "@/widgets/types";
 import { UtcTime } from "@/components/ui/UtcTime";
 
-
 import { IPS_ANOMALIES_LIMIT, mergeIpsAnomalies } from "./ipsAnomalies";
 
 import "./catalog.css";
-
-export const IPS_EMPTY =
-  "No active IPS anomalies. An IPS entity or source without a reliable baseline is not judged, so this is not a clean bill.";
-
-export const IPS_DRILL = {
-  href: "/anomalies?subject_kind=IPS&active_only=true",
-  label: "View all",
-  ariaLabel: "View all active IPS entity and source anomalies",
-};
 
 export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
   const entityRead = homeReads.activeIpsAnomalies("IPS_ENTITY", IPS_ANOMALIES_LIMIT);
@@ -52,6 +46,9 @@ export function RecentIpsAnomaliesView({
   state: ResourceState<IpsPages> | WidgetState<IpsPages>;
 }) {
   const expanded = useExpanded();
+  const t = useTranslations("ips.recent");
+  const i18n = useBehaviorI18n();
+  const { severityPill } = useEnumLabels();
   const pages =
     "status" in state
       ? state.status === "ok"
@@ -60,26 +57,26 @@ export function RecentIpsAnomaliesView({
       : state.kind === "ok" || state.kind === "stale"
         ? state.data
         : null;
-  const view = pages ? mergeIpsAnomalies(pages[0], pages[1]) : null;
+  const view = pages ? mergeIpsAnomalies(pages[0], pages[1], IPS_ANOMALIES_LIMIT, i18n) : null;
 
   return (
     <WidgetFrame
       id={`ips-anomalies-${id}`}
-      title="Recent IPS anomalies"
-      windowText="active now"
+      title={t("title")}
+      windowText={t("windowText")}
       badge={view?.badge}
-      link={IPS_DRILL}
+      link={{ href: "/anomalies?subject_kind=IPS&active_only=true", label: t("viewAll"), ariaLabel: t("viewAllAria") }}
       state={state}
-      what="the active IPS anomalies"
+      what={t("what")}
       permission="read:anomalies"
     >
       {() => {
         if (!view) return null;
-        if (view.rows.length === 0) return <p className="tw-state">{IPS_EMPTY}</p>;
+        if (view.rows.length === 0) return <p className="tw-state">{t("empty")}</p>;
         return (
           <>
-            <TableScroll label="Recent IPS anomalies">
-              <table className="tw-table" aria-label="Recent IPS anomalies">
+            <TableScroll label={t("tableLabel")}>
+              <table className="tw-table" aria-label={t("tableLabel")}>
                 <colgroup>
                   <col className="tw-col-time tw-unfold" />
                   <col />
@@ -90,19 +87,19 @@ export function RecentIpsAnomaliesView({
                 <thead>
                   <tr>
                     <th scope="col" className="tw-unfold">
-                      Detected
+                      {t("detected")}
                     </th>
                     <th scope="col" className="tw-lead-col">
-                      Anomaly
+                      {t("anomaly")}
                     </th>
                     <th scope="col" className="tw-unfold">
-                      Severity, state
+                      {t("severityState")}
                     </th>
                     <th scope="col" className="num">
-                      Observed → expected
+                      {t("observedExpected")}
                     </th>
                     <th scope="col">
-                      <span className="sr-only">Investigate</span>
+                      <span className="sr-only">{t("investigateSr")}</span>
                     </th>
                   </tr>
                 </thead>
@@ -121,29 +118,29 @@ export function RecentIpsAnomaliesView({
                         </span>
                         <span className="tw-sub tw-wrap tw-fold-line">
                           <span className={`tw-state-word ${sevTone(r.severity)}`}>
-                            {r.severity}
+                            {severityPill(r.severity)}
                           </span>
                           {" · "}
                           <span className={`tw-state-word ${stateTone(r.state)}`}>
-                            {statePillText(r.state)}
+                            {statePillText(r.state, i18n)}
                           </span>
                           {" · "}
                           <UtcTime value={r.detectedAt} variant="compact" />
                         </span>
                       </td>
                       <td className="tw-unfold">
-                        <span className={`pill ${sevTone(r.severity)}`}>{r.severity}</span>
+                        <span className={`pill ${sevTone(r.severity)}`}>{severityPill(r.severity)}</span>
                         <span className={`tw-sub tw-wrap tw-state-word ${stateTone(r.state)}`}>
-                          {statePillText(r.state)}
+                          {statePillText(r.state, i18n)}
                         </span>
                       </td>
                       <td className="num">
                         {r.observed === null ? (
-                          <Unmeasured reason="The unit of this detector is not known to this build" />
+                          <Unmeasured reason={t("unitUnknown")} />
                         ) : (
                           <>
                             {r.observed}
-                            <span className="muted"> → </span>
+                            <span className="muted"> {ARROW} </span>
                             {r.expected}
                             {r.unitWords ? <span className="tw-sub tw-wrap">{r.unitWords}</span> : null}
                           </>
@@ -153,9 +150,9 @@ export function RecentIpsAnomaliesView({
                         <Link
                           className="tw-link"
                           href={r.href}
-                          aria-label={`Investigate ${r.subject}`}
+                          aria-label={t("investigateAria", { subject: r.subject })}
                         >
-                          Investigate
+                          {t("investigate")}
                         </Link>
                       </td>
                     </tr>
@@ -165,10 +162,8 @@ export function RecentIpsAnomaliesView({
             </TableScroll>
             {view.shown ? (
               <p className="tw-note">
-                {expanded ? view.shown.replace("the latest ", "") : view.shown}.
-                {expanded
-                  ? ` The widget reads the latest ${IPS_ANOMALIES_LIMIT} of each kind; the Anomalies page lists the rest.`
-                  : ""}
+                {(expanded ? view.shownShort : view.shown) + "."}
+                {expanded ? ` ${t("shownNote", { limit: IPS_ANOMALIES_LIMIT })}` : ""}
               </p>
             ) : null}
           </>

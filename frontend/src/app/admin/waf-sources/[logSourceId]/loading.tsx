@@ -1,5 +1,16 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return <BoundaryLoading title="WAF source" what="this WAF source" offset="small" />;
+  const t = useTranslations("waf.boundary");
+  return (
+    <BoundaryLoading
+      title={t("adminSourceTitle")}
+      what={t("adminSourceLoading")}
+      offset="small"
+    />
+  );
 }

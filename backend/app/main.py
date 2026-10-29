@@ -19,6 +19,7 @@ from app.core.config import Settings, get_settings, unknown_setting_names
 from app.core.logging import configure_logging
 from app.core.rate_limit import limiter
 from app.core.version import read_version
+from app.i18n.refusal import CodedHTTPException, coded_body, coded_http_exception_handler
 from app.schemas.property_watch import CapacityConflictOut
 from app.security.csrf import request_refusal
 
@@ -101,7 +102,7 @@ def create_app() -> FastAPI:
         # the development local principal and its tests are unchanged.
         refusal = request_refusal(request, _settings_for(request))
         if refusal is not None:
-            return _security_headers(JSONResponse(status_code=403, content={"detail": refusal}))
+            return _security_headers(JSONResponse(status_code=403, content=coded_body(refusal)))
         response = await call_next(request)
         return _security_headers(response)
 
@@ -110,6 +111,8 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=429, content={"detail": "rate limit exceeded", "limit": str(exc.limit)}
         )
+
+    app.add_exception_handler(CodedHTTPException, coded_http_exception_handler)  # type: ignore[arg-type]
 
     @app.exception_handler(CapacityConflict)
     async def _capacity_conflict_handler(request: Request, exc: CapacityConflict) -> JSONResponse:

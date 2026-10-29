@@ -28,6 +28,7 @@ import {
 } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef } from "react";
 
 import { HistoryKey, HistoryText } from "@/components/behavior/HistoryKey";
@@ -39,14 +40,18 @@ import {
   readHistoryShade,
   withoutLabels,
 } from "@/components/behavior/historyOrigin";
+import { TURKISH_ECHARTS_LOCALE } from "@/components/home/chartLocale";
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { WafMetricBucket } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
+import { fixed, grouped } from "@/lib/figureText";
+import { unitGap } from "@/i18n/measures";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { utcTimeHtml } from "@/components/ui/UtcTime";
 import { formatShare } from "@/lib/format";
 
 import { buildBaselineLookup, type BaselineSource } from "./wafBaseline";
-import { bucketWidth } from "./wafFormat";
+import { bucketWidth, formatRequests, requestsUnit } from "./wafFormat";
 import {
   buildWafRatioSeries,
   buildWafSeries,
@@ -54,6 +59,7 @@ import {
   kindMeaning,
   wafRatioUnobserved,
   wafUnobserved,
+  ratioLabel,
   type RatioSpec,
 } from "./wafSeries";
 
@@ -91,7 +97,7 @@ export function WafRequestChart({
   expectedHigh,
   anomalies = [],
   transitions = [],
-  ariaLabel = "Requests against the expected range, and endpoint coverage",
+  ariaLabel,
   textSummary,
   ratio = null,
   baseline,
@@ -130,6 +136,9 @@ export function WafRequestChart({
   historyLabel?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const t = useTranslations("waf.chart");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
 
   const points = useMemo(
     () => (ratio ? buildWafRatioSeries(buckets, ratio) : buildWafSeries(buckets)),
@@ -160,18 +169,20 @@ export function WafRequestChart({
   const hasMedian = seasonal && !ratio ? cells.some((c) => c != null) : expected != null;
   const hasLowerBound = !ratio && points.some((p) => p.lowerBound);
   const hasCoverage = points.some((p) => p.coverage != null);
-  const width = bucketWidth(buckets[0]?.bucket_seconds);
+  const width = bucketWidth(buckets[0]?.bucket_seconds, i18n);
+  const unit = requestsUnit(buckets[0]?.bucket_seconds, i18n);
+  const ratioName = ratio ? ratioLabel(ratio, i18n) : null;
   const countAxis = ratio
-    ? `${ratio.label} (%)`
+    ? t("axisRatio", { label: ratioName as string })
     : width
-      ? `Requests per ${width} (count)`
-      : "Requests per bucket (count)";
+      ? t("axisRequestsPerWidth", { width })
+      : t("axisRequestsPerBucket");
   const bandLabel = seasonal
     ? ratio
-      ? "Seasonal p05–p95 of bucket proportions"
-      : "Expected range"
-    : "Expected range at detection";
-  const medianLabel = ratio ? "Expected at detection" : "Expected median";
+      ? t("bandSeasonalRatio")
+      : t("bandExpected")
+    : t("bandAtDetection");
+  const medianLabel = ratio ? t("medianAtDetection") : t("medianSeasonal");
 
   const buildOption = useMemo(() => {
     if (points.length === 0) return null;
@@ -238,34 +249,44 @@ export function WafRequestChart({
             const first = list[0] as { dataIndex?: number } | undefined;
             const p = first?.dataIndex != null ? points[first.dataIndex] : undefined;
             if (!p) return "";
-            const unit = width ? `requests / ${width}` : "requests / bucket";
-            const fmt = (v: number) => (ratio ? formatShare(v) : v.toFixed(1));
-            const suffix = ratio ? "" : ` ${unit}`;
+            const fmt = (v: number) => (ratio ? formatShare(v, locale) : fixed(v, 1, locale));
+            const suffix = ratio ? "" : `${unitGap(locale)}${unit}`;
             const cell = seasonal && points[first!.dataIndex!].kind !== "GAP" ? cells[first!.dataIndex!] : null;
             const requests =
               p.reported != null
-                ? `${p.lowerBound ? "≥ " : ""}${p.reported} ${unit}`
-                : "not recorded";
+                ? `${formatRequests(p.reported, p.lowerBound ? "LOWER_BOUND" : null, locale)}${unitGap(locale)}${unit}`
+                : t("notRecorded");
             const observed = ratio
               ? p.observed != null
-                ? `${ratio.label}: ${formatShare(p.observed)}`
-                : `${ratio.label}: not measured (${kindMeaning(p.kind)})`
+                ? `${ratioName}: ${formatShare(p.observed, locale)}`
+                : t("notMeasuredLine", {
+                    label: ratioName as string,
+                    meaning: kindMeaning(p.kind, i18n),
+                  })
               : p.observed != null
-                ? `Requests: ${p.lowerBound ? "≥ " : ""}${p.observed} ${unit}`
-                : `Requests: not measured (${kindMeaning(p.kind)})`;
+                ? t("requestsLine", {
+                    value: `${formatRequests(
+                      p.observed,
+                      p.lowerBound ? "LOWER_BOUND" : null,
+                      locale,
+                    )} ${unit}`,
+                  })
+                : t("requestsLine", {
+                    value: `${t("notMeasured")} (${kindMeaning(p.kind, i18n)})`,
+                  });
             const reported =
               !ratio && p.observed == null && p.reported != null
-                ? `Reported by the partial collection: ${p.reported} ${unit}`
+                ? t("reportedLine", { value: formatRequests(p.reported, null, locale), unit })
                 : "";
-            const requestLine = ratio ? `Requests: ${requests}` : "";
+            const requestLine = ratio ? t("requestsLine", { value: requests }) : "";
             let band = "";
             let median = "";
             if (seasonal) {
               band =
                 cell?.low != null && cell.high != null
                   ? `${bandLabel}: ${fmt(cell.low)} – ${fmt(cell.high)}${suffix}`
-                  : `${bandLabel}: no reliable baseline for this weekday and hour`;
-              median = cell && !ratio ? `Expected median: ${fmt(cell.median)}${suffix}` : "";
+                  : `${bandLabel}: ${t("noBaselineCell")}`;
+              median = cell && !ratio ? `${medianLabel}: ${fmt(cell.median)}${suffix}` : "";
             } else if (hasBand) {
               band = `${bandLabel}: ${fmt(expectedLow!)} – ${fmt(expectedHigh!)}${suffix}`;
             }
@@ -273,10 +294,9 @@ export function WafRequestChart({
               expected != null && (!seasonal || ratio)
                 ? `${medianLabel}: ${fmt(expected)}${suffix}`
                 : "";
-            const coverage =
-              p.coverage != null
-                ? `Endpoint coverage: ${formatShare(p.coverage)}`
-                : "Endpoint coverage: not recorded";
+            const coverage = p.coverage != null
+              ? t("coverageLine", { value: formatShare(p.coverage, locale) })
+              : t("coverageNotRecorded");
             return [
               utcTimeHtml(new Date(p.t).toISOString()),
               observed,
@@ -286,8 +306,8 @@ export function WafRequestChart({
               atDetection,
               band,
               coverage,
-              `Collection: ${kindMeaning(p.kind)}`,
-              originText(origins.get(p.t)),
+              t("collectionLine", { meaning: kindMeaning(p.kind, i18n) }),
+              originText(origins.get(p.t), { say: i18n.t, locale }),
             ]
               .filter(Boolean)
               .join("<br/>");
@@ -298,7 +318,7 @@ export function WafRequestChart({
               {
                 type: "time",
                 gridIndex: 0,
-                name: "Time (UTC)",
+                name: t("axisTime"),
                 nameLocation: "middle",
                 nameGap: 24,
                 nameTextStyle: text,
@@ -315,7 +335,7 @@ export function WafRequestChart({
               {
                 type: "time",
                 gridIndex: 1,
-                name: "Time (UTC)",
+                name: t("axisTime"),
                 nameLocation: "middle",
                 nameGap: 30,
                 nameTextStyle: text,
@@ -331,6 +351,11 @@ export function WafRequestChart({
             min: 0,
             splitLine: { lineStyle: { color: c.grid } },
             ...axisCommon,
+            // ECharts groups digits the English way; Turkish groups with a dot.
+            axisLabel:
+              locale === "tr"
+                ? { ...text, formatter: (value: number) => grouped(value, locale) }
+                : text,
           },
           ...(compact
             ? []
@@ -338,13 +363,17 @@ export function WafRequestChart({
                 {
                   type: "value" as const,
                   gridIndex: 1,
-                  name: "Coverage (%)",
+                  name: t("axisCoverage"),
                   nameTextStyle: { ...text, align: "left" as const },
                   min: 0,
                   max: 100,
                   splitNumber: 2,
                   splitLine: { lineStyle: { color: c.grid } },
                   ...axisCommon,
+                  axisLabel:
+                    locale === "tr"
+                      ? { ...text, formatter: (value: number) => grouped(value, locale) }
+                      : text,
                 },
               ]),
         ],
@@ -467,7 +496,6 @@ export function WafRequestChart({
     hasBand,
     anomalies,
     transitions,
-    width,
     countAxis,
     ratio,
     scale,
@@ -479,13 +507,23 @@ export function WafRequestChart({
     history,
     origins,
     historyLabel,
+    i18n,
+    locale,
+    ratioName,
+    t,
+    unit,
   ]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !buildOption) return;
 
-    const chart = echarts.init(el);
+    // ECharts names months from its locale; English is its default, Turkish is given here.
+    const chart = echarts.init(
+      el,
+      undefined,
+      locale === "tr" ? { locale: TURKISH_ECHARTS_LOCALE as never } : undefined,
+    );
     chart.setOption(buildOption());
 
     const observer = new ResizeObserver(() => chart.resize());
@@ -495,13 +533,12 @@ export function WafRequestChart({
       observer.disconnect();
       chart.dispose();
     };
-  }, [buildOption]);
+  }, [buildOption, locale]);
 
   if (points.length === 0) {
     return (
       <div className="notice">
-        No request buckets were stored for this endpoint in this window. This is an absence of
-        collection, not an observation of zero requests.
+        {t("empty")}
       </div>
     );
   }
@@ -512,14 +549,14 @@ export function WafRequestChart({
         ref={containerRef}
         className={compact ? "hc-chart cw-tall" : "chart chart-waf"}
         role="img"
-        aria-label={ariaLabel}
+        aria-label={ariaLabel ?? t("ariaDefault")}
       />
       {textSummary && <p className="sr-only">{textSummary}</p>}
       <HistoryText rows={buckets} />
-      <ul className="chart-legend" aria-label="Chart key">
+      <ul className="chart-legend" aria-label={t("keyTitle")}>
         <li>
           <span className="chart-key chart-key-observed" aria-hidden="true" />
-          {ratio ? ratio.label : "Requests"}
+          {ratio ? ratioName : t("keyRequests")}
         </li>
         {hasMedian && (
           <li>
@@ -536,36 +573,33 @@ export function WafRequestChart({
         {hasCoverage && !compact && (
           <li>
             <span className="chart-key chart-key-coverage" aria-hidden="true" />
-            Endpoint coverage
+            {t("keyCoverage")}
           </li>
         )}
         {unobserved.length > 0 && (
           <li>
             <span className="chart-key chart-key-gap" aria-hidden="true" />
-            Not fully collected
+            {t("keyGap")}
           </li>
         )}
         {anomalies.length > 0 && (
           <li>
             <span className="chart-key chart-key-anomaly" aria-hidden="true" />
-            Anomalous interval
+            {t("keyAnomaly")}
           </li>
         )}
         {transitions.length > 0 && (
           <li>
             <span className="chart-key chart-key-rule" aria-hidden="true" />
-            Lifecycle transition
+            {t("keyTransition")}
           </li>
         )}
         {history.length > 0 && <HistoryKey />}
       </ul>
       <p className={compact ? "sr-only" : "subtitle chart-note"}>
-        {ratio
-          ? "Gaps in the line are buckets whose breakdown was not collected, failed, hit its cap or had no requests to divide. They are not 0 %."
-          : "Gaps in the line are buckets that were partial or not stored. They are not zero requests."}
-        {hasLowerBound && " Some buckets are lower bounds (at least the plotted count)."}
-        {seasonal &&
-          " The band follows the baseline cell of each bucket's UTC weekday and hour, and is absent where that cell is missing or not yet reliable."}
+        {ratio ? t("noteRatio") : t("noteVolume")}
+        {hasLowerBound && ` ${t("noteLower").trimStart()}`}
+        {seasonal && ` ${t("noteSeasonal").trimStart()}`}
       </p>
     </>
   );
