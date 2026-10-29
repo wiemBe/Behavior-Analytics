@@ -1,4 +1,833 @@
 {
+  "anomaly.detector.basis_mad_outside": {
+    "params": {
+      "lower": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "upper": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "lower": 1.5,
+      "upper": 2.5
+    },
+    "sample_english": "robust score unavailable (MAD=0); observed value is outside the expected band [1.50, 2.50]",
+    "sample_english_params": {
+      "lower": "1.50",
+      "upper": "2.50"
+    },
+    "template": "robust score unavailable (MAD=0); observed value is outside the expected band [{lower}, {upper}]"
+  },
+  "anomaly.detector.basis_z": {
+    "params": {
+      "score": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "repr"
+      }
+    },
+    "sample": {
+      "score": 6.2,
+      "threshold": 3.5
+    },
+    "sample_english": "robust z=6.20 (threshold ±3.5)",
+    "sample_english_params": {
+      "score": "6.20",
+      "threshold": "3.5"
+    },
+    "template": "robust z={score} (threshold ±{threshold})"
+  },
+  "anomaly.detector.cardinality_dropped": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "fraction": {
+        "kind": "percent"
+      },
+      "median": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "count": 3,
+      "fraction": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.5
+      },
+      "median": 40.0
+    },
+    "sample_english": "distinct source IPs 3 dropped below 50 % of baseline median 40",
+    "sample_english_params": {
+      "count": "3",
+      "fraction": "50 %",
+      "median": "40"
+    },
+    "template": "distinct source IPs {count} dropped below {fraction} of baseline median {median}"
+  },
+  "anomaly.detector.cardinality_no_baseline": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no reliable cardinality baseline",
+    "sample_english_params": {},
+    "template": "no reliable cardinality baseline"
+  },
+  "anomaly.detector.collection_errors": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 2
+    },
+    "sample_english": "2 collection error(s) in the interval",
+    "sample_english_params": {
+      "count": "2"
+    },
+    "template": "{count} collection error(s) in the interval"
+  },
+  "anomaly.detector.delay_exceeds": {
+    "params": {
+      "delay": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "limit": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "delay": 900.0,
+      "limit": 300.0
+    },
+    "sample_english": "event delay 900s exceeds 300s",
+    "sample_english_params": {
+      "delay": "900",
+      "limit": "300"
+    },
+    "template": "event delay {delay}s exceeds {limit}s"
+  },
+  "anomaly.detector.delay_no_measurement": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no delay measurement",
+    "sample_english_params": {},
+    "template": "no delay measurement"
+  },
+  "anomaly.detector.no_events_bucket_incomplete": {
+    "params": {
+      "completeness": {
+        "enum_group": "bucketCompleteness",
+        "kind": "enum",
+        "style": "lower"
+      }
+    },
+    "sample": {
+      "completeness": "PARTIAL"
+    },
+    "sample_english": "bucket is partial; absence of events is not evidence of silence",
+    "sample_english_params": {
+      "completeness": "partial"
+    },
+    "template": "bucket is {completeness}; absence of events is not evidence of silence"
+  },
+  "anomaly.detector.no_events_grace": {
+    "params": {
+      "grace": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "grace": 1
+    },
+    "sample_english": "empty bucket within the 1-bucket silence grace period",
+    "sample_english_params": {
+      "grace": "1"
+    },
+    "template": "empty bucket within the {grace}-bucket silence grace period"
+  },
+  "anomaly.detector.no_events_no_baseline": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no reliable activity baseline for this weekday/hour cell yet",
+    "sample_english_params": {},
+    "template": "no reliable activity baseline for this weekday/hour cell yet"
+  },
+  "anomaly.detector.no_events_normally_inactive": {
+    "params": {},
+    "sample": {},
+    "sample_english": "this source is normally inactive at this hour",
+    "sample_english_params": {},
+    "template": "this source is normally inactive at this hour"
+  },
+  "anomaly.detector.no_events_not_expected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "source is not expected to be active this interval",
+    "sample_english_params": {},
+    "template": "source is not expected to be active this interval"
+  },
+  "anomaly.detector.no_events_streak": {
+    "params": {
+      "expected": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "streak": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "expected": 120.0,
+      "streak": 3
+    },
+    "sample_english": "no events for 3 consecutive bucket(s) where the baseline expects about 120 events",
+    "sample_english_params": {
+      "expected": "120",
+      "streak": "3"
+    },
+    "template": "no events for {streak} consecutive bucket(s) where the baseline expects about {expected} events"
+  },
+  "anomaly.detector.parsing_below_floor": {
+    "params": {
+      "floor": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "floor": 0.9,
+      "ratio": 0.62
+    },
+    "sample_english": "field-extraction ratio 0.62 fell below floor 0.90",
+    "sample_english_params": {
+      "floor": "0.90",
+      "ratio": "0.62"
+    },
+    "template": "field-extraction ratio {ratio} fell below floor {floor}"
+  },
+  "anomaly.detector.parsing_no_data": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no parse-ratio data",
+    "sample_english_params": {},
+    "template": "no parse-ratio data"
+  },
+  "anomaly.detector.payload_no_signature": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no payload signature",
+    "sample_english_params": {},
+    "template": "no payload signature"
+  },
+  "anomaly.detector.payload_repeated": {
+    "params": {
+      "streak": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "streak": 4
+    },
+    "sample_english": "identical payload signature repeated for 4 consecutive intervals",
+    "sample_english_params": {
+      "streak": "4"
+    },
+    "template": "identical payload signature repeated for {streak} consecutive intervals"
+  },
+  "anomaly.detector.ratio_no_traffic": {
+    "params": {},
+    "sample": {},
+    "sample_english": "expected no traffic",
+    "sample_english_params": {},
+    "template": "expected no traffic"
+  },
+  "anomaly.detector.ratio_times_expected": {
+    "params": {
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "ratio": 5.2
+    },
+    "sample_english": "5.20x expected",
+    "sample_english_params": {
+      "ratio": "5.20"
+    },
+    "template": "{ratio}x expected"
+  },
+  "anomaly.detector.suppressed_by_no_events": {
+    "params": {},
+    "sample": {},
+    "sample_english": "suppressed: no events this interval",
+    "sample_english_params": {},
+    "template": "suppressed: no events this interval"
+  },
+  "anomaly.detector.unknown_above_ceiling": {
+    "params": {
+      "ceiling": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "ceiling": 0.2,
+      "ratio": 0.4
+    },
+    "sample_english": "unknown-event ratio 0.40 exceeds ceiling 0.20",
+    "sample_english_params": {
+      "ceiling": "0.20",
+      "ratio": "0.40"
+    },
+    "template": "unknown-event ratio {ratio} exceeds ceiling {ceiling}"
+  },
+  "anomaly.detector.unknown_no_events": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no events to classify",
+    "sample_english_params": {},
+    "template": "no events to classify"
+  },
+  "anomaly.detector.volume_above": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "anomaly.detector.basis_z",
+          "anomaly.detector.basis_mad_outside"
+        ]
+      },
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "expected": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "ratio_text": {
+        "kind": "ref",
+        "ref_codes": [
+          "anomaly.detector.ratio_times_expected",
+          "anomaly.detector.ratio_no_traffic"
+        ]
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "anomaly.detector.basis_z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "delta": 3600.0,
+      "expected": 2.4,
+      "observed": 12.4,
+      "ratio_text": {
+        "code": "anomaly.detector.ratio_times_expected",
+        "params": {
+          "ratio": 5.2
+        }
+      }
+    },
+    "sample_english": "average EPS 12.40 is above the baseline median 2.40 (5.20x expected, 3600 events/bucket); robust z=6.20 (threshold ±3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold ±3.5)",
+      "delta": "3600",
+      "expected": "2.40",
+      "observed": "12.40",
+      "ratio_text": "5.20x expected"
+    },
+    "template": "average EPS {observed} is above the baseline median {expected} ({ratio_text}, {delta} events/bucket); {basis}"
+  },
+  "anomaly.detector.volume_baseline_samples": {
+    "params": {
+      "samples": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "samples": 4
+    },
+    "sample_english": "baseline has 4 sample(s), below the minimum required for a defensible verdict",
+    "sample_english_params": {
+      "samples": "4"
+    },
+    "template": "baseline has {samples} sample(s), below the minimum required for a defensible verdict"
+  },
+  "anomaly.detector.volume_below": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "anomaly.detector.basis_z",
+          "anomaly.detector.basis_mad_outside"
+        ]
+      },
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "expected": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "ratio_text": {
+        "kind": "ref",
+        "ref_codes": [
+          "anomaly.detector.ratio_times_expected",
+          "anomaly.detector.ratio_no_traffic"
+        ]
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "anomaly.detector.basis_z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "delta": 600.0,
+      "expected": 2.4,
+      "observed": 0.4,
+      "ratio_text": {
+        "code": "anomaly.detector.ratio_times_expected",
+        "params": {
+          "ratio": 0.17
+        }
+      }
+    },
+    "sample_english": "average EPS 0.40 is below the baseline median 2.40 (0.17x expected, 600 events/bucket); robust z=6.20 (threshold ±3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold ±3.5)",
+      "delta": "600",
+      "expected": "2.40",
+      "observed": "0.40",
+      "ratio_text": "0.17x expected"
+    },
+    "template": "average EPS {observed} is below the baseline median {expected} ({ratio_text}, {delta} events/bucket); {basis}"
+  },
+  "anomaly.detector.volume_bucket_incomplete": {
+    "params": {
+      "completeness": {
+        "enum_group": "bucketCompleteness",
+        "kind": "enum",
+        "style": "lower"
+      }
+    },
+    "sample": {
+      "completeness": "MISSING"
+    },
+    "sample_english": "metric bucket is missing, not a whole observation",
+    "sample_english_params": {
+      "completeness": "missing"
+    },
+    "template": "metric bucket is {completeness}, not a whole observation"
+  },
+  "anomaly.detector.volume_delta_below_min": {
+    "params": {
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "minimum": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "delta": 30.0,
+      "minimum": 50.0
+    },
+    "sample_english": "change of 30 events/bucket is below the 50 minimum absolute delta",
+    "sample_english_params": {
+      "delta": "30",
+      "minimum": "50"
+    },
+    "template": "change of {delta} events/bucket is below the {minimum} minimum absolute delta"
+  },
+  "anomaly.detector.volume_drop_undefined": {
+    "params": {},
+    "sample": {},
+    "sample_english": "baseline expects no traffic; a drop is not defined",
+    "sample_english_params": {},
+    "template": "baseline expects no traffic; a drop is not defined"
+  },
+  "anomaly.detector.volume_mad_inside_band": {
+    "params": {
+      "lower": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "upper": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "lower": 1.5,
+      "upper": 2.5
+    },
+    "sample_english": "robust score unavailable (MAD=0) and observed value is inside the expected band [1.50, 2.50]",
+    "sample_english_params": {
+      "lower": "1.50",
+      "upper": "2.50"
+    },
+    "template": "robust score unavailable (MAD=0) and observed value is inside the expected band [{lower}, {upper}]"
+  },
+  "anomaly.detector.volume_min_events": {
+    "params": {
+      "events": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "minimum": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "events": 12.0,
+      "minimum": 50.0
+    },
+    "sample_english": "12 events/bucket is below the 50 minimum for a defensible volume verdict",
+    "sample_english_params": {
+      "events": "12",
+      "minimum": "50"
+    },
+    "template": "{events} events/bucket is below the {minimum} minimum for a defensible volume verdict"
+  },
+  "anomaly.detector.volume_no_baseline": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no volume baseline for this weekday/hour cell yet",
+    "sample_english_params": {},
+    "template": "no volume baseline for this weekday/hour cell yet"
+  },
+  "anomaly.detector.volume_ratio_not_fallen": {
+    "params": {
+      "limit": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "limit": 0.5,
+      "ratio": 0.8
+    },
+    "sample_english": "observed/expected ratio 0.80 has not fallen to 0.50",
+    "sample_english_params": {
+      "limit": "0.50",
+      "ratio": "0.80"
+    },
+    "template": "observed/expected ratio {ratio} has not fallen to {limit}"
+  },
+  "anomaly.detector.volume_ratio_not_reached": {
+    "params": {
+      "limit": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "limit": 2.0,
+      "ratio": 1.4
+    },
+    "sample_english": "observed/expected ratio 1.40 has not reached 2.00",
+    "sample_english_params": {
+      "limit": "2.00",
+      "ratio": "1.40"
+    },
+    "template": "observed/expected ratio {ratio} has not reached {limit}"
+  },
+  "anomaly.detector.volume_z_not_reached": {
+    "params": {
+      "score": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "repr"
+      }
+    },
+    "sample": {
+      "score": 2.1,
+      "threshold": 3.5
+    },
+    "sample_english": "robust z=2.10 has not reached the ±3.5 threshold",
+    "sample_english_params": {
+      "score": "2.10",
+      "threshold": "3.5"
+    },
+    "template": "robust z={score} has not reached the ±{threshold} threshold"
+  },
+  "anomaly.detector.within_range": {
+    "params": {},
+    "sample": {},
+    "sample_english": "within expected range",
+    "sample_english_params": {},
+    "template": "within expected range"
+  },
+  "anomaly.lifecycle.already_suppressed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "already suppressed",
+    "sample_english_params": {},
+    "template": "already suppressed"
+  },
+  "anomaly.lifecycle.baseline_adequate": {
+    "params": {},
+    "sample": {},
+    "sample_english": "baseline became adequate",
+    "sample_english_params": {},
+    "template": "baseline became adequate"
+  },
+  "anomaly.lifecycle.confirmed": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "threshold": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 3,
+      "threshold": 3
+    },
+    "sample_english": "3 consecutive abnormal bucket(s) reached the confirmation threshold of 3",
+    "sample_english_params": {
+      "count": "3",
+      "threshold": "3"
+    },
+    "template": "{count} consecutive abnormal bucket(s) reached the confirmation threshold of {threshold}"
+  },
+  "anomaly.lifecycle.first_abnormal": {
+    "params": {},
+    "sample": {},
+    "sample_english": "first abnormal bucket",
+    "sample_english_params": {},
+    "template": "first abnormal bucket"
+  },
+  "anomaly.lifecycle.hold_not_judgeable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "holding state; bucket not judgeable",
+    "sample_english_params": {},
+    "template": "holding state; bucket not judgeable"
+  },
+  "anomaly.lifecycle.hold_unknown": {
+    "params": {},
+    "sample": {},
+    "sample_english": "holding state; detector returned unknown",
+    "sample_english_params": {},
+    "template": "holding state; detector returned unknown"
+  },
+  "anomaly.lifecycle.no_verdict": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no verdict possible",
+    "sample_english_params": {},
+    "template": "no verdict possible"
+  },
+  "anomaly.lifecycle.normal_observed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "normal bucket observed",
+    "sample_english_params": {},
+    "template": "normal bucket observed"
+  },
+  "anomaly.lifecycle.opened": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 1
+    },
+    "sample_english": "1 consecutive abnormal bucket(s)",
+    "sample_english_params": {
+      "count": "1"
+    },
+    "template": "{count} consecutive abnormal bucket(s)"
+  },
+  "anomaly.lifecycle.recovered": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "threshold": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 2,
+      "threshold": 2
+    },
+    "sample_english": "2 consecutive normal bucket(s) reached the recovery threshold of 2",
+    "sample_english_params": {
+      "count": "2",
+      "threshold": "2"
+    },
+    "template": "{count} consecutive normal bucket(s) reached the recovery threshold of {threshold}"
+  },
+  "anomaly.lifecycle.relapsed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "relapsed before recovery completed",
+    "sample_english_params": {},
+    "template": "relapsed before recovery completed"
+  },
+  "anomaly.lifecycle.resolved_one_normal": {
+    "params": {},
+    "sample": {},
+    "sample_english": "1 normal bucket observed",
+    "sample_english_params": {},
+    "template": "1 normal bucket observed"
+  },
+  "anomaly.lifecycle.returned_to_normal": {
+    "params": {},
+    "sample": {},
+    "sample_english": "returned to normal before opening",
+    "sample_english_params": {},
+    "template": "returned to normal before opening"
+  },
+  "anomaly.lifecycle.still_abnormal": {
+    "params": {},
+    "sample": {},
+    "sample_english": "still abnormal",
+    "sample_english_params": {},
+    "template": "still abnormal"
+  },
+  "anomaly.lifecycle.still_confirming": {
+    "params": {},
+    "sample": {},
+    "sample_english": "still confirming",
+    "sample_english_params": {},
+    "template": "still confirming"
+  },
+  "anomaly.lifecycle.still_recovering": {
+    "params": {},
+    "sample": {},
+    "sample_english": "still recovering",
+    "sample_english_params": {},
+    "template": "still recovering"
+  },
+  "anomaly.lifecycle.suppressed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "suppressed",
+    "sample_english_params": {},
+    "template": "suppressed"
+  },
+  "anomaly.lifecycle.suppression_lifted": {
+    "params": {},
+    "sample": {},
+    "sample_english": "suppression lifted",
+    "sample_english_params": {},
+    "template": "suppression lifted"
+  },
+  "anomaly.lifecycle.within_range": {
+    "params": {},
+    "sample": {},
+    "sample_english": "within expected range",
+    "sample_english_params": {},
+    "template": "within expected range"
+  },
+  "anomaly.resolution.recovered": {
+    "params": {},
+    "sample": {},
+    "sample_english": "condition recovered",
+    "sample_english_params": {},
+    "template": "condition recovered"
+  },
+  "anomaly.suppression.maintenance": {
+    "params": {},
+    "sample": {},
+    "sample_english": "maintenance window",
+    "sample_english_params": {},
+    "template": "maintenance window"
+  },
   "auth.csrf.origin_mismatch": {
     "params": {
       "origin": {

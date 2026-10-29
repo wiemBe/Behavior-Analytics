@@ -1072,6 +1072,7 @@ class PwAnomalyEngine:
                     bucket.bucket_start,
                     decision.reason,
                     evidence,
+                    message=decision.message,
                 )
             )
         if target is AnomalyState.OPEN:

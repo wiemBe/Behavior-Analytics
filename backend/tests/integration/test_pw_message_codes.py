@@ -283,7 +283,7 @@ async def test_a_later_bucket_refreshes_the_text_and_the_code_together(db_sessio
     assert anomaly.explanation_i18n["params"]["observed"] == 700.0  # type: ignore[index]
 
 
-async def test_a_resolved_transition_stores_its_code_and_the_lifecycle_reasons_stay_plain(
+async def test_a_resolved_transition_stores_its_code_and_the_lifecycle_reasons_are_coded(
     db_session,
 ) -> None:
     rig, anomaly = await _spike(db_session)
@@ -298,8 +298,12 @@ async def test_a_resolved_transition_stores_its_code_and_the_lifecycle_reasons_s
     assert str(resolved.to_state) == "RESOLVED"
     assert resolved.reason == "watch definition changed"
     assert resolved.reason_i18n == {"code": "pw.transition.definition_changed", "params": {}}
-    # the lifecycle's own reasons (Family 2) are not coded by this task
-    assert all(row.reason_i18n is None for row in rows[:-1])
+    # the lifecycle's own reasons (Family 2, MSG-5) carry their code, rendered from it
+    assert rows[:-1]
+    for row in rows[:-1]:
+        assert row.reason_i18n is not None
+        assert row.reason_code is not None and row.reason_code.startswith("anomaly.lifecycle.")
+        assert row.reason == render(MessageRef(row.reason_code, row.reason_params or {}))
     assert resolved.reason_code == "pw.transition.definition_changed"
 
 

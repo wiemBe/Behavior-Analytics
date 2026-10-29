@@ -152,7 +152,7 @@ class AnomalyRepository:
                 a.evidence_status, a.suppressed,
                 cast(null(), String).label("observed_measurement"),
                 a.explanation,
-                cast(null(), JSONB).label("explanation_i18n"),
+                a.explanation_i18n.label("explanation_i18n"),
             )
             .select_from(a)
             .outerjoin(LogSource, LogSource.id == a.log_source_id)

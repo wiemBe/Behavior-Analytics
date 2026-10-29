@@ -1,8 +1,10 @@
 """Migration 0037: the message references beside the stored property-watch sentences.
 
 MSG-3 adds 0036 in parallel and the merge only changes this migration's ``down_revision``, so
-nothing here names a neighbour revision: the migration is upgraded to head (it is the head of
-this branch) and downgraded one step.
+nothing here names a neighbour revision: the migration is upgraded to its own revision and
+downgraded to whatever its ``down_revision`` is. (It was the head of its branch when this was
+written; 0038 sits above it now, so the test no longer assumes it is the head. The drift check
+runs at the head.)
 """
 
 from __future__ import annotations
@@ -125,8 +127,6 @@ def test_0037_adds_nullable_i18n_and_round_trips(clean_db: str) -> None:
     script = ScriptDirectory.from_config(config)
     revision = script.get_revision("0037")
     assert revision is not None
-    head = script.get_current_head()
-    assert head == "0037", "0037 must be the head of this branch"
     engine = create_engine(clean_db, future=True)
     try:
         command.upgrade(config, revision.down_revision or "base")
@@ -134,7 +134,7 @@ def test_0037_adds_nullable_i18n_and_round_trips(clean_db: str) -> None:
             assert column not in _column_names(engine, table)
         _seed_old_rows(engine)
 
-        command.upgrade(config, "head")
+        command.upgrade(config, "0037")
         with engine.begin() as connection:
             assert MigrationContext.configure(connection).get_current_revision() == "0037"
         for table, column in [*COLUMNS.items(), EXTRA]:
@@ -154,7 +154,7 @@ def test_0037_adds_nullable_i18n_and_round_trips(clean_db: str) -> None:
                 )
             )
 
-        command.downgrade(config, "-1")
+        command.downgrade(config, revision.down_revision or "base")
         for table, column in [*COLUMNS.items(), EXTRA]:
             assert column not in _column_names(engine, table)
         with engine.begin() as connection:
@@ -165,9 +165,10 @@ def test_0037_adds_nullable_i18n_and_round_trips(clean_db: str) -> None:
                 text("SELECT explanation FROM pw_anomaly")
             ).scalar_one() == "the stored explanation"
 
-        command.upgrade(config, "head")
+        command.upgrade(config, "0037")
         assert _stored(engine) == [None, None, None]
-        # Drift is checked at head, so the models and the migration agree.
+        # Drift is checked at head, so the models and the migrations agree.
+        command.upgrade(config, "head")
         command.check(config)
     finally:
         engine.dispose()

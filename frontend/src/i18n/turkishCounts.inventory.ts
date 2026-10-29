@@ -64,6 +64,15 @@ export const PLAIN: Readonly<Record<string, Readonly<Record<string, PlainReason>
   "anomalies.summary.timeline.range": { max: "string", min: "string", shown: "string" },
   "anomalies.technical.seconds": { count: "bounded" },
   // The server's own constants, words and their sentence: the dashboard limit (20) and the URL cap (8).
+  // MSG-5: the reader hands every count and number over already formatted for the locale.
+  "backend.anomaly.detector.cardinality_dropped": { count: "string" },
+  "backend.anomaly.detector.collection_errors": { count: "string" },
+  "backend.anomaly.detector.delay_exceeds": { limit: "string" },
+  "backend.anomaly.detector.volume_ratio_not_fallen": { limit: "string" },
+  "backend.anomaly.detector.volume_ratio_not_reached": { limit: "string" },
+  "backend.anomaly.lifecycle.confirmed": { count: "string" },
+  "backend.anomaly.lifecycle.opened": { count: "string" },
+  "backend.anomaly.lifecycle.recovered": { count: "string" },
   "backend.auth.directory.urls_max": { max: "bounded" },
   "backend.dashboard.owner_limit": { limit: "bounded" },
   // MSG-3: the backend reader passes every count through formatCount (already a grouped string).

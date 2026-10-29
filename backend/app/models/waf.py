@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -48,6 +49,7 @@ from app.models.enums import (
     WafTelemetryStatus,
 )
 from app.models.history_backfill import ORIGIN_CHECK
+from app.models.message_ref import stored_code, stored_params
 
 #: Width of a metric-semantics identity. See app/waf/semantics.py.
 METRIC_SEMANTICS_LENGTH = 160
@@ -725,6 +727,8 @@ class WafAnomalyTransition(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     bucket_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reason: Mapped[str | None] = mapped_column(Text)
+    #: `{code, params}` of `reason` when the lifecycle supplied one (NULL on earlier rows).
+    reason_i18n: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     actor: Mapped[str] = mapped_column(
         String(64), default="waf-anomaly-engine", nullable=False
     )
@@ -733,5 +737,13 @@ class WafAnomalyTransition(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     observed_measurement: Mapped[WafMeasurement] = mapped_column(
         String(16), default=WafMeasurement.EXACT, nullable=False
     )
+
+    @property
+    def reason_code(self) -> str | None:
+        return stored_code(self.reason_i18n)
+
+    @property
+    def reason_params(self) -> dict[str, Any] | None:
+        return stored_params(self.reason_i18n)
 
     anomaly: Mapped[WafAnomaly] = relationship(back_populates="transitions")
