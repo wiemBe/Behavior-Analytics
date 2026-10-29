@@ -9,7 +9,8 @@ the frontend never renders English from params, and in Turkish it groups every c
 every number (``1.204``, ``1.260,0``) whatever the style. Counts accept ``grouped`` (the
 default) or ``plain`` (no grouping; it shapes the backend's English render only, the
 frontend groups every count in the reader's locale); numbers accept ``general`` (the
-default), ``grouped``, ``fixed`` or ``repr`` (Python's ``str()`` of the number, which keeps
+default), ``grouped``, ``fixed``, ``trimmed`` (a whole number without a point, otherwise up to three
+decimals with trailing zeros dropped) or ``repr`` (Python's ``str()`` of the number, which keeps
 a trailing ``.0``); points accept ``signed`` (the default) or ``unsigned``; lists accept
 ``comma`` (the default), ``and`` or ``semicolon`` (``"; "``, for a list of clauses that carry
 commas); durations accept ``timedelta`` (Python's ``str()`` of a ``timedelta``, ``0:30:00`` or
@@ -164,6 +165,8 @@ _REPR = ParamSpec(ParamKind.NUMBER, style="repr")
 _TEXT = ParamSpec(ParamKind.TEXT)
 _ISO = ParamSpec(ParamKind.TIMESTAMP, style="iso")
 _PERCENT = ParamSpec(ParamKind.PERCENT)
+# Up to three decimals, trailing zeros dropped (`300`, `299.5`): the cron-floor gap (MSG-8b).
+_TRIMMED = ParamSpec(ParamKind.NUMBER, style="trimmed", precision=3)
 
 _PW_AT = datetime(2026, 10, 17, 12, 0, tzinfo=UTC)
 
@@ -3421,12 +3424,105 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # Suppression.
     _msg("waf.suppression.maintenance_window", "maintenance window"),
     # --- end MSG-6 ---------------------------------------------------------------------------
+    # --- MSG-8b: search scheduling, the manual-run budget refusal and run results -- keep
+    # contiguous ---
+    # The cron floor. The cron and the timezone are shown as the user wrote them (the cron
+    # `repr`-quoted before it is passed), the two fire times are `isoformat()` strings.
+    _msg(
+        "search.cron.invalid",
+        "schedule_cron {cron} ({timezone}) is not a valid cron expression: {error}",
+        {"cron": _TEXT, "timezone": _TEXT, "error": _TEXT},
+        {
+            "cron": "'* * *'",
+            "timezone": "UTC",
+            "error": "Wrong number of fields; got 3, expected 5",
+        },
+    ),
+    _msg(
+        "search.cron.no_future_fire",
+        "schedule_cron {cron} ({timezone}) has no future fire time",
+        {"cron": _TEXT, "timezone": _TEXT},
+        {"cron": "'0 0 30 2 *'", "timezone": "UTC"},
+    ),
+    _msg(
+        "search.cron.below_floor",
+        "schedule_cron {cron} ({timezone}) fires {gap} seconds apart ({previous} then {next}); "
+        "a search must fire at least {min_seconds} seconds apart",
+        {
+            "cron": _TEXT,
+            "timezone": _TEXT,
+            "gap": _TRIMMED,
+            "previous": _ISO,
+            "next": _ISO,
+            "min_seconds": _PLAIN,
+        },
+        {
+            "cron": "'*/2 * * * *'",
+            "timezone": "UTC",
+            "gap": 120,
+            "previous": datetime(2026, 10, 29, 10, 0, tzinfo=UTC),
+            "next": datetime(2026, 10, 29, 10, 2, tzinfo=UTC),
+            "min_seconds": 300,
+        },
+    ),
+    _fixed("search.cron.floor_missed", "schedule_cron is below the floor"),
+    # The manual-run refusal (503) when the Ariel budget is full.
+    _msg(
+        "search.budget.held_of",
+        "{held} of {cap}",
+        {"held": _PLAIN, "cap": _PLAIN},
+        {"held": 6, "cap": 6},
+    ),
+    _msg("search.budget.held_cap", "cap {cap}", {"cap": _PLAIN}, {"cap": 6}),
+    _msg(
+        "search.budget.full",
+        "the Ariel search budget is full ({held} in flight); waited {waited} s; "
+        "nothing was sent to QRadar",
+        {
+            "held": ParamSpec(
+                ParamKind.REF,
+                ref_codes=("search.budget.held_of", "search.budget.held_cap"),
+            ),
+            "waited": ParamSpec(ParamKind.NUMBER),
+        },
+        {"held": MessageRef("search.budget.held_of", {"held": 6, "cap": 6}), "waited": 30.0},
+    ),
+    # The fixed shapes stored in `search_execution.error_message`. Ariel's own error texts and
+    # exception texts are free text and carry no code.
+    _fixed("search.run.failed", "Ariel search failed"),
+    _msg(
+        "search.run.timeout",
+        "search exceeded timeout of {timeout}s",
+        {"timeout": _PLAIN},
+        {"timeout": 300},
+    ),
+    _msg(
+        "search.run.capacity",
+        "No Ariel permit became available within {waited} seconds "
+        "(per-console cap {instance_cap}, global cap {global_cap})",
+        {"waited": ParamSpec(ParamKind.NUMBER), "instance_cap": _PLAIN, "global_cap": _PLAIN},
+        {"waited": 30.0, "instance_cap": 3, "global_cap": 6},
+    ),
+    _fixed("search.run.no_aql_execution", "configured provider cannot execute AQL"),
+    _msg(
+        "search.run.parse_failed",
+        "failed to fetch/parse results: {detail}",
+        {"detail": _TEXT},
+        {"detail": "unexpected column type"},
+    ),
+    _msg(
+        "search.run.validation",
+        "{reasons}",
+        {"reasons": ParamSpec(ParamKind.LIST, style="semicolon")},
+        {"reasons": [MessageRef("search.aql.empty", {})]},
+    ),
+    # --- end MSG-8b ---
 )
 
 
 _STYLES: dict[ParamKind, set[str | None]] = {
     ParamKind.COUNT: {None, "grouped", "plain"},
-    ParamKind.NUMBER: {None, "general", "grouped", "fixed", "repr"},
+    ParamKind.NUMBER: {None, "general", "grouped", "fixed", "repr", "trimmed"},
     ParamKind.PERCENT: {None},
     ParamKind.POINTS: {None, "signed", "unsigned"},
     ParamKind.DURATION: {None, "timedelta", "age"},
@@ -3628,6 +3724,10 @@ def _format_param(
             return f"{number:,.{precision}f}"
         if spec.style == "repr":
             return str(number)
+        if spec.style == "trimmed":
+            if number == int(number):
+                return str(int(number))
+            return f"{number:.3f}".rstrip("0").rstrip(".")
         return f"{number:g}"
     if spec.kind is ParamKind.PERCENT:
         number = _numeric(value, name=name)

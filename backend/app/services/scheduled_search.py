@@ -64,7 +64,10 @@ class ScheduledSearchService:
 
         outcome = await asyncio.to_thread(check_cron_floor, cron, timezone)
         if not outcome.accepted:
-            raise CronFloorError(outcome.reason or "schedule_cron is below the floor")
+            if outcome.reason is not None:
+                raise CronFloorError(outcome.reason, outcome.ref)
+            fallback = MessageRef("search.cron.floor_missed")
+            raise CronFloorError(render(fallback), fallback)
 
     async def create(self, payload: ScheduledSearchCreate, *, actor: str | None) -> ScheduledSearch:
         # Floor first, so a too-frequent cron is refused before the cap query.

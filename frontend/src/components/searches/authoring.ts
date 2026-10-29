@@ -4,6 +4,7 @@
 // and read the API's refusal. A reason string is copied through unchanged.
 
 import { ENGLISH_TREND } from "@/components/trendText";
+import { renderBackendMessage } from "@/i18n/backendMessage";
 import { renderRefusal } from "@/i18n/refusalMessage";
 import type { TextTranslator } from "@/i18n/textTranslator";
 import { ApiError, type CallerInfo, type ScheduledSearch, type ScheduledSearchCreate, type ScheduledSearchUpdate, type SearchExecution, type SearchVersion } from "@/lib/api";
@@ -265,7 +266,9 @@ function schemaMessages(detail: unknown): string[] | null {
   return messages.length > 0 ? messages : null;
 }
 
-function isCronFloor(detail: string): boolean {
+/** The code decides when the server gave one; the English wording is the fallback for an old server. */
+function isCronFloor(detail: string, code?: string | null): boolean {
+  if (code) return code.startsWith("search.cron.");
   return /schedule_cron|seconds apart|cron expression|future fire/i.test(detail);
 }
 
@@ -285,7 +288,14 @@ export function classifySaveError(err: unknown, i18n: BehaviorI18n = ENGLISH_SEA
   if (err.status === 422) {
     const reasons = reasonList(err, i18n);
     if (reasons) return { kind: "reasons", reasons };
-    if (typeof err.detail === "string" && isCronFloor(err.detail)) return { kind: "schedule", detail: err.detail };
+    const [sentence] = refusalSentences(err);
+    if (typeof err.detail === "string" && isCronFloor(err.detail, sentence?.code)) {
+      // The timestamps and the gap of the floor sentence are raw values: the backend reader formats them.
+      return {
+        kind: "schedule",
+        detail: sentence ? renderBackendMessage(sentence, i18n.locale, i18n.t) : err.detail,
+      };
+    }
     if (typeof err.detail === "string" && err.detail !== "") return { kind: "error", detail: err.detail };
     const schema = schemaMessages(err.detail);
     if (schema) return { kind: "reasons", reasons: schema };
@@ -429,8 +439,24 @@ export function runReadout(
   return { tone: "neutral", text: t("trend.run.other", { status: execution.status }) };
 }
 
+/** The budget refusal of a manual run: the code names it; any other 503 stays the generic line. */
+const BUDGET_FULL_CODE = "search.budget.full";
+
+function asSentence(text: string, locale: FormatLocale): string {
+  const trimmed = text.trim();
+  if (trimmed === "") return trimmed;
+  const head = trimmed.charAt(0).toLocaleUpperCase(locale === "tr" ? "tr-TR" : "en-US") + trimmed.slice(1);
+  return /[.!?]$/.test(head) ? head : `${head}.`;
+}
+
 export function runRequestFailure(err: unknown, i18n: BehaviorI18n = ENGLISH_SEARCHES): string {
   if (err instanceof ApiError && err.status === 403) return i18n.t("searches.run.forbidden");
   if (err instanceof ApiError && err.status === 404) return i18n.t("searches.run.gone");
+  if (err instanceof ApiError && err.status === 503) {
+    const [sentence] = refusalSentences(err);
+    if (sentence?.code === BUDGET_FULL_CODE) {
+      return asSentence(renderBackendMessage(sentence, i18n.locale, i18n.t), i18n.locale);
+    }
+  }
   return i18n.t("searches.run.failed");
 }

@@ -478,6 +478,9 @@ export interface SearchExecution {
   truncated: boolean;
   error_type: string | null;
   error_message: string | null;
+  /** The code and raw values of a fixed `error_message` (MSG-8b); absent for free text. */
+  error_message_code?: string | null;
+  error_message_params?: Record<string, unknown> | null;
   retry_count: number;
   threshold_breached: boolean;
 }

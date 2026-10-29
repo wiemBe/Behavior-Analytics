@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -24,6 +25,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.enums import ExecutionStatus, Severity, VisualizationType
+
+
+def _stored_parts(value: object) -> tuple[str | None, dict[str, Any] | None]:
+    from app.schemas.messages import stored_message_parts
+
+    if not isinstance(value, dict):
+        return None, None
+    return stored_message_parts(value.get("code"), value.get("params"))
 
 
 class ScheduledSearch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -153,12 +162,25 @@ class SearchExecution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # failure mode does not require a DB enum migration).
     error_type: Mapped[str | None] = mapped_column(String(64))
     error_message: Mapped[str | None] = mapped_column(Text)
+    # `{code, params}` of a fixed sentence in `error_message` (MSG-8b). NULL for an old row, for
+    # free text (an exception's or Ariel's own words) and for a text that was cut to fit.
+    error_message_i18n: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     threshold_breached: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     search: Mapped[ScheduledSearch] = relationship(back_populates="executions")
+
+    @property
+    def error_message_code(self) -> str | None:
+        """The code of `error_message`, when the stored reference has a valid shape."""
+        return _stored_parts(self.error_message_i18n)[0]
+
+    @property
+    def error_message_params(self) -> dict[str, Any] | None:
+        return _stored_parts(self.error_message_i18n)[1]
+
     result_metrics: Mapped[list[SearchResultMetric]] = relationship(
         back_populates="execution", cascade="all, delete-orphan"
     )

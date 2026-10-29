@@ -62,6 +62,8 @@ const IDENTICAL_ALLOWLIST = new Set([
   "backend.rule_health.label.named",
   // MSG-6: the method and the normalized endpoint, both verbatim in both locales.
   "backend.waf.subject.named",
+  // MSG-8b: the defensive re-validation error is the joined, already-worded reasons.
+  "backend.search.run.validation",
   "common.product",
   "customRules.authoring.subjectKinds.LOG_SOURCE",
   "customRules.authoring.subjectKinds.WAF_ENDPOINT",

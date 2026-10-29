@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.i18n.messages import MessageRef, render
 from app.models.enums import Severity, VisualizationType
+from app.schemas.messages import MessageParamValue
 from app.services.aql_validator import AQLValidationError, validate_aql
 
 
@@ -319,6 +320,9 @@ class ExecutionOut(BaseModel):
     truncated: bool
     error_type: str | None
     error_message: str | None
+    #: Stable code and raw values of a fixed `error_message`; null on an old row and for free text.
+    error_message_code: str | None = None
+    error_message_params: dict[str, MessageParamValue] | None = None
     retry_count: int
     threshold_breached: bool
 

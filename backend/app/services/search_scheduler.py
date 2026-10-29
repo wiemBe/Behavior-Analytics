@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.search_alerts import SearchAlertEvaluator
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef, render
 from app.models.enums import ExecutionErrorType, ExecutionStatus
 from app.models.search import ScheduledSearch, SearchExecution
 from app.services.scheduled_search import ScheduledSearchService
@@ -53,7 +54,15 @@ class InvalidCronExpression(ValueError):
 
 
 class CronFloorError(ValueError):
-    """A new or changed cron fires too often, or cannot be scheduled at all."""
+    """A new or changed cron fires too often, or cannot be scheduled at all.
+
+    `ref` is the refusal as a message code when the sentence has one; its English render is
+    ``str(self)``.
+    """
+
+    def __init__(self, message: str, ref: MessageRef | None = None) -> None:
+        super().__init__(message)
+        self.ref = ref
 
 
 # Five minutes. The editor's fastest preset, and the floor for any new cron
@@ -114,12 +123,20 @@ class CronFloorCheck:
     reason: str | None
     fires_checked: int
     min_gap_seconds: float | None
+    #: `reason` as a message code (its English render is `reason`); None when accepted.
+    ref: MessageRef | None = None
 
 
-def _gap_seconds_text(gap: float) -> str:
-    if gap == int(gap):
-        return str(int(gap))
-    return f"{gap:.3f}".rstrip("0").rstrip(".")
+def _refusal(
+    ref: MessageRef, *, fires_checked: int = 0, shortest: float | None = None
+) -> CronFloorCheck:
+    return CronFloorCheck(
+        accepted=False,
+        reason=render(ref),
+        fires_checked=fires_checked,
+        min_gap_seconds=shortest,
+        ref=ref,
+    )
 
 
 def check_cron_floor(
@@ -171,23 +188,18 @@ def check_cron_floor(
     try:
         trigger = CronTrigger.from_crontab(cron, timezone=timezone)
     except Exception as exc:  # APScheduler raises ValueError; zoneinfo raises its own
-        return CronFloorCheck(
-            accepted=False,
-            reason=(
-                f"schedule_cron {cron!r} ({timezone}) is not a valid cron expression: {exc}"
-            ),
-            fires_checked=0,
-            min_gap_seconds=None,
+        return _refusal(
+            MessageRef(
+                "search.cron.invalid",
+                {"cron": repr(cron), "timezone": timezone, "error": str(exc)},
+            )
         )
 
     end = now + horizon
     previous = trigger.get_next_fire_time(None, now)
     if previous is None:
-        return CronFloorCheck(
-            accepted=False,
-            reason=f"schedule_cron {cron!r} ({timezone}) has no future fire time",
-            fires_checked=0,
-            min_gap_seconds=None,
+        return _refusal(
+            MessageRef("search.cron.no_future_fire", {"cron": repr(cron), "timezone": timezone})
         )
 
     previous_utc = _as_utc(previous)
@@ -220,15 +232,20 @@ def _floor_result(
             accepted=True, reason=None, fires_checked=checked, min_gap_seconds=shortest
         )
     gap = (nxt_utc - prev_utc).total_seconds()
-    return CronFloorCheck(
-        accepted=False,
-        reason=(
-            f"schedule_cron {cron!r} ({timezone}) fires {_gap_seconds_text(gap)} "
-            f"seconds apart ({prev_utc.isoformat()} then {nxt_utc.isoformat()}); "
-            f"a search must fire at least {min_seconds} seconds apart"
+    return _refusal(
+        MessageRef(
+            "search.cron.below_floor",
+            {
+                "cron": repr(cron),
+                "timezone": timezone,
+                "gap": gap,
+                "previous": prev_utc,
+                "next": nxt_utc,
+                "min_seconds": min_seconds,
+            },
         ),
         fires_checked=checked,
-        min_gap_seconds=shortest,
+        shortest=shortest,
     )
 
 

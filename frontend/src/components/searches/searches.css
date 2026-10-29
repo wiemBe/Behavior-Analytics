@@ -117,3 +117,14 @@
   min-width: min(100%, 18rem);
   overflow-wrap: anywhere;
 }
+
+/* The message under a failed run's error type: the server's words, wrapped inside the column. */
+.run-error {
+  display: block;
+  max-width: 34ch;
+  margin-top: var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+  overflow-wrap: anywhere;
+}

@@ -5898,6 +5898,171 @@
     },
     "template": "time range {window_hours}h exceeds the maximum {max_hours}h"
   },
+  "search.budget.full": {
+    "params": {
+      "held": {
+        "kind": "ref",
+        "ref_codes": [
+          "search.budget.held_of",
+          "search.budget.held_cap"
+        ]
+      },
+      "waited": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "held": {
+        "code": "search.budget.held_of",
+        "params": {
+          "cap": 6,
+          "held": 6
+        }
+      },
+      "waited": 30.0
+    },
+    "sample_english": "the Ariel search budget is full (6 of 6 in flight); waited 30 s; nothing was sent to QRadar",
+    "sample_english_params": {
+      "held": "6 of 6",
+      "waited": "30"
+    },
+    "template": "the Ariel search budget is full ({held} in flight); waited {waited} s; nothing was sent to QRadar"
+  },
+  "search.budget.held_cap": {
+    "params": {
+      "cap": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "cap": 6
+    },
+    "sample_english": "cap 6",
+    "sample_english_params": {
+      "cap": "6"
+    },
+    "template": "cap {cap}"
+  },
+  "search.budget.held_of": {
+    "params": {
+      "cap": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "held": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "cap": 6,
+      "held": 6
+    },
+    "sample_english": "6 of 6",
+    "sample_english_params": {
+      "cap": "6",
+      "held": "6"
+    },
+    "template": "{held} of {cap}"
+  },
+  "search.cron.below_floor": {
+    "params": {
+      "cron": {
+        "kind": "text"
+      },
+      "gap": {
+        "kind": "number",
+        "precision": 3,
+        "style": "trimmed"
+      },
+      "min_seconds": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "next": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "previous": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "timezone": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "cron": "'*/2 * * * *'",
+      "gap": 120,
+      "min_seconds": 300,
+      "next": "2026-10-29T10:02:00+00:00",
+      "previous": "2026-10-29T10:00:00+00:00",
+      "timezone": "UTC"
+    },
+    "sample_english": "schedule_cron '*/2 * * * *' (UTC) fires 120 seconds apart (2026-10-29T10:00:00+00:00 then 2026-10-29T10:02:00+00:00); a search must fire at least 300 seconds apart",
+    "sample_english_params": {
+      "cron": "'*/2 * * * *'",
+      "gap": "120",
+      "min_seconds": "300",
+      "next": "2026-10-29T10:02:00+00:00",
+      "previous": "2026-10-29T10:00:00+00:00",
+      "timezone": "UTC"
+    },
+    "template": "schedule_cron {cron} ({timezone}) fires {gap} seconds apart ({previous} then {next}); a search must fire at least {min_seconds} seconds apart"
+  },
+  "search.cron.floor_missed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "schedule_cron is below the floor",
+    "sample_english_params": {},
+    "template": "schedule_cron is below the floor"
+  },
+  "search.cron.invalid": {
+    "params": {
+      "cron": {
+        "kind": "text"
+      },
+      "error": {
+        "kind": "text"
+      },
+      "timezone": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "cron": "'* * *'",
+      "error": "Wrong number of fields; got 3, expected 5",
+      "timezone": "UTC"
+    },
+    "sample_english": "schedule_cron '* * *' (UTC) is not a valid cron expression: Wrong number of fields; got 3, expected 5",
+    "sample_english_params": {
+      "cron": "'* * *'",
+      "error": "Wrong number of fields; got 3, expected 5",
+      "timezone": "UTC"
+    },
+    "template": "schedule_cron {cron} ({timezone}) is not a valid cron expression: {error}"
+  },
+  "search.cron.no_future_fire": {
+    "params": {
+      "cron": {
+        "kind": "text"
+      },
+      "timezone": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "cron": "'0 0 30 2 *'",
+      "timezone": "UTC"
+    },
+    "sample_english": "schedule_cron '0 0 30 2 *' (UTC) has no future fire time",
+    "sample_english_params": {
+      "cron": "'0 0 30 2 *'",
+      "timezone": "UTC"
+    },
+    "template": "schedule_cron {cron} ({timezone}) has no future fire time"
+  },
   "search.enabled_cap": {
     "params": {
       "limit": {
@@ -5913,6 +6078,102 @@
       "limit": "50"
     },
     "template": "the limit is {limit} enabled searches"
+  },
+  "search.run.capacity": {
+    "params": {
+      "global_cap": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "instance_cap": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "waited": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "global_cap": 6,
+      "instance_cap": 3,
+      "waited": 30.0
+    },
+    "sample_english": "No Ariel permit became available within 30 seconds (per-console cap 3, global cap 6)",
+    "sample_english_params": {
+      "global_cap": "6",
+      "instance_cap": "3",
+      "waited": "30"
+    },
+    "template": "No Ariel permit became available within {waited} seconds (per-console cap {instance_cap}, global cap {global_cap})"
+  },
+  "search.run.failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Ariel search failed",
+    "sample_english_params": {},
+    "template": "Ariel search failed"
+  },
+  "search.run.no_aql_execution": {
+    "params": {},
+    "sample": {},
+    "sample_english": "configured provider cannot execute AQL",
+    "sample_english_params": {},
+    "template": "configured provider cannot execute AQL"
+  },
+  "search.run.parse_failed": {
+    "params": {
+      "detail": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "detail": "unexpected column type"
+    },
+    "sample_english": "failed to fetch/parse results: unexpected column type",
+    "sample_english_params": {
+      "detail": "unexpected column type"
+    },
+    "template": "failed to fetch/parse results: {detail}"
+  },
+  "search.run.timeout": {
+    "params": {
+      "timeout": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "timeout": 300
+    },
+    "sample_english": "search exceeded timeout of 300s",
+    "sample_english_params": {
+      "timeout": "300"
+    },
+    "template": "search exceeded timeout of {timeout}s"
+  },
+  "search.run.validation": {
+    "params": {
+      "reasons": {
+        "kind": "list",
+        "style": "semicolon"
+      }
+    },
+    "sample": {
+      "reasons": {
+        "items": [
+          {
+            "code": "search.aql.empty",
+            "params": {}
+          }
+        ],
+        "kind": "list"
+      }
+    },
+    "sample_english": "query is empty",
+    "sample_english_params": {
+      "reasons": "query is empty"
+    },
+    "template": "{reasons}"
   },
   "search.threshold.unreachable": {
     "params": {

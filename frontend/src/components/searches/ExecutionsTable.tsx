@@ -10,6 +10,7 @@ import "@/components/ui/controls.css";
 import { useLocale, useTranslations } from "next-intl";
 
 import { TableScroll } from "@/components/ui/TableScroll";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import type { SearchExecution } from "@/lib/api";
@@ -18,6 +19,8 @@ import type { FormatLocale } from "@/lib/format";
 import { axisTimeLabel, formatRunDuration, resultCount, thresholdVerdict } from "@/lib/searchRuns";
 
 import { versionTag } from "./searchesText";
+
+import "./searches.css";
 
 function execTone(status: string): string {
   if (status === "COMPLETED") return "ok";
@@ -70,6 +73,7 @@ export function ExecutionsTable({ executions }: { executions: SearchExecution[] 
   // No hook beyond next-intl's: the search page, a server page, renders this table.
   const t = useTranslations("searches.executions");
   const say = asTextTranslator(useTranslations());
+  const backendMessage = useBackendMessage();
   const units = useTranslations("units") as unknown as Parameters<typeof formatRunDuration>[1];
   const locale = useLocale() as FormatLocale;
   const anyTruncated = executions.some((e) => e.truncated);
@@ -110,7 +114,18 @@ export function ExecutionsTable({ executions }: { executions: SearchExecution[] 
                 <td>
                   <Threshold e={e} t={t} />
                 </td>
-                <td>{e.error_type ? <span className="pill crit">{e.error_type}</span> : "—"}</td>
+                <td>
+                  {e.error_type ? <span className="pill crit">{e.error_type}</span> : "—"}
+                  {e.error_message ? (
+                    <span className="run-error">
+                      {backendMessage({
+                        text: e.error_message,
+                        code: e.error_message_code,
+                        params: e.error_message_params,
+                      })}
+                    </span>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
