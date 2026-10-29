@@ -100,10 +100,12 @@ def test_0042_adds_nullable_i18n_and_round_trips(clean_db: str) -> None:
 
     config = _alembic_config(clean_db)
     revision = ScriptDirectory.from_config(config).get_revision("0042")
-    assert revision is not None and revision.down_revision == "0037"
+    # The neighbour is looked up, not named: parallel tasks re-chain this migration at their merge.
+    assert revision is not None and isinstance(revision.down_revision, str)
+    previous = revision.down_revision
     engine = create_engine(clean_db, future=True)
     try:
-        command.upgrade(config, "0037")
+        command.upgrade(config, previous)
         assert "error_message_i18n" not in _columns(engine)
         _seed_old_execution(engine)
 
@@ -121,7 +123,7 @@ def test_0042_adds_nullable_i18n_and_round_trips(clean_db: str) -> None:
                 {"id": EXECUTION, "v": '{"code":"search.run.timeout","params":{"timeout":300}}'},
             )
 
-        command.downgrade(config, "0037")
+        command.downgrade(config, previous)
         assert "error_message_i18n" not in _columns(engine)
         with engine.begin() as connection:
             old = connection.execute(
