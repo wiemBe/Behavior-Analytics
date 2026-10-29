@@ -449,7 +449,26 @@
     "threshold": {
       "unreachable": "{operator} {threshold} eşiğine hiçbir zaman ulaşılamaz: bir çalıştırma en fazla max_result_rows ({max_result_rows}) satır sayar; max_result_rows değerini eşiğin üzerine çıkarın veya eşiği düşürün"
     },
-    "enabled_cap": "Etkin arama sınırı {limit}"
+    "enabled_cap": "Etkin arama sınırı {limit}",
+    "cron": {
+      "invalid": "schedule_cron {cron} ({timezone}) geçerli bir cron ifadesi değil: {error}",
+      "no_future_fire": "schedule_cron {cron} ({timezone}) için gelecekte tetiklenme zamanı yok",
+      "below_floor": "schedule_cron {cron} ({timezone}) {gap} sn arayla tetikleniyor ({previous}, ardından {next}); bir arama en az {min_seconds} sn arayla tetiklenmelidir",
+      "floor_missed": "schedule_cron izin verilen en kısa aralığın altında"
+    },
+    "budget": {
+      "held_of": "{held} / {cap}",
+      "held_cap": "üst sınır {cap}",
+      "full": "Ariel arama bütçesi dolu (eşzamanlı çalışan: {held}); {waited} sn beklendi; QRadar'a hiçbir şey gönderilmedi"
+    },
+    "run": {
+      "failed": "Ariel araması başarısız oldu",
+      "timeout": "Arama, {timeout} sn zaman aşımını aştı",
+      "capacity": "{waited} sn içinde Ariel arama izni alınamadı (konsol başına üst sınır {instance_cap}, genel üst sınır {global_cap})",
+      "no_aql_execution": "Yapılandırılmış sağlayıcı AQL çalıştıramıyor",
+      "parse_failed": "Sonuçlar alınamadı veya ayrıştırılamadı: {detail}",
+      "validation": "{reasons}"
+    }
   },
   "classification": {
     "rule": {

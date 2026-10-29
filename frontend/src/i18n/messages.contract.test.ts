@@ -60,6 +60,8 @@ const IDENTICAL_ALLOWLIST = new Set([
   "widgets.propertyWatch.coverageBadge",
   // MSG-3: a dependency's QRadar name is passed through verbatim in both locales.
   "backend.rule_health.label.named",
+  // MSG-8b: the defensive re-validation error is the joined, already-worded reasons.
+  "backend.search.run.validation",
   "common.product",
   "customRules.authoring.subjectKinds.LOG_SOURCE",
   "customRules.authoring.subjectKinds.WAF_ENDPOINT",

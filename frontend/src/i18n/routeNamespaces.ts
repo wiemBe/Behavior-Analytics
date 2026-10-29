@@ -233,8 +233,8 @@ export const ROUTE_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
   "/rules/[id]": [],
   "/rules": [],
   "/rules/statistics": [],
-  "/searches/[id]": ["backend", "enums", "searches", "trend", "ui", "widgets"],
-  "/searches/new": ["backend", "enums", "searches", "trend"],
+  "/searches/[id]": ["backend", "enums", "searches", "trend", "ui", "waf", "widgets"],
+  "/searches/new": ["backend", "enums", "searches", "trend", "waf"],
   "/searches": [],
 };
 

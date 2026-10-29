@@ -389,7 +389,26 @@
       "not_select": "query must be a single SELECT statement",
       "time_range_exceeded": "time range {window_hours}h exceeds the maximum {max_hours}h"
     },
+    "budget": {
+      "full": "the Ariel search budget is full ({held} in flight); waited {waited} s; nothing was sent to QRadar",
+      "held_cap": "cap {cap}",
+      "held_of": "{held} of {cap}"
+    },
+    "cron": {
+      "below_floor": "schedule_cron {cron} ({timezone}) fires {gap} seconds apart ({previous} then {next}); a search must fire at least {min_seconds} seconds apart",
+      "floor_missed": "schedule_cron is below the floor",
+      "invalid": "schedule_cron {cron} ({timezone}) is not a valid cron expression: {error}",
+      "no_future_fire": "schedule_cron {cron} ({timezone}) has no future fire time"
+    },
     "enabled_cap": "the limit is {limit} enabled searches",
+    "run": {
+      "capacity": "No Ariel permit became available within {waited} seconds (per-console cap {instance_cap}, global cap {global_cap})",
+      "failed": "Ariel search failed",
+      "no_aql_execution": "configured provider cannot execute AQL",
+      "parse_failed": "failed to fetch/parse results: {detail}",
+      "timeout": "search exceeded timeout of {timeout}s",
+      "validation": "{reasons}"
+    },
     "threshold": {
       "unreachable": "threshold {operator} {threshold} can never be reached: a run counts at most max_result_rows ({max_result_rows}) rows; raise max_result_rows above the threshold or lower the threshold"
     }

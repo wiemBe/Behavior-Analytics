@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef
 from app.models.enums import ExecutionErrorType, ExecutionStatus
 from app.models.search import ScheduledSearch, SearchExecution, SearchResultMetric
 from app.providers.base import ProviderCapability, QRadarProvider
@@ -39,6 +40,7 @@ from app.services.ariel_errors import (
     ArielTimeout,
     ResultParsingError,
     classify,
+    failure_ref,
     is_retryable,
 )
 from app.services.ariel_permit import (
@@ -109,6 +111,7 @@ class SearchExecutor:
                 execution,
                 ExecutionErrorType.VALIDATION,
                 "configured provider cannot execute AQL",
+                ref=MessageRef("search.run.no_aql_execution"),
             )
 
         max_attempts = self.settings.ariel_max_retries + 1
@@ -117,6 +120,7 @@ class SearchExecutor:
             execution.started_at = execution.started_at or self.clock()
             execution.error_type = None
             execution.error_message = None
+            execution.error_message_i18n = None
             await self.session.flush()
             await self._checkpoint()
 
@@ -128,7 +132,9 @@ class SearchExecutor:
                 # attempt number that just failed (1-based): retries so far + 1.
                 attempt = execution.retry_count + 1
                 if not is_retryable(error_type) or attempt >= max_attempts:
-                    return self._fail(execution, error_type, str(exc), final=True)
+                    return self._fail(
+                        execution, error_type, str(exc), final=True, ref=failure_ref(exc)
+                    )
 
                 # Retryable: record this retry and schedule the next attempt with
                 # backoff + jitter.
@@ -142,6 +148,7 @@ class SearchExecutor:
                 execution.next_retry_at = self._add_seconds(self.clock(), delay)
                 execution.error_type = error_type
                 execution.error_message = str(exc)
+                execution.error_message_i18n = _wire(failure_ref(exc))
                 await self.session.flush()
                 await self._checkpoint()
                 await self.sleep(delay)
@@ -191,8 +198,10 @@ class SearchExecutor:
 
                 status = await self._poll_until_terminal(search, execution, search_id)
                 if status.status == "ERROR":
+                    # Ariel's own error texts are free text; only the empty case is a fixed
+                    # sentence, and it has a code.
                     raise ArielSearchFailed(
-                        "; ".join(status.error_messages) or "Ariel search failed"
+                        "; ".join(status.error_messages) or MessageRef("search.run.failed")
                     )
 
                 try:
@@ -202,7 +211,9 @@ class SearchExecutor:
                 except (ArielTimeout, ArielSearchFailed):
                     raise
                 except Exception as exc:
-                    raise ResultParsingError(f"failed to fetch/parse results: {exc}") from exc
+                    raise ResultParsingError(
+                        MessageRef("search.run.parse_failed", {"detail": str(exc)})
+                    ) from exc
 
                 return {
                     "columns": results.columns,
@@ -244,7 +255,7 @@ class SearchExecutor:
             elapsed = (self.clock() - start).total_seconds()
             if elapsed >= timeout:
                 await self._safe_cancel(search_id)
-                raise ArielTimeout(f"search exceeded timeout of {timeout}s")
+                raise ArielTimeout(MessageRef("search.run.timeout", {"timeout": timeout}))
             await self.sleep(poll)
 
     async def _safe_cancel(self, search_id: str) -> None:
@@ -355,9 +366,13 @@ class SearchExecutor:
         message: str,
         *,
         final: bool = True,
+        ref: MessageRef | None = None,
     ) -> SearchExecution:
         execution.error_type = error_type.value
         execution.error_message = message[:2000]
+        # A coded sentence is never truncated: when the text had to be cut, the code would
+        # describe more than the text says, so the row keeps the cut text and no code.
+        execution.error_message_i18n = _wire(ref) if len(message) <= 2000 else None
         execution.completed_at = self.clock()
         if error_type == ExecutionErrorType.TIMEOUT:
             execution.status = ExecutionStatus.TIMEOUT
@@ -371,6 +386,10 @@ class SearchExecutor:
         from datetime import timedelta
 
         return when + timedelta(seconds=seconds)
+
+
+def _wire(ref: MessageRef | None) -> dict[str, object] | None:
+    return None if ref is None else ref.to_wire()
 
 
 def execution_instance_key(execution: SearchExecution, search: ScheduledSearch) -> str:
