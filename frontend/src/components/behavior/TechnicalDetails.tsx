@@ -26,6 +26,7 @@ import {
   hasConfidenceLimitation,
   robustScoreMeaning,
 } from "@/lib/behavior";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { unitGap } from "@/i18n/measures";
 import { ARROW, scoreStatusCode, versionLabel } from "@/lib/behaviorI18n";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
@@ -57,6 +58,7 @@ export function TechnicalDetails({
 }) {
   const t = useTranslations("anomalies.technical");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const { locale } = i18n;
   const metric = (value: number | null | undefined, digits = 2) =>
     formatMetric(value, digits, locale);
@@ -77,6 +79,13 @@ export function TechnicalDetails({
     <div className="stack-6">
       {/* 1 — detection thresholds ---------------------------------------- */}
       <Disclosure summary={t("thresholds")}>
+        {/* The detector's own sentence for the verdict, in the reader's language. */}
+        {d?.reason && (
+          <p className="subtitle">
+            <strong>{t("detectorReason")}</strong>{" "}
+            {backendMessage({ text: d.reason, code: d.reason_code, params: d.reason_params })}
+          </p>
+        )}
         {d ? (
           <dl className="dimension-meta">
             <Row label={t("expectedEps")} value={metric(d.expected_eps ?? anomaly.expected_value)} />

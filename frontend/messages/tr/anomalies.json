@@ -167,6 +167,7 @@
   "technical": {
     "robustNotUsed": "kullanılmadı: MAD sıfırdı",
     "robustNotComputed": "hesaplanmadı",
+    "detectorReason": "Algılayıcı gerekçesi",
     "thresholds": "Algılama eşikleri",
     "expectedEps": "Beklenen EPS",
     "observedEps": "Gözlenen EPS",

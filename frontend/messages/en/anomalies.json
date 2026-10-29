@@ -167,6 +167,7 @@
   "technical": {
     "robustNotUsed": "not used: MAD was zero",
     "robustNotComputed": "not computed",
+    "detectorReason": "Detector reasoning",
     "thresholds": "Detection thresholds",
     "expectedEps": "Expected EPS",
     "observedEps": "Observed EPS",

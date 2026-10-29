@@ -21,6 +21,11 @@
     "INVALID": "Geçersiz",
     "INCONCLUSIVE": "Sonuçsuz"
   },
+  "bucketCompleteness": {
+    "COMPLETE": "tam",
+    "PARTIAL": "kısmi",
+    "MISSING": "eksik"
+  },
   "offenseStatus": {
     "OPEN": "Açık",
     "HIDDEN": "Gizli",

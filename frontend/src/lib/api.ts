@@ -1188,7 +1188,7 @@ export interface AnomalySummary {
   evidence_status: EvidenceStatus;
   suppressed: boolean;
   explanation: string | null;
-  // The registry code of `explanation` and its raw values (property-watch rows today).
+  // The registry code of `explanation` and its raw values (Phase A and property-watch rows).
   explanation_code?: string | null;
   explanation_params?: Record<string, unknown> | null;
   // The unified list (T-057). Absent on a Phase A row from an older response, so
@@ -1283,6 +1283,9 @@ export interface ExplanationPackage {
 // which must render as "not recorded" rather than as 0.
 export interface DetectionDetail {
   reason: string | null;
+  // The registry code of `reason` and its raw values (absent or null: no code, show `reason`).
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   expected_low: number | null;
   expected_high: number | null;
   threshold: number | null;

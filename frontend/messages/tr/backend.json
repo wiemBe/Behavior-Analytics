@@ -414,5 +414,71 @@
       "built_in_edit": "Yerleşik bir kural yalnızca açılıp kapatılabilir",
       "built_in_delete": "Yerleşik bir kural silinemez; bunun yerine kapatın"
     }
+  },
+  "anomaly": {
+    "detector": {
+      "no_events_bucket_incomplete": "Zaman dilimi {completeness}; olay yokluğu sessizliğin kanıtı değildir",
+      "no_events_not_expected": "Kaynağın bu zaman diliminde etkin olması beklenmiyor",
+      "no_events_normally_inactive": "Bu kaynak bu saatte normalde etkin değil",
+      "no_events_no_baseline": "Haftanın bu günü ve saati hücresi için henüz güvenilir bir etkinlik baseline'ı yok",
+      "no_events_grace": "Boş zaman dilimi, {grace} zaman dilimlik sessizlik tolerans süresi içinde",
+      "no_events_streak": "Art arda {streak} zaman diliminde olay yok; baseline yaklaşık {expected} olay bekliyor",
+      "volume_bucket_incomplete": "Metrik zaman dilimi {completeness}; tam bir gözlem değil",
+      "volume_no_baseline": "Haftanın bu günü ve saati hücresi için henüz hacim baseline'ı yok",
+      "volume_baseline_samples": "Baseline'da {samples} örnek var; savunulabilir bir karar için gereken asgarinin altında",
+      "volume_min_events": "{events} olay/zaman dilimi, savunulabilir bir hacim kararı için gereken {minimum} asgari değerin altında",
+      "volume_drop_undefined": "Baseline trafik beklemiyor; düşüş tanımsız",
+      "volume_ratio_not_reached": "Gözlenen/beklenen oran {ratio}, {limit} değerine ulaşmadı",
+      "volume_ratio_not_fallen": "Gözlenen/beklenen oran {ratio}, {limit} değerine düşmedi",
+      "volume_delta_below_min": "{delta} olay/zaman dilimi değişim, {minimum} asgari mutlak farkın altında",
+      "volume_z_not_reached": "Sağlam z={score}, ±{threshold} eşiğine ulaşmadı",
+      "volume_mad_inside_band": "Sağlam skor kullanılamıyor (MAD=0) ve gözlenen değer beklenen aralık [{lower}, {upper}] içinde",
+      "basis_z": "sağlam z={score} (eşik ±{threshold})",
+      "basis_mad_outside": "sağlam skor kullanılamıyor (MAD=0); gözlenen değer beklenen aralık [{lower}, {upper}] dışında",
+      "ratio_times_expected": "beklenenin {ratio} katı",
+      "ratio_no_traffic": "trafik beklenmiyordu",
+      "volume_above": "Ortalama EPS {observed}, baseline medyanı {expected} değerinin üzerinde ({ratio_text}, {delta} olay/zaman dilimi); {basis}",
+      "volume_below": "Ortalama EPS {observed}, baseline medyanı {expected} değerinin altında ({ratio_text}, {delta} olay/zaman dilimi); {basis}",
+      "parsing_no_data": "Ayrıştırma oranı verisi yok",
+      "parsing_below_floor": "Alan çıkarma oranı {ratio}, {floor} tabanının altına düştü",
+      "unknown_no_events": "Sınıflandırılacak olay yok",
+      "unknown_above_ceiling": "Bilinmeyen olay oranı {ratio}, {ceiling} üst sınırını aşıyor",
+      "delay_no_measurement": "Gecikme ölçümü yok",
+      "delay_exceeds": "Olay gecikmesi {delay} sn, {limit} sn sınırını aşıyor",
+      "cardinality_no_baseline": "Güvenilir bir kardinalite baseline'ı yok",
+      "cardinality_dropped": "Ayrı kaynak IP sayısı {count}, baseline medyanı {median} değerinin {fraction} eşiğinin altına düştü",
+      "collection_errors": "Zaman diliminde {count} toplama hatası",
+      "payload_no_signature": "Yük imzası yok",
+      "payload_repeated": "Aynı yük imzası art arda {streak} zaman diliminde tekrarlandı",
+      "within_range": "Beklenen aralık içinde",
+      "suppressed_by_no_events": "Bastırıldı: bu zaman diliminde olay yok"
+    },
+    "lifecycle": {
+      "already_suppressed": "Zaten bastırılmış",
+      "suppressed": "Bastırıldı",
+      "suppression_lifted": "Bastırma kaldırıldı",
+      "no_verdict": "Karar verilemiyor",
+      "hold_not_judgeable": "Durum korunuyor; zaman dilimi değerlendirilemiyor",
+      "hold_unknown": "Durum korunuyor; algılayıcı bilinmiyor sonucunu döndürdü",
+      "opened": "Art arda {count} anormal zaman dilimi",
+      "first_abnormal": "İlk anormal zaman dilimi",
+      "confirmed": "Art arda {count} anormal zaman dilimi, {threshold} olan doğrulama eşiğine ulaştı",
+      "still_confirming": "Doğrulama sürüyor",
+      "relapsed": "İyileşme tamamlanmadan yeniden bozuldu",
+      "still_abnormal": "Hâlâ anormal",
+      "returned_to_normal": "Açılmadan önce normale döndü",
+      "resolved_one_normal": "1 normal zaman dilimi gözlendi",
+      "normal_observed": "Normal zaman dilimi gözlendi",
+      "recovered": "Art arda {count} normal zaman dilimi, {threshold} olan düzelme eşiğine ulaştı",
+      "still_recovering": "Düzelme sürüyor",
+      "baseline_adequate": "Baseline yeterli hale geldi",
+      "within_range": "Beklenen aralık içinde"
+    },
+    "suppression": {
+      "maintenance": "Bakım penceresi"
+    },
+    "resolution": {
+      "recovered": "Koşul düzeldi"
+    }
   }
 }

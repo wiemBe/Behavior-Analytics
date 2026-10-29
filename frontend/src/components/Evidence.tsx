@@ -11,6 +11,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { formatShare, type FormatLocale } from "@/lib/format";
 import { own } from "@/i18n/ownKey";
@@ -120,8 +121,16 @@ function format(n: number, locale: FormatLocale): string {
   return n.toLocaleString(locale === "tr" ? "tr-TR" : "en-US", { maximumFractionDigits: 3 });
 }
 
+/** The stored `reason_params` object, or null when the evidence carries none (an older row). */
+function reasonParams(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 export function Evidence({ data }: { data: Record<string, unknown> }) {
   const t = useTranslations("evidence");
+  const backendMessage = useBackendMessage();
   // Unit and label keys are built from the detector table, so they are looked up by name.
   const lookup = asTextTranslator(t);
   const locale = useLocale() as FormatLocale;
@@ -148,7 +157,15 @@ export function Evidence({ data }: { data: Record<string, unknown> }) {
   };
   return (
     <div className="evidence">
-      {typeof data.reason === "string" && <p className="evidence-reason">{data.reason}</p>}
+      {typeof data.reason === "string" && (
+        <p className="evidence-reason">
+          {backendMessage({
+            text: data.reason,
+            code: typeof data.reason_code === "string" ? data.reason_code : null,
+            params: reasonParams(data.reason_params),
+          })}
+        </p>
+      )}
       <table className="evidence-table" aria-label={t("tableLabel")}>
         <tbody>
           {rows.map(([name, key, measure]) => {

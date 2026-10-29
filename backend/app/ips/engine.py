@@ -25,6 +25,7 @@ from app.anomaly.capabilities import IPS_DETECTORS
 from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.lifecycle import LifecycleDecision, LifecycleInput, advance_counters, next_state
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef, render
 from app.ips.behavior import IPS_DETECTOR_FUNCTIONS, appearance_flood, verify_port_history
 from app.ips.detector import (
     IpsBaselineCell,
@@ -781,7 +782,7 @@ class IpsAnomalyEngine:
                 source, subject, detector_type, evidence, anomalies
             )
             state.active_anomaly_id = incident.id
-            self._record_transition(incident, previous, target, subject, decision.reason, evidence)
+            self._record_transition(incident, previous, target, subject, decision.message, evidence)
             return
         anomaly = self._active(state, anomalies)
         if target is AnomalyState.OPEN:
@@ -795,7 +796,7 @@ class IpsAnomalyEngine:
             state.active_anomaly_id = incident.id
             state.open_anomaly_id = incident.id
             self._touch(state, subject.observation, evidence, anomalies)
-            self._record_transition(incident, previous, target, subject, decision.reason, evidence)
+            self._record_transition(incident, previous, target, subject, decision.message, evidence)
             report.opened.append(detector_type.value)
             if alerting:
                 alert_actions.append(
@@ -805,7 +806,7 @@ class IpsAnomalyEngine:
                 )
             return
         if anomaly is not None:
-            self._record_transition(anomaly, previous, target, subject, decision.reason, evidence)
+            self._record_transition(anomaly, previous, target, subject, decision.message, evidence)
         if target is AnomalyState.RECOVERING:
             if anomaly is not None:
                 anomaly.state = target
@@ -1028,7 +1029,7 @@ class IpsAnomalyEngine:
         previous: AnomalyState,
         target: AnomalyState,
         subject: _Subject,
-        reason: str,
+        message: MessageRef,
         evidence: AnomalyEvidence,
     ) -> None:
         self.session.add(
@@ -1039,7 +1040,8 @@ class IpsAnomalyEngine:
                 to_state=target,
                 occurred_at=self._clock(),
                 bucket_start=subject.observation.bucket.bucket_start,
-                reason=reason,
+                reason=render(message),
+                reason_i18n=message.to_wire(),
                 actor="ips-anomaly-engine",
                 observed_value=evidence.observed_value,
                 expected_value=evidence.expected_value,

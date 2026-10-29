@@ -411,6 +411,10 @@ class DetectionDetailOut(BaseModel):
 
     #: The detector's own sentence explaining the verdict.
     reason: str | None = None
+    #: Stable code and raw values of `reason` for a non-English client. Null: no code (an
+    #: incident stored before codes).
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     #: The expected band the observation was judged against.
     expected_low: float | None = None
     expected_high: float | None = None
@@ -658,9 +662,14 @@ def detection_detail(details: dict[str, Any] | None) -> DetectionDetailOut | Non
     sample_count = num(details, "sample_count")
     baseline_version = num(facts, "baseline_version")
     status = text(facts, "robust_score_status")
+    reason_code, reason_params = stored_message_parts(
+        details.get("reason_code"), details.get("reason_params")
+    )
 
     return DetectionDetailOut(
         reason=text(details, "reason"),
+        reason_code=reason_code,
+        reason_params=reason_params,
         expected_low=num(details, "baseline_low"),
         expected_high=num(details, "baseline_high"),
         threshold=num(details, "threshold"),

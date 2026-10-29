@@ -21,6 +21,11 @@
     "INVALID": "INVALID",
     "INCONCLUSIVE": "INCONCLUSIVE"
   },
+  "bucketCompleteness": {
+    "COMPLETE": "complete",
+    "PARTIAL": "partial",
+    "MISSING": "missing"
+  },
   "offenseStatus": {
     "OPEN": "OPEN",
     "HIDDEN": "HIDDEN",

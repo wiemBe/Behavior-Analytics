@@ -13,9 +13,11 @@ default), ``grouped``, ``fixed`` or ``repr`` (Python's ``str()`` of the number, 
 a trailing ``.0``); points accept ``signed`` (the default) or ``unsigned``; lists accept
 ``comma`` (the default) or ``and``; durations accept ``timedelta`` (Python's ``str()`` of a
 ``timedelta``, ``0:30:00`` or ``1 day, 2:00:00``, for a sentence that always printed it so);
-timestamps accept ``iso`` (``datetime.isoformat()``, for a sentence that always embedded it).
-Percent precision, fixed-number precision, and point precision are declared separately. Enum,
-ref, and text params have one spelling and therefore no alternate style.
+timestamps accept ``iso`` (``datetime.isoformat()``, for a sentence that always embedded it);
+enums accept ``lower`` (the value in lowercase, for a sentence that always embedded it so; the
+frontend labels the value from an enum group whose labels are lowercase).
+Percent precision, fixed-number precision, and point precision are declared separately. Ref and
+text params have one spelling and therefore no alternate style.
 """
 
 from __future__ import annotations
@@ -223,6 +225,22 @@ _PW_CLAIMS = (
     "pw.detector.claim_new_value",
     "pw.detector.claim_new_combination",
 )
+
+
+# Shorthands of the MSG-5 block (Phase A detector sentences and lifecycle transition reasons).
+_A_COMPLETENESS = ParamSpec(ParamKind.ENUM, enum_group="bucketCompleteness", style="lower")
+_A_RATIO_TEXTS = (
+    "anomaly.detector.ratio_times_expected",
+    "anomaly.detector.ratio_no_traffic",
+)
+_A_BASES = (
+    "anomaly.detector.basis_z",
+    "anomaly.detector.basis_mad_outside",
+)
+_A_VOLUME_BASIS_SAMPLE = MessageRef(
+    "anomaly.detector.basis_z", {"score": 6.2, "threshold": 3.5}
+)
+_A_VOLUME_RATIO_SAMPLE = MessageRef("anomaly.detector.ratio_times_expected", {"ratio": 5.2})
 
 
 def _msg(
@@ -1814,6 +1832,246 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "an action map needs an ACTION field mapping",
     ),
     # --- end MSG-1b ---
+    # --- MSG-5: Phase A detector sentences and lifecycle transition reasons (Families 1, 2) ---
+    # --- keep contiguous. The detectors are `app/anomaly/detectors.py`; the lifecycle reasons
+    # --- come from `app/anomaly/lifecycle.py`, which every engine shares.
+    # Silence (`detect_no_events`).
+    _msg(
+        "anomaly.detector.no_events_bucket_incomplete",
+        "bucket is {completeness}; absence of events is not evidence of silence",
+        {"completeness": _A_COMPLETENESS},
+        {"completeness": "PARTIAL"},
+    ),
+    _msg(
+        "anomaly.detector.no_events_not_expected",
+        "source is not expected to be active this interval",
+    ),
+    _msg(
+        "anomaly.detector.no_events_normally_inactive",
+        "this source is normally inactive at this hour",
+    ),
+    _msg(
+        "anomaly.detector.no_events_no_baseline",
+        "no reliable activity baseline for this weekday/hour cell yet",
+    ),
+    _msg(
+        "anomaly.detector.no_events_grace",
+        "empty bucket within the {grace}-bucket silence grace period",
+        {"grace": _PLAIN},
+        {"grace": 1},
+    ),
+    _msg(
+        "anomaly.detector.no_events_streak",
+        "no events for {streak} consecutive bucket(s) where the baseline "
+        "expects about {expected} events",
+        {"streak": _PLAIN, "expected": _FIXED0},
+        {"streak": 3, "expected": 120.0},
+    ),
+    # Volume drop and spike (`_volume`).
+    _msg(
+        "anomaly.detector.volume_bucket_incomplete",
+        "metric bucket is {completeness}, not a whole observation",
+        {"completeness": _A_COMPLETENESS},
+        {"completeness": "MISSING"},
+    ),
+    _msg(
+        "anomaly.detector.volume_no_baseline",
+        "no volume baseline for this weekday/hour cell yet",
+    ),
+    _msg(
+        "anomaly.detector.volume_baseline_samples",
+        "baseline has {samples} sample(s), below the minimum required "
+        "for a defensible verdict",
+        {"samples": _PLAIN},
+        {"samples": 4},
+    ),
+    _msg(
+        "anomaly.detector.volume_min_events",
+        "{events} events/bucket is below the {minimum} minimum for a defensible volume verdict",
+        {"events": _FIXED0, "minimum": _FIXED0},
+        {"events": 12.0, "minimum": 50.0},
+    ),
+    _msg(
+        "anomaly.detector.volume_drop_undefined",
+        "baseline expects no traffic; a drop is not defined",
+    ),
+    _msg(
+        "anomaly.detector.volume_ratio_not_reached",
+        "observed/expected ratio {ratio} has not reached {limit}",
+        {"ratio": _FIXED2, "limit": _FIXED2},
+        {"ratio": 1.4, "limit": 2.0},
+    ),
+    _msg(
+        "anomaly.detector.volume_ratio_not_fallen",
+        "observed/expected ratio {ratio} has not fallen to {limit}",
+        {"ratio": _FIXED2, "limit": _FIXED2},
+        {"ratio": 0.8, "limit": 0.5},
+    ),
+    _msg(
+        "anomaly.detector.volume_delta_below_min",
+        "change of {delta} events/bucket is below the {minimum} minimum absolute delta",
+        {"delta": _FIXED0, "minimum": _FIXED0},
+        {"delta": 30.0, "minimum": 50.0},
+    ),
+    _msg(
+        "anomaly.detector.volume_z_not_reached",
+        "robust z={score} has not reached the ±{threshold} threshold",
+        {"score": _FIXED2, "threshold": _REPR},
+        {"score": 2.1, "threshold": 3.5},
+    ),
+    _msg(
+        "anomaly.detector.volume_mad_inside_band",
+        "robust score unavailable (MAD=0) and observed value is inside "
+        "the expected band [{lower}, {upper}]",
+        {"lower": _FIXED2, "upper": _FIXED2},
+        {"lower": 1.5, "upper": 2.5},
+    ),
+    _msg(
+        "anomaly.detector.basis_z",
+        "robust z={score} (threshold ±{threshold})",
+        {"score": _FIXED2, "threshold": _REPR},
+        {"score": 6.2, "threshold": 3.5},
+    ),
+    _msg(
+        "anomaly.detector.basis_mad_outside",
+        "robust score unavailable (MAD=0); observed value is outside "
+        "the expected band [{lower}, {upper}]",
+        {"lower": _FIXED2, "upper": _FIXED2},
+        {"lower": 1.5, "upper": 2.5},
+    ),
+    _msg(
+        "anomaly.detector.ratio_times_expected",
+        "{ratio}x expected",
+        {"ratio": _FIXED2},
+        {"ratio": 5.2},
+    ),
+    _msg("anomaly.detector.ratio_no_traffic", "expected no traffic"),
+    _msg(
+        "anomaly.detector.volume_above",
+        "average EPS {observed} is above the baseline median {expected} "
+        "({ratio_text}, {delta} events/bucket); {basis}",
+        {
+            "observed": _FIXED2,
+            "expected": _FIXED2,
+            "ratio_text": ParamSpec(ParamKind.REF, ref_codes=_A_RATIO_TEXTS),
+            "delta": _FIXED0,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_A_BASES),
+        },
+        {
+            "observed": 12.4,
+            "expected": 2.4,
+            "ratio_text": _A_VOLUME_RATIO_SAMPLE,
+            "delta": 3600.0,
+            "basis": _A_VOLUME_BASIS_SAMPLE,
+        },
+    ),
+    _msg(
+        "anomaly.detector.volume_below",
+        "average EPS {observed} is below the baseline median {expected} "
+        "({ratio_text}, {delta} events/bucket); {basis}",
+        {
+            "observed": _FIXED2,
+            "expected": _FIXED2,
+            "ratio_text": ParamSpec(ParamKind.REF, ref_codes=_A_RATIO_TEXTS),
+            "delta": _FIXED0,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_A_BASES),
+        },
+        {
+            "observed": 0.4,
+            "expected": 2.4,
+            "ratio_text": MessageRef("anomaly.detector.ratio_times_expected", {"ratio": 0.17}),
+            "delta": 600.0,
+            "basis": _A_VOLUME_BASIS_SAMPLE,
+        },
+    ),
+    # Parsing degradation, unknown-event spike, timestamp delay.
+    _msg("anomaly.detector.parsing_no_data", "no parse-ratio data"),
+    _msg(
+        "anomaly.detector.parsing_below_floor",
+        "field-extraction ratio {ratio} fell below floor {floor}",
+        {"ratio": _FIXED2, "floor": _FIXED2},
+        {"ratio": 0.62, "floor": 0.9},
+    ),
+    _msg("anomaly.detector.unknown_no_events", "no events to classify"),
+    _msg(
+        "anomaly.detector.unknown_above_ceiling",
+        "unknown-event ratio {ratio} exceeds ceiling {ceiling}",
+        {"ratio": _FIXED2, "ceiling": _FIXED2},
+        {"ratio": 0.4, "ceiling": 0.2},
+    ),
+    _msg("anomaly.detector.delay_no_measurement", "no delay measurement"),
+    _msg(
+        "anomaly.detector.delay_exceeds",
+        "event delay {delay}s exceeds {limit}s",
+        {"delay": _FIXED0, "limit": _FIXED0},
+        {"delay": 900.0, "limit": 300.0},
+    ),
+    # Cardinality drop, collection error, repeated payload.
+    _msg("anomaly.detector.cardinality_no_baseline", "no reliable cardinality baseline"),
+    _msg(
+        "anomaly.detector.cardinality_dropped",
+        "distinct source IPs {count} dropped below {fraction} of baseline median {median}",
+        {"count": _PLAIN, "fraction": _PERCENT, "median": _FIXED0},
+        {"count": 3, "fraction": 0.5, "median": 40.0},
+    ),
+    _msg(
+        "anomaly.detector.collection_errors",
+        "{count} collection error(s) in the interval",
+        {"count": _PLAIN},
+        {"count": 2},
+    ),
+    _msg("anomaly.detector.payload_no_signature", "no payload signature"),
+    _msg(
+        "anomaly.detector.payload_repeated",
+        "identical payload signature repeated for {streak} consecutive intervals",
+        {"streak": _PLAIN},
+        {"streak": 4},
+    ),
+    # The healthy default and the engine's own overwrite of a demoted verdict.
+    _msg("anomaly.detector.within_range", "within expected range"),
+    _msg(
+        "anomaly.detector.suppressed_by_no_events",
+        "suppressed: no events this interval",
+    ),
+    # Lifecycle transition reasons (`app/anomaly/lifecycle.py`, shared by every engine).
+    _msg("anomaly.lifecycle.already_suppressed", "already suppressed"),
+    _msg("anomaly.lifecycle.suppressed", "suppressed"),
+    _msg("anomaly.lifecycle.suppression_lifted", "suppression lifted"),
+    _msg("anomaly.lifecycle.no_verdict", "no verdict possible"),
+    _msg("anomaly.lifecycle.hold_not_judgeable", "holding state; bucket not judgeable"),
+    _msg("anomaly.lifecycle.hold_unknown", "holding state; detector returned unknown"),
+    _msg(
+        "anomaly.lifecycle.opened",
+        "{count} consecutive abnormal bucket(s)",
+        {"count": _PLAIN},
+        {"count": 1},
+    ),
+    _msg("anomaly.lifecycle.first_abnormal", "first abnormal bucket"),
+    _msg(
+        "anomaly.lifecycle.confirmed",
+        "{count} consecutive abnormal bucket(s) reached the confirmation threshold of {threshold}",
+        {"count": _PLAIN, "threshold": _PLAIN},
+        {"count": 3, "threshold": 3},
+    ),
+    _msg("anomaly.lifecycle.still_confirming", "still confirming"),
+    _msg("anomaly.lifecycle.relapsed", "relapsed before recovery completed"),
+    _msg("anomaly.lifecycle.still_abnormal", "still abnormal"),
+    _msg("anomaly.lifecycle.returned_to_normal", "returned to normal before opening"),
+    _msg("anomaly.lifecycle.resolved_one_normal", "1 normal bucket observed"),
+    _msg("anomaly.lifecycle.normal_observed", "normal bucket observed"),
+    _msg(
+        "anomaly.lifecycle.recovered",
+        "{count} consecutive normal bucket(s) reached the recovery threshold of {threshold}",
+        {"count": _PLAIN, "threshold": _PLAIN},
+        {"count": 2, "threshold": 2},
+    ),
+    _msg("anomaly.lifecycle.still_recovering", "still recovering"),
+    _msg("anomaly.lifecycle.baseline_adequate", "baseline became adequate"),
+    _msg("anomaly.lifecycle.within_range", "within expected range"),
+    # Phase A engine side effects (`app/anomaly/engine.py`).
+    _msg("anomaly.suppression.maintenance", "maintenance window"),
+    _msg("anomaly.resolution.recovered", "condition recovered"),
+    # --- end MSG-5 ---
 )
 
 
@@ -1824,7 +2082,7 @@ _STYLES: dict[ParamKind, set[str | None]] = {
     ParamKind.POINTS: {None, "signed", "unsigned"},
     ParamKind.DURATION: {None, "timedelta"},
     ParamKind.TIMESTAMP: {None, "iso"},
-    ParamKind.ENUM: {None},
+    ParamKind.ENUM: {None, "lower"},
     ParamKind.LIST: {None, "comma", "and"},
     ParamKind.REF: {None},
     ParamKind.TEXT: {None},
@@ -2027,7 +2285,7 @@ def _format_param(
     if spec.kind in (ParamKind.ENUM, ParamKind.TEXT):
         if not isinstance(value, str):
             raise MessageRenderError(f"{name} must be text")
-        return value
+        return value.lower() if spec.style == "lower" else value
     if spec.kind is ParamKind.LIST:
         if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
             raise MessageRenderError(f"{name} must be a list")

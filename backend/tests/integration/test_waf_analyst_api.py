@@ -442,8 +442,9 @@ def test_phase_a_detail_is_unchanged_by_the_unification(db_schema) -> None:
     body = Client(READER).get(f"/api/v1/anomalies/{run(setup)}").json()
     assert body["subject_kind"] == "LOG_SOURCE" and body["waf_endpoint"] is None
     assert set(body["detection"]) == {
-        "reason", "expected_low", "expected_high", "threshold", "baseline_sample_count",
-        "baseline_completeness", "baseline_version", "observed_eps", "expected_eps",
+        "reason", "reason_code", "reason_params", "expected_low", "expected_high", "threshold",
+        "baseline_sample_count", "baseline_completeness", "baseline_version", "observed_eps",
+        "expected_eps",
         "observed_events", "expected_events", "absolute_delta_events", "bucket_seconds",
         "ratio", "ratio_basis", "robust_score_status", "robust_z", "fallback_bound",
     }

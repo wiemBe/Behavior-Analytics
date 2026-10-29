@@ -1,4 +1,70 @@
 {
+  "anomaly": {
+    "detector": {
+      "basis_mad_outside": "robust score unavailable (MAD=0); observed value is outside the expected band [{lower}, {upper}]",
+      "basis_z": "robust z={score} (threshold ±{threshold})",
+      "cardinality_dropped": "distinct source IPs {count} dropped below {fraction} of baseline median {median}",
+      "cardinality_no_baseline": "no reliable cardinality baseline",
+      "collection_errors": "{count} collection error(s) in the interval",
+      "delay_exceeds": "event delay {delay}s exceeds {limit}s",
+      "delay_no_measurement": "no delay measurement",
+      "no_events_bucket_incomplete": "bucket is {completeness}; absence of events is not evidence of silence",
+      "no_events_grace": "empty bucket within the {grace}-bucket silence grace period",
+      "no_events_no_baseline": "no reliable activity baseline for this weekday/hour cell yet",
+      "no_events_normally_inactive": "this source is normally inactive at this hour",
+      "no_events_not_expected": "source is not expected to be active this interval",
+      "no_events_streak": "no events for {streak} consecutive bucket(s) where the baseline expects about {expected} events",
+      "parsing_below_floor": "field-extraction ratio {ratio} fell below floor {floor}",
+      "parsing_no_data": "no parse-ratio data",
+      "payload_no_signature": "no payload signature",
+      "payload_repeated": "identical payload signature repeated for {streak} consecutive intervals",
+      "ratio_no_traffic": "expected no traffic",
+      "ratio_times_expected": "{ratio}x expected",
+      "suppressed_by_no_events": "suppressed: no events this interval",
+      "unknown_above_ceiling": "unknown-event ratio {ratio} exceeds ceiling {ceiling}",
+      "unknown_no_events": "no events to classify",
+      "volume_above": "average EPS {observed} is above the baseline median {expected} ({ratio_text}, {delta} events/bucket); {basis}",
+      "volume_baseline_samples": "baseline has {samples} sample(s), below the minimum required for a defensible verdict",
+      "volume_below": "average EPS {observed} is below the baseline median {expected} ({ratio_text}, {delta} events/bucket); {basis}",
+      "volume_bucket_incomplete": "metric bucket is {completeness}, not a whole observation",
+      "volume_delta_below_min": "change of {delta} events/bucket is below the {minimum} minimum absolute delta",
+      "volume_drop_undefined": "baseline expects no traffic; a drop is not defined",
+      "volume_mad_inside_band": "robust score unavailable (MAD=0) and observed value is inside the expected band [{lower}, {upper}]",
+      "volume_min_events": "{events} events/bucket is below the {minimum} minimum for a defensible volume verdict",
+      "volume_no_baseline": "no volume baseline for this weekday/hour cell yet",
+      "volume_ratio_not_fallen": "observed/expected ratio {ratio} has not fallen to {limit}",
+      "volume_ratio_not_reached": "observed/expected ratio {ratio} has not reached {limit}",
+      "volume_z_not_reached": "robust z={score} has not reached the ±{threshold} threshold",
+      "within_range": "within expected range"
+    },
+    "lifecycle": {
+      "already_suppressed": "already suppressed",
+      "baseline_adequate": "baseline became adequate",
+      "confirmed": "{count} consecutive abnormal bucket(s) reached the confirmation threshold of {threshold}",
+      "first_abnormal": "first abnormal bucket",
+      "hold_not_judgeable": "holding state; bucket not judgeable",
+      "hold_unknown": "holding state; detector returned unknown",
+      "no_verdict": "no verdict possible",
+      "normal_observed": "normal bucket observed",
+      "opened": "{count} consecutive abnormal bucket(s)",
+      "recovered": "{count} consecutive normal bucket(s) reached the recovery threshold of {threshold}",
+      "relapsed": "relapsed before recovery completed",
+      "resolved_one_normal": "1 normal bucket observed",
+      "returned_to_normal": "returned to normal before opening",
+      "still_abnormal": "still abnormal",
+      "still_confirming": "still confirming",
+      "still_recovering": "still recovering",
+      "suppressed": "suppressed",
+      "suppression_lifted": "suppression lifted",
+      "within_range": "within expected range"
+    },
+    "resolution": {
+      "recovered": "condition recovered"
+    },
+    "suppression": {
+      "maintenance": "maintenance window"
+    }
+  },
   "auth": {
     "csrf": {
       "origin_mismatch": "Cross-site request refused: origin {origin} is not the configured public origin.",

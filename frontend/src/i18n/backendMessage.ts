@@ -205,10 +205,16 @@ function formatParam(
       return typeof value === "string" && utcTimeText(value) !== "—"
         ? utcTimeText(value)
         : undefined;
-    case "enum":
-      return typeof value === "string" && spec.enum_group
-        ? enumLabel(context.say as EnumTranslator, spec.enum_group as never, value)
-        : undefined;
+    case "enum": {
+      if (typeof value !== "string" || !spec.enum_group) return undefined;
+      const label = enumLabel(context.say as EnumTranslator, spec.enum_group as never, value);
+      // `lower` is the style of a sentence that always spelled the value in lowercase: the
+      // group's labels are lowercase already, and a value the catalog lacks is lowercased
+      // here (in the reader's locale) so it does not stand out of the sentence in capitals.
+      return spec.style === "lower" && label === value
+        ? label.toLocaleLowerCase(context.locale === "tr" ? "tr-TR" : "en-US")
+        : label;
+    }
     case "list":
       return taggedKind(value, "list") ? formatUntyped(value, context, depth) : undefined;
     case "ref":

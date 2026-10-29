@@ -383,9 +383,12 @@ async def test_the_anomaly_reads_carry_the_code_of_the_explanation_and_the_trans
     assert detail["detection"]["reason"] == anomaly.explanation
     assert detail["detection"]["reason_code"] == "pw.detector.spike_fired"
     assert detail["detection"]["reason_params"] == detail["explanation_params"]
-    # the lifecycle's own transition reasons are not coded by this task
+    # the lifecycle's own transition reasons carry their code (Family 2, MSG-5)
     assert detail["transitions"]
-    assert all(t["reason_code"] is None for t in detail["transitions"])
+    assert all(
+        t["reason_code"] is not None and t["reason_code"].startswith("anomaly.lifecycle.")
+        for t in detail["transitions"]
+    )
 
 
 async def test_a_resolved_transition_is_served_with_its_code(db_session, db_schema: str) -> None:

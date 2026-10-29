@@ -54,6 +54,7 @@ from app.anomaly.lifecycle import (
 )
 from app.anomaly.seasonal import in_maintenance
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     AnomalyState,
@@ -915,7 +916,7 @@ class WafAnomalyEngine:
         if target is AnomalyState.CANDIDATE:
             created = self._create_incident(endpoint, obs, detector_type, evidence, anomalies)
             state.active_anomaly_id = created.id
-            self._record_transition(created, previous, target, obs, decision.reason, evidence)
+            self._record_transition(created, previous, target, obs, decision.message, evidence)
             report.candidates.append(detector_type.value)
             return
 
@@ -934,7 +935,7 @@ class WafAnomalyEngine:
             state.active_anomaly_id = incident.id
             state.open_anomaly_id = incident.id
             self._touch(state, obs, evidence, anomalies)
-            self._record_transition(incident, previous, target, obs, decision.reason, evidence)
+            self._record_transition(incident, previous, target, obs, decision.message, evidence)
             report.opened.append(detector_type.value)
             if self.settings.waf_alerting_enabled and not report.in_maintenance:
                 alert_actions.append(
@@ -943,7 +944,7 @@ class WafAnomalyEngine:
             return
 
         if anomaly is not None:
-            self._record_transition(anomaly, previous, target, obs, decision.reason, evidence)
+            self._record_transition(anomaly, previous, target, obs, decision.message, evidence)
 
         if target is AnomalyState.RECOVERING:
             if anomaly is not None:
@@ -1172,7 +1173,7 @@ class WafAnomalyEngine:
         from_state: AnomalyState,
         to_state: AnomalyState,
         obs: EndpointObservation,
-        reason: str,
+        message: MessageRef,
         evidence: AnomalyEvidence,
     ) -> None:
         self.session.add(
@@ -1183,7 +1184,8 @@ class WafAnomalyEngine:
                 to_state=to_state,
                 occurred_at=self._clock(),
                 bucket_start=obs.bucket_start,
-                reason=reason,
+                reason=render(message),
+                reason_i18n=message.to_wire(),
                 actor="waf-anomaly-engine",
                 observed_value=evidence.observed_value,
                 observed_measurement=_measurement(evidence),
