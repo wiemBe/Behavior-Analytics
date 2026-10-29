@@ -628,6 +628,15 @@ class WafDetectorState(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     open_anomaly_id: Mapped[uuid.UUID | None] = mapped_column(PgUUID(as_uuid=True))
 
 
+def _i18n_parts(value: object) -> tuple[str | None, dict[str, Any] | None]:
+    """The code and params of a stored `{code, params}` reference; None when absent or malformed."""
+    from app.schemas.messages import stored_message_parts
+
+    if not isinstance(value, dict):
+        return None, None
+    return stored_message_parts(value.get("code"), value.get("params"))
+
+
 class WafAnomaly(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """A detected deviation on one WAF endpoint.
 
@@ -675,6 +684,8 @@ class WafAnomaly(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     normalizer_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     explanation: Mapped[str | None] = mapped_column(Text)
+    #: `{code, params}` of `explanation` (NULL on earlier rows and for an uncoded sentence).
+    explanation_i18n: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     details: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     evidence_status: Mapped[EvidenceStatus] = mapped_column(
         String(16), default=EvidenceStatus.NOT_REQUESTED, nullable=False
@@ -682,6 +693,10 @@ class WafAnomaly(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     suppressed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     suppression_reason: Mapped[str | None] = mapped_column(String(255))
+    #: `{code, params}` of `suppression_reason`, written and overwritten with it.
+    suppression_reason_i18n: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
     #: Whether `observed_value` is an exact count or a lower bound. A lower bound
     #: must be rendered "at least n", never as the count.
     observed_measurement: Mapped[WafMeasurement] = mapped_column(
@@ -694,6 +709,22 @@ class WafAnomaly(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         cascade="all, delete-orphan",
         order_by="WafAnomalyTransition.occurred_at",
     )
+
+    @property
+    def explanation_code(self) -> str | None:
+        return _i18n_parts(self.explanation_i18n)[0]
+
+    @property
+    def explanation_params(self) -> dict[str, Any] | None:
+        return _i18n_parts(self.explanation_i18n)[1]
+
+    @property
+    def suppression_reason_code(self) -> str | None:
+        return _i18n_parts(self.suppression_reason_i18n)[0]
+
+    @property
+    def suppression_reason_params(self) -> dict[str, Any] | None:
+        return _i18n_parts(self.suppression_reason_i18n)[1]
 
     def __repr__(self) -> str:
         return f"<WafAnomaly {self.detector_type} state={self.state}>"

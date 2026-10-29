@@ -292,3 +292,81 @@ export function wafEndpoint(over: Partial<WafEndpointInventory> = {}): WafEndpoi
     ...over,
   };
 }
+
+
+// ---- The same payloads as a current backend writes them: each sentence beside its code (MSG-6).
+// The plain fixtures above stay as a row stored before codes serves them (English text, no code),
+// so the tests that pin that contract keep their meaning; these carry the code and raw values.
+
+/** The wire form of a share and of a change in points, as the API sends them beside a sentence. */
+const percentParam = (ratio: number, precision = 1) => ({ kind: "percent", ratio, precision });
+const pointsParam = (points: number, precision = 1) => ({
+  kind: "points",
+  points,
+  precision,
+  signed: true,
+});
+const NAMED = { code: "waf.subject.named", params: { method: "GET", endpoint: "/portal/login" } };
+
+/** A request-rate incident whose reason is the firing sentence with its code. */
+export function wafCodedDetection(over: Partial<WafDetectionDetail> = {}): WafDetectionDetail {
+  return wafDetection({
+    reason_code: "waf.rate.fired",
+    reason_params: {
+      observed: 412,
+      expected: 41.5,
+      ratio_text: { code: "waf.rate.ratio_multiple", params: { ratio: 9.93 } },
+      delta: 370,
+      basis: { code: "waf.basis.z", params: { score: 21.4, threshold: 3.5 } },
+    },
+    ...over,
+  });
+}
+
+/** A new-endpoint incident whose reason carries its three timestamps as ISO text. */
+export function wafCodedNewEndpointDetection(
+  over: Partial<WafDetectionDetail> = {},
+): WafDetectionDetail {
+  return wafNewEndpointDetection({
+    reason_code: "waf.novelty.fired",
+    reason_params: {
+      subject: NAMED,
+      requests: 320,
+      buckets: 4,
+      first_seen: "2026-10-12T08:40:00+00:00",
+      history_start: "2026-10-05T08:40:00+00:00",
+      history_end: "2026-10-12T08:40:00+00:00",
+      admission: 20,
+    },
+    caveat: "A newly requested endpoint may be a deployment as easily as a probe.",
+    caveat_code: "waf.caveat.new_endpoint",
+    caveat_params: {},
+    ...over,
+  });
+}
+
+/** A block-ratio incident: noun phrases as references, a share, points and a basis. */
+export function wafCodedRatioDetection(over: Partial<WafDetectionDetail> = {}): WafDetectionDetail {
+  return wafRatioDetection({
+    reason_code: "waf.ratio.fired",
+    reason_params: {
+      count: 318,
+      total: 1000,
+      denominator: { code: "waf.noun.waf_action_requests", params: {} },
+      subject: NAMED,
+      numerator: { code: "waf.noun.blocked_requests", params: {} },
+      share: percentParam(0.318),
+      expected: percentParam(0.021),
+      history: 14250,
+      rise: pointsParam(29.7),
+      multiple: 15.1,
+      basis: { code: "waf.basis.z", params: { score: 12.4, threshold: 3.5 } },
+    },
+    caveat:
+      "Blocking is judged through the profile's action map. A higher block ratio describes WAF " +
+      "decisions; it does not establish that an attack succeeded.",
+    caveat_code: "waf.caveat.block_ratio",
+    caveat_params: {},
+    ...over,
+  });
+}

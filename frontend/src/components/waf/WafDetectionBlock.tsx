@@ -13,6 +13,7 @@ import {
   formatShare,
   robustScoreMeaning,
 } from "@/lib/behavior";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { scoreStatusCode, versionLabel } from "@/lib/behaviorI18n";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
@@ -49,12 +50,26 @@ export function WafDetectionBlock({
   const t = useTranslations("waf.detection");
   const i18n = useBehaviorI18n();
   const { locale } = i18n;
+  // The detector's own sentences, in the reader's language when the API sent their code.
+  const say = useBackendMessage();
   const d = anomaly.detection;
   if (!d) {
     return <div className="notice">{t("none")}</div>;
   }
 
-  const reason = d.reason ?? anomaly.explanation;
+  const reason =
+    d.reason != null
+      ? say({ text: d.reason, code: d.reason_code, params: d.reason_params })
+      : anomaly.explanation != null
+        ? say({
+            text: anomaly.explanation,
+            code: anomaly.explanation_code,
+            params: anomaly.explanation_params,
+          })
+        : null;
+  const caveat = d.caveat
+    ? say({ text: d.caveat, code: d.caveat_code, params: d.caveat_params })
+    : null;
   const ratio = isRatioType(anomaly.anomaly_type);
   const robustZ =
     d.robust_score_status === "DEGENERATE" ? (
@@ -121,7 +136,7 @@ export function WafDetectionBlock({
             value={formatCount(anomaly.consecutive_buckets, locale)}
           />
         </dl>
-        {d.caveat && <p className="subtitle">{d.caveat}</p>}
+        {caveat && <p className="subtitle">{caveat}</p>}
       </div>
     );
   }
@@ -160,7 +175,7 @@ export function WafDetectionBlock({
           {robustScoreMeaning(d.robust_score_status, i18n)}
         </p>
       )}
-      {d.caveat && <p className="subtitle">{d.caveat}</p>}
+      {caveat && <p className="subtitle">{caveat}</p>}
     </div>
   );
 }

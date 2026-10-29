@@ -234,6 +234,89 @@ _PW_CLAIMS = (
     "pw.detector.claim_new_combination",
 )
 
+# Shorthands and reference groups of the MSG-6 block (WAF anomaly sentences, Family 3).
+_PCT1 = ParamSpec(ParamKind.PERCENT, precision=1)
+_POINTS1 = ParamSpec(ParamKind.POINTS)
+_POINTS0U = ParamSpec(ParamKind.POINTS, style="unsigned", precision=0)
+_WAF_AT = datetime(2026, 8, 3, 19, 25, tzinfo=UTC)
+
+#: The scope decision's sentences (`app.waf.measurement.verdict_scope`) and the detectors' own
+#: fallbacks for a scope that carries no reason.
+_WAF_SCOPES = (
+    "waf.scope.unstated",
+    "waf.scope.lower_bound_increase",
+    "waf.scope.needs_exact",
+    "waf.scope.unattributed",
+    "waf.scope.unclassified",
+    "waf.scope.inputs_unsupported",
+    "waf.scope.composition_exact",
+)
+
+_WAF_HISTORY_CHECKS = (
+    "waf.history_check.not_divisible",
+    "waf.history_check.never_collected",
+    "waf.history_check.record_count",
+    "waf.history_check.bucket_width",
+    "waf.history_check.discovery_truncated",
+    "waf.history_check.admission_truncated",
+    "waf.history_check.profile_version",
+    "waf.history_check.normalizer_version",
+    "waf.history_check.not_loaded",
+    "waf.history_check.appearance_never_collected",
+    "waf.history_check.appearance_no_profile",
+    "waf.history_check.appearance_normalizer",
+)
+
+#: The guard sentences of the request-rate detector a lower bound may wrap.
+_WAF_RATE_NOT_PROVEN = (
+    "waf.rate.below_min_volume",
+    "waf.rate.ratio_not_reached",
+    "waf.rate.delta_below_min",
+    "waf.rate.z_not_reached",
+    "waf.rate.mad_within_band",
+)
+
+#: The bases a firing sentence ends with.
+_WAF_BASES = (
+    "waf.basis.z",
+    "waf.basis.mad_outside_band",
+    "waf.basis.mad_above_p95",
+)
+
+#: The guard sentences of the ratio and concentration detectors a lower bound may wrap.
+_WAF_GUARD_NOT_PROVEN = (
+    "waf.ratio.numerator_below_min",
+    "waf.ratio.rise_below_min",
+    "waf.ratio.multiple_below_min",
+    "waf.concentration.top_below_min",
+    "waf.concentration.rise_below_min",
+    "waf.basis.z_not_reached",
+    "waf.basis.mad_within_p95",
+)
+
+_WAF_NOUNS = (
+    "waf.noun.blocked_requests",
+    "waf.noun.waf_action_requests",
+    "waf.noun.http_5xx",
+    "waf.noun.http_4xx",
+    "waf.noun.response_code_requests",
+)
+
+_WAF_SUBJECTS = ("waf.subject.named", "waf.subject.this_endpoint")
+
+_WAF_VOLUMES = (
+    "waf.concentration.volume_with_baseline",
+    "waf.concentration.volume_no_baseline",
+)
+
+_WAF_RATIO_TEXTS = ("waf.rate.ratio_multiple", "waf.rate.ratio_none")
+
+_WAF_NOVELTY_CAUSES = (
+    *_WAF_HISTORY_CHECKS,
+    *_WAF_SCOPES,
+    "waf.novelty.history_incomplete",
+)
+
 
 # Shorthands of the MSG-5 block (Phase A detector sentences and lifecycle transition reasons).
 _A_COMPLETENESS = ParamSpec(ParamKind.ENUM, enum_group="bucketCompleteness", style="lower")
@@ -2348,6 +2431,696 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg("anomaly.suppression.maintenance", "maintenance window"),
     _msg("anomaly.resolution.recovered", "condition recovered"),
     # --- end MSG-5 ---
+    # --- MSG-6: WAF anomaly sentences (Family 3) -- keep contiguous --------------------------
+    # The scope decision (`app.waf.measurement`) and the detectors' own scope fallbacks.
+    _msg(
+        "waf.scope.unstated",
+        "the bucket does not state whether its counts are exact or lower bounds",
+    ),
+    _msg(
+        "waf.scope.lower_bound_increase",
+        "the count is a lower bound: an increase can be proven, normal behaviour cannot",
+    ),
+    _msg(
+        "waf.scope.needs_exact",
+        "the detector needs exact counts and this count is a lower bound",
+    ),
+    _msg("waf.scope.unattributed", "some events could not be attributed"),
+    _msg("waf.scope.unclassified", "some values were unclassified"),
+    _msg("waf.scope.inputs_unsupported", "the inputs do not support a verdict"),
+    _msg("waf.scope.composition_exact", "composition needs exact measurements"),
+    # Why a baseline cannot judge a bucket (`app.waf.semantics`).
+    _msg(
+        "waf.semantics.bucket_unidentified",
+        "the bucket carries no metric-semantics identity; it was collected before "
+        "identities were recorded and cannot be judged",
+    ),
+    _msg(
+        "waf.semantics.baseline_unidentified",
+        "the baseline cell carries no metric-semantics identity; rebuild required",
+    ),
+    _msg(
+        "waf.semantics.mismatch",
+        "the baseline was built under '{baseline}' but the bucket was collected "
+        "under '{bucket}'; rebuild required",
+        {"baseline": _TEXT, "bucket": _TEXT},
+        {
+            "baseline": "request_count/v1;normalizer/v1",
+            "bucket": "request_count/v2;normalizer/v1",
+        },
+    ),
+    # Request-rate spike.
+    _msg(
+        "waf.rate.bucket_not_whole",
+        "bucket is {completeness}, not a whole observation",
+        {"completeness": ParamSpec(ParamKind.ENUM, enum_group="wafBucketCompleteness")},
+        {"completeness": "partial"},
+    ),
+    _msg(
+        "waf.rate.not_proven_lower_bound",
+        "at least {observed} requests were attributed to this endpoint, but the count is a "
+        "lower bound and {reason}; a normal verdict cannot be concluded from a lower bound",
+        {
+            "observed": _FIXED0,
+            "reason": ParamSpec(ParamKind.REF, ref_codes=_WAF_RATE_NOT_PROVEN),
+        },
+        {
+            "observed": 120.0,
+            "reason": MessageRef(
+                "waf.rate.below_min_volume", {"observed": 12.0, "minimum": 20.0}
+            ),
+        },
+    ),
+    _msg(
+        "waf.rate.coverage_low",
+        "only {covered} of this source's events carried a parseable endpoint in this bucket",
+        {"covered": _PERCENT},
+        {"covered": 0.62},
+    ),
+    _msg("waf.rate.no_baseline", "no request-rate baseline for this weekday/hour cell yet"),
+    _msg(
+        "waf.rate.baseline_samples",
+        "baseline has {samples} sample(s), below the minimum required for a defensible verdict",
+        {"samples": _PLAIN},
+        {"samples": 3},
+    ),
+    _msg(
+        "waf.rate.below_min_volume",
+        "{observed} requests/bucket is below the {minimum} minimum for a defensible verdict",
+        {"observed": _FIXED0, "minimum": _FIXED0},
+        {"observed": 12.0, "minimum": 20.0},
+    ),
+    _msg(
+        "waf.rate.ratio_not_reached",
+        "observed/expected ratio {ratio} has not reached {threshold}",
+        {"ratio": _FIXED2, "threshold": _FIXED2},
+        {"ratio": 1.4, "threshold": 2.0},
+    ),
+    _msg(
+        "waf.rate.delta_below_min",
+        "increase of {delta} requests/bucket is below the {minimum} minimum absolute delta",
+        {"delta": _FIXED0, "minimum": _FIXED0},
+        {"delta": 30.0, "minimum": 50.0},
+    ),
+    _msg(
+        "waf.rate.z_not_reached",
+        "robust z={score} has not reached the +{threshold} threshold",
+        {"score": _FIXED2, "threshold": _REPR},
+        {"score": 2.1, "threshold": 3.5},
+    ),
+    _msg(
+        "waf.rate.mad_within_band",
+        "robust score unavailable (MAD=0) and observed value is inside the expected band "
+        "[{lower}, {upper}]",
+        {"lower": _FIXED2, "upper": _FIXED2},
+        {"lower": 80.0, "upper": 120.0},
+    ),
+    _msg(
+        "waf.rate.ratio_multiple",
+        "{ratio}x expected",
+        {"ratio": _FIXED2},
+        {"ratio": 3.0},
+    ),
+    _msg("waf.rate.ratio_none", "expected no traffic"),
+    _msg(
+        "waf.rate.fired",
+        "{observed} requests is above the baseline median {expected} "
+        "({ratio_text}, +{delta} requests/bucket); {basis}",
+        {
+            "observed": _FIXED0,
+            "expected": _FIXED1,
+            "ratio_text": ParamSpec(ParamKind.REF, ref_codes=_WAF_RATIO_TEXTS),
+            "delta": _FIXED0,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_WAF_BASES),
+        },
+        {
+            "observed": 520.0,
+            "expected": 100.0,
+            "ratio_text": MessageRef("waf.rate.ratio_multiple", {"ratio": 5.2}),
+            "delta": 420.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "waf.rate.fired_lower",
+        "at least {observed} requests (a lower bound: {scope}) is above the baseline "
+        "median {expected} ({ratio_text}, +{delta} requests/bucket); {basis}",
+        {
+            "observed": _FIXED0,
+            "scope": ParamSpec(ParamKind.REF, ref_codes=_WAF_SCOPES),
+            "expected": _FIXED1,
+            "ratio_text": ParamSpec(ParamKind.REF, ref_codes=_WAF_RATIO_TEXTS),
+            "delta": _FIXED0,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_WAF_BASES),
+        },
+        {
+            "observed": 520.0,
+            "scope": MessageRef("waf.scope.lower_bound_increase"),
+            "expected": 100.0,
+            "ratio_text": MessageRef("waf.rate.ratio_multiple", {"ratio": 5.2}),
+            "delta": 420.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    # The bases a firing sentence ends with, and the score guard's refusals.
+    _msg(
+        "waf.basis.z",
+        "robust z={score} (threshold +{threshold})",
+        {"score": _FIXED2, "threshold": _REPR},
+        {"score": 6.2, "threshold": 3.5},
+    ),
+    _msg(
+        "waf.basis.mad_outside_band",
+        "robust score unavailable (MAD=0); observed value is outside the expected band "
+        "[{lower}, {upper}]",
+        {"lower": _FIXED2, "upper": _FIXED2},
+        {"lower": 80.0, "upper": 120.0},
+    ),
+    _msg(
+        "waf.basis.z_not_reached",
+        "robust z={score} has not reached +{threshold}",
+        {"score": _FIXED2, "threshold": _REPR},
+        {"score": 2.1, "threshold": 3.5},
+    ),
+    _msg(
+        "waf.basis.mad_within_p95",
+        "robust score unavailable (MAD=0) and {observed} is within the historical p95 {bound}",
+        {"observed": _PCT1, "bound": _PCT1},
+        {"observed": 0.31, "bound": 0.35},
+    ),
+    _msg(
+        "waf.basis.mad_above_p95",
+        "robust score unavailable (MAD=0); {observed} is above the historical p95 {bound}",
+        {"observed": _PCT1, "bound": _PCT1},
+        {"observed": 0.41, "bound": 0.35},
+    ),
+    # Guards shared by the ratio and concentration detectors.
+    _msg(
+        "waf.guard.breakdown_not_collected",
+        "the {breakdown} breakdown was not collected for this bucket: the value is "
+        "unavailable, not zero",
+        {"breakdown": _TEXT},
+        {"breakdown": "ACTION"},
+    ),
+    _msg(
+        "waf.guard.breakdown_failed",
+        "the {breakdown} breakdown failed for this bucket: the value is unavailable, not zero",
+        {"breakdown": _TEXT},
+        {"breakdown": "ACTION"},
+    ),
+    _msg(
+        "waf.guard.source_coverage_low",
+        "only {covered} of this source's events parsed to an endpoint, below the {floor} "
+        "coverage floor: the unparsed requests may differ in kind from the parsed ones, "
+        "so the visible proportion bounds nothing",
+        {"covered": _PERCENT, "floor": _PERCENT},
+        {"covered": 0.62, "floor": 0.9},
+    ),
+    _msg(
+        "waf.guard.no_baseline",
+        "no {metric} baseline for this weekday/hour cell yet",
+        {"metric": _TEXT},
+        {"metric": "block_ratio"},
+    ),
+    _msg(
+        "waf.guard.baseline_samples",
+        "the {metric} baseline has {samples} material bucket(s), below the minimum for a "
+        "defensible verdict",
+        {"metric": _TEXT, "samples": _PLAIN},
+        {"metric": "block_ratio", "samples": 3},
+    ),
+    _msg(
+        "waf.guard.baseline_no_denominator",
+        "the {metric} baseline has no pooled denominator",
+        {"metric": _TEXT},
+        {"metric": "block_ratio"},
+    ),
+    _msg(
+        "waf.guard.not_proven_lower_bound",
+        "{reason}; the numerator is a lower bound ({scope}), so a normal verdict cannot be "
+        "concluded from it",
+        {
+            "reason": ParamSpec(ParamKind.REF, ref_codes=_WAF_GUARD_NOT_PROVEN),
+            "scope": ParamSpec(ParamKind.REF, ref_codes=_WAF_SCOPES),
+        },
+        {
+            "reason": MessageRef("waf.basis.z_not_reached", {"score": 2.1, "threshold": 3.5}),
+            "scope": MessageRef("waf.scope.unclassified"),
+        },
+    ),
+    # Noun phrases the ratio detectors insert into their sentences.
+    _msg("waf.noun.blocked_requests", "blocked requests"),
+    _msg("waf.noun.waf_action_requests", "requests carrying a WAF action"),
+    _msg("waf.noun.http_5xx", "HTTP 5xx responses"),
+    _msg("waf.noun.http_4xx", "HTTP 4xx responses"),
+    _msg("waf.noun.response_code_requests", "requests carrying a response code"),
+    # The endpoint a sentence is about.
+    _msg(
+        "waf.subject.named",
+        "{method} {endpoint}",
+        {"method": _TEXT, "endpoint": _TEXT},
+        {"method": "GET", "endpoint": "/api/login"},
+    ),
+    _msg("waf.subject.this_endpoint", "this endpoint"),
+    # Ratio detectors (block, 5xx and 4xx).
+    _msg(
+        "waf.ratio.field_coverage_low",
+        "only {covered} of the endpoint's requests carried the {field} field, below the "
+        "{floor} coverage floor",
+        {"covered": _PERCENT, "field": _TEXT, "floor": _PERCENT},
+        {"covered": 0.7, "field": "action", "floor": 0.9},
+    ),
+    _msg(
+        "waf.ratio.numerator_below_min",
+        "{count} {noun} is below the {minimum} minimum; no material rise in the "
+        "proportion is possible",
+        {
+            "count": _PLAIN,
+            "noun": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
+            "minimum": _PLAIN,
+        },
+        {"count": 4, "noun": MessageRef("waf.noun.blocked_requests"), "minimum": 10},
+    ),
+    _msg(
+        "waf.ratio.denominator_below_min",
+        "{count} {noun} is below the {minimum} minimum denominator for a ratio verdict",
+        {
+            "count": _PLAIN,
+            "noun": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
+            "minimum": _PLAIN,
+        },
+        {
+            "count": 30,
+            "noun": MessageRef("waf.noun.waf_action_requests"),
+            "minimum": 50,
+        },
+    ),
+    _msg(
+        "waf.ratio.rise_below_min",
+        "{observed} is {rise} from the expected {expected}, below the {minimum} minimum rise",
+        {
+            "observed": _PCT1,
+            "rise": _POINTS1,
+            "expected": _PCT1,
+            "minimum": _POINTS0U,
+        },
+        {"observed": 0.35, "rise": 0.05, "expected": 0.3, "minimum": 0.1},
+    ),
+    _msg(
+        "waf.ratio.multiple_below_min",
+        "{observed} is {multiple}x the expected {expected}, below {minimum}x",
+        {"observed": _PCT1, "multiple": _FIXED2, "expected": _PCT1, "minimum": _FIXED2},
+        {"observed": 0.45, "multiple": 1.5, "expected": 0.3, "minimum": 2.0},
+    ),
+    _msg(
+        "waf.ratio.fired",
+        "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against "
+        "an expected {expected} from {history} historical requests ({rise}, {multiple}x); "
+        "{basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "denominator": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
+            "subject": ParamSpec(ParamKind.REF, ref_codes=_WAF_SUBJECTS),
+            "numerator": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "multiple": _FIXED1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_WAF_BASES),
+        },
+        {
+            "count": 80,
+            "total": 100,
+            "denominator": MessageRef("waf.noun.waf_action_requests"),
+            "subject": MessageRef("waf.subject.this_endpoint"),
+            "numerator": MessageRef("waf.noun.blocked_requests"),
+            "share": 0.8,
+            "expected": 0.2,
+            "history": 5000.0,
+            "rise": 0.6,
+            "multiple": 4.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "waf.ratio.fired_lower",
+        "at least {count} of {total} {denominator} to {subject} were {numerator} (at least "
+        "{share}), against an expected {expected} from {history} historical requests "
+        "({rise}, {multiple}x); {basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "denominator": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
+            "subject": ParamSpec(ParamKind.REF, ref_codes=_WAF_SUBJECTS),
+            "numerator": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "multiple": _FIXED1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_WAF_BASES),
+        },
+        {
+            "count": 80,
+            "total": 100,
+            "denominator": MessageRef("waf.noun.waf_action_requests"),
+            "subject": MessageRef("waf.subject.this_endpoint"),
+            "numerator": MessageRef("waf.noun.blocked_requests"),
+            "share": 0.8,
+            "expected": 0.2,
+            "history": 5000.0,
+            "rise": 0.6,
+            "multiple": 4.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "waf.ratio.fired_no_multiple",
+        "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against "
+        "an expected {expected} from {history} historical requests ({rise}); {basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "denominator": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
+            "subject": ParamSpec(ParamKind.REF, ref_codes=_WAF_SUBJECTS),
+            "numerator": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_WAF_BASES),
+        },
+        {
+            "count": 80,
+            "total": 100,
+            "denominator": MessageRef("waf.noun.waf_action_requests"),
+            "subject": MessageRef("waf.subject.this_endpoint"),
+            "numerator": MessageRef("waf.noun.blocked_requests"),
+            "share": 0.8,
+            "expected": 0.0,
+            "history": 5000.0,
+            "rise": 0.8,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "waf.ratio.fired_lower_no_multiple",
+        "at least {count} of {total} {denominator} to {subject} were {numerator} (at least "
+        "{share}), against an expected {expected} from {history} historical requests "
+        "({rise}); {basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "denominator": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
+            "subject": ParamSpec(ParamKind.REF, ref_codes=_WAF_SUBJECTS),
+            "numerator": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOUNS),
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_WAF_BASES),
+        },
+        {
+            "count": 80,
+            "total": 100,
+            "denominator": MessageRef("waf.noun.waf_action_requests"),
+            "subject": MessageRef("waf.subject.this_endpoint"),
+            "numerator": MessageRef("waf.noun.blocked_requests"),
+            "share": 0.8,
+            "expected": 0.0,
+            "history": 5000.0,
+            "rise": 0.8,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    # Client concentration.
+    _msg(
+        "waf.concentration.attributed_low",
+        "only {covered} of the endpoint's requests were attributed to a source IP, below "
+        "the {floor} coverage floor",
+        {"covered": _PERCENT, "floor": _PERCENT},
+        {"covered": 0.7, "floor": 0.9},
+    ),
+    _msg(
+        "waf.concentration.top_below_min",
+        "the largest source IP sent {top} requests, below the {minimum} minimum for a "
+        "material concentration",
+        {"top": _PLAIN, "minimum": _PLAIN},
+        {"top": 12, "minimum": 20},
+    ),
+    _msg(
+        "waf.concentration.endpoint_below_min",
+        "{count} requests is below the {minimum} minimum for a composition verdict",
+        {"count": _PLAIN, "minimum": _PLAIN},
+        {"count": 30, "minimum": 50},
+    ),
+    _msg(
+        "waf.concentration.rise_below_min",
+        "the largest source IP's share {share} is {rise} from the expected {expected}, "
+        "below the {minimum} minimum rise",
+        {"share": _PCT1, "rise": _POINTS1, "expected": _PCT1, "minimum": _POINTS0U},
+        {"share": 0.35, "rise": 0.05, "expected": 0.3, "minimum": 0.2},
+    ),
+    _msg(
+        "waf.concentration.volume_with_baseline",
+        "endpoint volume {requests} requests against an expected {expected}",
+        {"requests": _PLAIN, "expected": _REPR},
+        {"requests": 480, "expected": 100.0},
+    ),
+    _msg(
+        "waf.concentration.volume_no_baseline",
+        "endpoint volume {requests} requests (no reliable volume baseline)",
+        {"requests": _PLAIN},
+        {"requests": 480},
+    ),
+    _msg(
+        "waf.concentration.fired",
+        "the largest source IP sent {top} of {total} requests to {subject} ({share}), "
+        "against an expected share of {expected} ({rise}); the five largest sent "
+        "{top5}; {volume}; {basis}",
+        {
+            "top": _PLAIN,
+            "total": _PLAIN,
+            "subject": ParamSpec(ParamKind.REF, ref_codes=_WAF_SUBJECTS),
+            "share": _PCT1,
+            "expected": _PCT1,
+            "rise": _POINTS1,
+            "top5": _PCT1,
+            "volume": ParamSpec(ParamKind.REF, ref_codes=_WAF_VOLUMES),
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_WAF_BASES),
+        },
+        {
+            "top": 400,
+            "total": 500,
+            "subject": MessageRef("waf.subject.this_endpoint"),
+            "share": 0.8,
+            "expected": 0.2,
+            "rise": 0.6,
+            "top5": 0.95,
+            "volume": MessageRef(
+                "waf.concentration.volume_with_baseline", {"requests": 500, "expected": 100.0}
+            ),
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    # New endpoint.
+    _msg("waf.novelty.not_established", "the endpoint's first appearance was not established"),
+    _msg(
+        "waf.novelty.established_hand_off",
+        "established endpoint: first admitted {first_seen} before the history hand-off "
+        "{hand_off}",
+        {"first_seen": _ISO, "hand_off": _ISO},
+        {"first_seen": _WAF_AT, "hand_off": _WAF_AT},
+    ),
+    _msg(
+        "waf.novelty.established_outside_window",
+        "established endpoint: first admitted {first_seen}, outside the {buckets}-bucket "
+        "novelty window",
+        {"first_seen": _ISO, "buckets": _PLAIN},
+        {"first_seen": _WAF_AT, "buckets": 12},
+    ),
+    _msg("waf.novelty.history_incomplete", "the history is incomplete"),
+    _msg(
+        "waf.novelty.cannot_establish",
+        "novelty cannot be established: {cause}",
+        {"cause": ParamSpec(ParamKind.REF, ref_codes=_WAF_NOVELTY_CAUSES)},
+        {"cause": MessageRef("waf.history_check.not_divisible")},
+    ),
+    _msg(
+        "waf.novelty.flood_discovery",
+        "endpoint discovery was truncated in the first-appearance bucket",
+    ),
+    _msg(
+        "waf.novelty.flood_admission",
+        "endpoint admission was truncated in the first-appearance bucket",
+    ),
+    _msg(
+        "waf.novelty.below_materiality",
+        "{requests} request(s) in {buckets} bucket(s) since first appearance has not "
+        "reached {min_requests} requests in {min_buckets} buckets",
+        {
+            "requests": _PLAIN,
+            "buckets": _PLAIN,
+            "min_requests": _PLAIN,
+            "min_buckets": _PLAIN,
+        },
+        {"requests": 8, "buckets": 1, "min_requests": 20, "min_buckets": 2},
+    ),
+    _msg(
+        "waf.novelty.below_materiality_lower",
+        "{reason}; the counts are lower bounds",
+        {"reason": ParamSpec(ParamKind.REF, ref_codes=("waf.novelty.below_materiality",))},
+        {
+            "reason": MessageRef(
+                "waf.novelty.below_materiality",
+                {"requests": 8, "buckets": 1, "min_requests": 20, "min_buckets": 2},
+            )
+        },
+    ),
+    _msg(
+        "waf.novelty.fired",
+        "{subject} received {requests} requests across {buckets} buckets since it first "
+        "appeared at {first_seen}; in the verified history {history_start} to {history_end} "
+        "it was never requested {admission} or more times in one bucket",
+        {
+            "subject": ParamSpec(ParamKind.REF, ref_codes=_WAF_SUBJECTS),
+            "requests": _PLAIN,
+            "buckets": _PLAIN,
+            "first_seen": _ISO,
+            "history_start": _ISO,
+            "history_end": _ISO,
+            "admission": _PLAIN,
+        },
+        {
+            "subject": MessageRef("waf.subject.this_endpoint"),
+            "requests": 90,
+            "buckets": 3,
+            "first_seen": _WAF_AT,
+            "history_start": _WAF_AT,
+            "history_end": _WAF_AT,
+            "admission": 3,
+        },
+    ),
+    _msg(
+        "waf.novelty.fired_lower",
+        "{subject} received at least {requests} requests across {buckets} buckets since it "
+        "first appeared at {first_seen}; in the verified history {history_start} to "
+        "{history_end} it was never requested {admission} or more times in one bucket",
+        {
+            "subject": ParamSpec(ParamKind.REF, ref_codes=_WAF_SUBJECTS),
+            "requests": _PLAIN,
+            "buckets": _PLAIN,
+            "first_seen": _ISO,
+            "history_start": _ISO,
+            "history_end": _ISO,
+            "admission": _PLAIN,
+        },
+        {
+            "subject": MessageRef("waf.subject.this_endpoint"),
+            "requests": 90,
+            "buckets": 3,
+            "first_seen": _WAF_AT,
+            "history_start": _WAF_AT,
+            "history_end": _WAF_AT,
+            "admission": 3,
+        },
+    ),
+    # History verification: why the window before an endpoint's first appearance is not proof.
+    _msg(
+        "waf.history_check.not_divisible",
+        "the history window is not divisible by the collection bucket width",
+    ),
+    _msg(
+        "waf.history_check.never_collected",
+        "{missing} of {expected} history buckets were never collected",
+        {"missing": _PLAIN, "expected": _PLAIN},
+        {"missing": 3, "expected": 168},
+    ),
+    _msg(
+        "waf.history_check.record_count",
+        "the history contains {records} bucket records for {expected} expected buckets",
+        {"records": _PLAIN, "expected": _PLAIN},
+        {"records": 169, "expected": 168},
+    ),
+    _msg(
+        "waf.history_check.bucket_width",
+        "history bucket {bucket} used a different collection bucket width",
+        {"bucket": _ISO},
+        {"bucket": _WAF_AT},
+    ),
+    _msg(
+        "waf.history_check.discovery_truncated",
+        "history bucket {bucket} had truncated endpoint discovery",
+        {"bucket": _ISO},
+        {"bucket": _WAF_AT},
+    ),
+    _msg(
+        "waf.history_check.admission_truncated",
+        "history bucket {bucket} had truncated endpoint admission",
+        {"bucket": _ISO},
+        {"bucket": _WAF_AT},
+    ),
+    _msg(
+        "waf.history_check.profile_version",
+        "history bucket {bucket} used profile version {found}, not first-appearance "
+        "version {expected}",
+        {"bucket": _ISO, "found": _TEXT, "expected": _PLAIN},
+        {"bucket": _WAF_AT, "found": "2", "expected": 3},
+    ),
+    _msg(
+        "waf.history_check.normalizer_version",
+        "history bucket {bucket} is incompatible with endpoint normalizer version {version}",
+        {"bucket": _ISO, "version": _PLAIN},
+        {"bucket": _WAF_AT, "version": 2},
+    ),
+    _msg(
+        "waf.history_check.not_loaded",
+        "history was not loaded for an established endpoint",
+    ),
+    _msg(
+        "waf.history_check.appearance_never_collected",
+        "the first-appearance bucket was never collected",
+    ),
+    _msg(
+        "waf.history_check.appearance_no_profile",
+        "the first-appearance bucket carries no profile version",
+    ),
+    _msg(
+        "waf.history_check.appearance_normalizer",
+        "the first-appearance bucket is incompatible with endpoint normalizer version "
+        "{version}",
+        {"version": _PLAIN},
+        {"version": 2},
+    ),
+    # The fixed interpretive caveats, one per detector family.
+    _msg(
+        "waf.caveat.block_ratio",
+        "Blocking is judged through the profile's action map. A higher block ratio "
+        "describes WAF decisions; it does not establish that an attack succeeded.",
+    ),
+    _msg(
+        "waf.caveat.server_error_ratio",
+        "HTTP 5xx responses describe server-side failures. They do not establish that "
+        "the traffic was malicious.",
+    ),
+    _msg(
+        "waf.caveat.client_error_ratio",
+        "HTTP 4xx responses are response codes, not WAF decisions: a 403 is not by "
+        "itself a block, and WAF blocking is reported separately.",
+    ),
+    _msg(
+        "waf.caveat.client_concentration",
+        "A dominant source IP describes traffic composition, not intent.",
+    ),
+    _msg(
+        "waf.caveat.new_endpoint",
+        "A newly requested endpoint may be a deployment as easily as a probe.",
+    ),
+    # Suppression.
+    _msg("waf.suppression.maintenance_window", "maintenance window"),
+    # --- end MSG-6 ---------------------------------------------------------------------------
 )
 
 

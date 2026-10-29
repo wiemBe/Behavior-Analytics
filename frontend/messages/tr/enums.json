@@ -166,5 +166,10 @@
     "analyst": "Analist (analyst)",
     "viewer": "Görüntüleyici (viewer)",
     "detection_engineer": "Tespit mühendisi (detection_engineer)"
+  },
+  "wafBucketCompleteness": {
+    "partial": "kısmi",
+    "missing": "eksik",
+    "complete": "eksiksiz"
   }
 }

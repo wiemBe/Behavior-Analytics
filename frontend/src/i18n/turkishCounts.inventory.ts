@@ -96,6 +96,15 @@ export const PLAIN: Readonly<Record<string, Readonly<Record<string, PlainReason>
   "backend.pw.scope.group_stale": { limit: "string" },
   "backend.pw.scope.too_large": { limit: "string" },
   "backend.pw.status.reading_history": { total: "string" },
+  // MSG-6: the same reader formatting; a count, a total or a bound reaches `t` as a grouped string.
+  "backend.waf.concentration.endpoint_below_min": { count: "string" },
+  "backend.waf.concentration.fired": { total: "string" },
+  "backend.waf.ratio.denominator_below_min": { count: "string" },
+  "backend.waf.ratio.fired": { total: "string", count: "string" },
+  "backend.waf.ratio.fired_lower": { total: "string", count: "string" },
+  "backend.waf.ratio.fired_lower_no_multiple": { total: "string", count: "string" },
+  "backend.waf.ratio.fired_no_multiple": { total: "string", count: "string" },
+  "backend.waf.ratio.numerator_below_min": { count: "string" },
   // MSG-1b: the reader hands a count over already grouped (`formatCount`), so the plain form
   // prints `1.204`; the value is a string, not a raw number.
   "backend.search.aql.limit_exceeded": { limit: "string" },

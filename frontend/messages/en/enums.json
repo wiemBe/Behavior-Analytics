@@ -166,5 +166,10 @@
     "analyst": "analyst",
     "viewer": "viewer",
     "detection_engineer": "detection_engineer"
+  },
+  "wafBucketCompleteness": {
+    "partial": "partial",
+    "missing": "missing",
+    "complete": "complete"
   }
 }

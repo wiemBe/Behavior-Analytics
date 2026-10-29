@@ -31,6 +31,7 @@ type ExtendedEnumGroup =
   | "propertyWatchPreviewOutcome"
   | "profileValidationStatus"
   | "bucketCompleteness"
+  | "wafBucketCompleteness"
   | "executionStatus"
   | "executionTrigger"
   | "role";

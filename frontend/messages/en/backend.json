@@ -523,5 +523,121 @@
         "property_name": "invalid QRadar property name {name}: letters, digits, underscore, space and hyphen only, at most 64 characters"
       }
     }
+  },
+  "waf": {
+    "basis": {
+      "mad_above_p95": "robust score unavailable (MAD=0); {observed} is above the historical p95 {bound}",
+      "mad_outside_band": "robust score unavailable (MAD=0); observed value is outside the expected band [{lower}, {upper}]",
+      "mad_within_p95": "robust score unavailable (MAD=0) and {observed} is within the historical p95 {bound}",
+      "z": "robust z={score} (threshold +{threshold})",
+      "z_not_reached": "robust z={score} has not reached +{threshold}"
+    },
+    "caveat": {
+      "block_ratio": "Blocking is judged through the profile''s action map. A higher block ratio describes WAF decisions; it does not establish that an attack succeeded.",
+      "client_concentration": "A dominant source IP describes traffic composition, not intent.",
+      "client_error_ratio": "HTTP 4xx responses are response codes, not WAF decisions: a 403 is not by itself a block, and WAF blocking is reported separately.",
+      "new_endpoint": "A newly requested endpoint may be a deployment as easily as a probe.",
+      "server_error_ratio": "HTTP 5xx responses describe server-side failures. They do not establish that the traffic was malicious."
+    },
+    "concentration": {
+      "attributed_low": "only {covered} of the endpoint''s requests were attributed to a source IP, below the {floor} coverage floor",
+      "endpoint_below_min": "{count} requests is below the {minimum} minimum for a composition verdict",
+      "fired": "the largest source IP sent {top} of {total} requests to {subject} ({share}), against an expected share of {expected} ({rise}); the five largest sent {top5}; {volume}; {basis}",
+      "rise_below_min": "the largest source IP''s share {share} is {rise} from the expected {expected}, below the {minimum} minimum rise",
+      "top_below_min": "the largest source IP sent {top} requests, below the {minimum} minimum for a material concentration",
+      "volume_no_baseline": "endpoint volume {requests} requests (no reliable volume baseline)",
+      "volume_with_baseline": "endpoint volume {requests} requests against an expected {expected}"
+    },
+    "guard": {
+      "baseline_no_denominator": "the {metric} baseline has no pooled denominator",
+      "baseline_samples": "the {metric} baseline has {samples} material bucket(s), below the minimum for a defensible verdict",
+      "breakdown_failed": "the {breakdown} breakdown failed for this bucket: the value is unavailable, not zero",
+      "breakdown_not_collected": "the {breakdown} breakdown was not collected for this bucket: the value is unavailable, not zero",
+      "no_baseline": "no {metric} baseline for this weekday/hour cell yet",
+      "not_proven_lower_bound": "{reason}; the numerator is a lower bound ({scope}), so a normal verdict cannot be concluded from it",
+      "source_coverage_low": "only {covered} of this source''s events parsed to an endpoint, below the {floor} coverage floor: the unparsed requests may differ in kind from the parsed ones, so the visible proportion bounds nothing"
+    },
+    "history_check": {
+      "admission_truncated": "history bucket {bucket} had truncated endpoint admission",
+      "appearance_never_collected": "the first-appearance bucket was never collected",
+      "appearance_no_profile": "the first-appearance bucket carries no profile version",
+      "appearance_normalizer": "the first-appearance bucket is incompatible with endpoint normalizer version {version}",
+      "bucket_width": "history bucket {bucket} used a different collection bucket width",
+      "discovery_truncated": "history bucket {bucket} had truncated endpoint discovery",
+      "never_collected": "{missing} of {expected} history buckets were never collected",
+      "normalizer_version": "history bucket {bucket} is incompatible with endpoint normalizer version {version}",
+      "not_divisible": "the history window is not divisible by the collection bucket width",
+      "not_loaded": "history was not loaded for an established endpoint",
+      "profile_version": "history bucket {bucket} used profile version {found}, not first-appearance version {expected}",
+      "record_count": "the history contains {records} bucket records for {expected} expected buckets"
+    },
+    "noun": {
+      "blocked_requests": "blocked requests",
+      "http_4xx": "HTTP 4xx responses",
+      "http_5xx": "HTTP 5xx responses",
+      "response_code_requests": "requests carrying a response code",
+      "waf_action_requests": "requests carrying a WAF action"
+    },
+    "novelty": {
+      "below_materiality": "{requests} request(s) in {buckets} bucket(s) since first appearance has not reached {min_requests} requests in {min_buckets} buckets",
+      "below_materiality_lower": "{reason}; the counts are lower bounds",
+      "cannot_establish": "novelty cannot be established: {cause}",
+      "established_hand_off": "established endpoint: first admitted {first_seen} before the history hand-off {hand_off}",
+      "established_outside_window": "established endpoint: first admitted {first_seen}, outside the {buckets}-bucket novelty window",
+      "fired": "{subject} received {requests} requests across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it was never requested {admission} or more times in one bucket",
+      "fired_lower": "{subject} received at least {requests} requests across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it was never requested {admission} or more times in one bucket",
+      "flood_admission": "endpoint admission was truncated in the first-appearance bucket",
+      "flood_discovery": "endpoint discovery was truncated in the first-appearance bucket",
+      "history_incomplete": "the history is incomplete",
+      "not_established": "the endpoint''s first appearance was not established"
+    },
+    "rate": {
+      "baseline_samples": "baseline has {samples} sample(s), below the minimum required for a defensible verdict",
+      "below_min_volume": "{observed} requests/bucket is below the {minimum} minimum for a defensible verdict",
+      "bucket_not_whole": "bucket is {completeness}, not a whole observation",
+      "coverage_low": "only {covered} of this source''s events carried a parseable endpoint in this bucket",
+      "delta_below_min": "increase of {delta} requests/bucket is below the {minimum} minimum absolute delta",
+      "fired": "{observed} requests is above the baseline median {expected} ({ratio_text}, +{delta} requests/bucket); {basis}",
+      "fired_lower": "at least {observed} requests (a lower bound: {scope}) is above the baseline median {expected} ({ratio_text}, +{delta} requests/bucket); {basis}",
+      "mad_within_band": "robust score unavailable (MAD=0) and observed value is inside the expected band [{lower}, {upper}]",
+      "no_baseline": "no request-rate baseline for this weekday/hour cell yet",
+      "not_proven_lower_bound": "at least {observed} requests were attributed to this endpoint, but the count is a lower bound and {reason}; a normal verdict cannot be concluded from a lower bound",
+      "ratio_multiple": "{ratio}x expected",
+      "ratio_none": "expected no traffic",
+      "ratio_not_reached": "observed/expected ratio {ratio} has not reached {threshold}",
+      "z_not_reached": "robust z={score} has not reached the +{threshold} threshold"
+    },
+    "ratio": {
+      "denominator_below_min": "{count} {noun} is below the {minimum} minimum denominator for a ratio verdict",
+      "field_coverage_low": "only {covered} of the endpoint''s requests carried the {field} field, below the {floor} coverage floor",
+      "fired": "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against an expected {expected} from {history} historical requests ({rise}, {multiple}x); {basis}",
+      "fired_lower": "at least {count} of {total} {denominator} to {subject} were {numerator} (at least {share}), against an expected {expected} from {history} historical requests ({rise}, {multiple}x); {basis}",
+      "fired_lower_no_multiple": "at least {count} of {total} {denominator} to {subject} were {numerator} (at least {share}), against an expected {expected} from {history} historical requests ({rise}); {basis}",
+      "fired_no_multiple": "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against an expected {expected} from {history} historical requests ({rise}); {basis}",
+      "multiple_below_min": "{observed} is {multiple}x the expected {expected}, below {minimum}x",
+      "numerator_below_min": "{count} {noun} is below the {minimum} minimum; no material rise in the proportion is possible",
+      "rise_below_min": "{observed} is {rise} from the expected {expected}, below the {minimum} minimum rise"
+    },
+    "scope": {
+      "composition_exact": "composition needs exact measurements",
+      "inputs_unsupported": "the inputs do not support a verdict",
+      "lower_bound_increase": "the count is a lower bound: an increase can be proven, normal behaviour cannot",
+      "needs_exact": "the detector needs exact counts and this count is a lower bound",
+      "unattributed": "some events could not be attributed",
+      "unclassified": "some values were unclassified",
+      "unstated": "the bucket does not state whether its counts are exact or lower bounds"
+    },
+    "semantics": {
+      "baseline_unidentified": "the baseline cell carries no metric-semantics identity; rebuild required",
+      "bucket_unidentified": "the bucket carries no metric-semantics identity; it was collected before identities were recorded and cannot be judged",
+      "mismatch": "the baseline was built under ''{baseline}'' but the bucket was collected under ''{bucket}''; rebuild required"
+    },
+    "subject": {
+      "named": "{method} {endpoint}",
+      "this_endpoint": "this endpoint"
+    },
+    "suppression": {
+      "maintenance_window": "maintenance window"
+    }
   }
 }

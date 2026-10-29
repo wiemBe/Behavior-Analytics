@@ -31,7 +31,7 @@ from typing import Any
 
 from app.anomaly import statistics as rstats
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient
-from app.core.text import percent
+from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     BucketCompleteness,
     DetectorSignal,
@@ -41,6 +41,53 @@ from app.models.enums import (
     WafMeasurement,
 )
 from app.waf.measurement import WafVerdictScope, default_measurement
+
+#: A sentence as a detector holds it: a registry reference, or the English text of a sentence
+#: that has no code (a caller's own wording, or a scope reason this build does not know).
+Reason = MessageRef | str
+
+_SCOPE_CODES = (
+    "waf.scope.unstated",
+    "waf.scope.lower_bound_increase",
+    "waf.scope.needs_exact",
+)
+#: The scope decision's English (`app.waf.measurement.verdict_scope`) to its code. The registry
+#: template is the English, so a reason that is not one of these stays plain text.
+_SCOPE_BY_TEXT: dict[str, MessageRef] = {
+    render(MessageRef(code)): MessageRef(code) for code in _SCOPE_CODES
+}
+
+
+def scope_reason_ref(reason: str | None) -> Reason | None:
+    """The scope reason as a reference when it is one of the scope decision's sentences."""
+    if reason is None:
+        return None
+    return _SCOPE_BY_TEXT.get(reason, reason)
+
+
+def semantics_message(bucket: str | None, baseline: str | None) -> MessageRef | None:
+    """`app.waf.semantics.semantics_incompatibility` as a reference (None when comparable)."""
+    if bucket is None:
+        return MessageRef("waf.semantics.bucket_unidentified")
+    if baseline is None:
+        return MessageRef("waf.semantics.baseline_unidentified")
+    if bucket != baseline:
+        return MessageRef("waf.semantics.mismatch", {"baseline": baseline, "bucket": bucket})
+    return None
+
+
+def split_reason(reason: Reason) -> tuple[str, MessageRef | None]:
+    """The English text of a sentence and, when it has one, its reference."""
+    if isinstance(reason, MessageRef):
+        return render(reason), reason
+    return reason, None
+
+
+def _paired(text: str, message: MessageRef | None) -> Reason:
+    """A stored text with its reference, kept only while the reference renders that text."""
+    if message is not None and render(message) == text:
+        return message
+    return text
 
 
 @dataclass(frozen=True)
@@ -107,6 +154,8 @@ class WafDetectionContext:
     #: different metric-semantics identity than the bucket. The detector then
     #: refuses a verdict rather than comparing incomparable numbers.
     baseline_incompatibility: str | None = None
+    #: The same sentence as a registry reference, when the engine has one.
+    baseline_incompatibility_message: MessageRef | None = None
     #: What the engine, from the detector's declared measurement requirement
     #: (app.anomaly.capabilities), allows this verdict to conclude. None means
     #: no grant: FULL for an exact count and NONE otherwise -- lower-bound
@@ -144,6 +193,10 @@ class WafSpikeVerdict:
     @property
     def is_anomalous(self) -> bool:
         return self.evidence.is_anomalous
+
+
+def _ref(name: str, **params: object) -> MessageRef:
+    return MessageRef(f"waf.rate.{name}", params)
 
 
 def _expected_band(cell: WafBaselineCell, mad_floor_ratio: float) -> tuple[float, float]:
@@ -186,6 +239,15 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
     def verdict(ev: AnomalyEvidence[WafAnomalyType]) -> WafSpikeVerdict:
         return WafSpikeVerdict(detector_type=dt, evidence=ev)
 
+    def no_verdict(reason: Reason, *, sample_count: int = 0) -> WafSpikeVerdict:
+        text, message = split_reason(reason)
+        return verdict(
+            insufficient(
+                at, interval_start=p.bucket_start, interval_end=p.bucket_end,
+                reason=text, sample_count=sample_count, reason_message=message,
+            )
+        )
+
     scope = ctx.effective_scope
     lower_bound = scope is WafVerdictScope.INCREASE_ONLY
 
@@ -196,32 +258,21 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
     whole = p.completeness is BucketCompleteness.COMPLETE and scope is WafVerdictScope.FULL
     partial_bound = lower_bound and p.completeness is BucketCompleteness.PARTIAL
     if not (whole or partial_bound):
-        reason = f"bucket is {p.completeness.value.lower()}, not a whole observation"
+        reason: Reason = _ref("bucket_not_whole", completeness=p.completeness.value.lower())
         if p.completeness is BucketCompleteness.COMPLETE and ctx.scope_reason:
-            reason = ctx.scope_reason
-        return verdict(
-            insufficient(
-                at, interval_start=p.bucket_start, interval_end=p.bucket_end, reason=reason,
-            )
-        )
+            reason = scope_reason_ref(ctx.scope_reason) or ctx.scope_reason
+        return no_verdict(reason)
 
-    def not_proven(reason: str, *, observed: float, expected: float) -> WafSpikeVerdict:
+    def not_proven(reason: MessageRef, *, observed: float, expected: float) -> WafSpikeVerdict:
         """The normal exit of a guard: healthy for an exact count, no verdict for a bound."""
         if lower_bound:
-            return verdict(
-                insufficient(
-                    at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                    reason=(
-                        f"at least {observed:.0f} requests were attributed to this endpoint, "
-                        f"but the count is a lower bound and {reason}; a normal verdict "
-                        "cannot be concluded from a lower bound"
-                    ),
-                )
-            )
+            return no_verdict(_ref("not_proven_lower_bound", observed=observed, reason=reason))
+        text, message = split_reason(reason)
         return verdict(
             healthy(
                 at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                observed=observed, expected=round(expected, 3), reason=reason,
+                observed=observed, expected=round(expected, 3), reason=text,
+                reason_message=message,
             )
         )
 
@@ -231,42 +282,19 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
     # collection was. For a lower bound this is already accounted for: the
     # unattributed events are exactly what the bound leaves out.
     if not lower_bound and p.endpoint_coverage_ratio < ctx.min_coverage:
-        return verdict(
-            insufficient(
-                at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                reason=(
-                    f"only {percent(p.endpoint_coverage_ratio)} of this source's events "
-                    "carried a parseable endpoint in this bucket"
-                ),
-            )
-        )
+        return no_verdict(_ref("coverage_low", covered=p.endpoint_coverage_ratio))
 
     # --- guard 3: a compatible, adequate baseline ---------------------------
     if ctx.baseline_incompatibility is not None:
-        return verdict(
-            insufficient(
-                at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                reason=ctx.baseline_incompatibility,
-            )
+        return no_verdict(
+            _paired(ctx.baseline_incompatibility, ctx.baseline_incompatibility_message)
         )
     cell = ctx.baseline
     if cell is None:
-        return verdict(
-            insufficient(
-                at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                reason="no request-rate baseline for this weekday/hour cell yet",
-            )
-        )
+        return no_verdict(_ref("no_baseline"))
     if not cell.is_reliable:
-        return verdict(
-            insufficient(
-                at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                reason=(
-                    f"baseline has {cell.sample_count} sample(s), below the minimum "
-                    "required for a defensible verdict"
-                ),
-                sample_count=cell.sample_count,
-            )
+        return no_verdict(
+            _ref("baseline_samples", samples=cell.sample_count), sample_count=cell.sample_count
         )
 
     observed = float(p.request_count)
@@ -290,8 +318,7 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
     # --- guard 4: minimum volume -------------------------------------------
     if observed < thr.min_bucket_requests:
         return not_proven(
-            f"{observed:.0f} requests/bucket is below the "
-            f"{thr.min_bucket_requests:.0f} minimum for a defensible verdict",
+            _ref("below_min_volume", observed=observed, minimum=thr.min_bucket_requests),
             observed=observed, expected=expected,
         )
 
@@ -304,15 +331,14 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
         facts["ratio_basis"] = "expected_zero"
     elif ratio < thr.spike_ratio:
         return not_proven(
-            f"observed/expected ratio {ratio:.2f} has not reached {thr.spike_ratio:.2f}",
+            _ref("ratio_not_reached", ratio=ratio, threshold=thr.spike_ratio),
             observed=observed, expected=expected,
         )
 
     # --- guard 6: absolute delta -------------------------------------------
     if delta < thr.min_absolute_delta_requests:
         return not_proven(
-            f"increase of {delta:.0f} requests/bucket is below the "
-            f"{thr.min_absolute_delta_requests:.0f} minimum absolute delta",
+            _ref("delta_below_min", delta=delta, minimum=thr.min_absolute_delta_requests),
             observed=observed, expected=expected,
         )
 
@@ -326,10 +352,10 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
     if status is RobustScoreStatus.OK:
         if z < thr.deviation_z:
             return not_proven(
-                f"robust z={z:.2f} has not reached the +{thr.deviation_z} threshold",
+                _ref("z_not_reached", score=z, threshold=thr.deviation_z),
                 observed=observed, expected=expected,
             )
-        basis = f"robust z={z:.2f} (threshold +{thr.deviation_z})"
+        basis = MessageRef("waf.basis.z", {"score": z, "threshold": thr.deviation_z})
     else:
         # MAD is zero: every retained sample sat at the median, so the score is
         # an artefact of the floored scale rather than a measure of surprise.
@@ -340,19 +366,33 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
         facts["fallback_bound"] = round(upper, 4)
         if observed <= upper:
             return not_proven(
-                "robust score unavailable (MAD=0) and observed value is "
-                f"inside the expected band [{lower:.2f}, {upper:.2f}]",
+                _ref("mad_within_band", lower=lower, upper=upper),
                 observed=observed, expected=expected,
             )
-        basis = (
-            "robust score unavailable (MAD=0); observed value is outside the "
-            f"expected band [{lower:.2f}, {upper:.2f}]"
-        )
+        basis = MessageRef("waf.basis.mad_outside_band", {"lower": lower, "upper": upper})
 
     magnitude = abs(z) if status is RobustScoreStatus.OK else thr.deviation_z
     severity = _severity(ratio, magnitude, thr)
-    ratio_text = f"{ratio:.2f}x expected" if ratio is not None else "expected no traffic"
+    ratio_text = (
+        _ref("ratio_multiple", ratio=ratio) if ratio is not None else _ref("ratio_none")
+    )
     confidence = _confidence(cell, magnitude, status)
+    fired = (
+        _ref(
+            "fired_lower",
+            observed=observed,
+            scope=scope_reason_ref(ctx.scope_reason) or MessageRef("waf.scope.unattributed"),
+            expected=expected,
+            ratio_text=ratio_text,
+            delta=delta,
+            basis=basis,
+        )
+        if lower_bound
+        else _ref(
+            "fired", observed=observed, expected=expected, ratio_text=ratio_text, delta=delta,
+            basis=basis,
+        )
+    )
 
     return verdict(
         AnomalyEvidence(
@@ -369,16 +409,8 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
             interval_start=p.bucket_start,
             interval_end=p.bucket_end,
             confidence=confidence,
-            reason=(
-                (
-                    f"at least {observed:.0f} requests (a lower bound: "
-                    f"{ctx.scope_reason or 'some events could not be attributed'}) "
-                    if lower_bound
-                    else f"{observed:.0f} requests "
-                )
-                + f"is above the baseline median {expected:.1f} "
-                f"({ratio_text}, +{delta:.0f} requests/bucket); {basis}"
-            ),
+            reason=render(fired),
+            reason_message=fired,
             extra=facts,
         )
     )
