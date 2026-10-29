@@ -915,8 +915,9 @@ gereklidir (`--non-interactive rollback requires --yes`).
    yapar. Bozuk kopya, operatör silene kadar durur; kötü bir geri alma, değiştirdiği veritabanını
    yine bulur. Swap başarılı olduğunda betik bozuk kopyayı ve onu sonra düşürmek için tam komutu
    yazdırır.
-3. Önceki imaj özetlerini başlatır; özetleri önceki sürümün etiketlerine çevirir. İmaj çekmez;
-   özetler yereldir.
+3. Önceki imaj özetlerini başlatır; özetleri önceki sürümün etiketlerine çevirir. Kayıtlı özeti
+   olan imajları çekmez; özetler yereldir. Kayıtlı imajı olmayan bir servisin (yukarıdaki ret
+   listesinin `mcp` maddesi) imajını yalnız çevrimiçi sunucuda, önceki sürümün etiketiyle çeker.
 4. Yükseltmedeki aynı sağlık kontrolleri, bu kez **önceki** sürümü bekleyerek. Bu kontrol
    `doctor` raporundan yalnız `db_connect` ve `migration_head` satırlarını **bir kez** yazar
    (`Full report: ./qradar-dash doctor` satırıyla birlikte) ve **geri alınan** sürümün başını
