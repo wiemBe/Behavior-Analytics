@@ -244,7 +244,7 @@ class AnomalyRepository:
                 a.evidence_status, a.suppressed,
                 a.observed_measurement.label("observed_measurement"),
                 a.explanation,
-                cast(null(), JSONB).label("explanation_i18n"),
+                a.explanation_i18n.label("explanation_i18n"),
             )
             .select_from(a)
             .outerjoin(e, e.id == a.ips_entity_id)

@@ -813,6 +813,120 @@
       "recovered": "Koşul düzeldi"
     }
   },
+  "ips": {
+    "basis": {
+      "mad_above_p95_events": "MAD=0 olduğundan robust skor kullanılamıyor; {observed}, geçmiş p95 değeri olan {bound} sınırının üzerinde",
+      "mad_within_p95_events": "MAD=0 olduğundan robust skor kullanılamıyor ve {observed}, geçmiş p95 değeri olan {bound} sınırının içinde"
+    },
+    "block": {
+      "denominator_below_min": "Eylem taşıyan {count} olay, oran kararı için gereken {minimum} asgari paydanın altında",
+      "fired": "Eylem taşıyan {count} / {total} olay engellendi ({share}); {history} geçmiş olaydan beklenen oran {expected} idi ({rise}, {multiple}x); {basis}",
+      "fired_lower": "Eylem taşıyan en az {count} / {total} olay engellendi (en az {share}); {history} geçmiş olaydan beklenen oran {expected} idi ({rise}, {multiple}x); {basis}",
+      "fired_lower_no_multiple": "Eylem taşıyan en az {count} / {total} olay engellendi (en az {share}); {history} geçmiş olaydan beklenen oran {expected} idi ({rise}); {basis}",
+      "fired_no_multiple": "Eylem taşıyan {count} / {total} olay engellendi ({share}); {history} geçmiş olaydan beklenen oran {expected} idi ({rise}); {basis}",
+      "numerator_below_min": "{count} engellenen olay, {minimum} asgari değerin altında; oranda anlamlı bir artış mümkün değil"
+    },
+    "caveat": {
+      "block_ratio": "Engelleme, profilin eylem eşlemesi üzerinden değerlendirilir. Daha yüksek bir engelleme oranı IPS kararlarını tanımlar; bir saldırının başarılı olduğunu göstermez.",
+      "destination_rate": "Bir hedefe yönelik daha fazla olay trafik hacmini tanımlar; o hedefe yönelik bir saldırıyı değil.",
+      "new_port": "Yeni yoğunlaşan bir hedef port, bir yoklama kadar kolayca bir dağıtım da olabilir. Katkıda bulunanlar zaman diliminin en yoğun kaynak IP'leridir; bunlar bu portun en yoğun kaynakları olmak zorunda değildir.",
+      "port_fanout": "Tek bir kaynak IP'den gelen çok sayıda farklı hedef port bir trafik biçimidir, saldırı kararı değildir: bir tarama, bir güvenlik açığı değerlendirmesi ve portları döndüren bir hizmet burada birbirine benzer.",
+      "port_rate": "Bir porttaki daha fazla olay trafik hacmini tanımlar, niyeti değil: bir tarama, bir dağıtım ve yanlış yapılandırılmış bir istemci burada birbirine benzer.",
+      "signature_burst": "Bir imzanın patlaması, IPS'in onu ne sıklıkla eşleştirdiğini tanımlar; eşleşen etkinliğin başarılı olduğunu değil.",
+      "source_concentration": "Baskın bir kaynak IP trafik bileşimini tanımlar, niyeti değil. Bir proxy veya NAT arkasında bu, aracı cihazın adresidir."
+    },
+    "concentration": {
+      "fired": "En büyük kaynak IP {top} / {total} olay gönderdi ({share}); beklenen pay {expected} idi ({rise}); en büyük beş kaynak {top5} gönderdi; {basis}",
+      "fired_no_top5": "En büyük kaynak IP {top} / {total} olay gönderdi ({share}); beklenen pay {expected} idi ({rise}); en büyük beş kaynağın payı bilinmiyor; {basis}",
+      "top_below_min": "En büyük kaynak IP {top} olay gönderdi; bu, anlamlı bir yoğunlaşma için gereken {minimum} asgari değerin altında",
+      "total_below_min": "{total} olay, bileşim kararı için gereken {minimum} asgari değerin altında"
+    },
+    "guard": {
+      "absent_port": "0 numaralı port ve 255 numaralı protokol bulunmayan değerlerdir, bir hizmet değildir: bunlar hakkında hiçbir iddia öne sürülmez",
+      "action_counts_unstated": "Zaman dilimi engellenen ve eylem taşıyan olay sayılarını belirtmiyor",
+      "action_unmapped": "Eşlenmiş bir eylem özelliği yok",
+      "baseline_samples": "{metric} baseline'ı {samples} örnek içeriyor; bu, savunulabilir bir karar için gereken {minimum} asgari değerin altında",
+      "baseline_versions": "{metric} baseline'ı {profile} profil sürümü ve {normalizer} normalizer sürümü altında oluşturuldu; zaman diliminin sürümleri ise {bucket_profile} ve {bucket_normalizer}",
+      "count_unknown": "Varlığın sayımı bu zaman dilimi için bilinmiyor",
+      "coverage_low": "Coverage {covered} oldu ({label}); bu, {floor} tabanının altında: değeri olmayan olaylar değeri olanlardan farklı türde olabilir, bu yüzden görünen sayılar hiçbir şeyi sınırlamaz",
+      "coverage_unmeasurable": "Coverage ölçülemedi ({label}); bu, {floor} tabanının altında: değeri olmayan olaylar değeri olanlardan farklı türde olabilir, bu yüzden görünen sayılar hiçbir şeyi sınırlamaz",
+      "dimension_unmeasured": "Bu zaman dilimi için {label} araması {state}: değer kullanılamıyor, sıfır değil",
+      "entity_not_judged": "{dimension} varlığı {detector} tarafından değerlendirilmez",
+      "fanout_unstated": "Zaman dilimi en büyük farklı port sayısını belirtmiyor",
+      "generic_signature": "İmzanın adı genel: belirli bir imza hakkında iddia öne sürmek güvenli değil",
+      "maintenance": "Kaynak bu zaman diliminde bakımdaydı",
+      "no_entity": "Bu karar için {label} varlığı sağlanmadı",
+      "not_proven_lower_bound": "{reason}; sayım bir alt sınırdır ({scope}), bu nedenle ondan normal bir karar çıkarılamaz",
+      "source_totals_unstated": "Zaman dilimi kaynak IP toplamlarını belirtmiyor"
+    },
+    "history_check": {
+      "admission_unrecorded": "{bucket} geçmiş zaman diliminde hedef port kabulü kırpılmıştı ya da kaydedilmemişti",
+      "before_hand_off": "port, {hand_off} tarihindeki geçmiş devrinden önce kabul edilmişti",
+      "coverage_low": "{bucket} geçmiş zaman dilimindeki hedef port coverage'ı {floor} tabanının altındaydı",
+      "maintenance": "{bucket} geçmiş zaman dilimi bakımdaydı",
+      "normalizer_version": "{bucket} geçmiş zaman dilimi {version} normalizer sürümüyle uyumsuz",
+      "not_loaded": "yerleşik bir port için geçmiş yüklenmedi",
+      "port_search_not_exact": "{bucket} geçmiş zaman diliminin hedef port araması kesin değildi: {state}"
+    },
+    "label": {
+      "action": "eylem",
+      "destination_ip": "hedef IP",
+      "destination_port": "hedef port",
+      "destination_port_hyphenated": "hedef port",
+      "port_fanout": "port fan-out",
+      "signature": "imza",
+      "source_ip_hyphenated": "kaynak IP"
+    },
+    "noun": {
+      "distinct_ports": "farklı port",
+      "events": "olay"
+    },
+    "novelty": {
+      "below_materiality": "İlk göründüğünden bu yana {buckets} zaman diliminde {events} olay, {min_buckets} zaman diliminde {min_events} olaya ulaşmadı",
+      "below_materiality_lower": "{reason}; sayımlar alt sınırdır",
+      "cannot_establish": "Yenilik belirlenemiyor: {cause}",
+      "established_hand_off": "Yerleşik port: ilk olarak {first_seen} tarihinde kabul edildi; bu, geçmiş devri olan {hand_off} tarihinden önce",
+      "established_outside_window": "Yerleşik port: ilk olarak {first_seen} tarihinde kabul edildi; {buckets} zaman dilimlik yenilik penceresinin dışında",
+      "fired": "İlk göründüğü {first_seen} tarihinden bu yana {port} hedef portu {buckets} zaman diliminde {events} olay taşıdı; doğrulanmış {history_start} – {history_end} geçmişinde her zaman diliminde {admission} olayın altında kaldı",
+      "fired_lower": "İlk göründüğü {first_seen} tarihinden bu yana {port} hedef portu {buckets} zaman diliminde en az {events} olay taşıdı; doğrulanmış {history_start} – {history_end} geçmişinde her zaman diliminde {admission} olayın altında kaldı",
+      "flood_admission": "İlk görünme zaman diliminde hedef port kabulü kırpıldı: port, yeni portlardan oluşan bir akının içinde göründü ve tek başına yeni değil",
+      "flood_discovery": "İlk görünme zaman diliminde hedef port keşfi eksikti: port, yeni portlardan oluşan bir akından ayırt edilemiyor",
+      "not_established": "Portun ilk görünümü belirlenemedi",
+      "readmitted": "Yeniden kabul edilen port: kullanımdan kaldırılıp yeniden görüldü, bu yüzden yeni değil"
+    },
+    "role": {
+      "coverage": "coverage",
+      "denominator": "payda",
+      "destination_port_coverage": "hedef port coverage'ı",
+      "history": "geçmiş",
+      "largest_contributor": "en büyük katkıda bulunan",
+      "largest_fanout": "en büyük fan-out",
+      "materiality": "anlamlılık",
+      "numerator": "pay",
+      "total": "toplam",
+      "volume": "hacim"
+    },
+    "scope": {
+      "role": "{role}: {reason}"
+    },
+    "spike": {
+      "below_min": "{observed} {unit}/zaman dilimi, savunulabilir bir karar için gereken {minimum} asgari değerin altında",
+      "delta_below_min": "{delta} {unit}/zaman dilimi artış, {minimum} asgari mutlak farkın altında",
+      "fired": "{observed} {unit}, {subject} için baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} {unit}/zaman dilimi); {basis}",
+      "fired_lower": "En az {observed} {unit} (alt sınır: {scope}), {subject} için baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} {unit}/zaman dilimi); {basis}",
+      "ratio_none": "beklenen yok"
+    },
+    "state": {
+      "failed": "başarısız oldu",
+      "lower_bound": "alt sınır",
+      "not_collected": "toplanmadı",
+      "rejected": "reddedildi"
+    },
+    "subject": {
+      "busiest_fanout": "en yoğun kaynak IP'nin farklı portları",
+      "named": "{kind} {name}"
+    }
+  },
   "waf": {
     "basis": {
       "mad_above_p95": "MAD=0 olduğundan robust skor kullanılamıyor; {observed}, geçmiş p95 değeri olan {bound} sınırının üzerinde",

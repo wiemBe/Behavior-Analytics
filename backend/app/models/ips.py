@@ -460,15 +460,37 @@ class IpsAnomaly(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     profile_version: Mapped[int] = mapped_column(Integer, nullable=False)
     normalizer_version: Mapped[int] = mapped_column(Integer, nullable=False)
     explanation: Mapped[str | None] = mapped_column(Text)
+    #: `{code, params}` of `explanation` (NULL on earlier rows and for an uncoded sentence).
+    explanation_i18n: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     details: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     evidence_status: Mapped[EvidenceStatus] = mapped_column(
         String(16), default=EvidenceStatus.NOT_REQUESTED, nullable=False
     )
     suppressed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     suppression_reason: Mapped[str | None] = mapped_column(String(255))
+    #: `{code, params}` of `suppression_reason`, written and overwritten with it.
+    suppression_reason_i18n: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
     observed_measurement: Mapped[WafMeasurement] = mapped_column(
         String(16), default=WafMeasurement.EXACT, nullable=False
     )
+
+    @property
+    def explanation_code(self) -> str | None:
+        return stored_code(self.explanation_i18n)
+
+    @property
+    def explanation_params(self) -> dict[str, Any] | None:
+        return stored_params(self.explanation_i18n)
+
+    @property
+    def suppression_reason_code(self) -> str | None:
+        return stored_code(self.suppression_reason_i18n)
+
+    @property
+    def suppression_reason_params(self) -> dict[str, Any] | None:
+        return stored_params(self.suppression_reason_i18n)
 
 
 class IpsAnomalyTransition(Base, UUIDPrimaryKeyMixin, TimestampMixin):

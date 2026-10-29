@@ -27,7 +27,6 @@ version.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -35,7 +34,7 @@ from typing import Any
 from app.anomaly import statistics as rstats
 from app.anomaly.capabilities import ips_input_scope
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient
-from app.core.text import percent
+from app.i18n.messages import MessageRef, render
 from app.ips.fold import GENERIC_NAME_PREFIX
 from app.ips.inputs import (
     IPS_ENTITY_EVENTS_METRIC,
@@ -51,7 +50,14 @@ from app.models.enums import (
     Severity,
     WafMeasurement,
 )
-from app.waf.detector import WafBaselineCell, _expected_band
+from app.waf.detector import (
+    _SCOPE_CODES,
+    Reason,
+    WafBaselineCell,
+    _expected_band,
+    scope_reason_ref,
+    split_reason,
+)
 from app.waf.inputs import HistoryFacts
 from app.waf.measurement import ScopeDecision, WafVerdictScope
 
@@ -122,8 +128,9 @@ class IpsNoveltyFacts:
     history_start: datetime
     history_end: datetime
     history_buckets: int
-    #: Set when the first-appearance bucket's port discovery or admission was incomplete.
-    appearance_flood: str | None
+    #: Set when the first-appearance bucket's port discovery or admission was incomplete: a
+    #: reference from the engine, or the English text of a caller that has no code.
+    appearance_flood: Reason | None
     events_since_first_seen: int
     buckets_with_traffic: int
     #: Some bucket since first appearance counted only a lower bound.
@@ -154,13 +161,64 @@ class IpsVerdict:
 
 
 # --------------------------------------------------------------------- helpers
-def _pct(value: float | None) -> str:
-    """The share spelling for IPS sentences: one decimal of the shared helper."""
-    return percent(value, precision=1)
+def _ref(name: str, /, **params: object) -> MessageRef:
+    return MessageRef(f"ips.{name}", params)
 
 
-def _events(value: float) -> str:
-    return f"{value:,.0f}"
+#: The role each declared input carries in a scope reason (`app.anomaly.capabilities`), to its
+#: code. A role this table lacks would leave its scope reason as plain English: a test walks
+#: `IPS_DETECTORS` and fails on it.
+ROLE_CODES: dict[str, str] = {
+    "volume": "ips.role.volume",
+    "coverage": "ips.role.coverage",
+    "history": "ips.role.history",
+    "materiality": "ips.role.materiality",
+    "largest contributor": "ips.role.largest_contributor",
+    "total": "ips.role.total",
+    "largest fan-out": "ips.role.largest_fanout",
+    "destination-port coverage": "ips.role.destination_port_coverage",
+    "numerator": "ips.role.numerator",
+    "denominator": "ips.role.denominator",
+}
+
+#: The scope reason of an IPS detector (``"{role}: {scope sentence}"``) to its reference.
+_ROLE_SCOPE_BY_TEXT: dict[str, MessageRef] = {
+    f"{role}: {render(MessageRef(code))}": _ref(
+        "scope.role", role=MessageRef(role_code), reason=MessageRef(code)
+    )
+    for role, role_code in ROLE_CODES.items()
+    for code in _SCOPE_CODES
+}
+
+
+def ips_scope_ref(reason: str | None) -> Reason | None:
+    """The scope decision's reason as a reference; text when this build has no code for it."""
+    if reason is None:
+        return None
+    return _ROLE_SCOPE_BY_TEXT.get(reason) or scope_reason_ref(reason)
+
+
+#: The states a dimension's search reports (`IpsDimensionFacts.state`) to their references.
+_STATE_BY_TEXT: dict[str, MessageRef] = {
+    render(MessageRef(code)): MessageRef(code)
+    for code in (
+        "ips.state.not_collected",
+        "ips.state.failed",
+        "ips.state.rejected",
+        "ips.state.lower_bound",
+    )
+}
+
+
+def state_ref(state: str) -> Reason:
+    """A dimension state as a reference (text for a state this build does not know)."""
+    return _STATE_BY_TEXT.get(state, state)
+
+
+def caveat_facts(message: MessageRef) -> dict[str, Any]:
+    """The `caveat`, `caveat_code` and `caveat_params` that sit together in the evidence."""
+    wire = message.to_wire()
+    return {"caveat": render(message), "caveat_code": wire["code"], "caveat_params": wire["params"]}
 
 
 def _is_unusable_port_key(value_key: str) -> bool:
@@ -180,9 +238,14 @@ def _score(
     cell: WafBaselineCell,
     thr: IpsThresholds,
     facts: dict[str, Any],
-    fmt: Callable[[float], str],
-) -> tuple[bool, str, float]:
-    """The seasonal score guard: (passed, basis or reason, magnitude)."""
+    *,
+    events: bool,
+) -> tuple[bool, MessageRef, float]:
+    """The seasonal score guard: (passed, basis or reason, magnitude).
+
+    ``events`` says whether the observed value is an event count (the MAD=0 band is then
+    spelled as a count) or a share.
+    """
     z, status = rstats.robust_z_with_status(
         observed, cell.median, cell.mad, mad_floor_ratio=thr.mad_floor_ratio
     )
@@ -190,25 +253,26 @@ def _score(
     facts["robust_z"] = round(z, 3)
     if status is RobustScoreStatus.OK:
         if z < thr.deviation_z:
-            return False, f"robust z={z:.2f} has not reached +{thr.deviation_z}", z
-        return True, f"robust z={z:.2f} (threshold +{thr.deviation_z})", z
+            return (
+                False,
+                MessageRef("waf.basis.z_not_reached", {"score": z, "threshold": thr.deviation_z}),
+                z,
+            )
+        return (
+            True,
+            MessageRef("waf.basis.z", {"score": z, "threshold": thr.deviation_z}),
+            z,
+        )
     # MAD is zero: the score is an artefact of the floored scale. Fall back to the
     # deterministic band; never return healthy merely because the baseline is steady.
     _, upper = _expected_band(cell, thr.mad_floor_ratio)
     facts["fallback_bound"] = round(upper, 6)
+    band = {"observed": observed, "bound": upper}
     if observed <= upper:
-        return (
-            False,
-            f"robust score unavailable (MAD=0) and {fmt(observed)} is within the "
-            f"historical p95 {fmt(upper)}",
-            thr.deviation_z,
-        )
-    return (
-        True,
-        f"robust score unavailable (MAD=0); {fmt(observed)} is above the historical "
-        f"p95 {fmt(upper)}",
-        thr.deviation_z,
-    )
+        within = "ips.basis.mad_within_p95_events" if events else "waf.basis.mad_within_p95"
+        return False, MessageRef(within, band), thr.deviation_z
+    above = "ips.basis.mad_above_p95_events" if events else "waf.basis.mad_above_p95"
+    return True, MessageRef(above, band), thr.deviation_z
 
 
 def _cell_facts(cell: WafBaselineCell, expected: float) -> dict[str, Any]:
@@ -280,93 +344,115 @@ class _Guard:
         self.decision: ScopeDecision = ips_input_scope(dt, self.obs, history)
         self.lower_bound = self.decision.scope is WafVerdictScope.INCREASE_ONLY
 
+    @property
+    def scope_reason(self) -> Reason:
+        """The scope decision's reason for a sentence that states it (text when it has no code)."""
+        return ips_scope_ref(self.decision.reason) or str(self.decision.reason)
+
     def verdict(self, ev: AnomalyEvidence[IpsAnomalyType]) -> IpsVerdict:
         return IpsVerdict(detector_type=self.dt, evidence=ev)
 
-    def insufficient(self, reason: str, sample_count: int = 0) -> IpsVerdict:
+    def insufficient(self, reason: Reason, sample_count: int = 0) -> IpsVerdict:
+        text, message = split_reason(reason)
         return self.verdict(insufficient(
             self.dt, interval_start=self.bucket.bucket_start,
-            interval_end=self.bucket.bucket_end, reason=reason, sample_count=sample_count,
+            interval_end=self.bucket.bucket_end, reason=text, sample_count=sample_count,
+            reason_message=message,
         ))
 
     def healthy(
-        self, reason: str, *, observed: float | None, expected: float | None
+        self, reason: Reason, *, observed: float | None, expected: float | None
     ) -> IpsVerdict:
+        text, message = split_reason(reason)
         return self.verdict(healthy(
             self.dt, interval_start=self.bucket.bucket_start,
             interval_end=self.bucket.bucket_end, observed=observed,
-            expected=round(expected, 6) if expected is not None else None, reason=reason,
+            expected=round(expected, 6) if expected is not None else None, reason=text,
+            reason_message=message,
         ))
 
     def not_proven(
-        self, reason: str, *, observed: float, expected: float | None
+        self, reason: MessageRef, *, observed: float, expected: float | None
     ) -> IpsVerdict:
         """The normal exit of a guard: healthy for an exact input, no verdict for a bound."""
         if self.lower_bound:
             return self.insufficient(
-                f"{reason}; the count is a lower bound ({self.decision.reason}), so a normal "
-                "verdict cannot be concluded from it"
+                _ref("guard.not_proven_lower_bound", reason=reason, scope=self.scope_reason)
             )
         return self.healthy(reason, observed=round(observed, 6), expected=expected)
 
     # ---- preconditions common to every detector -------------------------------
     def maintenance(self) -> IpsVerdict | None:
         if self.bucket.in_maintenance:
-            return self.insufficient("the source was in maintenance during this bucket")
+            return self.insufficient(_ref("guard.maintenance"))
         return None
 
     def dimension(
-        self, dimension: IpsDimension, label: str, *, coverage: bool = True
+        self, dimension: IpsDimension, label: MessageRef, *, coverage: bool = True
     ) -> IpsVerdict | None:
         facts: IpsDimensionFacts | None = self.bucket.dimension(dimension)
         if facts is None or not facts.measured:
             state = facts.state if facts is not None else "not collected"
             return self.insufficient(
-                f"the {label} search was {state} for this bucket: the value is unavailable, "
-                "not zero"
+                _ref("guard.dimension_unmeasured", label=label, state=state_ref(state))
             )
         if coverage and not facts.coverage_met(self.thr.min_coverage):
             ratio = facts.coverage_ratio
-            seen = "was not measurable" if ratio is None else f"was {percent(ratio)}"
+            floor = self.thr.min_coverage
+            if ratio is None:
+                return self.insufficient(
+                    _ref("guard.coverage_unmeasurable", label=label, floor=floor)
+                )
             return self.insufficient(
-                f"{label} coverage {seen}, below the {percent(self.thr.min_coverage)} floor: the "
-                "events without a value may differ in kind from the ones with one, so the "
-                "visible numbers bound nothing"
+                _ref("guard.coverage_low", label=label, covered=ratio, floor=floor)
             )
         return None
 
     def scope(self) -> IpsVerdict | None:
         if self.decision.scope is WafVerdictScope.NONE:
-            return self.insufficient(self.decision.reason or "the inputs do not support a verdict")
+            return self.insufficient(
+                ips_scope_ref(self.decision.reason) or MessageRef("waf.scope.inputs_unsupported")
+            )
         return None
 
     def cell(self, metric: str, *, pooled: bool = False) -> IpsBaselineCell | IpsVerdict:
         cell = self.ctx.baseline
         if cell is None:
-            return self.insufficient(f"no {metric} baseline for this weekday/hour cell yet")
+            return self.insufficient(MessageRef("waf.guard.no_baseline", {"metric": metric}))
         if (cell.profile_version, cell.normalizer_version) != (
             self.bucket.profile_version, self.bucket.normalizer_version
         ):
             return self.insufficient(
-                f"the {metric} baseline was built under profile version {cell.profile_version} "
-                f"and normalizer version {cell.normalizer_version}, not the bucket's "
-                f"{self.bucket.profile_version} and {self.bucket.normalizer_version}"
+                _ref(
+                    "guard.baseline_versions",
+                    metric=metric,
+                    profile=str(cell.profile_version),
+                    normalizer=str(cell.normalizer_version),
+                    bucket_profile=str(self.bucket.profile_version),
+                    bucket_normalizer=str(self.bucket.normalizer_version),
+                )
             )
         if not cell.is_reliable or cell.sample_count < self.thr.baseline_min_samples:
             return self.insufficient(
-                f"the {metric} baseline has {cell.sample_count} sample(s), below the minimum "
-                f"of {self.thr.baseline_min_samples} for a defensible verdict",
+                _ref(
+                    "guard.baseline_samples",
+                    metric=metric,
+                    samples=cell.sample_count,
+                    minimum=self.thr.baseline_min_samples,
+                ),
                 sample_count=cell.sample_count,
             )
         if pooled and not cell.denominator_sum:
-            return self.insufficient(f"the {metric} baseline has no pooled denominator")
+            return self.insufficient(
+                MessageRef("waf.guard.baseline_no_denominator", {"metric": metric})
+            )
         return cell
 
 
 def _anomalous(
     g: _Guard, *, cell: WafBaselineCell, observed: float, expected: float, z: float | None,
-    magnitude: float, severity: Severity, threshold: float, reason: str, facts: dict[str, Any],
-    start: datetime | None = None, end: datetime | None = None,
+    magnitude: float, severity: Severity, threshold: float, reason: MessageRef,
+    facts: dict[str, Any], start: datetime | None = None, end: datetime | None = None,
 ) -> IpsVerdict:
     return g.verdict(AnomalyEvidence(
         anomaly_type=g.dt,
@@ -382,7 +468,8 @@ def _anomalous(
         interval_start=start or g.bucket.bucket_start,
         interval_end=end or g.bucket.bucket_end,
         confidence=_confidence(cell, magnitude, g.thr),
-        reason=reason,
+        reason=render(reason),
+        reason_message=reason,
         extra=facts,
     ))
 
@@ -392,23 +479,21 @@ def _anomalous(
 class _EntitySpike:
     detector_type: IpsAnomalyType
     dimension: IpsDimension
-    label: str
-    caveat: str
+    label: MessageRef
+    caveat: MessageRef
 
 
 PORT_SPIKE = _EntitySpike(
-    IpsAnomalyType.IPS_PORT_RATE_SPIKE, IpsDimension.DESTINATION_PORT, "destination port",
-    "More events on a port describe traffic volume, not intent: a scan, a deployment and a "
-    "misconfigured client look alike here.",
+    IpsAnomalyType.IPS_PORT_RATE_SPIKE, IpsDimension.DESTINATION_PORT,
+    _ref("label.destination_port"), _ref("caveat.port_rate"),
 )
 DESTINATION_SPIKE = _EntitySpike(
-    IpsAnomalyType.IPS_DESTINATION_RATE_SPIKE, IpsDimension.DESTINATION_IP, "destination IP",
-    "More events towards a destination describe traffic volume, not an attack on it.",
+    IpsAnomalyType.IPS_DESTINATION_RATE_SPIKE, IpsDimension.DESTINATION_IP,
+    _ref("label.destination_ip"), _ref("caveat.destination_rate"),
 )
 SIGNATURE_SPIKE = _EntitySpike(
-    IpsAnomalyType.IPS_SIGNATURE_BURST, IpsDimension.SIGNATURE, "signature",
-    "A burst of one signature describes how often the IPS matched it, not that the "
-    "matched activity succeeded.",
+    IpsAnomalyType.IPS_SIGNATURE_BURST, IpsDimension.SIGNATURE,
+    _ref("label.signature"), _ref("caveat.signature_burst"),
 )
 
 
@@ -424,26 +509,26 @@ def detect_entity_spike(ctx: IpsDetectionContext, d: _EntitySpike) -> IpsVerdict
         return early
     entity = obs.entity
     if entity is None or obs.count is None:
-        return g.insufficient(f"no {d.label} entity was supplied for this verdict")
+        return g.insufficient(_ref("guard.no_entity", label=d.label))
     if entity.dimension is not d.dimension:
         return g.insufficient(
-            f"a {entity.dimension.value} entity is not judged by {d.detector_type.value}"
+            _ref(
+                "guard.entity_not_judged",
+                dimension=entity.dimension.value, detector=d.detector_type.value,
+            )
         )
     if d.dimension is IpsDimension.DESTINATION_PORT and _is_unusable_port_key(entity.value_key):
-        return g.insufficient(
-            "port 0 and protocol 255 are absent values, not a service: no claim about them"
-        )
+        return g.insufficient(_ref("guard.absent_port"))
     if (
         d.dimension is IpsDimension.SIGNATURE
         and (entity.display_name or "").startswith(GENERIC_NAME_PREFIX)
     ):
-        return g.insufficient(
-            "the signature's name is generic: a claim about a specific signature is not safe"
-        )
+        return g.insufficient(_ref("guard.generic_signature"))
     if (early := g.dimension(d.dimension, d.label)) is not None:
         return early
     if obs.count.events is None:
-        return g.insufficient(obs.count.reason or "the entity's count is unknown for this bucket")
+        # The count's own reason is the input layer's wording and carries no code.
+        return g.insufficient(obs.count.reason or _ref("guard.count_unknown"))
     if (early := g.scope()) is not None:
         return early
     cell_or_exit = g.cell(IPS_ENTITY_EVENTS_METRIC)
@@ -454,7 +539,7 @@ def detect_entity_spike(ctx: IpsDetectionContext, d: _EntitySpike) -> IpsVerdict
     observed = float(obs.count.events)
     expected = cell.median
     delta = observed - expected
-    subject = f"{d.label} {entity.display_name or entity.value_key}"
+    subject = _ref("subject.named", kind=d.label, name=entity.display_name or entity.value_key)
     facts: dict[str, Any] = {
         "evidence_version": EVIDENCE_VERSION,
         "detector_type": d.detector_type.value,
@@ -475,18 +560,18 @@ def detect_entity_spike(ctx: IpsDetectionContext, d: _EntitySpike) -> IpsVerdict
             "record": "ips_source_bucket", "bucket_start": g.bucket.bucket_start.isoformat(),
         },
         "observed_measurement": (obs.count.measurement or WafMeasurement.EXACT).value,
-        "caveat": d.caveat,
+        **caveat_facts(d.caveat),
         **ctx.extra,
     }
     return _spike(
-        g, cell=cell, observed=observed, subject=subject, unit="events",
+        g, cell=cell, observed=observed, subject=subject, unit=_ref("noun.events"),
         min_value=thr.min_bucket_events, ratio_min=thr.spike_ratio,
         min_delta=thr.min_absolute_delta_events, facts=facts,
     )
 
 
 def _spike(
-    g: _Guard, *, cell: IpsBaselineCell, observed: float, subject: str, unit: str,
+    g: _Guard, *, cell: IpsBaselineCell, observed: float, subject: MessageRef, unit: MessageRef,
     min_value: float, ratio_min: float, min_delta: float, facts: dict[str, Any],
     observed_lower_bound: bool | None = None,
 ) -> IpsVerdict:
@@ -495,8 +580,8 @@ def _spike(
     delta = observed - expected
     if observed < min_value:
         return g.not_proven(
-            f"{_events(observed)} {unit}/bucket is below the {_events(min_value)} minimum for a "
-            "defensible verdict", observed=observed, expected=expected,
+            _ref("spike.below_min", observed=observed, unit=unit, minimum=min_value),
+            observed=observed, expected=expected,
         )
     ratio = rstats.ratio(observed, expected)
     facts["ratio"] = round(ratio, 4) if ratio is not None else None
@@ -506,15 +591,15 @@ def _spike(
         facts["ratio_basis"] = "expected_zero"
     elif ratio < ratio_min:
         return g.not_proven(
-            f"observed/expected ratio {ratio:.2f} has not reached {ratio_min:.2f}",
+            MessageRef("waf.rate.ratio_not_reached", {"ratio": ratio, "threshold": ratio_min}),
             observed=observed, expected=expected,
         )
     if delta < min_delta:
         return g.not_proven(
-            f"increase of {_events(delta)} {unit}/bucket is below the {_events(min_delta)} "
-            "minimum absolute delta", observed=observed, expected=expected,
+            _ref("spike.delta_below_min", delta=delta, unit=unit, minimum=min_delta),
+            observed=observed, expected=expected,
         )
-    passed, basis, magnitude = _score(observed, cell, thr, facts, _events)
+    passed, basis, magnitude = _score(observed, cell, thr, facts, events=True)
     if not passed:
         return g.not_proven(basis, observed=observed, expected=expected)
     severity = (
@@ -522,17 +607,25 @@ def _spike(
         if (ratio is not None and ratio / ratio_min >= 2.0) or magnitude >= thr.deviation_z * 1.5
         else Severity.MEDIUM
     )
-    ratio_text = f"{ratio:.2f}x expected" if ratio is not None else "expected none"
+    ratio_text = (
+        MessageRef("waf.rate.ratio_multiple", {"ratio": ratio})
+        if ratio is not None
+        else _ref("spike.ratio_none")
+    )
     count_is_lower_bound = g.lower_bound if observed_lower_bound is None else observed_lower_bound
-    bound = f"at least {_events(observed)}" if count_is_lower_bound else _events(observed)
-    why = f" (a lower bound: {g.decision.reason})" if count_is_lower_bound else ""
+    figures = {
+        "observed": observed, "unit": unit, "subject": subject, "expected": expected,
+        "ratio_text": ratio_text, "delta": delta, "basis": basis,
+    }
+    fired = (
+        _ref("spike.fired_lower", scope=g.scope_reason, **figures)
+        if count_is_lower_bound
+        else _ref("spike.fired", **figures)
+    )
     return _anomalous(
         g, cell=cell, observed=observed, expected=expected, z=facts.get("robust_z"),
         magnitude=magnitude, severity=severity, threshold=thr.deviation_z, facts=facts,
-        reason=(
-            f"{bound} {unit}{why} for {subject} is above the baseline median "
-            f"{expected:.1f} ({ratio_text}, +{_events(delta)} {unit}/bucket); {basis}"
-        ),
+        reason=fired,
     )
 
 
@@ -546,5 +639,3 @@ def detect_destination_rate_spike(ctx: IpsDetectionContext) -> IpsVerdict:
 
 def detect_signature_burst(ctx: IpsDetectionContext) -> IpsVerdict:
     return detect_entity_spike(ctx, SIGNATURE_SPIKE)
-
-

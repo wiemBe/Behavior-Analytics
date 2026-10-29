@@ -200,3 +200,149 @@ export function ipsCell(over: Partial<IpsBaselineCell> = {}): IpsBaselineCell {
     ...over,
   };
 }
+
+// ---- The same payloads as a current backend writes them: each sentence beside its code (MSG-6b).
+// The plain fixtures above stay as a row stored before codes serves them (English text, no code),
+// so the tests that pin that contract keep their meaning; these carry the code and raw values.
+
+/** The wire form of a share and of a change in points, as the API sends them beside a sentence. */
+const percentParam = (ratio: number, precision = 1) => ({ kind: "percent", ratio, precision });
+const pointsParam = (points: number, precision = 1) => ({
+  kind: "points",
+  points,
+  precision,
+  signed: true,
+});
+const Z = { code: "waf.basis.z", params: { score: 38.26, threshold: 3.5 } };
+const PORT_445 = {
+  code: "ips.subject.named",
+  params: { kind: { code: "ips.label.destination_port", params: {} }, name: "445/tcp" },
+};
+
+/** The detector's caveat of an entity-rate spike, stored beside its code. */
+const PORT_RATE_CAVEAT =
+  "More events on a port describe traffic volume, not intent: a scan, a deployment and a " +
+  "misconfigured client look alike here.";
+
+/**
+ * A port spike whose count is a lower bound and reaches 1,000: the lower-bound wrap names its
+ * scope through the input's role, and the count prints grouped.
+ */
+export function ipsCodedDetection(over: Partial<IpsDetectionDetail> = {}): IpsDetectionDetail {
+  return ipsDetection({
+    reason:
+      "at least 12,345 events (a lower bound: volume: the count is a lower bound: an increase " +
+      "can be proven, normal behaviour cannot) for destination port 445/tcp is above the " +
+      "baseline median 1000.0 (12.35x expected, +11,345 events/bucket); robust z=38.26 " +
+      "(threshold +3.5)",
+    reason_code: "ips.spike.fired_lower",
+    reason_params: {
+      observed: 12345,
+      unit: { code: "ips.noun.events", params: {} },
+      scope: {
+        code: "ips.scope.role",
+        params: {
+          role: { code: "ips.role.volume", params: {} },
+          reason: { code: "waf.scope.lower_bound_increase", params: {} },
+        },
+      },
+      subject: PORT_445,
+      expected: 1000,
+      ratio_text: { code: "waf.rate.ratio_multiple", params: { ratio: 12.345 } },
+      delta: 11345,
+      basis: Z,
+    },
+    observed_events: 12345,
+    expected_events: 1000,
+    expected_low: 800,
+    expected_high: 1500,
+    observed_measurement: "LOWER_BOUND",
+    absolute_delta: 11345,
+    ratio: 12.345,
+    robust_z: 38.26,
+    caveat: PORT_RATE_CAVEAT,
+    caveat_code: "ips.caveat.port_rate",
+    caveat_params: {},
+    ...over,
+  });
+}
+
+/** A block-ratio shift: a share, points, a basis and the block-ratio caveat. */
+export function ipsCodedBlockDetection(
+  over: Partial<IpsDetectionDetail> = {},
+): IpsDetectionDetail {
+  return ipsDetection({
+    reason:
+      "60 of 100 events carrying an action were blocked (60.0 %), against an expected " +
+      "10.0 % from 100 historical events (+50.0 pp, 6.0x); robust z=16.86 " +
+      "(threshold +3.5)",
+    reason_code: "ips.block.fired",
+    reason_params: {
+      count: 60,
+      total: 100,
+      share: percentParam(0.6),
+      expected: percentParam(0.1),
+      history: 100,
+      rise: pointsParam(50),
+      multiple: 6,
+      basis: { code: "waf.basis.z", params: { score: 16.86, threshold: 3.5 } },
+    },
+    expected_low: 0.05,
+    expected_high: 0.15,
+    observed_events: null,
+    expected_events: null,
+    observed_proportion: 0.6,
+    expected_proportion: 0.1,
+    observed_numerator: 60,
+    observed_denominator: 100,
+    percentage_point_change: 50,
+    absolute_delta: 0.5,
+    ratio: 6,
+    robust_z: 16.86,
+    caveat:
+      "Blocking is judged through the profile's action map. A higher block ratio describes the " +
+      "IPS's decisions; it does not establish that an attack succeeded.",
+    caveat_code: "ips.caveat.block_ratio",
+    caveat_params: {},
+    ...over,
+  });
+}
+
+/** A new-port incident: its three timestamps travel as ISO text. */
+export function ipsCodedNewPortDetection(
+  over: Partial<IpsDetectionDetail> = {},
+): IpsDetectionDetail {
+  return ipsDetection({
+    reason:
+      "destination port 445/tcp carried 3250 events across 4 buckets since it first appeared " +
+      "at 2026-10-12T08:40:00+00:00; in the verified history 2026-10-05T08:40:00+00:00 to " +
+      "2026-10-12T08:40:00+00:00 it stayed below 3 events in every bucket",
+    reason_code: "ips.novelty.fired",
+    reason_params: {
+      port: "445/tcp",
+      events: 3250,
+      buckets: 4,
+      first_seen: "2026-10-12T08:40:00+00:00",
+      history_start: "2026-10-05T08:40:00+00:00",
+      history_end: "2026-10-12T08:40:00+00:00",
+      admission: 3,
+    },
+    expected_low: null,
+    expected_high: null,
+    threshold: 20,
+    baseline_sample_count: 168,
+    baseline_completeness: null,
+    baseline_version: null,
+    observed_events: 3250,
+    expected_events: null,
+    caveat:
+      "A newly busy destination port may be a deployment as easily as a probe. The " +
+      "contributors are the bucket's busiest source IPs, not necessarily this port's.",
+    caveat_code: "ips.caveat.new_port",
+    caveat_params: {},
+    robust_score_status: null,
+    robust_z: null,
+    ratio: null,
+    ...over,
+  });
+}

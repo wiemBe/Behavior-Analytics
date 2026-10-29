@@ -1664,6 +1664,9 @@ export interface IpsEntityRef {
 
 export interface IpsDetectionDetail {
   reason: string | null;
+  // The registry code of `reason` and its raw values; absent on a row stored before codes.
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
   expected_low: number | null;
   expected_high: number | null;
   threshold: number | null;
@@ -1685,6 +1688,8 @@ export interface IpsDetectionDetail {
   observed_measurement: MeasurementKind | null;
   absolute_delta: number | null;
   caveat: string | null;
+  caveat_code?: string | null;
+  caveat_params?: Record<string, unknown> | null;
   ratio: number | null;
   ratio_basis: string | null;
   robust_score_status: RobustScoreStatus | null;
