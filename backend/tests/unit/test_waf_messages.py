@@ -1782,7 +1782,9 @@ def _suppress(reason: str | None, pair: dict[str, Any] | None) -> WafAnomaly:
         WafAnomalyType.WAF_REQUEST_RATE_SPIKE,
         evidence,
         state,
-        LifecycleDecision(state=AnomalyState.SUPPRESSED, reason="suppressed"),
+        LifecycleDecision(
+            state=AnomalyState.SUPPRESSED, message=MessageRef("anomaly.lifecycle.suppressed")
+        ),
         {anomaly.id: anomaly},
         WafEvaluationReport(waf_endpoint_id=endpoint.id, bucket_start=None),
         [],
