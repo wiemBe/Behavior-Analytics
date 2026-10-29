@@ -11,7 +11,7 @@ from __future__ import annotations
 import bisect
 import uuid
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, func, or_, select, text
@@ -26,7 +26,7 @@ from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.lifecycle import LifecycleDecision, LifecycleInput, advance_counters, next_state
 from app.core.config import Settings, get_settings
 from app.i18n.messages import MessageRef, render
-from app.ips.behavior import IPS_DETECTOR_FUNCTIONS, appearance_flood, verify_port_history
+from app.ips.behavior import IPS_DETECTOR_FUNCTIONS, appearance_flood_ref, verify_port_history
 from app.ips.detector import (
     IpsBaselineCell,
     IpsDetectionContext,
@@ -34,7 +34,13 @@ from app.ips.detector import (
     IpsThresholds,
     IpsVerdict,
 )
-from app.ips.inputs import IpsEntityFacts, IpsObservation, IpsSourceBucketFacts, observe_entity
+from app.ips.inputs import (
+    IpsEntityFacts,
+    IpsObservation,
+    IpsSourceBucketFacts,
+    ips_history_incomplete,
+    observe_entity,
+)
 from app.models.enums import (
     AnomalyState,
     EvidenceStatus,
@@ -55,6 +61,7 @@ from app.models.ips import (
     IpsSourceBucket,
 )
 from app.models.log_source import LogSource
+from app.waf.detector import Reason
 from app.waf.inputs import HistoryFacts
 
 _ENTITY_TYPES = {
@@ -89,10 +96,16 @@ _ANOMALY_COLUMNS = (
     "absolute_delta",
     "consecutive_buckets",
     "explanation",
+    "explanation_i18n",
     "details",
     "suppressed",
     "suppression_reason",
+    "suppression_reason_i18n",
 )
+
+#: The suppression reason a maintenance window writes (MSG-6b). The sentence is the WAF one
+#: (the same English, no parameters), stored beside its `_i18n` form.
+_MAINTENANCE = MessageRef("waf.suppression.maintenance_window")
 
 
 @dataclass
@@ -354,11 +367,15 @@ class IpsAnomalyEngine:
                     and self.history_end is not None
                     and subject.entity.first_seen_at < self.history_end
                 ):
-                    verdict.evidence.reason = (
-                        "established port: first admitted "
-                        f"{subject.entity.first_seen_at.isoformat()}, before history hand-off "
-                        f"{self.history_end.isoformat()}"
+                    established = MessageRef(
+                        "ips.novelty.established_hand_off",
+                        {
+                            "first_seen": subject.entity.first_seen_at,
+                            "hand_off": self.history_end,
+                        },
                     )
+                    verdict.evidence.reason = render(established)
+                    verdict.evidence.reason_message = established
                 state = states[(subject.kind, subject.subject_id, detector_type.value)]
                 if self._apply_hysteresis(
                     source,
@@ -538,12 +555,11 @@ class IpsAnomalyEngine:
                     window_end=self.history_end,
                     within_window=False,
                     readmitted=False,
-                    history=HistoryFacts(
-                        complete=True,
-                        reason=(
-                            "the port was first admitted before the history hand-off at "
-                            f"{self.history_end.isoformat()}"
+                    history=replace(
+                        ips_history_incomplete(
+                            "ips.history_check.before_hand_off", hand_off=self.history_end
                         ),
+                        complete=True,
                     ),
                     history_start=subject.entity.first_seen_at,
                     history_end=self.history_end,
@@ -563,10 +579,7 @@ class IpsAnomalyEngine:
                     window_end=window_end,
                     within_window=False,
                     readmitted=False,
-                    history=HistoryFacts(
-                        complete=False,
-                        reason="history was not loaded for an established port",
-                    ),
+                    history=ips_history_incomplete("ips.history_check.not_loaded"),
                     history_start=subject.entity.first_seen_at - history_delta,
                     history_end=subject.entity.first_seen_at,
                     history_buckets=0,
@@ -620,7 +633,7 @@ class IpsAnomalyEngine:
             )
             for row in traffic_rows:
                 traffic[row.ips_entity_id] = (int(row.events), int(row.traffic_buckets))
-        verified: dict[tuple[datetime, int], tuple[HistoryFacts, int, str | None]] = {}
+        verified: dict[tuple[datetime, int], tuple[HistoryFacts, int, Reason | None]] = {}
         for subject in pending:
             entity = subject.entity
             assert entity is not None
@@ -631,11 +644,10 @@ class IpsAnomalyEngine:
                 right = bisect.bisect_left(starts, first_seen)
                 history_rows = facts[left:right]
                 appearance = by_start.get(first_seen)
+                history: HistoryFacts
+                flood: Reason | None
                 if appearance is None:
-                    history = HistoryFacts(
-                        complete=False,
-                        reason="the first-appearance bucket was never collected",
-                    )
+                    history = ips_history_incomplete("waf.history_check.appearance_never_collected")
                     flood = None
                 else:
                     history = verify_port_history(
@@ -647,7 +659,7 @@ class IpsAnomalyEngine:
                         normalizer_version=entity.normalizer_version,
                         min_coverage=thresholds.min_coverage,
                     )
-                    flood = appearance_flood(appearance, min_coverage=thresholds.min_coverage)
+                    flood = appearance_flood_ref(appearance, min_coverage=thresholds.min_coverage)
                 verified[key] = (history, len(history_rows), flood)
             history, history_buckets, flood = verified[key]
             bucket = subject.observation.bucket
@@ -826,7 +838,8 @@ class IpsAnomalyEngine:
             if anomaly is not None:
                 anomaly.state = target
                 anomaly.suppressed = True
-                anomaly.suppression_reason = "maintenance window"
+                anomaly.suppression_reason = render(_MAINTENANCE)
+                anomaly.suppression_reason_i18n = _MAINTENANCE.to_wire()
             return
         if anomaly is not None and previous is AnomalyState.CANDIDATE:
             anomaly.state = target
@@ -980,6 +993,7 @@ class IpsAnomalyEngine:
             profile_version=bucket.profile_version,
             normalizer_version=bucket.normalizer_version,
             explanation=evidence.reason,
+            explanation_i18n=evidence.reason_wire,
             details=evidence.to_dict(),
             evidence_status=EvidenceStatus.NOT_REQUESTED,
             suppressed=False,
@@ -1015,6 +1029,7 @@ class IpsAnomalyEngine:
             anomaly.robust_z = _as_float(facts.get("robust_z"))
             anomaly.absolute_delta = _as_float(facts.get("absolute_delta"))
             anomaly.explanation = evidence.reason
+            anomaly.explanation_i18n = evidence.reason_wire
             anomaly.details = evidence.to_dict()
 
     @staticmethod

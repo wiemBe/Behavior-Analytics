@@ -62,6 +62,12 @@ const IDENTICAL_ALLOWLIST = new Set([
   "backend.rule_health.label.named",
   // MSG-6: the method and the normalized endpoint, both verbatim in both locales.
   "backend.waf.subject.named",
+  // MSG-6b: the role and the reason of a scope, an entity's kind and name, `coverage` (a kept
+  // English term, D-39) and `fan-out` (the technical term, as in the Turkish summary).
+  "backend.ips.label.port_fanout",
+  "backend.ips.role.coverage",
+  "backend.ips.scope.role",
+  "backend.ips.subject.named",
   // MSG-8b: the defensive re-validation error is the joined, already-worded reasons.
   "backend.search.run.validation",
   "common.product",

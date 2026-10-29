@@ -105,6 +105,16 @@ export const PLAIN: Readonly<Record<string, Readonly<Record<string, PlainReason>
   "backend.waf.ratio.fired_lower_no_multiple": { total: "string", count: "string" },
   "backend.waf.ratio.fired_no_multiple": { total: "string", count: "string" },
   "backend.waf.ratio.numerator_below_min": { count: "string" },
+  // MSG-6b: the same reader formatting for the IPS sentences.
+  "backend.ips.block.denominator_below_min": { count: "string" },
+  "backend.ips.block.fired": { total: "string", count: "string" },
+  "backend.ips.block.fired_lower": { total: "string", count: "string" },
+  "backend.ips.block.fired_lower_no_multiple": { total: "string", count: "string" },
+  "backend.ips.block.fired_no_multiple": { total: "string", count: "string" },
+  "backend.ips.block.numerator_below_min": { count: "string" },
+  "backend.ips.concentration.fired": { total: "string" },
+  "backend.ips.concentration.fired_no_top5": { total: "string" },
+  "backend.ips.concentration.total_below_min": { total: "string" },
   // MSG-1b: the reader hands a count over already grouped (`formatCount`), so the plain form
   // prints `1.204`; the value is a string, not a raw number.
   "backend.search.aql.limit_exceeded": { limit: "string" },

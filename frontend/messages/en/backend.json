@@ -284,6 +284,120 @@
       "search_failed": "search failed {failures} times at the minimum width"
     }
   },
+  "ips": {
+    "basis": {
+      "mad_above_p95_events": "robust score unavailable (MAD=0); {observed} is above the historical p95 {bound}",
+      "mad_within_p95_events": "robust score unavailable (MAD=0) and {observed} is within the historical p95 {bound}"
+    },
+    "block": {
+      "denominator_below_min": "{count} events carrying an action is below the {minimum} minimum denominator for a ratio verdict",
+      "fired": "{count} of {total} events carrying an action were blocked ({share}), against an expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}",
+      "fired_lower": "at least {count} of {total} events carrying an action were blocked (at least {share}), against an expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}",
+      "fired_lower_no_multiple": "at least {count} of {total} events carrying an action were blocked (at least {share}), against an expected {expected} from {history} historical events ({rise}); {basis}",
+      "fired_no_multiple": "{count} of {total} events carrying an action were blocked ({share}), against an expected {expected} from {history} historical events ({rise}); {basis}",
+      "numerator_below_min": "{count} blocked events is below the {minimum} minimum; no material rise in the proportion is possible"
+    },
+    "caveat": {
+      "block_ratio": "Blocking is judged through the profile''s action map. A higher block ratio describes the IPS''s decisions; it does not establish that an attack succeeded.",
+      "destination_rate": "More events towards a destination describe traffic volume, not an attack on it.",
+      "new_port": "A newly busy destination port may be a deployment as easily as a probe. The contributors are the bucket''s busiest source IPs, not necessarily this port''s.",
+      "port_fanout": "Many distinct destination ports from one source IP is a traffic shape, not an attack verdict: a scan, a vulnerability assessment and a service that rotates ports look alike.",
+      "port_rate": "More events on a port describe traffic volume, not intent: a scan, a deployment and a misconfigured client look alike here.",
+      "signature_burst": "A burst of one signature describes how often the IPS matched it, not that the matched activity succeeded.",
+      "source_concentration": "A dominant source IP describes traffic composition, not intent. Behind a proxy or NAT it is the intermediary''s address."
+    },
+    "concentration": {
+      "fired": "the largest source IP sent {top} of {total} events ({share}), against an expected share of {expected} ({rise}); the five largest sent {top5}; {basis}",
+      "fired_no_top5": "the largest source IP sent {top} of {total} events ({share}), against an expected share of {expected} ({rise}); the five largest sent n/a; {basis}",
+      "top_below_min": "the largest source IP sent {top} events, below the {minimum} minimum for a material concentration",
+      "total_below_min": "{total} events is below the {minimum} minimum for a composition verdict"
+    },
+    "guard": {
+      "absent_port": "port 0 and protocol 255 are absent values, not a service: no claim about them",
+      "action_counts_unstated": "the bucket does not state its blocked and action event counts",
+      "action_unmapped": "no action property mapped",
+      "baseline_samples": "the {metric} baseline has {samples} sample(s), below the minimum of {minimum} for a defensible verdict",
+      "baseline_versions": "the {metric} baseline was built under profile version {profile} and normalizer version {normalizer}, not the bucket''s {bucket_profile} and {bucket_normalizer}",
+      "count_unknown": "the entity''s count is unknown for this bucket",
+      "coverage_low": "{label} coverage was {covered}, below the {floor} floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing",
+      "coverage_unmeasurable": "{label} coverage was not measurable, below the {floor} floor: the events without a value may differ in kind from the ones with one, so the visible numbers bound nothing",
+      "dimension_unmeasured": "the {label} search was {state} for this bucket: the value is unavailable, not zero",
+      "entity_not_judged": "a {dimension} entity is not judged by {detector}",
+      "fanout_unstated": "the bucket does not state its largest distinct-port count",
+      "generic_signature": "the signature''s name is generic: a claim about a specific signature is not safe",
+      "maintenance": "the source was in maintenance during this bucket",
+      "no_entity": "no {label} entity was supplied for this verdict",
+      "not_proven_lower_bound": "{reason}; the count is a lower bound ({scope}), so a normal verdict cannot be concluded from it",
+      "source_totals_unstated": "the bucket does not state its source-IP totals"
+    },
+    "history_check": {
+      "admission_unrecorded": "history bucket {bucket} had truncated or unrecorded destination-port admission",
+      "before_hand_off": "the port was first admitted before the history hand-off at {hand_off}",
+      "coverage_low": "history bucket {bucket} had destination-port coverage below the {floor} floor",
+      "maintenance": "history bucket {bucket} was in maintenance",
+      "normalizer_version": "history bucket {bucket} is incompatible with normalizer version {version}",
+      "not_loaded": "history was not loaded for an established port",
+      "port_search_not_exact": "history bucket {bucket} had a destination-port search that was {state}, not exact"
+    },
+    "label": {
+      "action": "action",
+      "destination_ip": "destination IP",
+      "destination_port": "destination port",
+      "destination_port_hyphenated": "destination-port",
+      "port_fanout": "port fan-out",
+      "signature": "signature",
+      "source_ip_hyphenated": "source-IP"
+    },
+    "noun": {
+      "distinct_ports": "distinct ports",
+      "events": "events"
+    },
+    "novelty": {
+      "below_materiality": "{events} event(s) in {buckets} bucket(s) since first appearance has not reached {min_events} events in {min_buckets} buckets",
+      "below_materiality_lower": "{reason}; the counts are lower bounds",
+      "cannot_establish": "novelty cannot be established: {cause}",
+      "established_hand_off": "established port: first admitted {first_seen}, before history hand-off {hand_off}",
+      "established_outside_window": "established port: first admitted {first_seen}, outside the {buckets}-bucket novelty window",
+      "fired": "destination port {port} carried {events} events across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it stayed below {admission} events in every bucket",
+      "fired_lower": "destination port {port} carried at least {events} events across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it stayed below {admission} events in every bucket",
+      "flood_admission": "the first-appearance bucket''s destination-port admission was truncated: the port appeared in a flood of new ports and is not individually new",
+      "flood_discovery": "the first-appearance bucket''s destination-port discovery was incomplete: the port cannot be told apart from a flood of new ports",
+      "not_established": "the port''s first appearance was not established",
+      "readmitted": "re-admitted port: it was retired and seen again, so it is not new"
+    },
+    "role": {
+      "coverage": "coverage",
+      "denominator": "denominator",
+      "destination_port_coverage": "destination-port coverage",
+      "history": "history",
+      "largest_contributor": "largest contributor",
+      "largest_fanout": "largest fan-out",
+      "materiality": "materiality",
+      "numerator": "numerator",
+      "total": "total",
+      "volume": "volume"
+    },
+    "scope": {
+      "role": "{role}: {reason}"
+    },
+    "spike": {
+      "below_min": "{observed} {unit}/bucket is below the {minimum} minimum for a defensible verdict",
+      "delta_below_min": "increase of {delta} {unit}/bucket is below the {minimum} minimum absolute delta",
+      "fired": "{observed} {unit} for {subject} is above the baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}",
+      "fired_lower": "at least {observed} {unit} (a lower bound: {scope}) for {subject} is above the baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}",
+      "ratio_none": "expected none"
+    },
+    "state": {
+      "failed": "failed",
+      "lower_bound": "lower_bound",
+      "not_collected": "not collected",
+      "rejected": "rejected"
+    },
+    "subject": {
+      "busiest_fanout": "the busiest source IP''s distinct ports",
+      "named": "{kind} {name}"
+    }
+  },
   "propertywatch": {
     "action": {
       "change_pins": "change the scope, properties or pins",

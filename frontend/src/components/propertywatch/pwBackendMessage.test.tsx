@@ -227,7 +227,7 @@ describe("the scope and the history of a watch", () => {
       />,
     );
     expect(
-      screen.getByText("Scope güncel değil — Grup ve alt grupları eşitlenmiş hiçbir log source içermiyor"),
+      screen.getByText("Scope güncel değil — grup ve alt grupları eşitlenmiş hiçbir log source içermiyor"),
     ).toBeInTheDocument();
   });
 });
@@ -279,7 +279,7 @@ describe("a refused draft", () => {
     expect(refusal).toEqual({
       kind: "reasons",
       reasons: [
-        "Sabitlenmiş değer 2, bölüm 1: Değer boş olamaz",
+        "Sabitlenmiş değer 2, bölüm 1: değer boş olamaz",
         "Bir izleme en az bir algılayıcı değerlendirir",
         "an old reason with no code",
       ],
@@ -354,7 +354,7 @@ describe("a refused draft", () => {
     const list = await screen.findByRole("alert", { name: "Sunucu doğrulama nedenleri" });
     await waitFor(() =>
       expect(
-        within(list).getByText("Sabitlenmiş değer 2, bölüm 1: Değer boş olamaz"),
+        within(list).getByText("Sabitlenmiş değer 2, bölüm 1: değer boş olamaz"),
       ).toBeInTheDocument(),
     );
     expect(within(list).getByText("an old reason with no code")).toBeInTheDocument();

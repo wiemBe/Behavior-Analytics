@@ -322,6 +322,102 @@ _WAF_NOVELTY_CAUSES = (
 )
 
 
+# Shorthands and reference groups of the MSG-6b block (IPS anomaly sentences, Family 5). The IPS
+# twins of the WAF sentences reuse a `waf.*` code only where the English and the parameters are
+# identical (scopes, the z basis, percent bases, the ratio guards, five history checks).
+_GROUPED0 = ParamSpec(ParamKind.NUMBER, style="grouped", precision=0)
+_IPS_AT = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
+
+_IPS_LABELS = (
+    "ips.label.destination_port",
+    "ips.label.destination_ip",
+    "ips.label.signature",
+    "ips.label.port_fanout",
+    "ips.label.destination_port_hyphenated",
+    "ips.label.source_ip_hyphenated",
+    "ips.label.action",
+)
+
+#: What an entity spike is about: the dimension's noun.
+_IPS_SUBJECT_KINDS = (
+    "ips.label.destination_port",
+    "ips.label.destination_ip",
+    "ips.label.signature",
+)
+
+_IPS_SUBJECTS = ("ips.subject.named", "ips.subject.busiest_fanout")
+
+_IPS_STATES = (
+    "ips.state.not_collected",
+    "ips.state.failed",
+    "ips.state.rejected",
+    "ips.state.lower_bound",
+)
+
+#: The `role` each declared input requirement carries (`app.anomaly.capabilities`).
+_IPS_ROLES = (
+    "ips.role.volume",
+    "ips.role.coverage",
+    "ips.role.history",
+    "ips.role.materiality",
+    "ips.role.largest_contributor",
+    "ips.role.total",
+    "ips.role.largest_fanout",
+    "ips.role.destination_port_coverage",
+    "ips.role.numerator",
+    "ips.role.denominator",
+)
+
+#: Why a scope is narrower than full: the scope decision, optionally led by the input's role.
+_IPS_SCOPES = (*_WAF_SCOPES, "ips.scope.role")
+
+_IPS_NOUNS = ("ips.noun.events", "ips.noun.distinct_ports")
+
+_IPS_RATIO_TEXTS = ("waf.rate.ratio_multiple", "ips.spike.ratio_none")
+
+#: The bases a firing sentence ends with: the z basis and the two p95 fallbacks (events, share).
+_IPS_BASES = (
+    "waf.basis.z",
+    "ips.basis.mad_above_p95_events",
+    "waf.basis.mad_above_p95",
+)
+
+#: The guard sentences a lower bound may wrap ("...; the count is a lower bound (...)").
+_IPS_NOT_PROVEN = (
+    "ips.spike.below_min",
+    "waf.rate.ratio_not_reached",
+    "ips.spike.delta_below_min",
+    "waf.basis.z_not_reached",
+    "ips.basis.mad_within_p95_events",
+    "waf.basis.mad_within_p95",
+    "ips.concentration.top_below_min",
+    "waf.concentration.rise_below_min",
+    "ips.block.numerator_below_min",
+    "waf.ratio.rise_below_min",
+    "waf.ratio.multiple_below_min",
+)
+
+_IPS_HISTORY_CHECKS = (
+    "waf.history_check.not_divisible",
+    "waf.history_check.never_collected",
+    "waf.history_check.record_count",
+    "waf.history_check.bucket_width",
+    "waf.history_check.profile_version",
+    "waf.history_check.appearance_never_collected",
+    "ips.history_check.port_search_not_exact",
+    "ips.history_check.coverage_low",
+    "ips.history_check.admission_unrecorded",
+    "ips.history_check.normalizer_version",
+    "ips.history_check.maintenance",
+    "ips.history_check.not_loaded",
+    "ips.history_check.before_hand_off",
+)
+
+_IPS_NOVELTY_CAUSES = (*_IPS_HISTORY_CHECKS, "waf.novelty.history_incomplete")
+
+_IPS_BELOW_MATERIALITY = ("ips.novelty.below_materiality",)
+
+
 # Shorthands of the MSG-5 block (Phase A detector sentences and lifecycle transition reasons).
 _A_COMPLETENESS = ParamSpec(ParamKind.ENUM, enum_group="bucketCompleteness", style="lower")
 _A_RATIO_TEXTS = (
@@ -3424,6 +3520,598 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # Suppression.
     _msg("waf.suppression.maintenance_window", "maintenance window"),
     # --- end MSG-6 ---------------------------------------------------------------------------
+    # --- MSG-6b: IPS anomaly sentences (Family 5) -- keep contiguous -------------------------
+    # The dimension nouns a spike names and a guard refuses on.
+    _msg("ips.label.destination_port", "destination port"),
+    _msg("ips.label.destination_ip", "destination IP"),
+    _msg("ips.label.signature", "signature"),
+    _msg("ips.label.port_fanout", "port fan-out"),
+    _msg("ips.label.destination_port_hyphenated", "destination-port"),
+    _msg("ips.label.source_ip_hyphenated", "source-IP"),
+    _msg("ips.label.action", "action"),
+    # What a dimension's search was (`IpsDimensionFacts.state`).
+    _msg("ips.state.not_collected", "not collected"),
+    _msg("ips.state.failed", "failed"),
+    _msg("ips.state.rejected", "rejected"),
+    _msg("ips.state.lower_bound", "lower_bound"),
+    # The metric nouns of a spike, and the entity or source it is about.
+    _msg("ips.noun.events", "events"),
+    _msg("ips.noun.distinct_ports", "distinct ports"),
+    _msg(
+        "ips.subject.named",
+        "{kind} {name}",
+        {"kind": ParamSpec(ParamKind.REF, ref_codes=_IPS_SUBJECT_KINDS), "name": _TEXT},
+        {"kind": MessageRef("ips.label.destination_port"), "name": "443/tcp"},
+    ),
+    _msg("ips.subject.busiest_fanout", "the busiest source IP's distinct ports"),
+    # The role of a declared input (`app.anomaly.capabilities`), which leads its scope reason.
+    _msg("ips.role.volume", "volume"),
+    _msg("ips.role.coverage", "coverage"),
+    _msg("ips.role.history", "history"),
+    _msg("ips.role.materiality", "materiality"),
+    _msg("ips.role.largest_contributor", "largest contributor"),
+    _msg("ips.role.total", "total"),
+    _msg("ips.role.largest_fanout", "largest fan-out"),
+    _msg("ips.role.destination_port_coverage", "destination-port coverage"),
+    _msg("ips.role.numerator", "numerator"),
+    _msg("ips.role.denominator", "denominator"),
+    _msg(
+        "ips.scope.role",
+        "{role}: {reason}",
+        {
+            "role": ParamSpec(ParamKind.REF, ref_codes=_IPS_ROLES),
+            "reason": ParamSpec(ParamKind.REF, ref_codes=_WAF_SCOPES),
+        },
+        {
+            "role": MessageRef("ips.role.volume"),
+            "reason": MessageRef("waf.scope.lower_bound_increase"),
+        },
+    ),
+    # Guards shared by every IPS detector.
+    _msg("ips.guard.maintenance", "the source was in maintenance during this bucket"),
+    _msg(
+        "ips.guard.dimension_unmeasured",
+        "the {label} search was {state} for this bucket: the value is unavailable, not zero",
+        {
+            "label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS),
+            "state": ParamSpec(ParamKind.REF, ref_codes=_IPS_STATES),
+        },
+        {
+            "label": MessageRef("ips.label.destination_port"),
+            "state": MessageRef("ips.state.failed"),
+        },
+    ),
+    _msg(
+        "ips.guard.coverage_unmeasurable",
+        "{label} coverage was not measurable, below the {floor} floor: the events without a "
+        "value may differ in kind from the ones with one, so the visible numbers bound nothing",
+        {"label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS), "floor": _PERCENT},
+        {"label": MessageRef("ips.label.destination_port"), "floor": 0.9},
+    ),
+    _msg(
+        "ips.guard.coverage_low",
+        "{label} coverage was {covered}, below the {floor} floor: the events without a "
+        "value may differ in kind from the ones with one, so the visible numbers bound nothing",
+        {
+            "label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS),
+            "covered": _PERCENT,
+            "floor": _PERCENT,
+        },
+        {"label": MessageRef("ips.label.destination_port"), "covered": 0.62, "floor": 0.9},
+    ),
+    _msg(
+        "ips.guard.no_entity",
+        "no {label} entity was supplied for this verdict",
+        {"label": ParamSpec(ParamKind.REF, ref_codes=_IPS_LABELS)},
+        {"label": MessageRef("ips.label.destination_port")},
+    ),
+    _msg(
+        "ips.guard.entity_not_judged",
+        "a {dimension} entity is not judged by {detector}",
+        {"dimension": _TEXT, "detector": _TEXT},
+        {"dimension": "DESTINATION_IP", "detector": "IPS_PORT_RATE_SPIKE"},
+    ),
+    _msg(
+        "ips.guard.absent_port",
+        "port 0 and protocol 255 are absent values, not a service: no claim about them",
+    ),
+    _msg(
+        "ips.guard.generic_signature",
+        "the signature's name is generic: a claim about a specific signature is not safe",
+    ),
+    _msg("ips.guard.count_unknown", "the entity's count is unknown for this bucket"),
+    _msg(
+        "ips.guard.fanout_unstated",
+        "the bucket does not state its largest distinct-port count",
+    ),
+    _msg("ips.guard.source_totals_unstated", "the bucket does not state its source-IP totals"),
+    _msg("ips.guard.action_unmapped", "no action property mapped"),
+    _msg(
+        "ips.guard.action_counts_unstated",
+        "the bucket does not state its blocked and action event counts",
+    ),
+    _msg(
+        "ips.guard.baseline_versions",
+        "the {metric} baseline was built under profile version {profile} and normalizer "
+        "version {normalizer}, not the bucket's {bucket_profile} and {bucket_normalizer}",
+        {
+            "metric": _TEXT,
+            "profile": _TEXT,
+            "normalizer": _TEXT,
+            "bucket_profile": _TEXT,
+            "bucket_normalizer": _TEXT,
+        },
+        {
+            "metric": "entity_events",
+            "profile": "3",
+            "normalizer": "2",
+            "bucket_profile": "4",
+            "bucket_normalizer": "2",
+        },
+    ),
+    _msg(
+        "ips.guard.baseline_samples",
+        "the {metric} baseline has {samples} sample(s), below the minimum of {minimum} for a "
+        "defensible verdict",
+        {"metric": _TEXT, "samples": _PLAIN, "minimum": _PLAIN},
+        {"metric": "entity_events", "samples": 7, "minimum": 8},
+    ),
+    _msg(
+        "ips.guard.not_proven_lower_bound",
+        "{reason}; the count is a lower bound ({scope}), so a normal verdict cannot be "
+        "concluded from it",
+        {
+            "reason": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOT_PROVEN),
+            "scope": ParamSpec(ParamKind.REF, ref_codes=_IPS_SCOPES),
+        },
+        {
+            "reason": MessageRef("waf.basis.z_not_reached", {"score": 2.1, "threshold": 3.5}),
+            "scope": MessageRef("waf.scope.lower_bound_increase"),
+        },
+    ),
+    # Entity spikes (port, destination IP, signature) and the port fan-out.
+    _msg(
+        "ips.spike.below_min",
+        "{observed} {unit}/bucket is below the {minimum} minimum for a defensible verdict",
+        {
+            "observed": _GROUPED0,
+            "unit": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOUNS),
+            "minimum": _GROUPED0,
+        },
+        {"observed": 12.0, "unit": MessageRef("ips.noun.events"), "minimum": 20.0},
+    ),
+    _msg(
+        "ips.spike.delta_below_min",
+        "increase of {delta} {unit}/bucket is below the {minimum} minimum absolute delta",
+        {
+            "delta": _GROUPED0,
+            "unit": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOUNS),
+            "minimum": _GROUPED0,
+        },
+        {"delta": 30.0, "unit": MessageRef("ips.noun.events"), "minimum": 50.0},
+    ),
+    _msg("ips.spike.ratio_none", "expected none"),
+    _msg(
+        "ips.spike.fired",
+        "{observed} {unit} for {subject} is above the baseline median {expected} "
+        "({ratio_text}, +{delta} {unit}/bucket); {basis}",
+        {
+            "observed": _GROUPED0,
+            "unit": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOUNS),
+            "subject": ParamSpec(ParamKind.REF, ref_codes=_IPS_SUBJECTS),
+            "expected": _FIXED1,
+            "ratio_text": ParamSpec(ParamKind.REF, ref_codes=_IPS_RATIO_TEXTS),
+            "delta": _GROUPED0,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "observed": 1520.0,
+            "unit": MessageRef("ips.noun.events"),
+            "subject": MessageRef(
+                "ips.subject.named",
+                {"kind": MessageRef("ips.label.destination_port"), "name": "443/tcp"},
+            ),
+            "expected": 100.0,
+            "ratio_text": MessageRef("waf.rate.ratio_multiple", {"ratio": 15.2}),
+            "delta": 1420.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "ips.spike.fired_lower",
+        "at least {observed} {unit} (a lower bound: {scope}) for {subject} is above the "
+        "baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}",
+        {
+            "observed": _GROUPED0,
+            "unit": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOUNS),
+            "scope": ParamSpec(ParamKind.REF, ref_codes=_IPS_SCOPES),
+            "subject": ParamSpec(ParamKind.REF, ref_codes=_IPS_SUBJECTS),
+            "expected": _FIXED1,
+            "ratio_text": ParamSpec(ParamKind.REF, ref_codes=_IPS_RATIO_TEXTS),
+            "delta": _GROUPED0,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "observed": 1520.0,
+            "unit": MessageRef("ips.noun.events"),
+            "scope": MessageRef(
+                "ips.scope.role",
+                {
+                    "role": MessageRef("ips.role.volume"),
+                    "reason": MessageRef("waf.scope.lower_bound_increase"),
+                },
+            ),
+            "subject": MessageRef(
+                "ips.subject.named",
+                {"kind": MessageRef("ips.label.destination_port"), "name": "443/tcp"},
+            ),
+            "expected": 100.0,
+            "ratio_text": MessageRef("waf.rate.ratio_multiple", {"ratio": 15.2}),
+            "delta": 1420.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    # The score guard over an event count (a share uses the `waf.basis.*` sentences).
+    _msg(
+        "ips.basis.mad_within_p95_events",
+        "robust score unavailable (MAD=0) and {observed} is within the historical p95 {bound}",
+        {"observed": _GROUPED0, "bound": _GROUPED0},
+        {"observed": 310.0, "bound": 350.0},
+    ),
+    _msg(
+        "ips.basis.mad_above_p95_events",
+        "robust score unavailable (MAD=0); {observed} is above the historical p95 {bound}",
+        {"observed": _GROUPED0, "bound": _GROUPED0},
+        {"observed": 410.0, "bound": 350.0},
+    ),
+    # Source concentration.
+    _msg(
+        "ips.concentration.top_below_min",
+        "the largest source IP sent {top} events, below the {minimum} minimum for a material "
+        "concentration",
+        {"top": _PLAIN, "minimum": _PLAIN},
+        {"top": 15, "minimum": 20},
+    ),
+    _msg(
+        "ips.concentration.total_below_min",
+        "{total} events is below the {minimum} minimum for a composition verdict",
+        {"total": _PLAIN, "minimum": _PLAIN},
+        {"total": 40, "minimum": 50},
+    ),
+    _msg(
+        "ips.concentration.fired",
+        "the largest source IP sent {top} of {total} events ({share}), against an expected "
+        "share of {expected} ({rise}); the five largest sent {top5}; {basis}",
+        {
+            "top": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "rise": _POINTS1,
+            "top5": _PCT1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "top": 70,
+            "total": 100,
+            "share": 0.7,
+            "expected": 0.1,
+            "rise": 0.6,
+            "top5": 0.95,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "ips.concentration.fired_no_top5",
+        "the largest source IP sent {top} of {total} events ({share}), against an expected "
+        "share of {expected} ({rise}); the five largest sent n/a; {basis}",
+        {
+            "top": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "rise": _POINTS1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "top": 70,
+            "total": 100,
+            "share": 0.7,
+            "expected": 0.1,
+            "rise": 0.6,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    # Block-ratio shift.
+    _msg(
+        "ips.block.numerator_below_min",
+        "{count} blocked events is below the {minimum} minimum; no material rise in the "
+        "proportion is possible",
+        {"count": _PLAIN, "minimum": _PLAIN},
+        {"count": 5, "minimum": 10},
+    ),
+    _msg(
+        "ips.block.denominator_below_min",
+        "{count} events carrying an action is below the {minimum} minimum denominator for a "
+        "ratio verdict",
+        {"count": _PLAIN, "minimum": _PLAIN},
+        {"count": 40, "minimum": 50},
+    ),
+    _msg(
+        "ips.block.fired",
+        "{count} of {total} events carrying an action were blocked ({share}), against an "
+        "expected {expected} from {history} historical events ({rise}, {multiple}x); {basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "multiple": _FIXED1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "count": 60,
+            "total": 100,
+            "share": 0.6,
+            "expected": 0.1,
+            "history": 1200.0,
+            "rise": 0.5,
+            "multiple": 6.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "ips.block.fired_no_multiple",
+        "{count} of {total} events carrying an action were blocked ({share}), against an "
+        "expected {expected} from {history} historical events ({rise}); {basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "count": 60,
+            "total": 100,
+            "share": 0.6,
+            "expected": 0.0,
+            "history": 1200.0,
+            "rise": 0.6,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "ips.block.fired_lower",
+        "at least {count} of {total} events carrying an action were blocked (at least "
+        "{share}), against an expected {expected} from {history} historical events ({rise}, "
+        "{multiple}x); {basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "multiple": _FIXED1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "count": 60,
+            "total": 100,
+            "share": 0.6,
+            "expected": 0.1,
+            "history": 1200.0,
+            "rise": 0.5,
+            "multiple": 6.0,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    _msg(
+        "ips.block.fired_lower_no_multiple",
+        "at least {count} of {total} events carrying an action were blocked (at least "
+        "{share}), against an expected {expected} from {history} historical events ({rise}); "
+        "{basis}",
+        {
+            "count": _PLAIN,
+            "total": _PLAIN,
+            "share": _PCT1,
+            "expected": _PCT1,
+            "history": _FIXED0,
+            "rise": _POINTS1,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_IPS_BASES),
+        },
+        {
+            "count": 60,
+            "total": 100,
+            "share": 0.6,
+            "expected": 0.0,
+            "history": 1200.0,
+            "rise": 0.6,
+            "basis": MessageRef("waf.basis.z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    # New destination port.
+    _msg("ips.novelty.not_established", "the port's first appearance was not established"),
+    _msg(
+        "ips.novelty.established_outside_window",
+        "established port: first admitted {first_seen}, outside the {buckets}-bucket novelty "
+        "window",
+        {"first_seen": _ISO, "buckets": _PLAIN},
+        {"first_seen": _IPS_AT, "buckets": 12},
+    ),
+    _msg(
+        "ips.novelty.established_hand_off",
+        "established port: first admitted {first_seen}, before history hand-off {hand_off}",
+        {"first_seen": _ISO, "hand_off": _ISO},
+        {"first_seen": _IPS_AT, "hand_off": _IPS_AT + timedelta(days=1)},
+    ),
+    _msg(
+        "ips.novelty.readmitted",
+        "re-admitted port: it was retired and seen again, so it is not new",
+    ),
+    _msg(
+        "ips.novelty.cannot_establish",
+        "novelty cannot be established: {cause}",
+        {"cause": ParamSpec(ParamKind.REF, ref_codes=_IPS_NOVELTY_CAUSES)},
+        {"cause": MessageRef("waf.history_check.not_divisible")},
+    ),
+    _msg(
+        "ips.novelty.flood_discovery",
+        "the first-appearance bucket's destination-port discovery was incomplete: the port "
+        "cannot be told apart from a flood of new ports",
+    ),
+    _msg(
+        "ips.novelty.flood_admission",
+        "the first-appearance bucket's destination-port admission was truncated: the port "
+        "appeared in a flood of new ports and is not individually new",
+    ),
+    _msg(
+        "ips.novelty.below_materiality",
+        "{events} event(s) in {buckets} bucket(s) since first appearance has not reached "
+        "{min_events} events in {min_buckets} buckets",
+        {"events": _PLAIN, "buckets": _PLAIN, "min_events": _PLAIN, "min_buckets": _PLAIN},
+        {"events": 5, "buckets": 1, "min_events": 20, "min_buckets": 2},
+    ),
+    _msg(
+        "ips.novelty.below_materiality_lower",
+        "{reason}; the counts are lower bounds",
+        {"reason": ParamSpec(ParamKind.REF, ref_codes=_IPS_BELOW_MATERIALITY)},
+        {
+            "reason": MessageRef(
+                "ips.novelty.below_materiality",
+                {"events": 5, "buckets": 1, "min_events": 20, "min_buckets": 2},
+            )
+        },
+    ),
+    _msg(
+        "ips.novelty.fired",
+        "destination port {port} carried {events} events across {buckets} buckets since it "
+        "first appeared at {first_seen}; in the verified history {history_start} to "
+        "{history_end} it stayed below {admission} events in every bucket",
+        {
+            "port": _TEXT,
+            "events": _PLAIN,
+            "buckets": _PLAIN,
+            "first_seen": _ISO,
+            "history_start": _ISO,
+            "history_end": _ISO,
+            "admission": _PLAIN,
+        },
+        {
+            "port": "443/tcp",
+            "events": 30,
+            "buckets": 2,
+            "first_seen": _IPS_AT,
+            "history_start": _IPS_AT - timedelta(days=7),
+            "history_end": _IPS_AT,
+            "admission": 3,
+        },
+    ),
+    _msg(
+        "ips.novelty.fired_lower",
+        "destination port {port} carried at least {events} events across {buckets} buckets "
+        "since it first appeared at {first_seen}; in the verified history {history_start} to "
+        "{history_end} it stayed below {admission} events in every bucket",
+        {
+            "port": _TEXT,
+            "events": _PLAIN,
+            "buckets": _PLAIN,
+            "first_seen": _ISO,
+            "history_start": _ISO,
+            "history_end": _ISO,
+            "admission": _PLAIN,
+        },
+        {
+            "port": "443/tcp",
+            "events": 30,
+            "buckets": 2,
+            "first_seen": _IPS_AT,
+            "history_start": _IPS_AT - timedelta(days=7),
+            "history_end": _IPS_AT,
+            "admission": 3,
+        },
+    ),
+    # What the history behind a new-port claim can fail on (`waf.history_check.*` covers the
+    # checks the endpoint and the port share).
+    _msg(
+        "ips.history_check.port_search_not_exact",
+        "history bucket {bucket} had a destination-port search that was {state}, not exact",
+        {"bucket": _ISO, "state": ParamSpec(ParamKind.REF, ref_codes=_IPS_STATES)},
+        {"bucket": _IPS_AT, "state": MessageRef("ips.state.failed")},
+    ),
+    _msg(
+        "ips.history_check.coverage_low",
+        "history bucket {bucket} had destination-port coverage below the {floor} floor",
+        {"bucket": _ISO, "floor": _PERCENT},
+        {"bucket": _IPS_AT, "floor": 0.9},
+    ),
+    _msg(
+        "ips.history_check.admission_unrecorded",
+        "history bucket {bucket} had truncated or unrecorded destination-port admission",
+        {"bucket": _ISO},
+        {"bucket": _IPS_AT},
+    ),
+    _msg(
+        "ips.history_check.normalizer_version",
+        "history bucket {bucket} is incompatible with normalizer version {version}",
+        {"bucket": _ISO, "version": _PLAIN},
+        {"bucket": _IPS_AT, "version": 2},
+    ),
+    _msg(
+        "ips.history_check.maintenance",
+        "history bucket {bucket} was in maintenance",
+        {"bucket": _ISO},
+        {"bucket": _IPS_AT},
+    ),
+    _msg("ips.history_check.not_loaded", "history was not loaded for an established port"),
+    _msg(
+        "ips.history_check.before_hand_off",
+        "the port was first admitted before the history hand-off at {hand_off}",
+        {"hand_off": _ISO},
+        {"hand_off": _IPS_AT},
+    ),
+    # The fixed interpretive caveats, one per detector.
+    _msg(
+        "ips.caveat.port_rate",
+        "More events on a port describe traffic volume, not intent: a scan, a deployment and "
+        "a misconfigured client look alike here.",
+    ),
+    _msg(
+        "ips.caveat.destination_rate",
+        "More events towards a destination describe traffic volume, not an attack on it.",
+    ),
+    _msg(
+        "ips.caveat.signature_burst",
+        "A burst of one signature describes how often the IPS matched it, not that the "
+        "matched activity succeeded.",
+    ),
+    _msg(
+        "ips.caveat.port_fanout",
+        "Many distinct destination ports from one source IP is a traffic shape, not an "
+        "attack verdict: a scan, a vulnerability assessment and a service that rotates "
+        "ports look alike.",
+    ),
+    _msg(
+        "ips.caveat.source_concentration",
+        "A dominant source IP describes traffic composition, not intent. Behind a proxy or "
+        "NAT it is the intermediary's address.",
+    ),
+    _msg(
+        "ips.caveat.block_ratio",
+        "Blocking is judged through the profile's action map. A higher block ratio describes "
+        "the IPS's decisions; it does not establish that an attack succeeded.",
+    ),
+    _msg(
+        "ips.caveat.new_port",
+        "A newly busy destination port may be a deployment as easily as a probe. The "
+        "contributors are the bucket's busiest source IPs, not necessarily this port's.",
+    ),
+    # --- end MSG-6b --------------------------------------------------------------------------
     # --- MSG-8b: search scheduling, the manual-run budget refusal and run results -- keep
     # contiguous ---
     # The cron floor. The cron and the timezone are shown as the user wrote them (the cron

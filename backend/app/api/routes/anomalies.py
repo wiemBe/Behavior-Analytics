@@ -502,6 +502,8 @@ async def _ips_detail(
         suppressed=anomaly.suppressed,
         observed_measurement=str(anomaly.observed_measurement),
         explanation=anomaly.explanation,
+        explanation_code=anomaly.explanation_code,
+        explanation_params=anomaly.explanation_params,
         baseline_version=anomaly.baseline_version,
         policy_version=anomaly.policy_version,
         transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
