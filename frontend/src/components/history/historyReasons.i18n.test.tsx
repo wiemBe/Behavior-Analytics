@@ -134,7 +134,7 @@ describe("the sentences of the history codes in Turkish", () => {
       }),
     ).toBe(
       "8.640 zaman dilimi okundu; genişlik 576 zaman dilimi; boşluk kaydedildi: " +
-        "Arama en küçük genişlikte 3 kez başarısız oldu",
+        "arama en küçük genişlikte 3 kez başarısız oldu",
     );
   });
 
