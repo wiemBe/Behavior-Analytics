@@ -457,5 +457,121 @@
       "built_in_edit": "Yerleşik bir kural yalnızca açılıp kapatılabilir",
       "built_in_delete": "Yerleşik bir kural silinemez; bunun yerine kapatın"
     }
+  },
+  "waf": {
+    "basis": {
+      "mad_above_p95": "MAD=0 olduğundan robust skor kullanılamıyor; {observed}, geçmiş p95 değeri olan {bound} sınırının üzerinde",
+      "mad_outside_band": "MAD=0 olduğundan robust skor kullanılamıyor; gözlenen değer beklenen [{lower}, {upper}] aralığının dışında",
+      "mad_within_p95": "MAD=0 olduğundan robust skor kullanılamıyor ve {observed}, geçmiş p95 değeri olan {bound} sınırının içinde",
+      "z": "robust z={score} (eşik +{threshold})",
+      "z_not_reached": "Robust z={score}, +{threshold} değerine ulaşmadı"
+    },
+    "caveat": {
+      "block_ratio": "Engelleme, profilin eylem eşlemesi üzerinden değerlendirilir. Daha yüksek bir engelleme oranı WAF kararlarını tanımlar; bir saldırının başarılı olduğunu göstermez.",
+      "client_concentration": "Baskın bir kaynak IP trafik bileşimini tanımlar; niyeti değil.",
+      "client_error_ratio": "HTTP 4xx yanıtları yanıt kodlarıdır, WAF kararları değildir: 403 tek başına bir engelleme sayılmaz ve WAF engellemesi ayrıca raporlanır.",
+      "new_endpoint": "Yeni istenen bir endpoint, bir yoklama kadar kolayca bir dağıtım da olabilir.",
+      "server_error_ratio": "HTTP 5xx yanıtları sunucu tarafındaki hataları tanımlar. Trafiğin kötü amaçlı olduğunu göstermez."
+    },
+    "concentration": {
+      "attributed_low": "Endpoint isteklerinin yalnızca {covered} kadarı bir kaynak IP'ye atfedildi; bu, {floor} coverage tabanının altında",
+      "endpoint_below_min": "{count} istek, bileşim kararı için gereken {minimum} asgari değerin altında",
+      "fired": "En büyük kaynak IP, {subject} için {top} / {total} isteği gönderdi ({share}); beklenen pay {expected} idi ({rise}); en büyük beş kaynak {top5} gönderdi; {volume}; {basis}",
+      "rise_below_min": "En büyük kaynak IP'nin payı {share}, beklenen {expected} payından {rise} farklı; bu, {minimum} asgari artışın altında",
+      "top_below_min": "En büyük kaynak IP {top} istek gönderdi; bu, anlamlı bir yoğunlaşma için gereken {minimum} asgari değerin altında",
+      "volume_no_baseline": "endpoint hacmi {requests} istek (güvenilir bir hacim baseline'ı yok)",
+      "volume_with_baseline": "endpoint hacmi {requests} istek, beklenen {expected}"
+    },
+    "guard": {
+      "baseline_no_denominator": "{metric} baseline'ında birleştirilmiş payda yok",
+      "baseline_samples": "{metric} baseline'ı {samples} anlamlı zaman dilimi içeriyor; bu, savunulabilir bir karar için gereken asgari değerin altında",
+      "breakdown_failed": "{breakdown} dökümü bu zaman dilimi için başarısız oldu: değer kullanılamıyor, sıfır değil",
+      "breakdown_not_collected": "{breakdown} dökümü bu zaman dilimi için toplanmadı: değer kullanılamıyor, sıfır değil",
+      "no_baseline": "Haftanın bu günü ve saati hücresi için henüz {metric} baseline'ı yok",
+      "not_proven_lower_bound": "{reason}; oranın payı bir alt sınırdır ({scope}), bu nedenle ondan normal bir karar çıkarılamaz",
+      "source_coverage_low": "Bu kaynağın olaylarının yalnızca {covered} kadarı bir endpoint'e ayrıştırıldı; bu, {floor} coverage tabanının altında: ayrıştırılmayan istekler ayrıştırılanlardan farklı türde olabilir, bu yüzden görünen oran hiçbir şeyi sınırlamaz"
+    },
+    "history_check": {
+      "admission_truncated": "{bucket} geçmiş zaman diliminde endpoint kabulü kırpıldı",
+      "appearance_never_collected": "ilk görünme zaman dilimi hiç toplanmadı",
+      "appearance_no_profile": "ilk görünme zaman diliminde profil sürümü yok",
+      "appearance_normalizer": "ilk görünme zaman dilimi {version} normalizer sürümüyle uyumsuz",
+      "bucket_width": "{bucket} geçmiş zaman dilimi farklı bir toplama zaman dilimi genişliği kullandı",
+      "discovery_truncated": "{bucket} geçmiş zaman diliminde endpoint keşfi kırpıldı",
+      "never_collected": "{missing} / {expected} geçmiş zaman dilimi hiç toplanmadı",
+      "normalizer_version": "{bucket} geçmiş zaman dilimi {version} normalizer sürümüyle uyumsuz",
+      "not_divisible": "geçmiş penceresi toplama zaman dilimi genişliğine tam bölünmüyor",
+      "not_loaded": "yerleşik bir endpoint için geçmiş yüklenmedi",
+      "profile_version": "{bucket} geçmiş zaman dilimi {found} profil sürümünü kullandı; ilk görünme sürümü {expected} idi",
+      "record_count": "geçmiş, beklenen {expected} zaman dilimi için {records} zaman dilimi kaydı içeriyor"
+    },
+    "noun": {
+      "blocked_requests": "engellenen istekler",
+      "http_4xx": "HTTP 4xx yanıtları",
+      "http_5xx": "HTTP 5xx yanıtları",
+      "response_code_requests": "yanıt kodu taşıyan istekler",
+      "waf_action_requests": "WAF eylemi taşıyan istekler"
+    },
+    "novelty": {
+      "below_materiality": "İlk göründüğünden bu yana {buckets} zaman diliminde {requests} istek, {min_buckets} zaman diliminde {min_requests} isteğe ulaşmadı",
+      "below_materiality_lower": "{reason}; sayımlar alt sınırdır",
+      "cannot_establish": "Yenilik belirlenemiyor: {cause}",
+      "established_hand_off": "Yerleşik endpoint: ilk olarak {first_seen} tarihinde kabul edildi; bu, geçmiş devri olan {hand_off} tarihinden önce",
+      "established_outside_window": "Yerleşik endpoint: ilk olarak {first_seen} tarihinde kabul edildi; {buckets} zaman dilimlik yenilik penceresinin dışında",
+      "fired": "İlk göründüğü {first_seen} tarihinden bu yana {subject}, {buckets} zaman diliminde {requests} istek aldı; doğrulanmış {history_start} – {history_end} geçmişinde bir zaman diliminde hiçbir zaman {admission} veya daha fazla kez istenmedi",
+      "fired_lower": "İlk göründüğü {first_seen} tarihinden bu yana {subject}, {buckets} zaman diliminde en az {requests} istek aldı; doğrulanmış {history_start} – {history_end} geçmişinde bir zaman diliminde hiçbir zaman {admission} veya daha fazla kez istenmedi",
+      "flood_admission": "Endpoint kabulü, ilk görünme zaman diliminde kırpıldı",
+      "flood_discovery": "Endpoint keşfi, ilk görünme zaman diliminde kırpıldı",
+      "history_incomplete": "geçmiş eksik",
+      "not_established": "Endpoint'in ilk görünümü belirlenemedi"
+    },
+    "rate": {
+      "baseline_samples": "Baseline'da {samples} örnek var; bu, savunulabilir bir karar için gereken asgari değerin altında",
+      "below_min_volume": "{observed} istek/zaman dilimi, savunulabilir bir karar için gereken {minimum} asgari değerin altında",
+      "bucket_not_whole": "Zaman dilimi {completeness}; bütün bir gözlem sayılmaz",
+      "coverage_low": "Bu kaynağın olaylarının yalnızca {covered} kadarı bu zaman diliminde ayrıştırılabilir bir endpoint taşıdı",
+      "delta_below_min": "{delta} istek/zaman dilimi artış, {minimum} asgari mutlak farkın altında",
+      "fired": "{observed} istek, baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} istek/zaman dilimi); {basis}",
+      "fired_lower": "En az {observed} istek (alt sınır: {scope}), baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} istek/zaman dilimi); {basis}",
+      "mad_within_band": "MAD=0 olduğundan robust skor kullanılamıyor ve gözlenen değer beklenen [{lower}, {upper}] aralığının içinde",
+      "no_baseline": "Haftanın bu günü ve saati hücresi için henüz istek hızı baseline'ı yok",
+      "not_proven_lower_bound": "En az {observed} istek bu endpoint'e atfedildi, ancak sayım bir alt sınırdır ve {reason}; alt sınırdan normal bir karar çıkarılamaz",
+      "ratio_multiple": "beklenenin {ratio}x katı",
+      "ratio_none": "hiç trafik beklenmiyordu",
+      "ratio_not_reached": "{ratio} olan gözlenen/beklenen oran, {threshold} değerine ulaşmadı",
+      "z_not_reached": "z={score} robust skoru, +{threshold} eşiğine ulaşmadı"
+    },
+    "ratio": {
+      "denominator_below_min": "{count} {noun}, oran kararı için gereken {minimum} asgari paydanın altında",
+      "field_coverage_low": "Endpoint isteklerinin yalnızca {covered} kadarı {field} alanını taşıdı; bu, {floor} coverage tabanının altında",
+      "fired": "{count} / {total} {denominator}, {subject} için {numerator} idi ({share}); {history} geçmiş istekten beklenen oran {expected} idi ({rise}, {multiple}x); {basis}",
+      "fired_lower": "En az {count} / {total} {denominator}, {subject} için {numerator} idi (en az {share}); {history} geçmiş istekten beklenen oran {expected} idi ({rise}, {multiple}x); {basis}",
+      "fired_lower_no_multiple": "En az {count} / {total} {denominator}, {subject} için {numerator} idi (en az {share}); {history} geçmiş istekten beklenen oran {expected} idi ({rise}); {basis}",
+      "fired_no_multiple": "{count} / {total} {denominator}, {subject} için {numerator} idi ({share}); {history} geçmiş istekten beklenen oran {expected} idi ({rise}); {basis}",
+      "multiple_below_min": "{observed}, beklenen {expected} değerinin {multiple}x katı; bu, {minimum}x değerinin altında",
+      "numerator_below_min": "{count} {noun}, {minimum} asgari değerin altında; oranda anlamlı bir artış mümkün değil",
+      "rise_below_min": "{observed}, beklenen {expected} değerinden {rise} farklı; bu, {minimum} asgari artışın altında"
+    },
+    "scope": {
+      "composition_exact": "Bileşim kararı için kesin ölçümler gerekir",
+      "inputs_unsupported": "Girdiler bir karara izin vermiyor",
+      "lower_bound_increase": "Sayım bir alt sınırdır: artış kanıtlanabilir, normal davranış kanıtlanamaz",
+      "needs_exact": "Algılayıcı kesin sayımlar gerektirir ve bu sayım bir alt sınırdır",
+      "unattributed": "Bazı olaylar atfedilemedi",
+      "unclassified": "Bazı değerler sınıflandırılamadı",
+      "unstated": "Zaman dilimi, sayımlarının kesin mi yoksa alt sınır mı olduğunu belirtmiyor"
+    },
+    "semantics": {
+      "baseline_unidentified": "Baseline hücresinin metrik-semantik kimliği yok; yeniden oluşturulması gerekir",
+      "bucket_unidentified": "Zaman diliminin metrik-semantik kimliği yok; kimlikler kaydedilmeden önce toplandı ve değerlendirilemez",
+      "mismatch": "Baseline ''{baseline}'' altında oluşturuldu, ancak zaman dilimi ''{bucket}'' altında toplandı; yeniden oluşturulması gerekir"
+    },
+    "subject": {
+      "named": "{method} {endpoint}",
+      "this_endpoint": "bu endpoint"
+    },
+    "suppression": {
+      "maintenance_window": "Bakım penceresi"
+    }
   }
 }

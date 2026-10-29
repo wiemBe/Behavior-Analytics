@@ -60,6 +60,8 @@ const IDENTICAL_ALLOWLIST = new Set([
   "widgets.propertyWatch.coverageBadge",
   // MSG-3: a dependency's QRadar name is passed through verbatim in both locales.
   "backend.rule_health.label.named",
+  // MSG-6: the method and the normalized endpoint, both verbatim in both locales.
+  "backend.waf.subject.named",
   "common.product",
   "customRules.authoring.subjectKinds.LOG_SOURCE",
   "customRules.authoring.subjectKinds.WAF_ENDPOINT",

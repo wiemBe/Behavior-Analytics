@@ -4813,5 +4813,2278 @@
       "name": "'bad;name'"
     },
     "template": "invalid QRadar property name {name}: letters, digits, underscore, space and hyphen only, at most 64 characters"
+  },
+  "waf.basis.mad_above_p95": {
+    "params": {
+      "bound": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "observed": {
+        "kind": "percent",
+        "precision": 1
+      }
+    },
+    "sample": {
+      "bound": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.35
+      },
+      "observed": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.41
+      }
+    },
+    "sample_english": "robust score unavailable (MAD=0); 41.0 % is above the historical p95 35.0 %",
+    "sample_english_params": {
+      "bound": "35.0 %",
+      "observed": "41.0 %"
+    },
+    "template": "robust score unavailable (MAD=0); {observed} is above the historical p95 {bound}"
+  },
+  "waf.basis.mad_outside_band": {
+    "params": {
+      "lower": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "upper": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "lower": 80.0,
+      "upper": 120.0
+    },
+    "sample_english": "robust score unavailable (MAD=0); observed value is outside the expected band [80.00, 120.00]",
+    "sample_english_params": {
+      "lower": "80.00",
+      "upper": "120.00"
+    },
+    "template": "robust score unavailable (MAD=0); observed value is outside the expected band [{lower}, {upper}]"
+  },
+  "waf.basis.mad_within_p95": {
+    "params": {
+      "bound": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "observed": {
+        "kind": "percent",
+        "precision": 1
+      }
+    },
+    "sample": {
+      "bound": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.35
+      },
+      "observed": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.31
+      }
+    },
+    "sample_english": "robust score unavailable (MAD=0) and 31.0 % is within the historical p95 35.0 %",
+    "sample_english_params": {
+      "bound": "35.0 %",
+      "observed": "31.0 %"
+    },
+    "template": "robust score unavailable (MAD=0) and {observed} is within the historical p95 {bound}"
+  },
+  "waf.basis.z": {
+    "params": {
+      "score": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "repr"
+      }
+    },
+    "sample": {
+      "score": 6.2,
+      "threshold": 3.5
+    },
+    "sample_english": "robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "score": "6.20",
+      "threshold": "3.5"
+    },
+    "template": "robust z={score} (threshold +{threshold})"
+  },
+  "waf.basis.z_not_reached": {
+    "params": {
+      "score": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "repr"
+      }
+    },
+    "sample": {
+      "score": 2.1,
+      "threshold": 3.5
+    },
+    "sample_english": "robust z=2.10 has not reached +3.5",
+    "sample_english_params": {
+      "score": "2.10",
+      "threshold": "3.5"
+    },
+    "template": "robust z={score} has not reached +{threshold}"
+  },
+  "waf.caveat.block_ratio": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Blocking is judged through the profile's action map. A higher block ratio describes WAF decisions; it does not establish that an attack succeeded.",
+    "sample_english_params": {},
+    "template": "Blocking is judged through the profile's action map. A higher block ratio describes WAF decisions; it does not establish that an attack succeeded."
+  },
+  "waf.caveat.client_concentration": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A dominant source IP describes traffic composition, not intent.",
+    "sample_english_params": {},
+    "template": "A dominant source IP describes traffic composition, not intent."
+  },
+  "waf.caveat.client_error_ratio": {
+    "params": {},
+    "sample": {},
+    "sample_english": "HTTP 4xx responses are response codes, not WAF decisions: a 403 is not by itself a block, and WAF blocking is reported separately.",
+    "sample_english_params": {},
+    "template": "HTTP 4xx responses are response codes, not WAF decisions: a 403 is not by itself a block, and WAF blocking is reported separately."
+  },
+  "waf.caveat.new_endpoint": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A newly requested endpoint may be a deployment as easily as a probe.",
+    "sample_english_params": {},
+    "template": "A newly requested endpoint may be a deployment as easily as a probe."
+  },
+  "waf.caveat.server_error_ratio": {
+    "params": {},
+    "sample": {},
+    "sample_english": "HTTP 5xx responses describe server-side failures. They do not establish that the traffic was malicious.",
+    "sample_english_params": {},
+    "template": "HTTP 5xx responses describe server-side failures. They do not establish that the traffic was malicious."
+  },
+  "waf.concentration.attributed_low": {
+    "params": {
+      "covered": {
+        "kind": "percent"
+      },
+      "floor": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "covered": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.7
+      },
+      "floor": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      }
+    },
+    "sample_english": "only 70 % of the endpoint's requests were attributed to a source IP, below the 90 % coverage floor",
+    "sample_english_params": {
+      "covered": "70 %",
+      "floor": "90 %"
+    },
+    "template": "only {covered} of the endpoint's requests were attributed to a source IP, below the {floor} coverage floor"
+  },
+  "waf.concentration.endpoint_below_min": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 30,
+      "minimum": 50
+    },
+    "sample_english": "30 requests is below the 50 minimum for a composition verdict",
+    "sample_english_params": {
+      "count": "30",
+      "minimum": "50"
+    },
+    "template": "{count} requests is below the {minimum} minimum for a composition verdict"
+  },
+  "waf.concentration.fired": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "waf.basis.mad_outside_band",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "subject": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.subject.named",
+          "waf.subject.this_endpoint"
+        ]
+      },
+      "top": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "top5": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "volume": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.concentration.volume_with_baseline",
+          "waf.concentration.volume_no_baseline"
+        ]
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.2
+      },
+      "rise": {
+        "kind": "points",
+        "points": 60.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.8
+      },
+      "subject": {
+        "code": "waf.subject.this_endpoint",
+        "params": {}
+      },
+      "top": 400,
+      "top5": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.95
+      },
+      "total": 500,
+      "volume": {
+        "code": "waf.concentration.volume_with_baseline",
+        "params": {
+          "expected": 100.0,
+          "requests": 500
+        }
+      }
+    },
+    "sample_english": "the largest source IP sent 400 of 500 requests to this endpoint (80.0 %), against an expected share of 20.0 % (+60.0 pp); the five largest sent 95.0 %; endpoint volume 500 requests against an expected 100.0; robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "expected": "20.0 %",
+      "rise": "+60.0 pp",
+      "share": "80.0 %",
+      "subject": "this endpoint",
+      "top": "400",
+      "top5": "95.0 %",
+      "total": "500",
+      "volume": "endpoint volume 500 requests against an expected 100.0"
+    },
+    "template": "the largest source IP sent {top} of {total} requests to {subject} ({share}), against an expected share of {expected} ({rise}); the five largest sent {top5}; {volume}; {basis}"
+  },
+  "waf.concentration.rise_below_min": {
+    "params": {
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "minimum": {
+        "kind": "points",
+        "precision": 0,
+        "style": "unsigned"
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      }
+    },
+    "sample": {
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.3
+      },
+      "minimum": {
+        "kind": "points",
+        "points": 20.0,
+        "precision": 0,
+        "signed": false
+      },
+      "rise": {
+        "kind": "points",
+        "points": 5.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.35
+      }
+    },
+    "sample_english": "the largest source IP's share 35.0 % is +5.0 pp from the expected 30.0 %, below the 20 pp minimum rise",
+    "sample_english_params": {
+      "expected": "30.0 %",
+      "minimum": "20 pp",
+      "rise": "+5.0 pp",
+      "share": "35.0 %"
+    },
+    "template": "the largest source IP's share {share} is {rise} from the expected {expected}, below the {minimum} minimum rise"
+  },
+  "waf.concentration.top_below_min": {
+    "params": {
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "top": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "minimum": 20,
+      "top": 12
+    },
+    "sample_english": "the largest source IP sent 12 requests, below the 20 minimum for a material concentration",
+    "sample_english_params": {
+      "minimum": "20",
+      "top": "12"
+    },
+    "template": "the largest source IP sent {top} requests, below the {minimum} minimum for a material concentration"
+  },
+  "waf.concentration.volume_no_baseline": {
+    "params": {
+      "requests": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "requests": 480
+    },
+    "sample_english": "endpoint volume 480 requests (no reliable volume baseline)",
+    "sample_english_params": {
+      "requests": "480"
+    },
+    "template": "endpoint volume {requests} requests (no reliable volume baseline)"
+  },
+  "waf.concentration.volume_with_baseline": {
+    "params": {
+      "expected": {
+        "kind": "number",
+        "style": "repr"
+      },
+      "requests": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "expected": 100.0,
+      "requests": 480
+    },
+    "sample_english": "endpoint volume 480 requests against an expected 100.0",
+    "sample_english_params": {
+      "expected": "100.0",
+      "requests": "480"
+    },
+    "template": "endpoint volume {requests} requests against an expected {expected}"
+  },
+  "waf.guard.baseline_no_denominator": {
+    "params": {
+      "metric": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "metric": "block_ratio"
+    },
+    "sample_english": "the block_ratio baseline has no pooled denominator",
+    "sample_english_params": {
+      "metric": "block_ratio"
+    },
+    "template": "the {metric} baseline has no pooled denominator"
+  },
+  "waf.guard.baseline_samples": {
+    "params": {
+      "metric": {
+        "kind": "text"
+      },
+      "samples": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "metric": "block_ratio",
+      "samples": 3
+    },
+    "sample_english": "the block_ratio baseline has 3 material bucket(s), below the minimum for a defensible verdict",
+    "sample_english_params": {
+      "metric": "block_ratio",
+      "samples": "3"
+    },
+    "template": "the {metric} baseline has {samples} material bucket(s), below the minimum for a defensible verdict"
+  },
+  "waf.guard.breakdown_failed": {
+    "params": {
+      "breakdown": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "breakdown": "ACTION"
+    },
+    "sample_english": "the ACTION breakdown failed for this bucket: the value is unavailable, not zero",
+    "sample_english_params": {
+      "breakdown": "ACTION"
+    },
+    "template": "the {breakdown} breakdown failed for this bucket: the value is unavailable, not zero"
+  },
+  "waf.guard.breakdown_not_collected": {
+    "params": {
+      "breakdown": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "breakdown": "ACTION"
+    },
+    "sample_english": "the ACTION breakdown was not collected for this bucket: the value is unavailable, not zero",
+    "sample_english_params": {
+      "breakdown": "ACTION"
+    },
+    "template": "the {breakdown} breakdown was not collected for this bucket: the value is unavailable, not zero"
+  },
+  "waf.guard.no_baseline": {
+    "params": {
+      "metric": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "metric": "block_ratio"
+    },
+    "sample_english": "no block_ratio baseline for this weekday/hour cell yet",
+    "sample_english_params": {
+      "metric": "block_ratio"
+    },
+    "template": "no {metric} baseline for this weekday/hour cell yet"
+  },
+  "waf.guard.not_proven_lower_bound": {
+    "params": {
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.ratio.numerator_below_min",
+          "waf.ratio.rise_below_min",
+          "waf.ratio.multiple_below_min",
+          "waf.concentration.top_below_min",
+          "waf.concentration.rise_below_min",
+          "waf.basis.z_not_reached",
+          "waf.basis.mad_within_p95"
+        ]
+      },
+      "scope": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.scope.unstated",
+          "waf.scope.lower_bound_increase",
+          "waf.scope.needs_exact",
+          "waf.scope.unattributed",
+          "waf.scope.unclassified",
+          "waf.scope.inputs_unsupported",
+          "waf.scope.composition_exact"
+        ]
+      }
+    },
+    "sample": {
+      "reason": {
+        "code": "waf.basis.z_not_reached",
+        "params": {
+          "score": 2.1,
+          "threshold": 3.5
+        }
+      },
+      "scope": {
+        "code": "waf.scope.unclassified",
+        "params": {}
+      }
+    },
+    "sample_english": "robust z=2.10 has not reached +3.5; the numerator is a lower bound (some values were unclassified), so a normal verdict cannot be concluded from it",
+    "sample_english_params": {
+      "reason": "robust z=2.10 has not reached +3.5",
+      "scope": "some values were unclassified"
+    },
+    "template": "{reason}; the numerator is a lower bound ({scope}), so a normal verdict cannot be concluded from it"
+  },
+  "waf.guard.source_coverage_low": {
+    "params": {
+      "covered": {
+        "kind": "percent"
+      },
+      "floor": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "covered": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.62
+      },
+      "floor": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      }
+    },
+    "sample_english": "only 62 % of this source's events parsed to an endpoint, below the 90 % coverage floor: the unparsed requests may differ in kind from the parsed ones, so the visible proportion bounds nothing",
+    "sample_english_params": {
+      "covered": "62 %",
+      "floor": "90 %"
+    },
+    "template": "only {covered} of this source's events parsed to an endpoint, below the {floor} coverage floor: the unparsed requests may differ in kind from the parsed ones, so the visible proportion bounds nothing"
+  },
+  "waf.history_check.admission_truncated": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "bucket": "2026-08-03T19:25:00+00:00"
+    },
+    "sample_english": "history bucket 2026-08-03T19:25:00+00:00 had truncated endpoint admission",
+    "sample_english_params": {
+      "bucket": "2026-08-03T19:25:00+00:00"
+    },
+    "template": "history bucket {bucket} had truncated endpoint admission"
+  },
+  "waf.history_check.appearance_never_collected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the first-appearance bucket was never collected",
+    "sample_english_params": {},
+    "template": "the first-appearance bucket was never collected"
+  },
+  "waf.history_check.appearance_no_profile": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the first-appearance bucket carries no profile version",
+    "sample_english_params": {},
+    "template": "the first-appearance bucket carries no profile version"
+  },
+  "waf.history_check.appearance_normalizer": {
+    "params": {
+      "version": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "version": 2
+    },
+    "sample_english": "the first-appearance bucket is incompatible with endpoint normalizer version 2",
+    "sample_english_params": {
+      "version": "2"
+    },
+    "template": "the first-appearance bucket is incompatible with endpoint normalizer version {version}"
+  },
+  "waf.history_check.bucket_width": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "bucket": "2026-08-03T19:25:00+00:00"
+    },
+    "sample_english": "history bucket 2026-08-03T19:25:00+00:00 used a different collection bucket width",
+    "sample_english_params": {
+      "bucket": "2026-08-03T19:25:00+00:00"
+    },
+    "template": "history bucket {bucket} used a different collection bucket width"
+  },
+  "waf.history_check.discovery_truncated": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "bucket": "2026-08-03T19:25:00+00:00"
+    },
+    "sample_english": "history bucket 2026-08-03T19:25:00+00:00 had truncated endpoint discovery",
+    "sample_english_params": {
+      "bucket": "2026-08-03T19:25:00+00:00"
+    },
+    "template": "history bucket {bucket} had truncated endpoint discovery"
+  },
+  "waf.history_check.never_collected": {
+    "params": {
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "missing": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "expected": 168,
+      "missing": 3
+    },
+    "sample_english": "3 of 168 history buckets were never collected",
+    "sample_english_params": {
+      "expected": "168",
+      "missing": "3"
+    },
+    "template": "{missing} of {expected} history buckets were never collected"
+  },
+  "waf.history_check.normalizer_version": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "version": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "bucket": "2026-08-03T19:25:00+00:00",
+      "version": 2
+    },
+    "sample_english": "history bucket 2026-08-03T19:25:00+00:00 is incompatible with endpoint normalizer version 2",
+    "sample_english_params": {
+      "bucket": "2026-08-03T19:25:00+00:00",
+      "version": "2"
+    },
+    "template": "history bucket {bucket} is incompatible with endpoint normalizer version {version}"
+  },
+  "waf.history_check.not_divisible": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the history window is not divisible by the collection bucket width",
+    "sample_english_params": {},
+    "template": "the history window is not divisible by the collection bucket width"
+  },
+  "waf.history_check.not_loaded": {
+    "params": {},
+    "sample": {},
+    "sample_english": "history was not loaded for an established endpoint",
+    "sample_english_params": {},
+    "template": "history was not loaded for an established endpoint"
+  },
+  "waf.history_check.profile_version": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "found": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "bucket": "2026-08-03T19:25:00+00:00",
+      "expected": 3,
+      "found": "2"
+    },
+    "sample_english": "history bucket 2026-08-03T19:25:00+00:00 used profile version 2, not first-appearance version 3",
+    "sample_english_params": {
+      "bucket": "2026-08-03T19:25:00+00:00",
+      "expected": "3",
+      "found": "2"
+    },
+    "template": "history bucket {bucket} used profile version {found}, not first-appearance version {expected}"
+  },
+  "waf.history_check.record_count": {
+    "params": {
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "records": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "expected": 168,
+      "records": 169
+    },
+    "sample_english": "the history contains 169 bucket records for 168 expected buckets",
+    "sample_english_params": {
+      "expected": "168",
+      "records": "169"
+    },
+    "template": "the history contains {records} bucket records for {expected} expected buckets"
+  },
+  "waf.noun.blocked_requests": {
+    "params": {},
+    "sample": {},
+    "sample_english": "blocked requests",
+    "sample_english_params": {},
+    "template": "blocked requests"
+  },
+  "waf.noun.http_4xx": {
+    "params": {},
+    "sample": {},
+    "sample_english": "HTTP 4xx responses",
+    "sample_english_params": {},
+    "template": "HTTP 4xx responses"
+  },
+  "waf.noun.http_5xx": {
+    "params": {},
+    "sample": {},
+    "sample_english": "HTTP 5xx responses",
+    "sample_english_params": {},
+    "template": "HTTP 5xx responses"
+  },
+  "waf.noun.response_code_requests": {
+    "params": {},
+    "sample": {},
+    "sample_english": "requests carrying a response code",
+    "sample_english_params": {},
+    "template": "requests carrying a response code"
+  },
+  "waf.noun.waf_action_requests": {
+    "params": {},
+    "sample": {},
+    "sample_english": "requests carrying a WAF action",
+    "sample_english_params": {},
+    "template": "requests carrying a WAF action"
+  },
+  "waf.novelty.below_materiality": {
+    "params": {
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "min_buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "min_requests": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "requests": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "buckets": 1,
+      "min_buckets": 2,
+      "min_requests": 20,
+      "requests": 8
+    },
+    "sample_english": "8 request(s) in 1 bucket(s) since first appearance has not reached 20 requests in 2 buckets",
+    "sample_english_params": {
+      "buckets": "1",
+      "min_buckets": "2",
+      "min_requests": "20",
+      "requests": "8"
+    },
+    "template": "{requests} request(s) in {buckets} bucket(s) since first appearance has not reached {min_requests} requests in {min_buckets} buckets"
+  },
+  "waf.novelty.below_materiality_lower": {
+    "params": {
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.novelty.below_materiality"
+        ]
+      }
+    },
+    "sample": {
+      "reason": {
+        "code": "waf.novelty.below_materiality",
+        "params": {
+          "buckets": 1,
+          "min_buckets": 2,
+          "min_requests": 20,
+          "requests": 8
+        }
+      }
+    },
+    "sample_english": "8 request(s) in 1 bucket(s) since first appearance has not reached 20 requests in 2 buckets; the counts are lower bounds",
+    "sample_english_params": {
+      "reason": "8 request(s) in 1 bucket(s) since first appearance has not reached 20 requests in 2 buckets"
+    },
+    "template": "{reason}; the counts are lower bounds"
+  },
+  "waf.novelty.cannot_establish": {
+    "params": {
+      "cause": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.history_check.not_divisible",
+          "waf.history_check.never_collected",
+          "waf.history_check.record_count",
+          "waf.history_check.bucket_width",
+          "waf.history_check.discovery_truncated",
+          "waf.history_check.admission_truncated",
+          "waf.history_check.profile_version",
+          "waf.history_check.normalizer_version",
+          "waf.history_check.not_loaded",
+          "waf.history_check.appearance_never_collected",
+          "waf.history_check.appearance_no_profile",
+          "waf.history_check.appearance_normalizer",
+          "waf.scope.unstated",
+          "waf.scope.lower_bound_increase",
+          "waf.scope.needs_exact",
+          "waf.scope.unattributed",
+          "waf.scope.unclassified",
+          "waf.scope.inputs_unsupported",
+          "waf.scope.composition_exact",
+          "waf.novelty.history_incomplete"
+        ]
+      }
+    },
+    "sample": {
+      "cause": {
+        "code": "waf.history_check.not_divisible",
+        "params": {}
+      }
+    },
+    "sample_english": "novelty cannot be established: the history window is not divisible by the collection bucket width",
+    "sample_english_params": {
+      "cause": "the history window is not divisible by the collection bucket width"
+    },
+    "template": "novelty cannot be established: {cause}"
+  },
+  "waf.novelty.established_hand_off": {
+    "params": {
+      "first_seen": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "hand_off": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "first_seen": "2026-08-03T19:25:00+00:00",
+      "hand_off": "2026-08-03T19:25:00+00:00"
+    },
+    "sample_english": "established endpoint: first admitted 2026-08-03T19:25:00+00:00 before the history hand-off 2026-08-03T19:25:00+00:00",
+    "sample_english_params": {
+      "first_seen": "2026-08-03T19:25:00+00:00",
+      "hand_off": "2026-08-03T19:25:00+00:00"
+    },
+    "template": "established endpoint: first admitted {first_seen} before the history hand-off {hand_off}"
+  },
+  "waf.novelty.established_outside_window": {
+    "params": {
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "first_seen": {
+        "kind": "timestamp",
+        "style": "iso"
+      }
+    },
+    "sample": {
+      "buckets": 12,
+      "first_seen": "2026-08-03T19:25:00+00:00"
+    },
+    "sample_english": "established endpoint: first admitted 2026-08-03T19:25:00+00:00, outside the 12-bucket novelty window",
+    "sample_english_params": {
+      "buckets": "12",
+      "first_seen": "2026-08-03T19:25:00+00:00"
+    },
+    "template": "established endpoint: first admitted {first_seen}, outside the {buckets}-bucket novelty window"
+  },
+  "waf.novelty.fired": {
+    "params": {
+      "admission": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "first_seen": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "history_end": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "history_start": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "requests": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "subject": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.subject.named",
+          "waf.subject.this_endpoint"
+        ]
+      }
+    },
+    "sample": {
+      "admission": 3,
+      "buckets": 3,
+      "first_seen": "2026-08-03T19:25:00+00:00",
+      "history_end": "2026-08-03T19:25:00+00:00",
+      "history_start": "2026-08-03T19:25:00+00:00",
+      "requests": 90,
+      "subject": {
+        "code": "waf.subject.this_endpoint",
+        "params": {}
+      }
+    },
+    "sample_english": "this endpoint received 90 requests across 3 buckets since it first appeared at 2026-08-03T19:25:00+00:00; in the verified history 2026-08-03T19:25:00+00:00 to 2026-08-03T19:25:00+00:00 it was never requested 3 or more times in one bucket",
+    "sample_english_params": {
+      "admission": "3",
+      "buckets": "3",
+      "first_seen": "2026-08-03T19:25:00+00:00",
+      "history_end": "2026-08-03T19:25:00+00:00",
+      "history_start": "2026-08-03T19:25:00+00:00",
+      "requests": "90",
+      "subject": "this endpoint"
+    },
+    "template": "{subject} received {requests} requests across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it was never requested {admission} or more times in one bucket"
+  },
+  "waf.novelty.fired_lower": {
+    "params": {
+      "admission": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "buckets": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "first_seen": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "history_end": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "history_start": {
+        "kind": "timestamp",
+        "style": "iso"
+      },
+      "requests": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "subject": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.subject.named",
+          "waf.subject.this_endpoint"
+        ]
+      }
+    },
+    "sample": {
+      "admission": 3,
+      "buckets": 3,
+      "first_seen": "2026-08-03T19:25:00+00:00",
+      "history_end": "2026-08-03T19:25:00+00:00",
+      "history_start": "2026-08-03T19:25:00+00:00",
+      "requests": 90,
+      "subject": {
+        "code": "waf.subject.this_endpoint",
+        "params": {}
+      }
+    },
+    "sample_english": "this endpoint received at least 90 requests across 3 buckets since it first appeared at 2026-08-03T19:25:00+00:00; in the verified history 2026-08-03T19:25:00+00:00 to 2026-08-03T19:25:00+00:00 it was never requested 3 or more times in one bucket",
+    "sample_english_params": {
+      "admission": "3",
+      "buckets": "3",
+      "first_seen": "2026-08-03T19:25:00+00:00",
+      "history_end": "2026-08-03T19:25:00+00:00",
+      "history_start": "2026-08-03T19:25:00+00:00",
+      "requests": "90",
+      "subject": "this endpoint"
+    },
+    "template": "{subject} received at least {requests} requests across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it was never requested {admission} or more times in one bucket"
+  },
+  "waf.novelty.flood_admission": {
+    "params": {},
+    "sample": {},
+    "sample_english": "endpoint admission was truncated in the first-appearance bucket",
+    "sample_english_params": {},
+    "template": "endpoint admission was truncated in the first-appearance bucket"
+  },
+  "waf.novelty.flood_discovery": {
+    "params": {},
+    "sample": {},
+    "sample_english": "endpoint discovery was truncated in the first-appearance bucket",
+    "sample_english_params": {},
+    "template": "endpoint discovery was truncated in the first-appearance bucket"
+  },
+  "waf.novelty.history_incomplete": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the history is incomplete",
+    "sample_english_params": {},
+    "template": "the history is incomplete"
+  },
+  "waf.novelty.not_established": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the endpoint's first appearance was not established",
+    "sample_english_params": {},
+    "template": "the endpoint's first appearance was not established"
+  },
+  "waf.rate.baseline_samples": {
+    "params": {
+      "samples": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "samples": 3
+    },
+    "sample_english": "baseline has 3 sample(s), below the minimum required for a defensible verdict",
+    "sample_english_params": {
+      "samples": "3"
+    },
+    "template": "baseline has {samples} sample(s), below the minimum required for a defensible verdict"
+  },
+  "waf.rate.below_min_volume": {
+    "params": {
+      "minimum": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "minimum": 20.0,
+      "observed": 12.0
+    },
+    "sample_english": "12 requests/bucket is below the 20 minimum for a defensible verdict",
+    "sample_english_params": {
+      "minimum": "20",
+      "observed": "12"
+    },
+    "template": "{observed} requests/bucket is below the {minimum} minimum for a defensible verdict"
+  },
+  "waf.rate.bucket_not_whole": {
+    "params": {
+      "completeness": {
+        "enum_group": "wafBucketCompleteness",
+        "kind": "enum"
+      }
+    },
+    "sample": {
+      "completeness": "partial"
+    },
+    "sample_english": "bucket is partial, not a whole observation",
+    "sample_english_params": {
+      "completeness": "partial"
+    },
+    "template": "bucket is {completeness}, not a whole observation"
+  },
+  "waf.rate.coverage_low": {
+    "params": {
+      "covered": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "covered": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.62
+      }
+    },
+    "sample_english": "only 62 % of this source's events carried a parseable endpoint in this bucket",
+    "sample_english_params": {
+      "covered": "62 %"
+    },
+    "template": "only {covered} of this source's events carried a parseable endpoint in this bucket"
+  },
+  "waf.rate.delta_below_min": {
+    "params": {
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "minimum": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "delta": 30.0,
+      "minimum": 50.0
+    },
+    "sample_english": "increase of 30 requests/bucket is below the 50 minimum absolute delta",
+    "sample_english_params": {
+      "delta": "30",
+      "minimum": "50"
+    },
+    "template": "increase of {delta} requests/bucket is below the {minimum} minimum absolute delta"
+  },
+  "waf.rate.fired": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "waf.basis.mad_outside_band",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "expected": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "ratio_text": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.rate.ratio_multiple",
+          "waf.rate.ratio_none"
+        ]
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "delta": 420.0,
+      "expected": 100.0,
+      "observed": 520.0,
+      "ratio_text": {
+        "code": "waf.rate.ratio_multiple",
+        "params": {
+          "ratio": 5.2
+        }
+      }
+    },
+    "sample_english": "520 requests is above the baseline median 100.0 (5.20x expected, +420 requests/bucket); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "delta": "420",
+      "expected": "100.0",
+      "observed": "520",
+      "ratio_text": "5.20x expected"
+    },
+    "template": "{observed} requests is above the baseline median {expected} ({ratio_text}, +{delta} requests/bucket); {basis}"
+  },
+  "waf.rate.fired_lower": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "waf.basis.mad_outside_band",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "delta": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "expected": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "ratio_text": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.rate.ratio_multiple",
+          "waf.rate.ratio_none"
+        ]
+      },
+      "scope": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.scope.unstated",
+          "waf.scope.lower_bound_increase",
+          "waf.scope.needs_exact",
+          "waf.scope.unattributed",
+          "waf.scope.unclassified",
+          "waf.scope.inputs_unsupported",
+          "waf.scope.composition_exact"
+        ]
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "delta": 420.0,
+      "expected": 100.0,
+      "observed": 520.0,
+      "ratio_text": {
+        "code": "waf.rate.ratio_multiple",
+        "params": {
+          "ratio": 5.2
+        }
+      },
+      "scope": {
+        "code": "waf.scope.lower_bound_increase",
+        "params": {}
+      }
+    },
+    "sample_english": "at least 520 requests (a lower bound: the count is a lower bound: an increase can be proven, normal behaviour cannot) is above the baseline median 100.0 (5.20x expected, +420 requests/bucket); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "delta": "420",
+      "expected": "100.0",
+      "observed": "520",
+      "ratio_text": "5.20x expected",
+      "scope": "the count is a lower bound: an increase can be proven, normal behaviour cannot"
+    },
+    "template": "at least {observed} requests (a lower bound: {scope}) is above the baseline median {expected} ({ratio_text}, +{delta} requests/bucket); {basis}"
+  },
+  "waf.rate.mad_within_band": {
+    "params": {
+      "lower": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "upper": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "lower": 80.0,
+      "upper": 120.0
+    },
+    "sample_english": "robust score unavailable (MAD=0) and observed value is inside the expected band [80.00, 120.00]",
+    "sample_english_params": {
+      "lower": "80.00",
+      "upper": "120.00"
+    },
+    "template": "robust score unavailable (MAD=0) and observed value is inside the expected band [{lower}, {upper}]"
+  },
+  "waf.rate.no_baseline": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no request-rate baseline for this weekday/hour cell yet",
+    "sample_english_params": {},
+    "template": "no request-rate baseline for this weekday/hour cell yet"
+  },
+  "waf.rate.not_proven_lower_bound": {
+    "params": {
+      "observed": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "reason": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.rate.below_min_volume",
+          "waf.rate.ratio_not_reached",
+          "waf.rate.delta_below_min",
+          "waf.rate.z_not_reached",
+          "waf.rate.mad_within_band"
+        ]
+      }
+    },
+    "sample": {
+      "observed": 120.0,
+      "reason": {
+        "code": "waf.rate.below_min_volume",
+        "params": {
+          "minimum": 20.0,
+          "observed": 12.0
+        }
+      }
+    },
+    "sample_english": "at least 120 requests were attributed to this endpoint, but the count is a lower bound and 12 requests/bucket is below the 20 minimum for a defensible verdict; a normal verdict cannot be concluded from a lower bound",
+    "sample_english_params": {
+      "observed": "120",
+      "reason": "12 requests/bucket is below the 20 minimum for a defensible verdict"
+    },
+    "template": "at least {observed} requests were attributed to this endpoint, but the count is a lower bound and {reason}; a normal verdict cannot be concluded from a lower bound"
+  },
+  "waf.rate.ratio_multiple": {
+    "params": {
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "ratio": 3.0
+    },
+    "sample_english": "3.00x expected",
+    "sample_english_params": {
+      "ratio": "3.00"
+    },
+    "template": "{ratio}x expected"
+  },
+  "waf.rate.ratio_none": {
+    "params": {},
+    "sample": {},
+    "sample_english": "expected no traffic",
+    "sample_english_params": {},
+    "template": "expected no traffic"
+  },
+  "waf.rate.ratio_not_reached": {
+    "params": {
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "ratio": 1.4,
+      "threshold": 2.0
+    },
+    "sample_english": "observed/expected ratio 1.40 has not reached 2.00",
+    "sample_english_params": {
+      "ratio": "1.40",
+      "threshold": "2.00"
+    },
+    "template": "observed/expected ratio {ratio} has not reached {threshold}"
+  },
+  "waf.rate.z_not_reached": {
+    "params": {
+      "score": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number",
+        "style": "repr"
+      }
+    },
+    "sample": {
+      "score": 2.1,
+      "threshold": 3.5
+    },
+    "sample_english": "robust z=2.10 has not reached the +3.5 threshold",
+    "sample_english_params": {
+      "score": "2.10",
+      "threshold": "3.5"
+    },
+    "template": "robust z={score} has not reached the +{threshold} threshold"
+  },
+  "waf.ratio.denominator_below_min": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "noun": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.noun.blocked_requests",
+          "waf.noun.waf_action_requests",
+          "waf.noun.http_5xx",
+          "waf.noun.http_4xx",
+          "waf.noun.response_code_requests"
+        ]
+      }
+    },
+    "sample": {
+      "count": 30,
+      "minimum": 50,
+      "noun": {
+        "code": "waf.noun.waf_action_requests",
+        "params": {}
+      }
+    },
+    "sample_english": "30 requests carrying a WAF action is below the 50 minimum denominator for a ratio verdict",
+    "sample_english_params": {
+      "count": "30",
+      "minimum": "50",
+      "noun": "requests carrying a WAF action"
+    },
+    "template": "{count} {noun} is below the {minimum} minimum denominator for a ratio verdict"
+  },
+  "waf.ratio.field_coverage_low": {
+    "params": {
+      "covered": {
+        "kind": "percent"
+      },
+      "field": {
+        "kind": "text"
+      },
+      "floor": {
+        "kind": "percent"
+      }
+    },
+    "sample": {
+      "covered": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.7
+      },
+      "field": "action",
+      "floor": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.9
+      }
+    },
+    "sample_english": "only 70 % of the endpoint's requests carried the action field, below the 90 % coverage floor",
+    "sample_english_params": {
+      "covered": "70 %",
+      "field": "action",
+      "floor": "90 %"
+    },
+    "template": "only {covered} of the endpoint's requests carried the {field} field, below the {floor} coverage floor"
+  },
+  "waf.ratio.fired": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "waf.basis.mad_outside_band",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "denominator": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.noun.blocked_requests",
+          "waf.noun.waf_action_requests",
+          "waf.noun.http_5xx",
+          "waf.noun.http_4xx",
+          "waf.noun.response_code_requests"
+        ]
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "history": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "multiple": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "numerator": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.noun.blocked_requests",
+          "waf.noun.waf_action_requests",
+          "waf.noun.http_5xx",
+          "waf.noun.http_4xx",
+          "waf.noun.response_code_requests"
+        ]
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "subject": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.subject.named",
+          "waf.subject.this_endpoint"
+        ]
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "count": 80,
+      "denominator": {
+        "code": "waf.noun.waf_action_requests",
+        "params": {}
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.2
+      },
+      "history": 5000.0,
+      "multiple": 4.0,
+      "numerator": {
+        "code": "waf.noun.blocked_requests",
+        "params": {}
+      },
+      "rise": {
+        "kind": "points",
+        "points": 60.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.8
+      },
+      "subject": {
+        "code": "waf.subject.this_endpoint",
+        "params": {}
+      },
+      "total": 100
+    },
+    "sample_english": "80 of 100 requests carrying a WAF action to this endpoint were blocked requests (80.0 %), against an expected 20.0 % from 5000 historical requests (+60.0 pp, 4.0x); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "count": "80",
+      "denominator": "requests carrying a WAF action",
+      "expected": "20.0 %",
+      "history": "5000",
+      "multiple": "4.0",
+      "numerator": "blocked requests",
+      "rise": "+60.0 pp",
+      "share": "80.0 %",
+      "subject": "this endpoint",
+      "total": "100"
+    },
+    "template": "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against an expected {expected} from {history} historical requests ({rise}, {multiple}x); {basis}"
+  },
+  "waf.ratio.fired_lower": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "waf.basis.mad_outside_band",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "denominator": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.noun.blocked_requests",
+          "waf.noun.waf_action_requests",
+          "waf.noun.http_5xx",
+          "waf.noun.http_4xx",
+          "waf.noun.response_code_requests"
+        ]
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "history": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "multiple": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      },
+      "numerator": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.noun.blocked_requests",
+          "waf.noun.waf_action_requests",
+          "waf.noun.http_5xx",
+          "waf.noun.http_4xx",
+          "waf.noun.response_code_requests"
+        ]
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "subject": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.subject.named",
+          "waf.subject.this_endpoint"
+        ]
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "count": 80,
+      "denominator": {
+        "code": "waf.noun.waf_action_requests",
+        "params": {}
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.2
+      },
+      "history": 5000.0,
+      "multiple": 4.0,
+      "numerator": {
+        "code": "waf.noun.blocked_requests",
+        "params": {}
+      },
+      "rise": {
+        "kind": "points",
+        "points": 60.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.8
+      },
+      "subject": {
+        "code": "waf.subject.this_endpoint",
+        "params": {}
+      },
+      "total": 100
+    },
+    "sample_english": "at least 80 of 100 requests carrying a WAF action to this endpoint were blocked requests (at least 80.0 %), against an expected 20.0 % from 5000 historical requests (+60.0 pp, 4.0x); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "count": "80",
+      "denominator": "requests carrying a WAF action",
+      "expected": "20.0 %",
+      "history": "5000",
+      "multiple": "4.0",
+      "numerator": "blocked requests",
+      "rise": "+60.0 pp",
+      "share": "80.0 %",
+      "subject": "this endpoint",
+      "total": "100"
+    },
+    "template": "at least {count} of {total} {denominator} to {subject} were {numerator} (at least {share}), against an expected {expected} from {history} historical requests ({rise}, {multiple}x); {basis}"
+  },
+  "waf.ratio.fired_lower_no_multiple": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "waf.basis.mad_outside_band",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "denominator": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.noun.blocked_requests",
+          "waf.noun.waf_action_requests",
+          "waf.noun.http_5xx",
+          "waf.noun.http_4xx",
+          "waf.noun.response_code_requests"
+        ]
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "history": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "numerator": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.noun.blocked_requests",
+          "waf.noun.waf_action_requests",
+          "waf.noun.http_5xx",
+          "waf.noun.http_4xx",
+          "waf.noun.response_code_requests"
+        ]
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "subject": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.subject.named",
+          "waf.subject.this_endpoint"
+        ]
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "count": 80,
+      "denominator": {
+        "code": "waf.noun.waf_action_requests",
+        "params": {}
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.0
+      },
+      "history": 5000.0,
+      "numerator": {
+        "code": "waf.noun.blocked_requests",
+        "params": {}
+      },
+      "rise": {
+        "kind": "points",
+        "points": 80.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.8
+      },
+      "subject": {
+        "code": "waf.subject.this_endpoint",
+        "params": {}
+      },
+      "total": 100
+    },
+    "sample_english": "at least 80 of 100 requests carrying a WAF action to this endpoint were blocked requests (at least 80.0 %), against an expected 0.0 % from 5000 historical requests (+80.0 pp); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "count": "80",
+      "denominator": "requests carrying a WAF action",
+      "expected": "0.0 %",
+      "history": "5000",
+      "numerator": "blocked requests",
+      "rise": "+80.0 pp",
+      "share": "80.0 %",
+      "subject": "this endpoint",
+      "total": "100"
+    },
+    "template": "at least {count} of {total} {denominator} to {subject} were {numerator} (at least {share}), against an expected {expected} from {history} historical requests ({rise}); {basis}"
+  },
+  "waf.ratio.fired_no_multiple": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.basis.z",
+          "waf.basis.mad_outside_band",
+          "waf.basis.mad_above_p95"
+        ]
+      },
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "denominator": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.noun.blocked_requests",
+          "waf.noun.waf_action_requests",
+          "waf.noun.http_5xx",
+          "waf.noun.http_4xx",
+          "waf.noun.response_code_requests"
+        ]
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "history": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "numerator": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.noun.blocked_requests",
+          "waf.noun.waf_action_requests",
+          "waf.noun.http_5xx",
+          "waf.noun.http_4xx",
+          "waf.noun.response_code_requests"
+        ]
+      },
+      "rise": {
+        "kind": "points"
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "subject": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.subject.named",
+          "waf.subject.this_endpoint"
+        ]
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "waf.basis.z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "count": 80,
+      "denominator": {
+        "code": "waf.noun.waf_action_requests",
+        "params": {}
+      },
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.0
+      },
+      "history": 5000.0,
+      "numerator": {
+        "code": "waf.noun.blocked_requests",
+        "params": {}
+      },
+      "rise": {
+        "kind": "points",
+        "points": 80.0,
+        "precision": 1,
+        "signed": true
+      },
+      "share": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.8
+      },
+      "subject": {
+        "code": "waf.subject.this_endpoint",
+        "params": {}
+      },
+      "total": 100
+    },
+    "sample_english": "80 of 100 requests carrying a WAF action to this endpoint were blocked requests (80.0 %), against an expected 0.0 % from 5000 historical requests (+80.0 pp); robust z=6.20 (threshold +3.5)",
+    "sample_english_params": {
+      "basis": "robust z=6.20 (threshold +3.5)",
+      "count": "80",
+      "denominator": "requests carrying a WAF action",
+      "expected": "0.0 %",
+      "history": "5000",
+      "numerator": "blocked requests",
+      "rise": "+80.0 pp",
+      "share": "80.0 %",
+      "subject": "this endpoint",
+      "total": "100"
+    },
+    "template": "{count} of {total} {denominator} to {subject} were {numerator} ({share}), against an expected {expected} from {history} historical requests ({rise}); {basis}"
+  },
+  "waf.ratio.multiple_below_min": {
+    "params": {
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "minimum": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "multiple": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "observed": {
+        "kind": "percent",
+        "precision": 1
+      }
+    },
+    "sample": {
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.3
+      },
+      "minimum": 2.0,
+      "multiple": 1.5,
+      "observed": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.45
+      }
+    },
+    "sample_english": "45.0 % is 1.50x the expected 30.0 %, below 2.00x",
+    "sample_english_params": {
+      "expected": "30.0 %",
+      "minimum": "2.00",
+      "multiple": "1.50",
+      "observed": "45.0 %"
+    },
+    "template": "{observed} is {multiple}x the expected {expected}, below {minimum}x"
+  },
+  "waf.ratio.numerator_below_min": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "noun": {
+        "kind": "ref",
+        "ref_codes": [
+          "waf.noun.blocked_requests",
+          "waf.noun.waf_action_requests",
+          "waf.noun.http_5xx",
+          "waf.noun.http_4xx",
+          "waf.noun.response_code_requests"
+        ]
+      }
+    },
+    "sample": {
+      "count": 4,
+      "minimum": 10,
+      "noun": {
+        "code": "waf.noun.blocked_requests",
+        "params": {}
+      }
+    },
+    "sample_english": "4 blocked requests is below the 10 minimum; no material rise in the proportion is possible",
+    "sample_english_params": {
+      "count": "4",
+      "minimum": "10",
+      "noun": "blocked requests"
+    },
+    "template": "{count} {noun} is below the {minimum} minimum; no material rise in the proportion is possible"
+  },
+  "waf.ratio.rise_below_min": {
+    "params": {
+      "expected": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "minimum": {
+        "kind": "points",
+        "precision": 0,
+        "style": "unsigned"
+      },
+      "observed": {
+        "kind": "percent",
+        "precision": 1
+      },
+      "rise": {
+        "kind": "points"
+      }
+    },
+    "sample": {
+      "expected": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.3
+      },
+      "minimum": {
+        "kind": "points",
+        "points": 10.0,
+        "precision": 0,
+        "signed": false
+      },
+      "observed": {
+        "kind": "percent",
+        "precision": 1,
+        "ratio": 0.35
+      },
+      "rise": {
+        "kind": "points",
+        "points": 5.0,
+        "precision": 1,
+        "signed": true
+      }
+    },
+    "sample_english": "35.0 % is +5.0 pp from the expected 30.0 %, below the 10 pp minimum rise",
+    "sample_english_params": {
+      "expected": "30.0 %",
+      "minimum": "10 pp",
+      "observed": "35.0 %",
+      "rise": "+5.0 pp"
+    },
+    "template": "{observed} is {rise} from the expected {expected}, below the {minimum} minimum rise"
+  },
+  "waf.scope.composition_exact": {
+    "params": {},
+    "sample": {},
+    "sample_english": "composition needs exact measurements",
+    "sample_english_params": {},
+    "template": "composition needs exact measurements"
+  },
+  "waf.scope.inputs_unsupported": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the inputs do not support a verdict",
+    "sample_english_params": {},
+    "template": "the inputs do not support a verdict"
+  },
+  "waf.scope.lower_bound_increase": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the count is a lower bound: an increase can be proven, normal behaviour cannot",
+    "sample_english_params": {},
+    "template": "the count is a lower bound: an increase can be proven, normal behaviour cannot"
+  },
+  "waf.scope.needs_exact": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the detector needs exact counts and this count is a lower bound",
+    "sample_english_params": {},
+    "template": "the detector needs exact counts and this count is a lower bound"
+  },
+  "waf.scope.unattributed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "some events could not be attributed",
+    "sample_english_params": {},
+    "template": "some events could not be attributed"
+  },
+  "waf.scope.unclassified": {
+    "params": {},
+    "sample": {},
+    "sample_english": "some values were unclassified",
+    "sample_english_params": {},
+    "template": "some values were unclassified"
+  },
+  "waf.scope.unstated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket does not state whether its counts are exact or lower bounds",
+    "sample_english_params": {},
+    "template": "the bucket does not state whether its counts are exact or lower bounds"
+  },
+  "waf.semantics.baseline_unidentified": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the baseline cell carries no metric-semantics identity; rebuild required",
+    "sample_english_params": {},
+    "template": "the baseline cell carries no metric-semantics identity; rebuild required"
+  },
+  "waf.semantics.bucket_unidentified": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the bucket carries no metric-semantics identity; it was collected before identities were recorded and cannot be judged",
+    "sample_english_params": {},
+    "template": "the bucket carries no metric-semantics identity; it was collected before identities were recorded and cannot be judged"
+  },
+  "waf.semantics.mismatch": {
+    "params": {
+      "baseline": {
+        "kind": "text"
+      },
+      "bucket": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "baseline": "request_count/v1;normalizer/v1",
+      "bucket": "request_count/v2;normalizer/v1"
+    },
+    "sample_english": "the baseline was built under 'request_count/v1;normalizer/v1' but the bucket was collected under 'request_count/v2;normalizer/v1'; rebuild required",
+    "sample_english_params": {
+      "baseline": "request_count/v1;normalizer/v1",
+      "bucket": "request_count/v2;normalizer/v1"
+    },
+    "template": "the baseline was built under '{baseline}' but the bucket was collected under '{bucket}'; rebuild required"
+  },
+  "waf.subject.named": {
+    "params": {
+      "endpoint": {
+        "kind": "text"
+      },
+      "method": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "endpoint": "/api/login",
+      "method": "GET"
+    },
+    "sample_english": "GET /api/login",
+    "sample_english_params": {
+      "endpoint": "/api/login",
+      "method": "GET"
+    },
+    "template": "{method} {endpoint}"
+  },
+  "waf.subject.this_endpoint": {
+    "params": {},
+    "sample": {},
+    "sample_english": "this endpoint",
+    "sample_english_params": {},
+    "template": "this endpoint"
+  },
+  "waf.suppression.maintenance_window": {
+    "params": {},
+    "sample": {},
+    "sample_english": "maintenance window",
+    "sample_english_params": {},
+    "template": "maintenance window"
   }
 }

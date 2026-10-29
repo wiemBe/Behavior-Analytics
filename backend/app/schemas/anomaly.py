@@ -450,6 +450,10 @@ class WafDetectionDetailOut(BaseModel):
     """
 
     reason: str | None = None
+    #: Stable code and raw values of `reason` for a non-English client. Null: no code (a row
+    #: stored before codes, or a sentence written as plain text).
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
     expected_low: float | None = None
     expected_high: float | None = None
     threshold: float | None = None
@@ -477,6 +481,8 @@ class WafDetectionDetailOut(BaseModel):
     percentage_point_change: float | None = None
     #: The detector's fixed interpretive caveat ("a change in traffic, not intent").
     caveat: str | None = None
+    caveat_code: str | None = None
+    caveat_params: dict[str, MessageParamValue] | None = None
 
     ratio: float | None = None
     ratio_basis: str | None = None
@@ -735,9 +741,17 @@ def waf_detection_detail(
         completeness = _num(expected, "completeness")
     status = _text(extra, "robust_score_status")
     measurement = _text(extra, "request_count_measurement")
+    reason_code, reason_params = stored_message_parts(
+        details.get("reason_code"), details.get("reason_params")
+    )
+    caveat_code, caveat_params = stored_message_parts(
+        extra.get("caveat_code"), extra.get("caveat_params")
+    )
 
     return WafDetectionDetailOut(
         reason=_text(details, "reason"),
+        reason_code=reason_code,
+        reason_params=reason_params,
         expected_low=_num(details, "baseline_low"),
         expected_high=_num(details, "baseline_high"),
         threshold=_num(details, "threshold"),
@@ -756,6 +770,8 @@ def waf_detection_detail(
         observed_denominator=_num(observed, "denominator"),
         percentage_point_change=_num(extra, "percentage_point_change"),
         caveat=_text(extra, "caveat"),
+        caveat_code=caveat_code,
+        caveat_params=caveat_params,
         ratio=_num(extra, "ratio"),
         ratio_basis=_text(extra, "ratio_basis"),
         robust_score_status=(

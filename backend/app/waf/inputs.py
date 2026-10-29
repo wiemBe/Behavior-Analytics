@@ -26,6 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import WafMeasurement, WafTelemetryStatus
 from app.waf.observations import EndpointObservation
 
@@ -65,6 +66,19 @@ class HistoryFacts:
 
     complete: bool
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class WafHistoryFacts(HistoryFacts):
+    """`HistoryFacts` whose reason is also a registry reference (the English is its render)."""
+
+    message: MessageRef | None = None
+
+
+def history_incomplete(name: str, **params: object) -> WafHistoryFacts:
+    """An incomplete history, stated by one `waf.history_check.*` sentence."""
+    message = MessageRef(f"waf.history_check.{name}", params)
+    return WafHistoryFacts(complete=False, reason=render(message), message=message)
 
 
 def input_measurement(

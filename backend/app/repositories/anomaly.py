@@ -199,7 +199,7 @@ class AnomalyRepository:
                 w.evidence_status, w.suppressed,
                 w.observed_measurement.label("observed_measurement"),
                 w.explanation,
-                cast(null(), JSONB).label("explanation_i18n"),
+                w.explanation_i18n.label("explanation_i18n"),
             )
             .select_from(w)
             .join(e, e.id == w.waf_endpoint_id)

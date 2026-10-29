@@ -345,6 +345,8 @@ WAF_DETECTION_KEYS = {
     "request_count_measurement", "observed_proportion", "expected_proportion",
     "observed_numerator", "observed_denominator", "percentage_point_change", "caveat", "ratio",
     "ratio_basis", "robust_score_status", "robust_z", "fallback_bound",
+    # MSG-6: the message reference beside `reason` and `caveat` (null on a row without one).
+    "reason_code", "reason_params", "caveat_code", "caveat_params",
 }
 
 
