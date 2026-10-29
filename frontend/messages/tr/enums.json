@@ -161,5 +161,14 @@
     "analyst": "Analist (analyst)",
     "viewer": "Görüntüleyici (viewer)",
     "detection_engineer": "Tespit mühendisi (detection_engineer)"
+  },
+  "historyScanStatus": {
+    "failed": "başarısız oldu",
+    "truncated": "kırpıldı",
+    "not_run": "çalıştırılmadı"
+  },
+  "historyEmptyNoun": {
+    "tracked endpoint": "izlenen endpoint",
+    "admitted entity": "kabul edilmiş varlık"
   }
 }

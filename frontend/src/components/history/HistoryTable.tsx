@@ -13,6 +13,7 @@ import { TableScroll } from "@/components/ui/TableScroll";
 import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
 
 import { familyName, formatCount, formatDays, relativeAge } from "./historyFormat";
+import { sentenceReader } from "./historyReasons";
 import { rowsOf, type HistoryRow } from "./historyRows";
 import { ageWords } from "./historyText";
 
@@ -199,7 +200,7 @@ function StateCell({ row }: { row: HistoryRow }) {
 export function HistoryTable({ console, now }: { console: HistoryConsole; now: Date }) {
   const t = useTranslations("history.table");
   const i18n = useBehaviorI18n();
-  const rows = rowsOf(console, i18n);
+  const rows = rowsOf(console, i18n, sentenceReader(i18n));
   return (
     <TableScroll label={t("label", { name: console.name })}>
       <table className="table-dense hb-table">

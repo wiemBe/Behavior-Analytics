@@ -21,12 +21,14 @@ from fastapi.responses import JSONResponse
 
 from app.api.deps import SessionDep, SettingsDep, requires
 from app.api.request_meta import client_ip
+from app.i18n.messages import MessageRef
 from app.schemas.history_backfill import (
     ConflictOut,
     ConsoleEstimateOut,
     ConsoleOut,
     DecisionAnswerIn,
 )
+from app.schemas.messages import stored_message
 from app.security.rbac import PERM_HISTORY_BACKFILL_ADMIN, Principal
 from app.services.history_backfill import ConsoleNotFoundError, HistoryBackfillService
 
@@ -45,8 +47,16 @@ def _not_found() -> HTTPException:
     return HTTPException(status.HTTP_404_NOT_FOUND, "console not found")
 
 
-def _conflict(detail: str, console: ConsoleOut) -> JSONResponse:
-    body = ConflictOut(detail=detail, console=console)
+def _conflict(
+    detail: str, console: ConsoleOut, message: MessageRef | None = None
+) -> JSONResponse:
+    wire = stored_message(None if message is None else message.to_wire())
+    body = ConflictOut(
+        detail=detail,
+        detail_code=None if wire is None else wire.code,
+        detail_params=None if wire is None else wire.params,
+        console=console,
+    )
     return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=jsonable_encoder(body))
 
 
@@ -83,7 +93,11 @@ async def decide_history_backfill(
     except ConsoleNotFoundError:
         raise _not_found() from None
     if outcome.status == "conflict":
-        return _conflict(outcome.detail or "the decision differs from the request", outcome.console)
+        return _conflict(
+            outcome.detail or "the decision differs from the request",
+            outcome.console,
+            outcome.detail_message,
+        )
     response.status_code = (
         status.HTTP_201_CREATED if outcome.status == "created" else status.HTTP_200_OK
     )
@@ -105,7 +119,9 @@ async def _request(
     except ConsoleNotFoundError:
         raise _not_found() from None
     if outcome.refused:
-        return _conflict(outcome.detail or "record Yes first", outcome.console)
+        return _conflict(
+            outcome.detail or "record Yes first", outcome.console, outcome.detail_message
+        )
     return outcome.console
 
 

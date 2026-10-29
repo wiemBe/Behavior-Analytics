@@ -31,6 +31,7 @@ from app.rules.matches import CoverageState, assess_coverage
 from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.locks import collector_lock_key
 from tests.integration.factories import make_instance
+from tests.integration.history_reason_support import assert_coded
 from tests.integration.test_rule_match_collection import (
     HOUR,
     NOW,
@@ -301,6 +302,7 @@ class TestFloorProof:
         assert await history_windows(db_session, instance) == []
         scope = await scope_row(db_session, instance)
         assert scope.state == "UNAVAILABLE"
+        assert_coded(scope)
 
     @pytest.mark.asyncio
     async def test_a_scan_failure_is_retried_then_unavailable(self, db_session) -> None:
@@ -520,6 +522,7 @@ class TestOperatorPaths:
         await history_collector(db_session, provider).collect(instance)
         finished = await scope_row(db_session, instance)
         assert finished.state in ("COMPLETE", "PARTIAL")
+        assert_coded(finished)
         scans_before = len(provider.scan_calls)
 
         decision = await db_session.scalar(
@@ -597,6 +600,7 @@ class TestOperatorPaths:
         ).collect(instance)
         reading = await scope_row(db_session, instance)
         assert reading is not None and reading.state == "READING"
+        assert_coded(reading)
         live_before = len(await windows(db_session, instance))
         original = RuleMatchCollector._read_history
 
@@ -653,6 +657,7 @@ class TestOperatorPaths:
         assert yielded.last_error_class == "EarlierProviderError"
         assert yielded.last_error_at == NOW
         assert yielded.reason == "deferred: no Ariel permit within 7 s"
+        assert yielded.reason_i18n is None
         assert await history_windows(db_session, instance) == []
         assert _ARIEL_PRIORITY.get() == "live"
 

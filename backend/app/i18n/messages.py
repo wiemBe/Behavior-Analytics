@@ -11,13 +11,14 @@ default) or ``plain`` (no grouping; it shapes the backend's English render only,
 frontend groups every count in the reader's locale); numbers accept ``general`` (the
 default), ``grouped``, ``fixed`` or ``repr`` (Python's ``str()`` of the number, which keeps
 a trailing ``.0``); points accept ``signed`` (the default) or ``unsigned``; lists accept
-``comma`` (the default), ``and`` or ``semicolon`` (``"; "``, for a list of clauses that carry
-commas); durations accept ``timedelta`` (Python's ``str()`` of a ``timedelta``, ``0:30:00`` or
-``1 day, 2:00:00``, for a sentence that always printed it so); timestamps accept the default
-(date, second, ``UTC``), ``minute`` (date, minute, ``UTC``) or ``iso``
-(``datetime.isoformat()``, for a sentence that always embedded it). Percent precision,
-fixed-number precision, and point precision are declared separately. Enum, ref, and text params
-have one spelling and therefore no alternate style.
+``comma`` (the default), ``and`` (Oxford: "a, b and c"), ``and_all`` (a flat " and " between
+every item, for a sentence whose legacy English joined that way) or ``semicolon`` (``"; "``,
+for a list of clauses that carry commas); durations accept ``timedelta`` (Python's ``str()``
+of a ``timedelta``, ``0:30:00`` or ``1 day, 2:00:00``, for a sentence that always printed it
+so); timestamps accept the default (date, second, ``UTC``), ``minute`` (date, minute,
+``UTC``) or ``iso`` (``datetime.isoformat()``, for a sentence that always embedded it).
+Percent precision, fixed-number precision, and point precision are declared separately.
+Enum, ref, and text params have one spelling and therefore no alternate style.
 """
 
 from __future__ import annotations
@@ -231,6 +232,28 @@ _PW_CLAIMS = (
     "pw.detector.claim_new_value",
     "pw.detector.claim_new_combination",
 )
+
+#: History (MSG-8a): the reasons an estimate line can carry, and the counted source words.
+_HB_B0 = datetime(2026, 10, 1, 8, 30, tzinfo=UTC)
+_HB_AT = datetime(2026, 10, 2, 8, 30, tzinfo=UTC)
+_ESTIMATE_REASONS = (
+    "history.fit.reduced",
+    "history.fit.fits",
+    "history.fit.refused",
+    "history.estimate.all_refused",
+    "history.estimate.some_refused",
+    "history.estimate.some_refused_reduced",
+    "history.estimate.reduced",
+    "history.estimate.all_fit",
+    "history.estimate.no_collection",
+    "history.estimate.planner_refused",
+    "history.estimate.no_monitored",
+    "history.estimate.no_waf",
+    "history.estimate.no_ips",
+    "history.estimate.no_catchall",
+    "history.estimate.no_rules",
+)
+_SOURCE_WORDS = ("history.words.source_one", "history.words.source_many")
 
 
 def _msg(
@@ -2090,6 +2113,738 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "an action map needs an ACTION field mapping",
     ),
     # --- end MSG-1b ---
+    # --- MSG-8a: history backfill sentences (Family 7) -- keep contiguous -------------------
+    # The scan and step plans of the shared planner. Counts print without grouping, as the
+    # f-strings they replace did; the floor-found times are `isoformat()`, as they always were.
+    _msg("history.scan.end", "the scan reached the end of the window"),
+    _msg("history.scan.search", "scan for the first event of the scope"),
+    _msg("history.scan.no_result", "no scan result was provided"),
+    _msg(
+        "history.scan.failed",
+        "the floor scan failed {failures} times; history is unavailable",
+        {"failures": _PLAIN},
+        {"failures": 3},
+    ),
+    _msg(
+        "history.scan.retry",
+        "a scan search was {status}; it proves nothing, so it is retried "
+        "({failures} of {max_failures})",
+        {
+            "status": ParamSpec(ParamKind.ENUM, enum_group="historyScanStatus"),
+            "failures": _PLAIN,
+            "max_failures": _PLAIN,
+        },
+        {"status": "failed", "failures": 1, "max_failures": 3},
+    ),
+    _msg(
+        "history.scan.too_recent",
+        "the first event is too recent to prove anything older: the margin of {margin} h "
+        "reaches the end of the window",
+        {"margin": _PLAIN},
+        {"margin": 24},
+    ),
+    _msg(
+        "history.scan.floor_found",
+        "QRadar holds events of the scope from {first}; history starts at {floor}",
+        {"first": _ISO, "floor": _ISO},
+        {"first": _HB_B0, "floor": _HB_AT},
+    ),
+    _msg(
+        "history.scan.floor_found_late",
+        "QRadar holds events of the scope from {first}; history starts at {floor} "
+        "(later than the asked start)",
+        {"first": _ISO, "floor": _ISO},
+        {"first": _HB_B0, "floor": _HB_AT},
+    ),
+    _msg(
+        "history.scan.no_event_window",
+        "no event of the scope in the whole window; nothing is written",
+    ),
+    _msg("history.scan.no_event_span", "no event in the scanned span; scan the next one"),
+    # The step plan; "history reading was switched off" is the state table's sentence
+    # (`history.state.switched_off`), so the planner reuses that code.
+    _msg("history.step.stopped", "history reading was stopped by an operator"),
+    _msg(
+        "history.step.time_limit",
+        "the reading did not finish in {hours} h",
+        {"hours": _PLAIN},
+        {"hours": 72},
+    ),
+    _msg("history.step.wait_budget", "waiting for search budget"),
+    _msg(
+        "history.step.read",
+        "read {buckets} bucket(s) in {searches} search(es) of up to {width}",
+        {"buckets": _PLAIN, "searches": _PLAIN, "width": _PLAIN},
+        {"buckets": 576, "searches": 2, "width": 288},
+    ),
+    # The finish verdict: a semicolon list of clause refs, joined exactly as before.
+    _msg(
+        "history.finish.floor_cut",
+        "QRadar holds less than asked (the floor is later than the asked start)",
+    ),
+    _msg(
+        "history.finish.gaps",
+        "{count} span(s) could not be read",
+        {"count": _PLAIN},
+        {"count": 2},
+    ),
+    _msg(
+        "history.finish.partial",
+        "reached the end; {problems}",
+        {"problems": ParamSpec(ParamKind.LIST, style="semicolon")},
+        {
+            "problems": [
+                MessageRef("history.finish.floor_cut"),
+                MessageRef("history.finish.gaps", {"count": 2}),
+            ]
+        },
+    ),
+    _msg("history.finish.complete", "reached the end with the whole asked window read"),
+    # The width notes of a settled step (§B.6.3).
+    _msg(
+        "history.width.released",
+        "{steps} clean steps brought the failure ceiling to the row fit of {fit}; "
+        "the ceiling is released",
+        {"steps": _PLAIN, "fit": _PLAIN},
+        {"steps": 3, "fit": 576},
+    ),
+    _msg(
+        "history.width.ceiling_doubled",
+        "{steps} clean steps doubled the failure ceiling to {ceiling}",
+        {"steps": _PLAIN, "ceiling": _PLAIN},
+        {"steps": 3, "ceiling": 576},
+    ),
+    # The clauses of a settled tick; `history.settle.ticked` is their "; "-join.
+    _msg(
+        "history.settle.read",
+        "read {count} bucket(s)",
+        {"count": _PLAIN},
+        {"count": 288},
+    ),
+    _msg(
+        "history.settle.width",
+        "the width is {count} bucket(s)",
+        {"count": _PLAIN},
+        {"count": 576},
+    ),
+    _msg(
+        "history.settle.too_many_gaps",
+        "more than {count} unreadable spans",
+        {"count": _PLAIN},
+        {"count": 20},
+    ),
+    _msg(
+        "history.settle.gap_recorded",
+        "recorded a gap: {gap}",
+        {"gap": ParamSpec(ParamKind.REF, ref_codes=("history.gap.search_failed",))},
+        {"gap": MessageRef("history.gap.search_failed", {"failures": 3})},
+    ),
+    _msg(
+        "history.settle.failed_minimum",
+        "a search failed at the minimum width ({failures} of {max_failures}); "
+        "the same span is tried again",
+        {"failures": _PLAIN, "max_failures": _PLAIN},
+        {"failures": 1, "max_failures": 3},
+    ),
+    _msg(
+        "history.settle.failed_halve",
+        "a search of {buckets} buckets failed; the width halves to {width}",
+        {"buckets": _PLAIN, "width": _PLAIN},
+        {"buckets": 288, "width": 144},
+    ),
+    _msg(
+        "history.settle.truncated_halve",
+        "a search of {buckets} buckets was truncated and keeps nothing; the width halves "
+        "to {width}",
+        {"buckets": _PLAIN, "width": _PLAIN},
+        {"buckets": 288, "width": 144},
+    ),
+    _msg("history.settle.budget_ended", "the budget ended before this span was searched"),
+    _msg(
+        "history.settle.density",
+        "{share} of the buckets read are lower bounds (limit {limit}): too many distinct "
+        "values per bucket, so history would be lower bounds",
+        {"share": _PERCENT, "limit": _PERCENT},
+        {"share": 0.06, "limit": 0.05},
+    ),
+    _msg(
+        "history.settle.ticked",
+        "{clauses}",
+        {"clauses": ParamSpec(ParamKind.LIST, style="semicolon")},
+        {
+            "clauses": [
+                MessageRef("history.settle.read", {"count": 288}),
+                MessageRef("history.settle.width", {"count": 576}),
+            ]
+        },
+    ),
+    # `fit_window` (§B.6.5): the hours are `.1f`, a closed style reproduces them.
+    _msg(
+        "history.fit.reduced",
+        "window reduced from {asked} to {days} days: the estimate exceeded {limit} hours",
+        {"asked": _PLAIN, "days": _PLAIN, "limit": _PLAIN},
+        {"asked": 28, "days": 21, "limit": 72},
+    ),
+    _msg(
+        "history.fit.fits",
+        "the {days}-day window fits in an estimated {hours} hours",
+        {"days": _PLAIN, "hours": _FIXED1},
+        {"days": 28, "hours": 23.4},
+    ),
+    _msg(
+        "history.fit.refused",
+        "even {days} days need about {hours} hours ({searches} searches, {ticks} ticks), "
+        "over the {limit}-hour limit; history is unavailable",
+        {"days": _PLAIN, "hours": _FIXED1, "searches": _PLAIN, "ticks": _PLAIN, "limit": _PLAIN},
+        {"days": 7, "hours": 90.0, "searches": 700, "ticks": 70, "limit": 72},
+    ),
+    # The family window (`fit_family_window`): the limit words join with " and ".
+    _msg(
+        "history.window.limit_setting",
+        "{setting} is {days} days",
+        {"setting": _TEXT, "days": _PLAIN},
+        {"setting": "BASELINE_LOOKBACK_DAYS", "days": 21},
+    ),
+    _msg(
+        "history.window.limit_retention",
+        "{setting} is {days} days and {hours_setting} is {hours} hours, so the reading "
+        "would outlive the retention",
+        {"setting": _TEXT, "days": _PLAIN, "hours_setting": _TEXT, "hours": _PLAIN},
+        {
+            "setting": "RETENTION_LOG_SOURCE_METRIC_DAYS",
+            "days": 21,
+            "hours_setting": "HISTORY_BACKFILL_MAX_HOURS",
+            "hours": 72,
+        },
+    ),
+    _msg(
+        "history.window.reduced",
+        "window reduced from {asked} to {days} days: {limits}",
+        {
+            "asked": _PLAIN,
+            "days": _PLAIN,
+            "limits": ParamSpec(ParamKind.LIST, style="and_all"),
+        },
+        {
+            "asked": 28,
+            "days": 21,
+            "limits": [
+                MessageRef(
+                    "history.window.limit_setting",
+                    {"setting": "BASELINE_LOOKBACK_DAYS", "days": 21},
+                ),
+                MessageRef(
+                    "history.window.limit_retention",
+                    {
+                        "setting": "RETENTION_LOG_SOURCE_METRIC_DAYS",
+                        "days": 22,
+                        "hours_setting": "HISTORY_BACKFILL_MAX_HOURS",
+                        "hours": 72,
+                    },
+                ),
+            ],
+        },
+    ),
+    _msg(
+        "history.window.unavailable",
+        "history unavailable: the window would be {days} days, below the {minimum}-day "
+        "minimum; {limits}",
+        {
+            "days": _PLAIN,
+            "minimum": _PLAIN,
+            "limits": ParamSpec(ParamKind.LIST, style="and_all"),
+        },
+        {
+            "days": 5,
+            "minimum": 7,
+            "limits": [
+                MessageRef(
+                    "history.window.limit_setting",
+                    {"setting": "HISTORY_BACKFILL_DAYS", "days": 5},
+                )
+            ],
+        },
+    ),
+    # What a later Yes would do for a scope (the "if Yes is said later" column).
+    _msg("history.later_yes.possible", "possible"),
+    _msg("history.later_yes.not_possible", "not possible: this source already collected"),
+    _msg("history.later_yes.has_scope", "not needed: this source has a history scope"),
+    # The collection switch words of the admin page.
+    _msg("history.family.always_on", "source-volume collection is the platform's base collection"),
+    _msg(
+        "history.family.switch_on",
+        "{setting} is on",
+        {"setting": _TEXT},
+        {"setting": "WAF_COLLECTION_ENABLED"},
+    ),
+    _msg(
+        "history.family.switch_off",
+        "{setting} is off",
+        {"setting": _TEXT},
+        {"setting": "IPS_COLLECTION_ENABLED"},
+    ),
+    # The first-step zero counts of the WAF and IPS collectors (stored on the scope row).
+    _msg(
+        "history.family.zero_endpoint",
+        "fitted with no tracked endpoint yet; the {limit}-hour limit still bounds the reading",
+        {"limit": _PLAIN},
+        {"limit": 72},
+    ),
+    _msg(
+        "history.family.zero_entity",
+        "fitted with no admitted entity yet; the {limit}-hour limit still bounds the reading",
+        {"limit": _PLAIN},
+        {"limit": 72},
+    ),
+    _msg(
+        "history.family.fair_share",
+        "fitted with a fair share of {share} of the {total} shared history searches per tick",
+        {"share": _PLAIN, "total": _PLAIN},
+        {"share": 3, "total": 10},
+    ),
+    # The per-source estimate summary (`estimate_source_family`).
+    _msg(
+        "history.estimate.all_refused",
+        "all {sources} sources are unavailable: even {days} days exceed the {limit}-hour "
+        "per-source limit",
+        {"sources": _PLAIN, "days": _PLAIN, "limit": _PLAIN},
+        {"sources": 4, "days": 7, "limit": 72},
+    ),
+    _msg(
+        "history.estimate.some_refused",
+        "{refused} of {sources} sources are unavailable because even 7 days exceed the "
+        "{limit}-hour per-source limit; the remaining source windows fit",
+        {"refused": _PLAIN, "sources": _PLAIN, "limit": _PLAIN},
+        {"refused": 1, "sources": 4, "limit": 72},
+    ),
+    _msg(
+        "history.estimate.some_refused_reduced",
+        "{refused} of {sources} sources are unavailable because even 7 days exceed the "
+        "{limit}-hour per-source limit; the remaining source windows fit, with the smallest "
+        "reduced from {asked} to {days} days",
+        {"refused": _PLAIN, "sources": _PLAIN, "limit": _PLAIN, "asked": _PLAIN, "days": _PLAIN},
+        {"refused": 1, "sources": 4, "limit": 72, "asked": 28, "days": 21},
+    ),
+    _msg(
+        "history.estimate.reduced",
+        "window reduced from {asked} to {days} days for the smallest per-source fit: the "
+        "estimate exceeded {limit} hours",
+        {"asked": _PLAIN, "days": _PLAIN, "limit": _PLAIN},
+        {"asked": 28, "days": 21, "limit": 72},
+    ),
+    _msg(
+        "history.estimate.all_fit",
+        "all {sources} per-source {days}-day windows fit; the console total is an estimated "
+        "{hours} hours",
+        {"sources": _PLAIN, "days": _PLAIN, "hours": _FIXED1},
+        {"sources": 4, "days": 28, "hours": 61.2},
+    ),
+    # Why an estimate is missing (the service's `no estimate: ...` shapes).
+    _msg(
+        "history.estimate.no_collection",
+        "no estimate: collection is switched off ({reason})",
+        {"reason": ParamSpec(ParamKind.REF, ref_codes=("history.family.switch_off",))},
+        {"reason": MessageRef("history.family.switch_off", {"setting": "IPS_COLLECTION_ENABLED"})},
+    ),
+    _msg(
+        "history.estimate.planner_refused",
+        "no estimate: the planner refused the settings ({error})",
+        {"error": _TEXT},
+        {"error": "max_hours and cadence_seconds must be >= 1"},
+    ),
+    _msg(
+        "history.estimate.no_monitored",
+        "no estimate: the console has no monitored log source yet",
+    ),
+    _msg("history.estimate.no_waf", "no estimate: no WAF source is enabled on this console"),
+    _msg("history.estimate.no_ips", "no estimate: no IPS source is enabled on this console"),
+    _msg(
+        "history.estimate.no_catchall",
+        "no estimate: no catch-all bucket has been collected in the last {days} days",
+        {"days": _PLAIN},
+        {"days": 7},
+    ),
+    _msg("history.estimate.no_rules", "no estimate: the console has no enabled rule"),
+    # The estimate compositions of the service.
+    _msg(
+        "history.estimate.empty_sources",
+        "{reason}; {count} source(s) fitted with no {noun} yet; the {limit}-hour limit still "
+        "bounds the reading",
+        {
+            "reason": ParamSpec(ParamKind.REF, ref_codes=_ESTIMATE_REASONS),
+            "count": _PLAIN,
+            "noun": ParamSpec(ParamKind.ENUM, enum_group="historyEmptyNoun"),
+            "limit": _PLAIN,
+        },
+        {
+            "reason": MessageRef(
+                "history.estimate.all_fit", {"sources": 4, "days": 28, "hours": 61.2}
+            ),
+            "count": 2,
+            "noun": "tracked endpoint",
+            "limit": 72,
+        },
+    ),
+    _msg(
+        "history.estimate.window_limited",
+        "{window}; {fit}",
+        {
+            "window": ParamSpec(ParamKind.REF, ref_codes=("history.window.reduced",)),
+            "fit": ParamSpec(ParamKind.REF, ref_codes=_ESTIMATE_REASONS),
+        },
+        {
+            "window": MessageRef(
+                "history.window.reduced",
+                {
+                    "asked": 28,
+                    "days": 21,
+                    "limits": [
+                        MessageRef(
+                            "history.window.limit_setting",
+                            {"setting": "BASELINE_LOOKBACK_DAYS", "days": 21},
+                        )
+                    ],
+                },
+            ),
+            "fit": MessageRef("history.fit.fits", {"days": 21, "hours": 45.0}),
+        },
+    ),
+    # The decision and request sentences of the admin surface.
+    _msg(
+        "history.request.start",
+        "Read history now is recorded. Each family applies it at its next collection; "
+        "no scope has changed yet.",
+    ),
+    _msg(
+        "history.request.stop",
+        "Stop reading is recorded. Each family ends its reading scopes at its next "
+        "collection; no scope has changed yet.",
+    ),
+    _msg(
+        "history.request.refused",
+        "record Yes first: the console has no Yes answer to start or stop",
+    ),
+    _msg("history.decide.never_reversed", "a Yes is never reversed; stop the reading instead"),
+    _msg("history.decide.meantime", "a decision was recorded in the meantime; it is shown here"),
+    # The state table (`_TRANSITIONS`): one code per fixed sentence.
+    _msg(
+        "history.state.request_awaiting_anchor",
+        "history was requested, and the scope waits for its first live bucket (the anchor)",
+    ),
+    _msg(
+        "history.state.request_ready",
+        "history was requested, and the scope can be planned at its next collection",
+    ),
+    _msg(
+        "history.state.not_eligible_preceded",
+        "the scope already has live buckets, and a prepend would move first_seen_at (§B.5)",
+    ),
+    _msg("history.state.anchor_found", "the first live bucket exists; reading can start"),
+    _msg(
+        "history.state.not_eligible_late",
+        "the scope turned out to have live buckets that history cannot precede",
+    ),
+    _msg(
+        "history.state.nothing_to_read_scan",
+        "QRadar holds no event of the scope in the window, or the floor scan could not be done",
+    ),
+    _msg("history.state.nothing_to_read", "QRadar holds no event of the scope in the window"),
+    _msg(
+        "history.state.window_too_small",
+        "the estimate exceeds the time limit even at the smallest window",
+    ),
+    _msg(
+        "history.state.finished_complete",
+        "the reading reached the end; the floor is within one bucket of the asked start "
+        "and no gap exists",
+    ),
+    _msg(
+        "history.state.finished_partial",
+        "the reading reached the end, but QRadar holds less than asked or a gap exists",
+    ),
+    _msg(
+        "history.state.density_gate",
+        "too many buckets would be lower bounds; reading further would store only those",
+    ),
+    _msg(
+        "history.state.too_many_gaps",
+        "the gap list is full; the scope has too many unreadable spans",
+    ),
+    _msg("history.state.time_limit", "the reading did not finish inside its time limit"),
+    _msg(
+        "history.state.switched_off_start",
+        "history reading is switched off; the scope starts live",
+    ),
+    _msg(
+        "history.state.switched_off_waiting",
+        "history reading was switched off while waiting",
+    ),
+    _msg("history.state.switched_off", "history reading was switched off"),
+    _msg("history.state.stopped_waiting", "stopped by an operator while waiting"),
+    _msg("history.state.stopped", "stopped by an operator"),
+    _msg(
+        "history.state.restart",
+        "the reading restarts: a new answer, a topped-up source or a new watch version",
+    ),
+    # The lifecycle's own reasons (the scope rows the lifecycle writes itself).
+    _msg(
+        "history.lifecycle.not_eligible",
+        "this source already collected live data; history cannot be read before it "
+        "(disable the profile and create it again to read its history)",
+    ),
+    _msg("history.lifecycle.restart", "read history now: topping up"),
+    _msg(
+        "history.lifecycle.stopped_by",
+        "stopped by {by}",
+        {"by": _TEXT},
+        {"by": "ayse"},
+    ),
+    # The multi-source finishes (`finish_with_sources`) and their counted words.
+    _msg("history.words.source_one", "1 source"),
+    _msg(
+        "history.words.source_many",
+        "{count} sources",
+        {"count": _PLAIN},
+        {"count": 5},
+    ),
+    _msg(
+        "history.finish.cut_sources",
+        "QRadar holds less than asked for {cut} of {total}",
+        {
+            "cut": _PLAIN,
+            "total": ParamSpec(ParamKind.REF, ref_codes=_SOURCE_WORDS),
+        },
+        {"cut": 2, "total": MessageRef("history.words.source_many", {"count": 5})},
+    ),
+    _msg(
+        "history.finish.silent_sources",
+        "{sources} had no event in the window",
+        {"sources": ParamSpec(ParamKind.REF, ref_codes=_SOURCE_WORDS)},
+        {"sources": MessageRef("history.words.source_one")},
+    ),
+    # The adapter finishes of Phase A and catch-all.
+    _msg(
+        "history.phase_a.no_event",
+        "QRadar holds no event of a monitored source in the window; nothing is written",
+    ),
+    _msg(
+        "history.phase_a.no_monitored",
+        "no log source is monitored, so there is nothing to read history for",
+    ),
+    _msg(
+        "history.catchall.no_event",
+        "no catch-all source had an event in the window; nothing is written",
+    ),
+    _msg(
+        "history.catchall.anchor_gone",
+        "the live anchor is gone: the history has no end to read up to",
+    ),
+    _msg(
+        "history.catchall.unreadable",
+        "the stored history progress could not be read back",
+    ),
+    _msg("history.waf.volume_pass_finished", "history volume pass finished"),
+    _msg("history.waf.wait_time_budget", "waiting for the history time budget"),
+    # A scope reason made of two or more coded clauses (the legacy `"; ".join`).
+    _msg(
+        "history.reason.joined",
+        "{clauses}",
+        {"clauses": ParamSpec(ParamKind.LIST, style="semicolon")},
+        {
+            "clauses": [
+                MessageRef("history.family.zero_endpoint", {"limit": 72}),
+                MessageRef("history.settle.read", {"count": 288}),
+            ]
+        },
+    ),
+    # The estimate assumptions: composed of shape, budget, cadence and counted words.
+    _msg("history.assumption.shape_windows", "hourly windows"),
+    _msg(
+        "history.assumption.shape_buckets",
+        "{minutes}-minute buckets",
+        {"minutes": _PLAIN},
+        {"minutes": 5},
+    ),
+    _msg(
+        "history.assumption.budget_waf",
+        "{per_source} history searches per source tick times {sources} sources at once",
+        {"per_source": _PLAIN, "sources": _PLAIN},
+        {"per_source": 10, "sources": 4},
+    ),
+    _msg(
+        "history.assumption.budget_ips",
+        "{per_tick} history searches shared per tick",
+        {"per_tick": _PLAIN},
+        {"per_tick": 10},
+    ),
+    _msg(
+        "history.assumption.budget_plain",
+        "{per_tick} history searches per tick",
+        {"per_tick": _PLAIN},
+        {"per_tick": 10},
+    ),
+    _msg(
+        "history.assumption.opening",
+        "{shape}, {budget}",
+        {
+            "shape": ParamSpec(
+                ParamKind.REF,
+                ref_codes=(
+                    "history.assumption.shape_windows",
+                    "history.assumption.shape_buckets",
+                ),
+            ),
+            "budget": ParamSpec(
+                ParamKind.REF,
+                ref_codes=(
+                    "history.assumption.budget_waf",
+                    "history.assumption.budget_ips",
+                    "history.assumption.budget_plain",
+                ),
+            ),
+        },
+        {
+            "shape": MessageRef("history.assumption.shape_buckets", {"minutes": 5}),
+            "budget": MessageRef("history.assumption.budget_plain", {"per_tick": 10}),
+        },
+    ),
+    _msg("history.interval.minute_one", "1 minute"),
+    _msg(
+        "history.interval.minute_many",
+        "{count} minutes",
+        {"count": _PLAIN},
+        {"count": 5},
+    ),
+    _msg("history.interval.hour_one", "1 hour"),
+    _msg(
+        "history.interval.hour_many",
+        "{count} hours",
+        {"count": _PLAIN},
+        {"count": 2},
+    ),
+    _msg("history.interval.day_one", "1 day"),
+    _msg(
+        "history.interval.day_many",
+        "{count} days",
+        {"count": _PLAIN},
+        {"count": 3},
+    ),
+    _msg(
+        "history.assumption.cadence",
+        "one tick every {interval} (the family's Search cadence)",
+        {
+            "interval": ParamSpec(
+                ParamKind.REF,
+                ref_codes=(
+                    "history.interval.minute_one",
+                    "history.interval.minute_many",
+                    "history.interval.hour_one",
+                    "history.interval.hour_many",
+                    "history.interval.day_one",
+                    "history.interval.day_many",
+                ),
+            )
+        },
+        {"interval": MessageRef("history.interval.minute_many", {"count": 5})},
+    ),
+    _msg(
+        "history.assumption.qradar_time",
+        "QRadar time per search not measured on this console",
+    ),
+    _msg(
+        "history.assumption.phase_a_rows",
+        "{sources} monitored sources, one row each per bucket",
+        {"sources": _PLAIN},
+        {"sources": 120},
+    ),
+    _msg(
+        "history.assumption.waf_sources",
+        "{count} WAF sources with {endpoints} tracked endpoints",
+        {"count": _PLAIN, "endpoints": _PLAIN},
+        {"count": 4, "endpoints": 18},
+    ),
+    _msg(
+        "history.assumption.waf_breakdown",
+        "action, response code and source IP read over {days} days only",
+        {"days": _PLAIN},
+        {"days": 7},
+    ),
+    _msg("history.words.plan_one", "1 per-source plan"),
+    _msg(
+        "history.words.plan_many",
+        "{count} per-source plans",
+        {"count": _PLAIN},
+        {"count": 6},
+    ),
+    _msg(
+        "history.assumption.ips_sources",
+        "{count} IPS sources in {plans}",
+        {
+            "count": _PLAIN,
+            "plans": ParamSpec(
+                ParamKind.REF,
+                ref_codes=("history.words.plan_one", "history.words.plan_many"),
+            ),
+        },
+        {"count": 6, "plans": MessageRef("history.words.plan_many", {"count": 6})},
+    ),
+    _msg(
+        "history.assumption.ips_values",
+        "{source_ips} source IPs, {action_values} action values and {fanout} port fan-out "
+        "rows per source and bucket assumed",
+        {"source_ips": _PLAIN, "action_values": _PLAIN, "fanout": _PLAIN},
+        {"source_ips": 50, "action_values": 3, "fanout": 10},
+    ),
+    _msg(
+        "history.assumption.ips_fair_share",
+        "each per-source plan is fitted with a fair share of {share} of the {per_tick} "
+        "shared searches per tick",
+        {"share": _PLAIN, "per_tick": _PLAIN},
+        {"share": 3, "per_tick": 10},
+    ),
+    _msg("history.words.bucket_one", "1 live bucket"),
+    _msg(
+        "history.words.bucket_many",
+        "{count} live buckets",
+        {"count": _PLAIN},
+        {"count": 2016},
+    ),
+    _msg(
+        "history.assumption.catchall_senders",
+        "{senders} senders per bucket (the mean of {buckets} of the last {days} days)",
+        {
+            "senders": _PLAIN,
+            "buckets": ParamSpec(
+                ParamKind.REF,
+                ref_codes=("history.words.bucket_one", "history.words.bucket_many"),
+            ),
+            "days": _PLAIN,
+        },
+        {
+            "senders": 12,
+            "buckets": MessageRef("history.words.bucket_many", {"count": 2016}),
+            "days": 7,
+        },
+    ),
+    _msg(
+        "history.assumption.catchall_rows",
+        "{rows} rows per search",
+        {"rows": _PLAIN},
+        {"rows": 5000},
+    ),
+    _msg(
+        "history.assumption.rules",
+        "{rules} enabled rules, every one assumed to match in each window",
+        {"rules": _PLAIN},
+        {"rules": 40},
+    ),
+    _msg(
+        "history.assumption.rule_rows",
+        "{rows} rows per search, plus one console total",
+        {"rows": _PLAIN},
+        {"rows": 1000},
+    ),
+    # --- end MSG-8a ---------------------------------------------------------------------------
 )
 
 
@@ -2101,7 +2856,7 @@ _STYLES: dict[ParamKind, set[str | None]] = {
     ParamKind.DURATION: {None, "timedelta"},
     ParamKind.TIMESTAMP: {None, "minute", "iso"},
     ParamKind.ENUM: {None},
-    ParamKind.LIST: {None, "comma", "and", "semicolon"},
+    ParamKind.LIST: {None, "comma", "and", "and_all", "semicolon"},
     ParamKind.REF: {None},
     ParamKind.TEXT: {None},
 }
@@ -2313,6 +3068,8 @@ def _format_param(
         ]
         if spec.style == "semicolon":
             return "; ".join(rendered)
+        if spec.style == "and_all":
+            return " and ".join(rendered)
         if spec.style == "and" and len(rendered) > 1:
             return f"{', '.join(rendered[:-1])} and {rendered[-1]}"
         return ", ".join(rendered)

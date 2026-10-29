@@ -34,7 +34,9 @@ from app.history.progress_codec import (
     _decode_datetime,
     _encode_datetime,
 )
+from app.history.reasons import message_wire, semicolon_reason
 from app.history.state import HistoryTrigger
+from app.i18n.messages import MessageRef
 
 ADAPTER_KEY = "floors"
 
@@ -156,6 +158,13 @@ def _count(number: int, noun: str) -> str:
     return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
 
 
+def _count_message(number: int, singular: str, many: str) -> MessageRef:
+    """The counted words, one code for one and one for many (MSG-8a)."""
+    if number == 1:
+        return MessageRef(singular)
+    return MessageRef(many, {"count": number})
+
+
 def finish_with_sources(
     trigger: HistoryTrigger,
     reason: str,
@@ -166,24 +175,86 @@ def finish_with_sources(
     margin: timedelta,
     bucket: timedelta,
 ) -> tuple[HistoryTrigger, str]:
-    """The finishing trigger of a multi-source scope.
+    """The finishing trigger of a multi-source scope, as its sentence only.
+
+    Kept for the callers that only need the words; `finish_with_sources_coded` is
+    the same rule and also returns the sentence's wire reference.
+    """
+    trigger, reason, _ = finish_with_sources_coded(
+        trigger,
+        reason,
+        floors,
+        known=known,
+        target_start=target_start,
+        margin=margin,
+        bucket=bucket,
+    )
+    return trigger, reason
+
+
+def finish_with_sources_coded(
+    trigger: HistoryTrigger,
+    reason: str,
+    floors: SourceFloors,
+    *,
+    known: Iterable[str],
+    target_start: datetime,
+    margin: timedelta,
+    bucket: timedelta,
+    reason_message: MessageRef | dict[str, object] | None = None,
+) -> tuple[HistoryTrigger, str, dict[str, object] | None]:
+    """The finishing trigger of a multi-source scope, with its wire reference.
 
     `FINISHED_COMPLETE` becomes `FINISHED_PARTIAL` when any monitored source is cut or
-    silent, with a reason that gives the counts. Any other trigger is returned unchanged.
+    silent, with a reason that gives the counts. Any other trigger returns its reason
+    and reference unchanged.
     """
     if trigger is not HistoryTrigger.FINISHED_COMPLETE:
-        return trigger, reason
+        return trigger, reason, message_wire(reason_message)
     monitored = frozenset(known)
     cut = floors.cut_sources(target_start=target_start, margin=margin, bucket=bucket) & monitored
     silent = floors.silent_sources(monitored)
     if not cut and not silent:
-        return trigger, reason
+        return trigger, reason, message_wire(reason_message)
     parts = []
     if cut:
+        cut_count = _count(len(monitored), "source")
         parts.append(
-            f"QRadar holds less than asked for {len(cut)} of {_count(len(monitored), 'source')}"
+            (
+                f"QRadar holds less than asked for {len(cut)} of {cut_count}",
+                MessageRef(
+                    "history.finish.cut_sources",
+                    {
+                        "cut": len(cut),
+                        "total": _count_message(
+                            len(monitored),
+                            "history.words.source_one",
+                            "history.words.source_many",
+                        ),
+                    },
+                ),
+            )
         )
     if silent:
-        parts.append(f"{_count(len(silent), 'source')} had no event in the window")
-    sentence = "; ".join(parts)
-    return HistoryTrigger.FINISHED_PARTIAL, bounded_reason(sentence)
+        parts.append(
+            (
+                f"{_count(len(silent), 'source')} had no event in the window",
+                MessageRef(
+                    "history.finish.silent_sources",
+                    {
+                        "sources": _count_message(
+                            len(silent),
+                            "history.words.source_one",
+                            "history.words.source_many",
+                        )
+                    },
+                ),
+            )
+        )
+    sentence, wire = semicolon_reason(parts)
+    bounded = bounded_reason(sentence)
+    return (
+        HistoryTrigger.FINISHED_PARTIAL,
+        bounded,
+        wire if bounded == sentence else None,
+    )

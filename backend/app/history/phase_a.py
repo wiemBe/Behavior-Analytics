@@ -51,15 +51,16 @@ from app.history.planner import (
     searches_for,
     window_buckets,
 )
-from app.history.source_floors import SourceFloors, finish_with_sources
+from app.history.source_floors import SourceFloors, finish_with_sources_coded
 from app.history.state import HistoryFamily, HistoryTrigger
+from app.i18n.messages import MessageRef, render
 from app.models.enums import BucketCompleteness
 from app.providers.dto import LogSourceMetricSample
 
-NO_EVENT_REASON = (
-    "QRadar holds no event of a monitored source in the window; nothing is written"
-)
-NO_MONITORED_REASON = "no log source is monitored, so there is nothing to read history for"
+NO_EVENT_MESSAGE = MessageRef("history.phase_a.no_event")
+NO_MONITORED_MESSAGE = MessageRef("history.phase_a.no_monitored")
+NO_EVENT_REASON = render(NO_EVENT_MESSAGE)
+NO_MONITORED_REASON = render(NO_MONITORED_MESSAGE)
 REBUILD_PENDING_KEY = "rebuild_pending"
 #: Source keys a restarted reading may search: the ones that had no floor. Absent on a
 #: reading that is not a top-up, which searches every monitored source. Not a codec field.
@@ -406,17 +407,44 @@ def finish(
     target_start: datetime,
     settings: PlannerSettings,
 ) -> tuple[HistoryTrigger, str]:
-    """The finishing trigger of the Phase A scope.
+    """The finishing trigger of the Phase A scope, as its sentence only.
+
+    Kept for the callers that only need the words; `finish_coded` is the same rule
+    and also returns the sentence's wire reference.
+    """
+    trigger, reason, _ = finish_coded(
+        trigger,
+        reason,
+        floors,
+        known=known,
+        target_start=target_start,
+        settings=settings,
+    )
+    return trigger, reason
+
+
+def finish_coded(
+    trigger: HistoryTrigger,
+    reason: str,
+    floors: SourceFloors,
+    *,
+    known: Collection[str],
+    target_start: datetime,
+    settings: PlannerSettings,
+    reason_message: MessageRef | dict[str, object] | None = None,
+) -> tuple[HistoryTrigger, str, dict[str, object] | None]:
+    """The finishing trigger of the Phase A scope, with its wire reference.
 
     A reading that reached its end with no event of any monitored source is `UNAVAILABLE`
     (nothing was written, §B.12 row 2); otherwise a cut or silent source turns `COMPLETE`
-    into `PARTIAL` with the counts (`finish_with_sources`). Any other trigger is unchanged.
+    into `PARTIAL` with the counts (`finish_with_sources_coded`). Any other trigger is
+    unchanged.
     """
     if trigger is HistoryTrigger.FINISHED_COMPLETE and not any(
         key in floors.first_buckets for key in known
     ):
-        return HistoryTrigger.NOTHING_TO_READ, NO_EVENT_REASON
-    return finish_with_sources(
+        return HistoryTrigger.NOTHING_TO_READ, NO_EVENT_REASON, NO_EVENT_MESSAGE.to_wire()
+    return finish_with_sources_coded(
         trigger,
         reason,
         floors,
@@ -424,6 +452,7 @@ def finish(
         target_start=target_start,
         margin=settings.margin,
         bucket=settings.bucket,
+        reason_message=reason_message,
     )
 
 

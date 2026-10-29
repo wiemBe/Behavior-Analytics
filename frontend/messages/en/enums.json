@@ -161,5 +161,14 @@
     "analyst": "analyst",
     "viewer": "viewer",
     "detection_engineer": "detection_engineer"
+  },
+  "historyScanStatus": {
+    "failed": "failed",
+    "truncated": "truncated",
+    "not_run": "not run"
+  },
+  "historyEmptyNoun": {
+    "tracked endpoint": "tracked endpoint",
+    "admitted entity": "admitted entity"
   }
 }

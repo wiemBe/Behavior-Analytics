@@ -113,8 +113,177 @@
     }
   },
   "history": {
+    "assumption": {
+      "budget_ips": "{per_tick} history searches shared per tick",
+      "budget_plain": "{per_tick} history searches per tick",
+      "budget_waf": "{per_source} history searches per source tick times {sources} sources at once",
+      "cadence": "one tick every {interval} (the family''s Search cadence)",
+      "catchall_rows": "{rows} rows per search",
+      "catchall_senders": "{senders} senders per bucket (the mean of {buckets} of the last {days} days)",
+      "ips_fair_share": "each per-source plan is fitted with a fair share of {share} of the {per_tick} shared searches per tick",
+      "ips_sources": "{count} IPS sources in {plans}",
+      "ips_values": "{source_ips} source IPs, {action_values} action values and {fanout} port fan-out rows per source and bucket assumed",
+      "opening": "{shape}, {budget}",
+      "phase_a_rows": "{sources} monitored sources, one row each per bucket",
+      "qradar_time": "QRadar time per search not measured on this console",
+      "rule_rows": "{rows} rows per search, plus one console total",
+      "rules": "{rules} enabled rules, every one assumed to match in each window",
+      "shape_buckets": "{minutes}-minute buckets",
+      "shape_windows": "hourly windows",
+      "waf_breakdown": "action, response code and source IP read over {days} days only",
+      "waf_sources": "{count} WAF sources with {endpoints} tracked endpoints"
+    },
+    "catchall": {
+      "anchor_gone": "the live anchor is gone: the history has no end to read up to",
+      "no_event": "no catch-all source had an event in the window; nothing is written",
+      "unreadable": "the stored history progress could not be read back"
+    },
+    "decide": {
+      "meantime": "a decision was recorded in the meantime; it is shown here",
+      "never_reversed": "a Yes is never reversed; stop the reading instead"
+    },
+    "estimate": {
+      "all_fit": "all {sources} per-source {days}-day windows fit; the console total is an estimated {hours} hours",
+      "all_refused": "all {sources} sources are unavailable: even {days} days exceed the {limit}-hour per-source limit",
+      "empty_sources": "{reason}; {count} source(s) fitted with no {noun} yet; the {limit}-hour limit still bounds the reading",
+      "no_catchall": "no estimate: no catch-all bucket has been collected in the last {days} days",
+      "no_collection": "no estimate: collection is switched off ({reason})",
+      "no_ips": "no estimate: no IPS source is enabled on this console",
+      "no_monitored": "no estimate: the console has no monitored log source yet",
+      "no_rules": "no estimate: the console has no enabled rule",
+      "no_waf": "no estimate: no WAF source is enabled on this console",
+      "planner_refused": "no estimate: the planner refused the settings ({error})",
+      "reduced": "window reduced from {asked} to {days} days for the smallest per-source fit: the estimate exceeded {limit} hours",
+      "some_refused": "{refused} of {sources} sources are unavailable because even 7 days exceed the {limit}-hour per-source limit; the remaining source windows fit",
+      "some_refused_reduced": "{refused} of {sources} sources are unavailable because even 7 days exceed the {limit}-hour per-source limit; the remaining source windows fit, with the smallest reduced from {asked} to {days} days",
+      "window_limited": "{window}; {fit}"
+    },
+    "family": {
+      "always_on": "source-volume collection is the platform''s base collection",
+      "fair_share": "fitted with a fair share of {share} of the {total} shared history searches per tick",
+      "switch_off": "{setting} is off",
+      "switch_on": "{setting} is on",
+      "zero_endpoint": "fitted with no tracked endpoint yet; the {limit}-hour limit still bounds the reading",
+      "zero_entity": "fitted with no admitted entity yet; the {limit}-hour limit still bounds the reading"
+    },
+    "finish": {
+      "complete": "reached the end with the whole asked window read",
+      "cut_sources": "QRadar holds less than asked for {cut} of {total}",
+      "floor_cut": "QRadar holds less than asked (the floor is later than the asked start)",
+      "gaps": "{count} span(s) could not be read",
+      "partial": "reached the end; {problems}",
+      "silent_sources": "{sources} had no event in the window"
+    },
+    "fit": {
+      "fits": "the {days}-day window fits in an estimated {hours} hours",
+      "reduced": "window reduced from {asked} to {days} days: the estimate exceeded {limit} hours",
+      "refused": "even {days} days need about {hours} hours ({searches} searches, {ticks} ticks), over the {limit}-hour limit; history is unavailable"
+    },
     "gap": {
       "search_failed": "search failed {failures} times at the minimum width"
+    },
+    "interval": {
+      "day_many": "{count} days",
+      "day_one": "1 day",
+      "hour_many": "{count} hours",
+      "hour_one": "1 hour",
+      "minute_many": "{count} minutes",
+      "minute_one": "1 minute"
+    },
+    "later_yes": {
+      "has_scope": "not needed: this source has a history scope",
+      "not_possible": "not possible: this source already collected",
+      "possible": "possible"
+    },
+    "lifecycle": {
+      "not_eligible": "this source already collected live data; history cannot be read before it (disable the profile and create it again to read its history)",
+      "restart": "read history now: topping up",
+      "stopped_by": "stopped by {by}"
+    },
+    "phase_a": {
+      "no_event": "QRadar holds no event of a monitored source in the window; nothing is written",
+      "no_monitored": "no log source is monitored, so there is nothing to read history for"
+    },
+    "reason": {
+      "joined": "{clauses}"
+    },
+    "request": {
+      "refused": "record Yes first: the console has no Yes answer to start or stop",
+      "start": "Read history now is recorded. Each family applies it at its next collection; no scope has changed yet.",
+      "stop": "Stop reading is recorded. Each family ends its reading scopes at its next collection; no scope has changed yet."
+    },
+    "scan": {
+      "end": "the scan reached the end of the window",
+      "failed": "the floor scan failed {failures} times; history is unavailable",
+      "floor_found": "QRadar holds events of the scope from {first}; history starts at {floor}",
+      "floor_found_late": "QRadar holds events of the scope from {first}; history starts at {floor} (later than the asked start)",
+      "no_event_span": "no event in the scanned span; scan the next one",
+      "no_event_window": "no event of the scope in the whole window; nothing is written",
+      "no_result": "no scan result was provided",
+      "retry": "a scan search was {status}; it proves nothing, so it is retried ({failures} of {max_failures})",
+      "search": "scan for the first event of the scope",
+      "too_recent": "the first event is too recent to prove anything older: the margin of {margin} h reaches the end of the window"
+    },
+    "settle": {
+      "budget_ended": "the budget ended before this span was searched",
+      "density": "{share} of the buckets read are lower bounds (limit {limit}): too many distinct values per bucket, so history would be lower bounds",
+      "failed_halve": "a search of {buckets} buckets failed; the width halves to {width}",
+      "failed_minimum": "a search failed at the minimum width ({failures} of {max_failures}); the same span is tried again",
+      "gap_recorded": "recorded a gap: {gap}",
+      "read": "read {count} bucket(s)",
+      "ticked": "{clauses}",
+      "too_many_gaps": "more than {count} unreadable spans",
+      "truncated_halve": "a search of {buckets} buckets was truncated and keeps nothing; the width halves to {width}",
+      "width": "the width is {count} bucket(s)"
+    },
+    "state": {
+      "anchor_found": "the first live bucket exists; reading can start",
+      "density_gate": "too many buckets would be lower bounds; reading further would store only those",
+      "finished_complete": "the reading reached the end; the floor is within one bucket of the asked start and no gap exists",
+      "finished_partial": "the reading reached the end, but QRadar holds less than asked or a gap exists",
+      "not_eligible_late": "the scope turned out to have live buckets that history cannot precede",
+      "not_eligible_preceded": "the scope already has live buckets, and a prepend would move first_seen_at (§B.5)",
+      "nothing_to_read": "QRadar holds no event of the scope in the window",
+      "nothing_to_read_scan": "QRadar holds no event of the scope in the window, or the floor scan could not be done",
+      "request_awaiting_anchor": "history was requested, and the scope waits for its first live bucket (the anchor)",
+      "request_ready": "history was requested, and the scope can be planned at its next collection",
+      "restart": "the reading restarts: a new answer, a topped-up source or a new watch version",
+      "stopped": "stopped by an operator",
+      "stopped_waiting": "stopped by an operator while waiting",
+      "switched_off": "history reading was switched off",
+      "switched_off_start": "history reading is switched off; the scope starts live",
+      "switched_off_waiting": "history reading was switched off while waiting",
+      "time_limit": "the reading did not finish inside its time limit",
+      "too_many_gaps": "the gap list is full; the scope has too many unreadable spans",
+      "window_too_small": "the estimate exceeds the time limit even at the smallest window"
+    },
+    "step": {
+      "read": "read {buckets} bucket(s) in {searches} search(es) of up to {width}",
+      "stopped": "history reading was stopped by an operator",
+      "time_limit": "the reading did not finish in {hours} h",
+      "wait_budget": "waiting for search budget"
+    },
+    "waf": {
+      "volume_pass_finished": "history volume pass finished",
+      "wait_time_budget": "waiting for the history time budget"
+    },
+    "width": {
+      "ceiling_doubled": "{steps} clean steps doubled the failure ceiling to {ceiling}",
+      "released": "{steps} clean steps brought the failure ceiling to the row fit of {fit}; the ceiling is released"
+    },
+    "window": {
+      "limit_retention": "{setting} is {days} days and {hours_setting} is {hours} hours, so the reading would outlive the retention",
+      "limit_setting": "{setting} is {days} days",
+      "reduced": "window reduced from {asked} to {days} days: {limits}",
+      "unavailable": "history unavailable: the window would be {days} days, below the {minimum}-day minimum; {limits}"
+    },
+    "words": {
+      "bucket_many": "{count} live buckets",
+      "bucket_one": "1 live bucket",
+      "plan_many": "{count} per-source plans",
+      "plan_one": "1 per-source plan",
+      "source_many": "{count} sources",
+      "source_one": "1 source"
     }
   },
   "propertywatch": {

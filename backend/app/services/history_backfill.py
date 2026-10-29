@@ -56,6 +56,7 @@ from app.history.planner import PlannerInputError, PlannerSettings
 from app.history.progress_codec import DecodedProgress, ProgressCodecError, decode_progress
 from app.history.source_floors import SourceFloors
 from app.history.state import SCOPE_TABLE_FAMILIES, HistoryFamily, HistoryState
+from app.i18n.messages import MessageRef, render
 from app.models.catchall import CatchallBucket
 from app.models.enums import HistoryDecisionAnswer, HistoryDecisionSource
 from app.models.history_backfill import (
@@ -82,6 +83,7 @@ from app.schemas.history_backfill import (
     SourceOut,
     WindowOut,
 )
+from app.schemas.messages import MessageValue, stored_message, stored_message_parts
 from app.services.search_cadence import SearchCadenceService
 
 #: The families in the order the page shows them (the registry's order, scope-table only).
@@ -114,15 +116,26 @@ LATER_YES_POSSIBLE = "possible"
 LATER_YES_NOT_POSSIBLE = "not possible: this source already collected"
 LATER_YES_HAS_SCOPE = "not needed: this source has a history scope"
 
+#: The code of each "later Yes" sentence. The English literals above stay as they are: the page
+#: compares `possible` by string, so the words are kept byte for byte beside the code.
+LATER_YES_MESSAGES: dict[str, MessageRef] = {
+    LATER_YES_POSSIBLE: MessageRef("history.later_yes.possible"),
+    LATER_YES_NOT_POSSIBLE: MessageRef("history.later_yes.not_possible"),
+    LATER_YES_HAS_SCOPE: MessageRef("history.later_yes.has_scope"),
+}
+
+
+def _source_later_yes(has_live: bool) -> str:
+    return LATER_YES_NOT_POSSIBLE if has_live else LATER_YES_POSSIBLE
+
+
+def _later_yes_code(later_yes: str | None) -> str | None:
+    message = None if later_yes is None else LATER_YES_MESSAGES.get(later_yes)
+    return None if message is None else message.code
+
 REQUEST_MESSAGES = {
-    "start": (
-        "Read history now is recorded. Each family applies it at its next collection; "
-        "no scope has changed yet."
-    ),
-    "stop": (
-        "Stop reading is recorded. Each family ends its reading scopes at its next "
-        "collection; no scope has changed yet."
-    ),
+    "start": MessageRef("history.request.start"),
+    "stop": MessageRef("history.request.stop"),
 }
 
 #: Catch-all senders per bucket come from the live buckets of this many recent days.
@@ -141,7 +154,8 @@ _AUDIT_START = "history_backfill.start"
 _AUDIT_STOP = "history_backfill.stop"
 
 #: Why a start or a stop is refused: the console has no Yes to apply it to.
-_REQUEST_REFUSED = "record Yes first: the console has no Yes answer to start or stop"
+_REQUEST_REFUSED_MESSAGE = MessageRef("history.request.refused")
+_REQUEST_REFUSED = render(_REQUEST_REFUSED_MESSAGE)
 
 
 class ConsoleNotFoundError(LookupError):
@@ -155,6 +169,8 @@ class DecideOutcome:
     status: Literal["created", "upgraded", "unchanged", "conflict"]
     console: ConsoleOut
     detail: str | None = None
+    #: The registry reference of `detail` (MSG-8a); None when it has no code.
+    detail_message: MessageRef | None = None
 
 
 @dataclass(frozen=True)
@@ -164,6 +180,8 @@ class RequestOutcome:
     console: ConsoleOut
     refused: bool
     detail: str | None = None
+    #: The registry reference of `detail` (MSG-8a); None when it has no code.
+    detail_message: MessageRef | None = None
 
 
 # --------------------------------------------------------------------------- pure helpers
@@ -393,7 +411,15 @@ def scope_out(
         else:
             searches, buckets_read = decoded.progress.searches, decoded.progress.buckets_read
             gaps = [
-                GapOut(start=g.start, end=g.end, reason=g.reason) for g in decoded.progress.gaps
+                GapOut(
+                    start=g.start,
+                    end=g.end,
+                    reason=g.reason,
+                    reason_code=gap_code,
+                    reason_params=gap_params,
+                )
+                for g in decoded.progress.gaps
+                for gap_code, gap_params in [stored_message_parts(g.reason_code, g.reason_params)]
             ]
     family = HistoryFamily(row.family)
     sources = _scope_sources(
@@ -410,6 +436,7 @@ def scope_out(
         later_yes = LATER_YES_NOT_POSSIBLE
     else:
         later_yes = LATER_YES_HAS_SCOPE
+    reason_message = stored_message(row.reason_i18n)
     return ScopeOut(
         scope_key=row.scope_key,
         name=None if family not in _PER_SOURCE else name,
@@ -426,6 +453,8 @@ def scope_out(
         started_at=row.started_at,
         finished_at=row.finished_at,
         reason=row.reason,
+        reason_code=None if reason_message is None else reason_message.code,
+        reason_params=None if reason_message is None else reason_message.params,
         last_error_class=row.last_error_class,
         last_error_at=row.last_error_at,
         searches=searches,
@@ -440,16 +469,25 @@ def scope_out(
         sources_silent_count=sources.silent_count,
         progress_unreadable=unreadable,
         later_yes=later_yes,
+        later_yes_code=_later_yes_code(later_yes),
+        later_yes_params={} if _later_yes_code(later_yes) else None,
     )
 
 
-def collection_state(spec: FamilySpec, settings: Settings) -> tuple[bool, str]:
-    """Whether the family collects, and the words for it (the registry's reason if no switch)."""
+def collection_state(
+    spec: FamilySpec, settings: Settings
+) -> tuple[bool, str, MessageRef | None]:
+    """Whether the family collects, the words for it, and their reference (if any)."""
     if spec.collection_switch is None:
-        return True, spec.always_on_reason or "collection has no switch"
+        if spec.always_on_reason is None:  # pragma: no cover - the registry guard
+            return True, "collection has no switch", None
+        return True, render(spec.always_on_reason), spec.always_on_reason
     on = bool(getattr(settings, spec.collection_switch))
     name = spec.collection_switch.upper()
-    return on, f"{name} is {'on' if on else 'off'}"
+    message = MessageRef(
+        "history.family.switch_on" if on else "history.family.switch_off", {"setting": name}
+    )
+    return on, render(message), message
 
 
 def planner_settings(
@@ -483,10 +521,10 @@ SearchFactory = Callable[[PlannerSettings], Callable[[int], int]]
 
 @dataclass(frozen=True)
 class _EstimateShape:
-    """Cost functions and words derived from one family's counted source shape."""
+    """Cost functions and the sentences derived from one family's counted source shape."""
 
     searches: tuple[SearchFactory, ...]
-    assumptions: tuple[str, ...]
+    assumptions: tuple[MessageRef, ...]
     per_source: bool = False
     empty_sources: int = 0
 
@@ -505,20 +543,34 @@ def _ips_search_factory(group: IpsGroup) -> SearchFactory:
     return factory
 
 
-def duration_words(seconds: int) -> str:
-    """A duration in words: minutes, hours or days, whichever reads as a duration."""
+def duration_ref(seconds: int) -> MessageRef:
+    """A duration as a reference: minutes, hours or days, whichever reads as a duration."""
     if seconds >= 86400 and seconds % 86400 == 0:
         count, unit = seconds // 86400, "day"
     elif seconds >= 3600 and seconds % 3600 == 0:
         count, unit = seconds // 3600, "hour"
     else:
         count, unit = max(1, seconds // 60), "minute"
-    return f"{count} {unit}" if count == 1 else f"{count} {unit}s"
+    if count == 1:
+        return MessageRef(f"history.interval.{unit}_one")
+    return MessageRef(f"history.interval.{unit}_many", {"count": count})
+
+
+def duration_words(seconds: int) -> str:
+    """A duration in words: minutes, hours or days, whichever reads as a duration."""
+    return render(duration_ref(seconds))
 
 
 def plural(count: int, singular: str) -> str:
     """`count` and the word, with the plural when it is more than one."""
     return f"{count} {singular}" if count == 1 else f"{count} {singular}s"
+
+
+def _counted_sources_message(count: int) -> MessageRef:
+    """The counted source words of `history.finish.cut_sources`'s second parameter."""
+    if count == 1:
+        return MessageRef("history.words.source_one")
+    return MessageRef("history.words.source_many", {"count": count})
 
 
 # --------------------------------------------------------------------------- the service
@@ -702,8 +754,11 @@ class HistoryBackfillService:
         monitored: Sequence[str] = (),
     ) -> FamilyOut:
         spec = FAMILY_SPECS[family]
-        enabled, reason = collection_state(spec, self.settings)
+        enabled, reason, reason_message = collection_state(spec, self.settings)
         fitted = fit_family_window(family, self.settings)
+        window_reason = stored_message(
+            None if fitted.reason_message is None else fitted.reason_message.to_wire()
+        )
         bucket = bucket_seconds_of(family, self.settings)
         margin = (
             console_wide_planner(family, self.settings).margin
@@ -718,7 +773,9 @@ class HistoryBackfillService:
                     scope_key=key,
                     name=name,
                     profile_enabled=profile_enabled,
-                    later_yes=LATER_YES_NOT_POSSIBLE if has_live else LATER_YES_POSSIBLE,
+                    later_yes=_source_later_yes(has_live),
+                    later_yes_code=_later_yes_code(_source_later_yes(has_live)),
+                    later_yes_params={},
                 )
                 for key, name, profile_enabled, has_live in (sources or [])
                 if key not in keys
@@ -727,12 +784,18 @@ class HistoryBackfillService:
             family=family.value,
             collection_enabled=enabled,
             collection_reason=reason,
+            collection_reason_code=None if reason_message is None else reason_message.code,
+            collection_reason_params=(
+                None if reason_message is None else dict(reason_message.params)
+            ),
             window=WindowOut(
                 days_requested=fitted.requested_days,
                 days=fitted.days,
                 available=fitted.available,
                 limited_by=list(fitted.limited_by),
                 reason=fitted.reason,
+                reason_code=None if window_reason is None else window_reason.code,
+                reason_params=None if window_reason is None else window_reason.params,
             ),
             scopes=[
                 scope_out(
@@ -747,6 +810,8 @@ class HistoryBackfillService:
             ],
             sources=listed,
             later_yes=None if family in _PER_SOURCE else LATER_YES_POSSIBLE,
+            later_yes_code=None if family in _PER_SOURCE else _later_yes_code(LATER_YES_POSSIBLE),
+            later_yes_params=None if family in _PER_SOURCE else {},
         )
 
     async def _sources(
@@ -822,10 +887,12 @@ class HistoryBackfillService:
         elif stored.answer == asked.value:
             status = "unchanged"
         elif asked is HistoryDecisionAnswer.NO:
+            message = MessageRef("history.decide.never_reversed")
             return DecideOutcome(
                 "conflict",
                 await self.console(instance_id),
-                "a Yes is never reversed; stop the reading instead",
+                render(message),
+                message,
             )
         else:
             previous = stored.answer
@@ -852,9 +919,11 @@ class HistoryBackfillService:
             )
         console = await self.console(instance_id)
         detail = None
+        detail_message = None
         if status == "conflict":
-            detail = "a decision was recorded in the meantime; it is shown here"
-        return DecideOutcome(status, console, detail)
+            detail_message = MessageRef("history.decide.meantime")
+            detail = render(detail_message)
+        return DecideOutcome(status, console, detail, detail_message)
 
     async def request(
         self,
@@ -868,7 +937,9 @@ class HistoryBackfillService:
         await self._console_row(instance_id)
         stored = await self._stored_decision(instance_id)
         if stored is None or stored.answer != HistoryDecisionAnswer.YES.value:
-            return RequestOutcome(await self.console(instance_id), True, _REQUEST_REFUSED)
+            return RequestOutcome(
+                await self.console(instance_id), True, _REQUEST_REFUSED, _REQUEST_REFUSED_MESSAGE
+            )
         # The request is stamped by this call alone, strictly later than the opposite
         # request, so the pair never ties (HB-2b: equal times read ACTIVE).
         opposite = aware(stored.stop_requested_at if kind == "start" else stored.start_requested_at)
@@ -877,7 +948,9 @@ class HistoryBackfillService:
             at = opposite + timedelta(microseconds=1)
         ask = self.repo.request_start if kind == "start" else self.repo.request_stop
         if not await ask(instance_id, by=actor, at=at):
-            return RequestOutcome(await self.console(instance_id), True, _REQUEST_REFUSED)
+            return RequestOutcome(
+                await self.console(instance_id), True, _REQUEST_REFUSED, _REQUEST_REFUSED_MESSAGE
+            )
         console = await self.console(instance_id)
         scopes = [scope for family in console.families for scope in family.scopes]
         await record_audit(
@@ -892,7 +965,18 @@ class HistoryBackfillService:
             },
             source_ip=source_ip,
         )
-        return RequestOutcome(console.model_copy(update={"message": REQUEST_MESSAGES[kind]}), False)
+        request_message = REQUEST_MESSAGES[kind]
+        wire = request_message.to_wire()
+        return RequestOutcome(
+            console.model_copy(
+                update={
+                    "message": render(request_message),
+                    "message_code": wire["code"],
+                    "message_params": wire["params"],
+                }
+            ),
+            False,
+        )
 
     # ------------------------------------------------------------------ estimate
     async def estimates(self) -> list[ConsoleEstimateOut]:
@@ -922,6 +1006,13 @@ class HistoryBackfillService:
 
     @staticmethod
     def _estimate_out(estimate: FamilyEstimate) -> EstimateOut:
+        reason = stored_message(
+            None if estimate.reason_message is None else estimate.reason_message.to_wire()
+        )
+        codes: list[MessageValue | None] = [
+            None if message is None else stored_message(message.to_wire())
+            for message in estimate.assumption_codes
+        ]
         return EstimateOut(
             family=estimate.family,
             searches=estimate.searches,
@@ -932,7 +1023,10 @@ class HistoryBackfillService:
             reduced=estimate.reduced,
             refused=estimate.refused,
             reason=estimate.reason,
+            reason_code=None if reason is None else reason.code,
+            reason_params=None if reason is None else reason.params,
             assumptions=list(estimate.assumptions),
+            assumption_codes=codes,
         )
 
     async def _counts(self, ids: Sequence[uuid.UUID]) -> dict[str, Any]:
@@ -1056,47 +1150,69 @@ class HistoryBackfillService:
         elif family is HistoryFamily.IPS:
             family_per_tick = adapter_per_tick
         bucket = bucket_seconds_of(family, settings)
-        shape = (
-            "hourly windows"
-            if family is HistoryFamily.RULE_MATCH
-            else f"{bucket // 60}-minute buckets"
-        )
+        if family is HistoryFamily.RULE_MATCH:
+            shape_message = MessageRef("history.assumption.shape_windows")
+        else:
+            shape_message = MessageRef(
+                "history.assumption.shape_buckets", {"minutes": bucket // 60}
+            )
         if family is HistoryFamily.WAF:
-            budget_words = (
-                f"{adapter_per_tick} history searches per source tick times "
-                f"{settings.waf_ariel_max_concurrent_sources} sources at once"
+            budget_message = MessageRef(
+                "history.assumption.budget_waf",
+                {
+                    "per_source": adapter_per_tick,
+                    "sources": int(settings.waf_ariel_max_concurrent_sources),
+                },
             )
         elif family is HistoryFamily.IPS:
-            budget_words = f"{adapter_per_tick} history searches shared per tick"
+            budget_message = MessageRef(
+                "history.assumption.budget_ips", {"per_tick": adapter_per_tick}
+            )
         else:
-            budget_words = f"{configured_per_tick} history searches per tick"
+            budget_message = MessageRef(
+                "history.assumption.budget_plain", {"per_tick": configured_per_tick}
+            )
         assumptions = [
-            f"{shape}, {budget_words}",
-            f"one tick every {duration_words(cadence)} (the family's Search cadence)",
-            "QRadar time per search not measured on this console",
+            MessageRef(
+                "history.assumption.opening",
+                {"shape": shape_message, "budget": budget_message},
+            ),
+            MessageRef(
+                "history.assumption.cadence", {"interval": duration_ref(cadence)}
+            ),
+            MessageRef("history.assumption.qradar_time"),
         ]
 
-        def none(reason: str, refused: bool = False) -> FamilyEstimate:
+        def none(
+            reason: str, refused: bool = False, message: MessageRef | None = None
+        ) -> FamilyEstimate:
             return not_estimable(
                 family.value,
                 days_requested=requested,
                 reason=reason,
                 assumptions=assumptions,
                 refused=refused,
+                message=message,
             )
 
-        enabled, switch_reason = collection_state(spec, settings)
+        enabled, _switch_reason, switch_message = collection_state(spec, settings)
         if not enabled:
-            return none(f"no estimate: collection is switched off ({switch_reason})")
+            assert switch_message is not None  # a switched-off family always has words
+            message = MessageRef("history.estimate.no_collection", {"reason": switch_message})
+            return none(render(message), message=message)
         fitted = fit_family_window(family, settings)
         if not fitted.available:
-            return none(fitted.reason or "history is unavailable", refused=True)
+            return none(
+                fitted.reason or "history is unavailable",
+                refused=True,
+                message=fitted.reason_message,
+            )
         try:
             ps = planner_settings(family, settings, cadence)
             end = floor_to_bucket(now, bucket)
             lookup = self._shape(family, instance_id, counts, settings)
-            if isinstance(lookup, str):
-                return none(lookup)
+            if isinstance(lookup, MessageRef):
+                return none(render(lookup), message=lookup)
             assumptions.extend(lookup.assumptions)
             assert fitted.days is not None
             if lookup.per_source:
@@ -1104,8 +1220,10 @@ class HistoryBackfillService:
                 if family is HistoryFamily.IPS:
                     source_per_tick = max(1, adapter_per_tick // len(lookup.searches))
                     assumptions.append(
-                        f"each per-source plan is fitted with a fair share of {source_per_tick} "
-                        f"of the {adapter_per_tick} shared searches per tick"
+                        MessageRef(
+                            "history.assumption.ips_fair_share",
+                            {"share": source_per_tick, "per_tick": adapter_per_tick},
+                        )
                     )
                 result = estimate_source_family(
                     family.value,
@@ -1128,18 +1246,35 @@ class HistoryBackfillService:
                     assumptions=assumptions,
                 )
         except PlannerInputError as exc:
-            return none(f"no estimate: the planner refused the settings ({exc})")
+            message = MessageRef("history.estimate.planner_refused", {"error": str(exc)})
+            return none(render(message), message=message)
+        reason_message = result.reason_message
+        assert reason_message is not None  # estimate_family always codes its reason
         reason = result.reason
         if lookup.empty_sources:
             noun = "tracked endpoint" if family is HistoryFamily.WAF else "admitted entity"
-            reason = (
-                f"{reason}; {lookup.empty_sources} source(s) fitted with no {noun} yet; "
-                f"the {settings.history_backfill_max_hours}-hour limit still bounds the reading"
+            message = MessageRef(
+                "history.estimate.empty_sources",
+                {
+                    "reason": reason_message,
+                    "count": lookup.empty_sources,
+                    "noun": noun,
+                    "limit": settings.history_backfill_max_hours,
+                },
             )
+            reason_message, reason = message, render(message)
         reduced = result.reduced
         if fitted.days is not None and fitted.days < requested:
             reduced = True
-            reason = f"{fitted.reason}; {result.reason}" if result.reduced else str(fitted.reason)
+            if result.reduced:
+                message = MessageRef(
+                    "history.estimate.window_limited",
+                    {"window": fitted.reason_message, "fit": result.reason_message},
+                )
+                reason_message, reason = message, render(message)
+            else:
+                reason_message = fitted.reason_message
+                reason = str(fitted.reason)
         return FamilyEstimate(
             family=result.family,
             searches=result.searches,
@@ -1151,6 +1286,8 @@ class HistoryBackfillService:
             refused=result.refused,
             reason=reason,
             assumptions=result.assumptions,
+            reason_message=reason_message,
+            assumption_codes=result.assumption_codes,
         )
 
     @staticmethod
@@ -1159,21 +1296,21 @@ class HistoryBackfillService:
         instance_id: uuid.UUID,
         counts: dict[str, Any],
         settings: Settings,
-    ) -> str | _EstimateShape:
+    ) -> MessageRef | _EstimateShape:
         """The searches-by-days function for a family, or the reason there is no count."""
         mine = counts.get(family.value, {})
         if family is HistoryFamily.PHASE_A:
             sources = mine.get(instance_id, 0)
             if sources < 1:
-                return "no estimate: the console has no monitored log source yet"
+                return MessageRef("history.estimate.no_monitored")
             return _EstimateShape(
                 (lambda ps: lambda days: phase_a_searches(sources, days, ps),),
-                (f"{sources} monitored sources, one row each per bucket",),
+                (MessageRef("history.assumption.phase_a_rows", {"sources": sources}),),
             )
         if family is HistoryFamily.WAF:
             endpoints = list(mine.get(instance_id, {}).values())
             if not endpoints:
-                return "no estimate: no WAF source is enabled on this console"
+                return MessageRef("history.estimate.no_waf")
             breakdown = int(settings.history_backfill_waf_breakdown_days)
             searches: list[SearchFactory] = []
             for endpoint_count in endpoints:
@@ -1182,8 +1319,13 @@ class HistoryBackfillService:
             return _EstimateShape(
                 tuple(searches),
                 (
-                    f"{len(endpoints)} WAF sources with {sum(endpoints)} tracked endpoints",
-                    f"action, response code and source IP read over {breakdown} days only",
+                    MessageRef(
+                        "history.assumption.waf_sources",
+                        {"count": len(endpoints), "endpoints": sum(endpoints)},
+                    ),
+                    MessageRef(
+                        "history.assumption.waf_breakdown", {"days": breakdown}
+                    ),
                 ),
                 per_source=True,
                 empty_sources=sum(count == 0 for count in endpoints),
@@ -1191,7 +1333,7 @@ class HistoryBackfillService:
         if family is HistoryFamily.IPS:
             sources_dims: dict[int, dict[str, int]] = mine.get(instance_id, {})
             if not sources_dims:
-                return "no estimate: no IPS source is enabled on this console"
+                return MessageRef("history.estimate.no_ips")
             groups = tuple(
                 IpsGroup(
                     sources=1,
@@ -1202,14 +1344,26 @@ class HistoryBackfillService:
                 )
                 for dimensions in sources_dims.values()
             )
+            plans = (
+                MessageRef("history.words.plan_one")
+                if len(groups) == 1
+                else MessageRef("history.words.plan_many", {"count": len(groups)})
+            )
             return _EstimateShape(
                 tuple(_ips_search_factory(group) for group in groups),
                 (
-                    f"{len(sources_dims)} IPS sources in {plural(len(groups), 'per-source plan')}",
-                    f"{IPS_SOURCE_IPS_PER_SOURCE} source IPs, "
-                    f"{IPS_ACTION_VALUES_PER_SOURCE} action values and "
-                    f"{IPS_FANOUT_ROWS_PER_SOURCE} port fan-out rows per source and bucket "
-                    "assumed",
+                    MessageRef(
+                        "history.assumption.ips_sources",
+                        {"count": len(sources_dims), "plans": plans},
+                    ),
+                    MessageRef(
+                        "history.assumption.ips_values",
+                        {
+                            "source_ips": IPS_SOURCE_IPS_PER_SOURCE,
+                            "action_values": IPS_ACTION_VALUES_PER_SOURCE,
+                            "fanout": IPS_FANOUT_ROWS_PER_SOURCE,
+                        },
+                    ),
                 ),
                 per_source=True,
                 empty_sources=sum(not dimensions for dimensions in sources_dims.values()),
@@ -1217,26 +1371,41 @@ class HistoryBackfillService:
         if family is HistoryFamily.CATCHALL:
             measured = mine.get(instance_id)
             if measured is None:
-                return (
-                    "no estimate: no catch-all bucket has been collected in the last "
-                    f"{CATCHALL_SENDER_DAYS} days"
+                return MessageRef(
+                    "history.estimate.no_catchall", {"days": CATCHALL_SENDER_DAYS}
                 )
             senders, buckets = measured
+            bucket_words = (
+                MessageRef("history.words.bucket_one")
+                if buckets == 1
+                else MessageRef("history.words.bucket_many", {"count": buckets})
+            )
             return _EstimateShape(
                 (lambda ps: lambda days: catchall_searches(senders, days, ps),),
                 (
-                    f"{senders} senders per bucket (the mean of {plural(buckets, 'live bucket')} "
-                    f"of the last {CATCHALL_SENDER_DAYS} days)",
-                    f"{settings.catchall_max_rows_per_search} rows per search",
+                    MessageRef(
+                        "history.assumption.catchall_senders",
+                        {
+                            "senders": senders,
+                            "buckets": bucket_words,
+                            "days": CATCHALL_SENDER_DAYS,
+                        },
+                    ),
+                    MessageRef(
+                        "history.assumption.catchall_rows",
+                        {"rows": settings.catchall_max_rows_per_search},
+                    ),
                 ),
             )
         rules = mine.get(instance_id, 0)
         if rules < 1:
-            return "no estimate: the console has no enabled rule"
+            return MessageRef("history.estimate.no_rules")
         return _EstimateShape(
             (lambda ps: lambda days: rule_match_searches(rules, days, ps),),
             (
-                f"{rules} enabled rules, every one assumed to match in each window",
-                f"{settings.rule_match_max_rows} rows per search, plus one console total",
+                MessageRef("history.assumption.rules", {"rules": rules}),
+                MessageRef(
+                    "history.assumption.rule_rows", {"rows": settings.rule_match_max_rows}
+                ),
             ),
         )

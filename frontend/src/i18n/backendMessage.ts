@@ -164,11 +164,34 @@ interface RenderContext {
   units: (key: string, values?: Record<string, string | number>) => string;
 }
 
+/**
+ * A list parameter joined as its style says. The style shapes the backend's English; here it
+ * keeps the same structure in the reader's language: `and_all` joins with one conjunction between
+ * every item (a limit sentence), and `semicolon` joins the clauses of a history reason with
+ * "; " as the English does. The `semicolon` lists of the earlier families (rule health) take the
+ * locale's own list form in a non-English reader, as their catalogs were written for.
+ */
+function joinedList(
+  items: unknown[],
+  spec: BackendParamSpec,
+  context: RenderContext,
+  depth: number,
+  code: string,
+): string | undefined {
+  const parts = items.map((item) => formatUntyped(item, context, depth));
+  if (parts.some((part) => part === undefined)) return undefined;
+  const texts = parts as string[];
+  if (spec.style === "semicolon" && code.startsWith("history.")) return texts.join("; ");
+  if (spec.style === "and_all") return texts.join(context.locale === "tr" ? " ve " : " and ");
+  return new Intl.ListFormat(context.locale === "tr" ? "tr-TR" : "en-US").format(texts);
+}
+
 function formatParam(
   value: unknown,
   spec: BackendParamSpec,
   context: RenderContext,
   depth: number,
+  code: string,
 ): string | undefined {
   switch (spec.kind) {
     case "count":
@@ -210,7 +233,9 @@ function formatParam(
         ? enumLabel(context.say as EnumTranslator, spec.enum_group as never, value)
         : undefined;
     case "list":
-      return taggedKind(value, "list") ? formatUntyped(value, context, depth) : undefined;
+      return taggedKind(value, "list") && Array.isArray(value.items)
+        ? joinedList(value.items, spec, context, depth, code)
+        : undefined;
     case "ref":
       if (typeof value === "string") return value;
       if (!isRecord(value) || typeof value.code !== "string" || !isRecord(value.params)) {
@@ -242,7 +267,7 @@ function translateCode(
   }
   const formatted: Record<string, string> = {};
   for (const name of expected) {
-    const value = formatParam(ref.params[name], spec.params[name], context, depth);
+    const value = formatParam(ref.params[name], spec.params[name], context, depth, ref.code);
     if (value === undefined) return undefined;
     formatted[name] = value;
   }

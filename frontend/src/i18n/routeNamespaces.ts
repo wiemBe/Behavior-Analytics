@@ -155,7 +155,9 @@ export const TOP_BAR_KEYS = [
  * The single `backend.*` keys the shell renders itself (MSG-1 round 1): the forced password change
  * in `AppFrame` words the password policy, the session and cross-site refusals and the permission
  * 403 through `refusalMessage.ts`. The root provider carries these keys one by one and never the
- * `backend` namespace; a route that shows more of it lists `backend` in `ROUTE_NAMESPACES`.
+ * `backend` namespace; a route that shows more of it lists `backend` in `ROUTE_NAMESPACES`. The
+ * history backfill's first-run dialog is mounted in the shell too, and carries its estimate sentences
+ * the same way.
  * `routeNamespaces.contract.test.tsx` fails when shell-reachable code names a `backend` key that is
  * not listed here.
  */
@@ -171,6 +173,64 @@ export const SHELL_BACKEND_KEYS = [
   "backend.auth.permission.missing",
   "backend.auth.session.must_change_password",
   "backend.auth.session.required",
+  // The first-run dialog of the history backfill words an estimate (MSG-8a): the fit, estimate,
+  // assumption, window-limit and collection-switch sentences and the words they are built from.
+  "backend.history.assumption.budget_ips",
+  "backend.history.assumption.budget_plain",
+  "backend.history.assumption.budget_waf",
+  "backend.history.assumption.cadence",
+  "backend.history.assumption.catchall_rows",
+  "backend.history.assumption.catchall_senders",
+  "backend.history.assumption.ips_fair_share",
+  "backend.history.assumption.ips_sources",
+  "backend.history.assumption.ips_values",
+  "backend.history.assumption.opening",
+  "backend.history.assumption.phase_a_rows",
+  "backend.history.assumption.qradar_time",
+  "backend.history.assumption.rule_rows",
+  "backend.history.assumption.rules",
+  "backend.history.assumption.shape_buckets",
+  "backend.history.assumption.shape_windows",
+  "backend.history.assumption.waf_breakdown",
+  "backend.history.assumption.waf_sources",
+  "backend.history.estimate.all_fit",
+  "backend.history.estimate.all_refused",
+  "backend.history.estimate.no_catchall",
+  "backend.history.estimate.no_collection",
+  "backend.history.estimate.no_ips",
+  "backend.history.estimate.no_monitored",
+  "backend.history.estimate.no_rules",
+  "backend.history.estimate.no_waf",
+  "backend.history.estimate.planner_refused",
+  "backend.history.estimate.reduced",
+  "backend.history.estimate.some_refused",
+  "backend.history.estimate.some_refused_reduced",
+  "backend.history.estimate.window_limited",
+  "backend.history.family.always_on",
+  "backend.history.family.fair_share",
+  "backend.history.family.switch_off",
+  "backend.history.family.switch_on",
+  "backend.history.family.zero_endpoint",
+  "backend.history.family.zero_entity",
+  "backend.history.fit.fits",
+  "backend.history.fit.reduced",
+  "backend.history.fit.refused",
+  "backend.history.interval.day_many",
+  "backend.history.interval.day_one",
+  "backend.history.interval.hour_many",
+  "backend.history.interval.hour_one",
+  "backend.history.interval.minute_many",
+  "backend.history.interval.minute_one",
+  "backend.history.window.limit_retention",
+  "backend.history.window.limit_setting",
+  "backend.history.window.reduced",
+  "backend.history.window.unavailable",
+  "backend.history.words.bucket_many",
+  "backend.history.words.bucket_one",
+  "backend.history.words.plan_many",
+  "backend.history.words.plan_one",
+  "backend.history.words.source_many",
+  "backend.history.words.source_one",
 ] as const;
 
 export const SHELL_NAMESPACES = [
@@ -193,7 +253,7 @@ export const ROUTE_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
   "/account/password": ["backend"],
   "/admin/classification-rules": ["backend", "classification", "enums", "fleet"],
   "/admin/directory": ["backend", "directory"],
-  "/admin/history-backfill": [],
+  "/admin/history-backfill": ["backend", "enums", "waf"],
   "/admin/ips-sources/[logSourceId]": ["backend", "enums", "fieldMapping", "ips", "waf"],
   "/admin/ips-sources": ["backend", "enums", "fieldMapping", "ips", "waf"],
   "/admin/outage-policy": ["backend", "classification", "enums", "fleet", "outage"],
