@@ -543,6 +543,133 @@ async def test_watermarks_pass_warn_and_fail(settings: Settings) -> None:
     ).status is Status.FAIL
 
 
+def _watermark_row(
+    collector: str,
+    *,
+    failures: int = 0,
+    last_error: str | None = None,
+    lag_seconds: int | None = 10,
+    metadata: dict[str, object] | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        collector=collector,
+        consecutive_failures=failures,
+        last_error=last_error,
+        lag_seconds=lag_seconds,
+        collection_metadata={} if metadata is None else metadata,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_offense_watermark_warns_and_a_failure_still_fails(
+    settings: Settings,
+) -> None:
+    """The page-ceiling flag warns. A real failure, and ordinary lateness, stay as they were."""
+    from app.collectors.offense_collector import WATERMARK_STALLED_KEY
+
+    cadence = SimpleNamespace(family="PHASE_A_VOLUME", cadence_seconds=300)
+    stalled = _watermark_row(
+        "offense_snapshot", metadata={WATERMARK_STALLED_KEY: True}, lag_seconds=100_000
+    )
+    result = await make_doctor(
+        settings, FakeSession(scalars_values=[[stalled], [cadence]])
+    ).check_watermarks()
+    assert result.status is Status.WARN
+    assert result.runbook == "OPS-R66"
+    assert result.message == (
+        "1 watermark(s) stalled at the page ceiling: offense_snapshot"
+    )
+    assert "exceed twice their cadence" not in result.message
+
+    # An older provider error is still on the row. The flag is the current read.
+    stale_error = _watermark_row(
+        "offense_snapshot",
+        last_error="boom",
+        metadata={WATERMARK_STALLED_KEY: True},
+    )
+    stalled_over_error = await make_doctor(
+        settings, FakeSession(scalars_values=[[stale_error], [cadence]])
+    ).check_watermarks()
+    assert stalled_over_error.status is Status.WARN
+    assert "stalled at the page ceiling" in stalled_over_error.message
+    assert stalled_over_error.runbook == "OPS-R66"
+
+    failed = _watermark_row("log_source_metric", last_error="boom")
+    both = await make_doctor(
+        settings, FakeSession(scalars_values=[[failed, stalled], [cadence]])
+    ).check_watermarks()
+    assert both.status is Status.FAIL
+    assert both.runbook == "OPS-R30"
+    assert "log_source_metric" in both.message
+    assert "stalled at the page ceiling: offense_snapshot" in both.message
+
+    late = _watermark_row("log_source_metric", lag_seconds=1000)
+    late_result = await make_doctor(
+        settings, FakeSession(scalars_values=[[late], [cadence]])
+    ).check_watermarks()
+    assert late_result.status is Status.WARN
+    assert late_result.runbook == "OPS-R30"
+    assert late_result.message == (
+        "1 watermark(s) exceed twice their cadence: log_source_metric"
+    )
+    assert "page ceiling" not in late_result.message
+
+
+def test_doctor_warns_that_the_offense_read_is_stalled_at_the_page_ceiling(
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The operator's path: `./qradar-dash doctor` runs `python -m app.cli.doctor` in the backend.
+
+    The host script prints that command's stdout. This is the line the operator reads.
+    """
+    from app.collectors.offense_collector import WATERMARK_STALLED_KEY
+
+    row = _watermark_row("offense_snapshot", metadata={WATERMARK_STALLED_KEY: True})
+    cadence = SimpleNamespace(family="PHASE_A_VOLUME", cadence_seconds=300)
+    operations = (
+        pathlib.Path(__file__).resolve().parents[3] / "docs" / "OPERATIONS.md"
+    ).read_text(encoding="utf-8")
+    entry = operations[operations.index("### OPS-R66.") :]
+    assert "last_persisted_time" in entry
+    assert "OFFENSE_MAX_PAGES" in entry
+    assert "offense_max_pages" in entry
+
+    def build_doctor() -> Doctor:
+        doctor = make_doctor(settings, FakeSession(scalars_values=[[row], [cadence]]))
+        for check_id, _runbook in doctor_module._CHECK_RUNBOOKS:
+            if check_id == "watermarks":
+                continue
+            monkeypatch.setattr(
+                doctor,
+                f"check_{check_id}",
+                AsyncMock(return_value=CheckResult(check_id, Status.PASS, "healthy")),
+            )
+        return doctor
+
+    monkeypatch.setattr(doctor_module, "Doctor", build_doctor)
+    monkeypatch.setattr(doctor_module, "dispose_engine", _dispose_nothing)
+
+    monkeypatch.setattr(sys, "argv", ["doctor"])
+    assert doctor_module.main() == 1
+    printed = capsys.readouterr().out
+    assert "WARN  watermarks" in printed
+    assert "offense_snapshot" in printed
+    assert "stalled at the page ceiling" in printed
+    assert "runbook: OPS-R66" in printed
+
+    monkeypatch.setattr(sys, "argv", ["doctor", "--json"])
+    assert doctor_module.main() == 1
+    payload = json.loads(capsys.readouterr().out)
+    watermarks = next(item for item in payload if item["id"] == "watermarks")
+    assert watermarks["status"] == "WARN"
+    assert watermarks["runbook"] == "OPS-R66"
+    assert watermarks["message"] == (
+        "1 watermark(s) stalled at the page ceiling: offense_snapshot"
+    )
+
+
 @pytest.mark.parametrize(
     "collector, expected",
     [

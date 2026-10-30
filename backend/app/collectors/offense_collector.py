@@ -14,7 +14,12 @@ Guarantees, and why each one is needed:
     boundary are read again next run (an unchanged snapshot is already
     idempotent). The run is partial. It is not a provider failure, so
     `consecutive_failures` is left as it is. If every row shares that one
-    timestamp, the watermark does not move.
+    timestamp, the watermark does not move. That stall is recorded on the
+    watermark row's `collection_metadata` (`watermark_stalled`), which is the
+    field a collector already uses for evidence about the row. A clean run,
+    and a truncated run that can still move, clear it. A provider failure
+    clears it too: the current outcome is the failure, not a confirmed stall.
+    The watermark is never moved onto the boundary.
   * **No overlapping runs** — a PostgreSQL advisory lock keyed on (instance,
     collector) is held for the duration; a second worker skips rather than
     queues. Two collectors writing the same offense concurrently would race on
@@ -155,6 +160,30 @@ def boundary_watermark(offenses: Sequence[OffenseDTO]) -> datetime | None:
     return max(below)
 
 
+#: `collection_metadata` key. Doctor reads it. Not a column: the row already
+#: carries collector-specific evidence here, and a stall is not `last_error`.
+WATERMARK_STALLED_KEY = "watermark_stalled"
+
+
+def _record_watermark_stall(watermark: CollectionWatermark, *, stalled: bool) -> None:
+    """Record or clear a page-ceiling stall. No change when the row already matches.
+
+    `last_error` and `consecutive_failures` are not touched. A stall is not a
+    provider failure, and clearing those here would hide one. The flag is the
+    signal doctor warns on.
+    """
+    metadata = dict(watermark.collection_metadata or {})
+    if stalled:
+        if metadata.get(WATERMARK_STALLED_KEY) is True:
+            return
+        metadata[WATERMARK_STALLED_KEY] = True
+    elif WATERMARK_STALLED_KEY not in metadata:
+        return
+    else:
+        del metadata[WATERMARK_STALLED_KEY]
+    watermark.collection_metadata = metadata
+
+
 class OffenseCollector:
     def __init__(
         self,
@@ -205,6 +234,10 @@ class OffenseCollector:
                 watermark.consecutive_failures += 1
                 watermark.last_run_at = started
                 watermark.last_error = str(exc)[:512]
+                # This run did not confirm a stall. Leaving the flag set would
+                # make doctor warn about the page ceiling while the failure
+                # is the current outcome.
+                _record_watermark_stall(watermark, stalled=False)
                 await self.session.flush()
                 report.partial_failure = True
                 report.error = str(exc)[:512]
@@ -263,11 +296,15 @@ class OffenseCollector:
                 advanced = boundary_watermark(offenses)
                 if advanced is None:
                     report.watermark_stalled = True
+                    _record_watermark_stall(watermark, stalled=True)
                 else:
                     watermark.watermark_at = advanced
                     watermark.lag_seconds = max(
                         0, int((started - advanced).total_seconds())
                     )
+                    # The boundary moved, so this read is not stalled. The
+                    # flag is cleared here; a later clean run is not required.
+                    _record_watermark_stall(watermark, stalled=False)
             elif not dropped:
                 if high_water is not None:
                     watermark.watermark_at = high_water
@@ -276,6 +313,7 @@ class OffenseCollector:
                     )
                 watermark.consecutive_failures = 0
                 watermark.last_error = None
+                _record_watermark_stall(watermark, stalled=False)
             await self.session.flush()
 
             report.watermark_at = watermark.watermark_at
