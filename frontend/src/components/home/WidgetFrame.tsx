@@ -108,7 +108,7 @@ export const WidgetEditContext = createContext<{
 export interface Settled<T> {
   data: T;
   receivedAt: string;
-  refreshFailed: { httpStatus: number | null } | null;
+  refreshFailed: { httpStatus: number | null; retryAfter?: number | null } | null;
 }
 
 /**
@@ -240,11 +240,14 @@ export function WidgetQualifiers({
 function FailedState({
   what,
   httpStatus,
+  retryAfter,
   action,
   variant,
 }: {
   what: string;
   httpStatus: number | null;
+  /** The 429's `Retry-After` in seconds, when the response sent one. */
+  retryAfter: number | null;
   /** What the analyst can do, when the widget says it; else the standard refresh advice. */
   action?: string;
   variant: WidgetVariant;
@@ -259,12 +262,16 @@ function FailedState({
       </p>
       <p className="widget-error-action">
         {action ??
-          t("readAdvice", {
+          (httpStatus === 429
+            ? retryAfter === null
+              ? t("rateLimited")
+              : t("rateLimitedAfter", { seconds: retryAfter })
+            : t("readAdvice", {
             answer:
               httpStatus === null
                 ? t("noAnswer")
                 : t("answeredWith", { status: httpStatus }),
-          })}
+          }))}
       </p>
     </div>
   );
@@ -363,7 +370,7 @@ function RefreshNote({
   dataAt,
   variant,
 }: {
-  failed: { httpStatus: number | null } | null;
+  failed: { httpStatus: number | null; retryAfter?: number | null } | null;
   receivedAt: string;
   /** Where the data reaches, when the widget knows: it replaces the fetch time. */
   dataAt: string | null;
@@ -386,7 +393,12 @@ function RefreshNote({
       </p>
     );
   }
-  const status = failed.httpStatus === null ? "" : ` (HTTP ${failed.httpStatus})`;
+  const status =
+    failed.httpStatus === null
+      ? ""
+      : failed.httpStatus === 429
+        ? ` (${failed.retryAfter == null ? t("refreshRateLimited") : t("refreshRateLimitedAfter", { seconds: failed.retryAfter })})`
+        : ` (HTTP ${failed.httpStatus})`;
   return (
     <p className="tw-note warn" role="status">
       {t("refreshFailed", { status })}{" "}
@@ -403,7 +415,7 @@ type Shown<T> =
       kind: "ok";
       data: T;
       receivedAt: string;
-      refreshFailed: { httpStatus: number | null } | null;
+      refreshFailed: { httpStatus: number | null; retryAfter?: number | null } | null;
       /** Where the data reaches and how old that is; null when the widget does not say. */
       dataTo: { at: string; ageSeconds: number } | null;
     }
@@ -412,10 +424,10 @@ type Shown<T> =
       data: T;
       receivedAt: string;
       ageSeconds: number | null;
-      refreshFailed: { httpStatus: number | null } | null;
+      refreshFailed: { httpStatus: number | null; retryAfter?: number | null } | null;
     }
   | { kind: "empty" | "no_data" | "not_collected"; reason: ReactNode }
-  | { kind: "error"; httpStatus: number | null; action?: string }
+  | { kind: "error"; httpStatus: number | null; retryAfter?: number | null; action?: string }
   | { kind: "forbidden"; permission: string };
 
 /** One shape for the hook's states and the UR.5.4 union. */
@@ -454,7 +466,7 @@ function normalize<T>(
     case "forbidden":
       return { kind: "forbidden", permission };
     case "error":
-      return { kind: "error", httpStatus: state.httpStatus };
+      return { kind: "error", httpStatus: state.httpStatus, retryAfter: state.retryAfter ?? null };
     case "ok":
       return {
         kind: "ok",
@@ -541,6 +553,7 @@ export function WidgetFrame<T>({
         <FailedState
           what={what}
           httpStatus={shown.httpStatus}
+          retryAfter={shown.retryAfter ?? null}
           action={shown.action}
           variant={variant}
         />

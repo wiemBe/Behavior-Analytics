@@ -6,7 +6,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { RulesManager } from "@/components/fleet/RulesManager";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
-import { ApiError, fleetApi, type ClassificationRule } from "@/lib/api";
+import { ApiError, rateLimitedText, fleetApi, type ClassificationRule } from "@/lib/api";
 import { precedenceSteps } from "@/lib/fleet";
 import { fleetTextOf, plainCount } from "@/lib/fleetText";
 import { withRouteMessages } from "@/i18n/RouteMessages";
@@ -26,11 +26,13 @@ async function ClassificationRulesPage() {
     rules = await fleetApi.rules();
   } catch (err) {
     error =
-      err instanceof ApiError && err.status === 403
-        ? t("forbidden")
-        : err instanceof ApiError && err.status === 401
-          ? t("expired")
-          : t("failed");
+      err instanceof ApiError && err.status === 429
+        ? rateLimitedText(err, text.say)
+        : err instanceof ApiError && err.status === 403
+          ? t("forbidden")
+          : err instanceof ApiError && err.status === 401
+            ? t("expired")
+            : t("failed");
   }
   const builtIn = rules.filter((r) => r.built_in).length;
 

@@ -2,6 +2,10 @@
   "frame": {
     "couldNotRead": "The {subject} could not be read.",
     "readAdvice": "{answer} Nothing was changed. Use Refresh in the top bar; if it still fails, check that the backend is reachable.",
+    "rateLimited": "Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in a minute.",
+    "rateLimitedAfter": "Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in {seconds, number} s.",
+    "refreshRateLimited": "too many requests, try again in a minute",
+    "refreshRateLimitedAfter": "too many requests, try again in {seconds, number} s",
     "noAnswer": "The backend did not answer.",
     "answeredWith": "The backend answered with HTTP {status}.",
     "forbidden": "Your role cannot read {what} (permission {permission}). Nothing was changed.",

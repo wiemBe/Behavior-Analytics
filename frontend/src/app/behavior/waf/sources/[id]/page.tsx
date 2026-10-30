@@ -3,6 +3,7 @@
 
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -11,6 +12,7 @@ import { WafEndpointsTable } from "@/components/waf/WafEndpointsTable";
 import { validationView } from "@/components/waf/wafSourceHealth";
 import {
   ApiError,
+  rateLimitedText,
   api,
   type PagedWafEndpoints,
   type WafSourceDetail,
@@ -71,6 +73,15 @@ async function WafSourceEndpointsPage({
       }),
     ]);
   } catch (err) {
+    if (err instanceof ApiError && err.status === 429) {
+      return (
+        <Problem
+          pageTitle={t("title")}
+          title={t("failedTitle")}
+          text={rateLimitedText(err, asTextTranslator(await getTranslations()))}
+        />
+      );
+    }
     if (err instanceof ApiError && err.status === 404) {
       return (
         <Problem

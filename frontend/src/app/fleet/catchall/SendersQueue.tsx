@@ -16,6 +16,7 @@ import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
   ApiError,
+  rateLimitedText,
   catchallApi,
   type CatchallReviewStatus,
   type CatchallSender,
@@ -53,6 +54,9 @@ type View =
   | { kind: "error"; text: string; forbidden: boolean };
 
 function readFailure(err: unknown, text: FleetText): { text: string; forbidden: boolean } {
+  if (err instanceof ApiError && err.status === 429) {
+    return { forbidden: false, text: rateLimitedText(err, text.say) };
+  }
   if (err instanceof ApiError && err.status === 403) {
     return { forbidden: true, text: text.say("fleet.errors.forbidden") };
   }

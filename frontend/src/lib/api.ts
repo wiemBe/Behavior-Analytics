@@ -30,6 +30,8 @@ export class ApiError extends Error {
     public detail?: unknown,
     /** The whole JSON body of the failed response, when it had one: a conflict may carry state. */
     public body?: unknown,
+    /** The response's `Retry-After` in whole seconds, when it sent one; else null. */
+    public retryAfter: number | null = null,
   ) {
     super(message);
   }
@@ -43,6 +45,16 @@ export class ApiError extends Error {
   get codes(): string[] {
     return capacityCodes(this.body);
   }
+}
+
+/**
+ * `Retry-After` as whole seconds, or null. Only the delay-seconds form is read; an HTTP-date, a
+ * negative, zero or non-numeric value is not a wait the page can name.
+ */
+export function parseRetryAfter(value: string | null | undefined): number | null {
+  if (value == null || !/^\s*\d+\s*$/.test(value)) return null;
+  const seconds = Number(value);
+  return Number.isSafeInteger(seconds) && seconds > 0 ? seconds : null;
 }
 
 /**
@@ -287,7 +299,13 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
         }
       }
     }
-    throw new ApiError(res.status, detail, raw, body);
+    throw new ApiError(
+      res.status,
+      detail,
+      raw,
+      body,
+      res.status === 429 ? parseRetryAfter(res.headers?.get?.("Retry-After")) : null,
+    );
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -2901,6 +2919,18 @@ export const api = {
     }),
 };
 
+/**
+ * The sentence for a 429: too many requests in a minute from this address, nothing wrong with the
+ * data or the backend, and when to retry ("in N s" when the response said, else "in a minute").
+ */
+export function rateLimitedText(err: ApiError, t?: TextTranslator): string {
+  const seconds = err.retryAfter;
+  if (t) return seconds === null ? t("errors.rateLimited") : t("errors.rateLimitedAfter", { seconds });
+  return seconds === null
+    ? "Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in a minute."
+    : `Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in ${seconds} s.`;
+}
+
 // Turns any thrown value into something safe to render.
 //
 // Never surfaces a raw exception: an unexpected error could carry a stack trace
@@ -2927,6 +2957,8 @@ export function actionErrorMessage(err: unknown, t?: TextTranslator): string {
         }
         return say("forbidden", "You do not have permission to perform this action.");
       }
+      case 429:
+        return rateLimitedText(err, t);
       case 404:
         return say("notFound", "This item no longer exists. Refresh the page.");
       case 409:

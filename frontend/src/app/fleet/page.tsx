@@ -14,7 +14,7 @@ import { WindowSwitch } from "@/components/fleet/WindowSwitch";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
-import { ApiError, fleetApi, type FleetSummary } from "@/lib/api";
+import { ApiError, rateLimitedText, fleetApi, type FleetSummary } from "@/lib/api";
 import { parseWindow, windowName } from "@/lib/fleet";
 import { fleetTextOf, plainCount } from "@/lib/fleetText";
 import { UtcTime } from "@/components/ui/UtcTime";
@@ -49,11 +49,13 @@ async function FleetPage({
     summary = await fleetApi.summary(window);
   } catch (err) {
     error =
-      err instanceof ApiError && err.status === 403
-        ? t("forbidden")
-        : err instanceof ApiError && err.status === 401
-          ? text.say("errors.sessionExpired")
-          : t("unreachable");
+      err instanceof ApiError && err.status === 429
+        ? rateLimitedText(err, text.say)
+        : err instanceof ApiError && err.status === 403
+          ? t("forbidden")
+          : err instanceof ApiError && err.status === 401
+            ? text.say("errors.sessionExpired")
+            : t("unreachable");
   }
 
   return (

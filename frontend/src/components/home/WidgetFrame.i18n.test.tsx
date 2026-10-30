@@ -108,6 +108,18 @@ describe("WidgetFrame states in Turkish", () => {
     expect(alert).toHaveTextContent("Üst çubuktaki Yenile'yi kullanın");
   });
 
+  it.each([
+    ["with Retry-After", 45, "45 sn sonra yeniden deneyin."],
+    ["without Retry-After", null, "Bir dakika sonra yeniden deneyin."],
+  ])("says the read was rate limited on a 429 %s", (_case, retryAfter, wait) => {
+    frame({ status: "error", httpStatus: 429, retryAfter });
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Okunamadı: filo EPS.");
+    expect(alert).toHaveTextContent("Bu adresten bir dakika içinde çok fazla istek geldi.");
+    expect(alert).toHaveTextContent(wait);
+    expect(alert).not.toHaveTextContent("Backend HTTP 429");
+  });
+
   it("strips the English article from a subject only where one is written", () => {
     render(
       <WidgetFrame

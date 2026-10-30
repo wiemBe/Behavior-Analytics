@@ -8,6 +8,7 @@
 
 import {
   ApiError,
+  rateLimitedText,
   actionErrorMessage,
   type OutageClassSummary,
   type OutageFleetSummary,
@@ -470,6 +471,9 @@ export function readError(
   err: unknown,
   i18n: BehaviorI18n = ENGLISH_OUTAGE,
 ): { forbidden: boolean; text: string } {
+  if (err instanceof ApiError && err.status === 429) {
+    return { forbidden: false, text: rateLimitedText(err, i18n.t) };
+  }
   if (err instanceof ApiError && err.status === 403) {
     return { forbidden: true, text: i18n.t(k("failure.readForbidden")) };
   }

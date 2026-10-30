@@ -14,6 +14,7 @@
 
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { asTextTranslator } from "@/i18n/textTranslator";
 import Link from "next/link";
 
 import { RangeSelector } from "@/components/behavior/RangeSelector";
@@ -27,6 +28,7 @@ import { SourceQuality } from "@/components/behavior/SourceQuality";
 import { VolumeChart } from "@/components/behavior/VolumeChart";
 import {
   ApiError,
+  rateLimitedText,
   api,
   type AnomalySummary,
   type BaselineCell,
@@ -85,10 +87,13 @@ async function SourceBehaviorPage({
 
   let behavior: SourceBehavior | null = null;
   let status = 0;
+  let limited: string | null = null;
+  const say = asTextTranslator(await getTranslations());
   try {
     behavior = await api.sourceBehavior(id, { since, until });
   } catch (err) {
     status = err instanceof ApiError ? err.status : 0;
+    if (err instanceof ApiError && err.status === 429) limited = rateLimitedText(err, say);
   }
 
   if (!behavior) {
@@ -100,13 +105,14 @@ async function SourceBehaviorPage({
           meta={<Link href="/behavior/sources">{t("allSources")}</Link>}
         />
         <div className="notice" role="alert">
-          {status === 404
+          {limited ??
+            (status === 404
             ? t("notFound")
             : status === 403
               ? errors("forbidden")
               : status === 401
                 ? errors("expired")
-                : t("failed")}
+                : t("failed"))}
         </div>
       </>
     );

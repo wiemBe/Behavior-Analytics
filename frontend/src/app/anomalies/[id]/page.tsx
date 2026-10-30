@@ -17,6 +17,7 @@
 
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { asTextTranslator } from "@/i18n/textTranslator";
 import Link from "next/link";
 
 import { EvidenceBanner } from "@/components/behavior/EvidenceBanner";
@@ -36,6 +37,7 @@ import { guideFor } from "@/lib/guideRoutes";
 import { WafInvestigation } from "@/components/waf/WafInvestigation";
 import {
   ApiError,
+  rateLimitedText,
   api,
   isIpsDetail,
   isPwDetail,
@@ -251,10 +253,13 @@ async function AnomalyDetailPage({
 
   let loaded: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail | null = null;
   let status = 0;
+  let limited: string | null = null;
+  const say = asTextTranslator(await getTranslations());
   try {
     loaded = await api.anomaly(id);
   } catch (err) {
     status = err instanceof ApiError ? err.status : 0;
+    if (err instanceof ApiError && err.status === 429) limited = rateLimitedText(err, say);
   }
 
   if (!loaded) {
@@ -263,13 +268,14 @@ async function AnomalyDetailPage({
         <PageHeader guide={guideFor("/anomalies/[id]")} title={t("title")} />
         <div className="notice" role="alert">
           <p>
-            {status === 404
+            {limited ??
+              (status === 404
               ? t("notFound")
               : status === 403
                 ? t("forbidden")
                 : status === 401
                   ? t("expired")
-                  : t("failed")}
+                  : t("failed"))}
           </p>
           <p className="incident-error-link">
             <Link href="/anomalies">{t("back")}</Link>

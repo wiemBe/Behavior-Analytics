@@ -6,7 +6,7 @@ import { plainCount } from "@/lib/fleetText";
 import type { FormatLocale } from "@/lib/format";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
-import { ApiError, api, type LogSourceDetail } from "@/lib/api";
+import { ApiError, api, rateLimitedText, type LogSourceDetail } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
@@ -25,20 +25,23 @@ async function LogSourceDetailPage({
   const locale = (await getLocale()) as FormatLocale;
   let d: LogSourceDetail | null = null;
   let status = 0;
+  let limited: string | null = null;
   try {
     d = await api.logSource(id);
   } catch (err) {
     status = err instanceof ApiError ? err.status : 0;
+    if (err instanceof ApiError && err.status === 429) limited = rateLimitedText(err, say);
   }
   if (!d) {
     const message =
-      status === 401
+      limited ??
+      (status === 401
         ? say("errors.sessionExpired")
         : status === 403
           ? t("forbidden")
           : status === 404
             ? t("notFound", { id })
-            : t("unreachable");
+            : t("unreachable"));
     return (
       <>
         <PageHeader guide={guideFor("/log-sources/[id]")} title={t("title")} />

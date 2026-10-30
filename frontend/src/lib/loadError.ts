@@ -1,4 +1,4 @@
-import { ApiError } from "@/lib/api";
+import { ApiError, rateLimitedText } from "@/lib/api";
 import type { TextTranslator } from "@/i18n/textTranslator";
 
 /**
@@ -23,6 +23,7 @@ export function loadErrorMessage(
     if (t) return t("errors.sessionExpired");
     return "Your session has expired. Sign in again to continue.";
   }
+  if (err instanceof ApiError && err.status === 429) return rateLimitedText(err, t);
   const capitalised = noun.charAt(0).toUpperCase() + noun.slice(1);
   if (t) return t("errors.loadFailed", { noun: capitalised });
   return `${capitalised} could not be loaded. The backend may be unreachable; reload the page to try again.`;

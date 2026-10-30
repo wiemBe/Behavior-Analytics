@@ -9,7 +9,8 @@ import { useCallback, useEffect, useState } from "react";
 import { holds } from "@/components/auth/access";
 import { useSession } from "@/components/auth/session";
 import { LoadingState } from "@/components/ui/RouteState";
-import { ApiError, api, type HistoryConsole } from "@/lib/api";
+import { ApiError, api, rateLimitedText, type HistoryConsole } from "@/lib/api";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 import { DecisionBlock } from "./DecisionBlock";
 import { ADMIN_PERMISSION } from "./historyFormat";
@@ -22,12 +23,14 @@ type Load =
   | { status: "ok"; consoles: HistoryConsole[] }
   | { status: "forbidden" }
   | { status: "expired" }
+  | { status: "limited"; message: string }
   | { status: "error" };
 
 export function HistoryBackfillPage() {
   const t = useTranslations("history.page");
   const common = useTranslations("common");
   const errors = useTranslations("errors");
+  const say = asTextTranslator(useTranslations());
   const session = useSession();
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [now] = useState(() => new Date());
@@ -37,11 +40,13 @@ export function HistoryBackfillPage() {
     try {
       setLoad({ status: "ok", consoles: await api.historyBackfill() });
     } catch (err) {
-      if (err instanceof ApiError && err.status === 403) setLoad({ status: "forbidden" });
+      if (err instanceof ApiError && err.status === 429) {
+        setLoad({ status: "limited", message: rateLimitedText(err, say) });
+      } else if (err instanceof ApiError && err.status === 403) setLoad({ status: "forbidden" });
       else if (err instanceof ApiError && err.status === 401) setLoad({ status: "expired" });
       else setLoad({ status: "error" });
     }
-  }, []);
+  }, [say]);
 
   useEffect(() => {
     void read();
@@ -71,6 +76,21 @@ export function HistoryBackfillPage() {
           <strong>{t("couldNotShow")}</strong>
         </p>
         <p>{errors("sessionExpired")}</p>
+      </div>
+    );
+  }
+  if (load.status === "limited") {
+    return (
+      <div className="notice" role="alert">
+        <p>
+          <strong>{t("couldNotLoad")}</strong>
+        </p>
+        <p>{load.message}</p>
+        <p>
+          <button type="button" className="action secondary" onClick={() => void read()}>
+            {common("tryAgain")}
+          </button>
+        </p>
       </div>
     );
   }

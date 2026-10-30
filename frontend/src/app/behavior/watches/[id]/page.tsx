@@ -7,6 +7,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 import { PwStatus } from "@/components/propertywatch/PwStatus";
 import { PropertyWatchWriteNotice } from "@/components/propertywatch/PropertyWatchWriteNotice";
@@ -31,6 +32,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import {
   ApiError,
+  rateLimitedText,
   api,
   type AnomalySummary,
   type PagedPwValues,
@@ -89,6 +91,13 @@ async function PropertyWatchPage({
   try {
     watch = await api.propertyWatch(id);
   } catch (err) {
+    if (err instanceof ApiError && err.status === 429) {
+      return (
+        <Problem title={t("detail.failedTitle")} pageTitle={t("detail.title")}>
+          {rateLimitedText(err, asTextTranslator(await getTranslations()))}
+        </Problem>
+      );
+    }
     if (err instanceof ApiError && err.status === 404) {
       return (
         <Problem title={t("detail.notFoundTitle")} pageTitle={t("detail.title")}>

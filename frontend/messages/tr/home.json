@@ -2,6 +2,10 @@
   "frame": {
     "couldNotRead": "Okunamadı: {subject}.",
     "readAdvice": "{answer} Hiçbir şey değiştirilmedi. Üst çubuktaki Yenile'yi kullanın; hata sürerse backend'e erişilebildiğini denetleyin.",
+    "rateLimited": "Bu adresten bir dakika içinde çok fazla istek geldi. Veride ya da backend'de bir sorun yok. Bir dakika sonra yeniden deneyin.",
+    "rateLimitedAfter": "Bu adresten bir dakika içinde çok fazla istek geldi. Veride ya da backend'de bir sorun yok. {seconds, number} sn sonra yeniden deneyin.",
+    "refreshRateLimited": "çok fazla istek, bir dakika sonra yeniden deneyin",
+    "refreshRateLimitedAfter": "çok fazla istek, {seconds, number} sn sonra yeniden deneyin",
     "noAnswer": "Backend yanıt vermedi.",
     "answeredWith": "Backend HTTP {status} ile yanıt verdi.",
     "forbidden": "Rolünüz bunu okuyamıyor: {what} (izin: {permission}). Hiçbir şey değiştirilmedi.",

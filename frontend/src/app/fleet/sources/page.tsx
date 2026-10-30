@@ -12,7 +12,7 @@ import { FleetSourcesTable } from "@/components/fleet/FleetSourcesTable";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
-import { ApiError, fleetApi, type ClassificationRule, type FleetSource } from "@/lib/api";
+import { ApiError, rateLimitedText, fleetApi, type ClassificationRule, type FleetSource } from "@/lib/api";
 import {
   activeFilterLabels,
   fleetApiParams,
@@ -55,11 +55,13 @@ async function FleetSourcesPage({
     rules = ruleList ?? [];
   } catch (err) {
     error =
-      err instanceof ApiError && err.status === 403
-        ? text.say("fleet.errors.forbidden")
-        : err instanceof ApiError && err.status === 401
-          ? text.say("errors.sessionExpired")
-          : t("unreachable");
+      err instanceof ApiError && err.status === 429
+        ? rateLimitedText(err, text.say)
+        : err instanceof ApiError && err.status === 403
+          ? text.say("fleet.errors.forbidden")
+          : err instanceof ApiError && err.status === 401
+            ? text.say("errors.sessionExpired")
+            : t("unreachable");
   }
 
   const filters = activeFilterLabels(query, text);
