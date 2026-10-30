@@ -188,6 +188,18 @@ export function wafDetail(over: Partial<WafAnomalyDetail> = {}): WafAnomalyDetai
   };
 }
 
+/** A row the engine suppressed in a maintenance window: the pill, and the stored reason
+ *  with its code beside it (POL-2). */
+export function wafSuppressedDetail(over: Partial<WafAnomalyDetail> = {}): WafAnomalyDetail {
+  return wafDetail({
+    suppressed: true,
+    suppression_reason: "maintenance window",
+    suppression_reason_code: "waf.suppression.maintenance_window",
+    suppression_reason_params: {},
+    ...over,
+  });
+}
+
 export function wafBucket(over: Partial<WafMetricBucket> = {}): WafMetricBucket {
   return {
     bucket_start: "2026-10-12T09:00:00Z",

@@ -112,6 +112,7 @@
     "virtualHost": "Virtual host",
     "noVirtualHostOnEndpoint": "No virtual host on this endpoint",
     "suppressed": "Suppressed",
+    "suppressionReason": "Suppression reason",
     "viewSource": "View WAF source",
     "noVirtualHost": "This WAF source does not expose a virtual host, so this endpoint may combine traffic for different applications that share the path."
   },

@@ -1346,6 +1346,11 @@ export interface DetectionDetail {
 export interface AnomalyDetail extends AnomalySummary {
   baseline_version: number | null;
   policy_version: number;
+  // WAF and IPS: why the incident was suppressed. null when it was never suppressed, and on a
+  // row stored before the reason was written. Absent from the list response.
+  suppression_reason?: string | null;
+  suppression_reason_code?: string | null;
+  suppression_reason_params?: Record<string, unknown> | null;
   transitions: AnomalyTransition[];
   // null when evidence was never requested or has not been collected yet.
   explanation_package: ExplanationPackage | null;

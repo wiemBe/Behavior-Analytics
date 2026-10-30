@@ -12,12 +12,16 @@ from typing import Any
 
 import pytest
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import WafAnomalyType
 from tests.integration.test_fleet_api import Client, run
 from tests.integration.test_waf_analyst_api import READER, waf, world
 from tests.unit.waf_message_scenarios import SCENARIOS
 
 pytestmark = pytest.mark.integration
+
+#: What the engine writes when it suppresses an anomalous verdict in a maintenance window.
+_MAINTENANCE = MessageRef("waf.suppression.maintenance_window")
 
 
 def coded_row(name: str = "ratio.block.fired") -> dict[str, Any]:
@@ -132,6 +136,54 @@ def test_a_malformed_stored_reference_is_dropped_never_served(db_schema, broken)
     items = client.get("/api/v1/anomalies?limit=50").json()["items"]
     listed = next(i for i in items if i["id"] == str(anomaly_id))
     assert listed["explanation_code"] is None
+
+
+def suppressed_row() -> dict[str, Any]:
+    """The columns a row the engine suppressed in a maintenance window holds."""
+    return {
+        **coded_row(),
+        "suppressed": True,
+        "suppression_reason": render(_MAINTENANCE),
+        "suppression_reason_i18n": _MAINTENANCE.to_wire(),
+    }
+
+
+def test_the_detail_serves_the_suppression_reason_and_its_code(db_schema) -> None:
+    row = suppressed_row()
+    (anomaly_id,) = seed([row])
+    body = Client(READER).get(f"/api/v1/anomalies/{anomaly_id}").json()
+    assert body["suppressed"] is True
+    assert body["suppression_reason"] == row["suppression_reason"]
+    assert body["suppression_reason_code"] == "waf.suppression.maintenance_window"
+    assert body["suppression_reason_params"] == {}
+
+
+def test_a_never_suppressed_row_serves_no_suppression_reason(db_schema) -> None:
+    (anomaly_id,) = seed([coded_row()])
+    body = Client(READER).get(f"/api/v1/anomalies/{anomaly_id}").json()
+    assert body["suppressed"] is False
+    assert body["suppression_reason"] is None
+    assert body["suppression_reason_code"] is None
+    assert body["suppression_reason_params"] is None
+
+
+def test_an_old_suppressed_row_serves_its_text_and_no_code(db_schema) -> None:
+    row = suppressed_row()
+    row["suppression_reason_i18n"] = None
+    (anomaly_id,) = seed([row])
+    body = Client(READER).get(f"/api/v1/anomalies/{anomaly_id}").json()
+    assert body["suppression_reason"] == row["suppression_reason"]
+    assert body["suppression_reason_code"] is None
+    assert body["suppression_reason_params"] is None
+
+
+def test_the_list_serves_no_suppression_reason(db_schema) -> None:
+    (suppressed_id,) = seed([suppressed_row()])
+    listed = Client(READER).get("/api/v1/anomalies?limit=50").json()["items"]
+    item = next(i for i in listed if i["id"] == str(suppressed_id))
+    assert item["suppressed"] is True
+    for field in ("suppression_reason", "suppression_reason_code", "suppression_reason_params"):
+        assert field not in item
 
 
 def test_the_list_statement_count_does_not_grow_with_the_coded_rows(db_schema) -> None:

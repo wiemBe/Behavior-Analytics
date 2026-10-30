@@ -8,7 +8,9 @@ import {
   wafDetection,
   wafNewEndpointDetection,
   wafRatioDetection,
+  wafSuppressedDetail,
 } from "./fixtures";
+import { setTestLocale } from "../../../vitest.setup";
 import { buildBaselineLookup, type BaselineSource } from "./wafBaseline";
 import { NO_VIRTUAL_HOST_SENTENCE } from "./WafIncidentHeader";
 import { WafInvestigation } from "./WafInvestigation";
@@ -77,6 +79,46 @@ describe("WAF investigation: identity", () => {
     view({ anomaly_end: null, duration_seconds: null });
     expect(screen.getByText(/still running/)).toBeInTheDocument();
     expect(within(screen.getByLabelText("Incident measurements")).getByText("—")).toBeInTheDocument();
+  });
+});
+
+describe("WAF investigation: the suppression reason (POL-2)", () => {
+  it("shows the stored reason as sent, labelled, under the Suppressed pill", () => {
+    const { container } = view(wafSuppressedDetail());
+    expect(screen.getByText("Suppressed")).toBeInTheDocument();
+    const line = container.querySelector("p.incident-suppression");
+    expect(line).toHaveTextContent("Suppression reason: maintenance window");
+  });
+
+  it("renders a coded reason in Turkish", () => {
+    setTestLocale("tr");
+    const { container } = view(wafSuppressedDetail());
+    expect(screen.getByText("Bastırıldı")).toBeInTheDocument();
+    const line = container.querySelector("p.incident-suppression");
+    expect(line).toHaveTextContent("Bastırma nedeni: Bakım penceresi");
+    expect(line).not.toHaveTextContent("maintenance window");
+  });
+
+  it("keeps the stored text when the row has no code (an old row)", () => {
+    setTestLocale("tr");
+    const { container } = view(
+      wafSuppressedDetail({ suppression_reason_code: null, suppression_reason_params: null }),
+    );
+    expect(container.querySelector("p.incident-suppression")).toHaveTextContent(
+      "Bastırma nedeni: maintenance window",
+    );
+  });
+
+  it("draws nothing when the reason is empty: the pill alone", () => {
+    const { container } = view(
+      wafSuppressedDetail({
+        suppression_reason: null,
+        suppression_reason_code: null,
+        suppression_reason_params: null,
+      }),
+    );
+    expect(screen.getByText("Suppressed")).toBeInTheDocument();
+    expect(container.querySelector("p.incident-suppression")).toBeNull();
   });
 });
 

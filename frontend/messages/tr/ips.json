@@ -113,7 +113,8 @@
     "detected": "Algılandı",
     "opened": "Açıldı",
     "resolved": "Çözüldü",
-    "suppressed": "Bastırıldı"
+    "suppressed": "Bastırıldı",
+    "suppressionReason": "Bastırma nedeni"
   },
   "detection": {
     "noWorking": "Bu vaka için bir algılayıcı hesabı kaydedilmedi; bu yüzden beklenen aralığı ve baseline'ı gösterilemiyor. Bu eksik bir kayıttır, normal bir baseline değil.",
