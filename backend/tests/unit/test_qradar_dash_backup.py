@@ -991,3 +991,99 @@ def test_user_timer_install_explains_session_and_lingering(
         "--user enable --now qradar-dash-backup.timer",
     ]
 
+
+ANSWERS_HEADER = (
+    "# Written by ./qradar-dash install. Paths and names only; no secret is stored here.\n"
+)
+
+
+def _mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
+
+
+def _write_answers(root: Path, body: str, mode: int = 0o600) -> Path:
+    directory = root / ".secrets"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    path = directory / "install.answers"
+    path.write_text(ANSWERS_HEADER + body)
+    path.chmod(mode)
+    return path
+
+
+def test_backup_copies_private_answers_and_keeps_manifest_fields(
+    backup: BackupFixture,
+) -> None:
+    body = "PUBLIC_HOSTNAME=dash.example\nINSTANCE_NAME=qradar\n"
+    live = _write_answers(backup.root, body)
+    before = live.read_bytes()
+
+    result = backup.run("backup")
+
+    assert result.returncode == 0, output(result)
+    [path] = backup.backups()
+    copied = path / "install.answers"
+    assert copied.read_bytes() == before
+    assert _mode(copied) == 0o600
+    assert live.read_bytes() == before
+    assert _mode(live) == 0o600
+    assert KEY not in copied.read_text()
+    assert KEY in (path / "env.bak").read_text()
+    manifest = (path / "MANIFEST").read_text().splitlines()
+    assert [line.split("=", 1)[0] for line in manifest] == [
+        "VERSION",
+        "IMAGE_DIGESTS",
+        "ALEMBIC_VERSION",
+        "DATABASE_SIZE_BYTES",
+        "HOSTNAME",
+        "STATE_JSON",
+        "SECRETS_VOLUMES",
+    ]
+    assert {item.name for item in path.iterdir()} == {
+        "database.dump",
+        "env.bak",
+        "secrets.tar",
+        "state.json",
+        "MANIFEST",
+        "install.answers",
+    }
+
+
+def test_backup_omits_group_readable_answers_and_does_not_read_them(
+    backup: BackupFixture,
+) -> None:
+    live = _write_answers(backup.root, "PUBLIC_HOSTNAME=dash.example\n", mode=0o640)
+    before = live.read_bytes()
+
+    result = backup.run("backup")
+
+    assert result.returncode == 0, output(result)
+    assert "must be 0600" not in output(result)
+    [path] = backup.backups()
+    assert backup.partials() == []
+    assert "install.answers" not in {item.name for item in path.iterdir()}
+    assert "pg_dump" in backup.calls.read_text()
+    assert live.read_bytes() == before
+    assert _mode(live) == 0o640
+
+
+def test_backup_omits_a_symlink_answers_file_and_does_not_follow_it(
+    backup: BackupFixture,
+) -> None:
+    target = backup.root.parent / "real-answers"
+    target.write_text(ANSWERS_HEADER + "PUBLIC_HOSTNAME=dash.example\n")
+    target.chmod(0o600)
+    secrets = backup.root / ".secrets"
+    secrets.mkdir(mode=0o700)
+    link = secrets / "install.answers"
+    link.symlink_to(target)
+    before = target.read_bytes()
+
+    result = backup.run("backup")
+
+    assert result.returncode == 0, output(result)
+    assert "must be 0600" not in output(result)
+    [path] = backup.backups()
+    assert "install.answers" not in {item.name for item in path.iterdir()}
+    assert target.read_bytes() == before
+    assert link.is_symlink()
+

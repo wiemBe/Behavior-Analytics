@@ -79,6 +79,14 @@ if [ "$1" = info ]; then
   printf '%s\n' "$STUB_DOCKER_ROOT"
   exit 0
 fi
+if [ "$1" = version ]; then
+  printf '%s\n' 27.0.0
+  exit 0
+fi
+if [ "$1 $2 $3" = "compose version --short" ]; then
+  printf '%s\n' 2.30.0
+  exit 0
+fi
 if [ "$1 $2" = "volume inspect" ]; then exit 0; fi
 if [ "$1" = inspect ]; then
   container=${!#}
@@ -146,6 +154,9 @@ case "$*" in
       && printf '%s\n' backend celery-worker celery-beat frontend proxy
     exit 0
     ;;
+  *" ps --status running -q")
+    printf '%s\n' postgres-container
+    ;;
   *" ps --all --format "*)
     if [ -n "${STUB_PS_ROWS:-}" ] && [ "${STUB_UP_FAIL_VERSION:-}" = "$env_version" ]; then
       printf '%b\n' "$STUB_PS_ROWS"
@@ -199,6 +210,9 @@ case "$*" in
   *" exec -T postgres pg_dump "*) exit "${STUB_DUMP_RC:-0}" ;;
   *" exec -T postgres pg_restore "*) exit 0 ;;
   *" exec -T postgres rm -f -- "*) ;;
+  *" app.cli.qradar add "*) exit 0 ;;
+  *" app.cli.users create-admin "*) exit 0 ;;
+  *" logs --no-color --tail "*) ;;
   *" cp postgres:"*)
     target=${!#}
     printf '%s\n' fixture-dump > "$target"
@@ -1441,3 +1455,392 @@ def test_upgrade_refuses_a_duplicated_forwarded_line_and_changes_nothing(
     assert result.returncode == 1, output(result)
     assert "more than one FORWARDED_ALLOW_IPS line" in output(result)
     assert _env_text(upgrade) == before
+
+
+# ------------------------------------------------ answers across upgrade and rollback (FIX-9)
+ANSWERS_HEADER = (
+    "# Written by ./qradar-dash install. Paths and names only; no secret is stored here.\n"
+)
+
+GIT_ANSWER_KEYS = r"""#!/bin/bash
+if [ "$1 $2" = "--no-pager show" ]; then
+  cat <<'EOF'
+ANSWER_KEYS="PUBLIC_HOSTNAME TLS_CERT_FILE TLS_KEY_FILE EXTERNAL_PROXY FORWARDED_ALLOW_IPS
+QRADAR_URL QRADAR_CONSOLE_FQDN QRADAR_API_VERSION QRADAR_TOKEN_FILE QRADAR_CA_FILE
+QRADAR_ALLOW_MISSING_AKI INSTANCE_NAME BACKUP_DIR GHCR_USER GHCR_TOKEN_FILE ADMIN_USERNAME
+HTTPS_PORT API_LOOPBACK_PORT UI_LOOPBACK_PORT IMAGE_PREFIX SECRETS_VOLUME PROXY_CERTS_VOLUME
+EDGE_SUBNET PROXY_EDGE_IP PROJECT_NAME HISTORY_BACKFILL"
+EOF
+  exit 0
+fi
+exit 1
+"""
+
+
+def _mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
+
+
+def _write_live_answers(upgrade: UpgradeFixture, text: str, mode: int = 0o600) -> Path:
+    directory = upgrade.root / ".secrets"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    path = directory / "install.answers"
+    path.write_text(text)
+    path.chmod(mode)
+    return path
+
+
+def _drop_first_frontend_edge_key(script: Path) -> None:
+    text = script.read_text()
+    needle = " FRONTEND_EDGE_IP"
+    assert needle in text
+    script.write_text(text.replace(needle, "", 1))
+    script.chmod(0o755)
+
+
+def _pem(kind: str) -> str:
+    if kind == "key":
+        return "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n"
+    return "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+
+
+def _install_rerun_ready(upgrade: UpgradeFixture) -> Path:
+    """Host tools install's preflight needs, and a load-secrets that does not call docker."""
+    upgrade._stub("timedatectl", "#!/bin/sh\nprintf '%s\\n' no\n")
+    upgrade._stub("nproc", "#!/bin/sh\nprintf '%s\\n' 8\n")
+    upgrade._stub("uname", "#!/bin/sh\n[ \"$1\" = -m ] && printf '%s\\n' x86_64\n")
+    upgrade._stub("ss", "#!/bin/sh\nexit 0\n")
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        upgrade._stub("openssl", "#!/bin/sh\nexit 0\n")
+    else:
+        (upgrade.bin_dir / "openssl").symlink_to(openssl)
+    helper = upgrade.root / "deploy" / "load-secrets.sh"
+    helper.write_text("#!/bin/sh\nexit 0\n")
+    helper.chmod(0o755)
+    meminfo = upgrade.root.parent / "meminfo"
+    meminfo.write_text("MemTotal:       16777216 kB\n")
+    return meminfo
+
+
+def test_upgrade_backup_rollback_then_old_install_accepts_answers(
+    upgrade: UpgradeFixture,
+) -> None:
+    inputs = upgrade.root.parent / "inputs"
+    inputs.mkdir()
+    cert = inputs / "tls.crt"
+    key = inputs / "tls.key"
+    token = inputs / "token"
+    ca = inputs / "ca.pem"
+    cert.write_text(_pem("cert"))
+    key.write_text(_pem("key"))
+    token.write_text("operator-token-file\n")
+    ca.write_text(_pem("cert"))
+    original = (
+        f"{ANSWERS_HEADER}"
+        "# FRONTEND_EDGE_IP is named here only so a comment survives the restore\n"
+        "PUBLIC_HOSTNAME=dash.example\n"
+        f"TLS_CERT_FILE={cert}\n"
+        f"TLS_KEY_FILE={key}\n"
+        "EXTERNAL_PROXY=no\n"
+        "QRADAR_URL=https://qradar.example\n"
+        f"QRADAR_TOKEN_FILE={token}\n"
+        f"QRADAR_CA_FILE={ca}\n"
+        "INSTANCE_NAME=qradar\n"
+        f"BACKUP_DIR={upgrade.backup_root}\n"
+        "ADMIN_USERNAME=admin\n"
+        "IMAGE_PREFIX=registry.example/qradar\n"
+    )
+    live = _write_live_answers(upgrade, original)
+
+    upgraded = upgrade.run("upgrade", TARGET_VERSION)
+
+    assert upgraded.returncode == 0, output(upgraded)
+    [backup] = sorted(upgrade.backup_root.glob("qradar-dash-*-pre-upgrade"))
+    copied = backup / "install.answers"
+    assert copied.read_bytes() == original.encode()
+    assert _mode(copied) == 0o600
+    assert live.read_bytes() == original.encode()
+    manifest = (backup / "MANIFEST").read_text().splitlines()
+    assert [line.split("=", 1)[0] for line in manifest] == [
+        "VERSION",
+        "IMAGE_DIGESTS",
+        "ALEMBIC_VERSION",
+        "DATABASE_SIZE_BYTES",
+        "HOSTNAME",
+        "STATE_JSON",
+        "SECRETS_VOLUMES",
+    ]
+    assert SECRET_VALUES[0] not in copied.read_text()
+    live.write_bytes(original.encode() + b"FRONTEND_EDGE_IP=172.28.10.11\n")
+    live.chmod(0o600)
+
+    rolled = upgrade.run("rollback", "--non-interactive", "--yes")
+
+    assert rolled.returncode == 0, output(rolled)
+    assert live.read_bytes() == original.encode()
+    assert _mode(live) == 0o600
+    assert "Removed answer key" not in output(rolled)
+    assert "172.28.10.11" not in output(rolled)
+    (upgrade.root / "VERSION").write_text(f"{OLD_VERSION}\n")
+    _drop_first_frontend_edge_key(upgrade.script)
+    assignment = upgrade.script.read_text()
+    start = assignment.index('ANSWER_KEYS="')
+    end = assignment.index('"', start + len('ANSWER_KEYS="'))
+    assert "FRONTEND_EDGE_IP" not in assignment[start:end]
+    meminfo = _install_rerun_ready(upgrade)
+
+    installed = upgrade.run(
+        "install",
+        "--non-interactive",
+        ".secrets/install.answers",
+        "--skip-qradar-check",
+        QRADAR_DASH_MEMINFO_FILE=str(meminfo),
+        STUB_DOCKER_FREE_KIB=str(90 * GIB_KIB),
+        STUB_BACKUP_FREE_KIB=str(90 * GIB_KIB),
+    )
+
+    assert installed.returncode == 0, output(installed)
+    assert "unknown key" not in output(installed)
+    assert _mode(live) == 0o600
+
+
+def test_rollback_of_an_older_backup_strips_unknown_keys_and_names_them(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    upgrade._stub("git", GIT_ANSWER_KEYS)
+    text = (
+        f"{ANSWERS_HEADER}"
+        "# the next line names FRONTEND_EDGE_IP\n"
+        "PUBLIC_HOSTNAME=dash.example\n"
+        "FRONTEND_EDGE_IP=172.28.10.11\n"
+        "\n"
+        "OPERATOR_NOTE=desk-name\n"
+        "INSTANCE_NAME=qradar\n"
+    )
+    live = _write_live_answers(upgrade, text)
+
+    result = upgrade.run("rollback", "--non-interactive", "--yes")
+
+    assert result.returncode == 0, output(result)
+    assert live.read_text() == (
+        f"{ANSWERS_HEADER}"
+        "# the next line names FRONTEND_EDGE_IP\n"
+        "PUBLIC_HOSTNAME=dash.example\n"
+        "\n"
+        "INSTANCE_NAME=qradar\n"
+    )
+    assert _mode(live) == 0o600
+    first = result.stdout.index("Removed answer key FRONTEND_EDGE_IP (unknown to 0.1.0).")
+    second = result.stdout.index("Removed answer key OPERATOR_NOTE (unknown to 0.1.0).")
+    assert first < second
+    assert "172.28.10.11" not in output(result)
+    assert "desk-name" not in output(result)
+
+
+def test_rollback_strips_from_the_checkout_when_version_already_matches(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    (upgrade.root / "VERSION").write_text(f"{OLD_VERSION}\n")
+    _drop_first_frontend_edge_key(upgrade.script)
+    assert not (upgrade.bin_dir / "git").exists()
+    text = (
+        f"{ANSWERS_HEADER}"
+        "PUBLIC_HOSTNAME=dash.example\n"
+        "FRONTEND_EDGE_IP=172.28.10.11\n"
+        "INSTANCE_NAME=qradar\n"
+    )
+    live = _write_live_answers(upgrade, text)
+
+    result = upgrade.run("rollback", "--non-interactive", "--yes")
+
+    assert result.returncode == 0, output(result)
+    assert live.read_text() == (
+        f"{ANSWERS_HEADER}"
+        "PUBLIC_HOSTNAME=dash.example\n"
+        "INSTANCE_NAME=qradar\n"
+    )
+    assert _mode(live) == 0o600
+    assert "Removed answer key FRONTEND_EDGE_IP (unknown to 0.1.0)." in result.stdout
+    assert "172.28.10.11" not in output(result)
+
+
+def test_rollback_refuses_to_strip_when_the_target_keys_cannot_be_read(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    text = (
+        f"{ANSWERS_HEADER}"
+        "PUBLIC_HOSTNAME=dash.example\n"
+        "FRONTEND_EDGE_IP=172.28.10.11\n"
+    )
+    live = _write_live_answers(upgrade, text)
+    before = live.read_bytes()
+    assert not (upgrade.bin_dir / "git").exists()
+
+    result = upgrade.run("rollback")
+
+    assert result.returncode != 0
+    assert "cannot read the answer keys of v0.1.0" in result.stderr
+    assert "git show v0.1.0:qradar-dash" in result.stderr
+    assert "Type rollback to continue" not in result.stdout
+    assert live.read_bytes() == before
+    assert _mode(live) == 0o600
+    assert "172.28.10.11" not in output(result)
+    assert_no_stop(upgrade)
+
+
+def test_rollback_refuses_a_group_readable_answers_backup_before_stop(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    backup = upgrade.backup_root / f"qradar-dash-{STAMP}-pre-upgrade"
+    copied = backup / "install.answers"
+    copied.write_text(f"{ANSWERS_HEADER}PUBLIC_HOSTNAME=dash.example\n")
+    copied.chmod(0o644)
+
+    result = upgrade.run("rollback")
+
+    assert result.returncode != 0
+    assert "mode 644" in result.stderr
+    assert "0600" in result.stderr
+    assert "Type rollback to continue" not in result.stdout
+    assert _mode(copied) == 0o644
+    assert_no_stop(upgrade)
+
+
+def test_rollback_leaves_group_readable_live_answers_unchanged(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    upgrade._stub("git", GIT_ANSWER_KEYS)
+    text = (
+        f"{ANSWERS_HEADER}"
+        "PUBLIC_HOSTNAME=dash.example\n"
+        "FRONTEND_EDGE_IP=172.28.10.11\n"
+    )
+    live = _write_live_answers(upgrade, text, mode=0o640)
+
+    result = upgrade.run("rollback", "--non-interactive", "--yes")
+
+    assert result.returncode == 0, output(result)
+    assert live.read_text() == text
+    assert _mode(live) == 0o640
+    assert "Removed answer key" not in output(result)
+    assert "must be 0600" not in output(result)
+    assert upgrade.state()["last_upgrade"]["outcome"] == "rolled_back"  # type: ignore[index]
+
+
+def test_rollback_does_not_follow_a_symlink_answers_file(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    target = upgrade.root.parent / "real-answers"
+    target.write_text(f"{ANSWERS_HEADER}FRONTEND_EDGE_IP=172.28.10.11\n")
+    target.chmod(0o600)
+    secrets = upgrade.root / ".secrets"
+    secrets.mkdir(mode=0o700)
+    link = secrets / "install.answers"
+    link.symlink_to(target)
+
+    result = upgrade.run("rollback", "--non-interactive", "--yes")
+
+    assert result.returncode == 0, output(result)
+    assert target.read_text() == f"{ANSWERS_HEADER}FRONTEND_EDGE_IP=172.28.10.11\n"
+    assert link.is_symlink()
+    assert "Removed answer key" not in output(result)
+    assert upgrade.state()["last_upgrade"]["outcome"] == "rolled_back"  # type: ignore[index]
+
+
+def test_rollback_refuses_a_symlink_answers_backup_before_stop(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    backup = upgrade.backup_root / f"qradar-dash-{STAMP}-pre-upgrade"
+    target = upgrade.root.parent / "backup-answers"
+    target.write_text(f"{ANSWERS_HEADER}PUBLIC_HOSTNAME=dash.example\n")
+    target.chmod(0o600)
+    link = backup / "install.answers"
+    link.symlink_to(target)
+
+    result = upgrade.run("rollback")
+
+    assert result.returncode != 0
+    assert "not a regular file" in result.stderr
+    assert "Type rollback to continue" not in result.stdout
+    assert target.read_text() == f"{ANSWERS_HEADER}PUBLIC_HOSTNAME=dash.example\n"
+    assert link.is_symlink()
+    assert_no_stop(upgrade)
+
+
+def test_rollback_refuses_to_restore_answers_through_a_secrets_symlink(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    backup = upgrade.backup_root / f"qradar-dash-{STAMP}-pre-upgrade"
+    (backup / "install.answers").write_text(f"{ANSWERS_HEADER}PUBLIC_HOSTNAME=dash.example\n")
+    (backup / "install.answers").chmod(0o600)
+    outside = upgrade.root.parent / "linked-secrets"
+    outside.mkdir()
+    (outside / "marker").write_text("keep\n")
+    (upgrade.root / ".secrets").symlink_to(outside)
+
+    result = upgrade.run("rollback")
+
+    assert result.returncode != 0
+    assert ".secrets is a symlink" in result.stderr
+    assert "Type rollback to continue" not in result.stdout
+    assert (outside / "marker").read_text() == "keep\n"
+    assert not (outside / "install.answers").exists()
+    assert (upgrade.root / ".secrets").is_symlink()
+    assert_no_stop(upgrade)
+
+
+def test_rollback_refuses_to_strip_through_a_secrets_symlink(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    outside = upgrade.root.parent / "linked-secrets"
+    outside.mkdir()
+    live = outside / "install.answers"
+    text = (
+        f"{ANSWERS_HEADER}"
+        "PUBLIC_HOSTNAME=dash.example\n"
+        "FRONTEND_EDGE_IP=172.28.10.11\n"
+    )
+    live.write_text(text)
+    live.chmod(0o600)
+    (upgrade.root / ".secrets").symlink_to(outside)
+
+    result = upgrade.run("rollback")
+
+    assert result.returncode != 0
+    assert ".secrets is a symlink" in result.stderr
+    assert "Type rollback to continue" not in result.stdout
+    assert live.read_text() == text
+    assert _mode(live) == 0o600
+    assert_no_stop(upgrade)
+
+
+def test_rollback_leaves_known_answers_byte_for_byte(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    upgrade._stub("git", GIT_ANSWER_KEYS)
+    text = (
+        f"{ANSWERS_HEADER}"
+        "PUBLIC_HOSTNAME=dash.example\n"
+        "INSTANCE_NAME=qradar\n"
+    )
+    live = _write_live_answers(upgrade, text)
+    inode = live.stat().st_ino
+
+    result = upgrade.run("rollback", "--non-interactive", "--yes")
+
+    assert result.returncode == 0, output(result)
+    assert live.read_text() == text
+    assert live.stat().st_ino == inode
+    assert "Removed answer key" not in output(result)
+    assert _mode(live) == 0o600
