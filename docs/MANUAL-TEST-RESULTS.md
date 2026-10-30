@@ -1,6 +1,6 @@
 # QRadar-Dash manuel test sonuç sayfası
 
-Bu sayfa `docs/MANUAL-TEST.md` kılavuzunun **0.1.8** bölümünün sonuç sayfasıdır. Basılı alınabilir ya da bir kopyası doldurulabilir. Sonuç hücreleri boş bırakılmıştır: `Geçti`, `Kaldı` ya da `Koşulmadı` yaz; `Kaldı` ve `Koşulmadı` için Not yaz. Parola, belirteç, `.env` değeri ya da müşteri verisi **yazma**.
+Bu sayfa `docs/MANUAL-TEST.md` kılavuzunun **0.1.9** bölümünün sonuç sayfasıdır. Basılı alınabilir ya da bir kopyası doldurulabilir. Sonuç hücreleri boş bırakılmıştır: `Geçti`, `Kaldı` ya da `Koşulmadı` yaz; `Kaldı` ve `Koşulmadı` için Not yaz. Parola, belirteç, `.env` değeri ya da müşteri verisi **yazma**.
 
 | Alan | Değer |
 |---|---|
@@ -15,9 +15,9 @@ Bu sayfa `docs/MANUAL-TEST.md` kılavuzunun **0.1.8** bölümünün sonuç sayfa
 | Migrasyon başı sonra (`0044`) | |
 | Geri alma yapıldı mı (hayır / evet, saati) | |
 
-**Çekirdek (üretim yolu)**, 38 kontrol: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-10, MT-11, MT-12, MT-13, MT-14, MT-15, MT-20, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-59, MT-95, MT-119, MT-120, MT-121, MT-124, MT-125. Üretimde yalnızca `Çekirdek` sütunu "evet" olan satırlar doldurulur; diğerleri laboratuvar koşusu içindir.
+**Çekirdek (üretim yolu)**, 39 kontrol: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-10, MT-11, MT-126, MT-12, MT-13, MT-14, MT-15, MT-20, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-59, MT-95, MT-119, MT-120, MT-121, MT-124, MT-125. Üretimde yalnızca `Çekirdek` sütunu "evet" olan satırlar doldurulur; diğerleri laboratuvar koşusu içindir. MT-126, numarası büyük olsa da MT-11'den hemen sonra yapılır.
 
-Sürüm önce: `0.1.6`, migrasyon başı `0032`. Sürüm sonra: `0.1.8`.
+Sürüm önce: `0.1.8`, migrasyon başı `0044`. Sürüm sonra: `0.1.9`. Baş değişmez.
 
 ## 1. Ön koşullar
 
@@ -29,7 +29,7 @@ Sürüm önce: `0.1.6`, migrasyon başı `0032`. Sürüm sonra: `0.1.8`.
 | MT-04 | evet | Günlüklerin ve destek paketinin yeri — (yazar) | | |
 | MT-05 | evet | Pencere ve haberdar edilecek kişiler | | |
 
-## 2. Yükseltme 0.1.6 → 0.1.8
+## 2. Yükseltme 0.1.8 → 0.1.9
 
 | Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
 |---|---|---|---|---|
@@ -39,6 +39,8 @@ Sürüm önce: `0.1.6`, migrasyon başı `0032`. Sürüm sonra: `0.1.8`.
 | MT-09 | evet | `doctor` yükseltmeden hemen sonra | | |
 | MT-10 | evet | Kesinti süresi ve arayüzün dönüşü | | |
 | MT-11 | evet | İlk kadanstan sonra toplamanın dönmesi | | |
+| MT-126 | evet | Üretimde hız sınırı sayfayı kesmez | | |
+| MT-127 |  | Düşürülmüş sınır 429 ve yeniden deneme cümlesi — (yazar) yalnızca lab | | |
 
 ## 3. Oturum açma
 
@@ -96,7 +98,7 @@ Sürüm önce: `0.1.6`, migrasyon başı `0032`. Sürüm sonra: `0.1.8`.
 | MT-56 |  | Dil: Hesap `/account` ve `/account/password` | | |
 | MT-57 |  | Hatalı oturum açma cümlesi Türkçe — (yazar) | | |
 | MT-58 |  | 0.1.6'dan kalan saklı cümleler Türkçede de İngilizcedir | | |
-| MT-59 | evet | 0.1.7'de İngilizce kalması beklenenler | | |
+| MT-59 | evet | İngilizce kalması beklenenler | | |
 
 ## 5. Pano (Dashboard)
 
