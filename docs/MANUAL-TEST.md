@@ -31,11 +31,11 @@ Bu bölüm 0.1.6 sitesini 0.1.8'e yükseltir ve yükseltilmiş siteyi sınar. Ü
 
 - **Arayüz dili.** Arayüz İngilizce ya da Türkçe çalışır. Dil, Hesap ayarları sayfasından seçilir; hesapta (`ui_language`) ve tarayıcıda (`ba_locale` çerezi) saklanır.
   Backend'in yazdığı cümlelerin büyük bölümü artık bir kodla birlikte saklanır ve Türkçe okunur: Phase A anomali açıklamaları ve yaşam döngüsü nedenleri, WAF ve IPS anomali cümleleri,
-  özellik izleme cümleleri, kural sağlığı ve coverage nedenleri, uyarı başlıkları, özel kural durum nedenleri, arama zamanlama ve çalıştırma iletileri, geçmiş okuma cümleleri,
+  özellik izleme cümleleri, kural sağlığı ve coverage nedenleri, katalog uyarı başlıkları, özel kural durum nedenleri, arama zamanlama ve çalıştırma iletileri, geçmiş okuma cümleleri,
   reddetme (403/409/422) iletileri. İngilizce, API'nin metnidir ve değişmez.
 - **Migrasyonlar eklemelidir.** `0033` ... `0044` yeni sütunlar ekler. `0033` dışındakiler boş (`NULL`) kabul eder; `0033`, `app_user.ui_language` sütununu ekler ve var olan her hesap `en` değerini alır. Var olan satırlar değişmez, hiçbir şey silinmez ve geri doldurma yoktur.
   0.1.6'nın yazdığı saklı cümleler İngilizce kalır; Türkçede de İngilizce görünür (bölüm 4).
-- **Bu sürümde olmayanlar.** Motorun yazdığı uyarı başlıkları ve "condition recovered" nedeni (MSG-7b) İngilizce kalır; geçmiş okumadaki Ariel erteleme cümlesi de İngilizce kalır (MT-59). Bu beklenir, hata değildir.
+- **Bu sürümde olmayanlar.** Phase A, WAF, IPS ve özellik izleme motorlarının uyarı başlıkları, açıklamaları ve "condition recovered" nedeni (MSG-7b) İngilizce kalır. Katalog uyarıları (MSG-7), offense toplama güncelliği gibi, başlık, açıklama ve düzelme nedeninde Türkçedir. Geçmiş okumadaki Ariel erteleme cümlesi de İngilizce kalır (MT-59). Bu beklenir, hata değildir.
 - **0.1.8'in üç düzeltmesi.** Sunucuda çizilen sayfalar geçerli oturumda açılır; “Your session has expired. Sign in again to continue.” (“Oturumunuzun süresi doldu. Devam etmek için yeniden giriş yapın.”) yalnızca süresi gerçekten dolmuş oturumda görünür. Çıkıştan hemen sonra yeniden giriş, sayfa yenilemeden `/` açar (laboratuvarda görülen eski bir durumdu; laboratuvar dışında yeniden üretilmedi; cümle “Sign-in is required.” idi). `RATE_LIMIT_DEFAULT` varsayılanı dakikada 1200 istektir. `.env` bu adı kendisi yazıyorsa o değer kalır; satır kaldırılır ya da yükseltilir. Giriş sınırı dakikada 300, arama çalıştırma sınırı dakikada 10 kalır.
 
 ### Nasıl kullanılır
@@ -109,6 +109,7 @@ echo "çıkış: $?"
 
 - Hiçbir satır `FAIL` değildir. Çıkış kodu 0 (hepsi PASS) ya da 1 (en az bir WARN, FAIL yok). 2 ise yükseltme yapılmaz; satırın `runbook: OPS-R<n>` girişine bak.
 - Sağlıklı bir sitede şu satırlar `WARN` olabilir ve yükseltmeyi engellemez; her birini ve nedenini Not alanına yaz: `backup_age` (yedek yok, yaş okunamıyor ya da 26 saatten eski; yedek zamanlayıcısı kurulu değilse veya kapalıysa taze bir yedek de WARN verir — `docs/OPERATIONS.md` doctor tablosundaki `backup_age` satırı, OPS-R kimliği yok; sonraki kontrol yedeği düzeltir, zamanlayıcıyı değil), `disk_docker` ve `disk_backup` (%70 ile %89 arası dolu), `qradar_tls` (sertifika 30 günden yakın bitiyor), `cadence`, `errors_recent` (bir ya da iki hatalı filigran), `anomaly_evaluation`, `rule_match_coverage`, `ariel_permits` (havuz dolu). Bunlar yükseltmeden önce de doğrudur.
+- Offense'ı olmayan bir konsolda `watermarks`, `offense_snapshot` için WARN kalır ve yükseltmeyi engellemez. Gecikme kadansın iki katını aşar, `consecutive_failures` 0'dır, `last_error` boştur. Temiz bir çalışma offense yazmazsa filigran `offense_max_backfill_hours` tabanında kalır (varsayılan 168 saat); gecikme bu yüzden yaklaşık 168 saattir. Bu WARN'dır, Kaldı değildir; Not alanına yaz. Satırın runbook'u OPS-R30'dur.
 - `WARN` olursa dur ve sahibine bildir: `selinux` (`SELinux is permissive`: SELinux'a dokunma), `host_clock`. `families_off` her zaman PASS'tir. `SKIP` satırı bir özelliğin kapalı olduğunu söyler ve çıkış kodunu yükseltmez.
 - Satır biçimi: `PASS  db_connect         database accepted SELECT 1`. Bu aşamada `db_connect`, `migration_head` (`database and image are at 0032`), `containers`, `celery_workers`, `celery_beat`, `qradar_auth`, `encryption` ve `secrets_files` PASS olmalıdır.
 
@@ -297,9 +298,10 @@ curl -s http://127.0.0.1:8000/api/v1/health/ready
 
 **Beklenen:**
 
-- `FAIL` yoktur. `db_connect` PASS; `migration_head` PASS ve `database and image are at 0044`; `version_match` PASS ve `frontend and backend report 0.1.8`; `containers` PASS.
+- `FAIL` yoktur. Değişen konsolda saatlik `log_source_inventory` ve `rule_inventory` FAIL'i bunun dışındadır; o bekleme MT-11'dedir. `db_connect` PASS; `migration_head` PASS ve `database and image are at 0044`; `version_match` PASS ve `frontend and backend report 0.1.8`; `containers` PASS.
 - Beat ve worker yeni başladığı için ilk dakikada `celery_workers` ya da `celery_beat` geçici FAIL verebilir; bir dakika bekleyip komutu yinele. İkinci çalıştırmada FAIL kalırsa Kaldı.
 - Toplama henüz bir kadans çalışmadığı için `cadence`, `anomaly_evaluation` ve `rule_match_coverage` WARN olabilir. Bunlar MT-11 içinde yeniden okunur.
+- Offense'ı olmayan bir konsolda `watermarks`, `offense_snapshot` için WARN kalır: gecikme kadansın iki katını aşar, `consecutive_failures` 0'dır, `last_error` boştur (MT-02). Bu WARN'dır, Kaldı değildir; Not alanına yaz. MT-11'de yeniden okunur.
 - `backup_age`, yükseltmeden öncekiyle aynı nedenle WARN kalabilir: yedek yok, yaş okunamıyor, 26 saatten eski, ya da yedek zamanlayıcısı kurulu değil veya kapalı (taze bir yedek de zamanlayıcı yokken ya da kapalıyken WARN verir). Bu yükseltmenin hatası değildir. Satır `docs/OPERATIONS.md` doctor tablosundadır; OPS-R kimliği yoktur.
 
 **Kaydet:** Çıkış kodu; WARN ve FAIL olan satırların kimliği; `migration_head` ve `version_match` satırlarının metni.
@@ -337,7 +339,9 @@ curl -s http://127.0.0.1:8000/api/v1/health/ready
 
 - Kadansı olan her ailenin “Son çalıştırma (UTC)” zamanı yükseltme bitişinden sonradır; “Sonraki çalıştırma (UTC)” gelecektedir. Hiç çalışmamış bir aile “Henüz çalışmadı” ya da “Yükseltmeden beri çalışmadı” yazar (tire ya da bu metin; sıfır değildir). Kapalı bir aile (örneğin sitede WAF kapalıysa) için bu beklenir.
 - Beklemeden önce bakarsan “Henüz çalışmadı” ya da eski bir zaman görürsün: bu hata değildir, Kaldı yazma, bekle.
-- `doctor`: `watermarks` PASS, `cadence` PASS (`<n> cadence row(s) are on time or disabled`), `errors_recent` PASS (`no watermark has recent failures`), `celery_workers` ve `celery_beat` PASS. `FAIL` Kaldı'dır; `cadence` WARN ise ailelerin adını Not'a yaz ve kadans + 3 dk daha bekle.
+- `doctor`: `cadence` PASS (`<n> cadence row(s) are on time or disabled`), `celery_workers` ve `celery_beat` PASS. `watermarks` ve `errors_recent` aşağıdaki iki durum dışında PASS'tir (`errors_recent`: `no watermark has recent failures`). `FAIL` Kaldı'dır; `cadence` WARN ise ailelerin adını Not'a yaz ve kadans + 3 dk daha bekle.
+- Offense'ı olmayan bir konsolda `watermarks`, `offense_snapshot` için WARN kalır (kadans gecikmesi): `consecutive_failures` 0, `last_error` boş, gecikme kadansın iki katını aşar. Temiz bir çalışma offense yazmazsa filigran `offense_max_backfill_hours` tabanında kalır (varsayılan 168 saat). Bu WARN'dır, Kaldı değildir; Not alanına yaz. Runbook OPS-R30'dur.
+- Konsol değiştiyse (aynı konsolda yapılan yükseltme bu madde değildir) `log_source_inventory` ve `rule_inventory` saatliktir (varsayılan 3600 sn). Değişimde başarısız olan bu iki envanter, sonraki vuruşuna kadar en çok bir saat bekleyebilir. O süre dolana kadar sayfalar kaynak göstermez; kural envanteri gelmemişse kural listesi de boştur. Bu Kaldı değildir; Not'a yaz ve saatlik yeniden denemeyi bekle. Bu arada `watermarks` yalnız bu iki satır için FAIL, `errors_recent` WARN olabilir; ikisi de Kaldı değildir.
 - Bu kontrolden önce yapılan veriye bağlı kontroller (Pano, anomaliler) bu bekleme dolana kadar "güncel değil" ya da "toplanmadı" gösterebilir; bu doğru durumdur.
 
 **Kaydet:** En uzun kadans, her ailenin son çalışma zamanı (UTC), `doctor` çıkış kodu ve WARN/FAIL kimlikleri.
@@ -476,7 +480,7 @@ Tarayıcıda `https://<host>/` adresini aç. Dil çerezi yoksa arayüz İngilizc
 
 ### 4. Dil
 
-Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). Seçim iki yerde saklanır: tarayıcıda `ba_locale` çerezi (yol `/`, bir yıl, `SameSite=Lax`) ve hesapta (`ui_language`). Başka bir tarayıcıda oturum açınca hesaptaki tercih çereze yazılır ve sayfa yenilenir. Çerez ve hesap yoksa arayüz İngilizcedir. Yalnızca İngilizce ve Türkçe vardır.
+Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). Seçim iki yerde saklanır: tarayıcıda `ba_locale` çerezi (yol `/`, bir yıl, `SameSite=Lax`) ve hesapta (`ui_language`). Başka bir tarayıcıda oturum açınca hesaptaki tercih çereze yazılır; ilk sayfa önceki dilde kalır ve bir kez yenilenince hesap diline geçer. Bu 0.1.8'in bilinen sınırıdır, hata değildir. Çerez ve hesap yoksa arayüz İngilizcedir. Yalnızca İngilizce ve Türkçe vardır.
 
 **Yöntem.** Her rota için dili ayrı ayrı değiştirmek yüzlerce kayıt demektir. Bunun yerine **üç tur** yap: (A) dil İngilizce iken tüm rota kontrollerini aç ve gözle; (B) dili Türkçeye çevir ve aynı rotaları aç; (C) dili İngilizceye geri çevir ve aynı rotaları yeniden aç. Aşağıdaki her satır üç turun sonucunu tek sonuçta toplar. **Tur C bu bölümde yapılmaz:** dil Türkçe kalır ve bölüm 5 ile 15 Türkçe dilde yürütülür; tur C, bölüm 16'dan hemen önce, dili İngilizceye geri çevirince yapılır. Dil değişikliği "dil anahtarı" kontrolündedir.
 
@@ -484,7 +488,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 
 **Ham anahtar nedir.** Katalogda karşılığı olmayan bir metin yerine `namespace.anahtar` biçiminde noktalı küçük harfli bir dizi görünür, örneğin `alerts.detail.title` ya da `anomalies.list.metaTitle`. Böyle bir yazı görürsen sayfayı, yazıyı ve dili Not'a yaz; bu Kaldı'dır.
 
-**Eski satırlar.** 0.1.6'nın yazdığı saklı cümleler (anomali açıklamaları, geçiş nedenleri, uyarı başlıkları, kural sağlığı nedenleri…) veritabanında yalnızca İngilizce metin olarak durur; 0.1.7 bunlara kod eklemez. Türkçede de o satırlar İngilizce görünür. Bu doğrudur. Yeni yazılan satırlar (0.1.7'den sonra) Türkçe görünür. Her rota satırının son sütunu eski satırın nerede görüneceğini söyler.
+**Eski satırlar.** 0.1.6'nın yazdığı saklı cümleler (anomali açıklamaları, geçiş nedenleri, kural sağlığı nedenleri ve kodu olmayan uyarı başlıkları) veritabanında yalnızca İngilizce metin olarak durur; yükseltme bu satırlara kod eklemez. Türkçede de o satırlar İngilizce görünür. Bu doğrudur. Katalog uyarısının başlığı, açıklaması ve düzelme nedeni, yazıcı satırı yenilediğinde Türkçedir; açılış tarihi bunu değiştirmez (MT-38). Yeni yazılan satırlar (0.1.7'den sonra) Türkçe görünür. Motor uyarıları İngilizce kalır (MT-59). Her rota satırının son sütunu eski satırın nerede görüneceğini söyler.
 
 #### MT-20 — Dil anahtarı ve hatırlanması (yazar) [çekirdek]
 
@@ -493,12 +497,13 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 **Eylem:**
 
 - `/account` sayfasında “Arayüz dili” (“Interface language”) altında “English” ve “Türkçe” seçenekleri vardır. “Türkçe” seç, “Kaydet” düğmesine bas.
-- Oturumu kapat, yeniden aç. Başka bir tarayıcıda (ya da çerezleri silerek) oturum aç.
+- Oturumu kapat, yeniden aç. Başka bir tarayıcıda (ya da çerezleri silerek) oturum aç ve o ilk sayfayı bir kez yenile.
 
 **Beklenen:**
 
-- Kayıttan sonra “Dil tercihi kaydedildi.” (“The language preference was saved.”) görünür ve sayfa Türkçe yenilenir.
-- Çıkış ve giriş sonrası arayüz Türkçedir (`ba_locale=tr` çerezi). Başka tarayıcıda da, oturum açıldıktan sonra sayfa Türkçeye geçer (hesap tercihi çereze yazılır).
+- Kayıttan sonra “Dil tercihi kaydedildi.” (“The language preference was saved.”) görünür ve sayfa hemen Türkçeye döner (aynı tarayıcıda kayıt).
+- Çıkış ve giriş sonrası, çerez duruyorsa arayüz Türkçedir (`ba_locale=tr`).
+- Başka bir tarayıcıda oturum açılınca ilk sayfa önceki dilde kalır. Çerez yoksa önceki dil İngilizcedir ve sayfa “Dashboard” kalır. Çerez `ba_locale=tr` bu ilk sayfada yazılmıştır. Sayfayı bir kez yenile; o zaman sayfa Türkçedir (“Gösterge paneli”). Bu 0.1.8'in bilinen sınırıdır, Kaldı değildir.
 - Hata durumları: kayıt başarısızsa “Dil tercihi kaydedilemedi. Bağlantınızı denetleyip tekrar deneyin.”; tarayıcı çerezi saklamıyorsa “Tarayıcı çerezi saklamadığı için dil tercihi uygulanamadı.”
 
 **Kaydet:** Başlangıç dili, kayıt iletisi, hatırlama (aynı tarayıcıda / başka tarayıcıda).
@@ -754,8 +759,8 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 **Beklenen:**
 
 - Türkçe başlık: “Uyarılar” / “Uyarı ayrıntısı”.
-- Kodlu alanlar (Türkçe olmalı): MSG-7: arama eşiği ve arama hatası, özel kural eşiği, offense toplama güncel değil, yeni log source, yeni catch-all gönderen uyarılarının başlığı, “Açıklama” ve “Çözüm:” satırı Türkçe.
-- 0.1.6 eski satırı (İngilizce kalması doğru): 0.1.7'den önce açılmış her uyarının başlığı ve açıklaması İngilizce kalır.
+- Kodlu alanlar (Türkçe olmalı): MSG-7 katalog uyarıları: arama eşiği ve arama hatası, özel kural eşiği, offense toplama güncelliği, yeni log source, yeni catch-all gönderen. Başlık, “Açıklama” ve “Çözüm:” satırı Türkçedir. Offense toplama güncelliği örnektir: başlık “{instance} için offense toplama güncel değil”, açıklama “Salt okunur offense toplayıcı, yapılandırılmış güncellik eşiği içinde tamamlanmadı.”, düzelme nedeni “Offense toplama güncelliği düzeldi.” Açılış 0.1.7'den önce olsa da, yazıcı satırı kodla yenilediyse metin Türkçedir.
+- 0.1.6 eski satırı (İngilizce kalması doğru): kodu olmayan satır. Yükseltme eski satıra kod eklemez. Motor uyarıları (Phase A, WAF, IPS, özellik izleme) başlık, açıklama ve "condition recovered" nedeninde İngilizce kalır (MSG-7b yok; MT-59). Uyarılar bölümü (MT-87, MT-88) ile aynı sınırdır.
 
 **Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
 
@@ -770,7 +775,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 **Beklenen:**
 
 - Türkçe başlık: “Kural sağlığı” / “Kural”.
-- Kodlu alanlar (Türkçe olmalı): Kural adının altındaki sağlık nedeni, ayrıntıda “Neden” ve sağlık geçmişi (MSG-3). Her değerlendirmede yeniden yazılır.
+- Kodlu alanlar (Türkçe olmalı): Kural adının altındaki sağlık nedeni ve ayrıntıdaki neden cümlesi (MSG-3). Ayrıntı başlığı “Sağlık kanıtı” (“Health evidence”)dir. “Neden” (“Reason”), sağlık geçmişi tablosunun hücresidir. Her değerlendirmede yeniden yazılır.
 - 0.1.6 eski satırı (İngilizce kalması doğru): Sağlık geçmişi tablosundaki 0.1.6 satırları.
 
 **Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
@@ -1039,11 +1044,11 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 
 **Eylem:**
 
-- Dil Türkçe iken şu yerlerde 0.1.7'den **önce** yazılmış bir satır bul ve aç: (1) `/anomalies` içinde 0.1.7'den önce çözülmüş bir anomalinin ayrıntısı, "Teknik ayrıntılar" ve "Yaşam döngüsü" sekmeleri; (2) `/alerts` içinde eski bir uyarı; (3) `/rules/<id>` sağlık geçmişinde eski bir satır; (4) `/admin/history-backfill` içinde bir kapsamın nedeni (bir sonraki adıma kadar).
+- Dil Türkçe iken şu yerlerde 0.1.7'den **önce** yazılmış bir satır bul ve aç: (1) `/anomalies` içinde 0.1.7'den önce çözülmüş bir anomalinin ayrıntısı, "Teknik ayrıntılar" ve "Yaşam döngüsü" sekmeleri; (2) `/alerts` içinde kodu olmayan eski bir uyarı; (3) `/rules/<id>` sağlık geçmişinde eski bir satır; (4) `/admin/history-backfill` içinde bir kapsamın nedeni (bir sonraki adıma kadar).
 
 **Beklenen:**
 
-- Bu satırlarda saklı İngilizce cümle aynen görünür; ham anahtar ya da boş alan görünmez. Bu doğrudur: eski satırlara kod eklenmez.
+- Bu satırlarda, kodu olmayan saklı İngilizce cümle aynen görünür; ham anahtar ya da boş alan görünmez. Bu doğrudur: yükseltme eski satıra kod eklemez. Katalog uyarısı (MSG-7) yazıcı tarafından yenilendiyse başlık, açıklama ve düzelme nedeni Türkçedir; bu satır bu kontrolün İngilizce beklediği satır değildir (MT-38, MT-87).
 - Aynı sayfalarda 0.1.7'den sonra yazılmış satırlar Türkçedir; bu karışık görünüm normaldir.
 
 **Kaydet:** Dört yerden hangileri için eski satır bulundu; her birinde İngilizce metin okunuyordu (evet/hayır).
@@ -1053,7 +1058,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 **Eylem:**
 
 - Aşağıdaki listeyi oku. Türkçe turda bu listede **olmayan** bir İngilizce cümle bulursan Kaldı yaz; listedekileri hata sayma:
-- **Motorun yazdığı uyarı başlıkları, açıklamaları ve "condition recovered" çözüm nedeni** (Phase A, WAF, IPS ve özellik izleme motorlarının uyarıları): MSG-7b, 0.1.7'de **yok**.
+- **Motor uyarılarının başlıkları, açıklamaları ve "condition recovered" çözüm nedeni** (yalnızca Phase A, WAF, IPS ve özellik izleme): MSG-7b, 0.1.7'de **yok**; İngilizce kalır. Katalog uyarıları (MSG-7) bu maddeye girmez: başlık, açıklama ve düzelme nedeni Türkçedir. Offense toplama güncelliği örnektir (“{instance} için offense toplama güncel değil”, “Salt okunur offense toplayıcı, yapılandırılmış güncellik eşiği içinde tamamlanmadı.”, “Offense toplama güncelliği düzeldi.”). Kodu olmayan 0.1.7 öncesi satır İngilizce kalır. Bu sınır, uyarılar bölümüyle aynıdır (MT-38, MT-87, MT-88).
 - **Geçmiş okumada Ariel erteleme nedeni** (`deferred: no Ariel permit within N s`; havuz meşgulken bir kapsamın “Neden” hücresi): MSG-8c, 0.1.7'de **yok**; İngilizce kalır ve hata değildir. Catch-all dahil geçmiş okumanın diğer tüm cümleleri MSG-8a ile Türkçedir.
 - **İlk açılış sorusundaki tahmin notu** `history.estimate.empty_sources` (henüz izlenen endpoint ya da kabul edilmiş varlığı olmayan bir WAF/IPS kaynağı için, tahmin cümlesinin sonunda "…{count} sources fitted with no … yet; the … limit still bounds the reading"): Türkçe pencerede İngilizce kalır. Geçmiş okuma sayfası bunu göstermez.
 - **Eski geçmiş boşlukları ve kapsam satırları** (0.1.7'den önce yazılmış): saklı İngilizce metin.
@@ -1062,7 +1067,8 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 - Operatörün yazdığı metin: uyarıyı çözerken yazılan neden, arama/kural adları, açıklamalar, sınıflandırma deseni.
 - QRadar'dan gelen adlar: offense açıklamaları, log source adları, kural adları, taktik ve teknik adları.
 - Hazırlık (readiness) ayrıntıları ve WAF/IPS boru hattı çalışma raporları.
-- Çevrilmeyen terimler: `coverage`, `scope`, `baseline`, `offense`, `log source`, `instance`, `custom property`, `cron`, `EPS` gibi sözlük terimleri (D-39) ve ayar adları, izin adları (`read:anomalies`), HTTP kodları.
+- Çevrilmeyen terimler: `coverage`, `scope`, `baseline`, `offense`, `log source`, `instance`, `custom property`, `cron`, `EPS` gibi sözlük terimleri (D-39); ayrıca `console`, `Phase A` ve `robust z`. Ayar adları, izin adları (`read:anomalies`) ve HTTP kodları da çevrilmez. `console` ve `Phase A` arayüzde olduğu gibi kalır (“Console {name}”, “Tüm console”, “Bu console için kayıtlı bir karar yok.”, “Phase A hacmi”).
+- Katalog cümlesinde İngilizce bırakılan parçalar: `/guide` sorusu “Gözlenen, beklenen, sapma, robust z ve coverage ne anlama gelir?” içinde İngilizce kalan terim `robust z` (`coverage` yukarıdadır); `/` sessiz kaynak açıklamasındaki `NO_EVENTS` (“Sessiz: algılayıcı, olay beklenen yerde hiç olay görmedi (NO_EVENTS anomalisi).”); `/searches` cümlesindeki “ad hoc” (“arayüz hiçbir zaman ad hoc AQL çalıştırmaz.”); ayar adının yanındaki `false` (`/custom-rules`: “CUSTOM_RULES_ENABLED false olduğu için kural değerlendirmesi kapalıdır. …”).
 - 404 "bulunamadı" cümlelerinin sunucu metni (arayüz kendi sabit cümlesini gösterir), kapasite 409 nedenleri, sürüm çakışması iletileri.
 
 **Beklenen:**
@@ -1075,7 +1081,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 
 Pano, `/` yolundadır. “Gösterge panelleri” menüsünün “Şablon” grubunda yalnızca “SOC Genel Bakışı (şablon)” (“SOC Overview (template)”) vardır. Sayfadaki etiket “Şablon, kaydedilmedi” (“Template, not saved”); menüdeki alt yazı “Kaydedilmedi” (“Not saved”). “QRadar Yönetimi” ve “WAF / IPS İzleme” bu menüde yoktur. Bir yönetici onları “Yönet” → “Şablondan yeni gösterge paneli…” (“New dashboard from template…”) ile açar; bu, paneli kaydeder ve `dashboard:write` ister. Görüntüleyicide bu düğme yoktur. MT-71…79 bu kayıtlı panellerde yapılır; satırlar paneli “şablon” diye anar, menüde ise kayıtlı panellerin arasındadır. İş bitince aynı “Yönet” menüsünden “Sil…” ile silinir; silme kalıcıdır. Her bileşen kendi veri okumasını yapar; biri başarısız olursa yalnızca o bileşen hata gösterir ve diğerleri çalışır. Her bileşenin bağlantısı, verisinin sahibi olan rotaya gider ve bu bağlantı her durumda (yüklü, boş, güncel değil, yasak, hata) bileşende kalır.
 
-**Sağlıklı sitede görülebilen durumlar.** Yüklü; boş (örneğin açık offense yok); “Toplanmadı” (toplama bir aile için kapalıysa ya da hiç çalışmadıysa: “Toplanmadı.”); “Güncel değil” (“Güncel değil: son veri ‹zaman› tarihli, {age} önce.”; yükseltmeden hemen sonra, ilk kadans dolmadan görülebilir ve doğrudur; kadans + 3 dk sonra sürüyorsa hatadır); yasak (görüntüleyici, 12 sütun genişliğindeki pencerede “Özelleştir” → “Bileşen ekle” kataloğunda “Kesinti politikası” satırını okur: “Your role lacks permission admin:outage.” / “Rolünüzde şu izin eksik: admin:outage.”; “Add” / “Ekle” düğmesi kapalıdır. Dar pencerede “Özelleştir” yerine “Özelleştirmek için pencereyi genişletin” yazar. Oturum açma bölümündeki "Görüntüleyici rolünün sınırı" kontrolü). **Sağlıklı sitede görülemeyen durum:** "okunamadı" (“Okunamadı: {subject}.”) yalnızca backend ya da bir uç nokta başarısız olursa çıkar; yapılandırma değiştirmeden üretilemez, bu yüzden bu bölümde atlanır. Toplama anahtarı kapalı bırakılmış bir aile için bileşen "Toplanmadı" gösterir; anahtarlar açık olan ailelerde bu durum görülmez. **Bu bölümdeki her bileşen için** yükseltmeden sonra en az bir kadans + 3 dk beklenmiş olmalıdır (MT-11); önce bakarsan "güncel değil" doğrudur.
+**Sağlıklı sitede görülebilen durumlar.** Yüklü; boş (örneğin açık offense yok); “Toplanmadı” (toplama bir aile için kapalıysa ya da hiç çalışmadıysa: “Toplanmadı.”); “Güncel değil” (“Güncel değil: son veri ‹zaman› tarihli, {age} önce.”; yükseltmeden hemen sonra, ilk kadans dolmadan görülebilir ve doğrudur; kadans + 3 dk sonra sürüyorsa hatadır); yasak (görüntüleyici, 12 sütun genişliğindeki pencerede “Özelleştir” → “Bileşen ekle” kataloğunda “Kesinti politikası” satırını okur: “Your role lacks permission admin:outage.” / “Rolünüzde şu izin eksik: admin:outage.”; “Add” / “Ekle” düğmesi kapalıdır. Dar pencerede “Özelleştir” yerine “Özelleştirmek için pencereyi genişletin” yazar. Oturum açma bölümündeki "Görüntüleyici rolünün sınırı" kontrolü). **Sağlıklı sitede görülemeyen durum:** "okunamadı" (“Okunamadı: {subject}.”) yalnızca backend ya da bir uç nokta başarısız olursa çıkar; yapılandırma değiştirmeden üretilemez, bu yüzden bu bölümde atlanır. Toplama anahtarı kapalı bırakılmış bir aile için bileşen "Toplanmadı" gösterir; anahtarlar açık olan ailelerde bu durum görülmez. **Bu bölümdeki her bileşen için** yükseltmeden sonra en az bir kadans + 3 dk beklenmiş olmalıdır (MT-11); önce bakarsan "güncel değil" doğrudur. Değişen konsolda saatlik envanter gelene kadar kaynak bileşenleri kaynak göstermez; bu Kaldı değildir (MT-11).
 
 #### MT-60 — Pano bileşeni: “Toplam EPS”
 
@@ -1465,7 +1471,7 @@ Arayüzde bu sayfanın adı **Uyarılar**'dır (İngilizce: Alerts), rota `/aler
 
 - Başlık “Uyarılar”; sütunlar: “Başlık”, “Önem derecesi”, “Durum”, “Oluşumlar”, “İlk görülme”, “Son görülme”. Durum filtresi: “Açık”, “Alındı”, “Çözüldü”.
 - Hiç uyarı yoksa “Hiç uyarı oluşturulmadı.” Sayım satırı: “Gösterilen uyarı sayısı: {shown} / {total}.”
-- 0.1.7'den sonra açılan arama, özel kural, offense toplama, yeni log source ve yeni catch-all gönderen uyarılarının başlığı Türkçedir (MSG-7); eski uyarıların başlığı İngilizcedir. Motor uyarıları (Phase A, WAF, IPS, özellik izleme) 0.1.7'de de İngilizcedir (MSG-7b yok).
+- Katalog uyarılarının başlığı Türkçedir (MSG-7): arama eşiği ve arama hatası, özel kural, offense toplama güncelliği, yeni log source, yeni catch-all gönderen. Offense toplama güncelliği “{instance} için offense toplama güncel değil” diye okunur. Açılış 0.1.7'den önce olsa da, yazıcı satırı kodla yenilediyse başlık Türkçedir. Kodu olmayan eski satırın başlığı İngilizce kalır. Motor uyarıları (Phase A, WAF, IPS, özellik izleme) 0.1.7'de de İngilizcedir (MSG-7b yok). MT-38 ile aynı sınırdır.
 
 **Kaydet:** Listenin açıldığı, satır sayısı ve bir başlığın dili.
 
@@ -1480,7 +1486,7 @@ Arayüzde bu sayfanın adı **Uyarılar**'dır (İngilizce: Alerts), rota `/aler
 **Beklenen:**
 
 - Başlık “Uyarı ayrıntısı”. "Açıklama" kartı (“Açıklama”) uyarının açıklamasını taşır. “Kanıt”, “Yaşam döngüsü” bölümleri ve “Bildirim teslim geçmişi” tablosu vardır; bildirim yoksa “Bu uyarı için bildirim yok.”
-- Çözülmüş uyarıda “Çözüm:” satırı çözüm nedenini gösterir; 0.1.7'den sonra yazılan sistem nedenleri Türkçedir (ör. “Koşul düzeldi”, “Offense toplama güncelliği düzeldi.”); bir operatörün yazdığı neden olduğu gibidir. Eski uyarının nedeni İngilizcedir (ör. "condition recovered").
+- Çözülmüş uyarıda “Çözüm:” satırı çözüm nedenini gösterir. Katalog düzelme nedeni Türkçedir (ör. “Koşul düzeldi”, “Offense toplama güncelliği düzeldi.”); offense toplama güncelliği, açılış tarihi 0.1.7'den önce olsa da, yazıcı nedeni kodla yazdıysa bu cümleyi Türkçe gösterir. Kodu olmayan eski satırın nedeni İngilizce kalır. Motorun "condition recovered" nedeni İngilizcedir (MSG-7b yok). Bir operatörün yazdığı neden olduğu gibidir. MT-38 ile aynı sınırdır.
 
 **Kaydet:** Açıklama kartının göründüğü, bir çözüm nedeninin metni ve dili. Çözülmüş uyarı yoksa o kısım için `Koşulmadı`.
 
@@ -2001,10 +2007,10 @@ Bu depoda QRadar konsolunun denetim günlüğünün yeri belgelenmemiştir; o y�
 **Hemen geri al** (bölüm 15'teki adımlar):
 
 - `upgrade` sıfırdan farklı çıktı ve otomatik geri alma de siteyi eski hâline getiremedi (`Rollback failed; the writers and the UI are stopped. Verified backup: <yol>`). OPS-R45.
-- Yükseltme başarılı görünüyor ama `doctor` yükseltme sonrası bir `FAIL` veriyor ve `docs/OPERATIONS.md` içindeki ilgili OPS-R girişi onu temizlemiyor (özellikle `db_connect`, `migration_head`, `encryption`, `secrets_files`, `watermarks`).
+- Yükseltme başarılı görünüyor ama `doctor` yükseltme sonrası bir `FAIL` veriyor ve `docs/OPERATIONS.md` içindeki ilgili OPS-R girişi onu temizlemiyor (özellikle `db_connect`, `migration_head`, `encryption`, `secrets_files`, `watermarks`). Değişen konsolda, saatlik `log_source_inventory` ve `rule_inventory` yeniden denenene kadarki `watermarks` FAIL'i bu madde değildir (MT-11). Offense'ı olmayan konsolda `offense_snapshot` için `watermarks` WARN'ı bir FAIL değildir.
 - Oturum açma bozuk: yönetici ve mevcut kullanıcılar giremiyor, `/api/v1/health/ready` 200 değil.
 - İlk kadanstan + 3 dk sonra, `/admin/search-cadence` içindeki hiçbir aile çalışmıyor ve `doctor` `celery_beat` ya da `celery_workers` FAIL veriyor.
-- 0.1.6'nın gösterdiği veri yok: anomaliler, uyarılar, kurallar, log source'lar ya da offense'lar boş ya da eksik (ve sebebi "toplanmadı" dürüstlük durumu değil).
+- 0.1.6'nın gösterdiği veri yok: anomaliler, uyarılar, kurallar, log source'lar ya da offense'lar boş ya da eksik (ve sebebi "toplanmadı" dürüstlük durumu değil). Değişen bir konsolda, saatlik iki envanter yeniden denenene kadar kaynak sayfalarının boş görünmesi bu madde değildir (MT-11).
 
 **Not al ve devam et:**
 
@@ -2081,7 +2087,7 @@ git checkout v0.1.8
 
 - Geri alma sonrası baş `0032`, ikinci yükseltme sonrası `0044`; `Last upgrade:` satırı en son işlemi gösterir.
 - Checkout `v0.1.8` değilken `upgrade 0.1.8` reddedilir: `upgrade refused: this checkout is version 0.1.6, not 0.1.8; run git fetch --tags && git checkout v0.1.8 first (see docs/OPERATIONS.md, Yükseltme)`. Hiçbir konteyner durmaz.
-- Geri alma, yükseltmeden sonra oluşturulan hesapları ve hesapta saklanan `ui_language` değerini kaldırır. Tarayıcı çerezi `ba_locale` kalır; sonraki oturum açma, hesaptaki dili çereze yazar.
+- Geri alma, yükseltmeden sonra oluşturulan hesapları ve hesapta saklanan `ui_language` değerini kaldırır. Tarayıcı çerezi `ba_locale` kalır; sonraki oturum açma, hesaptaki dili çereze yazar. İlk sayfa önceki dilde kalır; bir yenilemeden sonra hesap diline geçer (MT-20).
 
 **Kaydet:** İki sonuç.
 
