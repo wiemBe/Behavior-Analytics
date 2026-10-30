@@ -1057,6 +1057,75 @@ class TestPagination:
         assert [r.qradar_id for r in rules] == [5]
 
 
+# ---------------------------------------------------- offense list contract
+class TestOffenseListContract:
+    """Ascending persisted-time order, and a ceiling the caller can see."""
+
+    @pytest.mark.asyncio
+    async def test_offenses_are_sorted_ascending_on_last_persisted_time(self) -> None:
+        captured: dict[str, str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["sort"] = request.url.params["sort"]
+            captured["query"] = str(request.url)
+            return httpx.Response(200, json=[])
+
+        provider, _ = build_provider(handler)
+        since = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+        result = await provider.list_offenses(open_only=True, updated_since=since)
+
+        # `+field` is QRadar's ascending sort. httpx encodes `+` as `%2B` so it
+        # is not read back as a space.
+        assert captured["sort"] == "+last_persisted_time"
+        assert "sort=%2Blast_persisted_time" in captured["query"]
+        assert "last_persisted_time%3E1784109600000" in captured["query"]
+        assert result.truncated is False
+        assert result.rows == []
+
+    @pytest.mark.asyncio
+    async def test_a_short_page_is_not_truncated(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=[{"id": 1, "status": "OPEN"}])
+
+        provider, _ = build_provider(handler, page_size=2, max_pages=5)
+        result = await provider.list_offenses(open_only=False)
+        assert result.truncated is False
+        assert [row.qradar_id for row in result.rows] == [1]
+
+    @pytest.mark.asyncio
+    async def test_a_full_page_at_the_ceiling_is_truncated(self, caplog) -> None:
+        calls = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal calls
+            calls += 1
+            start = (calls - 1) * 2
+            return httpx.Response(
+                200, json=[{"id": start + 1}, {"id": start + 2}]
+            )
+
+        provider, _ = build_provider(handler, page_size=2, max_pages=3)
+        with caplog.at_level(logging.WARNING):
+            result = await provider.list_offenses(open_only=False, max_pages=3)
+
+        assert calls == 3
+        assert [row.qradar_id for row in result.rows] == [1, 2, 3, 4, 5, 6]
+        assert result.truncated is True
+        assert any("page ceiling" in record.getMessage() for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_rule_pagination_does_not_send_the_offense_sort(self) -> None:
+        seen: list[str | None] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request.url.params.get("sort"))
+            return httpx.Response(200, json=[])
+
+        provider, _ = build_provider(handler)
+        assert await provider.list_rules() == []
+        assert seen == [None]
+
+
 # ------------------------------------------------------------------- decoding
 class TestDecoding:
     @pytest.mark.asyncio
@@ -1112,7 +1181,7 @@ class TestNormalization:
             )
 
         provider, _ = build_provider(handler, page_size=10)
-        (offense,) = await provider.list_offenses(open_only=False)
+        (offense,) = (await provider.list_offenses(open_only=False)).rows
 
         assert offense.start_time == datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
         assert offense.start_time.tzinfo is UTC
@@ -1127,7 +1196,7 @@ class TestNormalization:
             )
 
         provider, _ = build_provider(handler, page_size=10)
-        offenses = await provider.list_offenses(open_only=False)
+        offenses = (await provider.list_offenses(open_only=False)).rows
         assert [o.qradar_id for o in offenses] == [7]
 
     @pytest.mark.asyncio
@@ -1142,7 +1211,7 @@ class TestNormalization:
             )
 
         provider, _ = build_provider(handler, page_size=10)
-        bare, expanded = await provider.list_offenses(open_only=False)
+        bare, expanded = (await provider.list_offenses(open_only=False)).rows
         assert (bare.offense_type, bare.offense_type_name) == (3, None)
         assert (expanded.offense_type, expanded.offense_type_name) == (4, "Source IP")
 
@@ -1159,7 +1228,7 @@ class TestNormalization:
             )
 
         provider, _ = build_provider(handler, page_size=10)
-        a, b, c = await provider.list_offenses(open_only=False)
+        a, b, c = (await provider.list_offenses(open_only=False)).rows
         assert a.closing_reason_id == 9
         assert (b.closing_reason_id, b.closing_reason) == (10, "False Positive")
         assert c.closing_reason == "Policy Violation"

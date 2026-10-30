@@ -8,6 +8,13 @@ Guarantees, and why each one is needed:
   * **Bounded** — the first run and any gap-fill reach back at most
     `offense_max_backfill_hours`, and at most `offense_max_pages` pages are
     walked per run. A fresh install must never try to ingest years of history.
+  * **A cut-off read does not skip** — when the provider stops at the page
+    ceiling, every offense read is stored, and the watermark moves only to the
+    newest `last_persisted_time` strictly below the last row. Rows on that
+    boundary are read again next run (an unchanged snapshot is already
+    idempotent). The run is partial. It is not a provider failure, so
+    `consecutive_failures` is left as it is. If every row shares that one
+    timestamp, the watermark does not move.
   * **No overlapping runs** — a PostgreSQL advisory lock keyed on (instance,
     collector) is held for the duration; a second worker skips rather than
     queues. Two collectors writing the same offense concurrently would race on
@@ -35,7 +42,7 @@ import hashlib
 import json
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -94,6 +101,11 @@ class OffenseCollectionReport:
     unchanged: int = 0
     skipped_locked: bool = False
     partial_failure: bool = False
+    #: The provider stopped at the page ceiling. Rows past it were not read.
+    truncated: bool = False
+    #: A truncated page had no timestamp strictly below its last row, so the
+    #: watermark was held. The next run reads the same rows again.
+    watermark_stalled: bool = False
     error: str | None = None
     watermark_at: datetime | None = None
     lag_seconds: int | None = None
@@ -117,6 +129,32 @@ def offense_content_hash(dto: OffenseDTO) -> str:
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
+def boundary_watermark(offenses: Sequence[OffenseDTO]) -> datetime | None:
+    """Newest filter timestamp strictly below the last row, or None to hold.
+
+    `list_offenses` returns `last_persisted_time` ascending, and that value is
+    what `OffenseDTO.last_updated_time` carries (QRadar's last-event time is a
+    different field and is not the filter). The last row is therefore the
+    newest persisted time on the page, and also the boundary: another offense
+    with that same timestamp may be sitting on the next page, so the watermark
+    stops short of it and those rows are read again. When every returned row
+    shares the boundary timestamp there is no safe place to move.
+    """
+    if not offenses:
+        return None
+    boundary = offenses[-1].last_updated_time
+    if boundary is None:
+        return None
+    below = [
+        dto.last_updated_time
+        for dto in offenses
+        if dto.last_updated_time is not None and dto.last_updated_time < boundary
+    ]
+    if not below:
+        return None
+    return max(below)
+
+
 class OffenseCollector:
     def __init__(
         self,
@@ -134,6 +172,9 @@ class OffenseCollector:
     async def collect(self, instance: QRadarInstance) -> OffenseCollectionReport:
         started = self._clock()
         report = OffenseCollectionReport(instance_id=instance.id)
+        # Set on the path that stored rows. Early returns leave it false and
+        # never reach the completion log.
+        dropped = False
 
         async with CollectorAdvisoryLock(
             self.session, self.settings, instance.id, COLLECTOR_NAME
@@ -152,7 +193,7 @@ class OffenseCollector:
             since = self._resume_point(watermark, started)
 
             try:
-                offenses = await self.provider.list_offenses(
+                listed = await self.provider.list_offenses(
                     open_only=False,
                     updated_since=since,
                     max_pages=self.settings.offense_max_pages,
@@ -173,10 +214,14 @@ class OffenseCollector:
                 )
                 return report
 
+            offenses = listed.rows
+            truncated = listed.truncated
             report.offenses_seen = len(offenses)
+            report.truncated = truncated
             # A complete empty result proves that collection reached this run's
             # instant. Keeping the backfill floor would make an empty console
-            # look permanently stale. A partial run still cannot advance below.
+            # look permanently stale. A partial or truncated run does not use
+            # this value.
             high_water = started if not offenses else since
 
             for dto in offenses:
@@ -204,16 +249,31 @@ class OffenseCollector:
                 ):
                     high_water = dto.last_updated_time
 
-            # Only advance the watermark on a clean run. Advancing past a span
-            # we failed to fully read would silently lose those offenses.
-            if not report.partial_failure and high_water is not None:
-                watermark.watermark_at = high_water
-                watermark.lag_seconds = max(
-                    0, int((started - high_water).total_seconds())
-                )
+            # A row that could not be stored holds the watermark outright:
+            # moving it would skip that offense. A truncated read is not that
+            # case. It stores every row it has, then stops strictly before the
+            # last row's timestamp so the boundary is read again. Neither one
+            # is a provider failure, so consecutive_failures is left alone —
+            # not incremented, and not cleared the way a clean run clears it.
+            dropped = report.partial_failure
             watermark.last_run_at = started
             watermark.intervals_collected += 1
-            if not report.partial_failure:
+            if not dropped and truncated:
+                report.partial_failure = True
+                advanced = boundary_watermark(offenses)
+                if advanced is None:
+                    report.watermark_stalled = True
+                else:
+                    watermark.watermark_at = advanced
+                    watermark.lag_seconds = max(
+                        0, int((started - advanced).total_seconds())
+                    )
+            elif not dropped:
+                if high_water is not None:
+                    watermark.watermark_at = high_water
+                    watermark.lag_seconds = max(
+                        0, int((started - high_water).total_seconds())
+                    )
                 watermark.consecutive_failures = 0
                 watermark.last_error = None
             await self.session.flush()
@@ -222,18 +282,41 @@ class OffenseCollector:
             report.lag_seconds = watermark.lag_seconds
 
         report.duration_ms = int((self._clock() - started).total_seconds() * 1000)
-        logger.info(
-            "offense collection complete",
-            extra={
-                "instance_id": str(instance.id),
-                "offenses_seen": report.offenses_seen,
-                "snapshots_written": report.snapshots_written,
-                "unchanged": report.unchanged,
-                "duration_ms": report.duration_ms,
-                "lag_seconds": report.lag_seconds,
-                "partial_failure": report.partial_failure,
-            },
-        )
+        extra = {
+            "instance_id": str(instance.id),
+            "offenses_seen": report.offenses_seen,
+            "snapshots_written": report.snapshots_written,
+            "unchanged": report.unchanged,
+            "duration_ms": report.duration_ms,
+            "lag_seconds": report.lag_seconds,
+            "partial_failure": report.partial_failure,
+            "truncated": report.truncated,
+            "watermark_stalled": report.watermark_stalled,
+        }
+        # The text is ours. A truncated read has no provider error to copy,
+        # and copying one would put upstream prose into the log.
+        if report.watermark_stalled and report.offenses_seen == 0:
+            logger.warning(
+                "offense collection partial; a truncated read returned no offense "
+                "to advance from, so the watermark did not move",
+                extra=extra,
+            )
+        elif report.watermark_stalled:
+            logger.warning(
+                "offense collection partial; every returned offense shares one "
+                "timestamp, so the watermark did not move",
+                extra=extra,
+            )
+        elif report.truncated and not dropped:
+            logger.warning(
+                "offense collection partial; watermark stopped before the last "
+                "offense's timestamp",
+                extra=extra,
+            )
+        elif report.partial_failure:
+            logger.warning("offense collection partial", extra=extra)
+        else:
+            logger.info("offense collection complete", extra=extra)
         return report
 
     def _resume_point(

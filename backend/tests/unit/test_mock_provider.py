@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from app.providers.base import ProviderCapability
+from app.providers.dto import OffenseDTO
 from app.providers.mock import MockQRadarProvider
 
 pytestmark = pytest.mark.asyncio
@@ -35,7 +38,9 @@ async def test_includes_an_unhealthy_silent_source(mock_provider: MockQRadarProv
 
 
 async def test_offenses_include_unassigned(mock_provider: MockQRadarProvider) -> None:
-    offenses = await mock_provider.list_offenses(open_only=True)
+    result = await mock_provider.list_offenses(open_only=True)
+    offenses = result.rows
+    assert result.truncated is False
     assert all(o.status == "OPEN" for o in offenses)
     assert any(o.assigned_to is None for o in offenses)
 
@@ -62,6 +67,38 @@ async def test_ariel_results_respect_max_rows() -> None:
         truncated = await provider.get_ariel_search_results(handle.search_id, max_rows=1)
         assert len(truncated.rows) == 1
         assert truncated.truncated is True
+
+
+async def test_offenses_come_back_oldest_first_and_a_ceiling_is_visible() -> None:
+    """The mock knows its catalog, so a full page is truncated only when rows remain."""
+    base = datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
+    provider = MockQRadarProvider(now=base)
+    provider.offense_page_size = 2
+    provider.offense_script = [
+        OffenseDTO(qradar_id=3, status="OPEN", last_updated_time=base + timedelta(seconds=3)),
+        OffenseDTO(qradar_id=1, status="OPEN", last_updated_time=base + timedelta(seconds=1)),
+        OffenseDTO(qradar_id=2, status="OPEN", last_updated_time=base + timedelta(seconds=2)),
+        OffenseDTO(qradar_id=4, status="CLOSED", last_updated_time=base + timedelta(seconds=4)),
+    ]
+
+    first = await provider.list_offenses(open_only=False, max_pages=1)
+    assert first.truncated is True
+    assert [row.qradar_id for row in first.rows] == [1, 2]
+
+    # Three rows are strictly newer than id 1, and the page holds two, so the
+    # boundary row (id 2) is still in the next read.
+    second = await provider.list_offenses(
+        open_only=False, updated_since=base + timedelta(seconds=1), max_pages=1
+    )
+    assert second.truncated is True
+    assert [row.qradar_id for row in second.rows] == [2, 3]
+
+    # Two rows fit the ceiling exactly and nothing remains. The mock can see
+    # that, so a full page is not reported as a cut.
+    provider.offense_script = provider.offense_script[:2]
+    exact = await provider.list_offenses(open_only=False, max_pages=1)
+    assert exact.truncated is False
+    assert [row.qradar_id for row in exact.rows] == [1, 3]
 
 
 async def test_unknown_search_id_returns_error(mock_provider: MockQRadarProvider) -> None:

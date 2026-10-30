@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -28,6 +29,7 @@ from app.providers.base import (
     ProviderUnavailableError,
 )
 from app.providers.qradar_mcp import (
+    _MCP_OFFENSE_PAGE,
     ALLOWED_TOOLS,
     FORBIDDEN_TOOL_PREFIXES,
     KNOWN_WRITE_TOOLS,
@@ -1045,9 +1047,97 @@ class TestReadApi:
             )
 
         provider, _, _ = build_provider(handler)
-        (offense,) = await provider.list_offenses(open_only=False)
+        (offense,) = (await provider.list_offenses(open_only=False)).rows
         assert offense.start_time.isoformat() == "2026-07-15T10:00:00+00:00"
         assert offense.close_time is None
+
+    @pytest.mark.asyncio
+    async def test_offenses_request_ascending_persisted_time_and_a_page(self) -> None:
+        captured: list[dict] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(json.loads(request.content)["params"]["arguments"])
+            return rpc_result(
+                {
+                    "items": [
+                        {
+                            "id": 7,
+                            "status": "OPEN",
+                            "last_persisted_time": 1784109600000 + 1000,
+                        }
+                    ]
+                }
+            )
+
+        provider, _, _ = build_provider(handler)
+        since = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+        result = await provider.list_offenses(open_only=True, updated_since=since, max_pages=2)
+
+        assert result.truncated is False
+        assert [row.qradar_id for row in result.rows] == [7]
+        assert captured == [
+            {
+                "sort": "+last_persisted_time",
+                "limit": _MCP_OFFENSE_PAGE,
+                "offset": 0,
+                "status": "OPEN",
+                "filter": "last_persisted_time>1784109600000",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_full_mcp_page_at_the_ceiling_is_truncated(self) -> None:
+        """One tool call cannot see the next offset, so a full last page is a cut."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            args = json.loads(request.content)["params"]["arguments"]
+            start = int(args["offset"])
+            rows = [
+                {"id": start + i + 1, "status": "OPEN", "last_persisted_time": 1_700_000_000_000}
+                for i in range(_MCP_OFFENSE_PAGE)
+            ]
+            return rpc_result({"items": rows})
+
+        provider, _, _ = build_provider(handler)
+        result = await provider.list_offenses(open_only=False, max_pages=2)
+        assert result.truncated is True
+        assert len(result.rows) == _MCP_OFFENSE_PAGE * 2
+        assert result.rows[0].qradar_id == 1
+        assert result.rows[-1].qradar_id == _MCP_OFFENSE_PAGE * 2
+
+    @pytest.mark.asyncio
+    async def test_a_short_mcp_page_ends_the_walk(self) -> None:
+        calls = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                rows = [{"id": i, "status": "OPEN"} for i in range(1, _MCP_OFFENSE_PAGE + 1)]
+            else:
+                rows = [{"id": 9000, "status": "OPEN"}]
+            return rpc_result({"items": rows})
+
+        provider, _, _ = build_provider(handler)
+        result = await provider.list_offenses(open_only=False, max_pages=4)
+        assert calls == 2
+        assert result.truncated is False
+        assert len(result.rows) == _MCP_OFFENSE_PAGE + 1
+
+    @pytest.mark.asyncio
+    async def test_a_full_page_stays_truncated_when_the_local_filter_drops_it(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            rows = [
+                {"id": i, "status": "OPEN", "last_persisted_time": 1_600_000_000_000}
+                for i in range(1, _MCP_OFFENSE_PAGE + 1)
+            ]
+            return rpc_result({"items": rows})
+
+        provider, _, _ = build_provider(handler)
+        since = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+        result = await provider.list_offenses(open_only=False, updated_since=since, max_pages=1)
+        assert result.rows == []
+        assert result.truncated is True
 
 
 # ------------------------------------------- Streamable HTTP handshake (SEC-3)

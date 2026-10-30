@@ -11,6 +11,7 @@ QRadar behaviour is controlled precisely; the database is not mocked.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -26,7 +27,8 @@ from app.providers.base import (
     ProviderUnavailableError,
     QRadarProvider,
 )
-from app.providers.dto import InstanceInfoDTO, OffenseDTO
+from app.providers.dto import InstanceInfoDTO, OffenseDTO, OffenseListResult
+from app.providers.mock import MockQRadarProvider
 from tests.integration.factories import make_instance
 
 pytestmark = pytest.mark.integration
@@ -44,9 +46,16 @@ class StubProvider(QRadarProvider):
 
     capabilities = frozenset({ProviderCapability.OFFENSES})
 
-    def __init__(self, pages: list[list[OffenseDTO]] | None = None, error=None) -> None:
+    def __init__(
+        self,
+        pages: list[list[OffenseDTO]] | None = None,
+        error=None,
+        *,
+        truncated: bool = False,
+    ) -> None:
         self._pages = pages if pages is not None else [[]]
         self._error = error
+        self._truncated = truncated
         self.calls: list[dict] = []
 
     async def get_instance_info(self) -> InstanceInfoDTO:
@@ -71,7 +80,8 @@ class StubProvider(QRadarProvider):
         )
         if self._error is not None:
             raise self._error
-        return self._pages.pop(0) if self._pages else []
+        rows = self._pages.pop(0) if self._pages else []
+        return OffenseListResult(rows=list(rows), truncated=self._truncated)
 
 
 def offense(qradar_id: int = 4242, **overrides) -> OffenseDTO:
@@ -567,3 +577,194 @@ class TestBatchResilience:
             )
         )
         assert report.snapshots_written == total == 5
+
+
+def at(seconds: int) -> datetime:
+    """A persisted time inside the backfill window and before NOW."""
+    return NOW - timedelta(hours=1) + timedelta(seconds=seconds)
+
+
+def scripted_mock(rows: list[OffenseDTO], *, page_size: int) -> MockQRadarProvider:
+    provider = MockQRadarProvider(now=NOW)
+    provider.offense_script = rows
+    provider.offense_page_size = page_size
+    return provider
+
+
+# ============================================================================
+class TestTruncatedOffenseRead:
+    """A cut-off read stores what it saw and does not skip the rest."""
+
+    @pytest.mark.asyncio
+    async def test_a_clean_mock_run_still_advances_to_the_newest_time(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = MockQRadarProvider(now=NOW)
+        listed = await provider.list_offenses(open_only=False, max_pages=20)
+        newest = max(row.last_updated_time for row in listed.rows if row.last_updated_time)
+        assert listed.truncated is False
+
+        report = await collector(db_session, provider, clock=lambda: NOW).collect(inst)
+
+        assert report.partial_failure is False
+        assert report.truncated is False
+        assert report.watermark_stalled is False
+        mark = await watermark(db_session, inst.id)
+        assert mark.watermark_at == newest
+        assert mark.consecutive_failures == 0
+        assert mark.last_error is None
+
+    @pytest.mark.asyncio
+    async def test_a_backlog_of_three_ceilings_is_drained_without_a_skip(
+        self, db_session
+    ) -> None:
+        """Twelve offenses, four per read. The first page ends inside a pair.
+
+        Advancing onto the last row's timestamp would drop the pair's second
+        offense. Two runs keep that offense, and the runs after them read
+        every remaining offense once. Each offense is stored once.
+        """
+        inst = await make_instance(db_session)
+        # Index 3 and 4 share a timestamp, so a page of 4 ends on the first
+        # of that pair. 12 rows is 3 times the ceiling.
+        times = [1, 2, 3, 4, 4, 5, 6, 7, 8, 9, 10, 11]
+        rows = [offense(100 + i, last_updated_time=at(t)) for i, t in enumerate(times)]
+        provider = scripted_mock(rows, page_size=4)
+
+        reports = []
+        for _ in range(12):
+            report = await collector(
+                db_session, provider, clock=lambda: NOW, offense_max_pages=1
+            ).collect(inst)
+            reports.append(report)
+            if not report.truncated:
+                break
+        else:
+            raise AssertionError("the backlog did not drain")
+
+        assert len(reports) > 2
+        first_ids = provider.offense_calls[0]["ids"]
+        second_ids = provider.offense_calls[1]["ids"]
+        assert first_ids == [100, 101, 102, 103]
+        # 103 is the boundary row from run 1; 104 shares its timestamp and was
+        # not on that page. Run 2 reads both.
+        assert 103 in second_ids and 104 in second_ids
+        assert reports[0].truncated is True
+        assert reports[0].partial_failure is True
+        assert reports[0].error is None
+        assert (await watermark(db_session, inst.id)).watermark_at == at(11)
+
+        stored = await snapshots(db_session, inst.id)
+        assert sorted(row.qradar_offense_id for row in stored) == list(range(100, 112))
+        assert len(stored) == 12
+        assert reports[-1].truncated is False
+        assert reports[-1].partial_failure is False
+        mark = await watermark(db_session, inst.id)
+        assert mark.consecutive_failures == 0
+
+    @pytest.mark.asyncio
+    async def test_an_all_same_timestamp_page_does_not_move_the_watermark(
+        self, db_session, caplog
+    ) -> None:
+        inst = await make_instance(db_session)
+        rows = [offense(i, last_updated_time=at(5)) for i in (1, 2, 3)]
+        provider = scripted_mock(rows, page_size=2)
+
+        with caplog.at_level(logging.WARNING, logger="app.collectors.offense"):
+            report = await collector(
+                db_session, provider, clock=lambda: NOW, offense_max_pages=1
+            ).collect(inst)
+
+        assert report.truncated is True
+        assert report.partial_failure is True
+        assert report.watermark_stalled is True
+        assert report.error is None
+        assert report.snapshots_written == 2
+        mark = await watermark(db_session, inst.id)
+        assert mark.watermark_at is None
+        assert mark.consecutive_failures == 0
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("every returned offense shares one timestamp" in message for message in messages)
+        assert all("QRadar" not in message for message in messages)
+
+        caplog.clear()
+        again = await collector(
+            db_session, provider, clock=lambda: NOW, offense_max_pages=1
+        ).collect(inst)
+        assert again.watermark_stalled is True
+        assert (await watermark(db_session, inst.id)).watermark_at is None
+        # The same two rows are read again; nothing past them was skipped by
+        # moving the watermark, and the unchanged ones are not stored twice.
+        assert provider.offense_calls[1]["ids"] == [1, 2]
+        assert len(await snapshots(db_session, inst.id)) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_truncated_run_does_not_clear_or_increment_failures(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        await collector(db_session, StubProvider(error=ProviderError("boom"))).collect(inst)
+
+        rows = [offense(i, last_updated_time=at(i)) for i in (1, 2, 3)]
+        provider = scripted_mock(rows, page_size=2)
+        report = await collector(
+            db_session, provider, clock=lambda: NOW, offense_max_pages=1
+        ).collect(inst)
+
+        assert report.truncated is True
+        assert report.partial_failure is True
+        assert report.watermark_stalled is False
+        assert report.error is None
+        mark = await watermark(db_session, inst.id)
+        assert mark.consecutive_failures == 1
+        assert mark.last_error == "boom"
+        # Strictly below the last of [t1, t2], so the boundary row is kept.
+        assert mark.watermark_at == at(1)
+        assert provider.offense_calls[0]["ids"] == [1, 2]
+
+    @pytest.mark.asyncio
+    async def test_a_dropped_row_on_a_truncated_read_holds_the_watermark(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        bad = offense(9999, start_time=datetime(2026, 7, 20, 8, 0), last_updated_time=at(1))
+        page = [offense(1, last_updated_time=at(1)), bad, offense(2, last_updated_time=at(2))]
+        report = await collector(
+            db_session, StubProvider([page], truncated=True)
+        ).collect(inst)
+
+        assert report.dropped == [9999]
+        assert report.truncated is True
+        assert report.partial_failure is True
+        assert report.watermark_stalled is False
+        assert (await watermark(db_session, inst.id)).watermark_at is None
+        stored = {row.qradar_offense_id for row in await snapshots(db_session, inst.id)}
+        assert stored == {1, 2}
+
+    @pytest.mark.asyncio
+    async def test_an_empty_truncated_read_does_not_use_the_empty_run_advance(
+        self, db_session, caplog
+    ) -> None:
+        """A complete empty read advances to the run instant. A cut-off one must not.
+
+        Nothing was read, so there is no timestamp to stop short of. Moving
+        the watermark to the run instant would skip every offense the ceiling hid.
+        """
+        inst = await make_instance(db_session)
+        with caplog.at_level(logging.WARNING, logger="app.collectors.offense"):
+            report = await collector(
+                db_session, StubProvider([[]], truncated=True)
+            ).collect(inst)
+
+        assert report.offenses_seen == 0
+        assert report.truncated is True
+        assert report.partial_failure is True
+        assert report.watermark_stalled is True
+        assert report.error is None
+        mark = await watermark(db_session, inst.id)
+        assert mark.watermark_at is None
+        assert mark.consecutive_failures == 0
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("no offense to advance from" in message for message in messages)
+        assert all("QRadar" not in message for message in messages)
