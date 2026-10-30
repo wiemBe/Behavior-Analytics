@@ -275,3 +275,32 @@ async def test_whole_run_under_threshold_still_resolves(db_session) -> None:
     await evaluator.evaluate(search, clear)
     alert = await _alert_for(db_session, search_threshold_fingerprint(search.id))
     assert alert.status == AlertStatus.RESOLVED
+
+
+async def test_failure_evidence_carries_the_reference_of_a_coded_error(db_session) -> None:
+    """MSG-7b: the evidence reason has its code and params beside it; free text has none."""
+    search = await make_search(db_session, name="coded-failure")
+    search.consecutive_failures = 3
+    coded = await _execution(
+        db_session, search, run_key="r1", status=ExecutionStatus.FAILED,
+        error_type=ExecutionErrorType.TIMEOUT.value,
+        error_message="search exceeded timeout of 30s",
+        error_message_i18n={"code": "search.run.timeout", "params": {"timeout": 30}},
+    )
+    await SearchAlertEvaluator(db_session).evaluate(search, coded)
+    alert = await _alert_for(db_session, search_failure_fingerprint(search.id))
+    assert alert is not None
+    evidence = alert.evidence_snapshot
+    assert evidence["reason"] == coded.error_message
+    assert evidence["reason_code"] == "search.run.timeout"
+    assert evidence["reason_params"] == {"timeout": 30}
+
+    free = await _execution(
+        db_session, search, run_key="r2", status=ExecutionStatus.FAILED,
+        error_type=ExecutionErrorType.TIMEOUT.value, error_message="provider said no",
+    )
+    await SearchAlertEvaluator(db_session).evaluate(search, free)
+    await db_session.refresh(alert)
+    assert alert.evidence_snapshot["reason"] == "provider said no"
+    assert "reason_code" not in alert.evidence_snapshot
+    assert "reason_params" not in alert.evidence_snapshot

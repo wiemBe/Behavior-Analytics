@@ -952,13 +952,19 @@ class AnomalyEngine:
         # Added only when known, and never part of the fingerprint.
         if source_class is not None:
             context["source_class"] = str(source_class)
+        title_message = MessageRef(
+            "alert.anomaly.title",
+            {"anomaly_type": evidence.anomaly_type.value, "log_source": log_source.name},
+        )
         return AlertInput(
             fingerprint=anomaly_fingerprint(log_source.id, evidence.anomaly_type.value),
-            title=f"{evidence.anomaly_type.value} on {log_source.name}",
+            title=render(title_message),
+            title_message=title_message,
             severity=evidence.severity,
             source_type="log_source",
             source_id=log_source.id,
             description=evidence.reason,
+            description_message=evidence.reason_message,
             evidence=evidence.to_dict(),
             source_anomaly_ids=[str(anomaly_id)] if anomaly_id is not None else [],
             context=context,
@@ -1015,7 +1021,7 @@ class AnomalyEngine:
         result = await self.alerts.resolve_by_fingerprint(
             anomaly_fingerprint(log_source.id, evidence.anomaly_type.value),
             actor="anomaly-engine",
-            reason=render(MESSAGE_RECOVERED),
+            reason_message=MESSAGE_RECOVERED,
         )
         if self._enqueuer is not None and result is not None and result.transition is not None:
             await self._enqueuer.enqueue(result.alert, result.transition)

@@ -160,12 +160,14 @@ class _AlertResolve:
 
 type _AlertAction = _AlertOpenOrUpdate | _AlertResolve
 
-#: The subject of an entity incident in words, for the alert title.
-_DIMENSION_WORDS = {
-    IpsDimension.DESTINATION_PORT: "destination port",
-    IpsDimension.DESTINATION_IP: "destination IP",
-    IpsDimension.SIGNATURE: "signature",
+#: The alert title of an entity incident, by the dimension it names.
+_TITLE_CODES = {
+    IpsDimension.DESTINATION_PORT: "alert.ips.title.destination_port",
+    IpsDimension.DESTINATION_IP: "alert.ips.title.destination_ip",
+    IpsDimension.SIGNATURE: "alert.ips.title.signature",
 }
+#: The reason every engine resolves an alert with once its condition has cleared.
+_RECOVERED = MessageRef("anomaly.resolution.recovered")
 
 
 def _chunks(ids: Sequence[uuid.UUID]) -> Iterable[Sequence[uuid.UUID]]:
@@ -878,7 +880,7 @@ class IpsAnomalyEngine:
                     source.instance_id, item.source_id, item.entity, item.detector_type
                 ),
                 actor="ips-anomaly-engine",
-                reason="condition recovered",
+                reason_message=_RECOVERED,
             )
             for item in actions
             if isinstance(item, _AlertResolve)
@@ -908,14 +910,24 @@ class IpsAnomalyEngine:
             "instance": instance_name,
             "detector_type": detector_type.value,
         }
-        title = f"{detector_type.value} on {source.name}"
+        title_message = MessageRef(
+            "alert.ips.title.source",
+            {"detector": detector_type.value, "log_source": source.name},
+        )
         if entity is not None:
             # The stored identity of an admitted entity, never a raw event value.
             display = entity.display_name or entity.value_key
             dimension = IpsDimension(str(entity.dimension))
             context["dimension"] = dimension.value
             context["entity"] = display
-            title = f"{title}: {_DIMENSION_WORDS[dimension]} {display}"
+            title_message = MessageRef(
+                _TITLE_CODES[dimension],
+                {
+                    "detector": detector_type.value,
+                    "log_source": source.name,
+                    "entity": display,
+                },
+            )
         for key, value in (
             ("observed", evidence.observed_value),
             ("expected", evidence.expected_value),
@@ -931,11 +943,13 @@ class IpsAnomalyEngine:
             fingerprint=self._fingerprint(
                 source.instance_id, action.source_id, entity, detector_type
             ),
-            title=title,
+            title=render(title_message),
+            title_message=title_message,
             severity=evidence.severity,
             source_type="ips_entity" if entity is not None else "ips_source",
             source_id=entity.id if entity is not None else action.source_id,
             description=evidence.reason,
+            description_message=evidence.reason_message,
             evidence=evidence.to_dict(),
             source_anomaly_ids=(
                 [str(action.anomaly_id)] if action.anomaly_id is not None else []

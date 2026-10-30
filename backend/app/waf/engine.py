@@ -133,6 +133,8 @@ _ANOMALY_COLUMNS = (
 
 #: The suppression reason a maintenance window writes (MSG-6; stored beside its `_i18n` form).
 _MAINTENANCE = MessageRef("waf.suppression.maintenance_window")
+#: The reason every engine resolves an alert with once its condition has cleared.
+_RECOVERED = MessageRef("anomaly.resolution.recovered")
 
 
 def _wire(message: MessageRef | None) -> dict[str, object] | None:
@@ -1032,7 +1034,7 @@ class WafAnomalyEngine:
             AlertResolution(
                 fingerprint=self._fingerprint(item.endpoint, item.detector_type),
                 actor="waf-anomaly-engine",
-                reason="condition recovered",
+                reason_message=_RECOVERED,
             )
             for item in actions
             if isinstance(item, _AlertResolve)
@@ -1069,16 +1071,24 @@ class WafAnomalyEngine:
         # into it.
         if source_class is not None:
             context["source_class"] = str(source_class)
+        title_message = MessageRef(
+            "alert.waf.title",
+            {
+                "detector": detector_type.value,
+                "log_source": log_source.name,
+                "method": endpoint.http_method,
+                "endpoint": endpoint.normalized_endpoint,
+            },
+        )
         return AlertInput(
             fingerprint=self._fingerprint(endpoint, detector_type),
-            title=(
-                f"{detector_type.value} on {log_source.name}: "
-                f"{endpoint.http_method} {endpoint.normalized_endpoint}"
-            ),
+            title=render(title_message),
+            title_message=title_message,
             severity=evidence.severity,
             source_type="waf_endpoint",
             source_id=endpoint.id,
             description=evidence.reason,
+            description_message=evidence.reason_message,
             evidence=evidence.to_dict(),
             source_anomaly_ids=(
                 [str(action.anomaly_id)] if action.anomaly_id is not None else []

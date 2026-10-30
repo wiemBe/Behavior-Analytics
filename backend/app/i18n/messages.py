@@ -2399,6 +2399,85 @@ REGISTRY: tuple[MessageSpec, ...] = (
         kind="UNKNOWN",
     ),
     # --- end MSG-7 ---------------------------------------------------------------------------
+    # --- MSG-7b: the engines' alert titles (Family 13) -- keep contiguous ---
+    # The detector or anomaly type is an enum param (the `anomalyType` and
+    # `propertyWatchAnomalyType` groups); every name is text, shown verbatim. Descriptions reuse the
+    # detector sentence's own ref; "condition recovered" reuses `anomaly.resolution.recovered`.
+    _msg(
+        "alert.anomaly.title",
+        "{anomaly_type} on {log_source}",
+        {
+            "anomaly_type": ParamSpec(ParamKind.ENUM, enum_group="anomalyType"),
+            "log_source": _TEXT,
+        },
+        {"anomaly_type": "NO_EVENTS", "log_source": "Edge firewall"},
+    ),
+    _msg(
+        "alert.waf.title",
+        "{detector} on {log_source}: {method} {endpoint}",
+        {
+            "detector": ParamSpec(ParamKind.ENUM, enum_group="anomalyType"),
+            "log_source": _TEXT,
+            "method": _TEXT,
+            "endpoint": _TEXT,
+        },
+        {
+            "detector": "WAF_REQUEST_RATE_SPIKE",
+            "log_source": "Edge firewall",
+            "method": "GET",
+            "endpoint": "/api/login",
+        },
+    ),
+    _msg(
+        "alert.ips.title.source",
+        "{detector} on {log_source}",
+        {
+            "detector": ParamSpec(ParamKind.ENUM, enum_group="anomalyType"),
+            "log_source": _TEXT,
+        },
+        {"detector": "IPS_SIGNATURE_BURST", "log_source": "Edge firewall"},
+    ),
+    _msg(
+        "alert.ips.title.destination_port",
+        "{detector} on {log_source}: destination port {entity}",
+        {
+            "detector": ParamSpec(ParamKind.ENUM, enum_group="anomalyType"),
+            "log_source": _TEXT,
+            "entity": _TEXT,
+        },
+        {"detector": "IPS_PORT_RATE_SPIKE", "log_source": "Edge firewall", "entity": "443"},
+    ),
+    _msg(
+        "alert.ips.title.destination_ip",
+        "{detector} on {log_source}: destination IP {entity}",
+        {
+            "detector": ParamSpec(ParamKind.ENUM, enum_group="anomalyType"),
+            "log_source": _TEXT,
+            "entity": _TEXT,
+        },
+        {"detector": "IPS_PORT_RATE_SPIKE", "log_source": "Edge firewall", "entity": "443"},
+    ),
+    _msg(
+        "alert.ips.title.signature",
+        "{detector} on {log_source}: signature {entity}",
+        {
+            "detector": ParamSpec(ParamKind.ENUM, enum_group="anomalyType"),
+            "log_source": _TEXT,
+            "entity": _TEXT,
+        },
+        {"detector": "IPS_PORT_RATE_SPIKE", "log_source": "Edge firewall", "entity": "443"},
+    ),
+    _msg(
+        "alert.pw.title",
+        "{detector} on {watch}: {value}",
+        {
+            "detector": ParamSpec(ParamKind.ENUM, enum_group="propertyWatchAnomalyType"),
+            "watch": _TEXT,
+            "value": _TEXT,
+        },
+        {"detector": "PW_NEW_VALUE", "watch": "Admin logins", "value": "alice | 10.0.0.1"},
+    ),
+    # --- end MSG-7b --------------------------------------------------------------------------
     # --- MSG-1b: authoring reasons and remaining conflicts (Families 15, 11) -- keep contiguous ---
     # Custom-rule draft validation (`app/custom_rules/validation.py`, the rule routes). A quoted
     # user value (`{metric}`, `{value}`, `{operator}`) arrives already quoted by `repr`.

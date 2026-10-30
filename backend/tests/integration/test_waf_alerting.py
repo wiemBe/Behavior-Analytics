@@ -408,3 +408,65 @@ async def test_scheduled_run_opens_an_alert_end_to_end(db_session) -> None:
     assert alert.context["detector_type"] == WafAnomalyType.WAF_REQUEST_RATE_SPIKE.value
     assert alert.status == AlertStatus.OPEN
     assert await notification_count(db_session) == 2
+
+
+async def test_alert_text_travels_with_its_message_references(db_session) -> None:
+    """MSG-7b: title, description and recovery reason carry refs; notifications stay English."""
+    settings = alert_settings(waf_outcome_collection_enabled=True)
+    _instance, source, endpoint = await seed_endpoint(db_session)
+    dispatcher = NotificationDispatcher(db_session, {}, routing_policy(), settings=settings)
+    detectors = {
+        WafAnomalyType.WAF_REQUEST_RATE_SPIKE: detect_request_rate_spike,
+        WafAnomalyType.WAF_ERROR_RATIO_SPIKE: always_error_spike,
+    }
+
+    await evaluate(
+        db_session, settings, source, endpoint, T0, 500, enqueuer=dispatcher, detectors=detectors
+    )
+    alerts = {
+        a.context["detector_type"]: a for a in (await db_session.scalars(select(Alert))).all()
+    }
+    rate = alerts[WafAnomalyType.WAF_REQUEST_RATE_SPIKE.value]
+    assert rate.title_i18n == {
+        "code": "alert.waf.title",
+        "params": {
+            "detector": "WAF_REQUEST_RATE_SPIKE",
+            "log_source": "edge-waf",
+            "method": "POST",
+            "endpoint": "/login/{id}",
+        },
+    }
+    assert rate.description == rate.evidence_snapshot["reason"]
+    assert rate.description_i18n == {
+        "code": rate.evidence_snapshot["reason_code"],
+        "params": rate.evidence_snapshot["reason_params"],
+    }
+    # A verdict with only a sentence (no reference) stores the sentence and no description ref.
+    plain = alerts[WafAnomalyType.WAF_ERROR_RATIO_SPIKE.value]
+    assert plain.description == "server error ratio is above baseline"
+    assert plain.description_i18n is None
+    assert plain.title_i18n is not None
+
+    # Notifications read the English fields only (D-37): no ref reaches a payload.
+    payloads = list((await db_session.scalars(select(AlertNotification))).all())
+    assert payloads
+    for row in payloads:
+        text = repr(row.payload)
+        assert "_i18n" not in text and "alert.waf.title" not in text
+        assert row.payload["title"] in {a.title for a in alerts.values()}
+    assert rate.title == "WAF_REQUEST_RATE_SPIKE on edge-waf: POST /login/{id}"
+
+    rate.title_i18n = None
+    await evaluate(
+        db_session, settings, source, endpoint, T0 + STEP, 520, enqueuer=dispatcher,
+        detectors=detectors,
+    )
+    assert rate.title_i18n is not None, "a refresh writes the title ref again"
+
+    await evaluate(
+        db_session, settings, source, endpoint, T0 + STEP * 2, 100, enqueuer=dispatcher,
+        detectors=detectors,
+    )
+    assert rate.status == AlertStatus.RESOLVED
+    assert rate.resolution_reason == "condition recovered"
+    assert rate.resolution_reason_i18n == {"code": "anomaly.resolution.recovered", "params": {}}

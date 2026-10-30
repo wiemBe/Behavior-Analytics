@@ -938,3 +938,39 @@ async def test_fault_bookkeeping_failure_holds_one_source_and_judges_the_other(
     assert record.bucket_start == start.isoformat()
     assert record.error_class == "RuntimeError"
     assert record.evaluation_error_class == "RuntimeError"
+
+
+async def test_alert_text_travels_with_its_message_references(db_session) -> None:
+    """MSG-7b: the title, the description and the recovery reason carry their refs."""
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst, criticality=Criticality.MEDIUM)
+    start = utc(h=10)
+    await _reliable_eps_baseline(db_session, ls, weekday=start.isoweekday(), hour=10)
+    engine = AnomalyEngine(db_session, settings=_settings())
+    fingerprint = anomaly_fingerprint(ls.id, AnomalyType.VOLUME_DROP.value)
+
+    await _feed(engine, ls, db_session, start=start, count=2, eps=3.0)
+    alert = await _open_alert(db_session, ls, AnomalyType.VOLUME_DROP)
+    assert alert is not None
+    assert alert.title == f"VOLUME_DROP on {ls.name}"
+    assert alert.title_i18n == {
+        "code": "alert.anomaly.title",
+        "params": {"anomaly_type": "VOLUME_DROP", "log_source": ls.name},
+    }
+    reason_code = alert.evidence_snapshot["reason_code"]
+    assert alert.description == alert.evidence_snapshot["reason"]
+    assert alert.description_i18n["code"] == reason_code
+    assert alert.description_i18n["params"] == alert.evidence_snapshot["reason_params"]
+
+    # A refresh keeps text and ref in step.
+    alert.title_i18n = None
+    await _feed(engine, ls, db_session, start=start + timedelta(minutes=10), count=1, eps=3.0)
+    assert alert.title_i18n is not None and alert.title_i18n["code"] == "alert.anomaly.title"
+
+    await _feed(
+        engine, ls, db_session, start=start + timedelta(minutes=15), count=3, eps=50.0
+    )
+    resolved = await db_session.scalar(select(Alert).where(Alert.dedup_key == fingerprint))
+    assert resolved.status == AlertStatus.RESOLVED
+    assert resolved.resolution_reason == "condition recovered"
+    assert resolved.resolution_reason_i18n == {"code": "anomaly.resolution.recovered", "params": {}}

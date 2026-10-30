@@ -813,3 +813,51 @@ async def test_deleting_a_watch_with_no_open_alert_changes_no_alert(
     assert writer.delete(f"{PREFIX}/{made['id']}").status_code == 204
     row = await _status(db_session, resolved.id)
     assert row.resolved_by == "someone", "an alert already resolved is left as it was"
+
+
+async def test_alert_text_travels_with_its_message_references(db_session) -> None:
+    """MSG-7b: title, description and every engine resolve reason carry their refs."""
+    rig = await alerting_rig(db_session)
+    spike(rig)
+    for k in range(0, 3):
+        await step(rig, k)
+    [alert] = await alerts(rig)
+    watch = await rig.reload_watch()
+    assert alert.title_i18n == {
+        "code": "alert.pw.title",
+        "params": {"detector": "PW_VALUE_SPIKE", "watch": watch.name, "value": "alice"},
+    }
+    assert alert.description == alert.evidence_snapshot["reason"]
+    assert alert.description_i18n == {
+        "code": alert.evidence_snapshot["reason_code"],
+        "params": alert.evidence_snapshot["reason_params"],
+    }
+
+    alert.title_i18n = None
+    await step(rig, 3)
+    assert alert.title_i18n is not None, "a refresh writes the title ref again"
+
+    await step(rig, 4)
+    await step(rig, 5)
+    await step(rig, 6)
+    assert alert.status == AlertStatus.RESOLVED
+    assert alert.resolution_reason == "condition recovered"
+    assert alert.resolution_reason_i18n == {"code": "pw.transition.recovered", "params": {}}
+
+
+async def test_a_version_bump_resolves_the_alert_with_its_reason_reference(db_session) -> None:
+    rig = await alerting_rig(db_session)
+    spike(rig, 1, 6)
+    for k in range(0, 4):
+        await step(rig, k)
+    await db_session.execute(
+        update(PropertyWatch).where(PropertyWatch.id == rig.watch.id).values(watch_version=2)
+    )
+    await db_session.commit()
+    await step(rig, 4)
+    [alert] = await alerts(rig)
+    assert alert.resolution_reason == "watch definition changed"
+    assert alert.resolution_reason_i18n == {
+        "code": "pw.transition.definition_changed",
+        "params": {},
+    }

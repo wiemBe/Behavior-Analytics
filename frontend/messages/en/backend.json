@@ -1,5 +1,8 @@
 {
   "alert": {
+    "anomaly": {
+      "title": "{anomaly_type} on {log_source}"
+    },
     "custom_rule": {
       "deleted": "the rule was deleted",
       "description": {
@@ -24,12 +27,23 @@
         "title": "New log source: {name}"
       }
     },
+    "ips": {
+      "title": {
+        "destination_ip": "{detector} on {log_source}: destination IP {entity}",
+        "destination_port": "{detector} on {log_source}: destination port {entity}",
+        "signature": "{detector} on {log_source}: signature {entity}",
+        "source": "{detector} on {log_source}"
+      }
+    },
     "offense_collection": {
       "recovered": "Offense collection freshness recovered.",
       "stale": {
         "description": "The read-only offense collector has not completed within its configured freshness threshold.",
         "title": "Offense collection is stale for {instance}"
       }
+    },
+    "pw": {
+      "title": "{detector} on {watch}: {value}"
     },
     "search": {
       "failure": {
@@ -45,6 +59,9 @@
     },
     "threshold": {
       "crossed": "{name} crossed its threshold"
+    },
+    "waf": {
+      "title": "{detector} on {log_source}: {method} {endpoint}"
     }
   },
   "anomaly": {

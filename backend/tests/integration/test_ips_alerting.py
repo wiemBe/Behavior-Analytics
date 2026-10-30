@@ -497,3 +497,34 @@ async def test_a_scheduled_run_with_alerting_off_enqueues_nothing(db_session) ->
     await _scheduled_run(db_session, enabled=False, enqueuer=enqueuer)
     assert enqueuer.calls == []
     assert await alerts(db_session) == []
+
+
+async def test_alert_text_travels_with_its_message_references(db_session) -> None:
+    """MSG-7b: the entity title, description and recovery reason carry their refs."""
+    settings = alert_settings()
+    _instance, source, entity = await seed(db_session)
+    await evaluate(db_session, settings, source, START, entity, 600)
+    [alert] = await alerts(db_session)
+    assert alert.title == "IPS_PORT_RATE_SPIKE on ips-412: destination port 3389/tcp"
+    assert alert.title_i18n == {
+        "code": "alert.ips.title.destination_port",
+        "params": {
+            "detector": "IPS_PORT_RATE_SPIKE",
+            "log_source": "ips-412",
+            "entity": "3389/tcp",
+        },
+    }
+    assert alert.description == alert.evidence_snapshot["reason"]
+    assert alert.description_i18n == {
+        "code": alert.evidence_snapshot["reason_code"],
+        "params": alert.evidence_snapshot["reason_params"],
+    }
+
+    alert.title_i18n = None
+    await evaluate(db_session, settings, source, START + DAY, entity, 700)
+    assert alert.title_i18n is not None, "a refresh writes the title ref again"
+
+    await evaluate(db_session, settings, source, START + DAY * 2, entity, 100)
+    assert alert.status == AlertStatus.RESOLVED
+    assert alert.resolution_reason == "condition recovered"
+    assert alert.resolution_reason_i18n == {"code": "anomaly.resolution.recovered", "params": {}}

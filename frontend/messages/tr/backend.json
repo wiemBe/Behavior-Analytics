@@ -1,5 +1,8 @@
 {
   "alert": {
+    "anomaly": {
+      "title": "{log_source} üzerinde {anomaly_type}"
+    },
     "custom_rule": {
       "deleted": "Kural silindi",
       "description": {
@@ -24,12 +27,23 @@
         "title": "Yeni log source: {name}"
       }
     },
+    "ips": {
+      "title": {
+        "source": "{log_source} üzerinde {detector}",
+        "destination_port": "{log_source} üzerinde {detector}: hedef port {entity}",
+        "destination_ip": "{log_source} üzerinde {detector}: hedef IP {entity}",
+        "signature": "{log_source} üzerinde {detector}: imza {entity}"
+      }
+    },
     "offense_collection": {
       "recovered": "Offense toplama güncelliği düzeldi.",
       "stale": {
         "description": "Salt okunur offense toplayıcı, yapılandırılmış güncellik eşiği içinde tamamlanmadı.",
         "title": "{instance} için offense toplama güncel değil"
       }
+    },
+    "pw": {
+      "title": "{watch} üzerinde {detector}: {value}"
     },
     "search": {
       "failure": {
@@ -45,6 +59,9 @@
     },
     "threshold": {
       "crossed": "{name} eşiğini aştı"
+    },
+    "waf": {
+      "title": "{log_source} üzerinde {detector}: {method} {endpoint}"
     }
   },
   "custom_rule": {

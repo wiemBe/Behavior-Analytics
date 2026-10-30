@@ -282,7 +282,11 @@ function translateCode(
   for (const name of expected) {
     const value = formatParam(ref.params[name], spec.params[name], context, depth, ref.code);
     if (value === undefined) return undefined;
-    if (context.locale === "tr" && spec.params[name].kind === "ref" && isRecord(ref.params[name])) {
+    if (
+      context.locale === "tr" &&
+      ((spec.params[name].kind === "ref" && isRecord(ref.params[name])) ||
+        isEmbeddedLabel(spec.params[name]))
+    ) {
       nested[name] = value;
       formatted[name] = nestedMarker(name);
     } else {
@@ -295,6 +299,22 @@ function translateCode(
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The detector and anomaly-type labels are capitalised as a stand-alone label ("Hacim düşüşü"). A
+ * title that places one after other words ("Core Firewall üzerinde hacim düşüşü") lower-cases it
+ * the way a nested sentence is, unless it starts the sentence. Only these two groups: every other
+ * enum param keeps its label as the catalog spells it.
+ */
+const EMBEDDED_LABEL_GROUPS = new Set(["anomalyType", "propertyWatchAnomalyType"]);
+
+function isEmbeddedLabel(spec: { kind: string; enum_group?: string }): boolean {
+  return (
+    spec.kind === "enum" &&
+    spec.enum_group !== undefined &&
+    EMBEDDED_LABEL_GROUPS.has(spec.enum_group)
+  );
 }
 
 /** Private-use delimiters: they cannot occur in a catalog string or a rendered value. */

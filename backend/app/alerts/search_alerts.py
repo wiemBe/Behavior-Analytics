@@ -172,6 +172,17 @@ class SearchAlertEvaluator:
                 evidence={
                     "observed_value": float(search.consecutive_failures),
                     "reason": execution.error_message,
+                    # The reference of that sentence beside it (MSG-8b), where the run had one:
+                    # the evidence reader renders `reason_code` / `reason_params` the way it does
+                    # a detector's. Free text (a provider's or an exception's words) has none.
+                    **(
+                        {
+                            "reason_code": execution.error_message_code,
+                            "reason_params": execution.error_message_params or {},
+                        }
+                        if execution.error_message_code is not None
+                        else {}
+                    ),
                     "error_type": execution.error_type,
                     "status": str(execution.status),
                     "execution_id": str(execution.id),

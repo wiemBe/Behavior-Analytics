@@ -120,6 +120,81 @@ describe("alert detail contents", () => {
     expect(screen.getByText("Yaşam döngüsü").closest(".card")).toHaveTextContent("Çözüm: Koşul düzeldi");
   });
 
+  it("renders a resolved WAF alert in Turkish: title, description, evidence reason and recovery", async () => {
+    setTestLocale("tr");
+    const description = {
+      code: "waf.rate.fired",
+      params: {
+        observed: 520,
+        expected: 100,
+        ratio_text: { code: "waf.rate.ratio_multiple", params: { ratio: 5.2 } },
+        delta: 420,
+        basis: { code: "waf.basis.z", params: { score: 6.2, threshold: 3.5 } },
+      },
+    };
+    vi.spyOn(api, "alert").mockResolvedValue(alert({
+      status: "RESOLVED",
+      title: "WAF_REQUEST_RATE_SPIKE on edge-waf: POST /login/{id}",
+      title_code: "alert.waf.title",
+      title_params: {
+        detector: "WAF_REQUEST_RATE_SPIKE",
+        log_source: "edge-waf",
+        method: "POST",
+        endpoint: "/login/{id}",
+      },
+      description: "520 requests is above the baseline median 100.0 (5.20x expected, +420 requests/bucket); robust z=6.20 (threshold +3.5)",
+      description_code: description.code,
+      description_params: description.params,
+      resolution_reason: "condition recovered",
+      resolution_reason_code: "anomaly.resolution.recovered",
+      resolution_reason_params: {},
+      evidence_snapshot: {
+        anomaly_type: "WAF_REQUEST_RATE_SPIKE",
+        reason: "520 requests is above the baseline median",
+        reason_code: description.code,
+        reason_params: description.params,
+      },
+    }));
+    await renderPage();
+    expect(screen.getByRole("heading", {
+      name: "edge-waf üzerinde istek hızı artışı: POST /login/{id}",
+    })).toBeInTheDocument();
+    expect(screen.getByText("Yaşam döngüsü").closest(".card")).toHaveTextContent("Çözüm: Koşul düzeldi");
+    expect(screen.queryByText(/is above the baseline median/)).not.toBeInTheDocument();
+  });
+
+  it("renders a property-watch alert title in Turkish and its coded reason", async () => {
+    setTestLocale("tr");
+    vi.spyOn(api, "alert").mockResolvedValue(alert({
+      title: "PW_VALUE_SPIKE on Admin logins: alice | 10.0.0.1",
+      title_code: "alert.pw.title",
+      title_params: { detector: "PW_VALUE_SPIKE", watch: "Admin logins", value: "alice | 10.0.0.1" },
+      resolution_reason: "condition recovered",
+      resolution_reason_code: "pw.transition.recovered",
+      resolution_reason_params: {},
+      status: "RESOLVED",
+    }));
+    await renderPage();
+    expect(screen.getByRole("heading", {
+      name: "Admin logins üzerinde değer ani artışı: alice | 10.0.0.1",
+    })).toBeInTheDocument();
+    expect(screen.getByText("Yaşam döngüsü").closest(".card")).toHaveTextContent("Çözüm: Koşul düzeldi");
+  });
+
+  it("shows an engine alert with no refs (an old row) in its stored English", async () => {
+    setTestLocale("tr");
+    vi.spyOn(api, "alert").mockResolvedValue(alert({
+      title: "WAF_REQUEST_RATE_SPIKE on edge-waf: POST /login/{id}",
+      status: "RESOLVED",
+      resolution_reason: "condition recovered",
+    }));
+    await renderPage();
+    expect(screen.getByRole("heading", {
+      name: "WAF_REQUEST_RATE_SPIKE on edge-waf: POST /login/{id}",
+    })).toBeInTheDocument();
+    expect(screen.getByText("Yaşam döngüsü").closest(".card")).toHaveTextContent("Çözüm: condition recovered");
+  });
+
   it("shows the stored English title, description and resolution verbatim", async () => {
     vi.spyOn(api, "alert").mockResolvedValue(alert({
       title: "Stored title",

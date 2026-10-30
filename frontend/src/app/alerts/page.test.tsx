@@ -118,6 +118,69 @@ describe("alert list contents", () => {
     expect(screen.getByRole("link", { name: "Yüksek trafik eşiğini aştı" })).toBeInTheDocument();
   });
 
+  it("renders each engine's coded title in Turkish, with the detector labelled from its enum", async () => {
+    setTestLocale("tr");
+    vi.spyOn(api, "alerts").mockResolvedValue(page([
+      alert({
+        id: "phase-a",
+        title: "VOLUME_DROP on Core Firewall",
+        title_code: "alert.anomaly.title",
+        title_params: { anomaly_type: "VOLUME_DROP", log_source: "Core Firewall" },
+      }),
+      alert({
+        id: "waf",
+        title: "WAF_REQUEST_RATE_SPIKE on edge-waf: POST /login/{id}",
+        title_code: "alert.waf.title",
+        title_params: {
+          detector: "WAF_REQUEST_RATE_SPIKE",
+          log_source: "edge-waf",
+          method: "POST",
+          endpoint: "/login/{id}",
+        },
+      }),
+      alert({
+        id: "ips",
+        title: "IPS_PORT_RATE_SPIKE on ips-412: destination port 3389/tcp",
+        title_code: "alert.ips.title.destination_port",
+        title_params: { detector: "IPS_PORT_RATE_SPIKE", log_source: "ips-412", entity: "3389/tcp" },
+      }),
+      alert({
+        id: "pw",
+        title: "PW_VALUE_SPIKE on Admin logins: alice | 10.0.0.1",
+        title_code: "alert.pw.title",
+        title_params: { detector: "PW_VALUE_SPIKE", watch: "Admin logins", value: "alice | 10.0.0.1" },
+      }),
+    ]));
+    await renderPage();
+    expect(screen.getByRole("link", { name: "Core Firewall üzerinde hacim düşüşü" })).toBeInTheDocument();
+    expect(screen.getByRole("link", {
+      name: "edge-waf üzerinde istek hızı artışı: POST /login/{id}",
+    })).toBeInTheDocument();
+    expect(screen.getByRole("link", {
+      name: "ips-412 üzerinde hedef port hızı artışı: hedef port 3389/tcp",
+    })).toBeInTheDocument();
+    expect(screen.getByRole("link", {
+      name: "Admin logins üzerinde değer ani artışı: alice | 10.0.0.1",
+    })).toBeInTheDocument();
+  });
+
+  it("keeps each engine's English title exactly as stored", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert({
+      title: "WAF_REQUEST_RATE_SPIKE on edge-waf: POST /login/{id}",
+      title_code: "alert.waf.title",
+      title_params: {
+        detector: "WAF_REQUEST_RATE_SPIKE",
+        log_source: "edge-waf",
+        method: "POST",
+        endpoint: "/login/{id}",
+      },
+    })]));
+    await renderPage();
+    expect(screen.getByRole("link", {
+      name: "WAF_REQUEST_RATE_SPIKE on edge-waf: POST /login/{id}",
+    })).toBeInTheDocument();
+  });
+
   it("keeps coded English titles byte for byte", async () => {
     vi.spyOn(api, "alerts").mockResolvedValue(page([alert({
       title: "Stored English exactly",

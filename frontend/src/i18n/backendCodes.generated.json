@@ -1,4 +1,25 @@
 {
+  "alert.anomaly.title": {
+    "params": {
+      "anomaly_type": {
+        "enum_group": "anomalyType",
+        "kind": "enum"
+      },
+      "log_source": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "anomaly_type": "NO_EVENTS",
+      "log_source": "Edge firewall"
+    },
+    "sample_english": "NO_EVENTS on Edge firewall",
+    "sample_english_params": {
+      "anomaly_type": "NO_EVENTS",
+      "log_source": "Edge firewall"
+    },
+    "template": "{anomaly_type} on {log_source}"
+  },
   "alert.custom_rule.deleted": {
     "params": {},
     "sample": {},
@@ -287,6 +308,105 @@
     },
     "template": "New log source: {name}"
   },
+  "alert.ips.title.destination_ip": {
+    "params": {
+      "detector": {
+        "enum_group": "anomalyType",
+        "kind": "enum"
+      },
+      "entity": {
+        "kind": "text"
+      },
+      "log_source": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "detector": "IPS_PORT_RATE_SPIKE",
+      "entity": "443",
+      "log_source": "Edge firewall"
+    },
+    "sample_english": "IPS_PORT_RATE_SPIKE on Edge firewall: destination IP 443",
+    "sample_english_params": {
+      "detector": "IPS_PORT_RATE_SPIKE",
+      "entity": "443",
+      "log_source": "Edge firewall"
+    },
+    "template": "{detector} on {log_source}: destination IP {entity}"
+  },
+  "alert.ips.title.destination_port": {
+    "params": {
+      "detector": {
+        "enum_group": "anomalyType",
+        "kind": "enum"
+      },
+      "entity": {
+        "kind": "text"
+      },
+      "log_source": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "detector": "IPS_PORT_RATE_SPIKE",
+      "entity": "443",
+      "log_source": "Edge firewall"
+    },
+    "sample_english": "IPS_PORT_RATE_SPIKE on Edge firewall: destination port 443",
+    "sample_english_params": {
+      "detector": "IPS_PORT_RATE_SPIKE",
+      "entity": "443",
+      "log_source": "Edge firewall"
+    },
+    "template": "{detector} on {log_source}: destination port {entity}"
+  },
+  "alert.ips.title.signature": {
+    "params": {
+      "detector": {
+        "enum_group": "anomalyType",
+        "kind": "enum"
+      },
+      "entity": {
+        "kind": "text"
+      },
+      "log_source": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "detector": "IPS_PORT_RATE_SPIKE",
+      "entity": "443",
+      "log_source": "Edge firewall"
+    },
+    "sample_english": "IPS_PORT_RATE_SPIKE on Edge firewall: signature 443",
+    "sample_english_params": {
+      "detector": "IPS_PORT_RATE_SPIKE",
+      "entity": "443",
+      "log_source": "Edge firewall"
+    },
+    "template": "{detector} on {log_source}: signature {entity}"
+  },
+  "alert.ips.title.source": {
+    "params": {
+      "detector": {
+        "enum_group": "anomalyType",
+        "kind": "enum"
+      },
+      "log_source": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "detector": "IPS_SIGNATURE_BURST",
+      "log_source": "Edge firewall"
+    },
+    "sample_english": "IPS_SIGNATURE_BURST on Edge firewall",
+    "sample_english_params": {
+      "detector": "IPS_SIGNATURE_BURST",
+      "log_source": "Edge firewall"
+    },
+    "template": "{detector} on {log_source}"
+  },
   "alert.offense_collection.recovered": {
     "params": {},
     "sample": {},
@@ -315,6 +435,32 @@
       "instance": "Lab console"
     },
     "template": "Offense collection is stale for {instance}"
+  },
+  "alert.pw.title": {
+    "params": {
+      "detector": {
+        "enum_group": "propertyWatchAnomalyType",
+        "kind": "enum"
+      },
+      "value": {
+        "kind": "text"
+      },
+      "watch": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "detector": "PW_NEW_VALUE",
+      "value": "alice | 10.0.0.1",
+      "watch": "Admin logins"
+    },
+    "sample_english": "PW_NEW_VALUE on Admin logins: alice | 10.0.0.1",
+    "sample_english_params": {
+      "detector": "PW_NEW_VALUE",
+      "value": "alice | 10.0.0.1",
+      "watch": "Admin logins"
+    },
+    "template": "{detector} on {watch}: {value}"
   },
   "alert.search.failure.description": {
     "params": {
@@ -451,6 +597,37 @@
       "name": "Failed sign-ins"
     },
     "template": "{name} crossed its threshold"
+  },
+  "alert.waf.title": {
+    "params": {
+      "detector": {
+        "enum_group": "anomalyType",
+        "kind": "enum"
+      },
+      "endpoint": {
+        "kind": "text"
+      },
+      "log_source": {
+        "kind": "text"
+      },
+      "method": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "detector": "WAF_REQUEST_RATE_SPIKE",
+      "endpoint": "/api/login",
+      "log_source": "Edge firewall",
+      "method": "GET"
+    },
+    "sample_english": "WAF_REQUEST_RATE_SPIKE on Edge firewall: GET /api/login",
+    "sample_english_params": {
+      "detector": "WAF_REQUEST_RATE_SPIKE",
+      "endpoint": "/api/login",
+      "log_source": "Edge firewall",
+      "method": "GET"
+    },
+    "template": "{detector} on {log_source}: {method} {endpoint}"
   },
   "anomaly.detector.basis_mad_outside": {
     "params": {

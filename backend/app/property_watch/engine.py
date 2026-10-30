@@ -148,7 +148,7 @@ class _AlertResolve:
     watch_id: uuid.UUID
     value_key: str
     detector: str
-    reason: str
+    reason: MessageRef
 
 
 type _AlertAction = _AlertOpenOrUpdate | _AlertResolve
@@ -568,7 +568,7 @@ class PwAnomalyEngine:
                         state.watch_id,
                         str(incident.row["value_key"]),
                         state.detector.value,
-                        render(reason),
+                        reason,
                     )
                 )
         if (
@@ -1097,7 +1097,7 @@ class PwAnomalyEngine:
             if self._alerting:
                 writes.alerts.append(
                     _AlertResolve(
-                        watch.id, value.value_key, evidence.anomaly_type.value, REASON_RECOVERED
+                        watch.id, value.value_key, evidence.anomaly_type.value, MESSAGE_RECOVERED
                     )
                 )
         elif target is AnomalyState.NORMAL:
@@ -1153,7 +1153,7 @@ class PwAnomalyEngine:
                         instance.id, item.watch_id, item.detector, item.value_key
                     ),
                     actor=ALERT_ACTOR,
-                    reason=item.reason,
+                    reason_message=item.reason,
                 )
                 for item in resolves
             ]
@@ -1250,15 +1250,21 @@ class PwAnomalyEngine:
         ):
             if value is not None:
                 context[key] = value
+        title_message = MessageRef(
+            "alert.pw.title",
+            {"detector": action.detector, "watch": watch.name, "value": shown},
+        )
         return AlertInput(
             fingerprint=pw_anomaly_fingerprint(
                 instance.id, watch.id, action.detector, action.value_key
             ),
-            title=f"{action.detector} on {watch.name}: {shown}",
+            title=render(title_message),
+            title_message=title_message,
             severity=severity,
             source_type="pw_value",
             source_id=action.pw_value_id,
             description=evidence.reason,
+            description_message=evidence.reason_message,
             evidence=evidence.to_dict(),
             source_anomaly_ids=[str(action.incident_id)],
             context=context,
