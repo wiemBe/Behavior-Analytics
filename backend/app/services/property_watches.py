@@ -41,6 +41,7 @@ from app.alerts.dispatcher import AlertEnqueuer
 from app.alerts.service import AlertResolution, AlertService
 from app.core.config import Settings
 from app.history.planner import Gap
+from app.history.progress_codec import decode_progress
 from app.i18n.messages import MessageRef, render
 from app.i18n.refusal import CodedHTTPException
 from app.models.alert import Alert
@@ -104,7 +105,7 @@ from app.property_watch.scope import ResolvedScope, resolve_scope
 from app.providers.base import QRadarProvider
 from app.providers.dto import PwSearchKind
 from app.repositories.property_watch import PropertyWatchRepository
-from app.schemas.messages import stored_message_parts
+from app.schemas.messages import stored_message, stored_message_parts
 from app.schemas.property_watch import (
     BaselineState,
     CoverageOut,
@@ -1132,7 +1133,16 @@ def watch_history(
         searches = progress.searches
         buckets_read = progress.buckets_read
         gaps = [_gap_out(g) for g in progress.gaps]
-    reason_code, reason_params = wire_parts(message)
+    if message is not None:
+        reason_code, reason_params = wire_parts(message)
+    elif stored is not None:
+        stored_reason = stored_message(
+            decode_progress(watch.history_progress).adapter.get("reason_i18n")
+        )
+        reason_code = None if stored_reason is None else stored_reason.code
+        reason_params = None if stored_reason is None else stored_reason.params
+    else:
+        reason_code, reason_params = None, None
     return WatchHistoryOut(
         state=state.value,
         days_requested=watch.history_days,

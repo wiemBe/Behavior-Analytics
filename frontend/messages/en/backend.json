@@ -326,6 +326,9 @@
       "meantime": "a decision was recorded in the meantime; it is shown here",
       "never_reversed": "a Yes is never reversed; stop the reading instead"
     },
+    "deferred": {
+      "no_permit": "deferred: no Ariel permit within {waited_seconds} s"
+    },
     "estimate": {
       "all_fit": "all {sources} per-source {days}-day windows fit; the console total is an estimated {hours} hours",
       "all_refused": "all {sources} sources are unavailable: even {days} days exceed the {limit}-hour per-source limit",

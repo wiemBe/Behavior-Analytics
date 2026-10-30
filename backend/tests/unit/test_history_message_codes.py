@@ -101,6 +101,10 @@ RETENTION_22 = ref(
 GAP = ref("history.gap.search_failed", failures=3)
 
 GOLDEN: list[tuple[MessageRef, str]] = [
+    (
+        ref("history.deferred.no_permit", waited_seconds=30.0),
+        "deferred: no Ariel permit within 30 s",
+    ),
     (ref("history.scan.end"), "the scan reached the end of the window"),
     (ref("history.scan.search"), "scan for the first event of the scope"),
     (ref("history.scan.no_result"), "no scan result was provided"),

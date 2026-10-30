@@ -116,6 +116,7 @@ from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.ariel_permit import (
     ArielPermitUnavailable,
     ariel_background_priority,
+    ariel_history_deferred_message,
     ariel_history_deferred_reason,
 )
 from app.services.locks import CollectorAdvisoryLock
@@ -340,6 +341,7 @@ class CatchallCollector:
                     report.history_senders_written,
                 ) = report_before_history
                 if scope is not None and scope.state == HistoryState.READING.value:
+                    reason_message = ariel_history_deferred_message(exc)
                     await HistoryBackfillRepository(self.session).write_scopes(
                         [
                             deferred_scope_row(
@@ -348,6 +350,7 @@ class CatchallCollector:
                                 family=HistoryFamily.CATCHALL,
                                 scope_key=SCOPE_KEY,
                                 reason=ariel_history_deferred_reason(exc),
+                                reason_message=reason_message,
                             )
                         ]
                     )

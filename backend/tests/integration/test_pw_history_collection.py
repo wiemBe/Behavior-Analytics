@@ -19,6 +19,7 @@ from app.collectors.pw_collector import PwCollector, _bucket_row, _stamp, not_co
 from app.core.config import Settings
 from app.history.origin import HistoryOrigin
 from app.history.planner import ScopeProgress
+from app.history.progress_codec import decode_progress
 from app.models.enums import (
     PwBucketOrigin,
     PwHistoryState,
@@ -38,6 +39,7 @@ from app.providers.mock import MockPwSearch, MockQRadarProvider
 from app.repositories.property_watch import PropertyWatchRepository
 from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.locks import collector_lock_key
+from app.services.property_watches import watch_history
 from app.services.pw_pipeline import COLLECTOR_NAME, PwInstancePipeline
 from tests.integration.factories import make_instance
 from tests.integration.test_pw_collection import (
@@ -987,9 +989,21 @@ async def test_capacity_refusal_yields_without_halving_or_advancing(db_session) 
     assert state_of(watch) is PwHistoryState.READING
     assert progress == seeded and watch.history_through is None
     assert reason == "deferred: no Ariel permit within 7 s"
+    assert decode_progress(watch.history_progress).adapter["reason_i18n"] == {
+        "code": "history.deferred.no_permit",
+        "params": {"waited_seconds": 7},
+    }
+    history_out = watch_history(watch, hcfg())
+    assert history_out.reason_code == "history.deferred.no_permit"
+    assert history_out.reason_params == {"waited_seconds": 7}
     assert report.watches[0].searches_sent == 0
     assert await history_rows(db_session, watch) == []
     assert _ARIEL_PRIORITY.get() == "live"
+
+    provider.pw_fault = None
+    await tick(db_session, instance, provider, now=NOW + STEP)
+    await reload(db_session, watch)
+    assert "reason_i18n" not in decode_progress(watch.history_progress).adapter
 
 
 async def test_row_3_a_chunk_cut_short_by_the_budget_keeps_nothing_and_halves_the_width(

@@ -390,6 +390,9 @@
       "meantime": "bu arada bir karar kaydedildi; burada gösteriliyor",
       "never_reversed": "Evet yanıtı hiçbir zaman geri alınmaz; bunun yerine okumayı durdurun"
     },
+    "deferred": {
+      "no_permit": "Ariel izni {waited_seconds} sn içinde alınamadı; okuma ertelendi"
+    },
     "estimate": {
       "all_fit": "kaynak başına {days} günlük {sources} pencerenin tümü sığıyor; console toplamı tahminen {hours} saat",
       "all_refused": "{sources} kaynağın tümü kullanılamıyor: {days} gün bile kaynak başına {limit} saatlik sınırı aşıyor",

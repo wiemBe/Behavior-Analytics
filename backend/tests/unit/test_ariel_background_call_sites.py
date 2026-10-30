@@ -13,10 +13,13 @@ import pytest
 from app.cli import waf as waf_cli
 from app.history.lifecycle import deferred_scope_row
 from app.history.state import HistoryFamily, HistoryState
+from app.i18n.messages import render
 from app.providers.dto import WafRejectionObservation
 from app.services.ariel_permit import (
     _ARIEL_PRIORITY,
+    ARIEL_HISTORY_DEFERRED_REASON,
     ArielPermitUnavailable,
+    ariel_history_deferred_message,
     ariel_history_deferred_reason,
 )
 
@@ -130,13 +133,21 @@ def test_each_background_call_site_sets_priority_only_for_its_call(
     assert _ARIEL_PRIORITY.get() == "live"
 
 
-def test_history_deferral_reason_has_one_exact_bounded_wait_wording() -> None:
-    refusal = ArielPermitUnavailable(30, 3, 6)
+@pytest.mark.parametrize("waited_seconds", [30, 30.0, 0.5, 12.25, 1e-05, 1_000_000.0])
+def test_history_deferral_reason_keeps_the_old_general_number_format(
+    waited_seconds: float,
+) -> None:
+    refusal = ArielPermitUnavailable(waited_seconds, 3, 6)
+    message = ariel_history_deferred_message(refusal)
+    legacy = ARIEL_HISTORY_DEFERRED_REASON.format(waited_seconds=waited_seconds)
 
-    assert ariel_history_deferred_reason(refusal) == "deferred: no Ariel permit within 30 s"
+    assert message.code == "history.deferred.no_permit"
+    assert message.params == {"waited_seconds": waited_seconds}
+    assert render(message) == legacy
+    assert ariel_history_deferred_reason(refusal) == legacy
 
 
-def test_deferred_scope_changes_only_reason_and_keeps_the_previous_error_marker() -> None:
+def test_deferred_scope_stores_the_ref_and_free_text_clears_it() -> None:
     instance_id = uuid.uuid4()
     through = datetime(2026, 10, 20, 10, 0, tzinfo=UTC)
     errored_at = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
@@ -151,6 +162,7 @@ def test_deferred_scope_changes_only_reason_and_keeps_the_previous_error_marker(
         started_at=through,
         finished_at=None,
         reason="reading",
+        reason_i18n={"code": "history.step.read", "params": {}},
         last_error_class="ProviderError",
         last_error_at=errored_at,
         progress={"through": through.isoformat()},
@@ -162,6 +174,7 @@ def test_deferred_scope_changes_only_reason_and_keeps_the_previous_error_marker(
         family=HistoryFamily.PHASE_A,
         scope_key="",
         reason="deferred: no Ariel permit within 30 s",
+        reason_message=ariel_history_deferred_message(ArielPermitUnavailable(30, 3, 6)),
     )
 
     assert row["state"] == HistoryState.READING.value
@@ -170,6 +183,20 @@ def test_deferred_scope_changes_only_reason_and_keeps_the_previous_error_marker(
     assert row["last_error_class"] == "ProviderError"
     assert row["last_error_at"] == errored_at
     assert row["reason"] == "deferred: no Ariel permit within 30 s"
+    assert row["reason_i18n"] == {
+        "code": "history.deferred.no_permit",
+        "params": {"waited_seconds": 30},
+    }
+
+    free_text = deferred_scope_row(
+        SimpleNamespace(**row),
+        instance_id=instance_id,
+        family=HistoryFamily.PHASE_A,
+        scope_key="",
+        reason="provider supplied free text",
+    )
+    assert free_text["reason"] == "provider supplied free text"
+    assert free_text["reason_i18n"] is None
 
 
 @pytest.mark.asyncio

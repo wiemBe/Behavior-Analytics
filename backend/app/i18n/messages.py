@@ -4307,6 +4307,14 @@ REGISTRY: tuple[MessageSpec, ...] = (
         {"reasons": [MessageRef("search.aql.empty", {})]},
     ),
     # --- end MSG-8b ---
+    # --- MSG-8c: a history step yielded while waiting for an Ariel permit -------------------
+    _msg(
+        "history.deferred.no_permit",
+        "deferred: no Ariel permit within {waited_seconds} s",
+        {"waited_seconds": ParamSpec(ParamKind.NUMBER)},
+        {"waited_seconds": 30.0},
+    ),
+    # --- end MSG-8c -------------------------------------------------------------------------
     # --- MSG-8a: history backfill sentences (Family 7) -- keep contiguous -------------------
     # The scan and step plans of the shared planner. Counts print without grouping, as the
     # f-strings they replace did; the floor-found times are `isoformat()`, as they always were.

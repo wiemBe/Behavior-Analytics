@@ -99,10 +99,19 @@ class ArielPermitUnavailable(ProviderUnavailableError):
         super().__init__(render(self.ref))
 
 
+def ariel_history_deferred_message(exc: ArielPermitUnavailable) -> MessageRef:
+    """The reference used beside every yielding history step's stored reason."""
+
+    return MessageRef(
+        "history.deferred.no_permit",
+        {"waited_seconds": exc.waited_seconds},
+    )
+
+
 def ariel_history_deferred_reason(exc: ArielPermitUnavailable) -> str:
     """The single operator-facing reason used by every yielding history step."""
 
-    return ARIEL_HISTORY_DEFERRED_REASON.format(waited_seconds=exc.waited_seconds)
+    return render(ariel_history_deferred_message(exc))
 
 
 @contextmanager

@@ -326,6 +326,24 @@ describe("the history views in Turkish", () => {
     expect(screen.getAllByText("Neden").length).toBeGreaterThan(0);
   });
 
+  it("renders a yielded scope as deferred and groups its wait in Turkish", () => {
+    const c = table([
+      scope({
+        reason: "deferred: no Ariel permit within 1204 s",
+        reason_code: "history.deferred.no_permit",
+        reason_params: { waited_seconds: 1204 },
+      }),
+    ]);
+    render(<HistoryTable console={c} now={NOW} />);
+    const expected = `Ariel izni 1.204${NB}sn içinde alınamadı; okuma ertelendi`;
+    expect(
+      screen.getByText(
+        (_content, element) => element?.tagName === "DD" && element.textContent === expected,
+      ),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("no Ariel permit");
+  });
+
   it("keeps the English table verbatim in English", () => {
     setTestLocale("en");
     const c = table([

@@ -125,6 +125,7 @@ from app.rules.matches import (
 from app.services.ariel_permit import (
     ArielPermitUnavailable,
     ariel_background_priority,
+    ariel_history_deferred_message,
     ariel_history_deferred_reason,
 )
 from app.services.locks import CollectorAdvisoryLock
@@ -343,6 +344,7 @@ class RuleMatchCollector:
                     report.history_windows_written,
                     report.history_rows_written,
                 ) = report_before_history
+                reason_message = ariel_history_deferred_message(exc)
                 reason = ariel_history_deferred_reason(exc)
                 report.history_state = HistoryState.READING.value
                 report.history_reason = reason
@@ -363,6 +365,7 @@ class RuleMatchCollector:
                                 family=HistoryFamily.RULE_MATCH,
                                 scope_key=RULE_MATCH_SCOPE_KEY,
                                 reason=reason,
+                                reason_message=reason_message,
                             )
                         ]
                     )
