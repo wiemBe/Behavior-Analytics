@@ -22,6 +22,7 @@ import { TableScroll } from "@/components/ui/TableScroll";
 import {
   ApiError,
   api,
+  rateLimitedText,
   sevTone,
   type CustomRule,
   type CustomRuleBreach,
@@ -64,6 +65,7 @@ async function CustomRuleDetailPage({ params }: { params: Promise<{ id: string }
   let preview: CustomRulePreview | null = null;
   let breaches: CustomRuleBreach[] = [];
   let access: CustomRuleAccess = "unknown";
+  let limited: string | null = null;
   let forbidden = false;
   let failed = false;
   try {
@@ -75,10 +77,25 @@ async function CustomRuleDetailPage({ params }: { params: Promise<{ id: string }
       api.caller().then(customRuleAccessFrom).catch(() => "unknown" as const),
     ]);
   } catch (error) {
-    forbidden = error instanceof ApiError && error.status === 403;
-    failed = !forbidden;
+    if (error instanceof ApiError && error.status === 429) {
+      limited = rateLimitedText(error, say);
+    } else {
+      forbidden = error instanceof ApiError && error.status === 403;
+      failed = !forbidden;
+    }
   }
 
+  if (limited !== null) {
+    return (
+      <>
+        <PageHeader guide={guideFor("/custom-rules/[id]")} title={t("title")} />
+        <div className="notice" role="alert">
+          <p><strong>{t("failedTitle", { id })}</strong></p>
+          <p>{limited}</p>
+        </div>
+      </>
+    );
+  }
   if (forbidden) {
     return (
       <>

@@ -29,7 +29,7 @@ import {
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { ApiError, api, type PropertyWatch, type PropertyWatchCatalog } from "@/lib/api";
+import { ApiError, api, rateLimitedText, type PropertyWatch, type PropertyWatchCatalog } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { formatCount } from "@/lib/format";
@@ -47,6 +47,7 @@ async function PropertyWatchesPage() {
   const i18n = await getBehaviorI18n();
   let watches: PropertyWatch[] = [];
   let catalog: PropertyWatchCatalog | null = null;
+  let limited: string | null = null;
   let forbidden = false;
   let failed = false;
   let access: PropertyWatchAccess = "unknown";
@@ -54,10 +55,14 @@ async function PropertyWatchesPage() {
   try {
     watches = await api.propertyWatches();
   } catch (error) {
-    forbidden = error instanceof ApiError && error.status === 403;
-    failed = !forbidden;
+    if (error instanceof ApiError && error.status === 429) {
+      limited = rateLimitedText(error, i18n.t);
+    } else {
+      forbidden = error instanceof ApiError && error.status === 403;
+      failed = !forbidden;
+    }
   }
-  if (!failed && !forbidden) {
+  if (limited === null && !failed && !forbidden) {
     // The switches only qualify the list: their failure must not blank it, and it is said.
     catalog = await api.propertyWatchCatalog().catch(() => null);
     const caller = await api.caller().catch(() => null);
@@ -79,7 +84,14 @@ async function PropertyWatchesPage() {
         }
       />
 
-      {forbidden ? (
+      {limited !== null ? (
+        <div className="notice" role="alert">
+          <p>
+            <strong>{t("list.failedTitle")}</strong>
+          </p>
+          <p>{limited}</p>
+        </div>
+      ) : forbidden ? (
         <div className="notice" role="alert">
           <p>
             <strong>{t("list.forbiddenTitle")}</strong>
