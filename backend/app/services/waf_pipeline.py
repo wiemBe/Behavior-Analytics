@@ -94,6 +94,7 @@ from app.providers.base import ProviderError, QRadarProvider
 from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.ariel_permit import (
     ArielPermitUnavailable,
+    ariel_history_deferred_message,
     ariel_history_deferred_reason,
 )
 from app.services.locks import CollectorAdvisoryLock
@@ -589,6 +590,7 @@ class WafSourcePipeline:
                 cadence_seconds=cadence.cadence_seconds,
             )
         except ArielPermitUnavailable as exc:
+            reason_message = ariel_history_deferred_message(exc)
             reason = ariel_history_deferred_reason(exc)
             await HistoryBackfillRepository(self.session).write_scopes(
                 [
@@ -598,6 +600,7 @@ class WafSourcePipeline:
                         family=HistoryFamily.WAF,
                         scope_key=scope.scope_key,
                         reason=reason,
+                        reason_message=reason_message,
                     )
                 ]
             )
@@ -740,6 +743,7 @@ class WafSourcePipeline:
                 cadence_seconds=cadence.cadence_seconds,
             )
         except ArielPermitUnavailable as exc:
+            reason_message = ariel_history_deferred_message(exc)
             reason = ariel_history_deferred_reason(exc)
             await HistoryBackfillRepository(self.session).write_scopes(
                 [
@@ -749,6 +753,7 @@ class WafSourcePipeline:
                         family=HistoryFamily.WAF,
                         scope_key=scope.scope_key,
                         reason=reason,
+                        reason_message=reason_message,
                     )
                 ]
             )

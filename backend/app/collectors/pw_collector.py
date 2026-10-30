@@ -116,6 +116,7 @@ from app.repositories.property_watch import PropertyWatchRepository
 from app.services.ariel_permit import (
     ArielPermitUnavailable,
     ariel_background_priority,
+    ariel_history_deferred_message,
     ariel_history_deferred_reason,
 )
 from app.services.search_cadence import SearchCadenceService
@@ -302,13 +303,22 @@ def _stored_version(watch: PropertyWatch) -> int | None:
 
 
 def _stamp(
-    columns: dict[str, Any], progress: ScopeProgress | None, *, reason: str, version: int
+    columns: dict[str, Any],
+    progress: ScopeProgress | None,
+    *,
+    reason: str,
+    version: int,
+    reason_message: MessageRef | None = None,
 ) -> dict[str, Any]:
     """The progress JSON of `columns` with the watch version it was read for: the version
     restart (§H.5.4) compares it with the watch's, and only the collector writes it."""
     if progress is not None:
+        adapter: dict[str, object] = {"reason": reason, "watch_version": version}
+        if reason_message is not None:
+            adapter["reason_i18n"] = reason_message.to_wire()
         columns["history_progress"] = encode_progress(
-            progress, adapter={"reason": reason, "watch_version": version}
+            progress,
+            adapter=adapter,
         )
     return columns
 
@@ -944,6 +954,7 @@ class PwCollector:
             outcome: str,
             staged: _Staged | None = None,
             written: int = 0,
+            reason_message: MessageRef | None = None,
         ) -> PwWatchReport:
             if trigger is not None:
                 state, _ = apply_trigger(PwHistoryState.READING, trigger)
@@ -955,14 +966,26 @@ class PwCollector:
                     now=now,
                     settings=planner,
                 )
-                _stamp(columns, progress, reason=reason, version=version)
+                _stamp(
+                    columns,
+                    progress,
+                    reason=reason,
+                    version=version,
+                    reason_message=reason_message,
+                )
                 if status_row["last_status"] in _COLLECTION_STATUSES:
                     status_row["last_status"] = None
                     _set_reason(status_row, None)
             else:
                 assert progress is not None
                 columns = history_columns(progress, state=PwHistoryState.READING, reason=reason)
-                _stamp(columns, progress, reason=reason, version=version)
+                _stamp(
+                    columns,
+                    progress,
+                    reason=reason,
+                    version=version,
+                    reason_message=reason_message,
+                )
                 status_row["last_status"] = PwWatchStatus.READING_HISTORY.value
                 _set_reason(status_row, _days_message(progress, boundary, planner))
             status_row.update(columns)
@@ -1276,11 +1299,13 @@ class PwCollector:
                     written = len(grouped_out)
                 break
         except ArielPermitUnavailable as exc:
+            reason_message = ariel_history_deferred_message(exc)
             return finish(
                 entry.progress or progress,
                 None,
                 ariel_history_deferred_reason(exc),
                 outcome="waiting",
+                reason_message=reason_message,
             )
         except ValueError as exc:
             # A corrupt stored watch: the class only, never the text (it may hold a value).

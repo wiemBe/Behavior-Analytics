@@ -2813,6 +2813,21 @@
     "sample_english_params": {},
     "template": "a Yes is never reversed; stop the reading instead"
   },
+  "history.deferred.no_permit": {
+    "params": {
+      "waited_seconds": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "waited_seconds": 30.0
+    },
+    "sample_english": "deferred: no Ariel permit within 30 s",
+    "sample_english_params": {
+      "waited_seconds": "30"
+    },
+    "template": "deferred: no Ariel permit within {waited_seconds} s"
+  },
   "history.estimate.all_fit": {
     "params": {
       "days": {

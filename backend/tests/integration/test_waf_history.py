@@ -1951,7 +1951,10 @@ async def test_a_capacity_refusal_defers_volume_without_changing_scope_progress(
     assert yielded.last_error_class == "EarlierProviderError"
     assert yielded.last_error_at == T0
     assert yielded.reason == "deferred: no Ariel permit within 7 s"
-    assert yielded.reason_i18n is None
+    assert yielded.reason_i18n == {
+        "code": "history.deferred.no_permit",
+        "params": {"waited_seconds": 7},
+    }
     assert await db_session.scalar(select(WafSourceBucket)) is None
     assert _ARIEL_PRIORITY.get() == "live"
 
@@ -2027,7 +2030,10 @@ async def test_a_capacity_refusal_defers_breakdown_without_changing_scope_progre
     assert yielded.last_error_class == "EarlierProviderError"
     assert yielded.last_error_at == T0
     assert yielded.reason == "deferred: no Ariel permit within 7 s"
-    assert yielded.reason_i18n is None
+    assert yielded.reason_i18n == {
+        "code": "history.deferred.no_permit",
+        "params": {"waited_seconds": 7},
+    }
     assert _ARIEL_PRIORITY.get() == "live"
 
 

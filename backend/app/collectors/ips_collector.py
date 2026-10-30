@@ -118,6 +118,7 @@ from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.ariel_permit import (
     ArielPermitUnavailable,
     ariel_background_priority,
+    ariel_history_deferred_message,
     ariel_history_deferred_reason,
 )
 from app.services.ips_pipeline import ips_pipeline_lock_key
@@ -685,6 +686,7 @@ class IpsCollector:
                     stored = await repository.scopes(
                         instance.id, HistoryFamily.IPS.value, scope_keys
                     )
+                    reason_message = ariel_history_deferred_message(exc)
                     reason = ariel_history_deferred_reason(exc)
                     deferred_rows = [
                         deferred_scope_row(
@@ -693,6 +695,7 @@ class IpsCollector:
                             family=HistoryFamily.IPS,
                             scope_key=scope_key,
                             reason=reason,
+                            reason_message=reason_message,
                         )
                         for scope_key in scope_keys
                         if (scope := stored.get(scope_key)) is not None

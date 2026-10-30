@@ -603,6 +603,7 @@ def deferred_scope_row(
     family: HistoryFamily,
     scope_key: str,
     reason: str,
+    reason_message: MessageRef | dict[str, object] | None = None,
 ) -> dict[str, Any]:
     """Keep a stored step exactly where it is while naming a capacity deferral.
 
@@ -619,9 +620,7 @@ def deferred_scope_row(
         family=family,
         scope_key=scope_key,
     )
-    values["reason"] = bounded_reason(reason)
-    # The deferral names a provider refusal in its own words, never a coded sentence.
-    values["reason_i18n"] = None
+    values["reason"], values["reason_i18n"] = coded_reason(reason, reason_message)
     values["last_error_class"] = stored.last_error_class
     values["last_error_at"] = stored.last_error_at
     return values

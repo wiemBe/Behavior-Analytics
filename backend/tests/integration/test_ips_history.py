@@ -1571,7 +1571,10 @@ class TestOperatorPath:
         assert yielded.last_error_class == "ProviderError"
         assert yielded.last_error_at == before_error_at
         assert yielded.reason == "deferred: no Ariel permit within 7 s"
-        assert yielded.reason_i18n is None
+        assert yielded.reason_i18n == {
+            "code": "history.deferred.no_permit",
+            "params": {"waited_seconds": 7},
+        }
         rows = (
             await db_session.scalars(
                 select(IpsSourceBucket).where(IpsSourceBucket.log_source_id == source.id)

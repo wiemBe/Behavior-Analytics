@@ -1017,7 +1017,10 @@ async def test_capacity_refusal_yields_without_halving_or_marking_the_scope(db_s
     assert yielded.last_error_class == "EarlierProviderError"
     assert yielded.last_error_at == FIRST_TICK
     assert yielded.reason == "deferred: no Ariel permit within 7 s"
-    assert yielded.reason_i18n is None
+    assert yielded.reason_i18n == {
+        "code": "history.deferred.no_permit",
+        "params": {"waited_seconds": 7},
+    }
     assert report.history is not None and report.history.searches == 0
     assert await history_rows(db_session, console.instance) == []
     assert _ARIEL_PRIORITY.get() == "live"

@@ -92,6 +92,7 @@ from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.ariel_permit import (
     ArielPermitUnavailable,
     ariel_background_priority,
+    ariel_history_deferred_message,
     ariel_history_deferred_reason,
 )
 from app.services.locks import CollectorAdvisoryLock
@@ -650,6 +651,7 @@ class MetricCollector:
                     cadence_seconds=cadence_seconds,
                 )
         except ArielPermitUnavailable as exc:
+            reason_message = ariel_history_deferred_message(exc)
             repository = HistoryBackfillRepository(self.session)
             stored = (
                 await repository.scopes(
@@ -665,6 +667,7 @@ class MetricCollector:
                             family=HISTORY_FAMILY,
                             scope_key=HISTORY_SCOPE_KEY,
                             reason=ariel_history_deferred_reason(exc),
+                            reason_message=reason_message,
                         )
                     ]
                 )

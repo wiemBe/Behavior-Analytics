@@ -657,7 +657,10 @@ class TestOperatorPaths:
         assert yielded.last_error_class == "EarlierProviderError"
         assert yielded.last_error_at == NOW
         assert yielded.reason == "deferred: no Ariel permit within 7 s"
-        assert yielded.reason_i18n is None
+        assert yielded.reason_i18n == {
+            "code": "history.deferred.no_permit",
+            "params": {"waited_seconds": 7},
+        }
         assert await history_windows(db_session, instance) == []
         assert _ARIEL_PRIORITY.get() == "live"
 
