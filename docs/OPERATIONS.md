@@ -817,9 +817,12 @@ Bir yedek, yedek kökünün içinde `qradar-dash-<utc>-<reason>/` adlı, izni `0
 |---|---|---|
 | `database.dump` | `POSTGRES_DB` için `pg_dump -Fc` | `0600` |
 | `env.bak` | `.env` kopyası | `0600` |
+| `install.answers` | Kurulum yanıtlarının `.secrets/install.answers` kopyası; yollar ve adlar taşır, asla sır değil. Yalnız canlı dosya normal bir dosya ve kipi `0600` ya da `0400` iken kopyalanır ve kopya o kipi korur; eksik dosya, symlink ya da başka kip kopyalanmaz ve dosya okunmaz | `0600` ya da `0400` |
 | `secrets.tar` | QRadar sırları volume'unun ve vekil sertifika volume'unun tar'ı | `0600` |
 | `state.json` | varsa o andaki durum dosyası | `0600` |
 | `MANIFEST` | sürüm, imaj özetleri, `alembic_version`, veritabanı boyutu, ana makine adı, durum dosyası var mı, sır volume kümesi | `0600` |
+
+0.1.8 ve öncesiyle alınmış bir yedekte `install.answers` satırı yoktur.
 
 `reason` değeri `manual`, `scheduled` ya da `pre-upgrade` olur.
 
@@ -924,7 +927,7 @@ gereklidir (`--non-interactive rollback requires --yes`).
    gösterir.
 5. `outcome=rolled_back` kaydeder ve `previous_images` değerini temizler.
 
-Geri alma, yedekte `install.answers` varsa bu dosyayı kip `0600` ile `.env` yanındaki `.secrets/install.answers` yoluna geri koyar; dosya yedekte yoksa (0.1.8 ve öncesi) mevcut yanıtlardan hedef sürümün bilmediği anahtarları siler ve yalnız anahtar adlarını yazar.
+Geri alma, yedekte `install.answers` varsa bu dosyayı kopyadaki kiple (`0600` ya da `0400`) `.env` yanındaki `.secrets/install.answers` yoluna geri koyar; dosya yedekte yoksa (0.1.8 ve öncesi) mevcut yanıtlardan hedef sürümün bilmediği anahtarları siler (`0400` dosya da aynı yolla, kipi korunarak yeniden yazılır) ve yalnız anahtar adlarını yazar.
 
 Geri alma kendi sağlık kontrolünde başarısız olursa (OPS-R45): yazıcılar yeniden durdurulur, yedek
 yolu yazdırılır, durum `outcome=failed` olarak kaydedilir ve üçüncü bir yol denenmez.
@@ -971,7 +974,9 @@ alanı işlenir.
 
 Yedekte `install.answers` varsa (kip `0600` ya da `0400`), veritabanı değişimi başarılı olduktan
 sonra bu dosya aynı kiple `.secrets/install.answers` yoluna geri konur; bu bir yanıt dosyasıdır,
-sır değildir, ve kopyası olmayan bir yedek mevcut dosyaya dokunmaz.
+sır değildir, ve kopyası olmayan bir yedek mevcut dosyaya dokunmaz. Geri koyma başarısız olursa
+`restore` önceki dosyayı korur, elle çalıştırılacak `install -m <kip> <yedek>/install.answers
+.secrets/install.answers` komutunu içeren bir `[warn]` satırı yazar ve servisleri yine de başlatır.
 
 ---
 
@@ -1948,7 +1953,9 @@ geri getirir.
 adresi paylaşıyor. Varsayılan sınır dakikada 1200 istektir (`RATE_LIMIT_DEFAULT`). Sunucuda çizilen
 sayfalar frontend konteynerinden gelir. 0.1.9'dan beri frontend de güvenilen ikinci aracıdır
 (`FRONTEND_EDGE_IP`, varsayılan `172.28.10.11`): bu sayfalar, vekilin eklediği son istemci adresiyle,
-analistin kendi anahtarı altında sayılır. Liste frontend'in adresini içermiyorsa bu sayfalar yine tek bir
+analistin kendi anahtarı altında sayılır. Sınır anahtar başına **ve yol başına** sayılır: bir sayfa
+çizimi ~21 API çağrısı yapar ve her çağrı kendi yolunun kovasına bir kez yazılır; tek bir kovaya 21
+kez yazılmaz. Liste frontend'in adresini içermiyorsa bu sayfalar yine tek bir
 anahtarı paylaşır; `./qradar-dash doctor` bunu `forwarded_allow_ips` satırında uyarı olarak gösterir.
 
 **Doğrulama:** Farklı tarayıcılar için backend günlükleri tek bir istemci adresi gösterir ve
