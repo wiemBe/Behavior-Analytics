@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import case, func, select
@@ -20,6 +20,7 @@ from app.alerts.routing import default_policy
 from app.alerts.search_alerts import SearchAlertEvaluator
 from app.api.deps import ProviderDep, SessionDep, SettingsDep
 from app.core.config import Settings, get_settings
+from app.core.rate_limit import limiter
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import CodedHTTPException, permission_refusal
 from app.models.enums import ExecutionErrorType
@@ -85,6 +86,12 @@ def get_ariel_permit_factory() -> PermitFactory:
 
 
 PermitFactoryDep = Annotated[PermitFactory, Depends(get_ariel_permit_factory)]
+
+
+def _run_limit() -> str:
+    """The tighter limit of a search-spending route, read per request."""
+    return get_settings().rate_limit_search_execution
+
 
 _ENABLED_CAP_LOCK_KEY = 5_214_200_002
 
@@ -716,7 +723,10 @@ async def list_latest_groups(
 
 
 @router.post("/{search_id}/run", response_model=ExecutionOut)
+@limiter.limit(_run_limit)
 async def run_search(
+    request: Request,
+    response: Response,
     search_id: uuid.UUID,
     session: SessionDep,
     provider: ProviderDep,
@@ -725,7 +735,9 @@ async def run_search(
 ) -> ExecutionOut:
     """Manually execute a stored search. Requires search:execute.
 
-    Executes the *stored* query only — never AQL from the request body.
+    Executes the *stored* query only — never AQL from the request body. Each
+    run takes a scarce Ariel search slot, so the route carries the manual
+    search-execution limit.
     """
     _guard(principal, PERM_SEARCH_EXECUTE)
     svc = ScheduledSearchService(session)

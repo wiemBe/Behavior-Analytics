@@ -6,12 +6,14 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 
 from app.api.deps import SessionDep
+from app.core.rate_limit import limiter
 from app.core.version import migration_head
 
 router = APIRouter(prefix="/health", tags=["health"])
 
 
 @router.get("/live")
+@limiter.exempt
 async def live() -> dict[str, str]:
     """Process is up. No dependencies checked — used as the container liveness
     probe so a slow DB does not trigger a restart loop."""
@@ -19,8 +21,12 @@ async def live() -> dict[str, str]:
 
 
 @router.get("/ready")
+@limiter.exempt
 async def ready(session: SessionDep) -> dict[str, str]:
-    """Ready to serve traffic: database reachable and at the image's migration head."""
+    """Ready to serve traffic: database reachable and at the image's migration head.
+
+    Unlimited like ``/live``: Docker's healthcheck and the installer's
+    ``wait_ready`` poll this path with no credentials."""
     expected = migration_head()
     try:
         await session.execute(text("SELECT 1"))

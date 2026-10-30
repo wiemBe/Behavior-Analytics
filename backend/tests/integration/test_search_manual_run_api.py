@@ -8,6 +8,7 @@ test_search_scheduler.py); the provider counts the searches it is asked to creat
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,6 +18,7 @@ from sqlalchemy.pool import NullPool
 from app.api.routes.searches import get_ariel_permit_factory
 from app.core.config import get_settings
 from app.core.database import get_session
+from app.core.rate_limit import limiter
 from app.main import create_app
 from app.providers.factory import get_provider
 from app.providers.mock import MockQRadarProvider
@@ -35,6 +37,14 @@ pytestmark = [
 
 ADMIN = Principal(subject="admin", permissions=frozenset({"admin:*"}))
 AQL = "SELECT sourceip FROM events LAST 1 HOURS"
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limit() -> Iterator[None]:
+    """One limit window per test: the run route is rate limited since FIX-8."""
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 class _Provider(MockQRadarProvider):
@@ -119,3 +129,31 @@ def test_manual_run_with_a_granting_budget_completes(db_schema: str) -> None:
     assert response.json()["status"] == "COMPLETED"
     assert provider.creates == 1
     assert budget.acquired == 1 and budget.held == 0
+
+
+def test_manual_run_is_limited_at_the_search_execution_rate(
+    db_schema: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each run takes a scarce Ariel slot, so the route carries its own limit.
+
+    The default limit must not be what refuses the third call: the decorated
+    route keeps the manual search-execution limit alone (FIX-8).
+    """
+    monkeypatch.setattr(get_settings(), "rate_limit_search_execution", "2/minute")
+    monkeypatch.setattr(get_settings(), "rate_limit_default", "50/minute")
+    budget = CountingBudget()
+    provider = _Provider()
+    client = _client(db_schema, budget, provider)
+    search_id = _create(client)
+    url = f"/api/v1/searches/{search_id}/run"
+
+    assert client.post(url).status_code == 200
+    # Two manual runs inside one second share a run key, so the second may
+    # reuse the first execution's row instead of searching again.
+    assert client.post(url).status_code == 200
+    sent = provider.creates
+    third = client.post(url)
+
+    assert third.status_code == 429, third.text
+    assert "Retry-After" in third.headers
+    assert provider.creates == sent, "the refused run sent nothing to QRadar"
