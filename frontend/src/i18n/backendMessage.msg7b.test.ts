@@ -36,8 +36,8 @@ describe("MSG-7b a detector label inside a title is lower-first in Turkish", () 
       code: "alert.anomaly.title",
       params: { anomaly_type: "VOLUME_DROP", log_source: "x" },
     }, "en", EN)).toBe("VOLUME_DROP on x");
-    expect(title("alert.anomaly.title", { anomaly_type: "TIMESTAMP_DELAY", log_source: "x" }))
-      .toBe("x üzerinde TIMESTAMP_DELAY");
+    expect(title("alert.anomaly.title", { anomaly_type: "NOT_A_DETECTOR", log_source: "x" }))
+      .toBe("x üzerinde NOT_A_DETECTOR");
   });
 
   it("does not touch an enum param of another group", () => {

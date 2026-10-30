@@ -128,3 +128,75 @@
   line-height: var(--lh-base);
   overflow-wrap: anywhere;
 }
+
+/* At 1024 the error column sat past the table's scroll edge. Fixed shares keep
+   every column, including the error, inside the content width. 1200 is the
+   shell's existing breakpoint, so 1280 stays on the auto table. */
+@media (max-width: 1200px) {
+  .executions-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .executions-table th {
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
+  .executions-table td {
+    overflow-wrap: break-word;
+  }
+
+  .executions-table .run-error {
+    max-width: none;
+  }
+
+  /* Shares sum to 100. Version, duration and threshold are wide enough for
+     "Sürüm", "Duration" and "Threshold" on one line; a narrower share broke
+     those words. The error share still keeps the pill and its message inside
+     the scrollport. */
+  .executions-table th:nth-child(1),
+  .executions-table td:nth-child(1) {
+    width: 12%;
+  }
+
+  .executions-table th:nth-child(2),
+  .executions-table td:nth-child(2) {
+    width: 16%;
+  }
+
+  .executions-table th:nth-child(3),
+  .executions-table td:nth-child(3) {
+    width: 12%;
+  }
+
+  .executions-table th:nth-child(4),
+  .executions-table td:nth-child(4) {
+    width: 9%;
+  }
+
+  .executions-table th:nth-child(5),
+  .executions-table td:nth-child(5) {
+    width: 11%;
+  }
+
+  .executions-table th:nth-child(6),
+  .executions-table td:nth-child(6) {
+    width: 8%;
+  }
+
+  .executions-table th:nth-child(7),
+  .executions-table td:nth-child(7) {
+    width: 10%;
+  }
+
+  .executions-table th:nth-child(8),
+  .executions-table td:nth-child(8) {
+    width: 12%;
+  }
+
+  .executions-table th:nth-child(9),
+  .executions-table td:nth-child(9) {
+    width: 10%;
+  }
+}

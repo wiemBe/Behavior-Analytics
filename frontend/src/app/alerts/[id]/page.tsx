@@ -110,7 +110,7 @@ async function AlertDetailPage({
       <div className="card">
         <div className="k">{t("evidence")}</div>
         <div className="alert-evidence">
-          <Evidence data={alert.evidence_snapshot} />
+          <Evidence data={alert.evidence_snapshot} omitReason={description} />
         </div>
       </div>
 

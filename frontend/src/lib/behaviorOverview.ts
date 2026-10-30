@@ -11,6 +11,7 @@
 
 import type { TextTranslator } from "@/i18n/textTranslator";
 import type { AnomalyState, AnomalySummary, SourceBehavior } from "@/lib/api";
+import { detectorLabel } from "@/lib/behavior";
 import { ENGLISH_BEHAVIOR, type BehaviorI18n } from "@/lib/behaviorI18n";
 
 /**
@@ -145,7 +146,7 @@ function anomalyIssue(anomaly: AnomalySummary, i18n: BehaviorI18n): string {
   if (anomaly.evidence_status === "FAILED") return say("evidenceFailed");
   if (anomaly.anomaly_type === "VOLUME_DROP") return say("volumeBelow");
   if (anomaly.anomaly_type === "VOLUME_SPIKE") return say("volumeAbove");
-  return anomaly.anomaly_type;
+  return detectorLabel(anomaly.anomaly_type, i18n);
 }
 
 /**

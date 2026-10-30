@@ -655,12 +655,35 @@ describe("the first-run dialog's reader (the shell's lean catalog)", () => {
     expect(words).not.toBe("english");
   });
 
-  it("shows the API's text for what the shell cannot word", () => {
-    // `noun` is an enum of a catalog the shell does not carry: the whole sentence stays English.
+  it("words empty_sources in Turkish, including the noun", () => {
+    const tracked =
+      `Tahmin yok: bu console'da etkin bir IPS kaynağı yok; 1 kaynak henüz izlenen endpoint olmadan sığdırıldı; 72${NB}saatlik sınır okumayı yine de sınırlar`;
     expect(
       read("english text", {
         code: "history.estimate.empty_sources",
         params: { reason: { code: "history.estimate.no_ips", params: {} }, count: 1, noun: "tracked endpoint", limit: 72 },
+      }),
+    ).toBe(tracked);
+    expect(
+      read("english text", {
+        code: "history.estimate.empty_sources",
+        params: { reason: { code: "history.estimate.no_ips", params: {} }, count: 1, noun: "admitted entity", limit: 72 },
+      }),
+    ).toBe(tracked.replace("izlenen endpoint", "kabul edilmiş varlık"));
+  });
+
+  it("shows the API's text for what the shell cannot word", () => {
+    // An unknown noun aborts the whole sentence: a raw value must not sit inside the Turkish.
+    expect(
+      read("english text", {
+        code: "history.estimate.empty_sources",
+        params: { reason: { code: "history.estimate.no_ips", params: {} }, count: 1, noun: "NOT_A_NOUN", limit: 72 },
+      }),
+    ).toBe("english text");
+    expect(
+      read("english text", {
+        code: "history.estimate.empty_sources",
+        params: { reason: { code: "history.estimate.no_ips", params: {} }, count: 1, noun: "constructor", limit: 72 },
       }),
     ).toBe("english text");
     expect(read("uncoded text", null)).toBe("uncoded text");
@@ -668,19 +691,29 @@ describe("the first-run dialog's reader (the shell's lean catalog)", () => {
   });
 
   it("never mixes an unworded enum value into a Turkish sentence", () => {
-    // With every key present (the whole catalog), the sentence is still left in the API's English:
-    // its `noun` is an enum the lean reader does not word.
     const whole: BehaviorI18n = {
       t: asTextTranslator(createTranslator({ locale: "tr", messages: tr as never })),
       locale: "tr",
     };
+    const readWhole = shellSentenceReader(whole);
     expect(
-      shellSentenceReader(whole)("english text", {
+      readWhole("english text", {
         code: "history.estimate.empty_sources",
         params: {
           reason: { code: "history.estimate.no_ips", params: {} },
           count: 1,
           noun: "tracked endpoint",
+          limit: 72,
+        },
+      }),
+    ).toContain("izlenen endpoint");
+    expect(
+      readWhole("english text", {
+        code: "history.estimate.empty_sources",
+        params: {
+          reason: { code: "history.estimate.no_ips", params: {} },
+          count: 1,
+          noun: "NOT_A_NOUN",
           limit: 72,
         },
       }),
@@ -692,5 +725,11 @@ describe("the first-run dialog's reader (the shell's lean catalog)", () => {
     expect(english("the 28-day window fits", { code: "history.fit.fits", params: { days: 28, hours: 0.1 } })).toBe(
       "the 28-day window fits",
     );
+    expect(
+      english("english empty", {
+        code: "history.estimate.empty_sources",
+        params: { reason: { code: "history.estimate.no_ips", params: {} }, count: 1, noun: "tracked endpoint", limit: 72 },
+      }),
+    ).toBe("english empty");
   });
 });

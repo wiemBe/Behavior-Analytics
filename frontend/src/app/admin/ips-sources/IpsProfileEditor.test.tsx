@@ -601,7 +601,7 @@ describe("IpsProfileEditor: concurrent changes", () => {
     await chooseSignature(user, "PAN_ThreatID");
     await user.click(screen.getByRole("button", { name: "Review and save" }));
     await user.click(screen.getByRole("button", { name: "Save as version 3" }));
-    const alert = await screen.findByText(/profile version conflict; current version is 3/);
+    const alert = await screen.findByText(/profile version conflict; current version is 3\./);
     expect(alert).toHaveTextContent("Your edits are kept below; reload to see theirs.");
     expect(screen.getByRole("button", { name: "Reload their version" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /signature property/i })).toHaveValue("PAN_ThreatID");

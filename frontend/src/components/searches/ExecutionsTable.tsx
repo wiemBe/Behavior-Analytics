@@ -80,7 +80,7 @@ export function ExecutionsTable({ executions }: { executions: SearchExecution[] 
   return (
     <>
       <TableScroll label={t("label")}>
-        <table className="table-dense">
+        <table className="table-dense executions-table">
           <caption className="sr-only">{t("caption")}</caption>
           <thead>
             <tr>
@@ -100,7 +100,7 @@ export function ExecutionsTable({ executions }: { executions: SearchExecution[] 
               <tr key={e.id}>
                 <td className="nowrap">{axisTimeLabel(e.started_at)}</td>
                 <td>
-                  <span className={`pill ${execTone(e.status)}`}>
+                  <span className={`pill pill-wrap ${execTone(e.status)}`}>
                     {enumLabel(say, "executionStatus", e.status)}
                   </span>
                 </td>
@@ -115,7 +115,13 @@ export function ExecutionsTable({ executions }: { executions: SearchExecution[] 
                   <Threshold e={e} t={t} />
                 </td>
                 <td>
-                  {e.error_type ? <span className="pill crit">{e.error_type}</span> : "—"}
+                  {e.error_type ? (
+                    <span className="pill crit pill-wrap">
+                      {enumLabel(say, "executionErrorType", e.error_type)}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
                   {e.error_message ? (
                     <span className="run-error">
                       {backendMessage({

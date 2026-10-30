@@ -657,7 +657,9 @@ export function conflictMessage(
     const words = render
       ? render({ text: info.message, code: info.code, params: info.params })
       : info.message;
-    return `${words} ${keep}`;
+    const trimmed = words.trimEnd();
+    const sentence = /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+    return `${sentence} ${keep}`;
   }
   const to =
     info.version == null

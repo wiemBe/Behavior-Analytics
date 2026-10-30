@@ -179,6 +179,10 @@ describe.each([
 
   it("are all names: no row of a known code shows a code", async () => {
     const whole = await rowsOver(catalog);
-    for (const row of whole) expect(row).not.toMatch(/(IPS|WAF|PW)_[A-Z_]+|VOLUME_|NO_EVENTS/);
+    for (const row of whole) {
+      expect(row).not.toMatch(
+        /(IPS|WAF|PW)_[A-Z_]+|VOLUME_|NO_EVENTS|PARSING_DEGRADATION|UNKNOWN_EVENT_SPIKE|TIMESTAMP_DELAY|CARDINALITY_DROP|COLLECTION_ERROR|REPEATED_PAYLOAD/,
+      );
+    }
   });
 });
