@@ -84,6 +84,8 @@ async def test_readonly_can_get_but_cannot_put_and_last_run_is_null(
     assert by_family[SearchFamily.IPS_COLLECTION.value]["bucket_seconds"] == 300
     assert by_family[SearchFamily.CATCHALL_SENDERS.value]["bucket_seconds"] == 300
     assert by_family[SearchFamily.ANOMALY_EXPLANATION.value]["bucket_seconds"] is None
+    assert by_family[SearchFamily.PHASE_A_VOLUME.value]["enabled"] is True
+    assert by_family[SearchFamily.WAF_COLLECTION.value]["enabled"] is False
     denied = client.put(
         "/api/v1/admin/search-cadence/ANOMALY_EXPLANATION",
         json={"cadence_seconds": 300},

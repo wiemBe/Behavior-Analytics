@@ -31,6 +31,7 @@ class CadenceOut(BaseModel):
 
 
 class SearchCadenceOut(CadenceOut):
+    enabled: bool
     allowed_cadences_seconds: list[int]
     last_slot_start: datetime | None
     next_dispatch_at: datetime

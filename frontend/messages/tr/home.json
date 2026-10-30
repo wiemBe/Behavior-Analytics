@@ -73,17 +73,19 @@
     "link": "Kaynaklar",
     "linkLabel": "Log source'ları görüntüle",
     "what": "log source sağlığı",
-    "description": "İzlenen log source'lar ve kaçının kararı var. Değerlendirilen, yetersiz verisi olan kaynakları içermez. Sessiz, algılayıcının olay beklenen yerde hiç olay görmediği anlamına gelir (NO_EVENTS anomalisi).",
+    "description": "İzlenen log source'lar ve kaçının kararı var. Değerlendirilen, yetersiz verisi olan kaynakları içermez. Sessiz, algılayıcının olay beklenen yerde hiç olay görmediği anlamına gelir (Olay yok anomalisi).",
     "ofMonitored": "/ {total} izlenen kaynak",
     "monitored": "izlenen kaynak",
     "noMonitored": "İzlenen log source yok. Hacim baseline'ını toplamaya başlamak için bir kaynakta izlemeyi etkinleştirin.",
     "monitoredOf": "İzlenen log source'lar; QRadar toplam {total} kaynak biliyor.",
-    "silentDefinition": "Sessiz: algılayıcı, olay beklenen yerde hiç olay görmedi (NO_EVENTS anomalisi).",
+    "silentDefinition": "Sessiz: algılayıcı, olay beklenen yerde hiç olay görmedi (Olay yok anomalisi).",
     "judgedNormal": "Değerlendirilen {judged} kaynak: {normal} normal",
     "noneJudged": "— normal değerlendirildi (henüz değerlendirilen kaynak yok)",
     "silent": "sessiz",
     "totalForbidden": "Toplam log source sayısı gösterilmiyor: rolünüz bunu okuyamıyor (izin: read:overview).",
-    "totalUnavailable": "Toplam log source sayısı kullanılamıyor."
+    "totalUnavailable": "Toplam log source sayısı kullanılamıyor.",
+    "inventoryFailed": "Envanter eşitlemesi başarısız oldu. İzlenen kaynak sayısı gösterilmez. Toplama durumunu görmek için log source'ları açın.",
+    "inventoryMissing": "Log source envanteri henüz toplanmadı; bu nedenle izlenen kaynak sayısı yoktur."
   },
   "kpiOffenses": {
     "title": "Açık offense'lar, son kesit",
@@ -232,7 +234,7 @@
       "maintenance": "Bakımda"
     },
     "categoryDefinition": {
-      "silent": "Algılayıcı, olay beklenen yerde hiç olay görmedi (NO_EVENTS anomalisi).",
+      "silent": "Algılayıcı, olay beklenen yerde hiç olay görmedi (Olay yok anomalisi).",
       "exceeding": "Etkin hacim artışları: gözlenen değer beklenen aralığın üstünde.",
       "new": "Keşfedilen ve henüz incelenmemiş kaynaklar.",
       "conflict": "Sınıflama kuralları birbiriyle çelişen kaynaklar.",
@@ -243,7 +245,9 @@
       "summary": "Anomali özeti kullanılamıyor",
       "fleet": "Filo özeti kullanılamıyor",
       "overview": "Genel bakış kullanılamıyor"
-    }
+    },
+    "inventoryFailed": "Envanter eşitlemesi başarısız oldu. Sağlık sayıları gösterilmez. Toplama durumunu görmek için log source'ları açın.",
+    "inventoryMissing": "Log source envanteri henüz toplanmadı; bu nedenle sağlık sayısı yoktur."
   },
   "recent": {
     "title": "Son anomaliler",

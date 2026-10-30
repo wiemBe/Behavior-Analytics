@@ -18,6 +18,7 @@ function item(over: Partial<SearchCadenceItem> = {}): SearchCadenceItem {
     next_dispatch_at: "2026-10-12T10:00:00Z",
     updated_at: "2026-10-12T08:00:00Z",
     updated_by: null,
+    enabled: true,
     last_run: {
       at: "2026-10-12T09:00:20Z",
       outcome: "ok",
@@ -104,8 +105,35 @@ describe("rows", () => {
     expect(within(row).getByText("Not run since upgrade")).toBeInTheDocument();
     expect(within(row).getByText("No run yet")).toBeInTheDocument();
     expect(within(row).queryByText("0")).not.toBeInTheDocument();
-    // The next run is still known.
-    expect(within(row).getByText("10-12 10:00 UTC")).toBeInTheDocument();
+    // A past computed instant for a family that has never run is not a next run.
+    expect(within(row).getByText("—")).toHaveAttribute(
+      "title",
+      "This family has not run, and no future run is scheduled.",
+    );
+    expect(within(row).queryByText("10-12 10:00 UTC")).not.toBeInTheDocument();
+  });
+
+  it("shows an em dash for a disabled family even when the next time is in the future", () => {
+    render(
+      <SearchCadenceTable
+        items={[item({ enabled: false, next_dispatch_at: "2099-01-01T00:00:00Z" })]}
+      />,
+    );
+    const row = rowOf("Phase A volume");
+    expect(within(row).getByText("—")).toHaveAttribute(
+      "title",
+      "This family is off, so it has no next run.",
+    );
+    expect(within(row).queryByText("01-01 00:00 UTC")).not.toBeInTheDocument();
+  });
+
+  it("shows a future next run for an enabled family that has never run", () => {
+    render(
+      <SearchCadenceTable
+        items={[item({ last_run: null, next_dispatch_at: "2099-01-01T00:00:00Z" })]}
+      />,
+    );
+    expect(within(rowOf("Phase A volume")).getByText("01-01 00:00 UTC")).toBeInTheDocument();
   });
 
   it("says 'not counted' for a null searches_sent, and keeps a real zero as 0", () => {

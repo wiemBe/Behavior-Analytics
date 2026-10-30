@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
@@ -143,6 +144,8 @@ class OverviewCounts(BaseModel):
     silent_log_sources: int
     anomalous_log_sources: int
     in_maintenance: int
+    #: Sanitized collection state. The provider error itself is never exposed.
+    inventory_state: Literal["NOT_COLLECTED", "COMPLETE", "FAILED"]
 
 
 class OverviewOffenses(BaseModel):

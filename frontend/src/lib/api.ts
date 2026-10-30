@@ -430,6 +430,8 @@ export interface SocOverview {
     silent_log_sources: number;
     anomalous_log_sources: number;
     in_maintenance: number;
+    // Sanitized collection state. The provider error text is never sent.
+    inventory_state: "NOT_COLLECTED" | "COMPLETE" | "FAILED";
   };
   offenses: {
     active: number | null;
@@ -589,6 +591,8 @@ export interface SearchCadenceItem {
   next_dispatch_at: string;
   updated_at: string;
   updated_by: string | null;
+  // False when the family's collection switch is off. Phase A has no switch.
+  enabled: boolean;
   // Null when the family has not run since the upgrade.
   last_run: SearchCadenceLastRun | null;
 }

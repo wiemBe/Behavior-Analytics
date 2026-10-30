@@ -17,14 +17,14 @@ describe("earlyState in Turkish", () => {
   it("names the setting when collection is off", () => {
     const s = earlyState(watch({ status: "OK" }), catalog({ collection_enabled: false }), tr, "tr");
     expect(s?.kind).toBe("not_collected");
-    expect(reasonOf(s)).toContain("PW_COLLECTION_ENABLED false olduğu için");
+    expect(reasonOf(s)).toContain("PW_COLLECTION_ENABLED kapalı olduğu için");
     expect(reasonOf(s)).toContain("Geçmişi görmek için izlemeyi açın.");
   });
 
   it("puts the setting before the API's reason for NOT_ENABLED, and keeps the API's words", () => {
     const s = earlyState(watch({ status: "NOT_ENABLED", status_reason: "switch off" }), null, tr, "tr");
     expect(reasonOf(s)).toBe(
-      "PW_COLLECTION_ENABLED false olduğu için hiçbir izleme için arama gönderilmiyor. switch off Geçmişi görmek için izlemeyi açın.",
+      "PW_COLLECTION_ENABLED kapalı olduğu için hiçbir izleme için arama gönderilmiyor. switch off Geçmişi görmek için izlemeyi açın.",
     );
   });
 

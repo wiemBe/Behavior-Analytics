@@ -13,6 +13,7 @@ import pytest
 
 from app.models.enums import AnomalyState, AnomalyType, Severity
 from app.models.log_source import LogSourceAnomaly
+from app.models.monitoring import CollectionWatermark
 from app.models.offense import OffenseSnapshot
 from tests.integration.factories import make_instance, make_log_source
 from tests.integration.test_fleet_api import VIEWER, Client, run
@@ -51,6 +52,7 @@ def test_no_offense_snapshot_is_unknown_on_the_overview_and_the_analytics(db_sch
     assert offenses["unassigned"] is None
     assert offenses["oldest_age_seconds"] is None
     assert overview.json()["log_sources"]["silent_log_sources"] == 0
+    assert overview.json()["log_sources"]["inventory_state"] == "NOT_COLLECTED"
 
     listing = client.get("/api/v1/offenses?limit=1")
     assert listing.status_code == 200, listing.text
@@ -80,6 +82,42 @@ def test_no_offense_snapshot_is_unknown_on_the_overview_and_the_analytics(db_sch
     assert again["exceeding_sla"] is None
     assert again["sla_hours"] == 24
     assert again["critical_magnitude"] == 7
+
+
+def test_empty_inventory_distinguishes_a_failed_run_from_a_clean_run(db_schema) -> None:
+    async def failed(session):  # type: ignore[no-untyped-def]
+        instance = await make_instance(session)
+        session.add(
+            CollectionWatermark(
+                instance_id=instance.id,
+                collector="log_source_inventory",
+                last_run_at=CAPTURED,
+                last_error="Could not reach QRadar",
+            )
+        )
+
+    run(failed)
+    body = Client(VIEWER).get("/api/v1/overview").json()
+    assert body["log_sources"]["total_log_sources"] == 0
+    assert body["log_sources"]["inventory_state"] == "FAILED"
+
+
+def test_empty_inventory_with_a_clean_watermark_is_complete(db_schema) -> None:
+    async def setup(session):  # type: ignore[no-untyped-def]
+        instance = await make_instance(session)
+        session.add(
+            CollectionWatermark(
+                instance_id=instance.id,
+                collector="log_source_inventory",
+                last_run_at=CAPTURED,
+                last_error=None,
+            )
+        )
+
+    run(setup)
+    body = Client(VIEWER).get("/api/v1/overview").json()
+    assert body["log_sources"]["total_log_sources"] == 0
+    assert body["log_sources"]["inventory_state"] == "COMPLETE"
 
 
 def test_a_closed_snapshot_measures_zero_open_offenses(db_schema) -> None:

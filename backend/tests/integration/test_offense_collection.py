@@ -539,7 +539,21 @@ class TestBatchResilience:
         assert report.partial_failure is False
         assert await snapshots(db_session, inst.id) == []
         # A run that saw nothing still counts as a completed interval.
-        assert (await watermark(db_session, inst.id)).intervals_collected == 1
+        mark = await watermark(db_session, inst.id)
+        assert mark.intervals_collected == 1
+        assert mark.watermark_at == NOW
+        assert mark.lag_seconds == 0
+
+    @pytest.mark.asyncio
+    async def test_partial_empty_collection_does_not_advance_watermark(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        bad = offense(9999, start_time=datetime(2026, 7, 20, 8, 0))
+        report = await collector(db_session, StubProvider([[bad]])).collect(inst)
+
+        mark = await watermark(db_session, inst.id)
+        assert report.offenses_seen == 1
+        assert report.partial_failure is True
+        assert mark.watermark_at is None
 
     @pytest.mark.asyncio
     async def test_snapshot_count_matches_the_report(self, db_session) -> None:

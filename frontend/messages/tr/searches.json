@@ -6,7 +6,7 @@
   },
   "list": {
     "title": "Arama kataloğu",
-    "description": "Saklanan, doğrulanmış AQL aramaları. Yalnızca kalıcı tanımlar zamanlanır veya çalıştırılır; arayüz hiçbir zaman ad hoc AQL çalıştırmaz.",
+    "description": "Saklanan, doğrulanmış AQL aramaları. Yalnızca kalıcı tanımlar zamanlanır veya çalıştırılır; arayüz hiçbir zaman kaydedilmemiş, anlık yazılmış AQL çalıştırmaz.",
     "newSearch": "Yeni arama",
     "errorWhat": "Zamanlanmış aramalar",
     "loadingWhat": "Zamanlanmış aramalar",

@@ -149,7 +149,7 @@ describe("shared helpers take a translator and default to English", () => {
       status: "FAILED", error_type: "TIMEOUT", truncated: false, threshold_breached: false,
       result_count: null,
     } as unknown as SearchExecution;
-    expect(runReadout(failed, 2, tr.t).text).toContain("Son çalıştırma başarısız oldu. Hata türü TIMEOUT. Arama zaman aşımını aştı.");
+    expect(runReadout(failed, 2, tr.t).text).toContain("Son çalıştırma başarısız oldu. Hata türü Zaman aşımı. Arama zaman aşımını aştı.");
     expect(runReadout(failed, 2).text).toContain("The latest run failed. Error type TIMEOUT. The search exceeded its timeout.");
     const unknown = { ...failed, error_type: "NEW_KIND" } as SearchExecution;
     expect(runReadout(unknown, null).text).toContain("Error type NEW_KIND. Inspect");

@@ -280,7 +280,7 @@
           "p": "Ayrıntı sayfası, sabitlenmiş değerleri ve son zaman diliminin en yüksek değerlerini zaman dilimi başına olay cinsinden, scope'un coverage'ıyla birlikte çizer ve etkin vakaları listeler. **İzlemeyi düzenle** düzenleyiciyi açar. Başlık geçmiş durumunu, scope'u, özellikleri ve toplanan son zaman dilimini belirtir."
         },
         {
-          "p": "İki bant listeyi niteler: `PW_COLLECTION_ENABLED` false olduğunda **TOPLAMA KAPALI.**; bu durumda hiçbir izleme için arama gönderilmez. Vakalar kaydedilip `PW_ALERTING_ENABLED` açılana kadar hiçbir şey bildirilmediğinde **GÖLGE MODU.** Devre dışı bir izleme arama göndermez."
+          "p": "İki bant listeyi niteler: `PW_COLLECTION_ENABLED` kapalı olduğunda **TOPLAMA KAPALI.**; bu durumda hiçbir izleme için arama gönderilmez. Vakalar kaydedilip `PW_ALERTING_ENABLED` açılana kadar hiçbir şey bildirilmediğinde **GÖLGE MODU.** Devre dışı bir izleme arama göndermez."
         }
       ],
       "states": [
@@ -428,7 +428,7 @@
           "p": "Özel bir kural, tek bir konu için toplanmış bir metriği ardışık 5 dakikalık zaman dilimleri boyunca değerlendirir. Liste **Ad**, **Durum ve neden**, **Konu**, **Koşul**, **Önem derecesi**, **Etkin** ve **Son değerlendirme (UTC)** sütunlarını gösterir. Oluşturmak, düzenlemek, etkinleştirmek ve silmek için `custom_rule:write` gerekir."
         },
         {
-          "p": "İki bant her kuralı niteler: **CUSTOM_RULES_ENABLED false olduğu için kural değerlendirmesi kapalıdır. Etkin kurallar değerlendirilmiyor.** ve **CUSTOM_RULES_ALERTING_ENABLED açılana kadar ihlaller kaydedilir ancak bildirim gönderilmez.** İkincisi gölge modudur: ihlaller ve kural durumu yazılır, ancak hiçbir uyarı açılmaz, yenilenmez ya da çözülmez."
+          "p": "İki bant her kuralı niteler: **CUSTOM_RULES_ENABLED kapalı olduğu için kural değerlendirmesi kapalıdır. Etkin kurallar değerlendirilmiyor.** ve **CUSTOM_RULES_ALERTING_ENABLED açılana kadar ihlaller kaydedilir ancak bildirim gönderilmez.** İkincisi gölge modudur: ihlaller ve kural durumu yazılır, ancak hiçbir uyarı açılmaz, yenilenmez ya da çözülmez."
         },
         {
           "p": "Ayrıntı sayfası geçerli durumu, etkin ihlali, kuralın okuduğunu, ihlal geçmişini ve kural tanımını gösterir. **Kuralı düzenle**, **Etkinleştir**, **Devre dışı bırak** ve **Sil** kural üzerinde işlem yapar; açık uyarısı olan bir kuralı silmek, kural ve geçmişi kaldırılmadan önce uyarıyı çözer. **Yeni kural** düzenleyiciyi açar."
@@ -482,7 +482,7 @@
       "answers": "Hangi saklanmış AQL aramaları çalışıyor ve ne döndürdüler?",
       "body": [
         {
-          "p": "Sayfa başlığı **Arama kataloğu**dur. Yalnızca saklanmış, doğrulanmış tanımlar zamanlanır ya da çalıştırılır; frontend hiçbir zaman ad hoc AQL çalıştırmaz. Tablo **Ad**, **Kategori**, **MITRE**, **Zamanlama**, **Önem derecesi**, **Sürüm** ve **Etkin** sütunlarını gösterir. **Yeni arama** için `search:write` gerekir ve devre dışı bir tanım açar: **Ad**, **Açıklama**, **AQL**, **Zamanlama** (5 dk ile 8 sa arası ya da saklanmış özel bir cron), **Eşik**, **Önem derecesi**, **Koruma sınırları (platform üst sınırları içinde)** (zaman aşımı, pencere, en çok satır), **Görselleştirme** ve düzenlerken **Değişiklik notu**. **Devre dışı olarak kaydet** bunu saklar."
+          "p": "Sayfa başlığı **Arama kataloğu**dur. Yalnızca saklanmış, doğrulanmış tanımlar zamanlanır ya da çalıştırılır; frontend hiçbir zaman kaydedilmemiş, anlık yazılmış AQL çalıştırmaz. Tablo **Ad**, **Kategori**, **MITRE**, **Zamanlama**, **Önem derecesi**, **Sürüm** ve **Etkin** sütunlarını gösterir. **Yeni arama** için `search:write` gerekir ve devre dışı bir tanım açar: **Ad**, **Açıklama**, **AQL**, **Zamanlama** (5 dk ile 8 sa arası ya da saklanmış özel bir cron), **Eşik**, **Önem derecesi**, **Koruma sınırları (platform üst sınırları içinde)** (zaman aşımı, pencere, en çok satır), **Görselleştirme** ve düzenlerken **Değişiklik notu**. **Devre dışı olarak kaydet** bunu saklar."
         },
         {
           "p": "Ayrıntı sayfası, saklanan sürümü çalıştıran **Şimdi çalıştır**ı, **Aramayı etkinleştir** ya da **Aramayı devre dışı bırak**ı, **Geçerli AQL**i, **Çalıştırma geçmişi**ni, **Sorgu sürüm geçmişi**ni ve **Sonuç eğilimi**ni gösterir. Değiştirilen bir sorgu metni yeni bir sürüm olarak saklanır; **Şimdi çalıştır** sayfaya yazılan metni değil, saklanan o sürümü çalıştırır."
@@ -673,7 +673,7 @@
       ],
       "states": [
         {
-          "p": "Aile anahtarı `PW_COLLECTION_ENABLED` false olduğunda (varsayılan) **TOPLAMA KAPALI**: etkinleştirme seçimi saklar ama hiçbir şey toplanmaz; `PW_ALERTING_ENABLED` false olduğunda (varsayılan) vakaların kaydedildiği ve hiçbir uyarının açılmadığı gölge modu; **Bu izleme etkin. Burada kaydetmek, yukarıdaki eylemlerden yeniden etkinleştirilene kadar izlemeyi devre dışı bırakır**; bir önizleme hız sınırı; bir özel kural değerlerinden birini sabitlediği sürece reddedilen **Sil**; rolün `property_watch:write` iznine sahip olmadığı durumda yazma bildirimi."
+          "p": "Aile anahtarı `PW_COLLECTION_ENABLED` kapalı olduğunda (varsayılan) **TOPLAMA KAPALI**: etkinleştirme seçimi saklar ama hiçbir şey toplanmaz; `PW_ALERTING_ENABLED` kapalı olduğunda (varsayılan) vakaların kaydedildiği ve hiçbir uyarının açılmadığı gölge modu; **Bu izleme etkin. Burada kaydetmek, yukarıdaki eylemlerden yeniden etkinleştirilene kadar izlemeyi devre dışı bırakır**; bir önizleme hız sınırı; bir özel kural değerlerinden birini sabitlediği sürece reddedilen **Sil**; rolün `property_watch:write` iznine sahip olmadığı durumda yazma bildirimi."
         }
       ]
     },
@@ -697,7 +697,7 @@
       ],
       "states": [
         {
-          "p": "**CUSTOM_RULES_ENABLED false olduğu için kural değerlendirmesi kapalıdır**; bu durumda etkin kurallar değerlendirilmez (varsayılan); **CUSTOM_RULES_ALERTING_ENABLED açılana kadar ihlaller kaydedilir ancak bildirim gönderilmez**, yani gölge modu (o da varsayılan); kaydedilmiş bir kuralda **Güncel değil**, **Karar yok** ve **Konu kullanımdan kaldırıldı** durumları; rolün `custom_rule:write` iznine sahip olmadığı durumda yazma bildirimi; eşzamanlı bir değişiklikten sonra **Geçerli kuralı yeniden yükle**. Bir kuralı silmek önce açık uyarısını çözer."
+          "p": "**CUSTOM_RULES_ENABLED kapalı olduğu için kural değerlendirmesi kapalıdır**; bu durumda etkin kurallar değerlendirilmez (varsayılan); **CUSTOM_RULES_ALERTING_ENABLED açılana kadar ihlaller kaydedilir ancak bildirim gönderilmez**, yani gölge modu (o da varsayılan); kaydedilmiş bir kuralda **Güncel değil**, **Karar yok** ve **Konu kullanımdan kaldırıldı** durumları; rolün `custom_rule:write` iznine sahip olmadığı durumda yazma bildirimi; eşzamanlı bir değişiklikten sonra **Geçerli kuralı yeniden yükle**. Bir kuralı silmek önce açık uyarısını çözer."
         }
       ]
     },

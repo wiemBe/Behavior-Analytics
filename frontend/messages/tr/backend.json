@@ -174,7 +174,7 @@
         "unpopulated": "Özellik mevcut ancak penceredeki hiçbir olay değer taşımadı"
       },
       "ineligible": {
-        "collection_disabled": "WAF toplaması devre dışı (WAF_COLLECTION_ENABLED=false)",
+        "collection_disabled": "WAF toplaması devre dışı (WAF_COLLECTION_ENABLED=kapalı)",
         "monitoring_disabled": "Log source için izleme devre dışı",
         "source_missing": "Profilin log source'u artık mevcut değil"
       },

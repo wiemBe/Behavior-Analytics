@@ -11,6 +11,7 @@ import { useState, type FormEvent } from "react";
 import { login } from "@/components/auth/client";
 import { ApiVersionLine } from "@/components/auth/ApiVersionLine";
 import { ReasonList } from "@/components/auth/ReasonList";
+import { continueInAccountLanguage } from "@/components/auth/localeNavigation";
 import { errorTexts } from "@/components/auth/reasons";
 import { useSession } from "@/components/auth/session";
 import styles from "@/components/auth/auth.module.css";
@@ -54,7 +55,11 @@ export function LoginForm() {
       return;
     }
     setPending(false);
-    router.replace(destinationAfterLogin(params.get("next"), result.must_change_password));
+    continueInAccountLanguage(
+      locale,
+      destinationAfterLogin(params.get("next"), result.must_change_password),
+      (url) => router.replace(url),
+    );
   }
 
   const refused = problem != null && problem.alert;

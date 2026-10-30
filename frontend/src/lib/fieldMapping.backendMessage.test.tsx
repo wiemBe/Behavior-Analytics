@@ -38,7 +38,7 @@ describe("coded collection ineligibility", () => {
       "WAF collection is disabled (WAF_COLLECTION_ENABLED=false)",
       "validation.waf.ineligible.collection_disabled",
       {},
-      "Duraklatıldı — WAF toplaması devre dışı (WAF_COLLECTION_ENABLED=false)",
+      "Duraklatıldı — WAF toplaması devre dışı (WAF_COLLECTION_ENABLED=kapalı)",
     ],
     [
       "the profile's log source no longer exists",

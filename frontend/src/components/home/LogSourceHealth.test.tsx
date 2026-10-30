@@ -108,6 +108,63 @@ describe("LogSourceHealth", () => {
     expect(screen.getByText(/No monitored log sources\. Enable monitoring/)).toBeInTheDocument();
   });
 
+  it("shows the inventory failure and no zero health rows when no source exists", () => {
+    setup({
+      [BEH]: ok([]),
+      [OV]: ok({
+        log_sources: { total_log_sources: 0, in_maintenance: 0, inventory_state: "FAILED" },
+      } as SocOverview),
+    });
+    render(<LogSourceHealth />);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("The source states could not be read.");
+    expect(alert).toHaveTextContent("The inventory sync failed, so these are not counts of zero.");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View all" })).toHaveAttribute("href", "/behavior/sources");
+  });
+
+  it("says the inventory was not collected and draws no zero health rows", () => {
+    setup({
+      [BEH]: ok([]),
+      [OV]: ok({
+        log_sources: { total_log_sources: 0, in_maintenance: 0, inventory_state: "NOT_COLLECTED" },
+      } as SocOverview),
+    });
+    render(<LogSourceHealth />);
+    expect(screen.getByText("Not collected.")).toBeInTheDocument();
+    expect(screen.getByText(/there are no health counts/)).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View all" })).toHaveAttribute("href", "/behavior/sources");
+  });
+
+  it("keeps a clean empty inventory as the empty state, with measured zero rows", () => {
+    setup({
+      [BEH]: ok([]),
+      [SUM]: ok(summary({ silent_sources: 0, spikes: 0, monitored_sources: 0 })),
+      [FLEET]: ok(fleet([], { new_sources: 0, conflict_sources: 0, unclassified_sources: 0 })),
+      [OV]: ok({
+        log_sources: { total_log_sources: 0, in_maintenance: 0, inventory_state: "COMPLETE" },
+      } as SocOverview),
+    });
+    render(<LogSourceHealth />);
+    expect(screen.getByText(/No monitored log sources\. Enable monitoring/)).toBeInTheDocument();
+    expect(within(row("Silent")).getByText("0")).toBeInTheDocument();
+    expect(within(row("In maintenance")).getByText("0")).toBeInTheDocument();
+  });
+
+  it("keeps measured sources when the latest inventory sync failed", () => {
+    setup({
+      [OV]: ok({
+        log_sources: { total_log_sources: 11, in_maintenance: 2, inventory_state: "FAILED" },
+      } as SocOverview),
+    });
+    render(<LogSourceHealth />);
+    expect(screen.getByText("1 of 2 judged normal")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("is loading text in a polite live region", () => {
     setup({ [BEH]: loading });
     render(<LogSourceHealth />);
