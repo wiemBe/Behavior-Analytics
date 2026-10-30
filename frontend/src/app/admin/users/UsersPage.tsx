@@ -28,7 +28,7 @@ import { TableScroll } from "@/components/ui/TableScroll";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { LoadingState } from "@/components/ui/RouteState";
-import { ApiError } from "@/lib/api";
+import { ApiError, rateLimitedText } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { enumLabel, type EnumTranslator } from "@/i18n/enumLabels";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
@@ -41,7 +41,7 @@ const SOURCE_LDAP = "LDAP" as const;
 
 const AUTH_SOURCES: Record<string, "LOCAL" | "LDAP"> = { LOCAL: "LOCAL", LDAP: "LDAP" };
 
-type Load = "loading" | "ready" | "error" | "forbidden";
+type Load = "loading" | "ready" | "error" | "forbidden" | "limited";
 type Outcome = { tone: "ok" | "warn"; heading?: string; lines: string[] };
 type Once = { username: string; password: string; sentence: string };
 
@@ -90,6 +90,11 @@ export function UsersPage() {
     }
     if (signal?.aborted) return;
     const reason = usersOut.reason;
+    if (reason instanceof ApiError && reason.status === 429) {
+      setLoadLines([rateLimitedText(reason, say)]);
+      setLoad("limited");
+      return;
+    }
     setLoadLines(errorTexts(reason, say, locale));
     setLoad(reason instanceof ApiError && reason.status === 403 ? "forbidden" : "error");
   }
@@ -283,6 +288,16 @@ export function UsersPage() {
     <div className={styles.stack}>
       <PageHeader guide={guideFor("/admin/users")} title={t("page.title")} description={t("page.description")} />
       {load === "loading" ? <LoadingState what={t("boundary.loadingWhat")} /> : null}
+      {load === "limited" ? (
+        <>
+          <ReasonList tone="warn" heading={t("page.loadFailed")} lines={loadLines} />
+          <p>
+            <button type="button" className="action secondary" onClick={() => void loadUsers()}>
+              {t("page.tryAgain")}
+            </button>
+          </p>
+        </>
+      ) : null}
       {load === "forbidden" ? (
         <ReasonList
           tone="warn"

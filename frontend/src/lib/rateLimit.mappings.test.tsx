@@ -8,6 +8,11 @@ import { readError as outageReadError } from "@/app/admin/outage-policy/outage";
 import { readError as wafReadError } from "@/app/admin/waf-sources/readError";
 import AnomalyDetailPage from "@/app/anomalies/[id]/page";
 import SourcesIndexPage from "@/app/behavior/sources/page";
+import PropertyWatchesPage from "@/app/behavior/watches/page";
+import NewPropertyWatchPage from "@/app/behavior/watches/new/page";
+import CustomRulesPage from "@/app/custom-rules/page";
+import CustomRuleDetailPage from "@/app/custom-rules/[id]/page";
+import NewCustomRulePage from "@/app/custom-rules/new/page";
 import FleetPage from "@/app/fleet/page";
 import LogSourceDetailPage from "@/app/log-sources/[id]/page";
 import { StaticSession, type SessionValue } from "@/components/auth/session";
@@ -139,5 +144,106 @@ describe("history backfill page (client read)", () => {
     expect(alert).toHaveTextContent(EN_WAIT);
     expect(alert).not.toHaveTextContent(/unreachable/i);
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  });
+});
+
+// POL-6: the pages that mapped only 403, and otherwise one shared load-failed state, say the same
+// rate-limit sentence. 429 is checked first, so the old "unreachable" / "check the backend" body
+// does not show.
+describe("pages POL-5 left on a shared load-failed state", () => {
+  const serverPages: Array<{
+    name: string;
+    gone: RegExp;
+    arm: (err: ApiError) => void;
+    show: () => Promise<unknown>;
+  }> = [
+    {
+      name: "property watches",
+      gone: /unreachable|erişilemiyor/i,
+      arm: (err) => {
+        vi.spyOn(api, "propertyWatches").mockRejectedValue(err);
+      },
+      show: () => PropertyWatchesPage(),
+    },
+    {
+      name: "new property watch",
+      gone: /switches and bounds|Anahtar ve sınır kataloğu/i,
+      arm: (err) => {
+        vi.spyOn(api, "propertyWatchCatalog").mockRejectedValue(err);
+        vi.spyOn(api, "caller").mockRejectedValue(new Error("down"));
+      },
+      show: () => NewPropertyWatchPage(),
+    },
+    {
+      name: "custom rules",
+      gone: /backend is reachable|erişilebildiğini/i,
+      arm: (err) => {
+        vi.spyOn(api, "customRules").mockRejectedValue(err);
+        vi.spyOn(api, "customRuleCatalog").mockRejectedValue(err);
+        vi.spyOn(api, "caller").mockRejectedValue(new Error("down"));
+      },
+      show: () => CustomRulesPage(),
+    },
+    {
+      name: "custom rule detail",
+      gone: /may have been deleted|silinmiş/i,
+      arm: (err) => {
+        vi.spyOn(api, "customRule").mockRejectedValue(err);
+        vi.spyOn(api, "customRuleCatalog").mockRejectedValue(err);
+        vi.spyOn(api, "customRulePreview").mockRejectedValue(err);
+        vi.spyOn(api, "customRuleBreaches").mockRejectedValue(err);
+        vi.spyOn(api, "caller").mockRejectedValue(new Error("down"));
+      },
+      show: () => CustomRuleDetailPage({ params: Promise.resolve({ id: "rule-1" }) }),
+    },
+    {
+      name: "new custom rule",
+      gone: /metrics and bounds|Metrik ve sınır kataloğuna/i,
+      arm: (err) => {
+        vi.spyOn(api, "customRuleCatalog").mockRejectedValue(err);
+        vi.spyOn(api, "caller").mockRejectedValue(new Error("down"));
+      },
+      show: () => NewCustomRulePage(),
+    },
+  ];
+
+  describe.each(serverPages)("$name", (page) => {
+    it("says rate limited with the wait, in English", async () => {
+      page.arm(limited(12));
+      render((await page.show()) as never);
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(EN);
+      expect(alert).toHaveTextContent(EN_WAIT);
+      expect(alert).not.toHaveTextContent(page.gone);
+    });
+
+    it("says in a minute without Retry-After, in English", async () => {
+      page.arm(limited(null));
+      render((await page.show()) as never);
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(EN);
+      expect(alert).toHaveTextContent(EN_MINUTE);
+      expect(alert).not.toHaveTextContent(page.gone);
+    });
+
+    it("says rate limited with the wait, in Turkish", async () => {
+      setTestLocale("tr");
+      page.arm(limited(12));
+      render((await page.show()) as never);
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(TR);
+      expect(alert).toHaveTextContent(TR_WAIT);
+      expect(alert).not.toHaveTextContent(page.gone);
+    });
+
+    it("says in a minute without Retry-After, in Turkish", async () => {
+      setTestLocale("tr");
+      page.arm(limited(null));
+      render((await page.show()) as never);
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(TR);
+      expect(alert).toHaveTextContent("Bir dakika sonra yeniden deneyin.");
+      expect(alert).not.toHaveTextContent(page.gone);
+    });
   });
 });

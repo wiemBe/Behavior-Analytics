@@ -12,7 +12,7 @@ import {
 import { pwLatencyFrom } from "@/components/propertywatch/pwFormat";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
-import { ApiError, api, type CallerInfo, type PropertyWatchCatalog } from "@/lib/api";
+import { ApiError, api, rateLimitedText, type CallerInfo, type PropertyWatchCatalog } from "@/lib/api";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
@@ -29,6 +29,7 @@ async function NewPropertyWatchPage() {
   let catalog: PropertyWatchCatalog | null = null;
   let access: PropertyWatchAccess = "unknown";
   let canLink = false;
+  let limited: string | null = null;
   let forbidden = false;
   let failed = false;
   try {
@@ -40,14 +41,23 @@ async function NewPropertyWatchPage() {
     access = caller ? propertyWatchAccessFrom(caller) : "unknown";
     canLink = canReadSearchCadence(caller);
   } catch (error) {
-    forbidden = error instanceof ApiError && error.status === 403;
-    failed = !forbidden;
+    if (error instanceof ApiError && error.status === 429) {
+      limited = rateLimitedText(error, i18n.t);
+    } else {
+      forbidden = error instanceof ApiError && error.status === 403;
+      failed = !forbidden;
+    }
   }
 
   return (
     <>
       <PageHeader guide={guideFor("/behavior/watches/new")} title={t("new.title")} />
-      {forbidden ? (
+      {limited !== null ? (
+        <div className="notice" role="alert">
+          <p><strong>{t("new.failedTitle")}</strong></p>
+          <p>{limited}</p>
+        </div>
+      ) : forbidden ? (
         <div className="notice" role="alert">
           <p><strong>{t("new.forbiddenTitle")}</strong></p>
           <p>

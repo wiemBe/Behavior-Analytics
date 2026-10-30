@@ -30,7 +30,7 @@ import styles from "@/components/auth/auth.module.css";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { LoadingState } from "@/components/ui/RouteState";
-import { ApiError } from "@/lib/api";
+import { ApiError, rateLimitedText } from "@/lib/api";
 import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
 import { plainCount } from "@/lib/figureText";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
@@ -56,7 +56,7 @@ type ProbeView =
 export function DirectoryPage() {
   const t = useTranslations("directory");
   const { t: say, locale } = useBehaviorI18n();
-  const [load, setLoad] = useState<"loading" | "ready" | "error" | "forbidden">("loading");
+  const [load, setLoad] = useState<"loading" | "ready" | "error" | "forbidden" | "limited">("loading");
   const [loadLines, setLoadLines] = useState<string[]>([]);
   const [form, setForm] = useState<FormState | null>(null);
   const [previewUser, setPreviewUser] = useState("");
@@ -74,8 +74,13 @@ export function DirectoryPage() {
       setLoad("ready");
     } catch (err) {
       if (signal?.aborted) return;
-      setLoadLines(errorTexts(err, say, locale));
-      setLoad(err instanceof ApiError && err.status === 403 ? "forbidden" : "error");
+      if (err instanceof ApiError && err.status === 429) {
+        setLoadLines([rateLimitedText(err, say)]);
+        setLoad("limited");
+      } else {
+        setLoadLines(errorTexts(err, say, locale));
+        setLoad(err instanceof ApiError && err.status === 403 ? "forbidden" : "error");
+      }
     }
   }
 
@@ -177,6 +182,20 @@ export function DirectoryPage() {
     <div className={styles.stack}>
       <PageHeader guide={guideFor("/admin/directory")} title={t("page.title")} description={t("page.description")} />
       {load === "loading" ? <LoadingState what={t("boundary.loadingWhat")} /> : null}
+      {load === "limited" ? (
+        <>
+          <ReasonList
+            tone="warn"
+            heading={t("page.loadFailed")}
+            lines={loadLines}
+          />
+          <p>
+            <button type="button" className="action secondary" onClick={() => void loadConfig()}>
+              {t("page.tryAgain")}
+            </button>
+          </p>
+        </>
+      ) : null}
       {load === "forbidden" ? (
         <ReasonList
           tone="warn"

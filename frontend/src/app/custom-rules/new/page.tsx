@@ -8,7 +8,8 @@ import { CustomRuleLatency } from "@/components/customrules/CustomRuleLatency";
 import { customRuleAccessFrom, type CustomRuleAccess } from "@/components/customrules/authoring";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
-import { ApiError, api, type CallerInfo, type CustomRuleCatalog } from "@/lib/api";
+import { ApiError, api, rateLimitedText, type CallerInfo, type CustomRuleCatalog } from "@/lib/api";
+import { asTextTranslator } from "@/i18n/textTranslator";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata() {
@@ -18,9 +19,11 @@ export async function generateMetadata() {
 
 async function NewCustomRulePage() {
   const t = await getTranslations("customRules.new");
+  const say = asTextTranslator(await getTranslations());
   let catalog: CustomRuleCatalog | null = null;
   let access: CustomRuleAccess = "unknown";
   let canLink = false;
+  let limited: string | null = null;
   let forbidden = false;
   let failed = false;
   try {
@@ -32,14 +35,23 @@ async function NewCustomRulePage() {
     access = caller ? customRuleAccessFrom(caller) : "unknown";
     canLink = canReadSearchCadence(caller);
   } catch (error) {
-    forbidden = error instanceof ApiError && error.status === 403;
-    failed = !forbidden;
+    if (error instanceof ApiError && error.status === 429) {
+      limited = rateLimitedText(error, say);
+    } else {
+      forbidden = error instanceof ApiError && error.status === 403;
+      failed = !forbidden;
+    }
   }
 
   return (
     <>
       <PageHeader guide={guideFor("/custom-rules/new")} title={t("title")} />
-      {forbidden ? (
+      {limited !== null ? (
+        <div className="notice" role="alert">
+          <p><strong>{t("failedTitle")}</strong></p>
+          <p>{limited}</p>
+        </div>
+      ) : forbidden ? (
         <div className="notice" role="alert">
           <p><strong>{t("forbiddenTitle")}</strong></p>
           <p>{t("forbiddenHelp")}</p>
