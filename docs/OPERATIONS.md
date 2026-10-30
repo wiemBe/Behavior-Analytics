@@ -969,6 +969,10 @@ biter: `Secrets were not restored.` Yani `secrets.tar` **otomatik geri yüklenme
 `tar -tf <yedek>/secrets.tar` ile incele ve gerekirse elle uygula. `state.json`'a `restored_from`
 alanı işlenir.
 
+Yedekte `install.answers` varsa (kip `0600` ya da `0400`), veritabanı değişimi başarılı olduktan
+sonra bu dosya aynı kiple `.secrets/install.answers` yoluna geri konur; bu bir yanıt dosyasıdır,
+sır değildir, ve kopyası olmayan bir yedek mevcut dosyaya dokunmaz.
+
 ---
 
 ## Tanı

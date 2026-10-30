@@ -33,7 +33,6 @@ HOST_TOOLS = (
     "hostname",
     "install",
     "mkdir",
-    "mv",
     "readlink",
     "rm",
     "sed",
@@ -160,6 +159,16 @@ fi
 exec "$STUB_REAL_STAT" "$@"
 """
 
+MV_STUB = r"""#!/bin/bash
+target=${!#}
+case "$target" in
+  .secrets/install.answers)
+    [ "${STUB_MV_FAIL_ANSWERS:-0}" -eq 0 ] || exit 24
+    ;;
+esac
+exec "$STUB_REAL_MV" "$@"
+"""
+
 DATE_STUB = f"#!/bin/sh\nprintf '%s\\n' {STAMP}\n"
 CURL_STUB = "#!/bin/sh\nexit ${STUB_CURL_RC:-0}\n"
 SLEEP_STUB = "#!/bin/sh\nexit 0\n"
@@ -208,6 +217,9 @@ class BackupFixture:
         self._stub("docker", DOCKER_STUB)
         self._stub("df", DF_STUB)
         self._stub("stat", STAT_STUB)
+        real_mv = shutil.which("mv")
+        assert real_mv is not None
+        self._stub("mv", MV_STUB)
         self._stub("date", DATE_STUB)
         self._stub("curl", CURL_STUB)
         self._stub("sleep", SLEEP_STUB)
@@ -227,6 +239,7 @@ class BackupFixture:
             "STUB_BACKUP_DEVICE": "1",
             "STUB_DOCKER_DEVICE": "1",
             "STUB_REAL_STAT": str(shutil.which("stat")),
+            "STUB_REAL_MV": real_mv,
             "STUB_SQL_FAILED_ONCE": str(tmp_path / "sql-failed-once"),
             "STUB_SYSTEMCTL_CALLS": str(self.systemctl_calls),
         }
@@ -1086,4 +1099,270 @@ def test_backup_omits_a_symlink_answers_file_and_does_not_follow_it(
     assert "install.answers" not in {item.name for item in path.iterdir()}
     assert target.read_bytes() == before
     assert link.is_symlink()
+
+
+RESTORED_ANSWERS_LINE = (
+    "Restored .secrets/install.answers (the answers file, not a secret)."
+)
+
+
+def test_restore_puts_a_mode_0600_answers_file_back(backup: BackupFixture) -> None:
+    body = "PUBLIC_HOSTNAME=from-backup.example\nINSTANCE_NAME=kept-name\n"
+    live = _write_answers(backup.root, body)
+    original = live.read_bytes()
+
+    saved = backup.run("backup")
+
+    assert saved.returncode == 0, output(saved)
+    [path] = backup.backups()
+    copied = path / "install.answers"
+    assert copied.read_bytes() == original
+    assert _mode(copied) == 0o600
+    live.write_text(ANSWERS_HEADER + "PUBLIC_HOSTNAME=live-newer.example\n")
+    live.chmod(0o600)
+
+    result = backup.run("restore", "--non-interactive", "--yes", str(path))
+
+    assert result.returncode == 0, output(result)
+    assert live.read_bytes() == original
+    assert _mode(live) == 0o600
+    assert copied.read_bytes() == original
+    swap_at = result.stdout.index("Database swap complete")
+    answers_at = result.stdout.index(RESTORED_ANSWERS_LINE)
+    secrets_at = result.stdout.index("Secrets were not restored")
+    assert swap_at < answers_at < secrets_at
+    assert result.stdout.count(RESTORED_ANSWERS_LINE) == 1
+    combined = output(result)
+    assert "from-backup.example" not in combined
+    assert "kept-name" not in combined
+    assert "live-newer.example" not in combined
+    assert "tar -tf " in result.stdout
+    assert "tar -x" not in combined
+    assert "tar -x" not in backup.calls.read_text()
+
+
+def test_restore_leaves_answers_unchanged_when_the_backup_has_no_copy(
+    backup: BackupFixture,
+) -> None:
+    live = _write_answers(
+        backup.root,
+        "PUBLIC_HOSTNAME=dash.example\nFRONTEND_EDGE_IP=172.28.10.11\n",
+    )
+    before = live.read_bytes()
+    inode = live.stat().st_ino
+    path = backup.make_backup()
+    assert "install.answers" not in {item.name for item in path.iterdir()}
+
+    result = backup.run("restore", "--non-interactive", "--yes", str(path))
+
+    assert result.returncode == 0, output(result)
+    assert live.read_bytes() == before
+    assert live.stat().st_ino == inode
+    assert _mode(live) == 0o600
+    assert RESTORED_ANSWERS_LINE not in output(result)
+    assert "Removed answer key" not in output(result)
+    assert "172.28.10.11" not in output(result)
+    assert "Secrets were not restored" in result.stdout
+
+
+def test_backup_and_restore_keep_a_mode_0400_answers_file(backup: BackupFixture) -> None:
+    body = "PUBLIC_HOSTNAME=from-backup.example\n"
+    live = _write_answers(backup.root, body, mode=0o400)
+    original = live.read_bytes()
+
+    saved = backup.run("backup", "pre-upgrade")
+
+    assert saved.returncode == 0, output(saved)
+    [path] = backup.backups()
+    copied = path / "install.answers"
+    assert copied.read_bytes() == original
+    assert _mode(copied) == 0o400
+    for name in ("database.dump", "env.bak", "secrets.tar", "MANIFEST", "state.json"):
+        assert _mode(path / name) == 0o600, name
+    # A 0400 file is not writable. The newer answers are a different mode on purpose.
+    live.chmod(0o600)
+    live.write_bytes(original + b"FRONTEND_EDGE_IP=172.28.10.11\n")
+    assert "must be 0600" not in output(saved)
+
+    result = backup.run("restore", "--non-interactive", "--yes", str(path))
+
+    assert result.returncode == 0, output(result)
+    assert live.read_bytes() == original
+    assert _mode(live) == 0o400
+    assert RESTORED_ANSWERS_LINE in result.stdout
+    assert "from-backup.example" not in output(result)
+    assert "172.28.10.11" not in output(result)
+    assert "Secrets were not restored" in result.stdout
+
+
+def test_restore_refuses_a_symlink_answers_copy_before_stop(backup: BackupFixture) -> None:
+    path = backup.make_backup()
+    target = backup.root.parent / "outside-answers"
+    target.write_text(ANSWERS_HEADER + "PUBLIC_HOSTNAME=elsewhere.example\n")
+    target.chmod(0o600)
+    (path / "install.answers").symlink_to(target)
+    live = _write_answers(backup.root, "PUBLIC_HOSTNAME=dash.example\n")
+    before = live.read_bytes()
+    inode = live.stat().st_ino
+
+    result = backup.run("restore", "--non-interactive", "--yes", str(path))
+
+    assert result.returncode != 0
+    assert "not a regular file" in result.stderr
+    assert "Type restore to replace" not in result.stdout
+    assert " stop " not in backup.calls.read_text()
+    assert live.read_bytes() == before
+    assert live.stat().st_ino == inode
+    assert target.read_text() == ANSWERS_HEADER + "PUBLIC_HOSTNAME=elsewhere.example\n"
+    assert (path / "install.answers").is_symlink()
+    assert RESTORED_ANSWERS_LINE not in output(result)
+
+
+def test_restore_refuses_a_group_readable_answers_copy_before_stop(
+    backup: BackupFixture,
+) -> None:
+    path = backup.make_backup()
+    copied = path / "install.answers"
+    copied.write_text(ANSWERS_HEADER + "PUBLIC_HOSTNAME=group.example\n")
+    copied.chmod(0o644)
+    live = _write_answers(backup.root, "PUBLIC_HOSTNAME=dash.example\n")
+    before = live.read_bytes()
+    inode = live.stat().st_ino
+
+    result = backup.run("restore", "--non-interactive", "--yes", str(path))
+
+    assert result.returncode != 0
+    assert "mode 644" in result.stderr
+    assert "0600" in result.stderr
+    assert "0400" in result.stderr
+    assert "Type restore to replace" not in result.stdout
+    assert " stop " not in backup.calls.read_text()
+    assert live.read_bytes() == before
+    assert live.stat().st_ino == inode
+    assert _mode(copied) == 0o644
+    assert "group.example" not in output(result)
+    assert RESTORED_ANSWERS_LINE not in output(result)
+
+
+def test_restore_refuses_to_write_answers_through_a_secrets_symlink(
+    backup: BackupFixture,
+) -> None:
+    path = backup.make_backup()
+    copied = path / "install.answers"
+    copied.write_text(ANSWERS_HEADER + "PUBLIC_HOSTNAME=dash.example\n")
+    copied.chmod(0o600)
+    outside = backup.root.parent / "linked-secrets"
+    outside.mkdir()
+    (outside / "marker").write_text("keep\n")
+    (backup.root / ".secrets").symlink_to(outside)
+
+    result = backup.run("restore", "--non-interactive", "--yes", str(path))
+
+    assert result.returncode != 0
+    assert ".secrets is a symlink" in result.stderr
+    assert "Type restore to replace" not in result.stdout
+    assert " stop " not in backup.calls.read_text()
+    assert (outside / "marker").read_text() == "keep\n"
+    assert not (outside / "install.answers").exists()
+    assert (backup.root / ".secrets").is_symlink()
+    assert "dash.example" not in output(result)
+
+
+def test_restore_leaves_answers_in_place_when_the_swap_fails(backup: BackupFixture) -> None:
+    live = _write_answers(backup.root, "PUBLIC_HOSTNAME=live-newer.example\n")
+    before = live.read_bytes()
+    inode = live.stat().st_ino
+    path = backup.make_backup()
+    copied = path / "install.answers"
+    copied.write_text(ANSWERS_HEADER + "PUBLIC_HOSTNAME=from-backup.example\n")
+    copied.chmod(0o600)
+
+    result = backup.run(
+        "restore",
+        "--non-interactive",
+        "--yes",
+        str(path),
+        STUB_RESTORE_ALEMBIC="wrong",
+    )
+
+    assert result.returncode != 0
+    assert live.read_bytes() == before
+    assert live.stat().st_ino == inode
+    assert RESTORED_ANSWERS_LINE not in output(result)
+    assert "from-backup.example" not in output(result)
+    assert "ALTER DATABASE qradar_obs RENAME" not in backup.calls.read_text()
+
+
+def test_restore_puts_answers_back_when_readiness_fails_after_the_swap(
+    backup: BackupFixture,
+) -> None:
+    body = "PUBLIC_HOSTNAME=from-backup.example\n"
+    live = _write_answers(backup.root, "PUBLIC_HOSTNAME=live-newer.example\n")
+    path = backup.make_backup()
+    copied = path / "install.answers"
+    copied.write_text(ANSWERS_HEADER + body)
+    copied.chmod(0o600)
+
+    result = backup.run(
+        "restore",
+        "--non-interactive",
+        "--yes",
+        str(path),
+        STUB_CURL_RC="22",
+    )
+
+    assert result.returncode != 0
+    assert "readiness did not answer" in result.stderr
+    assert live.read_bytes() == copied.read_bytes()
+    assert _mode(live) == 0o600
+    assert RESTORED_ANSWERS_LINE in result.stdout
+    assert "Secrets were not restored" not in result.stdout
+    assert "from-backup.example" not in output(result)
+
+
+def test_restore_warns_and_starts_when_the_answers_copy_fails_after_the_swap(
+    backup: BackupFixture,
+) -> None:
+    live = _write_answers(backup.root, "PUBLIC_HOSTNAME=live-newer.example\n")
+    before = live.read_bytes()
+    inode = live.stat().st_ino
+    path = backup.make_backup()
+    copied = path / "install.answers"
+    backup_bytes = (ANSWERS_HEADER + "PUBLIC_HOSTNAME=from-backup.example\n").encode()
+    copied.write_bytes(backup_bytes)
+    copied.chmod(0o400)
+    mode = format(_mode(copied), "o")
+
+    result = backup.run(
+        "restore",
+        "--non-interactive",
+        "--yes",
+        str(path),
+        STUB_MV_FAIL_ANSWERS="1",
+    )
+
+    command = f"install -m {mode} {path}/install.answers .secrets/install.answers"
+    assert result.returncode == 0, output(result)
+    assert live.read_bytes() == before
+    assert live.stat().st_ino == inode
+    assert _mode(live) == 0o600
+    assert copied.read_bytes() == backup_bytes
+    assert _mode(copied) == 0o400
+    assert list((backup.root / ".secrets").glob("install.answers.restore.*")) == []
+    warns = [line for line in result.stderr.splitlines() if line.startswith("[warn]")]
+    assert warns == [
+        "[warn] .secrets/install.answers was not restored; the previous file was kept. "
+        f"Put the copy back by hand: {command}"
+    ]
+    assert RESTORED_ANSWERS_LINE not in output(result)
+    assert "[FAIL]" not in result.stderr
+    assert "from-backup.example" not in output(result)
+    assert "live-newer.example" not in output(result)
+    calls = backup.calls.read_text()
+    stopped = " stop backend celery-worker celery-beat frontend proxy"
+    started = " start backend celery-worker celery-beat frontend proxy"
+    assert calls.index(stopped) < calls.index(started)
+    assert "Database swap complete" in result.stdout
+    assert "Restore complete (manual)." in result.stdout
+    assert "Secrets were not restored" in result.stdout
 
