@@ -7,17 +7,16 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response, status
+from fastapi import Depends, FastAPI, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.routes.property_watches import CapacityConflict
 from app.core.config import Settings, get_settings, unknown_setting_names
 from app.core.logging import configure_logging
-from app.core.rate_limit import limiter
+from app.core.rate_limit import default_limit, limiter
 from app.core.version import read_version
 from app.i18n.refusal import CodedHTTPException, coded_body, coded_http_exception_handler
 from app.schemas.property_watch import CapacityConflictOut
@@ -79,8 +78,11 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # The limiter the decorated routes and the 429 handler below share. The
+    # default limit itself is applied per route by the `default_limit`
+    # dependency at the include below: SlowAPIMiddleware cannot see through
+    # FastAPI's lazily included routers (FIX-8).
     app.state.limiter = limiter
-    app.add_middleware(SlowAPIMiddleware)
 
     # The SPA is same-origin behind the reverse proxy outside development; in
     # dev it runs on :3000 and calls the API on :8000 with credentials. No wildcard.
@@ -108,9 +110,15 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RateLimitExceeded)
     async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
-        return JSONResponse(
+        response = JSONResponse(
             status_code=429, content={"detail": "rate limit exceeded", "limit": str(exc.limit)}
         )
+        # The refused request learns the same window it would have read on a
+        # successful one; slowapi's own handler does the same.
+        window = getattr(request.state, "view_rate_limit", None)
+        if window is not None:
+            limiter._inject_headers(response, window)
+        return response
 
     app.add_exception_handler(CodedHTTPException, coded_http_exception_handler)  # type: ignore[arg-type]
 
@@ -126,7 +134,13 @@ def create_app() -> FastAPI:
             status_code=status.HTTP_409_CONFLICT, content=jsonable_encoder(body)
         )
 
-    app.include_router(_build_router(), prefix=settings.api_prefix)
+    app.include_router(
+        _build_router(),
+        prefix=settings.api_prefix,
+        # Every route under the API prefix carries the default limit; the
+        # probes are exempt and the decorated routes keep their own.
+        dependencies=[Depends(default_limit)],
+    )
     return app
 
 

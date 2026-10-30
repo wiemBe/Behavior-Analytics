@@ -19,6 +19,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.version import migration_head
 from app.main import create_app
@@ -144,6 +145,22 @@ def test_head_match_returns_200(alembic_stamp: str) -> None:
         response = client.get("/api/v1/health/ready")
     assert response.status_code == 200
     assert response.json() == {"status": "ready", "database": "ok", "revision": head}
+
+
+def test_readiness_is_not_rate_limited(alembic_stamp: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Docker and the installer poll this path with no credentials (FIX-8).
+
+    The default limit applies to every API route since FIX-8; the probe is
+    exempt, so polling never turns into a 429.
+    """
+    del alembic_stamp
+    monkeypatch.setattr(get_settings(), "rate_limit_default", "1/minute")
+    _exec("CREATE TABLE alembic_version (version_num VARCHAR(128) NOT NULL)")
+    _exec("INSERT INTO alembic_version (version_num) VALUES (:rev)", {"rev": migration_head()})
+    with _client() as client:
+        statuses = [client.get("/api/v1/health/ready").status_code for _ in range(3)]
+
+    assert statuses == [200, 200, 200]
 
 
 def test_behind_names_both_revisions(alembic_stamp: str) -> None:

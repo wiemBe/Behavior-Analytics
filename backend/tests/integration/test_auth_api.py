@@ -172,6 +172,40 @@ async def test_empty_password_is_the_same_refusal(api) -> None:
     assert empty.json()["detail"] == "Invalid username or password"
 
 
+async def test_login_is_not_counted_against_the_default_limit(
+    api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The decorated route keeps its own limit alone (FIX-8).
+
+    With the default set to one per minute, a second sign-in attempt must
+    still be answered as an attempt — 401, not the default's 429 — because
+    /auth/login carries RATE_LIMIT_LOGIN instead.
+    """
+    client, maker = api
+    await _add_user(maker, "ada")
+    monkeypatch.setattr(get_settings(), "rate_limit_login", "3/minute")
+    monkeypatch.setattr(get_settings(), "rate_limit_default", "1/minute")
+
+    refusals = [_login(client, "ada", "not-the-password") for _ in range(2)]
+
+    assert [r.status_code for r in refusals] == [401, 401]
+
+
+async def test_the_login_limit_refuses_the_next_attempt(
+    api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, maker = api
+    await _add_user(maker, "grace")
+    monkeypatch.setattr(get_settings(), "rate_limit_login", "2/minute")
+
+    assert _login(client, "grace", PASSWORD).status_code == 200
+    assert _login(client, "grace", "not-the-password").status_code == 401
+    third = _login(client, "grace", PASSWORD)
+
+    assert third.status_code == 429, third.text
+    assert "Retry-After" in third.headers
+
+
 async def test_lockout_and_unlock_after_the_window(api) -> None:
     client, maker = api
     await _add_user(maker, "ada")
