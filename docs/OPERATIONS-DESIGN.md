@@ -915,7 +915,7 @@ backup root:
 |---|---|---|
 | `database.dump` | `pg_dump -Fc` of `POSTGRES_DB` | `0600` |
 | `env.bak` | copy of `.env` | `0600` |
-| `install.answers` | copy of `.secrets/install.answers` — paths and names, never a secret — made only when the live file is a regular file at mode `0600`; a missing file, a symlink or any other mode is omitted and the file is not read | `0600` |
+| `install.answers` | copy of `.secrets/install.answers` — paths and names, never a secret — made only when the live file is a regular file at mode `0600` or `0400`, and the copy keeps that mode; a missing file, a symlink or any other mode is omitted and the file is not read | `0600` or `0400` |
 | `secrets.tar` | tar of the QRadar secrets volume and the proxy cert volume | `0600` |
 | `state.json` | the state file at that moment, when one exists | `0600` |
 | `MANIFEST` | version, image digests, `alembic_version`, database size, hostname, state presence, secret-volume set | `0600` |
@@ -1080,21 +1080,32 @@ state that blocks `upgrade` and lets `rollback` run. If that write fails, the ol
 restarted and `upgrade` exits before the `.env` edit. A successful rollback clears `previous_images`, keeps the
 broken database, and records `outcome=rolled_back`.
 
-**As built (FIX-9).** Rollback also hands the install answers to the older
-release. When the backup contains `install.answers` — a regular, mode-`0600`
-file in the backup; a symlink or any other mode refuses, as does a symlinked
+**As built (FIX-9, FIX-10).** Rollback also hands the install answers to the older
+release. When the backup contains `install.answers` — a regular file at mode
+`0600` or `0400`; a symlink or any other mode refuses, as does a symlinked
 `.secrets`, all before the confirmation prompt and before any container stops —
-it is restored to `.secrets/install.answers` atomically at mode `0600`, beside
-`.env`; `.env` itself is still only retouched in its `QRADAR_DASH_VERSION` line.
-When the backup has none (0.1.8 or earlier) and the live file is a private
+it is restored to `.secrets/install.answers` atomically at the copy's own mode,
+beside `.env`; `.env` itself is still only retouched in its `QRADAR_DASH_VERSION`
+line. When the backup has none (0.1.8 or earlier) and the live file is a private
 regular file, rollback deletes every `KEY=` line whose key is absent from the
 target release's `ANSWER_KEYS` — read from `git show v<from>:qradar-dash`,
-because rollback runs on the newer checkout and checks out the old tag only
-afterwards — and prints `Removed answer key <name> (unknown to <version>).`
-per key. Comments, blank lines and known keys stay; a file whose keys are all
-known is left untouched on the same inode. A live file that is missing, a
-symlink, or not mode `0600` is left as it is and the database rollback
-continues. `restore` does not restore the answers file.
+because rollback runs on the newer checkout and never checks out the old tag;
+after a successful rollback the operator returns the checkout to the version
+that now runs, as `docs/OPERATIONS.md`, "Geri alma (`rollback`)" says — and
+prints `Removed answer key <name> (unknown to <version>).` per key. A
+mode-`0400` live file is rewritten the same way and stays `0400`: the stripped
+content goes to a sibling temp file at the same mode, renamed over the live
+file, so the live file is never chmod'd. Comments, blank lines and known keys
+stay; a file whose keys are all known is left untouched on the same inode. A
+live file that is missing, a symlink, or in any other mode is left as it is and
+the database rollback continues. `restore` accepts the same modes and puts the
+copy back after the database swap, printing `Restored .secrets/install.answers
+(the answers file, not a secret).` When putting the copy back fails after the
+swap, `restore` keeps the previous file, prints `[warn] .secrets/install.answers
+was not restored; the previous file was kept. Put the copy back by hand:
+install -m <mode> <backup>/install.answers .secrets/install.answers`, and still
+starts the services and writes the restore state; the restore exits 0. Its
+refusals also come before the prompt and before any container stops.
 
 `restore <path>` is the same sequence for a chosen backup, used when the
 operator wants a backup that is not `last_upgrade.backup`. It asks for the
