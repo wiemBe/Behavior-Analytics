@@ -199,7 +199,9 @@ collection cost and mapping prerequisites before enabling them on a production c
 
 Production uses one HTTPS origin for the UI and `/api/`. If you choose `--external-proxy`, forward
 those paths to the loopback ports printed by the installer and set `FORWARDED_ALLOW_IPS` to the
-exact peer address Uvicorn sees. Do not use `*`: a client that can reach the backend could forge its
+exact peer address Uvicorn sees, and add the frontend's address (`FRONTEND_EDGE_IP`, default
+`172.28.10.11`, which `install` appends for you): pages the server draws are then counted under the
+analyst's own address. Your proxy must append the client address to `X-Forwarded-For`. Do not use `*`: a client that can reach the backend could forge its
 forwarded address and select a different rate-limit key.
 
 Confirm the effective address after installation. If every analyst appears as the same Docker

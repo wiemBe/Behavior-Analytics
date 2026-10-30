@@ -1938,10 +1938,12 @@ geri getirir.
 
 **Belirti:** Bir analistin trafiği herkes için 429 döndürüyor.
 
-**Olası neden:** `FORWARDED_ALLOW_IPS` vekili içermiyor; bu yüzden her istemci köprü adresini
-paylaşıyor. Varsayılan sınır dakikada 1200 istektir (`RATE_LIMIT_DEFAULT`). Sunucuda çizilen
-sayfalar frontend konteynerinin adresinden sayılır ve bu adresi tüm analistler paylaşır;
-`FORWARDED_ALLOW_IPS` doğru olduğu halde herkes 429 alıyorsa `RATE_LIMIT_DEFAULT` yükseltilir.
+**Olası neden:** `FORWARDED_ALLOW_IPS` vekili ya da frontend'i içermiyor; bu yüzden istemciler tek bir
+adresi paylaşıyor. Varsayılan sınır dakikada 1200 istektir (`RATE_LIMIT_DEFAULT`). Sunucuda çizilen
+sayfalar frontend konteynerinden gelir. 0.1.9'dan beri frontend de güvenilen ikinci aracıdır
+(`FRONTEND_EDGE_IP`, varsayılan `172.28.10.11`): bu sayfalar, vekilin eklediği son istemci adresiyle,
+analistin kendi anahtarı altında sayılır. Liste frontend'in adresini içermiyorsa bu sayfalar yine tek bir
+anahtarı paylaşır; `./qradar-dash doctor` bunu `forwarded_allow_ips` satırında uyarı olarak gösterir.
 
 **Doğrulama:** Farklı tarayıcılar için backend günlükleri tek bir istemci adresi gösterir ve
 `FORWARDED_ALLOW_IPS` boş ya da `127.0.0.1` olur. Uvicorn erişim günlüğü, bu backend'de varsayılan
@@ -1951,9 +1953,13 @@ olarak kapalıdır; satırı görmek için o günlükleyiciyi yeniden etkinleşt
 ./qradar-dash logs
 ```
 
-**Çözüm:** `FORWARDED_ALLOW_IPS` değerini vekil adresine ayarla. Paketle gelen vekilde bu
-`172.28.10.10` adresidir. Harici vekilde, adresi `docker network inspect <network>` ile ölç. Asla `*`
-yazma.
+**Çözüm:** `FORWARDED_ALLOW_IPS` değerini vekil adresine ve frontend adresine ayarla. Paketle gelen
+kurulumda bu `172.28.10.10,172.28.10.11` olur; `install` ve `upgrade` bunu yazar. Harici vekilde vekil
+adresini `docker network inspect <network>` ile ölç ve listeye frontend adresini ekle (`install` bunu
+kendisi ekler). Harici vekil, istemci adresini `X-Forwarded-For` başlığına **eklemelidir**
+(nginx: `$proxy_add_x_forwarded_for`); başlığı olduğu gibi geçiren ya da ezen bir vekilde analist kendi
+anahtarını seçebilir. Asla `*` yazma. `RATE_LIMIT_DEFAULT` yalnızca liste doğruyken bile gerçek
+trafik sınırı aşıyorsa yükseltilir.
 
 ### OPS-R22. Oturum açmış tarayıcı `Cross-site request refused` alıyor
 

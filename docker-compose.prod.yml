@@ -51,6 +51,12 @@ services:
         GIT_SHA: ${GIT_SHA:-}
     ports: !override
       - "127.0.0.1:${UI_LOOPBACK_PORT:-3000}:3000"
+    networks:
+      edge:
+        # The frontend reaches backend:8000 on this network. Uvicorn trusts this
+        # address too (FORWARDED_ALLOW_IPS), so a server-rendered read is counted
+        # under the analyst's own address, which the frontend forwards.
+        ipv4_address: ${FRONTEND_EDGE_IP:-172.28.10.11}
 
   qradar-mcp:
     image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/qradar-mcp:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}

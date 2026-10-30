@@ -306,6 +306,34 @@ def test_docker_compose_config_keeps_migrate_and_the_external_network(tmp_path: 
         assert "qradar_vm" not in _service_networks(with_override["services"][name])
 
 
+# ------------------------------------------------------------ frontend edge address (RL-1)
+def test_the_frontend_has_a_fixed_edge_address_the_proxy_does_not_share() -> None:
+    base = load_compose(REPO / "docker-compose.yml")
+    overlay = load_compose(REPO / "docker-compose.prod.yml")
+    # A map in the base file: Compose 2.24 cannot merge a pinned address into a list.
+    assert isinstance(base["services"]["frontend"]["networks"], dict)
+    assert set(base["services"]["frontend"]["networks"]) == {"edge"}
+    frontend = overlay["services"]["frontend"]["networks"]["edge"]["ipv4_address"]
+    proxy = overlay["services"]["proxy"]["networks"]["edge"]["ipv4_address"]
+    assert frontend == "${FRONTEND_EDGE_IP:-172.28.10.11}"
+    assert proxy == "${PROXY_EDGE_IP:-172.28.10.10}"
+
+
+def test_docker_compose_config_pins_the_frontend_on_the_edge_network(tmp_path: Path) -> None:
+    reason = _docker_skip_reason()
+    if reason is not None:
+        pytest.skip(reason)
+    _stage_compose_project(tmp_path)
+    with_prod = _compose_config(
+        "docker-compose.yml", "docker-compose.prod.yml", project=tmp_path, profile="proxy"
+    )
+    networks = with_prod["services"]["frontend"]["networks"]
+    assert networks == {"edge": {"ipv4_address": "172.28.10.11"}}
+    assert with_prod["services"]["proxy"]["networks"]["edge"]["ipv4_address"] == "172.28.10.10"
+    base = _compose_config("docker-compose.yml", project=tmp_path)
+    assert _service_networks(base["services"]["frontend"]) == {"edge"}
+
+
 # ------------------------------------------------------------ qradar-mcp service (SEC-4)
 MCP_SECRETS_MOUNT = "/run/secrets"
 # `localhost/` so an unbuilt upstream is never resolved from Docker Hub; an image, not a

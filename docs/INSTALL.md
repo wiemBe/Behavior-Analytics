@@ -346,7 +346,9 @@ Forward `/api/` to the backend without stripping the path and forward all other 
 frontend. Preserve the backend's response security headers.
 
 Uvicorn trusts forwarded client addresses only from `FORWARDED_ALLOW_IPS`. Set it to the exact
-proxy peer address seen by the backend; never use `*`. Otherwise all analysts can share one
+proxy peer address seen by the backend, plus the frontend container's address (`FRONTEND_EDGE_IP`,
+default `172.28.10.11`; the installer appends it); never use `*`. The proxy must append the client
+address to `X-Forwarded-For`. Otherwise all analysts can share one
 rate-limit bucket because the backend sees only the bridge address. The installer asks for this
 value and the runbook explains how to measure it.
 
