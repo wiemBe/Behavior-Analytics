@@ -817,9 +817,12 @@ Bir yedek, yedek kökünün içinde `qradar-dash-<utc>-<reason>/` adlı, izni `0
 |---|---|---|
 | `database.dump` | `POSTGRES_DB` için `pg_dump -Fc` | `0600` |
 | `env.bak` | `.env` kopyası | `0600` |
+| `install.answers` | Kurulum yanıtlarının `.secrets/install.answers` kopyası; yollar ve adlar taşır, asla sır değil. Yalnız canlı dosya normal bir dosya ve kipi `0600` iken kopyalanır; eksik dosya, symlink ya da başka kip kopyalanmaz ve dosya okunmaz | `0600` |
 | `secrets.tar` | QRadar sırları volume'unun ve vekil sertifika volume'unun tar'ı | `0600` |
 | `state.json` | varsa o andaki durum dosyası | `0600` |
 | `MANIFEST` | sürüm, imaj özetleri, `alembic_version`, veritabanı boyutu, ana makine adı, durum dosyası var mı, sır volume kümesi | `0600` |
+
+0.1.8 ve öncesiyle alınmış bir yedekte `install.answers` satırı yoktur.
 
 `reason` değeri `manual`, `scheduled` ya da `pre-upgrade` olur.
 
@@ -1944,7 +1947,9 @@ geri getirir.
 adresi paylaşıyor. Varsayılan sınır dakikada 1200 istektir (`RATE_LIMIT_DEFAULT`). Sunucuda çizilen
 sayfalar frontend konteynerinden gelir. 0.1.9'dan beri frontend de güvenilen ikinci aracıdır
 (`FRONTEND_EDGE_IP`, varsayılan `172.28.10.11`): bu sayfalar, vekilin eklediği son istemci adresiyle,
-analistin kendi anahtarı altında sayılır. Liste frontend'in adresini içermiyorsa bu sayfalar yine tek bir
+analistin kendi anahtarı altında sayılır. Sınır anahtar başına **ve yol başına** sayılır: bir sayfa
+çizimi ~21 API çağrısı yapar ve her çağrı kendi yolunun kovasına bir kez yazılır; tek bir kovaya 21
+kez yazılmaz. Liste frontend'in adresini içermiyorsa bu sayfalar yine tek bir
 anahtarı paylaşır; `./qradar-dash doctor` bunu `forwarded_allow_ips` satırında uyarı olarak gösterir.
 
 **Doğrulama:** Farklı tarayıcılar için backend günlükleri tek bir istemci adresi gösterir ve
