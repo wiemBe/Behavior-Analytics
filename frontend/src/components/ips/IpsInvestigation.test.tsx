@@ -8,9 +8,11 @@ import {
   ipsEntityBucket,
   ipsSourceBucket,
   ipsSourceDetail,
+  ipsSuppressedDetail,
 } from "./fixtures";
 import { ipsChartSummary, IpsInvestigation, type IpsSeriesData } from "./IpsInvestigation";
 import { buildIpsEntitySeries, buildIpsSourceSeries } from "./ipsSeries";
+import { setTestLocale } from "../../../vitest.setup";
 
 const chartProps = vi.hoisted(() => ({ last: null as null | Record<string, unknown> }));
 vi.mock("./IpsSeriesChart", () => ({
@@ -81,6 +83,45 @@ describe("IPS investigation: an entity incident", () => {
     const header = screen.getByText("Detected").closest("div")!;
     expect(header).toHaveTextContent("UTC");
     expect(screen.getByText("Resolved").closest("div")).toHaveTextContent("—");
+  });
+
+  it("shows the stored suppression reason, labelled, under the Suppressed pill", () => {
+    const { container } = view(ipsSuppressedDetail());
+    expect(screen.getByText("Suppressed")).toBeInTheDocument();
+    expect(container.querySelector("p.incident-suppression")).toHaveTextContent(
+      "Suppression reason: maintenance window",
+    );
+  });
+
+  it("renders a coded suppression reason in Turkish", () => {
+    setTestLocale("tr");
+    const { container } = view(ipsSuppressedDetail());
+    expect(screen.getByText("Bastırıldı")).toBeInTheDocument();
+    const line = container.querySelector("p.incident-suppression");
+    expect(line).toHaveTextContent("Bastırma nedeni: Bakım penceresi");
+    expect(line).not.toHaveTextContent("maintenance window");
+  });
+
+  it("keeps the stored suppression text when the row has no code (an old row)", () => {
+    setTestLocale("tr");
+    const { container } = view(
+      ipsSuppressedDetail({ suppression_reason_code: null, suppression_reason_params: null }),
+    );
+    expect(container.querySelector("p.incident-suppression")).toHaveTextContent(
+      "Bastırma nedeni: maintenance window",
+    );
+  });
+
+  it("draws nothing when the suppression reason is empty: the pill alone", () => {
+    const { container } = view(
+      ipsSuppressedDetail({
+        suppression_reason: null,
+        suppression_reason_code: null,
+        suppression_reason_params: null,
+      }),
+    );
+    expect(screen.getByText("Suppressed")).toBeInTheDocument();
+    expect(container.querySelector("p.incident-suppression")).toBeNull();
   });
 
   it("states observed and expected in events per bucket, never EPS", () => {

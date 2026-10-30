@@ -12,6 +12,7 @@ import Link from "next/link";
 import type { WafAnomalyDetail } from "@/lib/api";
 import { sevTone } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { useEnumLabels } from "@/i18n/enumLabels";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { UtcTime } from "@/components/ui/UtcTime";
@@ -45,9 +46,19 @@ function Interval({ anomaly }: { anomaly: WafAnomalyDetail }) {
 export function WafIncidentHeader({ anomaly }: { anomaly: WafAnomalyDetail }) {
   const t = useTranslations("waf.incident");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const { severityPill } = useEnumLabels();
   const endpoint = anomaly.waf_endpoint;
   const sourceHref = `/behavior/waf/sources/${anomaly.log_source_id}`;
+  // Empty, not "Suppressed" with nothing said: an incident suppressed without a stored
+  // reason draws the pill alone.
+  const suppressionReason = anomaly.suppression_reason
+    ? backendMessage({
+        text: anomaly.suppression_reason,
+        code: anomaly.suppression_reason_code,
+        params: anomaly.suppression_reason_params,
+      })
+    : null;
   return (
     <>
       <header className="page-header incident-header">
@@ -69,6 +80,13 @@ export function WafIncidentHeader({ anomaly }: { anomaly: WafAnomalyDetail }) {
               <Interval anomaly={anomaly} />
             </span>
           </div>
+
+          {suppressionReason && (
+            <p className="incident-suppression">
+              <span className="muted">{t("suppressionReason")}: </span>
+              {suppressionReason}
+            </p>
+          )}
 
           <h1 className="page-title incident-source waf-endpoint">{endpointLabel(endpoint)}</h1>
           <p className="waf-subject">

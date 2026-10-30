@@ -13,3 +13,12 @@
 .incident-error-link {
   margin: var(--sp-3) 0 0;
 }
+
+/* Why the incident was suppressed (a maintenance window), under the identity row whose
+   last pill says "Suppressed". One labelled line, not a card. */
+.incident-suppression {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}

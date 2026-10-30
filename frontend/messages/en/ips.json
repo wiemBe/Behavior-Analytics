@@ -113,7 +113,8 @@
     "detected": "Detected",
     "opened": "Opened",
     "resolved": "Resolved",
-    "suppressed": "Suppressed"
+    "suppressed": "Suppressed",
+    "suppressionReason": "Suppression reason"
   },
   "detection": {
     "noWorking": "No detector working was recorded for this incident, so its expected range and baseline cannot be shown. This is a missing record, not a normal baseline.",

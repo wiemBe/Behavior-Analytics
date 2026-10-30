@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
+from app.i18n.messages import MessageRef, render
 from app.models.enums import IpsAnomalyType
 from app.models.ips import IpsAnomaly, IpsEntity
 from tests.integration.test_fleet_api import Client, run
@@ -15,6 +16,10 @@ from tests.integration.test_ips_analyst_api import READER, ips_world
 from tests.unit.ips_message_scenarios import RAW
 
 pytestmark = pytest.mark.integration
+
+#: What the engine writes when it suppresses an anomalous verdict in a maintenance window.
+#: The IPS engine stores the WAF sentence (MSG-6b).
+_MAINTENANCE = MessageRef("waf.suppression.maintenance_window")
 
 
 def coded_row(name: str) -> dict[str, Any]:
@@ -130,6 +135,61 @@ def test_the_response_forwards_no_contributor_block_or_new_port_claim(db_schema)
         "below 3 events in every bucket of the history window",
     ):
         assert forbidden not in response.text, forbidden
+
+
+def suppressed_row(name: str) -> dict[str, Any]:
+    """The columns a row the engine suppressed in a maintenance window holds."""
+    return {
+        **coded_row(name),
+        "suppressed": True,
+        "suppression_reason": render(_MAINTENANCE),
+        "suppression_reason_i18n": _MAINTENANCE.to_wire(),
+    }
+
+
+def test_the_detail_serves_the_suppression_reason_and_its_code(db_schema) -> None:
+    entity_row = suppressed_row("spike.destination_port.fired")
+    source_row = suppressed_row("conc.fired")
+    entity_id, source_id = seed(entity_row=entity_row, source_row=source_row)
+
+    client = Client(READER)
+    for anomaly_id, row in ((entity_id, entity_row), (source_id, source_row)):
+        body = client.get(f"/api/v1/anomalies/{anomaly_id}").json()
+        assert body["suppressed"] is True
+        assert body["suppression_reason"] == row["suppression_reason"]
+        assert body["suppression_reason_code"] == "waf.suppression.maintenance_window"
+        assert body["suppression_reason_params"] == {}
+
+
+def test_a_never_suppressed_row_serves_no_suppression_reason(db_schema) -> None:
+    entity_id, _source_id = seed(entity_row=coded_row("spike.destination_port.fired"))
+
+    body = Client(READER).get(f"/api/v1/anomalies/{entity_id}").json()
+    assert body["suppressed"] is False
+    assert body["suppression_reason"] is None
+    assert body["suppression_reason_code"] is None
+    assert body["suppression_reason_params"] is None
+
+
+def test_an_old_suppressed_row_serves_its_text_and_no_code(db_schema) -> None:
+    row = suppressed_row("spike.destination_port.fired")
+    row["suppression_reason_i18n"] = None
+    entity_id, _source_id = seed(entity_row=row)
+
+    body = Client(READER).get(f"/api/v1/anomalies/{entity_id}").json()
+    assert body["suppression_reason"] == row["suppression_reason"]
+    assert body["suppression_reason_code"] is None
+    assert body["suppression_reason_params"] is None
+
+
+def test_the_list_serves_no_suppression_reason(db_schema) -> None:
+    entity_id, _source_id = seed(entity_row=suppressed_row("spike.destination_port.fired"))
+
+    listed = Client(READER).get("/api/v1/anomalies?limit=200").json()["items"]
+    item = next(i for i in listed if i["id"] == str(entity_id))
+    assert item["suppressed"] is True
+    for field in ("suppression_reason", "suppression_reason_code", "suppression_reason_params"):
+        assert field not in item
 
 
 def test_the_list_statement_count_does_not_grow_with_coded_ips_rows(db_schema) -> None:

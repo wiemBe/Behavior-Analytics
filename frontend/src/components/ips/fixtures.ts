@@ -111,6 +111,18 @@ export function ipsDetail(over: Partial<IpsAnomalyDetail> = {}): IpsAnomalyDetai
   };
 }
 
+/** A row the engine suppressed in a maintenance window: the pill, and the stored reason
+ *  with its code beside it (POL-2). The IPS engine stores the WAF sentence. */
+export function ipsSuppressedDetail(over: Partial<IpsAnomalyDetail> = {}): IpsAnomalyDetail {
+  return ipsDetail({
+    suppressed: true,
+    suppression_reason: "maintenance window",
+    suppression_reason_code: "waf.suppression.maintenance_window",
+    suppression_reason_params: {},
+    ...over,
+  });
+}
+
 /** A source-level incident: concentration by default (a share, with its counts). */
 export function ipsSourceDetail(over: Partial<IpsAnomalyDetail> = {}): IpsAnomalyDetail {
   return ipsDetail({

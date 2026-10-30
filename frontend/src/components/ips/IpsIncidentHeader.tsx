@@ -13,6 +13,7 @@ import { ARROW, wordOrValue } from "@/lib/behaviorI18n";
 import type { IpsAnomalyDetail } from "@/lib/api";
 import { sevTone } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
@@ -69,9 +70,19 @@ export function IpsIncidentHeader({
   const t = useTranslations("ips.header");
   const subjectT = useTranslations("ips.subject");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const sourceName = anomaly.log_source_name ?? anomaly.log_source_id;
   const sourceHref = `/admin/ips-sources/${anomaly.log_source_id}`;
   const entity = anomaly.subject_kind === "IPS_ENTITY";
+  // Empty, not "Suppressed" with nothing said: an incident suppressed without a stored
+  // reason draws the pill alone.
+  const suppressionReason = anomaly.suppression_reason
+    ? backendMessage({
+        text: anomaly.suppression_reason,
+        code: anomaly.suppression_reason_code,
+        params: anomaly.suppression_reason_params,
+      })
+    : null;
   return (
     <header className="page-header incident-header">
       <div>
@@ -90,6 +101,13 @@ export function IpsIncidentHeader({
             <Interval anomaly={anomaly} />
           </span>
         </div>
+
+        {suppressionReason && (
+          <p className="incident-suppression">
+            <span className="muted">{t("suppressionReason")}: </span>
+            {suppressionReason}
+          </p>
+        )}
 
         <h1 className="page-title incident-source">{ipsSubjectText(anomaly, i18n)}</h1>
         <p className="ips-subject">

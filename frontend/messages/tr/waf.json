@@ -112,6 +112,7 @@
     "virtualHost": "Virtual host",
     "noVirtualHostOnEndpoint": "Bu endpoint'te virtual host yok",
     "suppressed": "Bastırıldı",
+    "suppressionReason": "Bastırma nedeni",
     "viewSource": "WAF kaynağını görüntüle",
     "noVirtualHost": "Bu WAF kaynağı bir virtual host bildirmiyor; bu yüzden bu endpoint, yolu paylaşan farklı uygulamaların trafiğini birleştirebilir."
   },

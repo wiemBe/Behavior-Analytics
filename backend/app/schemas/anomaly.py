@@ -600,6 +600,13 @@ class AnomalyDetailOut(AnomalyListItem):
 
     baseline_version: int | None = None
     policy_version: int = 1
+    #: Why the incident was suppressed (a WAF or IPS maintenance window), as stored. None
+    #: for an incident never suppressed and for a row stored before the reason was written.
+    suppression_reason: str | None = None
+    #: Stable code and raw values of `suppression_reason` for a non-English client. Null: no
+    #: code (a row stored before codes, or a reason written as plain text).
+    suppression_reason_code: str | None = None
+    suppression_reason_params: dict[str, MessageParamValue] | None = None
     transitions: list[AnomalyTransitionOut] = Field(default_factory=list)
     #: None when evidence was never requested or has not yet been collected.
     explanation_package: ExplanationOut | None = None
