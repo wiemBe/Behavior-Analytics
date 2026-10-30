@@ -924,6 +924,8 @@ gereklidir (`--non-interactive rollback requires --yes`).
    gösterir.
 5. `outcome=rolled_back` kaydeder ve `previous_images` değerini temizler.
 
+Geri alma, yedekte `install.answers` varsa bu dosyayı kip `0600` ile `.env` yanındaki `.secrets/install.answers` yoluna geri koyar; dosya yedekte yoksa (0.1.8 ve öncesi) mevcut yanıtlardan hedef sürümün bilmediği anahtarları siler ve yalnız anahtar adlarını yazar.
+
 Geri alma kendi sağlık kontrolünde başarısız olursa (OPS-R45): yazıcılar yeniden durdurulur, yedek
 yolu yazdırılır, durum `outcome=failed` olarak kaydedilir ve üçüncü bir yol denenmez.
 

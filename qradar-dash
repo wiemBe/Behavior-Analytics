@@ -2372,6 +2372,19 @@ write_secrets_backup() { # write_secrets_backup TARGET
     "$helper" tar -C /volumes -cf - "${entries[@]}" >"$1"
 }
 
+# install.answers holds paths and names, never a secret (its header says so). Mode 0600 is
+# what install writes and what the next install accepts. Anything else is not copied and is
+# not read: upgrade must ignore a file parse_answers would refuse, and a symlink is not followed.
+answers_file_is_private() { # answers_file_is_private PATH; 0 when it is a regular mode-0600 file
+  local mode
+  [ -e "$1" ] || [ -L "$1" ] || return 1
+  if [ -L "$1" ] || [ ! -f "$1" ]; then
+    return 1
+  fi
+  mode=$(stat -c '%a' "$1" 2>/dev/null) || return 1
+  [ "$mode" = 600 ]
+}
+
 cmd_backup_create() { # cmd_backup_create REASON VERIFY
   local reason=$1 verify=$2 root stamp name final db_size alembic state_json=absent
   need_installed
@@ -2408,6 +2421,12 @@ cmd_backup_create() { # cmd_backup_create REASON VERIFY
   BACKUP_CONTAINER_DUMP=""
   install -m 600 "$ENV_FILE" "$BACKUP_STAGE/env.bak" \
     || die "environment backup failed; the partial backup was removed."
+  # Next to env.bak. Older backups, and a file install would refuse, have no such copy.
+  # Rollback then keeps the current answers and drops keys the target release does not know.
+  if answers_file_is_private "$SAVED_ANSWERS"; then
+    install -m 600 "$SAVED_ANSWERS" "$BACKUP_STAGE/install.answers" \
+      || die "answers backup failed; the partial backup was removed."
+  fi
   write_secrets_backup "$BACKUP_STAGE/secrets.tar" \
     || die "secrets backup failed; the partial backup was removed."
   if [ -f .qradar-dash/state.json ]; then
@@ -2740,6 +2759,166 @@ set_upgrade_services() {
   if doctor_profile_enabled mcp; then UPGRADE_SERVICES=(qradar-mcp "${UPGRADE_SERVICES[@]}"); fi
 }
 
+ANSWER_ROLLBACK_PLAN=""
+ANSWER_ROLLBACK_KEYS=""
+
+# One key per line. ANSWER_KEYS is a double-quoted list that may span lines.
+extract_answer_keys() {
+  awk '
+    function emit(text,    n, i, fields) {
+      sub(/"$/, "", text)
+      n = split(text, fields, /[[:space:]]+/)
+      for (i = 1; i <= n; i++) if (fields[i] != "") print fields[i]
+    }
+    capture == 0 && /^ANSWER_KEYS="/ {
+      text = $0
+      sub(/^ANSWER_KEYS="/, "", text)
+      if (text ~ /"$/) { emit(text); found = 1; exit }
+      emit(text)
+      capture = 1
+      next
+    }
+    capture == 1 {
+      text = $0
+      if (text ~ /"$/) { emit(text); found = 1; exit }
+      emit(text)
+    }
+    END { if (!found) exit 1 }
+  ' "$1"
+}
+
+# Rollback runs from the newer checkout. The operator checks out the old tag only
+# afterwards, so the ANSWER_KEYS on disk are the new release's. The list the old
+# installer accepts is the assignment in v<from>:qradar-dash, the file that checkout
+# would put on disk. When VERSION is already that release, the file on disk is it.
+target_answer_keys() { # target_answer_keys VERSION -> keys, one per line
+  local version=$1 checkout="" keys keys_file
+  if [ -r VERSION ]; then checkout=$(tr -d '[:space:]' <VERSION); fi
+  if [ "$checkout" = "$version" ] && [ -f "$ROOT/qradar-dash" ] && [ ! -L "$ROOT/qradar-dash" ]; then
+    keys=$(extract_answer_keys "$ROOT/qradar-dash") || return 1
+  else
+    keys_file=".qradar-dash/.answer-keys.$$"
+    if ! git --no-pager show "v${version}:qradar-dash" >"$keys_file" 2>/dev/null; then
+      rm -f -- "$keys_file"
+      return 1
+    fi
+    keys=$(extract_answer_keys "$keys_file") || { rm -f -- "$keys_file"; return 1; }
+    rm -f -- "$keys_file"
+  fi
+  [ -n "$keys" ] || return 1
+  printf '%s\n' "$keys"
+}
+
+answer_key_known() {
+  local k
+  for k in $ANSWER_ROLLBACK_KEYS; do
+    [ "$k" = "$1" ] && return 0
+  done
+  return 1
+}
+
+prepare_answer_rollback() { # prepare_answer_rollback BACKUP VERSION; sets ANSWER_ROLLBACK_*
+  local backup=$1 version=$2 mode
+  ANSWER_ROLLBACK_PLAN=""
+  ANSWER_ROLLBACK_KEYS=""
+  if [ -e "$backup/install.answers" ] || [ -L "$backup/install.answers" ]; then
+    if [ -L "$backup/install.answers" ] || [ ! -f "$backup/install.answers" ]; then
+      fail "rollback refused: $backup/install.answers is not a regular file"
+      return 1
+    fi
+    mode=$(stat -c '%a' "$backup/install.answers" 2>/dev/null) || return 1
+    [ "$mode" = 600 ] || {
+      fail "rollback refused: $backup/install.answers has mode $mode; it must be 0600"
+      return 1
+    }
+    # Restoring writes under .secrets. A symlink would land the file outside the checkout.
+    if [ -L .secrets ]; then
+      fail "rollback refused: .secrets is a symlink; $SAVED_ANSWERS was left unchanged"
+      return 1
+    fi
+    ANSWER_ROLLBACK_PLAN=restore
+    return 0
+  fi
+  if [ ! -e "$SAVED_ANSWERS" ] && [ ! -L "$SAVED_ANSWERS" ]; then
+    ANSWER_ROLLBACK_PLAN=none
+    return 0
+  fi
+  # Not an answers file install would read. Leave it, and do not block the database rollback:
+  # upgrade already ignores this file. A symlink is not followed.
+  if ! answers_file_is_private "$SAVED_ANSWERS"; then
+    ANSWER_ROLLBACK_PLAN=none
+    return 0
+  fi
+  if [ -L .secrets ]; then
+    fail "rollback refused: .secrets is a symlink; $SAVED_ANSWERS was left unchanged"
+    return 1
+  fi
+  ANSWER_ROLLBACK_KEYS=$(target_answer_keys "$version") || {
+    fail "rollback refused: cannot read the answer keys of v$version (git show v$version:qradar-dash)"
+    return 1
+  }
+  ANSWER_ROLLBACK_PLAN=strip
+}
+
+restore_answers_file() { # restore_answers_file SRC; atomic, mode 0600, next to .env
+  local src=$1 tmp
+  if [ -L .secrets ]; then
+    fail "rollback refused: .secrets is a symlink; $SAVED_ANSWERS was left unchanged"
+    return 1
+  fi
+  mkdir -p -- .secrets || return 1
+  chmod 700 .secrets || return 1
+  tmp="$SAVED_ANSWERS.restore.$$"
+  umask 077
+  if ! install -m 600 "$src" "$tmp" || ! mv -- "$tmp" "$SAVED_ANSWERS"; then
+    rm -f -- "$tmp"
+    fail "rollback could not restore $SAVED_ANSWERS; the previous file was kept"
+    return 1
+  fi
+}
+
+strip_unknown_answer_keys() { # strip_unknown_answer_keys VERSION; names only, other lines kept
+  local version=$1 line key tmp="$SAVED_ANSWERS.strip.$$" removed=""
+  [ -n "$ANSWER_ROLLBACK_KEYS" ] || {
+    fail "rollback refused: the answer key list for $version is empty; $SAVED_ANSWERS was left unchanged"
+    return 1
+  }
+  umask 077
+  : >"$tmp" || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ $line =~ ^([A-Z][A-Z0-9_]*)= ]]; then
+      key=${BASH_REMATCH[1]}
+      if ! answer_key_known "$key"; then
+        removed="${removed:+$removed }$key"
+        continue
+      fi
+    fi
+    printf '%s\n' "$line" >>"$tmp" || { rm -f -- "$tmp"; return 1; }
+  done <"$SAVED_ANSWERS"
+  if [ -z "$removed" ]; then
+    rm -f -- "$tmp"
+    return 0
+  fi
+  if ! chmod 600 "$tmp" || ! mv -- "$tmp" "$SAVED_ANSWERS"; then
+    rm -f -- "$tmp"
+    fail "rollback could not update $SAVED_ANSWERS; the previous file was kept"
+    return 1
+  fi
+  for key in $removed; do
+    say "Removed answer key $key (unknown to $version)."
+  done
+}
+
+apply_answer_rollback() { # apply_answer_rollback BACKUP VERSION
+  [ -n "$ANSWER_ROLLBACK_PLAN" ] || prepare_answer_rollback "$1" "$2" || return 1
+  case "$ANSWER_ROLLBACK_PLAN" in
+    none) return 0 ;;
+    restore) restore_answers_file "$1/install.answers" ;;
+    strip) strip_unknown_answer_keys "$2" ;;
+    *) fail "rollback refused: answers were not prepared"; return 1 ;;
+  esac
+}
+
 set_env_version() { # set_env_version VERSION
   local version=$1 tmp="$ENV_FILE.version.$$" count
   valid_release_version "$version" || return 1
@@ -3059,11 +3238,16 @@ report_rollback_record_not_written() {
 
 perform_rollback() { # backup old-version old-images from to at
   local backup=$1 old_version=$2 old_images=$3 from=$4 to=$5 at=$6 images
+  # Refuse before the database swap when the answers file cannot be made readable by the
+  # target. Upgrade's own backup carries the file, so this is the older-backup path.
+  prepare_answer_rollback "$backup" "$old_version" || return 1
   if ! restore_swap_database "$backup" rollback; then
     record_rollback_failure "$backup" "$old_version" "$old_images" "$from" "$to" "$at"
     return 1
   fi
+  # The version line in .env, then the answers file beside it.
   if ! set_env_version "$old_version" \
+    || ! apply_answer_rollback "$backup" "$old_version" \
     || ! tag_previous_images "$old_images" "$old_version" \
     || ! start_upgrade_services \
     || ! upgrade_runtime_checks "$old_version"; then
@@ -3449,6 +3633,9 @@ cmd_rollback() {
     return 1
   }
   backup_disk_guard "$docker_root" "$db_size" 2 || return 1
+  # A strip that cannot see the target's keys, or an answers file that is unsafe to copy,
+  # stops here: no prompt, no stopped container, and the file on disk is unchanged.
+  prepare_answer_rollback "$backup" "$old_version" || return 1
   if [ "$non_interactive" = yes ]; then
     [ "$yes" = yes ] || { fail "--non-interactive rollback requires --yes"; return 1; }
   else
