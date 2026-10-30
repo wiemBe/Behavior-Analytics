@@ -42,7 +42,7 @@ from app.providers.dto import (
     LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
-    OffenseDTO,
+    OffenseListResult,
     PwKeyedResult,
     PwSearchKind,
     RuleMatchBatch,
@@ -697,12 +697,24 @@ class QRadarProvider(ABC):
         open_only: bool = True,
         updated_since: datetime | None = None,
         max_pages: int | None = None,
-    ) -> list[OffenseDTO]:
+    ) -> OffenseListResult:
         """Offenses, optionally narrowed to those updated since a watermark.
 
         `updated_since` is what makes collection incremental; a backend that
         cannot filter server-side must still honour it by filtering locally, so
         callers can rely on the result never predating the watermark.
+
+        The result says whether the walk was cut at the page ceiling
+        (`truncated`). A caller that ignores the flag and advances to the
+        newest row it saw skips every row it never read. A provider that
+        cannot know whether its read was cut must report `truncated=True`
+        whenever its last page came back full, never a silent False.
+
+        Backends that can ask the console for order return rows ascending on
+        `last_persisted_time` (the filter field, carried on
+        `OffenseDTO.last_updated_time`). The collector treats the last row's
+        timestamp as the page boundary, so that order is what makes the
+        boundary the newest row on the page.
         """
 
     # -- AQL / Ariel (guarded by AQL_EXECUTION capability) ------------------

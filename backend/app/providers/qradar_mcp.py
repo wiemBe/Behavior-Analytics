@@ -48,6 +48,7 @@ from app.providers.dto import (
     LogSourceDTO,
     LogSourceTypeDTO,
     OffenseDTO,
+    OffenseListResult,
 )
 from app.providers.normalize import (
     as_int,
@@ -61,6 +62,11 @@ from app.providers.telemetry import EndpointCategory, ErrorClass, observe
 from app.security.sanitizer import sanitize_text
 
 logger = logging.getLogger("app.providers.qradar_mcp")
+
+#: The pinned `list_offenses` tool's default limit. A page of this size is not
+#: proof the collection ended: the tool applies it as a Range and will not say
+#: that a further page exists. See that tool's `limit` default (50, max 10000).
+_MCP_OFFENSE_PAGE = 50
 
 PROVIDER_NAME = "mcp"
 
@@ -829,21 +835,50 @@ class QRadarMCPProvider(QRadarProvider):
         open_only: bool = True,
         updated_since: datetime | None = None,
         max_pages: int | None = None,
-    ) -> list[OffenseDTO]:
-        args: dict[str, Any] = {}
-        if open_only:
-            args["status"] = "OPEN"
-        rows = self._rows(await self.call_tool("list_offenses", args))
-        out = [dto for dto in (self._to_offense(r) for r in rows) if dto is not None]
+    ) -> OffenseListResult:
+        """Offenses via the read-only `list_offenses` tool, oldest persisted first.
+
+        The tool accepts `sort` (`+field` ascending) and pages with `limit` plus
+        `offset`. Each call asks for one page of `_MCP_OFFENSE_PAGE`. A short
+        page ends the walk. Filling every allowed page does not: the tool will
+        not say whether another offset exists, so that result is `truncated`.
+        `max_pages` left unset walks a single page, which is all this provider
+        used to request.
+
+        The watermark filter is sent as well as applied locally. A server that
+        ignores `filter` still cannot return rows older than the watermark, and
+        a full raw page stays `truncated` even if the local filter then drops
+        every row.
+        """
+        page_count = max(1, max_pages) if max_pages is not None else 1
+        collected: list[dict] = []
+        truncated = False
+        for page in range(page_count):
+            args: dict[str, Any] = {
+                "sort": "+last_persisted_time",
+                "limit": _MCP_OFFENSE_PAGE,
+                "offset": page * _MCP_OFFENSE_PAGE,
+            }
+            if open_only:
+                args["status"] = "OPEN"
+            if updated_since is not None:
+                epoch_ms = int(updated_since.astimezone(UTC).timestamp() * 1000)
+                args["filter"] = f"last_persisted_time>{epoch_ms}"
+            raw = self._rows(await self.call_tool("list_offenses", args))
+            collected.extend(raw)
+            if len(raw) < _MCP_OFFENSE_PAGE:
+                break
+        else:
+            truncated = True
+
+        out = [dto for dto in (self._to_offense(r) for r in collected) if dto is not None]
         if updated_since is not None:
-            # The MCP read tool exposes no watermark filter, so honour the
-            # contract locally rather than returning rows that predate it.
             cutoff = updated_since.astimezone(UTC)
             out = [
                 o for o in out
                 if o.last_updated_time is not None and o.last_updated_time > cutoff
             ]
-        return out
+        return OffenseListResult(rows=out, truncated=truncated)
 
     # -------------------------------------------------------- normalization
     # The MCP service proxies QRadar's own JSON, so normalization matches the
@@ -964,6 +999,11 @@ class QRadarMCPProvider(QRadarProvider):
             source_count=as_int(row.get("source_count")),
             destination_count=as_int(row.get("local_destination_count")),
             start_time=parse_qradar_time(row.get("start_time")),
+            # Same mapping as the REST provider: the DTO field is
+            # last_persisted_time when QRadar sent it, because that is the
+            # field the incremental filter uses. last_updated_time (last
+            # contributing event) is a different QRadar field and is only the
+            # fallback when last_persisted_time is absent.
             last_updated_time=parse_qradar_time(
                 row.get("last_persisted_time") or row.get("last_updated_time")
             ),

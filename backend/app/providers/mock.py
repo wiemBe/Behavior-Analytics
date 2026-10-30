@@ -59,6 +59,7 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    OffenseListResult,
     PwKeyedResult,
     PwSearchKind,
     RuleMatchBatch,
@@ -260,6 +261,14 @@ def _metric_source_ids(qradar_ids: Sequence[int]) -> set[int]:
         raise ValueError("metric source ids must be integers") from exc
 
 
+def _offense_time_order(dto: OffenseDTO) -> tuple[bool, datetime]:
+    """Oldest persisted time first. A missing time sorts last, never as a boundary."""
+    updated = dto.last_updated_time
+    if updated is None:
+        return (True, datetime.min.replace(tzinfo=UTC))
+    return (False, updated)
+
+
 class MockQRadarProvider(QRadarProvider):
     capabilities = frozenset(
         {
@@ -317,6 +326,14 @@ class MockQRadarProvider(QRadarProvider):
         self.geo_script: GeoScript | None = None
         self._now = now or datetime.now(UTC)
         self._rng = random.Random(seed)  # noqa: S311 (not cryptographic)
+        #: Replaces the built-in offense catalog when a test needs a backlog.
+        #: None keeps the built-in catalog. Filtering and the page ceiling still apply.
+        self.offense_script: list[OffenseDTO] | None = None
+        #: Rows per page. The ceiling is this times `max_pages`. 500 matches the
+        #: REST provider's page size, so the six built-in offenses are never cut.
+        self.offense_page_size: int = 500
+        #: Each list_offenses call, including the ids actually returned.
+        self.offense_calls: list[dict[str, object]] = []
         # Active Ariel searches: search_id -> (aql, created_at)
         self._searches: dict[str, tuple[str, datetime]] = {}
         self._search_counter = 0
@@ -1708,13 +1725,43 @@ class MockQRadarProvider(QRadarProvider):
         open_only: bool = True,
         updated_since: datetime | None = None,
         max_pages: int | None = None,
-    ) -> list[OffenseDTO]:
+    ) -> OffenseListResult:
         """A spread of ages, magnitudes and assignment states.
 
         Deliberately includes an unassigned 30-day-old critical offense so the
         SLA and aging views have something to show, and a closed one so the
         history and closing-reason paths are exercised.
+
+        Rows come back oldest `last_updated_time` first, which is the filter
+        field the REST provider sorts on (`last_persisted_time`). The mock
+        holds the whole catalog, so `truncated` is true only when `max_pages`
+        actually left rows out — not when the last page merely happens to be
+        full. A provider that cannot see past the page does not have that luxury.
         """
+        catalog = (
+            list(self.offense_script)
+            if self.offense_script is not None
+            else self._builtin_offenses()
+        )
+        result = self._bound_offenses(
+            catalog,
+            open_only=open_only,
+            updated_since=updated_since,
+            max_pages=max_pages,
+        )
+        self.offense_calls.append(
+            {
+                "open_only": open_only,
+                "updated_since": updated_since,
+                "max_pages": max_pages,
+                "ids": [dto.qradar_id for dto in result.rows],
+                "truncated": result.truncated,
+            }
+        )
+        return result
+
+    def _builtin_offenses(self) -> list[OffenseDTO]:
+        """The fixed catalog, unfiltered. `idx` starts at 1, as it always has."""
         # description, status, magnitude, assignee, age minutes
         specs: list[tuple[str, str, int, str | None, int]] = [
             ("Multiple Failed Logins then Success", "OPEN", 8, None, 240),
@@ -1726,14 +1773,10 @@ class MockQRadarProvider(QRadarProvider):
         ]
         out: list[OffenseDTO] = []
         for idx, (desc, status, mag, assignee, age_min) in enumerate(specs, start=1):
-            if open_only and status != "OPEN":
-                continue
             start = self._now - timedelta(minutes=age_min)
             # Deterministic per-offense update time so repeat collections with
             # an unchanged offense produce an unchanged content hash.
             updated = self._now - timedelta(minutes=idx * 3)
-            if updated_since is not None and updated <= updated_since:
-                continue
             closed = status == "CLOSED"
             out.append(
                 OffenseDTO(
@@ -1768,6 +1811,31 @@ class MockQRadarProvider(QRadarProvider):
                 )
             )
         return out
+
+    def _bound_offenses(
+        self,
+        catalog: list[OffenseDTO],
+        *,
+        open_only: bool,
+        updated_since: datetime | None,
+        max_pages: int | None,
+    ) -> OffenseListResult:
+        chosen: list[OffenseDTO] = []
+        for dto in catalog:
+            if open_only and dto.status != "OPEN":
+                continue
+            updated = dto.last_updated_time
+            # Same bound as QRadar's `last_persisted_time>{watermark}`.
+            if updated_since is not None and (updated is None or updated <= updated_since):
+                continue
+            chosen.append(dto)
+        chosen.sort(key=_offense_time_order)
+        if max_pages is None:
+            return OffenseListResult(rows=chosen, truncated=False)
+        ceiling = max(1, int(self.offense_page_size)) * max(1, int(max_pages))
+        if len(chosen) > ceiling:
+            return OffenseListResult(rows=chosen[:ceiling], truncated=True)
+        return OffenseListResult(rows=chosen, truncated=False)
 
     # -- Ariel lifecycle ----------------------------------------------------
     async def create_ariel_search(self, aql: str) -> ArielSearchHandleDTO:

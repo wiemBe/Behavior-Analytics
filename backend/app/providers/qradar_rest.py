@@ -27,7 +27,7 @@ import ssl
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from datetime import UTC, datetime
 from functools import wraps
-from typing import Any, ClassVar, Protocol, cast
+from typing import Any, ClassVar, NamedTuple, Protocol, cast
 
 import httpx
 
@@ -79,6 +79,7 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    OffenseListResult,
     PwKeyedResult,
     PwSearchKind,
     RuleMatchBatch,
@@ -114,6 +115,17 @@ from app.waf.bucketed import (
 )
 
 logger = logging.getLogger("app.providers.qradar_rest")
+
+
+class _PageWalk(NamedTuple):
+    """Rows from one Range walk, and whether the page ceiling cut it short.
+
+    A short page is the end of the collection. A full page on the last step
+    the ceiling allows is not: QRadar does not say whether another page exists.
+    """
+
+    rows: list[dict]
+    truncated: bool
 
 PROVIDER_NAME = "rest"
 
@@ -508,8 +520,28 @@ class QRadarRestProvider(QRadarProvider):
 
         Bounded twice over: `max_pages` caps the walk, and a short page ends it.
         QRadar returns a `Content-Range` we do not rely on, because it is absent
-        on some endpoints and versions.
+        on some endpoints and versions. Callers that do not care whether the
+        ceiling cut the walk off use this and ignore the flag.
         """
+        walk = await self._walk_pages(
+            path,
+            category=category,
+            params=params,
+            page_size=page_size,
+            max_pages=max_pages,
+        )
+        return walk.rows
+
+    async def _walk_pages(
+        self,
+        path: str,
+        *,
+        category: EndpointCategory,
+        params: dict[str, Any] | None = None,
+        page_size: int | None = None,
+        max_pages: int | None = None,
+    ) -> _PageWalk:
+        """`_paginate`, plus whether the walk stopped on a full page at the ceiling."""
         size = page_size or self._page_size
         pages = max_pages or self._max_pages
         collected: list[dict] = []
@@ -539,7 +571,8 @@ class QRadarRestProvider(QRadarProvider):
                 "pagination stopped at the page ceiling; results may be incomplete",
                 extra={"endpoint_category": str(category), "max_pages": pages},
             )
-        return collected
+            return _PageWalk(collected, True)
+        return _PageWalk(collected, False)
 
     # ------------------------------------------------- health / inventory
     async def validate_connection(self) -> InstanceInfoDTO:
@@ -2280,12 +2313,15 @@ class QRadarRestProvider(QRadarProvider):
         open_only: bool = True,
         updated_since: datetime | None = None,
         max_pages: int | None = None,
-    ) -> list[OffenseDTO]:
-        """Offenses, optionally restricted to those changed since a watermark.
+    ) -> OffenseListResult:
+        """Offenses changed since a watermark, oldest persisted time first.
 
         `updated_since` drives incremental collection: QRadar's filter syntax
         does the narrowing server-side so we never page through the full offense
-        history to find the handful that moved.
+        history to find the handful that moved. `sort=+last_persisted_time`
+        makes the page a prefix of that order, so a ceiling cuts the newest
+        rows off the end rather than an arbitrary middle. `truncated` is that
+        ceiling, not a short final page.
         """
         filters: list[str] = []
         if open_only:
@@ -2294,17 +2330,20 @@ class QRadarRestProvider(QRadarProvider):
             epoch_ms = int(updated_since.astimezone(UTC).timestamp() * 1000)
             filters.append(f"last_persisted_time>{epoch_ms}")
 
-        params: dict[str, Any] = {}
+        # `+field` is QRadar's ascending sort. The filter and the sort name the
+        # same field, so the last row is the newest persisted time on the page.
+        params: dict[str, Any] = {"sort": "+last_persisted_time"}
         if filters:
             params["filter"] = " and ".join(filters)
 
-        rows = await self._paginate(
+        walk = await self._walk_pages(
             "/siem/offenses",
             category=EndpointCategory.OFFENSE_LIST,
-            params=params or None,
+            params=params,
             max_pages=max_pages,
         )
-        return [dto for dto in (self._to_offense(r) for r in rows) if dto is not None]
+        rows = [dto for dto in (self._to_offense(r) for r in walk.rows) if dto is not None]
+        return OffenseListResult(rows=rows, truncated=walk.truncated)
 
     # ------------------------------------------------------ Ariel lifecycle
     async def create_ariel_search(self, aql: str) -> ArielSearchHandleDTO:
@@ -2543,6 +2582,11 @@ class QRadarRestProvider(QRadarProvider):
             source_count=as_int(row.get("source_count")),
             destination_count=as_int(row.get("local_destination_count")),
             start_time=parse_qradar_time(row.get("start_time")),
+            # QRadar's last_persisted_time (when a field was saved) is not
+            # last_updated_time (when a contributing event was seen). The
+            # incremental filter is last_persisted_time, so the DTO carries
+            # that value whenever QRadar sent it. The other field is only a
+            # fallback for a payload that omits last_persisted_time.
             last_updated_time=parse_qradar_time(
                 row.get("last_persisted_time") or row.get("last_updated_time")
             ),

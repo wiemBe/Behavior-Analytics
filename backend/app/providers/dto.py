@@ -563,6 +563,21 @@ class OffenseDTO(ProviderDTO):
     rule_ids: list[int] = Field(default_factory=list)
 
 
+class OffenseListResult(ProviderDTO):
+    """One bounded read of offenses.
+
+    `truncated` is true when the walk stopped at the page ceiling rather than
+    at the end of the collection: more offenses matched than were read, and
+    `rows` is a prefix of the result, not the whole of it. A provider that
+    cannot know whether its read was cut must say true whenever its last page
+    came back full — never a silent false — so no caller can mistake a cut
+    read for a complete one.
+    """
+
+    rows: list[OffenseDTO] = Field(default_factory=list)
+    truncated: bool = False
+
+
 class AnalyticsRuleDTO(ProviderDTO):
     qradar_id: int
     name: str
