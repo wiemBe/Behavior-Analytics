@@ -941,7 +941,7 @@ class Settings(BaseSettings):
     session_cleanup_batch: int = Field(default=500, ge=1, le=5000)
 
     # --- rate limiting ------------------------------------------------------
-    rate_limit_default: str = "120/minute"
+    rate_limit_default: str = "1200/minute"
     rate_limit_search_execution: str = "10/minute"
     rate_limit_login: str = "300/minute"
 

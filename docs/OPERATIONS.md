@@ -1939,7 +1939,9 @@ geri getirir.
 **Belirti:** Bir analistin trafiği herkes için 429 döndürüyor.
 
 **Olası neden:** `FORWARDED_ALLOW_IPS` vekili içermiyor; bu yüzden her istemci köprü adresini
-paylaşıyor. Varsayılan sınır dakikada 120 istektir (`RATE_LIMIT_DEFAULT`).
+paylaşıyor. Varsayılan sınır dakikada 1200 istektir (`RATE_LIMIT_DEFAULT`). Sunucuda çizilen
+sayfalar frontend konteynerinin adresinden sayılır ve bu adresi tüm analistler paylaşır;
+`FORWARDED_ALLOW_IPS` doğru olduğu halde herkes 429 alıyorsa `RATE_LIMIT_DEFAULT` yükseltilir.
 
 **Doğrulama:** Farklı tarayıcılar için backend günlükleri tek bir istemci adresi gösterir ve
 `FORWARDED_ALLOW_IPS` boş ya da `127.0.0.1` olur. Uvicorn erişim günlüğü, bu backend'de varsayılan

@@ -1486,8 +1486,10 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
 
 21. **OPS-R21. One analyst's traffic makes the API return 429 for everyone.** Cause:
     `FORWARDED_ALLOW_IPS` does not include the proxy, so every client shares
-    the bridge address (`README.md` "Proxy headers and the rate limiter"). The default limit is 120/minute
-    (`config.py:660`). Confirm: backend logs show one client address for
+    the bridge address (`README.md` "Proxy headers and the rate limiter"). The default limit is
+    1200/minute (`config.py:944`). Server-rendered pages are counted under the frontend container's
+    address, which all analysts share; a 429 for everyone with a correct `FORWARDED_ALLOW_IPS` means
+    raising `RATE_LIMIT_DEFAULT`. Confirm: backend logs show one client address for
     distinct browsers, and `FORWARDED_ALLOW_IPS` is empty or `127.0.0.1`.
     Fix: set it to the proxy address in §3.4. Do not set `*`.
 

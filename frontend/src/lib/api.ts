@@ -170,20 +170,61 @@ function requestCredentials(): RequestCredentials {
   return credentialMode(window.location.href, baseUrl());
 }
 
+/** The session cookie's name (`backend/app/api/routes/auth.py`). It is the only cookie a server render forwards. */
+export const SESSION_COOKIE = "qd_session";
+
+/**
+ * The `Cookie` header a server-side read carries, or undefined.
+ *
+ * A Server Component's `fetch` has no cookie jar, so the incoming request's session cookie is
+ * forwarded by hand: that cookie only, on a GET or HEAD only. It is read through Next's
+ * request-scoped `cookies()` on every call and kept nowhere, so one user's cookie cannot reach
+ * another user's render. Outside a request scope (a build-time path) `cookies()` throws and no
+ * header is sent. The value is never logged or put in an error.
+ */
+async function serverCookieHeader(method: string | undefined): Promise<string | undefined> {
+  // The import sits inside the `typeof window` test itself: the bundler resolves that test at build
+  // time, drops the block from the client build, and never creates a chunk for `next/headers`.
+  if (typeof window === "undefined") {
+    const verb = (method ?? "GET").toUpperCase();
+    if (verb !== "GET" && verb !== "HEAD") return undefined;
+    try {
+      const { cookies } = await import("next/headers");
+      const value = (await cookies()).get(SESSION_COOKIE)?.value;
+      return value ? `${SESSION_COOKIE}=${value}` : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/** The request's headers with the forwarded session cookie added, or undefined when none is. A caller's own `Cookie` wins. */
+async function forwardedHeaders(init?: RequestInit): Promise<Headers | undefined> {
+  const cookie = await serverCookieHeader(init?.method);
+  if (cookie === undefined) return undefined;
+  // A GET or HEAD has no body, so the forwarded headers need no content type.
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Cookie")) headers.set("Cookie", cookie);
+  return headers;
+}
+
 /**
  * One request through the backend. Exported for the saved-dashboards client. A `204` has no body,
  * so it resolves to `undefined` instead of failing in `res.json()`; no existing route answers 204.
  * The session cookie is sent. No token is stored by this client.
  */
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const sent = await forwardedHeaders(init);
   const res = await fetch(`${baseUrl()}${path}`, {
     ...init,
     credentials: requestCredentials(),
     // A bodyless read is a simple request. `Content-Type: application/json` is not a CORS-safelisted
     // value, so sending it on a `GET` turns every cross-origin read into a preflighted one; it goes
     // out only when there is a body. A caller's own header still wins.
-    headers:
-      init?.body === undefined
+    headers: sent
+      ? sent
+      : init?.body === undefined
         ? init?.headers
         : { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",
@@ -3073,11 +3114,13 @@ function detailText(detail: unknown, fallback: string): string {
 }
 
 async function fleetRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const sent = await forwardedHeaders(init);
   const res = await fetch(`${baseUrl()}${path}`, {
     ...init,
     // As `request`: only a request with a body carries `Content-Type`.
-    headers:
-      init?.body === undefined
+    headers: sent
+      ? sent
+      : init?.body === undefined
         ? init?.headers
         : { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",

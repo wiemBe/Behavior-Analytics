@@ -481,7 +481,7 @@ have at least five minutes between fires.
 | `LOGIN_LOCKOUT_THRESHOLD` | `5` | Failed attempts before lockout |
 | `LOGIN_LOCKOUT_MINUTES` | `15` | Lockout duration |
 | `PUBLIC_ORIGIN` | `http://localhost:3000` | Browser origin. Outside development it must be an https origin with a host and no path, query or wildcard |
-| `RATE_LIMIT_DEFAULT` | `120/minute` | Default per-client and per-path API limit |
+| `RATE_LIMIT_DEFAULT` | `1200/minute` | Default per-client and per-path API limit |
 | `RATE_LIMIT_SEARCH_EXECUTION` | `10/minute` | Manual search-execution limit |
 | `RATE_LIMIT_LOGIN` | `300/minute` | Login endpoint limit |
 

@@ -7,7 +7,7 @@ import Link from "next/link";
 // no navigation. A password that must change, and an account with no
 // permission, replace the page they asked for.
 
-import { Suspense, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 
@@ -30,6 +30,24 @@ export function AppFrame({ children }: { children: ReactNode }) {
   const common = useTranslations("common");
   const pathname = usePathname() ?? "/";
   const session = useSession();
+
+  // Leaving the sign-in page while the session still reads as signed out is wrong: the page is
+  // left because a sign-in succeeded. Read `/me` once more, so an earlier 401 cannot keep the
+  // "Sign-in is required." gate over a valid cookie until a reload (HOTFIX-1, F5).
+  const cameFromLogin = useRef(false);
+  const { status, reload } = session;
+  useEffect(() => {
+    if (onLoginPath(pathname)) {
+      cameFromLogin.current = true;
+    } else if (status === "ready") {
+      cameFromLogin.current = false;
+    } else if (status === "anonymous" && cameFromLogin.current) {
+      cameFromLogin.current = false;
+      void reload().catch(() => {
+        /* the provider records the failure and the frame shows it */
+      });
+    }
+  }, [pathname, status, reload]);
 
   if (onLoginPath(pathname)) {
     return <div className={styles.gate}>{children}</div>;
