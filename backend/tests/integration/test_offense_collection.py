@@ -17,7 +17,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import func, select
 
-from app.collectors.offense_collector import COLLECTOR_NAME, OffenseCollector
+from app.collectors.offense_collector import (
+    COLLECTOR_NAME,
+    WATERMARK_STALLED_KEY,
+    OffenseCollector,
+)
 from app.core.config import get_settings
 from app.models.monitoring import CollectionWatermark
 from app.models.offense import OffenseSnapshot
@@ -768,3 +772,106 @@ class TestTruncatedOffenseRead:
         messages = [record.getMessage() for record in caplog.records]
         assert any("no offense to advance from" in message for message in messages)
         assert all("QRadar" not in message for message in messages)
+
+    @pytest.mark.asyncio
+    async def test_a_stalled_run_records_the_page_ceiling_signal(self, db_session) -> None:
+        """The stall is on the watermark row, and the watermark stays put."""
+        inst = await make_instance(db_session)
+        rows = [offense(i, last_updated_time=at(5)) for i in (1, 2, 3)]
+        provider = scripted_mock(rows, page_size=2)
+
+        report = await collector(
+            db_session, provider, clock=lambda: NOW, offense_max_pages=1
+        ).collect(inst)
+
+        assert report.watermark_stalled is True
+        assert report.truncated is True
+        mark = await watermark(db_session, inst.id)
+        assert mark is not None
+        await db_session.refresh(mark)
+        assert mark.watermark_at is None
+        assert mark.consecutive_failures == 0
+        assert mark.last_error is None
+        assert mark.collection_metadata.get(WATERMARK_STALLED_KEY) is True
+
+    @pytest.mark.asyncio
+    async def test_a_clean_run_clears_the_page_ceiling_signal(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        stalled = scripted_mock(
+            [offense(i, last_updated_time=at(5)) for i in (1, 2)], page_size=1
+        )
+        first = await collector(
+            db_session, stalled, clock=lambda: NOW, offense_max_pages=1
+        ).collect(inst)
+        assert first.watermark_stalled is True
+        mark = await watermark(db_session, inst.id)
+        assert mark is not None
+        await db_session.refresh(mark)
+        assert mark.collection_metadata.get(WATERMARK_STALLED_KEY) is True
+
+        report = await collector(
+            db_session,
+            StubProvider([[offense(9, last_updated_time=at(9))]]),
+            clock=lambda: NOW,
+        ).collect(inst)
+
+        assert report.watermark_stalled is False
+        assert report.partial_failure is False
+        assert report.truncated is False
+        await db_session.refresh(mark)
+        assert WATERMARK_STALLED_KEY not in (mark.collection_metadata or {})
+        assert mark.watermark_at == at(9)
+        assert mark.consecutive_failures == 0
+        assert mark.last_error is None
+
+    @pytest.mark.asyncio
+    async def test_a_truncated_run_that_can_move_does_not_record_a_stall(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        rows = [offense(i, last_updated_time=at(i)) for i in (1, 2, 3)]
+        provider = scripted_mock(rows, page_size=2)
+
+        report = await collector(
+            db_session, provider, clock=lambda: NOW, offense_max_pages=1
+        ).collect(inst)
+
+        assert report.truncated is True
+        assert report.watermark_stalled is False
+        assert report.partial_failure is True
+        mark = await watermark(db_session, inst.id)
+        assert mark is not None
+        await db_session.refresh(mark)
+        # Strictly below the last row on the page (at(2)). Not the boundary.
+        assert mark.watermark_at == at(1)
+        assert WATERMARK_STALLED_KEY not in (mark.collection_metadata or {})
+        assert mark.consecutive_failures == 0
+        assert mark.last_error is None
+
+    @pytest.mark.asyncio
+    async def test_a_provider_failure_after_a_stall_clears_the_stall_signal(
+        self, db_session
+    ) -> None:
+        """A current failure is not reported as a page-ceiling stall."""
+        inst = await make_instance(db_session)
+        stalled = scripted_mock(
+            [offense(i, last_updated_time=at(5)) for i in (1, 2)], page_size=1
+        )
+        await collector(
+            db_session, stalled, clock=lambda: NOW, offense_max_pages=1
+        ).collect(inst)
+        held = (await watermark(db_session, inst.id)).watermark_at
+
+        report = await collector(
+            db_session, StubProvider(error=ProviderError("QRadar is down"))
+        ).collect(inst)
+
+        mark = await watermark(db_session, inst.id)
+        assert mark is not None
+        await db_session.refresh(mark)
+        assert report.partial_failure is True
+        assert report.watermark_stalled is False
+        assert mark.watermark_at == held
+        assert mark.last_error == "QRadar is down"
+        assert mark.consecutive_failures == 1
+        assert WATERMARK_STALLED_KEY not in (mark.collection_metadata or {})

@@ -484,6 +484,8 @@ have at least five minutes between fires.
 | `RATE_LIMIT_DEFAULT` | `1200/minute` | Default per-client and per-path API limit |
 | `RATE_LIMIT_SEARCH_EXECUTION` | `10/minute` | Manual search-execution limit |
 | `RATE_LIMIT_LOGIN` | `300/minute` | Login endpoint limit |
+| `FRONTEND_EDGE_IP` | `172.28.10.11` | Address of the frontend container on the Compose `edge` network. Server-rendered pages come from this address. Uvicorn trusts it, through `FORWARDED_ALLOW_IPS`, so those reads are counted under the analyst's own address, which the frontend forwards. It must sit in `EDGE_SUBNET` (default `172.28.10.0/24`) and differ from `PROXY_EDGE_IP` (default `172.28.10.10`). The installer defaults it to the next address after `PROXY_EDGE_IP`. That default is the proxy's own address when the proxy's last octet is 254 or higher, which does not satisfy the requirement. Not a `Settings` field. Compose reads it; `./qradar-dash install` writes it |
+| `FORWARDED_ALLOW_IPS` | `172.28.10.10,172.28.10.11` | Comma-separated peers whose `X-Forwarded-For` Uvicorn trusts: the proxy and the frontend. `./qradar-dash install` writes this. The bundled proxy is `PROXY_EDGE_IP`, then `FRONTEND_EDGE_IP`. An external proxy keeps the operator's list and the installer appends `FRONTEND_EDGE_IP` once. An empty value stays empty. `*` is refused. Not a `Settings` field |
 
 ## Retention and notifications
 

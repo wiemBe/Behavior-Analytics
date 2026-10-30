@@ -22,7 +22,7 @@ Dört kural her bölümde geçerlidir:
 7. [Geçmiş okuma](#geçmiş-okuma)
 8. [Kapsam eşlemeleri](#kapsam-eşlemeleri)
 9. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R65; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R66; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -1039,7 +1039,7 @@ bağlanmaz.
 | `celery_beat` | Redis'teki kalp atışı anahtarı; yaşı 180 sn altında olmalı. | OPS-R9 |
 | `qradar_tls` | Yapılandırılmış CA ile el sıkışma. Sertifika bitişi 30 günden yakınsa ya da `QRADAR_TLS_ALLOW_MISSING_AKI` açıksa WARN. | OPS-R2, OPS-R3, OPS-R4, OPS-R18 |
 | `qradar_auth` | `GET /system/about`. | OPS-R1 |
-| `watermarks` | Her `collection_watermark` satırı: `consecutive_failures` 0 ve gecikme kadansın iki katından az ise PASS. `consecutive_failures` 3 ve üstü ya da `last_error` doluysa FAIL. | OPS-R30 |
+| `watermarks` | Her `collection_watermark` satırı. `consecutive_failures` 0, `last_error` boş, gecikme kadansın iki katından az ve sayfa tavanında takılı değilse PASS. `consecutive_failures` 3 ve üstü ya da `last_error` doluysa FAIL. Gecikme kadansın iki katını aşarsa WARN. `offense_snapshot` okuması sayfa tavanında takılıysa WARN; satır `stalled at the page ceiling` der ve `offense_snapshot` adını yazar. Başka bir satır FAIL iken takılı okuma aynı satırda yine adlandırılır. | OPS-R30, OPS-R66 |
 | `cadence` | Her `search_cadence` ailesi. Son çalışma yaşı kadans + yerleşme + 60 sn içinde olmalı. | OPS-R30 |
 | `families_off` | Kimlik aynı kalır. Satır önce `NAME=on` ya da `NAME=off` listesini, sonra açık aileleri (`on:`) ve kapalı aileleri (`off:`) ayrı yazar. Phase A her zaman açıktır. Yeni kurulum kırmızı görünmesin diye PASS'tir. | OPS-R7 |
 | `errors_recent` | `consecutive_failures > 0` olan filigran satırı sayısı: sıfır PASS, bir ya da iki WARN, üç ve üstü FAIL. | OPS-R30 |
@@ -2947,3 +2947,28 @@ QRadar'dan dönmüş olabilir ve boş bir okuma sessizliğin kanıtı sayılamaz
 `doctor` satırındaki UTC çıkış zamanını bekle; daha yeni başka pencereler varsa kendi başlangıç
 zamanlarından `RULE_HEALTH_WINDOW_DAYS` sonra ayrı ayrı çıkarlar. Satır `TRUNCATED` diyorsa satır
 sınırı ve sorgu yükü ayrı bir tasarım gerektirir; bu onarım onu sağlıklı saymaz.
+
+### OPS-R66. Offense okuması sayfa tavanında takılı
+
+**Belirti:** `doctor` `watermarks` için WARN verir. Satır `offense_snapshot` adını ve
+`stalled at the page ceiling` yazar. `runbook: OPS-R66` bu giriştir. Filigran yerinde durur;
+sonraki çalışma aynı sayfayı yeniden okur.
+
+**Olası neden:** Aynı `last_persisted_time` değerini taşıyan offense sayısı, bir yürüyüşün
+okuduğundan fazladır. Yürüyüş `OFFENSE_MAX_PAGES` sayfasında kesilir. Bu zaman damgasının
+altında güvenli bir satır yoktur, bu yüzden filigran sınırın ötesine taşınmaz. Taşınsaydı
+okunmayan offense'lar bir daha gelmezdi. Bu bir sağlayıcı hatası değildir: `consecutive_failures`
+artmaz.
+
+**Doğrulama:** `watermarks` satırı. `offense_snapshot` için `last_error` boş olabilir; sinyal
+filigran satırının `collection_metadata` alanındaki `watermark_stalled` değeridir.
+
+```bash
+./qradar-dash doctor
+```
+
+**Çözüm:** `OFFENSE_MAX_PAGES` değerini yükselt. Bu, `backend/app/core/config.py` içindeki
+`offense_max_pages` alanıdır (varsayılan 20, üst sınır 500). Aynı `last_persisted_time` değerini
+paylaşan offense'lar bir yürüyüşe sığmalıdır. Temiz bir çalışma sinyali siler. Filigranı elle
+ilerletme: sınırın ötesine taşımak okunmayan offense'ları atlar. Gecikme uyarısı ayrıdır
+(OPS-R30).

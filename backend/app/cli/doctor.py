@@ -27,6 +27,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import and_, case, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.collectors.offense_collector import WATERMARK_STALLED_KEY
 from app.core.config import Environment, Settings, get_settings, unknown_setting_names
 from app.core.database import dispose_engine, get_sessionmaker
 from app.history.origin import is_live_clause
@@ -303,6 +304,33 @@ def _safe_text(value: object) -> str:
 def _watermark_list(names: Sequence[str]) -> str:
     """Collector names for output: a known name as is, anything else redacted."""
     return ", ".join(n if n in _WATERMARK_NAMES else _safe_text(n) for n in names)[:_MESSAGE_CAP]
+
+
+def _watermark_stalled(row: object) -> bool:
+    """True when the collector recorded a page-ceiling stall on this row.
+
+    The flag lives in `collection_metadata`. It is not `last_error`: a stall
+    is not a provider failure. An older `last_error` can still be on the row.
+    Doctor warns on the flag anyway. A provider failure clears the flag first.
+    """
+    metadata = getattr(row, "collection_metadata", None)
+    if not isinstance(metadata, dict):
+        return False
+    return metadata.get(WATERMARK_STALLED_KEY) is True
+
+
+def _watermark_warn_message(stalled: Sequence[str], late: Sequence[str]) -> str:
+    parts: list[str] = []
+    if stalled:
+        parts.append(
+            f"{len(stalled)} watermark(s) stalled at the page ceiling: "
+            f"{_watermark_list(stalled)}"
+        )
+    if late:
+        parts.append(
+            f"{len(late)} watermark(s) exceed twice their cadence: {_watermark_list(late)}"
+        )
+    return "; ".join(parts)
 
 
 def _host_from_url(value: str, fallback: str) -> str:
@@ -759,28 +787,36 @@ class Doctor:
                 return CheckResult("watermarks", Status.PASS, "no collection watermarks exist")
             cadences = {row.family: row.cadence_seconds for row in cadence_rows}
             failed: list[str] = []
+            stalled: list[str] = []
             late: list[str] = []
             for row in rows:
-                if row.consecutive_failures >= 3 or row.last_error:
+                # The flag is the latest finished read. It wins over a leftover
+                # last_error and over lag: the operator has to raise the page
+                # ceiling, and a lag line would send them to the cadence runbook.
+                # A provider failure clears the flag, so a current failure still
+                # lands in `failed`.
+                if _watermark_stalled(row):
+                    stalled.append(row.collector)
+                elif row.consecutive_failures >= 3 or row.last_error:
                     failed.append(row.collector)
                 elif row.lag_seconds is not None and row.lag_seconds > 2 * self._watermark_cadence(
                     row.collector, cadences
                 ):
                     late.append(row.collector)
             if failed:
-                return CheckResult(
-                    "watermarks",
-                    Status.FAIL,
-                    f"{len(failed)} watermark(s) failed: {_watermark_list(failed)}",
-                    "OPS-R30",
-                )
-            if late:
+                # A failing row used to hide every other row. The failure stays
+                # the status. A stall on another collector is still named, or
+                # the operator never sees the page ceiling.
+                message = f"{len(failed)} watermark(s) failed: {_watermark_list(failed)}"
+                if stalled or late:
+                    message = f"{message}; {_watermark_warn_message(stalled, late)}"
+                return CheckResult("watermarks", Status.FAIL, message, "OPS-R30")
+            if stalled or late:
                 return CheckResult(
                     "watermarks",
                     Status.WARN,
-                    f"{len(late)} watermark(s) exceed twice their cadence: "
-                    f"{_watermark_list(late)}",
-                    "OPS-R30",
+                    _watermark_warn_message(stalled, late),
+                    "OPS-R66" if stalled else "OPS-R30",
                 )
             return CheckResult(
                 "watermarks", Status.PASS, f"{len(rows)} watermark(s) have no error or excess lag"
