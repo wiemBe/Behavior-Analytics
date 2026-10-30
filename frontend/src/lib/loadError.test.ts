@@ -27,4 +27,20 @@ describe("loadErrorMessage", () => {
       "Log sources could not be loaded. The backend may be unreachable; reload the page to try again.",
     );
   });
+
+  const WAIT = "Nothing is wrong with the data or the backend.";
+
+  it("says rate limited with the wait on a 429 that sent Retry-After", () => {
+    const text = loadErrorMessage(new ApiError(429, "x", undefined, undefined, 30), "alerts", "read:alerts");
+    expect(text).toContain("Too many requests came from this address within a minute.");
+    expect(text).toContain(WAIT);
+    expect(text).toContain("Try again in 30 s.");
+    expect(text).not.toContain("unreachable");
+  });
+
+  it("says in a minute on a 429 without Retry-After", () => {
+    const text = loadErrorMessage(new ApiError(429, "x"), "alerts", "read:alerts");
+    expect(text).toContain("Try again in a minute.");
+    expect(text).not.toContain("unreachable");
+  });
 });

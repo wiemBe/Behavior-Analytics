@@ -7,6 +7,7 @@
 
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -15,7 +16,7 @@ import { WafRangeSelector } from "@/components/waf/WafRangeSelector";
 import { WafSourcesTable } from "@/components/waf/WafSourcesTable";
 import { isJudged } from "@/components/waf/wafSourceHealth";
 import { parseWafRange } from "@/components/waf/wafRange";
-import { ApiError, api, type PagedWafSources } from "@/lib/api";
+import { ApiError, rateLimitedText, api, type PagedWafSources } from "@/lib/api";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { plainCount } from "@/lib/figureText";
 import { UtcTime } from "@/components/ui/UtcTime";
@@ -36,6 +37,7 @@ async function WafBehaviorPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const t = await getTranslations("waf.behavior");
+  const say = asTextTranslator(await getTranslations());
   const i18n = await getBehaviorI18n();
   const count = (value: number) => plainCount(value, i18n.locale);
   const params = await searchParams;
@@ -57,11 +59,13 @@ async function WafBehaviorPage({
     });
   } catch (err) {
     error =
-      err instanceof ApiError && err.status === 403
-        ? t("forbidden")
-        : err instanceof ApiError && err.status === 401
-          ? t("expired")
-          : t("failed");
+      err instanceof ApiError && err.status === 429
+        ? rateLimitedText(err, say)
+        : err instanceof ApiError && err.status === 403
+          ? t("forbidden")
+          : err instanceof ApiError && err.status === 401
+            ? t("expired")
+            : t("failed");
   }
 
   const items = page?.items ?? [];

@@ -1,7 +1,7 @@
 // What a failed read of the WAF administration API says. Never the raw error:
 // it can carry an upstream URL, and this text goes into the DOM.
 
-import { ApiError } from "@/lib/api";
+import { ApiError, rateLimitedText } from "@/lib/api";
 import { ENGLISH_WAF, type BehaviorI18n } from "@/components/waf/wafI18n";
 
 export function readError(
@@ -9,6 +9,7 @@ export function readError(
   what: string,
   i18n: BehaviorI18n = ENGLISH_WAF,
 ): string {
+  if (err instanceof ApiError && err.status === 429) return rateLimitedText(err, i18n.t);
   if (err instanceof ApiError && err.status === 403) {
     return i18n.t("waf.admin.read.forbidden", { what });
   }

@@ -83,6 +83,31 @@ describe("alert list states", () => {
     expect(screen.queryByRole("table")).toBeNull();
   });
 
+  it.each([
+    ["with Retry-After", new ApiError(429, "rate limit exceeded", undefined, undefined, 30), "Try again in 30 s."],
+    ["without Retry-After", new ApiError(429, "rate limit exceeded"), "Try again in a minute."],
+  ])("says the page is rate limited on a 429 %s", async (_case, error, wait) => {
+    vi.spyOn(api, "alerts").mockRejectedValue(error);
+    await renderPage();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Too many requests came from this address within a minute.");
+    expect(alert).toHaveTextContent(wait);
+    expect(alert).not.toHaveTextContent("unreachable");
+  });
+
+  it.each([
+    ["with Retry-After", new ApiError(429, "rate limit exceeded", undefined, undefined, 30), "30 sn sonra yeniden deneyin."],
+    ["without Retry-After", new ApiError(429, "rate limit exceeded"), "Bir dakika sonra yeniden deneyin."],
+  ])("says it in Turkish on a 429 %s", async (_case, error, wait) => {
+    setTestLocale("tr");
+    vi.spyOn(api, "alerts").mockRejectedValue(error);
+    await renderPage();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Bu adresten bir dakika içinde çok fazla istek geldi.");
+    expect(alert).toHaveTextContent(wait);
+    expect(alert).not.toHaveTextContent("Backend'e erişilemiyor");
+  });
+
   it("says there are no alerts", async () => {
     vi.spyOn(api, "alerts").mockResolvedValue(page([]));
     await renderPage();

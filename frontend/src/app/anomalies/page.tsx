@@ -12,6 +12,7 @@
 
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 import { AnomalyFilters } from "@/components/behavior/AnomalyFilters";
 import { AnomalyRows } from "@/components/behavior/AnomalyRows";
@@ -25,6 +26,7 @@ import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
   ApiError,
+  rateLimitedText,
   api,
   type AnomalySummary,
   type Page,
@@ -56,6 +58,7 @@ async function AnomaliesPage({
 }) {
   const raw = await searchParams;
   const t = await getTranslations("anomalies.list");
+  const say = asTextTranslator(await getTranslations());
   const i18n = await getBehaviorI18n();
   const q = parseAnomalyQuery(raw, i18n);
   // The subject filters are parsed beside the Phase A query, not in it: a WAF
@@ -102,11 +105,13 @@ async function AnomaliesPage({
     sources = behaviors;
   } catch (err) {
     error =
-      err instanceof ApiError && err.status === 403
-        ? t("forbidden")
-        : err instanceof ApiError && err.status === 401
-          ? t("expired")
-          : t("failed");
+      err instanceof ApiError && err.status === 429
+        ? rateLimitedText(err, say)
+        : err instanceof ApiError && err.status === 403
+          ? t("forbidden")
+          : err instanceof ApiError && err.status === 401
+            ? t("expired")
+            : t("failed");
   }
 
   const filtered = Boolean(

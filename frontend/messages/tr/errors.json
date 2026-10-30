@@ -11,5 +11,7 @@
   "notReached": "İstek sunucuya ulaşmadı. Backend'e erişilebildiğini kontrol edip yeniden deneyin.",
   "httpStatus": "Sunucu HTTP {status} ile yanıt verdi.",
   "loadForbidden": "İzin yok: {noun} görüntülenemez. {grant} izni için bir yöneticiye başvurun.",
-  "loadFailed": "Yüklenemedi: {noun}. Backend'e erişilemiyor olabilir; yeniden denemek için sayfayı yenileyin."
+  "loadFailed": "Yüklenemedi: {noun}. Backend'e erişilemiyor olabilir; yeniden denemek için sayfayı yenileyin.",
+  "rateLimited": "Bu adresten bir dakika içinde çok fazla istek geldi. Veride ya da backend'de bir sorun yok. Bir dakika sonra yeniden deneyin.",
+  "rateLimitedAfter": "Bu adresten bir dakika içinde çok fazla istek geldi. Veride ya da backend'de bir sorun yok. {seconds, number} sn sonra yeniden deneyin."
 }

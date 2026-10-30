@@ -155,6 +155,18 @@ describe("failure", () => {
     unmount();
   });
 
+  it("carries a 429's Retry-After seconds on the error", async () => {
+    const { result, unmount } = renderHook(() =>
+      useApiResource<string>("/rl", fetcherFor("/rl") as never),
+    );
+    await flush();
+    await act(async () =>
+      calls[0].reject(new ApiError(429, "rate limit exceeded", undefined, undefined, 12)),
+    );
+    expect(result.current).toEqual({ status: "error", httpStatus: 429, retryAfter: 12 });
+    unmount();
+  });
+
   it("reports a network failure as an error with no status", async () => {
     const { result, unmount } = renderHook(() =>
       useApiResource<string>("/h", fetcherFor("/h") as never),

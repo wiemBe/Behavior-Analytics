@@ -13,6 +13,7 @@
 
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { asTextTranslator } from "@/i18n/textTranslator";
 import Link from "next/link";
 
 import { SourceFilters } from "@/components/behavior/SourceFilters";
@@ -21,7 +22,7 @@ import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { ApiError, api, type SourceBehavior } from "@/lib/api";
+import { ApiError, rateLimitedText, api, type SourceBehavior } from "@/lib/api";
 import { formatMetric, formatRatio, isUnjudged, stateTone } from "@/lib/behavior";
 import { getBehaviorI18n, getEnumLabels } from "@/lib/behaviorI18n.server";
 import { plainCount } from "@/lib/figureText";
@@ -80,6 +81,7 @@ async function SourcesIndexPage({
   const query = parseSourceQuery(await searchParams);
   const t = await getTranslations("behavior.sources");
   const errors = await getTranslations("behavior.errors");
+  const say = asTextTranslator(await getTranslations());
   const { locale } = await getBehaviorI18n();
   const { statePill } = await getEnumLabels();
 
@@ -89,11 +91,13 @@ async function SourcesIndexPage({
     sources = await api.sourceBehaviors();
   } catch (err) {
     error =
-      err instanceof ApiError && err.status === 403
-        ? errors("forbidden")
-        : err instanceof ApiError && err.status === 401
-          ? errors("expired")
-          : t("failed");
+      err instanceof ApiError && err.status === 429
+        ? rateLimitedText(err, say)
+        : err instanceof ApiError && err.status === 403
+          ? errors("forbidden")
+          : err instanceof ApiError && err.status === 401
+            ? errors("expired")
+            : t("failed");
   }
 
   const matched = sortSources(

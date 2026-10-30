@@ -11,5 +11,7 @@
   "notReached": "The request did not reach the server. Check that the backend is reachable and try again.",
   "httpStatus": "The server answered HTTP {status}.",
   "loadForbidden": "You do not have permission to view {noun}. Ask an administrator for the {grant} grant.",
-  "loadFailed": "{noun} could not be loaded. The backend may be unreachable; reload the page to try again."
+  "loadFailed": "{noun} could not be loaded. The backend may be unreachable; reload the page to try again.",
+  "rateLimited": "Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in a minute.",
+  "rateLimitedAfter": "Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in {seconds, number} s."
 }

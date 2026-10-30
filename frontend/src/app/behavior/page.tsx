@@ -18,6 +18,7 @@
 
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { asTextTranslator } from "@/i18n/textTranslator";
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 
@@ -29,6 +30,7 @@ import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
   ApiError,
+  rateLimitedText,
   api,
   sevTone,
   type AnomalySummary,
@@ -67,6 +69,7 @@ const RECENT_LIMIT = 6;
 async function BehaviorPage() {
   const t = await getTranslations("behavior.overview");
   const errors = await getTranslations("behavior.errors");
+  const say = asTextTranslator(await getTranslations());
   const i18n = await getBehaviorI18n();
   const { locale } = i18n;
   const { statePill, severityPill } = await getEnumLabels();
@@ -98,11 +101,13 @@ async function BehaviorPage() {
     activeFailed = activePage === null;
   } catch (err) {
     error =
-      err instanceof ApiError && err.status === 403
-        ? errors("forbidden")
-        : err instanceof ApiError && err.status === 401
-          ? errors("expired")
-          : t("failed");
+      err instanceof ApiError && err.status === 429
+        ? rateLimitedText(err, say)
+        : err instanceof ApiError && err.status === 403
+          ? errors("forbidden")
+          : err instanceof ApiError && err.status === 401
+            ? errors("expired")
+            : t("failed");
   }
 
   if (error || !summary) {

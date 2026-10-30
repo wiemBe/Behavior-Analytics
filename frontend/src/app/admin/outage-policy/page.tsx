@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import {
   ApiError,
+  rateLimitedText,
   outagePolicyApi,
   type OutageFleetSummary,
   type OutagePolicyRow,
@@ -44,9 +45,11 @@ async function OutagePolicyPage() {
     summary = fleet.value;
   } else {
     summaryNote =
-      fleet.reason instanceof ApiError && fleet.reason.status === 403
-        ? t("summaryForbidden")
-        : t("summaryFailed");
+      fleet.reason instanceof ApiError && fleet.reason.status === 429
+        ? rateLimitedText(fleet.reason, i18n.t)
+        : fleet.reason instanceof ApiError && fleet.reason.status === 403
+          ? t("summaryForbidden")
+          : t("summaryFailed");
   }
 
   return (

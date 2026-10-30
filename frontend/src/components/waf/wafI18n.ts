@@ -7,9 +7,10 @@
 // passes its own (`useBehaviorI18n()` in a component, `getBehaviorI18n()` in a server page).
 //
 // Only the namespaces the WAF helpers read are imported (the area-bundle rule): `waf`, `units`,
-// `enums` (the detector-name table) and `behavior` (the evidence words `wafLabels` reuses).
+// `enums` (the detector-name table) and `behavior` (the evidence words `wafLabels` reuses), and `errors` (the rate-limit sentence).
 
 import behavior from "../../../messages/en/behavior.json";
+import errors from "../../../messages/en/errors.json";
 import enums from "../../../messages/en/enums.json";
 import units from "../../../messages/en/units.json";
 import waf from "../../../messages/en/waf.json";
@@ -18,7 +19,7 @@ import type { BehaviorI18n } from "@/lib/behaviorI18n";
 
 /** The English of this area, for the helpers' defaults. */
 export const ENGLISH_WAF: BehaviorI18n = {
-  t: createTextTranslator("en", { behavior, enums, units, waf }),
+  t: createTextTranslator("en", { behavior, enums, errors, units, waf }),
   locale: "en",
 };
 

@@ -3,11 +3,12 @@
 
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 import { SearchCadenceTable } from "@/components/cadence/SearchCadenceTable";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
-import { ApiError, api, type SearchCadenceItem } from "@/lib/api";
+import { ApiError, rateLimitedText, api, type SearchCadenceItem } from "@/lib/api";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -18,17 +19,20 @@ export async function generateMetadata(): Promise<Metadata> {
 async function SearchCadencePage() {
   const t = await getTranslations("cadence.page");
   const errors = await getTranslations("errors");
+  const say = asTextTranslator(await getTranslations());
   let items: SearchCadenceItem[] = [];
   let error: string | null = null;
   try {
     items = await api.searchCadence();
   } catch (err) {
     error =
-      err instanceof ApiError && err.status === 403
-        ? t("forbidden")
-        : err instanceof ApiError && err.status === 401
-          ? errors("sessionExpired")
-          : t("failed");
+      err instanceof ApiError && err.status === 429
+        ? rateLimitedText(err, say)
+        : err instanceof ApiError && err.status === 403
+          ? t("forbidden")
+          : err instanceof ApiError && err.status === 401
+            ? errors("sessionExpired")
+            : t("failed");
   }
 
   return (

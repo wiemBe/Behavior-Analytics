@@ -180,3 +180,14 @@ describe("WidgetFrame data time", () => {
     expect(note(/Stale: the latest data is from 10:00:00 UTC, 2 h old\./)).toBeInTheDocument();
   });
 });
+
+describe("a refresh that was rate limited", () => {
+  it.each([
+    [{ httpStatus: 429, retryAfter: 37 }, /The latest refresh failed \(too many requests, try again in 37\s+s\)\. Showing the data to 11:56:00 UTC\./],
+    [{ httpStatus: 429 }, /The latest refresh failed \(too many requests, try again in a minute\)\. Showing the data to 11:56:00 UTC\./],
+  ])("keeps the stale-data note and drops the bare HTTP status (%j)", (refreshFailed, text) => {
+    frame(answer({ refreshFailed }), { at: ago(240), family: "PHASE_A_VOLUME" });
+    expect(note(text)).toBeInTheDocument();
+    expect(screen.queryByText(/HTTP 429/)).not.toBeInTheDocument();
+  });
+});

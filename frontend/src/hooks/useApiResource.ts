@@ -38,15 +38,15 @@ export type ResourceState<T> =
       /** True while a refresh is in flight; `data` is the previous answer. */
       refreshing: boolean;
       /** The latest refresh failed (not 403); `data` is the last good answer. */
-      refreshFailed: { httpStatus: number | null } | null;
+      refreshFailed: { httpStatus: number | null; retryAfter?: number | null } | null;
     }
   | { status: "forbidden"; httpStatus: 403 }
-  | { status: "error"; httpStatus: number | null };
+  | { status: "error"; httpStatus: number | null; retryAfter?: number | null };
 
 type Settled =
   | { status: "ok"; data: unknown; receivedAt: string }
   | { status: "forbidden"; httpStatus: 403 }
-  | { status: "error"; httpStatus: number | null };
+  | { status: "error"; httpStatus: number | null; retryAfter?: number | null };
 
 interface Entry {
   controller: AbortController;
@@ -58,7 +58,7 @@ interface Held {
   key: string;
   settled: Settled | null;
   refreshing: boolean;
-  refreshFailed: { httpStatus: number | null } | null;
+  refreshFailed: { httpStatus: number | null; retryAfter?: number | null } | null;
 }
 
 const entries = new Map<string, Entry>();
@@ -84,6 +84,8 @@ function start(key: string, fetcher: (signal: AbortSignal) => Promise<unknown>):
         settle(entry, {
           status: "error",
           httpStatus: err instanceof ApiError ? err.status : null,
+          // Present only when a 429 named a wait, so every other error keeps its shape.
+          ...(err instanceof ApiError && err.retryAfter !== null ? { retryAfter: err.retryAfter } : {}),
         });
       }
     },
@@ -116,7 +118,14 @@ export function useApiResource<T>(
     const listener = (s: Settled) =>
       setHeld((prev) =>
         s.status === "error" && prev && prev.key === key && prev.settled?.status === "ok"
-          ? { ...prev, refreshing: false, refreshFailed: { httpStatus: s.httpStatus } }
+          ? {
+              ...prev,
+              refreshing: false,
+              refreshFailed: {
+                httpStatus: s.httpStatus,
+                ...(s.retryAfter != null ? { retryAfter: s.retryAfter } : {}),
+              },
+            }
           : { key, settled: s, refreshing: false, refreshFailed: null },
       );
     // A refresh keeps the previous answer on screen; a new key starts empty.

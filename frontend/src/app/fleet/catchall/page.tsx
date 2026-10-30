@@ -12,6 +12,7 @@ import { guideFor } from "@/lib/guideRoutes";
 import { fleetTextOf, type FleetText } from "@/lib/fleetText";
 import {
   ApiError,
+  rateLimitedText,
   catchallApi,
   type CatchallSender,
   type CatchallSourceList,
@@ -33,6 +34,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export const dynamic = "force-dynamic";
 
 function failureText(err: unknown, text: FleetText): string {
+  if (err instanceof ApiError && err.status === 429) return rateLimitedText(err, text.say);
   if (err instanceof ApiError && err.status === 403) return text.say("fleet.errors.forbidden");
   if (err instanceof ApiError && err.status === 401) return text.say("errors.sessionExpired");
   return text.say("catchall.page.unreachable");

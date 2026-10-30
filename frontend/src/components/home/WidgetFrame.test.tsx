@@ -67,6 +67,18 @@ describe("WidgetFrame", () => {
     expect(alert.querySelector(".widget-error-action strong")).toBeNull();
   });
 
+  it.each([
+    ["with Retry-After", 45, "Try again in 45 s."],
+    ["without Retry-After", null, "Try again in a minute."],
+  ])("says the read was rate limited on a 429 %s", (_case, retryAfter, wait) => {
+    frame({ status: "error", httpStatus: 429, retryAfter });
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("The fleet state could not be read.");
+    expect(alert).toHaveTextContent("Too many requests came from this address within a minute.");
+    expect(alert).toHaveTextContent(wait);
+    expect(alert).not.toHaveTextContent("check that the backend is reachable");
+  });
+
   it("uses the same two-part error structure at panel and KPI density", () => {
     const panel = frame({ status: "error", httpStatus: 503 });
     const panelParts = Array.from(
