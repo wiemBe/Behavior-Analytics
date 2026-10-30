@@ -256,7 +256,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    networks: [edge]
+    # A map, not a list, so the production overlay can pin an address on it.
+    networks:
+      edge: {}
     logging: *json-logging
     restart: unless-stopped
 

@@ -199,13 +199,44 @@ async function serverCookieHeader(method: string | undefined): Promise<string | 
   return undefined;
 }
 
-/** The request's headers with the forwarded session cookie added, or undefined when none is. A caller's own `Cookie` wins. */
+/**
+ * The client address a server-side read is counted under, or undefined.
+ *
+ * The bundled proxy sets `X-Forwarded-For` with `$proxy_add_x_forwarded_for`: whatever the browser
+ * sent, then the address the proxy saw, appended last. Only that last hop is the proxy's own
+ * observation; everything before it is the browser's claim, so it is never forwarded. The backend
+ * trusts this container's address (`FORWARDED_ALLOW_IPS`) and counts the call under the value sent.
+ * A value that is not an address is dropped, as is a call with no incoming header, a non GET or
+ * HEAD, and a call outside a request scope. Read per call, kept nowhere.
+ */
+async function serverClientAddress(method: string | undefined): Promise<string | undefined> {
+  if (typeof window === "undefined") {
+    const verb = (method ?? "GET").toUpperCase();
+    if (verb !== "GET" && verb !== "HEAD") return undefined;
+    try {
+      const { headers } = await import("next/headers");
+      const hops = (await headers()).get("x-forwarded-for")?.split(",") ?? [];
+      const last = hops[hops.length - 1]?.trim();
+      return last && /^[0-9A-Fa-f:.]+$/.test(last) ? last : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The request's headers with the forwarded session cookie and client address added, or undefined
+ * when neither applies. A caller's own `Cookie` or `X-Forwarded-For` wins.
+ */
 async function forwardedHeaders(init?: RequestInit): Promise<Headers | undefined> {
   const cookie = await serverCookieHeader(init?.method);
-  if (cookie === undefined) return undefined;
+  const address = await serverClientAddress(init?.method);
+  if (cookie === undefined && address === undefined) return undefined;
   // A GET or HEAD has no body, so the forwarded headers need no content type.
   const headers = new Headers(init?.headers);
-  if (!headers.has("Cookie")) headers.set("Cookie", cookie);
+  if (cookie !== undefined && !headers.has("Cookie")) headers.set("Cookie", cookie);
+  if (address !== undefined && !headers.has("X-Forwarded-For")) headers.set("X-Forwarded-For", address);
   return headers;
 }
 

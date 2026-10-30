@@ -1379,3 +1379,65 @@ def test_unhealthy_upgrade_service_is_named(upgrade: UpgradeFixture) -> None:
     assert "celery-worker is exited" in result.stderr
     assert "./qradar-dash logs celery-worker" in result.stderr
     assert "./qradar-dash doctor" in result.stderr
+
+
+# ------------------------------------------------ the frontend as a second trusted forwarder (RL-1)
+def _env_text(upgrade: UpgradeFixture) -> str:
+    return (upgrade.root / ".env").read_text()
+
+
+def test_upgrade_adds_the_frontend_to_an_old_forwarded_list(upgrade: UpgradeFixture) -> None:
+    with (upgrade.root / ".env").open("a") as env:
+        env.write("FORWARDED_ALLOW_IPS=172.28.10.10\n")
+    before = _env_text(upgrade).splitlines()
+
+    result = upgrade.run("upgrade", TARGET_VERSION)
+
+    assert result.returncode == 0, output(result)
+    after = _env_text(upgrade).splitlines()
+    assert "FORWARDED_ALLOW_IPS=172.28.10.10,172.28.10.11" in after
+    assert "FRONTEND_EDGE_IP=172.28.10.11" in after
+    changed = {line for line in after if line not in before}
+    assert changed == {
+        "FORWARDED_ALLOW_IPS=172.28.10.10,172.28.10.11",
+        "FRONTEND_EDGE_IP=172.28.10.11",
+        f"QRADAR_DASH_VERSION={TARGET_VERSION}",
+    }
+    assert "FORWARDED_ALLOW_IPS now also trusts the frontend" in output(result)
+
+
+def test_upgrade_leaves_a_list_that_already_names_the_frontend(upgrade: UpgradeFixture) -> None:
+    with (upgrade.root / ".env").open("a") as env:
+        env.write("FORWARDED_ALLOW_IPS=10.1.2.3,172.28.10.11\nFRONTEND_EDGE_IP=172.28.10.11\n")
+
+    result = upgrade.run("upgrade", TARGET_VERSION)
+
+    assert result.returncode == 0, output(result)
+    text = _env_text(upgrade)
+    assert text.count("FORWARDED_ALLOW_IPS=10.1.2.3,172.28.10.11\n") == 1
+    assert text.count("FRONTEND_EDGE_IP=") == 1
+
+
+def test_upgrade_does_not_rewrite_an_empty_or_wildcard_list(upgrade: UpgradeFixture) -> None:
+    with (upgrade.root / ".env").open("a") as env:
+        env.write("FORWARDED_ALLOW_IPS=*\n")
+
+    result = upgrade.run("upgrade", TARGET_VERSION)
+
+    assert result.returncode == 0, output(result)
+    assert "FORWARDED_ALLOW_IPS=*\n" in _env_text(upgrade)
+    assert "FRONTEND_EDGE_IP" not in _env_text(upgrade)
+
+
+def test_upgrade_refuses_a_duplicated_forwarded_line_and_changes_nothing(
+    upgrade: UpgradeFixture,
+) -> None:
+    with (upgrade.root / ".env").open("a") as env:
+        env.write("FORWARDED_ALLOW_IPS=1.1.1.1\nFORWARDED_ALLOW_IPS=2.2.2.2\n")
+    before = _env_text(upgrade)
+
+    result = upgrade.run("upgrade", TARGET_VERSION)
+
+    assert result.returncode == 1, output(result)
+    assert "more than one FORWARDED_ALLOW_IPS line" in output(result)
+    assert _env_text(upgrade) == before

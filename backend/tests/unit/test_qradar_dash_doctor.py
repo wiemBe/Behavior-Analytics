@@ -718,3 +718,55 @@ def test_an_enabled_system_timer_does_not_ask_the_user_scope(doctor: DoctorFixtu
     assert result.returncode == 0, output(result)
     calls = Path(doctor.env["STUB_SYSTEMCTL_CALLS"]).read_text().splitlines()
     assert calls == ["is-enabled qradar-dash-backup.timer"]
+
+
+def _set_forwarded(doctor: DoctorFixture, *lines: str) -> None:
+    env = doctor.root / ".env"
+    env.write_text(env.read_text() + "".join(f"{line}\n" for line in lines))
+
+
+def test_doctor_passes_when_forwarded_allow_ips_trusts_the_frontend(doctor: DoctorFixture) -> None:
+    _set_forwarded(doctor, "FORWARDED_ALLOW_IPS=172.28.10.10,172.28.10.11")
+
+    result = doctor.run()
+
+    assert result.returncode == 0, output(result)
+    assert "PASS  forwarded_allow_ips" in result.stdout
+    assert "trusts the frontend (172.28.10.11)" in result.stdout
+
+
+def test_doctor_accepts_an_external_proxy_list_that_names_the_frontend(
+    doctor: DoctorFixture,
+) -> None:
+    _set_forwarded(
+        doctor, "FORWARDED_ALLOW_IPS=10.1.2.3, 10.9.0.21", "PROXY_EDGE_IP=10.9.0.20",
+        "FRONTEND_EDGE_IP=10.9.0.21",
+    )
+
+    result = doctor.run()
+
+    assert result.returncode == 0, output(result)
+    assert "trusts the frontend (10.9.0.21)" in result.stdout
+
+
+def test_doctor_warns_when_the_frontend_is_not_trusted(doctor: DoctorFixture) -> None:
+    _set_forwarded(doctor, "FORWARDED_ALLOW_IPS=172.28.10.10")
+
+    result = doctor.run()
+
+    assert result.returncode == 1, output(result)
+    assert "WARN  forwarded_allow_ips" in result.stdout
+    assert "does not trust the frontend (172.28.10.11)" in result.stdout
+    assert "OPS-R21" in result.stdout
+
+
+@pytest.mark.parametrize("value", ["", "*"])
+def test_doctor_fails_on_an_empty_or_wildcard_forwarded_list(
+    doctor: DoctorFixture, value: str
+) -> None:
+    _set_forwarded(doctor, f"FORWARDED_ALLOW_IPS={value}")
+
+    result = doctor.run()
+
+    assert result.returncode == 2, output(result)
+    assert "FAIL  forwarded_allow_ips" in result.stdout

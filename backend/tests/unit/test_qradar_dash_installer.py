@@ -1908,3 +1908,74 @@ def test_an_unhealthy_install_names_the_service(
     assert "./qradar-dash logs proxy" in result.stderr
     assert "./qradar-dash doctor" in result.stderr
     assert not (inst.root / ".qradar-dash").exists()
+
+
+# ------------------------------------------------ the frontend as a second trusted forwarder (RL-1)
+def _env_value(inst: Install, key: str) -> str:
+    return next(x for x in _env_lines(inst) if x.startswith(f"{key}=")).split("=", 1)[1]
+
+
+def test_the_bundled_proxy_install_trusts_the_proxy_and_the_frontend(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    _build(inst, tmp_path, build_path)
+
+    assert _env_value(inst, "FORWARDED_ALLOW_IPS") == "172.28.10.10,172.28.10.11"
+    assert _env_value(inst, "PROXY_EDGE_IP") == "172.28.10.10"
+    assert _env_value(inst, "FRONTEND_EDGE_IP") == "172.28.10.11"
+
+
+def test_a_custom_proxy_address_moves_the_frontend_default_with_it(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    answers = inst.answers(EDGE_SUBNET="10.9.0.0/24", PROXY_EDGE_IP="10.9.0.20")
+    inst.run("install", "--non-interactive", str(answers), "--build", "--skip-qradar-check",
+             path=build_path)
+
+    assert _env_value(inst, "FORWARDED_ALLOW_IPS") == "10.9.0.20,10.9.0.21"
+    assert _env_value(inst, "FRONTEND_EDGE_IP") == "10.9.0.21"
+
+
+def test_an_external_proxy_install_appends_the_frontend_once(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    answers = inst.answers(EXTERNAL_PROXY="yes", FORWARDED_ALLOW_IPS="10.1.2.3")
+    inst.run("install", "--non-interactive", str(answers), "--build", "--skip-qradar-check",
+             path=build_path)
+    assert _env_value(inst, "FORWARDED_ALLOW_IPS") == "10.1.2.3,172.28.10.11"
+
+    # A second run, and an operator who already listed the frontend, add nothing twice.
+    inst.run("install", "--non-interactive", str(answers), "--build", "--skip-qradar-check",
+             path=build_path)
+    assert _env_value(inst, "FORWARDED_ALLOW_IPS") == "10.1.2.3,172.28.10.11"
+    answers = inst.answers(EXTERNAL_PROXY="yes", FORWARDED_ALLOW_IPS="172.28.10.11, 10.1.2.3")
+    inst.run("install", "--non-interactive", str(answers), "--build", "--skip-qradar-check",
+             path=build_path)
+    assert _env_value(inst, "FORWARDED_ALLOW_IPS") == "172.28.10.11, 10.1.2.3"
+
+
+def test_an_external_proxy_install_with_no_address_still_refuses_and_writes_none(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    for name in ("qr_rc", "up_rc", "ready_rc"):
+        (tmp_path / name).write_text("0\n")
+    (tmp_path / "version_code").write_text("200\n")
+    answers = inst.answers(EXTERNAL_PROXY="yes")
+
+    result = inst.run(
+        "install", "--non-interactive", str(answers), "--skip-qradar-check", path=flow_path
+    )
+
+    assert result.returncode == 3, result.stdout + result.stderr
+    assert "FORWARDED_ALLOW_IPS in" in result.stderr + result.stdout
+    # The frontend address alone must not make an empty list look configured.
+    assert _env_value(inst, "FORWARDED_ALLOW_IPS") == ""
+
+
+def test_the_frontend_address_must_be_an_ipv4_address(inst: Install, tmp_path: Path) -> None:
+    answers = inst.answers(FRONTEND_EDGE_IP="frontend")
+
+    result = inst.run("install", "--non-interactive", str(answers), "--skip-qradar-check")
+
+    assert result.returncode != 0
+    assert "FRONTEND_EDGE_IP" in result.stdout + result.stderr

@@ -128,7 +128,8 @@ def test_install_rerun_keeps_the_external_proxy_forwarded_ips_when_only_mcp_was_
         )
         _set_profiles(inst, "mcp")  # an external proxy with the operator's mcp
     assert _profile_lines(inst) == ["COMPOSE_PROFILES=mcp"]
-    assert "FORWARDED_ALLOW_IPS=10.1.2.3" in _env_lines(inst)
+    # RL-1: the operator's address is kept, and the frontend's is listed beside it.
+    assert "FORWARDED_ALLOW_IPS=10.1.2.3,172.28.10.11" in _env_lines(inst)
 
 
 # -------------------------------------------------------------- upgrade and rollback

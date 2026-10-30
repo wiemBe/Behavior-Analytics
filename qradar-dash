@@ -132,7 +132,7 @@ ANSWER_KEYS="PUBLIC_HOSTNAME TLS_CERT_FILE TLS_KEY_FILE EXTERNAL_PROXY FORWARDED
 QRADAR_URL QRADAR_CONSOLE_FQDN QRADAR_API_VERSION QRADAR_TOKEN_FILE QRADAR_CA_FILE
 QRADAR_ALLOW_MISSING_AKI INSTANCE_NAME BACKUP_DIR GHCR_USER GHCR_TOKEN_FILE ADMIN_USERNAME
 HTTPS_PORT API_LOOPBACK_PORT UI_LOOPBACK_PORT IMAGE_PREFIX SECRETS_VOLUME PROXY_CERTS_VOLUME
-EDGE_SUBNET PROXY_EDGE_IP PROJECT_NAME HISTORY_BACKFILL"
+EDGE_SUBNET PROXY_EDGE_IP FRONTEND_EDGE_IP PROJECT_NAME HISTORY_BACKFILL"
 
 declare -A ANS=()
 ERRORS=()
@@ -202,7 +202,7 @@ check_value() {
         || { say "lower-case letters, digits, _ and - only"; return 1; } ;;
     EDGE_SUBNET)
       [[ $val =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$ ]] || { say "not an IPv4 CIDR"; return 1; } ;;
-    PROXY_EDGE_IP)
+    PROXY_EDGE_IP | FRONTEND_EDGE_IP)
       [[ $val =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || { say "not an IPv4 address"; return 1; } ;;
   esac
   return 0
@@ -258,6 +258,7 @@ apply_defaults() {
   : "${ANS[PROXY_CERTS_VOLUME]:=qradar-observability-proxy-certs}"
   : "${ANS[EDGE_SUBNET]:=172.28.10.0/24}"
   : "${ANS[PROXY_EDGE_IP]:=172.28.10.10}"
+  : "${ANS[FRONTEND_EDGE_IP]:=$(next_address "${ANS[PROXY_EDGE_IP]}")}"
   : "${ANS[PROJECT_NAME]:=qradar-observability}"
   if [ -z "${ANS[QRADAR_CONSOLE_FQDN]:-}" ] && [ -n "${ANS[QRADAR_URL]:-}" ]; then
     local h=${ANS[QRADAR_URL]#https://}
@@ -347,7 +348,9 @@ wizard() {
     say "2. External proxy chosen: no certificate is needed here. Run your own TLS proxy to"
     say "   127.0.0.1:${ANS[API_LOOPBACK_PORT]:-8000} (/api/) and 127.0.0.1:${ANS[UI_LOOPBACK_PORT]:-3000}"
     say "   (everything else), and set FORWARDED_ALLOW_IPS in .env to the peer address uvicorn sees"
-    say "   (README, 'Proxy headers and the rate limiter')."
+    say "   (README, 'Proxy headers and the rate limiter'). The frontend's own address is added to it"
+    say "   for you: the pages the server draws are counted under the analyst's address."
+    say "   Your proxy must APPEND the client address to X-Forwarded-For (nginx: \$proxy_add_x_forwarded_for)."
   fi
   ask QRADAR_URL "4. QRadar base URL (https://...)"
   ask QRADAR_CONSOLE_FQDN "5. QRadar console FQDN (bare host name)" \
@@ -607,6 +610,23 @@ save_answers() {
   mv "$f" "$SAVED_ANSWERS"
 }
 
+next_address() { # next_address A.B.C.D -> A.B.C.(D+1); the input again when D is 254 or more
+  local ip=$1 last
+  [[ $ip =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})$ ]] || { printf '%s\n' "$ip"; return 0; }
+  last=$((10#${BASH_REMATCH[2]}))
+  if [ "$last" -ge 254 ]; then printf '%s\n' "$ip"; return 0; fi
+  printf '%s.%s\n' "${BASH_REMATCH[1]}" "$((last + 1))"
+}
+
+forwarded_with_frontend() { # forwarded_with_frontend LIST ADDRESS -> LIST with ADDRESS once; "*" and empty stay
+  local list=$1 address=$2 item
+  [ -n "$list" ] && [ "$list" != "*" ] || { printf '%s\n' "$list"; return 0; }
+  for item in ${list//,/ }; do
+    if [ "$item" = "$address" ]; then printf '%s\n' "$list"; return 0; fi
+  done
+  printf '%s,%s\n' "$list" "$address"
+}
+
 installer_env_key() {
   case "$1" in
     ENVIRONMENT | DEBUG | LOG_LEVEL | AUTH_PROVIDER | PUBLIC_ORIGIN | SECRET_KEY | \
@@ -620,7 +640,7 @@ installer_env_key() {
       LLM_ENABLED | LLM_ALLOW_AUTONOMOUS_ACTIONS | MCP_ENABLED | COMPOSE_PROJECT_NAME | \
       COMPOSE_FILE | COMPOSE_PROFILES | QRADAR_DASH_VERSION | QRADAR_DASH_IMAGE_PREFIX | \
       QRADAR_DASH_BACKUP_DIR | SECRETS_VOLUME | PROXY_CERTS_VOLUME | HTTPS_PORT | \
-      API_LOOPBACK_PORT | UI_LOOPBACK_PORT | EDGE_SUBNET | PROXY_EDGE_IP) return 0 ;;
+      API_LOOPBACK_PORT | UI_LOOPBACK_PORT | EDGE_SUBNET | PROXY_EDGE_IP | FRONTEND_EDGE_IP) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -732,6 +752,9 @@ write_env() { # write_env ENCRYPTION_KEY
     # Keep an earlier external-proxy value, never the bundled proxy address of a previous mode.
     if [ -z "$fwd" ] && [ "$old_had_proxy" = no ]; then fwd=$(env_get FORWARDED_ALLOW_IPS); fi
   fi
+  # The frontend is the second trusted forwarder: its server-rendered reads carry the analyst's
+  # address (frontend/src/lib/api.ts). An empty value stays empty so step 10 can refuse it.
+  fwd=$(forwarded_with_frontend "$fwd" "${ANS[FRONTEND_EDGE_IP]}")
   version=$(read_checkout_version)
   compose_files=$(compose_file_value)
   warn_invariant_change ENVIRONMENT production
@@ -796,6 +819,7 @@ API_LOOPBACK_PORT=${ANS[API_LOOPBACK_PORT]}
 UI_LOOPBACK_PORT=${ANS[UI_LOOPBACK_PORT]}
 EDGE_SUBNET=${ANS[EDGE_SUBNET]}
 PROXY_EDGE_IP=${ANS[PROXY_EDGE_IP]}
+FRONTEND_EDGE_IP=${ANS[FRONTEND_EDGE_IP]}
 EOF
   if [ "${#extra_lines[@]}" -gt 0 ]; then
     say "# Kept from the previous .env (not written by ./qradar-dash install)" >>"$ENV_FILE.tmp"
@@ -3139,6 +3163,51 @@ migrate_image_prefix() { # migrate_image_prefix INSTALLED_VERSION
   say "Image prefix moved: $OLD_IMAGE_PREFIX -> $DEFAULT_IMAGE_PREFIX (the repository was renamed)."
 }
 
+set_env_line() { # set_env_line KEY VALUE: replace the one KEY= line, or append it; mode 0600
+  local key=$1 value=$2 tmp="$ENV_FILE.fwd.$$"
+  umask 077
+  if grep -q "^$key=" "$ENV_FILE"; then
+    awk -v k="$key" -v v="$value" 'index($0, k "=") == 1 && !done { print k "=" v; done = 1; next } { print }' \
+      "$ENV_FILE" >"$tmp" || { rm -f -- "$tmp"; return 1; }
+  else
+    { cat -- "$ENV_FILE"; printf '%s=%s\n' "$key" "$value"; } >"$tmp" || { rm -f -- "$tmp"; return 1; }
+  fi
+  if ! chmod 600 "$tmp" || ! mv -- "$tmp" "$ENV_FILE"; then
+    rm -f -- "$tmp"
+    fail "$ENV_FILE update of $key failed; the previous file was kept"
+    return 1
+  fi
+}
+
+# 0.1.9 (RL-1): the frontend is a second trusted forwarder. An older .env has no FRONTEND_EDGE_IP
+# and a FORWARDED_ALLOW_IPS that lists the proxy only. Both are brought along; nothing else moves.
+migrate_forwarded_allow_ips() {
+  local frontend proxy list new key
+  [ -f "$ENV_FILE" ] || return 0
+  for key in FRONTEND_EDGE_IP FORWARDED_ALLOW_IPS; do
+    if [ "$(grep -c "^$key=" "$ENV_FILE" || true)" -gt 1 ]; then
+      fail "upgrade refused: $ENV_FILE has more than one $key line; nothing was changed"
+      return 1
+    fi
+  done
+  # A .env with no FORWARDED_ALLOW_IPS line, an empty one or "*" is not ours to rewrite.
+  list=$(env_get FORWARDED_ALLOW_IPS)
+  if [ -z "$list" ] || [ "$list" = "*" ]; then return 0; fi
+  frontend=$(env_get FRONTEND_EDGE_IP)
+  if [ -z "$frontend" ]; then
+    proxy=$(env_get PROXY_EDGE_IP)
+    frontend=$(next_address "${proxy:-172.28.10.10}")
+  fi
+  new=$(forwarded_with_frontend "$list" "$frontend")
+  [ "$new" != "$list" ] || return 0
+  if ! env_has_key FRONTEND_EDGE_IP; then
+    set_env_line FRONTEND_EDGE_IP "$frontend" || return 1
+    say "Frontend address $frontend added to $ENV_FILE (FRONTEND_EDGE_IP)."
+  fi
+  set_env_line FORWARDED_ALLOW_IPS "$new" || return 1
+  say "FORWARDED_ALLOW_IPS now also trusts the frontend ($frontend): $new"
+}
+
 cmd_upgrade() {
   local target="" offline=no bundle="" installed min_from db_size backup_root old_images prefix
   local backup_output backup at new_images old_env_version checkout_version
@@ -3191,6 +3260,7 @@ cmd_upgrade() {
   fi
   refuse_if_last_upgrade_failed upgrade || return 1
   migrate_image_prefix "$installed" || return 1
+  migrate_forwarded_allow_ips || return 1
   if [ -n "$bundle" ]; then
     [ -r "$bundle" ] || { fail "upgrade refused: bundle not readable: $bundle; no container was stopped"; return 1; }
     prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
@@ -3651,6 +3721,30 @@ doctor_profile_enabled() {
   case ",${profiles// /,}," in *,$1,*) return 0 ;; *) return 1 ;; esac
 }
 
+doctor_forwarded() {
+  local list frontend proxy item found=no
+  # An .env with no such line is not an installed site this check can speak for.
+  [ -f "$ENV_FILE" ] && [ -n "$(sed -n '/^FORWARDED_ALLOW_IPS=/p' "$ENV_FILE")" ] || return 0
+  list=$(env_get FORWARDED_ALLOW_IPS)
+  if [ -z "$list" ] || [ "$list" = "*" ]; then
+    doctor_line FAIL forwarded_allow_ips "FORWARDED_ALLOW_IPS is ${list:-empty}; every analyst shares one rate-limit key" OPS-R21
+    return
+  fi
+  frontend=$(env_get FRONTEND_EDGE_IP)
+  if [ -z "$frontend" ]; then
+    proxy=$(env_get PROXY_EDGE_IP)
+    frontend=$(next_address "${proxy:-172.28.10.10}")
+  fi
+  for item in ${list//,/ }; do
+    if [ "$item" = "$frontend" ]; then found=yes; fi
+  done
+  if [ "$found" = yes ]; then
+    doctor_line PASS forwarded_allow_ips "FORWARDED_ALLOW_IPS trusts the frontend ($frontend)"
+  else
+    doctor_line WARN forwarded_allow_ips "FORWARDED_ALLOW_IPS does not trust the frontend ($frontend); pages drawn by the server share one rate-limit key" OPS-R21
+  fi
+}
+
 doctor_container_runbook() {
   case "$1" in
     backend | postgres) say OPS-R36 ;;
@@ -3777,6 +3871,7 @@ cmd_doctor() {
   doctor_disk_backup
   doctor_clock
   doctor_selinux
+  doctor_forwarded
   doctor_backup_age
   doctor_containers
   doctor_incontainer
