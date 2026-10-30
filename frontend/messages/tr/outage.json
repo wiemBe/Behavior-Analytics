@@ -14,7 +14,7 @@
     "summaryFailed": "Kaynak sayıları gösterilmiyor: filo özeti yüklenemedi. Aşağıdaki politika eksiksizdir; tolerans yalnızca zaman dilimi cinsinden verilir.",
     "failureForbidden": "Kesinti uyarısı politikası rolünüze gösterilemiyor.",
     "failureFailed": "Kesinti uyarısı politikası gösterilemedi.",
-    "note": "<strong>Yalnızca kayıt</strong> kesintiyi yine de kaydeder: sessizlik algılanır, kaynakta ve <code>/behavior</code> sayfasında kalır ve normal yaşam döngüsünü izler. Yalnızca o anomalinin uyarı üretmesini durdurur. Zaten açık olan bir uyarı normal şekilde çözülür. Yalnızca <code>NO_EVENTS</code> etkilenir; hacim düşüşleri ve ani artışlar yine uyarı üretir."
+    "note": "<strong>Yalnızca kayıt</strong> kesintiyi yine de kaydeder: sessizlik algılanır, kaynakta ve <code>/behavior</code> sayfasında kalır ve normal yaşam döngüsünü izler. Yalnızca o anomalinin uyarı üretmesini durdurur. Zaten açık olan bir uyarı normal şekilde çözülür. Yalnızca Olay yok (<code>NO_EVENTS</code>) etkilenir; hacim düşüşleri ve ani artışlar yine uyarı üretir."
   },
   "mode": {
     "ALERT": "Uyarı",

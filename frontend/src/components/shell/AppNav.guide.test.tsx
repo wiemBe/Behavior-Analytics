@@ -36,4 +36,20 @@ describe("Guide navigation entry", () => {
     expect(links[links.length - 1]).toHaveTextContent("Kılavuz");
     expect(links[links.length - 1]).toHaveAttribute("href", "/guide");
   });
+
+  it("lists the admin hub first under Administration, in both languages", () => {
+    for (const [locale, hub, group] of [
+      ["en", "Administration overview", "Administration"],
+      ["tr", "Yönetim özeti", "Yönetim"],
+    ] as const) {
+      setTestLocale(locale);
+      const { unmount } = render(<AppNav />);
+      const list = within(screen.getByRole("navigation")).getByRole("list", { name: group });
+      const names = within(list).getAllByRole("link").map((l) => l.textContent);
+      expect(names[0]).toBe(hub);
+      expect(names).not.toContain("Config changes");
+      expect(within(list).getByRole("link", { name: hub })).toHaveAttribute("href", "/admin");
+      unmount();
+    }
+  });
 });

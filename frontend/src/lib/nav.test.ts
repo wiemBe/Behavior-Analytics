@@ -40,6 +40,7 @@ describe("NAV", () => {
   it("lists the administration pages under their own group", () => {
     expect(NAV[5].label).toBe("Administration");
     expect(NAV[5].items).toEqual([
+      { href: "/admin", label: "Administration overview" },
       { href: "/admin/search-cadence", label: "Search cadence" },
       { href: "/admin/classification-rules", label: "Classification rules" },
       { href: "/admin/outage-policy", label: "Outage alerts" },
@@ -49,6 +50,7 @@ describe("NAV", () => {
       { href: "/admin/users", label: "Users", permission: "admin:users" },
       { href: "/admin/directory", label: "Directory", permission: "admin:auth" },
     ]);
+    expect(activeNavHref("/admin")).toBe("/admin");
     expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
     expect(activeNavHref("/admin/classification-rules")).toBe("/admin/classification-rules");
     expect(activeNavHref("/admin/outage-policy")).toBe("/admin/outage-policy");
@@ -73,7 +75,7 @@ describe("NAV", () => {
     expect(hrefs).not.toContain("/providers");
     expect(hrefs).not.toContain("/audit");
     expect(hrefs).not.toContain("/config-changes");
-    expect(hrefs).not.toContain("/admin");
+    expect(hrefs).toContain("/admin");
     expect(hrefs).not.toContain("/reports");
   });
 });

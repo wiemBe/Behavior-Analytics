@@ -105,6 +105,7 @@ function itemLabel(href: string, fallback: string, t: NavTranslator): string {
     case "/coverage": return t("coverage");
     case "/log-sources": return t("logSources");
     case "/searches": return t("searches");
+    case "/admin": return t("adminOverview");
     case "/admin/search-cadence": return t("searchCadence");
     case "/admin/classification-rules": return t("classificationRules");
     case "/admin/outage-policy": return t("outageAlerts");

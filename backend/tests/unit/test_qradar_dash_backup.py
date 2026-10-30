@@ -754,6 +754,31 @@ def test_restore_refusals_happen_before_stop_and_do_not_print_keys(
     assert OLD_KEY not in output(result)
 
 
+def test_restore_prompt_ends_its_line_when_input_is_piped(backup: BackupFixture) -> None:
+    path = backup.make_backup()
+
+    result = backup.run("restore", str(path), stdin="restore\n")
+
+    assert result.returncode == 0, output(result)
+    prompt_line = next(
+        line
+        for line in result.stdout.splitlines()
+        if "Type restore to replace the application database:" in line
+    )
+    assert prompt_line == "Type restore to replace the application database: "
+
+
+def test_restore_prompt_ends_its_line_when_input_is_closed(backup: BackupFixture) -> None:
+    path = backup.make_backup()
+
+    result = backup.run("restore", str(path), stdin="")  # an empty pipe: end of input
+
+    assert result.returncode != 0
+    assert "Type restore to replace the application database: \n" in result.stdout
+    calls = backup.calls.read_text() if backup.calls.exists() else ""
+    assert " stop " not in calls
+
+
 def test_restore_docker_root_guard_refuses_before_stop(
     backup: BackupFixture,
 ) -> None:

@@ -1190,6 +1190,35 @@ def test_manual_rollback_right_word_proceeds(upgrade: UpgradeFixture) -> None:
     assert upgrade.state()["last_upgrade"]["outcome"] == "rolled_back"  # type: ignore[index]
 
 
+def test_manual_rollback_prompt_ends_its_line_when_input_is_piped(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    result = subprocess.run(  # noqa: S603
+        [shutil.which("bash") or "/bin/bash", str(upgrade.script), "rollback"],
+        cwd=upgrade.root, env=upgrade.env, input="rollback\n",
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+
+    assert result.returncode == 0, output(result)
+    prompt_line = next(
+        line for line in result.stdout.splitlines() if "Type rollback to continue:" in line
+    )
+    assert prompt_line == "Type rollback to continue: "
+
+
+def test_manual_rollback_prompt_ends_its_line_when_input_is_closed(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+
+    result = upgrade.run("rollback")  # stdin is /dev/null: refused after the prompt
+
+    assert result.returncode != 0
+    assert "Type rollback to continue: \n" in result.stdout
+    assert_no_stop(upgrade)
+
+
 def test_manual_rollback_non_interactive_needs_yes(upgrade: UpgradeFixture) -> None:
     _rollback_ready(upgrade)
 

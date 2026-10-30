@@ -592,7 +592,7 @@
         "**Kaynak davranışı** sayfasında **Gözlenen EPS** ile **Beklenen EPS**i karşılaştırın, **Son olay**ı okuyun ve notları okuyun. **Kaynak şu anda sessiz**, toplanan en son aralıkta olay olmadığı anlamına gelir; **Bakım modu etkin** ve **İzleme devre dışı** kesinti olmayan bir yokluğu açıklar.",
         "Kesinti saymadan önce zamanlamayı denetleyin. **Yalnızca mesai saatleri: evet** olan bir kaynağın yerel mesai saatleri dışında sessiz olması beklenir ve bu sessizlik **Olay yok** değildir.",
         "Kaynağın kendi durumunu **Log source'lar** sayfasında doğrulayın: **Son olay**, **Durum** ve **Log source ayrıntısı** sayfasında **Beklenen aralık** ile **QRadar durumu**. Platform cihazın neden durduğunu söyleyemez; bu yanıt QRadar'da ve cihazdadır.",
-        "Bir kesinti uyarısı oluşturulduysa **Uyarılar** sayfasındadır ve başlığı kaynak adından önce **NO_EVENTS on** yazar (backend metni, İngilizce gösterilir); `work-an-alert` ile işleyin. Kesinti politikası **Yalnızca kayıt** diyorsa anomali kaydedilir ve uyarı açılmaz; bu durumda anomali sayfaları onun göründüğü tek yerdir."
+        "Bir kesinti uyarısı oluşturulduysa **Uyarılar** sayfasındadır ve başlığı, **Olay yok** anomalisinin kaynak adından önce **NO_EVENTS on** yazar (başlık backend metnidir, İngilizce gösterilir); `work-an-alert` ile işleyin. Kesinti politikası **Yalnızca kayıt** diyorsa anomali kaydedilir ve uyarı açılmaz; bu durumda anomali sayfaları onun göründüğü tek yerdir."
       ],
       "states": [
         {

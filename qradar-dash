@@ -2691,6 +2691,8 @@ cmd_restore() {
   else
     printf 'Type restore to replace the application database: '
     IFS= read -r answer || answer=""
+    # Piped input is not echoed, so end the prompt's line ourselves.
+    [ -t 0 ] || printf '\n'
     [ "$answer" = restore ] || { fail "restore confirmation was not given"; return 1; }
   fi
   restore_swap_database "$backup" manual || return 1
@@ -3383,6 +3385,9 @@ cmd_rollback() {
     say "Rollback replaces the live database with $backup; data written since is kept only in the broken copy."
     printf 'Type rollback to continue: '
     IFS= read -r answer || answer=""
+    # A terminal echoes the operator's Enter; piped input does not, so the next line of output
+    # would otherwise share the prompt's line.
+    [ -t 0 ] || printf '\n'
     [ "$answer" = rollback ] || { fail "rollback confirmation was not given"; return 1; }
   fi
   at=$(state_now) || return 1
