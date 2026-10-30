@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.core.config import SETTINGS_ENV_ALLOWLIST, _known_setting_env_names
+from app.core.config import SETTINGS_ENV_ALLOWLIST, Settings, _known_setting_env_names
 from app.models.enums import SearchFamily, default_search_cadence
 
 #: Settings env names that stay out of ``docs/CONFIGURATION.md``. Empty on purpose:
@@ -62,3 +62,16 @@ def test_the_cadence_sentence_matches_the_code() -> None:
     config = (_ROOT / "backend" / "app" / "core" / "config.py").read_text(encoding="utf-8")
     assert f"{per_hour} searches an hour" in config
     assert "1 h default cadence" not in config
+
+
+def test_rate_limit_default_matches_env_example() -> None:
+    """The shared default and the example file name the same limit.
+
+    Login and search-execution limits stay on their own values. The class
+    default is read from the field, so a process environment cannot hide a change.
+    """
+    assert Settings.model_fields["rate_limit_default"].default == "1200/minute"
+    example = (_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "\nRATE_LIMIT_DEFAULT=1200/minute\n" in example
+    assert Settings.model_fields["rate_limit_login"].default == "300/minute"
+    assert Settings.model_fields["rate_limit_search_execution"].default == "10/minute"

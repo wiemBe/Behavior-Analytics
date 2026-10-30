@@ -1,6 +1,6 @@
 # QRadar-Dash manuel test sonuç sayfası
 
-Bu sayfa `docs/MANUAL-TEST.md` kılavuzunun **0.1.7** bölümünün sonuç sayfasıdır. Basılı alınabilir ya da bir kopyası doldurulabilir. Sonuç hücreleri boş bırakılmıştır: `Geçti`, `Kaldı` ya da `Koşulmadı` yaz; `Kaldı` ve `Koşulmadı` için Not yaz. Parola, belirteç, `.env` değeri ya da müşteri verisi **yazma**.
+Bu sayfa `docs/MANUAL-TEST.md` kılavuzunun **0.1.8** bölümünün sonuç sayfasıdır. Basılı alınabilir ya da bir kopyası doldurulabilir. Sonuç hücreleri boş bırakılmıştır: `Geçti`, `Kaldı` ya da `Koşulmadı` yaz; `Kaldı` ve `Koşulmadı` için Not yaz. Parola, belirteç, `.env` değeri ya da müşteri verisi **yazma**.
 
 | Alan | Değer |
 |---|---|
@@ -17,7 +17,7 @@ Bu sayfa `docs/MANUAL-TEST.md` kılavuzunun **0.1.7** bölümünün sonuç sayfa
 
 **Çekirdek (üretim yolu)**, 38 kontrol: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-10, MT-11, MT-12, MT-13, MT-14, MT-15, MT-20, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-59, MT-95, MT-119, MT-120, MT-121, MT-124, MT-125. Üretimde yalnızca `Çekirdek` sütunu "evet" olan satırlar doldurulur; diğerleri laboratuvar koşusu içindir.
 
-Sürüm önce: `0.1.6`, migrasyon başı `0032`. Sürüm sonra: `0.1.7`.
+Sürüm önce: `0.1.6`, migrasyon başı `0032`. Sürüm sonra: `0.1.8`.
 
 ## 1. Ön koşullar
 
@@ -29,7 +29,7 @@ Sürüm önce: `0.1.6`, migrasyon başı `0032`. Sürüm sonra: `0.1.7`.
 | MT-04 | evet | Günlüklerin ve destek paketinin yeri — (yazar) | | |
 | MT-05 | evet | Pencere ve haberdar edilecek kişiler | | |
 
-## 2. Yükseltme 0.1.6 → 0.1.7
+## 2. Yükseltme 0.1.6 → 0.1.8
 
 | Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
 |---|---|---|---|---|
