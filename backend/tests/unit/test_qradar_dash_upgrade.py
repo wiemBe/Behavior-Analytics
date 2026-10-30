@@ -1844,3 +1844,146 @@ def test_rollback_leaves_known_answers_byte_for_byte(
     assert live.stat().st_ino == inode
     assert "Removed answer key" not in output(result)
     assert _mode(live) == 0o600
+
+
+RESTORED_ANSWERS_LINE = (
+    "Restored .secrets/install.answers (the answers file, not a secret)."
+)
+
+
+def _install_ready_answers(upgrade: UpgradeFixture) -> str:
+    inputs = upgrade.root.parent / "inputs"
+    inputs.mkdir(exist_ok=True)
+    cert = inputs / "tls.crt"
+    key = inputs / "tls.key"
+    token = inputs / "token"
+    ca = inputs / "ca.pem"
+    cert.write_text(_pem("cert"))
+    key.write_text(_pem("key"))
+    token.write_text("operator-token-file\n")
+    ca.write_text(_pem("cert"))
+    return (
+        f"{ANSWERS_HEADER}"
+        "# FRONTEND_EDGE_IP is named here only so a comment survives\n"
+        "PUBLIC_HOSTNAME=dash.example\n"
+        f"TLS_CERT_FILE={cert}\n"
+        f"TLS_KEY_FILE={key}\n"
+        "EXTERNAL_PROXY=no\n"
+        "QRADAR_URL=https://qradar.example\n"
+        f"QRADAR_TOKEN_FILE={token}\n"
+        f"QRADAR_CA_FILE={ca}\n"
+        "INSTANCE_NAME=qradar\n"
+        f"BACKUP_DIR={upgrade.backup_root}\n"
+        "ADMIN_USERNAME=admin\n"
+        "IMAGE_PREFIX=registry.example/qradar\n"
+    )
+
+
+def _rerun_old_install(upgrade: UpgradeFixture) -> subprocess.CompletedProcess[str]:
+    (upgrade.root / "VERSION").write_text(f"{OLD_VERSION}\n")
+    _drop_first_frontend_edge_key(upgrade.script)
+    assignment = upgrade.script.read_text()
+    start = assignment.index('ANSWER_KEYS="')
+    end = assignment.index('"', start + len('ANSWER_KEYS="'))
+    assert "FRONTEND_EDGE_IP" not in assignment[start:end]
+    meminfo = _install_rerun_ready(upgrade)
+    return upgrade.run(
+        "install",
+        "--non-interactive",
+        ".secrets/install.answers",
+        "--skip-qradar-check",
+        QRADAR_DASH_MEMINFO_FILE=str(meminfo),
+        STUB_DOCKER_FREE_KIB=str(90 * GIB_KIB),
+        STUB_BACKUP_FREE_KIB=str(90 * GIB_KIB),
+    )
+
+
+def test_restore_then_old_install_accepts_answers(upgrade: UpgradeFixture) -> None:
+    original = _install_ready_answers(upgrade)
+    live = _write_live_answers(upgrade, original)
+
+    saved = upgrade.run("backup")
+
+    assert saved.returncode == 0, output(saved)
+    [backup] = sorted(upgrade.backup_root.glob("qradar-dash-*"))
+    assert (backup / "install.answers").read_bytes() == original.encode()
+    assert _mode(backup / "install.answers") == 0o600
+    live.write_bytes(original.encode() + b"FRONTEND_EDGE_IP=172.28.10.11\n")
+    live.chmod(0o600)
+
+    restored = upgrade.run("restore", "--non-interactive", "--yes", str(backup))
+
+    assert restored.returncode == 0, output(restored)
+    assert live.read_bytes() == original.encode()
+    assert _mode(live) == 0o600
+    assert RESTORED_ANSWERS_LINE in restored.stdout
+    assert "172.28.10.11" not in output(restored)
+    assert "Secrets were not restored" in restored.stdout
+    assert "dash.example" not in output(restored)
+    installed = _rerun_old_install(upgrade)
+
+    assert installed.returncode == 0, output(installed)
+    assert "unknown key" not in output(installed)
+
+
+def test_pre_upgrade_backup_keeps_mode_0400_and_rollback_restores_it(
+    upgrade: UpgradeFixture,
+) -> None:
+    text = f"{ANSWERS_HEADER}PUBLIC_HOSTNAME=dash.example\n"
+    live = _write_live_answers(upgrade, text, mode=0o400)
+
+    saved = upgrade.run("backup", "pre-upgrade")
+
+    assert saved.returncode == 0, output(saved)
+    [backup] = sorted(upgrade.backup_root.glob("qradar-dash-*-pre-upgrade"))
+    copied = backup / "install.answers"
+    assert copied.read_bytes() == text.encode()
+    assert _mode(copied) == 0o400
+    for name in ("database.dump", "env.bak", "secrets.tar", "MANIFEST", "state.json"):
+        assert _mode(backup / name) == 0o600, name
+    assert "must be 0600" not in output(saved)
+    live.chmod(0o600)
+    live.write_text(text + "FRONTEND_EDGE_IP=172.28.10.11\n")
+    upgrade.write_state(previous=OLD_IMAGES, outcome="success", backup=backup)
+
+    rolled = upgrade.run("rollback", "--non-interactive", "--yes")
+
+    assert rolled.returncode == 0, output(rolled)
+    assert live.read_text() == text
+    assert _mode(live) == 0o400
+    assert "Removed answer key" not in output(rolled)
+    assert "172.28.10.11" not in output(rolled)
+    assert "must be 0600" not in output(rolled)
+
+
+def test_rollback_strips_a_mode_0400_answers_file_then_old_install(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    upgrade._stub("git", GIT_ANSWER_KEYS)
+    base = _install_ready_answers(upgrade)
+    comment = "# FRONTEND_EDGE_IP is named here only so a comment survives\n"
+    text = base.replace(
+        comment,
+        f"{comment}FRONTEND_EDGE_IP=172.28.10.11\n\nOPERATOR_NOTE=desk-name\n",
+        1,
+    )
+    live = _write_live_answers(upgrade, text, mode=0o400)
+    kept = text.replace("FRONTEND_EDGE_IP=172.28.10.11\n", "").replace(
+        "OPERATOR_NOTE=desk-name\n", ""
+    )
+
+    result = upgrade.run("rollback", "--non-interactive", "--yes")
+
+    assert result.returncode == 0, output(result)
+    assert live.read_text() == kept
+    assert _mode(live) == 0o400
+    first = result.stdout.index("Removed answer key FRONTEND_EDGE_IP (unknown to 0.1.0).")
+    second = result.stdout.index("Removed answer key OPERATOR_NOTE (unknown to 0.1.0).")
+    assert first < second
+    assert "172.28.10.11" not in output(result)
+    assert "desk-name" not in output(result)
+    installed = _rerun_old_install(upgrade)
+
+    assert installed.returncode == 0, output(installed)
+    assert "unknown key" not in output(installed)

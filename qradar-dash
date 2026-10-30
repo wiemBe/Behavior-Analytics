@@ -2372,21 +2372,23 @@ write_secrets_backup() { # write_secrets_backup TARGET
     "$helper" tar -C /volumes -cf - "${entries[@]}" >"$1"
 }
 
-# install.answers holds paths and names, never a secret (its header says so). Mode 0600 is
-# what install writes and what the next install accepts. Anything else is not copied and is
-# not read: upgrade must ignore a file parse_answers would refuse, and a symlink is not followed.
-answers_file_is_private() { # answers_file_is_private PATH; 0 when it is a regular mode-0600 file
+# install.answers holds paths and names, never a secret (its header says so). install writes
+# mode 0600; parse_answers also accepts 0400. Either is copied and the mode is kept. Anything
+# else is not copied and is not read: upgrade must ignore a file parse_answers would refuse,
+# and a symlink is not followed.
+answers_file_is_private() { # answers_file_is_private PATH; 0 when regular and mode 0600 or 0400
   local mode
   [ -e "$1" ] || [ -L "$1" ] || return 1
   if [ -L "$1" ] || [ ! -f "$1" ]; then
     return 1
   fi
   mode=$(stat -c '%a' "$1" 2>/dev/null) || return 1
-  [ "$mode" = 600 ]
+  [ "$mode" = 600 ] || [ "$mode" = 400 ]
 }
 
 cmd_backup_create() { # cmd_backup_create REASON VERIFY
   local reason=$1 verify=$2 root stamp name final db_size alembic state_json=absent
+  local answers_mode=""
   need_installed
   need_docker || exit 1
   root=$(env_get QRADAR_DASH_BACKUP_DIR)
@@ -2421,10 +2423,13 @@ cmd_backup_create() { # cmd_backup_create REASON VERIFY
   BACKUP_CONTAINER_DUMP=""
   install -m 600 "$ENV_FILE" "$BACKUP_STAGE/env.bak" \
     || die "environment backup failed; the partial backup was removed."
-  # Next to env.bak. Older backups, and a file install would refuse, have no such copy.
-  # Rollback then keeps the current answers and drops keys the target release does not know.
+  # Next to env.bak. Mode is kept (0600 or 0400). An older backup has no such copy, and a
+  # file parse_answers would refuse is omitted and not read. Rollback then keeps a private
+  # live file and drops keys the target release does not know.
   if answers_file_is_private "$SAVED_ANSWERS"; then
-    install -m 600 "$SAVED_ANSWERS" "$BACKUP_STAGE/install.answers" \
+    answers_mode=$(stat -c '%a' "$SAVED_ANSWERS") \
+      || die "answers backup failed; the partial backup was removed."
+    install -m "$answers_mode" "$SAVED_ANSWERS" "$BACKUP_STAGE/install.answers" \
       || die "answers backup failed; the partial backup was removed."
   fi
   write_secrets_backup "$BACKUP_STAGE/secrets.tar" \
@@ -2438,6 +2443,12 @@ cmd_backup_create() { # cmd_backup_create REASON VERIFY
     "$BACKUP_STAGE" "$db_size" "$alembic" "$state_json" "$BACKUP_SECRETS_VOLUMES" \
     || die "backup manifest failed; the partial backup was removed."
   chmod 600 "$BACKUP_STAGE"/*
+  # The blanket chmod above is for the dump, env, secrets and manifest. The answers copy
+  # keeps the mode it was installed with, including 0400.
+  if [ -n "$answers_mode" ]; then
+    chmod "$answers_mode" "$BACKUP_STAGE/install.answers" \
+      || die "answers backup failed; the partial backup was removed."
+  fi
 
   if [ "$verify" = yes ]; then
     drop_database qradar_obs_restore_test >/dev/null \
@@ -2729,6 +2740,9 @@ cmd_restore() {
     return 1
   }
   backup_disk_guard "$docker_root" "$db_size" 2 || return 1
+  # A copy that is not the regular mode-0600 or mode-0400 file backup writes is refused
+  # here: no prompt, no stopped container, and the live answers file is left untouched.
+  answers_copy_is_acceptable restore "$backup" || return 1
   if [ "$non_interactive" = yes ]; then
     [ "$yes" = yes ] || { fail "--non-interactive restore requires --yes"; return 1; }
   else
@@ -2739,6 +2753,20 @@ cmd_restore() {
     [ "$answer" = restore ] || { fail "restore confirmation was not given"; return 1; }
   fi
   restore_swap_database "$backup" manual || return 1
+  # After the swap, and only then. The file is paths and names, not a secret, so this does
+  # not restore secrets.tar. No copy means the live file stays and nothing new is printed.
+  # A failed copy does not stop the restore. The database is already the backup's, and this
+  # file only matters to a later install re-run, so the services still start. The previous
+  # file stays; the operator puts the copy back with the printed install command.
+  local answers_mode=""
+  if [ -e "$backup/install.answers" ] || [ -L "$backup/install.answers" ]; then
+    if restore_answers_file restore "$backup/install.answers"; then
+      say "Restored $SAVED_ANSWERS (the answers file, not a secret)."
+    else
+      answers_mode=$(stat -c '%a' "$backup/install.answers" 2>/dev/null || true)
+      warn "$SAVED_ANSWERS was not restored; the previous file was kept. Put the copy back by hand: install -m $answers_mode $backup/install.answers $SAVED_ANSWERS"
+    fi
+  fi
   restore_start_and_wait "$backup" manual || return 1
   write_restore_state "$backup" || {
     fail "restore completed but the state file could not be updated"
@@ -2817,25 +2845,40 @@ answer_key_known() {
   return 1
 }
 
+# 0 when BACKUP has no install.answers, or a regular mode-0600 or mode-0400 copy and .secrets
+# is not a symlink. A symlink is not followed. Anything else is refused before a prompt or a
+# stopped container, and the live file is left as it is.
+answers_copy_is_acceptable() { # answers_copy_is_acceptable COMMAND BACKUP
+  local command=$1 backup=$2 path="$2/install.answers" mode
+  if [ ! -e "$path" ] && [ ! -L "$path" ]; then
+    return 0
+  fi
+  if [ -L "$path" ] || [ ! -f "$path" ]; then
+    fail "$command refused: $path is not a regular file"
+    return 1
+  fi
+  mode=$(stat -c '%a' "$path" 2>/dev/null) || {
+    fail "$command refused: $path mode could not be read"
+    return 1
+  }
+  if [ "$mode" != 600 ] && [ "$mode" != 400 ]; then
+    fail "$command refused: $path has mode $mode; it must be 0600 or 0400"
+    return 1
+  fi
+  # Restoring writes under .secrets. A symlink would land the file outside the checkout.
+  if [ -L .secrets ]; then
+    fail "$command refused: .secrets is a symlink; $SAVED_ANSWERS was left unchanged"
+    return 1
+  fi
+  return 0
+}
+
 prepare_answer_rollback() { # prepare_answer_rollback BACKUP VERSION; sets ANSWER_ROLLBACK_*
-  local backup=$1 version=$2 mode
+  local backup=$1 version=$2
   ANSWER_ROLLBACK_PLAN=""
   ANSWER_ROLLBACK_KEYS=""
+  answers_copy_is_acceptable rollback "$backup" || return 1
   if [ -e "$backup/install.answers" ] || [ -L "$backup/install.answers" ]; then
-    if [ -L "$backup/install.answers" ] || [ ! -f "$backup/install.answers" ]; then
-      fail "rollback refused: $backup/install.answers is not a regular file"
-      return 1
-    fi
-    mode=$(stat -c '%a' "$backup/install.answers" 2>/dev/null) || return 1
-    [ "$mode" = 600 ] || {
-      fail "rollback refused: $backup/install.answers has mode $mode; it must be 0600"
-      return 1
-    }
-    # Restoring writes under .secrets. A symlink would land the file outside the checkout.
-    if [ -L .secrets ]; then
-      fail "rollback refused: .secrets is a symlink; $SAVED_ANSWERS was left unchanged"
-      return 1
-    fi
     ANSWER_ROLLBACK_PLAN=restore
     return 0
   fi
@@ -2860,29 +2903,51 @@ prepare_answer_rollback() { # prepare_answer_rollback BACKUP VERSION; sets ANSWE
   ANSWER_ROLLBACK_PLAN=strip
 }
 
-restore_answers_file() { # restore_answers_file SRC; atomic, mode 0600, next to .env
-  local src=$1 tmp
+restore_answers_file() { # restore_answers_file COMMAND SRC; atomic, source mode, next to .env
+  local command=$1 src=$2 mode tmp
   if [ -L .secrets ]; then
-    fail "rollback refused: .secrets is a symlink; $SAVED_ANSWERS was left unchanged"
+    fail "$command refused: .secrets is a symlink; $SAVED_ANSWERS was left unchanged"
+    return 1
+  fi
+  if [ -L "$src" ] || [ ! -f "$src" ]; then
+    fail "$command refused: $src is not a regular file"
+    return 1
+  fi
+  mode=$(stat -c '%a' "$src" 2>/dev/null) || {
+    fail "$command refused: $src mode could not be read"
+    return 1
+  }
+  if [ "$mode" != 600 ] && [ "$mode" != 400 ]; then
+    fail "$command refused: $src has mode $mode; it must be 0600 or 0400"
     return 1
   fi
   mkdir -p -- .secrets || return 1
   chmod 700 .secrets || return 1
   tmp="$SAVED_ANSWERS.restore.$$"
   umask 077
-  if ! install -m 600 "$src" "$tmp" || ! mv -- "$tmp" "$SAVED_ANSWERS"; then
+  if ! install -m "$mode" "$src" "$tmp" || ! mv -- "$tmp" "$SAVED_ANSWERS"; then
     rm -f -- "$tmp"
-    fail "rollback could not restore $SAVED_ANSWERS; the previous file was kept"
+    # restore warns and continues: the swap has already succeeded. Rollback still stops.
+    if [ "$command" != restore ]; then
+      fail "$command could not restore $SAVED_ANSWERS; the previous file was kept"
+    fi
     return 1
   fi
 }
 
 strip_unknown_answer_keys() { # strip_unknown_answer_keys VERSION; names only, other lines kept
-  local version=$1 line key tmp="$SAVED_ANSWERS.strip.$$" removed=""
+  local version=$1 line key tmp="$SAVED_ANSWERS.strip.$$" removed="" mode
   [ -n "$ANSWER_ROLLBACK_KEYS" ] || {
     fail "rollback refused: the answer key list for $version is empty; $SAVED_ANSWERS was left unchanged"
     return 1
   }
+  # Sibling temp, then the same mode, then rename. The account owns a 0400 file and
+  # .secrets is writable, so the live file itself is not chmod'd.
+  mode=$(stat -c '%a' "$SAVED_ANSWERS" 2>/dev/null) || return 1
+  if [ "$mode" != 600 ] && [ "$mode" != 400 ]; then
+    fail "rollback refused: $SAVED_ANSWERS has mode $mode; it must be 0600 or 0400"
+    return 1
+  fi
   umask 077
   : >"$tmp" || return 1
   while IFS= read -r line || [ -n "$line" ]; do
@@ -2899,7 +2964,7 @@ strip_unknown_answer_keys() { # strip_unknown_answer_keys VERSION; names only, o
     rm -f -- "$tmp"
     return 0
   fi
-  if ! chmod 600 "$tmp" || ! mv -- "$tmp" "$SAVED_ANSWERS"; then
+  if ! chmod "$mode" "$tmp" || ! mv -- "$tmp" "$SAVED_ANSWERS"; then
     rm -f -- "$tmp"
     fail "rollback could not update $SAVED_ANSWERS; the previous file was kept"
     return 1
@@ -2913,7 +2978,7 @@ apply_answer_rollback() { # apply_answer_rollback BACKUP VERSION
   [ -n "$ANSWER_ROLLBACK_PLAN" ] || prepare_answer_rollback "$1" "$2" || return 1
   case "$ANSWER_ROLLBACK_PLAN" in
     none) return 0 ;;
-    restore) restore_answers_file "$1/install.answers" ;;
+    restore) restore_answers_file rollback "$1/install.answers" ;;
     strip) strip_unknown_answer_keys "$2" ;;
     *) fail "rollback refused: answers were not prepared"; return 1 ;;
   esac
