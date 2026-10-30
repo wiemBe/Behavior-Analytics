@@ -80,6 +80,8 @@ export const NAV: NavGroup[] = [
   {
     label: "Administration",
     items: [
+      // The hub. It owns /admin itself; every page below it wins by longest match.
+      { href: "/admin", label: "Administration overview" },
       { href: "/admin/search-cadence", label: "Search cadence" },
       { href: "/admin/classification-rules", label: "Classification rules" },
       { href: "/admin/outage-policy", label: "Outage alerts" },

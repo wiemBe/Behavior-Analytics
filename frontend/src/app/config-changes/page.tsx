@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
-// Not in the navigation (decision D-11). The model exists in the backend, but no collector or
+// Not in the navigation (decision D-11): a nav entry promises data, and this page has none. The model exists in the backend, but no collector or
 // API fills it, so the route says so rather than draw an empty table.
 function Page() {
   const t = useTranslations("configChanges");
