@@ -188,87 +188,91 @@ def _container_for_port(port: int) -> str | None:
 
 
 def _dump_and_restore(source_url: URL, restored_url: URL, dump: Path) -> None:
-    pg_dump = shutil.which("pg_dump")
-    pg_restore = shutil.which("pg_restore")
-    environment = os.environ.copy()
-    if source_url.password is not None:
-        environment["PGPASSWORD"] = source_url.password
-    if pg_dump is not None and pg_restore is not None:
-        def connection_args(url: URL) -> list[str]:
-            assert url.host is not None and url.username is not None and url.database is not None
-            return [
-                "-h",
-                url.host,
-                "-p",
-                str(url.port or 5432),
-                "-U",
-                url.username,
-                "-d",
-                url.database,
-            ]
-
+    # The database container's tools match the server, as ./qradar-dash backup does.
+    # A newer host client writes SET transaction_timeout, which PostgreSQL 16 rejects
+    # and pg_restore then exits 1. Host tools are the fallback when no container matches.
+    port = source_url.port or 5432
+    container = _container_for_port(port)
+    if container is not None:
+        assert source_url.username is not None
+        docker = shutil.which("docker")
+        assert docker is not None
         with dump.open("wb") as output:
             subprocess.run(  # noqa: S603
-                [pg_dump, "-Fc", "--no-owner", *connection_args(source_url)],
+                [
+                    docker,
+                    "exec",
+                    container,
+                    "pg_dump",
+                    "-Fc",
+                    "--no-owner",
+                    "-U",
+                    source_url.username,
+                    "-d",
+                    source_url.database or "",
+                ],
                 stdout=output,
                 stderr=subprocess.PIPE,
-                env=environment,
                 check=True,
                 timeout=120,
             )
         with dump.open("rb") as input_file:
             subprocess.run(  # noqa: S603
-                [pg_restore, "--no-owner", *connection_args(restored_url)],
+                [
+                    docker,
+                    "exec",
+                    "-i",
+                    container,
+                    "pg_restore",
+                    "--no-owner",
+                    "-U",
+                    restored_url.username or "",
+                    "-d",
+                    restored_url.database or "",
+                ],
                 stdin=input_file,
                 stderr=subprocess.PIPE,
-                env=environment,
                 check=True,
                 timeout=120,
             )
         return
 
-    port = source_url.port or 5432
-    container = _container_for_port(port)
-    if container is None:
+    pg_dump = shutil.which("pg_dump")
+    pg_restore = shutil.which("pg_restore")
+    if pg_dump is None or pg_restore is None:
         pytest.skip("neither host pg_dump/pg_restore nor a matching test-db container is available")
-    assert source_url.username is not None
-    docker = shutil.which("docker")
-    assert docker is not None
+    environment = os.environ.copy()
+    if source_url.password is not None:
+        environment["PGPASSWORD"] = source_url.password
+
+    def connection_args(url: URL) -> list[str]:
+        assert url.host is not None and url.username is not None and url.database is not None
+        return [
+            "-h",
+            url.host,
+            "-p",
+            str(url.port or 5432),
+            "-U",
+            url.username,
+            "-d",
+            url.database,
+        ]
+
     with dump.open("wb") as output:
         subprocess.run(  # noqa: S603
-            [
-                docker,
-                "exec",
-                container,
-                "pg_dump",
-                "-Fc",
-                "--no-owner",
-                "-U",
-                source_url.username,
-                "-d",
-                source_url.database or "",
-            ],
+            [pg_dump, "-Fc", "--no-owner", *connection_args(source_url)],
             stdout=output,
             stderr=subprocess.PIPE,
+            env=environment,
             check=True,
             timeout=120,
         )
     with dump.open("rb") as input_file:
         subprocess.run(  # noqa: S603
-            [
-                docker,
-                "exec",
-                "-i",
-                container,
-                "pg_restore",
-                "--no-owner",
-                "-U",
-                restored_url.username or "",
-                "-d",
-                restored_url.database or "",
-            ],
+            [pg_restore, "--no-owner", *connection_args(restored_url)],
             stdin=input_file,
             stderr=subprocess.PIPE,
+            env=environment,
             check=True,
             timeout=120,
         )
