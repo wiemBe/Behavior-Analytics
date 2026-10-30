@@ -14,7 +14,7 @@ import { resolveRuleSubjects } from "@/components/customrules/subjects";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { ApiError, api, sevTone, type CallerInfo, type CustomRule, type CustomRuleCatalog } from "@/lib/api";
+import { ApiError, api, rateLimitedText, sevTone, type CallerInfo, type CustomRule, type CustomRuleCatalog } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
 import type { Locale } from "@/i18n/locale";
 import { asTextTranslator } from "@/i18n/textTranslator";
@@ -40,6 +40,7 @@ async function CustomRulesPage() {
   let catalog: CustomRuleCatalog | null = null;
   let access: CustomRuleAccess = "unknown";
   let canLink = false;
+  let limited: string | null = null;
   let failed = false;
   let forbidden = false;
   try {
@@ -52,15 +53,19 @@ async function CustomRulesPage() {
     access = caller ? customRuleAccessFrom(caller) : "unknown";
     canLink = canReadSearchCadence(caller);
   } catch (error) {
-    forbidden = error instanceof ApiError && error.status === 403;
-    failed = !forbidden;
+    if (error instanceof ApiError && error.status === 429) {
+      limited = rateLimitedText(error, say);
+    } else {
+      forbidden = error instanceof ApiError && error.status === 403;
+      failed = !forbidden;
+    }
     try {
       access = customRuleAccessFrom(await api.caller());
     } catch {
       access = "unknown";
     }
   }
-  const subjects = failed || forbidden ? new Map() : await resolveRuleSubjects(rules, say);
+  const subjects = failed || forbidden || limited !== null ? new Map() : await resolveRuleSubjects(rules, say);
 
   return (
     <>
@@ -70,7 +75,12 @@ async function CustomRulesPage() {
         actions={access === "writer" && !forbidden ? <Link className="action secondary" href="/custom-rules/new">{t("newRule")}</Link> : null}
       />
 
-      {forbidden ? (
+      {limited !== null ? (
+        <div className="notice" role="alert">
+          <p><strong>{t("failedTitle")}</strong></p>
+          <p>{limited}</p>
+        </div>
+      ) : forbidden ? (
         <div className="notice" role="alert">
           <p><strong>{t("forbiddenTitle")}</strong></p>
           <p>{t("forbiddenHelp")}</p>
