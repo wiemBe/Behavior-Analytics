@@ -19,6 +19,7 @@ import {
   changeFailure,
   familyInfo,
   formatBucket,
+  nextRunCell,
   outcomeInfo,
   worstCaseDelay,
 } from "@/lib/searchCadence";
@@ -87,6 +88,7 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
   }
 
   const hasStatus = outcome.kind !== "idle";
+  const nextRun = nextRunCell(item, new Date());
 
   return (
     <>
@@ -134,7 +136,13 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
           )}
         </td>
         <td className="num">
-          <UtcTime value={item.next_dispatch_at} variant="compact" className="nowrap" />
+          {nextRun.kind === "time" ? (
+            <UtcTime value={nextRun.at} variant="compact" className="nowrap" />
+          ) : (
+            <span className="muted" title={t(nextRun.reason === "off" ? "nextRunOff" : "nextRunNone")}>
+              —
+            </span>
+          )}
         </td>
         <td className="num">
           {lastRun === null ? (

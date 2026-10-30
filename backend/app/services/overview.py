@@ -12,6 +12,7 @@ from app.models.alert import Alert
 from app.models.enums import ACTIVE_ANOMALY_STATES, AlertStatus, AnomalyType
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource, LogSourceAnomaly
+from app.models.monitoring import CollectionWatermark
 from app.models.offense import OffenseSnapshot
 from app.repositories.log_source import LogSourceRepository
 from app.schemas.log_source import (
@@ -34,6 +35,7 @@ class OverviewService:
         counts = await self.ls_repo.overview_counts()
         anomalous = await self.ls_repo.anomalous_source_count()
         silent = await self._silent_count()
+        inventory_state = await self._inventory_state(instance)
 
         return SocOverview(
             instance_status=str(instance.status) if instance else "UNKNOWN",
@@ -48,10 +50,35 @@ class OverviewService:
                 silent_log_sources=silent,
                 anomalous_log_sources=anomalous,
                 in_maintenance=counts["maintenance"],
+                inventory_state=inventory_state,
             ),
             offenses=await self._offense_overview(),
             alerts=await self._alert_overview(),
         )
+
+    async def _inventory_state(
+        self, instance: QRadarInstance | None
+    ) -> str:
+        """Whether the latest inventory is absent, clean or failed.
+
+        This deliberately exposes no provider error text. The Dashboard needs
+        only enough state to avoid turning a failed empty inventory into zero.
+        """
+        if instance is None:
+            return "NOT_COLLECTED"
+        watermark = await self.session.scalar(
+            select(CollectionWatermark).where(
+                CollectionWatermark.instance_id == instance.id,
+                CollectionWatermark.collector == "log_source_inventory",
+            )
+        )
+        if watermark is None:
+            return "NOT_COLLECTED"
+        if watermark.last_error is not None:
+            return "FAILED"
+        if watermark.last_run_at is None:
+            return "NOT_COLLECTED"
+        return "COMPLETE"
 
     async def _silent_count(self) -> int:
         """Monitored sources with an open, unsuppressed NO_EVENTS finding.

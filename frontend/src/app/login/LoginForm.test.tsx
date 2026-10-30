@@ -6,7 +6,7 @@ import { LoginForm } from "./LoginForm";
 import Loading from "./loading";
 import LoginError from "./error";
 import { StaticSession, type SessionValue } from "@/components/auth/session";
-import { ApiError } from "@/lib/api";
+import { ApiError, sessionNavigation } from "@/lib/api";
 
 const nav = vi.hoisted(() => ({ replace: vi.fn(), params: "" }));
 vi.mock("next/navigation", () => ({
@@ -47,6 +47,11 @@ beforeEach(() => {
   nav.replace.mockReset();
   nav.params = "";
   client.login.mockReset();
+  document.cookie = "ba_locale=en; Path=/";
+});
+
+afterEach(() => {
+  document.cookie = "ba_locale=; Path=/; Max-Age=0";
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -165,6 +170,22 @@ describe("LoginForm", () => {
     renderForm();
     await submit();
     expect(nav.replace).toHaveBeenCalledWith("/account/password?next=%2Falerts");
+  });
+
+  it("loads the first page as a document when the account language differs", async () => {
+    document.cookie = "ba_locale=tr; Path=/";
+    const assign = vi.spyOn(sessionNavigation, "assign").mockImplementation(() => {});
+    nav.params = "next=/alerts";
+    client.login.mockResolvedValue({
+      username: "ada",
+      auth_source: "LOCAL",
+      must_change_password: false,
+      roles: ["analyst"],
+    });
+    renderForm();
+    await submit();
+    expect(assign).toHaveBeenCalledWith("/alerts");
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 
   it("stays when the account cannot be read after sign-in", async () => {

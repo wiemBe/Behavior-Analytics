@@ -18,6 +18,7 @@ import { sourcesAsOf } from "@/lib/home/asOf";
 import { useFamilyTiming } from "@/widgets/cadence";
 import { healthSummaryText } from "@/lib/behaviorOverview";
 import { combine2 } from "@/lib/home/combine";
+import { inventoryHonesty } from "@/lib/home/inventoryHonesty";
 import { logSources, type LogSourcesCard } from "@/lib/home/logSources";
 
 import { countNoun, Figure, Line } from "./KpiParts";
@@ -81,6 +82,18 @@ export function KpiLogSources() {
   const overview = useApiResource(overviewRead.key, overviewRead.fetch);
   const state = combine2(summary, sources);
   const { bucketSeconds } = useFamilyTiming("PHASE_A_VOLUME");
+  const honesty =
+    state.status === "ok" && sources.status === "ok"
+      ? inventoryHonesty(sources.data.length, overview)
+      : "show";
+  const frameState =
+    honesty === "wait"
+      ? ({ status: "loading" } as const)
+      : honesty === "failed"
+        ? { kind: "error" as const, action: t("inventoryFailed") }
+        : honesty === "not_collected"
+          ? { kind: "not_collected" as const, reason: t("inventoryMissing") }
+          : state;
 
   let total: number | null = null;
   let totalNote: string | null = null;
@@ -100,7 +113,7 @@ export function KpiLogSources() {
       link={{ href: "/behavior/sources", label: t("link"), ariaLabel: t("linkLabel") }}
       what={t("what")}
       permission="read:anomalies"
-      state={state}
+      state={frameState}
       dataTo={{
         at: sources.status === "ok" ? sourcesAsOf(sources.data, bucketSeconds) : null,
         family: "PHASE_A_VOLUME",

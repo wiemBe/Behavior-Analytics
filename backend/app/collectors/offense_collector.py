@@ -174,7 +174,10 @@ class OffenseCollector:
                 return report
 
             report.offenses_seen = len(offenses)
-            high_water = since
+            # A complete empty result proves that collection reached this run's
+            # instant. Keeping the backfill floor would make an empty console
+            # look permanently stale. A partial run still cannot advance below.
+            high_water = started if not offenses else since
 
             for dto in offenses:
                 try:

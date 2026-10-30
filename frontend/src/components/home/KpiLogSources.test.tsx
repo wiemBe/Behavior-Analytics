@@ -16,8 +16,13 @@ const SUMMARY = homeReads.anomalySummary().key;
 const SOURCES = homeReads.sourceBehaviors().key;
 const OVERVIEW = homeReads.overview().key;
 
-const overview = (total: number) =>
-  ({ log_sources: { total_log_sources: total } }) as unknown as SocOverview;
+const overview = (
+  total: number,
+  inventory: "NOT_COLLECTED" | "COMPLETE" | "FAILED" = "COMPLETE",
+) =>
+  ({
+    log_sources: { total_log_sources: total, inventory_state: inventory },
+  }) as unknown as SocOverview;
 
 const sources = [
   behavior({ log_source_id: "a", state: "NORMAL" }),
@@ -97,6 +102,65 @@ describe("KpiLogSources", () => {
     mocks.states[OVERVIEW] = failed(500);
     render(<KpiLogSources />);
     expect(screen.getByText("Total log sources unavailable.")).toBeInTheDocument();
+  });
+
+  it("shows the inventory failure and no monitored count of zero when the fleet is empty", () => {
+    mocks.states[SUMMARY] = ok(summary({ monitored_sources: 0 }));
+    mocks.states[SOURCES] = ok([]);
+    mocks.states[OVERVIEW] = ok(overview(0, "FAILED"));
+    render(<KpiLogSources />);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("The log source health could not be read.");
+    expect(alert).toHaveTextContent(
+      "The inventory sync failed, so this is not a monitored count of zero.",
+    );
+    expect(screen.queryByText(/of 0 monitored/)).not.toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View log sources" })).toHaveAttribute(
+      "href",
+      "/behavior/sources",
+    );
+  });
+
+  it("says the inventory was not collected, with no monitored count of zero", () => {
+    mocks.states[SUMMARY] = ok(summary({ monitored_sources: 0 }));
+    mocks.states[SOURCES] = ok([]);
+    mocks.states[OVERVIEW] = ok(overview(0, "NOT_COLLECTED"));
+    render(<KpiLogSources />);
+    expect(screen.getByText("Not collected.")).toBeInTheDocument();
+    expect(screen.getByText(/has not been collected, so there is no monitored count/)).toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View log sources" })).toHaveAttribute(
+      "href",
+      "/behavior/sources",
+    );
+  });
+
+  it("keeps a clean empty inventory as the empty state, including a measured zero", () => {
+    mocks.states[SUMMARY] = ok(summary({ monitored_sources: 0 }));
+    mocks.states[SOURCES] = ok([]);
+    mocks.states[OVERVIEW] = ok(overview(0, "COMPLETE"));
+    render(<KpiLogSources />);
+    expect(screen.getByText("of 0 monitored")).toBeInTheDocument();
+    expect(screen.getByText(/No monitored log source/)).toBeInTheDocument();
+  });
+
+  it("waits for the overview before painting zero on an empty fleet", () => {
+    mocks.states[SUMMARY] = ok(summary({ monitored_sources: 0 }));
+    mocks.states[SOURCES] = ok([]);
+    mocks.states[OVERVIEW] = { status: "loading" };
+    render(<KpiLogSources />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading log source health");
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
+  it("keeps measured sources when the latest inventory sync failed", () => {
+    mocks.states[SUMMARY] = ok(summary({ monitored_sources: 4, silent_sources: 1 }));
+    mocks.states[SOURCES] = ok(sources);
+    mocks.states[OVERVIEW] = ok(overview(120, "FAILED"));
+    render(<KpiLogSources />);
+    expect(screen.getByText("of 120 monitored")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("is loading until both required reads are in", () => {

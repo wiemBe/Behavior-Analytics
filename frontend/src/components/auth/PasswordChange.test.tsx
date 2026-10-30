@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PasswordChange } from "./PasswordChange";
 import { StaticSession, type SessionValue } from "./session";
-import { ApiError } from "@/lib/api";
+import { ApiError, sessionNavigation } from "@/lib/api";
 
 const nav = vi.hoisted(() => ({ replace: vi.fn(), params: "next=/alerts" }));
 vi.mock("next/navigation", () => ({
@@ -55,6 +55,7 @@ beforeEach(() => {
   nav.replace.mockReset();
   nav.params = "next=/alerts";
   client.changePassword.mockReset();
+  document.cookie = "ba_locale=en; Path=/";
 });
 
 describe("PasswordChange", () => {
@@ -126,6 +127,21 @@ describe("PasswordChange", () => {
     expect(session.reload).toHaveBeenCalled();
     expect(nav.replace).toHaveBeenCalledWith("/alerts");
     expect(await screen.findByRole("status")).toHaveTextContent("The password is changed.");
+  });
+
+  it("loads the next page as a document when the account language differs", async () => {
+    document.cookie = "ba_locale=tr; Path=/";
+    const assign = vi.spyOn(sessionNavigation, "assign").mockImplementation(() => {});
+    client.changePassword.mockResolvedValue({
+      username: "ada",
+      auth_source: "LOCAL",
+      must_change_password: false,
+      roles: ["admin"],
+    });
+    renderForm();
+    await fill("old-password-1", "new-password-1");
+    expect(assign).toHaveBeenCalledWith("/alerts");
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 
   it("stays when the account cannot be read again", async () => {

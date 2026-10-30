@@ -33,6 +33,7 @@ export function cadence(over: Partial<SearchCadenceItem> = {}): SearchCadenceIte
     next_dispatch_at: "2026-10-14T14:15:00Z",
     updated_at: "2026-10-01T00:00:00Z",
     updated_by: null,
+    enabled: true,
     last_run: {
       at: "2026-10-14T13:55:00Z",
       outcome: "ok",

@@ -29,6 +29,8 @@
     "noBucketsTitle": "Bu ailenin zaman dilimi yok",
     "notRun": "Yükseltmeden beri çalışmadı",
     "noRunYet": "Henüz çalışmadı",
+    "nextRunOff": "Bu aile kapalı olduğu için sonraki çalıştırması yoktur.",
+    "nextRunNone": "Bu aile hiç çalışmadı ve ileri bir çalıştırma zamanı yoktur.",
     "notCounted": "sayılmadı",
     "notCountedTitle": "Bu aile aramalarını henüz saymıyor",
     "savedBy": "Kaydedildi. {user} tarafından <time></time> zamanında değiştirildi.",

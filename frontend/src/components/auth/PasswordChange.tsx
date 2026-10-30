@@ -9,6 +9,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useState, type FormEvent } from "react";
 
 import { changePassword } from "./client";
+import { continueInAccountLanguage } from "./localeNavigation";
 import { ReasonList } from "./ReasonList";
 import { errorTexts } from "./reasons";
 import { SignOutButton } from "./SignOutButton";
@@ -69,7 +70,11 @@ export function PasswordChange({
     setPending(false);
     setDone(true);
     const here = `${window.location.pathname}${window.location.search}`;
-    router.replace(destinationAfterPasswordChange(params.get("next"), here));
+    continueInAccountLanguage(
+      locale,
+      destinationAfterPasswordChange(params.get("next"), here),
+      (url) => router.replace(url),
+    );
   }
 
   return (

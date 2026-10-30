@@ -18,6 +18,16 @@ from app.repositories.audit import record_audit
 
 logger = logging.getLogger("app.search_cadence")
 
+_FAMILY_SWITCHES: dict[SearchFamily, str] = {
+    SearchFamily.WAF_COLLECTION: "waf_collection_enabled",
+    SearchFamily.ANOMALY_EXPLANATION: "explanation_enabled",
+    SearchFamily.RULE_MATCH: "rule_match_collection_enabled",
+    SearchFamily.IPS_COLLECTION: "ips_collection_enabled",
+    SearchFamily.PROPERTY_WATCH: "pw_collection_enabled",
+    SearchFamily.CATCHALL_SENDERS: "catchall_collection_enabled",
+    SearchFamily.GEO_COLLECTION: "geo_collection_enabled",
+}
+
 
 class InvalidSearchCadenceError(ValueError):
     """A cadence value is not one of the operator-visible presets."""
@@ -37,6 +47,12 @@ def bucket_seconds(family: SearchFamily, settings: Settings) -> int | None:
     if family == SearchFamily.RULE_MATCH:
         return settings.rule_match_window_seconds
     return None
+
+
+def family_enabled(family: SearchFamily, settings: Settings) -> bool:
+    """Whether Beat may dispatch this family under the current settings."""
+    setting = _FAMILY_SWITCHES.get(family)
+    return True if setting is None else bool(getattr(settings, setting))
 
 
 def slot_start(now: datetime, cadence_seconds: int, settle_seconds: int) -> datetime:

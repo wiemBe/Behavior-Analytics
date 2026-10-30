@@ -9,6 +9,7 @@ import {
   familyInfo,
   formatBucket,
   formatDuration,
+  nextRunCell,
   outcomeInfo,
   presetToCron,
   worstCaseDelay,
@@ -45,6 +46,59 @@ describe("formatBucket", () => {
     expect(formatBucket(300)).toBe("5 min");
     expect(formatBucket(3600)).toBe("1 h");
     expect(formatBucket(null)).toBe("—");
+  });
+});
+
+const NOW = new Date("2026-10-30T12:00:00Z");
+const ran = {
+  at: "2026-10-30T11:00:00Z",
+  outcome: "ok",
+  searches_sent: 1,
+  buckets_collected: 1,
+  split_count: 0,
+};
+
+describe("nextRunCell", () => {
+  it("is an em dash for a disabled family, even when the time is in the future", () => {
+    expect(
+      nextRunCell(
+        { enabled: false, next_dispatch_at: "2099-01-01T00:00:00Z", last_run: ran },
+        NOW,
+      ),
+    ).toEqual({ kind: "dash", reason: "off" });
+  });
+
+  it("shows a future time for an enabled family that has never run", () => {
+    expect(
+      nextRunCell(
+        { enabled: true, next_dispatch_at: "2099-01-01T00:00:00Z", last_run: null },
+        NOW,
+      ),
+    ).toEqual({ kind: "time", at: "2099-01-01T00:00:00Z" });
+  });
+
+  it("shows a time that is due now when the family has run", () => {
+    expect(
+      nextRunCell(
+        { enabled: true, next_dispatch_at: "2026-10-30T12:00:00Z", last_run: ran },
+        NOW,
+      ),
+    ).toEqual({ kind: "time", at: "2026-10-30T12:00:00Z" });
+  });
+
+  it("is an em dash when an enabled family has never run and the time is not in the future", () => {
+    expect(
+      nextRunCell(
+        { enabled: true, next_dispatch_at: "2026-10-12T10:00:00Z", last_run: null },
+        NOW,
+      ),
+    ).toEqual({ kind: "dash", reason: "none" });
+  });
+
+  it("is an em dash when the instant cannot be read", () => {
+    expect(
+      nextRunCell({ enabled: true, next_dispatch_at: "not-a-time", last_run: ran }, NOW),
+    ).toEqual({ kind: "dash", reason: "none" });
   });
 });
 

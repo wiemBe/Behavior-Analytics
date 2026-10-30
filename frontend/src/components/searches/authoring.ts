@@ -5,6 +5,7 @@
 
 import { ENGLISH_TREND } from "@/components/trendText";
 import { renderBackendMessage } from "@/i18n/backendMessage";
+import { enumLabel } from "@/i18n/enumLabels";
 import { renderRefusal } from "@/i18n/refusalMessage";
 import type { TextTranslator } from "@/i18n/textTranslator";
 import { ApiError, type CallerInfo, type ScheduledSearch, type ScheduledSearchCreate, type ScheduledSearchUpdate, type SearchExecution, type SearchVersion } from "@/lib/api";
@@ -395,9 +396,12 @@ export function runReadout(
   const failed = execution.status === "FAILED" || execution.status === "TIMEOUT" || execution.status === "CANCELLED";
   if (failed) {
     const errorKey = execution.error_type ? `trend.run.errors.${execution.error_type}` : null;
+    // The type slot is the executionErrorType label. English labels are the
+    // raw tokens, so English stays "TIMEOUT". A translator without the enums
+    // namespace (the English trend fallback) also keeps the raw token.
     const named = execution.error_type
       ? t("trend.run.errorType", {
-          type: execution.error_type,
+          type: enumLabel(t, "executionErrorType", execution.error_type),
           words:
             errorKey && isPlainKey(execution.error_type ?? "") && t.has?.(errorKey) ? t(errorKey) : "",
         }).trim()

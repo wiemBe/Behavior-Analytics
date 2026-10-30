@@ -4,7 +4,7 @@
 // is offered (docs/SEARCH-CADENCE.md §SC.6); the API accepts nothing else for
 // a family, and a scheduled search shows anything else as "Custom".
 
-import { ApiError, actionErrorMessage, type SearchFamily } from "@/lib/api";
+import { ApiError, actionErrorMessage, type SearchCadenceItem, type SearchFamily } from "@/lib/api";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { ENGLISH_CADENCE, cadenceDuration } from "@/lib/cadenceText";
 import { formatDuration } from "@/lib/time";
@@ -14,6 +14,32 @@ export { formatDuration };
 /** A bucket width. Null means the family has no buckets, which is not zero. */
 export function formatBucket(seconds: number | null, i18n?: BehaviorI18n): string {
   return seconds == null ? "—" : i18n ? cadenceDuration(seconds, i18n) : formatDuration(seconds);
+}
+
+export type NextRunCell = { kind: "time"; at: string } | { kind: "dash"; reason: "off" | "none" };
+
+/**
+ * What the next-run cell may show.
+ *
+ * A disabled family is not dispatched, so the cell is an em dash even when
+ * `next_dispatch_at` is in the future. An enabled family shows the time when
+ * it is strictly after `now`, or when it is due now: the instant is at or
+ * before `now` and the family has run at least once (that due instant may
+ * already be slightly past). An enabled family that has never run, whose
+ * computed instant is not in the future, shows an em dash. That instant is
+ * the current slot of a family with no `last_slot_start`, which is already
+ * in the past, not a next run.
+ */
+export function nextRunCell(
+  item: Pick<SearchCadenceItem, "enabled" | "next_dispatch_at" | "last_run">,
+  now: Date,
+): NextRunCell {
+  if (item.enabled === false) return { kind: "dash", reason: "off" };
+  const at = Date.parse(item.next_dispatch_at);
+  if (!Number.isFinite(at)) return { kind: "dash", reason: "none" };
+  if (at > now.getTime()) return { kind: "time", at: item.next_dispatch_at };
+  if (item.last_run != null) return { kind: "time", at: item.next_dispatch_at };
+  return { kind: "dash", reason: "none" };
 }
 
 export interface WorstCaseDelay {

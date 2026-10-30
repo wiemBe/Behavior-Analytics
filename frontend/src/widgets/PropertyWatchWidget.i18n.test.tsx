@@ -219,7 +219,7 @@ describe("chart.property_watch in Turkish", () => {
   it("says NOT_COLLECTED, naming the switch, in Turkish", async () => {
     world({ catalog: catalog({ collection_enabled: false }) });
     renderWidget();
-    expect(await screen.findByText(/PW_COLLECTION_ENABLED false olduğu için/)).toBeInTheDocument();
+    expect(await screen.findByText(/PW_COLLECTION_ENABLED kapalı olduğu için/)).toBeInTheDocument();
     expect(screen.getByText("Toplanmadı.")).toBeInTheDocument();
     expect(screen.queryByRole("img")).toBeNull();
   });

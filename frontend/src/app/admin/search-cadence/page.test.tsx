@@ -11,7 +11,7 @@ function item(over: Partial<SearchCadenceItem> = {}): SearchCadenceItem {
     allowed_cadences_seconds: [300, 900, 1800, 3600, 7200, 14400, 28800],
     bucket_seconds: 300, settle_seconds: 120, last_slot_start: null,
     next_dispatch_at: "2026-10-12T10:00:00Z", updated_at: "2026-10-12T08:00:00Z",
-    updated_by: null, last_run: null, ...over,
+    updated_by: null, enabled: true, last_run: null, ...over,
   };
 }
 

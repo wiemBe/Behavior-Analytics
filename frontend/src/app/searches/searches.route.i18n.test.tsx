@@ -121,6 +121,9 @@ describe("the search catalog in Turkish", () => {
     render(await SearchCatalogPage());
     expect(await listMetadata()).toEqual({ title: "Arama kataloğu" });
     expect(screen.getByRole("heading", { level: 1, name: "Arama kataloğu" })).toBeInTheDocument();
+    expect(screen.getByText(/kaydedilmemiş, anlık yazılmış AQL çalıştırmaz/)).toBeInTheDocument();
+    expect(screen.queryByText(/ad hoc/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/gelişigüzel/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Yeni arama" })).toHaveAttribute("href", "/searches/new");
     const table = screen.getByRole("table", { name: "Zamanlanmış aramalar" });
     for (const name of ["Ad", "Kategori", "MITRE", "Zamanlama", "Önem derecesi", "Sürüm", "Etkin"]) {

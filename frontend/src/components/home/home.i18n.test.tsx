@@ -516,8 +516,22 @@ describe("LogSourceHealth in Turkish", () => {
     expect(within(table).getByText("Bakımda")).toBeInTheDocument();
     expect(within(table).getByText("Sessiz").closest("td")).toHaveAttribute(
       "title",
-      "Algılayıcı, olay beklenen yerde hiç olay görmedi (NO_EVENTS anomalisi).",
+      "Algılayıcı, olay beklenen yerde hiç olay görmedi (Olay yok anomalisi).",
     );
+  });
+
+  it("says an empty failed inventory failed, in Turkish, and draws no zero", () => {
+    setup({
+      [SOURCES]: ok([]),
+      [OVERVIEW]: ok({
+        log_sources: { total_log_sources: 0, in_maintenance: 0, inventory_state: "FAILED" },
+      } as SocOverview),
+    });
+    render(<LogSourceHealth />);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Okunamadı: kaynak durumları.");
+    expect(alert).toHaveTextContent("Envanter eşitlemesi başarısız oldu. Sağlık sayıları gösterilmez.");
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
   it("leaves a category at a dash with a Turkish reason when its read failed, never zero", () => {

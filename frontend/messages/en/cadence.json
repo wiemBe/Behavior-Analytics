@@ -29,6 +29,8 @@
     "noBucketsTitle": "This family has no buckets",
     "notRun": "Not run since upgrade",
     "noRunYet": "No run yet",
+    "nextRunOff": "This family is off, so it has no next run.",
+    "nextRunNone": "This family has not run, and no future run is scheduled.",
     "notCounted": "not counted",
     "notCountedTitle": "This family does not count its searches yet",
     "savedBy": "Saved. Changed by {user} at <time></time>.",

@@ -83,7 +83,9 @@
     "noneJudged": "— judged normal (no source is judged yet)",
     "silent": "silent",
     "totalForbidden": "Total log sources not shown: your role cannot read it (permission read:overview).",
-    "totalUnavailable": "Total log sources unavailable."
+    "totalUnavailable": "Total log sources unavailable.",
+    "inventoryFailed": "The inventory sync failed, so this is not a monitored count of zero. Open log sources to see the collection state.",
+    "inventoryMissing": "Log source inventory has not been collected, so there is no monitored count."
   },
   "kpiOffenses": {
     "title": "Open offenses, latest snapshot",
@@ -243,7 +245,9 @@
       "summary": "Anomaly summary unavailable",
       "fleet": "Fleet summary unavailable",
       "overview": "Overview unavailable"
-    }
+    },
+    "inventoryFailed": "The inventory sync failed, so these are not counts of zero. Open log sources to see the collection state.",
+    "inventoryMissing": "Log source inventory has not been collected, so there are no health counts."
   },
   "recent": {
     "title": "Recent anomalies",

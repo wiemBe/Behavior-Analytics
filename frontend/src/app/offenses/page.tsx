@@ -114,7 +114,14 @@ async function OffensesPage({
       {aggregates && (
         <>
           <div className="cards offenses-matching">
-            <StatCard label={t("matching")} value={formatCount(page?.total ?? 0, locale)} />
+            {/* `active` is null when no offense snapshot exists. The list total is 0 in that
+                case too, and a measured empty filter is also 0, so the snapshot is the signal. */}
+            <StatCard
+              label={t("matching")}
+              value={
+                aggregates.active == null ? "—" : formatCount(page?.total ?? 0, locale)
+              }
+            />
           </div>
           <h2>{t("openWhole")}</h2>
           {(aggregates.active == null ||

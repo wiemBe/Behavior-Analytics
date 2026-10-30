@@ -36,6 +36,7 @@ function item(over: Partial<SearchCadenceItem> = {}): SearchCadenceItem {
     next_dispatch_at: "2026-10-12T10:00:00Z",
     updated_at: "2026-10-12T08:00:00Z",
     updated_by: null,
+    enabled: true,
     last_run: {
       at: "2026-10-12T09:00:20Z",
       outcome: "ok",
@@ -86,7 +87,8 @@ describe("the search cadence table in Turkish", () => {
     expect(anomalies.textContent).toContain(`kanıt en fazla 1${NB}sa 2${NB}dk`);
     expect(within(anomalies).getByText("Yükseltmeden beri çalışmadı")).toBeInTheDocument();
     expect(within(anomalies).getByText("Henüz çalışmadı")).toBeInTheDocument();
-    expect(within(anomalies).getByText("—", { selector: ".muted" })).toHaveAttribute("title", "Bu ailenin zaman dilimi yok");
+    expect(within(anomalies).getByTitle("Bu ailenin zaman dilimi yok")).toHaveTextContent("—");
+    expect(within(anomalies).getByTitle("Bu aile hiç çalışmadı ve ileri bir çalıştırma zamanı yoktur.")).toHaveTextContent("—");
     const rules = screen.getByRole("row", { name: /Kural eşleşmeleri/ });
     expect(within(rules).getByText("Etkin sistem yok")).toBeInTheDocument();
     expect(within(rules).getByText("sayılmadı")).toHaveAttribute("title", "Bu aile aramalarını henüz saymıyor");

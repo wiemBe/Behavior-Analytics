@@ -17,7 +17,7 @@ from app.schemas.search_cadence import (
     SearchCadenceUpdate,
 )
 from app.security.rbac import PERM_SEARCH_CADENCE_ADMIN, Principal
-from app.services.search_cadence import SearchCadenceService, bucket_seconds
+from app.services.search_cadence import SearchCadenceService, bucket_seconds, family_enabled
 
 router = APIRouter(prefix="/admin/search-cadence", tags=["search-cadence"])
 
@@ -45,6 +45,7 @@ def _as_out(
         )
     return SearchCadenceOut(
         family=family,
+        enabled=family_enabled(family, settings),
         cadence_seconds=row.cadence_seconds,
         allowed_cadences_seconds=[int(cadence) for cadence in SearchCadence],
         bucket_seconds=bucket_seconds(family, settings),

@@ -48,6 +48,7 @@ const cadenceItem = (cadence: number): SearchCadenceItem => ({
   next_dispatch_at: "2026-10-22T12:05:00Z",
   updated_at: "2026-10-22T00:00:00Z",
   updated_by: null,
+  enabled: true,
   last_run: null,
 });
 

@@ -291,6 +291,19 @@ describe("nullable aggregate counts", () => {
     const notes = screen.getAllByText(/No offense snapshot has been collected yet/);
     expect(notes).toHaveLength(1);
     expect(notes[0].closest("[role='status']")).not.toBeNull();
+    const matching = card("Matching offenses");
+    expect(within(matching).getByText("—")).toBeInTheDocument();
+    expect(matching).not.toHaveTextContent("0");
+  });
+
+  it("keeps a measured zero match as 0 when a snapshot exists and nothing matches", async () => {
+    vi.spyOn(api, "offenses").mockResolvedValue(page([]));
+    vi.spyOn(api, "offenseAggregates").mockResolvedValue(
+      aggregates({ active: 0, critical: 0, unassigned: 0, exceeding_sla: 0 }),
+    );
+    await renderPage();
+    expect(within(card("Matching offenses")).getByText("0")).toBeInTheDocument();
+    expect(screen.queryByText(/No offense snapshot has been collected yet/)).not.toBeInTheDocument();
   });
 
   it("keeps a measured zero as 0, with no alarm tone and no not-collected note", async () => {

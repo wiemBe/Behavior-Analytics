@@ -11,7 +11,7 @@ import pytest
 from app.core.config import Settings
 from app.models.enums import SearchCadence
 from app.models.search_cadence import SearchCadenceSetting
-from app.services.search_cadence import SearchCadenceService, slot_start
+from app.services.search_cadence import SearchCadenceService, family_enabled, slot_start
 from app.workers.celery_app import celery_app
 
 
@@ -157,3 +157,36 @@ def test_bucket_seconds_is_none_only_for_a_family_with_no_buckets() -> None:
     for family in SearchFamily:
         if family is not SearchFamily.ANOMALY_EXPLANATION:
             assert bucket_seconds(family, settings) is not None
+
+
+def test_family_enabled_matches_every_collection_switch() -> None:
+    from app.models.enums import SearchFamily
+
+    settings = Settings(
+        waf_collection_enabled=False,
+        explanation_enabled=False,
+        rule_match_collection_enabled=False,
+        ips_collection_enabled=False,
+        pw_collection_enabled=False,
+        catchall_collection_enabled=False,
+        geo_collection_enabled=False,
+    )
+    assert family_enabled(SearchFamily.PHASE_A_VOLUME, settings) is True
+    assert all(
+        family_enabled(family, settings) is False
+        for family in SearchFamily
+        if family is not SearchFamily.PHASE_A_VOLUME
+    )
+
+    enabled = settings.model_copy(
+        update={
+            "waf_collection_enabled": True,
+            "explanation_enabled": True,
+            "rule_match_collection_enabled": True,
+            "ips_collection_enabled": True,
+            "pw_collection_enabled": True,
+            "catchall_collection_enabled": True,
+            "geo_collection_enabled": True,
+        }
+    )
+    assert all(family_enabled(family, enabled) for family in SearchFamily)
