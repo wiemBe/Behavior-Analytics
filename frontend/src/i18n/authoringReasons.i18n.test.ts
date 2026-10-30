@@ -247,13 +247,13 @@ describe("profile conflicts and input refusals", () => {
   it("words the conflict in Turkish and keeps English as sent", () => {
     const info = conflictInfo(conflict);
     expect(conflictMessage(info, { t: en, locale: "en" }, render("en"))).toMatch(
-      /^profile version conflict; current version is 12 /,
+      /^profile version conflict; current version is 12\. /,
     );
     expect(conflictMessage(info, { t: tr, locale: "tr" }, render("tr"))).toMatch(
-      /^Profil sürümü çakışması; geçerli sürüm 12 /,
+      /^Profil sürümü çakışması; geçerli sürüm 12\. /,
     );
     expect(conflictMessage(info, { t: en, locale: "en" })).toMatch(
-      /^profile version conflict; current version is 12 /,
+      /^profile version conflict; current version is 12\. /,
     );
   });
 

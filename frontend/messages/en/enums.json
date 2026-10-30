@@ -62,6 +62,12 @@
     "VOLUME_SPIKE": "Volume spike",
     "VOLUME_DROP": "Volume drop",
     "NO_EVENTS": "No events",
+    "PARSING_DEGRADATION": "Parsing degradation",
+    "UNKNOWN_EVENT_SPIKE": "Unknown event spike",
+    "TIMESTAMP_DELAY": "Timestamp delay",
+    "CARDINALITY_DROP": "Cardinality drop",
+    "COLLECTION_ERROR": "Collection error",
+    "REPEATED_PAYLOAD": "Repeated payload",
     "WAF_REQUEST_RATE_SPIKE": "Request-rate spike",
     "WAF_CLIENT_CONCENTRATION_SPIKE": "Client concentration spike",
     "WAF_BLOCK_RATIO_SPIKE": "Block-ratio spike",
@@ -160,6 +166,17 @@
   "executionTrigger": {
     "SCHEDULED": "SCHEDULED",
     "MANUAL": "MANUAL"
+  },
+  "executionErrorType": {
+    "VALIDATION": "VALIDATION",
+    "AUTH": "AUTH",
+    "RATE_LIMITED": "RATE_LIMITED",
+    "TIMEOUT": "TIMEOUT",
+    "SEARCH_FAILED": "SEARCH_FAILED",
+    "NETWORK": "NETWORK",
+    "PARSING": "PARSING",
+    "CANCELLED": "CANCELLED",
+    "CAPACITY": "CAPACITY"
   },
   "customRuleOperator": {
     "GT": "above",

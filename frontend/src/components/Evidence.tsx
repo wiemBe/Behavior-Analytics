@@ -128,7 +128,14 @@ function reasonParams(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-export function Evidence({ data }: { data: Record<string, unknown> }) {
+export function Evidence({
+  data,
+  omitReason,
+}: {
+  data: Record<string, unknown>;
+  /** When the rendered reason equals this string, the reason line is left out. Figures stay. */
+  omitReason?: string | null;
+}) {
   const t = useTranslations("evidence");
   const backendMessage = useBackendMessage();
   // Unit and label keys are built from the detector table, so they are looked up by name.
@@ -155,16 +162,18 @@ export function Evidence({ data }: { data: Record<string, unknown> }) {
     if (typeof unit === "string") return unit;
     return lookup(`unit.${unit.word}`, { count: n });
   };
+  const reason =
+    typeof data.reason === "string"
+      ? backendMessage({
+          text: data.reason,
+          code: typeof data.reason_code === "string" ? data.reason_code : null,
+          params: reasonParams(data.reason_params),
+        })
+      : null;
   return (
     <div className="evidence">
-      {typeof data.reason === "string" && (
-        <p className="evidence-reason">
-          {backendMessage({
-            text: data.reason,
-            code: typeof data.reason_code === "string" ? data.reason_code : null,
-            params: reasonParams(data.reason_params),
-          })}
-        </p>
+      {reason != null && reason !== omitReason && (
+        <p className="evidence-reason">{reason}</p>
       )}
       <table className="evidence-table" aria-label={t("tableLabel")}>
         <tbody>

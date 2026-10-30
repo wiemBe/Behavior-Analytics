@@ -206,6 +206,12 @@ describe("detectorLabel", () => {
     expect(detectorLabel("VOLUME_SPIKE")).toBe("Volume spike");
     expect(detectorLabel("VOLUME_DROP")).toBe("Volume drop");
     expect(detectorLabel("NO_EVENTS")).toBe("No events");
+    expect(detectorLabel("PARSING_DEGRADATION")).toBe("Parsing degradation");
+    expect(detectorLabel("UNKNOWN_EVENT_SPIKE")).toBe("Unknown event spike");
+    expect(detectorLabel("TIMESTAMP_DELAY")).toBe("Timestamp delay");
+    expect(detectorLabel("CARDINALITY_DROP")).toBe("Cardinality drop");
+    expect(detectorLabel("COLLECTION_ERROR")).toBe("Collection error");
+    expect(detectorLabel("REPEATED_PAYLOAD")).toBe("Repeated payload");
   });
 
   it("shows an unknown detector as it is rather than hiding or guessing", () => {

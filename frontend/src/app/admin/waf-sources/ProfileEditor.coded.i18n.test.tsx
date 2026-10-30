@@ -63,7 +63,7 @@ describe("WAF profile editor: coded refusals", () => {
     const user = userEvent.setup();
     editor();
     await saveAfterEditing(user, "Gözden geçir ve kaydet", "Sürüm 5 olarak kaydet");
-    expect(await screen.findByText(/Profil sürümü çakışması; geçerli sürüm 7/)).toBeInTheDocument();
+    expect(await screen.findByText(/Profil sürümü çakışması; geçerli sürüm 7\./)).toBeInTheDocument();
     expect(screen.queryByText(/profile version conflict/)).toBeNull();
   });
 
@@ -82,7 +82,7 @@ describe("WAF profile editor: coded refusals", () => {
     const user = userEvent.setup();
     editor();
     await saveAfterEditing(user, "Review and save", "Save as version 5");
-    expect(await screen.findByText(/profile version conflict; current version is 7/)).toBeInTheDocument();
+    expect(await screen.findByText(/profile version conflict; current version is 7\./)).toBeInTheDocument();
   });
 
   it("words an input refusal in Turkish and still marks the field it names", async () => {

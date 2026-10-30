@@ -119,6 +119,8 @@ export const TOP_BAR_KEYS = [
   "enums.anomalyState.RECOVERING",
   "enums.anomalyState.RESOLVED",
   "enums.anomalyState.SUPPRESSED",
+  "enums.anomalyType.CARDINALITY_DROP",
+  "enums.anomalyType.COLLECTION_ERROR",
   "enums.anomalyType.IPS_BLOCK_RATIO_SHIFT",
   "enums.anomalyType.IPS_DESTINATION_RATE_SPIKE",
   "enums.anomalyType.IPS_NEW_DESTINATION_PORT",
@@ -127,6 +129,10 @@ export const TOP_BAR_KEYS = [
   "enums.anomalyType.IPS_SIGNATURE_BURST",
   "enums.anomalyType.IPS_SOURCE_CONCENTRATION_SPIKE",
   "enums.anomalyType.NO_EVENTS",
+  "enums.anomalyType.PARSING_DEGRADATION",
+  "enums.anomalyType.REPEATED_PAYLOAD",
+  "enums.anomalyType.TIMESTAMP_DELAY",
+  "enums.anomalyType.UNKNOWN_EVENT_SPIKE",
   "enums.anomalyType.VOLUME_DROP",
   "enums.anomalyType.VOLUME_SPIKE",
   "enums.anomalyType.WAF_BLOCK_RATIO_SPIKE",
@@ -149,6 +155,16 @@ export const TOP_BAR_KEYS = [
   "ips.entity.signatureId",
   "ips.subject.entityNotRecorded",
   "ips.subject.sourceLevel",
+] as const;
+
+/**
+ * The two `historyEmptyNoun` labels the first-run dialog's lean reader needs. They are not top-bar
+ * keys: the search never reads them, and `TopSearch.keys.test.tsx` requires `TOP_BAR_KEYS` to be
+ * exactly the keys a result row reads.
+ */
+export const SHELL_DIALOG_ENUM_KEYS = [
+  "enums.historyEmptyNoun.admitted entity",
+  "enums.historyEmptyNoun.tracked endpoint",
 ] as const;
 
 /**
@@ -195,6 +211,7 @@ export const SHELL_BACKEND_KEYS = [
   "backend.history.assumption.waf_sources",
   "backend.history.estimate.all_fit",
   "backend.history.estimate.all_refused",
+  "backend.history.estimate.empty_sources",
   "backend.history.estimate.no_catchall",
   "backend.history.estimate.no_collection",
   "backend.history.estimate.no_ips",
@@ -336,5 +353,10 @@ export function routeMessages(
 
 /** What the browser gets before a page's provider: the shell, the boundary strings and the top bar's keys. */
 export function shellMessages(messages: Readonly<Record<string, unknown>>): Record<string, unknown> {
-  return pickMessages(messages, SHELL_NAMESPACES, [...BOUNDARY_KEYS, ...TOP_BAR_KEYS, ...SHELL_BACKEND_KEYS]);
+  return pickMessages(messages, SHELL_NAMESPACES, [
+    ...BOUNDARY_KEYS,
+    ...TOP_BAR_KEYS,
+    ...SHELL_DIALOG_ENUM_KEYS,
+    ...SHELL_BACKEND_KEYS,
+  ]);
 }

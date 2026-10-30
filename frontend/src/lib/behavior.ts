@@ -86,15 +86,29 @@ export function formatDuration(
 
 // --- detectors -------------------------------------------------------------
 
-/** The Phase A detectors; the other families name theirs in their own helpers. */
-const DETECTOR_TYPES = new Set(["VOLUME_SPIKE", "VOLUME_DROP", "NO_EVENTS"]);
+/**
+ * Phase A anomaly types named from `enums.anomalyType`. The other families name theirs in their
+ * own helpers, and this set is not the anomaly-list filter (that one stays the three detectors
+ * an analyst can select).
+ */
+const PHASE_A_TYPES = new Set([
+  "VOLUME_SPIKE",
+  "VOLUME_DROP",
+  "NO_EVENTS",
+  "PARSING_DEGRADATION",
+  "UNKNOWN_EVENT_SPIKE",
+  "TIMESTAMP_DELAY",
+  "CARDINALITY_DROP",
+  "COLLECTION_ERROR",
+  "REPEATED_PAYLOAD",
+]);
 
 /**
  * The detector's name for display, from the `enums.anomalyType` table. An identifier this build
  * does not know is shown as-is rather than hidden or guessed at.
  */
 export function detectorLabel(type: string, i18n: BehaviorI18n = ENGLISH_BEHAVIOR): string {
-  return DETECTOR_TYPES.has(type) ? wordOrValue(i18n, "enums.anomalyType", type) : type;
+  return PHASE_A_TYPES.has(type) ? wordOrValue(i18n, "enums.anomalyType", type) : type;
 }
 
 // --- lifecycle -------------------------------------------------------------

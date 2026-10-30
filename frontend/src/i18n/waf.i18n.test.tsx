@@ -193,6 +193,7 @@ describe("WAF administration in Turkish", () => {
     const full = render(await WafSourcesPage());
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("WAF kaynakları");
     expect(screen.getByRole("columnheader", { name: "Doğrulama" })).toBeInTheDocument();
+    expect(screen.getByText("Çizgi, kaynağın hiç doğrulanmadığını gösterir. Başarısız bir doğrulama değildir.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "WAF kaynağı ekle" })).toBeInTheDocument();
     full.unmount();
 

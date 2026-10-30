@@ -230,8 +230,8 @@ describe("the executions table in Turkish", () => {
     expect(within(rows[1]).getByText("BAŞARISIZ")).toHaveClass("pill", "crit");
     expect(within(rows[1]).getByText("Elle")).toBeInTheDocument();
     expect(cell(rows[1], 4)).toBe(`5${NB}dk 0${NB}sn`);
-    // The error type is the backend's own code, as sent.
-    expect(within(rows[1]).getByText("TIMEOUT")).toBeInTheDocument();
+    // The error type is the catalog label. English keeps the code (searchRunMessages).
+    expect(within(rows[1]).getByText("Zaman aşımı")).toBeInTheDocument();
     expect(within(rows[2]).getByText("ZAMAN AŞIMI")).toBeInTheDocument();
     expect(within(rows[2]).getByText("10.000")).toBeInTheDocument();
     expect(within(rows[2]).getByText("en az")).toHaveClass("sr-only");

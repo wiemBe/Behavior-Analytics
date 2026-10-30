@@ -771,7 +771,7 @@ describe("field mapping helpers", () => {
     expect(conflictMessage({ version: 5, by: "ada", message: null }, TR)).toBe(
       "Siz düzenlerken bu eşleme değişti: sürüm 5 (ada tarafından). Düzenlemeleriniz aşağıda duruyor; onlarınkini görmek için yeniden yükleyin.",
     );
-    expect(conflictMessage({ version: null, by: null, message: "server says no" }, TR)).toMatch(/^server says no Düzenlemeleriniz/);
+    expect(conflictMessage({ version: null, by: null, message: "server says no" }, TR)).toMatch(/^server says no\. Düzenlemeleriniz/);
   });
 
   it("words draft errors and catalog notes by code", () => {

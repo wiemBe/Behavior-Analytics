@@ -34,6 +34,7 @@ type ExtendedEnumGroup =
   | "wafBucketCompleteness"
   | "executionStatus"
   | "executionTrigger"
+  | "executionErrorType"
   | "customRuleOperator"
   | "catchallReviewStatus"
   | "role"

@@ -30,16 +30,18 @@
   min-width: 100%;
 }
 
-/* Name and status stay on the first screen at 1024. Later columns keep a floor
-   and scroll inside the table. */
+/* Name and status stay on the first screen at 1024. Subject and condition use
+   the shorter figure floor: a 14rem floor on both pushed "Önem derecesi" past
+   the scrollport at 1280, so the header was cut mid-word. */
+.cr-rule-table th,
+.cr-rule-table td {
+  overflow-wrap: break-word;
+}
+
 .cr-rule-table th:nth-child(1),
 .cr-rule-table td:nth-child(1) {
   width: var(--home-list-min);
   min-width: var(--home-list-min);
-}
-
-.cr-rule-table td.cell-name {
-  overflow-wrap: break-word;
 }
 
 .cr-rule-table th:nth-child(2),
@@ -49,8 +51,22 @@
 }
 
 .cr-rule-table th:nth-child(3),
-.cr-rule-table th:nth-child(4) {
-  min-width: var(--home-list-min);
+.cr-rule-table td:nth-child(3),
+.cr-rule-table th:nth-child(4),
+.cr-rule-table td:nth-child(4) {
+  min-width: var(--table-col-magnitude);
+}
+
+/* "Önem derecesi" is two words. The header wraps inside the token floor if the
+   column is squeezed; "Severity" is one shorter word and stays on one line. */
+.cr-rule-table th:nth-child(5),
+.cr-rule-table td:nth-child(5) {
+  min-width: var(--table-col-time);
+}
+
+.cr-rule-table th:nth-child(5) {
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .cr-rule-table th:nth-child(7) {
@@ -367,6 +383,15 @@
 
   .cr-preview {
     position: static;
+  }
+
+  /* Name stays at its list floor. A 15rem status column beside it left
+     "Önem derecesi" under the scroll-edge fade at 1024. The figure floor
+     still holds that status header on one line. 1280 and 1440 keep 15rem. */
+  .cr-rule-table th:nth-child(2),
+  .cr-rule-table td:nth-child(2) {
+    width: var(--table-col-figures);
+    min-width: var(--table-col-figures);
   }
 }
 

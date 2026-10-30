@@ -161,6 +161,10 @@ describe("alert detail contents", () => {
     })).toBeInTheDocument();
     expect(screen.getByText("Yaşam döngüsü").closest(".card")).toHaveTextContent("Çözüm: Koşul düzeldi");
     expect(screen.queryByText(/is above the baseline median/)).not.toBeInTheDocument();
+    const evidence = screen.getByText("Kanıt").closest(".card") as HTMLElement;
+    expect(evidence).not.toHaveTextContent(/baseline medyanı olan/);
+    expect(within(evidence).getByText("Gözlenen")).toBeInTheDocument();
+    expect(screen.getAllByText(/baseline medyanı olan/)).toHaveLength(1);
   });
 
   it("renders a property-watch alert title in Turkish and its coded reason", async () => {
@@ -227,6 +231,44 @@ describe("alert detail contents", () => {
     vi.spyOn(api, "alertNotifications").mockResolvedValue([]);
     await renderPage();
     expect(screen.getByText(/seen 1,200×/)).toBeInTheDocument();
+  });
+
+  it("omits a repeated evidence reason and keeps a different one, in English and Turkish", async () => {
+    for (const locale of ["en", "tr"] as const) {
+      setTestLocale(locale);
+      const evidenceLabel = locale === "tr" ? "Kanıt" : "Evidence";
+      const observed = locale === "tr" ? "Gözlenen" : "Observed";
+      const descriptionLabel = locale === "tr" ? "Açıklama" : "Description";
+      vi.spyOn(api, "alert").mockResolvedValue(alert({
+        description: "same sentence",
+        evidence_snapshot: {
+          anomaly_type: "VOLUME_SPIKE",
+          observed_value: 5.98,
+          reason: "same sentence",
+        },
+      }));
+      const same = await renderPage();
+      const evidence = screen.getByText(evidenceLabel).closest(".card") as HTMLElement;
+      expect(within(evidence).queryByText("same sentence")).toBeNull();
+      expect(within(evidence).getByText(observed)).toBeInTheDocument();
+      expect(screen.getByText(descriptionLabel).closest(".card")).toHaveTextContent("same sentence");
+      same.unmount();
+
+      vi.spyOn(api, "alert").mockResolvedValue(alert({
+        description: "the description sentence",
+        evidence_snapshot: {
+          anomaly_type: "VOLUME_SPIKE",
+          observed_value: 5.98,
+          reason: "the evidence sentence",
+        },
+      }));
+      const different = await renderPage();
+      const card = screen.getByText(evidenceLabel).closest(".card") as HTMLElement;
+      expect(within(card).getByText("the evidence sentence")).toBeInTheDocument();
+      expect(screen.getByText(descriptionLabel).closest(".card")).toHaveTextContent("the description sentence");
+      expect(within(card).getByText(observed)).toBeInTheDocument();
+      different.unmount();
+    }
   });
 
   it("renders the captured evidence with its reason", async () => {

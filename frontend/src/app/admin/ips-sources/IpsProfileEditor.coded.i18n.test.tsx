@@ -59,7 +59,7 @@ describe("IPS profile editor: coded refusals", () => {
     await editSignature(user);
     await user.click(screen.getByRole("button", { name: "Gözden geçir ve kaydet" }));
     await user.click(screen.getByRole("button", { name: "Sürüm 3 olarak kaydet" }));
-    expect(await screen.findByText(/Profil sürümü çakışması; geçerli sürüm 3/)).toBeInTheDocument();
+    expect(await screen.findByText(/Profil sürümü çakışması; geçerli sürüm 3\./)).toBeInTheDocument();
     expect(screen.queryByText(/profile version conflict/)).toBeNull();
   });
 

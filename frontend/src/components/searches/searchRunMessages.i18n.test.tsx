@@ -83,6 +83,7 @@ describe("run history: the message under the error type", () => {
   it("words a coded timeout and a refused permit in Turkish", () => {
     setTestLocale("tr");
     render(<ExecutionsTable executions={[run(TIMEOUT), run({ id: "e-2", ...CAPACITY })]} />);
+    expect(errorCell(0).querySelector(".pill")).toHaveTextContent("Zaman aşımı");
     expect(errorCell(0)).toHaveTextContent("Arama, 300 sn zaman aşımını aştı");
     expect(errorCell(1)).toHaveTextContent(
       "30 sn içinde Ariel arama izni alınamadı (konsol başına üst sınır 3, genel üst sınır 6)",
@@ -92,6 +93,8 @@ describe("run history: the message under the error type", () => {
   it("shows the server's English in English, code or not", () => {
     setTestLocale("en");
     render(<ExecutionsTable executions={[run(TIMEOUT), run({ id: "e-2", ...CAPACITY })]} />);
+    expect(errorCell(0).querySelector(".pill")).toHaveTextContent("TIMEOUT");
+    expect(errorCell(1).querySelector(".pill")).toHaveTextContent("CAPACITY");
     expect(errorCell(0)).toHaveTextContent("search exceeded timeout of 300s");
     expect(errorCell(1)).toHaveTextContent(/No Ariel permit became available within 30 seconds/);
   });
@@ -106,6 +109,7 @@ describe("run history: the message under the error type", () => {
         ]}
       />,
     );
+    expect(errorCell(0).querySelector(".pill")).toHaveTextContent("Arama başarısız");
     expect(errorCell(0)).toHaveTextContent("QRadar says no; second");
     expect(errorCell(1)).toHaveTextContent("search exceeded timeout of 300s");
   });
@@ -129,6 +133,12 @@ describe("run history: the message under the error type", () => {
     );
     expect(errorCell(0)).toHaveTextContent("—");
     expect(errorCell(0).querySelector(".run-error")).toBeNull();
+  });
+
+  it("shows an unknown error type raw, never blank", () => {
+    setTestLocale("tr");
+    render(<ExecutionsTable executions={[run({ error_type: "MADE_UP" })]} />);
+    expect(errorCell(0).querySelector(".pill")).toHaveTextContent("MADE_UP");
   });
 });
 

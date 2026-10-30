@@ -204,6 +204,19 @@ describe("buildAttentionRows", () => {
     expect(rows[0].issue).toBe("No events received");
   });
 
+  it("names a Phase A type the catalog knows, and shows an unknown type as sent", () => {
+    const named = buildAttentionRows(
+      [],
+      [anomaly({ id: "parse", anomaly_type: "PARSING_DEGRADATION", state: "CANDIDATE" })],
+    );
+    expect(named[0].issue).toBe("Parsing degradation");
+    const raw = buildAttentionRows(
+      [],
+      [anomaly({ id: "future", anomaly_type: "FUTURE_DETECTOR", state: "CANDIDATE" })],
+    );
+    expect(raw[0].issue).toBe("FUTURE_DETECTOR");
+  });
+
   it("breaks a priority tie by severity, then by deviation", () => {
     const rows = buildAttentionRows(
       [],

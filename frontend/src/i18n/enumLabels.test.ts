@@ -27,7 +27,10 @@ const GROUPS: Record<EnumGroup, string[]> = {
   ],
   offenseStatus: ["OPEN", "HIDDEN", "CLOSED"],
   anomalyType: [
-    "VOLUME_SPIKE", "VOLUME_DROP", "NO_EVENTS", "WAF_REQUEST_RATE_SPIKE",
+    "VOLUME_SPIKE", "VOLUME_DROP", "NO_EVENTS",
+    "PARSING_DEGRADATION", "UNKNOWN_EVENT_SPIKE", "TIMESTAMP_DELAY",
+    "CARDINALITY_DROP", "COLLECTION_ERROR", "REPEATED_PAYLOAD",
+    "WAF_REQUEST_RATE_SPIKE",
     "WAF_CLIENT_CONCENTRATION_SPIKE", "WAF_BLOCK_RATIO_SPIKE", "WAF_ERROR_RATIO_SPIKE",
     "WAF_CLIENT_ERROR_RATIO_SPIKE", "WAF_NEW_ENDPOINT_ACCESS", "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE",
     "IPS_PORT_RATE_SPIKE", "IPS_DESTINATION_RATE_SPIKE", "IPS_SIGNATURE_BURST",
@@ -89,6 +92,22 @@ describe("enum labels", () => {
     expect(enumLabel(translator("tr"), "severityPill", "INFO")).toBe("BİLGİ");
     expect(enumLabel(translator("en"), "anomalyType", "NO_EVENTS")).toBe("No events");
     expect(enumLabel(translator("tr"), "anomalyType", "VOLUME_DROP")).toBe("Hacim düşüşü");
+  });
+
+  it("names the run error types, and shows an unknown value raw", () => {
+    const values = [
+      "VALIDATION", "AUTH", "RATE_LIMITED", "TIMEOUT", "SEARCH_FAILED",
+      "NETWORK", "PARSING", "CANCELLED", "CAPACITY",
+    ];
+    expect(Object.keys(en.enums.executionErrorType).sort()).toEqual([...values].sort());
+    expect(Object.keys(tr.enums.executionErrorType).sort()).toEqual([...values].sort());
+    for (const value of values) {
+      expect(enumLabel(translator("en"), "executionErrorType", value)).toBe(value);
+      expect(enumLabel(translator("tr"), "executionErrorType", value)).not.toBe(value);
+      expect(enumLabel(translator("tr"), "executionErrorType", value)).not.toBe("");
+    }
+    expect(enumLabel(translator("tr"), "executionErrorType", "MADE_UP")).toBe("MADE_UP");
+    expect(enumLabel(translator("en"), "executionErrorType", "constructor")).toBe("constructor");
   });
 
   it("names every type as the lists name it in English (the base's own tables)", () => {
