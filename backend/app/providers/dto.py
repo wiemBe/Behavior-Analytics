@@ -71,9 +71,9 @@ class LicensePoolDTO(ProviderDTO):
 class ArielSearchListDTO(ProviderDTO):
     """`GET /ariel/searches`: how many search ids QRadar holds, never the ids.
 
-    The list covers every user's searches, completed and running alike, so the count
-    is "held", not "running". `truncated` is set when the read hit its range cap and
-    the true count is at least `held`.
+    The list covers every user's searches, finished and active alike, so the count is what
+    QRadar holds ("held"). `truncated` is set when the read hit its range cap and the true
+    count is at least `held`.
     """
 
     held: int

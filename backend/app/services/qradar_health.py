@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef, render
 from app.models.instance import QRadarInstance
 from app.providers.base import (
     CapabilityNotSupportedError,
@@ -69,33 +70,40 @@ ARIEL_RECENT_WINDOW_MINUTES = 15
 
 _ACTIVE = "ACTIVE"
 
-#: Fixed sentences, one per code. Nothing from an upstream body or exception is ever added.
-REASONS: dict[str, str] = {
-    "provider_not_supported": "This provider cannot read this from QRadar.",
-    "provider_not_configured": "No provider could be built for this console.",
-    "console_unreachable": "The console did not answer the reachability probe; not read.",
-    "unreachable": "QRadar did not answer: connection failed or certificate not trusted.",
-    "timeout": "QRadar did not answer within the read timeout.",
-    "forbidden": "QRadar answered 403: the token lacks the capability for this read.",
-    "unauthorized": "QRadar answered 401: the token was not accepted.",
-    "endpoint_not_found": "QRadar answered 404: this version does not offer the endpoint.",
-    "ariel_unavailable": "QRadar answered 503: its Ariel service is unavailable.",
-    "upstream_error": "QRadar answered with a server error.",
-    "rejected": "QRadar rejected the request as invalid (4xx).",
-    "malformed_response": "QRadar's answer was not the shape this read expects.",
-    "read_failed": "The read failed.",
-    "field_missing": "QRadar's answer lacked a field this value needs.",
-    "empty_response": "QRadar returned an empty list, which it never does for a running console.",
-    "ariel_search_run_not_wired": (
-        "The platform's own Ariel search record is not connected to this view yet."
-    ),
-    "in_flight_not_read": "The count of our searches in flight was not read.",
-    "no_search_in_window": "The platform ran no Ariel search in the window, so nothing is known.",
-    "no_ariel_outcome_in_window": (
-        "No search in the window either completed or found Ariel unavailable."
-    ),
-    "snapshot_inconsistent": "The search record is inconsistent (more unavailable than searches).",
-}
+#: The reason codes a field can carry. Each has a coded message `qradar_health.reason.<code>` in
+#: the backend registry (English only); nothing from an upstream body or exception is ever added.
+REASON_CODES: tuple[str, ...] = (
+    "provider_not_supported",
+    "provider_not_configured",
+    "console_unreachable",
+    "unreachable",
+    "timeout",
+    "forbidden",
+    "unauthorized",
+    "endpoint_not_found",
+    "ariel_unavailable",
+    "upstream_error",
+    "rejected",
+    "malformed_response",
+    "read_failed",
+    "field_missing",
+    "empty_response",
+    "ariel_search_run_not_wired",
+    "ariel_search_run_unreadable",
+    "in_flight_not_read",
+    "no_search_in_window",
+    "no_ariel_outcome_in_window",
+    "snapshot_inconsistent",
+)
+
+
+def reason_text(code: str) -> str:
+    """The English sentence for a reason code, rendered from the message registry."""
+    return render(MessageRef(f"qradar_health.reason.{code}"))
+
+
+#: Code -> sentence, rendered once from the registry.
+REASONS: dict[str, str] = {code: reason_text(code) for code in REASON_CODES}
 
 
 def _fail(state: FieldState, code: str) -> HealthField[Any]:
@@ -371,9 +379,13 @@ def _failed_reads(now: datetime, code: str) -> _Reads:
     return _Reads(now, field, field, field, field, field, field, field)
 
 
-def _ariel_section(reads: _Reads, runs: ArielRunsSnapshot | None) -> ArielSection:
+def _ariel_section(
+    reads: _Reads, runs: ArielRunsSnapshot | None, *, runs_unreadable: bool = False
+) -> ArielSection:
     if runs is None:
-        unwired = _not_collected("ariel_search_run_not_wired")
+        unwired = _not_collected(
+            "ariel_search_run_unreadable" if runs_unreadable else "ariel_search_run_not_wired"
+        )
         return ArielSection(
             list_probe=reads.list_probe, available=unwired, recent=unwired, ours_in_flight=unwired
         )
@@ -417,6 +429,28 @@ def _ariel_section(reads: _Reads, runs: ArielRunsSnapshot | None) -> ArielSectio
     )
 
 
+def unreadable_health(instance: QRadarInstance, *, at: datetime, ttl: int) -> QRadarHealth:
+    """The section for a console whose whole read raised unexpectedly: every field FAILED."""
+    field = _fail(FieldState.FAILED, "read_failed")
+    return QRadarHealth(
+        instance_id=instance.id,
+        instance_name=instance.name,
+        as_of=at,
+        cached=False,
+        age_seconds=0.0,
+        cache_ttl_seconds=ttl,
+        reachable=field,
+        api_latency_ms=field,
+        version=field,
+        servers=field,
+        eps=field,
+        license=field,
+        ariel=ArielSection(
+            list_probe=field, available=field, recent=field, ours_in_flight=field
+        ),
+    )
+
+
 def _cache_key(instance: QRadarInstance) -> str:
     # The host and kind are in the key so a console that was edited is read afresh.
     return f"{instance.id}|{instance.console_host}|{instance.provider_kind}"
@@ -428,6 +462,7 @@ async def read_qradar_health(
     settings: Settings | None = None,
     provider_factory: Callable[[QRadarInstance], QRadarProvider] | None = None,
     ariel_runs: ArielRunsSnapshot | None = None,
+    ariel_runs_unreadable: bool = False,
     cache: HealthReadCache | None = None,
     now: Callable[[], datetime] | None = None,
     monotonic: Callable[[], float] | None = None,
@@ -436,7 +471,9 @@ async def read_qradar_health(
     """The `qradar` section for one console.
 
     `ariel_runs` is the platform's own search record for the console, read by the caller from
-    `ariel_search_run`; None leaves its fields `NOT_COLLECTED` with `ariel_search_run_not_wired`.
+    `ariel_search_run`; None leaves its fields `NOT_COLLECTED` with `ariel_search_run_not_wired`,
+    or `ariel_search_run_unreadable` when the caller tried to read it and could not
+    (`ariel_runs_unreadable`).
     A hit in the cache builds no provider and sends nothing to QRadar.
     """
     settings = settings or get_settings()
@@ -461,7 +498,7 @@ async def read_qradar_health(
             servers=reads.servers,
             eps=reads.eps,
             license=reads.license,
-            ariel=_ariel_section(reads, ariel_runs),
+            ariel=_ariel_section(reads, ariel_runs, runs_unreadable=ariel_runs_unreadable),
         )
 
     hit = cache.get(key, mono())

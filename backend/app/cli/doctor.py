@@ -47,6 +47,7 @@ from app.providers.tls import build_ssl_context
 from app.rules.matches import SKIPPED_REASON
 from app.security.redaction import redact
 from app.services.ariel_permit import ArielPermitBudget
+from app.services.qradar_health import HealthReadCache, read_qradar_health
 from app.workers.celery_app import (
     ANOMALY_EVALUATION_CADENCE_SECONDS,
     BEAT_HEARTBEAT_KEY,
@@ -58,6 +59,11 @@ from app.workers.celery_app import (
 FRONTEND_HEALTH_URL = "http://frontend:3000/api/health"
 BACKEND_VERSION_URL = "http://backend:8000/api/v1/version"
 CHECK_TIMEOUT_SECONDS = 10.0
+#: One QRadar read of `qradar_health`. The probe and the four reads run one after the other, so
+#: the check stays inside `CHECK_TIMEOUT_SECONDS`.
+QRADAR_HEALTH_READ_TIMEOUT_SECONDS = 3.0
+#: The average EPS share of the allocation above which `qradar_health` warns.
+QRADAR_EPS_WARN_SHARE = 0.9
 _CHECK_RUNBOOKS = (
     ("db_connect", "OPS-R36"),
     ("migration_head", "OPS-R11"),
@@ -83,6 +89,7 @@ _CHECK_RUNBOOKS = (
     ("ariel_permits", "OPS-R63"),
     ("geo_country_source", "OPS-R30"),
     ("rule_match_coverage", "OPS-R65"),
+    ("qradar_health", "OPS-R67"),
 )
 _TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])")
 _CREDENTIAL_URL_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
@@ -1380,6 +1387,110 @@ class Doctor:
             f"{int(skipped_n)} skipped beyond the catch-up horizon",
             "OPS-R65",
         )
+
+    async def check_qradar_health(self) -> CheckResult:
+        """How QRadar itself is doing: managed hosts, EPS against the allocation, the license.
+
+        One fresh read of the first enabled console (GET only, each tried once, a short
+        timeout per read). SKIP when the console does not answer (`qradar_auth` already
+        reports that) or when none of the three figures could be read: nothing is claimed
+        about what was not read. WARN when a managed host is not ACTIVE (or reports no
+        status), when the average EPS is over 90 % of the EPS allocation, or when the license
+        pool is over-allocated. The number of search ids QRadar holds is printed and has no
+        threshold.
+        """
+        check_id = "qradar_health"
+        try:
+            instance = await self._instance()
+        except Exception as exc:
+            return CheckResult(
+                check_id,
+                Status.SKIP,
+                f"the registered console could not be read ({type(exc).__name__})",
+            )
+        if instance is None:
+            return CheckResult(
+                check_id, Status.SKIP, "no enabled QRadar instance is registered; see qradar_auth"
+            )
+        try:
+            health = await read_qradar_health(
+                instance,
+                settings=self.settings,
+                provider_factory=self.provider_factory,
+                cache=HealthReadCache(),
+                read_timeout=QRADAR_HEALTH_READ_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            return CheckResult(
+                check_id,
+                Status.SKIP,
+                f"QRadar health could not be read ({type(exc).__name__})",
+            )
+        if health.reachable.value is False:
+            return CheckResult(
+                check_id, Status.SKIP, "the console did not answer; see qradar_auth"
+            )
+        facts: list[str] = []
+        warnings: list[str] = []
+        unread: list[str] = []
+        if health.servers.value is not None:
+            servers = health.servers.value
+            facts.append(f"{servers.active} of {servers.total} managed hosts ACTIVE")
+            if not servers.all_active:
+                names = ", ".join(
+                    f"{entry.hostname or 'unnamed host'} {entry.status or 'reports no status'}"
+                    for entry in servers.not_active
+                )
+                warnings.append(
+                    f"{servers.total - servers.active} managed host(s) not ACTIVE ({names})"
+                )
+        else:
+            unread.append(f"managed hosts ({health.servers.state.value})")
+        if health.eps.value is not None:
+            eps = health.eps.value
+            share = eps.average_share
+            facts.append(
+                f"average {eps.average_eps} EPS of {eps.allocated_eps} allocated"
+                + (f" ({share * 100:.1f} %)" if share is not None else "")
+            )
+            if share is not None and share > QRADAR_EPS_WARN_SHARE:
+                warnings.append(
+                    f"average EPS is {share * 100:.1f} % of the allocation "
+                    f"(over {QRADAR_EPS_WARN_SHARE * 100:.0f} %)"
+                )
+        else:
+            unread.append(f"EPS ({health.eps.state.value})")
+        if health.license.value is not None:
+            pool = health.license.value
+            over = [
+                name
+                for name, rate in (("EPS", pool.eps), ("FPM", pool.fpm))
+                if rate is not None and rate.overallocated
+            ]
+            if over:
+                warnings.append(f"license pool over-allocated ({' and '.join(over)})")
+            else:
+                facts.append("license pool not over-allocated")
+        else:
+            unread.append(f"license ({health.license.state.value})")
+        held = health.ariel.list_probe.value
+        if held is not None:
+            facts.append(
+                f"QRadar holds {'at least ' if held.truncated else ''}{held.held} Ariel search ids"
+            )
+        if len(unread) == 3:
+            return CheckResult(
+                check_id,
+                Status.SKIP,
+                "nothing could be read from QRadar: " + ", ".join(unread) + "; see qradar_auth",
+            )
+        if unread:
+            facts.append("not read: " + ", ".join(unread))
+        if warnings:
+            return CheckResult(
+                check_id, Status.WARN, "; ".join([*warnings, *facts]), "OPS-R67"
+            )
+        return CheckResult(check_id, Status.PASS, "; ".join(facts))
 
     async def check_geo_country_source(self) -> CheckResult:
         """One line: the geography source, each direction's property, and the consoles."""

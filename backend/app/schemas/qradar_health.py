@@ -113,8 +113,8 @@ class ArielRecentValue(BaseModel):
 
 
 class ArielSection(BaseModel):
-    #: QRadar's own count of search ids it holds (all users). Not "running": the list does
-    #: not say which are running, and asking each one would be a query per search.
+    #: QRadar's own count of search ids it holds (all users, finished and active alike). The
+    #: list does not say which are active, and asking each one would be a query per search.
     list_probe: HealthField[ArielListValue]
     #: From `ariel_search_run`: did our latest search find Ariel answering.
     available: HealthField[bool]
