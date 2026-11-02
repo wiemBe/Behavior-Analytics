@@ -21,8 +21,7 @@ The results are written to `docs/MANUAL-TEST-RESULTS.md`. This guide is divided 
 
 ## 0.1.10
 
-This section upgrades a 0.1.9 site to 0.1.10 and tests the upgraded site. A 0.1.8 site upgrades to 0.1.9 first; that path is in `docs/releases/0.1.9.md` and is not described here. The migration head is `0044` before the upgrade and `0046` after it (`migration_head` in `/api/v1/version`). The production IPS sources are Cisco Firepower/FTD and Palo Alto Threat.
-<!-- REL-9 r2: GUIDE-3, head 0047 -->
+This section upgrades a 0.1.9 site to 0.1.10 and tests the upgraded site. A 0.1.8 site upgrades to 0.1.9 first; that path is in `docs/releases/0.1.9.md` and is not described here. The migration head is `0044` before the upgrade and `0047` after it (`migration_head` in `/api/v1/version`). The production IPS sources are Cisco Firepower/FTD and Palo Alto Threat.
 
 ### What this release changes
 
@@ -30,10 +29,11 @@ This section upgrades a 0.1.9 site to 0.1.10 and tests the upgraded site. A 0.1.
 - **The map's country comes from a QRadar custom property (GEO-3).** `GEO_COUNTRY_SOURCE` defaults to `property`; `GEO_SOURCE_COUNTRY_PROPERTY` defaults to `Source Geographic Location` and `GEO_DESTINATION_COUNTRY_PROPERTY` to empty. The operator sets the exact property name from the console. An empty name means that direction is not collected. `doctor` gains `geo_country_source` (runbook OPS-R30). New check: MT-129.
 - **The world map (GEO-4, GEO-5).** The "SOC Overview" template has the Geography widget (`map.geography`) in its bottom row, and `/geography` shows the same answer at full size; a stale answer says so. Check: MT-128.
 - **SIEM load (ARL-1, ARL-2, ARL-3).** Every Ariel search the platform sends is recorded (table `ariel_search_run`, kept 30 days by default). The page `/admin/siem-load`, `GET /api/v1/admin/ariel-load` and `/current`, and `python -m app.cli.ariel_load [--current] [--json]` show the load and QRadar's own health (GET requests only). `doctor` gains `qradar_health` (OPS-R67), and the support bundle carries `ariel-load.json`. New check: MT-130.
-- **Two migrations, head `0046`.** `0045_rule_match_window_start_index` adds an index on `rule_match_window.window_start` (FIX-14); `0046_ariel_search_run` adds the table `ariel_search_run` (ARL-1). `upgrade` prints the decision pair first with `0044` and then with `0046`, and Alembic prints two `Running upgrade` lines. No row changes and nothing is backfilled.
+- **Three migrations, head `0047`.** `0045_rule_match_window_start_index` adds an index on `rule_match_window.window_start` (FIX-14); `0046_ariel_search_run` adds the table `ariel_search_run` (ARL-1); `0047_user_guide_seen` adds the column `app_user.guide_seen` (GUIDE-3). `upgrade` prints the decision pair first with `0044` and then with `0047`, and Alembic prints three `Running upgrade` lines. The only row change is the new column: every account gets an empty list.
 - **Every counted response carries the rate-limit window (FIX-14).** A counted 401, 403, 404 or 422 carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`; `Retry-After` is written only on a 429. Checks: MT-126 (production) and MT-127 (lab only).
 - **A console's first inventory is queued, and `QRADAR_CONSOLE_FQDN` may carry a port (FIX-13).** The installer summary prints `First inventory    queued` or `First inventory    not queued; the hourly beat will catch up`; the second is not an error.
 - **Editors and names (POL-8 to POL-14, MSG-9).** The custom rule editor uses words and "?" help; "New combination" says why it is off; the add-source control sits in the page header; a failed session shows "The server said: …" as its own clause; "Phase A" is now "Log source volume" (`doctor` token `LOG_SOURCE_VOLUME`).
+- **The page-header "Guide" link shows once, and a fixed "Guide" entry stays in the left navigation (GUIDE-3).** The link shows the first time an account opens a page of a guide section and not again (the account stores it, `guide_seen`); the entry at the bottom of the left navigation is on every page and opens the current page's section. New check: MT-132.
 - **There is no user delete (GUIDE-2).** Disabling an account is how access is removed; the account row and the `user.disable` audit record stay and the account's sessions are revoked (MT-19).
 - **Before you start:** get the exact name of the country custom property from the QRadar administrator, and decide `GEO_COUNTRY_SOURCE` (`property` with that name, or `lookup`), so that MT-09 and MT-11 read a clean `geo_country_source` line.
 
@@ -64,7 +64,7 @@ For the data of a collection to appear on a page, the cadence and the settle mar
 
 **Core (production path):** 37 checks, about **2 hours** of active work (an estimate, not measured) and about 10 minutes of the console administrator (MT-120); the cadence wait is separate. **Production order:** the core checks are done in section order. MT-126, although its number is high, is done right after MT-11; MT-128 is also done after MT-11, once a `GEO_COLLECTION` cadence has passed. The cadence wait (18 minutes at most) is filled with read-only checks that need no new data, such as MT-12 to MT-22; the data-dependent checks (MT-24 and after) are done when the wait is over.
 
-Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 5 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-131 add about 20 minutes.
+Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes.
 Fill the first cadence wait (18 minutes at most) with the Sign-in and Language sections. It can also be done in two half days; between the upgrade and the Dashboard and anomaly checks a wait is needed.
 
 
@@ -192,7 +192,7 @@ tar -tzf "$BUNDLE" | head -40
 
 A fresh browser has no `ba_locale` cookie, and the sign-in page shows the title “Sign in” and the version line `API version 0.1.9`. The interface is English only (D-41); a `ba_locale` cookie, whatever its value, does not change it.
 
-There are two ways to upgrade the site from 0.1.9 to 0.1.10; choose one. The target version works the same way as the "Upgrade" and "Offline bundle" sections of `docs/OPERATIONS.md`. The upgrade takes its own verified `pre-upgrade` backup; the backup is also restore-tested. Before the upgrade the migration head is `0044`, and after it `0046`. The head moves once.
+There are two ways to upgrade the site from 0.1.9 to 0.1.10; choose one. The target version works the same way as the "Upgrade" and "Offline bundle" sections of `docs/OPERATIONS.md`. The upgrade takes its own verified `pre-upgrade` backup; the backup is also restore-tested. Before the upgrade the migration head is `0044`, and after it `0047`. The head moves once.
 
 **Outage.** The backend, worker and beat are down from the start of `pg_dump` until `/api/v1/health/ready` returns 200; `frontend` and `proxy` are stopped too. On a small database the upgrade outage was measured at about 15-20 s; the budget for a database under 5 GiB is 10 minutes. Pulling the images is outside this window. These are not promises. The upgrade empties Redis (`FLUSHALL`); queued tasks are lost and are set up again at the next beat tick, and the important data is in PostgreSQL. Nothing is written to QRadar.
 
@@ -214,7 +214,7 @@ git checkout v0.1.10
 **Expected:**
 
 - The command exits with 0 and the last line is `Upgrade complete: 0.1.9 -> 0.1.10.`.
-- Alembic prints two `Running upgrade` lines: `0044 -> 0045` and `0045 -> 0046`. The migrate container exits with 0. These lines are expected in this release; it is not like 0.1.9.
+- Alembic prints three `Running upgrade` lines: `0044 -> 0045`, `0045 -> 0046` and `0046 -> 0047`. The migrate container exits with 0. These lines are expected in this release; it is not like 0.1.9.
 - In the pre-check (before the writers stop) these three lines are printed; the head is that of the **installed** version, which is `0044`:
 
 ```
@@ -223,15 +223,15 @@ PASS  migration_head database and image are at 0044
 Full report: ./qradar-dash doctor
 ```
 
-- After the new stack has started, the second pair is printed; the head is that of the **target** version and is `0046`:
+- After the new stack has started, the second pair is printed; the head is that of the **target** version and is `0047`:
 
 ```
 PASS  db_connect     database accepted SELECT 1
-PASS  migration_head database and image are at 0046
+PASS  migration_head database and image are at 0047
 Full report: ./qradar-dash doctor
 ```
 
-- Both pairs are printed; the first is `0044`, the second `0046`. A single pair is printed only if the target is already installed: `Version 0.1.10 is already installed and healthy; nothing changed.` That is not the output of a first upgrade.
+- Both pairs are printed; the first is `0044`, the second `0047`. A single pair is printed only if the target is already installed: `Version 0.1.10 is already installed and healthy; nothing changed.` That is not the output of a first upgrade.
 - The number of spaces in the `PASS` lines can change with the release; the text is the same.
 - If the `.env` of 0.1.9 has no `FRONTEND_EDGE_IP` and `FORWARDED_ALLOW_IPS` is a non-empty list that is not `*` and does not contain the frontend address, these two lines are printed as well. Do not write the addresses on the page; write only that the lines appeared:
   - `Frontend address <address> added to .env (FRONTEND_EDGE_IP).`
@@ -265,7 +265,7 @@ tar -xf /path/qradar-dash-0.1.10-bundle.tar --exclude=images.tar
 
 - The two checksums are the same.
 - The bundle is verified and loaded; the line `bundle images loaded and checked against MANIFEST` appears in the output. No container is stopped before the images are loaded and checked.
-- The rest is as in the online path: two `PASS` pairs (first `0044`, then `0046`), two `Running upgrade` lines (`0044 -> 0045`, `0045 -> 0046`), and the last line `Upgrade complete: 0.1.9 -> 0.1.10.`, exit code 0.
+- The rest is as in the online path: two `PASS` pairs (first `0044`, then `0047`), three `Running upgrade` lines (`0044 -> 0045`, `0045 -> 0046`, `0046 -> 0047`), and the last line `Upgrade complete: 0.1.9 -> 0.1.10.`, exit code 0.
 - If an image is missing, `upgrade refused: target images are unavailable: image <image> is not loaded on this host; no container was stopped; pass the bundle: …` is printed and nothing stops.
 
 **Record:** Both checksums, the exit code, the start and end time (UTC), the two `migration_head` lines.
@@ -294,8 +294,8 @@ stat -c '%a %n' "$BACKUP/install.answers"
 **Expected:**
 
 - `status`: `Installed version: 0.1.10`; `Last upgrade: success, 0.1.9 -> 0.1.10 at <utc>`; `Last upgrade backup: <path> (age <age>)`; `API ready: HTTP 200 (…)`; exit code 0; every service healthy.
-- `/api/v1/version`: `"version":"0.1.10"` and `"migration_head":"0046"`.
-- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0046"`.
+- `/api/v1/version`: `"version":"0.1.10"` and `"migration_head":"0047"`.
+- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0047"`.
 - The backup has `install.answers`. `stat` prints the mode `600` (`0600`). If the live file was `0400` before the upgrade, the mode is `400`. The file is missing only if the live file is missing, if it is a symbolic link, or if its mode is neither of these two; on an ordinary install the file exists and its absence is Fail.
 
 **Record:** The version and `migration_head` values of the three outputs; the `Last upgrade:` line; the name of the backup directory and the digits of the `install.answers` mode. The contents of the file are not written.
@@ -342,7 +342,7 @@ awk -F= '
 
 **Expected:**
 
-- There is no `FAIL`. The hourly `log_source_inventory` and `rule_inventory` FAIL on a changed console is the exception; that wait belongs to MT-11. `db_connect` PASS; `migration_head` PASS and `database and image are at 0046`; `version_match` PASS and `frontend and backend report 0.1.10`; `containers` PASS.
+- There is no `FAIL`. The hourly `log_source_inventory` and `rule_inventory` FAIL on a changed console is the exception; that wait belongs to MT-11. `db_connect` PASS; `migration_head` PASS and `database and image are at 0047`; `version_match` PASS and `frontend and backend report 0.1.10`; `containers` PASS.
 - `forwarded_allow_ips` is PASS and the text is `FORWARDED_ALLOW_IPS trusts the frontend (<address>)`. The address is the same as `FRONTEND_EDGE_IP`; do not write the address on the page. This line has no runbook. awk prints `two addresses, the frontend is in the list; addresses not printed`. On a site behind an outer proxy, the list is the operator's old list with the frontend address added once; more than two addresses is correct, and awk prints the address count.
 - If the line is missing, if awk says empty or star, or if doctor says FAIL (`FORWARDED_ALLOW_IPS is empty; every analyst shares one rate-limit key` or `FORWARDED_ALLOW_IPS is *; every analyst shares one rate-limit key`), this is Fail. The runbook is OPS-R21. Do not write `*`. If the list does not contain the frontend address, it is a WARN: `FORWARDED_ALLOW_IPS does not trust the frontend (<address>); pages drawn by the server share one rate-limit key`, runbook OPS-R21. This is also Fail.
 - Because beat and worker have just started, `celery_workers` or `celery_beat` can give a temporary FAIL in the first minute; wait a minute and repeat the command. If the FAIL stays on the second run, it is Fail.
@@ -2155,8 +2155,6 @@ docker compose exec -T backend python -m app.cli.ariel_load --hours 24
 **Record:** Whether each part of the page read; the console's reachability, latency and `qradar_health` status (no addresses); whether the page and the command agree on searches in flight; the forbidden notice.
 
 
-<!-- REL-9 r2: GUIDE-3 (MT-132), head 0047 -->
-
 ### 13. Guide
 
 The in-app guide is at `/guide`; it is open to everyone who is signed in and needs no permission. Its text is rendered on the server.
@@ -2172,6 +2170,28 @@ The in-app guide is at `/guide`; it is open to everyone who is signed in and nee
 - The heading is “Guide”, the description is “Pick a topic by the question it answers.”, the groups are “Concepts”, “Analyst pages”, “Analyst tasks”, “Administrator tasks”; the first section is “How it works”. The section page is not empty and there is no raw key.
 
 **Record:** That the two pages opened.
+
+#### MT-132 — The header Guide link shows once; the Guide entry is always there (GUIDE-3)
+
+**Precondition:** **(writes)**, on the signed-in account only: opening a page stores that page's guide section in the account's `guide_seen` list, and the interface has no way to reset it. Use a page this account has not opened before (a new account, such as the one from MT-16 in the lab, has opened none), and write the page in the Note field. Nothing else changes and no one else's pages are affected.
+
+**Action:**
+
+- Open a page that has a guide section and that this account has not opened before, for example `/geography`. Look at the page header, then at the bottom of the left navigation.
+- Open another page and come back to the first one (or reload it). Look at the same two places.
+- Open two or three other pages (for example `/fleet`, `/alerts` and `/account`) and look at the bottom of the left navigation on each. On one of them, follow the entry.
+- Open `/guide` and look at the bottom of the left navigation.
+
+**Expected:**
+
+- First visit: the header has a small “Guide” link to the page's guide section. It stays on the page while it is open; it does not appear and then vanish.
+- Second visit to the same page: the header has no “Guide” link. The same holds after a reload and, when you sign in on another browser with the same account, there too.
+- Every page shows one text-only “Guide” entry at the bottom of the left navigation, below the navigation list, and it covers no navigation item (on a short window the list scrolls above it). On a page that has a guide section it opens that section (for example `/guide/geography` from `/geography`); on `/guide` it opens the index.
+- No page shows the entry twice, and there is no “Guide” item inside the navigation list.
+
+**Record:** The page used for the first visit; whether the header link showed on the first visit and not on the second; the target of the bottom-left entry on each page you looked at.
+
+**Cleanup:** None: the list has no reset. Write the page used in the Note field.
 
 ### 14. Read-only against QRadar
 
@@ -2308,7 +2328,7 @@ git checkout v0.1.10
 
 **Expected:**
 
-- After the rollback the head stays `0044`. The second upgrade is first `0044`, then `0046`; the two `PASS` pairs say this and two `Running upgrade` lines (`0044 -> 0045`, `0045 -> 0046`) are written. The last line is `Upgrade complete: 0.1.9 -> 0.1.10.`. The `Last upgrade:` line shows the latest operation.
+- After the rollback the head stays `0044`. The second upgrade is first `0044`, then `0047`; the two `PASS` pairs say this and three `Running upgrade` lines (`0044 -> 0045`, `0045 -> 0046`, `0046 -> 0047`) are written. The last line is `Upgrade complete: 0.1.9 -> 0.1.10.`. The `Last upgrade:` line shows the latest operation.
 - When the checkout is not `v0.1.10`, `upgrade 0.1.10` is refused: `upgrade refused: this checkout is version 0.1.9, not 0.1.10; run git fetch --tags && git checkout v0.1.10 first (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container stops.
 - The rollback removes the accounts created after the upgrade.
 
