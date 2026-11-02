@@ -482,6 +482,14 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "missing required permission: {permission}",
         permission="read:*",
     ),
+    _fixed(
+        "ariel_load.hours.invalid",
+        "hours must be a whole number from 1 to 720",
+    ),
+    _fixed(
+        "ariel_load.window.empty",
+        "No Ariel search was recorded in this window.",
+    ),
     # Passwords and usernames.
     _fixed("auth.password.too_short", "password must be at least 12 characters"),
     _fixed("auth.password.too_long", "password must be at most 72 bytes"),

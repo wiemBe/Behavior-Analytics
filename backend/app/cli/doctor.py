@@ -218,6 +218,10 @@ BATCH_DELETERS: tuple[BatchDeleter, ...] = (
         (BatchTable("anomaly_evaluation_fault", "anomaly_fault_retention_days"),),
     ),
     BatchDeleter(
+        "apply_ariel_search_run_retention",
+        (BatchTable("ariel_search_run", "ariel_search_run_retention_days"),),
+    ),
+    BatchDeleter(
         "apply_custom_rule_retention",
         (BatchTable("custom_rule_breach", "custom_rule_breach_retention_days"),),
     ),

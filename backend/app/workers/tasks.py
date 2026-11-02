@@ -56,6 +56,7 @@ from app.providers.factory import build_provider, build_provider_for_instance
 from app.repositories.offense import OffenseRepository
 from app.services.anomaly_fault_retention import AnomalyFaultRetention
 from app.services.ariel_permit import ArielPermitBudget
+from app.services.ariel_search_retention import ArielSearchRunRetention
 from app.services.catchall_retention import CatchallRetention
 from app.services.detection_coverage import DetectionCoverageEvaluator
 from app.services.geo_retention import GeoRetention
@@ -88,12 +89,19 @@ logger = logging.getLogger("app.tasks")
 
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     async def run_and_dispose() -> T:
+        from app.services.ariel_search_log import finish_worker_buffer, open_run_buffer
+
+        token = open_run_buffer()
         try:
             return await coro
         finally:
-            # Every Celery shim owns a short-lived event loop. Close asyncpg
-            # connections on that same loop so none leak into the next task.
-            await dispose_engine()
+            # One insert for every Ariel search this task noted. A failed
+            # flush is counted and does not fail the task. Then close asyncpg
+            # connections on this loop so none leak into the next task.
+            try:
+                await finish_worker_buffer(token)
+            finally:
+                await dispose_engine()
 
     return asyncio.run(run_and_dispose())
 
@@ -1422,6 +1430,16 @@ async def apply_log_source_anomaly_retention() -> dict:
         return (await LogSourceAnomalyRetention(session).run()).as_dict()
 
 
+async def apply_ariel_search_run_retention() -> dict:
+    """Delete Ariel load rows older than the retention window.
+
+    Not gated by RETENTION_ENABLED. The cutoff is strict on ``submitted_at``.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await ArielSearchRunRetention(session).run()).as_dict()
+
+
 async def apply_anomaly_fault_retention() -> dict:
     """Delete closed anomaly evaluation faults older than the retention window.
 
@@ -1791,6 +1809,11 @@ def apply_waf_retention_task() -> dict:
 @celery_app.task(name="apply_anomaly_fault_retention")
 def apply_anomaly_fault_retention_task() -> dict:
     return _run(apply_anomaly_fault_retention())
+
+
+@celery_app.task(name="apply_ariel_search_run_retention")
+def apply_ariel_search_run_retention_task() -> dict:
+    return _run(apply_ariel_search_run_retention())
 
 
 @celery_app.task(name="apply_log_source_anomaly_retention")

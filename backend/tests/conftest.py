@@ -27,6 +27,43 @@ requires_db = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _ariel_load_writes_nowhere(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the Ariel load log's connection at nothing, for every test.
+
+    The log writes through one function, ``worker_engine``. Production's
+    default is the process engine and production always writes; there is no
+    test switch inside the application. A test must not write whatever
+    ``DATABASE_URL`` names on the machine running it, so the suite replaces that
+    one function with a no-op (``None``: the rows are dropped without a failure
+    count). A test that wants the rows asks for ``ariel_load_engine``, which
+    points the function at its own database instead. Chosen over an
+    environment variable or a flag in the application because the application
+    then has no branch that only a test takes.
+    """
+    from app.services import ariel_search_log
+
+    monkeypatch.setattr(ariel_search_log, "worker_engine", lambda: None)
+
+
+@pytest_asyncio.fixture
+async def ariel_load_engine(db_schema, monkeypatch: pytest.MonkeyPatch):
+    """The Ariel load log writes to this test's database, on its own engine."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from app.services import ariel_search_log
+
+    # No pool: a Celery task runs on a loop of its own, and an asyncpg
+    # connection cannot cross loops.
+    engine = create_async_engine(db_schema, future=True, poolclass=NullPool)
+    monkeypatch.setattr(ariel_search_log, "worker_engine", lambda: engine)
+    try:
+        yield engine
+    finally:
+        await engine.dispose()
+
+
 @pytest.fixture
 def mock_provider() -> MockQRadarProvider:
     return MockQRadarProvider(seed=1337)

@@ -1458,6 +1458,20 @@
     "sample_english_params": {},
     "template": "maintenance window"
   },
+  "ariel_load.hours.invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "hours must be a whole number from 1 to 720",
+    "sample_english_params": {},
+    "template": "hours must be a whole number from 1 to 720"
+  },
+  "ariel_load.window.empty": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No Ariel search was recorded in this window.",
+    "sample_english_params": {},
+    "template": "No Ariel search was recorded in this window."
+  },
   "auth.csrf.origin_mismatch": {
     "params": {
       "origin": {

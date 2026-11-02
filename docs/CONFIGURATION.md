@@ -68,6 +68,8 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 | `ARIEL_PERMIT_POLL_SECONDS` | `1` | Permit retry interval (more than `0`, at most `30` seconds) |
 | `ARIEL_PERMIT_RESERVED_LIVE_SLOTS` | `2` | Low-numbered global slots only live collection may take; must be below the global cap |
 
+Every Ariel search the platform sends leaves one row in `ariel_search_run` (caller, outcome, wall time, the cost fields QRadar's status reports; never the query or its rows). The row is written when the search is submitted and closed when it ends. It is kept `ARIEL_SEARCH_RUN_RETENTION_DAYS` days (see Retention). Read it with `GET /api/v1/admin/ariel-load?hours=N` (1 to 720, default 24; `admin:*`) or `python -m app.cli.ariel_load [--hours N] [--json]`, and read the load now with `GET /api/v1/admin/ariel-load/current` or `python -m app.cli.ariel_load --current [--json]`: the searches in flight (a row older than the longest wait a search is allowed, `ARIEL_MAX_TIMEOUT_SECONDS` plus 30 seconds, is reported as stale, because its worker died), the permit slots, and the last 5, 15 and 60 minutes. A part that cannot be read says so; it is never zero. Wall-time and execution-time percentiles (p50, p95, and the maximum wall time) are over COMPLETED searches only, because they answer how long a finished search takes. Sums are the load itself and cover every finished search, a TIMEOUT's partial execution time included. A sum is null, never 0, when no search in it reported the figure, and the `*_unknown` counts say how many did not.
+
 ## Search cadence and bucket collection
 
 Every QRadar search family defaults to a five-minute cadence, except WAF and IPS, which default to fifteen minutes. Operators can select 5 minutes,
@@ -164,6 +166,7 @@ trimmed to the dimensions its DSM populates; the rest are recorded unavailable.
 | `ANOMALY_SILENCE_GRACE_BUCKETS` | `1` | Missing buckets tolerated before silence evaluation |
 | `ANOMALY_MAX_BUCKET_ATTEMPTS` | `3` | Failed evaluation ticks on one bucket before it is given up. `1`–`20` |
 | `ANOMALY_FAULT_RETENTION_DAYS` | `30` | Days a resolved or given-up fault is kept. `1`–`3650`. Daily task `apply_anomaly_fault_retention`; not gated by `RETENTION_ENABLED` |
+| `ARIEL_SEARCH_RUN_RETENTION_DAYS` | `30` | Days an Ariel load row is kept, by `submitted_at`. `1`–`3650`. Daily task `apply_ariel_search_run_retention`, batches of 5000 and at most 20 batches a run; not gated by `RETENTION_ENABLED`. The table is not a hypertable |
 | `LOG_SOURCE_ANOMALY_RETENTION_DAYS` | `365` | Closed log source volume incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). `1`–`3650`. Live states are kept. Task `apply_log_source_anomaly_retention`; not gated by `RETENTION_ENABLED`. An alert that lists the incident in `source_anomaly_ids` keeps it for the life of the alert, whatever the alert status (nothing deletes alerts). `evidence_snapshot` and `source_id` are not guards |
 | `LOG_SOURCE_ANOMALY_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch. `100`–`100000` |
 | `LOG_SOURCE_ANOMALY_RETENTION_MAX_BATCHES` | `20` | Batches per run. `1`–`1000` |

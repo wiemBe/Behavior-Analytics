@@ -128,6 +128,7 @@ from app.services.ariel_permit import (
     ariel_history_deferred_message,
     ariel_history_deferred_reason,
 )
+from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 
@@ -418,6 +419,7 @@ class RuleMatchCollector:
 
     # ------------------------------------------------------------------ history
 
+    @ariel_caller(CALLER_HISTORY)
     async def _history_step(
         self,
         instance: QRadarInstance,

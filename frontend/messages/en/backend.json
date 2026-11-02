@@ -130,6 +130,14 @@
       "maintenance": "maintenance window"
     }
   },
+  "ariel_load": {
+    "hours": {
+      "invalid": "hours must be a whole number from 1 to 720"
+    },
+    "window": {
+      "empty": "No Ariel search was recorded in this window."
+    }
+  },
   "auth": {
     "csrf": {
       "origin_mismatch": "Cross-site request refused: origin {origin} is not the configured public origin.",

@@ -25,6 +25,7 @@ import logging
 import random
 import ssl
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from functools import wraps
 from typing import Any, ClassVar, NamedTuple, Protocol, cast
@@ -105,6 +106,7 @@ from app.providers.telemetry import EndpointCategory, ErrorClass, observe
 from app.providers.tls import build_ssl_context
 from app.rules.matches import fold_windowed_rows, window_starts
 from app.security.sanitizer import sanitize_text
+from app.services import ariel_search_log as ariel_log
 from app.services.ariel_permit import ArielPermitBudget, ArielPermitUnavailable
 from app.services.backoff import backoff_delay
 from app.waf.bucketed import (
@@ -162,9 +164,12 @@ def _holds_ariel_permit[**P, R](
 
     Applied to exactly the four methods that run create, poll, results and cancel
     themselves (docs/ARIEL-PERMIT.md §P.3). They never call each other, so a search
-    is counted once. A refusal raises before anything is sent to /ariel/searches.
+    is counted once. A refusal raises before anything is sent to /ariel/searches,
+    and is recorded as REFUSED when the method declares a caller.
     `_permit is None` means no enforcement.
     """
+
+    family = getattr(method, "__ariel_caller__", None)
 
     @wraps(method)
     async def permitted(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -174,6 +179,13 @@ def _holds_ariel_permit[**P, R](
             return await method(*args, **kwargs)
         async with budget.permit() as permit:
             if permit is None:
+                explicit = kwargs.get("caller")
+                label = explicit if isinstance(explicit, str) else None
+                if label not in ariel_log.CALLERS:
+                    current = ariel_log.load_family()
+                    label = current if isinstance(current, str) else family
+                if isinstance(label, str):
+                    ariel_log.record_refusal(owner, label)
                 raise ArielPermitUnavailable(
                     budget.wait_seconds,
                     budget.instance_limit,
@@ -181,7 +193,33 @@ def _holds_ariel_permit[**P, R](
                 )
             return await method(*args, **kwargs)
 
+    if isinstance(family, str):
+        permitted.__ariel_caller__ = family  # type: ignore[attr-defined]
     return permitted
+
+
+def _loads[**P, R](
+    family: str,
+) -> Callable[[Callable[P, Coroutine[Any, Any, R]]], Callable[P, Coroutine[Any, Any, R]]]:
+    """Declare the caller this method already knows, and the window it was given.
+
+    HISTORY and PREVIEW, set by the entry that called in, win over ``family``.
+    The range is taken from the window arguments, never from the AQL text.
+    """
+
+    def deco(
+        method: Callable[P, Coroutine[Any, Any, R]],
+    ) -> Callable[P, Coroutine[Any, Any, R]]:
+        @wraps(method)
+        async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+            span = ariel_log.span_from_call(cast(tuple[object, ...], args), kwargs)
+            with ariel_log.load_scope(family, span):
+                return await method(*args, **kwargs)
+
+        wrapped.__ariel_caller__ = family  # type: ignore[attr-defined]
+        return wrapped
+
+    return deco
 
 
 def _rule_id(value: Any) -> int | None:
@@ -723,6 +761,7 @@ class QRadarRestProvider(QRadarProvider):
         return out
 
     @_holds_ariel_permit
+    @_loads(ariel_log.CALLER_LOG_SOURCE_VOLUME)
     async def get_log_source_metrics(
         self,
         window_start: datetime,
@@ -774,32 +813,27 @@ class QRadarRestProvider(QRadarProvider):
             # WHERE clause stays authoritative for the half-open bucket bound.
             f"{self._ariel_scope(start_ms, end_ms)}"
         )
-        handle = await self.create_ariel_search(aql)
-        status: ArielSearchStatusDTO | None = None
-        # Two minutes maximum. The task's interval is at least one minute, and
-        # a stuck appliance must never pin a worker indefinitely.
-        for _ in range(120):
-            status = await self.get_ariel_search_status(handle.search_id)
-            if status.is_terminal:
-                break
-            await self._sleep(1.0)
-        else:
-            await self.cancel_ariel_search(handle.search_id)
-            raise ProviderUnavailableError("QRadar Ariel metric search timed out")
-
-        if status is None or not status.is_success:
-            raise ProviderError("QRadar Ariel metric search did not complete")
-
         max_rows = self._page_size * self._max_pages
-        results = await self.get_ariel_search_results(
-            handle.search_id, max_rows=max_rows
-        )
-        if results.truncated:
-            # A capped aggregate drops sources, and the collector would zero-fill
-            # them as complete silence. Fail the interval instead.
-            raise ProviderError(
-                f"QRadar Ariel metric search was truncated at {max_rows} rows"
+        async with self._search_log() as log:
+            handle = await self.create_ariel_search(aql)
+            # Two minutes maximum. The task's interval is at least one minute, and
+            # a stuck appliance must never pin a worker indefinitely.
+            results = await self._await_ariel(
+                log,
+                handle,
+                max_rows=max_rows,
+                timeout_message="QRadar Ariel metric search timed out",
+                incomplete_message="QRadar Ariel metric search did not complete",
             )
+            if results.truncated:
+                # The search completed on QRadar. The cap is our refusal to
+                # treat a partial aggregate as silence.
+                log.mark(ariel_log.OUTCOME_COMPLETED)
+                # A capped aggregate drops sources, and the collector would zero-fill
+                # them as complete silence. Fail the interval instead.
+                raise ProviderError(
+                    f"QRadar Ariel metric search was truncated at {max_rows} rows"
+                )
         samples: list[LogSourceMetricSample] = []
         for row in results.rows:
             qradar_id = as_int(row.get("qradar_id"))
@@ -827,6 +861,7 @@ class QRadarRestProvider(QRadarProvider):
         return samples
 
     @_holds_ariel_permit
+    @_loads(ariel_log.CALLER_LOG_SOURCE_VOLUME)
     async def get_log_source_metrics_bucketed(
         self,
         window_start: datetime,
@@ -856,21 +891,15 @@ class QRadarRestProvider(QRadarProvider):
             f"GROUP BY logsourceid, starttime / {bucket_ms} "
             f"LIMIT {max_rows + 1} {self._ariel_scope(start_ms, end_ms)}"
         )
-        handle = await self.create_ariel_search(aql)
-        status: ArielSearchStatusDTO | None = None
-        for _ in range(120):
-            status = await self.get_ariel_search_status(handle.search_id)
-            if status.is_terminal:
-                break
-            await self._sleep(1.0)
-        else:
-            await self.cancel_ariel_search(handle.search_id)
-            raise ProviderUnavailableError("QRadar Ariel metric search timed out")
-
-        if status is None or not status.is_success:
-            raise ProviderError("QRadar Ariel metric search did not complete")
-
-        results = await self.get_ariel_search_results(handle.search_id, max_rows=max_rows)
+        async with self._search_log() as log:
+            handle = await self.create_ariel_search(aql)
+            results = await self._await_ariel(
+                log,
+                handle,
+                max_rows=max_rows,
+                timeout_message="QRadar Ariel metric search timed out",
+                incomplete_message="QRadar Ariel metric search did not complete",
+            )
         buckets = fold_log_source_metric_buckets(
             results.rows,
             start,
@@ -902,6 +931,7 @@ class QRadarRestProvider(QRadarProvider):
         "protocol": ("protocolid", "PROTOCOLNAME(protocolid)"),
     }
 
+    @_loads(ariel_log.CALLER_ANOMALY_EXPLANATION)
     async def get_dimension_aggregates(
         self,
         *,
@@ -1049,6 +1079,7 @@ class QRadarRestProvider(QRadarProvider):
             query=aql,
         )
 
+    @_loads(ariel_log.CALLER_RULE_MATCH)
     async def get_rule_matches(
         self, window_start: datetime, window_end: datetime, *, max_rows: int
     ) -> RuleMatchBatch:
@@ -1090,6 +1121,7 @@ class QRadarRestProvider(QRadarProvider):
             ariel_searches=1,
         )
 
+    @_loads(ariel_log.CALLER_RULE_MATCH)
     async def get_rule_matches_windowed(
         self,
         window_start: datetime,
@@ -1152,6 +1184,7 @@ class QRadarRestProvider(QRadarProvider):
         )
 
     # ------------------------------------------------------------ history (HB-5)
+    @_loads(ariel_log.CALLER_HISTORY)
     async def get_console_event_totals(
         self,
         window_start: datetime,
@@ -1223,6 +1256,7 @@ class QRadarRestProvider(QRadarProvider):
             raise ValueError(f"unsafe QRadar property name: {name!r}")
         return f'"{name}"'
 
+    @_loads(ariel_log.CALLER_WAF_COLLECTION)
     async def get_waf_observations(
         self,
         *,
@@ -1298,6 +1332,7 @@ class QRadarRestProvider(QRadarProvider):
             ariel_searches=2,
         )
 
+    @_loads(ariel_log.CALLER_WAF_COLLECTION)
     async def get_waf_breakdown(
         self,
         *,
@@ -1365,6 +1400,7 @@ class QRadarRestProvider(QRadarProvider):
         """The row budget of one keyed search, bounded as the results read is."""
         return max(1, min(int(max_rows), self._page_size * self._max_pages))
 
+    @_loads(ariel_log.CALLER_WAF_COLLECTION)
     async def get_waf_observations_bucketed(
         self,
         *,
@@ -1464,6 +1500,7 @@ class QRadarRestProvider(QRadarProvider):
             ariel_searches=2,
         )
 
+    @_loads(ariel_log.CALLER_WAF_COLLECTION)
     async def get_waf_breakdown_bucketed(
         self,
         *,
@@ -1541,6 +1578,7 @@ class QRadarRestProvider(QRadarProvider):
             ariel_searches=1,
         )
 
+    @_loads(ariel_log.CALLER_WAF_COLLECTION)
     async def probe_waf_properties(
         self,
         *,
@@ -1761,6 +1799,7 @@ class QRadarRestProvider(QRadarProvider):
             f"{self._ariel_scope(start_ms, end_ms)}"
         )
 
+    @_loads(ariel_log.CALLER_IPS_COLLECTION)
     async def get_ips_keyed(
         self,
         dimension: IpsDimension,
@@ -1817,6 +1856,7 @@ class QRadarRestProvider(QRadarProvider):
             query=aql,
         )
 
+    @_loads(ariel_log.CALLER_PROPERTY_WATCH)
     async def get_pw_keyed(
         self,
         search: PwSearchKind,
@@ -1901,6 +1941,7 @@ class QRadarRestProvider(QRadarProvider):
             f"ORDER BY SUM(eventcount) DESC LIMIT {limit}"
         )
 
+    @_loads(ariel_log.CALLER_CATCHALL_SENDERS)
     async def get_catchall_senders_keyed(
         self,
         *,
@@ -1987,6 +2028,7 @@ class QRadarRestProvider(QRadarProvider):
             f"ORDER BY SUM(eventcount) DESC LIMIT {limit}"
         )
 
+    @_loads(ariel_log.CALLER_GEO_COLLECTION)
     async def get_geo_keyed(
         self,
         start: datetime,
@@ -2037,6 +2079,7 @@ class QRadarRestProvider(QRadarProvider):
             query=aql,
         )
 
+    @_loads(ariel_log.CALLER_IPS_COLLECTION)
     async def probe_ips_fields(
         self,
         *,
@@ -2206,6 +2249,7 @@ class QRadarRestProvider(QRadarProvider):
         )
 
     @_holds_ariel_permit
+    @_loads(ariel_log.CALLER_WAF_COLLECTION)
     async def observe_property_rejection(
         self,
         *,
@@ -2237,66 +2281,109 @@ class QRadarRestProvider(QRadarProvider):
                 f"AND starttime >= {start_ms} AND starttime < {end_ms} "
                 f"LIMIT 1 {bound}"
             )
-            try:
-                handle = await self.create_ariel_search(aql)
-            except ProviderUnavailableError as exc:
-                out.append(WafRejectionObservation(
-                    property_name=name, outcome="CREATE_FAILED",
-                    create_http_status=exc.status_code, query=aql,
-                ))
-                continue
-            except ProviderError as exc:
-                status = exc.status_code
-                outcome = (
-                    "REJECTED_AT_CREATE" if status is not None and 400 <= status < 500
-                    else "CREATE_FAILED"
+            async with self._search_log() as log:
+                try:
+                    handle = await self.create_ariel_search(aql)
+                except ProviderUnavailableError as exc:
+                    log.mark(ariel_log.outcome_for_exception(exc))
+                    out.append(WafRejectionObservation(
+                        property_name=name, outcome="CREATE_FAILED",
+                        create_http_status=exc.status_code, query=aql,
+                    ))
+                    continue
+                except ProviderError as exc:
+                    log.mark(ariel_log.OUTCOME_ERROR)
+                    status = exc.status_code
+                    outcome = (
+                        "REJECTED_AT_CREATE" if status is not None and 400 <= status < 500
+                        else "CREATE_FAILED"
+                    )
+                    out.append(WafRejectionObservation(
+                        property_name=name, outcome=outcome, create_http_status=status, query=aql,
+                    ))
+                    continue
+                status_dto: ArielSearchStatusDTO | None = None
+                for _ in range(ariel_log.POLL_LIMIT):
+                    status_dto = await self.get_ariel_search_status(handle.search_id)
+                    await log.saw(status_dto)
+                    if status_dto.is_terminal:
+                        break
+                    await self._sleep(1.0)
+                else:
+                    await self.cancel_ariel_search(handle.search_id)
+                    log.mark(ariel_log.OUTCOME_TIMEOUT)
+                    out.append(WafRejectionObservation(
+                        property_name=name, outcome="TIMED_OUT", search_created=True,
+                        search_status=status_dto.status if status_dto else None, query=aql,
+                    ))
+                    continue
+                assert status_dto is not None
+                log.mark(
+                    ariel_log.OUTCOME_COMPLETED
+                    if status_dto.is_success
+                    else ariel_log.outcome_of_status(status_dto)
                 )
                 out.append(WafRejectionObservation(
-                    property_name=name, outcome=outcome, create_http_status=status, query=aql,
+                    property_name=name,
+                    outcome="SEARCH_COMPLETED" if status_dto.is_success else "SEARCH_FAILED",
+                    search_created=True,
+                    search_status=status_dto.status,
+                    record_count=status_dto.record_count,
+                    query=aql,
                 ))
-                continue
-            status_dto: ArielSearchStatusDTO | None = None
-            for _ in range(120):
-                status_dto = await self.get_ariel_search_status(handle.search_id)
-                if status_dto.is_terminal:
-                    break
-                await self._sleep(1.0)
-            else:
-                await self.cancel_ariel_search(handle.search_id)
-                out.append(WafRejectionObservation(
-                    property_name=name, outcome="TIMED_OUT", search_created=True,
-                    search_status=status_dto.status if status_dto else None, query=aql,
-                ))
-                continue
-            assert status_dto is not None
-            out.append(WafRejectionObservation(
-                property_name=name,
-                outcome="SEARCH_COMPLETED" if status_dto.is_success else "SEARCH_FAILED",
-                search_created=True,
-                search_status=status_dto.status,
-                record_count=status_dto.record_count,
-                query=aql,
-            ))
         return out
 
-    @_holds_ariel_permit
-    async def _run_bounded_aggregate(self, aql: str, *, max_rows: int) -> list[dict]:
-        """Create, poll and fetch one aggregate search under a hard time bound."""
-        handle = await self.create_ariel_search(aql)
+    def _search_log(self) -> AbstractAsyncContextManager[ariel_log.SearchAttempt]:
+        """One load record for a search this method is about to create."""
+        permit = self._permit
+        instance_id = getattr(permit, "instance_id", None) if permit is not None else None
+        return ariel_log.track_search(clock=self._clock, instance_id=instance_id)
+
+    async def _await_ariel(
+        self,
+        log: ariel_log.SearchAttempt,
+        handle: ArielSearchHandleDTO,
+        *,
+        max_rows: int,
+        timeout_message: str,
+        incomplete_message: str,
+    ) -> ArielSearchResultsDTO:
+        """Poll and fetch a search this method already created.
+
+        Does not call ``create_ariel_search``. The lifecycle owner keeps that
+        call, so the permit is still taken once.
+        """
         status: ArielSearchStatusDTO | None = None
-        for _ in range(120):
+        for _ in range(ariel_log.POLL_LIMIT):
             status = await self.get_ariel_search_status(handle.search_id)
+            await log.saw(status)
             if status.is_terminal:
                 break
             await self._sleep(1.0)
         else:
             await self.cancel_ariel_search(handle.search_id)
-            raise ProviderUnavailableError("Ariel explanation search timed out")
-
+            log.mark(ariel_log.OUTCOME_TIMEOUT)
+            raise ProviderUnavailableError(timeout_message)
         if status is None or not status.is_success:
-            raise ProviderError("Ariel explanation search did not complete")
+            log.mark(ariel_log.outcome_of_status(status))
+            raise ProviderError(incomplete_message)
         results = await self.get_ariel_search_results(handle.search_id, max_rows=max_rows)
-        return list(results.rows)
+        log.returned(results.total_count)
+        return results
+
+    @_holds_ariel_permit
+    async def _run_bounded_aggregate(self, aql: str, *, max_rows: int) -> list[dict]:
+        """Create, poll and fetch one aggregate search under a hard time bound."""
+        async with self._search_log() as log:
+            handle = await self.create_ariel_search(aql)
+            results = await self._await_ariel(
+                log,
+                handle,
+                max_rows=max_rows,
+                timeout_message="Ariel explanation search timed out",
+                incomplete_message="Ariel explanation search did not complete",
+            )
+            return list(results.rows)
 
     # ------------------------------------------------------------- rules
     async def list_rules(self) -> list[AnalyticsRuleDTO]:
@@ -2400,8 +2487,17 @@ class QRadarRestProvider(QRadarProvider):
             progress=as_int(body.get("progress")) or 0,
             record_count=as_int(body.get("record_count")),
             # Upstream error text is untrusted; keep it out of the DTO and let
-            # the caller report the status instead.
+            # the caller report the status instead. The numeric cost fields
+            # below are counts and sizes from GET /ariel/searches/{id}.
             error_messages=["QRadar reported the search failed"] if errors else [],
+            query_execution_time=as_int(body.get("query_execution_time")),
+            processed_record_count=as_int(body.get("processed_record_count")),
+            data_file_count=as_int(body.get("data_file_count")),
+            data_total_size=as_int(body.get("data_total_size")),
+            compressed_data_file_count=as_int(body.get("compressed_data_file_count")),
+            compressed_data_total_size=as_int(body.get("compressed_data_total_size")),
+            index_file_count=as_int(body.get("index_file_count")),
+            index_total_size=as_int(body.get("index_total_size")),
         )
 
     async def get_ariel_search_results(
