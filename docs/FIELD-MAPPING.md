@@ -81,13 +81,19 @@ MappingSchemaOut
       label              "URL path"
       description        one sentence: what the platform does with it
       required           true            -- collection cannot run without it
-      used_by_collection true            -- coverage and plausibility thresholds apply
+      used_by_collection true            -- thresholds apply to the fields collection reads
+                                         -- (see below)
       kinds              ["CUSTOM_PROPERTY"]          -- IPS adds "NORMALIZED"
       normalized_options []                           -- IPS: the allowlisted Ariel fields
       default            "URL" | null                 -- prefill for a new profile (§FM.7)
     }, ...]
   value_maps: [ { field "ACTION", outcomes ["BLOCKED", "ALLOWED"] } ]
 ```
+
+The schema's `used_by_collection` is a static declaration: on `VIRTUAL_HOST` it means *used when
+mapped*. Thresholds apply to the fields the collection reads — the required fields plus a mapped
+virtual host — and the validation report's per-field `used_by_collection` is the per-profile
+truth.
 
 WAF fields, labels and descriptions (the copy is part of the contract):
 
