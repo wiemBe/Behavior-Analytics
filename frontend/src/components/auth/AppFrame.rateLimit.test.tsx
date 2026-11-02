@@ -99,7 +99,7 @@ describe("the session gate on a 429", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("The session could not be read.");
     expect(alert).toHaveTextContent(
-      "Nothing is shown until the account can be confirmed. boom Try again. If it keeps failing, the backend may be unreachable.",
+      "Nothing is shown until the account can be confirmed. The server said: boom. Try again. If it keeps failing, the backend may be unreachable.",
     );
     expect(screen.queryByText("page body")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
@@ -111,7 +111,7 @@ describe("the session gate on a 429", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("The session could not be read.");
     expect(alert).toHaveTextContent(
-      "Nothing is shown until the account can be confirmed. The session could not be read. Try again. If it keeps failing, the backend may be unreachable.",
+      "Nothing is shown until the account can be confirmed. Try again. If it keeps failing, the backend may be unreachable.",
     );
     expect(screen.queryByText("page body")).not.toBeInTheDocument();
   });

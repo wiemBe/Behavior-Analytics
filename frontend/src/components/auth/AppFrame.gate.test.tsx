@@ -65,6 +65,51 @@ describe("the session gate is sized to its content", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
+  it("sets a server detail apart as a clause with one full stop", async () => {
+    client.fetchSession.mockRejectedValue(new ApiError(500, "internal error"));
+    frame();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Nothing is shown until the account can be confirmed. The server said: internal error. Try again.",
+    );
+  });
+
+  it("adds no second stop to a detail that ends one", async () => {
+    client.fetchSession.mockRejectedValue(new ApiError(500, "Database is down!"));
+    frame();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The server said: Database is down! Try again.");
+    expect(alert.textContent).not.toMatch(/down!\./);
+  });
+
+  it("keeps its own full stop and adds none", async () => {
+    client.fetchSession.mockRejectedValue(new ApiError(500, "Service unavailable."));
+    frame();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The server said: Service unavailable. Try again.");
+    expect(alert.textContent).not.toContain("..");
+  });
+
+  it("reads as today when there is no detail", async () => {
+    client.fetchSession.mockRejectedValue(new ApiError(500, ""));
+    frame();
+    const alert = await screen.findByRole("alert");
+    expect(alert).not.toHaveTextContent("The server said");
+    expect(alert).toHaveTextContent(
+      "Nothing is shown until the account can be confirmed. Try again. If it keeps failing",
+    );
+  });
+
+  it("says it in Turkish", async () => {
+    setTestLocale("tr");
+    client.fetchSession.mockRejectedValue(new ApiError(500, "internal error"));
+    frame();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Hesap doğrulanana kadar hiçbir şey gösterilmez. Sunucu şunu bildirdi: internal error. Tekrar deneyin.",
+    );
+  });
+
   it("puts the sign-in-required notice in the column", async () => {
     client.fetchSession.mockRejectedValue(new ApiError(401, "Authentication required."));
     frame();

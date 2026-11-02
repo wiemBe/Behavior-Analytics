@@ -27,6 +27,19 @@ function onLoginPath(pathname: string): boolean {
   return pathname === "/login" || pathname.startsWith("/login/");
 }
 
+// The server's own words, set apart as a clause that ends in a full stop (POL-9). A detail that
+// already ends a sentence keeps its mark; no detail leaves no clause. A failure that never reached
+// the server (the network) has no server detail, only the local fallback text.
+function serverReason(
+  detail: string | null,
+  t: (key: "sessionFailedReason", values: { detail: string }) => string,
+): string {
+  const text = detail?.trim() ?? "";
+  if (!text) return "";
+  const stopped = /[.!?]$/.test(text) ? text : `${text}.`;
+  return ` ${t("sessionFailedReason", { detail: stopped })}`;
+}
+
 export function AppFrame({ children }: { children: ReactNode }) {
   const t = useTranslations("auth");
   const common = useTranslations("common");
@@ -119,7 +132,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
             {limited ? null : (
               <p>
                 {t("sessionFailedDetail", {
-                  reason: session.error ? ` ${session.error}` : "",
+                  reason: serverReason(session.httpStatus === null ? null : session.error, t),
                 })}
               </p>
             )}
