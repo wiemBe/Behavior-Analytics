@@ -37,6 +37,12 @@ class EndpointCategory(StrEnum):
     ARIEL_STATUS = "ariel_status"
     ARIEL_RESULTS = "ariel_results"
     ARIEL_CANCEL = "ariel_cancel"
+    #: ARL-3 health reads, all GET: managed-host status, deployment hosts (EPS), the
+    #: license pool, and the Ariel search-id list (a count, never a search).
+    HEALTH_SERVERS = "health_servers"
+    HEALTH_HOSTS = "health_hosts"
+    HEALTH_LICENSE = "health_license"
+    HEALTH_ARIEL_LIST = "health_ariel_list"
     MCP_TOOL = "mcp_tool"
 
 

@@ -490,6 +490,91 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "ariel_load.window.empty",
         "No Ariel search was recorded in this window.",
     ),
+    # --- ARL-3: why a QRadar health field was not read (English only, D-41) ---
+    _fixed(
+        "qradar_health.reason.provider_not_supported",
+        "This provider cannot read this from QRadar.",
+    ),
+    _fixed(
+        "qradar_health.reason.provider_not_configured",
+        "No provider could be built for this console.",
+    ),
+    _fixed(
+        "qradar_health.reason.console_unreachable",
+        "The console did not answer the reachability probe; not read.",
+    ),
+    _fixed(
+        "qradar_health.reason.unreachable",
+        "QRadar did not answer: connection failed or certificate not trusted.",
+    ),
+    _fixed(
+        "qradar_health.reason.timeout",
+        "QRadar did not answer within the read timeout.",
+    ),
+    _fixed(
+        "qradar_health.reason.forbidden",
+        "QRadar answered 403: the token lacks the capability for this read.",
+    ),
+    _fixed(
+        "qradar_health.reason.unauthorized",
+        "QRadar answered 401: the token was not accepted.",
+    ),
+    _fixed(
+        "qradar_health.reason.endpoint_not_found",
+        "QRadar answered 404: this version does not offer the endpoint.",
+    ),
+    _fixed(
+        "qradar_health.reason.ariel_unavailable",
+        "QRadar answered 503: its Ariel service is unavailable.",
+    ),
+    _fixed(
+        "qradar_health.reason.upstream_error",
+        "QRadar answered with a server error.",
+    ),
+    _fixed(
+        "qradar_health.reason.rejected",
+        "QRadar rejected the request as invalid (4xx).",
+    ),
+    _fixed(
+        "qradar_health.reason.malformed_response",
+        "QRadar's answer was not the shape this read expects.",
+    ),
+    _fixed(
+        "qradar_health.reason.read_failed",
+        "The read failed.",
+    ),
+    _fixed(
+        "qradar_health.reason.field_missing",
+        "QRadar's answer lacked a field this value needs.",
+    ),
+    _fixed(
+        "qradar_health.reason.empty_response",
+        "QRadar returned an empty list, which a console that is up does not do.",
+    ),
+    _fixed(
+        "qradar_health.reason.ariel_search_run_not_wired",
+        "The platform's own Ariel search record is not connected to this view.",
+    ),
+    _fixed(
+        "qradar_health.reason.ariel_search_run_unreadable",
+        "The platform's own Ariel search record could not be read.",
+    ),
+    _fixed(
+        "qradar_health.reason.in_flight_not_read",
+        "The count of our searches in flight was not read.",
+    ),
+    _fixed(
+        "qradar_health.reason.no_search_in_window",
+        "The platform ran no Ariel search in the window, so nothing is known.",
+    ),
+    _fixed(
+        "qradar_health.reason.no_ariel_outcome_in_window",
+        "No search in the window either completed or found Ariel unavailable.",
+    ),
+    _fixed(
+        "qradar_health.reason.snapshot_inconsistent",
+        "The search record is inconsistent (more unavailable than searches).",
+    ),
     # Passwords and usernames.
     _fixed("auth.password.too_short", "password must be at least 12 characters"),
     _fixed("auth.password.too_long", "password must be at most 72 bytes"),

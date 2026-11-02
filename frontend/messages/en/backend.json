@@ -785,6 +785,31 @@
       "watch_disabled": "watch disabled; no longer evaluated"
     }
   },
+  "qradar_health": {
+    "reason": {
+      "ariel_search_run_not_wired": "The platform''s own Ariel search record is not connected to this view.",
+      "ariel_search_run_unreadable": "The platform''s own Ariel search record could not be read.",
+      "ariel_unavailable": "QRadar answered 503: its Ariel service is unavailable.",
+      "console_unreachable": "The console did not answer the reachability probe; not read.",
+      "empty_response": "QRadar returned an empty list, which a console that is up does not do.",
+      "endpoint_not_found": "QRadar answered 404: this version does not offer the endpoint.",
+      "field_missing": "QRadar''s answer lacked a field this value needs.",
+      "forbidden": "QRadar answered 403: the token lacks the capability for this read.",
+      "in_flight_not_read": "The count of our searches in flight was not read.",
+      "malformed_response": "QRadar''s answer was not the shape this read expects.",
+      "no_ariel_outcome_in_window": "No search in the window either completed or found Ariel unavailable.",
+      "no_search_in_window": "The platform ran no Ariel search in the window, so nothing is known.",
+      "provider_not_configured": "No provider could be built for this console.",
+      "provider_not_supported": "This provider cannot read this from QRadar.",
+      "read_failed": "The read failed.",
+      "rejected": "QRadar rejected the request as invalid (4xx).",
+      "snapshot_inconsistent": "The search record is inconsistent (more unavailable than searches).",
+      "timeout": "QRadar did not answer within the read timeout.",
+      "unauthorized": "QRadar answered 401: the token was not accepted.",
+      "unreachable": "QRadar did not answer: connection failed or certificate not trusted.",
+      "upstream_error": "QRadar answered with a server error."
+    }
+  },
   "rule_health": {
     "age_unknown": "The rule''s age is unknown, so inactivity cannot be assessed.",
     "dependency": {

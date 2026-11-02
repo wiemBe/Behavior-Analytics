@@ -765,7 +765,7 @@ def test_the_current_route_is_admin_only_and_returns_the_read(
         calls.append(1)
         return {"as_of": NOW.isoformat(), "in_flight": {"available": True, "active": []}}
 
-    monkeypatch.setattr("app.api.routes.ariel_load.load_current", read)
+    monkeypatch.setattr("app.api.routes.ariel_load.load_current_with_health", read)
     for principal in (READER, WAF_ADMIN, Principal(subject="n", permissions=frozenset())):
         response = _api_client(principal).get("/api/v1/admin/ariel-load/current")
         assert response.status_code == 403
