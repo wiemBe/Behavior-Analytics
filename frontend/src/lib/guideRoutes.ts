@@ -47,6 +47,7 @@ export const GUIDE_ROUTES = {
   "/admin/classification-rules": "classification-rules",
   "/admin/search-cadence": "search-cadence",
   "/admin/history-backfill": "history-backfill",
+  "/admin/siem-load": "siem-load",
   "/admin/users": "users-and-directory",
   "/admin/directory": "users-and-directory",
 } as const;

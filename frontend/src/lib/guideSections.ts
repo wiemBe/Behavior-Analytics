@@ -329,6 +329,14 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
     related: ["how-it-works", "search-cadence", "property-watch-setup", "waf-source-setup"],
   },
   {
+    id: "siem-load",
+    group: "adminTasks",
+    routes: ["/admin/siem-load"],
+    audience: "admin",
+    permissions: ["admin:*"],
+    related: ["search-cadence", "history-backfill", "honesty-states", "times-and-cadence"],
+  },
+  {
     id: "users-and-directory",
     group: "adminTasks",
     routes: ["/admin/users", "/admin/directory"],

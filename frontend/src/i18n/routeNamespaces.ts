@@ -278,6 +278,7 @@ export const ROUTE_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
   "/admin/outage-policy": ["backend", "classification", "enums", "fleet", "outage"],
   "/admin": ["admin", "users"],
   "/admin/search-cadence": [],
+  "/admin/siem-load": ["siemLoad"],
   "/admin/users": ["backend", "enums", "users"],
   "/admin/waf-sources/[logSourceId]": ["backend", "enums", "fieldMapping", "waf"],
   "/admin/waf-sources": ["backend", "enums", "fieldMapping", "waf"],
