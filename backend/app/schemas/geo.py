@@ -12,12 +12,46 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.core.config import Settings
 from app.geo.fold import GeoDirection
+from app.i18n.messages import MessageRef, render
+from app.schemas.messages import MessageParamValue
 
 UNRESOLVED_NOTE = (
     "UNRESOLVED counts events whose address is private, internal or unknown to GeoIP. "
     "The lookup returns the same empty result for all three, so they cannot be told apart."
 )
+
+
+class GeoCountrySource(StrEnum):
+    PROPERTY = "PROPERTY"
+    LOOKUP = "LOOKUP"
+
+
+def country_source_fields(
+    settings: Settings, direction: GeoDirection
+) -> tuple[GeoCountrySource, str | None, str, str, dict[str, MessageParamValue]]:
+    """The source, the configured property, and the translated unresolved note.
+
+    Lookup mode reports no property name even when one is configured. An empty
+    property name in property mode is null.
+    """
+    if settings.geo_country_source == "lookup":
+        ref = MessageRef("geo.note.unresolved_lookup")
+    elif settings.geo_country_source == "property":
+        ref = MessageRef("geo.note.unresolved_property")
+    else:
+        raise ValueError("GEO_COUNTRY_SOURCE is property or lookup")
+    wire = ref.to_wire()
+    params = wire["params"]
+    if not isinstance(params, dict):
+        raise TypeError("unresolved note params")
+    name: str | None = None
+    if settings.geo_country_source == "property":
+        configured = settings.geo_property_for(direction.value)
+        name = configured or None
+    source = GeoCountrySource(settings.geo_country_source.upper())
+    return source, name, render(ref), ref.code, params
 
 
 class GeoStatus(StrEnum):
@@ -66,4 +100,13 @@ class GeoCountriesOut(BaseModel):
     measurement: GeoMeasurement | None
     coverage: GeoCoverageOut
     status: GeoStatus
+    #: The end of the newest measured bucket in range for this direction. `None` while
+    #: `status` is NOT_COLLECTED: no bucket was measured, so no answer has an age.
+    latest_bucket_end: datetime | None = None
+    #: PROPERTY reads the configured property. LOOKUP is GEO::LOOKUP.
+    country_source: GeoCountrySource
+    #: The configured property for this direction in property mode, otherwise null.
+    country_property: str | None = None
     unresolved_note: str = UNRESOLVED_NOTE
+    unresolved_note_code: str
+    unresolved_note_params: dict[str, MessageParamValue] = Field(default_factory=dict)

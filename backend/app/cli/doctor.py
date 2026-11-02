@@ -41,7 +41,7 @@ from app.models.monitoring import (
 )
 from app.models.rule import RuleMatchWindow, RuleMatchWindowStatus
 from app.models.search_cadence import SearchCadenceSetting
-from app.providers.base import QRadarProvider
+from app.providers.base import CapabilityNotSupportedError, ProviderCapability, QRadarProvider
 from app.providers.factory import build_provider_for_instance
 from app.providers.tls import build_ssl_context
 from app.rules.matches import SKIPPED_REASON
@@ -81,6 +81,7 @@ _CHECK_RUNBOOKS = (
     ("version_match", "OPS-R11"),
     ("unknown_settings", "OPS-R62"),
     ("ariel_permits", "OPS-R63"),
+    ("geo_country_source", "OPS-R30"),
     ("rule_match_coverage", "OPS-R65"),
 )
 _TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])")
@@ -671,6 +672,15 @@ class Doctor:
             )
         finally:
             await client.aclose()
+
+    async def _enabled_instances(self) -> list[QRadarInstance]:
+        async with self.sessionmaker() as session:
+            rows = await session.scalars(
+                select(QRadarInstance)
+                .where(QRadarInstance.enabled.is_(True))
+                .order_by(QRadarInstance.created_at)
+            )
+            return list(rows.all())
 
     async def _instance(self) -> QRadarInstance | None:
         async with self.sessionmaker() as session:
@@ -1366,6 +1376,102 @@ class Doctor:
             f"{int(skipped_n)} skipped beyond the catch-up horizon",
             "OPS-R65",
         )
+
+    async def check_geo_country_source(self) -> CheckResult:
+        """One line: the geography source, each direction's property, and the consoles."""
+        check_id = "geo_country_source"
+        settings = self.settings
+        if not settings.geo_collection_enabled:
+            return CheckResult(check_id, Status.SKIP, "geography collection is off")
+        directions = list(settings.geo_directions)
+        if settings.geo_country_source == "lookup":
+            named = " and ".join(directions)
+            return CheckResult(check_id, Status.PASS, f"lookup; {named} use GEO::LOOKUP")
+        if settings.geo_country_source != "property":
+            return CheckResult(
+                check_id,
+                Status.FAIL,
+                "GEO_COUNTRY_SOURCE is property or lookup",
+                "OPS-R30",
+            )
+        names = {direction: settings.geo_property_for(direction) for direction in directions}
+        if not any(names.values()):
+            parts = [f"{direction} not collected (no property)" for direction in directions]
+            return CheckResult(
+                check_id, Status.WARN, "property; " + "; ".join(parts), "OPS-R30"
+            )
+        try:
+            instances = await self._enabled_instances()
+        except Exception as exc:
+            return CheckResult(
+                check_id,
+                Status.FAIL,
+                f"property; enabled consoles could not be read ({type(exc).__name__})",
+                "OPS-R30",
+            )
+        if not instances:
+            return CheckResult(
+                check_id,
+                Status.FAIL,
+                "property; no enabled QRadar instance is registered",
+                "OPS-R30",
+            )
+        findings: list[tuple[str, set[str] | str]] = []
+        for instance in instances:
+            try:
+                provider = self.provider_factory(instance)
+            except Exception as exc:
+                findings.append((instance.name, type(exc).__name__))
+                continue
+            try:
+                if not provider.supports(ProviderCapability.CUSTOM_PROPERTY_CATALOG):
+                    raise CapabilityNotSupportedError(
+                        f"{type(provider).__name__} does not support the custom-property catalog"
+                    )
+                listed = await provider.list_custom_properties()
+                findings.append((instance.name, {item.name for item in listed}))
+            except Exception as exc:
+                findings.append((instance.name, type(exc).__name__))
+            finally:
+                await provider.aclose()
+        any_absent = False
+        lines: list[str] = []
+        for direction in directions:
+            prop = names[direction]
+            if not prop:
+                lines.append(f"{direction} not collected (no property)")
+                continue
+            present = [
+                console
+                for console, found in findings
+                if isinstance(found, set) and prop in found
+            ]
+            absent = [
+                console
+                for console, found in findings
+                if isinstance(found, set) and prop not in found
+            ]
+            unread = [
+                f"{console} ({kind})"
+                for console, kind in findings
+                if isinstance(kind, str)
+            ]
+            bits: list[str] = []
+            if present:
+                bits.append("present on " + ", ".join(present))
+            if absent:
+                any_absent = True
+                bits.append("absent on " + ", ".join(absent))
+            if unread:
+                bits.append("could not be read on " + ", ".join(unread))
+            lines.append(f'{direction} "{prop}" ' + ", ".join(bits))
+        message = "property; " + "; ".join(lines)
+        failed = any(isinstance(found, str) for _console, found in findings)
+        if failed:
+            return CheckResult(check_id, Status.FAIL, message, "OPS-R30")
+        if any_absent:
+            return CheckResult(check_id, Status.WARN, message, "OPS-R30")
+        return CheckResult(check_id, Status.PASS, message)
 
     async def run(self) -> list[CheckResult]:
         results: list[CheckResult] = []

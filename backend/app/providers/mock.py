@@ -145,6 +145,8 @@ _CUSTOM_PROPERTIES: tuple[tuple[int, str, str, str, bool, tuple[int, ...]], ...]
     (107, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1005", "IPS_Action", "string", False, (2,)),
     (108, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1006", "Unused Property", "string", False, ()),
     (109, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1007", "Bad.Name(1)", "string", False, (212,)),
+    # The default SOURCE country property, so a property-mode demo has a catalog hit.
+    (110, "GEO_SOURCE_COUNTRY", "Source Geographic Location", "string", False, ()),
 )
 
 
@@ -207,6 +209,7 @@ class MockGeoSearch:
     direction: GeoDirection
     window_start: datetime
     window_end: datetime
+    country_property: str | None = None
 
 
 #: A fault hook: given a search, an exception to raise for it, or None.
@@ -224,6 +227,29 @@ _GEO_COUNTRIES = (
     ("JP", "Japan", 1861060),
     ("BR", "Brazil", 3469034),
     ("TR", "Turkey", 298795),
+)
+
+#: Property-mode values, fixed so the demo map and the fold test do not depend on
+#: the seed. Formats: alpha-2, alpha-3, English name, alias, dotted location,
+#: empty, null and one value that is not a country. The raw text stays here.
+_GEO_PROPERTY_VALUES: tuple[tuple[str | None, int], ...] = (
+    ("US", 120),
+    ("DEU", 40),
+    ("Japan", 30),
+    ("Turkey", 20),
+    ("Europe.Turkey", 5),
+    ("NorthAmerica.UnitedStates", 15),
+    ("United States", 10),
+    ("Türkiye", 8),
+    ("USA", 7),
+    ("UK", 12),
+    ("South Korea", 9),
+    ("Iran", 6),
+    ("Vietnam", 4),
+    ("Czech Republic", 3),
+    ("", 11),
+    (None, 2),
+    ("not-a-country", 1),
 )
 
 
@@ -1419,6 +1445,11 @@ class MockQRadarProvider(QRadarProvider):
                 )
         return out
 
+    @staticmethod
+    def _geo_property_events() -> list[dict]:
+        """The fixed property values of one bucket. The same list for every bucket."""
+        return [{"geo": geo, "events": events} for geo, events in _GEO_PROPERTY_VALUES]
+
     async def get_geo_keyed(
         self,
         start: datetime,
@@ -1427,6 +1458,7 @@ class MockQRadarProvider(QRadarProvider):
         direction: GeoDirection,
         bucket_seconds: int,
         max_rows: int,
+        country_property: str | None = None,
     ) -> GeoKeyedResult:
         """The geo result, aggregated here and parsed by the real row parser."""
         self.require(ProviderCapability.AQL_EXECUTION)
@@ -1434,7 +1466,7 @@ class MockQRadarProvider(QRadarProvider):
         checked = GeoDirection(direction)
         if max_rows < 1:
             raise ValueError("geo row limit must be positive")
-        search = MockGeoSearch(checked, window_start, window_end)
+        search = MockGeoSearch(checked, window_start, window_end, country_property)
         self.geo_searches.append(search)
         if self.geo_fault is not None and (fault := self.geo_fault(search)) is not None:
             raise fault
@@ -1445,6 +1477,8 @@ class MockQRadarProvider(QRadarProvider):
         for key in range(first, last):
             if self.geo_script is not None:
                 events = self.geo_script(checked, key)
+            elif country_property is not None:
+                events = self._geo_property_events()
             else:
                 events = self._geo_events(checked, key)
             for event in events:
@@ -1471,7 +1505,7 @@ class MockQRadarProvider(QRadarProvider):
             bucket_seconds=bucket_seconds,
             rows=parsed,
             truncated=truncated,
-            query="MOCK GEO",
+            query="MOCK GEO PROPERTY" if country_property is not None else "MOCK GEO",
         )
 
     async def probe_ips_fields(

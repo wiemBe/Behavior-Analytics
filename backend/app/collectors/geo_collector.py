@@ -1,9 +1,10 @@
 """Geography (D-10): one keyed Ariel search per direction per tick, folded to countries.
 
 For each configured direction (SOURCE, DESTINATION) a run collects every settled bucket
-since that direction's watermark with one keyed search over the whole estate
-(`GEO::LOOKUP(<address>, 'country'), starttime / bucket`), splitting it in halves of whole
-buckets while it is truncated. At one bucket a truncated result keeps its exact top and is
+since that direction's watermark with one keyed search over the whole estate. Property
+mode groups by the configured country property, after one custom-property read for the
+run. Lookup mode keeps ``GEO::LOOKUP(<address>, 'country')``. A truncated search is split
+in halves of whole buckets. At one bucket a truncated result keeps its exact top and is
 a LOWER_BOUND.
 
 Guarantees:
@@ -40,17 +41,20 @@ from app.collectors.catchall_collector import floor_to_bucket
 from app.core.config import Settings, get_settings
 from app.geo.fold import (
     QUERY_VERSION,
+    QUERY_VERSION_PROPERTY,
     GeoDirection,
     GeoKeyedResult,
     GeoKeyedRow,
     fold_geo_bucket,
 )
+from app.i18n.messages import MessageRef, render
 from app.ips.keyed_search import IpsSearchBudget
 from app.models.enums import FIRST_RUN_LOOKBACK_BUCKETS, IpsCellState, SearchFamily
 from app.models.geo import GeoCountryBucket
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import (
+    CapabilityNotSupportedError,
     ProviderCapability,
     ProviderError,
     ProviderQueryRejectedError,
@@ -62,6 +66,10 @@ from app.services.search_cadence import SearchCadenceService
 logger = logging.getLogger("app.collectors.geo")
 
 COLLECTOR_NAME = "geo_countries"
+_PROPERTY_SETTING = {
+    GeoDirection.SOURCE: "GEO_SOURCE_COUNTRY_PROPERTY",
+    GeoDirection.DESTINATION: "GEO_DESTINATION_COUNTRY_PROPERTY",
+}
 #: Rows per bulk statement: 10 columns, so 30000 bind parameters (asyncpg allows 32767).
 _ROW_CHUNK = 3000
 #: What a re-collected bucket row replaces; the key columns stay.
@@ -111,6 +119,7 @@ async def run_geo_search(
     *,
     max_rows: int,
     budget: IpsSearchBudget,
+    country_property: str | None = None,
 ) -> tuple[list[GeoBucketOutcome], int]:
     """Every bucket of `window`, oldest first, and the number of splits.
 
@@ -161,6 +170,7 @@ async def run_geo_search(
                 direction=direction,
                 bucket_seconds=bucket_seconds,
                 max_rows=max_rows,
+                country_property=country_property,
             )
         except ProviderQueryRejectedError as exc:
             # The text may quote the query or the appliance: class only.
@@ -294,11 +304,38 @@ class GeoCollector:
                 bucket_seconds,
             )
             watermarks = await self._get_or_create_watermarks(instance, directions)
+            if settings.geo_country_source not in ("property", "lookup"):
+                raise ValueError("GEO_COUNTRY_SOURCE is property or lookup")
+            property_mode = settings.geo_country_source == "property"
+            catalog_names, catalog_failure = await self._country_catalog(directions, property_mode)
             budget = IpsSearchBudget(settings.search_cadence_max_searches_per_tick)
             rows: list[dict] = []
             replaced: dict[GeoDirection, list[datetime]] = {}
             for direction in directions:
                 watermark = watermarks[direction]
+                name = settings.geo_property_for(direction.value) if property_mode else ""
+                if property_mode and not name:
+                    self._note_not_collected(watermark, direction, bucket_seconds)
+                    self._stamp_run(watermark, started, bucket_seconds)
+                    continue
+                if property_mode and catalog_failure is not None:
+                    self._fail_direction(
+                        watermark, direction, catalog_failure, report, started, bucket_seconds
+                    )
+                    continue
+                if property_mode and name not in (catalog_names or set()):
+                    self._fail_direction(
+                        watermark,
+                        direction,
+                        MessageRef(
+                            "geo.property.missing",
+                            {"name": name, "setting": _PROPERTY_SETTING[direction]},
+                        ),
+                        report,
+                        started,
+                        bucket_seconds,
+                    )
+                    continue
                 starts = self._buckets_to_collect(
                     watermark,
                     boundary,
@@ -315,8 +352,11 @@ class GeoCollector:
                         bucket_seconds,
                         max_rows=settings.geo_max_rows_per_search,
                         budget=budget,
+                        country_property=name if property_mode else None,
                     )
                     report.splits += splits
+                query_version = QUERY_VERSION_PROPERTY if property_mode else QUERY_VERSION
+                fold_source = "property" if property_mode else "lookup"
                 for outcome in outcomes:
                     self._count(outcome, report)
                     if not outcome.measured:
@@ -324,18 +364,26 @@ class GeoCollector:
                     replaced.setdefault(direction, []).append(outcome.bucket_start)
                     rows.extend(
                         self._bucket_rows(
-                            instance, direction, outcome, bucket_seconds, started, report
+                            instance,
+                            direction,
+                            outcome,
+                            bucket_seconds,
+                            started,
+                            report,
+                            query_version=query_version,
+                            source=fold_source,
                         )
                     )
                 self._advance_watermark(watermark, outcomes, direction, report)
-                watermark.last_run_at = started
-                if watermark.watermark_at is not None:
-                    end_of_last = watermark.watermark_at + timedelta(seconds=bucket_seconds)
-                    watermark.lag_seconds = max(0, int((started - end_of_last).total_seconds()))
-                watermark.collection_metadata = {
+                self._stamp_run(watermark, started, bucket_seconds)
+                metadata = {
                     "bucket_seconds": bucket_seconds,
                     "direction": direction.value,
                 }
+                if property_mode:
+                    metadata["country_source"] = "PROPERTY"
+                    metadata["country_property"] = name
+                watermark.collection_metadata = metadata
             report.searches_sent = budget.used
             await self._write(instance, replaced, rows, report)
             await self.session.flush()
@@ -405,10 +453,15 @@ class GeoCollector:
         bucket_seconds: int,
         now: datetime,
         report: GeoCollectionReport,
+        *,
+        query_version: str,
+        source: str,
     ) -> list[dict]:
         """The stored rows of one measured bucket: countries, then the remainders."""
         fact = fold_geo_bucket(
-            outcome.rows, max_countries=self.settings.geo_max_countries_per_bucket
+            outcome.rows,
+            max_countries=self.settings.geo_max_countries_per_bucket,
+            source=source,
         )
         report.unparseable_keys += fact.unparseable_keys
         measurement = "LOWER_BOUND" if outcome.state is IpsCellState.LOWER_BOUND else "EXACT"
@@ -423,7 +476,7 @@ class GeoCollector:
                 "remainder_kind": remainder,
                 "events": events,
                 "measurement": measurement,
-                "query_version": QUERY_VERSION,
+                "query_version": query_version,
                 "collected_at": now,
             }
 
@@ -438,6 +491,84 @@ class GeoCollector:
             if events > 0 or (kind == "UNRESOLVED" and not out):
                 out.append(make(None, kind, events))
         return out
+
+    async def _country_catalog(
+        self, directions: list[GeoDirection], property_mode: bool
+    ) -> tuple[set[str] | None, MessageRef | None]:
+        """One custom-property read per run, or nothing when no property is configured.
+
+        A missing capability and a failed read are the same closed failure: no
+        search is sent. The exception text is not logged.
+        """
+        if not property_mode:
+            return None, None
+        if not any(self.settings.geo_property_for(direction.value) for direction in directions):
+            return None, None
+        try:
+            if not self.provider.supports(ProviderCapability.CUSTOM_PROPERTY_CATALOG):
+                raise CapabilityNotSupportedError(
+                    f"{type(self.provider).__name__} does not support the custom-property catalog"
+                )
+            listed = await self.provider.list_custom_properties()
+        except Exception as exc:
+            logger.warning("geo property catalog unreadable (%s)", type(exc).__name__)
+            return None, MessageRef("geo.property.unreadable")
+        return {item.name for item in listed}, None
+
+    def _note_not_collected(
+        self,
+        watermark: CollectionWatermark,
+        direction: GeoDirection,
+        bucket_seconds: int,
+    ) -> None:
+        """A direction with no property is not a failure and not a search."""
+        watermark.consecutive_failures = 0
+        watermark.last_error = None
+        watermark.collection_metadata = {
+            "bucket_seconds": bucket_seconds,
+            "direction": direction.value,
+            "country_source": "PROPERTY",
+            "not_collected": "no_property",
+        }
+
+    def _fail_direction(
+        self,
+        watermark: CollectionWatermark,
+        direction: GeoDirection,
+        reason: MessageRef,
+        report: GeoCollectionReport,
+        started: datetime,
+        bucket_seconds: int,
+    ) -> None:
+        """Record a precondition failure. No bucket is written and no search was sent."""
+        rendered = render(reason)
+        watermark.consecutive_failures += 1
+        watermark.last_error = rendered[:512]
+        watermark.collection_metadata = {
+            "bucket_seconds": bucket_seconds,
+            "direction": direction.value,
+            "country_source": "PROPERTY",
+            "failure_code": reason.code,
+            "failure_params": dict(reason.params),
+        }
+        report.partial_failure = True
+        detail = f"{direction.value}: {rendered}"
+        report.error = f"{report.error}; {detail}" if report.error else detail
+        logger.warning(
+            "geo %s skipped: country property precondition failed (%s)",
+            direction.value,
+            reason.code,
+        )
+        self._stamp_run(watermark, started, bucket_seconds)
+
+    @staticmethod
+    def _stamp_run(
+        watermark: CollectionWatermark, started: datetime, bucket_seconds: int
+    ) -> None:
+        watermark.last_run_at = started
+        if watermark.watermark_at is not None:
+            end_of_last = watermark.watermark_at + timedelta(seconds=bucket_seconds)
+            watermark.lag_seconds = max(0, int((started - end_of_last).total_seconds()))
 
     # ------------------------------------------------------------------ writes
     async def _write(

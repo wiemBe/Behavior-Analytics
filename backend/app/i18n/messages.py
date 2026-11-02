@@ -5049,6 +5049,28 @@ REGISTRY: tuple[MessageSpec, ...] = (
         {"rows": _PLAIN},
         {"rows": 1000},
     ),
+    # --- GEO-3: country property -------------------------------------------------------------
+    _text(
+        "geo.property.missing",
+        "The country property “{name}” does not exist on this console. "
+        "Set {setting} to the property's exact name.",
+        name="Source Geographic Location",
+        setting="GEO_SOURCE_COUNTRY_PROPERTY",
+    ),
+    _fixed(
+        "geo.property.unreadable",
+        "The custom-property list could not be read on this console, "
+        "so no country search was sent.",
+    ),
+    _fixed(
+        "geo.note.unresolved_lookup",
+        "UNRESOLVED counts events whose address is private, internal or unknown to GeoIP. "
+        "The lookup returns the same empty result for all three, so they cannot be told apart.",
+    ),
+    _fixed(
+        "geo.note.unresolved_property",
+        "UNRESOLVED counts events whose country property was empty.",
+    ),
     # --- end MSG-8a ---------------------------------------------------------------------------
 )
 

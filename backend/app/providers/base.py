@@ -637,13 +637,15 @@ class QRadarProvider(ABC):
         direction: GeoDirection,
         bucket_seconds: int,
         max_rows: int,
+        country_property: str | None = None,
     ) -> GeoKeyedResult:
         """One fleet-wide keyed search of events per country (D-10).
 
-        Rows are grouped by the geo lookup of the source or destination address and by
-        bucket, and carry ``SUM(eventcount)``, ordered by volume. No address is
-        selected: the only column that reaches the result is the lookup string.
-        The span must be whole epoch-aligned `bucket_seconds` buckets. More than
+        Rows are grouped by the geo key and by bucket, and carry ``SUM(eventcount)``,
+        ordered by volume. With no ``country_property`` the key is the geo lookup of
+        the source or destination address. With one, the key is that custom property,
+        quoted only after the property-name allowlist. No address is selected either
+        way. The span must be whole epoch-aligned `bucket_seconds` buckets. More than
         `max_rows` rows set ``truncated`` and only the first `max_rows` are kept. A key
         outside the span or a non-integer key fails the whole search with a
         ProviderError.

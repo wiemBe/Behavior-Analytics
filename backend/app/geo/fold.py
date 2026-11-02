@@ -29,14 +29,17 @@ from enum import StrEnum
 from typing import Any
 
 from app.collectors.bucketed_metrics import _integer_bucket_key, validate_bucketed_metric_window
+from app.geo.countries import country_code_for
 from app.providers.base import ProviderError
 from app.providers.dto import ProviderDTO
 from app.providers.normalize import as_int
 
 logger = logging.getLogger("app.geo.fold")
 
-#: Stored on every row; bump it when the query or the fold changes meaning.
+#: Stored on every lookup row; bump it when the query or the fold changes meaning.
 QUERY_VERSION = "geo-country-v1"
+#: Stored on every property-mode row. The raw property value is not stored with it.
+QUERY_VERSION_PROPERTY = "geo-country-property-v1"
 #: The cap on countries per (bucket, direction); the rest is OVER_CAP.
 DEFAULT_MAX_COUNTRIES = 64
 _ISO = re.compile(r"[A-Z]{2}")
@@ -144,6 +147,27 @@ class GeoBucketFact:
         )
 
 
+def classify_property_value(key: str | None) -> str | GeoRemainder:
+    """A country code, UNRESOLVED or UNPARSEABLE for one property value.
+
+    Empty and ``null`` are UNRESOLVED. An ISO code, English short name, common
+    alias or dotted location whose last segment is one of those is a country.
+    A ``GEO::LOOKUP`` JSON object keeps its lookup meaning. Anything else is
+    UNPARSEABLE. The value is not logged.
+    """
+    if key is None:
+        return GeoRemainder.UNRESOLVED
+    text = key.strip()
+    if not text or text.casefold() == "null":
+        return GeoRemainder.UNRESOLVED
+    if text.startswith("{"):
+        return classify_key(text)
+    code = country_code_for(text)
+    if code is None:
+        return GeoRemainder.UNPARSEABLE
+    return code
+
+
 def classify_key(key: str | None) -> str | GeoRemainder:
     """A country code, UNRESOLVED or UNPARSEABLE for one raw key. Never raises."""
     if key is None:
@@ -166,21 +190,28 @@ def classify_key(key: str | None) -> str | GeoRemainder:
 
 
 def fold_geo_bucket(
-    rows: Sequence[GeoKeyedRow], *, max_countries: int = DEFAULT_MAX_COUNTRIES
+    rows: Sequence[GeoKeyedRow],
+    *,
+    max_countries: int = DEFAULT_MAX_COUNTRIES,
+    source: str = "lookup",
 ) -> GeoBucketFact:
     """Sum the rows of one bucket per country code and cap the list.
 
     The caller passes the rows of a single bucket. A bucket with no row folds to an
-    all-zero fact. Unparseable keys are logged by count only.
+    all-zero fact. Unparseable keys are logged by count only. ``source="property"``
+    classifies the property value; the default keeps the lookup JSON.
     """
     if max_countries < 1:
         raise ValueError("a bucket keeps at least one country")
+    if source not in ("lookup", "property"):
+        raise ValueError("geo fold source is lookup or property")
+    classify = classify_key if source == "lookup" else classify_property_value
     per_code: dict[str, int] = {}
     unresolved = 0
     unparseable = 0
     bad_keys: set[str] = set()
     for row in rows:
-        kind = classify_key(row.key)
+        kind = classify(row.key)
         if kind is GeoRemainder.UNRESOLVED:
             unresolved += row.events
         elif kind is GeoRemainder.UNPARSEABLE:
