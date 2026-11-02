@@ -17,7 +17,8 @@ import {
 } from "react";
 
 import { fetchSession, logout } from "./client";
-import { ApiError, type CallerInfo } from "@/lib/api";
+import { ApiError, rateLimitedText, type CallerInfo } from "@/lib/api";
+import { asTextTranslator } from "@/i18n/textTranslator";
 import { isLocale, readLocaleCookie, writeLocaleCookie } from "@/i18n/locale";
 
 export interface SessionValue {
@@ -63,6 +64,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const t = useTranslations("auth");
   const sessionFailed = t("sessionFailed");
   const signOutFailed = t("signOutFailed");
+  const say = asTextTranslator(useTranslations());
   const requestId = useRef(0);
   // A failed cookie write must not be retried by every reload. This records the
   // account preference attempted during this provider lifetime before writing.
@@ -130,7 +132,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await logout();
     } catch (err) {
       if (!(err instanceof ApiError) || err.status !== 401) {
-        const message = err instanceof ApiError ? err.message : signOutFailed;
+        const message =
+          err instanceof ApiError
+            ? err.status === 429
+              ? rateLimitedText(err, say)
+              : err.message
+            : signOutFailed;
         setError(message);
         return message;
       }
@@ -143,7 +150,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setStatus("anonymous");
     router.replace("/login");
     return null;
-  }, [router, signOutFailed]);
+  }, [router, say, signOutFailed]);
 
   const value: SessionValue = { status, me, error, httpStatus, retryAfter, reload, signOut };
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
