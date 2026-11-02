@@ -15,6 +15,7 @@ import {
   editorSummary,
   emptyDraft,
   metricLabel,
+  metricNote,
   metricsFor,
   previewBody,
   unitLabel,
@@ -120,6 +121,7 @@ export function CustomRuleEditor({
   };
 
   const metric = selectedMetric(catalog, draft);
+  const note = metric ? metricNote(metric.metric, say) : null;
   const validation = draftReason(draft, metric, say);
 
   useEffect(() => {
@@ -261,7 +263,7 @@ export function CustomRuleEditor({
               <option key={choice.metric} value={choice.metric}>{metricLabel(choice.metric, say)} — {unitLabel(choice.unit, say)}</option>
             ))}
           </select>
-          {metric && <p className="field-hint">{metric.note}</p>}
+          {note && <p className="field-hint">{note}</p>}
         </div>
 
         <div className="cr-paired-fields">
