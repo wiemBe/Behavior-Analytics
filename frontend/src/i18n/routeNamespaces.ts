@@ -301,7 +301,7 @@ export const ROUTE_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
   "/fleet/catchall": ["catchall", "fleet"],
   "/fleet": [],
   "/fleet/sources": ["backend", "classification", "enums", "fleet"],
-  "/geography": ["geo"],
+  "/geography": ["geo", "home"],
   "/guide": [],
   "/guide/[section]": [],
   "/login": ["backend", "login"],

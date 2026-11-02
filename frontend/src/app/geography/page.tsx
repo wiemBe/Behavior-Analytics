@@ -9,9 +9,9 @@ import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { GeographyBody } from "@/components/geo/GeographyBody";
+import { GeoFreshness } from "@/components/geo/GeoFreshness";
 import { GeoSwitches } from "@/components/geo/GeoSwitches";
 import { parseDirection } from "@/components/geo/geoModel";
-import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { withRouteMessages } from "@/i18n/RouteMessages";
@@ -52,8 +52,6 @@ async function GeographyPage({
 
   return (
     <>
-      {/* The answer says when it was asked, not how far the data reaches. */}
-      <ReportDataAge iso={null} />
       <PageHeader
         guide={guideFor("/geography")}
         title={t("title")}
@@ -81,6 +79,7 @@ async function GeographyPage({
               end: () => <UtcTime value={data.until} />,
             })}
           </p>
+          <GeoFreshness asOf={data.latest_bucket_end} />
           <GeographyBody data={data} locale={locale} limit={null} />
         </section>
       )}
