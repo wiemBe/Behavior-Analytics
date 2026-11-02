@@ -87,6 +87,8 @@ export const BOUNDARY_KEYS = [
   "searches.list.title",
   "searches.new.errorWhat",
   "searches.new.title",
+  "siemLoad.page.errorWhat",
+  "siemLoad.page.title",
   "users.boundary.errorWhat",
   "users.boundary.loadingWhat",
   "users.boundary.title",

@@ -16,6 +16,9 @@ import codes from "./backendCodes.generated.json";
 import { renderRefusal } from "./refusalMessage";
 import { createTextTranslator } from "./textTranslator";
 import { FRONTEND_ROOT } from "./guardedFiles";
+import { ENABLED_LOCALES, type Locale } from "./locale";
+import { FROZEN_TR_KEYS } from "./trFrozen";
+import { enableTurkish } from "../../vitest.setup";
 import {
   BOUNDARY_KEYS,
   ROUTE_NAMESPACES,
@@ -33,6 +36,31 @@ function files(pattern: string): string[] {
     .trim()
     .split("\n")
     .filter(Boolean);
+}
+
+/** The text at a dotted key of a (shell-picked) catalog, or undefined. */
+function textAt(sent: Record<string, unknown>, key: string): unknown {
+  let at: unknown = sent;
+  for (const part of key.split(".")) {
+    at = typeof at === "object" && at !== null && Object.hasOwn(at, part) ? (at as Record<string, unknown>)[part] : undefined;
+  }
+  return at;
+}
+
+/**
+ * The boundary keys a catalog lacks. English must hold all of them. Turkish (D-41) must hold the
+ * frozen ones (a deletion fails), and every one again while `tr` is enabled; a key added after the
+ * checkpoint needs no Turkish twin until then.
+ */
+function missingBoundaryKeys(
+  sent: Record<string, unknown>,
+  locale: Locale,
+  keys: readonly string[] = BOUNDARY_KEYS,
+  frozen: readonly string[] = FROZEN_TR_KEYS,
+  enabled: readonly Locale[] = ENABLED_LOCALES,
+): string[] {
+  const required = (key: string) => locale === "en" || enabled.includes("tr") || frozen.includes(key);
+  return keys.filter((key) => required(key) && typeof textAt(sent, key) !== "string");
 }
 
 const pages = files("-name page.tsx");
@@ -174,17 +202,48 @@ describe("the root provider", () => {
     }
   });
 
-  it("holds every boundary string in both catalogs", () => {
-    for (const catalog of [en, tr]) {
-      const sent = shellMessages(catalog);
-      for (const key of BOUNDARY_KEYS) {
-        let at: unknown = sent;
-        for (const part of key.split(".")) {
-          at = typeof at === "object" && at !== null && Object.hasOwn(at, part) ? (at as Record<string, unknown>)[part] : undefined;
-        }
-        expect(typeof at, key).toBe("string");
-      }
-    }
+  it("holds every boundary string in English, and every frozen one in Turkish", () => {
+    expect(missingBoundaryKeys(shellMessages(en), "en")).toEqual([]);
+    expect(missingBoundaryKeys(shellMessages(tr), "tr")).toEqual([]);
+  });
+
+  it("has a frozen Turkish twin for the boundary keys the checkpoint knew", () => {
+    // Guards the guard: if the frozen list stopped covering the boundary keys, the Turkish check
+    // above would pass on nothing.
+    const frozenBoundary = BOUNDARY_KEYS.filter((key) => FROZEN_TR_KEYS.includes(key));
+    expect(frozenBoundary.length).toBeGreaterThan(80);
+    expect(BOUNDARY_KEYS.filter((key) => !FROZEN_TR_KEYS.includes(key))).toContain("siemLoad.page.title");
+  });
+
+  describe("the frozen-Turkish rule for boundary keys (D-41)", () => {
+    const sent = { a: { frozen: "x" }, shell: { nav: { b: "y" } } };
+    const keys = ["a.frozen", "a.added", "shell.nav.b"];
+    const frozen = ["a.frozen", "shell.nav.b"];
+
+    it("lets a key added after the checkpoint go without Turkish", () => {
+      expect(missingBoundaryKeys(sent, "tr", keys, frozen, ["en"])).toEqual([]);
+    });
+
+    it("fails a frozen key that was deleted from Turkish", () => {
+      const without = { a: {}, shell: { nav: { b: "y" } } };
+      expect(missingBoundaryKeys(without, "tr", keys, frozen, ["en"])).toEqual(["a.frozen"]);
+    });
+
+    it("always requires the English text", () => {
+      expect(missingBoundaryKeys(sent, "en", keys, frozen, ["en"])).toEqual(["a.added"]);
+    });
+
+    it("requires the Turkish twin of every key again when `tr` is enabled", () => {
+      expect(missingBoundaryKeys(sent, "tr", keys, frozen, ["en", "tr"])).toEqual(["a.added"]);
+    });
+
+    it("reads the switch of the running suite: enabling Turkish makes the new key fail", () => {
+      expect(missingBoundaryKeys(shellMessages(tr), "tr")).toEqual([]);
+      enableTurkish();
+      expect(missingBoundaryKeys(shellMessages(tr), "tr")).toEqual(
+        expect.arrayContaining(["siemLoad.page.errorWhat", "siemLoad.page.title"]),
+      );
+    });
   });
 });
 
