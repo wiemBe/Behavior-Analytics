@@ -45,6 +45,7 @@ async function WafSourcesPage() {
         guide={guideFor("/admin/waf-sources")}
         title={t("title")}
         description={t("description")}
+        actions={error ? null : <AddSourcePicker />}
       />
 
       {error ? (
@@ -55,20 +56,14 @@ async function WafSourcesPage() {
           <p>{error}</p>
         </div>
       ) : sources.length === 0 ? (
-        <>
-          <div className="notice" role="status">
-            <p>
-              <strong>{t("emptyTitle")}</strong>
-            </p>
-            <p>{t("emptyText")}</p>
-          </div>
-          <AddSourcePicker />
-        </>
-      ) : (
-        <div className="stack-6">
-          <AddSourcePicker />
-          <WafSourceTable sources={sources} schema={schema} />
+        <div className="notice" role="status">
+          <p>
+            <strong>{t("emptyTitle")}</strong>
+          </p>
+          <p>{t("emptyText")}</p>
         </div>
+      ) : (
+        <WafSourceTable sources={sources} schema={schema} />
       )}
     </>
   );

@@ -41,7 +41,12 @@ async function IpsSourcesPage() {
 
   return (
     <>
-      <PageHeader guide={guideFor("/admin/ips-sources")} title={t("title")} description={t("description")} />
+      <PageHeader
+        guide={guideFor("/admin/ips-sources")}
+        title={t("title")}
+        description={t("description")}
+        actions={error ? null : <AddIpsSourcePicker instanceId={instanceId} />}
+      />
 
       {error ? (
         <div className="notice" role="alert">
@@ -51,20 +56,14 @@ async function IpsSourcesPage() {
           <p>{error}</p>
         </div>
       ) : sources.length === 0 ? (
-        <>
-          <div className="notice" role="status">
-            <p>
-              <strong>{t("emptyTitle")}</strong>
-            </p>
-            <p>{t("emptyBody")}</p>
-          </div>
-          <AddIpsSourcePicker instanceId={instanceId} />
-        </>
-      ) : (
-        <div className="stack-6">
-          <AddIpsSourcePicker instanceId={instanceId} />
-          <IpsSourceTable sources={sources} />
+        <div className="notice" role="status">
+          <p>
+            <strong>{t("emptyTitle")}</strong>
+          </p>
+          <p>{t("emptyBody")}</p>
         </div>
+      ) : (
+        <IpsSourceTable sources={sources} />
       )}
     </>
   );

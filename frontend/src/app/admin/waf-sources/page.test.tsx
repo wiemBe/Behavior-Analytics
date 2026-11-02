@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import WafSourcesPage from "./page";
@@ -14,6 +15,12 @@ beforeEach(() => {
 
 function rowFor(name: string) {
   return screen.getByRole("row", { name: new RegExp(name) });
+}
+
+function pageHeader() {
+  const header = screen.getByRole("heading", { level: 1 }).closest("header");
+  if (!header) throw new Error("page heading has no header");
+  return header;
 }
 
 describe("WAF sources list", () => {
@@ -146,6 +153,7 @@ describe("WAF sources list", () => {
     expect(alert).not.toHaveTextContent("psycopg2");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.queryByText(/no log source is configured/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add WAF source" })).not.toBeInTheDocument();
   });
 
   it("names the permission on a 403", async () => {
@@ -157,5 +165,44 @@ describe("WAF sources list", () => {
   it("has a loading state that names what is loading", () => {
     render(<Loading />);
     expect(screen.getByRole("status")).toHaveTextContent(/loading waf sources/i);
+  });
+
+  it("places the add control in the page header when nothing is configured yet", async () => {
+    vi.spyOn(api, "wafSources").mockResolvedValue([]);
+    render(await WafSourcesPage());
+    const button = screen.getByRole("button", { name: "Add WAF source" });
+    const header = pageHeader();
+    const notice = screen.getByRole("status");
+    expect(header.querySelector(".page-header-actions")).toContainElement(button);
+    expect(notice).not.toContainElement(button);
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("places the add control in the page header beside the profiles, and Enter still opens and closes it", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "wafSources").mockResolvedValue([status()]);
+    render(await WafSourcesPage());
+    const button = screen.getByRole("button", { name: "Add WAF source" });
+    const header = pageHeader();
+    const table = screen.getByRole("table");
+    expect(header.querySelector(".page-header-actions")).toContainElement(button);
+    expect(table).not.toContainElement(button);
+    expect(button).toHaveAttribute("aria-expanded", "false");
+
+    button.focus();
+    await user.keyboard("{Enter}");
+    const region = screen.getByRole("region", { name: "Choose a log source" });
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(button).toHaveAttribute("aria-controls", "fm-picker");
+    expect(region).toHaveAttribute("id", "fm-picker");
+    expect(header).toContainElement(region);
+    expect(table).not.toContainElement(region);
+    await user.tab();
+    expect(screen.getByLabelText("Search log sources by name")).toHaveFocus();
+
+    button.focus();
+    await user.keyboard("{Enter}");
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("region", { name: "Choose a log source" })).not.toBeInTheDocument();
   });
 });
