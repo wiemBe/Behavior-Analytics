@@ -841,7 +841,7 @@ TLS özel anahtarını taşır. Redis yedeğe girmez.
 kopyalar ve `.<ad>.partial` altında hazırlar; doğrulama geçince dizini son adına taşır. Her başarı
 ya da hata yolu yarım dizini, konteyner içindeki dökümü ve doğrulama veritabanını temizler.
 
-`pg_dump` TimescaleDB için `circular foreign-key constraints` uyarıları yazabilir (`continuous_agg`).
+`pg_dump` TimescaleDB için `circular foreign-key constraints` uyarıları yazabilir (`hypertable`, `chunk`, `continuous_agg`).
 Bunlar beklenir ve yedeğin dökümünü bozmaz; belirleyici olan yedeğin çıkış kodudur ve sağlıklı bir
 yedek 0 ile çıkar. Uyarıyı hata sanıp `--no-verify` ekleme.
 
@@ -1060,6 +1060,7 @@ bağlanmaz.
 | `secrets_files` | Token ve CA dosyaları var, boş değil ve uid 10001 tarafından okunabilir. | OPS-R1 |
 | `public_origin` | Çalışan ayarlardaki köken. `https` olmalı. | OPS-R12 |
 | `version_match` | Frontend probu ile `/api/v1/version` aynı mı. | OPS-R11 |
+| `forwarded_allow_ips` | `.env`'deki `FORWARDED_ALLOW_IPS` listesi ile frontend adresi (`FRONTEND_EDGE_IP`; o satır yoksa `PROXY_EDGE_IP`'in izleyen adresi). Liste boş ya da `*` ise FAIL (`FORWARDED_ALLOW_IPS is empty; every analyst shares one rate-limit key`; boş olmayan tek FAIL değeri `*`'dir ve o zaman metin `FORWARDED_ALLOW_IPS is *; every analyst shares one rate-limit key` olur). Liste frontend adresini içermiyorsa WARN (`FORWARDED_ALLOW_IPS does not trust the frontend (<adres>); pages drawn by the server share one rate-limit key`); içeriyorsa PASS (`FORWARDED_ALLOW_IPS trusts the frontend (<adres>)`) ve PASS koşu kitabı yazmaz. `.env`'de `FORWARDED_ALLOW_IPS=` satırı hiç yoksa bu kimlik satır yazmaz. | OPS-R21 |
 | `unknown_settings` | Ortamda bir ayara benzeyen ama ayar olmayan adlar. Adlar yazılır, değerler yazılmaz. Böyle bir ad yoksa PASS. Kurulumun yazdığı adlar burada görünmez. | OPS-R62 |
 | `ariel_permits` | Global havuz held/cap, ayrılmış canlı yuvalar. Konsol tarafı, tek konsol yokken `console-pool locks N (cap P per console)` olarak yazılır. N bu veritabanındaki bütün konsol kilitleridir, bir konsolun kendi tutuşu değildir. Bütçede gerçekten tek konsol varsa satır `console held/cap` yazar. Havuz doluysa (`held >= cap`) WARN; canlı iş bekler, geçmiş okuma yerini verir. Zorlama kapalıysa `not enforced` ve PASS. Okuma hatasında yalnız hata sınıfı. | OPS-R63 |
 | `rule_match_coverage` | `RULE_HEALTH_WINDOW_DAYS` içindeki `FAILED` ve `TRUNCATED` kural-eşleşme pencerelerini tek sorguda sayar; en eski pencereyi, sağlık aralığından çıkacağı UTC zamanı, onarılabilir ve catch-up ufku nedeniyle atlanmış sayıları yazar. Biri varsa WARN, yoksa PASS, toplama kapalıysa SKIP. | OPS-R65 |
