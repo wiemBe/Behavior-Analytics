@@ -92,7 +92,7 @@ def test_0046_round_trips_and_checks_clean(clean_db: str) -> None:
     assert revision is not None and revision.down_revision == "0045"
     engine = create_engine(clean_db, future=True)
     try:
-        command.upgrade(config, "head")
+        command.upgrade(config, "0046")
         with engine.begin() as connection:
             assert MigrationContext.configure(connection).get_current_revision() == "0046"
         columns = {column["name"] for column in inspect(engine).get_columns(TABLE)}
@@ -122,10 +122,13 @@ def test_0046_round_trips_and_checks_clean(clean_db: str) -> None:
             assert MigrationContext.configure(connection).get_current_revision() == "0045"
         assert not inspect(engine).has_table(TABLE)
 
-        command.upgrade(config, "head")
+        command.upgrade(config, "0046")
         with engine.begin() as connection:
             assert MigrationContext.configure(connection).get_current_revision() == "0046"
         assert inspect(engine).has_table(TABLE)
+        # Later migrations (0047 on) sit above this one: check drift at the head, as the
+        # other migration tests do.
+        command.upgrade(config, "head")
         command.check(config)
     finally:
         engine.dispose()
