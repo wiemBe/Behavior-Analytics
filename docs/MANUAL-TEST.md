@@ -449,7 +449,7 @@ cd <kurulum dizini> \
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/api/v1/health/ready
 ```
 
-- Aynı uçtan açık bir `GET` ile sınırı geç. `/api/v1/version` oturum istemez; sınır, kimlik denetiminden önce çalışır. `/health` kullanma. Bu üç istek `127.0.0.1` anahtarındadır ve tarayıcının sayfasını 429 yapmaz.
+- Aynı uçtan açık bir `GET` ile sınırı geç. `/api/v1/version` oturum istemez; sınır, kimlik denetiminden önce çalışır. `/health` kullanma. Bu üç istek tek anahtarı paylaşır: backend'in geri döngü bağlantı noktasında gördüğü karşı adres. Bu adres analistin anahtarı değildir; bu üç istek tarayıcının sayfasını 429 yapmaz.
 
 ```bash
 for n in 1 2 3; do
@@ -459,7 +459,7 @@ for n in 1 2 3; do
 done
 ```
 
-- Oturum açıkken `/alerts` sayfasını, cümle görünene kadar yenile. Dakikada 2 istekte aynı yolun üçüncü yüklemesi 429 verir. Dakika dolmuşsa yeniden yenile. Panoyu kullanma: verisi duran bir bileşen yalnız kısa notu gösterir. Kullanıcılar sayfasındaki rol okumasını ve Kullanıcılar ile Dizin düğmelerini kullanma: onlar sunucunun ayrıntısını gösterir, bu cümleyi değil.
+- Oturum açıkken `/alerts` sayfasını, cümle görünene kadar yenile. Dakikada 2 istekte aynı yolun üçüncü yüklemesi 429 verir. Tam bir yükleme `GET /api/v1/me`'yi de okur; `/me` 429 dönerse aynı cümle sayfanın yerine kabuğun kapısında görünür: kapıda sayfanın hiçbir parçası yoktur, cümle ve “Tekrar dene” düğmesi vardır. Cümle sayfada da kapıda da Geçti'dir. Kapıda “Oturum okunamadı.” (İngilizce “The session could not be read.”) ile `rate limit exceeded` ham ayrıntısı Kaldı'dır. Dakika dolmuşsa yeniden yenile. Panoyu kullanma: verisi duran bir bileşen yalnız kısa notu gösterir. Kullanıcılar sayfasındaki rol okumasını ve Kullanıcılar ile Dizin düğmelerini kullanma: onlar sunucunun ayrıntısını gösterir, bu cümleyi değil.
 - Cümleyi önce sayfanın o anki dilinde oku. Sonra `/account` içindeki “Arayüz dili” (“Interface language”) ile diğer dile geç, kaydet ve `/alerts` sayfasını cümle görünene kadar yenile. İki cümleyi de gördükten sonra dili bu kontrolün başındaki dile geri al.
 
 **Beklenen:**
@@ -469,6 +469,7 @@ done
 - İngilizce sayfa şunu yazar: “Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in N s.” N, `Retry-After` saniyesidir.
 - Türkçe sayfa şunu yazar: “Bu adresten bir dakika içinde çok fazla istek geldi. Veride ya da backend'de bir sorun yok. N sn sonra yeniden deneyin.”
 - Katalogda bekleme süresi olmayan ikinci biçim de vardır: “Try again in a minute.” ve “Bir dakika sonra yeniden deneyin.” Bu labın 429 yanıtı `Retry-After` taşıdığı için sayfa numaralı biçimi gösterir.
+- Cümle `/alerts` sayfasında ya da kabuğun kapısında görünebilir; ikisi de Geçti'dir. Kapı, sayfanın hiçbir parçasını göstermeden aynı cümleyi ve “Tekrar dene” düğmesini yazar. Kapıda “Oturum okunamadı.” (“The session could not be read.”) ve `rate limit exceeded` ham ayrıntısı varsa kontrol Kaldı'dır.
 
 **Kaydet:** Üç HTTP kodu, üçüncü yanıtta `Retry-After` ve `X-RateLimit-Limit` var mı, iki dilde cümlenin ilk beş sözcüğü. Adres, `.env` satırı ve `limit` alanı yazılmaz.
 
@@ -2216,11 +2217,11 @@ echo "install çıkış: $?"
 - Bu yedekte `install.answers` vardır. Geri alma dosyayı yerine koyar ve bunun için bir satır yazmaz. `Removed answer key` satırı beklenmez. O satır, kopyası olmayan eski bir yedekte çıkar: `Removed answer key <ad> (unknown to 0.1.8).` Bu yükseltmenin kendi yedeği o durum değildir.
 - `cmp` hiçbir şey yazmaz ve 0 ile çıkar. `stat` `600` yazar; yedek `400` idiyse `400`.
 - `status`: `Installed version: 0.1.8`, `Last upgrade: rolled_back, …`; `/api/v1/version`: `"version":"0.1.8"` ve `"migration_head":"0044"`. Oturum açma çalışır. `doctor`: `FAIL` yok.
-- `install` 0 ile çıkar. Özet `Install time` satırıyla biter ve ardından `=` işaretlerinden oluşan bir satır gelir. Ayrı bir “Install complete” satırı yoktur. Çıktıda `unknown key` yoktur. `QRadar connection  FAILED` satırı, süreç özete ulaşıp 0 ile çıktıysa Kaldı değildir; bu, yükseltmeden önce de olan konsol kontrolüdür. Checkout unutulmuşsa betik reddeder: `install refused: this site runs 0.1.8 and this checkout is 0.1.9; use ./qradar-dash upgrade 0.1.9 to change versions, or check out v0.1.8 to re-run install (see docs/OPERATIONS.md, Yükseltme)`. Hiçbir konteyner bu rette sürüm değiştirmez; önce `git checkout v0.1.8` çalıştır.
+- `install`, konsol yanıtladığında 0 ile çıkar. Özet `Install time` satırıyla biter ve ardından `=` işaretlerinden oluşan bir satır gelir. Ayrı bir “Install complete” satırı yoktur. Çıktıda `unknown key` yoktur. Özetteki `QRadar connection  FAILED` satırı, konsolun yanıt vermediği ve çıkışın 1 olduğu kurulumdur. Geri alma kontrolü o çıkışta da Geçti'dir: özete ulaşıldıysa (`Install time` satırı ve ardından `=` satırı yazıldıysa), çıktıda `unknown key` ve `install refused` yoksa ve `doctor`'un `qradar_tls` ile `qradar_auth` satırları aynı konsol erişim hatasını gösteriyorsa. Erişilemeyen konsolda her iki satır FAIL olur; satır sonundaki `runbook:` değeri konsol erişiminin koşu kitabını taşır (`qradar_tls` için `runbook: OPS-R4`, `qradar_auth` için `runbook: OPS-R1`). `API readiness  NOT READY` satırıyla ya da genel köken denetimi başarısızken (`public URL <adres> failed`) biten 1'lik çıkış Kaldı'dır. Checkout unutulmuşsa betik reddeder: `install refused: this site runs 0.1.8 and this checkout is 0.1.9; use ./qradar-dash upgrade 0.1.9 to change versions, or check out v0.1.8 to re-run install (see docs/OPERATIONS.md, Yükseltme)`. Hiçbir konteyner bu rette sürüm değiştirmez; önce `git checkout v0.1.8` çalıştır.
 - Betik bozuk veritabanı kopyasının adını (`qradar_obs_broken_<utc>`) ve onu daha sonra silmek için tam komutu yazar; **silmeyi** acele etme.
 - Geri alma kendi sağlık denetiminde başarısız olursa yazıcılar durur ve `Rollback failed; the writers and the UI are stopped. Verified backup: <yol>` yazılır (OPS-R45); `./qradar-dash rollback` komutunu yinele ya da `./qradar-dash restore <yol>` kullan.
 
-**Kaydet:** Geri almanın çıkış kodu, `Rollback complete.` satırı, `Installed version`, `migration_head`, `cmp` çıkışı, `stat` kipinin rakamı, `install` çıkışı. Yanıt dosyasının içeriği yazılmaz.
+**Kaydet:** Geri almanın çıkış kodu, `Rollback complete.` satırı, `Installed version`, `migration_head`, `cmp` çıkışı, `stat` kipinin rakamı, `install` çıkışı ve özetteki `QRadar connection` sonucu. Yanıt dosyasının içeriği yazılmaz.
 
 **Temizlik:** Yoktur; geri alma geri almadır.
 
@@ -2230,7 +2231,7 @@ echo "install çıkış: $?"
 
 **Eylem:**
 
-- Lab VM'de yükseltmeden sonra MT-122'deki geri alma adımlarını çalıştır. Checkout bu adımda `v0.1.8` olur ve `./qradar-dash install --non-interactive .secrets/install.answers` 0 ile çıkar. MT-16…19 henüz yapılmamış olmalıdır. Sonra yeniden yükselt:
+- Lab VM'de yükseltmeden sonra MT-122'deki geri alma adımlarını çalıştır. Checkout bu adımda `v0.1.8` olur ve `./qradar-dash install --non-interactive .secrets/install.answers`, konsol yanıtlıyorsa 0 ile çıkar (koşul MT-122'nin `install` maddesindedir). MT-16…19 henüz yapılmamış olmalıdır. Sonra yeniden yükselt:
 
 ```bash
 git fetch --tags
