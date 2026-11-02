@@ -236,7 +236,7 @@ Full report: ./qradar-dash doctor
 - 0.1.8'in `.env` dosyasında `FRONTEND_EDGE_IP` yoksa ve `FORWARDED_ALLOW_IPS` boş olmayan, `*` olmayan bir listeyse şu iki satır da yazılır. Adresleri sayfaya yazma; yalnız satırların göründüğünü yaz. Anahtarlar zaten doğruysa bu iki satır yoktur; bu da doğrudur:
   - `Frontend address <adres> added to .env (FRONTEND_EDGE_IP).`
   - `FORWARDED_ALLOW_IPS now also trusts the frontend (<adres>): <liste>`
-- Çıkış `upgrade refused: …` ise hiçbir konteyner durmamıştır; nedeni oku (örneğin `this checkout is version <x>, not 0.1.9` ise `git checkout v0.1.9` unutulmuştur; `upgrade refused: 0.1.9 requires at least 0.1.8` ise site 0.1.8'den eskidir) ve düzelt. Aynı addan iki satır varsa `upgrade refused: .env has more than one FRONTEND_EDGE_IP line; nothing was changed` (ya da `FORWARDED_ALLOW_IPS`) yazılır; fazla satırı sil, `*` yazma.
+- Çıkış `upgrade refused: …` ise hiçbir konteyner durmamıştır; nedeni oku (örneğin `this checkout is version <x>, not 0.1.9` ise `git checkout v0.1.9` unutulmuştur; `upgrade refused: 0.1.9 requires at least 0.1.8; nothing was changed` ise site 0.1.8'den eskidir ve `.env` ile imajlar değişmemiştir) ve düzelt. Aynı addan iki satır varsa `upgrade refused: .env has more than one FRONTEND_EDGE_IP line; nothing was changed` (ya da `FORWARDED_ALLOW_IPS`) yazılır; fazla satırı sil, `*` yazma.
 - Çıkış sıfırdan farklıysa ve son satır `upgrade to 0.1.9 failed and was rolled back to 0.1.8; the broken database was kept` ise otomatik geri alma çalışmıştır: bölüm 15'e git (OPS-R44).
 
 **Kaydet:** Çıkış kodu, başlangıç ve bitiş saati (UTC), iki `migration_head` satırı, son satır, iki adres satırının görünüp görünmediği (adreslerin kendisi değil). Kaldı ise ilk hata satırı.
@@ -459,7 +459,7 @@ for n in 1 2 3; do
 done
 ```
 
-- Oturum açıkken `/alerts` sayfasını, cümle görünene kadar yenile. Dakikada 2 istekte aynı yolun üçüncü yüklemesi 429 verir. Tam bir yükleme `GET /api/v1/me`'yi de okur; bu okuma reddedilen istekse cümle, sayfanın yerine kabuğun kapısında görünür. Dakika dolmuşsa yeniden yenile. Panoyu kullanma: verisi duran bir bileşen yalnız kısa notu gösterir. Kullanıcılar sayfasındaki rol okumasını ve Kullanıcılar ile Dizin düğmelerini kullanma: onlar sunucunun ayrıntısını gösterir, bu cümleyi değil.
+- Oturum açıkken `/alerts` sayfasını, cümle görünene kadar yenile. Dakikada 2 istekte aynı yolun üçüncü yüklemesi 429 verir. Tam bir yükleme `GET /api/v1/me`'yi de okur; bu okuma reddedilen istekse cümle, sayfanın yerine kabuğun kapısında görünür. Dakika dolmuşsa yeniden yenile. Panoyu kullanma: verisi duran bir bileşen yalnız kısa notu gösterir.
 - Cümleyi önce sayfanın o anki dilinde oku. Sonra `/account` içindeki “Arayüz dili” (“Interface language”) ile diğer dile geç, kaydet ve `/alerts` sayfasını cümle görünene kadar yenile. İki cümleyi de gördükten sonra dili bu kontrolün başındaki dile geri al.
 
 **Beklenen:**

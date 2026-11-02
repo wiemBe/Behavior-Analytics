@@ -1101,11 +1101,14 @@ live file that is missing, a symlink, or in any other mode is left as it is and
 the database rollback continues. `restore` accepts the same modes and puts the
 copy back after the database swap, printing `Restored .secrets/install.answers
 (the answers file, not a secret).` When putting the copy back fails after the
-swap, `restore` keeps the previous file, prints `[warn] .secrets/install.answers
-was not restored; the previous file was kept. Put the copy back by hand:
-install -m <mode> <backup>/install.answers .secrets/install.answers`, and still
-starts the services and writes the restore state; the restore exits 0. Its
-refusals also come before the prompt and before any container stops.
+swap, `restore` keeps the previous file and prints `[warn]
+.secrets/install.answers was not restored; the previous file was kept. Put the
+copy back by hand: install -m <mode> <backup>/install.answers
+.secrets/install.answers`, the command's mode and path words shell-quoted
+(`printf %q`; FIX-12) so the line pastes and runs as it is even when the
+backup path holds a space, and still starts the services and writes the
+restore state; the restore exits 0. Its refusals also come before the prompt
+and before any container stops.
 
 `restore <path>` is the same sequence for a chosen backup, used when the
 operator wants a backup that is not `last_upgrade.backup`. It asks for the
