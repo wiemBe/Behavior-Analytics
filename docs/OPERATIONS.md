@@ -1090,6 +1090,7 @@ bağlanmaz.
 | `ariel_permits` | Global havuz held/cap, ayrılmış canlı yuvalar. Konsol tarafı, tek konsol yokken `console-pool locks N (cap P per console)` olarak yazılır. N bu veritabanındaki bütün konsol kilitleridir, bir konsolun kendi tutuşu değildir. Bütçede gerçekten tek konsol varsa satır `console held/cap` yazar. Havuz doluysa (`held >= cap`) WARN; canlı iş bekler, geçmiş okuma yerini verir. Zorlama kapalıysa `not enforced` ve PASS. Okuma hatasında yalnız hata sınıfı. | OPS-R63 |
 | `rule_match_coverage` | `RULE_HEALTH_WINDOW_DAYS` içindeki `FAILED` ve `TRUNCATED` kural-eşleşme pencerelerini tek sorguda sayar; en eski pencereyi, sağlık aralığından çıkacağı UTC zamanı, onarılabilir ve catch-up ufku nedeniyle atlanmış sayıları yazar. Biri varsa WARN, yoksa PASS, toplama kapalıysa SKIP. | OPS-R65 |
 | `qradar_health` | How QRadar itself is doing, from one fresh read of the first enabled console (GET only, short timeout per read). WARN when a managed host is not `ACTIVE` or reports no status, when the average EPS is over 90 % of the EPS allocation, or when the license pool is over-allocated (EPS or FPM). SKIP when the console does not answer (`qradar_auth` reports that) or when none of managed hosts, EPS and license could be read. A figure that was not read is named in the line (`not read: ...`) and is never counted as healthy. The line also prints how many Ariel search ids QRadar holds (all users, finished and active alike); there is no threshold on that number. | OPS-R67 |
+| `geo_country_source` | Where the world map's country comes from. SKIP when geography collection is off. In `lookup` mode PASS (`lookup; SOURCE and DESTINATION use GEO::LOOKUP`). In `property` mode it reads the custom-property list of each enabled console and prints each direction's property name with `present on <console>` or `absent on <console>`, or `not collected (no property)` for an empty name. WARN when a named property is absent on a console or both names are empty. FAIL when the list could not be read or no console is enabled. See "World map and the country source" below. | OPS-R30 |
 
 `families_off` WARN değil PASS verir. Satır açık ve kapalı aileleri ayrı yazar. Yeni kurulumda
 Log source hacmi, catch-all, geo ve explanations açıktır; WAF, IPS, kural eşleşmeleri, özel kurallar ve mülk
@@ -1200,8 +1201,6 @@ Bu sırayla:
    yükselişi fark etmek içindir.
 5. Sertifika tarihleri. `qradar_tls` 30 gün içinde WARN verir. Dizin testi LDAP sertifikasının
    `not_after` tarihini gösterir.
-6. World map: the default "SOC Overview" (`SOC Genel Bakışı`) template's bottom-row Geography widget (`map.geography`) and the `/geography` page answer the same question — events per country by source or destination address, over 1 hour, 24 hours or 7 days. The data comes from the `GEO_COLLECTION` family (default cadence 5 minutes) and needs `read:geo`. "Not collected." means nothing was collected for that direction and range (no map drawn); "Insufficient data." means buckets were collected but no address resolved to a country. A partial read shows "Partial"; the lower-bound legend says "At least". A country with no count uses `--map-0` ("No data"), never the lowest class — drawing a zero would imply a measured value. A new installation shows "Not collected." until `GEO_COLLECTION` runs for the first time.
-   <!-- REL-9 r1: GEO_COUNTRY_SOURCE, GEO_SOURCE_COUNTRY_PROPERTY (default "Source Geographic Location"), GEO_DESTINATION_COUNTRY_PROPERTY — describe in round 1. -->
 
 Üst çubuktaki üç sinyal (backend hazırlığı, son envanter eşitlemesinden QRadar örneği durumu, son
 `PHASE_A_VOLUME` çalışması), Scheduled searches widget'ı, widget bayatlığı kuralı (`asOf` kadansın
@@ -1213,6 +1212,36 @@ gecikmesini göstermez. `UNKNOWN` yeşil değildir.
 yapılandırılan sayıdan sonra arama hataları, davranışsal uyarılar) yapılandırılan bildirim
 kanallarına düşer. Boş webhook ayarı kanalın kapalı olduğu anlamına gelir. `doctor` kanala bağlı
 olmayan kontroldür. Bu sürümde Prometheus dışa aktarıcısı yoktur.
+
+### World map and the country source
+
+The default "SOC Overview" (`SOC Genel Bakışı`) template carries a Geography widget (`map.geography`) in its bottom row, and `/geography` (under Behavior) shows the same answer at full size: events per country by source or destination address, over 1 hour, 24 hours or 7 days. Both need `read:geo`. The data comes from the `GEO_COLLECTION` family (default cadence 5 minutes).
+
+**The country comes from a QRadar custom property. The operator must set the exact property name from the console.**
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `GEO_COUNTRY_SOURCE` | `property` | `property` groups the search by a custom property; `lookup` keeps `GEO::LOOKUP` on the address (the 0.1.9 behaviour). |
+| `GEO_SOURCE_COUNTRY_PROPERTY` | `Source Geographic Location` | Exact property name for the Source direction. Empty: Source is not collected. |
+| `GEO_DESTINATION_COUNTRY_PROPERTY` | empty | Exact property name for the Destination direction. Empty: Destination is not collected. |
+
+- In `property` mode a direction with an empty name sends no search and is not a failure. With the defaults only Source is collected; buckets that 0.1.9 stored for Destination stay readable until `GEO_RETENTION_DAYS` (35) removes them, then the Destination map says "Not collected.".
+- Before its first search the collector reads the console's custom-property list. If the named property is not there, no search is sent and the direction's watermark records "The country property “<name>” does not exist on this console. Set GEO_SOURCE_COUNTRY_PROPERTY to the property's exact name." (`GEO_DESTINATION_COUNTRY_PROPERTY` for Destination). If the list cannot be read, no search is sent either. A name that is not a valid property name makes the settings refuse to load.
+- `doctor`'s `geo_country_source` line (runbook `OPS-R30`, which is the generic "a search family is late" entry; the causes are the ones in this section) reports it. `PASS`: `lookup; SOURCE and DESTINATION use GEO::LOOKUP`, or `property;` with each direction's name and `present on <console>` or `not collected (no property)`. `WARN`: the property is `absent on <console>`, or both names are empty. `FAIL`: the property list could not be read on a console, or no console is enabled. `SKIP`: geography collection is off. A missing property also makes `watermarks` FAIL with the sentence above.
+- A value the property returns that is not a country the platform recognises is counted under Unparseable (a defect count, never a country). Switching the source keeps the stored buckets, so a series can hold both kinds until retention removes the old ones.
+- The map shows what it does not know. "Not collected." means nothing was collected for that direction and range and no map is drawn; "Insufficient data." means buckets were collected but no country could be assigned; "Partial" and "At least" mark a partial or lower-bound read. A country with no events is drawn as "No data" (`--map-0`), never as the lowest class, because a zero would claim a measurement. A new installation shows "Not collected." until `GEO_COLLECTION` first runs.
+- A stale answer (the newest bucket is older than the `GEO_COLLECTION` cadence allows) keeps the map, and the widget adds the frame's warning line; `/geography` shows the same age line.
+
+### Load on QRadar (SIEM load)
+
+The platform records every Ariel search it sends in the table `ariel_search_run` (migration `0046`): the caller, the outcome, the time the platform waited, and the numeric cost fields QRadar's own status reports. A row never holds the query, a result row or a raw value. Rows are kept `ARIEL_SEARCH_RUN_RETENTION_DAYS` days (default 30, 1 to 3650) by the daily task `apply_ariel_search_run_retention`, which runs whether or not `RETENTION_ENABLED` is set. A search whose worker died stays `IN_FLIGHT` until retention removes it; the views list it as stale after `ARIEL_MAX_TIMEOUT_SECONDS` plus 30 seconds.
+
+- **Page:** `/admin/siem-load`, under Administration, needs `admin:*`. The top bar's Refresh re-reads it.
+- **API:** `GET /api/v1/admin/ariel-load?hours=N` (1 to 720, default 24) summarises a window per caller; `GET /api/v1/admin/ariel-load/current` returns the searches in flight, the permit slots, the last 5, 15 and 60 minutes, and a `qradar` list with one entry per enabled console. Both need `admin:*`.
+- **Command:** `docker compose exec -T backend python -m app.cli.ariel_load [--hours N | --current] [--json]`. `--current` includes QRadar's health and always asks QRadar afresh.
+- **Support bundle:** `./qradar-dash support-bundle` adds `ariel-load.json` (or `ariel-load.error.txt` when it cannot be read; the bundle still completes).
+- **QRadar's own health** (GET requests only): reachability and API latency, version, managed hosts by status, EPS against its allocation, the license pool, and the number of Ariel search ids QRadar holds. "Held" counts every search QRadar keeps for all users, finished or active; it is not a count of running searches. Each field has a state (`OK`, `NOT_COLLECTED`, `FORBIDDEN`, `FAILED`) and a reason, never a zero or "healthy" for something that was not read. QRadar's answers are reused per API process for `QRADAR_HEALTH_CACHE_TTL_SECONDS` (default 30, 5 to 600), so N API workers may send up to N reads per interval; the response states the age. The MCP provider does not support these reads.
+- **`doctor`:** `qradar_health` (runbook `OPS-R67`) WARNs when a managed host is not `ACTIVE`, when average EPS is over 90 % of the allocation, or when the license pool is over-allocated. **The lab CE console has an over-allocated license, so `doctor` WARNs there permanently; that is expected.**
 
 ---
 

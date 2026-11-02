@@ -269,6 +269,7 @@ The upstream MCP tool audit is published in the
 | [Release 0.1.7](docs/releases/0.1.7.md) | Do not install: server-rendered pages fail; use 0.1.8 |
 | [Release 0.1.8](docs/releases/0.1.8.md) | Release notes and upgrade boundary for 0.1.8 |
 | [Release 0.1.9](docs/releases/0.1.9.md) | Release notes and upgrade boundary for 0.1.9 |
+| [Release 0.1.10](docs/releases/0.1.10.md) | Release notes and upgrade boundary for 0.1.10 |
 
 ## Operational limits worth knowing
 

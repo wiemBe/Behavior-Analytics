@@ -328,9 +328,6 @@ groups by the configured country property, and a direction with no property is n
 `lookup` mode still resolves the country inside the QRadar query with `GEO::LOOKUP`. A
 non-empty property name must match the property-name allowlist or settings refuse to load.
 
-<!-- REL-9 r1: GEO_COUNTRY_SOURCE, GEO_SOURCE_COUNTRY_PROPERTY (default "Source Geographic
-Location"), GEO_DESTINATION_COUNTRY_PROPERTY — documented in round 1. -->
-
 ## Custom threshold rules
 
 | Setting | Default | Meaning |

@@ -1,6 +1,6 @@
 # QRadar-Dash manuel test sonuç sayfası
 
-Bu sayfa `docs/MANUAL-TEST.md` kılavuzunun **0.1.9** bölümünün sonuç sayfasıdır. Basılı alınabilir ya da bir kopyası doldurulabilir. Sonuç hücreleri boş bırakılmıştır: `Geçti`, `Kaldı` ya da `Koşulmadı` yaz; `Kaldı` ve `Koşulmadı` için Not yaz. Parola, belirteç, `.env` değeri ya da müşteri verisi **yazma**.
+Bu sayfa `docs/MANUAL-TEST.md` kılavuzunun **0.1.10** bölümünün sonuç sayfasıdır. Basılı alınabilir ya da bir kopyası doldurulabilir. Sonuç hücreleri boş bırakılmıştır: `Geçti`, `Kaldı` ya da `Koşulmadı` yaz; `Kaldı` ve `Koşulmadı` için Not yaz. Parola, belirteç, `.env` değeri ya da müşteri verisi **yazma**.
 
 | Alan | Değer |
 |---|---|
@@ -12,12 +12,14 @@ Bu sayfa `docs/MANUAL-TEST.md` kılavuzunun **0.1.9** bölümünün sonuç sayfa
 | Başlangıç (UTC) | |
 | Bitiş (UTC) | |
 | Yükseltme yolu (çevrimiçi / çevrimdışı paket) | |
-| Migrasyon başı sonra (`0044`) | |
+| Migrasyon başı sonra (`0046`) | |
 | Geri alma yapıldı mı (hayır / evet, saati) | |
 
-**Çekirdek (üretim yolu)**, 39 kontrol: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-10, MT-11, MT-126, MT-12, MT-13, MT-14, MT-15, MT-20, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-59, MT-95, MT-119, MT-120, MT-121, MT-124, MT-125. Üretimde yalnızca `Çekirdek` sütunu "evet" olan satırlar doldurulur; diğerleri laboratuvar koşusu içindir. MT-126, numarası büyük olsa da MT-11'den hemen sonra yapılır.
+**Çekirdek (üretim yolu)**, 40 kontrol: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-10, MT-11, MT-126, MT-12, MT-13, MT-14, MT-15, MT-20, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-59, MT-128, MT-95, MT-119, MT-120, MT-121, MT-124, MT-125. Üretimde yalnızca `Çekirdek` sütunu "evet" olan satırlar doldurulur; diğerleri laboratuvar koşusu içindir. MT-126, numarası büyük olsa da MT-11'den hemen sonra yapılır. MT-128 de bir `GEO_COLLECTION` kadansı dolduktan sonra yapılır.
 
-Sürüm önce: `0.1.8`, migrasyon başı `0044`. Sürüm sonra: `0.1.9`. Baş değişmez.
+In 0.1.10 the interface is English only (D-41): the 18 core language checks MT-20, MT-21, MT-22, MT-24, MT-26 to MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-59 and MT-124, and the other Dil checks, are recorded `Koşulmadı` with the Not `D-41`; MT-131 replaces them. A production run therefore has 22 core checks to run. New checks: MT-129, MT-130, MT-131.
+
+Sürüm önce: `0.1.9`, migrasyon başı `0044`. Sürüm sonra: `0.1.10`, migrasyon başı `0046`.
 
 ## 1. Ön koşullar
 
@@ -29,7 +31,7 @@ Sürüm önce: `0.1.8`, migrasyon başı `0044`. Sürüm sonra: `0.1.9`. Baş de
 | MT-04 | evet | Günlüklerin ve destek paketinin yeri — (yazar) | | |
 | MT-05 | evet | Pencere ve haberdar edilecek kişiler | | |
 
-## 2. Yükseltme 0.1.8 → 0.1.9
+## 2. Yükseltme 0.1.9 → 0.1.10
 
 | Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
 |---|---|---|---|---|
@@ -59,6 +61,7 @@ Sürüm önce: `0.1.8`, migrasyon başı `0044`. Sürüm sonra: `0.1.9`. Baş de
 
 | Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
 |---|---|---|---|---|
+| MT-131 |  | English only (LANG-1, D-41) | | |
 | MT-20 | evet | Dil anahtarı ve hatırlanması — (yazar) | | |
 | MT-21 | evet | Sayı, oran ve zaman biçimi | | |
 | MT-22 | evet | Üst çubuk ve gezinti Türkçe | | |
@@ -66,7 +69,7 @@ Sürüm önce: `0.1.8`, migrasyon başı `0044`. Sürüm sonra: `0.1.9`. Baş de
 | MT-24 | evet | Dil: Pano `/` | | |
 | MT-25 |  | Dil: Davranış genel bakışı `/behavior` | | |
 | MT-26 | evet | Dil: Anomali listesi `/anomalies` | | |
-| MT-27 | evet | Dil: Anomali ayrıntısı, Phase A (log source) `/anomalies/<id>` | | |
+| MT-27 | evet | Dil: Anomali ayrıntısı, log source hacmi `/anomalies/<id>` | | |
 | MT-28 | evet | Dil: Anomali ayrıntısı, WAF endpoint `/anomalies/<id>` | | |
 | MT-29 | evet | Dil: Anomali ayrıntısı, IPS `/anomalies/<id>` | | |
 | MT-30 | evet | Dil: Anomali ayrıntısı, özellik izleme değeri `/anomalies/<id>` | | |
@@ -124,13 +127,15 @@ Sürüm önce: `0.1.8`, migrasyon başı `0044`. Sürüm sonra: `0.1.9`. Baş de
 | MT-77 |  | Pano bileşeni: “WAF kaynakları” | | |
 | MT-78 |  | Pano bileşeni: “Son WAF anomalileri” | | |
 | MT-79 |  | Pano bileşeni: “Son IPS anomalileri” | | |
+| MT-128 | evet | World map: dashboard widget and `/geography` | | |
+| MT-129 |  | Country source and the `geo_country_source` check | | |
 
 ## 6. Anomaliler
 
 | Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
 |---|---|---|---|---|
 | MT-80 |  | Anomali listesi ve filtreler | | |
-| MT-81 |  | Phase A anomali ayrıntısı ve dürüstlük durumları | | |
+| MT-81 |  | Log source hacmi anomali ayrıntısı ve dürüstlük durumları | | |
 | MT-82 |  | Yaşam döngüsü sekmesi ve nedenler | | |
 | MT-83 |  | WAF anomali ayrıntısı | | |
 | MT-84 |  | IPS anomali ayrıntısı | | |
@@ -197,6 +202,7 @@ Sürüm önce: `0.1.8`, migrasyon başı `0044`. Sürüm sonra: `0.1.9`. Baş de
 | MT-115 |  | Arama sıklığını değiştirme — (yazar) yalnızca lab | | |
 | MT-116 |  | Kesinti politikası ve sınıflama kuralları (yalnızca görüntüleme) | | |
 | MT-117 |  | Yönetim ana sayfası | | |
+| MT-130 |  | SIEM load page, command and `qradar_health` | | |
 
 ## 13. Kılavuz
 

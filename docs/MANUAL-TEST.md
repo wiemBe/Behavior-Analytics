@@ -25,18 +25,30 @@ kendi bölümünü bu bölümün **üstüne** ekler.
 
 ## 0.1.10
 
-Bu bölüm 0.1.9 sitesini 0.1.10'a yükseltir ve yükseltilmiş siteyi sınar. 0.1.8'deki bir site önce 0.1.9'a yükselir; o yol `docs/releases/0.1.9.md` içindedir ve bu bölüm onu anlatmaz. Yükseltmeden önce migrasyon başı `0044`, yükseltmeden sonra `0045`'tir (`/api/v1/version` içindeki `migration_head`). Üretim IPS kaynakları Cisco Firepower/FTD ve Palo Alto Threat'tir.
+This section upgrades a 0.1.9 site to 0.1.10 and tests the upgraded site. A 0.1.8 site upgrades to 0.1.9 first; that path is in `docs/releases/0.1.9.md` and is not described here. The migration head is `0044` before the upgrade and `0046` after it (`migration_head` in `/api/v1/version`). The production IPS sources are Cisco Firepower/FTD and Palo Alto Threat.
+<!-- REL-9 r2: GUIDE-3, head 0047 -->
 
-### Bu sürüm neyi değiştirir
+### What this release changes
 
-- **Dünya haritası.** Varsayılan “SOC Genel Bakışı” (SOC Overview) şablonunun alt satırında Coğrafya (`map.geography`) bileşeni vardır; `/geography` sayfası aynı yanıtı tam boyutta gösterir. İkisi de kaynak ya da hedef adrese göre ülke başına olay sayısını, 1 saat, 24 saat ya da 7 gün için okur. Ölçek sıralıdır: `--map-0…--map-4`, log ekseninde en çok dört sınıf ve birimli bir lejant. Sayısı olmayan ülke `--map-0` ile “Veri yok” olur, en düşük sınıfla boyanmaz. “Toplanmadı.” ve “Yetersiz veri.” harita çizmez; kısmi okuma “Kısmi”, alt sınır “En az” der. Bileşen ve sayfa `read:geo` ister; veri `GEO_COLLECTION` ailesinden gelir (varsayılan kadans 5 dakika). MT-128.
-- **Editörler netleşti.** Özel kural editöründe operatör ve birim sözcükle yazılır (“above”, “at or above”…; “events/bucket”, “events/s”, “share”); her teknik alanın “?” yardımı vardır. Metric altındaki not artık arayüzün kendi cümlesidir (POL-10, POL-13). Özellik izlemede kapalı “Yeni kombinasyon” neden kapalı olduğunu söyler (“Needs two properties.” / “Choose the scope first.”) ve ikinci özellik eklenebiliyorsa düğmeyi sunar (POL-14). IPS ve WAF kaynak sayfalarında “kaynak ekle” denetimi sayfa başlığındadır (POL-12). Oturum hatası sunucunun ayrıntısını ayrı bir cümlede gösterir (“The server said: …”); kapı bildirimleri giriş formunun genişliğindedir (POL-9, POL-8).
-- **“Phase A” artık “Log source hacmi”.** Okuyucunun gördüğü her yerde aile “Log source volume” / “Log source hacmi” olur: katalog, arama sıklığı sayfası, kurulum özeti ve retention satırı. `doctor`'ın always-on aile kimliği `LOG_SOURCE_VOLUME` olur. API ve veritabanı `PHASE_A_VOLUME` yazar; saklı satır değişmez (POL-11).
-- **Migrasyon `0045`.** `0045_rule_match_window_start_index`, `rule_match_window.window_start` üzerine `ix_rule_match_window_window_start` btree indeksini ekler. `upgrade` önce `database and image are at 0044`, sonra `database and image are at 0045` yazar; Alembic bir kez `Running upgrade 0044 -> 0045` der. İndeks günlük `rule_match_retention` silmesini hızlandırır; satır, sütun ve backfill yoktur. Geri alma indeksi düşürür (FIX-14).
-- **Sayılan her yanıt pencereyi taşır.** 0.1.9'dan beri `/api/v1` altındaki her rota sayılır; `GET /api/v1/health/live` ve `GET /api/v1/health/ready` sayılmaz. 0.1.10'da sayılan bir ret de (401, 403, 404, 422) `X-RateLimit-Limit`, `X-RateLimit-Remaining` ve `X-RateLimit-Reset` başlıklarını taşır. `Retry-After` yalnızca 429'da yazılır; 200 ve diğer retler onu taşımaz. Sayılan şey değişmedi. MT-126 üretim kontrolüdür; MT-127 yalnızca labdır (FIX-14).
-- **Konsolun ilk envanteri kuyruğa alınır.** `python -m app.cli.qradar add` satırı commit ettikten sonra, etkin ve yeni/değişmiş/yeniden etkinleştirilmiş konsol için `sync_instance_inventories` bir kez kuyruğa alınır. Kurulum özeti `First inventory    queued` ya da `First inventory    not queued; the hourly beat will catch up` yazar; ikincisi hata değildir (FIX-13).
-- **`QRADAR_CONSOLE_FQDN` port taşıyabilir.** Değer ana makine adı ya da `host:port` (1–65535) olabilir; şema ve yol reddedilir. Boş bırakılırsa QRadar URL'sinin portu atılmış ana makine adı yazılır. MCP istemcisi portu kullanır; sertifika doğrulaması ana makine adına bakar. `docs/OPERATIONS.md`'deki TLS tek satırı değeri porttan ayırır (FIX-13).
-- **Kullanıcı silme yoktur.** Bir hesabın erişimini kaldırmanın yolu onu devre dışı bırakmaktır; hesap satırı ve `user.disable` denetim kaydı kalır, oturumlar iptal edilir (MT-19).
+- **The interface is English only (LANG-1, LANG-2, LANG-3; decision D-41).** The language control on `/account` is gone, and a `ba_locale=tr` cookie or a `ui_language = "tr"` account is shown English. The Turkish steps below stay as they were; see "Reading the older steps in 0.1.10". New check: MT-131.
+- **The map's country comes from a QRadar custom property (GEO-3).** `GEO_COUNTRY_SOURCE` defaults to `property`; `GEO_SOURCE_COUNTRY_PROPERTY` defaults to `Source Geographic Location` and `GEO_DESTINATION_COUNTRY_PROPERTY` to empty. The operator sets the exact property name from the console. An empty name means that direction is not collected. `doctor` gains `geo_country_source` (runbook OPS-R30). New check: MT-129.
+- **The world map (GEO-4, GEO-5).** The "SOC Overview" template has the Geography widget (`map.geography`) in its bottom row, and `/geography` shows the same answer at full size; a stale answer says so. Check: MT-128.
+- **SIEM load (ARL-1, ARL-2, ARL-3).** Every Ariel search the platform sends is recorded (table `ariel_search_run`, kept 30 days by default). The page `/admin/siem-load`, `GET /api/v1/admin/ariel-load` and `/current`, and `python -m app.cli.ariel_load [--current] [--json]` show the load and QRadar's own health (GET requests only). `doctor` gains `qradar_health` (OPS-R67), and the support bundle carries `ariel-load.json`. New check: MT-130.
+- **Two migrations, head `0046`.** `0045_rule_match_window_start_index` adds an index on `rule_match_window.window_start` (FIX-14); `0046_ariel_search_run` adds the table `ariel_search_run` (ARL-1). `upgrade` prints the decision pair first with `0044` and then with `0046`, and Alembic prints two `Running upgrade` lines. No row changes and nothing is backfilled.
+- **Every counted response carries the rate-limit window (FIX-14).** A counted 401, 403, 404 or 422 carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`; `Retry-After` is written only on a 429. Checks: MT-126 (production) and MT-127 (lab only).
+- **A console's first inventory is queued, and `QRADAR_CONSOLE_FQDN` may carry a port (FIX-13).** The installer summary prints `First inventory    queued` or `First inventory    not queued; the hourly beat will catch up`; the second is not an error.
+- **Editors and names (POL-8 to POL-14, MSG-9).** The custom rule editor uses words and "?" help; "New combination" says why it is off; the add-source control sits in the page header; a failed session shows "The server said: …" as its own clause; "Phase A" is now "Log source volume" (`doctor` token `LOG_SOURCE_VOLUME`).
+- **There is no user delete (GUIDE-2).** Disabling an account is how access is removed; the account row and the `user.disable` audit record stay and the account's sessions are revoked (MT-19).
+- **Before you start:** get the exact name of the country custom property from the QRadar administrator, and decide `GEO_COUNTRY_SOURCE` (`property` with that name, or `lookup`), so that MT-09 and MT-11 read a clean `geo_country_source` line.
+
+### Reading the older steps in 0.1.10
+
+- **Language steps cannot be run.** The Turkish interface and the language switch are switched off (D-41). [Section 4](#4-dil) (MT-20 to MT-59), MT-118 and MT-124 need Turkish. Record each as `Koşulmadı` with the Not `D-41`. The core checks among them are MT-20, MT-21, MT-22, MT-24, MT-26 to MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-59 and MT-124 (18 of the 40 core checks), so a production run has 22 core checks to run. The steps stay in this file for the day Turkish is switched back on. MT-131 replaces them with the English-only check.
+- **Sections 5 to 15 run in English.** Their steps were written to run in Turkish and quote Turkish labels. Read a quoted Turkish label as its English counterpart (the English wording is in parentheses where the step gives it; otherwise it is in `frontend/messages/en/`). A step that quotes a Turkish sentence is met when the English sentence says the same thing.
+- **MT-09 and MT-11 (`doctor`).** The report has two more lines, `geo_country_source` and `qradar_health`. A WARN on either is not Kaldı: write its text in Not (a lab CE console always WARNs on `qradar_health` because its license is over-allocated). A FAIL on `geo_country_source` is Kaldı (MT-129 says what it means). `watermarks` FAIL with "The country property … does not exist on this console" is the same finding seen from the collector; fix the setting (MT-129) and re-run.
+- **MT-10 (login page).** The page is English whatever the cookie says: title "Sign in" and `API version 0.1.10`. The Turkish variant in MT-10 does not apply.
+- **MT-06, MT-07, MT-08, MT-09.** Their expected `migration_head` is `0046` after the upgrade ([MT-08](#mt-08--yükseltmeden-sonra-sürüm-ve-durum-çekirdek), [MT-09](#mt-09--doctor-yükseltmeden-hemen-sonra-çekirdek)).
+- **Time.** The 120-minute Dil estimate in "Zamanlama ve toplam süre" drops out of the plan; MT-129 to MT-131 add about 20 minutes.
 
 ### Nasıl kullanılır
 
@@ -215,7 +227,7 @@ git checkout v0.1.10
 **Beklenen:**
 
 - Komut 0 ile çıkar ve son satır `Upgrade complete: 0.1.9 -> 0.1.10.` olur.
-- Alembic bir kez `Running upgrade 0044 -> 0045` yazar. Migrate konteyneri 0 ile çıkar. Bu satır bu sürümde beklenir; 0.1.9'daki gibi değildir.
+- Alembic iki `Running upgrade` satırı yazar: `0044 -> 0045` ve `0045 -> 0046`. Migrate konteyneri 0 ile çıkar. Bu satırlar bu sürümde beklenir; 0.1.9'daki gibi değildir.
 - Ön kontrolde (yazıcılar durmadan önce) şu üç satır yazılır; baş **kurulu** sürümündür ve o da `0044`'tür:
 
 ```
@@ -224,15 +236,15 @@ PASS  migration_head database and image are at 0044
 Full report: ./qradar-dash doctor
 ```
 
-- Yeni yığın başladıktan sonra ikinci çift yazılır; baş **hedef** sürümündür ve `0045`'tir:
+- Yeni yığın başladıktan sonra ikinci çift yazılır; baş **hedef** sürümündür ve `0046`'dır:
 
 ```
 PASS  db_connect     database accepted SELECT 1
-PASS  migration_head database and image are at 0045
+PASS  migration_head database and image are at 0046
 Full report: ./qradar-dash doctor
 ```
 
-- İki çift de yazılır; birincisi `0044`, ikincisi `0045`'tir. Tek çift yalnız hedef zaten kuruluysa yazılır: `Version 0.1.10 is already installed and healthy; nothing changed.` Bu, ilk yükseltmenin çıktısı değildir.
+- İki çift de yazılır; birincisi `0044`, ikincisi `0046`'dır. Tek çift yalnız hedef zaten kuruluysa yazılır: `Version 0.1.10 is already installed and healthy; nothing changed.` Bu, ilk yükseltmenin çıktısı değildir.
 - `PASS` satırlarındaki boşluk sayısı sürüme göre değişebilir; metin aynıdır.
 - 0.1.9'un `.env` dosyasında `FRONTEND_EDGE_IP` yoksa ve `FORWARDED_ALLOW_IPS` boş olmayan, `*` olmayan, frontend adresini içermeyen bir listeyse şu iki satır da yazılır. Adresleri sayfaya yazma; yalnız satırların göründüğünü yaz:
   - `Frontend address <adres> added to .env (FRONTEND_EDGE_IP).`
@@ -266,7 +278,7 @@ tar -xf /yol/qradar-dash-0.1.10-bundle.tar --exclude=images.tar
 
 - İki toplam aynıdır.
 - Paket doğrulanır ve yüklenir; çıktıda `bundle images loaded and checked against MANIFEST` satırı görünür. Hiçbir konteyner imajlar yüklenip denetlenmeden durdurulmaz.
-- Sonrası, çevrimiçi yoldaki gibidir: iki `PASS` çifti (önce `0044`, sonra `0045`), bir kez `Running upgrade 0044 -> 0045`, ve son satır `Upgrade complete: 0.1.9 -> 0.1.10.`, çıkış kodu 0.
+- Sonrası, çevrimiçi yoldaki gibidir: iki `PASS` çifti (önce `0044`, sonra `0046`), iki `Running upgrade` satırı (`0044 -> 0045`, `0045 -> 0046`), ve son satır `Upgrade complete: 0.1.9 -> 0.1.10.`, çıkış kodu 0.
 - Eksik bir imaj varsa `upgrade refused: target images are unavailable: image <imaj> is not loaded on this host; no container was stopped; pass the bundle: …` yazılır ve hiçbir şey durmaz.
 
 **Kaydet:** Her iki toplam, çıkış kodu, başlangıç ve bitiş saati (UTC), iki `migration_head` satırı.
@@ -295,8 +307,8 @@ stat -c '%a %n' "$BACKUP/install.answers"
 **Beklenen:**
 
 - `status`: `Installed version: 0.1.10`; `Last upgrade: success, 0.1.9 -> 0.1.10 at <utc>`; `Last upgrade backup: <yol> (age <yaş>)`; `API ready: HTTP 200 (…)`; çıkış kodu 0; her servis sağlıklı.
-- `/api/v1/version`: `"version":"0.1.10"` ve `"migration_head":"0045"`.
-- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0045"`.
+- `/api/v1/version`: `"version":"0.1.10"` ve `"migration_head":"0046"`.
+- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0046"`.
 - Yedekte `install.answers` vardır. `stat` kip olarak `600` yazar (`0600`). Canlı dosya yükseltmeden önce `0400` idiyse kip `400` olur. Dosya yoktur yalnız canlı dosya yoksa, bir sembolik bağlantıysa ya da bu iki kipten başka bir kipteyse; olağan bir kurulumda dosya vardır ve yokluğu Kaldı'dır.
 
 **Kaydet:** Üç çıktının sürüm ve `migration_head` değerleri; `Last upgrade:` satırı; yedek dizininin adı ve `install.answers` kipinin rakamı. Dosyanın içeriği yazılmaz.
@@ -343,7 +355,7 @@ awk -F= '
 
 **Beklenen:**
 
-- `FAIL` yoktur. Değişen konsolda saatlik `log_source_inventory` ve `rule_inventory` FAIL'i bunun dışındadır; o bekleme MT-11'dedir. `db_connect` PASS; `migration_head` PASS ve `database and image are at 0045`; `version_match` PASS ve `frontend and backend report 0.1.10`; `containers` PASS.
+- `FAIL` yoktur. Değişen konsolda saatlik `log_source_inventory` ve `rule_inventory` FAIL'i bunun dışındadır; o bekleme MT-11'dedir. `db_connect` PASS; `migration_head` PASS ve `database and image are at 0046`; `version_match` PASS ve `frontend and backend report 0.1.10`; `containers` PASS.
 - `forwarded_allow_ips` PASS'tir ve metin `FORWARDED_ALLOW_IPS trusts the frontend (<adres>)` olur. Adres, `FRONTEND_EDGE_IP` ile aynıdır; adresi sayfaya yazma. Bu satırda runbook yoktur. awk `iki adres, frontend listede; adresler yazılmadı` yazar. Dış vekilli bir sitede liste, operatörün eski listesine frontend adresinin bir kez eklenmiş halidir; ikiden fazla adres doğrudur ve awk adres sayısını yazar.
 - Satır yoksa, awk boş ya da yıldız derse, ya da doctor FAIL derse (`FORWARDED_ALLOW_IPS is empty; every analyst shares one rate-limit key` veya `FORWARDED_ALLOW_IPS is *; every analyst shares one rate-limit key`) bu Kaldı'dır. Runbook OPS-R21'dir. `*` yazma. Liste frontend adresini içermiyorsa WARN'dır: `FORWARDED_ALLOW_IPS does not trust the frontend (<adres>); pages drawn by the server share one rate-limit key`, runbook OPS-R21. Bu da Kaldı'dır.
 - Beat ve worker yeni başladığı için ilk dakikada `celery_workers` ya da `celery_beat` geçici FAIL verebilir; bir dakika bekleyip komutu yinele. İkinci çalıştırmada FAIL kalırsa Kaldı.
@@ -635,6 +647,27 @@ Tarayıcıda `https://<host>/` adresini aç. Dil çerezi yoksa arayüz İngilizc
 **Temizlik:** Bu zaten temizliktir. Hesap silinemez; listede devre dışı olarak kalır. Bunu Not alanına yaz.
 
 ### 4. Dil
+
+**0.1.10 (D-41).** Every step in this section except MT-131 tests the Turkish interface or the language switch, both of which are switched off in 0.1.10. Record MT-20 to MT-59 as `Koşulmadı` with the Not `D-41`, and do MT-131 instead (see "Reading the older steps in 0.1.10" at the top). The steps below stay as they were, for the day Turkish is switched on again.
+
+#### MT-131 — English only (LANG-1, D-41)
+
+**Precondition:** Signed in. No language is changed in this check.
+
+**Action:**
+
+- Open `/account`.
+- In the browser's storage set the cookie `ba_locale` to `tr` (path `/`), then open `/` and `/login` as a fresh document load.
+
+**Expected:**
+
+- `/account` has a password section (for a local account) and no "Interface language" section.
+- With `ba_locale=tr` the pages are English, with no Turkish text and no raw message keys. The page does not reload in a loop and does not rewrite the cookie.
+- An account whose stored preference is Turkish (`ui_language = "tr"`) also sees English.
+
+**Record:** Whether `/account` has a language section; the language of `/` and `/login` with the cookie set.
+
+**Cleanup:** Delete the `ba_locale` cookie.
 
 Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). Seçim iki yerde saklanır: tarayıcıda `ba_locale` çerezi (yol `/`, bir yıl, `SameSite=Lax`) ve hesapta (`ui_language`). Başka bir tarayıcıda oturum açınca hesaptaki tercih çereze yazılır; ilk sayfa önceki dilde kalır ve bir kez yenilenince hesap diline geçer. Bu bilinen bir sınırdır, hata değildir. Çerez ve hesap yoksa arayüz İngilizcedir. Yalnızca İngilizce ve Türkçe vardır.
 
@@ -1501,22 +1534,48 @@ Pano, `/` yolundadır. “Gösterge panelleri” menüsünün “Şablon” grub
 
 #### MT-128 — World map: dashboard widget and `/geography` [core]
 
-**Precondition:** Upgrade complete (MT-08) and at least one `GEO_COLLECTION` cadence + 3 min has passed (default 5 min; total 8 min). Signed in with an account that has `read:geo`.
+**Precondition:** Upgrade complete (MT-08), the country property is set (MT-129), and at least one `GEO_COLLECTION` cadence + 3 min has passed (default 5 min; total 8 min). Signed in with an account that has `read:geo`.
 
 **Action:**
 
-- On the `/` page, find the Geography (`map.geography`) widget in the bottom row of the "SOC Overview" (`SOC Genel Bakışı`) template. Change the direction between Source (`Kaynak`) and Destination (`Hedef`), and the window between 1 hour, 24 hours and 7 days.
+- On the `/` page, find the Geography (`map.geography`) widget in the bottom row of the "SOC Overview" template. Change the direction between Source and Destination, and the window between 1 hour, 24 hours and 7 days.
 - Click the widget's link and open `/geography`. The same direction and window appear in the URL (`?window=24h&direction=SOURCE`, etc.). Read the map, legend and country table.
 
 **Expected:**
 
-- The map is drawn; the colours use the sequential `--map-0…--map-4` scale, at most four classes on a log axis, with a unit legend ("Events per country" / `Ülke başına olay`). There is no green/amber/red status tone.
-- A country with no events uses `--map-0` as "No data" (`Veri yok`), never the lowest class. A country with events shows "N events"; the lower-bound legend says "At least N events".
-- If `GEO_COLLECTION` has never run, or there is no data for the direction, "Not collected." (`Toplanmadı.`) appears and the map is not drawn; coverage reads "0 / N". If buckets were collected but no address resolved to a country, "Insufficient data." (`Yetersiz veri.`) appears and again no map is drawn. A partial read draws the map with "Partial" (`Kısmi`); the lower-bound legend says "At least" (`En az`). None draws a zero.
+- The map is drawn; the colours use the sequential `--map-0…--map-4` scale, at most four classes on a log axis, with a unit legend ("Events per country"). There is no green/amber/red status tone.
+- A country with no events uses `--map-0` as "No data", never the lowest class. A country with events shows "N events"; a lower-bound legend says "At least N events".
+- If nothing was collected for the direction in the range, "Not collected." appears and the map is not drawn; coverage reads "0 / N". With the default settings Destination reads "Not collected." once the buckets 0.1.9 stored have expired, because `GEO_DESTINATION_COUNTRY_PROPERTY` is empty (MT-129). If buckets were collected but no country could be assigned, "Insufficient data." appears and again no map is drawn. A partial read draws the map with "Partial"; a lower-bound legend says "At least". None draws a zero.
+- The page names where the country came from ("From the QRadar property “<name>”" or "From the GeoIP lookup of the address").
+- If the newest bucket is older than the `GEO_COLLECTION` cadence allows, the widget keeps the map and adds a warning line ("Stale: the latest data is from <time> UTC, <age> old."); the page shows the same age line and the top bar shows "Data to …". A fresh answer shows "Data to <time> UTC".
 - The widget's link always opens `/geography`. For a role without `read:geo`, the widget shows its forbidden sentence naming the missing permission.
-- Times show the UTC zone; the page carries a "Last data" (`Son veri`) line. A country too small for the 1:110m outlines (Singapore, Malta, etc.) is named under the map and kept in the table.
+- Times show the UTC zone. A country too small for the 1:110m outlines (Singapore, Malta, etc.) is named under the map and kept in the table.
 
-**Record:** Did the map draw; does the legend carry a unit; is `--map-0` "No data"; which honesty state appeared; did the link open `/geography`; are direction and window in the URL.
+**Record:** Did the map draw; does the legend carry a unit; is `--map-0` "No data"; which honesty state appeared for each direction; did the link open `/geography`; are direction and window in the URL; was the answer stale.
+
+#### MT-129 — Country source and the `geo_country_source` check (GEO-3)
+
+**Precondition:** The exact name of the country custom property from the QRadar administrator. Property names are not secrets and may be written on the sheet.
+
+**Action:**
+
+- Read the three settings (an absent line means the default: `property`, `Source Geographic Location`, empty):
+
+```bash
+grep -E '^GEO_(COUNTRY_SOURCE|SOURCE_COUNTRY_PROPERTY|DESTINATION_COUNTRY_PROPERTY)=' .env
+```
+
+- Run `./qradar-dash doctor` and read the `geo_country_source` line. After a change in `.env`, recreate the backend, worker and beat containers first.
+
+**Expected:**
+
+- `GEO_COUNTRY_SOURCE=lookup`: `PASS geo_country_source lookup; SOURCE and DESTINATION use GEO::LOOKUP`.
+- `property` and the named property exists on every enabled console: `PASS`, for example `property; SOURCE "Source Geographic Location" present on <console>; DESTINATION not collected (no property)`. An empty name for a direction is not a problem; that direction is not collected and sends no search.
+- The property is not on the console: `WARN` with `absent on <console>`, runbook OPS-R30. The collector sends no search for that direction and records "The country property “<name>” does not exist on this console. Set GEO_SOURCE_COUNTRY_PROPERTY to the property's exact name."; `watermarks` then FAILs. Set the exact name and re-run.
+- The console's property list could not be read, or no console is enabled: `FAIL`, runbook OPS-R30. Both names empty: `WARN`. Geography collection off: `SKIP`.
+- With the property set, the Source map on `/geography` reads "From the QRadar property “<name>”" once a cadence has run (MT-128). A value that is not a country the platform recognises is counted under Unparseable, never as a country; note its size if it is large.
+
+**Record:** The three settings, the `geo_country_source` status and text (property names only), and the Source map's provenance line.
 
 ### 6. Anomaliler
 
@@ -2123,6 +2182,37 @@ Bu bölümde sayfalar önce **yalnızca görüntülenir**. Her değişiklik **(y
 
 **Kaydet:** Sayfa açıldı mı.
 
+#### MT-130 — SIEM load page, command and `qradar_health` (ARL-1, ARL-2, ARL-3)
+
+**Precondition:** Upgrade complete (MT-08) and one cadence has passed (MT-11), so the platform has sent searches. Signed in with an account that has `admin:*`. This check sends only GET requests to QRadar (`/system/about`, the managed hosts, the deployment hosts, the license pool and the list of search ids); no search is run for it.
+
+**Action:**
+
+- Open Administration → "SIEM load" (`/admin/siem-load`). Read "Our load on QRadar" and the "QRadar" panel first, then "Searches in flight" and "Load by caller". Pick each window (1 h, 24 h, 7 d, 30 d; `?range=1h`, `24h`, `7d`, `30d`). Set Refresh in the top bar to 1 min or 5 min and watch the "As of" time change.
+- On the host, read the same facts without the page:
+
+```bash
+docker compose exec -T backend python -m app.cli.ariel_load --current
+docker compose exec -T backend python -m app.cli.ariel_load --hours 24
+./qradar-dash doctor
+```
+
+- With a role that lacks `admin:*`, open the page.
+
+**Expected:**
+
+- The page shows the time it was read (UTC). "Our load on QRadar" shows searches in flight (active and stale), permit slots held against the cap (or "Not enforced"), and the last 5, 15 and 60 minutes with submitted, completed, failed and refused counts and wall-time p50 and p95. A dash means no search completed; it is not a zero. If no search was submitted in the last 60 minutes it says so.
+- Each console in the "QRadar" panel shows Reachable and API latency, Version, Managed hosts ("ACTIVE n of N", with the ones that are not ACTIVE listed), EPS (average and peak against the allocation), License pool (an over-allocated pool is flagged), and Ariel with "Search ids held". "Held" is what QRadar keeps for all users, finished or active; it is not a count of running searches. A field that was not read shows its state (Not collected, Forbidden or Failed) and a reason, never a number and never "healthy". A cached answer says how old it is and when QRadar is asked again (30 s by default).
+- A summary window with no recorded search says so instead of drawing a row of zeros. Caller names are readable ("Log source volume", "Scheduled searches"); a caller the page does not know is shown as its code.
+- The command prints "QRadar health" per console with the same figures. `--current` asks QRadar afresh each time. Neither prints a token, a query or a result row.
+- `doctor` shows `qradar_health` (runbook OPS-R67 on a WARN). PASS has the host count, the EPS share and the number of held search ids. WARN means a host is not ACTIVE, average EPS is over 90 % of the allocation, or the license pool is over-allocated. On a lab CE console the license pool is always over-allocated, so WARN is the expected result there and is not Kaldı; write it in Not. SKIP means the console did not answer (see `qradar_auth`) or nothing could be read.
+- The role without `admin:*` sees the forbidden notice naming `admin:*`, and no figure.
+- In the support bundle (MT-04) the archive holds `ariel-load.json`, or `ariel-load.error.txt` when it could not be read.
+
+**Record:** Whether each part of the page read; the console's reachability, latency and `qradar_health` status (no addresses); whether the page and the command agree on searches in flight; the forbidden notice.
+
+<!-- REL-9 r2: GUIDE-3 (MT-132), head 0047 -->
+
 ### 13. Kılavuz
 
 Uygulama içi kılavuz `/guide` yolundadır; oturum açan herkese açıktır ve izin istemez. Metni sunucuda üretilir ve dile göre gelir.
@@ -2275,7 +2365,7 @@ git checkout v0.1.10
 
 **Beklenen:**
 
-- Geri alma sonrası baş `0044` kalır. İkinci yükseltme önce `0044`, sonra `0045`'tir; iki `PASS` çifti de bunu söyler ve bir kez `Running upgrade 0044 -> 0045` yazılır. Son satır `Upgrade complete: 0.1.9 -> 0.1.10.` olur. `Last upgrade:` satırı en son işlemi gösterir.
+- Geri alma sonrası baş `0044` kalır. İkinci yükseltme önce `0044`, sonra `0046`'dır; iki `PASS` çifti de bunu söyler ve iki `Running upgrade` satırı (`0044 -> 0045`, `0045 -> 0046`) yazılır. Son satır `Upgrade complete: 0.1.9 -> 0.1.10.` olur. `Last upgrade:` satırı en son işlemi gösterir.
 - Checkout `v0.1.10` değilken `upgrade 0.1.10` reddedilir: `upgrade refused: this checkout is version 0.1.9, not 0.1.10; run git fetch --tags && git checkout v0.1.10 first (see docs/OPERATIONS.md, Yükseltme)`. Hiçbir konteyner durmaz.
 - Geri alma, yükseltmeden sonra oluşturulan hesapları ve hesapta saklanan `ui_language` değerini kaldırır. Tarayıcı çerezi `ba_locale` kalır; sonraki oturum açma, hesaptaki dili çereze yazar. İlk sayfa önceki dilde kalır; bir yenilemeden sonra hesap diline geçer (MT-20).
 
