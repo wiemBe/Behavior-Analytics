@@ -1,4 +1,11 @@
 {
+  "account.guide_seen.full": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This account already records the maximum number of guide sections.",
+    "sample_english_params": {},
+    "template": "This account already records the maximum number of guide sections."
+  },
   "alert.anomaly.title": {
     "params": {
       "anomaly_type": {

@@ -67,3 +67,21 @@ export const GUIDE_EXCLUDED: Readonly<Record<string, string>> = {
 export function guideFor(route: GuideRoute): string {
   return GUIDE_ROUTES[route];
 }
+
+const PATTERNS = (Object.keys(GUIDE_ROUTES) as GuideRoute[]).map((route) => ({
+  route,
+  matcher: new RegExp(`^${route.replace(/\[[^/\]]+\]/g, "[^/]+")}$`),
+  dynamic: (route.match(/\[/g) ?? []).length,
+}));
+
+/**
+ * The guide section of the page a concrete path belongs to, or undefined when the page has none
+ * (the Guide itself, the administration index, an unknown path). A static pattern wins over a
+ * dynamic one: `/behavior/watches/new` is the setup section, not a watch with the id `new`.
+ */
+export function guideForPath(pathname: string): string | undefined {
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  const hits = PATTERNS.filter((entry) => entry.matcher.test(path));
+  hits.sort((a, b) => a.dynamic - b.dynamic);
+  return hits[0] ? GUIDE_ROUTES[hits[0].route] : undefined;
+}

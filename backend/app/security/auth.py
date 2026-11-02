@@ -48,6 +48,7 @@ def principal_for(user: User) -> Principal:
         roles=tuple(sorted(role.name for role in user.roles)),
         user_id=user.id,
         ui_language=user.ui_language,
+        guide_seen=tuple(user.guide_seen or ()),
     )
 
 
