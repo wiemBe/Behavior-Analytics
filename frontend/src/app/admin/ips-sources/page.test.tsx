@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import IpsSourcesPage from "./page";
@@ -19,6 +20,12 @@ beforeEach(() => {
 
 function rowFor(name: string) {
   return screen.getByRole("row", { name: new RegExp(name) });
+}
+
+function pageHeader() {
+  const header = screen.getByRole("heading", { level: 1 }).closest("header");
+  if (!header) throw new Error("page heading has no header");
+  return header;
 }
 
 describe("IPS sources list", () => {
@@ -178,5 +185,44 @@ describe("IPS sources list", () => {
   it("has a loading state that names what is loading", () => {
     render(<Loading />);
     expect(screen.getByRole("status")).toHaveTextContent(/loading ips sources/i);
+  });
+
+  it("places the add control in the page header when nothing is configured yet", async () => {
+    vi.spyOn(ipsApi, "sources").mockResolvedValue([]);
+    render(await IpsSourcesPage());
+    const button = screen.getByRole("button", { name: "Add IPS source" });
+    const header = pageHeader();
+    const notice = screen.getByRole("status");
+    expect(header.querySelector(".page-header-actions")).toContainElement(button);
+    expect(notice).not.toContainElement(button);
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("places the add control in the page header beside the profiles, and Enter still opens and closes it", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(ipsApi, "sources").mockResolvedValue([status()]);
+    render(await IpsSourcesPage());
+    const button = screen.getByRole("button", { name: "Add IPS source" });
+    const header = pageHeader();
+    const table = screen.getByRole("table");
+    expect(header.querySelector(".page-header-actions")).toContainElement(button);
+    expect(table).not.toContainElement(button);
+    expect(button).toHaveAttribute("aria-expanded", "false");
+
+    button.focus();
+    await user.keyboard("{Enter}");
+    const region = screen.getByRole("region", { name: "Choose a log source" });
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(button).toHaveAttribute("aria-controls", "fm-picker");
+    expect(region).toHaveAttribute("id", "fm-picker");
+    expect(header).toContainElement(region);
+    expect(table).not.toContainElement(region);
+    await user.tab();
+    expect(screen.getByLabelText("Search log sources by name")).toHaveFocus();
+
+    button.focus();
+    await user.keyboard("{Enter}");
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("region", { name: "Choose a log source" })).not.toBeInTheDocument();
   });
 });

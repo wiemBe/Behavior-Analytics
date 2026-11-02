@@ -55,3 +55,48 @@
 .admin-page .fm-section + .fm-section > h2:first-child {
   margin-top: 0;
 }
+
+/* The add-source control is the page action. display:contents makes the button,
+   the guide link, and the open panel items of this grid. The panel is the
+   second row only while it is open, so a closed control does not leave a gap,
+   and the list stays in flow under the title instead of covering the notice
+   or the table. */
+.admin-page .page-header:has(.fm-add) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: var(--sp-2);
+  row-gap: var(--sp-4);
+  align-items: start;
+}
+
+.admin-page .page-header:has(.fm-add) > .page-header-actions,
+.admin-page .page-header:has(.fm-add) .fm-add {
+  display: contents;
+}
+
+.admin-page .page-header:has(.fm-add) > div:first-child {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.admin-page .page-header:has(.fm-add) .fm-add > button {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.admin-page .page-header:has(.fm-add) .guide-link {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.admin-page .page-header:has(.fm-add) .fm-picker {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.admin-page .page-header:has(.fm-add) .fm-candidates {
+  max-height: var(--picker-list-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
