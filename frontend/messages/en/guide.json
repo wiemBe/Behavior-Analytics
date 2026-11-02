@@ -139,7 +139,7 @@
           "p": "Reading is guarded on every route. A forbidden state names the missing permission, says that nothing was changed, and tells you to ask an administrator for a role that includes it. It never shows partial data in place of the refusal."
         },
         {
-          "p": "The Account menu in the top bar shows your name, sign-in source and roles. Account settings shows the same account's language and password options."
+          "p": "The Account menu in the top bar shows your name, sign-in source and roles. Account settings changes the password of a local account."
         }
       ]
     },
@@ -297,7 +297,7 @@
           "p": "The page heading is **Geography**. **Address** chooses which address the country is taken from: **Source** or **Destination**. **Window** offers **1 h**, **24 h** and **7 d**. The map fills each country by its events, in classes with round bounds that the legend lists under **Events per country**. A country with no row is drawn in the **No data** fill, which is not the lowest class: nothing was measured for it. The table beside the map gives **Country**, **Events** and **Share** for every country the answer holds. **Share** is over the events that have a country; the remainders are never mixed into it."
         },
         {
-          "p": "Under the map, **Buckets measured** says how much of the window was collected. **Unresolved**, **Over the country cap** and **Unparseable** count the events that could not be given a country. Unresolved events have a private, internal or GeoIP-unknown address, and the lookup cannot tell those three apart. Where the page says where the country comes from, it is either a QRadar property or the GeoIP lookup of the address. The Dashboard widget lists the five largest countries and opens this page."
+          "p": "Under the map, **Buckets measured** says how much of the window was collected. **Unresolved**, **Over the country cap** and **Unparseable** count the events that could not be given a country. Unresolved events have no country: where the country is read from a QRadar property, that property was empty; where it comes from the GeoIP lookup, the address is private, internal or unknown to GeoIP, and the lookup cannot tell those three apart. Where the page says where the country comes from, it is either a QRadar property or the GeoIP lookup of the address. The Dashboard widget lists the five largest countries and opens this page."
         }
       ],
       "states": [
@@ -530,18 +530,18 @@
     },
     "account": {
       "title": "Account settings",
-      "answers": "How do I change my interface language or password?",
+      "answers": "How do I change my password?",
       "body": [
         {
-          "p": "**Account settings** carries **Language** and **Password**. **Interface language** offers **English** and **Türkçe**; the choice is saved on the account. When the session has no account to store it on, the page says the language is saved on this browser only."
+          "p": "**Account settings** carries **Password**. A local account changes its password here with **Current password**, **New password** and **Confirm new password**. An LDAP account changes its password in the directory, not here, and an account with no local password says so."
         },
         {
-          "p": "**Password** changes the local password. An LDAP account changes its password in the directory, not here, and an account with no local password says so. The top bar's account menu shows your name, sign-in source and roles."
+          "p": "The top bar's account menu shows your name, sign-in source and roles."
         }
       ],
       "states": [
         {
-          "p": "**The language preference was saved.**; **The language preference could not be saved.**; **The language preference was not applied because this browser did not keep the cookie.**"
+          "p": "**The password is changed.**; **The password was not changed.**, with the reasons the server gave; **The new password and the confirmation do not match.**; **The password is changed, but the account could not be read again. Try again.**; an account that must change its password sees only the password form."
         }
       ]
     },
@@ -876,6 +876,9 @@
       "body": [
         {
           "p": "An account is local, with a password stored here, or LDAP, with the password checked by the directory. Roles are always assigned here; the directory supplies none. A person who signs in through the directory without an account gets one automatically, with no roles, so it holds no permissions until an administrator assigns roles (see `roles`)."
+        },
+        {
+          "p": "There is no user delete. Disabling an account is how access is removed: **Disable {name}** under **Manage** ends the account's sessions and refuses its next sign-in. The account row and its audit trail stay."
         }
       ],
       "steps": [
