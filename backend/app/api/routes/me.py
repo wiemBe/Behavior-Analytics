@@ -13,7 +13,7 @@ from app.api.request_meta import client_ip, user_agent
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import CodedHTTPException
 from app.models.identity import User
-from app.schemas.me import MeOut, PreferencesIn
+from app.schemas.me import GUIDE_SEEN_CAP, GuideSeenIn, MeOut, PreferencesIn
 from app.security import rbac
 from app.security.auth import principal_for
 from app.security.rbac import Principal
@@ -53,6 +53,7 @@ def _me_out(principal: Principal) -> MeOut:
         must_change_password=principal.must_change_password,
         roles=list(principal.roles),
         ui_language=cast(Literal["en", "tr"], principal.ui_language),
+        guide_seen=None if principal.guide_seen is None else list(principal.guide_seen),
     )
 
 
@@ -104,3 +105,36 @@ async def update_preferences(
         user_agent=user_agent(request),
     )
     return _me_out(principal_for(user))
+
+
+@router.post("/guide-seen", status_code=status.HTTP_204_NO_CONTENT)
+async def record_guide_seen(
+    body: GuideSeenIn,
+    session: SessionDep,
+    principal: Principal = Depends(get_principal),
+) -> None:
+    """Record that the caller was shown a guide section's page-header link.
+
+    Like PUT /me/preferences it touches only the caller's own row, so a session is the only
+    requirement, and no admin route reads or writes another account's list. Recording a section
+    the row already holds is a 204 that changes nothing, even when the list is full. A new one
+    past the cap is refused with a coded 409. A principal without an account (development) has
+    nothing to store it on: 204, nothing written, and ``GET /me`` keeps answering
+    ``guide_seen: null``. No audit record: the list is a display convenience, not a
+    security-relevant change.
+    """
+    if principal.user_id is None:
+        return
+    # The row is locked so two pages opening at once cannot lose one append.
+    user = await session.scalar(select(User).where(User.id == principal.user_id).with_for_update())
+    if user is None or user.disabled_at is not None or not user.is_active:
+        raise CodedHTTPException(
+            status.HTTP_401_UNAUTHORIZED, MessageRef("auth.session.required")
+        )
+    seen = list(user.guide_seen or [])
+    if body.section in seen:
+        return
+    if len(seen) >= GUIDE_SEEN_CAP:
+        raise CodedHTTPException(status.HTTP_409_CONFLICT, MessageRef("account.guide_seen.full"))
+    # A new list: the JSONB column does not track in-place changes.
+    user.guide_seen = [*seen, body.section]

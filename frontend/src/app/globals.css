@@ -91,12 +91,25 @@ a {
 .sidebar {
   grid-column: 1;
   grid-row: 1;
-  padding: var(--sp-3);
   position: sticky;
   top: var(--topbar-h);
   align-self: start;
   height: calc(100vh - var(--topbar-h));
+  /* The navigation scrolls inside `.sidebar-scroll`; the Guide entry below it stays put. */
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--sp-3);
   overflow-y: auto;
+}
+/* The fixed Guide entry (GUIDE-3): always at the bottom of the column, never over an item. */
+.sidebar-foot {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--border);
 }
 
 /* Product identity. Not an <h1>: the page's own title is the document's first
@@ -178,9 +191,13 @@ a {
    the roomy group rhythm, and the sidebar scrolls. The entries keep their target size; only the
    space between and inside the groups tightens, so the whole navigation stays on screen. */
 @media (max-height: 820px) {
-  .sidebar {
+  .sidebar-scroll {
     padding-top: var(--sp-2);
     padding-bottom: var(--sp-2);
+  }
+  .sidebar-foot {
+    padding-top: var(--sp-1);
+    padding-bottom: var(--sp-1);
   }
   .nav-group + .nav-group {
     margin-top: var(--sp-1);
@@ -2437,6 +2454,12 @@ th.fm-value-cell .cell-sub {
     height: auto;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
+  }
+  .sidebar-scroll {
+    overflow-y: visible;
+  }
+  .sidebar-foot {
+    padding-top: 0;
   }
   .nav-list {
     display: flex;

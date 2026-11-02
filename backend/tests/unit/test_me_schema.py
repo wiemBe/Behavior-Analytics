@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.me import MeOut, PreferencesIn
+from app.i18n.messages import MessageRef, render
+from app.schemas.me import GuideSeenIn, MeOut, PreferencesIn
 
 
 def _me(**overrides: object) -> MeOut:
@@ -55,3 +56,37 @@ def test_preferences_body_refuses_an_extra_key() -> None:
 def test_preferences_body_requires_the_key() -> None:
     with pytest.raises(ValidationError):
         PreferencesIn.model_validate({})
+
+
+
+def test_guide_seen_defaults_to_null_for_a_caller_without_an_account() -> None:
+    assert _me().guide_seen is None
+    assert _me(guide_seen=[]).guide_seen == []
+    assert _me(guide_seen=["rules"]).guide_seen == ["rules"]
+
+
+@pytest.mark.parametrize("value", ["rules", "anomaly-detail", "a", "x" * 64, "step-2"])
+def test_guide_seen_body_accepts_a_section_slug(value: str) -> None:
+    assert GuideSeenIn.model_validate({"section": value}).section == value
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "Rules", "two words", "-rules", "rules-", "a--b", "a/b", "../x", "x" * 65, "ä", "a_b"],
+)
+def test_guide_seen_body_refuses_anything_but_a_slug(value: str) -> None:
+    with pytest.raises(ValidationError):
+        GuideSeenIn.model_validate({"section": value})
+
+
+def test_guide_seen_body_refuses_an_extra_or_missing_key() -> None:
+    with pytest.raises(ValidationError):
+        GuideSeenIn.model_validate({"section": "rules", "extra": 1})
+    with pytest.raises(ValidationError):
+        GuideSeenIn.model_validate({})
+
+
+def test_the_guide_seen_cap_refusal_has_its_english_sentence() -> None:
+    assert render(MessageRef("account.guide_seen.full")) == (
+        "This account already records the maximum number of guide sections."
+    )

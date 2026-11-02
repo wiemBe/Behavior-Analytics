@@ -18,6 +18,7 @@ import { useSession } from "./session";
 import styles from "./auth.module.css";
 import { HistoryFirstRun } from "@/components/history/HistoryFirstRun";
 import { AppNav } from "@/components/shell/AppNav";
+import { GuideEntry } from "@/components/shell/GuideEntry";
 import { TopBar } from "@/components/shell/TopBar";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { ApiError, rateLimitedText } from "@/lib/api";
@@ -168,7 +169,10 @@ export function AppFrame({ children }: { children: ReactNode }) {
       </header>
       <div className="layout">
         <aside className="sidebar">
-          <AppNav groups={visibleNav(NAV, granted)} />
+          <div className="sidebar-scroll">
+            <AppNav groups={visibleNav(NAV, granted)} />
+          </div>
+          <GuideEntry />
         </aside>
         <main className="main" id="content">
           <div className="page">{children}</div>

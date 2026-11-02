@@ -64,6 +64,7 @@ _READONLY_MAY_MUTATE: set[tuple[str, str]] = {
     ("POST", "/api/v1/auth/logout"),
     ("POST", "/api/v1/custom-rules/preview"),
     ("PUT", "/api/v1/me/preferences"),
+    ("POST", "/api/v1/me/guide-seen"),
 }
 
 # Minimal valid bodies. A handler-level permission check runs after body

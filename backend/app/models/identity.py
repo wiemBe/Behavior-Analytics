@@ -101,6 +101,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # D-37. The analyst's interface language: the choice is stored on the
     # account, so it follows them to every browser. Only its owner sets it.
     ui_language: Mapped[str] = mapped_column(String(2), default="en", nullable=False)
+    # GUIDE-3. The guide sections whose page-header link this account has already been shown.
+    # The id is a slug; the array is capped by the route. Only its owner appends to it.
+    guide_seen: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
 
     roles: Mapped[list[Role]] = relationship(
         secondary=user_role, back_populates="users", lazy="selectin"
