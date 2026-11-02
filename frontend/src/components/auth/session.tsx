@@ -34,11 +34,19 @@ export interface SessionValue {
   /** `Retry-After` seconds from that read, when the response sent one. */
   retryAfter?: number | null;
   reload: () => Promise<void>;
+  /** True only on the stand-in a bare component gets where no provider wraps the tree. */
+  detached?: true;
+  /**
+   * Note that a guide section's link was shown, so a later page in this session does not show it
+   * again before `/me` is read anew. Absent from a fixed session.
+   */
+  noteGuideSeen?: (section: string) => void;
   /** Null when the session ended. A string is the reason it did not. */
   signOut: () => Promise<string | null>;
 }
 
 const ABSENT: SessionValue = {
+  detached: true,
   status: "loading",
   me: null,
   error: null,
@@ -57,6 +65,13 @@ export function StaticSession({ value, children }: { value: SessionValue; childr
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
+/** `me` with the sections shown in this session added to its list. Null stays null: no account. */
+function withLocalGuideSeen(me: CallerInfo, shown: ReadonlySet<string>): CallerInfo {
+  if (!Array.isArray(me.guide_seen)) return me;
+  const missing = [...shown].filter((section) => !me.guide_seen!.includes(section));
+  return missing.length === 0 ? me : { ...me, guide_seen: [...me.guide_seen, ...missing] };
+}
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const routerRef = useRef(router);
@@ -66,6 +81,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signOutFailed = t("signOutFailed");
   const say = asTextTranslator(useTranslations());
   const requestId = useRef(0);
+  // Guide sections shown during this provider's life. A `/me` read that started before the write
+  // of one of them reached the server must not take the mark back.
+  const guideShown = useRef(new Set<string>());
   // A failed cookie write must not be retried by every reload. This records the
   // account preference attempted during this provider lifetime before writing.
   const localeSyncAttempt = useRef<string | null>(null);
@@ -90,7 +108,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         localeSyncAttempt.current = next.ui_language;
         if (writeLocaleCookie(next.ui_language)) routerRef.current.refresh();
       }
-      setMe(next);
+      setMe(withLocalGuideSeen(next, guideShown.current));
       setError(null);
       setHttpStatus(null);
       setRetryAfter(null);
@@ -99,6 +117,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (id !== requestId.current || signal?.aborted) return;
       setMe(null);
       if (err instanceof ApiError && err.status === 401) {
+        guideShown.current.clear();
         setError(null);
         setHttpStatus(null);
         setRetryAfter(null);
@@ -127,6 +146,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await load();
   }, [load]);
 
+  const noteGuideSeen = useCallback((section: string) => {
+    guideShown.current.add(section);
+    setMe((current) => (current ? withLocalGuideSeen(current, guideShown.current) : current));
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
       await logout();
@@ -143,6 +167,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     }
     requestId.current += 1;
+    guideShown.current.clear();
     setMe(null);
     setError(null);
     setHttpStatus(null);
@@ -152,6 +177,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return null;
   }, [router, say, signOutFailed]);
 
-  const value: SessionValue = { status, me, error, httpStatus, retryAfter, reload, signOut };
+  const value: SessionValue = {
+    status,
+    me,
+    error,
+    httpStatus,
+    retryAfter,
+    reload,
+    noteGuideSeen,
+    signOut,
+  };
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

@@ -440,3 +440,175 @@ async def test_the_table_refuses_an_unknown_language(db_schema: str) -> None:
                 await session.commit()
     finally:
         await engine.dispose()
+
+
+# --- The guide sections an account has been shown (GUIDE-3) ---
+
+
+async def _guide_seen_in_row(maker, user_id) -> list[str]:
+    async with maker() as session:
+        row = await session.get(User, user_id)
+        assert row is not None
+        return list(row.guide_seen)
+
+
+async def test_guide_seen_starts_empty_and_is_appended_once(session_api) -> None:
+    """A new account reads []; POST adds one id, answers 204 with no body, and GET /me shows it.
+    Sending the same id again changes nothing."""
+    client, maker = session_api
+    user = await _add_session_user(maker, "ada")
+    assert _login(client, "ada").status_code == 200
+    assert client.get("/api/v1/me").json()["guide_seen"] == []
+
+    first = client.post("/api/v1/me/guide-seen", json={"section": "anomalies"})
+    assert first.status_code == 204, first.text
+    assert first.content == b""
+    assert client.get("/api/v1/me").json()["guide_seen"] == ["anomalies"]
+
+    again = client.post("/api/v1/me/guide-seen", json={"section": "anomalies"})
+    assert again.status_code == 204
+    second = client.post("/api/v1/me/guide-seen", json={"section": "rules"})
+    assert second.status_code == 204
+    assert await _guide_seen_in_row(maker, user.id) == ["anomalies", "rules"]
+    assert client.get("/api/v1/me").json()["guide_seen"] == ["anomalies", "rules"]
+
+
+async def test_guide_seen_writes_only_the_callers_own_row(session_api) -> None:
+    """The body names a section and nothing else: another account's list is untouched."""
+    client, maker = session_api
+    ada = await _add_session_user(maker, "ada")
+    bea = await _add_session_user(maker, "bea")
+    assert _login(client, "ada").status_code == 200
+    assert client.post("/api/v1/me/guide-seen", json={"section": "rules"}).status_code == 204
+    assert await _guide_seen_in_row(maker, ada.id) == ["rules"]
+    assert await _guide_seen_in_row(maker, bea.id) == []
+    # There is no way to name an account: the body refuses any extra key.
+    refused = client.post(
+        "/api/v1/me/guide-seen", json={"section": "alerts", "user_id": str(bea.id)}
+    )
+    assert refused.status_code == 422
+    assert await _guide_seen_in_row(maker, bea.id) == []
+
+
+async def test_guide_seen_refuses_a_bad_section_and_writes_nothing(session_api) -> None:
+    client, maker = session_api
+    user = await _add_session_user(maker, "ada")
+    assert _login(client, "ada").status_code == 200
+    for bad in (
+        {"section": ""},
+        {"section": "Rules"},
+        {"section": "has space"},
+        {"section": "../etc"},
+        {"section": "x" * 65},
+        {"section": 7},
+        {},
+    ):
+        refused = client.post("/api/v1/me/guide-seen", json=bad)
+        assert refused.status_code == 422, (bad, refused.text)
+    assert await _guide_seen_in_row(maker, user.id) == []
+
+
+async def test_guide_seen_is_capped_with_a_coded_refusal(session_api) -> None:
+    """At the cap a new id is a coded 409 and is not stored; an id already held stays a 204."""
+    from app.schemas.me import GUIDE_SEEN_CAP
+
+    client, maker = session_api
+    user = await _add_session_user(maker, "ada")
+    assert _login(client, "ada").status_code == 200
+    full = [f"s{n}" for n in range(GUIDE_SEEN_CAP)]
+    async with maker() as session:
+        row = await session.get(User, user.id)
+        assert row is not None
+        row.guide_seen = full
+        await session.commit()
+
+    refused = client.post("/api/v1/me/guide-seen", json={"section": "one-more"})
+    assert refused.status_code == 409, refused.text
+    body = refused.json()
+    assert body["detail"] == "This account already records the maximum number of guide sections."
+    assert body["detail_code"] == "account.guide_seen.full"
+    assert await _guide_seen_in_row(maker, user.id) == full
+
+    held = client.post("/api/v1/me/guide-seen", json={"section": "s7"})
+    assert held.status_code == 204
+    assert await _guide_seen_in_row(maker, user.id) == full
+
+
+async def test_guide_seen_needs_a_session_and_passes_csrf(session_api) -> None:
+    client, _maker = session_api
+    stranger = TestClient(client.app, headers={"Origin": ORIGIN})
+    assert stranger.post("/api/v1/me/guide-seen", json={"section": "rules"}).status_code == 401
+    foreign = TestClient(client.app, headers={"Origin": "https://evil.example"})
+    assert foreign.post("/api/v1/me/guide-seen", json={"section": "rules"}).status_code == 403
+    bare = TestClient(client.app)
+    assert bare.post("/api/v1/me/guide-seen", json={"section": "rules"}).status_code == 403
+
+
+async def test_a_disabled_account_cannot_record_a_guide_section(session_api) -> None:
+    client, maker = session_api
+    user = await _add_session_user(maker, "ada")
+    assert _login(client, "ada").status_code == 200
+    async with maker() as session:
+        row = await session.get(User, user.id)
+        assert row is not None
+        row.disabled_at = datetime.now(UTC)
+        await session.commit()
+    refused = client.post("/api/v1/me/guide-seen", json={"section": "rules"})
+    assert refused.status_code == 401
+    assert await _guide_seen_in_row(maker, user.id) == []
+
+
+async def test_a_stale_principal_over_a_dead_or_missing_row_cannot_record(db_schema: str) -> None:
+    engine = create_async_engine(db_schema, future=True, poolclass=NullPool)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with maker() as session:
+            inactive = User(username="bea", auth_source="LOCAL", is_active=False)
+            session.add(inactive)
+            await session.commit()
+            inactive_id = inactive.id
+    finally:
+        await engine.dispose()
+    for principal in (
+        Principal(subject="bea", username="bea", user_id=inactive_id),
+        Principal(subject="gone", user_id=uuid.uuid4()),
+    ):
+        client = _client(db_schema, principal)
+        response = client.post("/api/v1/me/guide-seen", json={"section": "rules"})
+        assert response.status_code == 401, principal.subject
+
+
+async def test_the_development_principal_answers_null_and_the_post_is_a_no_op(
+    db_schema: str,
+) -> None:
+    """No account row, nothing to store: GET /me says guide_seen is null, POST is a 204 that
+    writes nothing, and GET /me still says null."""
+    engine = create_async_engine(db_schema, future=True, poolclass=NullPool)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def session_override():  # type: ignore[no-untyped-def]
+        async with maker() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    app = create_app()
+    app.dependency_overrides[get_session] = session_override
+    try:
+        with TestClient(app) as client:
+            assert client.get("/api/v1/me").json()["guide_seen"] is None
+            response = client.post("/api/v1/me/guide-seen", json={"section": "rules"})
+            assert response.status_code == 204
+            assert client.get("/api/v1/me").json()["guide_seen"] is None
+        async with maker() as session:
+            assert list(await session.scalars(select(User))) == []
+    finally:
+        await engine.dispose()
+
+
+async def test_a_principal_without_an_account_in_me_has_null(db_schema: str) -> None:
+    client = _client(db_schema, Principal(subject="viewer", permissions=frozenset({"read:*"})))
+    assert client.get("/api/v1/me").json()["guide_seen"] is None

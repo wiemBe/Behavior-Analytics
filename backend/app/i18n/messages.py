@@ -597,6 +597,10 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _fixed("auth.session.required", "Authentication required."),
     _fixed(
+        "account.guide_seen.full",
+        "This account already records the maximum number of guide sections.",
+    ),
+    _fixed(
         "auth.session.must_change_password",
         "A password change is required before any other request.",
     ),

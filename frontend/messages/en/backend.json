@@ -1,4 +1,9 @@
 {
+  "account": {
+    "guide_seen": {
+      "full": "This account already records the maximum number of guide sections."
+    }
+  },
   "alert": {
     "anomaly": {
       "title": "{anomaly_type} on {log_source}"

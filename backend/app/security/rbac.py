@@ -32,6 +32,9 @@ class Principal:
     # D-37. The account's interface language, read with the session's user row.
     # "en" for the development principals, which have no account to store it on.
     ui_language: str = "en"
+    # GUIDE-3. The guide sections this account has been shown. None for the development
+    # principals, which have no account to store it on: the page then always shows its link.
+    guide_seen: tuple[str, ...] | None = None
 
     def has(self, permission: str) -> bool:
         if permission in self.permissions:

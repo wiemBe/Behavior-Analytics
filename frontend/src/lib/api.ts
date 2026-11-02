@@ -4027,6 +4027,20 @@ export interface CallerInfo {
   roles?: string[];
   /** Stored interface preference. Older backends omit it. */
   ui_language?: "en" | "tr";
+  /**
+   * The guide sections whose page-header link this account was already shown. Null for a
+   * principal without an account (development): nothing can be stored, so every link shows.
+   * Older backends omit it, which reads the same as null.
+   */
+  guide_seen?: string[] | null;
+}
+
+/** Record that the page showed a guide section's link. Idempotent; 204 with no body. */
+export function recordGuideSeen(section: string) {
+  return request<void>("/me/guide-seen", {
+    method: "POST",
+    body: JSON.stringify({ section }),
+  });
 }
 
 /** Store the signed-in account's interface language. */
