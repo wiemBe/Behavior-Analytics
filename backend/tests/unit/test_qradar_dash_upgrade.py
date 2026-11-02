@@ -336,6 +336,9 @@ class UpgradeFixture:
         shutil.copy(SCRIPT, self.script)
         self.script.chmod(0o755)
         (self.root / "VERSION").write_text(f"{TARGET_VERSION}\n")  # the checkout is at the target
+        # upgrade reads this file before any pull. It matches the image stub's notes,
+        # so an allowed site (installed >= min_from) still proceeds.
+        self.write_release_notes()
         # offline upgrade reads the pinned redis reference from the checkout's compose file,
         # and the pre-upgrade backup reads the pinned secrets helper from the helper script
         shutil.copy(REPO / "docker-compose.prod.yml", self.root / "docker-compose.prod.yml")
@@ -415,6 +418,15 @@ class UpgradeFixture:
         *, version: str = TARGET_VERSION, min_from: str = OLD_VERSION
     ) -> str:
         return f"---\nversion: {version}\nmin_from: {min_from}\n---\nChanges.\n"
+
+    def write_release_notes(
+        self, text: str | None = None, *, version: str = TARGET_VERSION
+    ) -> Path:
+        directory = self.root / "docs" / "releases"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{version}.md"
+        path.write_text(self.notes() if text is None else text)
+        return path
 
     def write_state(
         self,
@@ -632,6 +644,139 @@ def test_bad_release_notes_are_refused_after_pull_before_stop(
     assert result.returncode != 0
     assert " pull " in upgrade.action_text()
     assert_no_stop(upgrade)
+
+
+# ------------------------------------------------ checkout min_from before any change (FIX-12)
+_OLD_PREFIX = "ghcr.io/wiembe/qradar-dashboard"
+_NEW_PREFIX = "ghcr.io/wiembe/behavior-analytics"
+_TARGET_019 = "0.1.9"
+_MIN_FROM_019 = "0.1.8"
+
+
+def _checkout_019(upgrade: UpgradeFixture, installed: str) -> Path:
+    """A 0.1.9 checkout whose .env the prefix and forwarder migrations would edit."""
+    (upgrade.root / "VERSION").write_text(f"{_TARGET_019}\n")
+    upgrade.write_state(installed=installed)
+    env_path = upgrade.root / ".env"
+    lines: list[str] = []
+    for line in env_path.read_text().splitlines():
+        if line.startswith("QRADAR_DASH_VERSION="):
+            line = f"QRADAR_DASH_VERSION={installed}"
+        elif line.startswith("QRADAR_DASH_IMAGE_PREFIX="):
+            line = f"QRADAR_DASH_IMAGE_PREFIX={_OLD_PREFIX}"
+        lines.append(line)
+    lines.append("FORWARDED_ALLOW_IPS=172.28.10.10")
+    env_path.write_text("\n".join(lines) + "\n")
+    env_path.chmod(0o600)
+    return env_path
+
+
+def _assert_upgrade_touched_nothing(
+    upgrade: UpgradeFixture, env_path: Path, before: bytes, state_before: bytes
+) -> None:
+    assert env_path.read_bytes() == before
+    assert (upgrade.state_dir / "state.json").read_bytes() == state_before
+    actions = upgrade.action_text()
+    assert " pull " not in actions
+    assert " load " not in actions
+    assert " run " not in actions
+    assert "env-edit" not in actions
+    assert_no_stop(upgrade)
+
+
+def test_upgrade_refuses_a_site_older_than_min_from_before_any_change(
+    upgrade: UpgradeFixture,
+) -> None:
+    env_path = _checkout_019(upgrade, "0.1.6")
+    upgrade.write_release_notes(
+        UpgradeFixture.notes(version=_TARGET_019, min_from=_MIN_FROM_019),
+        version=_TARGET_019,
+    )
+    before = env_path.read_bytes()
+    state_before = (upgrade.state_dir / "state.json").read_bytes()
+
+    result = upgrade.run("upgrade", _TARGET_019)
+
+    assert result.returncode != 0
+    assert (
+        "upgrade refused: 0.1.9 requires at least 0.1.8; nothing was changed" in result.stderr
+    )
+    assert "docs/releases/0.1.9.md is missing" not in result.stderr
+    _assert_upgrade_touched_nothing(upgrade, env_path, before, state_before)
+
+
+@pytest.mark.parametrize(
+    ("label", "body"),
+    [
+        ("missing", None),
+        ("not front matter", "not front matter\n"),
+        (
+            "version is not the target",
+            "---\nversion: 0.1.8\nmin_from: 0.1.6\n---\n",
+        ),
+    ],
+)
+def test_upgrade_refuses_bad_checkout_release_notes_before_any_change(
+    upgrade: UpgradeFixture, label: str, body: str | None
+) -> None:
+    env_path = _checkout_019(upgrade, "0.1.8")
+    if body is not None:
+        upgrade.write_release_notes(body, version=_TARGET_019)
+    before = env_path.read_bytes()
+    state_before = (upgrade.state_dir / "state.json").read_bytes()
+
+    result = upgrade.run("upgrade", _TARGET_019)
+
+    assert result.returncode != 0, label
+    assert (
+        "upgrade refused: docs/releases/0.1.9.md is missing, invalid, or for another version; "
+        "nothing was changed"
+    ) in result.stderr
+    assert "requires at least" not in result.stderr
+    _assert_upgrade_touched_nothing(upgrade, env_path, before, state_before)
+
+
+def test_upgrade_at_min_from_still_migrates_and_pulls(upgrade: UpgradeFixture) -> None:
+    env_path = _checkout_019(upgrade, _MIN_FROM_019)
+    upgrade.write_release_notes(
+        UpgradeFixture.notes(version=_TARGET_019, min_from=_MIN_FROM_019),
+        version=_TARGET_019,
+    )
+
+    result = upgrade.run("upgrade", _TARGET_019, STUB_PULL_RC="19")
+
+    assert result.returncode != 0
+    assert "target images are unavailable" in result.stderr
+    assert "requires at least" not in result.stderr
+    assert "nothing was changed" not in result.stderr
+    text = env_path.read_text()
+    assert f"QRADAR_DASH_IMAGE_PREFIX={_NEW_PREFIX}\n" in text
+    assert "FORWARDED_ALLOW_IPS=172.28.10.10,172.28.10.11\n" in text
+    assert "FRONTEND_EDGE_IP=172.28.10.11\n" in text
+    assert "QRADAR_DASH_VERSION=0.1.8\n" in text
+    actions = upgrade.action_text()
+    assert " pull " in actions
+    assert "env-edit" in actions
+    assert_no_stop(upgrade)
+
+
+def test_upgrade_refuses_when_the_image_min_from_disagrees(upgrade: UpgradeFixture) -> None:
+    env_before = (upgrade.root / ".env").read_bytes()
+
+    result = upgrade.run(
+        "upgrade",
+        TARGET_VERSION,
+        STUB_NOTES=UpgradeFixture.notes(min_from="0.0.1"),
+    )
+
+    assert result.returncode != 0
+    assert (
+        "upgrade refused: docs/releases/0.2.0.md requires at least 0.1.0 "
+        "but the target image requires at least 0.0.1; no container was stopped"
+    ) in result.stderr
+    assert " pull " in upgrade.action_text()
+    assert_no_stop(upgrade)
+    assert (upgrade.root / ".env").read_bytes() == env_before
 
 
 def test_disk_guard_refuses_before_stop(upgrade: UpgradeFixture) -> None:
