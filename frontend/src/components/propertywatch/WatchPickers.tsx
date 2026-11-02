@@ -185,12 +185,15 @@ export function WatchPropertyPicker({
   options,
   disabled,
   onChange,
+  inputRef,
 }: {
   index: number;
   value: PwPropertyRef;
   options: PwPropertyOptions | null;
   disabled?: boolean;
   onChange: (property: PwPropertyRef) => void;
+  /** Receives the picker's input, so a caller can focus a property it just added in place. */
+  inputRef?: (input: HTMLInputElement | null) => void;
 }) {
   const t = useTranslations("propertyWatch.pickers");
   const i18n = useBehaviorI18n();
@@ -214,6 +217,7 @@ export function WatchPropertyPicker({
       })}</label>
       <input
         id={inputId}
+        ref={inputRef}
         className="field pw-mono-input"
         type="text"
         role="combobox"
