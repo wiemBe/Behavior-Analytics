@@ -19,6 +19,8 @@ import styles from "./auth.module.css";
 import { HistoryFirstRun } from "@/components/history/HistoryFirstRun";
 import { AppNav } from "@/components/shell/AppNav";
 import { TopBar } from "@/components/shell/TopBar";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { ApiError, rateLimitedText } from "@/lib/api";
 import { NAV } from "@/lib/nav";
 
 function onLoginPath(pathname: string): boolean {
@@ -28,6 +30,7 @@ function onLoginPath(pathname: string): boolean {
 export function AppFrame({ children }: { children: ReactNode }) {
   const t = useTranslations("auth");
   const common = useTranslations("common");
+  const say = asTextTranslator(useTranslations());
   const pathname = usePathname() ?? "/";
   const session = useSession();
 
@@ -82,19 +85,43 @@ export function AppFrame({ children }: { children: ReactNode }) {
   }
 
   if (session.status === "error") {
+    // A 429 means this address sent too many requests. The account is still unconfirmed, so the
+    // page stays hidden, but the outage sentence would be false: the backend did answer.
+    const limited = session.httpStatus === 429;
     return (
       <div className={styles.gate}>
         <div className="notice" role="alert">
+          {limited ? (
+            <p>
+              <strong>
+                {rateLimitedText(
+                  new ApiError(429, "", undefined, undefined, session.retryAfter ?? null),
+                  say,
+                )}
+              </strong>
+            </p>
+          ) : (
+            <p>
+              <strong>{t("sessionFailed")}</strong>
+            </p>
+          )}
+          {limited ? null : (
+            <p>
+              {t("sessionFailedDetail", {
+                reason: session.error ? ` ${session.error}` : "",
+              })}
+            </p>
+          )}
           <p>
-            <strong>{t("sessionFailed")}</strong>
-          </p>
-          <p>
-            {t("sessionFailedDetail", {
-              reason: session.error ? ` ${session.error}` : "",
-            })}
-          </p>
-          <p>
-            <button type="button" className="action secondary" onClick={() => void session.reload()}>
+            <button
+              type="button"
+              className="action secondary"
+              onClick={() => {
+                void session.reload().catch(() => {
+                  /* `load` already recorded the error */
+                });
+              }}
+            >
               {common("tryAgain")}
             </button>
           </p>

@@ -38,7 +38,17 @@ function Probe() {
       <p data-testid="session">
         {session.status} {session.me?.username ?? ""} {session.error ?? ""}
       </p>
-      <button type="button" onClick={() => void session.reload()}>
+      <p data-testid="failure">
+        {session.httpStatus ?? ""}|{session.retryAfter ?? ""}
+      </p>
+      <button
+        type="button"
+        onClick={() => {
+          void session.reload().catch(() => {
+            /* the provider records the failure */
+          });
+        }}
+      >
         reload
       </button>
       <button type="button" onClick={() => void session.signOut()}>
@@ -78,6 +88,8 @@ describe("session", () => {
       </SessionProvider>,
     );
     expect(await screen.findByText(/anonymous/)).toBeInTheDocument();
+    expect(screen.getByTestId("failure")).toHaveTextContent(/^\|$/);
+    expect(screen.getByTestId("session")).not.toHaveTextContent("error");
   });
 
   it("records a failed read", async () => {
@@ -89,6 +101,38 @@ describe("session", () => {
     );
     expect(await screen.findByText(/error/)).toBeInTheDocument();
     expect(screen.getByTestId("session")).toHaveTextContent("boom");
+    expect(screen.getByTestId("failure")).toHaveTextContent(/^500\|$/);
+  });
+
+  it("keeps a 429 apart from other failures, with and without Retry-After", async () => {
+    client.fetchSession.mockRejectedValueOnce(
+      new ApiError(429, "rate limit exceeded", "rate limit exceeded", undefined, 60),
+    );
+    render(
+      <SessionProvider>
+        <Probe />
+      </SessionProvider>,
+    );
+    expect(await screen.findByText(/error/)).toBeInTheDocument();
+    expect(screen.getByTestId("session")).toHaveTextContent("rate limit exceeded");
+    expect(screen.getByTestId("failure")).toHaveTextContent(/^429\|60$/);
+
+    client.fetchSession.mockRejectedValueOnce(new ApiError(429, "rate limit exceeded", "rate limit exceeded"));
+    await userEvent.click(screen.getByRole("button", { name: "reload" }));
+    expect(await screen.findByText(/^429\|$/)).toBeInTheDocument();
+    expect(screen.getByTestId("session")).toHaveTextContent(/^error\s+rate limit exceeded$/);
+  });
+
+  it("records a network failure with no status", async () => {
+    client.fetchSession.mockRejectedValue(new Error("socket hang up"));
+    render(
+      <SessionProvider>
+        <Probe />
+      </SessionProvider>,
+    );
+    expect(await screen.findByText(/error/)).toBeInTheDocument();
+    expect(screen.getByTestId("session")).toHaveTextContent("The session could not be read.");
+    expect(screen.getByTestId("failure")).toHaveTextContent(/^\|$/);
   });
 
   it("ignores a slow first read after a later one has won", async () => {

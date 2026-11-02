@@ -24,6 +24,14 @@ export interface SessionValue {
   status: "loading" | "anonymous" | "error" | "ready";
   me: CallerInfo | null;
   error: string | null;
+  /**
+   * HTTP status of a failed `/me` read, when the failure was an `ApiError`. Null for a network
+   * failure, a 401, and a session that is not in error. The shell uses 429 to tell a rate limit
+   * from an unreachable backend.
+   */
+  httpStatus?: number | null;
+  /** `Retry-After` seconds from that read, when the response sent one. */
+  retryAfter?: number | null;
   reload: () => Promise<void>;
   /** Null when the session ended. A string is the reason it did not. */
   signOut: () => Promise<string | null>;
@@ -62,6 +70,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionValue["status"]>("loading");
   const [me, setMe] = useState<CallerInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [httpStatus, setHttpStatus] = useState<number | null>(null);
+  const [retryAfter, setRetryAfter] = useState<number | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const id = requestId.current + 1;
@@ -80,16 +90,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       setMe(next);
       setError(null);
+      setHttpStatus(null);
+      setRetryAfter(null);
       setStatus("ready");
     } catch (err) {
       if (id !== requestId.current || signal?.aborted) return;
       setMe(null);
       if (err instanceof ApiError && err.status === 401) {
         setError(null);
+        setHttpStatus(null);
+        setRetryAfter(null);
         setStatus("anonymous");
         return;
       }
+      // A 401 is signed out. Everything else stays an error, and a 429 keeps its status and
+      // Retry-After so the shell can say the address is limited instead of quoting the body.
       setError(err instanceof ApiError ? err.message : sessionFailed);
+      setHttpStatus(err instanceof ApiError ? err.status : null);
+      setRetryAfter(err instanceof ApiError ? err.retryAfter : null);
       setStatus("error");
       throw err;
     }
@@ -120,11 +138,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     requestId.current += 1;
     setMe(null);
     setError(null);
+    setHttpStatus(null);
+    setRetryAfter(null);
     setStatus("anonymous");
     router.replace("/login");
     return null;
   }, [router, signOutFailed]);
 
-  const value: SessionValue = { status, me, error, reload, signOut };
+  const value: SessionValue = { status, me, error, httpStatus, retryAfter, reload, signOut };
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
