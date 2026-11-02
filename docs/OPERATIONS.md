@@ -1190,7 +1190,9 @@ Bu sırayla:
 
 1. `./qradar-dash status`: sürümler, sağlık, son yedeğin yaşı.
 2. `./qradar-dash doctor`: FAIL olan her şey aynı gün ele alınır. WARN okunur.
-3. Zamanlanmış aramalar (Scheduled searches) widget'ı: her aileyi gösteren tek ekrandır.
+3. Zamanlanmış aramalar (Scheduled searches) widget'ı: her aileyi gösteren tek ekrandır. Widget
+   varsayılan "SOC Genel Bakışı" (SOC Overview) şablonunda değil, "QRadar Yönetimi" (QRadar
+   Administration) şablonundadır; aynı veri `/admin/search-cadence` sayfasında da görünür.
 4. Boş alan. `doctor` %90'da FAIL verir. Günlük bakış, retention hâlâ yanlışken bu çizgiye doğru
    yükselişi fark etmek içindir.
 5. Sertifika tarihleri. `qradar_tls` 30 gün içinde WARN verir. Dizin testi LDAP sertifikasının

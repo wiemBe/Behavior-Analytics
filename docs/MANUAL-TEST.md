@@ -233,13 +233,15 @@ Full report: ./qradar-dash doctor
 
 - İki çift de yazılır. Tek çift yalnız hedef zaten kuruluysa yazılır: `Version 0.1.9 is already installed and healthy; nothing changed.` Bu, ilk yükseltmenin çıktısı değildir.
 - `PASS` satırlarındaki boşluk sayısı sürüme göre değişebilir; metin aynıdır.
-- 0.1.8'in `.env` dosyasında `FRONTEND_EDGE_IP` yoksa ve `FORWARDED_ALLOW_IPS` boş olmayan, `*` olmayan bir listeyse şu iki satır da yazılır. Adresleri sayfaya yazma; yalnız satırların göründüğünü yaz. Anahtarlar zaten doğruysa bu iki satır yoktur; bu da doğrudur:
+- 0.1.8'in `.env` dosyasında `FRONTEND_EDGE_IP` yoksa ve `FORWARDED_ALLOW_IPS` boş olmayan, `*` olmayan, frontend adresini içermeyen bir listeyse şu iki satır da yazılır. Adresleri sayfaya yazma; yalnız satırların göründüğünü yaz:
   - `Frontend address <adres> added to .env (FRONTEND_EDGE_IP).`
   - `FORWARDED_ALLOW_IPS now also trusts the frontend (<adres>): <liste>`
+- `.env`'de `FRONTEND_EDGE_IP` zaten varsa ve liste frontend adresini içermiyorsa yalnız `FORWARDED_ALLOW_IPS now also trusts the frontend (<adres>): <liste>` satırı yazılır; bu da doğrudur.
+- Anahtarlar zaten doğruysa (liste frontend adresini zaten içeriyorsa) bu satırlar yazılmaz; bu da doğrudur.
 - Çıkış `upgrade refused: …` ise hiçbir konteyner durmamıştır; nedeni oku (örneğin `this checkout is version <x>, not 0.1.9` ise `git checkout v0.1.9` unutulmuştur; `upgrade refused: 0.1.9 requires at least 0.1.8; nothing was changed` ise site 0.1.8'den eskidir ve `.env` ile imajlar değişmemiştir) ve düzelt. Aynı addan iki satır varsa `upgrade refused: .env has more than one FRONTEND_EDGE_IP line; nothing was changed` (ya da `FORWARDED_ALLOW_IPS`) yazılır; fazla satırı sil, `*` yazma.
 - Çıkış sıfırdan farklıysa ve son satır `upgrade to 0.1.9 failed and was rolled back to 0.1.8; the broken database was kept` ise otomatik geri alma çalışmıştır: bölüm 15'e git (OPS-R44).
 
-**Kaydet:** Çıkış kodu, başlangıç ve bitiş saati (UTC), iki `migration_head` satırı, son satır, iki adres satırının görünüp görünmediği (adreslerin kendisi değil). Kaldı ise ilk hata satırı.
+**Kaydet:** Çıkış kodu, başlangıç ve bitiş saati (UTC), iki `migration_head` satırı, son satır, adres satırlarından hangisinin göründüğü (adreslerin kendisi değil). Kaldı ise ilk hata satırı.
 
 **Temizlik:** Geri alma, bölüm 15'teki `rollback` komutudur. Başka temizlik yoktur.
 
