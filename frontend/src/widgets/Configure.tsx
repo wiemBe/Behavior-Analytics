@@ -225,6 +225,10 @@ export function ConfigForm({
 }) {
   const base = useId();
   const fields = useTranslations("widgets.registry");
+  // A fixed option is shown by its catalog label when the entry has one (an enum such as the
+  // Geography direction); otherwise by its own value (a number of rows).
+  const optionLabel = (value: string, path: string | null) =>
+    path && fields.has(path as never) ? fields(path as never) : value;
   return (
     <>
       {Object.entries(schema).map(([key, field]) => {
@@ -260,7 +264,7 @@ export function ConfigForm({
               {index < 0 ? <option value="" disabled hidden /> : null}
               {options.map((option, i) => (
                 <option key={i} value={String(i)}>
-                  {String(option)}
+                  {optionLabel(String(option), type ? `${messageKey(type)}.options.${key}.${String(option)}` : null)}
                 </option>
               ))}
             </select>

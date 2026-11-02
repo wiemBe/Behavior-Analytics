@@ -17,6 +17,7 @@ export const GUIDE_ROUTES = {
   "/behavior/watches": "property-watches",
   "/behavior/watches/[id]": "property-watches",
   "/behavior/watches/new": "property-watch-setup",
+  "/geography": "geography",
   "/fleet": "fleet",
   "/fleet/sources": "fleet-sources",
   "/fleet/catchall": "catch-all-senders",

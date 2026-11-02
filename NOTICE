@@ -16,6 +16,11 @@ for this use. This project's own code remains under the Apache License, Version 
 The frontend uses next-intl 4.14.9 (https://github.com/amannn/next-intl), copyright Jan Amann
 and contributors, under the MIT License.
 
+The Geography map draws its country outlines from Natural Earth (https://www.naturalearthdata.com),
+the 1:110m admin-0 countries, version 5.1.2. Natural Earth is in the public domain; it asks for no
+credit and the line is kept here as a courtesy. The outlines are simplified to ISO country codes and
+shipped with the frontend as a lazily loaded file.
+
 IBM and QRadar are trademarks of International Business Machines Corporation, registered in
 many jurisdictions worldwide. This project is not affiliated with, sponsored by or endorsed
 by IBM.

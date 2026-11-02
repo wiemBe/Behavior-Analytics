@@ -13,6 +13,7 @@
     "sources": "Kaynaklar",
     "wafBehavior": "WAF davranışı",
     "propertyWatches": "Özellik izlemeleri",
+    "geography": "Coğrafya",
     "fleet": "Filo",
     "fleetSources": "Filo kaynakları",
     "catchAllSenders": "Catch-all gönderenleri",

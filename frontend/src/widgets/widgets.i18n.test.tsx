@@ -110,7 +110,10 @@ describe("the registry in Turkish: placeholder and catalog", () => {
     expect(screen.getAllByText(/Rolünüzde şu izin eksik: read:offenses\./).length).toBeGreaterThan(0);
     expect(screen.getByText(/Rolünüzde şu izinler eksik: read:fleet, admin:outage|Rolünüzde şu izin eksik: admin:outage/)).toBeInTheDocument();
     expect(screen.getAllByText("Bir gösterge paneli en fazla 24 bileşen içerebilir.").length).toBeGreaterThan(0);
-    expect(screen.getByText("Kullanılamıyor: harita bileşeni henüz hazır değil; coğrafi toplama hazır.")).toBeInTheDocument();
+    // GEO-4: the map widget is live, so no registry entry is blocked now; the Turkish blocked
+    // reason is pinned in `copy.contract.test.ts` for any entry that carries one.
+    expect(screen.getByText("Coğrafya")).toBeInTheDocument();
+    expect(screen.getByText(/Rolünüzde şu izin eksik: read:geo\./)).toBeInTheDocument();
   });
 
   it("says that it is checking the role, and that the permissions could not be read", () => {

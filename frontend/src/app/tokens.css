@@ -309,3 +309,17 @@
   /* The width of a field's "?" explanation, in characters of its own text. */
   --help-tip-w: 36ch;
 }
+
+/* --- Geography map (GEO-4) -------------------------------------------------
+   The map keeps a 2.15:1 plot (the world between 85 N and 58 S, at the map's aspect scale) and never grows past a height
+   that would push its table below the first screen; the country table scrolls inside itself
+   past its own cap. */
+:root {
+  --geo-map-ratio: 2.15 / 1;
+  /* Stacked (a half-width widget): flatter, so the table and the facts stay in the box. */
+  --geo-map-ratio-stacked: 2.5 / 1;
+  --geo-map-max-h: 30rem;
+  --geo-table-max-h: 26rem;
+  --geo-table-min-h: 14rem;
+  --geo-country-col: 16ch;
+}

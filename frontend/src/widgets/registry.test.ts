@@ -25,7 +25,7 @@ describe("widget registry", () => {
     for (const type of types) expect(type).toMatch(/^[a-z0-9_.]{1,64}$/);
   });
 
-  it("lists exactly the Phase 2 widgets, the catalog widgets and the one blocked one", () => {
+  it("lists exactly the Phase 2 widgets, the catalog widgets and the map", () => {
     expect(WIDGETS.filter((w) => w.status === "live").map((w) => w.type)).toEqual([
       "kpi.total_eps",
       "kpi.log_sources",
@@ -51,10 +51,10 @@ describe("widget registry", () => {
       "chart.search_results",
       "chart.property_watch",
       "ips.source_anomalies",
-    ]);
-    expect(WIDGETS.filter((w) => w.status === "blocked").map((w) => w.type)).toEqual([
       "map.geography",
     ]);
+    // GEO-4: the map widget is built, so no entry is blocked any more.
+    expect(WIDGETS.filter((w) => w.status === "blocked").map((w) => w.type)).toEqual([]);
   });
 
   it("reads only routes the frontend client actually calls", () => {
@@ -98,8 +98,18 @@ describe("widget registry", () => {
   });
 
   it("states the blocked reasons the catalog shows", () => {
-    expect(widgetDef("map.geography")?.blockedBy).toBe(
-      "the map widget is not built yet; geo collection is",
+    // GEO-4: the map widget reads /geo/countries with read:geo, in the Geography page's terms.
+    expect(widgetDef("map.geography")?.status).toBe("live");
+    expect(widgetDef("map.geography")?.blockedBy).toBeUndefined();
+    expect(widgetDef("map.geography")?.requires).toEqual(["read:geo"]);
+    expect(widgetDef("map.geography")?.sources).toEqual(["/geo/countries"]);
+    expect(widgetDef("map.geography")?.range).toEqual(["1h", "24h", "7d"]);
+    expect(widgetDef("map.geography")?.defaultConfig).toEqual({ direction: "SOURCE" });
+    expect(widgetDef("map.geography")?.drillDown({ direction: "DESTINATION" })).toBe(
+      "/geography?direction=DESTINATION",
+    );
+    expect(widgetDef("map.geography")?.drillDown({ direction: "SOURCE" })).toBe(
+      "/geography?direction=SOURCE",
     );
     // UI-3.5b: the IPS analyst API and its UI exist, so the IPS widget is no longer blocked.
     expect(widgetDef("ips.source_anomalies")?.status).toBe("live");

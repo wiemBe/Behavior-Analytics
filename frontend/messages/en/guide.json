@@ -289,6 +289,23 @@
         }
       ]
     },
+    "geography": {
+      "title": "Geography",
+      "answers": "From which countries does the traffic arrive, and how far can the map be trusted?",
+      "body": [
+        {
+          "p": "The page heading is **Geography**. **Address** chooses which address the country is taken from: **Source** or **Destination**. **Window** offers **1 h**, **24 h** and **7 d**. The map fills each country by its events, in classes with round bounds that the legend lists under **Events per country**. A country with no row is drawn in the **No data** fill, which is not the lowest class: nothing was measured for it. The table beside the map gives **Country**, **Events** and **Share** for every country the answer holds. **Share** is over the events that have a country; the remainders are never mixed into it."
+        },
+        {
+          "p": "Under the map, **Buckets measured** says how much of the window was collected. **Unresolved**, **Over the country cap** and **Unparseable** count the events that could not be given a country. Unresolved events have a private, internal or GeoIP-unknown address, and the lookup cannot tell those three apart. Where the page says where the country comes from, it is either a QRadar property or the GeoIP lookup of the address. The Dashboard widget lists the five largest countries and opens this page."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Not collected.**; **Insufficient data.**; **Partial** with the buckets measured; **At least** when the counts are lower bounds; countries too small for the outlines are named under the map and stay in the table; the forbidden notice names the permission."
+        }
+      ]
+    },
     "fleet": {
       "title": "Fleet",
       "answers": "How much is each class of log source sending against its baseline, and what is waiting for review?",

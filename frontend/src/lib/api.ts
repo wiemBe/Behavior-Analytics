@@ -3879,6 +3879,55 @@ export interface BucketSeries<B> {
   truncated: boolean;
 }
 
+// --- geography (D-10) -----------------------------------------------------------
+// Mirrors `app/schemas/geo.py`. `remainders` and `measurement` are null while nothing was
+// collected: a range that was never measured has no zero for any of them. `country_source` and
+// `country_property` arrive with GEO-3; an older API omits them, and the view then says nothing
+// about where the country comes from.
+export type GeoDirection = "SOURCE" | "DESTINATION";
+export type GeoStatus = "NOT_COLLECTED" | "INSUFFICIENT_DATA" | "PARTIAL" | "OK";
+export type GeoMeasurement = "EXACT" | "LOWER_BOUND";
+export type GeoCountrySource = "PROPERTY" | "LOOKUP";
+
+export interface GeoCountry {
+  /** ISO 3166-1 alpha-2. */
+  country_code: string;
+  events: number;
+  /** Over country events only, 0 to 1; the remainders are never mixed in. */
+  share: number;
+}
+
+export interface GeoRemainders {
+  UNRESOLVED: number;
+  OVER_CAP: number;
+  UNPARSEABLE: number;
+}
+
+export interface GeoCountries {
+  direction: GeoDirection;
+  since: string;
+  until: string;
+  countries: GeoCountry[];
+  remainders: GeoRemainders | null;
+  measurement: GeoMeasurement | null;
+  coverage: { measured_buckets: number; expected_buckets: number };
+  status: GeoStatus;
+  unresolved_note: string;
+  country_source?: GeoCountrySource | null;
+  country_property?: string | null;
+}
+
+function geoCountriesPath(window: FleetWindow, direction: GeoDirection): string {
+  const { since, until } = windowBounds(window);
+  return `/geo/countries${qs({ since, until, direction })}`;
+}
+
+/** The server-side read of the Geography page (the session cookie is forwarded). */
+export const geoApi = {
+  countries: (window: FleetWindow, direction: GeoDirection) =>
+    request<GeoCountries>(geoCountriesPath(window, direction)),
+};
+
 export const homeReads = {
   me: () => homeRead<CallerInfo>("/me"),
   fleetSummary: (window: FleetWindow) =>
@@ -3986,4 +4035,9 @@ export const homeReads = {
   }),
   sourceCells: (sourceId: string) =>
     homeRead<BaselineCell[]>(`/behavior/sources/${sourceId}/baselines${qs({ metric: "average_eps" })}`),
+  // The map widget: the key names the preset and the direction, not the instants (see above).
+  geoCountries: (window: FleetWindow, direction: GeoDirection): HomeRead<GeoCountries> => ({
+    key: `/geo/countries?window=${window}&direction=${direction}`,
+    fetch: (signal) => request<GeoCountries>(geoCountriesPath(window, direction), { signal }),
+  }),
 };

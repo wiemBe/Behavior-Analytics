@@ -15,6 +15,7 @@
     "source-behavior": "Sources",
     "waf-behavior": "WAF behavior",
     "property-watches": "Property watches",
+    "geography": "Geography",
     "fleet": "Fleet",
     "fleet-sources": "Fleet sources",
     "catch-all-senders": "Catch-all senders",

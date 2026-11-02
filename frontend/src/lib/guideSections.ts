@@ -129,6 +129,14 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
     related: ["property-watch-setup", "honesty-states", "custom-rules"],
   },
   {
+    id: "geography",
+    group: "pages",
+    routes: ["/geography"],
+    audience: "analyst",
+    permissions: ["read:geo"],
+    related: ["honesty-states", "dashboard", "times-and-cadence"],
+  },
+  {
     id: "fleet",
     group: "pages",
     routes: ["/fleet"],

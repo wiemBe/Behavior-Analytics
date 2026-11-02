@@ -1,0 +1,232 @@
+/* The geography view (GEO-4): the map, its legend, the country table and the facts under
+   them. It sits in the `.tw` panel of tables.css (a widget, or the page's panel), so the
+   table, state and note styles are the Home ones; this adds the map and the layout. Every value
+   is a token. The body is a container: it splits into map and table side by side when it is
+   wide (the page, the expanded widget) and stacks when it is not (a half-width widget). */
+
+.geo {
+  container-type: inline-size;
+  container-name: geo;
+  min-width: 0;
+}
+.geo-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--widget-gap) var(--sp-6);
+  min-width: 0;
+}
+.geo-qual {
+  margin: 0;
+}
+.geo-main,
+.geo-side,
+.geo-facts {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--widget-gap);
+}
+
+/* Wide: the map and its legend on the left, the facts under them, and the table down the whole
+   right side. The table takes no height of its own in the row sizing (`contain: size`), so the
+   rows are as tall as the left column and the table scrolls inside itself, never past it. */
+@container geo (min-width: 52rem) {
+  .geo-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    grid-template-areas:
+      "qual qual"
+      "main side"
+      "facts side";
+    align-items: start;
+  }
+  .geo-qual {
+    grid-area: qual;
+  }
+  .geo-main {
+    grid-area: main;
+  }
+  .geo-facts {
+    grid-area: facts;
+  }
+  .geo-side {
+    grid-area: side;
+    align-self: stretch;
+    contain: size;
+    min-height: var(--geo-table-min-h);
+  }
+  .geo-side .geo-table-wrap {
+    flex: 0 1 auto;
+    max-height: none;
+  }
+}
+
+/* --- the map ----------------------------------------------------------------- */
+
+.geo-plot {
+  width: 100%;
+  aspect-ratio: var(--geo-map-ratio);
+  max-height: var(--geo-map-max-h);
+  min-width: 0;
+  min-height: 0;
+}
+.geo-plot-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-5);
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+  text-align: center;
+}
+.geo-plot-state .tw-state {
+  max-width: 44ch;
+}
+
+@container geo (max-width: 51.99rem) {
+  .geo-plot {
+    aspect-ratio: var(--geo-map-ratio-stacked);
+  }
+}
+
+/* --- the legend ---------------------------------------------------------------- */
+
+.geo-legend {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-4);
+  list-style: none;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.geo-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-4);
+}
+.geo-legend-title {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.geo-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-variant-numeric: tabular-nums;
+}
+.geo-swatch {
+  flex: none;
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+}
+.geo-ramp-none {
+  background: var(--map-0);
+}
+.geo-ramp-0 {
+  background: var(--map-1);
+}
+.geo-ramp-1 {
+  background: var(--map-2);
+}
+.geo-ramp-2 {
+  background: var(--map-3);
+}
+.geo-ramp-3 {
+  background: var(--map-4);
+}
+
+/* --- the table ------------------------------------------------------------------ */
+
+.geo-table-wrap {
+  max-height: var(--geo-table-max-h);
+  overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
+}
+.geo-table th.geo-th-num,
+.geo-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.geo-table .geo-code {
+  margin-left: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+/* A country's name is the row's key: it wraps, it is never cut with an ellipsis. */
+.tw-table.geo-table td.tw-name {
+  max-width: none;
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
+/* --- the facts under the map ----------------------------------------------------- */
+
+/* Each fact is a term and its figure, side by side; the facts wrap as a row of pairs, so a narrow
+   widget spends two lines on them, not five. */
+.geo-facts dl {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-5);
+  font-size: var(--fs-sm);
+}
+.geo-facts dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-2);
+}
+.geo-facts dt {
+  color: var(--text-2);
+}
+.geo-facts dd {
+  margin: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+/* The panel is already a box: the remainders' explanation is a plain line you open, not a box in it. */
+.geo-facts .disclosure {
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.geo-facts .disclosure-summary {
+  justify-content: flex-start;
+  padding: var(--sp-1) 0;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-normal);
+  color: var(--text-2);
+}
+.geo-facts .disclosure-label {
+  flex: 0 1 auto;
+}
+.geo-facts .disclosure-body {
+  padding: var(--sp-2) 0 0 var(--sp-4);
+  border-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.geo-facts .disclosure-body p {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+}
+
+/* --- the page --------------------------------------------------------------------- */
+
+.geo-switches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-5);
+}

@@ -1,0 +1,89 @@
+{
+  "page": {
+    "title": "Geography",
+    "description": "Events per country, by the country of their source or destination address.",
+    "loadingWhat": "the country counts",
+    "errorWhat": "The country counts",
+    "windowLine": "Last {window}: <start></start> to <end></end>.",
+    "mapHeading": "Events by country",
+    "meta": "Geography",
+    "loadNoun": "the country counts",
+    "failedHeading": "The country counts could not be shown."
+  },
+  "controls": {
+    "directionNav": "Address direction",
+    "directionLabel": "Address",
+    "windowNav": "Window",
+    "windowLabel": "Window"
+  },
+  "direction": {
+    "SOURCE": "Source",
+    "DESTINATION": "Destination"
+  },
+  "directionName": {
+    "SOURCE": "source addresses",
+    "DESTINATION": "destination addresses"
+  },
+  "widget": {
+    "title": "Geography",
+    "what": "the country counts",
+    "link": "Geography",
+    "linkAria": "Open the Geography page",
+    "unsupportedDirection": "The saved direction is not one this version knows; Source addresses are shown.",
+    "windowText": "{direction} · {range}"
+  },
+  "state": {
+    "notCollectedLead": "Not collected.",
+    "notCollected": "Nothing has been collected for {direction} in this range, so no map is drawn. The QRadar property that carries the country may not be configured, or collection has not run in this range.",
+    "insufficientLead": "Insufficient data.",
+    "insufficient": "Buckets were collected for {direction}, but no address resolved to a country, so no map is drawn."
+  },
+  "map": {
+    "aria": "Map of events by country, {direction}. Largest: {top}. The table lists every country.",
+    "ariaNone": "Map of events by country.",
+    "topItem": "{name} ({count})",
+    "loadingOutlines": "Loading the map outlines…",
+    "outlinesFailed": "The map outlines could not be loaded.",
+    "outlinesFailedAction": "The table has the same figures. Reload the page to try again.",
+    "noData": "No data",
+    "events": "{count} events",
+    "eventsAtLeast": "At least {count} events",
+    "share": "{share} of the events with a country"
+  },
+  "legend": {
+    "title": "Events per country",
+    "titleAtLeast": "At least, events per country",
+    "noData": "No data",
+    "between": "{from} to {to}",
+    "from": "{from} or more"
+  },
+  "table": {
+    "label": "Events by country",
+    "country": "Country",
+    "events": "Events",
+    "share": "Share",
+    "atLeast": "at least",
+    "top": "Top {shown} of {total} countries. The Geography page lists all of them.",
+    "all": "{total, plural, one {# country} other {# countries}}.",
+    "undrawn": "{count, plural, one {# country is} other {# countries are}} too small for the map outlines and not drawn: {names}. {events} events are in the table."
+  },
+  "facts": {
+    "partial": "The counts cover only the measured buckets.",
+    "lowerBound": "Some buckets are lower bounds, so every count is at least what is shown.",
+    "coverage": "Buckets measured",
+    "coverageValue": "{measured} of {expected}",
+    "remainders": "Not attributed to a country",
+    "unresolved": "Unresolved",
+    "overCap": "Over the country cap",
+    "unparseable": "Unparseable",
+    "eventsUnit": "{count} events",
+    "explainSummary": "What the remainders mean",
+    "unresolvedNote": "UNRESOLVED counts events whose address is private, internal or unknown to GeoIP. The lookup returns the same empty result for all three, so they cannot be told apart.",
+    "overCapNote": "Over the country cap counts the events of countries beyond the 64 busiest in a bucket; they are summed, not listed.",
+    "unparseableNote": "Unparseable counts events whose lookup result could not be read as a country. It is a defect count, never a country.",
+    "fromProperty": "From the QRadar property “{property}”",
+    "fromPropertyUnnamed": "From a QRadar property",
+    "fromLookup": "From the GeoIP lookup of the address",
+    "atLeastKind": "At least"
+  }
+}
