@@ -164,6 +164,14 @@ export function metricLabel(metric: string, t: TextTranslator = customRulesEngli
   return Object.hasOwn(METRIC_LABELS, metric) ? t(`customRules.authoring.metrics.${metric}`) : metric;
 }
 
+const UNIT_CODES = ["events/bucket", "requests/bucket", "events/s", "share"];
+
+/** The analyst-facing wording of a catalog unit code; an unknown code is shown as it came. */
+export function unitLabel(unit: string, t: TextTranslator = customRulesEnglishText): string {
+  const index = UNIT_CODES.indexOf(unit);
+  return index < 0 ? unit : t(`customRules.authoring.units.${["eventsPerBucket", "requestsPerBucket", "eventsPerSecond", "share"][index]}`);
+}
+
 export function operatorWord(operator: string, t: TextTranslator = customRulesEnglishText): string {
   return Object.hasOwn(OPERATOR_WORDS, operator) ? t(`customRules.authoring.operators.${operator}`) : operator;
 }
@@ -184,7 +192,7 @@ export function conditionText(
   locale: Locale = "en",
   t: TextTranslator = customRulesEnglishText,
 ): string {
-  const unit = rule.threshold_unit ?? "units";
+  const unit = unitLabel(rule.threshold_unit ?? "units", t);
   return t("customRules.authoring.condition", {
     metric: metricLabel(rule.metric, t),
     operator: operatorSign(rule.operator),
@@ -207,7 +215,7 @@ export function editorSummary(
   return t("customRules.authoring.summary", {
     sustain,
     breach,
-    value: formatValue(threshold, unit, locale),
+    value: formatValue(threshold, unitLabel(unit, t), locale),
     recovery,
     recover: t(`customRules.authoring.operators.${recoverKey}`),
   });

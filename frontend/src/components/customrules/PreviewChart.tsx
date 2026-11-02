@@ -15,7 +15,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef } from "react";
 
 import { TURKISH_ECHARTS_LOCALE } from "@/components/home/chartLocale";
-import { formatValue } from "@/components/customrules/authoring";
+import { formatValue, unitLabel } from "@/components/customrules/authoring";
 import { customRulesEnglishText } from "@/components/customrules/englishText";
 import type { CustomRulePreview } from "@/lib/api";
 import { readChartPalette, type ChartPalette } from "@/lib/chartPalette";
@@ -58,8 +58,8 @@ export function previewTooltip(
     bucket.measurement === "NOT_MEASURED" || bucket.value === null
       ? t("customRules.preview.notMeasured")
       : bucket.measurement === "LOWER_BOUND"
-        ? t("customRules.preview.atLeast", { value: formatValue(bucket.value, preview.unit, locale) })
-        : formatValue(bucket.value, preview.unit, locale);
+        ? t("customRules.preview.atLeast", { value: formatValue(bucket.value, unitLabel(preview.unit, t), locale) })
+        : formatValue(bucket.value, unitLabel(preview.unit, t), locale);
   const measurement = t(`customRules.preview.measurementKinds.${bucket.measurement}`);
   const completenessKey = bucket.completeness
     ? `customRules.preview.completenessKinds.${bucket.completeness}`
@@ -140,7 +140,7 @@ export function buildPreviewOption(
   ];
   const text = { color: palette.label, fontFamily: palette.font };
   const thresholdText = t("customRules.preview.threshold", {
-    value: formatValue(preview.threshold_value, preview.unit, locale),
+    value: formatValue(preview.threshold_value, unitLabel(preview.unit, t), locale),
   });
   return {
     animation: false,
@@ -180,7 +180,7 @@ export function buildPreviewOption(
     },
     yAxis: {
       type: "value",
-      name: preview.unit,
+      name: unitLabel(preview.unit, t),
       nameTextStyle: text,
       min: 0,
       axisLabel: text,
@@ -190,7 +190,7 @@ export function buildPreviewOption(
     series: [
       {
         type: "line",
-        name: t("customRules.preview.readingSeries", { unit: preview.unit }),
+        name: t("customRules.preview.readingSeries", { unit: unitLabel(preview.unit, t) }),
         data: preview.buckets.map((bucket) => [
           Date.parse(bucket.bucket_start),
           bucket.measurement === "NOT_MEASURED" ? null : bucket.value,
@@ -222,7 +222,7 @@ export function buildPreviewOption(
               ? [{
                   coord: [Date.parse(bucket.bucket_start), bucket.value],
                   name: t("customRules.preview.atLeast", {
-                    value: formatValue(bucket.value, preview.unit, locale),
+                    value: formatValue(bucket.value, unitLabel(preview.unit, t), locale),
                   }),
                 }]
               : [],

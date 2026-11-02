@@ -131,3 +131,57 @@ td.cell-family .cell-sub {
   white-space: nowrap;
   overflow-wrap: normal;
 }
+
+/* The "?" beside a field label, and the explanation it shows. */
+.help-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+.help-tip-button {
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  padding: 0;
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  cursor: help;
+}
+.help-tip-button:hover,
+.help-tip-button[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--surface-3);
+}
+.help-tip-text {
+  position: absolute;
+  top: calc(100% + var(--sp-1));
+  z-index: var(--dash-z-pop);
+  width: var(--help-tip-w);
+  max-width: calc(100vw - var(--sp-7));
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-base);
+  text-align: left;
+  white-space: normal;
+}
+.help-tip-text[hidden] {
+  display: none;
+}
+.help-tip-text.start {
+  left: 0;
+}
+.help-tip-text.end {
+  right: 0;
+}

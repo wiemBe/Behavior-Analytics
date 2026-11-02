@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
 import { PreviewChart, PreviewSummary } from "@/components/customrules/PreviewChart";
+import { HelpTip } from "@/components/ui/HelpTip";
 import { SubjectPicker } from "@/components/customrules/SubjectPicker";
 import {
   classifySaveError,
@@ -16,6 +17,8 @@ import {
   metricLabel,
   metricsFor,
   previewBody,
+  unitLabel,
+  operatorWord,
   reasonTexts,
   selectedMetric,
   updateBody,
@@ -32,6 +35,9 @@ import {
 import type { Locale } from "@/i18n/locale";
 import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
 import { enumLabel } from "@/i18n/enumLabels";
+
+const HELP_FIELDS = ["metric", "operator", "threshold", "sustain", "recovery", "window", "severity"] as const;
+type HelpField = (typeof HELP_FIELDS)[number];
 
 const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
 
@@ -84,6 +90,34 @@ export function CustomRuleEditor({
   const [formError, setFormError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<{ currentVersion: string; updatedBy: string | null } | null>(null);
   const [saved, setSaved] = useState(false);
+  const tipBase = useId();
+  const [tipsShown, setTipsShown] = useState<Partial<Record<HelpField, boolean>>>({});
+  const tipId = (field: HelpField) => `${tipBase}-${field}`;
+  // The field points at the explanation only while it is shown.
+  const describedBy = (field: HelpField) => (tipsShown[field] ? tipId(field) : undefined);
+  const tipShown = useCallback(
+    (field: HelpField) => (shown: boolean) => setTipsShown((current) => (current[field] === shown ? current : { ...current, [field]: shown })),
+    [],
+  );
+  const tipHandlers = useMemo(
+    () => Object.fromEntries(HELP_FIELDS.map((field) => [field, tipShown(field)])) as Record<HelpField, (shown: boolean) => void>,
+    [tipShown],
+  );
+  const labelWithTip = (field: HelpField, htmlFor: string, label: string, align: "start" | "end" = "start") => {
+    const fieldName = t(`help.names.${field}`);
+    return (
+      <div className="cr-label-row">
+        <label htmlFor={htmlFor}>{label}</label>
+        <HelpTip
+          id={tipId(field)}
+          name={t("help.about", { field: fieldName })}
+          text={t(`help.${field}`, { min: catalog.preview_hours_min, max: catalog.preview_hours_max })}
+          align={align}
+          onShownChange={tipHandlers[field]}
+        />
+      </div>
+    );
+  };
 
   const metric = selectedMetric(catalog, draft);
   const validation = draftReason(draft, metric, say);
@@ -221,10 +255,10 @@ export function CustomRuleEditor({
         />
 
         <div className="cr-field">
-          <label htmlFor={metricId}>{t("metric")}</label>
-          <select id={metricId} className="select-control" value={draft.metric} onChange={(event) => set("metric", event.target.value)}>
+          {labelWithTip("metric", metricId, t("metric"))}
+          <select id={metricId} aria-describedby={describedBy("metric")} className="select-control" value={draft.metric} onChange={(event) => set("metric", event.target.value)}>
             {metricsFor(catalog, draft.subjectKind).map((choice) => (
-              <option key={choice.metric} value={choice.metric}>{metricLabel(choice.metric, say)} — {choice.unit}</option>
+              <option key={choice.metric} value={choice.metric}>{metricLabel(choice.metric, say)} — {unitLabel(choice.unit, say)}</option>
             ))}
           </select>
           {metric && <p className="field-hint">{metric.note}</p>}
@@ -232,16 +266,16 @@ export function CustomRuleEditor({
 
         <div className="cr-paired-fields">
           <div className="cr-field">
-            <label htmlFor={operatorId}>{t("operator")}</label>
-            <select id={operatorId} className="select-control" value={draft.operator} onChange={(event) => set("operator", event.target.value)}>
-              {catalog.operators.map((operator) => <option key={operator} value={operator}>{operator}</option>)}
+            {labelWithTip("operator", operatorId, t("operator"))}
+            <select id={operatorId} aria-describedby={describedBy("operator")} className="select-control" value={draft.operator} onChange={(event) => set("operator", event.target.value)}>
+              {catalog.operators.map((operator) => <option key={operator} value={operator}>{operatorWord(operator, say)}</option>)}
             </select>
           </div>
           <div className="cr-field">
-            <label htmlFor={thresholdId}>{t("threshold", { unit: metric?.unit ?? t("unit") })}</label>
+            {labelWithTip("threshold", thresholdId, t("threshold", { unit: metric ? unitLabel(metric.unit, say) : t("unit") }), "end")}
             <div className="cr-input-unit">
-              <input id={thresholdId} className="field num" inputMode="decimal" value={draft.threshold} onChange={(event) => set("threshold", event.target.value)} />
-              <span>{metric?.unit ?? "—"}</span>
+              <input id={thresholdId} aria-describedby={describedBy("threshold")} className="field num" inputMode="decimal" value={draft.threshold} onChange={(event) => set("threshold", event.target.value)} />
+              <span>{metric ? unitLabel(metric.unit, say) : "—"}</span>
             </div>
             {metric?.is_ratio && <p className="field-hint">{t("ratioHint")}</p>}
           </div>
@@ -249,20 +283,20 @@ export function CustomRuleEditor({
 
         <div className="cr-paired-fields">
           <div className="cr-field">
-            <label htmlFor={sustainId}>{t("sustain")}</label>
-            <input id={sustainId} className="field num" type="number" min={1} step={1} value={draft.sustain} onChange={(event) => set("sustain", event.target.value)} />
+            {labelWithTip("sustain", sustainId, t("sustain"))}
+            <input id={sustainId} aria-describedby={describedBy("sustain")} className="field num" type="number" min={1} step={1} value={draft.sustain} onChange={(event) => set("sustain", event.target.value)} />
           </div>
           <div className="cr-field">
-            <label htmlFor={recoveryId}>{t("recovery")}</label>
-            <input id={recoveryId} className="field num" type="number" min={1} step={1} value={draft.recovery} onChange={(event) => set("recovery", event.target.value)} />
+            {labelWithTip("recovery", recoveryId, t("recovery"), "end")}
+            <input id={recoveryId} aria-describedby={describedBy("recovery")} className="field num" type="number" min={1} step={1} value={draft.recovery} onChange={(event) => set("recovery", event.target.value)} />
           </div>
         </div>
         {summary && <p className="cr-summary">{summary}</p>}
 
         <div className="cr-paired-fields">
           <div className="cr-field">
-            <label htmlFor={severityId}>{t("severity")}</label>
-            <select id={severityId} className="select-control" value={draft.severity} onChange={(event) => set("severity", event.target.value)}>
+            {labelWithTip("severity", severityId, t("severity"))}
+            <select id={severityId} aria-describedby={describedBy("severity")} className="select-control" value={draft.severity} onChange={(event) => set("severity", event.target.value)}>
               {SEVERITIES.map((severity) => (
                 <option key={severity} value={severity}>
                   {enumLabel(say, "severityPill", severity)}
@@ -306,11 +340,12 @@ export function CustomRuleEditor({
             <h2 id="preview-title">{t("previewTitle")}</h2>
             <p>{t("previewDescription")}</p>
           </div>
-          <label htmlFor={hoursId}>
-            {t("window")}
+          <div className="cr-window">
+            {labelWithTip("window", hoursId, t("window"), "end")}
             <span className="cr-input-unit">
               <input
                 id={hoursId}
+                aria-describedby={describedBy("window")}
                 className="field num"
                 type="number"
                 min={catalog.preview_hours_min}
@@ -320,7 +355,7 @@ export function CustomRuleEditor({
               />
               <span>{t("hours")}</span>
             </span>
-          </label>
+          </div>
         </div>
         {validation ? (
           <div className="notice"><p>{t("complete")}</p></div>

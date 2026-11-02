@@ -82,7 +82,7 @@ describe("custom-rule authoring in Turkish", () => {
       threshold_value: 1234.5,
       threshold_unit: "events/s",
       sustain_buckets: 2,
-    }, "tr", tr)).toBe("olay sayısı ≥ 1.234,5\u00a0events/s; 2 zaman dilimi boyunca");
+    }, "tr", tr)).toBe("olay sayısı ≥ 1.234,5\u00a0olay/sn; 2 zaman dilimi boyunca");
   });
 
   it("maps each frontend validation exit to Turkish", () => {
@@ -96,7 +96,7 @@ describe("custom-rule authoring in Turkish", () => {
 describe("custom-rule preview in Turkish", () => {
   it("translates tooltip codes and formats its chart number", () => {
     const text = previewTooltip(preview(), "edge-waf", 0, "tr", tr);
-    expect(text).toContain("Okuma: En az 1.234,5\u00a0events/s");
+    expect(text).toContain("Okuma: En az 1.234,5\u00a0olay/sn");
     expect(text).toContain("Ölçüm: Alt sınır");
     expect(text).toContain("Eksiksizlik: Kısmi");
     expect(text).toContain("Bakım: evet");

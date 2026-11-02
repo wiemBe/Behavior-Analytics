@@ -97,6 +97,7 @@
     "subjectKinds": { "LOG_SOURCE": "Log source", "FLEET_CLASS": "Fleet class", "WAF_ENDPOINT": "WAF endpoint", "IPS_ENTITY": "IPS entity", "IPS_SOURCE": "IPS source", "PW_VALUE": "Property watch value" },
     "metrics": { "EVENT_COUNT": "event count", "AVERAGE_EPS": "average EPS", "EPS": "fleet EPS", "REQUEST_COUNT": "request count", "BLOCK_RATIO": "block ratio", "SERVER_ERROR_RATIO": "5xx ratio", "CLIENT_ERROR_RATIO": "4xx ratio", "EVENTS": "event count", "TOTAL_EVENTS": "total event count", "BLOCKED_SHARE": "blocked share", "PW_VALUE_EVENTS": "property-watch value events" },
     "operators": { "GT": "above", "GE": "at or above", "LT": "below", "LE": "at or below", "EQ": "equal to", "recoverGT": "at or below", "recoverGE": "below", "recoverLT": "at or above", "recoverLE": "above", "recoverEQ": "not equal to" },
+    "units": {"eventsPerBucket": "events/bucket", "requestsPerBucket": "requests/bucket", "eventsPerSecond": "events/s", "share": "share"},
     "condition": "{metric} {operator} {value} for {count, plural, one {# bucket} other {# buckets}}",
     "summary": "Fires after {sustain, plural, one {# consecutive bucket} other {# consecutive buckets}} {breach} {value}; recovers after {recovery, plural, one {# bucket} other {# buckets}} {recover}.",
     "validation": { "nameRequired": "Name is required.", "nameLength": "Name must be 80 characters or fewer.", "descriptionLength": "Description must be 2,000 characters or fewer.", "chooseSubject": "Choose a {subject}.", "chooseMetric": "Choose a metric for this subject kind.", "threshold": "Threshold must be a number greater than or equal to zero.", "share": "A share threshold must be greater than zero and less than one.", "sustain": "Sustain must be at least one bucket.", "recovery": "Recovery must be at least one bucket." },
@@ -104,6 +105,17 @@
     "status": { "null": "Never evaluated", "OK": "OK", "OPEN": "Open", "RECOVERING": "Recovering", "RESOLVED": "Resolved", "NO_VERDICT": "No verdict", "STALE": "Stale", "NOT_COLLECTED": "Not collected", "SUBJECT_RETIRED": "Subject retired", "DISABLED": "Disabled", "NOT_ENABLED": "Not enabled", "INSUFFICIENT_DATA": "Insufficient data", "NORMAL": "Normal" }
   },
   "editor": {
+    "help": {
+      "about": "About {field}",
+      "names": {"metric": "Metric", "operator": "Operator", "threshold": "Threshold", "sustain": "Sustain", "recovery": "Recovery", "window": "Window", "severity": "Severity"},
+      "metric": "What the rule reads in each time slice (a bucket: the fixed slice the platform collects, 5 minutes by default). A slice that was not measured is not a zero: it counts neither as a breach nor as a recovery.",
+      "operator": "How each slice's value is compared with the threshold. The slice breaches when its value is above, at or above, below, at or below, or equal to the threshold.",
+      "threshold": "The value each slice is compared with, in the unit of the chosen metric (shown beside the field). A share metric takes a number above 0 and below 1.",
+      "sustain": "How many breaching slices in a row it takes before the rule opens. A slice that was not measured does not count and does not reset the run.",
+      "recovery": "How many measured slices in a row, back on the right side of the threshold, it takes before an open breach closes. A slice that cannot prove the value is back to normal does not count.",
+      "window": "How many hours of stored data the preview replays, from {min, number} to {max, number}. It stores nothing and sends nothing to QRadar.",
+      "severity": "The severity of the alert the rule opens when it breaches."
+    },
     "previewFailed": "The preview could not be loaded. Check the subject and rule fields, then try again.",
     "name": "Name", "description": "Description", "storedSubject": "Stored subject: {subject}", "metric": "Metric", "operator": "Operator", "threshold": "Threshold ({unit})", "unit": "unit", "ratioHint": "Enter the ratio as a share greater than 0 and less than 1.", "sustain": "Sustain (buckets)", "recovery": "Recovery (buckets)", "severity": "Severity", "enabled": "Enabled", "validationReasons": "Validation reasons", "cap": "{detail} The configured limit is {limit}. Disable another rule before enabling this one.", "conflict": "This rule was changed by {operator} at {version}. Your draft was not written.", "anotherOperator": "another operator", "reload": "Reload the current rule", "saved": "Rule saved.", "saving": "Saving…", "create": "Create rule", "save": "Save changes", "previewTitle": "Draft preview", "previewDescription": "Replays this draft over stored aggregates. It persists nothing and sends nothing to QRadar.", "window": "Window", "hours": "hours", "complete": "Complete the subject and condition to preview this rule.", "loading": "Loading rule preview…", "errorTitle": "Rule preview could not be loaded."
   },

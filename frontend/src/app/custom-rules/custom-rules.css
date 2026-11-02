@@ -124,6 +124,7 @@
 }
 
 .cr-field > label,
+.cr-label-row > label,
 .cr-preview-head label,
 .cr-stored-preview label {
   color: var(--text-3);
@@ -242,7 +243,14 @@
   line-height: var(--lh-prose);
 }
 
-.cr-preview-head label {
+.cr-label-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.cr-window {
   display: grid;
   gap: var(--sp-1);
   flex: 0 0 auto;

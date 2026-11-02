@@ -13,6 +13,7 @@ import {
   statusLabel,
   statusTone,
   subjectKindLabel,
+  unitLabel,
   type CustomRuleAccess,
 } from "@/components/customrules/authoring";
 import { resolveRuleSubjects, type RuleSubject } from "@/components/customrules/subjects";
@@ -124,7 +125,7 @@ async function CustomRuleDetailPage({ params }: { params: Promise<{ id: string }
     href: "/anomalies",
     retiredAt: null,
   };
-  const unit = rule.threshold_unit ?? preview.unit;
+  const unit = unitLabel(rule.threshold_unit ?? preview.unit, say);
   const active = rule.active_breach;
 
   return (

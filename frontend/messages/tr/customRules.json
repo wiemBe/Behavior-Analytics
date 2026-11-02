@@ -97,6 +97,7 @@
     "subjectKinds": { "LOG_SOURCE": "Log source", "FLEET_CLASS": "Filo sınıfı", "WAF_ENDPOINT": "WAF endpoint", "IPS_ENTITY": "IPS varlığı", "IPS_SOURCE": "IPS kaynağı", "PW_VALUE": "Özellik izleme değeri" },
     "metrics": { "EVENT_COUNT": "olay sayısı", "AVERAGE_EPS": "ortalama EPS", "EPS": "filo EPS değeri", "REQUEST_COUNT": "istek sayısı", "BLOCK_RATIO": "engelleme oranı", "SERVER_ERROR_RATIO": "5xx oranı", "CLIENT_ERROR_RATIO": "4xx oranı", "EVENTS": "olay sayısı", "TOTAL_EVENTS": "toplam olay sayısı", "BLOCKED_SHARE": "engellenen pay", "PW_VALUE_EVENTS": "özellik izleme değeri olayları" },
     "operators": { "GT": "üstünde", "GE": "eşit veya üstünde", "LT": "altında", "LE": "eşit veya altında", "EQ": "eşit", "recoverGT": "eşit veya altında", "recoverGE": "altında", "recoverLT": "eşit veya üstünde", "recoverLE": "üstünde", "recoverEQ": "eşit değil" },
+    "units": {"eventsPerBucket": "olay/zaman dilimi", "requestsPerBucket": "istek/zaman dilimi", "eventsPerSecond": "olay/sn", "share": "pay"},
     "condition": "{metric} {operator} {value}; {count} zaman dilimi boyunca",
     "summary": "{value} değerinin {breach} olduğu art arda {sustain} zaman diliminden sonra tetiklenir; değerin {recover} olduğu {recovery} zaman diliminden sonra düzelir.",
     "validation": { "nameRequired": "Ad zorunludur.", "nameLength": "Ad en fazla 80 karakter olabilir.", "descriptionLength": "Açıklama en fazla 2.000 karakter olabilir.", "chooseSubject": "Bir {subject} seçin.", "chooseMetric": "Bu konu türü için metrik seçin.", "threshold": "Eşik sıfıra eşit veya sıfırdan büyük bir sayı olmalıdır.", "share": "Pay eşiği sıfırdan büyük ve birden küçük olmalıdır.", "sustain": "Sürdürme süresi en az bir zaman dilimi olmalıdır.", "recovery": "Düzelme süresi en az bir zaman dilimi olmalıdır." },
@@ -104,6 +105,17 @@
     "status": { "null": "Hiç değerlendirilmedi", "OK": "Uygun", "OPEN": "Açık", "RECOVERING": "Düzeliyor", "RESOLVED": "Çözüldü", "NO_VERDICT": "Karar yok", "STALE": "Güncel değil", "NOT_COLLECTED": "Toplanmadı", "SUBJECT_RETIRED": "Konu kullanımdan kaldırıldı", "DISABLED": "Devre dışı", "NOT_ENABLED": "Etkin değil", "INSUFFICIENT_DATA": "Yetersiz veri", "NORMAL": "Normal durum" }
   },
   "editor": {
+    "help": {
+      "about": "{field} hakkında",
+      "names": {"metric": "Metrik", "operator": "İşleç", "threshold": "Eşik", "sustain": "Sürdürme", "recovery": "Düzelme", "window": "Pencere", "severity": "Önem derecesi"},
+      "metric": "Kuralın her zaman diliminde (bucket: platformun topladığı sabit dilim, varsayılan 5 dakika) okuduğu değer. Ölçülmemiş bir dilim sıfır sayılmaz: ne ihlal ne düzelme olarak sayılır.",
+      "operator": "Her dilimin değerinin eşikle nasıl karşılaştırıldığı. Değer eşiğin üstünde, eşit veya üstünde, altında, eşit veya altında ya da eşitse dilim ihlal sayılır.",
+      "threshold": "Her dilimin değerinin karşılaştırıldığı sınır; seçilen metriğin biriminde (alanın yanında görünür). Pay metriklerinde 0'dan büyük, 1'den küçük bir sayı girilir.",
+      "sustain": "Kuralın açılması için art arda kaç dilimin ihlal etmesi gerektiği. Ölçülmemiş dilim sayılmaz ve seriyi sıfırlamaz.",
+      "recovery": "Açık bir ihlalin kapanması için eşiğin doğru tarafında art arda kaç ölçülmüş dilim görülmesi gerektiği. Değerin normale döndüğünü kanıtlayamayan dilim sayılmaz.",
+      "window": "Önizlemenin saklanan verinin kaç saatini yeniden oynattığı ({min, number} ile {max, number} arası). Hiçbir şey saklamaz ve QRadar'a hiçbir şey göndermez.",
+      "severity": "Kural ihlal ettiğinde açtığı uyarının önem derecesi."
+    },
     "previewFailed": "Önizleme yüklenemedi. Konu ve kural alanlarını kontrol edip yeniden deneyin.",
     "name": "Ad", "description": "Açıklama", "storedSubject": "Saklanan konu: {subject}", "metric": "Metrik", "operator": "İşleç", "threshold": "Eşik ({unit})", "unit": "birim", "ratioHint": "Oranı sıfırdan büyük ve birden küçük bir pay olarak girin.", "sustain": "Sürdürme (zaman dilimi)", "recovery": "Düzelme (zaman dilimi)", "severity": "Önem derecesi", "enabled": "Etkin", "validationReasons": "Doğrulama nedenleri", "cap": "{detail} Yapılandırılan sınır {limit}. Bunu etkinleştirmeden önce başka bir kuralı devre dışı bırakın.", "conflict": "Bu kural {version} zamanında {operator} tarafından değiştirildi. Taslağınız yazılmadı.", "anotherOperator": "başka bir operatör", "reload": "Geçerli kuralı yeniden yükle", "saved": "Kural kaydedildi.", "saving": "Kaydediliyor…", "create": "Kural oluştur", "save": "Değişiklikleri kaydet", "previewTitle": "Taslak önizlemesi", "previewDescription": "Bu taslağı saklanan toplamlar üzerinde yeniden oynatır. Hiçbir şeyi saklamaz ve QRadar'a hiçbir şey göndermez.", "window": "Pencere", "hours": "saat", "complete": "Bu kuralı önizlemek için konu ve koşulu tamamlayın.", "loading": "Kural önizlemesi yükleniyor…", "errorTitle": "Kural önizlemesi yüklenemedi."
   },
