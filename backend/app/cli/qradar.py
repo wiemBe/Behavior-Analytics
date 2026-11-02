@@ -7,13 +7,20 @@
 
 Running `add` twice updates the existing instance rather than creating a
 duplicate.
+
+An enabled console that was created, whose connection settings changed, or
+that was just re-enabled is queued for its first inventory after the row
+commits. A disabled console is not. A broker that refuses the queue does not
+change this command's exit code; the hourly beat still catches up.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
+import uuid
 
 from app.core.database import get_sessionmaker
 from app.providers.factory import build_provider_for_instance
@@ -22,6 +29,33 @@ from app.services.instance_registry import (
     InstanceRegistry,
     read_token_file,
 )
+
+logger = logging.getLogger("app.cli.qradar")
+
+# Printed as their own stdout lines. The installer matches these sentences.
+INVENTORY_QUEUED_LINE = "first inventory queued"
+INVENTORY_NOT_QUEUED_LINE = (
+    "first inventory was not queued; the hourly beat will catch up"
+)
+
+
+def _enqueue_first_inventory(instance_id: uuid.UUID) -> bool:
+    """Send one kick for this console. A broker failure is reported, not raised.
+
+    Imported here so `qradar list` does not load the worker. The exception text
+    stays out of the log: a broker URL can carry a password.
+    """
+    from app.workers.tasks import sync_instance_inventories_task
+
+    try:
+        sync_instance_inventories_task.apply_async(args=[str(instance_id)])
+    except Exception as exc:
+        logger.warning(
+            "first inventory was not queued",
+            extra={"instance_id": str(instance_id), "error_class": type(exc).__name__},
+        )
+        return False
+    return True
 
 
 async def _add(args: argparse.Namespace) -> int:
@@ -41,6 +75,7 @@ async def _add(args: argparse.Namespace) -> int:
             provider_kind=args.provider,
             description=args.description,
             mcp_base_url=args.mcp_url,
+            enabled=not args.disabled,
         )
         instance = result.instance
 
@@ -59,16 +94,31 @@ async def _add(args: argparse.Namespace) -> int:
                 await provider.aclose()
 
         await session.commit()
+        # Copied out before the session closes. The kick is sent only after
+        # this commit, so a worker that starts at once can read the row.
+        instance_id = instance.id
+        queue_inventory = result.queue_inventory
+        action = result.action
+        name = instance.name
+        console_host = instance.console_host
+        api_version = instance.api_version
+        provider_kind = instance.provider_kind
+        verify_ssl = instance.verify_ssl
+        ca_bundle_path = instance.ca_bundle_path
+        has_token = bool(instance.sec_token)
 
-    print(f"instance {result.action}: {instance.name}")
-    print(f"  id           {instance.id}")
-    print(f"  console      {instance.console_host}")
-    print(f"  api version  {instance.api_version}")
-    print(f"  provider     {instance.provider_kind}")
-    print(f"  verify_ssl   {instance.verify_ssl}")
-    print(f"  ca bundle    {instance.ca_bundle_path or '(system trust store)'}")
-    print(f"  token        {'stored (encrypted)' if instance.sec_token else 'NOT SET'}")
+    print(f"instance {action}: {name}")
+    print(f"  id           {instance_id}")
+    print(f"  console      {console_host}")
+    print(f"  api version  {api_version}")
+    print(f"  provider     {provider_kind}")
+    print(f"  verify_ssl   {verify_ssl}")
+    print(f"  ca bundle    {ca_bundle_path or '(system trust store)'}")
+    print(f"  token        {'stored (encrypted)' if has_token else 'NOT SET'}")
     print(f"  connection   {verified}")
+    if queue_inventory:
+        queued = _enqueue_first_inventory(instance_id)
+        print(INVENTORY_QUEUED_LINE if queued else INVENTORY_NOT_QUEUED_LINE)
     return 0 if not verified.startswith("FAILED") else 1
 
 
@@ -120,6 +170,11 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--provider", default="rest", choices=["rest", "mcp", "mock"])
     add.add_argument("--mcp-url", default=None)
     add.add_argument("--description", default=None)
+    add.add_argument(
+        "--disabled",
+        action="store_true",
+        help="register the console disabled; a disabled console is not queued for inventory",
+    )
     add.add_argument(
         "--no-verify",
         dest="verify",

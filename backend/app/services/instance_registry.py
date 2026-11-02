@@ -27,10 +27,45 @@ class InstanceNotFound(LookupError):
 class RegistrationResult:
     instance: QRadarInstance
     created: bool
+    #: The row is enabled, and it was created, a connection setting changed, or
+    #: a disabled console was just enabled. The caller enqueues after commit.
+    queue_inventory: bool
 
     @property
     def action(self) -> str:
         return "created" if self.created else "updated"
+
+
+def _connection_changed(
+    existing: QRadarInstance,
+    *,
+    console_host: str,
+    api_version: str,
+    ca_bundle_path: str | None,
+    provider_kind: str,
+    verify_ssl: bool,
+    sec_token: str | None,
+    mcp_base_url: str | None,
+) -> bool:
+    """True when this update changes how we reach the console.
+
+    Description, the stored version and the health fields are not connection
+    settings: rewriting them must not kick a fresh inventory. A token or MCP
+    URL of None means "leave the stored value", which is not a change.
+    """
+    if (
+        existing.console_host != console_host
+        or existing.api_version != api_version
+        or existing.ca_bundle_path != ca_bundle_path
+        or existing.provider_kind != provider_kind
+        or existing.verify_ssl != verify_ssl
+    ):
+        return True
+    if sec_token is not None and existing.sec_token != sec_token:
+        return True
+    return mcp_base_url is not None and (
+        existing.mcp_base_url != mcp_base_url or existing.mcp_enabled is not True
+    )
 
 
 def read_token_file(path: str | Path) -> str:
@@ -89,6 +124,11 @@ class InstanceRegistry:
 
         A `sec_token` of None leaves any stored token untouched, so re-running
         registration to change (say) the API version does not wipe credentials.
+
+        `queue_inventory` is true only for an enabled console that was created,
+        whose connection settings changed, or that was disabled and is now
+        enabled. The caller enqueues after it commits. A disabled console is
+        never queued: the beat skips it, and a kick would too.
         """
         if provider_kind == "rest" and not console_host.startswith("https://"):
             raise ValueError(
@@ -120,8 +160,19 @@ class InstanceRegistry:
             )
             self.session.add(instance)
             await self.session.flush()
-            return RegistrationResult(instance, created=True)
+            return RegistrationResult(instance, created=True, queue_inventory=enabled)
 
+        changed = _connection_changed(
+            existing,
+            console_host=console_host,
+            api_version=api_version,
+            ca_bundle_path=ca_bundle_path,
+            provider_kind=provider_kind,
+            verify_ssl=True,
+            sec_token=sec_token,
+            mcp_base_url=mcp_base_url,
+        )
+        was_enabled = bool(existing.enabled)
         existing.console_host = console_host
         existing.api_version = api_version
         existing.ca_bundle_path = ca_bundle_path
@@ -136,4 +187,7 @@ class InstanceRegistry:
             existing.mcp_base_url = mcp_base_url
             existing.mcp_enabled = True
         await self.session.flush()
-        return RegistrationResult(existing, created=False)
+        # Enabled and (the connection changed, or the console was just turned on).
+        # A disabled row is not queued even when its connection settings changed.
+        queue = enabled and (changed or not was_enabled)
+        return RegistrationResult(existing, created=False, queue_inventory=queue)

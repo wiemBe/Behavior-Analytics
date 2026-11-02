@@ -601,7 +601,9 @@ case "$*" in
       *) echo 1 ;;
     esac
     ;;
-  *" app.cli.qradar add "*) exit "$(rc qr_rc)" ;;
+  *" app.cli.qradar add "*)
+    [ -f "$HOME/qr_out" ] && cat "$HOME/qr_out"
+    exit "$(rc qr_rc)" ;;
   *" ps --all --format "*)
     if [ -f "$HOME/unhealthy_ps" ]; then cat "$HOME/unhealthy_ps"
     else printf 'backend\texited\t\t1\n'; fi
@@ -1555,6 +1557,162 @@ def test_upgrade_never_asks_and_never_calls_decide(upgrade: UpgradeFixture) -> N
     assert QUESTION not in output(result)
     assert "history_backfill" not in upgrade.action_text()
     assert answers.read_text() == "HISTORY_BACKFILL=yes\nNOT_A_KEY=1\n"
+
+
+# ---- FIX-13: QRADAR_CONSOLE_FQDN may carry :port; the summary relays the first inventory ----
+
+FQDN_MSG = "must be a host name with an optional :port (1-65535); no scheme or path"
+QUEUED_LINE = "first inventory queued"
+NOT_QUEUED_LINE = "first inventory was not queued; the hourly beat will catch up"
+SUMMARY_QUEUED = "First inventory    queued"
+SUMMARY_NOT_QUEUED = "First inventory    not queued; the hourly beat will catch up"
+
+
+def _install_until_build(
+    inst: Install, path: str, **answers: str | None
+) -> subprocess.CompletedProcess[str]:
+    """Non-interactive install that writes .env, then the docker stub fails the build."""
+    return inst.run(
+        "install",
+        "--non-interactive",
+        str(inst.answers(**answers)),
+        "--build",
+        "--skip-qradar-check",
+        path=path,
+    )
+
+
+@pytest.mark.parametrize(
+    "fqdn",
+    ["console.example:8443", "console.example:1", "console.example:65535", "console.example:08443"],
+)
+def test_console_fqdn_with_a_port_is_written_as_given(
+    inst: Install, tmp_path: Path, build_path: str, fqdn: str
+) -> None:
+    result = _install_until_build(inst, build_path, QRADAR_CONSOLE_FQDN=fqdn)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "docker compose build failed" in result.stderr + result.stdout
+    assert f"QRADAR_CONSOLE_FQDN={fqdn}" in _env_lines(inst)
+    saved = (inst.root / ".secrets" / "install.answers").read_text().splitlines()
+    assert f"QRADAR_CONSOLE_FQDN={fqdn}" in saved
+
+
+def test_an_omitted_fqdn_strips_the_port_and_the_base_url_keeps_it(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    result = _install_until_build(inst, build_path, QRADAR_URL="https://console.example:8443")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    lines = _env_lines(inst)
+    assert "QRADAR_CONSOLE_FQDN=console.example" in lines
+    assert "QRADAR_CONSOLE_FQDN=console.example:8443" not in lines
+    assert "QRADAR_BASE_URL=https://console.example:8443" in lines
+
+
+def test_an_explicit_bare_fqdn_is_still_written(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    result = _install_until_build(inst, build_path, QRADAR_CONSOLE_FQDN="console.example")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "QRADAR_CONSOLE_FQDN=console.example" in _env_lines(inst)
+
+
+@pytest.mark.parametrize(
+    "fqdn",
+    [
+        "https://console.example",
+        "https://console.example:8443",
+        "console.example/api",
+        "console.example:8443/api",
+        "console.example:",
+        "console.example:0",
+        "console.example:00000",
+        "console.example:65536",
+        "console.example:655360",
+    ],
+)
+def test_console_fqdn_refuses_a_scheme_a_path_and_a_bad_port(inst: Install, fqdn: str) -> None:
+    assert_refused(inst, install(inst, inst.answers(QRADAR_CONSOLE_FQDN=fqdn)), FQDN_MSG)
+
+
+def test_the_installer_matches_the_cli_inventory_sentences() -> None:
+    cli_source = (REPO / "backend" / "app" / "cli" / "qradar.py").read_text()
+    script = SCRIPT.read_text()
+    for line in (QUEUED_LINE, NOT_QUEUED_LINE):
+        assert f'"{line}"' in cli_source
+        assert f'"{line}"' in script
+    assert "5. QRadar console FQDN (host name, optional :port)" in script
+    assert "Port, if any, is 1-65535." in script
+
+
+def test_the_summary_says_the_first_inventory_was_queued(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    (tmp_path / "qr_out").write_text("instance created: qradar\n" + QUEUED_LINE + "\n")
+
+    result = _scripted(inst, tmp_path, hb_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert any(
+        "app.cli.qradar add" in line and "--name" in line and "--url" in line
+        for line in _docker_log(tmp_path)
+    )
+    text = result.stdout
+    assert text.index(QUEUED_LINE) < text.index(SUMMARY_QUEUED)
+
+
+def test_the_summary_says_when_the_inventory_was_not_queued(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    (tmp_path / "qr_out").write_text(NOT_QUEUED_LINE + "\n")
+
+    result = _scripted(inst, tmp_path, hb_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert SUMMARY_NOT_QUEUED in result.stdout.splitlines()
+    assert SUMMARY_QUEUED not in result.stdout.splitlines()
+
+
+def test_a_failed_connection_still_relays_a_queued_inventory(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    (tmp_path / "qr_out").write_text(QUEUED_LINE + "\n")
+
+    result = _scripted(inst, tmp_path, hb_path, qr_rc=1)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "QRadar connection  FAILED (exit 1)" in result.stdout
+    assert SUMMARY_QUEUED in result.stdout.splitlines()
+
+
+def test_the_summary_omits_the_inventory_when_add_said_nothing(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "First inventory" not in result.stdout
+
+
+def test_the_wizard_accepts_a_ported_fqdn_and_refuses_a_bad_one_first(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    (tmp_path / "hb_out").write_text(RECORDED_NO + "\n")
+    replies = _wizard_replies(inst, "no")
+    replies[5:6] = ["https://console.example", "console.example:0", "console.example:8443"]
+
+    result = _interactive(inst, hb_path, replies)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "5. QRadar console FQDN (host name, optional :port)" in result.stdout
+    assert "Port, if any, is 1-65535." in result.stdout
+    assert result.stdout.count(FQDN_MSG) >= 2
+    env = (inst.root / ".env").read_text().splitlines()
+    assert "QRADAR_CONSOLE_FQDN=console.example:8443" in env
+    saved = (inst.root / ".secrets" / "install.answers").read_text().splitlines()
+    assert "QRADAR_CONSOLE_FQDN=console.example:8443" in saved
 
 
 def test_the_upgrade_command_does_not_reach_the_wizard_or_the_answers_parser() -> None:
