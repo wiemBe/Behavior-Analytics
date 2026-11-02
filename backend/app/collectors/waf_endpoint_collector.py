@@ -137,6 +137,7 @@ from app.providers.dto import (
     WafObservationBucketBatch,
 )
 from app.services.ariel_permit import ArielPermitUnavailable, ariel_background_priority
+from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.services.waf_ariel_budget import WafArielBudget
@@ -1262,6 +1263,7 @@ class WafEndpointCollector:
             return str(value)
         raise TypeError(f"unsupported history payload value {type(value).__name__}")
 
+    @ariel_caller(CALLER_HISTORY)
     async def history_volume_step(
         self,
         log_source: LogSource,
@@ -1411,6 +1413,7 @@ class WafEndpointCollector:
             with ariel_background_priority():
                 return await run()
 
+    @ariel_caller(CALLER_HISTORY)
     async def history_breakdown_step(
         self,
         log_source: LogSource,

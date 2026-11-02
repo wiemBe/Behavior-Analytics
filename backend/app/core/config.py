@@ -546,6 +546,10 @@ class Settings(BaseSettings):
     #: Closed fault rows (resolved or given up) older than this are deleted. An
     #: open fault is the source's current state and is never pruned.
     anomaly_fault_retention_days: int = Field(default=30, ge=1, le=3650)
+    #: Ariel load rows older than this are deleted. The daily task is
+    #: ``apply_ariel_search_run_retention``. Not gated by RETENTION_ENABLED,
+    #: and the table is not a hypertable.
+    ariel_search_run_retention_days: int = Field(default=30, ge=1, le=3650)
     #: Closed Phase A incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). Live
     #: states are kept. Not gated by RETENTION_ENABLED.
     log_source_anomaly_retention_days: int = Field(default=365, ge=1, le=3650)

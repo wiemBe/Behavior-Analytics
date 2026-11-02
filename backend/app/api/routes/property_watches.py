@@ -93,6 +93,7 @@ from app.security.rbac import (
     Principal,
     require_permission,
 )
+from app.services import ariel_search_log as ariel_log
 from app.services import property_watches as svc
 from app.services.property_catalog import PropertyCatalogService, get_property_catalog_service
 
@@ -1140,11 +1141,13 @@ async def preview_watch(
     except svc.PreviewRefused as exc:
         raise CodedHTTPException(status.HTTP_409_CONFLICT, exc.ref) from exc
     provider = factory(instance)
+    token = ariel_log.open_run_buffer()
     try:
         result = await svc.run_preview(watch, scope_ids, settings, provider, now=now)
     except svc.PreviewRefused as exc:
         raise CodedHTTPException(status.HTTP_409_CONFLICT, exc.ref) from exc
     finally:
+        await ariel_log.finish_session_buffer(token, session)
         await provider.aclose()
     await record_audit(
         session,

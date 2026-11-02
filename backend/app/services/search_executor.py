@@ -21,6 +21,7 @@ Clock and sleep are injected so lifecycle/timeout/retry tests are deterministic.
 from __future__ import annotations
 
 import random
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -47,6 +48,15 @@ from app.services.ariel_permit import (
     ArielPermitBudget,
     ArielPermitUnavailable,
     ariel_background_priority,
+)
+from app.services.ariel_search_log import (
+    SearchAttempt,
+    caller_for_trigger,
+    finish_session_buffer,
+    note_submit,
+    open_run_buffer,
+    outcome_for_exception,
+    settle_finished,
 )
 from app.services.backoff import backoff_delay
 
@@ -91,6 +101,27 @@ class SearchExecutor:
         self.sleep = sleep
 
     async def execute(
+        self,
+        search: ScheduledSearch,
+        *,
+        run_key: str,
+        instance_key: str,
+        trigger: str = "SCHEDULED",
+        triggered_by: str | None = None,
+    ) -> SearchExecution:
+        token = open_run_buffer()
+        try:
+            return await self._execute_recorded(
+                search,
+                run_key=run_key,
+                instance_key=instance_key,
+                trigger=trigger,
+                triggered_by=triggered_by,
+            )
+        finally:
+            await finish_session_buffer(token, self.session)
+
+    async def _execute_recorded(
         self,
         search: ScheduledSearch,
         *,
@@ -177,6 +208,7 @@ class SearchExecutor:
     async def _run_once(self, search: ScheduledSearch, execution: SearchExecution) -> dict:
         # Defensive re-validation: only stored queries reach here, but validating
         # again guarantees a query that slipped past an older policy is caught.
+        # A query that fails here was never sent, so it is not a load row.
         validate_aql(
             search.aql_query,
             max_time_range_hours=search.max_time_range_hours,
@@ -184,43 +216,94 @@ class SearchExecutor:
             settings=self.settings,
         )
 
-        with ariel_background_priority():
-            async with self._hold_permit():
-                handle = await self.provider.create_ariel_search(search.aql_query)
-                # The row's ariel_search_id is nullable (a search is created before
-                # the id exists), but past this point the id is always set; thread
-                # the non-optional value through rather than re-reading the column.
-                search_id = handle.search_id
-                execution.ariel_search_id = search_id
-                execution.ariel_status = handle.status
-                await self.session.flush()
-                await self._checkpoint()
-
-                status = await self._poll_until_terminal(search, execution, search_id)
-                if status.status == "ERROR":
-                    # Ariel's own error texts are free text; only the empty case is a fixed
-                    # sentence, and it has a code.
-                    raise ArielSearchFailed(
-                        "; ".join(status.error_messages) or MessageRef("search.run.failed")
+        # The refusal's stamp; a search that ran is stamped when it is submitted.
+        asked_at = self.clock()
+        attempt = SearchAttempt()
+        record_count: int | None = None
+        marked: str | None = None
+        attempted = False
+        try:
+            with ariel_background_priority():
+                async with self._hold_permit():
+                    attempted = True
+                    attempt.submitted = await note_submit(
+                        clock=self.clock,
+                        caller=caller_for_trigger(execution.trigger),
+                        instance_id=self._instance_id(),
+                        scheduled_search_id=search.id,
+                        query_version=search.query_version,
                     )
+                    try:
+                        handle = await self.provider.create_ariel_search(search.aql_query)
+                    except ArielPermitUnavailable:
+                        raise
+                    except Exception as exc:
+                        marked = outcome_for_exception(exc)
+                        raise
+                    # The row's ariel_search_id is nullable (a search is created before
+                    # the id exists), but past this point the id is always set; thread
+                    # the non-optional value through rather than re-reading the column.
+                    search_id = handle.search_id
+                    execution.ariel_search_id = search_id
+                    execution.ariel_status = handle.status
+                    await self.session.flush()
+                    await self._checkpoint()
 
-                try:
-                    results = await self.provider.get_ariel_search_results(
-                        handle.search_id, max_rows=search.max_result_rows
-                    )
-                except (ArielTimeout, ArielSearchFailed):
-                    raise
-                except Exception as exc:
-                    raise ResultParsingError(
-                        MessageRef("search.run.parse_failed", {"detail": str(exc)})
-                    ) from exc
+                    try:
+                        status = await self._poll_until_terminal(
+                            search, execution, search_id, attempt
+                        )
+                    except ArielTimeout:
+                        marked = "TIMEOUT"
+                        raise
+                    except Exception as exc:
+                        marked = outcome_for_exception(exc)
+                        raise
+                    if status.status == "ERROR":
+                        marked = "ERROR"
+                        # Ariel's own error texts are free text; only the empty case is a fixed
+                        # sentence, and it has a code.
+                        raise ArielSearchFailed(
+                            "; ".join(status.error_messages) or MessageRef("search.run.failed")
+                        )
+                    marked = "CANCELED" if status.status == "CANCELED" else "COMPLETED"
 
-                return {
-                    "columns": results.columns,
-                    "rows": results.rows,
-                    "total_count": results.total_count,
-                    "truncated": results.truncated,
-                }
+                    try:
+                        results = await self.provider.get_ariel_search_results(
+                            handle.search_id, max_rows=search.max_result_rows
+                        )
+                    except ArielTimeout:
+                        marked = "TIMEOUT"
+                        raise
+                    except ArielSearchFailed:
+                        marked = "ERROR"
+                        raise
+                    except Exception as exc:
+                        raise ResultParsingError(
+                            MessageRef("search.run.parse_failed", {"detail": str(exc)})
+                        ) from exc
+
+                    record_count = results.total_count
+                    return {
+                        "columns": results.columns,
+                        "rows": results.rows,
+                        "total_count": results.total_count,
+                        "truncated": results.truncated,
+                    }
+        except ArielPermitUnavailable:
+            marked = "REFUSED"
+            attempted = True
+            raise
+        finally:
+            if attempted:
+                await self._note_run(
+                    search,
+                    execution,
+                    asked_at=asked_at,
+                    outcome=marked or "ERROR",
+                    attempt=attempt,
+                    record_count=record_count,
+                )
 
     @asynccontextmanager
     async def _hold_permit(self) -> AsyncIterator[None]:
@@ -242,13 +325,19 @@ class SearchExecutor:
             yield
 
     async def _poll_until_terminal(
-        self, search: ScheduledSearch, execution: SearchExecution, search_id: str
+        self,
+        search: ScheduledSearch,
+        execution: SearchExecution,
+        search_id: str,
+        attempt: SearchAttempt | None = None,
     ) -> ArielSearchStatusDTO:
         timeout = min(search.timeout_seconds, self.settings.ariel_max_timeout_seconds)
         poll = self.settings.ariel_poll_interval_seconds
         start = self.clock()
         while True:
             status = await self.provider.get_ariel_search_status(search_id)
+            if attempt is not None:
+                await attempt.saw(status)
             execution.ariel_status = status.status
             if status.is_terminal:
                 return status
@@ -381,6 +470,43 @@ class SearchExecutor:
         else:
             execution.status = ExecutionStatus.FAILED
         return execution
+
+    def _instance_id(self) -> uuid.UUID | None:
+        permit = self.permit
+        found = getattr(permit, "instance_id", None) if permit is not None else None
+        return found if isinstance(found, uuid.UUID) else None
+
+    async def _note_run(
+        self,
+        search: ScheduledSearch,
+        execution: SearchExecution,
+        *,
+        asked_at: datetime,
+        outcome: str,
+        attempt: SearchAttempt,
+        record_count: int | None,
+    ) -> None:
+        """Close the load row of a search that was submitted, or record a refusal.
+
+        Scheduled searches are not instance-scoped, and ``max_time_range_hours``
+        is a cap, not the span the query asked for, so the range stays null.
+        The query version is the integer on the stored search. An unknown
+        trigger is not given a label.
+        """
+        await settle_finished(
+            submitted=attempt.submitted,
+            fallback_submitted_at=asked_at,
+            clock=self.clock,
+            outcome=outcome,
+            polls=attempt.polls,
+            instance_id=self._instance_id(),
+            scheduled_search_id=search.id,
+            query_version=search.query_version,
+            caller=caller_for_trigger(execution.trigger),
+            range_seconds=None,
+            status=attempt.status,
+            record_count=record_count,
+        )
 
     def _add_seconds(self, when: datetime, seconds: float) -> datetime:
         from datetime import timedelta
