@@ -166,8 +166,19 @@ check_value() {
       [[ $val =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?/?$ ]] \
         || { say "must be an https:// URL with a host and no path (plain http is refused)"; return 1; } ;;
     QRADAR_CONSOLE_FQDN)
-      [[ $val =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] \
-        || { say "must be a bare host name"; return 1; } ;;
+      # Optional :port is 1-65535. 10# so a leading zero is decimal, not octal.
+      # PUBLIC_HOSTNAME is a different key and stays a bare host.
+      local fqdn_msg="must be a host name with an optional :port (1-65535); no scheme or path"
+      [[ $val =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$ ]] \
+        || { say "$fqdn_msg"; return 1; }
+      if [[ $val == *:* ]]; then
+        local port=$((10#${val##*:}))
+        if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+          say "$fqdn_msg"
+          return 1
+        fi
+      fi
+      ;;
     QRADAR_API_VERSION)
       [[ $val =~ ^[0-9]{1,3}\.[0-9]{1,3}$ ]] || { say "must look like 20.0"; return 1; } ;;
     QRADAR_TOKEN_FILE)
@@ -260,6 +271,9 @@ apply_defaults() {
   : "${ANS[PROXY_EDGE_IP]:=172.28.10.10}"
   : "${ANS[FRONTEND_EDGE_IP]:=$(next_address "${ANS[PROXY_EDGE_IP]}")}"
   : "${ANS[PROJECT_NAME]:=qradar-observability}"
+  # Left blank, the name is the URL's host with the port removed. QRADAR_BASE_URL
+  # keeps the port for the backend. Set QRADAR_CONSOLE_FQDN when the MCP profile
+  # should dial that port; the value is stored as given, including :port.
   if [ -z "${ANS[QRADAR_CONSOLE_FQDN]:-}" ] && [ -n "${ANS[QRADAR_URL]:-}" ]; then
     local h=${ANS[QRADAR_URL]#https://}
     h=${h%%/*}
@@ -353,8 +367,8 @@ wizard() {
     say "   Your proxy must APPEND the client address to X-Forwarded-For (nginx: \$proxy_add_x_forwarded_for)."
   fi
   ask QRADAR_URL "4. QRadar base URL (https://...)"
-  ask QRADAR_CONSOLE_FQDN "5. QRadar console FQDN (bare host name)" \
-    "Used by the MCP profile only; asked now so a later enable has the value."
+  ask QRADAR_CONSOLE_FQDN "5. QRadar console FQDN (host name, optional :port)" \
+    "Used by the MCP profile only; asked now so a later enable has the value. Port, if any, is 1-65535."
   ask QRADAR_API_VERSION "6. QRadar API version" \
     "Default 20.0. The lab console in the README uses 29.0. Not guessed."
   ask QRADAR_TOKEN_FILE "7. Path to the file holding the SEC token" \
@@ -1322,11 +1336,14 @@ cmd_install() {
   fi
 
   # 9. Register the console inside the container, so the stored CA path is the container path.
-  local qr_rc=0
-  dc run --rm --no-deps -T backend python -m app.cli.qradar add \
+  # Keep stdout: `add` says whether the first inventory was queued. Assigning
+  # inside `local` would hide a non-zero status under set -e.
+  local qr_rc=0 qr_out=""
+  qr_out=$(dc run --rm --no-deps -T backend python -m app.cli.qradar add \
     --name "${ANS[INSTANCE_NAME]}" --url "${ANS[QRADAR_URL]%/}" \
     --token-file /run/secrets/qradar_sec_token --ca-file /run/secrets/qradar_ca.pem \
-    --api-version "${ANS[QRADAR_API_VERSION]}" || qr_rc=$?
+    --api-version "${ANS[QRADAR_API_VERSION]}") || qr_rc=$?
+  if [ -n "$qr_out" ]; then printf '%s\n' "$qr_out"; fi
 
   # 9b. Record the answer to "read QRadar's past?" before the first collection (step 10). It runs
   # whatever step 9 returned: the instance row may exist after a failed QRadar check. A failure
@@ -1384,7 +1401,7 @@ cmd_install() {
     check_published_url || public_ok=no
   fi
 
-  summary "$qr_rc" "$have_admin" "$api_ready"
+  summary "$qr_rc" "$have_admin" "$api_ready" "$qr_out"
   # The state file records the version and image digests, which do not depend on QRadar.
   write_install_state || die "the install state file could not be written; run ./qradar-dash status"
   [ "$qr_rc" -eq 0 ] && [ "$api_ready" = yes ] && [ "$public_ok" = yes ] || exit 1
@@ -1622,8 +1639,23 @@ check_published_url() {
   return 1
 }
 
+# The two sentences are printed by `python -m app.cli.qradar add`. Keep them identical.
+say_first_inventory() {
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "first inventory queued")
+        say "First inventory    queued"
+        return 0 ;;
+      "first inventory was not queued; the hourly beat will catch up")
+        say "First inventory    not queued; the hourly beat will catch up"
+        return 0 ;;
+    esac
+  done <<<"${1:-}"
+}
+
 summary() {
-  local qr_rc=$1 had=$2 api_ready=$3 origin hb_line
+  local qr_rc=$1 had=$2 api_ready=$3 qr_out="${4:-}" origin hb_line
   local ts_on ts_ls ts_sr ts_rm ts_os
   local sr_days ca_days geo_days waf_m waf_a ips_m ips_a pw_m pw_a
   local fault_days cr_days lsa_days rhs_days dcs_days
@@ -1644,6 +1676,7 @@ summary() {
     say "QRadar connection  FAILED (exit $qr_rc). The instance row is stored; fix the console, token or"
     say "                    CA and run ./qradar-dash install again (qradar add updates the row)."
   fi
+  say_first_inventory "$qr_out"
   if [ "$api_ready" != yes ]; then
     say "API readiness      NOT READY — run ./qradar-dash doctor and ./qradar-dash logs backend"
   fi

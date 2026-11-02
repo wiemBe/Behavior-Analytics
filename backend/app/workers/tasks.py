@@ -181,13 +181,24 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
 
 
 # ------------------------------------------------------- phase 3 collection
+def _parse_instance_id(value: str | None) -> uuid.UUID | None:
+    if value is None:
+        return None
+    return uuid.UUID(value)
+
+
 async def _for_each_instance(
     run: Callable[[AsyncSession, QRadarInstance, QRadarProvider | None], Awaitable[dict]],
     instance_name: str | None = None,
     *,
+    instance_id: uuid.UUID | None = None,
     needs_provider: bool = True,
 ) -> dict:
-    """Run `run` against every enabled instance, or one named instance.
+    """Run `run` against every enabled instance, or one instance.
+
+    `instance_id` selects that console and no other. A missing or disabled id
+    returns no-instance; it does not fall through to the rest of the fleet.
+    `instance_name` is the same idea by name, used by the manual sync command.
 
     Each instance gets a provider built from its own stored credentials and its
     own transaction, so one unreachable console neither fails nor rolls back
@@ -203,7 +214,9 @@ async def _for_each_instance(
 
     async with maker() as session:
         query = select(QRadarInstance).where(QRadarInstance.enabled.is_(True))
-        if instance_name:
+        if instance_id is not None:
+            query = query.where(QRadarInstance.id == instance_id)
+        elif instance_name:
             query = query.where(QRadarInstance.name == instance_name)
         instances = list((await session.scalars(query)).all())
 
@@ -250,7 +263,11 @@ async def _for_each_instance(
     return {"instances": len(results), "results": results}
 
 
-async def sync_log_sources(instance_name: str | None = None) -> dict:
+async def sync_log_sources(
+    instance_name: str | None = None,
+    *,
+    instance_id: str | None = None,
+) -> dict:
     async def run(
         session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
     ) -> dict:
@@ -269,7 +286,9 @@ async def sync_log_sources(instance_name: str | None = None) -> dict:
             "error": report.error,
         }
 
-    return await _for_each_instance(run, instance_name)
+    return await _for_each_instance(
+        run, instance_name, instance_id=_parse_instance_id(instance_id)
+    )
 
 
 async def collect_offenses(instance_name: str | None = None) -> dict:
@@ -294,7 +313,11 @@ async def collect_offenses(instance_name: str | None = None) -> dict:
     return await _for_each_instance(run, instance_name)
 
 
-async def sync_rule_inventory(instance_name: str | None = None) -> dict:
+async def sync_rule_inventory(
+    instance_name: str | None = None,
+    *,
+    instance_id: str | None = None,
+) -> dict:
     """Synchronize analytics rules *and* building blocks.
 
     One task covers both because `RuleCollector.sync` merges the two endpoints
@@ -324,7 +347,24 @@ async def sync_rule_inventory(instance_name: str | None = None) -> dict:
             "error": report.error,
         }
 
-    return await _for_each_instance(run, instance_name)
+    return await _for_each_instance(
+        run, instance_name, instance_id=_parse_instance_id(instance_id)
+    )
+
+
+async def sync_instance_inventories(instance_id: str) -> dict:
+    """Kick the hourly inventories for one console, and no other.
+
+    Log sources (types and groups included) and rules (building blocks
+    included). Both are the collectors' existing bulk passes, so this does
+    not add a query per source. The beat still runs each task for every
+    enabled console on its own hour; this is the one extra run after a
+    console is added or its connection changes.
+    """
+    return {
+        "log_sources": await sync_log_sources(instance_id=instance_id),
+        "rules": await sync_rule_inventory(instance_id=instance_id),
+    }
 
 
 async def collect_rule_metrics(instance_name: str | None = None) -> dict:
@@ -1640,6 +1680,12 @@ def collect_offenses_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="sync_rule_inventory")
 def sync_rule_inventory_task(instance_name: str | None = None) -> dict:
     return _run(sync_rule_inventory(instance_name))
+
+
+@celery_app.task(name="sync_instance_inventories")
+def sync_instance_inventories_task(instance_id: str) -> dict:
+    """One-shot kick. Not on the beat: the hourly entries already cover the fleet."""
+    return _run(sync_instance_inventories(instance_id))
 
 
 @celery_app.task(name="collect_rule_metrics")
