@@ -1,237 +1,245 @@
-# QRadar-Dash manuel test sonuç sayfası
+# QRadar-Dash manual test results page
 
-Bu sayfa `docs/MANUAL-TEST.md` kılavuzunun **0.1.9** bölümünün sonuç sayfasıdır. Basılı alınabilir ya da bir kopyası doldurulabilir. Sonuç hücreleri boş bırakılmıştır: `Geçti`, `Kaldı` ya da `Koşulmadı` yaz; `Kaldı` ve `Koşulmadı` için Not yaz. Parola, belirteç, `.env` değeri ya da müşteri verisi **yazma**.
+This page is the results page for the **0.1.10** section of the guide `docs/MANUAL-TEST.md`. It can be printed or a copy can be filled in. The result cells are left empty: write `Pass`, `Fail` or `Not run`; write a Note for `Fail` and `Not run`. **Do not write** passwords, tokens, `.env` values or customer data.
 
-| Alan | Değer |
+| Field | Value |
 |---|---|
 | Site | |
-| Tarih (UTC) | |
-| Operatör | |
-| Sürüm önce | |
-| Sürüm sonra | |
-| Başlangıç (UTC) | |
-| Bitiş (UTC) | |
-| Yükseltme yolu (çevrimiçi / çevrimdışı paket) | |
-| Migrasyon başı sonra (`0044`) | |
-| Geri alma yapıldı mı (hayır / evet, saati) | |
+| Date (UTC) | |
+| Operator | |
+| Version before | |
+| Version after | |
+| Start (UTC) | |
+| End (UTC) | |
+| Upgrade path (online / offline bundle) | |
+| Migration head after (`0047`) | |
+| Rollback done (no / yes, time) | |
 
-**Çekirdek (üretim yolu)**, 39 kontrol: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-10, MT-11, MT-126, MT-12, MT-13, MT-14, MT-15, MT-20, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-59, MT-95, MT-119, MT-120, MT-121, MT-124, MT-125. Üretimde yalnızca `Çekirdek` sütunu "evet" olan satırlar doldurulur; diğerleri laboratuvar koşusu içindir. MT-126, numarası büyük olsa da MT-11'den hemen sonra yapılır.
+**Core (production path)**, 37 checks: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-10, MT-11, MT-126, MT-12, MT-13, MT-14, MT-15, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-128, MT-95, MT-119, MT-120, MT-121, MT-125. In production only the rows whose `Core` column says "yes" are filled in; the others are for the lab run. MT-126, although its number is high, is done right after MT-11. MT-128 is also done after a `GEO_COLLECTION` cadence has passed.
 
-Sürüm önce: `0.1.8`, migrasyon başı `0044`. Sürüm sonra: `0.1.9`. Baş değişmez.
+In 0.1.10 the interface is English only (D-41). The checks of section 4 that tested the Turkish interface or the language switch were removed (MT-20, MT-58, MT-59, MT-124: the result cell says `Removed`; nothing to run) or rewritten as English checks with the same ids. A raw message key or Turkish text anywhere is a Fail of the check where it was seen. New checks: MT-129, MT-130, MT-131, MT-132.
 
-## 1. Ön koşullar
+Version before: `0.1.9`, migration head `0044`. Version after: `0.1.10`, migration head `0047`.
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+
+## 1. Preconditions
+
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-01 | evet | Yükseltmeden önceki sürüm ve sağlık | | |
-| MT-02 | evet | `doctor` yükseltmeden önce yeşil | | |
-| MT-03 | evet | Doğrulanmış yedek — (yazar) | | |
-| MT-04 | evet | Günlüklerin ve destek paketinin yeri — (yazar) | | |
-| MT-05 | evet | Pencere ve haberdar edilecek kişiler | | |
+| MT-01 | yes | Version and health before the upgrade | | |
+| MT-02 | yes | `doctor` is green before the upgrade | | |
+| MT-03 | yes | Verified backup — (writes) | | |
+| MT-04 | yes | Where the logs and the support bundle are — (writes) | | |
+| MT-05 | yes | The window and the people to inform | | |
 
-## 2. Yükseltme 0.1.8 → 0.1.9
+## 2. Upgrade 0.1.9 → 0.1.10
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-06 | evet | Yükseltme, çevrimiçi yol — (yazar) | | |
-| MT-07 | evet | Yükseltme, çevrimdışı paket yolu — (yazar) | | |
-| MT-08 | evet | Yükseltmeden sonra sürüm ve durum | | |
-| MT-09 | evet | `doctor` yükseltmeden hemen sonra | | |
-| MT-10 | evet | Kesinti süresi ve arayüzün dönüşü | | |
-| MT-11 | evet | İlk kadanstan sonra toplamanın dönmesi | | |
-| MT-126 | evet | Üretimde hız sınırı sayfayı kesmez | | |
-| MT-127 |  | Düşürülmüş sınır 429 ve yeniden deneme cümlesi — (yazar) yalnızca lab | | |
+| MT-06 | yes | Upgrade, online path — (writes) | | |
+| MT-07 | yes | Upgrade, offline bundle path — (writes) | | |
+| MT-08 | yes | Version and status after the upgrade | | |
+| MT-09 | yes | `doctor` right after the upgrade | | |
+| MT-10 | yes | Outage duration and the interface's return | | |
+| MT-11 | yes | Collection runs again after the first cadence | | |
+| MT-126 | yes | The rate limit does not cut the page in production | | |
+| MT-127 |  | The lowered limit gives 429 and the retry sentence — (writes) lab only | | |
 
-## 3. Oturum açma
+## 3. Sign-in
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-12 | evet | Mevcut kullanıcının oturum açması | | |
-| MT-13 | evet | Hesap menüsü ve API sürümü | | |
-| MT-14 | evet | Hesap sayfası | | |
-| MT-15 | evet | Oturumu kapatma ve yeniden açma | | |
-| MT-16 |  | Yeni kullanıcı oluşturma — (yazar) yalnızca lab | | |
-| MT-17 |  | Zorunlu parola değişikliği — (yazar) yalnızca lab | | |
-| MT-18 |  | Görüntüleyici rolünün sınırı — (yazar) yalnızca lab | | |
-| MT-19 |  | Test hesabını devre dışı bırakma — (yazar) yalnızca lab | | |
+| MT-12 | yes | Sign-in of an existing user | | |
+| MT-13 | yes | Account menu and API version | | |
+| MT-14 | yes | Account page | | |
+| MT-15 | yes | Signing out and in again | | |
+| MT-16 |  | Creating a new user — (writes) lab only | | |
+| MT-17 |  | Forced password change — (writes) lab only | | |
+| MT-18 |  | The viewer role's limit — (writes) lab only | | |
+| MT-19 |  | Disabling the test account — (writes) lab only | | |
 
-## 4. Dil
+## 4. Language
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-20 | evet | Dil anahtarı ve hatırlanması — (yazar) | | |
-| MT-21 | evet | Sayı, oran ve zaman biçimi | | |
-| MT-22 | evet | Üst çubuk ve gezinti Türkçe | | |
-| MT-23 |  | Dil: Giriş sayfası `/login` | | |
-| MT-24 | evet | Dil: Pano `/` | | |
-| MT-25 |  | Dil: Davranış genel bakışı `/behavior` | | |
-| MT-26 | evet | Dil: Anomali listesi `/anomalies` | | |
-| MT-27 | evet | Dil: Anomali ayrıntısı, Phase A (log source) `/anomalies/<id>` | | |
-| MT-28 | evet | Dil: Anomali ayrıntısı, WAF endpoint `/anomalies/<id>` | | |
-| MT-29 | evet | Dil: Anomali ayrıntısı, IPS `/anomalies/<id>` | | |
-| MT-30 | evet | Dil: Anomali ayrıntısı, özellik izleme değeri `/anomalies/<id>` | | |
-| MT-31 |  | Dil: Kaynak davranışı `/behavior/sources` ve `/behavior/sources/<id>` | | |
-| MT-32 |  | Dil: WAF davranışı `/behavior/waf` ve `/behavior/waf/sources/<id>` | | |
-| MT-33 |  | Dil: Özellik izlemeleri `/behavior/watches`, `/behavior/watches/new`, `/behavior/watches/<id>` | | |
-| MT-34 |  | Dil: Filo `/fleet` | | |
-| MT-35 |  | Dil: Filo kaynakları `/fleet/sources` | | |
-| MT-36 |  | Dil: Catch-all gönderenleri `/fleet/catchall` | | |
-| MT-37 |  | Dil: Offense'lar `/offenses` ve `/offenses/<id>` | | |
-| MT-38 | evet | Dil: Uyarılar `/alerts` ve `/alerts/<id>` | | |
-| MT-39 | evet | Dil: Kural sağlığı `/rules` ve `/rules/<id>` | | |
-| MT-40 |  | Dil: Kural istatistikleri `/rules/statistics` | | |
-| MT-41 |  | Dil: Özel kurallar `/custom-rules`, `/custom-rules/new`, `/custom-rules/<id>` | | |
-| MT-42 |  | Dil: Algılama coverage'ı `/coverage` | | |
-| MT-43 |  | Dil: Log source'lar `/log-sources` ve `/log-sources/<id>` | | |
-| MT-44 | evet | Dil: Aramalar `/searches`, `/searches/new`, `/searches/<id>` | | |
-| MT-45 |  | Dil: Yapılandırma değişiklikleri `/config-changes` | | |
-| MT-46 |  | Dil: Yönetim `/admin` | | |
-| MT-47 |  | Dil: Arama sıklığı `/admin/search-cadence` | | |
-| MT-48 |  | Dil: Sınıflama kuralları `/admin/classification-rules` | | |
-| MT-49 |  | Dil: Kesinti uyarıları `/admin/outage-policy` | | |
-| MT-50 | evet | Dil: WAF kaynakları `/admin/waf-sources` ve `/admin/waf-sources/<id>` | | |
-| MT-51 | evet | Dil: IPS kaynakları `/admin/ips-sources` ve `/admin/ips-sources/<id>` | | |
-| MT-52 | evet | Dil: Geçmiş veri okuma `/admin/history-backfill` | | |
-| MT-53 |  | Dil: Kullanıcılar `/admin/users` | | |
-| MT-54 |  | Dil: Dizin `/admin/directory` | | |
-| MT-55 | evet | Dil: Kılavuz `/guide` ve `/guide/<bölüm>` | | |
-| MT-56 |  | Dil: Hesap `/account` ve `/account/password` | | |
-| MT-57 |  | Hatalı oturum açma cümlesi Türkçe — (yazar) | | |
-| MT-58 |  | 0.1.6'dan kalan saklı cümleler Türkçede de İngilizcedir | | |
-| MT-59 | evet | İngilizce kalması beklenenler | | |
+| MT-131 |  | English only (LANG-1, D-41) | | |
+| MT-20 | | Removed in 0.1.10 (D-41) | Removed | |
+| MT-21 | yes | Number, ratio and time format | | |
+| MT-22 | yes | Top bar and navigation | | |
+| MT-23 |  | English: sign-in page `/login` | | |
+| MT-24 | yes | English: Dashboard `/` | | |
+| MT-25 |  | English: Behavioral overview `/behavior` | | |
+| MT-26 | yes | English: Anomaly list `/anomalies` | | |
+| MT-27 | yes | English: Anomaly detail, log source volume `/anomalies/<id>` | | |
+| MT-28 | yes | English: Anomaly detail, WAF endpoint `/anomalies/<id>` | | |
+| MT-29 | yes | English: Anomaly detail, IPS `/anomalies/<id>` | | |
+| MT-30 | yes | English: Anomaly detail, property watch value `/anomalies/<id>` | | |
+| MT-31 |  | English: Source behavior `/behavior/sources` and `/behavior/sources/<id>` | | |
+| MT-32 |  | English: WAF behavior `/behavior/waf` and `/behavior/waf/sources/<id>` | | |
+| MT-33 |  | English: Property watches `/behavior/watches`, `/behavior/watches/new`, `/behavior/watches/<id>` | | |
+| MT-34 |  | English: Fleet `/fleet` | | |
+| MT-35 |  | English: Fleet sources `/fleet/sources` | | |
+| MT-36 |  | English: Catch-all senders `/fleet/catchall` | | |
+| MT-37 |  | English: Offenses `/offenses` and `/offenses/<id>` | | |
+| MT-38 | yes | English: Alerts `/alerts` and `/alerts/<id>` | | |
+| MT-39 | yes | English: Rule health `/rules` and `/rules/<id>` | | |
+| MT-40 |  | English: Rule statistics `/rules/statistics` | | |
+| MT-41 |  | English: Custom rules `/custom-rules`, `/custom-rules/new`, `/custom-rules/<id>` | | |
+| MT-42 |  | English: Detection coverage `/coverage` | | |
+| MT-43 |  | English: Log sources `/log-sources` and `/log-sources/<id>` | | |
+| MT-44 | yes | English: Searches `/searches`, `/searches/new`, `/searches/<id>` | | |
+| MT-45 |  | English: Configuration changes `/config-changes` | | |
+| MT-46 |  | English: Administration `/admin` | | |
+| MT-47 |  | English: Search cadence `/admin/search-cadence` | | |
+| MT-48 |  | English: Classification rules `/admin/classification-rules` | | |
+| MT-49 |  | English: Outage alerts `/admin/outage-policy` | | |
+| MT-50 | yes | English: WAF sources `/admin/waf-sources` and `/admin/waf-sources/<id>` | | |
+| MT-51 | yes | English: IPS sources `/admin/ips-sources` and `/admin/ips-sources/<id>` | | |
+| MT-52 | yes | English: History backfill `/admin/history-backfill` | | |
+| MT-53 |  | English: Users `/admin/users` | | |
+| MT-54 |  | English: Directory `/admin/directory` | | |
+| MT-55 | yes | English: Guide `/guide` and `/guide/<section>` | | |
+| MT-56 |  | English: Account `/account` and `/account/password` | | |
+| MT-57 |  | Failed sign-in sentence — (writes) | | |
+| MT-58 | | Removed in 0.1.10 (D-41) | Removed | |
+| MT-59 | | Removed in 0.1.10 (D-41) | Removed | |
 
-## 5. Pano (Dashboard)
+## 5. Dashboard
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-60 |  | Pano bileşeni: “Toplam EPS” | | |
-| MT-61 |  | Pano bileşeni: “Log source'lar” | | |
-| MT-62 |  | Pano bileşeni: “Açık offense'lar” | | |
-| MT-63 |  | Pano bileşeni: “Etkin anomaliler” | | |
-| MT-64 |  | Pano bileşeni: “Filo EPS” | | |
-| MT-65 |  | Pano bileşeni: “Kaynak sınıfına göre EPS” | | |
-| MT-66 |  | Pano bileşeni: “EPS'e göre en yoğun log source'lar” | | |
-| MT-67 |  | Pano bileşeni: “Önem derecesine göre anomaliler” | | |
-| MT-68 |  | Pano bileşeni: “Log source sağlığı” | | |
-| MT-69 |  | Pano bileşeni: “Son anomaliler” | | |
-| MT-70 |  | Pano bileşeni: “Son offense'lar” | | |
-| MT-71 |  | Pano bileşeni: “Zamanlanmış aramalar” | | |
-| MT-72 |  | Pano bileşeni: “Algılama sağlığı” | | |
-| MT-73 |  | Pano bileşeni: “Kanıt toplama” | | |
-| MT-74 |  | Pano bileşeni: “İncelenecek catch-all gönderenleri” | | |
-| MT-75 |  | Pano bileşeni: “Kaynak sınıfları” | | |
-| MT-76 |  | Pano bileşeni: “Kesinti politikası” | | |
-| MT-77 |  | Pano bileşeni: “WAF kaynakları” | | |
-| MT-78 |  | Pano bileşeni: “Son WAF anomalileri” | | |
-| MT-79 |  | Pano bileşeni: “Son IPS anomalileri” | | |
+| MT-60 |  | Dashboard widget: “Total EPS” | | |
+| MT-61 |  | Dashboard widget: “Log sources” | | |
+| MT-62 |  | Dashboard widget: “Open offenses” | | |
+| MT-63 |  | Dashboard widget: “Active anomalies” | | |
+| MT-64 |  | Dashboard widget: “Fleet EPS” | | |
+| MT-65 |  | Dashboard widget: “EPS by source class” | | |
+| MT-66 |  | Dashboard widget: “Top log sources by EPS” | | |
+| MT-67 |  | Dashboard widget: “Anomalies by severity” | | |
+| MT-68 |  | Dashboard widget: “Log source health” | | |
+| MT-69 |  | Dashboard widget: “Recent anomalies” | | |
+| MT-70 |  | Dashboard widget: “Recent offenses” | | |
+| MT-71 |  | Dashboard widget: “Scheduled searches” | | |
+| MT-72 |  | Dashboard widget: “Detection health” | | |
+| MT-73 |  | Dashboard widget: “Evidence collection” | | |
+| MT-74 |  | Dashboard widget: “Catch-all senders to review” | | |
+| MT-75 |  | Dashboard widget: “Source classes” | | |
+| MT-76 |  | Dashboard widget: “Outage policy” | | |
+| MT-77 |  | Dashboard widget: “WAF sources” | | |
+| MT-78 |  | Dashboard widget: “Recent WAF anomalies” | | |
+| MT-79 |  | Dashboard widget: “Recent IPS anomalies” | | |
+| MT-128 | yes | World map: dashboard widget and `/geography` | | |
+| MT-129 |  | Country source and the `geo_country_source` check (GEO-3) | | |
 
-## 6. Anomaliler
+## 6. Anomalies
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-80 |  | Anomali listesi ve filtreler | | |
-| MT-81 |  | Phase A anomali ayrıntısı ve dürüstlük durumları | | |
-| MT-82 |  | Yaşam döngüsü sekmesi ve nedenler | | |
-| MT-83 |  | WAF anomali ayrıntısı | | |
-| MT-84 |  | IPS anomali ayrıntısı | | |
-| MT-85 |  | Özellik izleme anomali ayrıntısı | | |
-| MT-86 |  | Dürüstlük durumları görünür ve sıfıra çevrilmez | | |
+| MT-80 |  | Anomaly list and filters | | |
+| MT-81 |  | Log source volume anomaly detail and the honesty states | | |
+| MT-82 |  | Lifecycle tab and reasons | | |
+| MT-83 |  | WAF anomaly detail | | |
+| MT-84 |  | IPS anomaly detail | | |
+| MT-85 |  | Property watch anomaly detail | | |
+| MT-86 |  | Honesty states are visible and are not turned into zero | | |
 
-## 7. Alarmlar (Uyarılar)
+## 7. Alerts
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-87 |  | Uyarı listesi | | |
-| MT-88 |  | Uyarı ayrıntısı: Açıklama ve çözüm nedeni | | |
-| MT-89 |  | Uyarıyı alındı yapma ve çözme — (yazar) yalnızca lab | | |
+| MT-87 |  | Alert list | | |
+| MT-88 |  | Alert detail: Description and resolution reason | | |
+| MT-89 |  | Acknowledging and resolving an alert — (writes) lab only | | |
 
-## 8. Özel kurallar
+## 8. Custom rules
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-90 |  | Özel kural listesi ve durumları | | |
-| MT-91 |  | Özel kural ayrıntısı | | |
-| MT-92 |  | Özel kural taslağı önizlemesi (kaydetmeden) | | |
-| MT-93 |  | Özel kural oluşturma ve silme — (yazar) | | |
+| MT-90 |  | Custom rule list and states | | |
+| MT-91 |  | Custom rule detail | | |
+| MT-92 |  | Custom rule draft preview (without saving) | | |
+| MT-93 |  | Creating and deleting a custom rule — (writes) | | |
 
-## 9. Aramalar
+## 9. Searches
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-94 |  | Arama listesi | | |
-| MT-95 | evet | Arama çalıştırma geçmişi ve hata satırı | | |
-| MT-96 |  | Zamanlama tabanı (cron) ve önayarlar | | |
-| MT-97 |  | Aramayı şimdi çalıştırma — (yazar) yalnızca lab QRadar araması | | |
-| MT-98 |  | Yeni arama saklama — (yazar) yalnızca lab | | |
+| MT-94 |  | Search list | | |
+| MT-95 | yes | Search run history and the error row | | |
+| MT-96 |  | Schedule floor (cron) and presets | | |
+| MT-97 |  | Running a search now — (writes) lab only QRadar search | | |
+| MT-98 |  | Storing a new search — (writes) lab only | | |
 
-## 10. Geçmiş okuma
+## 10. History backfill
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-99 |  | Geçmiş okuma sayfası: karar bloğu ve tablo | | |
-| MT-100 |  | Geçmiş okuma: ilk açılış sorusu | | |
-| MT-101 |  | Geçmişi şimdi oku / Okumayı durdur — (yazar) yalnızca lab QRadar araması | | |
+| MT-99 |  | History backfill page: decision block and table | | |
+| MT-100 |  | History backfill: the first-open question | | |
+| MT-101 |  | Read history now / Stop reading — (writes) lab only QRadar search | | |
 
-## 11. Kural sağlığı, istatistikler, coverage ve filo
+## 11. Rule health, statistics, coverage and fleet
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-102 |  | Kural sağlığı listesi | | |
-| MT-103 |  | Kural ayrıntısı ve sağlık geçmişi | | |
-| MT-104 |  | Kural istatistikleri | | |
+| MT-102 |  | Rule health list | | |
+| MT-103 |  | Rule detail and health history | | |
+| MT-104 |  | Rule statistics | | |
 | MT-105 |  | Coverage | | |
-| MT-106 |  | Filo, filo kaynakları ve catch-all gönderenleri | | |
-| MT-107 |  | Log source'lar ve ayrıntı | | |
-| MT-108 |  | Yapılandırma değişiklikleri | | |
-| MT-109 |  | Davranış sayfaları: genel bakış, kaynaklar, WAF, özellik izlemeleri, offense'lar | | |
+| MT-106 |  | Fleet, fleet sources and catch-all senders | | |
+| MT-107 |  | Log sources and detail | | |
+| MT-108 |  | Configuration changes | | |
+| MT-109 |  | Behavior pages: overview, sources, WAF, property watches, offenses | | |
 
-## 12. Yönetim
+## 12. Administration
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-110 |  | WAF kaynakları: liste ve profil | | |
-| MT-111 |  | IPS kaynakları: liste ve profil | | |
-| MT-112 |  | Kaynak doğrulamasını yeniden çalıştırma — (yazar) yalnızca lab QRadar araması | | |
-| MT-113 |  | Kullanıcılar ve dizin (yalnızca görüntüleme) | | |
-| MT-114 |  | Arama sıklığı (yalnızca görüntüleme) | | |
-| MT-115 |  | Arama sıklığını değiştirme — (yazar) yalnızca lab | | |
-| MT-116 |  | Kesinti politikası ve sınıflama kuralları (yalnızca görüntüleme) | | |
-| MT-117 |  | Yönetim ana sayfası | | |
+| MT-110 |  | WAF sources: list and profile | | |
+| MT-111 |  | IPS sources: list and profile | | |
+| MT-112 |  | Re-running a source validation — (writes) lab only QRadar search | | |
+| MT-113 |  | Users and directory (view only) | | |
+| MT-114 |  | Search cadence (view only) | | |
+| MT-115 |  | Changing the search cadence — (writes) lab only | | |
+| MT-116 |  | Outage policy and classification rules (view only) | | |
+| MT-117 |  | Administration home page | | |
+| MT-130 |  | SIEM load page, command and `qradar_health` (ARL-1, ARL-2, ARL-3) | | |
 
-## 13. Kılavuz
+## 13. Guide
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-118 |  | Kılavuz iki dilde açılır | | |
+| MT-118 |  | The guide opens in English | | |
+| MT-132 |  | Header Guide link shows once; fixed Guide entry (GUIDE-3) — (writes) | | |
 
-## 14. QRadar'a karşı salt okunur
+## 14. Read-only against QRadar
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-119 | evet | `doctor` QRadar'a tek çağrı yaptığını gösterir | | |
-| MT-120 | evet | Konsol tarafı: test penceresinde yazma işlemi olmadığının doğrulanması — konsol yöneticisi adımı | | |
+| MT-119 | yes | `doctor` shows that it makes only one kind of call to QRadar | | |
+| MT-120 | yes | Console side: confirming that there was no write in the test window — console administrator step | | |
 
-## 15. Geri alma ölçütleri ve adımları
+## 15. Rollback criteria and steps
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-121 | evet | Geri alma ölçütlerinin değerlendirilmesi | | |
-| MT-122 |  | Geri alma (yalnızca gerekirse) — (yazar) | | |
-| MT-123 |  | Geri alma provası — (yazar) yalnızca lab | | |
+| MT-121 | yes | Evaluating the rollback criteria | | |
+| MT-122 |  | Rollback (only if needed) — (writes) | | |
+| MT-123 |  | Rollback rehearsal — (writes) lab only | | |
 
-## 16. Sonuçların teslimi
+## 16. Delivery of the results
 
-| Kimlik | Çekirdek | Kontrol (kısa) | Sonuç (Geçti / Kaldı / Koşulmadı) | Not |
+| Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
-| MT-124 | evet | Dil, tur C: İngilizceye dönüş — (yazar) | | |
-| MT-125 | evet | Sonuç sayfasını doldur ve teslim et | | |
+| MT-124 | | Removed in 0.1.10 (D-41) | Removed | |
+| MT-125 | yes | Fill in the results page and hand it over | | |
 
-## Özet
+## Summary
 
-| Sayım | Değer |
+| Count | Value |
 |---|---|
-| Geçti | |
-| Kaldı | |
-| Koşulmadı | |
-| Destek paketi eklendi mi (evet / hayır) | |
-| Teslim saati (UTC) | |
+| Pass | |
+| Fail | |
+| Not run | |
+| Support bundle attached (yes / no) | |
+| Delivery time (UTC) | |

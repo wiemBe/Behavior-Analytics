@@ -1,80 +1,80 @@
-# QRadar-Dash manuel test kılavuzu
+# QRadar-Dash manual test guide
 
-Bu kılavuz, bir QRadar-Dash sürümünü canlıya almadan önce, tek başına ve adım adım yürütülecek elle testi anlatır. Komutlar, günlük
-satırları, dosya yolları, ayar adları, HTTP durum kodları ve `doctor` kimlikleri kaynaklardaki gibi bırakılmıştır. Çevrilmemiştir.
-Arayüz etiketleri, Türkçe kataloğun (`frontend/messages/tr/*.json`) gösterdiği biçimde tırnak içinde yazılmıştır; test iki dilde yapıldığı için
-İngilizce karşılığı ilk geçtiği yerde parantez içinde verilmiştir.
+This guide describes the manual test that is done step by step, by one person, before a QRadar-Dash release goes live. Commands, log lines, file paths, setting names, HTTP status codes and `doctor` ids are left as the sources print them. Interface labels are quoted as the English interface shows them (the catalog in `frontend/messages/en/`). The interface is English only from 0.1.10 (decision D-41), so this guide is English only too.
 
-Dört kural her bölümde geçerlidir ve bu test onlara uyar:
+Four rules apply in every section and this test follows them:
 
-> 1. Alembic downgrade hiçbir zaman kullanılmaz. Geri alma, bir yedeğin geri yüklenmesidir.
-> 2. SELinux hiçbir zaman kapatılmaz ve `:z` hiçbir zaman kullanılmaz.
-> 3. Sırlar hiçbir zaman `.env` dosyasına, kabuk geçmişine, bir bilete, destek paketine ya da sonuç sayfasına girmez.
-> 4. Bu araçta hiçbir şey QRadar'a yazmaz. Araç QRadar'a karşı salt okunurdur.
+> 1. The Alembic downgrade is never used. A rollback is the restore of a backup.
+> 2. SELinux is never turned off and `:z` is never used.
+> 3. Secrets never go into the `.env` file, the shell history, a ticket, a support bundle or the results page.
+> 4. Nothing in this tool writes to QRadar. The tool is read-only against QRadar.
 
-Bu testte QRadar'ın yapılandırmasını değiştiren hiçbir adım yoktur. QRadar'a giden tek yazma isteği, uygulamanın kendi Ariel aramasını oluşturması ve iptal etmesidir (bölüm 14).
+There is no step in this test that changes QRadar's configuration. The only write request to QRadar is the application creating and cancelling its own Ariel search (section 14).
 
-Sonuçlar `docs/MANUAL-TEST-RESULTS.md` sayfasına yazılır. Bu kılavuz sürüme göre bölümlenir: her sürüm kendi bölümünü taşır; yeni bir sürüm,
-kendi bölümünü bu bölümün **üstüne** ekler.
+The results are written to `docs/MANUAL-TEST-RESULTS.md`. This guide is divided by release: each release carries its own section; a new release adds its section **above** this one.
 
-**İçindekiler**
+**Contents**
 
-1. [0.1.9](#019)
+1. [0.1.10](#0110)
 
 ---
 
-## 0.1.9
+## 0.1.10
 
-Bu bölüm 0.1.8 sitesini 0.1.9'a yükseltir ve yükseltilmiş siteyi sınar. 0.1.6'daki bir site önce 0.1.8'e yükselir; o yol `docs/releases/0.1.8.md` içindedir ve bu bölüm onu anlatmaz. İki tarafın migrasyon başı da `0044`'tür (`/api/v1/version` içindeki `migration_head`). Üretim IPS kaynakları Cisco Firepower/FTD ve Palo Alto Threat'tir.
+This section upgrades a 0.1.9 site to 0.1.10 and tests the upgraded site. A 0.1.8 site upgrades to 0.1.9 first; that path is in `docs/releases/0.1.9.md` and is not described here. The migration head is `0044` before the upgrade and `0047` after it (`migration_head` in `/api/v1/version`). The production IPS sources are Cisco Firepower/FTD and Palo Alto Threat.
 
-### Bu sürüm neyi değiştirir
+### What this release changes
 
-- **Arayüz dili.** Arayüz İngilizce ya da Türkçe çalışır. Dil, Hesap ayarları sayfasından seçilir; hesapta (`ui_language`) ve tarayıcıda (`ba_locale` çerezi) saklanır. Backend'in yazdığı cümlelerin büyük bölümü bir kodla saklanır ve Türkçe okunur. 0.1.9 buna iki grup ekler: motor uyarılarının başlığı, açıklaması ve düzelme nedeni (log source hacmi, WAF, IPS, özellik izleme; MSG-7b) ve geçmiş okumadaki Ariel erteleme cümlesi (MSG-8c). Yükseltmeden önce yazılmış, kodu olmayan satırlar İngilizce kalır (bölüm 4). Bildirimler (Teams, e-posta, Slack, webhook, syslog) İngilizce kalır. Yönetim grubunun ilk öğesi “Yönetim özeti”dir (“Administration overview”) ve `/admin` açar.
-- **Migrasyon yok.** Bu sürüm yeni migrasyon eklemez. `upgrade` karar veren çifti yine iki kez yazar; ikisi de `database and image are at 0044` der. Alembic adımı çalışır ve `Running upgrade` satırı yazmaz; migrate konteyneri 0 ile çıkar. Bu bir hata değildir. Hedef zaten kuruluysa çift bir kez yazılır ve son satır `Version 0.1.9 is already installed and healthy; nothing changed.` olur; bu, ilk yükseltmenin beklenen çıktısı değildir.
-- **Varsayılan hız sınırı artık sayılır.** 0.1.6, 0.1.7 ve 0.1.8'de `RATE_LIMIT_DEFAULT` API rotalarına uygulanmıyordu. 0.1.9'da `/api/v1` altındaki her rota sayılır. `GET /api/v1/health/live` ve `GET /api/v1/health/ready` sayılmaz. Sayaç istemci anahtarı ve yol başınadır. Varsayılan dakikada 1200 istektir. `.env` bu adı yazıyorsa o değer kalır; `install` bu satırı yazmaz. Giriş sınırı dakikada 300, arama çalıştırma sınırı dakikada 10 kalır. Reddedilen istek `429` döner ve `Retry-After` ile `X-RateLimit-*` başlıklarını taşır. Üretim kontrolü MT-126'dır. Sınırı düşürüp 429 görmek yalnızca labdır (MT-127).
-- **Sunucuda çizilen sayfalar analistin kendi adresinden sayılır.** `upgrade`, eksikse `.env` içine `FRONTEND_EDGE_IP` yazar ve boş olmayan, `*` olmayan `FORWARDED_ALLOW_IPS` listesine bu adresi bir kez ekler. Liste yoksa, boşsa ya da `*` ise betik listeyi değiştirmez. `doctor` kimliği `forwarded_allow_ips` olur (MT-09). `*` yazma.
-- **Yükseltme yedeği yanıt dosyasını taşır.** Yükseltmeden önceki yedekte `install.answers` vardır; kipi canlı dosyanın kipidir (`0600`, canlı dosya `0400` idiyse `0400`). Geri alma bu kopyayı yerine koyar ve bunu ayrıca duyurmaz. Kopyası olmayan eski bir yedek, canlı dosyadan hedef sürümün bilmediği anahtarları siler ve her birinin adını yazar (MT-08, MT-122).
-- **Takılmış offense filigranı.** Sağlıklı `watermarks` satırı `{n} watermark(s) have no error or excess lag` der ve runbook yazmaz. Sayfa tavanında takılma WARN'dır ve runbook OPS-R66'dır (MT-09). Temiz bir çalışma takılmayı siler. Offense'ı olmayan konsolda 0.1.8'in yaklaşık 168 saatlik gecikme WARN'ı, bu sürümün ilk temiz `offense_snapshot` çalışmasından sonra kalkar (MT-11).
-- **0.1.8'in oturum düzeltmesi durur.** Sunucuda çizilen sayfalar geçerli oturumda açılır. “Your session has expired. Sign in again to continue.” (“Oturumunuzun süresi doldu. Devam etmek için yeniden giriş yapın.”) yalnızca süresi gerçekten dolmuş oturumda görünür.
+- **The interface is English only (LANG-1, LANG-2, LANG-3; decision D-41).** The language control on `/account` is gone, and a `ba_locale=tr` cookie or a `ui_language = "tr"` account is shown English. The checks of section 4 that tested the Turkish interface or the language switch were removed or rewritten as English checks (ids unchanged). New check: MT-131.
+- **The map's country comes from a QRadar custom property (GEO-3).** `GEO_COUNTRY_SOURCE` defaults to `property`; `GEO_SOURCE_COUNTRY_PROPERTY` defaults to `Source Geographic Location` and `GEO_DESTINATION_COUNTRY_PROPERTY` to empty. The operator sets the exact property name from the console. An empty name means that direction is not collected. `doctor` gains `geo_country_source` (runbook OPS-R30). New check: MT-129.
+- **The world map (GEO-4, GEO-5).** The "SOC Overview" template has the Geography widget (`map.geography`) in its bottom row, and `/geography` shows the same answer at full size; a stale answer says so. Check: MT-128.
+- **SIEM load (ARL-1, ARL-2, ARL-3).** Every Ariel search the platform sends is recorded (table `ariel_search_run`, kept 30 days by default). The page `/admin/siem-load`, `GET /api/v1/admin/ariel-load` and `/current`, and `python -m app.cli.ariel_load [--current] [--json]` show the load and QRadar's own health (GET requests only). `doctor` gains `qradar_health` (OPS-R67), and the support bundle carries `ariel-load.json`. New check: MT-130.
+- **Three migrations, head `0047`.** `0045_rule_match_window_start_index` adds an index on `rule_match_window.window_start` (FIX-14); `0046_ariel_search_run` adds the table `ariel_search_run` (ARL-1); `0047_user_guide_seen` adds the column `app_user.guide_seen` (GUIDE-3). `upgrade` prints the decision pair first with `0044` and then with `0047`, and Alembic prints three `Running upgrade` lines. The only row change is the new column: every account gets an empty list.
+- **Every counted response carries the rate-limit window (FIX-14).** A counted 401, 403, 404 or 422 carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`; `Retry-After` is written only on a 429. Checks: MT-126 (production) and MT-127 (lab only).
+- **A console's first inventory is queued, and `QRADAR_CONSOLE_FQDN` may carry a port (FIX-13).** The installer summary prints `First inventory    queued` or `First inventory    not queued; the hourly beat will catch up`; the second is not an error.
+- **Editors and names (POL-8 to POL-14, MSG-9).** The custom rule editor uses words and "?" help; "New combination" says why it is off; the add-source control sits in the page header; a failed session shows "The server said: …" as its own clause; "Phase A" is now "Log source volume" (`doctor` token `LOG_SOURCE_VOLUME`).
+- **The page-header "Guide" link shows once, and a fixed "Guide" entry stays in the left navigation (GUIDE-3).** The link shows the first time an account opens a page of a guide section and not again (the account stores it, `guide_seen`); the entry at the bottom of the left navigation is on every page and opens the current page's section. New check: MT-132.
+- **There is no user delete (GUIDE-2).** Disabling an account is how access is removed; the account row and the `user.disable` audit record stay and the account's sessions are revoked (MT-19).
+- **Before you start:** get the exact name of the country custom property from the QRadar administrator, and decide `GEO_COUNTRY_SOURCE` (`property` with that name, or `lookup`), so that MT-09 and MT-11 read a clean `geo_country_source` line.
 
-### Nasıl kullanılır
+### How to use this guide
 
-- **Üretimde yalnızca çekirdek yürütülür.** Başlığında `[çekirdek]` yazan 39 kontrol üretim yoludur; tam liste laboratuvar koşusu içindir (MT-1b) ve üretimde yalnızca operatörün zamanı varsa yapılır. Çekirdekte (yazar) olarak yalnızca ön koşulların ve yükseltmenin gerektirdiği adımlar (yedek, destek paketi, yükseltme, dil tercihi) vardır; çekirdekte `yalnızca lab` kontrol yoktur. MT-127 `yalnızca lab`'dır.
-- Kontrollerin sırası bölüm sırasıdır. Her kontrolün **Ön koşul**, **Eylem**, **Beklenen** ve **Kaydet** alanı vardır. Sonucu sonuç sayfasına `Geçti`, `Kaldı` ya da `Koşulmadı` olarak yaz; `Kaldı` ve `Koşulmadı` için Not yaz.
-- **(yazar)**: kontrol uygulama durumunu değiştirir (bir dosya, bir hesap, bir kayıt yazar). Her birinin **Temizlik** adımı vardır.
-- **yalnızca lab**: kontrol, analistlerin gördüğü durumu değiştirir ya da silinemez bir iz bırakır; üretimde `Koşulmadı` yazılır, nedeni kontrolde belirtilmiştir. Orkestratör aynı kılavuzu bir laboratuvar VM'sinde (MT-1b) harfiyen yürütür.
-- **QRadar araması**: kontrol QRadar'a bir Ariel araması gönderir ve konsol kapasitesi harcar. Bu testte üç kontrol böyledir ve üçü de `yalnızca lab`'dır.
-- **konsol yöneticisi adımı**: kontrolü QRadar konsolunun yöneticisi yapar.
-- `Koşulmadı`: kontrol yapılamadı (örneğin sitede o türde veri yok). "Veri yok" Kaldı değildir; Not'a nedenini yaz.
-- Hiçbir adımda sır yazılmaz (bölüm 16). Parolaları ve `.env` değerlerini sayfaya ya da bilete koyma.
-- Hiçbir adımda SELinux kapatılmaz ve `:z` kullanılmaz.
+- **In production only the core is run.** The 37 checks that carry `[core]` in their heading are the production path; the full list is for the lab run (MT-1b) and in production is done only if the operator has the time. The only core checks that write (writes) are the ones the preconditions and the upgrade need (backup, support bundle, upgrade); there is no `lab only` check in the core. MT-127 is `lab only`.
+- The order of the checks is the order of the sections. Each check has the fields **Precondition**, **Action**, **Expected** and **Record**. Write the result on the results page as `Pass`, `Fail` or `Not run`; write a Note for `Fail` and `Not run`.
+- **(writes)**: the check changes the application's state (it writes a file, an account, a record). Each one has a **Cleanup** step.
+- **lab only**: the check changes the state that the analysts see or leaves a trace that cannot be deleted; in production it is written `Not run`, with the reason given in the check. The orchestrator runs the same guide to the letter on a lab VM (MT-1b).
+- **QRadar search**: the check sends an Ariel search to QRadar and spends console capacity. Three checks in this test are like that and all three are `lab only`.
+- **console administrator step**: the check is done by the administrator of the QRadar console.
+- `Not run`: the check could not be done (for example the site has no data of that kind). "No data" is not a Fail; write the reason in the Note field.
+- A raw message key (a string of the form `namespace.key`) or Turkish text anywhere in the interface is a Fail of the check where it was seen (section 4).
+- No secret is written in any step (section 16). Do not put passwords and `.env` values on the page or in a ticket.
+- SELinux is never turned off and `:z` is never used in any step.
 
-### Zamanlama ve toplam süre
+### Timing and total duration
 
-Yükseltmeden sonra toplama, ailelerin kadansında yeniden başlar. Varsayılan kadans her aile için 5 dakikadır; WAF ve IPS için 15 dakikadır. Sitenin kendi değerleri `/admin/search-cadence` sayfasındadır.
-Bir toplamanın verisinin sayfada görünmesi için kadans ve yerleşme payı (`SEARCH_CADENCE_SETTLE_SECONDS`, varsayılan 120 sn) geçmelidir; `doctor` ayrıca 60 sn pay verir. Bu yüzden:
+After the upgrade, collection restarts at the cadence of the families. The default cadence is 5 minutes for every family; for WAF and IPS it is 15 minutes. The site's own values are on the `/admin/search-cadence` page.
+For the data of a collection to appear on a page, the cadence and the settle margin (`SEARCH_CADENCE_SETTLE_SECONDS`, default 120 s) must pass; `doctor` also gives a 60 s margin. So:
 
-| Ne | Ne zaman bakılır | Daha erken bakılırsa sayfa ne gösterir |
+| What | When to look | What the page shows if you look earlier |
 |---|---|---|
-| Sürüm, migrasyon, `doctor` (bağımsız satırlar), giriş, dil, kılavuz, yönetim sayfaları | Hemen | (veriye bağlı değil) |
-| Pano bileşenleri, anomali ve filo verisi, kural ve coverage nedenleri | Ailenin kadansı + 3 dk (log source hacmi: 8 dk; WAF ve IPS: 18 dk) | “Güncel değil” ya da “Toplanmadı”; doğrudur, Kaldı yazma |
-| Yeni Türkçe satırlar (özellik izleme nedeni, özel kural nedeni, kural sağlığı nedeni, geçmiş okuma nedeni) | Satırı yazan toplamanın bir sonraki çalışmasından sonra | Saklı İngilizce metin |
-| Yeni geçiş, yeni anomali, yeni uyarı | Bir olay olunca; beklenmez | Eski satırlar (İngilizce) |
+| Version, migration, `doctor` (independent lines), sign-in, guide, administration pages | At once | (not data dependent) |
+| Dashboard widgets, anomaly and fleet data, rule and coverage reasons | The family's cadence + 3 min (log source volume and geography: 8 min; WAF and IPS: 18 min) | “Stale” or “Not collected”; this is correct, do not write Fail |
+| New sentence rows (property watch reason, custom rule reason, rule health reason, history backfill reason) | After the next run of the collection that writes the row | The stored previous text |
+| A new transition, a new anomaly, a new alert | When an event happens; there is no waiting | The older rows |
 
-**Çekirdek (üretim yolu):** 39 kontrol, yaklaşık **2 saat** etkin çalışma (bir tahmindir, ölçülmedi) ve konsol yöneticisinin yaklaşık 10 dakikası (MT-120); kadans beklemesi ayrıdır. **Üretim sırası:** çekirdek kontroller bölüm sırasıyla yürütülür. MT-126, numarası büyük olsa da MT-11'den hemen sonra yapılır. Kadans beklemesi (en çok 18 dk) MT-12 ile MT-22 gibi yeni veri gerektirmeyen salt okunur kontrollerle doldurulur, veriye bağlı kontroller (MT-24 ve sonrası) bekleme dolunca yapılır.
+**Core (production path):** 37 checks, about **2 hours** of active work (an estimate, not measured) and about 10 minutes of the console administrator (MT-120); the cadence wait is separate. **Production order:** the core checks are done in section order. MT-126, although its number is high, is done right after MT-11; MT-128 is also done after MT-11, once a `GEO_COLLECTION` cadence has passed. The cadence wait (18 minutes at most) is filled with read-only checks that need no new data, such as MT-12 to MT-22; the data-dependent checks (MT-24 and after) are done when the wait is over.
 
-Tam liste: yaklaşık **6,5 saat** etkin çalışma (bölüm 4'teki üç tur ve bölüm 5'teki 20 bileşen en uzun iki parçadır), bekleme süreleri dışında. Bölümlere göre: Ön koşullar 20 dk, Yükseltme 20 dk (kesinti pencere içindedir),
-Oturum açma 20 dk, Dil 120 dk, Pano 40 dk, Anomaliler 30 dk, Uyarılar 10 dk, Özel kurallar 15 dk, Aramalar 15 dk, Geçmiş okuma 10 dk, Kural/kapsam/filo 35 dk, Yönetim 25 dk, Kılavuz 5 dk, QRadar'a karşı salt okunur 15 dk (konsol yöneticisi ayrı), Geri alma ölçütü 5 dk.
-İlk kadans beklemesini (en çok 18 dk) Oturum açma ve Dil bölümleriyle doldur. İki yarım günde de yapılabilir; yükseltme ile Pano ve anomali kontrolleri arasında bekleme gerekir.
+Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes.
+Fill the first cadence wait (18 minutes at most) with the Sign-in and Language sections. It can also be done in two half days; between the upgrade and the Dashboard and anomaly checks a wait is needed.
 
 
-### 1. Ön koşullar
+### 1. Preconditions
 
-Bu bölüm yükseltmeden önce yapılır. Komutlar kurulum dizininden çalışır: `cd <kurulum dizini>`. Her kontrolün sonucu sayfadaki tabloya yazılır. Bir ön koşul Kaldı ise yükseltmeye başlama.
+This section is done before the upgrade. The commands run from the install directory: `cd <install directory>`. Each check's result goes into the table on the results page. If a precondition fails, do not start the upgrade.
 
-#### MT-01 — Yükseltmeden önceki sürüm ve sağlık [çekirdek]
+#### MT-01 — Version and health before the upgrade [core]
 
-**Eylem:**
+**Action:**
 
 
 ```bash
@@ -83,71 +83,71 @@ curl -s http://127.0.0.1:8000/api/v1/version
 curl -s http://127.0.0.1:8000/api/v1/health/ready
 ```
 
-- Betik `.env` içindeki `API_LOOPBACK_PORT` değerini kullanır (varsayılan 8000). Port farklıysa onu yaz.
+- The script uses `API_LOOPBACK_PORT` from `.env` (default 8000). If the port is different, write that one.
 
-**Beklenen:**
+**Expected:**
 
-- `status`: `Installed version: 0.1.8`; `API ready: HTTP 200 (http://127.0.0.1:8000/api/v1/health/ready)`; `docker compose ps` tablosunda her servis çalışıyor ve sağlıklı; `Last upgrade:` satırı yazılıdır; çıkış kodu 0.
-- `/api/v1/version`: `"version":"0.1.8"` ve `"migration_head":"0044"`.
+- `status`: `Installed version: 0.1.9`; `API ready: HTTP 200 (http://127.0.0.1:8000/api/v1/health/ready)`; every service in the `docker compose ps` table is running and healthy; the `Last upgrade:` line is present; exit code 0.
+- `/api/v1/version`: `"version":"0.1.9"` and `"migration_head":"0044"`.
 - `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0044"`.
 
-**Kaydet:** `Installed version`, `Last upgrade:` satırı, `git_sha` ve `migration_head` değerleri.
+**Record:** The `Installed version` line, the `Last upgrade:` line, and the `git_sha` and `migration_head` values.
 
-#### MT-02 — `doctor` yükseltmeden önce yeşil [çekirdek]
+#### MT-02 — `doctor` is green before the upgrade [core]
 
-**Eylem:**
+**Action:**
 
 
 ```bash
 ./qradar-dash doctor
-echo "çıkış: $?"
+echo "exit: $?"
 ```
 
 
-**Beklenen:**
+**Expected:**
 
-- Hiçbir satır `FAIL` değildir. Çıkış kodu 0 (hepsi PASS) ya da 1 (en az bir WARN, FAIL yok). 2 ise yükseltme yapılmaz; satırın `runbook: OPS-R<n>` girişine bak.
-- Sağlıklı bir sitede şu satırlar `WARN` olabilir ve yükseltmeyi engellemez; her birini ve nedenini Not alanına yaz: `backup_age` (yedek yok, yaş okunamıyor ya da 26 saatten eski; yedek zamanlayıcısı kurulu değilse veya kapalıysa taze bir yedek de WARN verir — `docs/OPERATIONS.md` doctor tablosundaki `backup_age` satırı, OPS-R kimliği yok; sonraki kontrol yedeği düzeltir, zamanlayıcıyı değil), `disk_docker` ve `disk_backup` (%70 ile %89 arası dolu), `qradar_tls` (sertifika 30 günden yakın bitiyor), `cadence`, `errors_recent` (bir ya da iki hatalı filigran), `anomaly_evaluation`, `rule_match_coverage`, `ariel_permits` (havuz dolu). Bunlar yükseltmeden önce de doğrudur.
-- Offense'ı olmayan bir konsolda `watermarks`, `offense_snapshot` satırı yükseltmeyi engellemez. `consecutive_failures` 0'dır, `last_error` boştur. 0.1.8 bu filigranı temiz bir çalışmada da çalışmanın zamanına taşımaz; gecikme `offense_max_backfill_hours` tabanında kaldığı için (varsayılan 168 saat) yaklaşık 168 saattir ve kadansın iki katını aşar. Bu WARN'dır, Kaldı değildir; Not alanına yaz. Satırın runbook'u OPS-R30'dur. 0.1.8'in `doctor` çıktısında takılma cümlesi ve OPS-R66 yoktur; onlar yükseltmeden sonradır (MT-09).
-- `WARN` olursa dur ve sahibine bildir: `selinux` (`SELinux is permissive`: SELinux'a dokunma), `host_clock`. `families_off` her zaman PASS'tir. `SKIP` satırı bir özelliğin kapalı olduğunu söyler ve çıkış kodunu yükseltmez.
-- Satır biçimi: `PASS  db_connect         database accepted SELECT 1`. Bu aşamada `db_connect`, `migration_head` (`database and image are at 0044`), `containers`, `celery_workers`, `celery_beat`, `qradar_auth`, `encryption` ve `secrets_files` PASS olmalıdır.
+- No line is `FAIL`. Exit code 0 (all PASS) or 1 (at least one WARN, no FAIL). If it is 2, the upgrade is not done; read the line's `runbook: OPS-R<n>` entry.
+- On a healthy site these lines may be `WARN` and do not block the upgrade; write each one and its cause in the Note field: `backup_age` (no backup, the age cannot be read, or older than 26 hours; when the backup timer is not installed or is off, even a fresh backup gives a WARN — the `backup_age` row of the doctor table in `docs/OPERATIONS.md`, which has no OPS-R id; the next check fixes the backup, not the timer), `disk_docker` and `disk_backup` (70% to 89% full), `qradar_tls` (the certificate expires in under 30 days), `cadence`, `errors_recent` (one or two failed watermarks), `anomaly_evaluation`, `rule_match_coverage`, `ariel_permits` (the pool is full). These are true before the upgrade as well.
+- On a console that has no offenses, a `watermarks` `offense_snapshot` line does not block the upgrade. `consecutive_failures` is 0 and `last_error` is empty. 0.1.9 moves this watermark to the time of the run on a clean run; if no clean run has happened yet, the lag can stay at the `offense_max_backfill_hours` floor (default 168 hours) and exceed twice the cadence. This is a WARN, not a Fail; write it in the Note field. The line's runbook is OPS-R30. The 0.1.9 `doctor` output has the stalled sentence and OPS-R66 (MT-09).
+- If any of these is `WARN`, stop and tell the owner: `selinux` (`SELinux is permissive`: do not touch SELinux), `host_clock`. `families_off` is always PASS. A `SKIP` line says a feature is off and does not raise the exit code.
+- Line format: `PASS  db_connect         database accepted SELECT 1`. At this stage `db_connect`, `migration_head` (`database and image are at 0044`), `containers`, `celery_workers`, `celery_beat`, `qradar_auth`, `encryption` and `secrets_files` must be PASS.
 
-**Kaydet:** Çıkış kodu, `WARN` olan her satırın kimliği ve `FAIL` varsa kimliği.
+**Record:** The exit code, the id of every `WARN` line and, if there is a `FAIL`, its id.
 
-#### MT-03 — Doğrulanmış yedek (yazar) [çekirdek]
+#### MT-03 — Verified backup (writes) [core]
 
-**Ön koşul:** `doctor` (önceki kontrol) FAIL değil. Yedek kökünde boş alan var (`disk_backup`).
+**Precondition:** `doctor` (the previous check) has no FAIL. There is free space in the backup root (`disk_backup`).
 
-**Eylem:**
+**Action:**
 
 
 ```bash
 ./qradar-dash backup manual
 ```
 
-- Komut son satırda yedek dizininin yolunu yazar (`<yedek-kökü>/qradar-dash-<utc>-manual`). Yolu al ve `MANIFEST` dosyasını oku:
+- The command writes the path of the backup directory on its last line (`<backup root>/qradar-dash-<utc>-manual`). Take the path and read the `MANIFEST` file:
 
 ```bash
-BACKUP=<yazılan yol>
+BACKUP=<the path it wrote>
 ls -l "$BACKUP"
 cat "$BACKUP/MANIFEST"
 ```
 
-- `--no-verify` verme: yedek, ayrı bir veritabanına geri yüklenip doğrulanır.
+- Do not pass `--no-verify`: the backup is restored into a separate database and verified.
 
-**Beklenen:**
+**Expected:**
 
-- Komut 0 ile çıkar. TimescaleDB için `circular foreign-key constraints` uyarıları yazabilir; bu beklenir, belirleyici olan çıkış koduyla yedeğin var olmasıdır.
-- Dizinde `database.dump`, `env.bak`, `secrets.tar`, `state.json` ve `MANIFEST` vardır; dizin izni `0700`, dosya izinleri `0600`.
-- `MANIFEST` içinde `VERSION=0.1.8`, `ALEMBIC_VERSION=0044`, `STATE_JSON=included` ve bir `DATABASE_SIZE_BYTES=<sayı>` satırı vardır.
+- The command exits with 0. For TimescaleDB it may print `circular foreign-key constraints` warnings; this is expected, and what decides is the exit code and that the backup exists.
+- The directory holds `database.dump`, `env.bak`, `secrets.tar`, `state.json` and `MANIFEST`; the directory mode is `0700` and the file modes are `0600`.
+- `MANIFEST` has `VERSION=0.1.9`, `ALEMBIC_VERSION=0044`, `STATE_JSON=included` and a `DATABASE_SIZE_BYTES=<number>` line.
 
-**Kaydet:** Yedek dizininin adı (yalnızca `qradar-dash-<utc>-manual` kısmı), `VERSION` ve `ALEMBIC_VERSION` satırları. `env.bak` ve `secrets.tar` içeriği hiçbir yere yazılmaz.
+**Record:** The name of the backup directory (only the `qradar-dash-<utc>-manual` part), and the `VERSION` and `ALEMBIC_VERSION` lines. The contents of `env.bak` and `secrets.tar` are written nowhere.
 
-**Temizlik:** Gerekmez. Yedek, saklama kuralı gereği (son 7 `manual` yedek) kalır; yükseltme ayrıca kendi `pre-upgrade` yedeğini alır.
+**Cleanup:** Not needed. The backup stays under the retention rule (the last 7 `manual` backups); the upgrade also takes its own `pre-upgrade` backup.
 
-#### MT-04 — Günlüklerin ve destek paketinin yeri (yazar) [çekirdek]
+#### MT-04 — Where the logs and the support bundle are (writes) [core]
 
-**Eylem:**
+**Action:**
 
 
 ```bash
@@ -155,75 +155,67 @@ cat "$BACKUP/MANIFEST"
 ./qradar-dash support-bundle
 ```
 
-- `logs`, `docker compose logs` komutuna aldığı argümanları iletir. `support-bundle` yolu yazdırır; içeriğini listele:
+- `logs` passes the arguments it receives to `docker compose logs`. `support-bundle` prints the path; list its contents:
 
 ```bash
-BUNDLE=<yazılan yol>
+BUNDLE=<the path it wrote>
 ls -l "$BUNDLE"
 tar -tzf "$BUNDLE" | head -40
 ```
 
 
-**Beklenen:**
+**Expected:**
 
-- `logs` backend'in son 20 satırını yazar ve 0 ile çıkar.
-- `support-bundle` `<yedek-kökü>/support-<utc>.tar.gz` yolunu yazar; dosya izni `0600`.
-- Arşivde `doctor.txt`, `version.txt`, `compose-ps.txt`, `watermarks.txt`, `cadence.txt`, `config.env` ve `logs/` vardır. `database.dump`, `env.bak`, `secrets.tar` ve `.secrets/` yoktur.
+- `logs` prints the last 20 lines of the backend and exits with 0.
+- `support-bundle` prints the path `<backup root>/support-<utc>.tar.gz`; the file mode is `0600`.
+- The archive holds `doctor.txt`, `version.txt`, `compose-ps.txt`, `watermarks.txt`, `cadence.txt`, `config.env` and `logs/`. It does not hold `database.dump`, `env.bak`, `secrets.tar` or `.secrets/`.
 
-**Kaydet:** Destek paketinin tam yolu (içeriği değil).
+**Record:** The full path of the support bundle (not its contents).
 
-**Temizlik:** Test sonunda hiçbir kontrol Kaldı değilse bu dosyayı sil: `rm "$BUNDLE"`. Bir kontrol Kaldı ise sakla ve bölüm 16'daki gibi teslim et.
+**Cleanup:** If no check is Fail at the end of the test, delete this file: `rm "$BUNDLE"`. If a check is Fail, keep it and hand it over as in section 16.
 
-**Not:** Bir başarısızlık olursa, geri almadan **önce** yeni bir `support-bundle` al ve `logs --tail=2000 backend` çıktısını sakla. Geri alma kayıtları ve bozuk veritabanı kopyasını korur, ama günlüklerin bağlamı kaybolabilir.
+**Note:** If something fails, take a new `support-bundle` **before** the rollback and keep the output of `logs --tail=2000 backend`. The rollback keeps the logs and the broken database copy, but the context of the logs can be lost.
 
-#### MT-05 — Pencere ve haberdar edilecek kişiler [çekirdek]
+#### MT-05 — The window and the people to inform [core]
 
-**Eylem:**
+**Action:**
 
-- Başlamadan önce şunları sayfanın başına yaz: bakım penceresinin başlangıç ve bitişi (UTC), yükseltme yolu (çevrimiçi ya da çevrimdışı paket), geri alma kararını verecek kişi, QRadar konsol yöneticisi (bölüm 14 için), analistlere duyuru yapıldı mı.
+- Before you start, write these at the top of the page: the start and end of the maintenance window (UTC), the upgrade path (online or offline bundle), the person who will decide on a rollback, the QRadar console administrator (for section 14), and whether the analysts have been told.
 
-**Beklenen:**
+**Expected:**
 
-- Yükseltme sırasında backend, worker, beat, frontend ve proxy durur; analistler bağlantı hatası görür. Süre için bölüm 2'ye bak.
+- During the upgrade the backend, worker, beat, frontend and proxy stop; analysts see a connection error. For the duration, see section 2.
 
-**Kaydet:** Pencere başlangıcı ve bitişi (UTC), yolun adı, duyurulan kişi ya da rol.
+**Record:** The start and end of the window (UTC), the name of the path, and the person or role who was told.
 
-### 2. Yükseltme 0.1.8 → 0.1.9
+### 2. Upgrade 0.1.9 → 0.1.10
 
-Taze bir tarayıcıda `ba_locale` çerezi yoktur, bu yüzden giriş sayfası İngilizcedir: başlık “Sign in”, sürüm satırı `API version 0.1.9`. Çerez `tr` ise başlık “Oturum aç” ve satır `API sürümü 0.1.9` olur. Bölüm 3, çerezin neden eksik olduğunu anlatır.
+A fresh browser has no `ba_locale` cookie, and the sign-in page shows the title “Sign in” and the version line `API version 0.1.9`. The interface is English only (D-41); a `ba_locale` cookie, whatever its value, does not change it.
 
-Siteyi 0.1.8'den 0.1.9'a yükseltmenin iki yolu vardır; birini seç. Hedef sürüm `docs/OPERATIONS.md` içindeki "Yükseltme" ve "Çevrimdışı paket" bölümleriyle aynı biçimde çalışır. Yükseltme, kendi doğrulanmış `pre-upgrade` yedeğini alır; ayrıca yedeğin geri yükleme testi yapılır. Yükseltmeden önce ve sonra migrasyon başı `0044`'tür. Baş değişmez.
+There are two ways to upgrade the site from 0.1.9 to 0.1.10; choose one. The target version works the same way as the "Upgrade" and "Offline bundle" sections of `docs/OPERATIONS.md`. The upgrade takes its own verified `pre-upgrade` backup; the backup is also restore-tested. Before the upgrade the migration head is `0044`, and after it `0047`. The head moves once.
 
-**Kesinti.** Backend, worker ve beat, `pg_dump` başlangıcından `/api/v1/health/ready` 200 dönene kadar kapalıdır; `frontend` ve `proxy` de durdurulur. Küçük bir veritabanında yükseltme kesintisi yaklaşık 15-20 sn ölçüldü; 5 GiB altı veritabanı için bütçe 10 dakikadır. İmaj çekme bu pencerenin dışındadır. Bunlar söz değildir. Yükseltme Redis'i boşaltır (`FLUSHALL`); sıradaki görevler kaybolur ve bir sonraki beat tick'inde yeniden kurulur, önemli veri PostgreSQL'dedir. QRadar'a hiçbir şey yazılmaz.
+**Outage.** The backend, worker and beat are down from the start of `pg_dump` until `/api/v1/health/ready` returns 200; `frontend` and `proxy` are stopped too. On a small database the upgrade outage was measured at about 15-20 s; the budget for a database under 5 GiB is 10 minutes. Pulling the images is outside this window. These are not promises. The upgrade empties Redis (`FLUSHALL`); queued tasks are lost and are set up again at the next beat tick, and the important data is in PostgreSQL. Nothing is written to QRadar.
 
-#### MT-06 — Yükseltme, çevrimiçi yol (yazar) [çekirdek]
+#### MT-06 — Upgrade, online path (writes) [core]
 
-**Ön koşul:** Doğrulanmış yedek (MT-03) tamam. Çevrimdışı yolu seçtiysen bu kontrol `Koşulmadı` olur.
+**Precondition:** The verified backup (MT-03) is done. If you chose the offline path, this check is `Not run`.
 
-**Eylem:**
+**Action:**
 
 
 ```bash
 git fetch --tags
-git checkout v0.1.9
-./qradar-dash upgrade 0.1.9
+git checkout v0.1.10
+./qradar-dash upgrade 0.1.10
 ```
 
-- Başlangıç ve bitiş saatini `date -u` ile Not alanına yaz.
+- Write the start and end time in the Note field with `date -u`.
 
-**Beklenen:**
+**Expected:**
 
-- Komut 0 ile çıkar ve son satır `Upgrade complete: 0.1.8 -> 0.1.9.` olur.
-- Baş değişmediği için alembic bir `Running upgrade` satırı yazmaz. Migrate adımı yine çalışır ve migrate konteyneri 0 ile çıkar. Bu bir hata değildir.
-- Ön kontrolde (yazıcılar durmadan önce) şu üç satır yazılır; baş **kurulu** sürümündür ve o da `0044`'tür:
-
-```
-PASS  db_connect     database accepted SELECT 1
-PASS  migration_head database and image are at 0044
-Full report: ./qradar-dash doctor
-```
-
-- Yeni yığın başladıktan sonra ikinci çift yazılır; baş **hedef** sürümündür ve yine `0044`'tür:
+- The command exits with 0 and the last line is `Upgrade complete: 0.1.9 -> 0.1.10.`.
+- Alembic prints three `Running upgrade` lines: `0044 -> 0045`, `0045 -> 0046` and `0046 -> 0047`. The migrate container exits with 0. These lines are expected in this release; it is not like 0.1.9.
+- In the pre-check (before the writers stop) these three lines are printed; the head is that of the **installed** version, which is `0044`:
 
 ```
 PASS  db_connect     database accepted SELECT 1
@@ -231,50 +223,58 @@ PASS  migration_head database and image are at 0044
 Full report: ./qradar-dash doctor
 ```
 
-- İki çift de yazılır. Tek çift yalnız hedef zaten kuruluysa yazılır: `Version 0.1.9 is already installed and healthy; nothing changed.` Bu, ilk yükseltmenin çıktısı değildir.
-- `PASS` satırlarındaki boşluk sayısı sürüme göre değişebilir; metin aynıdır.
-- 0.1.8'in `.env` dosyasında `FRONTEND_EDGE_IP` yoksa ve `FORWARDED_ALLOW_IPS` boş olmayan, `*` olmayan, frontend adresini içermeyen bir listeyse şu iki satır da yazılır. Adresleri sayfaya yazma; yalnız satırların göründüğünü yaz:
-  - `Frontend address <adres> added to .env (FRONTEND_EDGE_IP).`
-  - `FORWARDED_ALLOW_IPS now also trusts the frontend (<adres>): <liste>`
-- `.env`'de `FRONTEND_EDGE_IP` zaten varsa ve liste frontend adresini içermiyorsa yalnız `FORWARDED_ALLOW_IPS now also trusts the frontend (<adres>): <liste>` satırı yazılır; bu da doğrudur.
-- Anahtarlar zaten doğruysa (liste frontend adresini zaten içeriyorsa) bu satırlar yazılmaz; bu da doğrudur.
-- Çıkış `upgrade refused: …` ise hiçbir konteyner durmamıştır; nedeni oku (örneğin `this checkout is version <x>, not 0.1.9` ise `git checkout v0.1.9` unutulmuştur; `upgrade refused: 0.1.9 requires at least 0.1.8; nothing was changed` ise site 0.1.8'den eskidir ve `.env` ile imajlar değişmemiştir) ve düzelt. Aynı addan iki satır varsa `upgrade refused: .env has more than one FRONTEND_EDGE_IP line; nothing was changed` (ya da `FORWARDED_ALLOW_IPS`) yazılır; fazla satırı sil, `*` yazma.
-- Çıkış sıfırdan farklıysa ve son satır `upgrade to 0.1.9 failed and was rolled back to 0.1.8; the broken database was kept` ise otomatik geri alma çalışmıştır: bölüm 15'e git (OPS-R44).
+- After the new stack has started, the second pair is printed; the head is that of the **target** version and is `0047`:
 
-**Kaydet:** Çıkış kodu, başlangıç ve bitiş saati (UTC), iki `migration_head` satırı, son satır, adres satırlarından hangisinin göründüğü (adreslerin kendisi değil). Kaldı ise ilk hata satırı.
+```
+PASS  db_connect     database accepted SELECT 1
+PASS  migration_head database and image are at 0047
+Full report: ./qradar-dash doctor
+```
 
-**Temizlik:** Geri alma, bölüm 15'teki `rollback` komutudur. Başka temizlik yoktur.
+- Both pairs are printed; the first is `0044`, the second `0047`. A single pair is printed only if the target is already installed: `Version 0.1.10 is already installed and healthy; nothing changed.` That is not the output of a first upgrade.
+- The number of spaces in the `PASS` lines can change with the release; the text is the same.
+- If the `.env` of 0.1.9 has no `FRONTEND_EDGE_IP` and `FORWARDED_ALLOW_IPS` is a non-empty list that is not `*` and does not contain the frontend address, these two lines are printed as well. Do not write the addresses on the page; write only that the lines appeared:
+  - `Frontend address <address> added to .env (FRONTEND_EDGE_IP).`
+  - `FORWARDED_ALLOW_IPS now also trusts the frontend (<address>): <list>`
+- If `FRONTEND_EDGE_IP` is already in `.env` and the list does not contain the frontend address, only `FORWARDED_ALLOW_IPS now also trusts the frontend (<address>): <list>` is printed; that is also correct.
+- If the keys are already correct (the list already contains the frontend address), these lines are not printed; that is also correct.
+- If the output is `upgrade refused: …`, no container has been stopped; read the reason (for example `this checkout is version <x>, not 0.1.10` means `git checkout v0.1.10` was forgotten; `upgrade refused: 0.1.10 requires at least 0.1.9; nothing was changed` means the site is older than 0.1.9, and `.env` and the images are unchanged) and fix it. If there are two lines of the same name, `upgrade refused: .env has more than one FRONTEND_EDGE_IP line; nothing was changed` (or `FORWARDED_ALLOW_IPS`) is printed; delete the extra line and do not write `*`.
+- If the exit is non-zero and the last line is `upgrade to 0.1.10 failed and was rolled back to 0.1.9; the broken database was kept`, the automatic rollback has run: go to section 15 (OPS-R44).
 
-#### MT-07 — Yükseltme, çevrimdışı paket yolu (yazar) [çekirdek]
+**Record:** The exit code, the start and end time (UTC), the two `migration_head` lines, the last line, and which of the address lines appeared (not the addresses themselves). If it is Fail, the first error line.
 
-**Ön koşul:** Paket, bağlı bir makinede aynı etiketten hazırlanır: `git fetch --tags && git checkout v0.1.9 && ./qradar-dash bundle --output <paket dizini>`. `--output DIR` paketin yazılacağı dizindir; verilmezse dosya bulunulan dizine yazılır. Dosya adı `qradar-dash-0.1.9-bundle.tar` olur. Aynı yolda bir dosya varsa üzerine yazılmaz. Paket siteye taşınır. Çevrimiçi yolu seçtiysen bu kontrol `Koşulmadı` olur.
+**Cleanup:** The rollback is the `rollback` command in section 15. There is no other cleanup.
 
-**Eylem:**
+#### MT-07 — Upgrade, offline bundle path (writes) [core]
 
-- İki makinede de toplamı karşılaştır, sonra kurulum dizininde paketi aç ve yükselt:
+**Precondition:** The bundle is prepared on a connected machine from the same tag: `git fetch --tags && git checkout v0.1.10 && ./qradar-dash bundle --output <bundle directory>`. `--output DIR` is the directory the bundle is written to; if it is not given, the file is written to the current directory. The file name is `qradar-dash-0.1.10-bundle.tar`. A file at the same path is not overwritten. The bundle is carried to the site. If you chose the online path, this check is `Not run`.
+
+**Action:**
+
+- Compare the checksum on both machines, then unpack the bundle in the install directory and upgrade:
 
 ```bash
-sha256sum /yol/qradar-dash-0.1.9-bundle.tar
-cd <kurulum dizini>
-tar -xf /yol/qradar-dash-0.1.9-bundle.tar --exclude=images.tar
-./qradar-dash upgrade 0.1.9 --offline /yol/qradar-dash-0.1.9-bundle.tar
+sha256sum /path/qradar-dash-0.1.10-bundle.tar
+cd <install directory>
+tar -xf /path/qradar-dash-0.1.10-bundle.tar --exclude=images.tar
+./qradar-dash upgrade 0.1.10 --offline /path/qradar-dash-0.1.10-bundle.tar
 ```
 
 
-**Beklenen:**
+**Expected:**
 
-- İki toplam aynıdır.
-- Paket doğrulanır ve yüklenir; çıktıda `bundle images loaded and checked against MANIFEST` satırı görünür. Hiçbir konteyner imajlar yüklenip denetlenmeden durdurulmaz.
-- Sonrası, çevrimiçi yoldaki gibidir: iki `PASS` çifti, ikisi de `0044`, ve son satır `Upgrade complete: 0.1.8 -> 0.1.9.`, çıkış kodu 0. `Running upgrade` satırı yoktur.
-- Eksik bir imaj varsa `upgrade refused: target images are unavailable: image <imaj> is not loaded on this host; no container was stopped; pass the bundle: …` yazılır ve hiçbir şey durmaz.
+- The two checksums are the same.
+- The bundle is verified and loaded; the line `bundle images loaded and checked against MANIFEST` appears in the output. No container is stopped before the images are loaded and checked.
+- The rest is as in the online path: two `PASS` pairs (first `0044`, then `0047`), three `Running upgrade` lines (`0044 -> 0045`, `0045 -> 0046`, `0046 -> 0047`), and the last line `Upgrade complete: 0.1.9 -> 0.1.10.`, exit code 0.
+- If an image is missing, `upgrade refused: target images are unavailable: image <image> is not loaded on this host; no container was stopped; pass the bundle: …` is printed and nothing stops.
 
-**Kaydet:** Her iki toplam, çıkış kodu, başlangıç ve bitiş saati (UTC), iki `migration_head` satırı.
+**Record:** Both checksums, the exit code, the start and end time (UTC), the two `migration_head` lines.
 
-**Temizlik:** Bölüm 15'teki `rollback`.
+**Cleanup:** The `rollback` in section 15.
 
-#### MT-08 — Yükseltmeden sonra sürüm ve durum [çekirdek]
+#### MT-08 — Version and status after the upgrade [core]
 
-**Eylem:**
+**Action:**
 
 
 ```bash
@@ -283,33 +283,33 @@ curl -s http://127.0.0.1:8000/api/v1/version
 curl -s http://127.0.0.1:8000/api/v1/health/ready
 ```
 
-- `status` çıktısındaki `Last upgrade backup:` yolunu al (parantezdeki yaş kısmı olmadan). Yedekteki yanıt dosyasının kipine bak. Dosyanın içeriğini okuma ve yazma:
+- Take the `Last upgrade backup:` path from the `status` output (without the age part in parentheses). Look at the mode of the answer file in the backup. Do not read or write the contents of the file:
 
 ```bash
-BACKUP=<Last upgrade backup yolu>
+BACKUP=<Last upgrade backup path>
 stat -c '%a %n' "$BACKUP/install.answers"
 ```
 
 
-**Beklenen:**
+**Expected:**
 
-- `status`: `Installed version: 0.1.9`; `Last upgrade: success, 0.1.8 -> 0.1.9 at <utc>`; `Last upgrade backup: <yol> (age <yaş>)`; `API ready: HTTP 200 (…)`; çıkış kodu 0; her servis sağlıklı.
-- `/api/v1/version`: `"version":"0.1.9"` ve `"migration_head":"0044"`.
-- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0044"`.
-- Yedekte `install.answers` vardır. `stat` kip olarak `600` yazar (`0600`). Canlı dosya yükseltmeden önce `0400` idiyse kip `400` olur. Dosya yoktur yalnız canlı dosya yoksa, bir sembolik bağlantıysa ya da bu iki kipten başka bir kipteyse; olağan bir kurulumda dosya vardır ve yokluğu Kaldı'dır.
+- `status`: `Installed version: 0.1.10`; `Last upgrade: success, 0.1.9 -> 0.1.10 at <utc>`; `Last upgrade backup: <path> (age <age>)`; `API ready: HTTP 200 (…)`; exit code 0; every service healthy.
+- `/api/v1/version`: `"version":"0.1.10"` and `"migration_head":"0047"`.
+- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0047"`.
+- The backup has `install.answers`. `stat` prints the mode `600` (`0600`). If the live file was `0400` before the upgrade, the mode is `400`. The file is missing only if the live file is missing, if it is a symbolic link, or if its mode is neither of these two; on an ordinary install the file exists and its absence is Fail.
 
-**Kaydet:** Üç çıktının sürüm ve `migration_head` değerleri; `Last upgrade:` satırı; yedek dizininin adı ve `install.answers` kipinin rakamı. Dosyanın içeriği yazılmaz.
+**Record:** The version and `migration_head` values of the three outputs; the `Last upgrade:` line; the name of the backup directory and the digits of the `install.answers` mode. The contents of the file are not written.
 
-#### MT-09 — `doctor` yükseltmeden hemen sonra [çekirdek]
+#### MT-09 — `doctor` right after the upgrade [core]
 
-**Eylem:**
+**Action:**
 
 
 ```bash
 ./qradar-dash doctor
 ```
 
-- Adresleri basmadan `.env` içindeki iki adı kontrol et. Çıktıyı sayfaya yazabilirsin; adres yazmaz:
+- Check the two names in `.env` without printing the addresses. You can write the output on the page; it does not print an address:
 
 ```bash
 awk -F= '
@@ -322,109 +322,111 @@ awk -F= '
   $1 == "FORWARDED_ALLOW_IPS" { fa = unquote($2); nfa++ }
   END {
     if (nfe + 0 != 1 || nfa + 0 != 1) {
-      print "satır sayısı FRONTEND_EDGE_IP=" nfe + 0 " FORWARDED_ALLOW_IPS=" nfa + 0
+      print "line count FRONTEND_EDGE_IP=" nfe + 0 " FORWARDED_ALLOW_IPS=" nfa + 0
       exit 1
     }
     if (fe == "" || fe == "*" || fa == "" || fa == "*") {
-      print "FRONTEND_EDGE_IP ya da FORWARDED_ALLOW_IPS boş ya da yıldız"
+      print "FRONTEND_EDGE_IP or FORWARDED_ALLOW_IPS is empty or a star"
       exit 1
     }
     n = split(fa, a, /[, ]+/)
     ok = 0
     for (i = 1; i <= n; i++) if (a[i] == fe) ok = 1
-    if (!ok) { print "liste frontend adresini içermiyor"; exit 1 }
-    if (n == 2) print "iki adres, frontend listede; adresler yazılmadı"
-    else print "frontend listede; adres sayısı " n "; adresler yazılmadı"
+    if (!ok) { print "the list does not contain the frontend address"; exit 1 }
+    if (n == 2) print "two addresses, the frontend is in the list; addresses not printed"
+    else print "the frontend is in the list; address count " n "; addresses not printed"
   }
 ' .env
 ```
 
 
-**Beklenen:**
+**Expected:**
 
-- `FAIL` yoktur. Değişen konsolda saatlik `log_source_inventory` ve `rule_inventory` FAIL'i bunun dışındadır; o bekleme MT-11'dedir. `db_connect` PASS; `migration_head` PASS ve `database and image are at 0044`; `version_match` PASS ve `frontend and backend report 0.1.9`; `containers` PASS.
-- `forwarded_allow_ips` PASS'tir ve metin `FORWARDED_ALLOW_IPS trusts the frontend (<adres>)` olur. Adres, `FRONTEND_EDGE_IP` ile aynıdır; adresi sayfaya yazma. Bu satırda runbook yoktur. awk `iki adres, frontend listede; adresler yazılmadı` yazar. Dış vekilli bir sitede liste, operatörün eski listesine frontend adresinin bir kez eklenmiş halidir; ikiden fazla adres doğrudur ve awk adres sayısını yazar.
-- Satır yoksa, awk boş ya da yıldız derse, ya da doctor FAIL derse (`FORWARDED_ALLOW_IPS is empty; every analyst shares one rate-limit key` veya `FORWARDED_ALLOW_IPS is *; every analyst shares one rate-limit key`) bu Kaldı'dır. Runbook OPS-R21'dir. `*` yazma. Liste frontend adresini içermiyorsa WARN'dır: `FORWARDED_ALLOW_IPS does not trust the frontend (<adres>); pages drawn by the server share one rate-limit key`, runbook OPS-R21. Bu da Kaldı'dır.
-- Beat ve worker yeni başladığı için ilk dakikada `celery_workers` ya da `celery_beat` geçici FAIL verebilir; bir dakika bekleyip komutu yinele. İkinci çalıştırmada FAIL kalırsa Kaldı.
-- Toplama henüz bir kadans çalışmadığı için `cadence`, `anomaly_evaluation` ve `rule_match_coverage` WARN olabilir. Bunlar MT-11 içinde yeniden okunur.
-- `watermarks` olağan PASS metni `{n} watermark(s) have no error or excess lag` olur ve runbook yazmaz. Offense'ı olmayan bir konsolda, ilk temiz 0.1.9 çalışmasından önce `offense_snapshot` için WARN kalır: gecikme kadansın iki katını aşar, `consecutive_failures` 0'dır, `last_error` boştur (MT-02). Metin `{n} watermark(s) exceed twice their cadence: offense_snapshot` biçimindedir ve runbook OPS-R30'dur. Bu WARN'dır, Kaldı değildir; Not alanına yaz. MT-11'de yeniden okunur.
-- Takılmış bir offense filigranı ayrı bir WARN'dır: `{n} watermark(s) stalled at the page ceiling: offense_snapshot`. Runbook OPS-R66'dır. Gecikme de varsa iki cümle noktalı virgülle birleşir ve runbook yine OPS-R66 olur. Bu WARN Kaldı değildir. Sağlayıcı hatası FAIL kalır, runbook OPS-R30'dur ve aynı metin FAIL cümlesinin sonuna eklenebilir. Temiz bir çalışma takılmayı siler (MT-11).
-- `backup_age`, yükseltmeden öncekiyle aynı nedenle WARN kalabilir: yedek yok, yaş okunamıyor, 26 saatten eski, ya da yedek zamanlayıcısı kurulu değil veya kapalı (taze bir yedek de zamanlayıcı yokken ya da kapalıyken WARN verir). Bu yükseltmenin hatası değildir. Satır `docs/OPERATIONS.md` doctor tablosundadır; OPS-R kimliği yoktur.
+- There is no `FAIL`. The hourly `log_source_inventory` and `rule_inventory` FAIL on a changed console is the exception; that wait belongs to MT-11. `db_connect` PASS; `migration_head` PASS and `database and image are at 0047`; `version_match` PASS and `frontend and backend report 0.1.10`; `containers` PASS.
+- `forwarded_allow_ips` is PASS and the text is `FORWARDED_ALLOW_IPS trusts the frontend (<address>)`. The address is the same as `FRONTEND_EDGE_IP`; do not write the address on the page. This line has no runbook. awk prints `two addresses, the frontend is in the list; addresses not printed`. On a site behind an outer proxy, the list is the operator's old list with the frontend address added once; more than two addresses is correct, and awk prints the address count.
+- If the line is missing, if awk says empty or star, or if doctor says FAIL (`FORWARDED_ALLOW_IPS is empty; every analyst shares one rate-limit key` or `FORWARDED_ALLOW_IPS is *; every analyst shares one rate-limit key`), this is Fail. The runbook is OPS-R21. Do not write `*`. If the list does not contain the frontend address, it is a WARN: `FORWARDED_ALLOW_IPS does not trust the frontend (<address>); pages drawn by the server share one rate-limit key`, runbook OPS-R21. This is also Fail.
+- Because beat and worker have just started, `celery_workers` or `celery_beat` can give a temporary FAIL in the first minute; wait a minute and repeat the command. If the FAIL stays on the second run, it is Fail.
+- Because collection has not run for one cadence yet, `cadence`, `anomaly_evaluation` and `rule_match_coverage` can be WARN. These are read again in MT-11.
+- The ordinary PASS text of `watermarks` is `{n} watermark(s) have no error or excess lag` and has no runbook. On a console that has no offenses, a WARN stays before the first clean `offense_snapshot` run: the lag exceeds twice the cadence, `consecutive_failures` is 0, and `last_error` is empty (MT-02). The text has the form `{n} watermark(s) exceed twice their cadence: offense_snapshot` and the runbook is OPS-R30. This is a WARN, not a Fail; write it in the Note field. It is read again in MT-11.
+- A stalled offense watermark is a separate WARN: `{n} watermark(s) stalled at the page ceiling: offense_snapshot`. The runbook is OPS-R66. If there is lag as well, the two sentences are joined with a semicolon and the runbook is still OPS-R66. This WARN is not a Fail. A provider error stays FAIL, the runbook is OPS-R30, and the same text can be appended to the end of the FAIL sentence. A clean run clears the stall (MT-11).
+- `backup_age` can stay WARN for the same reason as before the upgrade: no backup, the age cannot be read, older than 26 hours, or the backup timer is not installed or is off (a fresh backup also gives a WARN when there is no timer or it is off). This is not a fault of the upgrade. The line is in the doctor table of `docs/OPERATIONS.md`; it has no OPS-R id.
 
-**Kaydet:** Çıkış kodu; WARN ve FAIL olan satırların kimliği; `migration_head`, `version_match` ve `forwarded_allow_ips` satırlarının metni (adres olmadan); awk'ın yazdığı satır.
+- The report has two lines that 0.1.9 did not have, `geo_country_source` and `qradar_health`. A WARN on either is not a Fail: write its text in the Note field (a lab CE console always gives a WARN on `qradar_health` because its license is over-allocated). A FAIL on `geo_country_source` is a Fail (MT-129 says what it means). A `watermarks` FAIL with “The country property … does not exist on this console” is the same finding seen from the collector; fix the setting (MT-129) and run `doctor` again.
 
-#### MT-10 — Kesinti süresi ve arayüzün dönüşü [çekirdek]
+**Record:** The exit code; the ids of the WARN and FAIL lines; the text of the `migration_head`, `version_match` and `forwarded_allow_ips` lines (without the address); the line awk printed.
 
-**Eylem:**
+#### MT-10 — Outage duration and the interface's return [core]
 
-- Yükseltme komutunun başlangıç ve bitiş saatini (MT-06 ya da MT-07) kullan. Tarayıcıda `https://<host>/login` sayfasını aç.
+**Action:**
 
-**Beklenen:**
+- Use the start and end time of the upgrade command (MT-06 or MT-07). Open `https://<host>/login` in the browser.
 
-- Yükseltme küçük bir veritabanında yaklaşık bir dakikada biter (4 vCPU'lu bir test makinesinde 50-52 sn ölçüldü; bu bir söz değildir); kesinti penceresi bundan kısadır. 10 dakikayı aşan bir kesinti Not alanına yazılır (veritabanı büyükse dökümün süresi eklenir; bu bir söz değildir).
-- Giriş sayfasında, `ba_locale` çerezi yoksa (taze tarayıcı) başlık “Sign in” ve altında `API version 0.1.9` görünür. Çerez `tr` ise başlık “Oturum aç” ve satır `API sürümü 0.1.9` olur.
+**Expected:**
 
-**Kaydet:** Yükseltme süresi (dakika), kesinti süresinin tahmini, giriş sayfasındaki sürüm satırı.
+- The upgrade finishes in about a minute on a small database (50-52 s was measured on a 4-vCPU test machine; this is not a promise); the outage window is shorter than that. An outage of more than 10 minutes is written in the Note field (on a large database the time of the dump is added; this is not a promise).
+- The sign-in page shows the title “Sign in” and under it `API version 0.1.10`. The page is English whatever the `ba_locale` cookie holds.
 
-#### MT-11 — İlk kadanstan sonra toplamanın dönmesi [çekirdek]
+**Record:** The upgrade duration (minutes), the estimate of the outage duration, and the version line on the sign-in page.
 
-**Ön koşul:** Yükseltme bitiş saatini biliyorsun. Yönetici hesabıyla oturum açtın (bölüm 3).
+#### MT-11 — Collection runs again after the first cadence [core]
 
-**Ne zaman bakılır:** Yükseltmeden sonra, sayfadaki en uzun kadans + 3 dakika (yukarıdaki "Zamanlama ve toplam süre" tablosu). Varsayılan: 5 dk aileler için 8 dk, WAF ve IPS için 18 dk.
+**Precondition:** You know the end time of the upgrade. You have signed in with the administrator account (section 3).
 
-**Eylem:**
+**When to look:** After the upgrade, the longest cadence on the page + 3 minutes (the "Timing and total duration" table above). Default: 8 min for the 5-minute families, 18 min for WAF and IPS.
 
-- `/admin/search-cadence` sayfasını aç (“Arama sıklığı”). Her ailenin “Sıklık” değerini oku ve en uzununu not et.
-- Bekleme süresi dolunca sayfayı yenile ve “Son çalıştırma (UTC)” sütununu yükseltme bitiş saatiyle karşılaştır.
+**Action:**
+
+- Open the `/admin/search-cadence` page (“Search cadence”). Read the “Cadence” value of each family and note the longest one.
+- When the wait is over, reload the page and compare the “Last run (UTC)” column with the end time of the upgrade.
 
 ```bash
 ./qradar-dash doctor
 ```
 
 
-**Beklenen:**
+**Expected:**
 
-- Kadansı olan ve etkin her ailenin “Son çalıştırma (UTC)” zamanı yükseltme bitişinden sonradır. “Sonraki çalıştırma (UTC)” yalnızca gelecek bir zamanı, ya da şimdi vadesi gelmiş (en az bir kez çalışmış) aileyi saat olarak gösterir. Kapalı bir ailenin sonraki çalıştırması, zaman gelecekte olsa bile tire (—) olur. Hiç çalışmamış bir ailenin geçmişte kalan hesaplanmış zamanı da tiredir. Hiç çalışmamış bir aile “Henüz çalışmadı” ya da “Yükseltmeden beri çalışmadı” yazar (tire ya da bu metin; sıfır değildir). Kapalı bir ailenin (örneğin sitede WAF kapalıysa) sonraki çalıştırmasının tire olması beklenir.
-- Beklemeden önce bakarsan “Henüz çalışmadı” ya da eski bir zaman görürsün: bu hata değildir, Kaldı yazma, bekle.
-- `doctor`: `cadence` PASS (`<n> cadence row(s) are on time or disabled`), `celery_workers` ve `celery_beat` PASS. `watermarks` ve `errors_recent` aşağıdaki iki durum dışında PASS'tir (`errors_recent`: `no watermark has recent failures`). `FAIL` Kaldı'dır; `cadence` WARN ise ailelerin adını Not'a yaz ve kadans + 3 dk daha bekle.
-- Offense'ı olmayan bir konsolda temiz bir `offense_snapshot` çalışması filigranı çalışmanın zamanına taşır. Bu, 0.1.9'un farkıdır: 0.1.8 aynı konsolda yaklaşık 168 saatlik WARN'ı temiz çalışmada da tutuyordu (MT-02). `consecutive_failures` 0 ve `last_error` boşken gecikme kadansın içinde kalır; bu satır için WARN beklenmez. Başarısız veya kesilmiş bir çalışma filigranı ilerletmez. O durumda WARN kalabilir ve Kaldı değildir; Not alanına yaz. Gecikme runbook'u OPS-R30'dur.
-- Aynı temiz çalışma, sayfa tavanı takılmasını da siler. Takılma cümlesi temiz bir çalışmadan sonra duruyorsa runbook OPS-R66'dır; bu tek başına Kaldı değildir, Not'a yaz. Takılma, `last_error` değildir.
-- Konsol değiştiyse (aynı konsolda yapılan yükseltme bu madde değildir) `log_source_inventory` ve `rule_inventory` saatliktir (varsayılan 3600 sn). Değişimde başarısız olan bu iki envanter, sonraki vuruşuna kadar en çok bir saat bekleyebilir. O süre dolana kadar sayfalar kaynak göstermez; kural envanteri gelmemişse kural listesi de boştur. Bu Kaldı değildir; Not'a yaz ve saatlik yeniden denemeyi bekle. Bu arada `watermarks` yalnız bu iki satır için FAIL, `errors_recent` WARN olabilir; ikisi de Kaldı değildir.
-- Bu kontrolden önce yapılan veriye bağlı kontroller (Pano, anomaliler) bu bekleme dolana kadar "güncel değil" ya da "toplanmadı" gösterebilir; bu doğru durumdur.
+- The “Last run (UTC)” time of every enabled family that has a cadence is after the end of the upgrade. “Next run (UTC)” shows only a future time, or, for a family that is due now (and has run at least once), the time. The next run of a disabled family is a dash (—), even if the time would be in the future. The computed time of a family that has never run is also a dash if it lies in the past. A family that has never run shows “No run yet” or “Not run since upgrade” (the dash or this text; it is not zero). It is expected that the next run of a disabled family (for example, if WAF is off on the site) is a dash.
+- If you look before the wait is over, you see “No run yet” or an old time: this is not a fault, do not write Fail, wait.
+- `doctor`: `cadence` PASS (`<n> cadence row(s) are on time or disabled`), `celery_workers` and `celery_beat` PASS. `watermarks` and `errors_recent` are PASS except for the two cases below (`errors_recent`: `no watermark has recent failures`). A `FAIL` is Fail; if `cadence` is a WARN, write the names of the families in the Note field and wait another cadence + 3 min.
+- On a console that has no offenses, a clean `offense_snapshot` run moves the watermark to the time of the run. This is the difference of 0.1.9: 0.1.8 kept the WARN of about 168 hours on the same console even after a clean run (MT-02). While `consecutive_failures` is 0 and `last_error` is empty, the lag stays within the cadence; no WARN is expected for this line. A failed or truncated run does not advance the watermark. In that case the WARN can remain and is not a Fail; write it in the Note field. The lag runbook is OPS-R30.
+- The same clean run also clears the page-ceiling stall. If the stall sentence remains after a clean run, the runbook is OPS-R66; this alone is not a Fail, write it in the Note field. A stall is not a `last_error`.
+- If the console was changed (an upgrade on the same console is not this case), `log_source_inventory` and `rule_inventory` are hourly (default 3600 s). These two inventories, if they failed at the change, can wait up to one hour for their next beat. Until that time is over the pages show no sources; if the rule inventory has not arrived, the rule list is empty too. This is not a Fail; write it in the Note field and wait for the hourly retry. Meanwhile `watermarks` can be FAIL for only these two rows and `errors_recent` can be WARN; neither is a Fail.
+- Data-dependent checks done before this check (Dashboard, anomalies) can show “stale” or “not collected” until this wait is over; this is the correct state.
 
-**Kaydet:** En uzun kadans, her ailenin son çalışma zamanı (UTC), `doctor` çıkış kodu ve WARN/FAIL kimlikleri.
+**Record:** The longest cadence, the last run time (UTC) of each family, the `doctor` exit code and the WARN/FAIL ids.
 
-#### MT-126 — Üretimde hız sınırı sayfayı kesmez [çekirdek]
+#### MT-126 — The rate limit does not cut the page in production [core]
 
-**Ön koşul:** Yükseltme bitmiştir (MT-08). Oturum açıktır (MT-12). `.env` değiştirilmez.
+**Precondition:** The upgrade is finished (MT-08). The session is open (MT-12). `.env` is not changed.
 
-**Eylem:**
+**Action:**
 
-- Betik `.env` içindeki `API_LOOPBACK_PORT` değerini kullanır (varsayılan 8000). Port farklıysa onu yaz.
+- The script uses `API_LOOPBACK_PORT` from `.env` (default 8000). If the port is different, write that one.
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/api/v1/health/ready
 ```
 
-- Oturum açıkken `/alerts` sayfasını bir kez aç. `/` da olur.
+- While signed in, open the `/alerts` page once. `/` is fine too.
 
-**Beklenen:**
+**Expected:**
 
-- `health/ready` HTTP 200 döner. Bu uç sınıra girmez; 200, sınırın kapalı olduğu anlamına gelmez.
-- Sayfada şu cümle yoktur: “Too many requests came from this address within a minute.” Türkçe arayüzde “Bu adresten bir dakika içinde çok fazla istek geldi.” de yoktur. “Yüklenemedi” başka bir arızadır ve bu kontrolün 429'u değildir.
+- `health/ready` returns HTTP 200. This endpoint does not enter the limit; a 200 does not mean the limit is off.
+- The page does not show this sentence: “Too many requests came from this address within a minute.” “Could not be loaded” messages are a different fault and are not the 429 of this check.
 
-**Kaydet:** HTTP kodu ve cümlenin görünmediği (evet/hayır).
+**Record:** The HTTP code and whether the sentence did not appear (yes/no).
 
-#### MT-127 — Düşürülmüş sınır 429 ve yeniden deneme cümlesi (yazar) yalnızca lab
+#### MT-127 — The lowered limit gives 429 and the retry sentence (writes) lab only
 
-**Ön koşul:** **yalnızca lab.** Üretimde `Koşulmadı`. Bu kontrol `.env` içindeki `RATE_LIMIT_DEFAULT` satırını geçici olarak `2/minute` yapar ve yalnız `backend` konteynerini yeniden oluşturur. Sırlar sayfaya yazılmaz. `.env.rate-limit-before` zaten duruyorsa başlama; önce aşağıdaki Temizlik'i çalıştır.
+**Precondition:** **lab only.** In production, `Not run`. This check temporarily sets the `RATE_LIMIT_DEFAULT` line in `.env` to `2/minute` and recreates only the `backend` container. Secrets are not written on the page. If `.env.rate-limit-before` already exists, do not start; run the Cleanup below first.
 
-**Eylem:**
+**Action:**
 
-- Kurulum dizininde kopyayı al, sınırı düşür ve backend'i yeniden oluştur. `--no-deps` durur; postgres yeniden oluşturulmaz. `COMPOSE_FILE` ve `COMPOSE_PROJECT_NAME` zaten `.env` içindedir; komut kurulum dizininden yalın `docker compose` kullanır.
+- In the install directory, take the copy, lower the limit and recreate the backend. `--no-deps` stops; postgres is not recreated. `COMPOSE_FILE` and `COMPOSE_PROJECT_NAME` are already in `.env`; the command uses plain `docker compose` from the install directory.
 
 ```bash
-cd <kurulum dizini> \
+cd <install directory> \
 && test ! -e .env.rate-limit-before \
 && cp -a .env .env.rate-limit-before \
 && ( umask 077; awk '
@@ -443,15 +445,15 @@ cd <kurulum dizini> \
 && docker compose up -d --force-recreate --no-deps backend
 ```
 
-- Blok `mv` satırından önce durursa `.env` değişmemiştir. `.env.rate-limit-new` dosyasını sil ve yeniden başla. `mv` çalıştıktan sonra durursa Temizlik'i çalıştır.
+- If the block stops before the `mv` line, `.env` is unchanged. Delete the file `.env.rate-limit-new` and start again. If it stops after `mv` has run, run the Cleanup.
 
-- `health/ready` 200 olana kadar bekle. Bu uç sınıra girmez; konteyner sağlıklı kalır. Sağlıklı kalması sınırın kapalı olduğu anlamına gelmez. Port, `API_LOOPBACK_PORT` değeridir (varsayılan 8000).
+- Wait until `health/ready` is 200. This endpoint does not enter the limit; the container stays healthy. Staying healthy does not mean the limit is off. The port is the value of `API_LOOPBACK_PORT` (default 8000).
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/api/v1/health/ready
 ```
 
-- Aynı uçtan açık bir `GET` ile sınırı geç. `/api/v1/version` oturum istemez; sınır, kimlik denetiminden önce çalışır. `/health` kullanma. Bu üç istek tek anahtarı paylaşır: backend'in geri döngü bağlantı noktasında gördüğü karşı adres. Bu adres analistin anahtarı değildir; bu üç istek tarayıcının sayfasını 429 yapmaz.
+- Pass the limit with an open `GET` to the same endpoint. `/api/v1/version` needs no session; the limit runs before the identity check. Do not use `/health`. These three requests share one key: the peer address the backend sees on its loopback port. This address is not the analyst's key; these three requests do not make the browser's page a 429.
 
 ```bash
 for n in 1 2 3; do
@@ -461,24 +463,32 @@ for n in 1 2 3; do
 done
 ```
 
-- Oturum açıkken `/alerts` sayfasını, cümle görünene kadar yenile. Dakikada 2 istekte aynı yolun üçüncü yüklemesi 429 verir. Tam bir yükleme `GET /api/v1/me`'yi de okur; bu okuma reddedilen istekse cümle, sayfanın yerine kabuğun kapısında görünür. Dakika dolmuşsa yeniden yenile. Panoyu kullanma: verisi duran bir bileşen yalnız kısa notu gösterir.
-- Cümleyi önce sayfanın o anki dilinde oku. Sonra `/account` içindeki “Arayüz dili” (“Interface language”) ile diğer dile geç, kaydet ve `/alerts` sayfasını cümle görünene kadar yenile. İki cümleyi de gördükten sonra dili bu kontrolün başındaki dile geri al.
-
-**Beklenen:**
-
-- İlk iki `curl` HTTP 200 döner. İkisinde de `X-RateLimit-Limit: 2` vardır ve `X-RateLimit-Remaining` yazılıdır.
-- Üçüncü `curl` HTTP 429 döner. `Retry-After` saniye cinsinden bir sayıdır. `X-RateLimit-Limit`, `X-RateLimit-Remaining` ve `X-RateLimit-Reset` vardır. Gövde `"detail":"rate limit exceeded"` içerir. Gövdedeki `limit` alanını eşleştirme ve sayfaya yazma; o alan kalıcı bir sayı değildir.
-- İngilizce sayfa şunu yazar: “Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in N s.” N, `Retry-After` saniyesidir.
-- Türkçe sayfa şunu yazar: “Bu adresten bir dakika içinde çok fazla istek geldi. Veride ya da backend'de bir sorun yok. N sn sonra yeniden deneyin.”
-- Katalogda bekleme süresi olmayan ikinci biçim de vardır: “Try again in a minute.” ve “Bir dakika sonra yeniden deneyin.” Bu labın 429 yanıtı `Retry-After` taşıdığı için sayfa numaralı biçimi gösterir.
-- Cümle `/alerts` sayfasında ya da kabuğun kapısında görünebilir; ikisi de Geçti'dir. Kapı, sayfanın hiçbir parçasını göstermeden aynı cümleyi ve “Tekrar dene” düğmesini yazar. Kapıda “Oturum okunamadı.” (“The session could not be read.”) ve `rate limit exceeded` ham ayrıntısı varsa kontrol Kaldı'dır.
-
-**Kaydet:** Üç HTTP kodu, üçüncü yanıtta `Retry-After` ve `X-RateLimit-Limit` var mı, iki dilde cümlenin ilk beş sözcüğü. Adres, `.env` satırı ve `limit` alanı yazılmaz.
-
-**Temizlik:** Adımlardan biri Kaldı olsa da bu bloğu çalıştır. Kopya sırları tutar; onu okuma ve hiçbir yere yazma.
+- After the minute has passed, see that a counted refusal also carries the window. An anonymous `GET /api/v1/me` returns 401 and is counted; the response carries no `Retry-After`:
 
 ```bash
-cd <kurulum dizini> \
+curl -s -i http://127.0.0.1:8000/api/v1/me
+```
+
+- Then, in the signed-in browser, open `/alerts/00000000-0000-0000-0000-000000000099` (an id that does not exist) and look at the 404 response in the network panel. A 404 is counted too; it has the three `X-RateLimit-*` headers and no `Retry-After`.
+
+- While signed in, reload the `/alerts` page until the sentence appears. At 2 requests per minute the third load of the same path gives a 429. A full load also reads `GET /api/v1/me`; if that read is the refused request, the sentence appears at the shell's gate instead of the page. If the minute has passed, reload again. Do not use the Dashboard: a widget whose data stops shows only the short note.
+
+**Expected:**
+
+- The first two `curl` calls return HTTP 200. Both have `X-RateLimit-Limit: 2` and `X-RateLimit-Remaining` is present.
+- The third `curl` returns HTTP 429. `Retry-After` is a number in seconds. `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` are present. The body contains `"detail":"rate limit exceeded"`. Do not match the `limit` field in the body and do not write it on the page; that field is not a stable number.
+- `GET /api/v1/me` returns HTTP 401; the response has `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` and no `Retry-After`. This shows that a counted refusal carries the window.
+- The 404 response in the browser also has the same three `X-RateLimit-*` headers and no `Retry-After`. `Retry-After` belongs to the 429 only.
+- The page says: “Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in N s.” N is the `Retry-After` seconds.
+- The catalog also has a second form without a wait time: “Try again in a minute.” Because the 429 of this lab carries `Retry-After`, the page shows the numbered form.
+- The sentence can appear on the `/alerts` page or at the shell's gate; both are Pass. The gate writes the same sentence and a “Try again” button without showing any part of the page. If the gate shows “The session could not be read.” and the raw detail `rate limit exceeded`, the check is Fail.
+
+**Record:** The three HTTP codes; whether the third response has `Retry-After` and `X-RateLimit-Limit`; whether the 401 and 404 responses have the three `X-RateLimit-*` headers and no `Retry-After`; the first five words of the sentence. The address, the `.env` line and the `limit` field are not written.
+
+**Cleanup:** Run this block even if one of the steps is Fail. The copy holds secrets; do not read it and do not write it anywhere.
+
+```bash
+cd <install directory> \
 && test -f .env.rate-limit-before \
 && cp -a .env.rate-limit-before .env \
 && chmod 600 .env \
@@ -487,1638 +497,1711 @@ cd <kurulum dizini> \
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/api/v1/health/ready
 ```
 
-- `test` kopyayı bulamazsa zincir durur ve `rm` çalışmaz. Kopya duruyorsa onu elle yerine koy: `cp -a .env.rate-limit-before .env && chmod 600 .env`. Kopyayı, backend eski sınırla ayakta olana kadar silme.
+- If `test` cannot find the copy, the chain stops and `rm` does not run. If the copy is there, put it back by hand: `cp -a .env.rate-limit-before .env && chmod 600 .env`. Do not delete the copy until the backend is up with the old limit.
 
-- `health/ready` yine 200 olur. `/alerts` bir kez yüklendiğinde 429 cümlesi yoktur.
+- `health/ready` is 200 again. When `/alerts` loads once, the 429 sentence is not there.
 
-### 3. Oturum açma
+### 3. Sign-in
 
-Tarayıcıda `https://<host>/` adresini aç. Dil çerezi yoksa arayüz İngilizcedir (`ba_locale` çerezi yoksa varsayılan `en`); bu bölümün Türkçe etiketleri, dil Türkçe iken görünenlerdir ve ilk kez İngilizce görürsen İngilizce karşılığı yanındadır.
+Open `https://<host>/` in the browser. The interface is English only (D-41); the labels in this section are the ones the English interface shows.
 
-#### MT-12 — Mevcut kullanıcının oturum açması [çekirdek]
+#### MT-12 — Sign-in of an existing user [core]
 
-**Eylem:**
+**Action:**
 
-- `https://<host>/login` sayfasını aç ve var olan yönetici hesabıyla oturum aç. Formun alanları: “Kullanıcı adı” (“Username”) ve “Parola” (“Password”); düğme “Oturum aç” (“Sign in”).
+- Open `https://<host>/login` and sign in with the existing administrator account. The form fields are “Username” and “Password”; the button is “Sign in”.
 
-**Beklenen:**
+**Expected:**
 
-- Sayfa `/` yoluna yönlenir ve “Gösterge paneli” (“Dashboard”) sayfası açılır. Üst çubukta kullanıcı adı görünür.
-- “Oturum okunamadı.” (“The session could not be read.”) metni görünmez.
-- Yöneticide ilk oturum açmada, konsolun "geçmiş okunsun mu" kararı hiç kaydedilmemişse pencere açılır. Başlık, gün sayısı varken “Read the last 28 days from QRadar?” (“QRadar'dan son 28 gün okunsun mu?”) olur; 28, `HISTORY_BACKFILL_DAYS` varsayılanıdır ve sitede farklıysa o sayı yazılır. Gün sayısı henüz yoksa kısa biçim görünür: “Read QRadar's past?” (“QRadar'ın geçmişi okunsun mu?”). Burada “Decide later” (“Sonra karar ver”) düğmesini seç; hiçbir şey kaydetme (bölüm 10).
+- The page redirects to `/` and the “Dashboard” page opens. The user name is shown in the top bar.
+- The text “The session could not be read.” does not appear.
+- On the administrator's first sign-in, if the console's "read the history?" decision has never been recorded, a dialog opens. With a day count the title is “Read the last 28 days from QRadar?”; 28 is the `HISTORY_BACKFILL_DAYS` default, and if the site has a different value, that number is shown. If the day count is not available yet, the short form appears: “Read QRadar's past?”. Choose “Decide later” here; record nothing (section 10).
 
-**Kaydet:** Oturum açılabildi mi; ilk açılışta karar penceresi çıktı mı; kullanıcı adı yazılmaz, yalnızca rolü (admin, analyst, viewer…).
+**Record:** Whether the sign-in worked; whether the decision dialog appeared on the first sign-in; the user name is not written, only the role (admin, analyst, viewer…).
 
-#### MT-13 — Hesap menüsü ve API sürümü [çekirdek]
+#### MT-13 — Account menu and API version [core]
 
-**Eylem:**
+**Action:**
 
-- Üst çubukta kullanıcı adına tıkla.
+- Click the user name in the top bar.
 
-**Beklenen:**
+**Expected:**
 
-- Menüde “{name} olarak oturum açıldı” satırı, “Kaynak: {source}” satırı (`LOCAL` ya da `LDAP`), “Roller: {roles}” satırı, “Hesap ayarları” (“Account settings”) bağlantısı ve “Oturumu kapat” (“Sign out”) düğmesi vardır. Yerel hesapta “Parolayı değiştir” bağlantısı da vardır.
-- Menüdeki sürüm satırı, dil İngilizceyken `API version 0.1.9`, dil Türkçeyken `API sürümü 0.1.9` olur. Bu bölümde dil henüz değiştirilmediği için taze tarayıcıda İngilizce satır görünür.
+- The menu has the line “Signed in as {name}”, the line “Source: {source}” (`LOCAL` or `LDAP`), the line “Roles: {roles}”, the link “Account settings” and the button “Sign out”. A local account also has a “Change password” link.
+- The version line in the menu is `API version 0.1.10`.
 
-**Kaydet:** Menüdeki API sürümü.
+**Record:** The API version in the menu.
 
-#### MT-14 — Hesap sayfası [çekirdek]
+#### MT-14 — Account page [core]
 
-**Eylem:**
+**Action:**
 
-- `/account` sayfasını aç (menüdeki “Hesap ayarları”).
+- Open the `/account` page (“Account settings” in the menu).
 
-**Beklenen:**
+**Expected:**
 
-- Başlık “Hesap ayarları” (“Account settings”). İki bölüm vardır: “Dil” (“Language”) ve “Parola” (“Password”).
-- LDAP hesabında parola bölümü “LDAP hesabı parolasını burada değil, dizinde değiştirir.” (“An LDAP account changes its password in the directory, not here.”) metnini gösterir; yerel hesapta parola formu gömülüdür (“Mevcut parola”, “Yeni parola”, “Yeni parolayı doğrula”).
+- The title is “Account settings”. There is one section, “Password”; there is no language section (D-41; MT-131).
+- On an LDAP account the password section shows the text “An LDAP account changes its password in the directory, not here.”; on a local account the password form is embedded (“Current password”, “New password”, “Confirm new password”).
 
-**Kaydet:** Hesabın kaynağı (`LOCAL`/`LDAP`) ve sayfanın açılıp açılmadığı.
+**Record:** The account's source (`LOCAL`/`LDAP`) and whether the page opened.
 
-#### MT-15 — Oturumu kapatma ve yeniden açma [çekirdek]
+#### MT-15 — Signing out and in again [core]
 
-**Eylem:**
+**Action:**
 
-- Menüden “Oturumu kapat” seç. Sonra aynı hesapla yeniden oturum aç.
+- Choose “Sign out” in the menu. Then sign in again with the same account.
 
-**Beklenen:**
+**Expected:**
 
-- Çıkışta `/login` açılır. Yeniden girişte `/` açılır; dil tercihi korunur.
+- On sign-out `/login` opens. On signing in again `/` opens.
 
-**Kaydet:** Çıkış ve giriş çalıştı mı.
+**Record:** Whether sign-out and sign-in worked.
 
-#### MT-16 — Yeni kullanıcı oluşturma (yazar) yalnızca lab
+#### MT-16 — Creating a new user (writes) lab only
 
-**Sıra.** MT-123 çalıştırılacaksa bu kontrolü ve MT-17, MT-18, MT-19'u, MT-123'ün yeniden yükseltmesi bittikten sonra yap. Geri alma, yükseltmeden sonra oluşturulan hesapları kaldırır; hesapta saklanan dil (`ui_language`) de kalkar, tarayıcıdaki `ba_locale` çerezi kalır (ayrıntı MT-123'ün beklenenindedir). Üretimde bu dört kontrol `Koşulmadı` kalır.
+**Order.** If MT-123 will be run, do this check and MT-17, MT-18 and MT-19 after MT-123's re-upgrade is finished. The rollback removes the accounts created after the upgrade. In production these four checks stay `Not run`.
 
-**Ön koşul:** Yönetici hesabı. **yalnızca lab**: arayüzde kullanıcıyı silme işlemi yoktur (`/admin/users` altında yalnızca roller, devre dışı bırakma, kilit açma ve parola sıfırlama vardır). Test hesabı sonunda yalnızca devre dışı kalır ve listede durur. Üretimde bu kontrolü ve sonraki üçünü `Koşulmadı` işaretle; nedenini Not'a yaz.
+**Precondition:** An administrator account. **lab only**: there is no user delete in the interface (under `/admin/users` there are only roles, disable, unlock and password reset). At the end the test account is only disabled and stays in the list. In production mark this check and the next three `Not run`; write the reason in the Note field.
 
-**Eylem:**
+**Action:**
 
-- `/admin/users` sayfasını aç (“Kullanıcılar”). Form bölümü “Hesap oluştur” (“Create an account”).
-- Alanlar: “Kaynak” = “Yerel”; “Kullanıcı adı” = `mt-test-<gün>` (küçük harf, örneğin `mt-test-1101`); “Görünen ad”; “İlk parola” = en az 12 karakterlik bir parola ve kullanıcı adından farklı (bu parolayı kâğıda yazma); rol = “Görüntüleyici (viewer)”. Sonra “Hesap oluştur” düğmesine bas.
+- Open the `/admin/users` page (“Users”). The form section is “Create an account”.
+- Fields: “Source” = `LOCAL`; “Username” = `mt-test-<day>` (lower case, for example `mt-test-1101`); “Display name”; “Initial password” = a password of at least 12 characters that differs from the user name (do not write this password on paper); role = “viewer”. Then press the “Create account” button.
 
-**Beklenen:**
+**Expected:**
 
-- Sonuç satırı: “Yerel kullanıcı {name} oluşturuldu. Hesap, bir sonraki oturum açmada parolayı değiştirmek zorundadır.” Parola bir kez gösterilir: “{name} için ilk parola yalnızca bir kez gösterilir. Hesap, bir sonraki oturum açmada bunu değiştirmek zorundadır.”
-- Tabloda yeni satır vardır: kaynak “Yerel”, durum `etkin`. Satırı “Yönet” ile aç: “Parola değişikliği” = “Bir sonraki oturum açmada zorunlu.”
+- The result line: “Created local user {name}. The account must change the password at the next sign-in.” The password is shown once: “The initial password for {name} is shown once. The account must change it at the next sign-in.”
+- The table has a new row: source `LOCAL`, status `active`. Open the row with “Manage”: “Password change” = “Required at the next sign-in.”
 
-**Kaydet:** Hesap oluştu mu (evet/hayır). Kullanıcı adı ve parola yazılmaz.
+**Record:** Whether the account was created (yes/no). The user name and password are not written.
 
-**Temizlik:** Bölüm "Test hesabını devre dışı bırak" kontrolü.
+**Cleanup:** The check "Disabling the test account" (MT-19).
 
-#### MT-17 — Zorunlu parola değişikliği (yazar) yalnızca lab
+#### MT-17 — Forced password change (writes) lab only
 
-**Ön koşul:** Önceki kontrolde hesap oluştu. İkinci bir tarayıcı penceresi ya da gizli pencere aç; yönetici oturumunu kapatma.
+**Precondition:** The account was created in the previous check. Open a second browser window or a private window; do not sign out the administrator session.
 
-**Eylem:**
+**Action:**
 
-- Gizli pencerede `/login` aç ve yeni hesapla, yönetici tarafından yazılan ilk parolayla oturum aç.
-- Sayfayı değiştirmeyi dene: adres çubuğuna `/alerts` yaz.
-- Parola değiştirme formunda sırasıyla dene: (1) “Mevcut parola” = ilk parola, “Yeni parola” ve “Yeni parolayı doğrula” = 6 karakterlik bir değer; (2) yeni parola ile onay farklı; (3) geçerli (12+ karakter, kullanıcı adından farklı) yeni parola, onay aynı.
+- In the private window open `/login` and sign in with the new account and the initial password written by the administrator.
+- Try to change the page: type `/alerts` in the address bar.
+- In the password change form try, in this order: (1) “Current password” = the initial password, “New password” and “Confirm new password” = a 6-character value; (2) the new password and the confirmation are different; (3) a valid new password (12+ characters, different from the user name), same confirmation.
 
-**Beklenen:**
+**Expected:**
 
-- Oturum açıldıktan sonra tarayıcı `/account/password` yoluna gider; başlık “Parolayı değiştir” (“Change password”), açıklama “Parola değiştirilmeden bu hesap devam edemez.” (“This account cannot continue until the password is changed.”). Sağ üstte “Oturumu kapat” düğmesi vardır; menü ve gezinti yoktur.
-- `/alerts` yazınca da aynı form gelir (başka sayfa gösterilmez). Backend, bu hesabın diğer isteklerini 403 ile reddeder: “Başka bir istekten önce parolanın değiştirilmesi gerekiyor.”
-- (1) “Parola değiştirilmedi.” başlığı altında “Parola en az 12 karakter olmalıdır” satırı; (2) “Yeni parola ile doğrulaması eşleşmiyor.”; (3) “Parola değiştirildi.” ve sayfa `/` yoluna yönlenir. Bundan sonra hesap tüm izinli sayfaları görür.
+- After sign-in the browser goes to `/account/password`; the title is “Change password”, the description is “This account cannot continue until the password is changed.” At the top right there is a “Sign out” button; there is no menu and no navigation.
+- Typing `/alerts` brings the same form (no other page is shown). The backend refuses this account's other requests with 403: “A password change is required before any other request.”
+- (1) Under the heading “The password was not changed.” the line “password must be at least 12 characters”; (2) “The new password and the confirmation do not match.”; (3) “The password is changed.” and the page redirects to `/`. From then on the account sees all the pages it is allowed to see.
 
-**Kaydet:** Üç adımın sonucu (evet/hayır). Parolalar yazılmaz.
+**Record:** The result of the three steps (yes/no). The passwords are not written.
 
-**Temizlik:** "Test hesabını devre dışı bırak" kontrolü.
+**Cleanup:** The "Disabling the test account" check.
 
-#### MT-18 — Görüntüleyici rolünün sınırı (yazar) yalnızca lab
+#### MT-18 — The viewer role's limit (writes) lab only
 
-**Ön koşul:** Önceki kontrolde parola değişti; test hesabı `viewer` rolünde ve oturum açık (gizli pencere).
+**Precondition:** The password was changed in the previous check; the test account has the `viewer` role and is signed in (private window).
 
-**Eylem:**
+**Action:**
 
-- `/admin/users` adresini yaz. Sonra `/admin/directory` adresini yaz. Gezintiye bak.
-- `/` sayfasında “Gösterge panelleri” (“Dashboards”) menüsünü aç. Şablon grubunda yalnızca “SOC Overview (template)” (“SOC Genel Bakışı (şablon)”) vardır. “QRadar Administration (template)” menüde yoktur.
-- Pencere 12 sütun genişliğindeyken “Customize” (“Özelleştir”) görünür. Dar pencerede “Widen the window to customize” (“Özelleştirmek için pencereyi genişletin”) yazar ve özelleştirme yoktur. “Customize” ardından “Add widget” (“Bileşen ekle”) aç. Katalogda “Outage policy” (“Kesinti politikası”) satırına bak.
+- Type the address `/admin/users`. Then type `/admin/directory`. Look at the navigation.
+- On the `/` page open the “Dashboards” menu. In the template group there is only “SOC Overview (template)”. “QRadar Administration (template)” is not in the menu.
+- When the window is 12 columns wide, “Customize” is shown. In a narrow window it says “Widen the window to customize” and there is no customizing. Open “Customize”, then “Add widget”. In the catalog look at the “Outage policy” row.
 
-**Beklenen:**
+**Expected:**
 
-- `/admin/users`: “Your role cannot administer users (permission admin:users).” (“Rolünüz kullanıcıları yönetemiyor (izin: admin:users).”). `/admin/directory`: “Your role cannot change the directory (permission admin:auth).” (“Rolünüz dizini değiştiremiyor (izin: admin:auth).”).
-- Gezintide “Users” (“Kullanıcılar”) ve “Directory” (“Dizin”) bağlantıları yoktur.
-- Katalogda “Outage policy” (“Kesinti politikası”) satırı “Your role lacks permission admin:outage.” (“Rolünüzde şu izin eksik: admin:outage.”) yazar. “Add” (“Ekle”) düğmesi kapalıdır; düğmenin erişilebilir adı “Add Outage policy” (“Kesinti politikası bileşenini ekle”) olur. “QRadar Yönetimi” şablonu menüde yoktur; görüntüleyici onu kaydedemez (`dashboard:write` yoktur).
+- `/admin/users`: “Your role cannot administer users (permission admin:users).” `/admin/directory`: “Your role cannot change the directory (permission admin:auth).”
+- The navigation has no “Users” and “Directory” links.
+- In the catalog the “Outage policy” row says “Your role lacks permission admin:outage.” The “Add” button is disabled; the button's accessible name is “Add Outage policy”. The “QRadar Administration” template is not in the menu; the viewer cannot save it (there is no `dashboard:write`).
 
-**Kaydet:** Üç gözlemin sonucu. Yasak durum, yerleştirilmiş bir bileşende değil, katalogdaki kapalı Ekle satırında okunur (bölüm 5).
+**Record:** The result of the three observations. The forbidden state is read in the disabled Add row of the catalog, not in a placed widget (section 5).
 
-**Temizlik:** "Test hesabını devre dışı bırak" kontrolü.
+**Cleanup:** The "Disabling the test account" check.
 
-#### MT-19 — Test hesabını devre dışı bırakma (yazar) yalnızca lab
+#### MT-19 — Disabling the test account (writes) lab only
 
-**Ön koşul:** Yönetici oturumu. Gizli pencereyi kapat.
+**Precondition:** The administrator session. Close the private window.
 
-**Eylem:**
+**Action:**
 
-- `/admin/users` sayfasında test satırını “Yönet” ile aç ve “{name} hesabını devre dışı bırak” düğmesine bas.
+- On the `/admin/users` page open the test row with “Manage” and press the button “Disable {name}”.
 
-**Beklenen:**
+**Expected:**
 
-- Sonuç satırı “{name} devre dışı bırakıldı.”; satırın durumu `devre dışı`. Hesapla artık oturum açılamaz.
+- The result line is “Disabled {name}.”; the row's status is `disabled`. The account can no longer sign in. There is no user delete: this is the way to remove access, and the `user.disable` audit record stays.
 
-**Kaydet:** Hesap devre dışı oldu mu.
+**Record:** Whether the account was disabled.
 
-**Temizlik:** Bu zaten temizliktir. Hesap silinemez; listede devre dışı olarak kalır. Bunu Not alanına yaz.
+**Cleanup:** This is the cleanup. The account cannot be deleted; it stays in the list as disabled. Write this in the Note field.
 
-### 4. Dil
+### 4. Language
 
-Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). Seçim iki yerde saklanır: tarayıcıda `ba_locale` çerezi (yol `/`, bir yıl, `SameSite=Lax`) ve hesapta (`ui_language`). Başka bir tarayıcıda oturum açınca hesaptaki tercih çereze yazılır; ilk sayfa önceki dilde kalır ve bir kez yenilenince hesap diline geçer. Bu 0.1.8'in bilinen sınırıdır, hata değildir. Çerez ve hesap yoksa arayüz İngilizcedir. Yalnızca İngilizce ve Türkçe vardır.
+**0.1.10 (D-41).** The interface is English only; there is no language control. This section keeps its ids from the earlier releases so that numbering and history stay stable. Each check is one of three kinds:
 
-**Yöntem.** Her rota için dili ayrı ayrı değiştirmek yüzlerce kayıt demektir. Bunun yerine **üç tur** yap: (A) dil İngilizce iken tüm rota kontrollerini aç ve gözle; (B) dili Türkçeye çevir ve aynı rotaları aç; (C) dili İngilizceye geri çevir ve aynı rotaları yeniden aç. Aşağıdaki her satır üç turun sonucunu tek sonuçta toplar. **Tur C bu bölümde yapılmaz:** dil Türkçe kalır ve bölüm 5 ile 15 Türkçe dilde yürütülür; tur C, bölüm 16'dan hemen önce, dili İngilizceye geri çevirince yapılır. Dil değişikliği "dil anahtarı" kontrolündedir.
+- **MT-131** checks that the interface is English only, whatever the cookie or the account holds.
+- **English checks** (MT-21, MT-22, the `English:` page checks MT-23 to MT-56, and MT-57): they open a page (or try the sign-in) and check that its fixed words and the sentences built from message codes are English sentences from the catalog (`frontend/messages/en/`, `backend.json` for the backend's sentences).
+- **Removed in 0.1.10 (D-41: the interface is English only)**: MT-20, MT-58, MT-59 and MT-124. Their only subject was the Turkish language or the language control. Nothing is run; record them as `Removed`.
 
-**Her `Dil:` satırında geçerli kurallar.** Sayfada ham anahtar yoktur; Türkçe turda, aşağıdaki "beklenen İngilizce" listesindekiler dışında İngilizce cümle kalmaz; tur C sayfası tur A ile aynıdır.
+**Raw key.** If a message has no catalog entry, a dotted lower-case string of the form `namespace.key` is shown instead of the text, for example `alerts.detail.title` or `anomalies.list.metaTitle`. If you see such a string anywhere in this test, write the page, the string and the step in the Note field; this is Fail. The same applies to any Turkish text (a Turkish letter in a sentence the interface wrote): the catalogs of Turkish are frozen and must never show.
 
-**Ham anahtar nedir.** Katalogda karşılığı olmayan bir metin yerine `namespace.anahtar` biçiminde noktalı küçük harfli bir dizi görünür, örneğin `alerts.detail.title` ya da `anomalies.list.metaTitle`. Böyle bir yazı görürsen sayfayı, yazıyı ve dili Not'a yaz; bu Kaldı'dır.
+**What stays as the source wrote it.** Text that comes from QRadar, from a provider or from the operator is shown as it is and is not checked here: offense descriptions, log source, rule, tactic and technique names, the operator's resolution reason, search and rule names, `anomaly.error`, the `last_error` of a watermark, and Ariel's own error messages. Terms of the glossary (`coverage`, `scope`, `baseline`, `offense`, `log source`, `instance`, `custom property`, `cron`, `EPS`, `robust z`) are English everywhere.
 
-**Eski satırlar.** 0.1.6'nın yazdığı saklı cümleler (anomali açıklamaları, geçiş nedenleri, kural sağlığı nedenleri ve kodu olmayan uyarı başlıkları) veritabanında yalnızca İngilizce metin olarak durur; yükseltme bu satırlara kod eklemez. Türkçede de o satırlar İngilizce görünür. Bu doğrudur. Katalog uyarısının başlığı, açıklaması ve düzelme nedeni, yazıcı satırı yenilediğinde Türkçedir; açılış tarihi bunu değiştirmez (MT-38). Yeni yazılan satırlar (0.1.7'den sonra) Türkçe görünür. Motor uyarıları ve Ariel erteleme cümlesi, yazıcı satırı bu sürümde yenilediyse Türkçedir; kodu olmayan eski satır İngilizce kalır (MT-59). Her rota satırının son sütunu eski satırın nerede görüneceğini söyler.
+#### MT-131 — English only (LANG-1, D-41)
 
-#### MT-20 — Dil anahtarı ve hatırlanması (yazar) [çekirdek]
+**Precondition:** Signed in. No language is changed in this check.
 
-**Ön koşul:** Başlangıç dilini not et (İngilizce ya da Türkçe).
+**Action:**
 
-**Eylem:**
+- Open `/account`.
+- In the browser's storage set the cookie `ba_locale` to `tr` (path `/`), then open `/` and `/login` as a fresh document load.
 
-- `/account` sayfasında “Arayüz dili” (“Interface language”) altında “English” ve “Türkçe” seçenekleri vardır. “Türkçe” seç, “Kaydet” düğmesine bas.
-- Oturumu kapat, yeniden aç. Başka bir tarayıcıda (ya da çerezleri silerek) oturum aç ve o ilk sayfayı bir kez yenile.
+**Expected:**
 
-**Beklenen:**
+- `/account` has a password section (for a local account) and no "Interface language" section.
+- With `ba_locale=tr` the pages are English, with no Turkish text and no raw message keys. The page does not reload in a loop and does not rewrite the cookie.
+- An account whose stored preference is Turkish (`ui_language = "tr"`) also sees English.
 
-- Kayıttan sonra “Dil tercihi kaydedildi.” (“The language preference was saved.”) görünür ve sayfa hemen Türkçeye döner (aynı tarayıcıda kayıt).
-- Çıkış ve giriş sonrası, çerez duruyorsa arayüz Türkçedir (`ba_locale=tr`).
-- Başka bir tarayıcıda oturum açılınca ilk sayfa önceki dilde kalır. Çerez yoksa önceki dil İngilizcedir ve sayfa “Dashboard” kalır. Çerez `ba_locale=tr` bu ilk sayfada yazılmıştır. Sayfayı bir kez yenile; o zaman sayfa Türkçedir (“Gösterge paneli”). Bu 0.1.8'in bilinen sınırıdır, Kaldı değildir.
-- Hata durumları: kayıt başarısızsa “Dil tercihi kaydedilemedi. Bağlantınızı denetleyip tekrar deneyin.”; tarayıcı çerezi saklamıyorsa “Tarayıcı çerezi saklamadığı için dil tercihi uygulanamadı.”
+**Record:** Whether `/account` has a language section; the language of `/` and `/login` with the cookie set.
 
-**Kaydet:** Başlangıç dili, kayıt iletisi, hatırlama (aynı tarayıcıda / başka tarayıcıda).
+**Cleanup:** Delete the `ba_locale` cookie.
 
-**Temizlik:** Testin sonunda dili başlangıç diline geri çevir ve kaydet.
+#### MT-20 — Removed in 0.1.10 (D-41: the interface is English only)
 
-#### MT-21 — Sayı, oran ve zaman biçimi [çekirdek]
+The check was the language switch on `/account` (“Interface language”) and how the choice is remembered. The control does not exist while `ENABLED_LOCALES` holds one locale. MT-14 checks the account page and MT-131 checks that there is no language control and that a cookie or account preference does not change the language. Nothing to run; record `Removed`.
 
-**Eylem:**
+#### MT-21 — Number, ratio and time format [core]
 
-- Dil Türkçe iken, bin ve üzeri bir sayı gösteren bir sayfa aç. Örnekler: `/alerts` (“Gösterilen uyarı sayısı: {shown} / {total}.”, toplam 1000 ve üzerindeyse), `/log-sources` (“{count} kaynak.”), `/` sayfasındaki EPS kutusu, “Arama” sütunu.
-- Bir oran gösteren yer aç (örneğin `/behavior/waf` kaynak tablosu "Endpoint coverage", `/` KPI kutuları). Bir zaman gösteren yer aç (örneğin `/alerts` “Son görülme”).
+**Action:**
 
-**Beklenen:**
+- Open a page that shows a number of a thousand or more. Examples: `/alerts` (“Showing {shown} of {total} alerts.”, if the total is 1000 or more), `/log-sources` (“{count} sources.”), the EPS box on the `/` page, the “Searches” column.
+- Open a place that shows a ratio (for example the source table of `/behavior/waf`, “Endpoint coverage”, or the KPI boxes on `/`). Open a place that shows a time (for example `/alerts`, “Last seen”).
 
-- Binlik ayırıcı **nokta**: `2.016` (İngilizcede `2,016`). Ondalık ayırıcı **virgül**: `1.260,0` (İngilizcede `1,260.0`).
-- Oran, işaret başta ve boşluksuz: `%31,8` (İngilizcede `31.8 %`, işaretten önce bölünmez boşluk). Çok küçük pay `<%0,1`.
-- Zaman 24 saatlik ve **UTC** bölgesi her zaman yazılıdır: tam `2026-10-29 12:00:00 UTC`, tablo hücresinde `10-29 12:00 UTC`. Göreli yaş (örneğin `5 dk önce`) mutlak saatin yanındadır, yerine geçmez.
+**Expected:**
 
-**Kaydet:** Üç biçimden her biri doğru mu; bulunduğu sayfa. Bin altında sayı yoksa `Koşulmadı`.
+- Thousands separator **comma**: `2,016`. Decimal separator **point**: `1,260.0`.
+- A ratio has the number first and a non-breaking space before the sign: `31.8 %`. A very small share is `<0.1 %`.
+- A time is 24-hour and the **UTC** zone is always written: in full `2026-10-29 12:00:00 UTC`, in a table cell `10-29 12:00 UTC`. A relative age (for example `5 min ago`) sits next to the absolute time and never replaces it.
 
-#### MT-22 — Üst çubuk ve gezinti Türkçe [çekirdek]
+**Record:** Whether each of the three formats is correct, and the page it was on. If there is no number of a thousand or more, write `Not run`.
 
-**Eylem:**
+#### MT-22 — Top bar and navigation [core]
 
-- Dil Türkçe iken herhangi bir sayfada üst çubuğa ve sol gezintiye bak.
+**Action:**
 
-**Beklenen:**
+- On any page look at the top bar and at the navigation on the left.
 
-- Gezinti grupları: “Davranış”, “Filo”, “Algılama”, “Operasyon”, “Yönetim”. Öğeler: “Gösterge paneli”, “Genel bakış”, “Anomaliler”, “Kaynaklar”, “WAF davranışı”, “Özellik izlemeleri”, “Filo”, “Filo kaynakları”, “Catch-all gönderenleri”, “Offense'lar”, “Uyarılar”, “Kurallar”, “Kural istatistikleri”, “Özel kurallar”, “Coverage”, “Log source'lar”, “Aramalar”, “Yönetim özeti”, “Arama sıklığı”, “Sınıflama kuralları”, “Kesinti uyarıları”, “WAF kaynakları”, “IPS kaynakları”, “Geçmiş veri okuma”, “Kullanıcılar”, “Dizin”, “Kılavuz”. “Yönetim özeti” (“Administration overview”) Yönetim grubunun ilk öğesidir ve `/admin` açar.
-- Üst çubuk: “Açık uyarılar: {count, number}” (açık uyarı sayısı), “Yenileme” (“Kapalı”, “1 dk”, “5 dk”), “Bağlantı durumu: {status}”; arama kutusu “Kaynak, kural ve anomali ara”. `/config-changes` gezintide yoktur; adresle açılır.
+**Expected:**
 
-**Kaydet:** Eksik ya da İngilizce kalan bir öğe varsa adı.
+- The navigation groups are “Behavior”, “Fleet”, “Detection”, “Operations” and “Administration”; “Dashboard” and “Guide” stand alone. The items are “Dashboard”, “Overview”, “Anomalies”, “Sources”, “WAF behavior”, “Property watches”, “Geography”, “Fleet”, “Fleet sources”, “Catch-all senders”, “Offenses”, “Alerts”, “Rules”, “Rule statistics”, “Custom rules”, “Coverage”, “Log Sources”, “Searches”, “Administration overview”, “Search cadence”, “Classification rules”, “Outage alerts”, “WAF sources”, “IPS sources”, “History backfill”, “SIEM load”, “Users”, “Directory” and “Guide”. “Administration overview” is the first item of the Administration group and opens `/admin`. “History backfill”, “SIEM load”, “Users” and “Directory” are shown only to a role that holds the permission (`read:history_backfill`, `admin:*`, `admin:users`, `admin:auth`).
+- The top bar: “Open alerts: {count}” (the number of open alerts), “Refresh” (“Off”, “1 min”, “5 min”), “Connection status: {status}”; the search box “Search sources, rules, anomalies”. `/config-changes` is not in the navigation; it opens by address.
 
-#### MT-23 — Dil: Giriş sayfası `/login`
+**Record:** The name of any item that is missing or wrong.
 
-**Eylem:**
+#### MT-23 — English: sign-in page `/login`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Oturum aç”.
-- Kodlu alanlar (Türkçe olmalı): Hatalı oturum açma cümlesi (aşağıdaki ayrı kontrol); “API sürümü {version}” satırı.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Sign in”.
+- Fields built from message codes (they must read as English sentences): the failed sign-in sentence (the separate check MT-57); the line “API version {version}”.
+- No raw key and no Turkish text.
 
-#### MT-24 — Dil: Pano `/` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-24 — English: Dashboard `/` [core]
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Gösterge paneli”.
-- Kodlu alanlar (Türkçe olmalı): Bileşenler (bölüm 5). Özellik izleme bileşeninin durum nedeni (MSG-4b); son anomaliler ve offense'lar. Üst çubuktaki uyarı sayısı.
-- 0.1.6 eski satırı (İngilizce kalması doğru): Son anomaliler tablosunda 0.1.6'dan kalan satırlar.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Dashboard”.
+- Fields built from message codes (they must read as English sentences): the widgets (section 5); the status reason of the property watch widget (MSG-4b); the recent anomalies and offenses; the alert count in the top bar.
+- No raw key and no Turkish text.
 
-#### MT-25 — Dil: Davranış genel bakışı `/behavior`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-25 — English: Behavioral overview `/behavior`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Davranış genel bakışı”.
-- Kodlu alanlar (Türkçe olmalı): Durum sözcükleri, “Dikkat gerekiyor” tablosu.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Behavioral overview”.
+- Fields built from message codes: the state words and the “Needs attention” table.
+- No raw key and no Turkish text.
 
-#### MT-26 — Dil: Anomali listesi `/anomalies` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-26 — English: Anomaly list `/anomalies` [core]
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Anomaliler”.
-- Kodlu alanlar (Türkçe olmalı): Filtreler, durum ve algılayıcı adları, konu türleri; satırlarda saklı cümle yoktur.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Anomalies”.
+- Fields built from message codes: the filters, the state and detector names, the subject kinds. The rows hold no stored sentence.
+- No raw key and no Turkish text.
 
-#### MT-27 — Dil: Anomali ayrıntısı, log source hacmi `/anomalies/<id>` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-27 — English: Anomaly detail, log source volume `/anomalies/<id>` [core]
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Anomali incelemesi”.
-- Kodlu alanlar (Türkçe olmalı): "Teknik ayrıntılar" sekmesinde “Algılayıcı gerekçesi” cümlesi (MSG-5); “Yaşam döngüsü” sekmesinde her geçişin nedeni (MSG-5).
-- 0.1.6 eski satırı (İngilizce kalması doğru): 0.1.7'den önce açılmış anomalide ve geçişlerinde İngilizce saklı cümle.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Anomaly investigation”.
+- Fields built from message codes: on the “Technical details” tab the “Detector reasoning” sentence (MSG-5); on the “Lifecycle” tab the reason of each transition (MSG-5).
+- No raw key and no Turkish text.
 
-#### MT-28 — Dil: Anomali ayrıntısı, WAF endpoint `/anomalies/<id>` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-28 — English: Anomaly detail, WAF endpoint `/anomalies/<id>` [core]
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Anomali incelemesi”.
-- Kodlu alanlar (Türkçe olmalı): Algılayıcı bloğundaki gerekçe cümlesi ve uyarı notu (MSG-6): etiketler “Önem eşiği”, “Doğrulanmış geçmiş”; yaşam döngüsü nedenleri (MSG-5).
-- 0.1.6 eski satırı (İngilizce kalması doğru): 0.1.7'den önce açılmış WAF anomalisinde İngilizce gerekçe.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Anomaly investigation”.
+- Fields built from message codes: the reasoning sentence and the alert note in the detector block (MSG-6), with the labels “Materiality floor” and “Verified history”; the lifecycle reasons (MSG-5).
+- No raw key and no Turkish text.
 
-#### MT-29 — Dil: Anomali ayrıntısı, IPS `/anomalies/<id>` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-29 — English: Anomaly detail, IPS `/anomalies/<id>` [core]
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Anomali incelemesi”.
-- Kodlu alanlar (Türkçe olmalı): Algılayıcı bloğundaki gerekçe ve uyarı notu Türkçe (MSG-6b); yaşam döngüsü nedenleri (MSG-5). Bastırılmış IPS anomalisi yalnızca "Bastırıldı" etiketini gösterir; bastırma nedeni cümlesi gösterilmez.
-- 0.1.6 eski satırı (İngilizce kalması doğru): 0.1.7'den önce açılmış IPS anomalisinde İngilizce gerekçe.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Anomaly investigation”.
+- Fields built from message codes: the reasoning and the alert note in the detector block (MSG-6b); the lifecycle reasons (MSG-5). A suppressed IPS anomaly shows only the “Suppressed” label; the sentence with the suppression reason is not shown.
+- No raw key and no Turkish text.
 
-#### MT-30 — Dil: Anomali ayrıntısı, özellik izleme değeri `/anomalies/<id>` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-30 — English: Anomaly detail, property watch value `/anomalies/<id>` [core]
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Anomali incelemesi”.
-- Kodlu alanlar (Türkçe olmalı): Açıklama, iddia ve geçmiş doğrulama cümleleri (MSG-4b); geçiş nedenleri (MSG-5).
-- 0.1.6 eski satırı (İngilizce kalması doğru): 0.1.7'den önce açılmış anomalide İngilizce açıklama.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Anomaly investigation”.
+- Fields built from message codes: the explanation, the claim and the history verification sentences (MSG-4b); the transition reasons (MSG-5).
+- No raw key and no Turkish text.
 
-#### MT-31 — Dil: Kaynak davranışı `/behavior/sources` ve `/behavior/sources/<id>`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-31 — English: Source behavior `/behavior/sources` and `/behavior/sources/<id>`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Kaynaklar” / “Kaynak davranışı”.
-- Kodlu alanlar (Türkçe olmalı): Durum sözcükleri (“YETERSİZ VERİ”, "öğreniyor"), baseline ve toplama notları.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Sources” / “Source behavior”.
+- Fields built from message codes: the state words (`INSUFFICIENT_DATA`, “Still learning”), the baseline and collection notes.
+- No raw key and no Turkish text.
 
-#### MT-32 — Dil: WAF davranışı `/behavior/waf` ve `/behavior/waf/sources/<id>`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-32 — English: WAF behavior `/behavior/waf` and `/behavior/waf/sources/<id>`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “WAF davranışı” / “WAF kaynağı endpoint'leri”.
-- Kodlu alanlar (Türkçe olmalı): Toplama durumu sözcükleri; duraklatma ve uygunluk nedenleri (MSG-4a).
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “WAF behavior” / “WAF source endpoints”.
+- Fields built from message codes: the collection state words; the pause and eligibility reasons (MSG-4a).
+- No raw key and no Turkish text.
 
-#### MT-33 — Dil: Özellik izlemeleri `/behavior/watches`, `/behavior/watches/new`, `/behavior/watches/<id>`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Ne zaman bakılır:** Yeni satırlar için bölüm 2'deki bekleme.
+#### MT-33 — English: Property watches `/behavior/watches`, `/behavior/watches/new`, `/behavior/watches/<id>`
 
-**Eylem:**
+**When to look:** For new rows, the wait in section 2.
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Özellik izlemeleri” / “Yeni özellik izleme” / “Özellik izleme”.
-- Kodlu alanlar (Türkçe olmalı): “Durum ve neden” sütunu (MSG-4b, her toplamada yeniden yazılır); kapsam nedenleri; geçmiş boşluğu satırları; düzenleyicideki doğrulama nedenleri (MSG-1b/4b).
-- 0.1.6 eski satırı (İngilizce kalması doğru): Toplama bir kez çalışana kadar eski durum cümlesi.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Property watches” / “New property watch” / “Property watch”.
+- Fields built from message codes: the “Status and reason” column (MSG-4b, rewritten at every collection); the scope reasons; the history-gap rows; the validation reasons in the editor (MSG-1b/4b).
+- No raw key and no Turkish text.
 
-#### MT-34 — Dil: Filo `/fleet`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-34 — English: Fleet `/fleet`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Log source filosu”.
-- Kodlu alanlar (Türkçe olmalı): Sınıf tablosu, inceleme kuyruğu; saklı cümle yok.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Log-source fleet”.
+- Fields built from message codes: the class table and the review queue; there is no stored sentence.
+- No raw key and no Turkish text.
 
-#### MT-35 — Dil: Filo kaynakları `/fleet/sources`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-35 — English: Fleet sources `/fleet/sources`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Filo kaynakları”.
-- Kodlu alanlar (Türkçe olmalı): Sınıflandırma nedenleri (kural adı olarak); çakışma iletileri (MSG-1b) yalnızca hata durumunda.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Fleet sources”.
+- Fields built from message codes: the classification reasons (shown as the rule name); the conflict messages (MSG-1b) only in an error state.
+- No raw key and no Turkish text.
 
-#### MT-36 — Dil: Catch-all gönderenleri `/fleet/catchall`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-36 — English: Catch-all senders `/fleet/catchall`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Catch-all gönderenleri”.
-- Kodlu alanlar (Türkçe olmalı): Gönderen tablosu ve gözden geçirme durumu (“incelendi”).
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Catch-all senders”.
+- Fields built from message codes: the sender table and the review state (“reviewed”).
+- No raw key and no Turkish text.
 
-#### MT-37 — Dil: Offense'lar `/offenses` ve `/offenses/<id>`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-37 — English: Offenses `/offenses` and `/offenses/<id>`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Offense'lar” / “Offense ayrıntısı”.
-- Kodlu alanlar (Türkçe olmalı): Etiketler ve durumlar. Offense açıklaması QRadar'dan gelen metindir; çevrilmez.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Offenses” / “Offense”.
+- Fields built from message codes: the labels and the states. The offense description is the text from QRadar and is shown as it is.
+- No raw key and no Turkish text.
 
-#### MT-38 — Dil: Uyarılar `/alerts` ve `/alerts/<id>` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-38 — English: Alerts `/alerts` and `/alerts/<id>` [core]
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Uyarılar” / “Uyarı ayrıntısı”.
-- Kodlu alanlar (Türkçe olmalı): MSG-7 katalog uyarıları: arama eşiği ve arama hatası, özel kural eşiği, offense toplama güncelliği, yeni log source, yeni catch-all gönderen. Başlık, “Açıklama” ve “Çözüm:” satırı Türkçedir. Offense toplama güncelliği örnektir: başlık “{instance} için offense toplama güncel değil”, açıklama “Salt okunur offense toplayıcı, yapılandırılmış güncellik eşiği içinde tamamlanmadı.”, düzelme nedeni “Offense toplama güncelliği düzeldi.” Açılış 0.1.7'den önce olsa da, yazıcı satırı kodla yenilediyse metin Türkçedir.
-- 0.1.6 eski satırı (İngilizce kalması doğru): kodu olmayan satır. Yükseltme eski satıra kod eklemez. Yazıcı bu sürümde yenilediği motor uyarısı (log source hacmi, WAF, IPS, özellik izleme) başlık, açıklama ve düzelme nedeninde Türkçedir (MSG-7b; MT-59). Kodu olmayan eski satır İngilizce kalır. Uyarılar bölümü (MT-87, MT-88) ile aynı sınırdır.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Alerts” / “Alert Detail”.
+- Fields built from message codes: the MSG-7 catalog alerts: search threshold and search failure, custom rule threshold, offense collection freshness, new log source, new catch-all sender. The title, the “Description” and the “Resolution:” line are English sentences. Offense collection freshness is the example: the title is “Offense collection is stale for {instance}”, the description is “The read-only offense collector has not completed within its configured freshness threshold.”, and the resolution reason is “Offense collection freshness recovered.”
+- The alerts the engine writes (log source volume, WAF, IPS, property watch) show a title, a description and a resolution reason as English sentences. The resolution reason of a recovered condition is “condition recovered”. Same limits as the Alerts section (MT-87, MT-88).
+- No raw key and no Turkish text.
 
-#### MT-39 — Dil: Kural sağlığı `/rules` ve `/rules/<id>` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Ne zaman bakılır:** Yeni satırlar için bölüm 2'deki bekleme.
+#### MT-39 — English: Rule health `/rules` and `/rules/<id>` [core]
 
-**Eylem:**
+**When to look:** For new rows, the wait in section 2.
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Kural sağlığı” / “Kural”.
-- Kodlu alanlar (Türkçe olmalı): Kural adının altındaki sağlık nedeni ve ayrıntıdaki neden cümlesi (MSG-3). Ayrıntı başlığı “Sağlık kanıtı” (“Health evidence”)dir. “Neden” (“Reason”), sağlık geçmişi tablosunun hücresidir. Her değerlendirmede yeniden yazılır.
-- 0.1.6 eski satırı (İngilizce kalması doğru): Sağlık geçmişi tablosundaki 0.1.6 satırları.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Rule health” / “Rule”.
+- Fields built from message codes: the health reason under the rule name and the reason sentence in the detail (MSG-3). The detail heading is “Health evidence”. “Reason” is a cell of the health history table. It is rewritten at every evaluation.
+- No raw key and no Turkish text.
 
-#### MT-40 — Dil: Kural istatistikleri `/rules/statistics`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-40 — English: Rule statistics `/rules/statistics`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Kural istatistikleri”.
-- Kodlu alanlar (Türkçe olmalı): Ölçüm penceresi cümlesi, sessiz kuralların dışlama nedeni ve maliyet etiketi ile birimi (MSG-2); hesaplanır, saklı değil.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Rule statistics”.
+- Fields built from message codes: the measurement window sentence, the exclusion reason of silent rules, and the cost label with its unit (MSG-2); computed, not stored.
+- No raw key and no Turkish text.
 
-#### MT-41 — Dil: Özel kurallar `/custom-rules`, `/custom-rules/new`, `/custom-rules/<id>`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Ne zaman bakılır:** Yeni satırlar için bölüm 2'deki bekleme.
+#### MT-41 — English: Custom rules `/custom-rules`, `/custom-rules/new`, `/custom-rules/<id>`
 
-**Eylem:**
+**When to look:** For new rows, the wait in section 2.
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Özel kurallar” / “Yeni özel kural” / “Özel kural”.
-- Kodlu alanlar (Türkçe olmalı): “Durum ve neden” sütunundaki durum nedeni (MSG-7, her değerlendirmede yeniden yazılır); kaydetme hataları (MSG-1b).
-- 0.1.6 eski satırı (İngilizce kalması doğru): Bir değerlendirme olana kadar eski neden.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Custom rules” / “New custom rule” / “Custom rule”.
+- Fields built from message codes: the status reason in the “Status and reason” column (MSG-7, rewritten at every evaluation); the save errors (MSG-1b).
+- No raw key and no Turkish text.
 
-#### MT-42 — Dil: Algılama coverage'ı `/coverage`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Ne zaman bakılır:** Yeni satırlar için bölüm 2'deki bekleme.
+#### MT-42 — English: Detection coverage `/coverage`
 
-**Eylem:**
+**When to look:** For new rows, the wait in section 2.
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Algılama coverage'ı”.
-- Kodlu alanlar (Türkçe olmalı): “Kanıt” sütunundaki özet cümleleri (MSG-2); coverage eşitlemesinde yeniden yazılır.
-- 0.1.6 eski satırı (İngilizce kalması doğru): Anlık görüntü geçmişi satırları.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Detection Coverage”.
+- Fields built from message codes: the summary sentences in the “Evidence” column (MSG-2); rewritten at the coverage sync.
+- No raw key and no Turkish text.
 
-#### MT-43 — Dil: Log source'lar `/log-sources` ve `/log-sources/<id>`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-43 — English: Log sources `/log-sources` and `/log-sources/<id>`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Log source'lar” / “Log source ayrıntısı”.
-- Kodlu alanlar (Türkçe olmalı): Durum sözcükleri; saklı cümle yok.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Log Sources” / “Log Source Detail”.
+- Fields built from message codes: the state words; there is no stored sentence.
+- No raw key and no Turkish text.
 
-#### MT-44 — Dil: Aramalar `/searches`, `/searches/new`, `/searches/<id>` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-44 — English: Searches `/searches`, `/searches/new`, `/searches/<id>` [core]
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Arama kataloğu” / “Yeni arama” / “Arama ayrıntısı”.
-- Kodlu alanlar (Türkçe olmalı): Çalıştırma geçmişindeki “Hata” cümleleri (MSG-8b); kaydetme hataları (MSG-1b).
-- 0.1.6 eski satırı (İngilizce kalması doğru): 0.1.7'den önce başarısız olmuş çalıştırmaların hata satırı İngilizce.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Search Catalog” / “New search” / “Search detail”.
+- Fields built from message codes: the “Error” sentences in the run history (MSG-8b); the save errors (MSG-1b).
+- No raw key and no Turkish text.
 
-#### MT-45 — Dil: Yapılandırma değişiklikleri `/config-changes`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-45 — English: Configuration changes `/config-changes`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Yapılandırma değişiklikleri”.
-- Kodlu alanlar (Türkçe olmalı): “Yapılandırma değişiklikleri toplanmıyor.” durumu (toplanmıyor; bu bir "toplanmadı" dürüstlük durumudur).
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Configuration changes”.
+- Fields built from message codes: the state “Configuration changes are not collected.” (this is a "not collected" honesty state).
+- No raw key and no Turkish text.
 
-#### MT-46 — Dil: Yönetim `/admin`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-46 — English: Administration `/admin`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Yönetim”.
-- Kodlu alanlar (Türkçe olmalı): Sayfa açıklaması.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Administration”.
+- Fields built from message codes: the page description.
+- No raw key and no Turkish text.
 
-#### MT-47 — Dil: Arama sıklığı `/admin/search-cadence`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-47 — English: Search cadence `/admin/search-cadence`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Arama sıklığı”.
-- Kodlu alanlar (Türkçe olmalı): Tablo, aile adları, gecikme cümleleri.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Search cadence”.
+- Fields built from message codes: the table, the family names, the delay sentences.
+- No raw key and no Turkish text.
 
-#### MT-48 — Dil: Sınıflama kuralları `/admin/classification-rules`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-48 — English: Classification rules `/admin/classification-rules`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Sınıflama kuralları”.
-- Kodlu alanlar (Türkçe olmalı): Kural listesi; yerleşik kural çakışma iletileri (MSG-1b) yalnızca hata durumunda.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Classification rules”.
+- Fields built from message codes: the rule list; the built-in rule conflict messages (MSG-1b) only in an error state.
+- No raw key and no Turkish text.
 
-#### MT-49 — Dil: Kesinti uyarıları `/admin/outage-policy`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-49 — English: Outage alerts `/admin/outage-policy`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Kesinti uyarıları”.
-- Kodlu alanlar (Türkçe olmalı): Politika tablosu ve not.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Outage alerts”.
+- Fields built from message codes: the policy table and the note.
+- No raw key and no Turkish text.
 
-#### MT-50 — Dil: WAF kaynakları `/admin/waf-sources` ve `/admin/waf-sources/<id>` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-50 — English: WAF sources `/admin/waf-sources` and `/admin/waf-sources/<id>` [core]
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “WAF kaynakları” / “WAF kaynağı”.
-- Kodlu alanlar (Türkçe olmalı): Doğrulama raporu nedenleri, alan ayrıntıları ve uygunluk (duraklatma) nedenleri (MSG-4a); profil çakışmaları (MSG-1b).
-- 0.1.6 eski satırı (İngilizce kalması doğru): 0.1.7'den önce kaydedilmiş doğrulama raporlarının nedenleri İngilizce.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “WAF sources” / “WAF source”.
+- Fields built from message codes: the reasons of the validation report, the field details and the eligibility (pause) reasons (MSG-4a); the profile conflicts (MSG-1b).
+- No raw key and no Turkish text.
 
-#### MT-51 — Dil: IPS kaynakları `/admin/ips-sources` ve `/admin/ips-sources/<id>` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-51 — English: IPS sources `/admin/ips-sources` and `/admin/ips-sources/<id>` [core]
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “IPS kaynakları” / “IPS kaynağı”.
-- Kodlu alanlar (Türkçe olmalı): Doğrulama raporu nedenleri ve uygunluk nedenleri (MSG-4a).
-- 0.1.6 eski satırı (İngilizce kalması doğru): 0.1.7'den önce kaydedilmiş doğrulama raporları.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “IPS sources” / “IPS source”.
+- Fields built from message codes: the reasons of the validation report and the eligibility reasons (MSG-4a).
+- No raw key and no Turkish text.
 
-#### MT-52 — Dil: Geçmiş veri okuma `/admin/history-backfill` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Ne zaman bakılır:** Yeni satırlar için bölüm 2'deki bekleme.
+#### MT-52 — English: History backfill `/admin/history-backfill` [core]
 
-**Eylem:**
+**When to look:** For new rows, the wait in section 2.
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Geçmiş veri okuma”.
-- Kodlu alanlar (Türkçe olmalı): Kapsam nedenleri (catch-all dahil tüm aileler), boşluk nedenleri, tahmin cümleleri, varsayımlar ve karar iletileri Türkçe (MSG-8a). Kapsam her adımda nedenini yeniden yazar. Yazıcının bu sürümde yenilediği Ariel erteleme nedeni de Türkçedir: “Ariel izni N sn içinde alınamadı; okuma ertelendi” (MSG-8c). Yükseltmeden önce yazılmış erteleme satırı `deferred: no Ariel permit within N s` olarak İngilizce kalır (MT-59).
-- 0.1.6 eski satırı (İngilizce kalması doğru): Bir sonraki adıma kadar kapsamın eski nedeni (İngilizce).
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “History backfill”.
+- Fields built from message codes: the scope reasons (all families, catch-all included), the gap reasons, the estimate sentences, the assumptions and the decision messages are English sentences (MSG-8a). The scope rewrites its reason at every step. The Ariel deferral reason that the writer rewrites is the sentence `deferred: no Ariel permit within N s` (MSG-8c).
+- No raw key and no Turkish text.
 
-#### MT-53 — Dil: Kullanıcılar `/admin/users`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-53 — English: Users `/admin/users`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Kullanıcılar”.
-- Kodlu alanlar (Türkçe olmalı): Tablo ve işlem etiketleri; hesap işlemi hataları (MSG-1).
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Users”.
+- Fields built from message codes: the table and action labels; the account action errors (MSG-1).
+- No raw key and no Turkish text.
 
-#### MT-54 — Dil: Dizin `/admin/directory`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-54 — English: Directory `/admin/directory`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Dizin”.
-- Kodlu alanlar (Türkçe olmalı): Form etiketleri; doğrulama hataları (MSG-1) yalnızca kayıt denemesinde.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Directory”.
+- Fields built from message codes: the form labels; the validation errors (MSG-1) only when a save is tried.
+- No raw key and no Turkish text.
 
-#### MT-55 — Dil: Kılavuz `/guide` ve `/guide/<bölüm>` [çekirdek]
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-55 — English: Guide `/guide` and `/guide/<section>` [core]
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Kılavuz”.
-- Kodlu alanlar (Türkçe olmalı): Bölüm başlıkları ve metinleri; bölüm 13.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Guide”.
+- Fields built from message codes: the section titles and texts; section 13.
+- No raw key and no Turkish text.
 
-#### MT-56 — Dil: Hesap `/account` ve `/account/password`
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Eylem:**
+#### MT-56 — English: Account `/account` and `/account/password`
 
-- Rotayı aç: tur A (dil İngilizce), tur B (dil Türkçe). Tur C, bölüm 16'dadır.
+**Action:**
 
-**Beklenen:**
+- Open the route.
 
-- Türkçe başlık: “Hesap ayarları” / “Parolayı değiştir”.
-- Kodlu alanlar (Türkçe olmalı): Parola ilkesi hataları (MSG-1): “Parola en az 12 karakter olmalıdır”.
-- 0.1.6 eski satırı (İngilizce kalması doğru): yok.
+**Expected:**
 
-**Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
+- The heading is “Account settings” / “Change password”.
+- Fields built from message codes: the password policy errors (MSG-1): “password must be at least 12 characters”.
+- No raw key and no Turkish text.
 
-#### MT-57 — Hatalı oturum açma cümlesi Türkçe (yazar)
+**Record:** A raw key or a Turkish sentence (page, text); “none” if there is none.
 
-**Ön koşul:** Dil Türkçe. Oturumu kapat.
+#### MT-57 — Failed sign-in sentence (writes)
 
-**Eylem:**
+**Precondition:** Signed out.
 
-- `/login` sayfasında **var olmayan** bir kullanıcı adıyla (örneğin `mt-yok-kullanici`) ve herhangi bir parolayla oturum açmayı dene. Gerçek bir kullanıcı adı kullanma: hata sayısı hesabı kilitler (5 hata, 15 dakika).
+**Action:**
 
-**Beklenen:**
+- On the `/login` page try to sign in with a user name that **does not exist** (for example `mt-no-such-user`) and any password. Do not use a real user name: the failure count locks the account (5 failures, 15 minutes).
 
-- Sayfa “Kullanıcı adı veya parola geçersiz” gösterir. Dizin ulaşılamazsa “Dizin sunucusuna ulaşılamıyor. Oturum açma tamamlanmadı.” olur.
+**Expected:**
 
-**Kaydet:** Cümle Türkçe mi.
+- The page shows “Invalid username or password”. If the directory cannot be reached it is “The directory server is unavailable. Sign-in was not completed.”
 
-**Temizlik:** Gerekmez; bir `auth.login_failed` denetim kaydı yazılır.
+**Record:** Whether the sentence is English and complete.
 
-#### MT-58 — 0.1.6'dan kalan saklı cümleler Türkçede de İngilizcedir
+**Cleanup:** Not needed; an `auth.login_failed` audit record is written.
 
-**Eylem:**
+#### MT-58 — Removed in 0.1.10 (D-41: the interface is English only)
 
-- Dil Türkçe iken şu yerlerde 0.1.7'den **önce** yazılmış bir satır bul ve aç: (1) `/anomalies` içinde 0.1.7'den önce çözülmüş bir anomalinin ayrıntısı, "Teknik ayrıntılar" ve "Yaşam döngüsü" sekmeleri; (2) `/alerts` içinde kodu olmayan eski bir uyarı; (3) `/rules/<id>` sağlık geçmişinde eski bir satır; (4) `/admin/history-backfill` içinde bir kapsamın nedeni (bir sonraki adıma kadar).
+The check was that the stored sentences written by 0.1.6 stay English in the Turkish interface while newer rows are Turkish. There is no Turkish rendering any more, so there is no mixed view to check. Nothing to run; record `Removed`.
 
-**Beklenen:**
+#### MT-59 — Removed in 0.1.10 (D-41: the interface is English only)
 
-- Bu satırlarda, kodu olmayan saklı İngilizce cümle aynen görünür; ham anahtar ya da boş alan görünmez. Bu doğrudur: yükseltme eski satıra kod eklemez. Katalog uyarısı (MSG-7) yazıcı tarafından yenilendiyse başlık, açıklama ve düzelme nedeni Türkçedir; bu satır bu kontrolün İngilizce beklediği satır değildir (MT-38, MT-87).
-- Aynı sayfalarda 0.1.7'den sonra yazılmış satırlar Türkçedir; bu karışık görünüm normaldir.
+The check was the list of texts that stay English in the Turkish interface (stored legacy rows, notification texts, texts from QRadar and operators, glossary terms). With one language the list has no subject. The fact that texts from QRadar, from providers and from the operator are shown as written is stated at the top of this section. Nothing to run; record `Removed`.
 
-**Kaydet:** Dört yerden hangileri için eski satır bulundu; her birinde İngilizce metin okunuyordu (evet/hayır).
+### 5. Dashboard
 
-#### MT-59 — İngilizce kalması beklenenler [çekirdek]
+The Dashboard is at `/`. In the “Dashboards” menu the “Template” group holds only “SOC Overview (template)”. The label on the page is “Template, not saved”; the sub-label in the menu is “Not saved”. “QRadar Administration” and “WAF / IPS Monitoring” are not in this menu. An administrator opens them with “Manage” → “New dashboard from template…”; this saves the dashboard and needs `dashboard:write`. A viewer does not have this button. MT-71…79 are done on these saved dashboards; the rows call the dashboard a “template”, while in the menu it is among the saved dashboards. When the work is finished, delete it from the same “Manage” menu with “Delete…”; the delete is permanent. Each widget reads its own data; if one fails, only that widget shows an error and the others work. Each widget's link goes to the route that owns its data, and the link stays on the widget in every state (loaded, empty, stale, forbidden, error).
 
-**Eylem:**
+**States seen on a healthy site.** Loaded; empty (for example no open offense); “Not collected.” (if collection is off for a family or has never run); “Stale” (“Stale: the latest data is from ‹time›, {age} old.”; this can be seen right after the upgrade before the first cadence has passed and is correct; if it stays after cadence + 3 min it is a fault); forbidden (a viewer, in a window 12 columns wide, reads the “Outage policy” row of the “Customize” → “Add widget” catalog: “Your role lacks permission admin:outage.”; the “Add” button is disabled. In a narrow window it says “Widen the window to customize” instead of “Customize”. The check "The viewer role's limit" in the Sign-in section). **A state that cannot be seen on a healthy site:** "could not be read" (“The {subject} could not be read.”) appears only if the backend or an endpoint fails; it cannot be produced without changing the configuration, so this section skips it. For a family whose collection switch was left off, the widget shows "Not collected."; this is not seen for families whose switches are on. **For every widget in this section** at least one cadence + 3 min must have passed after the upgrade (MT-11); if you look earlier, "stale" is correct. On a changed console, until the hourly inventory arrives, the source widgets show no sources; this is not a Fail (MT-11).
 
-- Aşağıdaki listeyi oku. Türkçe turda bu listede **olmayan** bir İngilizce cümle bulursan Kaldı yaz; listedekileri hata sayma:
-- **Motor uyarılarının kodu olmayan eski satırları** (log source hacmi, WAF, IPS ve özellik izleme): yazıcı bu sürümde satırı yenilediyse başlık, açıklama ve düzelme nedeni Türkçedir (MSG-7b). Log source hacmi başlığı “{log_source} üzerinde {anomaly_type}” olur; tür etiketi “Hacim düşüşü” ya da “Olay yok” gibi katalog adıdır. IPS “{log_source} üzerinde {detector}”, hedef port ya da hedef IP “: hedef port {entity}” / “: hedef IP {entity}”, imza “: imza {entity}”. Özellik izleme “{watch} üzerinde {detector}: {value}”. WAF “{log_source} üzerinde {detector}: {method} {endpoint}”. Düzelme nedeni “Koşul düzeldi” (İngilizce “condition recovered”). Yükseltmeden önce yazılmış, kodu olmayan satır İngilizce kalır. Katalog uyarıları (MSG-7) zaten Türkçedir. Offense toplama güncelliği örnektir (“{instance} için offense toplama güncel değil”, “Salt okunur offense toplayıcı, yapılandırılmış güncellik eşiği içinde tamamlanmadı.”, “Offense toplama güncelliği düzeldi.”). Bu sınır, uyarılar bölümüyle aynıdır (MT-38, MT-87, MT-88).
-- **Geçmiş okumada Ariel erteleme nedeninin eski satırı.** Yazıcı bu sürümde nedeni yenilediyse cümle “Ariel izni N sn içinde alınamadı; okuma ertelendi” olur (MSG-8c). Yükseltmeden önce yazılmış satır `deferred: no Ariel permit within N s` olarak İngilizce kalır ve hata değildir. Catch-all dahil geçmiş okumanın diğer tüm cümleleri MSG-8a ile Türkçedir.
-- **İlk açılış sorusundaki tahmin notu** `history.estimate.empty_sources` (henüz izlenen endpoint ya da kabul edilmiş varlığı olmayan bir WAF/IPS kaynağı için, tahmin cümlesinin sonunda "…{count} sources fitted with no … yet; the … limit still bounds the reading"): Türkçe pencerede İngilizce kalır. Geçmiş okuma sayfası bunu göstermez.
-- **Eski geçmiş boşlukları ve kapsam satırları** (0.1.7'den önce yazılmış): saklı İngilizce metin.
-- Bildirim kanallarına (Teams, e-posta, Slack, webhook, syslog) giden metinler her zaman İngilizcedir; gönderilen bildirim metni arayüz dilini izlemez.
-- QRadar'dan, bir sağlayıcıdan ya da bir kütüphaneden gelen serbest metin: `anomaly.error`, Ariel'in kendi hata iletileri (`search_execution.error_message` içinde "Ariel search failed" dışındakiler), izleme filigranının `last_error` değeri.
-- Operatörün yazdığı metin: uyarıyı çözerken yazılan neden, arama/kural adları, açıklamalar, sınıflandırma deseni.
-- QRadar'dan gelen adlar: offense açıklamaları, log source adları, kural adları, taktik ve teknik adları.
-- Hazırlık (readiness) ayrıntıları ve WAF/IPS boru hattı çalışma raporları.
-- Çevrilmeyen terimler: `coverage`, `scope`, `baseline`, `offense`, `log source`, `instance`, `custom property`, `cron`, `EPS` gibi sözlük terimleri (D-39); ayrıca `console` ve `robust z`. Ayar adları, izin adları (`read:anomalies`) ve HTTP kodları da çevrilmez. `console` arayüzde olduğu gibi kalır (“Console {name}”, “Tüm console”, “Bu console için kayıtlı bir karar yok.”, “Log source hacmi”).
-- Katalogda Türkçeye dönen parçalar: `/` sessiz kaynak cümlesi “Sessiz: algılayıcı, olay beklenen yerde hiç olay görmedi (Olay yok anomalisi).” (İngilizce sayfa “(NO_EVENTS anomaly)” der); `/searches` “arayüz hiçbir zaman kaydedilmemiş, anlık yazılmış AQL çalıştırmaz.” (İngilizce sayfa “ad-hoc” der); `/custom-rules` “CUSTOM_RULES_ENABLED kapalı olduğu için kural değerlendirmesi kapalıdır. Etkin kurallar değerlendirilmiyor.” (İngilizce sayfa “is false” der). `/guide` sorusu “Gözlenen, beklenen, sapma, robust z ve coverage ne anlama gelir?” içinde İngilizce kalan terim `robust z`'dir (`coverage` yukarıdadır).
-- 404 "bulunamadı" cümlelerinin sunucu metni (arayüz kendi sabit cümlesini gösterir), kapasite 409 nedenleri, sürüm çakışması iletileri.
+#### MT-60 — Dashboard widget: “Total EPS”
 
-**Beklenen:**
+**Action:**
 
-- Liste, bu sürümün bilinen sınırıdır.
+- In the “SOC Overview” template find the widget, read its data, press its link.
 
-**Kaydet:** Listede olmayan bir İngilizce cümle gördüysen: sayfa, cümlenin ilk beş sözcüğü. Yoksa `Geçti`.
+**Expected:**
 
-### 5. Pano (Dashboard)
+- The data loads. The title is “Total EPS, {window}”; the big number is in the EPS unit; under it “expected {eps} EPS” or “expected — (no reliable baseline)”; the line “baselines {have} of {total} sources”. A missing measurement is not drawn as zero.
+- The link opens the `/fleet` route (link text “Fleet”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-Pano, `/` yolundadır. “Gösterge panelleri” menüsünün “Şablon” grubunda yalnızca “SOC Genel Bakışı (şablon)” (“SOC Overview (template)”) vardır. Sayfadaki etiket “Şablon, kaydedilmedi” (“Template, not saved”); menüdeki alt yazı “Kaydedilmedi” (“Not saved”). “QRadar Yönetimi” ve “WAF / IPS İzleme” bu menüde yoktur. Bir yönetici onları “Yönet” → “Şablondan yeni gösterge paneli…” (“New dashboard from template…”) ile açar; bu, paneli kaydeder ve `dashboard:write` ister. Görüntüleyicide bu düğme yoktur. MT-71…79 bu kayıtlı panellerde yapılır; satırlar paneli “şablon” diye anar, menüde ise kayıtlı panellerin arasındadır. İş bitince aynı “Yönet” menüsünden “Sil…” ile silinir; silme kalıcıdır. Her bileşen kendi veri okumasını yapar; biri başarısız olursa yalnızca o bileşen hata gösterir ve diğerleri çalışır. Her bileşenin bağlantısı, verisinin sahibi olan rotaya gider ve bu bağlantı her durumda (yüklü, boş, güncel değil, yasak, hata) bileşende kalır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Sağlıklı sitede görülebilen durumlar.** Yüklü; boş (örneğin açık offense yok); “Toplanmadı” (toplama bir aile için kapalıysa ya da hiç çalışmadıysa: “Toplanmadı.”); “Güncel değil” (“Güncel değil: son veri ‹zaman› tarihli, {age} önce.”; yükseltmeden hemen sonra, ilk kadans dolmadan görülebilir ve doğrudur; kadans + 3 dk sonra sürüyorsa hatadır); yasak (görüntüleyici, 12 sütun genişliğindeki pencerede “Özelleştir” → “Bileşen ekle” kataloğunda “Kesinti politikası” satırını okur: “Your role lacks permission admin:outage.” / “Rolünüzde şu izin eksik: admin:outage.”; “Add” / “Ekle” düğmesi kapalıdır. Dar pencerede “Özelleştir” yerine “Özelleştirmek için pencereyi genişletin” yazar. Oturum açma bölümündeki "Görüntüleyici rolünün sınırı" kontrolü). **Sağlıklı sitede görülemeyen durum:** "okunamadı" (“Okunamadı: {subject}.”) yalnızca backend ya da bir uç nokta başarısız olursa çıkar; yapılandırma değiştirmeden üretilemez, bu yüzden bu bölümde atlanır. Toplama anahtarı kapalı bırakılmış bir aile için bileşen "Toplanmadı" gösterir; anahtarlar açık olan ailelerde bu durum görülmez. **Bu bölümdeki her bileşen için** yükseltmeden sonra en az bir kadans + 3 dk beklenmiş olmalıdır (MT-11); önce bakarsan "güncel değil" doğrudur. Değişen konsolda saatlik envanter gelene kadar kaynak bileşenleri kaynak göstermez; bu Kaldı değildir (MT-11).
+#### MT-61 — Dashboard widget: “Log sources”
 
-#### MT-60 — Pano bileşeni: “Toplam EPS”
+**Action:**
 
-**Eylem:**
+- In the “SOC Overview” template find the widget, read its data, press its link.
 
-- “SOC Genel Bakışı” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The title is “Log sources, now”; “of {total} monitored”; “{normal} of {judged} judged normal” or “— judged normal (no source is judged yet)”; “Silent: the detector saw no events where some were expected (NO_EVENTS anomaly).”
+- The link opens the `/behavior/sources` route (link text “Sources”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Başlık “Toplam EPS, {window}”; büyük sayı EPS biriminde; altında “beklenen {eps} EPS” ya da “beklenen — (güvenilir baseline yok)”; “baseline: {have} / {total} kaynak” satırı. Kayıp ölçüm sıfır olarak çizilmez.
-- Bağlantı `/fleet` rotasını açar (bağlantı metni “Filo”). Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-62 — Dashboard widget: “Open offenses”
 
-#### MT-61 — Pano bileşeni: “Log source'lar”
+**Action:**
 
-**Eylem:**
+- In the “SOC Overview” template find the widget, read its data, press its link.
 
-- “SOC Genel Bakışı” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The title is “Open offenses, latest snapshot”; the breakdown is critical, below, unassigned and over SLA; if there are offenses whose magnitude or age is unknown, “+ {count} with unknown magnitude” / “+ {count} with unknown age”. If the snapshot has never been collected: “No offense snapshot has been collected yet.”
+- The link opens the `/offenses?status=OPEN` route (link text “Offenses”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Başlık “Log source'lar, güncel durum”; “/ {total} izlenen kaynak”; “Değerlendirilen {judged} kaynak: {normal} normal” ya da “— normal değerlendirildi (henüz değerlendirilen kaynak yok)”; “Sessiz: algılayıcı, olay beklenen yerde hiç olay görmedi (Olay yok anomalisi).” İngilizce sayfa “(NO_EVENTS anomaly)” der.
-- Bağlantı `/behavior/sources` rotasını açar (bağlantı metni “Kaynaklar”). Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-63 — Dashboard widget: “Active anomalies”
 
-#### MT-62 — Pano bileşeni: “Açık offense'lar”
+**Action:**
 
-**Eylem:**
+- In the “SOC Overview” template find the widget, read its data, press its link.
 
-- “SOC Genel Bakışı” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The title is “Active anomalies, now”; the “By detector” and “Lifecycle” breakdowns.
+- The link opens the `/anomalies?active_only=true` route (link text “Anomalies”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Başlık “Açık offense'lar, son kesit”; kritik, altında, atanmamış ve SLA aşımı dökümü; büyüklüğü ya da yaşı bilinmeyen offense varsa “+ {count} büyüklüğü bilinmeyen” / “+ {count} yaşı bilinmeyen”. Kesit hiç toplanmadıysa “Henüz offense kesiti toplanmadı.”
-- Bağlantı `/offenses?status=OPEN` rotasını açar (bağlantı metni “Offense'lar”). Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-64 — Dashboard widget: “Fleet EPS”
 
-#### MT-63 — Pano bileşeni: “Etkin anomaliler”
+**Action:**
 
-**Eylem:**
+- In the “SOC Overview” template find the widget, read its data, press its link.
 
-- “SOC Genel Bakışı” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The axis carries the unit (“Events per second (EPS)”; the time axis says “Time (UTC)”); the expected sum is a dashed line that is drawn only where every source has a reliable baseline (it is not a range); a step that was not measured is a gap, not a zero. While loading, a text of the form “Loading {what}…” is shown.
+- The link opens the `/fleet` route. Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Başlık “Etkin anomaliler, güncel durum”; “Algılayıcıya göre” ve “Yaşam döngüsü” dökümü.
-- Bağlantı `/anomalies?active_only=true` rotasını açar (bağlantı metni “Anomaliler”). Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-65 — Dashboard widget: “EPS by source class”
 
-#### MT-64 — Pano bileşeni: “Filo EPS”
+**Action:**
 
-**Eylem:**
+- In the “SOC Overview” template find the widget, read its data, press its link.
 
-- “SOC Genel Bakışı” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The class names are in the form “Firewall”, “Windows”; for classes without a complete bucket the reason is “No class has a complete bucket in this window.” (or the count line “# class has no complete bucket and is not in the total.”).
+- The link opens the `/fleet` route. Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Eksende birim (EPS) yazılıdır; beklenen aralık bant olarak çizilir; eksik zaman dilimi boşluktur, sıfır değildir. Yükleme sırasında “{what} yükleniyor…” biçimli metin görünür.
-- Bağlantı `/fleet` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-66 — Dashboard widget: “Top log sources by EPS”
 
-#### MT-65 — Pano bileşeni: “Kaynak sınıfına göre EPS”
+**Action:**
 
-**Eylem:**
+- In the “SOC Overview” template find the widget, read its data, press its link.
 
-- “SOC Genel Bakışı” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. Source rows ordered by EPS; the numbers are right-aligned, with English grouping (`2,016`).
+- The link opens the `/behavior/sources` route (link text “View all”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Sınıf adları “Güvenlik duvarı”, “Windows” biçiminde Türkçe; tamamlanmamış sınıf için “Bu aralıkta tamamlanmış zaman dilimi olan sınıf yok.” nedeni.
-- Bağlantı `/fleet` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-67 — Dashboard widget: “Anomalies by severity”
 
-#### MT-66 — Pano bileşeni: “EPS'e göre en yoğun log source'lar”
+**Action:**
 
-**Eylem:**
+- In the “SOC Overview” template find the widget, read its data, press its link.
 
-- “SOC Genel Bakışı” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. Counts by severity: “Critical”, “High”, “Medium”, “Low”, “Info”.
+- The link opens the `/anomalies` route. Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. EPS'e göre sıralı kaynak satırları; sayılar sağa yaslı, Türkçe gruplamalı.
-- Bağlantı `/behavior/sources` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-68 — Dashboard widget: “Log source health”
 
-#### MT-67 — Pano bileşeni: “Önem derecesine göre anomaliler”
+**Action:**
 
-**Eylem:**
+- In the “SOC Overview” template find the widget, read its data, press its link.
 
-- “SOC Genel Bakışı” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. Source health counts; “Insufficient data” is counted separately and is not added to "normal".
+- The link opens the `/behavior/sources` route. Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Önem derecesine göre sayılar: “Kritik”, “Yüksek”, “Orta”, “Düşük”, “Bilgi”.
-- Bağlantı `/anomalies` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-69 — Dashboard widget: “Recent anomalies”
 
-#### MT-68 — Pano bileşeni: “Log source sağlığı”
+**Action:**
 
-**Eylem:**
+- In the “SOC Overview” template find the widget, read its data, press its link.
 
-- “SOC Genel Bakışı” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The latest anomaly rows; the time is written with the `UTC` zone. If there are rows left over from 0.1.6, they are listed too.
+- The link opens the `/anomalies` route. Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Kaynak sağlığı sayıları; “YETERSİZ VERİ” ayrı sayılır ve "normal" içine katılmaz.
-- Bağlantı `/behavior/sources` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-70 — Dashboard widget: “Recent offenses”
 
-#### MT-69 — Pano bileşeni: “Son anomaliler”
+**Action:**
 
-**Eylem:**
+- In the “SOC Overview” template find the widget, read its data, press its link.
 
-- “SOC Genel Bakışı” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The latest offense rows; the description is as it came from QRadar.
+- The link opens the `/offenses` route. Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Son anomali satırları; zaman `UTC` bölgesiyle. 0.1.6'dan kalan satırlar varsa onlar da listelenir.
-- Bağlantı `/anomalies` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-71 — Dashboard widget: “Scheduled searches”
 
-#### MT-70 — Pano bileşeni: “Son offense'lar”
+**Action:**
 
-**Eylem:**
+- In the “QRadar Administration” template find the widget, read its data, press its link.
 
-- “SOC Genel Bakışı” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. For each family the cadence, the last run and how late it is (“Family”, “Cadence”, “Last run”, “Late by”); a family that has not run since the upgrade shows an unmeasured mark whose explanation is “This family has not run since the upgrade”, and the line above the table says “some have not run since the upgrade”; neither is a zero. This widget is the one screen for "scheduled searches".
+- The link opens the `/admin/search-cadence` route (link text “Cadence”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Son offense satırları; açıklama QRadar'dan geldiği gibi.
-- Bağlantı `/offenses` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-72 — Dashboard widget: “Detection health”
 
-#### MT-71 — Pano bileşeni: “Zamanlanmış aramalar”
+**Action:**
 
-**Eylem:**
+- In the “QRadar Administration” template find the widget, read its data, press its link.
 
-- “QRadar Yönetimi” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The rule and coverage summary (“{covered} of {total} techniques covered”); if coverage was not evaluated, “Coverage has not been evaluated.” This is not a finding of zero coverage.
+- The link opens the `/coverage` route (link text “Coverage”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Her aile için kadans, son çalışma ve bir sonraki çalışma; hiç çalışmamış aile “Henüz çalışmadı” gösterir. Bu bileşen "zamanlanmış aramalar" için tek ekrandır.
-- Bağlantı `/admin/search-cadence` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-73 — Dashboard widget: “Evidence collection”
 
-#### MT-72 — Pano bileşeni: “Algılama sağlığı”
+**Action:**
 
-**Eylem:**
+- In the “QRadar Administration” template find the widget, read its data, press its link.
 
-- “QRadar Yönetimi” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The evidence collection status counts (“Pending”, “Failed”); the failed count feeds the filter that the link opens.
+- The link opens the `/anomalies?evidence_status=FAILED` route (link text “Failed”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Kural ve coverage özeti; değerlendirilmemişse “Coverage değerlendirilmedi.” Bu bir sıfır coverage bulgusu değildir.
-- Bağlantı `/coverage` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-74 — Dashboard widget: “Catch-all senders to review”
 
-#### MT-73 — Pano bileşeni: “Kanıt toplama”
+**Action:**
 
-**Eylem:**
+- In the “QRadar Administration” template find the widget, read its data, press its link.
 
-- “QRadar Yönetimi” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The senders to review (“Sender”, “First seen”, “Events, 24 h”); if there are none, the empty-state text “No unreviewed senders. Every sender seen feeding the catch-all sources has been reviewed or dismissed.”
+- The link opens the `/fleet/catchall` route (link text “Review”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Kanıt toplama durumu sayıları (bekliyor, başarısız, kısmi); başarısız sayısı bağlantıyla açılan filtreyi besler.
-- Bağlantı `/anomalies?evidence_status=FAILED` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-75 — Dashboard widget: “Source classes”
 
-#### MT-74 — Pano bileşeni: “İncelenecek catch-all gönderenleri”
+**Action:**
 
-**Eylem:**
+- In the “QRadar Administration” template find the widget, read its data, press its link.
 
-- “QRadar Yönetimi” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The source class table (“Class”, “Sources”, “Mean EPS”, “Silent”); the class names are in English.
+- The link opens the `/fleet` route (link text “Fleet”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. İncelenecek gönderenler; yoksa boş durum metni.
-- Bağlantı `/fleet/catchall` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-76 — Dashboard widget: “Outage policy”
 
-#### MT-75 — Pano bileşeni: “Kaynak sınıfları”
+**Action:**
 
-**Eylem:**
+- In the “QRadar Administration” template find the widget, read its data, press its link.
 
-- “QRadar Yönetimi” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The outage alert policy per class (“Alert”, “Record only”). It loads on an administrator account; on a `viewer` account the forbidden state is shown (the check in the Sign-in section).
+- The link opens the `/admin/outage-policy` route (link text “Policy”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Kaynak sınıfı tablosu; sınıf adları Türkçe.
-- Bağlantı `/fleet` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-77 — Dashboard widget: “WAF sources”
 
-#### MT-76 — Pano bileşeni: “Kesinti politikası”
+**Action:**
 
-**Eylem:**
+- In the “WAF / IPS Monitoring” template find the widget, read its data, press its link.
 
-- “QRadar Yönetimi” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The WAF sources (“Source”, “Profile”, “Coverage”, “Endpoints”); the latest bucket's coverage and the endpoint count against the ceiling; a source that is not collected shows “Disabled” or “No bucket has been collected”. If the site has no WAF: “No WAF source is registered. A source appears here once its WAF profile exists.”
+- The link opens the `/behavior/waf` route (link text “WAF”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Sınıf başına kesinti uyarı politikası. Yönetici hesabında yüklenir; `viewer` hesabında yasak durumu görünür (Oturum açma bölümündeki kontrol).
-- Bağlantı `/admin/outage-policy` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-78 — Dashboard widget: “Recent WAF anomalies”
 
-#### MT-77 — Pano bileşeni: “WAF kaynakları”
+**Action:**
 
-**Eylem:**
+- In the “WAF / IPS Monitoring” template find the widget, read its data, press its link.
 
-- “WAF / IPS İzleme” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The active WAF anomalies; if there are none, the empty text “No active WAF endpoint anomalies. WAF sources without a valid profile are not collected, so they are not judged.” If there is no anomaly, do not mark `Not run`: the empty state is also a valid result.
+- The link opens the `/anomalies?subject_kind=WAF_ENDPOINT&active_only=true` route. Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. WAF kaynakları; son zaman dilimi coverage'ı ve endpoint sayısı üst sınırla; toplanmayan kaynak “Devre dışı” ya da “Hiçbir zaman dilimi toplanmadı” gösterir. Sitede WAF yoksa “Kayıtlı WAF kaynağı yok. Bir kaynak, WAF profili oluştuğunda burada görünür.”
-- Bağlantı `/behavior/waf` rotasını açar (bağlantı metni “WAF”). Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-79 — Dashboard widget: “Recent IPS anomalies”
 
-#### MT-78 — Pano bileşeni: “Son WAF anomalileri”
+**Action:**
 
-**Eylem:**
+- In the “WAF / IPS Monitoring” template find the widget, read its data, press its link.
 
-- “WAF / IPS İzleme” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+**Expected:**
 
-**Beklenen:**
+- The data loads. The active IPS anomalies; the link opens IPS entities and sources together (the “IPS entities and sources” option that came with 0.1.6). The sentences on the rows are English sentences from the catalog (MSG-6b).
+- The link opens the `/anomalies?subject_kind=IPS&active_only=true` route (link text “View all”). Times are written with the UTC zone; there is a “Data to ‹time›.” line.
 
-- Veri yüklenir. Etkin WAF anomalileri; yoksa boş metin. Anomali yoksa `Koşulmadı` işaretleme: boş durum da geçerli bir sonuçtur.
-- Bağlantı `/anomalies?subject_kind=WAF_ENDPOINT&active_only=true` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+**Record:** Whether the data loaded; whether the link opened the right route. If it is “Stale”, write in the Note field whether the wait had passed.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+#### MT-128 — World map: dashboard widget and `/geography` [core]
 
-#### MT-79 — Pano bileşeni: “Son IPS anomalileri”
+**Precondition:** Upgrade complete (MT-08), the country property is set (MT-129), and at least one `GEO_COLLECTION` cadence + 3 min has passed (default 5 min; total 8 min). Signed in with an account that has `read:geo`.
 
-**Eylem:**
+**Action:**
 
-- “WAF / IPS İzleme” şablonunda bileşeni bul, verisini oku, bağlantısına bas.
+- On the `/` page, find the Geography (`map.geography`) widget in the bottom row of the "SOC Overview" template. Change the direction between Source and Destination, and the window between 1 hour, 24 hours and 7 days.
+- Click the widget's link and open `/geography`. The same direction and window appear in the URL (`?window=24h&direction=SOURCE`, etc.). Read the map, legend and country table.
 
-**Beklenen:**
+**Expected:**
 
-- Veri yüklenir. Etkin IPS anomalileri; bağlantı IPS varlıklarını ve kaynaklarını birlikte açar (0.1.6 ile gelen "IPS varlıkları ve kaynakları" seçeneği). Satırdaki cümleler Türkçedir (MSG-6b).
-- Bağlantı `/anomalies?subject_kind=IPS&active_only=true` rotasını açar. Zamanlar UTC bölgesiyle yazılıdır; "Son veri" satırı (“Son veri: ‹zaman›.”) vardır.
+- The map is drawn; the colours use the sequential `--map-0…--map-4` scale, at most four classes on a log axis, with a unit legend ("Events per country"). There is no green/amber/red status tone.
+- A country with no events uses `--map-0` as "No data", never the lowest class. A country with events shows "N events"; a lower-bound legend says "At least N events".
+- If nothing was collected for the direction in the range, "Not collected." appears and the map is not drawn; coverage reads "0 / N". With the default settings Destination reads "Not collected." once the buckets 0.1.9 stored have expired, because `GEO_DESTINATION_COUNTRY_PROPERTY` is empty (MT-129). If buckets were collected but no country could be assigned, "Insufficient data." appears and again no map is drawn. A partial read draws the map with "Partial"; a lower-bound legend says "At least". None draws a zero.
+- The page names where the country came from ("From the QRadar property “<name>”" or "From the GeoIP lookup of the address").
+- If the newest bucket is older than the `GEO_COLLECTION` cadence allows, the widget keeps the map and adds a warning line ("Stale: the latest data is from <time> UTC, <age> old."); the page shows the same age line and the top bar shows "Data to …". A fresh answer shows "Data to <time> UTC".
+- The widget's link always opens `/geography`. For a role without `read:geo`, the widget shows its forbidden sentence naming the missing permission.
+- Times show the UTC zone. A country too small for the 1:110m outlines (Singapore, Malta, etc.) is named under the map and kept in the table.
 
-**Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
+**Record:** Did the map draw; does the legend carry a unit; is `--map-0` "No data"; which honesty state appeared for each direction; did the link open `/geography`; are direction and window in the URL; was the answer stale.
 
-### 6. Anomaliler
+#### MT-129 — Country source and the `geo_country_source` check (GEO-3)
 
-Anomali listesi tek yerde dört aileyi toplar: log source hacmi, WAF endpoint, IPS (varlık ve kaynak) ve özellik izleme değeri. Ayrıntı sayfası (`/anomalies/<id>`) aileye göre farklı bir inceleme açar. Yaşam döngüsü durumları: “ADAY”, “AÇIK”, “DÜZELİYOR”, “ÇÖZÜLDÜ”, “BASTIRILDI”; “YETERSİZ VERİ” ve “NORMAL” kaynak durumudur. Sitede bir tür anomali yoksa o türün kontrolü `Koşulmadı` olur ve Not'a "veri yok" yazılır; yeni anomali üretmeye çalışma.
+**Precondition:** The exact name of the country custom property from the QRadar administrator. Property names are not secrets and may be written on the sheet.
 
-#### MT-80 — Anomali listesi ve filtreler
+**Action:**
 
-**Eylem:**
+- Read the three settings (an absent line means the default: `property`, `Source Geographic Location`, empty):
 
-- `/anomalies` sayfasını aç. Filtreleri sırayla dene: “Konu türü”, “Yaşam döngüsü durumu”, “Yalnızca etkin” (“Filtrele”).
+```bash
+grep -E '^GEO_(COUNTRY_SOURCE|SOURCE_COUNTRY_PROPERTY|DESTINATION_COUNTRY_PROPERTY)=' .env
+```
 
-**Beklenen:**
+- Run `./qradar-dash doctor` and read the `geo_country_source` line. After a change in `.env`, recreate the backend, worker and beat containers first.
 
-- Başlık “Anomaliler”. Sütunlar: “Konu”, “Algılayıcı”, “Durum”, “Gözlenen → Beklenen”, “Sapma”, “Önem derecesi”, “Başlangıç”, “Kanıt”.
-- Konu türü seçenekleri: “Log source'lar”, “WAF endpoint'leri”, “IPS varlıkları”, “IPS kaynakları”, “IPS varlıkları ve kaynakları”, “Özellik izleme değerleri”. “IPS varlıkları ve kaynakları” seçeneği IPS varlıklarını ve kaynaklarını birlikte listeler.
-- Filtre sonrası etkin filtre çipleri (“Filtre:”) görünür; eşleşme yoksa “Bu filtrelerle eşleşen anomali yok. Bu filtrelenmiş bir görünümdür, filo hakkında bir açıklama değildir.” Hiç anomali yoksa “Hiç anomali algılanmadı. Yeterli baseline'ı olmayan kaynaklar değerlendirilmiyor — kaç tane olduğunu davranış genel bakışından denetleyin.” Saatler UTC; durum sözcükleri Türkçe.
+**Expected:**
 
-**Kaydet:** Beş filtre ve sonuç sayfası çalıştı mı; liste satır sayısı (yaklaşık).
+- `GEO_COUNTRY_SOURCE=lookup`: `PASS geo_country_source lookup; SOURCE and DESTINATION use GEO::LOOKUP`.
+- `property` and the named property exists on every enabled console: `PASS`, for example `property; SOURCE "Source Geographic Location" present on <console>; DESTINATION not collected (no property)`. An empty name for a direction is not a problem; that direction is not collected and sends no search.
+- The property is not on the console: `WARN` with `absent on <console>`, runbook OPS-R30. The collector sends no search for that direction and records "The country property “<name>” does not exist on this console. Set GEO_SOURCE_COUNTRY_PROPERTY to the property's exact name."; `watermarks` then FAILs. Set the exact name and re-run.
+- The console's property list could not be read, or no console is enabled: `FAIL`, runbook OPS-R30. Both names empty: `WARN`. Geography collection off: `SKIP`.
+- With the property set, the Source map on `/geography` reads "From the QRadar property “<name>”" once a cadence has run (MT-128). A value that is not a country the platform recognises is counted under Unparseable, never as a country; note its size if it is large.
 
-#### MT-81 — Log source hacmi anomali ayrıntısı ve dürüstlük durumları
+**Record:** The three settings, the `geo_country_source` status and text (property names only), and the Source map's provenance line.
 
-**Ön koşul:** Sitede en az bir log source hacmi anomalisi var (etkin ya da çözülmüş).
 
-**Eylem:**
 
-- Listeden bir log source anomalisini aç. Sekmeleri sırayla aç: “Kanıt”, “Yaşam döngüsü”, “Teknik ayrıntılar”.
+### 6. Anomalies
 
-**Beklenen:**
+The anomaly list gathers four families in one place: log source volume, WAF endpoint, IPS (entity and source) and property watch value. The detail page (`/anomalies/<id>`) opens a different investigation depending on the family. Lifecycle states: `CANDIDATE`, `OPEN`, `RECOVERING`, `RESOLVED`, `SUPPRESSED`; `INSUFFICIENT_DATA` and `NORMAL` are source states. If the site has no anomaly of a kind, the check for that kind is `Not run` and "no data" is written in the Note field; do not try to produce a new anomaly.
 
-- Başlık “Anomali incelemesi”; "Ne değişti" (“Ne değişti”) ve “Vaka ölçümleri”: “Gözlenen”, “Beklenen”, “Sapma”, “Süre”; zaman çizelgesi “Zaman çizelgesi”.
-- Kanıt durumuna göre bir başlık görünür: “Katkı sağlayan kanıtı hâlâ toplanıyor. Aşağıdaki analiz henüz mevcut değil: bu bir birikimdir, bir bulgu değildir.” / “Bazı QRadar alanları kullanılamıyordu veya kırpıldı. Mevcut kanıt aşağıda gösteriliyor; toplanmayan boyutlar kontrol edilmedi ve oradaki katkı sağlayanların yokluğundan hiçbir sonuç çıkmaz.” / “Bu log source'un DSM'i bu aralık için istenen alanların hiçbirini sunmuyor; bu nedenle katkı sağlayan analizi yapılamadı. Bu, geçici bir hata değil, kaynağın bir özelliğidir.” / “Katkı sağlayan kanıtı toplama başarısız oldu. Algılama metrikleri ve yaşam döngüsü verileri kullanılabilir durumda; bu, anomali sırasında ne olduğu hakkında hiçbir şey söylemez — yeniden denemeye değer.” / “Bu anomali için kanıt toplama istenmedi. Hiçbir şeye bakılmadı.” metinlerinden biri (yalnız ilgili durumda); kırpılmış sonuçta “Kırpıldı.” ile başlayan metin. Bunlar "yetersiz", "kısmi", "kırpılmış", "toplanmadı" dürüstlük durumlarıdır; sıfır olarak çizilmez.
-- Bir kanıt başarısız ise “Toplama hatası.” ve sağlayıcı hata metni görünür; bu metin serbest metindir ve Türkçe olmaz (beklenen İngilizce listesi).
+#### MT-80 — Anomaly list and filters
 
-**Kaydet:** Anomalinin durumu, kanıt durumu başlığı varsa hangisi, üç sekme açıldı mı. Bu kontrol için sitede anomali yoksa `Koşulmadı`.
+**Action:**
 
-#### MT-82 — Yaşam döngüsü sekmesi ve nedenler
+- Open the `/anomalies` page. Try the filters one after another: “Subject kind”, “Lifecycle state”, “Active only” (“Filter”).
 
-**Ön koşul:** Log source hacmi ya da başka bir ailenin bir anomalisi açık.
+**Expected:**
 
-**Ne zaman bakılır:** Yeni geçiş, ancak yükseltmeden sonra durum değişen bir anomaliyle görülür; beklenmesi gerekmez.
+- The heading is “Anomalies”. The columns are “Subject”, “Detector”, “State”, “Observed → Expected”, “Deviation”, “Severity”, “Started”, “Evidence”.
+- The subject kind options are “Log sources”, “WAF endpoints”, “IPS entities”, “IPS sources”, “IPS entities and sources”, “Property watch values”. The “IPS entities and sources” option lists IPS entities and IPS sources together.
+- After filtering, the active filter chips (“Filtered by”) appear; if nothing matches: “No anomalies match these filters. This is a filtered view, not a statement about the fleet.” If no anomaly has ever been detected: “No anomalies have been detected. Sources without an adequate baseline are not being judged — check the behavioral overview for how many.” Times are UTC; the state words are the codes (`OPEN`, …).
 
-**Eylem:**
+**Record:** Whether the five filters and the result page worked; the number of rows in the list (approximately).
 
-- Ayrıntıda “Yaşam döngüsü” sekmesini aç.
+#### MT-81 — Log source volume anomaly detail and the honesty states
 
-**Beklenen:**
+**Precondition:** The site has at least one log source volume anomaly (active or resolved).
 
-- Her geçişin satırında önceki ve sonraki durum, zaman (UTC) ve neden bulunur. İlk geçiş “ilk” olarak yazılır. Nedeni kaydedilmemiş geçiş “Neden kaydedilmedi” gösterir.
-- 0.1.7'den **sonra** yazılmış bir geçişin nedeni Türkçedir (MSG-5: dört ailenin tümü); 0.1.7'den önceki geçişin nedeni İngilizce saklı metindir. Bu kontrol için yeni geçiş yoksa yalnızca eski satırın İngilizce okunduğunu doğrula ve Not'a "yeni geçiş yok" yaz.
+**Action:**
 
-**Kaydet:** Sekme açıldı mı; neden metni var mı; en yeni geçişin yazılma saati ve dili.
+- Open a log source anomaly from the list. Open the tabs in turn: “Evidence”, “Lifecycle”, “Technical details”.
 
-#### MT-83 — WAF anomali ayrıntısı
+**Expected:**
 
-**Ön koşul:** Sitede bir WAF anomalisi var.
+- The heading is “Anomaly investigation”; “What changed” and “Incident measurements”: “Observed”, “Expected”, “Deviation”, “Duration”; the timeline “Timeline”.
+- Depending on the evidence status, one of these banners appears (only in the matching case): “Contributor evidence is still being collected. The analysis below is not yet available: this is a backlog, not a finding.” / “Some QRadar fields were unavailable or truncated. The available evidence is shown below; the dimensions that were not collected have not been checked, and no conclusion follows from the absence of contributors there.” / “This log source's DSM exposes none of the requested fields for this interval, so no contributor analysis was possible. This is a property of the source, not a transient error.” / “Contributor evidence collection failed. Detection metrics and lifecycle data remain available, and this says nothing about what happened during the anomaly — it is worth retrying.” / “No evidence collection has been requested for this anomaly. Nothing has been looked at.”; on a truncated result a text that begins with “Truncated.”. These are the honesty states "insufficient", "partial", "truncated" and "not collected"; none is drawn as a zero.
+- If the evidence failed, “Collection error.” and the provider's error text appear; this text is free text from the provider and is shown as it came (see the top of section 4).
 
-**Eylem:**
+**Record:** The anomaly's state, which evidence status banner appeared (if any), and whether the three tabs opened. If the site has no anomaly for this check, `Not run`.
 
-- Listeden bir WAF endpoint anomalisini aç. Algılayıcı bloğunu ve “Yaşam döngüsü” bölümünü oku.
+#### MT-82 — Lifecycle tab and reasons
 
-**Beklenen:**
+**Precondition:** An anomaly of log source volume or of another family is open.
 
-- Blokta “Tespit anındaki mevsimsel p05–p95” ya da “Tespit anındaki beklenen aralık”, “Önem eşiği” (“önemli kabul edilir: ≥ {count} istek”), “Doğrulanmış geçmiş”, “Art arda anormal zaman dilimi” satırları vardır. Ölçülmeyen bir değer tire ve gerekçe ile gösterilir (ör. “kullanılmadı: MAD sıfırdı”); sıfır çizilmez.
-- Gerekçe cümlesi ve varsa uyarı notu (ör. engelleme oranı, yeni endpoint) Türkçedir (MSG-6). 0.1.7'den önce açılmış anomalide bu cümleler saklı İngilizce metindir.
-- Bastırılmış anomalide “BASTIRILDI” ve “Bastırıldı” etiketleri durur (İngilizce “Suppressed”). Neden saklıysa kimlik satırının altında “Bastırma nedeni: …” satırı vardır (İngilizce “Suppression reason”). Kodlu bakım nedeni “Bakım penceresi”dir (İngilizce “maintenance window”). Kodu olmayan eski satır saklı metni gösterir. Hiç bastırılmamış bir anomalide bu satır yoktur; yokluğu hata değildir.
-- Kaynak bağlantısı “WAF kaynağını görüntüle”.
+**When to look:** A new transition is seen only with an anomaly whose state changed after the upgrade; there is no need to wait.
 
-**Kaydet:** Bir gerekçe cümlesinin dili (Türkçe/İngilizce) ve anomalinin açılış zamanı.
+**Action:**
 
-#### MT-84 — IPS anomali ayrıntısı
+- In the detail open the “Lifecycle” tab.
 
-**Ön koşul:** Sitede bir IPS anomalisi var (Cisco Firepower/FTD ya da Palo Alto Threat kaynağından).
+**Expected:**
 
-**Eylem:**
+- Each transition row has the previous and the next state, the time (UTC) and the reason. The first transition is written as “initial”. A transition whose reason was not recorded shows “No reason recorded”.
+- The reason of a transition is an English sentence from the catalog (MSG-5: all four families). If there is no new transition for this check, only verify that the older row reads as English text, and write "no new transition" in the Note field.
 
-- Listeden bir IPS varlığı ya da IPS kaynağı anomalisini aç. Algılayıcı bloğunu, “Zaman çizelgesi”, “Değerlendirilenler” ve “Yaşam döngüsü” bölümlerini oku.
+**Record:** Whether the tab opened; whether the reason text is present; the write time of the newest transition.
 
-**Beklenen:**
+#### MT-83 — WAF anomaly detail
 
-- Blokta “Tespit anında sezonluk p05–p95”, “Robust z eşiği”, “Önemlilik eşiği”, “Doğrulanmış geçmiş” satırları vardır. Ölçülmeyen değer tire ve gerekçe taşır. Kanıt bölümü “Bir IPS vakasının kanıt paketi ve katkı sağlayan değerler listesi yoktur. Yukarıdaki seri ve değerlendirilenler algılayıcının kaydettikleridir; IPS için kaynak adresleri sunulmaz.” der: IPS için kaynak adresi gösterilmez.
-- Gerekçe cümlesi Türkçedir (MSG-6b): varlık ani artışı (“{observed} {unit}, {subject} için baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} {unit}/zaman dilimi); {basis}”), engelleme oranı kayması, yoğunlaşma, yeni hedef port (“İlk göründüğü {first_seen} tarihinden bu yana {port} hedef portu {buckets} zaman diliminde {events} olay taşıdı; doğrulanmış {history_start} – {history_end} geçmişinde her zaman diliminde {admission} olayın altında kaldı”; üç UTC zaman damgalı cümle). Uyarı notu sabit cümledir, örneğin “Engelleme, profilin eylem eşlemesi üzerinden değerlendirilir. Daha yüksek bir engelleme oranı IPS kararlarını tanımlar; bir saldırının başarılı olduğunu göstermez.” Sayım bir alt sınırsa cümle “En az {observed} {unit} (alt sınır: {scope}), {subject} için baseline medyanı olan {expected} değerinin üzerinde ({ratio_text}, +{delta} {unit}/zaman dilimi); {basis}” biçimindedir. Bin ve üzeri sayılar Türkçe gruplanır (`12.345`), oranlar `%60,0` biçimindedir.
-- İç içe cümle, iki nokta üst üste ya da tireden sonra küçük harfle başlar (örneğin "alt sınır: …", "…, {role}: {reason}"); büyük harfle başlayan iç cümle hatadır. 0.1.7'den önce açılmış anomalide gerekçe ve not saklı İngilizce metindir.
-- Bastırılmış IPS anomalisinde “BASTIRILDI” ve “Bastırıldı” etiketleri durur (İngilizce “Suppressed”). Neden saklıysa kimlik satırının altında “Bastırma nedeni: …” satırı vardır (İngilizce “Suppression reason”). Kodlu bakım nedeni “Bakım penceresi”dir (İngilizce “maintenance window”). Kodu olmayan eski satır saklı metni gösterir. Hiç bastırılmamış bir anomalide bu satır yoktur; yokluğu hata değildir.
-- Yaşam döngüsü nedenleri Türkçedir (MSG-5).
+**Precondition:** The site has a WAF anomaly.
 
-**Kaydet:** Bir gerekçe cümlesinin dili ve anomalinin açılış zamanı. IPS anomalisi yoksa `Koşulmadı`.
+**Action:**
 
-#### MT-85 — Özellik izleme anomali ayrıntısı
+- Open a WAF endpoint anomaly from the list. Read the detector block and the “Lifecycle” section.
 
-**Ön koşul:** Sitede bir özellik izleme anomalisi var.
+**Expected:**
 
-**Eylem:**
+- The block has the lines “Seasonal p05–p95 at detection” or “Expected range at detection”, “Materiality floor” (“material at ≥ {count} requests”), “Verified history” and “Consecutive abnormal buckets”. A value that was not measured is shown as a dash with its reason (for example “not used: MAD was zero”); a zero is not drawn.
+- The reasoning sentence and, if there is one, the alert note (for example the block ratio or the new endpoint) are English sentences (MSG-6).
+- A suppressed anomaly carries the labels “SUPPRESSED” and “Suppressed”. If the reason is stored, a line “Suppression reason: …” appears under the identity row. The coded maintenance reason is “maintenance window”. A row with no code shows its stored text. An anomaly that was never suppressed has no such line; its absence is not a fault.
+- The source link is “View WAF source”.
 
-- Listeden bir “Yeni değer” ya da “Değer ani artışı” anomalisini aç.
+**Record:** One reasoning sentence (that it is English and complete) and the anomaly's open time.
 
-**Beklenen:**
+#### MT-84 — IPS anomaly detail
 
-- Açıklama ve gerekçe cümleleri Türkçedir (MSG-4b), yaşam döngüsü nedenleri Türkçedir (MSG-5); eski satırlar İngilizcedir. Yeni değer anomalisinde "iddia" ve geçmiş doğrulama cümleleri bulunur (ISO zaman damgalarıyla).
+**Precondition:** The site has an IPS anomaly (from a Cisco Firepower/FTD or Palo Alto Threat source).
 
-**Kaydet:** Bir cümlenin dili ve anomalinin açılış zamanı. Özellik izleme anomalisi yoksa `Koşulmadı`.
+**Action:**
 
-#### MT-86 — Dürüstlük durumları görünür ve sıfıra çevrilmez
+- Open an IPS entity or IPS source anomaly from the list. Read the detector block and the sections “Timeline”, “What was judged”, “Evidence” and “Lifecycle”.
 
-**Eylem:**
+**Expected:**
 
-- Şu yerlere bak: (1) `/behavior/sources` içinde yeterli baseline'ı olmayan bir kaynak; (2) `/behavior/waf` ya da `/admin/waf-sources` içinde toplanmayan bir kaynak; (3) `/config-changes`; (4) `/offenses` içinde kesit hiç toplanmamışsa.
+- The block has the lines “Seasonal p05–p95 at detection”, “Robust z threshold”, “Materiality floor” and “Verified history”. A value that was not measured carries a dash and its reason. The evidence section says “An IPS incident has no evidence package and no list of contributing values. The series above and what was judged are what the detector recorded; source addresses are not served for IPS.”: no source address is shown for IPS.
+- The reasoning sentence is an English sentence from the catalog (MSG-6b): an entity spike (“{observed} {unit} for {subject} is above the baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}”), a block ratio shift, a concentration, a new destination port (“destination port {port} carried {events} events across {buckets} buckets since it first appeared at {first_seen}; in the verified history {history_start} to {history_end} it stayed below {admission} events in every bucket”; three UTC-stamped parts). The alert note is a fixed sentence, for example “Blocking is judged through the profile's action map. A higher block ratio describes the IPS's decisions; it does not establish that an attack succeeded.” When a count is a lower bound the sentence has the form “at least {observed} {unit} (a lower bound: {scope}) for {subject} is above the baseline median {expected} ({ratio_text}, +{delta} {unit}/bucket); {basis}”. Numbers of a thousand or more are grouped with commas (`12,345`) and ratios have the form `60.0 %`.
+- An inner clause after a colon or a dash starts with a lower-case letter (for example "a lower bound: …", "…, {role}: {reason}"); an inner clause that starts with a capital is a fault.
+- A suppressed IPS anomaly carries the labels “SUPPRESSED” and “Suppressed”. If the reason is stored, a line “Suppression reason: …” appears under the identity row. The coded maintenance reason is “maintenance window”. A row with no code shows its stored text. An anomaly that was never suppressed has no such line; its absence is not a fault.
+- The lifecycle reasons are English sentences (MSG-5).
 
-**Beklenen:**
+**Record:** One reasoning sentence (that it is English and complete) and the anomaly's open time. If there is no IPS anomaly, `Not run`.
 
-- (1) Kaynak “YETERSİZ VERİ” durumunu ve “öğreniyor” ibaresini gösterir; sayılarda "normal" içine girmez (“Değerlendirilmiyor — yukarıdaki sıfır bunları kapsamaz.”).
-- (2) Toplanmayan kaynak “Toplanmadı” ya da “hiçbir zaman dilimi toplanmadı” gösterir; sıfır olay yazmaz.
-- (3) “Yapılandırma değişiklikleri toplanmıyor.” ve “Bunlar için bir veri modeli var, ancak onu dolduran bir toplayıcı ya da API yok; bu yüzden bu sayfada gösterilecek bir şey yok.”: toplanmayan veri için sıfır ya da boş liste çizilmez.
-- (4) “Henüz offense kesiti toplanmadı.” Ayrıca kısmi ve kırpılmış ölçümler “Kısmi” ve “Kırpılmış” etiketlidir.
+#### MT-85 — Property watch anomaly detail
 
-**Kaydet:** (1)-(4) için gördüğün durum; görünmeyen için `Koşulmadı`.
+**Precondition:** The site has a property watch anomaly.
 
-### 7. Alarmlar (Uyarılar)
+**Action:**
 
-Arayüzde bu sayfanın adı **Uyarılar**'dır (İngilizce: Alerts), rota `/alerts`. Yaşam döngüsü: açık → alındı → çözüldü; çözülen bir uyarı yeniden açılamaz.
+- Open a “New value” or a “Value spike” anomaly from the list.
 
-#### MT-87 — Uyarı listesi
+**Expected:**
 
-**Eylem:**
+- The explanation and the reasoning sentences are English sentences from the catalog (MSG-4b), and so are the lifecycle reasons (MSG-5). A new value anomaly has the "claim" and the history verification sentences (with ISO time stamps).
 
-- `/alerts` sayfasını aç. Durum filtresini dene (“Uyarı durumu”).
+**Record:** One sentence (that it is English and complete) and the anomaly's open time. If there is no property watch anomaly, `Not run`.
 
-**Beklenen:**
+#### MT-86 — Honesty states are visible and are not turned into zero
 
-- Başlık “Uyarılar”; sütunlar: “Başlık”, “Önem derecesi”, “Durum”, “Oluşumlar”, “İlk görülme”, “Son görülme”. Durum filtresi: “Açık”, “Alındı”, “Çözüldü”.
-- Hiç uyarı yoksa “Hiç uyarı oluşturulmadı.” Sayım satırı: “Gösterilen uyarı sayısı: {shown} / {total}.”
-- Katalog uyarılarının başlığı Türkçedir (MSG-7): arama eşiği ve arama hatası, özel kural, offense toplama güncelliği, yeni log source, yeni catch-all gönderen. Offense toplama güncelliği “{instance} için offense toplama güncel değil” diye okunur. Açılış 0.1.7'den önce olsa da, yazıcı satırı kodla yenilediyse başlık Türkçedir. Kodu olmayan eski satırın başlığı İngilizce kalır. Yazıcının bu sürümde yenilediği motor uyarısı da Türkçedir (MSG-7b): log source hacmi “{log_source} üzerinde {anomaly_type}” (örneğin “Hacim düşüşü”, “Olay yok”), IPS “{log_source} üzerinde {detector}” ve hedef port, hedef IP ya da imza biçimleri, özellik izleme “{watch} üzerinde {detector}: {value}”, WAF “{log_source} üzerinde {detector}: {method} {endpoint}”. MT-38 ile aynı sınırdır.
+**Action:**
 
-**Kaydet:** Listenin açıldığı, satır sayısı ve bir başlığın dili.
+- Look at these places: (1) a source with no adequate baseline in `/behavior/sources`; (2) a source that is not collected in `/behavior/waf` or `/admin/waf-sources`; (3) `/config-changes`; (4) `/offenses`, if the snapshot has never been collected.
 
-#### MT-88 — Uyarı ayrıntısı: Açıklama ve çözüm nedeni
+**Expected:**
 
-**Ön koşul:** Sitede en az bir uyarı var.
+- (1) The source shows the state `INSUFFICIENT_DATA` and the words “Still learning”; in the counts it does not go into "normal" (“Not being judged — a zero above does not cover these.”).
+- (2) The source that is not collected shows “Not collected” or “No bucket has been collected”; it does not write zero events.
+- (3) “Configuration changes are not collected.” and “A data model for them exists, but no collector or API fills it, so this page has nothing to show.”: no zero and no empty list is drawn for data that is not collected.
+- (4) “No offense snapshot has been collected yet.” Partial and truncated measurements are also labelled “Partial” and “Truncated”.
 
-**Eylem:**
+**Record:** What you saw for (1)-(4); `Not run` for the one you could not see.
 
-- Listeden bir uyarıyı aç.
+### 7. Alerts
 
-**Beklenen:**
+In the interface this page is called **Alerts**, the route is `/alerts`. Lifecycle: open → acknowledged → resolved; a resolved alert cannot be reopened.
 
-- Başlık “Uyarı ayrıntısı”. "Açıklama" kartı (“Açıklama”) uyarının açıklamasını taşır. “Kanıt”, “Yaşam döngüsü” bölümleri ve “Bildirim teslim geçmişi” tablosu vardır; bildirim yoksa “Bu uyarı için bildirim yok.”
-- Çözülmüş uyarıda “Çözüm:” satırı çözüm nedenini gösterir. Katalog düzelme nedeni Türkçedir (ör. “Koşul düzeldi”, “Offense toplama güncelliği düzeldi.”); offense toplama güncelliği, açılış tarihi 0.1.7'den önce olsa da, yazıcı nedeni kodla yazdıysa bu cümleyi Türkçe gösterir. Yazıcının bu sürümde yenilediği motor uyarısının düzelme nedeni de “Koşul düzeldi” olur (İngilizce “condition recovered”). Kodu olmayan eski satırın nedeni İngilizce kalır. Bir operatörün yazdığı neden olduğu gibidir. MT-38 ile aynı sınırdır.
+#### MT-87 — Alert list
 
-**Kaydet:** Açıklama kartının göründüğü, bir çözüm nedeninin metni ve dili. Çözülmüş uyarı yoksa o kısım için `Koşulmadı`.
+**Action:**
 
-#### MT-89 — Uyarıyı alındı yapma ve çözme (yazar) yalnızca lab
+- Open the `/alerts` page. Try the status filter (“Alert status”).
 
-**Ön koşul:** **yalnızca lab**: alındı ya da çözüldü işaretlenen bir uyarı, analistlerin gördüğü durumu değiştirir ve çözülen uyarı yeniden açılamaz; üretimde bu kontrolü `Koşulmadı` işaretle. Labda, test için oluşmuş bir uyarı üzerinde yap.
+**Expected:**
 
-**Eylem:**
+- The heading is “Alerts”; the columns are “Title”, “Severity”, “Status”, “Occurrences”, “First seen”, “Last seen”. The status filter: “Open”, “Acknowledged”, “Resolved”.
+- If there is no alert: “No alerts have been raised.” The count line: “Showing {shown} of {total} alerts.”
+- The titles of the catalog alerts are English sentences (MSG-7): search threshold and search failure, custom rule, offense collection freshness, new log source, new catch-all sender. Offense collection freshness reads “Offense collection is stale for {instance}”. The alerts the engine writes are English sentences too (MSG-7b): log source volume “{anomaly_type} on {log_source}” (for example “Volume drop”, “No events”), IPS “{detector} on {log_source}” and the destination port, destination IP or signature forms, property watch “{detector} on {watch}: {value}”, WAF “{detector} on {log_source}: {method} {endpoint}”. The same limits as MT-38.
 
-- Ayrıntıda “Alındı olarak işaretle” düğmesine bas. Sonra “Çöz” seç, “Çözüm nedeni” alanına bir neden yaz, “Bu uyarı çözülsün mü? Çözülen bir uyarı yeniden açılamaz.” metnini oku ve onayla.
+**Record:** That the list opened, the number of rows and the title of one alert.
 
-**Beklenen:**
+#### MT-88 — Alert detail: Description and resolution reason
 
-- “Uyarı alındı olarak işaretlendi.”; durum “ALINDI”. Çözünce “Uyarı çözüldü.”; durum “ÇÖZÜLDÜ”; “Bu uyarı çözüldü. Başka işlem yapılamaz.” Yazılan neden aynen “Çözüm:” satırında görünür.
+**Precondition:** The site has at least one alert.
 
-**Kaydet:** İki adımın sonucu.
+**Action:**
 
-**Temizlik:** Geri alınamaz (çözüm). Labda uyarıyı test amacıyla seç; sonra silme yoktur. MT-1b bunu lab VM'de yapar.
+- Open an alert from the list.
 
-### 8. Özel kurallar
+**Expected:**
 
-Özel kural, saklanan toplamlar üzerinde eşik kuralıdır; QRadar'a hiçbir şey göndermez. `/custom-rules` rotası. Kural oluşturmak için `custom_rule:write` (yönetici ya da `detection_engineer`) gerekir; `read:custom_rules` yalnızca okutur.
+- The heading is “Alert Detail”. The “Description” card carries the alert's description. There are the “Evidence” and “Lifecycle” sections and the table “Notification Delivery History”; if there is no notification: “No notifications for this alert.”
+- On a resolved alert the “Resolution:” line shows the resolution reason. The reason of a catalog recovery is an English sentence (for example “condition recovered”, “Offense collection freshness recovered.”). The recovery reason of an engine alert is “condition recovered”. A reason written by an operator is shown as written. The same limits as MT-38.
 
-#### MT-90 — Özel kural listesi ve durumları
+**Record:** That the Description card appeared and the text of one resolution reason. If there is no resolved alert, `Not run` for that part.
 
-**Ne zaman bakılır:** Yeni neden cümlesi, yükseltmeden sonra bir 5 dakikalık değerlendirme (bir kadans + 3 dk) sonra Türkçe görünür.
+#### MT-89 — Acknowledging and resolving an alert (writes) lab only
 
-**Eylem:**
+**Precondition:** **lab only**: an alert marked acknowledged or resolved changes the state the analysts see, and a resolved alert cannot be reopened; in production mark this check `Not run`. In the lab, do it on an alert that was created for the test.
 
-- `/custom-rules` sayfasını aç.
+**Action:**
 
-**Beklenen:**
+- In the detail press the “Acknowledge” button. Then choose “Resolve”, write a reason in the “Resolution reason” field, read the text “Resolve this alert? A resolved alert cannot be reopened.” and confirm (“Resolve alert”).
 
-- Başlık “Özel kurallar”; sütunlar: “Ad”, “Durum ve neden”, “Konu”, “Koşul”, “Önem derecesi”, “Etkinlik”, “Son değerlendirme (UTC)”.
-- Durum sözcükleri: “Uygun”, “Açık”, “Düzeliyor”, “Karar yok”, “Güncel değil”, “Toplanmadı”, “Konu kullanımdan kaldırıldı”, “Devre dışı”, “Etkin değil”; hiç değerlendirilmemiş kural “Hiç değerlendirilmedi”. Durumun yanındaki neden cümlesi Türkçedir (MSG-7, her değerlendirmede yeniden yazılır).
-- Değerlendirme anahtarı kapalıysa “CUSTOM_RULES_ENABLED kapalı olduğu için kural değerlendirmesi kapalıdır. Etkin kurallar değerlendirilmiyor.” İngilizce sayfa “Rule evaluation is off because CUSTOM_RULES_ENABLED is false. Enabled rules are not being judged.” der. Uyarı gönderimi kapalıysa “CUSTOM_RULES_ALERTING_ENABLED açılana kadar ihlaller kaydedilir ancak bildirim gönderilmez.” Kural yoksa “Henüz özel kural yok.”
+**Expected:**
 
-**Kaydet:** Liste açıldı mı; bir kuralın durumu ve neden cümlesinin dili. Kural yoksa `Koşulmadı`.
+- “Alert acknowledged.”; the status is `ACKNOWLEDGED`. After resolving: “Alert resolved.”; the status is `RESOLVED`; “This alert is resolved. No further action is available.” The reason you wrote appears unchanged on the “Resolution:” line.
 
-#### MT-91 — Özel kural ayrıntısı
+**Record:** The result of the two steps.
 
-**Ön koşul:** En az bir özel kural var.
+**Cleanup:** It cannot be undone (resolution). In the lab choose the alert for the test; there is no delete afterwards. MT-1b does this on the lab VM.
 
-**Eylem:**
+### 8. Custom rules
 
-- Listeden bir kuralı aç.
+A custom rule is a threshold rule over the stored aggregates; it sends nothing to QRadar. The route is `/custom-rules`. Creating a rule needs `custom_rule:write` (administrator or `detection_engineer`); `read:custom_rules` only reads.
 
-**Beklenen:**
+#### MT-90 — Custom rule list and states
 
-- Başlık “Özel kural”; “Geçerli durum”, “Konu”, “Koşul”, “Son değerlendirme” ve “İhlal geçmişi” bölümleri vardır. İhlal yoksa “Bu kural için kaydedilmiş etkin ihlal yok.” Etkin kural ayrıca “Uyarı modu” ya da “Gölge modu” etiketini taşır.
+**When to look:** The new reason sentence appears after one 5-minute evaluation following the upgrade (one cadence + 3 min).
 
-**Kaydet:** Ayrıntı sayfası açıldı mı.
+**Action:**
 
-#### MT-92 — Özel kural taslağı önizlemesi (kaydetmeden)
+- Open the `/custom-rules` page.
 
-**Ön koşul:** Hesapta `custom_rule:write` var (yönetici).
+**Expected:**
 
-**Eylem:**
+- The heading is “Custom rules”; the columns are “Name”, “Status and reason”, “Subject”, “Condition”, “Severity”, “Enabled”, “Last evaluated (UTC)”.
+- The state words: “OK”, “Open”, “Recovering”, “No verdict”, “Stale”, “Not collected”, “Subject retired”, “Disabled”, “Not enabled”; a rule that has never been evaluated shows “Never evaluated”. The reason sentence next to the state is an English sentence (MSG-7, rewritten at every evaluation).
+- If the evaluation switch is off: “Rule evaluation is off because CUSTOM_RULES_ENABLED is false. Enabled rules are not being judged.” If alerting is off: “Breaches are recorded and nothing pages until CUSTOM_RULES_ALERTING_ENABLED is on.” If there is no rule: “No custom rules exist yet.”
 
-- `/custom-rules/new` sayfasını aç (“Yeni özel kural”). Konu türü olarak “Filo sınıfı”, bir filo sınıfı ve bir metrik seç; “Eşik ({unit})” gir. **Kaydetme.**
+**Record:** That the list opened; the state of one rule and that its reason sentence is English. If there is no rule, `Not run`.
 
-**Beklenen:**
+#### MT-91 — Custom rule detail
 
-- Alt bölümde “Taslak önizlemesi” açılır: “Bu taslağı saklanan toplamlar üzerinde yeniden oynatır. Hiçbir şeyi saklamaz ve QRadar'a hiçbir şey göndermez.” Önizleme saklanan zaman dilimlerinden çizilir; eksik zaman dilimi “Ölçülmedi” ve boşluk olarak gösterilir, sıfır çizilmez. Eksiksizlik ve ölçüm türü etiketleri: “Kesin” / “Alt sınır” / “Ölçülmedi”.
+**Precondition:** There is at least one custom rule.
 
-**Kaydet:** Önizleme çizildi mi.
+**Action:**
 
-**Temizlik:** Sayfadan kaydetmeden çık: hiçbir şey saklanmaz.
+- Open a rule from the list.
 
-#### MT-93 — Özel kural oluşturma ve silme (yazar)
+**Expected:**
 
-**Ön koşul:** Hesapta `custom_rule:write` var. Kural **devre dışı** kaydedilir; test bitince silinir.
+- The heading is “Custom rule”; there are the sections “Current state”, “Subject”, “Condition”, “Last evaluated” and “Breach history”. If there is no breach: “No active breach is recorded for this rule.” An enabled rule also carries the label “Alerting mode” or “Shadow mode”.
 
-**Eylem:**
+**Record:** That the detail page opened.
 
-- `/custom-rules/new` sayfasında: “Ad” = `MT-test-kural`; konu = bir filo sınıfı; bir metrik ve eşik; “Etkin” **işaretsiz**; “Kural oluştur” düğmesine bas.
-- Kuralın ayrıntı sayfasında “Sil” seç; “Bu kural silinsin mi? Açık bir uyarısı varsa kural ve ihlal geçmişi kaldırılmadan önce uyarı çözülür.” metnini oku ve “Kuralı sil” ile onayla.
+#### MT-92 — Custom rule draft preview (without saving)
 
-**Beklenen:**
+**Precondition:** The account has `custom_rule:write` (administrator).
 
-- Kayıt sonrası “Kural kaydedildi.”; kural listede “Devre dışı” durumundadır ve uyarı üretmez (değerlendirme anahtarı `CUSTOM_RULES_ENABLED` kapalıysa durum “Etkin değil” olur).
-- Silme sonrası kural listede yoktur.
+**Action:**
 
-**Kaydet:** Oluşturma ve silme çalıştı mı. Kural adı sayfaya yazılmaz.
+- Open the `/custom-rules/new` page (“New custom rule”). Choose “Fleet class” as the subject kind, a fleet class and a metric; enter the “Threshold ({unit})”. **Do not save.**
 
-**Temizlik:** İkinci adım zaten temizliktir. Denetim kaydında `custom_rule.create` ve `custom_rule.delete` satırları kalır.
+**Expected:**
 
-### 9. Aramalar
+- In the lower section “Draft preview” opens: “Replays this draft over stored aggregates. It persists nothing and sends nothing to QRadar.” The preview is drawn from the stored buckets; a missing bucket is shown as “Not measured” and as a gap, and no zero is drawn. The completeness and measurement labels: “Exact” / “Lower bound” / “Not measured”.
 
-Arama kataloğu, saklanan ve doğrulanmış AQL aramalarını içerir (`/searches`). Arayüz ham AQL çalıştırmaz. Bir aramanın QRadar'a gitmesi Ariel kapasitesi harcar; bu bölümde QRadar'a arama gönderen kontrol **yalnızca lab**'dır.
+**Record:** That the preview was drawn.
 
-#### MT-94 — Arama listesi
+**Cleanup:** Leave the page without saving: nothing is stored.
 
-**Eylem:**
+#### MT-93 — Creating and deleting a custom rule (writes)
 
-- `/searches` sayfasını aç.
+**Precondition:** The account has `custom_rule:write`. The rule is saved **disabled**; it is deleted when the test is finished.
 
-**Beklenen:**
+**Action:**
 
-- Başlık “Arama kataloğu”; sütunlar: “Ad”, “Kategori”, “MITRE”, “Zamanlama”, “Önem derecesi”, “Sürüm”, “Etkin”. Arama yoksa “Henüz tanımlanmış zamanlanmış arama yok.” Yazma izni olmayan hesapta “Arama oluşturmak için search:write izni gerekir. Bir yönetici veya detection_engineer rolü bu izni verebilir.” ya da “Düzenleyici gizli. ”.
+- On the `/custom-rules/new` page: “Name” = `MT-test-rule`; subject = a fleet class; a metric and a threshold; “Enabled” **unchecked**; press the “Create rule” button.
+- On the rule's detail page choose “Delete”; read the text “Delete this rule? If it has an open alert, the alert will be resolved before the rule and its breach history are removed.” and confirm with “Delete rule”.
 
-**Kaydet:** Liste açıldı mı; satır sayısı.
+**Expected:**
 
-#### MT-95 — Arama çalıştırma geçmişi ve hata satırı [çekirdek]
+- After saving: “Rule saved.”; the rule is “Disabled” in the list and raises no alert (if the evaluation switch `CUSTOM_RULES_ENABLED` is off, the state is “Not enabled”).
+- After the delete the rule is not in the list.
 
-**Ön koşul:** En az bir arama zamanlanmış ve çalışmış.
+**Record:** Whether creating and deleting worked. The rule name is not written on the page.
 
-**Ne zaman bakılır:** Bir zamanlanmış çalıştırma, aramanın cron kadansı kadar bekleme gerektirir.
+**Cleanup:** The second step is the cleanup. The audit log keeps the `custom_rule.create` and `custom_rule.delete` rows.
 
-**Eylem:**
+### 9. Searches
 
-- Bir aramayı aç (`/searches/<id>`). “Çalıştırma geçmişi” tablosunu oku.
+The search catalog holds stored and validated AQL searches (`/searches`). The interface does not run raw AQL. A search going to QRadar spends Ariel capacity; in this section the check that sends a search to QRadar is **lab only**.
 
-**Beklenen:**
+#### MT-94 — Search list
 
-- Başlık “Arama ayrıntısı”; tablo sütunları: “Başlangıç (UTC)”, “Durum”, “Tetikleyici”, “Sürüm”, “Süre”, “Sonuç”, “Yeniden deneme”, “Eşik”, “Hata”. Durumlar: “TAMAMLANDI”, “BAŞARISIZ”, “ZAMAN AŞIMI”; tetikleyici “Zamanlanmış” ya da “Elle”.
-- Kırpılmış çalıştırmada sayı alt sınırdır (`≥` işaretiyle; arama satır sınırında durmuştur) ve eşik sütunu “karar yok” yazar.
-- Başarısız bir satırın “Hata” hücresi: 0.1.7'den sonra yazılan sabit hata iletileri Türkçedir (MSG-8b): “Ariel araması başarısız oldu”, “Arama, {timeout} sn zaman aşımını aştı”, “{waited} sn içinde Ariel arama izni alınamadı (konsol başına üst sınır {instance_cap}, genel üst sınır {global_cap})”. Ariel'in kendi iletisi ve istisna metni serbest metindir (İngilizce kalır). Eski satırlar "Ariel search failed" biçiminde İngilizcedir. Başarısız satır yoksa `Koşulmadı`.
+**Action:**
 
-**Kaydet:** Tablo açıldı mı; bir başarısız satırın hata iletisi ve dili (varsa).
+- Open the `/searches` page.
 
-#### MT-96 — Zamanlama tabanı (cron) ve önayarlar
+**Expected:**
 
-**Ön koşul:** Hesapta `search:write` var (yönetici).
+- The heading is “Search Catalog”; the columns are “Name”, “Category”, “MITRE”, “Schedule”, “Severity”, “Ver”, “Enabled”. If there is no search: “No scheduled searches defined yet.” On an account without write permission: “Creating a search needs search:write. An admin or the detection_engineer role can grant it.” or “The editor is hidden.”.
 
-**Eylem:**
+**Record:** That the list opened; the number of rows.
 
-- Bir aramanın “Zamanlama” bölümünde zamanlama listesini aç (“Şuna değiştir”). **Kaydetme.**
+#### MT-95 — Search run history and the error row [core]
 
-**Beklenen:**
+**Precondition:** At least one search is scheduled and has run.
 
-- Liste yedi önayar sunar: 5 dk, 15 dk, 30 dk, 1 sa, 2 sa, 4 sa, 8 sa (cron `*/5 * * * *` … `0 */8 * * *`). Hiçbiri 5 dakikadan kısa değildir.
-- Taban **300 saniyedir** (`CRON_FLOOR_SECONDS`). 300 sn'den sık tetiklenen bir `schedule_cron` API tarafından 422 ile reddedilir; ileti MSG-8b ile Türkçe de kodludur: “schedule_cron {cron} ({timezone}) {gap} sn arayla tetikleniyor ({previous}, ardından {next}); bir arama en az {min_seconds} sn arayla tetiklenmelidir”. Arayüz yalnızca önayar sunduğundan bu reddi arayüzden tetikleyemezsin; ret otomatik testlerle kanıtlıdır ve burada elle denenmez.
-- Özel bir cron'u olan arama varsa listede “Özel (mevcut kalsın)” ve cron olduğu gibi gösterilir.
+**When to look:** A scheduled run needs a wait as long as the search's cron cadence.
 
-**Kaydet:** Önayar listesinin yedi seçeneği doğru mu. Reddin kendisi denenmedi (bunu Not'a yaz).
+**Action:**
 
-**Temizlik:** Sayfadan kaydetmeden çık.
+- Open a search (`/searches/<id>`). Read the “Execution history” table.
 
-#### MT-97 — Aramayı şimdi çalıştırma (yazar) yalnızca lab QRadar araması
+**Expected:**
 
-**Ön koşul:** **yalnızca lab**: manuel çalıştırma QRadar'a bir Ariel araması gönderir (konsol kapasitesi harcar), silinemez bir "Elle" çalıştırma satırı bırakır ve eşiği aşarsa uyarı açar ya da uyarıyı kapatır. Üretimde `Koşulmadı` işaretle. Labda **eşiği olmayan** tek bir arama seç ve yalnız bir kez çalıştır.
+- The heading is “Search detail”; the table columns are “Started (UTC)”, “Status”, “Trigger”, “Ver”, “Duration”, “Results”, “Retries”, “Threshold”, “Error”. The statuses are `COMPLETED`, `FAILED`, `TIMEOUT`; the trigger is `SCHEDULED` or `MANUAL`.
+- On a truncated run the count is a lower bound (with the `≥` mark; the search stopped at its row cap) and the threshold column says “no verdict”.
+- The “Error” cell of a failed row: the fixed error messages are English sentences from the catalog (MSG-8b): “Ariel search failed”, “search exceeded timeout of {timeout}s”, “No Ariel permit became available within {waited} seconds (per-console cap {instance_cap}, global cap {global_cap})”. Ariel's own message and the exception text are free text and are shown as they came. If there is no failed row, `Not run`.
 
-**Eylem:**
+**Record:** That the table opened; the error message of one failed row (if any).
 
-- Aramanın ayrıntısında “Şimdi çalıştır” düğmesine bas (“Çalışıyor…”).
+#### MT-96 — Schedule floor (cron) and presets
 
-**Beklenen:**
+**Precondition:** The account has `search:write` (administrator).
 
-- Çalıştırma geçmişinin en üstüne tetikleyici “Elle” olan yeni bir satır eklenir; durum önce “ÇALIŞIYOR”, sonra “TAMAMLANDI”.
-- Ariel havuzu doluysa çalıştırma başlamaz ve 503 ile şu cümle görünür: “Ariel arama bütçesi dolu (eşzamanlı çalışan: {held}); {waited} sn beklendi; QRadar'a hiçbir şey gönderilmedi” (MSG-8b). Başka bir hatada “Çalıştırma başlamadı. Sayfayı yenileyip tekrar deneyin.”; yetki yoksa “Rolünüz saklanan bir aramayı çalıştıramıyor (izin: search:execute).”
+**Action:**
 
-**Kaydet:** Yeni satır geldi mi; sonuç sayısı. Bir aramadan fazlasını çalıştırma.
+- In the “Schedule” section of a search open the schedule list (“Change to”). **Do not save.**
 
-**Temizlik:** Satır silinemez. Notta saati yaz.
+**Expected:**
 
-#### MT-98 — Yeni arama saklama (yazar) yalnızca lab
+- The list offers seven presets: 5 min, 15 min, 30 min, 1 h, 2 h, 4 h, 8 h (cron `*/5 * * * *` … `0 */8 * * *`). None is shorter than 5 minutes.
+- The floor is **300 seconds** (`CRON_FLOOR_SECONDS`). A `schedule_cron` that fires more often than every 300 s is refused by the API with 422; the message is coded by MSG-8b: “schedule_cron {cron} ({timezone}) fires {gap} seconds apart ({previous} then {next}); a search must fire at least {min_seconds} seconds apart”. Because the interface offers only presets, you cannot trigger this refusal from the interface; the refusal is proved by automated tests and is not tried by hand here.
+- If a search has a custom cron, the list shows “Custom (keep current)” and the cron as it is.
 
-**Ön koşul:** **yalnızca lab**: arayüzde arama silme yoktur; saklanan arama devre dışı da olsa katalogda kalır ve analistlerin gördüğü listeye girer.
+**Record:** Whether the seven presets are right. The refusal itself was not tried (write this in the Note field).
 
-**Eylem:**
+**Cleanup:** Leave the page without saving.
 
-- `/searches/new` sayfasını aç (“Yeni arama”). Bir ad, AQL ve zamanlama yaz; “Devre dışı olarak kaydet” düğmesine bas.
+#### MT-97 — Running a search now (writes) lab only QRadar search
 
-**Beklenen:**
+**Precondition:** **lab only**: a manual run sends an Ariel search to QRadar (spends console capacity), leaves a "MANUAL" run row that cannot be deleted, and opens or closes an alert if it passes the threshold. In production mark `Not run`. In the lab choose a single search **with no threshold** and run it only once.
 
-- Arama devre dışı kaydedilir ("Yeni arama devre dışı olarak kaydedilir" — “Yeni arama devre dışı olarak kaydedilir. Sonucu önizlemek için kendi sayfasından çalıştırın; yalnızca kaydedilmiş sorgu çalışır.”). Geçersiz AQL'de “Doğrulama nedenleri” başlığı altında Türkçe nedenler görünür (MSG-1b).
+**Action:**
 
-**Kaydet:** Kaydedildi mi; geçersiz AQL nedenleri Türkçe mi.
+- In the search's detail press the “Run now” button (“Running…”).
 
-**Temizlik:** Silinemez; aramayı devre dışı bırak.
+**Expected:**
 
-### 10. Geçmiş okuma
+- A new row with the trigger `MANUAL` is added at the top of the run history; the status is first `RUNNING`, then `COMPLETED`.
+- If the Ariel pool is full the run does not start and the sentence appears with 503: “the Ariel search budget is full ({held} in flight); waited {waited} s; nothing was sent to QRadar” (MSG-8b). For another failure: “The run did not start. Reload the page and try again.”; without permission: “Your role cannot run a stored search (permission search:execute).”
 
-Sayfa `/admin/history-backfill` yolundadır (“Geçmiş veri okuma”); okumak için `read:history_backfill`, kararı değiştirmek için `admin:history_backfill` gerekir. Geçmiş okuma yalnızca öğrenme içindir; okunan kovalar yargılanmaz. `HISTORY_BACKFILL_ENABLED` varsayılanı `true`'dur. Okuma, QRadar'a salt okunur arama gönderir ve 72 saatlik bütçe içinde kalır (`docs/OPERATIONS.md`, "Geçmiş okuma").
+**Record:** Whether the new row appeared; the result count. Do not run more than one search.
 
-#### MT-99 — Geçmiş okuma sayfası: karar bloğu ve tablo
+**Cleanup:** The row cannot be deleted. Write the time in the Note field.
 
-**Ön koşul:** Yönetici hesabı.
+#### MT-98 — Storing a new search (writes) lab only
 
-**Ne zaman bakılır:** Kapsam satırları, ilgili ailenin bir sonraki toplamasında güncellenir; bir kadans + 3 dk.
+**Precondition:** **lab only**: there is no search delete in the interface; a stored search stays in the catalog even if disabled, and enters the list the analysts see.
 
-**Eylem:**
+**Action:**
 
-- `/admin/history-backfill` sayfasını aç.
+- Open the `/searches/new` page (“New search”). Write a name, AQL and a schedule; press the “Save as disabled” button.
 
-**Beklenen:**
+**Expected:**
 
-- Başlık “Geçmiş veri okuma”. Her etkin console için “Console {name}” bölümü: karar satırı (“Geçmiş veri okuma: Evet{days}. Kaydeden: {by}, ‹zaman›.”, “Geçmiş veri okuma: Hayır, geçmiş okunmuyor. Kaydeden: {by}, ‹zaman›.” ya da “Geçmiş veri okuma: karar verilmedi. QRadar'ın geçmişinden hiçbir şey okunmuyor.”) ve tablo.
-- Tablo sütunları: “Aile”, “Scope”, “Durum”, “İstenen pencere”, “Kanıtlanan pencere”, “Okunan”, “Arama”, “Okunan son zaman”, “Neden”, “Sonradan Evet denirse”. Aileler: “Kaynak hacmi”, “WAF”, “IPS”, “Catch-all gönderenleri”, “Kural eşleşmeleri”.
-- Durum sözcükleri: “Bekliyor”, “Okunuyor”, “Tamamlandı”, “Kısmi”, “Kullanılamıyor”, “Uygun değil”. Okunmayan sayı tire olarak görünür, sıfır olarak değil.
-- “Neden” sütunundaki cümleler her ailede (catch-all dahil) Türkçedir (MSG-8a); cümle parçaları küçük harfle başlar ve noktalı virgülle birleşir. Örnekler: “tarama pencerenin sonuna ulaştı”; “okuma sona ulaştı; taban, istenen başlangıca bir zaman diliminden az uzaklıkta ve boşluk yok”; “sona ulaşıldı; {problems}” (iç parçalar: “QRadar, {cut} / {total} için istenenden azını tutuyor”, “{sources} için pencerede olay yoktu”); “pencere {asked} günden {days} güne indirildi: {limits}”; “arama bütçesi bekleniyor”; boşluk satırı “Arama en küçük genişlikte {failures} kez başarısız oldu”; catch-all: “pencerede hiçbir catch-all kaynağının olayı yoktu; hiçbir şey yazılmadı”. Sayılar Türkçe gruplanır, süre "yaklaşık X saat" biçimindedir. “Sonradan Evet denirse” sütunu: “mümkün”, “olanaksız: bu kaynak zaten veri topladı”, “gerekmez: bu kaynağın geçmiş kapsamı var”.
-- Kapsam Ariel havuzu meşgul olduğu için ertelendiyse ve yazıcı bu sürümde nedeni yenilediyse cümle “Ariel izni N sn içinde alınamadı; okuma ertelendi” olur (MT-59). Yükseltmeden önce yazılmış satır `deferred: no Ariel permit within N s` olarak İngilizce kalır; bu hata değildir. 0.1.7'den önce yazılmış diğer satırlar ve boşluklar da saklı İngilizce metindir. Kapsam her adımda nedenini yeniden yazar, bu yüzden bir adımdan sonra Türkçeye döner.
-- Console yoksa “Etkin bir QRadar console'u yok.”; yetki yoksa “Rolünüz bunu okuyamıyor (izin: read:history_backfill). Hiçbir şey değiştirilmedi.”
+- The search is saved disabled (“A new search is saved disabled. Run it from its page to preview the result; only the saved query ever runs.”). For invalid AQL, reasons appear under the heading “Validation reasons” as English sentences (MSG-1b).
 
-**Kaydet:** Sayfa açıldı mı; kararın durumu (Evet / Hayır / karar verilmedi); aile durumlarının özeti; bir neden cümlesinin dili.
+**Record:** Whether it was saved; whether the invalid AQL reasons are English.
 
-#### MT-100 — Geçmiş okuma: ilk açılış sorusu
+**Cleanup:** It cannot be deleted; disable the search.
 
-**Ön koşul:** Konsolun kararı hiç kaydedilmemişse (bölüm 3'te pencere açıldıysa).
+### 10. History backfill
 
-**Eylem:**
+The page is at `/admin/history-backfill` (“History backfill”); reading needs `read:history_backfill`, changing the decision needs `admin:history_backfill`. History backfill is for learning only; the buckets read are not judged. The default of `HISTORY_BACKFILL_ENABLED` is `true`. The reading sends read-only searches to QRadar and stays within the 72-hour budget (`docs/OPERATIONS.md`, the section on history backfill).
 
-- Soru penceresinde “Sonra karar ver” düğmesini seç. Sayfa üstündeki şeridi oku.
+#### MT-99 — History backfill page: decision block and table
 
-**Beklenen:**
+**Precondition:** An administrator account.
 
-- Pencerenin başlığı, gün sayısı varken “QRadar'dan son 28 gün okunsun mu?” (“Read the last 28 days from QRadar?”) olur; 28, `HISTORY_BACKFILL_DAYS` varsayılanıdır ve sitede farklıysa o sayı yazılır. Gün sayısı yoksa kısa biçim “QRadar'ın geçmişi okunsun mu?” (“Read QRadar's past?”) görünür.
-- “Sonra karar ver” seçilince pencere kapanır, hiçbir karar kaydedilmez ve sayfada “Geçmiş veri okuma kararı verilmedi. Karar verilene kadar QRadar'ın geçmişinden hiçbir şey okunmaz. Geçmiş veri okumayı aç” şeridi görünür. Pencere hiç açılmadıysa karar zaten kayıtlıdır: bu kontrol `Koşulmadı`.
+**When to look:** The scope rows are updated at the next collection of the family concerned; one cadence + 3 min.
 
-**Kaydet:** Pencere çıktı mı; "Sonra karar ver" seçildi mi.
+**Action:**
 
-#### MT-101 — Geçmişi şimdi oku / Okumayı durdur (yazar) yalnızca lab QRadar araması
+- Open the `/admin/history-backfill` page.
 
-**Ön koşul:** **yalnızca lab**: bu düğmeler her ailenin sonraki toplamasında QRadar'a salt okunur aramalar gönderir (kapasite harcar) ve okumayı başlatır ya da durdurur; üretimde `Koşulmadı` işaretle.
+**Expected:**
 
-**Eylem:**
+- The heading is “History backfill”. For each enabled console a section “Console {name}”: the decision line (“History backfill: Yes{days}. Recorded by {by} on ‹time›.”, “History backfill: No, history is not read. Recorded by {by} on ‹time›.” or “History backfill: not decided. Nothing is read from QRadar's past.”) and the table.
+- The table columns are “Family”, “Scope”, “State”, “Window asked”, “Window proved”, “Read”, “Searches”, “Read through”, “Reason”, “Later Yes”. The families are “Source volume”, “WAF”, “IPS”, “Catch-all senders”, “Rule matches”.
+- The state words include “Waiting”, “Reading”, “Complete”, “Partial”, “Unavailable”, “Not eligible”. A number that was not read is shown as a dash, not as zero.
+- The sentences in the “Reason” column are English sentences from the catalog for every family (catch-all included) (MSG-8a); the parts of a sentence start with a lower-case letter and are joined with semicolons. Examples: “the scan reached the end of the window”; “the reading reached the end, but QRadar holds less than asked or a gap exists”; “reached the end; {problems}” (inner parts: “QRadar holds less than asked for {cut} of {total}”, “{sources} had no event in the window”); “window reduced from {asked} to {days} days: {limits}”; “waiting for search budget”; the gap row “search failed {failures} times at the minimum width”; catch-all: “no catch-all source had an event in the window; nothing is written”. Numbers are grouped with commas and durations have the form "about X hours". The “Later Yes” column: “possible”, “not possible: this source already collected”, “not needed: this source has a history scope”.
+- If the scope was deferred because the Ariel pool was busy, the sentence is `deferred: no Ariel permit within N s` (MSG-8c). The scope rewrites its reason at every step.
+- If there is no console: “No QRadar console is enabled.”; if there is no permission: “Your role cannot read it (permission read:history_backfill). Nothing was changed.”
 
-- Karar bloğundaki “Geçmişi şimdi oku” düğmesine bas, ““{action}” eylemi onaylansın mı?” penceresinde onayla. Sonra aynı yerde “Okumayı durdur” ile durdur.
+**Record:** That the page opened; the state of the decision (Yes / No / not decided); a summary of the family states; that one reason sentence is English and complete.
 
-**Beklenen:**
+#### MT-100 — History backfill: the first-open question
 
-- Kaydedildi: “Kaydedildi. ”. Satırlar hemen değişmez; her aile sonraki toplamasında uygular. Durdurmada okuyan kapsamlar “Kısmi” biter ve nedeni durduranın adıyla yazılır (“durduran: {by}”); "Geçmişi şimdi oku" sonrası eksikleri tamamlayan kapsam “geçmişi şimdi oku: eksikler tamamlanıyor” yazar. Kayıt iletileri: ““Geçmişi şimdi oku” kaydedildi. Her aile bunu sonraki toplamasında uygular; henüz hiçbir scope değişmedi.” / ““Okumayı durdur” kaydedildi. Her aile okuyan scope'larını sonraki toplamasında sonlandırır; henüz hiçbir scope değişmedi.” Yetkisiz hesapta “Değiştirilmedi. Rolünüz geçmiş veri okumayı değiştiremiyor (izin: {permission}).”
+**Precondition:** The console's decision has never been recorded (the dialog opened in section 3).
 
-**Kaydet:** İki adımın bildirimi; sonraki kadansta satırın durumu.
+**Action:**
 
-**Temizlik:** Bir sonraki adım olarak "Geçmişi şimdi oku" okumayı yeniden başlatır; 'Evet' kararı hiçbir zaman geri alınamaz, okuma durdurulabilir.
+- In the question dialog choose the “Decide later” button. Read the strip at the top of the page.
 
-### 11. Kural sağlığı, istatistikler, coverage ve filo
+**Expected:**
 
-Bu sayfaların hepsi QRadar'dan toplanmış veriyi okur; hiçbirinde yazma işlemi yoktur.
+- With a day count the title of the dialog is “Read the last 28 days from QRadar?”; 28 is the `HISTORY_BACKFILL_DAYS` default, and if the site has a different value, that number is shown. Without a day count the short form “Read QRadar's past?” is shown.
+- When “Decide later” is chosen the dialog closes, no decision is recorded, and the strip “History backfill is not decided. Nothing is read from QRadar's past until it is. Open History backfill” appears on the page. If the dialog never opened, the decision is already recorded: this check is `Not run`.
 
-#### MT-102 — Kural sağlığı listesi
+**Record:** Whether the dialog appeared; whether "Decide later" was chosen.
 
-**Ne zaman bakılır:** Kural sağlığı değerlendirmesi kural eşitlemesiyle çalışır; bir kadans + 3 dk.
+#### MT-101 — Read history now / Stop reading (writes) lab only QRadar search
 
-**Eylem:**
+**Precondition:** **lab only**: these buttons make each family send read-only searches to QRadar at its next collection (spends capacity) and start or stop the reading; in production mark `Not run`.
 
-- `/rules` sayfasını aç. Sağlık filtresini dene (“Sağlık durumuna göre filtrele”).
+**Action:**
 
-**Beklenen:**
+- Press the “Read history now” button in the decision block, and confirm in the “Read history now?” dialog (“Confirm: Read history now”). Then stop it in the same place with “Stop reading”.
 
-- Başlık “Kural sağlığı”; sütunlar: “Kural”, “Tür”, “Etkinlik”, “Sağlık”, “Anlam”, “Son tetiklenme (UTC)”, “Offense'lar”. Sağlık sözcükleri: “Sağlıklı”, “Hiç gözlenmedi”, “Etkin değil”, “Gürültülü”, “Devre dışı”, “Bağımlılık bozulmuş”, “Yetersiz veri”, “Bilinmiyor”.
-- Sağlıklı ya da bilinmeyen olmayan her kuralın adının altında kararın nedeni yazılıdır; neden kaydedilmemişse “Kaydedilmiş neden yok”. 0.1.7'de neden cümlesi Türkçedir (MSG-3); her kural değerlendirmesinde yeniden yazıldığı için ilk değerlendirmeden sonra tüm satırlarda Türkçe görünür.
-- Kararı olmayan kural varsa “Henüz sağlık kararı olmayan kural sayısı: {count}.” uyarısı çıkar; bu bir hata değildir.
+**Expected:**
 
-**Kaydet:** Liste açıldı mı; bir nedenin dili.
+- “Recorded. ” appears. The rows do not change at once; each family applies it at its next collection. On stopping, the scopes that are reading end “Partial” and the reason names who stopped it (“stopped by {by}”); after "Read history now", a scope that is topping up what is missing says “read history now: topping up”. The recorded messages: “Read history now is recorded. Each family applies it at its next collection; no scope has changed yet.” / “Stop reading is recorded. Each family ends its reading scopes at its next collection; no scope has changed yet.” On an account without permission: “Not changed. Your role cannot change the history backfill (permission {permission}).”
 
-#### MT-103 — Kural ayrıntısı ve sağlık geçmişi
+**Record:** The notice of the two steps; the state of the row at the next cadence.
 
-**Ön koşul:** En az bir kural toplanmış.
+**Cleanup:** As a next step "Read history now" restarts the reading; a 'Yes' decision is never reversed, the reading can be stopped.
 
-**Eylem:**
+### 11. Rule health, statistics, coverage and fleet
 
-- Listeden bir kuralı aç (`/rules/<id>`).
+All these pages read data collected from QRadar; none has a write operation.
 
-**Beklenen:**
+#### MT-102 — Rule health list
 
-- Başlık “Kural”; bölümler: “Sağlık”, “Sağlık kanıtı”, “Meta veriler”, “MITRE teknikleri”, “Sağlık geçmişi”. Sağlık geçmişi tablosunda her satırın “Neden” hücresi vardır; eski satırlar İngilizce saklı metindir, yeniler Türkçedir.
-- Kapasite geçmişi bölümü (“Kapasite geçmişi”) ölçüt yoksa “QRadar, toplama başladığından beri bu kuralı yeniden ölçütlemedi.” der; bu bir hata değildir.
+**When to look:** The rule health evaluation runs with the rule sync; one cadence + 3 min.
 
-**Kaydet:** Sayfa açıldı mı; bir geçmiş satırının nedeni ve dili.
+**Action:**
 
-#### MT-104 — Kural istatistikleri
+- Open the `/rules` page. Try the health filter (“Filter by health status”).
 
-**Eylem:**
+**Expected:**
 
-- `/rules/statistics` sayfasını aç. Gün seçimini (bir değer) değiştir (“Ölçüm günleri”).
+- The heading is “Rule health”; the columns are “Rule”, “Type”, “Enabled”, “Health”, “Meaning”, “Last fired (UTC)”, “Offenses”. The health words: `HEALTHY`, `NEVER OBSERVED`, `INACTIVE`, `NOISY`, `DISABLED`, `DEPENDENCY DEGRADED`, `INSUFFICIENT DATA`, `UNKNOWN`.
+- Under the name of every rule that is neither healthy nor unknown the reason for the verdict is written; if no reason was recorded, “No reason recorded”. The reason sentence is an English sentence (MSG-3); it is rewritten at every rule evaluation, so after the first evaluation all rows show English.
+- If there are rules with no verdict, the notice “{count} rules have no health verdict yet.” appears; this is not a fault.
 
-**Beklenen:**
+**Record:** That the list opened; that one reason is English.
 
-- Başlık “Kural istatistikleri”. Bölümler: “Kural bileşimi”, “En çok eşleşenler”, “Sessiz etkin kurallar”, “Ölçüte göre en maliyetli”, “Kapasite geçmişi”. Ölçüm penceresi tam ise “Eksiksiz.”, kısmi ise “KISMİ.”, yetersiz ise “YETERSİZ VERİ.” yazılır; eksik pencere sessizlik kanıtı sayılmaz (“Sessizlik değerlendirilmedi.”).
-- Maliyet birimi: “Etkin kurallar, değerlendirmesi en maliyetli olan en düşük kapasite ölçütünden başlayarak sıralanır. Birim: {unit}.” Sessiz kural dışlama nedeni ve ölçüm penceresi cümleleri Türkçedir (MSG-2). Bir sayı sıfır olarak çizilmez: ölçülemeyen bölüm “Kural eşleşmelerini ölçen eksiksiz pencere yok.” gibi bir başlık gösterir.
-- QRadar sistemi kayıtlı değilse “Kayıtlı QRadar sistemi yok.”
+#### MT-103 — Rule detail and health history
 
-**Kaydet:** Sayfa açıldı mı; ölçüm penceresinin durumu (tam/kısmi/yetersiz).
+**Precondition:** At least one rule has been collected.
+
+**Action:**
+
+- Open a rule from the list (`/rules/<id>`).
+
+**Expected:**
+
+- The heading is “Rule”; the sections are “Health”, “Health evidence”, “Metadata”, “MITRE techniques”, “Health history”. In the health history table every row has a “Reason” cell.
+- If there is no benchmark, the capacity history section (“Capacity history”) says “QRadar has not re-benchmarked this rule since collection began.”; this is not a fault.
+
+**Record:** That the page opened; the reason of one history row.
+
+#### MT-104 — Rule statistics
+
+**Action:**
+
+- Open the `/rules/statistics` page. Change the day selection (one value) (“Measurement days”).
+
+**Expected:**
+
+- The heading is “Rule statistics”. The sections: “Rule composition”, “Most matched”, “Silent enabled rules”, “Costliest by benchmark”, “Capacity history”. When the measurement window is complete it says “Complete.”, when partial “PARTIAL.”, when insufficient “INSUFFICIENT_DATA.”; an incomplete window is not evidence of silence (“Silence was not judged.”).
+- The cost unit: “Enabled rules ordered from the lowest capacity benchmark, which is the costliest to evaluate. Unit: {unit}.” The silent-rule exclusion reason and the measurement window sentence are English sentences (MSG-2). No number is drawn as zero: a section that cannot be measured shows a heading such as “No complete window exists to measure rule matches.”
+- If no QRadar instance is registered: “No QRadar instance is registered.”
+
+**Record:** That the page opened; the state of the measurement window (complete/partial/insufficient).
 
 #### MT-105 — Coverage
 
-**Eylem:**
+**Action:**
 
-- `/coverage` sayfasını aç.
+- Open the `/coverage` page.
 
-**Beklenen:**
+**Expected:**
 
-- Başlık “Algılama coverage'ı”. Eşleme yoksa “Coverage değerlendirilmedi.” ve “Hiçbir ATT&CK teknik eşlemesi yapılandırılmamış; bu yüzden coverage ölçülemez. Eşlemeleri bir yönetici ekler. Bu, sıfır coverage bulgusu değildir.” (bu bir sıfır coverage bulgusu değildir). Eşleme varsa “{total} teknik değerlendirildi · {covered} kapsandı · {explicit} açık / {inferred} çıkarımsal eşleme · oluşturulma: ‹zaman›” özeti ve “Teknikler” tablosu: “Teknik”, “Taktik”, “Durum”, “Kurallar”, “Puan”, “Kanıt”. Durum sözcükleri: “KAPSANDI”, “KISMİ”, “BOZULMUŞ”, “EKSİK”, “DEĞERLENDİRİLMEDİ”.
-- “Kanıt” hücrelerindeki özet cümleleri Türkçedir (MSG-2) ve coverage eşitlemesinde yeniden yazılır; eski anlık görüntüler İngilizce kalır.
+- The heading is “Detection Coverage”. If there is no mapping: “Coverage has not been evaluated.” and “No ATT&CK technique mappings are configured, so coverage cannot be measured. An administrator adds them. This is not a finding of zero coverage.” If there is a mapping: the summary “{total} techniques evaluated · {covered} covered · {explicit} explicit / {inferred} inferred mappings · generated ‹time›” and the “Techniques” table with the columns “Technique”, “Name”, “Tactic”, “Status”, “Rules”, “Score”, “Evidence”. The status words: `COVERED`, `PARTIAL`, `DEGRADED`, `MISSING`, `NOT EVALUATED`.
+- The summary sentences in the “Evidence” cells are English sentences (MSG-2) and are rewritten at the coverage sync.
 
-**Kaydet:** Sayfa açıldı mı; bir kanıt cümlesinin dili.
+**Record:** That the page opened; that one evidence sentence is English.
 
-#### MT-106 — Filo, filo kaynakları ve catch-all gönderenleri
+#### MT-106 — Fleet, fleet sources and catch-all senders
 
-**Eylem:**
+**Action:**
 
-- Sırayla aç: `/fleet`, `/fleet/sources`, `/fleet/catchall`.
+- Open in this order: `/fleet`, `/fleet/sources`, `/fleet/catchall`.
 
-**Beklenen:**
+**Expected:**
 
-- `/fleet`: “Log source filosu”; sınıf tablosu ve “İnceleme kuyruğu”; pencere “Son {window}:  ile  arası, {minutes} dakikalık zaman dilimlerinde.” Eksik pencere kısmi/eksik zaman dilimi sayısıyla yazılır (“Olay sayısı ve ortalama EPS yalnızca tamamlanmış zaman dilimlerini sayar. Pencere eksikse satır, kaç zaman diliminin kısmi ya da eksik olduğunu söyler.”).
-- `/fleet/sources`: “Filo kaynakları”; yeni ve sınıfı belirsiz kaynaklar ve verilen sınıf/neden.
-- `/fleet/catchall`: “Catch-all gönderenleri”; envanterde catch-all kaynağı yoksa “Envanterde catch-all kaynağı yok.”
+- `/fleet`: “Log-source fleet”; the class table and the “Review queue”; the window line “Last {window}: ‹start› to ‹end›, in {minutes}-minute buckets.” An incomplete window is written with the number of partial/missing buckets (“Events and mean EPS count complete buckets only. Where the window is incomplete, the row says how many buckets are partial or missing.”).
+- `/fleet/sources`: “Fleet sources”; new and ambiguously classified sources with the class given and the reason.
+- `/fleet/catchall`: “Catch-all senders”; if the inventory has no catch-all source, “No catch-all source is in the inventory.”
 
-**Kaydet:** Üç sayfa açıldı mı.
+**Record:** That the three pages opened.
 
-#### MT-107 — Log source'lar ve ayrıntı
+#### MT-107 — Log sources and detail
 
-**Eylem:**
+**Action:**
 
-- `/log-sources` sayfasını aç, bir kaynağı aç.
+- Open the `/log-sources` page, open one source.
 
-**Beklenen:**
+**Expected:**
 
-- Başlık “Log source'lar”; “{count} kaynak.”; sütunlar: “Ad”, “Tür”, “Kritiklik”, “Durum”, “Anomaliler”, “Son olay”. Ayrıntı başlığı “Log source ayrıntısı”; “Son olay: ‹zaman›”; hiç olay yoksa “Son olay: hiç”.
+- The heading is “Log Sources”; “{count} sources.”; the columns are “Name”, “Type”, “Criticality”, “Status”, “Anomalies”, “Last Event”. The detail heading is “Log Source Detail”; “Last event: ‹time›”; if there is no event, “Last event: never”.
 
-**Kaydet:** Sayfalar açıldı mı; kaynak sayısı.
+**Record:** That the pages opened; the number of sources.
 
-#### MT-108 — Yapılandırma değişiklikleri
+#### MT-108 — Configuration changes
 
-**Eylem:**
+**Action:**
 
-- `/config-changes` adresini yaz (gezintide yoktur).
+- Type the address `/config-changes` (it is not in the navigation).
 
-**Beklenen:**
+**Expected:**
 
-- Başlık “Yapılandırma değişiklikleri”; “Yapılandırma değişiklikleri toplanmıyor.” ve “Bunlar için bir veri modeli var, ancak onu dolduran bir toplayıcı ya da API yok; bu yüzden bu sayfada gösterilecek bir şey yok.” Bu, "toplanmadı" dürüstlük durumudur: veri toplanmaz, bu yüzden boş liste ya da sıfır gösterilmez.
+- The heading is “Configuration changes”; “Configuration changes are not collected.” and “A data model for them exists, but no collector or API fills it, so this page has nothing to show.” This is the "not collected" honesty state: the data is not collected, so no empty list or zero is shown.
 
-**Kaydet:** Sayfa bu metni gösteriyor mu.
+**Record:** That the page shows this text.
 
-#### MT-109 — Davranış sayfaları: genel bakış, kaynaklar, WAF, özellik izlemeleri, offense'lar
+#### MT-109 — Behavior pages: overview, sources, WAF, property watches, offenses
 
-**Ne zaman bakılır:** Özellik izleme durum nedeni, izlemenin bir sonraki toplamasında Türkçe olur; bir kadans + 3 dk.
+**When to look:** The property watch status reason becomes an English sentence at the watch's next collection; one cadence + 3 min.
 
-**Eylem:**
+**Action:**
 
-- Sırayla aç: `/behavior`, `/behavior/sources` (bir kaynağı aç), `/behavior/waf` (bir kaynağın endpoint sayfasını aç), `/behavior/watches` (bir izlemeyi aç), `/offenses` (bir offense'ı aç).
+- Open in this order: `/behavior`, `/behavior/sources` (open one source), `/behavior/waf` (open the endpoint page of one source), `/behavior/watches` (open one watch), `/offenses` (open one offense).
 
-**Beklenen:**
+**Expected:**
 
-- `/behavior`: “Davranış genel bakışı”; üst istatistikler “Açık anomaliler”, “Sessiz kaynaklar”, “Yetersiz veri” (“Değerlendirilmiyor — yukarıdaki sıfır bunları kapsamaz.”).
-- `/behavior/sources`: “Kaynaklar”; kaynak ayrıntısı “Kaynak davranışı”; öğrenen kaynak “öğreniyor”.
-- `/behavior/waf`: “WAF davranışı”; WAF kaynak sayfası “WAF kaynağı endpoint'leri”; toplanmayan kaynak “Toplanmadı”. Duraklatma gerekçeleri (MSG-4a) Türkçedir.
-- `/behavior/watches`: “Özellik izlemeleri”; sütunlar “Durum ve neden”, “Scope”, “Açık vakalar”. Toplama kapalıysa “TOPLAMA KAPALI.”, gölge moddaysa “GÖLGE MODU.” Durum nedenleri Türkçedir (MSG-4b) ve her toplamada yeniden yazılır; geçmiş okuyan izlemede geçmiş durumu (“Geçmiş okunuyor”) görünür.
-- `/offenses`: “Offense'lar”; offense yoksa “Henüz offense kesiti toplanmadı.” ya da “QRadar'dan henüz offense toplanmadığı için bu liste boş. Offense toplama işlemini bir yönetici ayarlar.”; salt okunur ("Bu sayfa hiçbir yazma işlemi yapmaz").
+- `/behavior`: “Behavioral overview”; the top statistics “Open anomalies”, “Silent sources”, “Insufficient data” (“Not being judged — a zero above does not cover these.”).
+- `/behavior/sources`: “Sources”; the source detail “Source behavior”; a source that is learning shows “Still learning”.
+- `/behavior/waf`: “WAF behavior”; the WAF source page “WAF source endpoints”; a source that is not collected shows “Not collected”. The pause reasons (MSG-4a) are English sentences.
+- `/behavior/watches`: “Property watches”; the columns “Status and reason”, “Scope”, “Open incidents”. If collection is off, “COLLECTION OFF.”; in shadow mode, “SHADOW MODE.” The status reasons are English sentences (MSG-4b) and are rewritten at every collection; for a watch that is reading history, the history state (“Reading history: {progress}”) appears.
+- `/offenses`: “Offenses”; if there is no offense, “No offense snapshot has been collected yet.” or “No offenses have been collected from QRadar yet, so this list is empty. Offense collection is set up by an administrator.”; read-only (“This page issues no writes: offenses are triaged in QRadar, not here.”).
 
-**Kaydet:** Beş sayfa açıldı mı; izleme yoksa o kısım `Koşulmadı`.
+**Record:** That the five pages opened; if there is no watch, `Not run` for that part.
 
-### 12. Yönetim
+### 12. Administration
 
-Bu bölümde sayfalar önce **yalnızca görüntülenir**. Her değişiklik **(yazar)** kontrolüdür ve geri alması yazılıdır; üretimde değişiklik kontrolleri `yalnızca lab`'dır. Hiçbir yönetim sayfası QRadar'a yazmaz. Arama sıklığı, kesinti politikası ve sınıflama kuralı sayfaları üretimde yalnızca okunur.
+In this section the pages are first only **viewed**. Every change is a **(writes)** check and its undo is written; in production the change checks are `lab only`. No administration page writes to QRadar. The search cadence, outage policy and classification rule pages are only read in production.
 
-#### MT-110 — WAF kaynakları: liste ve profil
+#### MT-110 — WAF sources: list and profile
 
-**Eylem:**
+**Action:**
 
-- `/admin/waf-sources` sayfasını aç; bir kaynağın profil sayfasını aç (`/admin/waf-sources/<id>`). **Doğrulamayı başlatma, hiçbir şey kaydetme.**
+- Open the `/admin/waf-sources` page; open the profile page of one source (`/admin/waf-sources/<id>`). **Do not start a validation, do not save anything.**
 
-**Beklenen:**
+**Expected:**
 
-- Liste başlığı “WAF kaynakları”; sütunlar: “Kaynak”, “Ürün”, “Eşleme”, “Doğrulama”, “Toplama”, “Son doğrulama (UTC)”. Doğrulama etiketleri: “GEÇERLİ”, “ESKİ”, “GEÇERSİZ”, “SONUÇSUZ”, “DOĞRULANMAMIŞ”. Hiç doğrulanmamış kaynak “hiç doğrulanmadı” gösterir (tire, başarısız doğrulama değildir).
-- Duraklatılmış bir kaynağın toplama hücresi neden cümlesi taşır (ör. “Profil sürümü {profile_version} hiç doğrulanmadı”, “WAF toplaması devre dışı (WAF_COLLECTION_ENABLED=kapalı)”); bu cümleler MSG-4a ile Türkçedir. İngilizce sayfa aynı kapalı toplamayı `WAF_COLLECTION_ENABLED=false` diye yazar. Profil sayfasında “Alan eşlemesi”, “Doğrulama”, “Toplama”, “Geçmiş” bölümleri vardır.
-- WAF profili yoksa “Hiçbir log source WAF kaynağı olarak yapılandırılmadı.”
+- The list heading is “WAF sources”; the columns are “Source”, “Product”, “Mapping”, “Validation”, “Collection”, “Last validated (UTC)”. The validation labels: `VALID`, `STALE`, `INVALID`, `INCONCLUSIVE`, `UNVALIDATED`. A source that has never been validated shows “never validated” (a dash; it is not a failed validation).
+- The collection cell of a paused source carries a reason sentence (for example “profile version {profile_version} has never been validated”, “WAF collection is disabled (WAF_COLLECTION_ENABLED=false)”); these sentences are coded by MSG-4a. The profile page has the sections “Field mapping”, “Validation”, “Collection”, “History”.
+- If there is no WAF profile: “No log source is configured as a WAF source.”
 
-**Kaydet:** Liste ve profil açıldı mı; bir duraklatma nedeninin dili (varsa).
+**Record:** That the list and the profile opened; that one pause reason is English (if there is one).
 
-#### MT-111 — IPS kaynakları: liste ve profil
+#### MT-111 — IPS sources: list and profile
 
-**Ön koşul:** Üretim IPS kaynakları: Cisco Firepower/FTD ve Palo Alto Threat.
+**Precondition:** The production IPS sources: Cisco Firepower/FTD and Palo Alto Threat.
 
-**Eylem:**
+**Action:**
 
-- `/admin/ips-sources` sayfasını aç; bir kaynağın profilini aç (`/admin/ips-sources/<id>`). **Doğrulamayı başlatma, hiçbir şey kaydetme.**
+- Open the `/admin/ips-sources` page; open the profile of one source (`/admin/ips-sources/<id>`). **Do not start a validation, do not save anything.**
 
-**Beklenen:**
+**Expected:**
 
-- Başlık “IPS kaynakları”; sütunlar: “Kaynak”, “Profil”, “Doğrulama”, “Etkin”, “Toplama”, “Son doğrulama (UTC)”. Profil sayfası başlığı “IPS kaynağı”; bölümler: “Alan eşleme”, “Doğrulama”, “Toplama”, “Geçmiş”.
-- Doğrulama raporunun nedenleri ve alan ayrıntıları (ör. “QRadar bu alanı bu adla kabul etmiyor.”, “Alan mevcut ama penceredeki hiçbir olay kullanılabilir bir değer taşımıyor.”) ile uygunluk nedenleri Türkçedir (MSG-4a). Profil yoksa “Henüz hiçbir IPS kaynağının profili yok.” IPS işlemleri için `admin:ips` gerekir (`admin:waf` vermez).
+- The heading is “IPS sources”; the columns are “Source”, “Profile”, “Validation”, “Enabled”, “Collection”, “Last validated (UTC)”. The profile page heading is “IPS source”; the sections are “Field mapping”, “Validation”, “Collection”, “History”.
+- The reasons of the validation report and the field details (for example “QRadar does not accept this field as named.”, “The field exists but no event in the window carried a usable value.”) and the eligibility reasons are English sentences (MSG-4a). If there is no profile: “No IPS source has a profile yet.” IPS operations need `admin:ips` (`admin:waf` does not grant it).
 
-**Kaydet:** Liste ve profil açıldı mı; bir nedenin dili.
+**Record:** That the list and the profile opened; that one reason is English.
 
-#### MT-112 — Kaynak doğrulamasını yeniden çalıştırma (yazar) yalnızca lab QRadar araması
+#### MT-112 — Re-running a source validation (writes) lab only QRadar search
 
-**Ön koşul:** **yalnızca lab**: “Yeniden doğrula” doğrulamayı yeniden çalıştırır, QRadar'a salt okunur yoklama aramaları gönderir ve profilin doğrulama sonucunu değiştirir; bu, bir kaynağın toplanmasını durdurabilir. Üretimde `Koşulmadı` işaretle.
+**Precondition:** **lab only**: “Validate again” re-runs the validation, sends read-only probe searches to QRadar and changes the profile's validation result; this can stop a source's collection. In production mark `Not run`.
 
-**Eylem:**
+**Action:**
 
-- Labda bir WAF ya da IPS profilinde “Yeniden doğrula” düğmesine bas.
+- In the lab, press the “Validate again” button on a WAF or IPS profile.
 
-**Beklenen:**
+**Expected:**
 
-- “Sürüm {version} için doğrulama istendi.”; kısa süre sonra doğrulama sonucu ve neden cümleleri güncellenir (Türkçe).
+- “Validation of version {version} has been requested.”; shortly after, the validation result and the reason sentences are updated (English).
 
-**Kaydet:** Sonuç etiketi.
+**Record:** The result label.
 
-**Temizlik:** Önceki sonuç korunur ya da yenisiyle değişir; geri alınamaz. Labda sorun değildir.
+**Cleanup:** The earlier result is kept or replaced by the new one; it cannot be undone. In the lab this does not matter.
 
-#### MT-113 — Kullanıcılar ve dizin (yalnızca görüntüleme)
+#### MT-113 — Users and directory (view only)
 
-**Eylem:**
+**Action:**
 
-- `/admin/users` ve `/admin/directory` sayfalarını aç. **Dizin için bağlantı testini çalıştırma** (gerçek bir parola gerekir) ve hiçbir şey kaydetme.
+- Open the `/admin/users` and `/admin/directory` pages. **Do not run the connection test for the directory** (it needs a real password) and do not save anything.
 
-**Beklenen:**
+**Expected:**
 
-- `/admin/users`: “Kullanıcılar”; sütunlar “Kullanıcı adı”, “Kaynak”, “Roller”, “Durum”, “Son oturum açma (UTC)”. Saatler UTC.
-- `/admin/directory`: “Dizin”; form “Dizin yapılandırması”; “Bağlantıyı test et” bölümü: “Kullanıcı adı ve parola yukarıdaki formla birlikte gönderilir, sonra temizlenir. Kaydedilmez.”
+- `/admin/users`: “Users”; the columns “Username”, “Source”, “Roles”, “Status”, “Last login (UTC)”. Times are UTC.
+- `/admin/directory`: “Directory”; the form “Directory configuration”; the “Test connection” section: “The username and password are sent with the form above and then cleared. They are not saved.”
 
-**Kaydet:** İki sayfa açıldı mı.
+**Record:** That the two pages opened.
 
-#### MT-114 — Arama sıklığı (yalnızca görüntüleme)
+#### MT-114 — Search cadence (view only)
 
-**Eylem:**
+**Action:**
 
-- `/admin/search-cadence` sayfasını aç.
+- Open the `/admin/search-cadence` page.
 
-**Beklenen:**
+**Expected:**
 
-- Başlık “Arama sıklığı”; sütunlar: “Aile”, “Sıklık”, “Zaman dilimi”, “En kötü durum algılama gecikmesi”, “Son çalıştırma (UTC)”, “Sonraki çalıştırma (UTC)”, “Son çalıştırmadaki arama”. Sekiz aile listelenir (ör. “Log source hacmi”, “WAF toplama”, “IPS toplama”, “Kural eşleşmeleri”). Hiç çalışmamış aile için tire ya da “Yükseltmeden beri çalışmadı”/“sayılmadı”; bunlar sıfır değildir.
+- The heading is “Search cadence”; the columns are “Family”, “Cadence”, “Bucket”, “Worst-case detection delay”, “Last run (UTC)”, “Next run (UTC)”, “Searches in last run”. Eight families are listed (for example “Log source volume”, “WAF collection”, “IPS collection”, “Rule matches”). For a family that has never run, a dash or “Not run since upgrade”/“not counted”; these are not zero.
 
-**Kaydet:** Sekiz ailenin her birinin kadansı (5 dk, 15 dk…).
+**Record:** The cadence of each of the eight families (5 min, 15 min…).
 
-#### MT-115 — Arama sıklığını değiştirme (yazar) yalnızca lab
+#### MT-115 — Changing the search cadence (writes) lab only
 
-**Ön koşul:** **yalnızca lab**: sıklık, QRadar'a ne sıklıkla arama gönderileceğini değiştirir; üretimde `Koşulmadı`.
+**Precondition:** **lab only**: the cadence changes how often searches are sent to QRadar; in production `Not run`.
 
-**Eylem:**
+**Action:**
 
-- Bir ailenin sıklığını bir ön ayara değiştir ve kaydet; sonra eski değere geri al.
+- Change the cadence of one family to a preset and save; then change it back to the old value.
 
-**Beklenen:**
+**Expected:**
 
-- “Kaydedildi. {user} tarafından ‹zaman› zamanında değiştirildi.” ya da “Kaydedildi. ‹zaman› zamanında değiştirildi.” iletisi; yetkisizse “Rolünüz arama sıklığını değiştiremiyor (izin: admin:search_cadence).”
+- The message “Saved. Changed by {user} at ‹time›.” or “Saved. Changed at ‹time›.”; if there is no permission, “Your role cannot change search cadence (permission admin:search_cadence).”
 
-**Kaydet:** Değişiklik kaydedildi mi, geri alındı mı.
+**Record:** Whether the change was saved and whether it was undone.
 
-**Temizlik:** Eski değere geri al; denetim kaydında iki satır kalır.
+**Cleanup:** Change it back to the old value; two rows stay in the audit log.
 
-#### MT-116 — Kesinti politikası ve sınıflama kuralları (yalnızca görüntüleme)
+#### MT-116 — Outage policy and classification rules (view only)
 
-**Eylem:**
+**Action:**
 
-- `/admin/outage-policy` ve `/admin/classification-rules` sayfalarını aç.
+- Open the `/admin/outage-policy` and `/admin/classification-rules` pages.
 
-**Beklenen:**
+**Expected:**
 
-- `/admin/outage-policy`: “Kesinti uyarıları”; "Yalnızca kayıt" ve uyaran sınıflar. `/admin/classification-rules`: “Sınıflama kuralları”; yerleşik kurallar değiştirilemez, yalnız açılıp kapatılabilir (ileti: “Yerleşik bir kural yalnızca açılıp kapatılabilir”).
+- `/admin/outage-policy`: “Outage alerts”; "Record only" and the classes that alert. `/admin/classification-rules`: “Classification rules”; built-in rules cannot be edited, only switched on or off (message: “a built-in rule can only be enabled or disabled”).
 
-**Kaydet:** İki sayfa açıldı mı.
+**Record:** That the two pages opened.
 
-#### MT-117 — Yönetim ana sayfası
+#### MT-117 — Administration home page
 
-**Eylem:**
+**Action:**
 
-- Yönetim grubundaki “Yönetim özeti” öğesini aç (“Administration overview”). Adres `/admin` olur.
+- Open the “Administration overview” item in the Administration group. The address is `/admin`.
 
-**Beklenen:**
+**Expected:**
 
-- Başlık “Yönetim”; açıklama “Toplamayı, kaynak sınıflamasını ve kesinti uyarılarını denetleyen ayarlar.” Öğenin adı “Yönetim özeti”dir ve Yönetim grubunun ilk sırasındadır.
+- The heading is “Administration”; the description is “Settings that control collection, source classification and outage alerting.” The item is called “Administration overview” and is the first item of the Administration group.
 
-**Kaydet:** Sayfa açıldı mı.
+**Record:** That the page opened.
 
-### 13. Kılavuz
+#### MT-130 — SIEM load page, command and `qradar_health` (ARL-1, ARL-2, ARL-3)
 
-Uygulama içi kılavuz `/guide` yolundadır; oturum açan herkese açıktır ve izin istemez. Metni sunucuda üretilir ve dile göre gelir.
+**Precondition:** Upgrade complete (MT-08) and one cadence has passed (MT-11), so the platform has sent searches. Signed in with an account that has `admin:*`. This check sends only GET requests to QRadar (`/system/about`, the managed hosts, the deployment hosts, the license pool and the list of search ids); no search is run for it.
 
-#### MT-118 — Kılavuz iki dilde açılır
+**Action:**
 
-**Eylem:**
+- Open Administration → "SIEM load" (`/admin/siem-load`). Read "Our load on QRadar" and the "QRadar" panel first, then "Searches in flight" and "Load by caller". Pick each window (1 h, 24 h, 7 d, 30 d; `?range=1h`, `24h`, `7d`, `30d`). Set Refresh in the top bar to 1 min or 5 min and watch the "As of" time change.
+- On the host, read the same facts without the page:
 
-- Dil Türkçe iken `/guide` sayfasını aç, bir bölümü aç (`/guide/how-it-works`). İngilizce yarısını dil İngilizceye döndüğünde, bölüm 16'daki "Dil, tur C" sırasında yap.
+```bash
+docker compose exec -T backend python -m app.cli.ariel_load --current
+docker compose exec -T backend python -m app.cli.ariel_load --hours 24
+./qradar-dash doctor
+```
 
-**Beklenen:**
+- With a role that lacks `admin:*`, open the page.
 
-- Türkçe: başlık “Kılavuz”, açıklama “Konuyu yanıtladığı soruya göre seçin.”, gruplar “Kavramlar”, “Analist sayfaları”, “Analist görevleri”, “Yönetici görevleri”; ilk bölüm “Nasıl çalışır”.
-- İngilizce (tur C'de): başlık “Guide”, gruplar “Concepts”, “Analyst pages”; ilk bölüm “How it works”. Her iki dilde bölüm sayfası boş değildir ve ham anahtar yoktur.
+**Expected:**
 
-**Kaydet:** Her iki dilde iki sayfa açıldı mı.
+- The page shows the time it was read (UTC). "Our load on QRadar" shows searches in flight (active and stale), permit slots held against the cap (or "Not enforced"), and the last 5, 15 and 60 minutes with submitted, completed, failed and refused counts and wall-time p50 and p95. A dash means no search completed; it is not a zero. If no search was submitted in the last 60 minutes it says so.
+- Each console in the "QRadar" panel shows Reachable and API latency, Version, Managed hosts ("ACTIVE n of N", with the ones that are not ACTIVE listed), EPS (average and peak against the allocation), License pool (an over-allocated pool is flagged), and Ariel with "Search ids held". "Held" is what QRadar keeps for all users, finished or active; it is not a count of running searches. A field that was not read shows its state (Not collected, Forbidden or Failed) and a reason, never a number and never "healthy". A cached answer says how old it is and when QRadar is asked again (30 s by default).
+- A summary window with no recorded search says so instead of drawing a row of zeros. Caller names are readable ("Log source volume", "Scheduled searches"); a caller the page does not know is shown as its code.
+- The command prints "QRadar health" per console with the same figures. `--current` asks QRadar afresh each time. Neither prints a token, a query or a result row.
+- `doctor` shows `qradar_health` (runbook OPS-R67 on a WARN). PASS has the host count, the EPS share and the number of held search ids. WARN means a host is not ACTIVE, average EPS is over 90 % of the allocation, or the license pool is over-allocated. On a lab CE console the license pool is always over-allocated, so WARN is the expected result there and is not a Fail; write it in the Note field. SKIP means the console did not answer (see `qradar_auth`) or nothing could be read.
+- The role without `admin:*` sees the forbidden notice naming `admin:*`, and no figure.
+- In the support bundle (MT-04) the archive holds `ariel-load.json`, or `ariel-load.error.txt` when it could not be read.
 
-### 14. QRadar'a karşı salt okunur
+**Record:** Whether each part of the page read; the console's reachability, latency and `qradar_health` status (no addresses); whether the page and the command agree on searches in flight; the forbidden notice.
 
-Bu araçta hiçbir şey QRadar'a yazmaz (`docs/OPERATIONS.md` dört kuraldan dördüncüsü). Sağlayıcı arayüzünde (`app/providers/base.py`) QRadar yapılandırması için oluşturma, güncelleme ya da silme yöntemi yoktur; yalnızca Ariel arama yaşam döngüsü yöntemleri vardır (`create_ariel_search`, `get_ariel_search_status`, `get_ariel_search_results`, `cancel_ariel_search`). REST sağlayıcının QRadar'a yaptığı istekler kodda şunlardır: `GET /system/about`, `GET /config/event_sources/log_source_management/log_sources`, `…/log_source_types`, `…/log_source_groups`, `GET /config/event_sources/custom_properties/…`, `GET /analytics/rules`, `GET /analytics/building_blocks`, `GET /siem/offenses`, `GET /ariel/searches/<id>` ve `…/results`, ayrıca Ariel arama kaydı için `POST /ariel/searches` ve kendi aramasını iptal için `DELETE /ariel/searches/<id>`. Son ikisi QRadar'da geçici bir arama nesnesi oluşturur ve siler; yapılandırma nesnesi (kural, log source, özel özellik, offense, referans veri) oluşturmaz, değiştirmez, silmez.
 
-Bu depoda QRadar konsolunun denetim günlüğünün yeri belgelenmemiştir; o yüzden konsol tarafı kontrolü **konsol yöneticisinin adımıdır**.
+### 13. Guide
 
-#### MT-119 — `doctor` QRadar'a tek çağrı yaptığını gösterir [çekirdek]
+The in-app guide is at `/guide`; it is open to everyone who is signed in and needs no permission. Its text is rendered on the server.
 
-**Eylem:**
+#### MT-118 — The guide opens in English
+
+**Action:**
+
+- Open the `/guide` page and open one section (`/guide/how-it-works`).
+
+**Expected:**
+
+- The heading is “Guide”, the description is “Pick a topic by the question it answers.”, the groups are “Concepts”, “Analyst pages”, “Analyst tasks”, “Administrator tasks”; the first section is “How it works”. The section page is not empty and there is no raw key.
+
+**Record:** That the two pages opened.
+
+#### MT-132 — The header Guide link shows once; the Guide entry is always there (GUIDE-3)
+
+**Precondition:** **(writes)**, on the signed-in account only: opening a page stores that page's guide section in the account's `guide_seen` list, and the interface has no way to reset it. Use a page this account has not opened before (a new account, such as the one from MT-16 in the lab, has opened none), and write the page in the Note field. Nothing else changes and no one else's pages are affected.
+
+**Action:**
+
+- Open a page that has a guide section and that this account has not opened before, for example `/geography`. Look at the page header, then at the bottom of the left navigation.
+- Open another page and come back to the first one (or reload it). Look at the same two places.
+- Open two or three other pages (for example `/fleet`, `/alerts` and `/account`) and look at the bottom of the left navigation on each. On one of them, follow the entry.
+- Open `/guide` and look at the bottom of the left navigation.
+
+**Expected:**
+
+- First visit: the header has a small “Guide” link to the page's guide section. It stays on the page while it is open; it does not appear and then vanish.
+- Second visit to the same page: the header has no “Guide” link. The same holds after a reload and, when you sign in on another browser with the same account, there too.
+- Every page shows one text-only “Guide” entry at the bottom of the left navigation, below the navigation list, and it covers no navigation item (on a short window the list scrolls above it). On a page that has a guide section it opens that section (for example `/guide/geography` from `/geography`); on `/guide` it opens the index.
+- No page shows the entry twice, and there is no “Guide” item inside the navigation list.
+
+**Record:** The page used for the first visit; whether the header link showed on the first visit and not on the second; the target of the bottom-left entry on each page you looked at.
+
+**Cleanup:** None: the list has no reset. Write the page used in the Note field.
+
+### 14. Read-only against QRadar
+
+Nothing in this tool writes to QRadar (the fourth of the four rules in `docs/OPERATIONS.md`). The provider interface (`app/providers/base.py`) has no create, update or delete method for QRadar configuration; it has only the Ariel search lifecycle methods (`create_ariel_search`, `get_ariel_search_status`, `get_ariel_search_results`, `cancel_ariel_search`). The requests the REST provider makes to QRadar are, in the code: `GET /system/about`, `GET /config/event_sources/log_source_management/log_sources`, `…/log_source_types`, `…/log_source_groups`, `GET /config/event_sources/custom_properties/…`, `GET /analytics/rules`, `GET /analytics/building_blocks`, `GET /siem/offenses`, `GET /ariel/searches/<id>` and `…/results`, and, to record an Ariel search, `POST /ariel/searches` and, to cancel its own search, `DELETE /ariel/searches/<id>`. The last two create and delete a temporary search object in QRadar; they do not create, change or delete a configuration object (rule, log source, custom property, offense, reference data).
+
+The place of the QRadar console's audit log is not documented in this repository; the console-side check is therefore a **console administrator step**.
+
+#### MT-119 — `doctor` shows that it makes only one kind of call to QRadar [core]
+
+**Action:**
 
 
 ```bash
@@ -2126,64 +2209,64 @@ Bu depoda QRadar konsolunun denetim günlüğünün yeri belgelenmemiştir; o y�
 ```
 
 
-**Beklenen:**
+**Expected:**
 
-- `qradar_auth` satırı `GET /system/about succeeded; QRadar <sürüm>` der (salt okunur bir `GET`). `qradar_tls` PASS ise `verified certificate expires in <n> days` der. `doctor` Ariel araması çalıştırmaz ve QRadar'a yazmaz.
+- The `qradar_auth` line says `GET /system/about succeeded; QRadar <version>` (a read-only `GET`). If `qradar_tls` is PASS it says `verified certificate expires in <n> days`. `doctor` does not run an Ariel search and does not write to QRadar.
 
-**Kaydet:** İki satırın durumu ve QRadar sürümü.
+**Record:** The status of the two lines and the QRadar version.
 
-#### MT-120 — Konsol tarafı: test penceresinde yazma işlemi olmadığının doğrulanması konsol yöneticisi adımı [çekirdek]
+#### MT-120 — Console side: confirming that there was no write in the test window console administrator step [core]
 
-**Ön koşul:** Konsol yöneticisi test başlangıç ve bitiş saatlerini (MT-05) biliyor. Bu kontrolün yeri bu depoda belgelenmemiştir; yönetici kendi konsolunun denetim/erişim kayıtlarını kullanır. Ulaşılamıyorsa `Koşulmadı`.
+**Precondition:** The console administrator knows the start and end times of the test (MT-05). The place of this check is not documented in this repository; the administrator uses the audit/access records of their own console. If they cannot be reached, `Not run`.
 
-**Eylem:**
+**Action:**
 
-- Konsol yöneticisinden, uygulamanın API kullanıcısı (yetkili hizmet/belirteç) için test penceresi boyunca konsoldaki işlemleri incelemesini iste.
+- Ask the console administrator to review the operations on the console for the application's API user (the authorized service/token) over the test window.
 
-**Beklenen:**
+**Expected:**
 
-- Penceredeki istekler yalnızca yukarıda sayılan okuma (`GET`) uç noktalarındadır; yazma olarak yalnızca `POST /ariel/searches` ve `DELETE /ariel/searches/<id>` görülür.
-- Kural, yapı taşı, log source, log source grubu, özel özellik, referans veri kümesi, offense (not, atama, kapatma, gizleme), kullanıcı ya da yetkili hizmet üzerinde `POST`, `PUT`, `PATCH` ya da `DELETE` görülmez.
-- Uygulamanın API kullanıcısının izin kümesi okuma (ve Ariel) ile sınırlıysa bu ek bir güvencedir.
+- The requests in the window are only on the read (`GET`) endpoints listed above; the only writes seen are `POST /ariel/searches` and `DELETE /ariel/searches/<id>`.
+- No `POST`, `PUT`, `PATCH` or `DELETE` is seen on a rule, building block, log source, log source group, custom property, reference data set, offense (note, assignment, closing, hiding), user or authorized service.
+- If the permission set of the application's API user is limited to read (and Ariel), this is an additional assurance.
 
-**Kaydet:** Yöneticinin cevabı: yazma yok / şu işlem görüldü. Konsol kayıtları sayfaya yazılmaz.
+**Record:** The administrator's answer: no write / this operation was seen. The console records are not written on the page.
 
-### 15. Geri alma ölçütleri ve adımları
+### 15. Rollback criteria and steps
 
-**Hemen geri al** (bölüm 15'teki adımlar):
+**Roll back at once** (the steps in this section):
 
-- `upgrade` sıfırdan farklı çıktı ve otomatik geri alma de siteyi eski hâline getiremedi (`Rollback failed; the writers and the UI are stopped. Verified backup: <yol>`). OPS-R45.
-- Yükseltme başarılı görünüyor ama `doctor` yükseltme sonrası bir `FAIL` veriyor ve `docs/OPERATIONS.md` içindeki ilgili OPS-R girişi onu temizlemiyor (özellikle `db_connect`, `migration_head`, `encryption`, `secrets_files`, `watermarks`). Değişen konsolda, saatlik `log_source_inventory` ve `rule_inventory` yeniden denenene kadarki `watermarks` FAIL'i bu madde değildir (MT-11). Offense'ı olmayan konsolda `offense_snapshot` için `watermarks` WARN'ı bir FAIL değildir.
-- Oturum açma bozuk: yönetici ve mevcut kullanıcılar giremiyor, `/api/v1/health/ready` 200 değil.
-- İlk kadanstan + 3 dk sonra, `/admin/search-cadence` içindeki hiçbir aile çalışmıyor ve `doctor` `celery_beat` ya da `celery_workers` FAIL veriyor.
-- 0.1.8'in gösterdiği veri yok: anomaliler, uyarılar, kurallar, log source'lar ya da offense'lar boş ya da eksik (ve sebebi "toplanmadı" dürüstlük durumu değil). Değişen bir konsolda, saatlik iki envanter yeniden denenene kadar kaynak sayfalarının boş görünmesi bu madde değildir (MT-11).
+- `upgrade` exited non-zero and the automatic rollback could not return the site to its old state either (`Rollback failed; the writers and the UI are stopped. Verified backup: <path>`). OPS-R45.
+- The upgrade seems successful but `doctor` after the upgrade gives a `FAIL` and the related OPS-R entry in `docs/OPERATIONS.md` does not clear it (especially `db_connect`, `migration_head`, `encryption`, `secrets_files`, `watermarks`). On a changed console, the `watermarks` FAIL until the hourly `log_source_inventory` and `rule_inventory` are retried is not this item (MT-11). On a console that has no offenses, the `watermarks` WARN for `offense_snapshot` is not a FAIL.
+- Sign-in is broken: the administrator and existing users cannot get in, and `/api/v1/health/ready` is not 200.
+- After the first cadence + 3 min, no family in `/admin/search-cadence` is running and `doctor` gives `celery_beat` or `celery_workers` FAIL.
+- The data that 0.1.9 showed is gone: anomalies, alerts, rules, log sources or offenses are empty or missing (and the reason is not a "not collected" honesty state). On a changed console, source pages looking empty until the two hourly inventories are retried is not this item (MT-11).
 
-**Not al ve devam et:**
+**Note and continue:**
 
-- Bölüm 4'teki "beklenen İngilizce" listesinde olmayan tek tük bir İngilizce cümle ya da ham anahtar: ilgili kontrol Kaldı yazılır ve teslim edilir, ama bu bir geri alma nedeni değildir.
-- Küçük görsel kusurlar: bir hücrede kesilme, hizalama.
-- Bir bileşenin "güncel değil" göstermesi, bekleme süresi (kadans + 3 dk) dolmadan.
-- Hazır olmayan veriler (WAF/IPS anomalisi yok) nedeniyle `Koşulmadı` olan kontroller.
+- A stray raw key or an untranslated sentence on a page (section 4): the related check is written Fail and handed over, but this is not a reason to roll back.
+- Small visual flaws: a cut-off in a cell, alignment.
+- A widget showing "stale" before the wait (cadence + 3 min) is over.
+- Checks that are `Not run` because the data is not ready (no WAF/IPS anomaly).
 
-**Önemli:** Bir şey Kaldı olunca, geri almadan **önce** `./qradar-dash support-bundle` ve `./qradar-dash logs --tail=2000 backend` kaydet. Geri alma, yükseltmeden sonra yazılan veriyi bozuk kopyada bırakır (`qradar_obs_broken_<utc>`). Alembic downgrade hiçbir zaman kullanılmaz; geri alma bir yedeğin geri yüklenmesidir.
+**Important:** When something is Fail, **before** the rollback save `./qradar-dash support-bundle` and `./qradar-dash logs --tail=2000 backend`. The rollback leaves the data written after the upgrade in the broken copy (`qradar_obs_broken_<utc>`). The Alembic downgrade is never used; the rollback is the restore of a backup.
 
-#### MT-121 — Geri alma ölçütlerinin değerlendirilmesi [çekirdek]
+#### MT-121 — Evaluating the rollback criteria [core]
 
-**Eylem:**
+**Action:**
 
-- Yukarıdaki "Hemen geri al" listesine bak ve test boyunca bu maddelerden biri gözlendi mi yaz.
+- Look at the "Roll back at once" list above and write whether any of these items was observed during the test.
 
-**Beklenen:**
+**Expected:**
 
-- Hiçbiri gözlenmedi.
+- None was observed.
 
-**Kaydet:** "Hemen geri al" maddelerinden gözlenen var mı (evet/hayır); evet ise hangisi ve karar.
+**Record:** Whether any of the "Roll back at once" items was observed (yes/no); if yes, which one and the decision.
 
-#### MT-122 — Geri alma (yalnızca gerekirse) (yazar)
+#### MT-122 — Rollback (only if needed) (writes)
 
-**Ön koşul:** Yukarıdaki ölçütlerden biri gözlendi ve karar verildi. Gerek yoksa `Koşulmadı`. Destek paketi alındı.
+**Precondition:** One of the criteria above was observed and a decision was made. If it is not needed, `Not run`. The support bundle has been taken.
 
-**Eylem:**
+**Action:**
 
 
 ```bash
@@ -2191,94 +2274,84 @@ Bu depoda QRadar konsolunun denetim günlüğünün yeri belgelenmemiştir; o y�
 ./qradar-dash rollback
 ```
 
-- Komut `Rollback replaces the live database with <yol>; data written since is kept only in the broken copy.` yazar ve `Type rollback to continue: ` bekler; `rollback` yaz.
-- Bittikten sonra checkout'u çalışan sürüme döndür. Diskteki betik checkout'tan önce hâlâ 0.1.9'dur; `install` ondan önce çalıştırılmaz. Sonra doğrula:
+- The command writes `Rollback replaces the live database with <path>; data written since is kept only in the broken copy.` and waits for `Type rollback to continue: `; type `rollback`.
+- When it is finished, return the checkout to the running version. The script on disk is still 0.1.10 before the checkout; `install` is not run before it. Then verify:
 
 ```bash
-git checkout v0.1.8
+git checkout v0.1.9
 ./qradar-dash status
 curl -s http://127.0.0.1:8000/api/v1/version
 ./qradar-dash doctor
 ```
 
-- Yanıt dosyası, MT-08'de kaydedilen yükseltme öncesi yedekten geri gelmiş olmalıdır. İçeriği okuma. Sonra eski checkout üzerinde kurulumu yeniden çalıştır:
+- The answer file must have come back from the pre-upgrade backup recorded in MT-08. Do not read its contents. Then run the install again on the old checkout:
 
 ```bash
-BACKUP=<MT-08'deki pre-upgrade yolu>
+BACKUP=<the pre-upgrade path from MT-08>
 cmp "$BACKUP/install.answers" .secrets/install.answers
-echo "cmp çıkış: $?"
+echo "cmp exit: $?"
 stat -c '%a' .secrets/install.answers
 ./qradar-dash install --non-interactive .secrets/install.answers
-echo "install çıkış: $?"
+echo "install exit: $?"
 ```
 
 
-**Beklenen:**
+**Expected:**
 
-- `Rollback complete.` satırı; çıkış kodu 0; `PASS  migration_head database and image are at 0044` (bir kez). Şema geri alınmaz; baş `0044` kalır.
-- Bu yedekte `install.answers` vardır. Geri alma dosyayı yerine koyar ve bunun için bir satır yazmaz. `Removed answer key` satırı beklenmez. O satır, kopyası olmayan eski bir yedekte çıkar: `Removed answer key <ad> (unknown to 0.1.8).` Bu yükseltmenin kendi yedeği o durum değildir.
-- `cmp` hiçbir şey yazmaz ve 0 ile çıkar. `stat` `600` yazar; yedek `400` idiyse `400`.
-- `status`: `Installed version: 0.1.8`, `Last upgrade: rolled_back, …`; `/api/v1/version`: `"version":"0.1.8"` ve `"migration_head":"0044"`. Oturum açma çalışır. `doctor`: `FAIL` yok, konsol yanıtladığında; erişilemeyen konsolda `qradar_tls` ile `qradar_auth` ve onların ardından gelen `watermarks` / `errors_recent` satırları FAIL olur (aşağıdaki `install` maddesi bunu açıklar).
-- `install`, konsol yanıtladığında 0 ile çıkar. Özet `Install time` satırıyla biter ve ardından `=` işaretlerinden oluşan bir satır gelir. Ayrı bir “Install complete” satırı yoktur. Çıktıda `unknown key` yoktur. Özetteki `QRadar connection  FAILED` satırı, konsolun yanıt vermediği ve çıkışın 1 olduğu kurulumdur. Geri alma kontrolü o çıkışta da Geçti'dir: özete ulaşıldıysa (`Install time` satırı ve ardından `=` satırı yazıldıysa), çıktıda `unknown key` ve `install refused` yoksa ve `doctor`'un `qradar_tls` ile `qradar_auth` satırları aynı konsol erişim hatasını gösteriyorsa. Erişilemeyen konsolda her iki satır FAIL olur; satır sonundaki `runbook:` değeri konsol erişiminin koşu kitabını taşır (`qradar_tls` için `runbook: OPS-R4`, `qradar_auth` için `runbook: OPS-R1`). `API readiness  NOT READY` satırıyla ya da genel köken denetimi başarısızken (`public URL <adres> failed`) biten 1'lik çıkış Kaldı'dır. Checkout unutulmuşsa betik reddeder: `install refused: this site runs 0.1.8 and this checkout is 0.1.9; use ./qradar-dash upgrade 0.1.9 to change versions, or check out v0.1.8 to re-run install (see docs/OPERATIONS.md, Yükseltme)`. Hiçbir konteyner bu rette sürüm değiştirmez; önce `git checkout v0.1.8` çalıştır.
-- Betik bozuk veritabanı kopyasının adını (`qradar_obs_broken_<utc>`) ve onu daha sonra silmek için tam komutu yazar; **silmeyi** acele etme.
-- Geri alma kendi sağlık denetiminde başarısız olursa yazıcılar durur ve `Rollback failed; the writers and the UI are stopped. Verified backup: <yol>` yazılır (OPS-R45); `./qradar-dash rollback` komutunu yinele ya da `./qradar-dash restore <yol>` kullan.
+- The line `Rollback complete.`; exit code 0; `PASS  migration_head database and image are at 0044` (once). The schema is not rolled back; the head stays `0044`.
+- This backup holds `install.answers`. The rollback puts the file back and writes no line for it. The `Removed answer key` line is not expected. That line appears for an old backup that has no copy: `Removed answer key <name> (unknown to 0.1.9).` This upgrade's own backup is not that case.
+- `cmp` prints nothing and exits with 0. `stat` prints `600`; `400` if the backup was `400`.
+- `status`: `Installed version: 0.1.9`, `Last upgrade: rolled_back, …`; `/api/v1/version`: `"version":"0.1.9"` and `"migration_head":"0044"`. Sign-in works. `doctor`: no `FAIL` when the console answers; on an unreachable console `qradar_tls` and `qradar_auth` and the `watermarks` / `errors_recent` lines that follow them are FAIL (the `install` item below explains this).
+- `install` exits with 0 when the console answers. The summary ends with the `Install time` line, followed by a line made of `=` signs. There is no separate “Install complete” line. There is no `unknown key` in the output. The summary line `QRadar connection  FAILED` is the install where the console did not answer and the exit was 1. The rollback check is Pass on that exit too: if the summary was reached (the `Install time` line and then the `=` line were written), if the output has no `unknown key` and no `install refused`, and if the `qradar_tls` and `qradar_auth` lines of `doctor` show the same console access fault. On an unreachable console both lines are FAIL; the `runbook:` value at the end of the line carries the runbook of console access (`runbook: OPS-R4` for `qradar_tls`, `runbook: OPS-R1` for `qradar_auth`). An exit of 1 that ends with the line `API readiness  NOT READY`, or while the general origin check failed (`public URL <address> failed`), is Fail. If the checkout was forgotten the script refuses: `install refused: this site runs 0.1.9 and this checkout is 0.1.10; use ./qradar-dash upgrade 0.1.10 to change versions, or check out v0.1.9 to re-run install (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container changes version on this refusal; run `git checkout v0.1.9` first.
+- The script writes the name of the broken database copy (`qradar_obs_broken_<utc>`) and the exact command to delete it later; do not rush to **delete** it.
+- If the rollback fails its own health check, the writers stop and `Rollback failed; the writers and the UI are stopped. Verified backup: <path>` is written (OPS-R45); repeat `./qradar-dash rollback` or use `./qradar-dash restore <path>`.
 
-**Kaydet:** Geri almanın çıkış kodu, `Rollback complete.` satırı, `Installed version`, `migration_head`, `cmp` çıkışı, `stat` kipinin rakamı, `install` çıkışı ve özetteki `QRadar connection` sonucu. Yanıt dosyasının içeriği yazılmaz.
+**Record:** The exit code of the rollback, the `Rollback complete.` line, `Installed version`, `migration_head`, the `cmp` exit, the digits of the `stat` mode, the `install` exit and the `QRadar connection` result in the summary. The contents of the answer file are not written.
 
-**Temizlik:** Yoktur; geri alma geri almadır.
+**Cleanup:** None; a rollback is a rollback.
 
-#### MT-123 — Geri alma provası (yazar) yalnızca lab
+#### MT-123 — Rollback rehearsal (writes) lab only
 
-**Ön koşul:** **yalnızca lab**: bu, üretim sitesinde yapılmaz.
+**Precondition:** **lab only**: this is not done on the production site.
 
-**Eylem:**
+**Action:**
 
-- Lab VM'de yükseltmeden sonra MT-122'deki geri alma adımlarını çalıştır. Checkout bu adımda `v0.1.8` olur ve `./qradar-dash install --non-interactive .secrets/install.answers`, konsol yanıtlıyorsa 0 ile çıkar (koşul MT-122'nin `install` maddesindedir). MT-16…19 henüz yapılmamış olmalıdır. Sonra yeniden yükselt:
+- On the lab VM, after the upgrade, run the rollback steps of MT-122. The checkout is `v0.1.9` in this step and `./qradar-dash install --non-interactive .secrets/install.answers` exits with 0 if the console answers (the condition is in the `install` item of MT-122). MT-16…19 must not have been done yet. Then upgrade again:
 
 ```bash
 git fetch --tags
-git checkout v0.1.9
-./qradar-dash upgrade 0.1.9
+git checkout v0.1.10
+./qradar-dash upgrade 0.1.10
 ```
 
-- MT-16, MT-17, MT-18 ve MT-19 bu yeniden yükseltmeden sonra yapılır.
+- MT-16, MT-17, MT-18 and MT-19 are done after this re-upgrade.
 
-**Beklenen:**
+**Expected:**
 
-- Geri alma sonrası baş `0044` kalır. İkinci yükseltme de `0044`'tür ve iki `PASS` çifti de `database and image are at 0044` der. Son satır `Upgrade complete: 0.1.8 -> 0.1.9.` olur. `Last upgrade:` satırı en son işlemi gösterir.
-- Checkout `v0.1.9` değilken `upgrade 0.1.9` reddedilir: `upgrade refused: this checkout is version 0.1.8, not 0.1.9; run git fetch --tags && git checkout v0.1.9 first (see docs/OPERATIONS.md, Yükseltme)`. Hiçbir konteyner durmaz.
-- Geri alma, yükseltmeden sonra oluşturulan hesapları ve hesapta saklanan `ui_language` değerini kaldırır. Tarayıcı çerezi `ba_locale` kalır; sonraki oturum açma, hesaptaki dili çereze yazar. İlk sayfa önceki dilde kalır; bir yenilemeden sonra hesap diline geçer (MT-20).
+- After the rollback the head stays `0044`. The second upgrade is first `0044`, then `0047`; the two `PASS` pairs say this and three `Running upgrade` lines (`0044 -> 0045`, `0045 -> 0046`, `0046 -> 0047`) are written. The last line is `Upgrade complete: 0.1.9 -> 0.1.10.`. The `Last upgrade:` line shows the latest operation.
+- When the checkout is not `v0.1.10`, `upgrade 0.1.10` is refused: `upgrade refused: this checkout is version 0.1.9, not 0.1.10; run git fetch --tags && git checkout v0.1.10 first (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container stops.
+- The rollback removes the accounts created after the upgrade.
 
-**Kaydet:** İki sonuç.
+**Record:** The two results.
 
-**Temizlik:** Provada bozuk kopya kalır; labda silinebilir (betiğin yazdığı komut).
+**Cleanup:** The rehearsal leaves a broken copy; in the lab it can be deleted (the command the script wrote).
 
-### 16. Sonuçların teslimi
+### 16. Delivery of the results
 
-Sonuç tablosu `docs/MANUAL-TEST-RESULTS.md` dosyasıdır; basılı kâğıda ya da dosyanın bir kopyasına doldurulur.
+The results table is the file `docs/MANUAL-TEST-RESULTS.md`; it is filled in on paper or on a copy of the file.
 
-#### MT-124 — Dil, tur C: İngilizceye dönüş (yazar) [çekirdek]
+#### MT-124 — Removed in 0.1.10 (D-41: the interface is English only)
 
-**Eylem:**
+The check was "Language, round C": switching the language back to English and re-opening the routes of the `Language:` checks. There is no language to switch back from. The routes are opened in sections 4 to 13 in English. Nothing to run; record `Removed`.
 
-- Dili başlangıç diline (İngilizce) çevir (`/account`, "Arayüz dili") ve bölüm 4'teki `Dil:` satırlarının rotalarını yeniden aç (üretimde yalnızca `[çekirdek]` işaretli olanlar).
+#### MT-125 — Fill in the results page and hand it over [core]
 
-**Beklenen:**
+**Action:**
 
-- Her rotada sayfa, tur A'daki ile aynıdır: İngilizce başlıklar, saklı İngilizce cümleler olduğu gibi, ham anahtar yok, sayılar `2,016` biçiminde (virgülle gruplu), zaman `UTC` bölgesiyle.
+- Fill in the header of the page and every row: `Pass`, `Fail` or `Not run`; write a Note for `Not run` and `Fail`. If a check is Fail, attach the related support bundle and the output of `logs --tail=2000 backend`.
 
-**Kaydet:** Her `Dil:` satırı için tur C'nin sonucu `Dil:` satırının Not alanına yazılır; sapma yoksa satırın sonucu tur A ve tur B'ye göre verilir.
+**Expected:**
 
-**Temizlik:** Dil başlangıç diline dönmüş olur.
+- There is no empty result cell on the page. These are **written nowhere**: passwords, tokens, `.env` values, `ENCRYPTION_KEY`, the QRadar token, the contents of `env.bak` and `secrets.tar`, user names, customer data (log source names, IP addresses, URL paths; more than the check asks). Use a placeholder for the page if needed (`<site>`, `https://<host>`).
 
-#### MT-125 — Sonuç sayfasını doldur ve teslim et [çekirdek]
-
-**Eylem:**
-
-- Sayfanın üst bilgisini ve her satırı doldur: `Geçti`, `Kaldı` ya da `Koşulmadı`; `Koşulmadı` ve `Kaldı` için Not yaz. Bir kontrol Kaldı ise ilgili destek paketini ve `logs --tail=2000 backend` çıktısını ekle.
-
-**Beklenen:**
-
-- Sayfada boş sonuç hücresi yoktur. Şunlar **hiçbir yere yazılmaz**: parolalar, belirteçler, `.env` değerleri, `ENCRYPTION_KEY`, QRadar belirteci, `env.bak` ve `secrets.tar` içeriği, kullanıcı adları, müşteri verisi (log source adları, IP adresleri, URL yolları; kontrolün istediğinden fazlası). Gerekirse sayfa için yer tutucu kullan (`<site>`, `https://<host>`).
-
-**Kaydet:** Teslim saati (UTC) ve teslim edilen dosyalar.
+**Record:** The delivery time (UTC) and the files delivered.

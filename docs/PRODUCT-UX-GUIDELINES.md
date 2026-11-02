@@ -450,15 +450,26 @@ observed contributor", "largest volume change", "behavior is consistent with",
 
 ## Language
 
-The interface is offered in English and Turkish; English is the default. The analyst chooses the
-language under Account settings, and the server stores the choice on the user account so it follows
-the analyst to other browsers. The URL never carries a locale.
+The interface is English only (decision D-41, 2026-11-02). Every new interface text, backend
+message, in-app guide section and document section is written in English, and no Turkish catalog
+entry is added. The URL never carries a locale, and there is no language control: the account page
+shows one only while `ENABLED_LOCALES` in `frontend/src/i18n/locale.ts` lists more than one locale.
 
-Phase 1 translates interface copy: navigation, headings, controls, labels, table headers, notices
-and designed loading, empty, error and honesty states. Sentences written by the backend, including
-anomaly explanations, rule-health reasons, alert text and evaluation notes, remain English until
-the backend exposes message codes. Frontend code must never translate those sentences by matching
-their text.
+Turkish is frozen, not removed. `frontend/messages/tr/`, the Turkish code paths and the Turkish
+contract tests stay exactly as they were at the git tag `checkpoint/bilingual-2026-11-02`
+(14064d19, every interface text in English and Turkish). Nothing in the Turkish catalogs is
+deleted, and none is "fixed" into English. A `ba_locale=tr` cookie or an account with
+`ui_language = "tr"` is shown English everywhere, with no cookie rewrite and no reload. The
+contract tests guard the frozen catalog: a frozen Turkish key must stay, and a Turkish key that
+English lacks is refused. A key added in English after the checkpoint needs no Turkish twin, and
+the in-app guide may hold sections that exist in English only. Frontend code never translates a
+backend sentence by matching its text; backend sentences carry message codes.
+
+There is one switch. To turn Turkish back on, set `ENABLED_LOCALES = ["en", "tr"]` in
+`frontend/src/i18n/locale.ts`, translate the keys added to `messages/en/` since the tag (the
+contract tests list them), and re-run the whole frontend suite. The rest of this section (the
+Turkish terms, number rules, register and glossary) documents the frozen Turkish catalog and
+applies again only from that moment.
 
 The following technical terms remain English in Turkish: offense, log source, EPS, WAF, IPS, AQL,
 baseline, MCP, LDAP, QRadar, DSM, QID, ATT&CK, CIDR, HTTP, UTC, coverage and scope (decision D-39,
@@ -996,8 +1007,11 @@ one token block away, and no theme switch exists.
 - **A magnitude on a map is a sequential scale, not a status scale.** A
   choropleth uses the one-hue ramp `--map-0…--map-4` with a numeric legend; a
   Low-green, Medium-amber, High-red ramp would make "events from this country"
-  read as "this country is dangerous". (The geography widget that will consume
-  the ramp is not built yet; the tokens and the backend aggregate exist.)
+  read as "this country is dangerous". The `map.geography` widget and the
+  `/geography` page consume it: up to four classes with round bounds on a log
+  axis, an HTML legend that names each class with its unit, and `--map-0` for a
+  country with no data — never the lowest class, because that would draw a zero
+  where the measurement is missing.
 - **Solid fills with alpha, no gradients.** Chart fills are solid alpha tints
   (`--chart-band`, the status `-bg` tints); no gradient fill, no glow, no
   glassmorphism. The only gradients in the stylesheets are the table-scroll
