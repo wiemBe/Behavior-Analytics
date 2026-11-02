@@ -182,7 +182,9 @@ Sorular şu sırayla sorulur:
    (`qradar-observability-proxy-certs`) aktarılır. QRadar sırlarının volume'una eklenmez.
 3. Harici vekil, evet ya da hayır. Varsayılan hayır.
 4. QRadar taban URL'si (`https://...`). Başka biçim reddedilir.
-5. QRadar konsolunun FQDN'i (yalın ana makine adı), `QRADAR_CONSOLE_FQDN` için.
+5. QRadar konsolunun FQDN'i (ana makine adı; isteğe bağlı `:port`, 1–65535),
+   `QRADAR_CONSOLE_FQDN` için. Şema ve yol reddedilir; boş bırakılırsa QRadar URL'sinin portu
+   atılmış ana makine adı yazılır.
 6. API sürümü. Varsayılan `20.0`. Laboratuvar komutu `29.0` kullanır. Sihirbaz bunu söyler, tahmin
    etmez.
 7. SEC token dosyasının yolu. `.secrets/qradar.sec` olarak (izin `0600`) kopyalanır. Token kabuğa
@@ -1197,6 +1199,8 @@ Bu sırayla:
    yükselişi fark etmek içindir.
 5. Sertifika tarihleri. `qradar_tls` 30 gün içinde WARN verir. Dizin testi LDAP sertifikasının
    `not_after` tarihini gösterir.
+6. World map: the default "SOC Overview" (`SOC Genel Bakışı`) template's bottom-row Geography widget (`map.geography`) and the `/geography` page answer the same question — events per country by source or destination address, over 1 hour, 24 hours or 7 days. The data comes from the `GEO_COLLECTION` family (default cadence 5 minutes) and needs `read:geo`. "Not collected." means nothing was collected for that direction and range (no map drawn); "Insufficient data." means buckets were collected but no address resolved to a country. A partial read shows "Partial"; the lower-bound legend says "At least". A country with no count uses `--map-0` ("No data"), never the lowest class — drawing a zero would imply a measured value. A new installation shows "Not collected." until `GEO_COLLECTION` runs for the first time.
+   <!-- REL-9 r1: GEO_COUNTRY_SOURCE, GEO_SOURCE_COUNTRY_PROPERTY (default "Source Geographic Location"), GEO_DESTINATION_COUNTRY_PROPERTY — describe in round 1. -->
 
 Üst çubuktaki üç sinyal (backend hazırlığı, son envanter eşitlemesinden QRadar örneği durumu, son
 `PHASE_A_VOLUME` çalışması), Scheduled searches widget'ı, widget bayatlığı kuralı (`asOf` kadansın
@@ -2086,6 +2090,8 @@ docker compose run --rm --no-deps backend \
   python -m app.cli.users create-admin --username <name>
 ```
 
+There is no user delete: removing access is done by disabling the account (`POST /api/v1/users/{id}/disable`). The account row, the `disabled_at` timestamp and the `user.disable` audit record stay; the account's sessions are revoked.
+
 ### OPS-R27. Arayüz yalnız parola değiştirmeye izin veriyor
 
 **Belirti:** Arayüz yalnız parola değiştirmeye izin veriyor. API'den yapılan her başka istek 403
@@ -2920,10 +2926,11 @@ birlikte okunur.
 
 2. Konteynerin içinden TLS denetimi. Komut, sunucunun kullandığı aynı CA dosyasını
    (`REQUESTS_CA_BUNDLE`) ve aynı adı (`QRADAR_CONSOLE_FQDN`) kullanır; imajda hiçbir şey kurmaz.
-   Yalnız el sıkışır, token ve istek göndermez.
+   Adı porttan ayırır: değerde `:port` varsa o portu, yoksa 443'ü dener; sertifika doğrulaması
+   yine ana makine adına bakar. Yalnız el sıkışır, token ve istek göndermez.
 
    ```bash
-   docker compose exec qradar-mcp python -c 'import os,socket,ssl; h=os.environ["QRADAR_CONSOLE_FQDN"]; c=ssl.create_default_context(cafile=os.environ["REQUESTS_CA_BUNDLE"]); s=c.wrap_socket(socket.create_connection((h,443),10),server_hostname=h); print("TLS OK",s.version(),s.getpeercert()["subjectAltName"])'
+   docker compose exec qradar-mcp python -c 'import os,socket,ssl; v=os.environ["QRADAR_CONSOLE_FQDN"]; h,p=v.rsplit(":",1) if ":" in v else (v,"443"); c=ssl.create_default_context(cafile=os.environ["REQUESTS_CA_BUNDLE"]); s=c.wrap_socket(socket.create_connection((h,int(p)),10),server_hostname=h); print("TLS OK",s.version(),s.getpeercert()["subjectAltName"])'
    ```
 
    - `TLS OK ...` ve SAN listesi: CA ve ad doğru; geriye neden 4 kalır (neden 3 aralıklı da olabilir).

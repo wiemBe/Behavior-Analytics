@@ -996,8 +996,11 @@ one token block away, and no theme switch exists.
 - **A magnitude on a map is a sequential scale, not a status scale.** A
   choropleth uses the one-hue ramp `--map-0…--map-4` with a numeric legend; a
   Low-green, Medium-amber, High-red ramp would make "events from this country"
-  read as "this country is dangerous". (The geography widget that will consume
-  the ramp is not built yet; the tokens and the backend aggregate exist.)
+  read as "this country is dangerous". The `map.geography` widget and the
+  `/geography` page consume it: up to four classes with round bounds on a log
+  axis, an HTML legend that names each class with its unit, and `--map-0` for a
+  country with no data — never the lowest class, because that would draw a zero
+  where the measurement is missing.
 - **Solid fills with alpha, no gradients.** Chart fills are solid alpha tints
   (`--chart-band`, the status `-bg` tints); no gradient fill, no glow, no
   glassmorphism. The only gradients in the stylesheets are the table-scroll

@@ -19,27 +19,28 @@ kendi bölümünü bu bölümün **üstüne** ekler.
 
 **İçindekiler**
 
-1. [0.1.9](#019)
+1. [0.1.10](#0110)
 
 ---
 
-## 0.1.9
+## 0.1.10
 
-Bu bölüm 0.1.8 sitesini 0.1.9'a yükseltir ve yükseltilmiş siteyi sınar. 0.1.6'daki bir site önce 0.1.8'e yükselir; o yol `docs/releases/0.1.8.md` içindedir ve bu bölüm onu anlatmaz. İki tarafın migrasyon başı da `0044`'tür (`/api/v1/version` içindeki `migration_head`). Üretim IPS kaynakları Cisco Firepower/FTD ve Palo Alto Threat'tir.
+Bu bölüm 0.1.9 sitesini 0.1.10'a yükseltir ve yükseltilmiş siteyi sınar. 0.1.8'deki bir site önce 0.1.9'a yükselir; o yol `docs/releases/0.1.9.md` içindedir ve bu bölüm onu anlatmaz. Yükseltmeden önce migrasyon başı `0044`, yükseltmeden sonra `0045`'tir (`/api/v1/version` içindeki `migration_head`). Üretim IPS kaynakları Cisco Firepower/FTD ve Palo Alto Threat'tir.
 
 ### Bu sürüm neyi değiştirir
 
-- **Arayüz dili.** Arayüz İngilizce ya da Türkçe çalışır. Dil, Hesap ayarları sayfasından seçilir; hesapta (`ui_language`) ve tarayıcıda (`ba_locale` çerezi) saklanır. Backend'in yazdığı cümlelerin büyük bölümü bir kodla saklanır ve Türkçe okunur. 0.1.9 buna iki grup ekler: motor uyarılarının başlığı, açıklaması ve düzelme nedeni (log source hacmi, WAF, IPS, özellik izleme; MSG-7b) ve geçmiş okumadaki Ariel erteleme cümlesi (MSG-8c). Yükseltmeden önce yazılmış, kodu olmayan satırlar İngilizce kalır (bölüm 4). Bildirimler (Teams, e-posta, Slack, webhook, syslog) İngilizce kalır. Yönetim grubunun ilk öğesi “Yönetim özeti”dir (“Administration overview”) ve `/admin` açar.
-- **Migrasyon yok.** Bu sürüm yeni migrasyon eklemez. `upgrade` karar veren çifti yine iki kez yazar; ikisi de `database and image are at 0044` der. Alembic adımı çalışır ve `Running upgrade` satırı yazmaz; migrate konteyneri 0 ile çıkar. Bu bir hata değildir. Hedef zaten kuruluysa çift bir kez yazılır ve son satır `Version 0.1.9 is already installed and healthy; nothing changed.` olur; bu, ilk yükseltmenin beklenen çıktısı değildir.
-- **Varsayılan hız sınırı artık sayılır.** 0.1.6, 0.1.7 ve 0.1.8'de `RATE_LIMIT_DEFAULT` API rotalarına uygulanmıyordu. 0.1.9'da `/api/v1` altındaki her rota sayılır. `GET /api/v1/health/live` ve `GET /api/v1/health/ready` sayılmaz. Sayaç istemci anahtarı ve yol başınadır. Varsayılan dakikada 1200 istektir. `.env` bu adı yazıyorsa o değer kalır; `install` bu satırı yazmaz. Giriş sınırı dakikada 300, arama çalıştırma sınırı dakikada 10 kalır. Reddedilen istek `429` döner ve `Retry-After` ile `X-RateLimit-*` başlıklarını taşır. Üretim kontrolü MT-126'dır. Sınırı düşürüp 429 görmek yalnızca labdır (MT-127).
-- **Sunucuda çizilen sayfalar analistin kendi adresinden sayılır.** `upgrade`, eksikse `.env` içine `FRONTEND_EDGE_IP` yazar ve boş olmayan, `*` olmayan `FORWARDED_ALLOW_IPS` listesine bu adresi bir kez ekler. Liste yoksa, boşsa ya da `*` ise betik listeyi değiştirmez. `doctor` kimliği `forwarded_allow_ips` olur (MT-09). `*` yazma.
-- **Yükseltme yedeği yanıt dosyasını taşır.** Yükseltmeden önceki yedekte `install.answers` vardır; kipi canlı dosyanın kipidir (`0600`, canlı dosya `0400` idiyse `0400`). Geri alma bu kopyayı yerine koyar ve bunu ayrıca duyurmaz. Kopyası olmayan eski bir yedek, canlı dosyadan hedef sürümün bilmediği anahtarları siler ve her birinin adını yazar (MT-08, MT-122).
-- **Takılmış offense filigranı.** Sağlıklı `watermarks` satırı `{n} watermark(s) have no error or excess lag` der ve runbook yazmaz. Sayfa tavanında takılma WARN'dır ve runbook OPS-R66'dır (MT-09). Temiz bir çalışma takılmayı siler. Offense'ı olmayan konsolda 0.1.8'in yaklaşık 168 saatlik gecikme WARN'ı, bu sürümün ilk temiz `offense_snapshot` çalışmasından sonra kalkar (MT-11).
-- **0.1.8'in oturum düzeltmesi durur.** Sunucuda çizilen sayfalar geçerli oturumda açılır. “Your session has expired. Sign in again to continue.” (“Oturumunuzun süresi doldu. Devam etmek için yeniden giriş yapın.”) yalnızca süresi gerçekten dolmuş oturumda görünür.
+- **Dünya haritası.** Varsayılan “SOC Genel Bakışı” (SOC Overview) şablonunun alt satırında Coğrafya (`map.geography`) bileşeni vardır; `/geography` sayfası aynı yanıtı tam boyutta gösterir. İkisi de kaynak ya da hedef adrese göre ülke başına olay sayısını, 1 saat, 24 saat ya da 7 gün için okur. Ölçek sıralıdır: `--map-0…--map-4`, log ekseninde en çok dört sınıf ve birimli bir lejant. Sayısı olmayan ülke `--map-0` ile “Veri yok” olur, en düşük sınıfla boyanmaz. “Toplanmadı.” ve “Yetersiz veri.” harita çizmez; kısmi okuma “Kısmi”, alt sınır “En az” der. Bileşen ve sayfa `read:geo` ister; veri `GEO_COLLECTION` ailesinden gelir (varsayılan kadans 5 dakika). MT-128.
+- **Editörler netleşti.** Özel kural editöründe operatör ve birim sözcükle yazılır (“above”, “at or above”…; “events/bucket”, “events/s”, “share”); her teknik alanın “?” yardımı vardır. Metric altındaki not artık arayüzün kendi cümlesidir (POL-10, POL-13). Özellik izlemede kapalı “Yeni kombinasyon” neden kapalı olduğunu söyler (“Needs two properties.” / “Choose the scope first.”) ve ikinci özellik eklenebiliyorsa düğmeyi sunar (POL-14). IPS ve WAF kaynak sayfalarında “kaynak ekle” denetimi sayfa başlığındadır (POL-12). Oturum hatası sunucunun ayrıntısını ayrı bir cümlede gösterir (“The server said: …”); kapı bildirimleri giriş formunun genişliğindedir (POL-9, POL-8).
+- **“Phase A” artık “Log source hacmi”.** Okuyucunun gördüğü her yerde aile “Log source volume” / “Log source hacmi” olur: katalog, arama sıklığı sayfası, kurulum özeti ve retention satırı. `doctor`'ın always-on aile kimliği `LOG_SOURCE_VOLUME` olur. API ve veritabanı `PHASE_A_VOLUME` yazar; saklı satır değişmez (POL-11).
+- **Migrasyon `0045`.** `0045_rule_match_window_start_index`, `rule_match_window.window_start` üzerine `ix_rule_match_window_window_start` btree indeksini ekler. `upgrade` önce `database and image are at 0044`, sonra `database and image are at 0045` yazar; Alembic bir kez `Running upgrade 0044 -> 0045` der. İndeks günlük `rule_match_retention` silmesini hızlandırır; satır, sütun ve backfill yoktur. Geri alma indeksi düşürür (FIX-14).
+- **Sayılan her yanıt pencereyi taşır.** 0.1.9'dan beri `/api/v1` altındaki her rota sayılır; `GET /api/v1/health/live` ve `GET /api/v1/health/ready` sayılmaz. 0.1.10'da sayılan bir ret de (401, 403, 404, 422) `X-RateLimit-Limit`, `X-RateLimit-Remaining` ve `X-RateLimit-Reset` başlıklarını taşır. `Retry-After` yalnızca 429'da yazılır; 200 ve diğer retler onu taşımaz. Sayılan şey değişmedi. MT-126 üretim kontrolüdür; MT-127 yalnızca labdır (FIX-14).
+- **Konsolun ilk envanteri kuyruğa alınır.** `python -m app.cli.qradar add` satırı commit ettikten sonra, etkin ve yeni/değişmiş/yeniden etkinleştirilmiş konsol için `sync_instance_inventories` bir kez kuyruğa alınır. Kurulum özeti `First inventory    queued` ya da `First inventory    not queued; the hourly beat will catch up` yazar; ikincisi hata değildir (FIX-13).
+- **`QRADAR_CONSOLE_FQDN` port taşıyabilir.** Değer ana makine adı ya da `host:port` (1–65535) olabilir; şema ve yol reddedilir. Boş bırakılırsa QRadar URL'sinin portu atılmış ana makine adı yazılır. MCP istemcisi portu kullanır; sertifika doğrulaması ana makine adına bakar. `docs/OPERATIONS.md`'deki TLS tek satırı değeri porttan ayırır (FIX-13).
+- **Kullanıcı silme yoktur.** Bir hesabın erişimini kaldırmanın yolu onu devre dışı bırakmaktır; hesap satırı ve `user.disable` denetim kaydı kalır, oturumlar iptal edilir (MT-19).
 
 ### Nasıl kullanılır
 
-- **Üretimde yalnızca çekirdek yürütülür.** Başlığında `[çekirdek]` yazan 39 kontrol üretim yoludur; tam liste laboratuvar koşusu içindir (MT-1b) ve üretimde yalnızca operatörün zamanı varsa yapılır. Çekirdekte (yazar) olarak yalnızca ön koşulların ve yükseltmenin gerektirdiği adımlar (yedek, destek paketi, yükseltme, dil tercihi) vardır; çekirdekte `yalnızca lab` kontrol yoktur. MT-127 `yalnızca lab`'dır.
+- **Üretimde yalnızca çekirdek yürütülür.** Başlığında `[çekirdek]` yazan 40 kontrol üretim yoludur; tam liste laboratuvar koşusu içindir (MT-1b) ve üretimde yalnızca operatörün zamanı varsa yapılır. Çekirdekte (yazar) olarak yalnızca ön koşulların ve yükseltmenin gerektirdiği adımlar (yedek, destek paketi, yükseltme, dil tercihi) vardır; çekirdekte `yalnızca lab` kontrol yoktur. MT-127 `yalnızca lab`'dır.
 - Kontrollerin sırası bölüm sırasıdır. Her kontrolün **Ön koşul**, **Eylem**, **Beklenen** ve **Kaydet** alanı vardır. Sonucu sonuç sayfasına `Geçti`, `Kaldı` ya da `Koşulmadı` olarak yaz; `Kaldı` ve `Koşulmadı` için Not yaz.
 - **(yazar)**: kontrol uygulama durumunu değiştirir (bir dosya, bir hesap, bir kayıt yazar). Her birinin **Temizlik** adımı vardır.
 - **yalnızca lab**: kontrol, analistlerin gördüğü durumu değiştirir ya da silinemez bir iz bırakır; üretimde `Koşulmadı` yazılır, nedeni kontrolde belirtilmiştir. Orkestratör aynı kılavuzu bir laboratuvar VM'sinde (MT-1b) harfiyen yürütür.
@@ -57,11 +58,11 @@ Bir toplamanın verisinin sayfada görünmesi için kadans ve yerleşme payı (`
 | Ne | Ne zaman bakılır | Daha erken bakılırsa sayfa ne gösterir |
 |---|---|---|
 | Sürüm, migrasyon, `doctor` (bağımsız satırlar), giriş, dil, kılavuz, yönetim sayfaları | Hemen | (veriye bağlı değil) |
-| Pano bileşenleri, anomali ve filo verisi, kural ve coverage nedenleri | Ailenin kadansı + 3 dk (log source hacmi: 8 dk; WAF ve IPS: 18 dk) | “Güncel değil” ya da “Toplanmadı”; doğrudur, Kaldı yazma |
+| Pano bileşenleri, anomali ve filo verisi, kural ve coverage nedenleri | Ailenin kadansı + 3 dk (log source hacmi ve coğrafya: 8 dk; WAF ve IPS: 18 dk) | “Güncel değil” ya da “Toplanmadı”; doğrudur, Kaldı yazma |
 | Yeni Türkçe satırlar (özellik izleme nedeni, özel kural nedeni, kural sağlığı nedeni, geçmiş okuma nedeni) | Satırı yazan toplamanın bir sonraki çalışmasından sonra | Saklı İngilizce metin |
 | Yeni geçiş, yeni anomali, yeni uyarı | Bir olay olunca; beklenmez | Eski satırlar (İngilizce) |
 
-**Çekirdek (üretim yolu):** 39 kontrol, yaklaşık **2 saat** etkin çalışma (bir tahmindir, ölçülmedi) ve konsol yöneticisinin yaklaşık 10 dakikası (MT-120); kadans beklemesi ayrıdır. **Üretim sırası:** çekirdek kontroller bölüm sırasıyla yürütülür. MT-126, numarası büyük olsa da MT-11'den hemen sonra yapılır. Kadans beklemesi (en çok 18 dk) MT-12 ile MT-22 gibi yeni veri gerektirmeyen salt okunur kontrollerle doldurulur, veriye bağlı kontroller (MT-24 ve sonrası) bekleme dolunca yapılır.
+**Çekirdek (üretim yolu):** 40 kontrol, yaklaşık **2 saat** etkin çalışma (bir tahmindir, ölçülmedi) ve konsol yöneticisinin yaklaşık 10 dakikası (MT-120); kadans beklemesi ayrıdır. **Üretim sırası:** çekirdek kontroller bölüm sırasıyla yürütülür. MT-126, numarası büyük olsa da MT-11'den hemen sonra yapılır; MT-128 de bir `GEO_COLLECTION` kadansı dolduktan sonra, MT-11'den sonra yapılır. Kadans beklemesi (en çok 18 dk) MT-12 ile MT-22 gibi yeni veri gerektirmeyen salt okunur kontrollerle doldurulur, veriye bağlı kontroller (MT-24 ve sonrası) bekleme dolunca yapılır.
 
 Tam liste: yaklaşık **6,5 saat** etkin çalışma (bölüm 4'teki üç tur ve bölüm 5'teki 20 bileşen en uzun iki parçadır), bekleme süreleri dışında. Bölümlere göre: Ön koşullar 20 dk, Yükseltme 20 dk (kesinti pencere içindedir),
 Oturum açma 20 dk, Dil 120 dk, Pano 40 dk, Anomaliler 30 dk, Uyarılar 10 dk, Özel kurallar 15 dk, Aramalar 15 dk, Geçmiş okuma 10 dk, Kural/kapsam/filo 35 dk, Yönetim 25 dk, Kılavuz 5 dk, QRadar'a karşı salt okunur 15 dk (konsol yöneticisi ayrı), Geri alma ölçütü 5 dk.
@@ -87,8 +88,8 @@ curl -s http://127.0.0.1:8000/api/v1/health/ready
 
 **Beklenen:**
 
-- `status`: `Installed version: 0.1.8`; `API ready: HTTP 200 (http://127.0.0.1:8000/api/v1/health/ready)`; `docker compose ps` tablosunda her servis çalışıyor ve sağlıklı; `Last upgrade:` satırı yazılıdır; çıkış kodu 0.
-- `/api/v1/version`: `"version":"0.1.8"` ve `"migration_head":"0044"`.
+- `status`: `Installed version: 0.1.9`; `API ready: HTTP 200 (http://127.0.0.1:8000/api/v1/health/ready)`; `docker compose ps` tablosunda her servis çalışıyor ve sağlıklı; `Last upgrade:` satırı yazılıdır; çıkış kodu 0.
+- `/api/v1/version`: `"version":"0.1.9"` ve `"migration_head":"0044"`.
 - `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0044"`.
 
 **Kaydet:** `Installed version`, `Last upgrade:` satırı, `git_sha` ve `migration_head` değerleri.
@@ -108,7 +109,7 @@ echo "çıkış: $?"
 
 - Hiçbir satır `FAIL` değildir. Çıkış kodu 0 (hepsi PASS) ya da 1 (en az bir WARN, FAIL yok). 2 ise yükseltme yapılmaz; satırın `runbook: OPS-R<n>` girişine bak.
 - Sağlıklı bir sitede şu satırlar `WARN` olabilir ve yükseltmeyi engellemez; her birini ve nedenini Not alanına yaz: `backup_age` (yedek yok, yaş okunamıyor ya da 26 saatten eski; yedek zamanlayıcısı kurulu değilse veya kapalıysa taze bir yedek de WARN verir — `docs/OPERATIONS.md` doctor tablosundaki `backup_age` satırı, OPS-R kimliği yok; sonraki kontrol yedeği düzeltir, zamanlayıcıyı değil), `disk_docker` ve `disk_backup` (%70 ile %89 arası dolu), `qradar_tls` (sertifika 30 günden yakın bitiyor), `cadence`, `errors_recent` (bir ya da iki hatalı filigran), `anomaly_evaluation`, `rule_match_coverage`, `ariel_permits` (havuz dolu). Bunlar yükseltmeden önce de doğrudur.
-- Offense'ı olmayan bir konsolda `watermarks`, `offense_snapshot` satırı yükseltmeyi engellemez. `consecutive_failures` 0'dır, `last_error` boştur. 0.1.8 bu filigranı temiz bir çalışmada da çalışmanın zamanına taşımaz; gecikme `offense_max_backfill_hours` tabanında kaldığı için (varsayılan 168 saat) yaklaşık 168 saattir ve kadansın iki katını aşar. Bu WARN'dır, Kaldı değildir; Not alanına yaz. Satırın runbook'u OPS-R30'dur. 0.1.8'in `doctor` çıktısında takılma cümlesi ve OPS-R66 yoktur; onlar yükseltmeden sonradır (MT-09).
+- Offense'ı olmayan bir konsolda `watermarks`, `offense_snapshot` satırı yükseltmeyi engellemez. `consecutive_failures` 0'dır, `last_error` boştur. 0.1.9 bu filigranı temiz bir çalışmada çalışmanın zamanına taşır; temiz bir çalışma henüz olmadıysa gecikme `offense_max_backfill_hours` tabanında (varsayılan 168 saat) kalabilir ve kadansın iki katını aşar. Bu WARN'dır, Kaldı değildir; Not alanına yaz. Satırın runbook'u OPS-R30'dur. 0.1.9'un `doctor` çıktısında takılma cümlesi ve OPS-R66 vardır (MT-09).
 - `WARN` olursa dur ve sahibine bildir: `selinux` (`SELinux is permissive`: SELinux'a dokunma), `host_clock`. `families_off` her zaman PASS'tir. `SKIP` satırı bir özelliğin kapalı olduğunu söyler ve çıkış kodunu yükseltmez.
 - Satır biçimi: `PASS  db_connect         database accepted SELECT 1`. Bu aşamada `db_connect`, `migration_head` (`database and image are at 0044`), `containers`, `celery_workers`, `celery_beat`, `qradar_auth`, `encryption` ve `secrets_files` PASS olmalıdır.
 
@@ -139,7 +140,7 @@ cat "$BACKUP/MANIFEST"
 
 - Komut 0 ile çıkar. TimescaleDB için `circular foreign-key constraints` uyarıları yazabilir; bu beklenir, belirleyici olan çıkış koduyla yedeğin var olmasıdır.
 - Dizinde `database.dump`, `env.bak`, `secrets.tar`, `state.json` ve `MANIFEST` vardır; dizin izni `0700`, dosya izinleri `0600`.
-- `MANIFEST` içinde `VERSION=0.1.8`, `ALEMBIC_VERSION=0044`, `STATE_JSON=included` ve bir `DATABASE_SIZE_BYTES=<sayı>` satırı vardır.
+- `MANIFEST` içinde `VERSION=0.1.9`, `ALEMBIC_VERSION=0044`, `STATE_JSON=included` ve bir `DATABASE_SIZE_BYTES=<sayı>` satırı vardır.
 
 **Kaydet:** Yedek dizininin adı (yalnızca `qradar-dash-<utc>-manual` kısmı), `VERSION` ve `ALEMBIC_VERSION` satırları. `env.bak` ve `secrets.tar` içeriği hiçbir yere yazılmaz.
 
@@ -188,11 +189,11 @@ tar -tzf "$BUNDLE" | head -40
 
 **Kaydet:** Pencere başlangıcı ve bitişi (UTC), yolun adı, duyurulan kişi ya da rol.
 
-### 2. Yükseltme 0.1.8 → 0.1.9
+### 2. Yükseltme 0.1.9 → 0.1.10
 
 Taze bir tarayıcıda `ba_locale` çerezi yoktur, bu yüzden giriş sayfası İngilizcedir: başlık “Sign in”, sürüm satırı `API version 0.1.9`. Çerez `tr` ise başlık “Oturum aç” ve satır `API sürümü 0.1.9` olur. Bölüm 3, çerezin neden eksik olduğunu anlatır.
 
-Siteyi 0.1.8'den 0.1.9'a yükseltmenin iki yolu vardır; birini seç. Hedef sürüm `docs/OPERATIONS.md` içindeki "Yükseltme" ve "Çevrimdışı paket" bölümleriyle aynı biçimde çalışır. Yükseltme, kendi doğrulanmış `pre-upgrade` yedeğini alır; ayrıca yedeğin geri yükleme testi yapılır. Yükseltmeden önce ve sonra migrasyon başı `0044`'tür. Baş değişmez.
+Siteyi 0.1.9'dan 0.1.10'a yükseltmenin iki yolu vardır; birini seç. Hedef sürüm `docs/OPERATIONS.md` içindeki "Yükseltme" ve "Çevrimdışı paket" bölümleriyle aynı biçimde çalışır. Yükseltme, kendi doğrulanmış `pre-upgrade` yedeğini alır; ayrıca yedeğin geri yükleme testi yapılır. Yükseltmeden önce migrasyon başı `0044`, sonra `0045`'tir. Baş bir kez ilerler.
 
 **Kesinti.** Backend, worker ve beat, `pg_dump` başlangıcından `/api/v1/health/ready` 200 dönene kadar kapalıdır; `frontend` ve `proxy` de durdurulur. Küçük bir veritabanında yükseltme kesintisi yaklaşık 15-20 sn ölçüldü; 5 GiB altı veritabanı için bütçe 10 dakikadır. İmaj çekme bu pencerenin dışındadır. Bunlar söz değildir. Yükseltme Redis'i boşaltır (`FLUSHALL`); sıradaki görevler kaybolur ve bir sonraki beat tick'inde yeniden kurulur, önemli veri PostgreSQL'dedir. QRadar'a hiçbir şey yazılmaz.
 
@@ -205,16 +206,16 @@ Siteyi 0.1.8'den 0.1.9'a yükseltmenin iki yolu vardır; birini seç. Hedef sür
 
 ```bash
 git fetch --tags
-git checkout v0.1.9
-./qradar-dash upgrade 0.1.9
+git checkout v0.1.10
+./qradar-dash upgrade 0.1.10
 ```
 
 - Başlangıç ve bitiş saatini `date -u` ile Not alanına yaz.
 
 **Beklenen:**
 
-- Komut 0 ile çıkar ve son satır `Upgrade complete: 0.1.8 -> 0.1.9.` olur.
-- Baş değişmediği için alembic bir `Running upgrade` satırı yazmaz. Migrate adımı yine çalışır ve migrate konteyneri 0 ile çıkar. Bu bir hata değildir.
+- Komut 0 ile çıkar ve son satır `Upgrade complete: 0.1.9 -> 0.1.10.` olur.
+- Alembic bir kez `Running upgrade 0044 -> 0045` yazar. Migrate konteyneri 0 ile çıkar. Bu satır bu sürümde beklenir; 0.1.9'daki gibi değildir.
 - Ön kontrolde (yazıcılar durmadan önce) şu üç satır yazılır; baş **kurulu** sürümündür ve o da `0044`'tür:
 
 ```
@@ -223,23 +224,23 @@ PASS  migration_head database and image are at 0044
 Full report: ./qradar-dash doctor
 ```
 
-- Yeni yığın başladıktan sonra ikinci çift yazılır; baş **hedef** sürümündür ve yine `0044`'tür:
+- Yeni yığın başladıktan sonra ikinci çift yazılır; baş **hedef** sürümündür ve `0045`'tir:
 
 ```
 PASS  db_connect     database accepted SELECT 1
-PASS  migration_head database and image are at 0044
+PASS  migration_head database and image are at 0045
 Full report: ./qradar-dash doctor
 ```
 
-- İki çift de yazılır. Tek çift yalnız hedef zaten kuruluysa yazılır: `Version 0.1.9 is already installed and healthy; nothing changed.` Bu, ilk yükseltmenin çıktısı değildir.
+- İki çift de yazılır; birincisi `0044`, ikincisi `0045`'tir. Tek çift yalnız hedef zaten kuruluysa yazılır: `Version 0.1.10 is already installed and healthy; nothing changed.` Bu, ilk yükseltmenin çıktısı değildir.
 - `PASS` satırlarındaki boşluk sayısı sürüme göre değişebilir; metin aynıdır.
-- 0.1.8'in `.env` dosyasında `FRONTEND_EDGE_IP` yoksa ve `FORWARDED_ALLOW_IPS` boş olmayan, `*` olmayan, frontend adresini içermeyen bir listeyse şu iki satır da yazılır. Adresleri sayfaya yazma; yalnız satırların göründüğünü yaz:
+- 0.1.9'un `.env` dosyasında `FRONTEND_EDGE_IP` yoksa ve `FORWARDED_ALLOW_IPS` boş olmayan, `*` olmayan, frontend adresini içermeyen bir listeyse şu iki satır da yazılır. Adresleri sayfaya yazma; yalnız satırların göründüğünü yaz:
   - `Frontend address <adres> added to .env (FRONTEND_EDGE_IP).`
   - `FORWARDED_ALLOW_IPS now also trusts the frontend (<adres>): <liste>`
 - `.env`'de `FRONTEND_EDGE_IP` zaten varsa ve liste frontend adresini içermiyorsa yalnız `FORWARDED_ALLOW_IPS now also trusts the frontend (<adres>): <liste>` satırı yazılır; bu da doğrudur.
 - Anahtarlar zaten doğruysa (liste frontend adresini zaten içeriyorsa) bu satırlar yazılmaz; bu da doğrudur.
-- Çıkış `upgrade refused: …` ise hiçbir konteyner durmamıştır; nedeni oku (örneğin `this checkout is version <x>, not 0.1.9` ise `git checkout v0.1.9` unutulmuştur; `upgrade refused: 0.1.9 requires at least 0.1.8; nothing was changed` ise site 0.1.8'den eskidir ve `.env` ile imajlar değişmemiştir) ve düzelt. Aynı addan iki satır varsa `upgrade refused: .env has more than one FRONTEND_EDGE_IP line; nothing was changed` (ya da `FORWARDED_ALLOW_IPS`) yazılır; fazla satırı sil, `*` yazma.
-- Çıkış sıfırdan farklıysa ve son satır `upgrade to 0.1.9 failed and was rolled back to 0.1.8; the broken database was kept` ise otomatik geri alma çalışmıştır: bölüm 15'e git (OPS-R44).
+- Çıkış `upgrade refused: …` ise hiçbir konteyner durmamıştır; nedeni oku (örneğin `this checkout is version <x>, not 0.1.10` ise `git checkout v0.1.10` unutulmuştur; `upgrade refused: 0.1.10 requires at least 0.1.9; nothing was changed` ise site 0.1.9'dan eskidir ve `.env` ile imajlar değişmemiştir) ve düzelt. Aynı addan iki satır varsa `upgrade refused: .env has more than one FRONTEND_EDGE_IP line; nothing was changed` (ya da `FORWARDED_ALLOW_IPS`) yazılır; fazla satırı sil, `*` yazma.
+- Çıkış sıfırdan farklıysa ve son satır `upgrade to 0.1.10 failed and was rolled back to 0.1.9; the broken database was kept` ise otomatik geri alma çalışmıştır: bölüm 15'e git (OPS-R44).
 
 **Kaydet:** Çıkış kodu, başlangıç ve bitiş saati (UTC), iki `migration_head` satırı, son satır, adres satırlarından hangisinin göründüğü (adreslerin kendisi değil). Kaldı ise ilk hata satırı.
 
@@ -247,17 +248,17 @@ Full report: ./qradar-dash doctor
 
 #### MT-07 — Yükseltme, çevrimdışı paket yolu (yazar) [çekirdek]
 
-**Ön koşul:** Paket, bağlı bir makinede aynı etiketten hazırlanır: `git fetch --tags && git checkout v0.1.9 && ./qradar-dash bundle --output <paket dizini>`. `--output DIR` paketin yazılacağı dizindir; verilmezse dosya bulunulan dizine yazılır. Dosya adı `qradar-dash-0.1.9-bundle.tar` olur. Aynı yolda bir dosya varsa üzerine yazılmaz. Paket siteye taşınır. Çevrimiçi yolu seçtiysen bu kontrol `Koşulmadı` olur.
+**Ön koşul:** Paket, bağlı bir makinede aynı etiketten hazırlanır: `git fetch --tags && git checkout v0.1.10 && ./qradar-dash bundle --output <paket dizini>`. `--output DIR` paketin yazılacağı dizindir; verilmezse dosya bulunulan dizine yazılır. Dosya adı `qradar-dash-0.1.10-bundle.tar` olur. Aynı yolda bir dosya varsa üzerine yazılmaz. Paket siteye taşınır. Çevrimiçi yolu seçtiysen bu kontrol `Koşulmadı` olur.
 
 **Eylem:**
 
 - İki makinede de toplamı karşılaştır, sonra kurulum dizininde paketi aç ve yükselt:
 
 ```bash
-sha256sum /yol/qradar-dash-0.1.9-bundle.tar
+sha256sum /yol/qradar-dash-0.1.10-bundle.tar
 cd <kurulum dizini>
-tar -xf /yol/qradar-dash-0.1.9-bundle.tar --exclude=images.tar
-./qradar-dash upgrade 0.1.9 --offline /yol/qradar-dash-0.1.9-bundle.tar
+tar -xf /yol/qradar-dash-0.1.10-bundle.tar --exclude=images.tar
+./qradar-dash upgrade 0.1.10 --offline /yol/qradar-dash-0.1.10-bundle.tar
 ```
 
 
@@ -265,7 +266,7 @@ tar -xf /yol/qradar-dash-0.1.9-bundle.tar --exclude=images.tar
 
 - İki toplam aynıdır.
 - Paket doğrulanır ve yüklenir; çıktıda `bundle images loaded and checked against MANIFEST` satırı görünür. Hiçbir konteyner imajlar yüklenip denetlenmeden durdurulmaz.
-- Sonrası, çevrimiçi yoldaki gibidir: iki `PASS` çifti, ikisi de `0044`, ve son satır `Upgrade complete: 0.1.8 -> 0.1.9.`, çıkış kodu 0. `Running upgrade` satırı yoktur.
+- Sonrası, çevrimiçi yoldaki gibidir: iki `PASS` çifti (önce `0044`, sonra `0045`), bir kez `Running upgrade 0044 -> 0045`, ve son satır `Upgrade complete: 0.1.9 -> 0.1.10.`, çıkış kodu 0.
 - Eksik bir imaj varsa `upgrade refused: target images are unavailable: image <imaj> is not loaded on this host; no container was stopped; pass the bundle: …` yazılır ve hiçbir şey durmaz.
 
 **Kaydet:** Her iki toplam, çıkış kodu, başlangıç ve bitiş saati (UTC), iki `migration_head` satırı.
@@ -293,9 +294,9 @@ stat -c '%a %n' "$BACKUP/install.answers"
 
 **Beklenen:**
 
-- `status`: `Installed version: 0.1.9`; `Last upgrade: success, 0.1.8 -> 0.1.9 at <utc>`; `Last upgrade backup: <yol> (age <yaş>)`; `API ready: HTTP 200 (…)`; çıkış kodu 0; her servis sağlıklı.
-- `/api/v1/version`: `"version":"0.1.9"` ve `"migration_head":"0044"`.
-- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0044"`.
+- `status`: `Installed version: 0.1.10`; `Last upgrade: success, 0.1.9 -> 0.1.10 at <utc>`; `Last upgrade backup: <yol> (age <yaş>)`; `API ready: HTTP 200 (…)`; çıkış kodu 0; her servis sağlıklı.
+- `/api/v1/version`: `"version":"0.1.10"` ve `"migration_head":"0045"`.
+- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0045"`.
 - Yedekte `install.answers` vardır. `stat` kip olarak `600` yazar (`0600`). Canlı dosya yükseltmeden önce `0400` idiyse kip `400` olur. Dosya yoktur yalnız canlı dosya yoksa, bir sembolik bağlantıysa ya da bu iki kipten başka bir kipteyse; olağan bir kurulumda dosya vardır ve yokluğu Kaldı'dır.
 
 **Kaydet:** Üç çıktının sürüm ve `migration_head` değerleri; `Last upgrade:` satırı; yedek dizininin adı ve `install.answers` kipinin rakamı. Dosyanın içeriği yazılmaz.
@@ -342,12 +343,12 @@ awk -F= '
 
 **Beklenen:**
 
-- `FAIL` yoktur. Değişen konsolda saatlik `log_source_inventory` ve `rule_inventory` FAIL'i bunun dışındadır; o bekleme MT-11'dedir. `db_connect` PASS; `migration_head` PASS ve `database and image are at 0044`; `version_match` PASS ve `frontend and backend report 0.1.9`; `containers` PASS.
+- `FAIL` yoktur. Değişen konsolda saatlik `log_source_inventory` ve `rule_inventory` FAIL'i bunun dışındadır; o bekleme MT-11'dedir. `db_connect` PASS; `migration_head` PASS ve `database and image are at 0045`; `version_match` PASS ve `frontend and backend report 0.1.10`; `containers` PASS.
 - `forwarded_allow_ips` PASS'tir ve metin `FORWARDED_ALLOW_IPS trusts the frontend (<adres>)` olur. Adres, `FRONTEND_EDGE_IP` ile aynıdır; adresi sayfaya yazma. Bu satırda runbook yoktur. awk `iki adres, frontend listede; adresler yazılmadı` yazar. Dış vekilli bir sitede liste, operatörün eski listesine frontend adresinin bir kez eklenmiş halidir; ikiden fazla adres doğrudur ve awk adres sayısını yazar.
 - Satır yoksa, awk boş ya da yıldız derse, ya da doctor FAIL derse (`FORWARDED_ALLOW_IPS is empty; every analyst shares one rate-limit key` veya `FORWARDED_ALLOW_IPS is *; every analyst shares one rate-limit key`) bu Kaldı'dır. Runbook OPS-R21'dir. `*` yazma. Liste frontend adresini içermiyorsa WARN'dır: `FORWARDED_ALLOW_IPS does not trust the frontend (<adres>); pages drawn by the server share one rate-limit key`, runbook OPS-R21. Bu da Kaldı'dır.
 - Beat ve worker yeni başladığı için ilk dakikada `celery_workers` ya da `celery_beat` geçici FAIL verebilir; bir dakika bekleyip komutu yinele. İkinci çalıştırmada FAIL kalırsa Kaldı.
 - Toplama henüz bir kadans çalışmadığı için `cadence`, `anomaly_evaluation` ve `rule_match_coverage` WARN olabilir. Bunlar MT-11 içinde yeniden okunur.
-- `watermarks` olağan PASS metni `{n} watermark(s) have no error or excess lag` olur ve runbook yazmaz. Offense'ı olmayan bir konsolda, ilk temiz 0.1.9 çalışmasından önce `offense_snapshot` için WARN kalır: gecikme kadansın iki katını aşar, `consecutive_failures` 0'dır, `last_error` boştur (MT-02). Metin `{n} watermark(s) exceed twice their cadence: offense_snapshot` biçimindedir ve runbook OPS-R30'dur. Bu WARN'dır, Kaldı değildir; Not alanına yaz. MT-11'de yeniden okunur.
+- `watermarks` olağan PASS metni `{n} watermark(s) have no error or excess lag` olur ve runbook yazmaz. Offense'ı olmayan bir konsolda, ilk temiz `offense_snapshot` çalışmasından önce WARN kalır: gecikme kadansın iki katını aşar, `consecutive_failures` 0'dır, `last_error` boştur (MT-02). Metin `{n} watermark(s) exceed twice their cadence: offense_snapshot` biçimindedir ve runbook OPS-R30'dur. Bu WARN'dır, Kaldı değildir; Not alanına yaz. MT-11'de yeniden okunur.
 - Takılmış bir offense filigranı ayrı bir WARN'dır: `{n} watermark(s) stalled at the page ceiling: offense_snapshot`. Runbook OPS-R66'dır. Gecikme de varsa iki cümle noktalı virgülle birleşir ve runbook yine OPS-R66 olur. Bu WARN Kaldı değildir. Sağlayıcı hatası FAIL kalır, runbook OPS-R30'dur ve aynı metin FAIL cümlesinin sonuna eklenebilir. Temiz bir çalışma takılmayı siler (MT-11).
 - `backup_age`, yükseltmeden öncekiyle aynı nedenle WARN kalabilir: yedek yok, yaş okunamıyor, 26 saatten eski, ya da yedek zamanlayıcısı kurulu değil veya kapalı (taze bir yedek de zamanlayıcı yokken ya da kapalıyken WARN verir). Bu yükseltmenin hatası değildir. Satır `docs/OPERATIONS.md` doctor tablosundadır; OPS-R kimliği yoktur.
 
@@ -362,7 +363,7 @@ awk -F= '
 **Beklenen:**
 
 - Yükseltme küçük bir veritabanında yaklaşık bir dakikada biter (4 vCPU'lu bir test makinesinde 50-52 sn ölçüldü; bu bir söz değildir); kesinti penceresi bundan kısadır. 10 dakikayı aşan bir kesinti Not alanına yazılır (veritabanı büyükse dökümün süresi eklenir; bu bir söz değildir).
-- Giriş sayfasında, `ba_locale` çerezi yoksa (taze tarayıcı) başlık “Sign in” ve altında `API version 0.1.9` görünür. Çerez `tr` ise başlık “Oturum aç” ve satır `API sürümü 0.1.9` olur.
+- Giriş sayfasında, `ba_locale` çerezi yoksa (taze tarayıcı) başlık “Sign in” ve altında `API version 0.1.10` görünür. Çerez `tr` ise başlık “Oturum aç” ve satır `API sürümü 0.1.10` olur.
 
 **Kaydet:** Yükseltme süresi (dakika), kesinti süresinin tahmini, giriş sayfasındaki sürüm satırı.
 
@@ -461,6 +462,14 @@ for n in 1 2 3; do
 done
 ```
 
+- Dakika dolduktan sonra, sayılmış bir reddin de pencereyi taşıdığını gör. Oturumsuz `GET /api/v1/me` 401 döner ve sayılır; yanıt `Retry-After` taşımaz:
+
+```bash
+curl -s -i http://127.0.0.1:8000/api/v1/me
+```
+
+- Sonra oturum açık tarayıcıda `/alerts/00000000-0000-0000-0000-000000000099` adresini aç (var olmayan bir kimlik) ve ağ panelindeki 404 yanıtına bak. 404 de sayılır; üç `X-RateLimit-*` başlığı vardır, `Retry-After` yoktur.
+
 - Oturum açıkken `/alerts` sayfasını, cümle görünene kadar yenile. Dakikada 2 istekte aynı yolun üçüncü yüklemesi 429 verir. Tam bir yükleme `GET /api/v1/me`'yi de okur; bu okuma reddedilen istekse cümle, sayfanın yerine kabuğun kapısında görünür. Dakika dolmuşsa yeniden yenile. Panoyu kullanma: verisi duran bir bileşen yalnız kısa notu gösterir.
 - Cümleyi önce sayfanın o anki dilinde oku. Sonra `/account` içindeki “Arayüz dili” (“Interface language”) ile diğer dile geç, kaydet ve `/alerts` sayfasını cümle görünene kadar yenile. İki cümleyi de gördükten sonra dili bu kontrolün başındaki dile geri al.
 
@@ -468,12 +477,14 @@ done
 
 - İlk iki `curl` HTTP 200 döner. İkisinde de `X-RateLimit-Limit: 2` vardır ve `X-RateLimit-Remaining` yazılıdır.
 - Üçüncü `curl` HTTP 429 döner. `Retry-After` saniye cinsinden bir sayıdır. `X-RateLimit-Limit`, `X-RateLimit-Remaining` ve `X-RateLimit-Reset` vardır. Gövde `"detail":"rate limit exceeded"` içerir. Gövdedeki `limit` alanını eşleştirme ve sayfaya yazma; o alan kalıcı bir sayı değildir.
+- `GET /api/v1/me` HTTP 401 döner; yanıtta `X-RateLimit-Limit`, `X-RateLimit-Remaining` ve `X-RateLimit-Reset` vardır, `Retry-After` yoktur. Bu, sayılan bir reddin pencereyi taşıdığını gösterir.
+- Tarayıcıdaki 404 yanıtında da aynı üç `X-RateLimit-*` başlığı vardır; `Retry-After` yoktur. `Retry-After` yalnızca 429'a aittir.
 - İngilizce sayfa şunu yazar: “Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in N s.” N, `Retry-After` saniyesidir.
 - Türkçe sayfa şunu yazar: “Bu adresten bir dakika içinde çok fazla istek geldi. Veride ya da backend'de bir sorun yok. N sn sonra yeniden deneyin.”
 - Katalogda bekleme süresi olmayan ikinci biçim de vardır: “Try again in a minute.” ve “Bir dakika sonra yeniden deneyin.” Bu labın 429 yanıtı `Retry-After` taşıdığı için sayfa numaralı biçimi gösterir.
 - Cümle `/alerts` sayfasında ya da kabuğun kapısında görünebilir; ikisi de Geçti'dir. Kapı, sayfanın hiçbir parçasını göstermeden aynı cümleyi ve “Tekrar dene” düğmesini yazar. Kapıda “Oturum okunamadı.” (“The session could not be read.”) ve `rate limit exceeded` ham ayrıntısı varsa kontrol Kaldı'dır.
 
-**Kaydet:** Üç HTTP kodu, üçüncü yanıtta `Retry-After` ve `X-RateLimit-Limit` var mı, iki dilde cümlenin ilk beş sözcüğü. Adres, `.env` satırı ve `limit` alanı yazılmaz.
+**Kaydet:** Üç HTTP kodu; üçüncü yanıtta `Retry-After` ve `X-RateLimit-Limit` var mı; 401 ve 404 yanıtlarında üç `X-RateLimit-*` başlığı var mı ve `Retry-After` yok mu; iki dilde cümlenin ilk beş sözcüğü. Adres, `.env` satırı ve `limit` alanı yazılmaz.
 
 **Temizlik:** Adımlardan biri Kaldı olsa da bu bloğu çalıştır. Kopya sırları tutar; onu okuma ve hiçbir yere yazma.
 
@@ -518,7 +529,7 @@ Tarayıcıda `https://<host>/` adresini aç. Dil çerezi yoksa arayüz İngilizc
 **Beklenen:**
 
 - Menüde “{name} olarak oturum açıldı” satırı, “Kaynak: {source}” satırı (`LOCAL` ya da `LDAP`), “Roller: {roles}” satırı, “Hesap ayarları” (“Account settings”) bağlantısı ve “Oturumu kapat” (“Sign out”) düğmesi vardır. Yerel hesapta “Parolayı değiştir” bağlantısı da vardır.
-- Menüdeki sürüm satırı, dil İngilizceyken `API version 0.1.9`, dil Türkçeyken `API sürümü 0.1.9` olur. Bu bölümde dil henüz değiştirilmediği için taze tarayıcıda İngilizce satır görünür.
+- Menüdeki sürüm satırı, dil İngilizceyken `API version 0.1.10`, dil Türkçeyken `API sürümü 0.1.10` olur. Bu bölümde dil henüz değiştirilmediği için taze tarayıcıda İngilizce satır görünür.
 
 **Kaydet:** Menüdeki API sürümü.
 
@@ -617,7 +628,7 @@ Tarayıcıda `https://<host>/` adresini aç. Dil çerezi yoksa arayüz İngilizc
 
 **Beklenen:**
 
-- Sonuç satırı “{name} devre dışı bırakıldı.”; satırın durumu `devre dışı`. Hesapla artık oturum açılamaz.
+- Sonuç satırı “{name} devre dışı bırakıldı.”; satırın durumu `devre dışı`. Hesapla artık oturum açılamaz. Kullanıcı silme yoktur: erişimi kaldırmanın yolu budur ve `user.disable` denetim kaydı kalır.
 
 **Kaydet:** Hesap devre dışı oldu mu.
 
@@ -625,7 +636,7 @@ Tarayıcıda `https://<host>/` adresini aç. Dil çerezi yoksa arayüz İngilizc
 
 ### 4. Dil
 
-Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). Seçim iki yerde saklanır: tarayıcıda `ba_locale` çerezi (yol `/`, bir yıl, `SameSite=Lax`) ve hesapta (`ui_language`). Başka bir tarayıcıda oturum açınca hesaptaki tercih çereze yazılır; ilk sayfa önceki dilde kalır ve bir kez yenilenince hesap diline geçer. Bu 0.1.8'in bilinen sınırıdır, hata değildir. Çerez ve hesap yoksa arayüz İngilizcedir. Yalnızca İngilizce ve Türkçe vardır.
+Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). Seçim iki yerde saklanır: tarayıcıda `ba_locale` çerezi (yol `/`, bir yıl, `SameSite=Lax`) ve hesapta (`ui_language`). Başka bir tarayıcıda oturum açınca hesaptaki tercih çereze yazılır; ilk sayfa önceki dilde kalır ve bir kez yenilenince hesap diline geçer. Bu bilinen bir sınırdır, hata değildir. Çerez ve hesap yoksa arayüz İngilizcedir. Yalnızca İngilizce ve Türkçe vardır.
 
 **Yöntem.** Her rota için dili ayrı ayrı değiştirmek yüzlerce kayıt demektir. Bunun yerine **üç tur** yap: (A) dil İngilizce iken tüm rota kontrollerini aç ve gözle; (B) dili Türkçeye çevir ve aynı rotaları aç; (C) dili İngilizceye geri çevir ve aynı rotaları yeniden aç. Aşağıdaki her satır üç turun sonucunu tek sonuçta toplar. **Tur C bu bölümde yapılmaz:** dil Türkçe kalır ve bölüm 5 ile 15 Türkçe dilde yürütülür; tur C, bölüm 16'dan hemen önce, dili İngilizceye geri çevirince yapılır. Dil değişikliği "dil anahtarı" kontrolündedir.
 
@@ -648,7 +659,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 
 - Kayıttan sonra “Dil tercihi kaydedildi.” (“The language preference was saved.”) görünür ve sayfa hemen Türkçeye döner (aynı tarayıcıda kayıt).
 - Çıkış ve giriş sonrası, çerez duruyorsa arayüz Türkçedir (`ba_locale=tr`).
-- Başka bir tarayıcıda oturum açılınca ilk sayfa önceki dilde kalır. Çerez yoksa önceki dil İngilizcedir ve sayfa “Dashboard” kalır. Çerez `ba_locale=tr` bu ilk sayfada yazılmıştır. Sayfayı bir kez yenile; o zaman sayfa Türkçedir (“Gösterge paneli”). Bu 0.1.8'in bilinen sınırıdır, Kaldı değildir.
+- Başka bir tarayıcıda oturum açılınca ilk sayfa önceki dilde kalır. Çerez yoksa önceki dil İngilizcedir ve sayfa “Dashboard” kalır. Çerez `ba_locale=tr` bu ilk sayfada yazılmıştır. Sayfayı bir kez yenile; o zaman sayfa Türkçedir (“Gösterge paneli”). Bu bilinen bir sınırdır, Kaldı değildir.
 - Hata durumları: kayıt başarısızsa “Dil tercihi kaydedilemedi. Bağlantınızı denetleyip tekrar deneyin.”; tarayıcı çerezi saklamıyorsa “Tarayıcı çerezi saklamadığı için dil tercihi uygulanamadı.”
 
 **Kaydet:** Başlangıç dili, kayıt iletisi, hatırlama (aynı tarayıcıda / başka tarayıcıda).
@@ -1488,6 +1499,25 @@ Pano, `/` yolundadır. “Gösterge panelleri” menüsünün “Şablon” grub
 
 **Kaydet:** Veri yüklendi mi; bağlantı doğru rotayı açtı mı. "Güncel değil" ise bekleme süresinin dolup dolmadığını Not'a yaz.
 
+#### MT-128 — World map: dashboard widget and `/geography` [core]
+
+**Precondition:** Upgrade complete (MT-08) and at least one `GEO_COLLECTION` cadence + 3 min has passed (default 5 min; total 8 min). Signed in with an account that has `read:geo`.
+
+**Action:**
+
+- On the `/` page, find the Geography (`map.geography`) widget in the bottom row of the "SOC Overview" (`SOC Genel Bakışı`) template. Change the direction between Source (`Kaynak`) and Destination (`Hedef`), and the window between 1 hour, 24 hours and 7 days.
+- Click the widget's link and open `/geography`. The same direction and window appear in the URL (`?window=24h&direction=SOURCE`, etc.). Read the map, legend and country table.
+
+**Expected:**
+
+- The map is drawn; the colours use the sequential `--map-0…--map-4` scale, at most four classes on a log axis, with a unit legend ("Events per country" / `Ülke başına olay`). There is no green/amber/red status tone.
+- A country with no events uses `--map-0` as "No data" (`Veri yok`), never the lowest class. A country with events shows "N events"; the lower-bound legend says "At least N events".
+- If `GEO_COLLECTION` has never run, or there is no data for the direction, "Not collected." (`Toplanmadı.`) appears and the map is not drawn; coverage reads "0 / N". If buckets were collected but no address resolved to a country, "Insufficient data." (`Yetersiz veri.`) appears and again no map is drawn. A partial read draws the map with "Partial" (`Kısmi`); the lower-bound legend says "At least" (`En az`). None draws a zero.
+- The widget's link always opens `/geography`. For a role without `read:geo`, the widget shows its forbidden sentence naming the missing permission.
+- Times show the UTC zone; the page carries a "Last data" (`Son veri`) line. A country too small for the 1:110m outlines (Singapore, Malta, etc.) is named under the map and kept in the table.
+
+**Record:** Did the map draw; does the legend carry a unit; is `--map-0` "No data"; which honesty state appeared; did the link open `/geography`; are direction and window in the URL.
+
 ### 6. Anomaliler
 
 Anomali listesi tek yerde dört aileyi toplar: log source hacmi, WAF endpoint, IPS (varlık ve kaynak) ve özellik izleme değeri. Ayrıntı sayfası (`/anomalies/<id>`) aileye göre farklı bir inceleme açar. Yaşam döngüsü durumları: “ADAY”, “AÇIK”, “DÜZELİYOR”, “ÇÖZÜLDÜ”, “BASTIRILDI”; “YETERSİZ VERİ” ve “NORMAL” kaynak durumudur. Sitede bir tür anomali yoksa o türün kontrolü `Koşulmadı` olur ve Not'a "veri yok" yazılır; yeni anomali üretmeye çalışma.
@@ -2156,7 +2186,7 @@ Bu depoda QRadar konsolunun denetim günlüğünün yeri belgelenmemiştir; o y�
 - Yükseltme başarılı görünüyor ama `doctor` yükseltme sonrası bir `FAIL` veriyor ve `docs/OPERATIONS.md` içindeki ilgili OPS-R girişi onu temizlemiyor (özellikle `db_connect`, `migration_head`, `encryption`, `secrets_files`, `watermarks`). Değişen konsolda, saatlik `log_source_inventory` ve `rule_inventory` yeniden denenene kadarki `watermarks` FAIL'i bu madde değildir (MT-11). Offense'ı olmayan konsolda `offense_snapshot` için `watermarks` WARN'ı bir FAIL değildir.
 - Oturum açma bozuk: yönetici ve mevcut kullanıcılar giremiyor, `/api/v1/health/ready` 200 değil.
 - İlk kadanstan + 3 dk sonra, `/admin/search-cadence` içindeki hiçbir aile çalışmıyor ve `doctor` `celery_beat` ya da `celery_workers` FAIL veriyor.
-- 0.1.8'in gösterdiği veri yok: anomaliler, uyarılar, kurallar, log source'lar ya da offense'lar boş ya da eksik (ve sebebi "toplanmadı" dürüstlük durumu değil). Değişen bir konsolda, saatlik iki envanter yeniden denenene kadar kaynak sayfalarının boş görünmesi bu madde değildir (MT-11).
+- 0.1.9'un gösterdiği veri yok: anomaliler, uyarılar, kurallar, log source'lar ya da offense'lar boş ya da eksik (ve sebebi "toplanmadı" dürüstlük durumu değil). Değişen bir konsolda, saatlik iki envanter yeniden denenene kadar kaynak sayfalarının boş görünmesi bu madde değildir (MT-11).
 
 **Not al ve devam et:**
 
@@ -2192,10 +2222,10 @@ Bu depoda QRadar konsolunun denetim günlüğünün yeri belgelenmemiştir; o y�
 ```
 
 - Komut `Rollback replaces the live database with <yol>; data written since is kept only in the broken copy.` yazar ve `Type rollback to continue: ` bekler; `rollback` yaz.
-- Bittikten sonra checkout'u çalışan sürüme döndür. Diskteki betik checkout'tan önce hâlâ 0.1.9'dur; `install` ondan önce çalıştırılmaz. Sonra doğrula:
+- Bittikten sonra checkout'u çalışan sürüme döndür. Diskteki betik checkout'tan önce hâlâ 0.1.10'dur; `install` ondan önce çalıştırılmaz. Sonra doğrula:
 
 ```bash
-git checkout v0.1.8
+git checkout v0.1.9
 ./qradar-dash status
 curl -s http://127.0.0.1:8000/api/v1/version
 ./qradar-dash doctor
@@ -2216,10 +2246,10 @@ echo "install çıkış: $?"
 **Beklenen:**
 
 - `Rollback complete.` satırı; çıkış kodu 0; `PASS  migration_head database and image are at 0044` (bir kez). Şema geri alınmaz; baş `0044` kalır.
-- Bu yedekte `install.answers` vardır. Geri alma dosyayı yerine koyar ve bunun için bir satır yazmaz. `Removed answer key` satırı beklenmez. O satır, kopyası olmayan eski bir yedekte çıkar: `Removed answer key <ad> (unknown to 0.1.8).` Bu yükseltmenin kendi yedeği o durum değildir.
+- Bu yedekte `install.answers` vardır. Geri alma dosyayı yerine koyar ve bunun için bir satır yazmaz. `Removed answer key` satırı beklenmez. O satır, kopyası olmayan eski bir yedekte çıkar: `Removed answer key <ad> (unknown to 0.1.9).` Bu yükseltmenin kendi yedeği o durum değildir.
 - `cmp` hiçbir şey yazmaz ve 0 ile çıkar. `stat` `600` yazar; yedek `400` idiyse `400`.
-- `status`: `Installed version: 0.1.8`, `Last upgrade: rolled_back, …`; `/api/v1/version`: `"version":"0.1.8"` ve `"migration_head":"0044"`. Oturum açma çalışır. `doctor`: `FAIL` yok, konsol yanıtladığında; erişilemeyen konsolda `qradar_tls` ile `qradar_auth` ve onların ardından gelen `watermarks` / `errors_recent` satırları FAIL olur (aşağıdaki `install` maddesi bunu açıklar).
-- `install`, konsol yanıtladığında 0 ile çıkar. Özet `Install time` satırıyla biter ve ardından `=` işaretlerinden oluşan bir satır gelir. Ayrı bir “Install complete” satırı yoktur. Çıktıda `unknown key` yoktur. Özetteki `QRadar connection  FAILED` satırı, konsolun yanıt vermediği ve çıkışın 1 olduğu kurulumdur. Geri alma kontrolü o çıkışta da Geçti'dir: özete ulaşıldıysa (`Install time` satırı ve ardından `=` satırı yazıldıysa), çıktıda `unknown key` ve `install refused` yoksa ve `doctor`'un `qradar_tls` ile `qradar_auth` satırları aynı konsol erişim hatasını gösteriyorsa. Erişilemeyen konsolda her iki satır FAIL olur; satır sonundaki `runbook:` değeri konsol erişiminin koşu kitabını taşır (`qradar_tls` için `runbook: OPS-R4`, `qradar_auth` için `runbook: OPS-R1`). `API readiness  NOT READY` satırıyla ya da genel köken denetimi başarısızken (`public URL <adres> failed`) biten 1'lik çıkış Kaldı'dır. Checkout unutulmuşsa betik reddeder: `install refused: this site runs 0.1.8 and this checkout is 0.1.9; use ./qradar-dash upgrade 0.1.9 to change versions, or check out v0.1.8 to re-run install (see docs/OPERATIONS.md, Yükseltme)`. Hiçbir konteyner bu rette sürüm değiştirmez; önce `git checkout v0.1.8` çalıştır.
+- `status`: `Installed version: 0.1.9`, `Last upgrade: rolled_back, …`; `/api/v1/version`: `"version":"0.1.9"` ve `"migration_head":"0044"`. Oturum açma çalışır. `doctor`: `FAIL` yok, konsol yanıtladığında; erişilemeyen konsolda `qradar_tls` ile `qradar_auth` ve onların ardından gelen `watermarks` / `errors_recent` satırları FAIL olur (aşağıdaki `install` maddesi bunu açıklar).
+- `install`, konsol yanıtladığında 0 ile çıkar. Özet `Install time` satırıyla biter ve ardından `=` işaretlerinden oluşan bir satır gelir. Ayrı bir “Install complete” satırı yoktur. Çıktıda `unknown key` yoktur. Özetteki `QRadar connection  FAILED` satırı, konsolun yanıt vermediği ve çıkışın 1 olduğu kurulumdur. Geri alma kontrolü o çıkışta da Geçti'dir: özete ulaşıldıysa (`Install time` satırı ve ardından `=` satırı yazıldıysa), çıktıda `unknown key` ve `install refused` yoksa ve `doctor`'un `qradar_tls` ile `qradar_auth` satırları aynı konsol erişim hatasını gösteriyorsa. Erişilemeyen konsolda her iki satır FAIL olur; satır sonundaki `runbook:` değeri konsol erişiminin koşu kitabını taşır (`qradar_tls` için `runbook: OPS-R4`, `qradar_auth` için `runbook: OPS-R1`). `API readiness  NOT READY` satırıyla ya da genel köken denetimi başarısızken (`public URL <adres> failed`) biten 1'lik çıkış Kaldı'dır. Checkout unutulmuşsa betik reddeder: `install refused: this site runs 0.1.9 and this checkout is 0.1.10; use ./qradar-dash upgrade 0.1.10 to change versions, or check out v0.1.9 to re-run install (see docs/OPERATIONS.md, Yükseltme)`. Hiçbir konteyner bu rette sürüm değiştirmez; önce `git checkout v0.1.9` çalıştır.
 - Betik bozuk veritabanı kopyasının adını (`qradar_obs_broken_<utc>`) ve onu daha sonra silmek için tam komutu yazar; **silmeyi** acele etme.
 - Geri alma kendi sağlık denetiminde başarısız olursa yazıcılar durur ve `Rollback failed; the writers and the UI are stopped. Verified backup: <yol>` yazılır (OPS-R45); `./qradar-dash rollback` komutunu yinele ya da `./qradar-dash restore <yol>` kullan.
 
@@ -2233,20 +2263,20 @@ echo "install çıkış: $?"
 
 **Eylem:**
 
-- Lab VM'de yükseltmeden sonra MT-122'deki geri alma adımlarını çalıştır. Checkout bu adımda `v0.1.8` olur ve `./qradar-dash install --non-interactive .secrets/install.answers`, konsol yanıtlıyorsa 0 ile çıkar (koşul MT-122'nin `install` maddesindedir). MT-16…19 henüz yapılmamış olmalıdır. Sonra yeniden yükselt:
+- Lab VM'de yükseltmeden sonra MT-122'deki geri alma adımlarını çalıştır. Checkout bu adımda `v0.1.9` olur ve `./qradar-dash install --non-interactive .secrets/install.answers`, konsol yanıtlıyorsa 0 ile çıkar (koşul MT-122'nin `install` maddesindedir). MT-16…19 henüz yapılmamış olmalıdır. Sonra yeniden yükselt:
 
 ```bash
 git fetch --tags
-git checkout v0.1.9
-./qradar-dash upgrade 0.1.9
+git checkout v0.1.10
+./qradar-dash upgrade 0.1.10
 ```
 
 - MT-16, MT-17, MT-18 ve MT-19 bu yeniden yükseltmeden sonra yapılır.
 
 **Beklenen:**
 
-- Geri alma sonrası baş `0044` kalır. İkinci yükseltme de `0044`'tür ve iki `PASS` çifti de `database and image are at 0044` der. Son satır `Upgrade complete: 0.1.8 -> 0.1.9.` olur. `Last upgrade:` satırı en son işlemi gösterir.
-- Checkout `v0.1.9` değilken `upgrade 0.1.9` reddedilir: `upgrade refused: this checkout is version 0.1.8, not 0.1.9; run git fetch --tags && git checkout v0.1.9 first (see docs/OPERATIONS.md, Yükseltme)`. Hiçbir konteyner durmaz.
+- Geri alma sonrası baş `0044` kalır. İkinci yükseltme önce `0044`, sonra `0045`'tir; iki `PASS` çifti de bunu söyler ve bir kez `Running upgrade 0044 -> 0045` yazılır. Son satır `Upgrade complete: 0.1.9 -> 0.1.10.` olur. `Last upgrade:` satırı en son işlemi gösterir.
+- Checkout `v0.1.10` değilken `upgrade 0.1.10` reddedilir: `upgrade refused: this checkout is version 0.1.9, not 0.1.10; run git fetch --tags && git checkout v0.1.10 first (see docs/OPERATIONS.md, Yükseltme)`. Hiçbir konteyner durmaz.
 - Geri alma, yükseltmeden sonra oluşturulan hesapları ve hesapta saklanan `ui_language` değerini kaldırır. Tarayıcı çerezi `ba_locale` kalır; sonraki oturum açma, hesaptaki dili çereze yazar. İlk sayfa önceki dilde kalır; bir yenilemeden sonra hesap diline geçer (MT-20).
 
 **Kaydet:** İki sonuç.

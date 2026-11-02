@@ -317,6 +317,9 @@ separate task and is not skipped by that check.
 No IP address is selected or stored by geography collection. Country lookup occurs inside the
 QRadar query.
 
+<!-- REL-9 r1: GEO_COUNTRY_SOURCE, GEO_SOURCE_COUNTRY_PROPERTY (default "Source Geographic
+Location"), GEO_DESTINATION_COUNTRY_PROPERTY — documented in round 1. -->
+
 ## Custom threshold rules
 
 | Setting | Default | Meaning |
