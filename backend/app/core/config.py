@@ -25,8 +25,8 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.patterns import PROPERTY_NAME_PATTERN
 from app.models.enums import OutagePolicyMode
-from app.providers.base import PROPERTY_NAME_PATTERN
 
 
 class Environment(StrEnum):
