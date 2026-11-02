@@ -194,7 +194,7 @@ describe("useDashboard writes", () => {
         name: "SOC Overview",
         layout: SOC_OVERVIEW.layout,
         template_key: "soc_overview",
-        template_version: 1,
+        template_version: 2,
       }),
     );
     expect(api.setDefaultDashboard).toHaveBeenCalledWith("d1");

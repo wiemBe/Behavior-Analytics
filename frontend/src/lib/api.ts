@@ -3912,6 +3912,11 @@ export interface GeoCountries {
   measurement: GeoMeasurement | null;
   coverage: { measured_buckets: number; expected_buckets: number };
   status: GeoStatus;
+  /**
+   * The end of the newest measured bucket (GEO-3); null while NOT_COLLECTED. Absent from an older
+   * backend: the answer then has no age and is never called stale.
+   */
+  latest_bucket_end?: string | null;
   unresolved_note: string;
   country_source?: GeoCountrySource | null;
   country_property?: string | null;

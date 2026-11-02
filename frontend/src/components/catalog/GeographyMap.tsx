@@ -5,9 +5,11 @@
 // (the source or the destination address). The body is `GeographyBody`, the same component the
 // Geography page renders, so the two cannot disagree about a state.
 //
-// The response says how many buckets were measured but not when the newest one ended, so the
-// frame has no data time to judge staleness from and never calls this widget stale; a refresh
-// that fails keeps the previous answer on screen with a note, like the other widgets.
+// The response says when its newest bucket ended (`latest_bucket_end`, GEO-3). The frame judges
+// that against the GEO_COLLECTION cadence like any other widget: past twice the cadence the map
+// stays drawn and the frame says how old it is. No such time (NOT_COLLECTED, or a backend that
+// does not send it) is no claim at all. A refresh that fails keeps the previous answer on screen
+// with a note, like the other widgets.
 
 import { useLocale, useTranslations } from "next-intl";
 
@@ -48,6 +50,7 @@ export function GeographyMap({
   const direction: GeoDirection = known ?? "SOURCE";
   const read = homeReads.geoCountries(window, direction);
   const state = useApiResource(read.key, read.fetch);
+  const asOf = state.status === "ok" ? (state.data.latest_bucket_end ?? null) : null;
 
   return (
     <WidgetFrame
@@ -63,7 +66,7 @@ export function GeographyMap({
         ariaLabel: t("widget.linkAria"),
       }}
       state={state}
-      dataTo={{ at: null, family: "GEO_COLLECTION" }}
+      dataTo={{ at: asOf, family: "GEO_COLLECTION" }}
       what={t("widget.what")}
       permission="read:geo"
     >
