@@ -37,7 +37,7 @@ describe("search cadence page", () => {
     render(await SearchCadencePage());
     const rows = screen.getAllByRole("row").slice(1);
     expect(rows[0]).toHaveTextContent("Rule matches");
-    expect(rows[1]).toHaveTextContent("Phase A volume");
+    expect(rows[1]).toHaveTextContent("Log source volume");
   });
 
   it("explains a whole-list failure and what to do, without a table", async () => {

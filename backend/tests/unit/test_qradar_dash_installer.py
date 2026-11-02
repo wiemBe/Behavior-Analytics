@@ -879,7 +879,7 @@ def test_install_summary_names_every_retention_window(
         "not gated by RETENTION_ENABLED",
         "catch-all 35d",
         "geo 35d",
-        "Phase A incidents 365d",
+        "log source volume incidents 365d",
         "IPS incidents 365d",
         "WAF incidents 180d",
         "property-watch incidents 180d",
@@ -1613,7 +1613,7 @@ def test_install_summary_names_on_and_off_families_and_the_backup_timer(
     assert result.returncode == 0, result.stdout + result.stderr
     phrase = _cadence_phrase()
     assert (
-        "Searching QRadar   Phase A, catch-all, geo, explanations "
+        "Searching QRadar   log source volume, catch-all, geo, explanations "
         f"({phrase})"
     ) in result.stdout
     assert (
@@ -1625,6 +1625,18 @@ def test_install_summary_names_on_and_off_families_and_the_backup_timer(
     assert (
         "Backup timer       not installed. Run: ./qradar-dash backup --install-timer"
     ) in result.stdout
+
+
+def test_install_summary_never_prints_an_internal_phase_name(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    """POL-11: the family list and the retention line say "log source volume"."""
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Phase A" not in result.stdout
+    assert "PHASE_A" not in result.stdout
+    assert "log source volume incidents" in result.stdout
 
 
 def test_install_summary_notes_fifteen_minutes_when_waf_is_on(

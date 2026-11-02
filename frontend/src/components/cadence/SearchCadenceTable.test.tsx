@@ -51,14 +51,14 @@ describe("rows", () => {
       />,
     );
     expect(screen.getAllByRole("row")).toHaveLength(5); // header + 4
-    expect(screen.getByText("Phase A volume")).toBeInTheDocument();
+    expect(screen.getByText("Log source volume")).toBeInTheDocument();
     expect(screen.getByText("Event count per log source")).toBeInTheDocument();
     expect(screen.getByText("Rule matches")).toBeInTheDocument();
   });
 
   it("offers the seven presets in each select, labelled 5 min … 8 h", () => {
     render(<SearchCadenceTable items={[item()]} />);
-    const select = screen.getByRole("combobox", { name: "Cadence for Phase A volume" });
+    const select = screen.getByRole("combobox", { name: "Cadence for Log source volume" });
     expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
       "5 min", "15 min", "30 min", "1 h", "2 h", "4 h", "8 h",
     ]);
@@ -67,7 +67,7 @@ describe("rows", () => {
 
   it("computes the worst-case delay as cadence + bucket + settle", () => {
     render(<SearchCadenceTable items={[item()]} />);
-    expect(within(rowOf("Phase A volume")).getByText("up to 1 h 7 min")).toBeInTheDocument();
+    expect(within(rowOf("Log source volume")).getByText("up to 1 h 7 min")).toBeInTheDocument();
   });
 
   it("words the delay of a bucketless family as evidence arrival", () => {
@@ -87,7 +87,7 @@ describe("rows", () => {
 
   it("shows times in UTC with the zone", () => {
     render(<SearchCadenceTable items={[item()]} />);
-    const row = rowOf("Phase A volume");
+    const row = rowOf("Log source volume");
     // Compact in the cell, with the full time (seconds included) on hover.
     expect(within(row).getByText("10-12 09:00 UTC")).toHaveAttribute(
       "title",
@@ -101,7 +101,7 @@ describe("rows", () => {
 
   it("says 'Not run since upgrade' for a family that never ran, never a zero", () => {
     render(<SearchCadenceTable items={[item({ last_run: null })]} />);
-    const row = rowOf("Phase A volume");
+    const row = rowOf("Log source volume");
     expect(within(row).getByText("Not run since upgrade")).toBeInTheDocument();
     expect(within(row).getByText("No run yet")).toBeInTheDocument();
     expect(within(row).queryByText("0")).not.toBeInTheDocument();
@@ -119,7 +119,7 @@ describe("rows", () => {
         items={[item({ enabled: false, next_dispatch_at: "2099-01-01T00:00:00Z" })]}
       />,
     );
-    const row = rowOf("Phase A volume");
+    const row = rowOf("Log source volume");
     expect(within(row).getByText("—")).toHaveAttribute(
       "title",
       "This family is off, so it has no next run.",
@@ -133,7 +133,7 @@ describe("rows", () => {
         items={[item({ last_run: null, next_dispatch_at: "2099-01-01T00:00:00Z" })]}
       />,
     );
-    expect(within(rowOf("Phase A volume")).getByText("01-01 00:00 UTC")).toBeInTheDocument();
+    expect(within(rowOf("Log source volume")).getByText("01-01 00:00 UTC")).toBeInTheDocument();
   });
 
   it("says 'not counted' for a null searches_sent, and keeps a real zero as 0", () => {
@@ -142,7 +142,7 @@ describe("rows", () => {
         items={[item({ last_run: { ...item().last_run!, searches_sent: null } })]}
       />,
     );
-    const counted = within(rowOf("Phase A volume"));
+    const counted = within(rowOf("Log source volume"));
     expect(counted.getByText("not counted")).toHaveAttribute(
       "title",
       expect.stringMatching(/does not count its searches/i),
@@ -155,7 +155,7 @@ describe("rows", () => {
         items={[item({ last_run: { ...item().last_run!, searches_sent: 0 } })]}
       />,
     );
-    expect(within(rowOf("Phase A volume")).getByText("0")).toBeInTheDocument();
+    expect(within(rowOf("Log source volume")).getByText("0")).toBeInTheDocument();
   });
 
   it("right-aligns and tabulates the numeric columns", () => {
@@ -185,19 +185,19 @@ describe("last-run outcome", () => {
     ["dispatched", "Dispatched"],
   ])("labels the recorded outcome %s as %s", (raw, label) => {
     withOutcome(raw);
-    const row = rowOf("Phase A volume");
+    const row = rowOf("Log source volume");
     expect(within(row).getByText(label)).toBeInTheDocument();
     expect(within(row).queryByText(raw)).not.toBeInTheDocument();
   });
 
   it("tones the outcomes without relying on tone alone", () => {
     withOutcome("failed");
-    expect(within(rowOf("Phase A volume")).getByText("Failed")).toHaveClass("crit");
+    expect(within(rowOf("Log source volume")).getByText("Failed")).toHaveClass("crit");
   });
 
   it("shows an unknown outcome verbatim in code, never guessed", () => {
     withOutcome("quota-exceeded");
-    const code = within(rowOf("Phase A volume")).getByText("quota-exceeded");
+    const code = within(rowOf("Log source volume")).getByText("quota-exceeded");
     expect(code.tagName).toBe("CODE");
   });
 
@@ -207,7 +207,7 @@ describe("last-run outcome", () => {
         items={[item({ last_run: { ...item().last_run!, outcome: null } })]}
       />,
     );
-    expect(within(rowOf("Phase A volume")).queryByText("Complete")).not.toBeInTheDocument();
+    expect(within(rowOf("Log source volume")).queryByText("Complete")).not.toBeInTheDocument();
   });
 });
 
@@ -221,7 +221,7 @@ describe("changing a cadence", () => {
     );
     const user = userEvent.setup();
     render(<SearchCadenceTable items={[item()]} />);
-    const select = screen.getByRole("combobox", { name: "Cadence for Phase A volume" });
+    const select = screen.getByRole("combobox", { name: "Cadence for Log source volume" });
 
     await user.selectOptions(select, "2 h");
 
@@ -250,7 +250,7 @@ describe("changing a cadence", () => {
     vi.spyOn(api, "setSearchCadence").mockRejectedValue(new ApiError(403, "forbidden"));
     const user = userEvent.setup();
     render(<SearchCadenceTable items={[item()]} />);
-    const select = screen.getByRole("combobox", { name: "Cadence for Phase A volume" });
+    const select = screen.getByRole("combobox", { name: "Cadence for Log source volume" });
 
     await user.selectOptions(select, "15 min");
 
@@ -266,7 +266,7 @@ describe("changing a cadence", () => {
     vi.spyOn(api, "setSearchCadence").mockRejectedValue(new ApiError(500, "internal"));
     const user = userEvent.setup();
     render(<SearchCadenceTable items={[item()]} />);
-    const select = screen.getByRole("combobox", { name: "Cadence for Phase A volume" });
+    const select = screen.getByRole("combobox", { name: "Cadence for Log source volume" });
 
     await user.selectOptions(select, "8 h");
 
@@ -281,7 +281,7 @@ describe("changing a cadence", () => {
     vi.spyOn(api, "setSearchCadence").mockRejectedValue(new TypeError("fetch failed"));
     const user = userEvent.setup();
     render(<SearchCadenceTable items={[item()]} />);
-    const select = screen.getByRole("combobox", { name: "Cadence for Phase A volume" });
+    const select = screen.getByRole("combobox", { name: "Cadence for Log source volume" });
     await user.selectOptions(select, "5 min");
     expect(await screen.findByRole("alert")).toHaveTextContent(/not changed/i);
     expect(select).toHaveValue("3600");
@@ -296,7 +296,7 @@ describe("changing a cadence", () => {
       "4 h",
     );
     await screen.findByRole("alert");
-    expect(within(rowOf("Phase A volume")).queryByRole("alert")).not.toBeInTheDocument();
+    expect(within(rowOf("Log source volume")).queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("puts the outcome in a full-width row directly under its family's row", async () => {
@@ -304,16 +304,16 @@ describe("changing a cadence", () => {
     const user = userEvent.setup();
     render(<SearchCadenceTable items={[item(), item({ family: "RULE_MATCH" })]} />);
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Cadence for Phase A volume" }),
+      screen.getByRole("combobox", { name: "Cadence for Log source volume" }),
       "15 min",
     );
     const alert = await screen.findByRole("alert");
     const cell = alert.closest("td")!;
     expect(cell).toHaveAttribute("colspan", "7");
     const rows = screen.getAllByRole("row");
-    expect(rows[rows.indexOf(cell.closest("tr")!) - 1]).toBe(rowOf("Phase A volume"));
+    expect(rows[rows.indexOf(cell.closest("tr")!) - 1]).toBe(rowOf("Log source volume"));
     // The status is not inside the narrow cadence cell.
-    expect(within(rowOf("Phase A volume")).queryByRole("alert")).not.toBeInTheDocument();
+    expect(within(rowOf("Log source volume")).queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getAllByRole("row")).toHaveLength(4);
   });
 
@@ -322,7 +322,7 @@ describe("changing a cadence", () => {
     const user = userEvent.setup();
     render(<SearchCadenceTable items={[item()]} />);
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Cadence for Phase A volume" }),
+      screen.getByRole("combobox", { name: "Cadence for Log source volume" }),
       "15 min",
     );
     const perm = await screen.findByText("admin:search_cadence");
@@ -335,7 +335,7 @@ describe("changing a cadence", () => {
     const user = userEvent.setup();
     render(<SearchCadenceTable items={[item()]} />);
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Cadence for Phase A volume" }),
+      screen.getByRole("combobox", { name: "Cadence for Log source volume" }),
       "15 min",
     );
     expect(await screen.findByRole("status")).toHaveTextContent(/saved/i);
@@ -352,7 +352,7 @@ describe("changing a cadence", () => {
     const user = userEvent.setup();
     render(<SearchCadenceTable items={[item()]} />);
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Cadence for Phase A volume" }),
+      screen.getByRole("combobox", { name: "Cadence for Log source volume" }),
       "1 h",
     );
     expect(put).not.toHaveBeenCalled();

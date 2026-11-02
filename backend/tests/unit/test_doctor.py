@@ -922,6 +922,18 @@ async def test_families_off_reports_both_states_as_pass(settings: Settings) -> N
 
 
 @pytest.mark.asyncio
+async def test_families_off_names_the_always_on_family_by_its_reader_name(
+    settings: Settings,
+) -> None:
+    """POL-11: the operator reads "LOG_SOURCE_VOLUME", never the internal phase name."""
+    result = await make_doctor(settings).check_families_off()
+    on_text = result.message.split("; on: ", 1)[1].split(";", 1)[0]
+    assert on_text.split(" ")[0] == "LOG_SOURCE_VOLUME"
+    assert "PHASE_A" not in result.message
+    assert "Phase A" not in result.message
+
+
+@pytest.mark.asyncio
 async def test_errors_recent_pass_warn_and_fail(settings: Settings) -> None:
     for count, expected in ((0, Status.PASS), (1, Status.WARN), (3, Status.FAIL)):
         result = await make_doctor(

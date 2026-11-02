@@ -136,7 +136,7 @@ describe("health.collection in Turkish", () => {
     for (const name of ["Aile", "Sıklık", "Son çalıştırma", "Gecikme"]) {
       expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
     }
-    expect(within(rows[1]).getByText("Phase A hacmi")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Log source hacmi")).toBeInTheDocument();
     expect(within(rows[1]).getByText(nb(`15${NB}dk`))).toBeInTheDocument();
     expect(within(rows[1]).getByText("Zamanında")).toBeInTheDocument();
     expect(within(rows[2]).getByText("WAF toplama")).toBeInTheDocument();

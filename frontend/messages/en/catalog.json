@@ -67,7 +67,7 @@
     "onTime": "On time"
   },
   "family": {
-    "PHASE_A_VOLUME": "Phase A volume",
+    "PHASE_A_VOLUME": "Log source volume",
     "WAF_COLLECTION": "WAF collection",
     "ANOMALY_EXPLANATION": "Anomaly explanations",
     "RULE_MATCH": "Rule matches",

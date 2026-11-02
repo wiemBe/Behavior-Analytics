@@ -71,14 +71,14 @@ describe("the search cadence table in Turkish", () => {
     }
     expect(screen.getByText("— = zaman dilimi yok")).toBeInTheDocument();
     expect(screen.getByText("sıklık + zaman dilimi + yerleşme payı")).toBeInTheDocument();
-    expect(screen.getByText("Phase A hacmi")).toBeInTheDocument();
+    expect(screen.getByText("Log source hacmi")).toBeInTheDocument();
     expect(screen.getByText("Log source başına olay sayısı")).toBeInTheDocument();
-    const select = screen.getByRole("combobox", { name: "Phase A hacmi için sıklık" });
+    const select = screen.getByRole("combobox", { name: "Log source hacmi için sıklık" });
     expect(select).toHaveValue("3600");
     expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(
       ["5 dk", "15 dk", "30 dk", "1 sa", "2 sa", "4 sa", "8 sa"].map((x) => x.replace(" ", NB)),
     );
-    const phase = screen.getByRole("row", { name: /Phase A hacmi/ });
+    const phase = screen.getByRole("row", { name: /Log source hacmi/ });
     expect(phase.textContent).toContain(`en fazla 1${NB}sa 7${NB}dk`);
     expect(within(phase).getByText("Tamamlandı")).toHaveClass("pill", "ok");
     expect(within(phase).getByText("1.204")).toBeInTheDocument();
@@ -103,7 +103,7 @@ describe("the search cadence table in Turkish", () => {
       item({ cadence_seconds: 900, updated_by: "ada", updated_at: "2026-10-12T10:30:00Z" }),
     );
     render(<SearchCadenceTable items={[item()]} />);
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Phase A hacmi için sıklık" }), "900");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Log source hacmi için sıklık" }), "900");
     const status = await screen.findByRole("status");
     expect(status).toHaveTextContent("Kaydedildi. ada tarafından 2026-10-12 10:30:00 UTC zamanında değiştirildi.");
   });
@@ -111,14 +111,14 @@ describe("the search cadence table in Turkish", () => {
   it("says who changed it only when the API says", async () => {
     vi.spyOn(api, "setSearchCadence").mockResolvedValue(item({ cadence_seconds: 900, updated_by: null, updated_at: "2026-10-12T10:30:00Z" }));
     render(<SearchCadenceTable items={[item()]} />);
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Phase A hacmi için sıklık" }), "900");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Log source hacmi için sıklık" }), "900");
     expect(await screen.findByRole("status")).toHaveTextContent("Kaydedildi. 2026-10-12 10:30:00 UTC zamanında değiştirildi.");
   });
 
   it("reverts the select and names the permission on a refusal", async () => {
     vi.spyOn(api, "setSearchCadence").mockRejectedValue(new ApiError(403, "no"));
     render(<SearchCadenceTable items={[item()]} />);
-    const select = screen.getByRole("combobox", { name: "Phase A hacmi için sıklık" });
+    const select = screen.getByRole("combobox", { name: "Log source hacmi için sıklık" });
     await userEvent.selectOptions(select, "900");
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Rolünüz arama sıklığını değiştiremiyor (izin: admin:search_cadence). Hiçbir şey değiştirilmedi.");
@@ -129,7 +129,7 @@ describe("the search cadence table in Turkish", () => {
   it("words a failed change", async () => {
     vi.spyOn(api, "setSearchCadence").mockRejectedValue(new ApiError(500, "x"));
     render(<SearchCadenceTable items={[item()]} />);
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Phase A hacmi için sıklık" }), "900");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Log source hacmi için sıklık" }), "900");
     expect(await screen.findByRole("alert")).toHaveTextContent("Değiştirilmedi. Sunucu isteği tamamlayamadı.");
   });
 });

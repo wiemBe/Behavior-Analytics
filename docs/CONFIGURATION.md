@@ -134,7 +134,7 @@ reference heading for them.
 | `COVERAGE_EVALUATION_INTERVAL_SECONDS` | `3600` | Detection-coverage evaluation interval |
 | `COVERAGE_MIN_CONFIDENCE` | `0.5` | Inferred mappings below this are recorded and not counted |
 | `COVERAGE_LOGIC_VERSION` | `1` | Stamped when coverage classification meaning changes |
-| `ANOMALY_POLICY_VERSION` | `1` | Stamped on every Phase A anomaly when detection semantics change |
+| `ANOMALY_POLICY_VERSION` | `1` | Stamped on every log source volume anomaly when detection semantics change |
 | `EXPLANATION_ENABLED` | `true` | Run bounded explanation queries for an anomaly |
 | `EXPLANATION_TOP_VALUES` | `20` | Values retained per explanation dimension |
 | `EXPLANATION_BASELINE_WINDOW_MULTIPLE` | `3` | Comparison-window length as a multiple of the anomaly window |
@@ -164,7 +164,7 @@ trimmed to the dimensions its DSM populates; the rest are recorded unavailable.
 | `ANOMALY_SILENCE_GRACE_BUCKETS` | `1` | Missing buckets tolerated before silence evaluation |
 | `ANOMALY_MAX_BUCKET_ATTEMPTS` | `3` | Failed evaluation ticks on one bucket before it is given up. `1`–`20` |
 | `ANOMALY_FAULT_RETENTION_DAYS` | `30` | Days a resolved or given-up fault is kept. `1`–`3650`. Daily task `apply_anomaly_fault_retention`; not gated by `RETENTION_ENABLED` |
-| `LOG_SOURCE_ANOMALY_RETENTION_DAYS` | `365` | Closed Phase A incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). `1`–`3650`. Live states are kept. Task `apply_log_source_anomaly_retention`; not gated by `RETENTION_ENABLED`. An alert that lists the incident in `source_anomaly_ids` keeps it for the life of the alert, whatever the alert status (nothing deletes alerts). `evidence_snapshot` and `source_id` are not guards |
+| `LOG_SOURCE_ANOMALY_RETENTION_DAYS` | `365` | Closed log source volume incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). `1`–`3650`. Live states are kept. Task `apply_log_source_anomaly_retention`; not gated by `RETENTION_ENABLED`. An alert that lists the incident in `source_anomaly_ids` keeps it for the life of the alert, whatever the alert status (nothing deletes alerts). `evidence_snapshot` and `source_id` are not guards |
 | `LOG_SOURCE_ANOMALY_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch. `100`–`100000` |
 | `LOG_SOURCE_ANOMALY_RETENTION_MAX_BATCHES` | `20` | Batches per run. `1`–`1000` |
 | `LOG_SOURCE_ANOMALY_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule. Minimum `3600` |
