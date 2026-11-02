@@ -316,6 +316,9 @@ class RuleMatchWindow(Base):
         CheckConstraint("rows_returned >= 0", name="rows_returned_non_negative"),
         CheckConstraint("unknown_ids >= 0", name="unknown_ids_non_negative"),
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
+        # The retention delete filters on window_start alone. The primary key
+        # leads with instance_id, so it cannot serve that scan (FIX-14).
+        Index("ix_rule_match_window_window_start", "window_start"),
     )
 
     instance_id: Mapped[uuid.UUID] = mapped_column(

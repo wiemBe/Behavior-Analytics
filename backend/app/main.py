@@ -16,7 +16,7 @@ from slowapi.errors import RateLimitExceeded
 from app.api.routes.property_watches import CapacityConflict
 from app.core.config import Settings, get_settings, unknown_setting_names
 from app.core.logging import configure_logging
-from app.core.rate_limit import default_limit, limiter
+from app.core.rate_limit import apply_counted_window, default_limit, limiter
 from app.core.version import read_version
 from app.i18n.refusal import CodedHTTPException, coded_body, coded_http_exception_handler
 from app.schemas.property_watch import CapacityConflictOut
@@ -106,6 +106,10 @@ def create_app() -> FastAPI:
         if refusal is not None:
             return _security_headers(JSONResponse(status_code=403, content=coded_body(refusal)))
         response = await call_next(request)
+        # The dependency's Response does not survive a refusal. The window was
+        # recorded on the request, so whichever handler built this response
+        # still carries it. A 200 and a 429 already have it.
+        apply_counted_window(request, response)
         return _security_headers(response)
 
     @app.exception_handler(RateLimitExceeded)
