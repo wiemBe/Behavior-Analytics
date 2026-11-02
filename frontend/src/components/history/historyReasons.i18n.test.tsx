@@ -428,6 +428,41 @@ describe("the history views in Turkish", () => {
   });
 });
 
+describe("the clause lists of the history codes, rendered from the real artifact", () => {
+  // Pinned from the render before MSG-9 moved these three params from `semicolon` to `clauses`
+  // (a whole-artifact before/after run showed every code in en and tr byte-identical).
+  const trSayReal = createLocaleTranslator("tr");
+  const rendered = (code: string, locale: "en" | "tr") =>
+    renderBackendCode(
+      { code, params: (CODES[code] as { sample: Record<string, unknown> }).sample },
+      locale,
+      locale === "tr" ? trSayReal : createLocaleTranslator("en"),
+      CODES,
+    );
+
+  it.each([
+    [
+      "history.finish.partial",
+      "reached the end; QRadar holds less than asked (the floor is later than the asked start); 2 span(s) could not be read",
+      "sona ulaşıldı; QRadar istenenden azını tutuyor (taban, istenen başlangıçtan sonra); 2 aralık okunamadı",
+    ],
+    [
+      "history.reason.joined",
+      "fitted with no tracked endpoint yet; the 72-hour limit still bounds the reading; read 288 bucket(s)",
+      `henüz izlenen endpoint yokken sığdırıldı; 72${NB}saatlik sınır okumayı yine de sınırlar; 288 zaman dilimi okundu`,
+    ],
+    [
+      "history.settle.ticked",
+      "read 288 bucket(s); the width is 576 bucket(s)",
+      "288 zaman dilimi okundu; genişlik 576 zaman dilimi",
+    ],
+  ])("%s renders as before in en and tr", (code, en, tr) => {
+    expect((CODES[code] as { params: Record<string, { style?: string }> }).params).toBeDefined();
+    expect(rendered(code, "en")).toBe(en);
+    expect(rendered(code, "tr")).toBe(tr);
+  });
+});
+
 describe("the list styles of the backend reader", () => {
   const artifact: BackendCodeArtifact = {
     "history.test.item": {
@@ -437,16 +472,22 @@ describe("the list styles of the backend reader", () => {
       sample_english: "item",
       sample_english_params: {},
     },
-    // A `semicolon` list of an earlier family keeps the locale's own list form (rule health).
-    "test.semicolon": {
-      template: "{items}",
-      params: { items: { kind: "list", style: "semicolon" } },
-      sample: { items: { kind: "list", items: [] } },
-      sample_english: "",
-      sample_english_params: {},
-    },
+    // A `semicolon` list outside the history codes keeps the locale's own list form; a `clauses`
+    // list outside them joins with "; " (the style decides, never the code prefix).
     ...Object.fromEntries(
-      ["and_all", "semicolon", "comma"].map((style) => [
+      ["semicolon", "clauses"].map((style) => [
+        `test.${style}`,
+        {
+          template: "{items}",
+          params: { items: { kind: "list", style } },
+          sample: { items: { kind: "list", items: [] } },
+          sample_english: "",
+          sample_english_params: {},
+        },
+      ]),
+    ),
+    ...Object.fromEntries(
+      ["and_all", "semicolon", "clauses", "comma"].map((style) => [
         `history.test.${style}`,
         {
           template: "{items}",
@@ -461,9 +502,9 @@ describe("the list styles of the backend reader", () => {
   const say = createTextTranslator("tr", {
     backend: {
       history: {
-        test: { item: "öğe", and_all: "{items}", semicolon: "{items}", comma: "{items}" },
+        test: { item: "öğe", and_all: "{items}", semicolon: "{items}", clauses: "{items}", comma: "{items}" },
       },
-      test: { semicolon: "{items}" },
+      test: { semicolon: "{items}", clauses: "{items}" },
     },
   });
   const items = {
@@ -479,12 +520,28 @@ describe("the list styles of the backend reader", () => {
     expect(renderBackendCode({ code: "history.test.and_all", params: { items } }, "tr", say, artifact)).toBe(
       "öğe ve öğe ve öğe",
     );
-    expect(renderBackendCode({ code: "history.test.semicolon", params: { items } }, "tr", say, artifact)).toBe(
+    expect(renderBackendCode({ code: "history.test.clauses", params: { items } }, "tr", say, artifact)).toBe(
       "öğe; öğe; öğe",
+    );
+    expect(renderBackendCode({ code: "history.test.semicolon", params: { items } }, "tr", say, artifact)).toBe(
+      "öğe, öğe ve öğe",
     );
     expect(renderBackendCode({ code: "history.test.comma", params: { items } }, "tr", say, artifact)).toBe(
       "öğe, öğe ve öğe",
     );
+  });
+
+  it("joins a clauses list outside the history codes with a semicolon", () => {
+    const outside = {
+      kind: "list",
+      items: [
+        { code: "history.test.item", params: {} },
+        { code: "history.test.item", params: {} },
+      ],
+    };
+    expect(
+      renderBackendCode({ code: "test.clauses", params: { items: outside } }, "tr", say, artifact),
+    ).toBe("öğe; öğe");
   });
 
   it("keeps the locale's own list for a semicolon list outside the history codes", () => {

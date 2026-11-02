@@ -580,3 +580,36 @@ def test_the_minute_timestamp_style_and_the_semicolon_list_style_render() -> Non
         "The absence of measured matches is not evidence that the rule has never fired. "
         "The evaluation window stops holding the last affected window at 2026-01-03 03:04 UTC."
     )
+
+
+def test_the_clauses_list_style_joins_with_a_semicolon_and_marks_the_history_clause_lists() -> None:
+    from app.i18n.messages import REGISTRY, ParamKind
+
+    ref = MessageRef(
+        "history.reason.joined",
+        {
+            "clauses": [
+                MessageRef("history.family.zero_endpoint", {"limit": 72}),
+                MessageRef("history.settle.read", {"count": 288}),
+            ]
+        },
+    )
+    assert render(ref) == (
+        "fitted with no tracked endpoint yet; the 72-hour limit still bounds the reading; "
+        "read 288 bucket(s)"
+    )
+    styles = {
+        (spec.code, name): param.style
+        for spec in REGISTRY
+        for name, param in spec.params.items()
+        if param.kind is ParamKind.LIST and param.style in ("semicolon", "clauses")
+    }
+    # The clause lists of the history codes carry the style the frontend joins on; no history
+    # code is left on the plain semicolon list, which the frontend renders in the locale's form.
+    assert {code for (code, _), style in styles.items() if style == "clauses"} == {
+        "history.finish.partial",
+        "history.settle.ticked",
+        "history.reason.joined",
+    }
+    assert not [code for (code, _), style in styles.items()
+                if style == "semicolon" and code.startswith("history.")]
