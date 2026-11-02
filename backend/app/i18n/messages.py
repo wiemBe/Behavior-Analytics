@@ -13,8 +13,11 @@ default), ``grouped``, ``fixed``, ``trimmed`` (a whole number without a point, o
 decimals with trailing zeros dropped) or ``repr`` (Python's ``str()`` of the number, which keeps
 a trailing ``.0``); points accept ``signed`` (the default) or ``unsigned``; lists accept
 ``comma`` (the default), ``and`` (Oxford: "a, b and c"), ``and_all`` (a flat " and " between
-every item, for a sentence whose legacy English joined that way) or ``semicolon`` (``"; "``,
-for a list of clauses that carry commas); durations accept ``timedelta`` (Python's ``str()`` of
+every item, for a sentence whose legacy English joined that way), ``semicolon`` (``"; "``,
+for a list of clauses that carry commas, which the frontend still renders in the locale's own
+list form) or ``clauses`` (``"; "`` in every language: the frontend joins the translated
+clauses with ``"; "`` too, for a list of sentences or sentence fragments such as a history
+reason); durations accept ``timedelta`` (Python's ``str()`` of
 a ``timedelta``, ``0:30:00`` or ``1 day, 2:00:00``, for a sentence that always printed it so) or
 ``age`` (unbounded hours plus minutes and seconds, as the custom-rule stale reason printed them);
 timestamps accept the default (date, second, ``UTC``), ``minute`` (date, minute, ``UTC``) or
@@ -4393,7 +4396,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg(
         "history.finish.partial",
         "reached the end; {problems}",
-        {"problems": ParamSpec(ParamKind.LIST, style="semicolon")},
+        {"problems": ParamSpec(ParamKind.LIST, style="clauses")},
         {
             "problems": [
                 MessageRef("history.finish.floor_cut"),
@@ -4472,7 +4475,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg(
         "history.settle.ticked",
         "{clauses}",
-        {"clauses": ParamSpec(ParamKind.LIST, style="semicolon")},
+        {"clauses": ParamSpec(ParamKind.LIST, style="clauses")},
         {
             "clauses": [
                 MessageRef("history.settle.read", {"count": 288}),
@@ -4851,7 +4854,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg(
         "history.reason.joined",
         "{clauses}",
-        {"clauses": ParamSpec(ParamKind.LIST, style="semicolon")},
+        {"clauses": ParamSpec(ParamKind.LIST, style="clauses")},
         {
             "clauses": [
                 MessageRef("history.family.zero_endpoint", {"limit": 72}),
@@ -5058,7 +5061,7 @@ _STYLES: dict[ParamKind, set[str | None]] = {
     ParamKind.DURATION: {None, "timedelta", "age"},
     ParamKind.TIMESTAMP: {None, "minute", "iso"},
     ParamKind.ENUM: {None, "lower"},
-    ParamKind.LIST: {None, "comma", "and", "and_all", "semicolon"},
+    ParamKind.LIST: {None, "comma", "and", "and_all", "semicolon", "clauses"},
     ParamKind.REF: {None},
     ParamKind.TEXT: {None},
 }
@@ -5284,7 +5287,7 @@ def _format_param(
             render(item, registry=registry) if isinstance(item, MessageRef) else str(item)
             for item in value
         ]
-        if spec.style == "semicolon":
+        if spec.style in ("semicolon", "clauses"):
             return "; ".join(rendered)
         if spec.style == "and_all":
             return " and ".join(rendered)

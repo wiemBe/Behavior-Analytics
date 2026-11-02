@@ -167,21 +167,21 @@ interface RenderContext {
 /**
  * A list parameter joined as its style says. The style shapes the backend's English; here it
  * keeps the same structure in the reader's language: `and_all` joins with one conjunction between
- * every item (a limit sentence), and `semicolon` joins the clauses of a history reason with
- * "; " as the English does. The `semicolon` lists of the earlier families (rule health) take the
- * locale's own list form in a non-English reader, as their catalogs were written for.
+ * every item (a limit sentence), and `clauses` joins translated clauses (a history reason) with
+ * "; " as the English does, in every locale. A `semicolon` list (rule health, search validation)
+ * takes the locale's own list form in a non-English reader, as their catalogs were written for.
+ * The style alone decides; the code's prefix never does.
  */
 function joinedList(
   items: unknown[],
   spec: BackendParamSpec,
   context: RenderContext,
   depth: number,
-  code: string,
 ): string | undefined {
   const parts = items.map((item) => formatUntyped(item, context, depth));
   if (parts.some((part) => part === undefined)) return undefined;
   const texts = parts as string[];
-  if (spec.style === "semicolon" && code.startsWith("history.")) return texts.join("; ");
+  if (spec.style === "clauses") return texts.join("; ");
   if (spec.style === "and_all") return texts.join(context.locale === "tr" ? " ve " : " and ");
   return new Intl.ListFormat(context.locale === "tr" ? "tr-TR" : "en-US").format(texts);
 }
@@ -191,7 +191,6 @@ function formatParam(
   spec: BackendParamSpec,
   context: RenderContext,
   depth: number,
-  code: string,
 ): string | undefined {
   switch (spec.kind) {
     case "count":
@@ -243,7 +242,7 @@ function formatParam(
     }
     case "list":
       return taggedKind(value, "list") && Array.isArray(value.items)
-        ? joinedList(value.items, spec, context, depth, code)
+        ? joinedList(value.items, spec, context, depth)
         : undefined;
     case "ref":
       if (typeof value === "string") return value;
@@ -280,7 +279,7 @@ function translateCode(
   // a ref is formatted as a marker and put back, lower-first, once the template has placed it.
   const nested: Record<string, string> = {};
   for (const name of expected) {
-    const value = formatParam(ref.params[name], spec.params[name], context, depth, ref.code);
+    const value = formatParam(ref.params[name], spec.params[name], context, depth);
     if (value === undefined) return undefined;
     if (
       context.locale === "tr" &&

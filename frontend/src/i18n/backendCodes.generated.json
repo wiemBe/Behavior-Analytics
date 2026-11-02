@@ -3516,7 +3516,7 @@
     "params": {
       "problems": {
         "kind": "list",
-        "style": "semicolon"
+        "style": "clauses"
       }
     },
     "sample": {
@@ -3809,7 +3809,7 @@
     "params": {
       "clauses": {
         "kind": "list",
-        "style": "semicolon"
+        "style": "clauses"
       }
     },
     "sample": {
@@ -4119,7 +4119,7 @@
     "params": {
       "clauses": {
         "kind": "list",
-        "style": "semicolon"
+        "style": "clauses"
       }
     },
     "sample": {
