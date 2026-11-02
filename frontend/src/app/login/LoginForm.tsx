@@ -15,7 +15,7 @@ import { continueInAccountLanguage } from "@/components/auth/localeNavigation";
 import { errorTexts } from "@/components/auth/reasons";
 import { useSession } from "@/components/auth/session";
 import styles from "@/components/auth/auth.module.css";
-import { ApiError, destinationAfterLogin } from "@/lib/api";
+import { ApiError, destinationAfterLogin, rateLimitedText } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import type { Locale } from "@/i18n/locale";
 import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
@@ -49,9 +49,14 @@ export function LoginForm() {
     }
     try {
       await session.reload();
-    } catch {
+    } catch (err) {
       setPending(false);
-      setProblem({ lines: [t("signedInReadFailed")] });
+      setProblem({
+        lines:
+          err instanceof ApiError && err.status === 429
+            ? [rateLimitedText(err, say)]
+            : [t("signedInReadFailed")],
+      });
       return;
     }
     setPending(false);
@@ -130,8 +135,6 @@ function loginProblem(
       lines,
     };
   }
-  if (err instanceof ApiError && err.status === 429) {
-    return { heading: t("wait"), lines };
-  }
+  // The 429 sentence already says when to try again, so it carries no "wait" heading of its own.
   return { lines };
 }

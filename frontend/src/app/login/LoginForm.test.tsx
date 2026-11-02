@@ -120,13 +120,15 @@ describe("LoginForm", () => {
     expect(alert).toHaveTextContent("The directory server is unavailable. Sign-in was not completed.");
   });
 
-  it("tells the caller to wait on 429", async () => {
+  it("says rate limited on 429, once, without the server detail", async () => {
     client.login.mockRejectedValue(new ApiError(429, "rate limit exceeded", "rate limit exceeded"));
     renderForm();
     await submit();
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Wait, then try again.");
-    expect(alert).toHaveTextContent("rate limit exceeded");
+    expect(alert).toHaveTextContent("Too many requests came from this address within a minute.");
+    expect(alert).toHaveTextContent("Try again in a minute.");
+    expect(alert).not.toHaveTextContent("rate limit exceeded");
+    expect(alert).not.toHaveTextContent("Wait, then try again.");
   });
 
   it("goes to a safe return path and stores no token", async () => {

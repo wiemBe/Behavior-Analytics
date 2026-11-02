@@ -4,7 +4,7 @@
 import { renderRefusal } from "@/i18n/refusalMessage";
 import type { Locale } from "@/i18n/locale";
 import type { TextTranslator } from "@/i18n/textTranslator";
-import { ApiError } from "@/lib/api";
+import { ApiError, rateLimitedText } from "@/lib/api";
 import { refusalSentences } from "@/lib/refusal";
 import { englishText } from "./englishText";
 
@@ -18,9 +18,10 @@ function textOf(item: unknown): string {
 }
 
 /**
- * Every reason an `ApiError` carried, in order, with blanks removed. A reason that carries a
- * message code is worded in `locale` (English shows the server's text as sent); `t` must then
- * be a root translator (full keys) that holds the `backend` keys.
+ * Every reason an `ApiError` carried, in order, with blanks removed. A 429 is the rate-limit
+ * sentence, not the server's detail. A reason that carries a message code is worded in `locale`
+ * (English shows the server's text as sent); `t` must then be a root translator (full keys) that
+ * holds the `backend` keys.
  */
 export function errorTexts(
   err: unknown,
@@ -30,6 +31,8 @@ export function errorTexts(
   if (!(err instanceof ApiError)) {
     return [t("auth.requestSendFailed")];
   }
+  // A 429 is the address being limited, not a reason from the form: one sentence for every caller.
+  if (err.status === 429) return [rateLimitedText(err, t)];
   const detail = err.detail;
   if (Array.isArray(detail)) {
     const sentences = refusalSentences(err).map((sentence) =>
