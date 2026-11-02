@@ -60,6 +60,7 @@ describe("deriveLayout", () => {
       [0, 3], [3, 3], // class beside top sources
       [0, 3], [3, 3], // severity beside health
       [0, 6], [0, 6], // the two tables
+      [0, 6], // the geography map takes the last row (GEO-4)
     ]);
     for (const w of six) expect(w.x + w.w).toBeLessThanOrEqual(6);
     noOverlap(six);

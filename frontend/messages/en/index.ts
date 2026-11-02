@@ -28,6 +28,7 @@ import evidence from "./evidence.json";
 import fieldMapping from "./fieldMapping.json";
 import fleet from "./fleet.json";
 import format from "./format.json";
+import geo from "./geo.json";
 import guide from "./guide.json";
 import guideLinks from "./guideLinks.json";
 import history from "./history.json";
@@ -77,6 +78,7 @@ const messages = {
   fieldMapping,
   fleet,
   format,
+  geo,
   guide,
   guideLinks,
   history,

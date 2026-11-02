@@ -112,8 +112,16 @@
     },
     "map_geography": {
       "title": "Geography",
-      "description": "Where traffic comes from, by country.",
-      "blockedBy": "the map widget is not built yet; geo collection is"
+      "description": "Where events come from, by country of the source or the destination address, over the chosen range.",
+      "fields": {
+        "direction": "Address"
+      },
+      "options": {
+        "direction": {
+          "SOURCE": "Source address",
+          "DESTINATION": "Destination address"
+        }
+      }
     }
   },
   "categories": {
@@ -127,7 +135,7 @@
   "templates": {
     "soc_overview": {
       "name": "SOC Overview",
-      "description": "Fleet volume, source health, anomalies and offenses. Geography is left out until its map is available."
+      "description": "Fleet volume, source health, anomalies, offenses and the countries events come from."
     },
     "qradar_administration": {
       "name": "QRadar Administration",

@@ -4,7 +4,7 @@ import { WIDGETS } from "./registry";
 
 describe("registry range and expand declarations (UI-3.3)", () => {
   // UI-3.5b: the two subject charts take the same presets, as `since`/`until` on their reads.
-  it("declares the windows on exactly the seven widgets whose reads take one", () => {
+  it("declares the windows on exactly the eight widgets whose reads take one", () => {
     const ranged = WIDGETS.filter((w) => w.range !== null);
     expect(ranged.map((w) => w.type)).toEqual([
       "kpi.total_eps",
@@ -14,6 +14,8 @@ describe("registry range and expand declarations (UI-3.3)", () => {
       "table.fleet_classes",
       "waf.endpoint_traffic",
       "chart.eps_observed_expected",
+      // GEO-4: the map reads /geo/countries with since and until.
+      "map.geography",
     ]);
     for (const def of ranged) expect(def.range, def.type).toEqual(["1h", "24h", "7d"]);
   });

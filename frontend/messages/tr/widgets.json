@@ -112,8 +112,16 @@
     },
     "map_geography": {
       "title": "Coğrafya",
-      "description": "Trafiğin ülkelere göre nereden geldiği.",
-      "blockedBy": "harita bileşeni henüz hazır değil; coğrafi toplama hazır"
+      "description": "Olayların kaynak veya hedef adresinin ülkesine göre nereden geldiği, seçilen aralıkta.",
+      "fields": {
+        "direction": "Adres"
+      },
+      "options": {
+        "direction": {
+          "SOURCE": "Kaynak adres",
+          "DESTINATION": "Hedef adres"
+        }
+      }
     }
   },
   "categories": {
@@ -127,7 +135,7 @@
   "templates": {
     "soc_overview": {
       "name": "SOC Genel Bakışı",
-      "description": "Filo hacmi, kaynak sağlığı, anomaliler ve offense'lar. Harita hazır olana kadar coğrafya bileşeni yer almaz."
+      "description": "Filo hacmi, kaynak sağlığı, anomaliler, offense'lar ve olayların geldiği ülkeler."
     },
     "qradar_administration": {
       "name": "QRadar Yönetimi",

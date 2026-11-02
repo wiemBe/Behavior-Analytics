@@ -21,15 +21,16 @@ function at(
  * The Home. Positions: the KPI row (4 x 3 columns, 8 rows: the Turkish breakdown lines wrap to one
  * more line than the English ones, and a card never scrolls), fleet EPS (8) beside EPS by class
  * (4), top sources, severity and health (3 x 4, 16 rows), recent anomalies and recent offenses
- * (2 x 6, 16 rows: the Turkish tables need one row more than the English ones). Left out until
- * their data exists: the geography map.
+ * (2 x 6, 16 rows: the Turkish tables need one row more than the English ones), and the geography
+ * map across the bottom (12 columns, 18 rows: the map and the country table side by side, then
+ * the coverage and the remainders under them).
  */
 export const SOC_OVERVIEW: DescribedDashboardTemplate = {
   key: "soc_overview",
   version: 1,
   name: "SOC Overview",
   description:
-    "Fleet volume, source health, anomalies and offenses. Geography is left out until its map is available.",
+    "Fleet volume, source health, anomalies, offenses and the countries events come from.",
   layout: {
     v: 1,
     range: "24h",
@@ -45,6 +46,7 @@ export const SOC_OVERVIEW: DescribedDashboardTemplate = {
       at("srchealth", "health.log_sources", 8, 22, 4, 16),
       at("recanom", "table.recent_anomalies", 0, 38, 6, 16),
       at("recoff", "table.recent_offenses", 6, 38, 6, 16),
+      at("geomap", "map.geography", 0, 54, 12, 18),
     ],
   },
 };

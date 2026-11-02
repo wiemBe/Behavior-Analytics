@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { answer, notCollected } from "@/components/geo/fixtures";
 import type { ResourceState } from "@/hooks/useApiResource";
 import type { SocOverview } from "@/lib/api";
 import {
@@ -37,8 +38,8 @@ const { setOption, init, use, on } = vi.hoisted(() => {
   };
 });
 
-vi.mock("echarts/core", () => ({ init, use }));
-vi.mock("echarts/charts", () => ({ LineChart: {}, PieChart: {}, BarChart: {} }));
+vi.mock("echarts/core", () => ({ init, use, registerMap: vi.fn() }));
+vi.mock("echarts/charts", () => ({ LineChart: {}, PieChart: {}, BarChart: {}, MapChart: {} }));
 vi.mock("echarts/components", () => ({
   GridComponent: {},
   MarkAreaComponent: {},
@@ -168,6 +169,8 @@ function stateFor(key: string): ResourceState<unknown> {
   if (key.startsWith("/offenses?status=OPEN")) return okay(empty ? page([]) : oneOffense);
   if (key.startsWith("/anomalies?active_only=true")) return okay(empty ? page([]) : oneAnomaly);
   if (key.startsWith("/anomalies?since=")) return okay(empty || insufficient ? page([]) : oneAnomaly);
+  // GEO-4: the map widget of the template. A fresh install has collected no country counts.
+  if (key.startsWith("/geo/countries")) return okay(empty ? notCollected() : answer());
   throw new Error(`Unhandled Home read in test: ${key}`);
 }
 
@@ -214,9 +217,10 @@ describe("Dashboard page", () => {
       "Log source healthlatest state",
       "Recent anomaliesactive now",
       "Recent offensesopen, by last update",
+      "Geographysource addresses · 24 h",
     ]);
     expect(screen.getAllByRole("article")).toHaveLength(4);
-    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(11);
+    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(12);
     // The end of the last measured step (12:05 + 5 min), not the series' window_end (14:00), which
     // is the request's own "now".
     expect(mocks.reportAge).toHaveBeenCalledWith("2026-10-14T12:10:00.000Z");
@@ -254,7 +258,7 @@ describe("Dashboard page", () => {
     const { container } = render(<HomePage />);
     await widgetsLoaded(container);
     const alerts = screen.getAllByRole("alert");
-    expect(alerts).toHaveLength(11);
+    expect(alerts).toHaveLength(12);
     for (const alert of alerts) {
       expect(alert).toHaveTextContent(/Refresh|next refresh/);
       expect(alert).toHaveTextContent(/backend is reachable/);

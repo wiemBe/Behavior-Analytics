@@ -30,6 +30,7 @@ import type {
   WidgetSize,
 } from "./types";
 
+import type { GeographyConfig } from "@/components/catalog/GeographyMap";
 import type { SourceEpsConfig } from "@/components/catalog/SourceEps";
 import type { WafTrafficConfig } from "@/components/catalog/WafEndpointTraffic";
 import type { PropertyWatchWidgetConfig } from "@/widgets/PropertyWatchWidget";
@@ -84,7 +85,8 @@ function live<C = NoConfig>(input: LiveInput<C>): AnyWidgetDef {
   };
 }
 
-function blocked(
+/** A widget whose data does not exist yet: listed disabled with its reason. None is blocked now. */
+export function blocked(
   input: Pick<AnyWidgetDef, "type" | "title" | "description" | "category" | "size"> & {
     blockedBy: string;
   },
@@ -434,13 +436,22 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     loader: () =>
       import("@/components/catalog/RecentIpsAnomalies").then((m) => m.RecentIpsAnomalies),
   }),
-  blocked({
+  live<GeographyConfig>({
     type: "map.geography",
     title: "Geography",
-    description: "Where traffic comes from, by country.",
+    description:
+      "Where events come from, by country of the source or the destination address, over the chosen range.",
     category: "Chart",
-    size: { w: 6, h: 15, minW: 4, minH: 11 },
-    blockedBy: "the map widget is not built yet; geo collection is",
+    requires: ["read:geo"],
+    sources: ["/geo/countries"],
+    size: { w: 6, h: 24, minW: 4, minH: 14 },
+    range: FLEET_RANGES,
+    config: {
+      direction: { label: "Address", options: ["SOURCE", "DESTINATION"] },
+    },
+    defaultConfig: { direction: "SOURCE" },
+    drillDown: (cfg) => `/geography?direction=${cfg.direction === "DESTINATION" ? "DESTINATION" : "SOURCE"}`,
+    loader: () => import("@/components/catalog/GeographyMap").then((m) => m.GeographyMap),
   }),
 ];
 

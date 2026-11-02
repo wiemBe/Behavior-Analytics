@@ -289,6 +289,23 @@
         }
       ]
     },
+    "geography": {
+      "title": "Coğrafya",
+      "answers": "Trafik hangi ülkelerden geliyor ve harita ne kadar güvenilir?",
+      "body": [
+        {
+          "p": "Sayfa başlığı **Coğrafya**dır. **Adres**, ülkenin hangi adresten alınacağını seçer: **Kaynak** veya **Hedef**. **Pencere** **1 sa**, **24 sa** ve **7 gün** seçeneklerini sunar. Harita her ülkeyi olay sayısına göre boyar; sınıflar yuvarlak sınırlıdır ve gösterge bunları **Ülke başına olay** altında listeler. Satırı olmayan bir ülke **Veri yok** rengiyle çizilir; bu en düşük sınıf değildir, çünkü o ülke için hiçbir şey ölçülmemiştir. Haritanın yanındaki tablo, yanıttaki her ülke için **Ülke**, **Olay** ve **Pay** verir. **Pay**, ülkesi olan olaylar üzerindendir; kalanlar ona hiçbir zaman karıştırılmaz."
+        },
+        {
+          "p": "Haritanın altında **Ölçülen kova**, pencerenin ne kadarının toplandığını söyler. **Çözümlenemeyen**, **Ülke sınırını aşan** ve **Ayrıştırılamayan**, bir ülkeye atanamayan olayları sayar. Çözümlenemeyen olayların adresi özel, dahili veya GeoIP tarafından bilinmeyendir ve arama bu üçünü birbirinden ayıramaz. Sayfa ülkenin nereden geldiğini söylediğinde bu ya bir QRadar özelliğidir ya da adresin GeoIP aramasıdır. Pano bileşeni en büyük beş ülkeyi listeler ve bu sayfayı açar."
+        }
+      ],
+      "states": [
+        {
+          "p": "**Toplanmadı.**; **Yetersiz veri.**; ölçülen kovalarla **Kısmi**; sayımlar alt sınır olduğunda **En az**; çizgiler için çok küçük ülkeler haritanın altında adıyla anılır ve tabloda kalır; izin yok bildirimi izni adıyla söyler."
+        }
+      ]
+    },
     "fleet": {
       "title": "Filo",
       "answers": "Her log source sınıfı baseline'ına göre ne kadar gönderiyor ve neler inceleme bekliyor?",

@@ -215,6 +215,12 @@ export const PLAIN: Readonly<Record<string, Readonly<Record<string, PlainReason>
   "fleet.page.windowLine": { minutes: "string" },
   "format.hoursAgo": { count: "bounded" },
   "format.minutesAgo": { count: "bounded" },
+  // GEO-4: every count is handed over already formatted for the locale (`formatCount`).
+  "geo.facts.eventsUnit": { count: "string" },
+  "geo.map.events": { count: "string" },
+  "geo.map.eventsAtLeast": { count: "string" },
+  "geo.map.topItem": { count: "string" },
+  "geo.table.top": { shown: "string", total: "string" },
   "history.confirm.yes": { days: "string" },
   "history.confirm.yesDays": { days: "string" },
   "history.dialog.cost": { hours: "string" },

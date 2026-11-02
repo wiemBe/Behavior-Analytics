@@ -8,7 +8,7 @@ describe("NAV", () => {
     expect(NAV[0].items).toEqual([{ href: "/", label: "Dashboard" }]);
   });
 
-  it("groups the five behavioral destinations first among the labeled groups", () => {
+  it("groups the six behavioral destinations first among the labeled groups", () => {
     expect(NAV[1].label).toBe("Behavior");
     expect(NAV[1].items.map((i) => i.label)).toEqual([
       "Overview",
@@ -16,6 +16,7 @@ describe("NAV", () => {
       "Sources",
       "WAF behavior",
       "Property watches",
+      "Geography",
     ]);
   });
 

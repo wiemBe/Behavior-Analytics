@@ -140,7 +140,7 @@ describe("the Home page in Turkish", () => {
     expect(await screen.findByText("Varsayılan")).toBeInTheDocument();
     expect(screen.getByText("Paylaşılan")).toBeInTheDocument();
     expect(
-      screen.getByText("Filo hacmi, kaynak sağlığı, anomaliler ve offense'lar. Harita hazır olana kadar coğrafya bileşeni yer almaz."),
+      screen.getByText("Filo hacmi, kaynak sağlığı, anomaliler, offense'lar ve olayların geldiği ülkeler."),
     ).toBeInTheDocument();
   });
 

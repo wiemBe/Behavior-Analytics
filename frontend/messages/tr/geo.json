@@ -1,0 +1,89 @@
+{
+  "page": {
+    "title": "Coğrafya",
+    "description": "Olayların kaynak veya hedef adresinin ülkesine göre ülke başına sayısı.",
+    "loadingWhat": "ülke sayımları",
+    "errorWhat": "Ülke sayımları",
+    "windowLine": "Son {window}: <start></start> ile <end></end> arası.",
+    "mapHeading": "Ülkeye göre olaylar",
+    "meta": "Coğrafya",
+    "loadNoun": "ülke sayımları",
+    "failedHeading": "Ülke sayımları gösterilemedi."
+  },
+  "controls": {
+    "directionNav": "Adres yönü",
+    "directionLabel": "Adres",
+    "windowNav": "Pencere",
+    "windowLabel": "Pencere"
+  },
+  "direction": {
+    "SOURCE": "Kaynak",
+    "DESTINATION": "Hedef"
+  },
+  "directionName": {
+    "SOURCE": "kaynak adresler",
+    "DESTINATION": "hedef adresler"
+  },
+  "widget": {
+    "title": "Coğrafya",
+    "what": "ülke sayımları",
+    "link": "Coğrafya",
+    "linkAria": "Coğrafya sayfasını aç",
+    "unsupportedDirection": "Kayıtlı yön bu sürümün bildiği bir yön değil; kaynak adresler gösteriliyor.",
+    "windowText": "{direction}, {range}"
+  },
+  "state": {
+    "notCollectedLead": "Toplanmadı.",
+    "notCollected": "Bu aralıkta {direction} için hiçbir şey toplanmadı, bu yüzden harita çizilmedi. Ülkeyi taşıyan QRadar özelliği yapılandırılmamış olabilir veya toplama bu aralıkta çalışmamış olabilir.",
+    "insufficientLead": "Yetersiz veri.",
+    "insufficient": "{direction} için kovalar toplandı ancak hiçbir adres bir ülkeye çözümlenmedi, bu yüzden harita çizilmedi."
+  },
+  "map": {
+    "aria": "Ülkeye göre olayların haritası, {direction}. En yüksekler: {top}. Tablo her ülkeyi listeler.",
+    "ariaNone": "Ülkeye göre olayların haritası.",
+    "topItem": "{name}: {count}",
+    "loadingOutlines": "Harita çizgileri yükleniyor…",
+    "outlinesFailed": "Harita çizgileri yüklenemedi.",
+    "outlinesFailedAction": "Tabloda aynı rakamlar var. Yeniden denemek için sayfayı yeniden yükleyin.",
+    "noData": "Veri yok",
+    "events": "{count} olay",
+    "eventsAtLeast": "En az {count} olay",
+    "share": "Ülkesi olan olayların {share}"
+  },
+  "legend": {
+    "title": "Ülke başına olay",
+    "titleAtLeast": "En az, ülke başına olay",
+    "noData": "Veri yok",
+    "between": "{from} – {to}",
+    "from": "{from} ve üzeri"
+  },
+  "table": {
+    "label": "Ülkeye göre olaylar",
+    "country": "Ülke",
+    "events": "Olay",
+    "share": "Pay",
+    "atLeast": "en az",
+    "top": "İlk {shown} / {total} ülke. Coğrafya sayfası hepsini listeler.",
+    "all": "{total, plural, other {# ülke}}.",
+    "undrawn": "{count, plural, other {# ülke}} harita çizgileri için çok küçük olduğundan çizilmedi: {names}. {events} olay tabloda."
+  },
+  "facts": {
+    "partial": "Sayımlar yalnızca ölçülen kovaları kapsıyor.",
+    "lowerBound": "Bazı kovalar alt sınırdır; bu yüzden her sayım gösterilenden az değildir.",
+    "coverage": "Ölçülen kova",
+    "coverageValue": "{measured} / {expected}",
+    "remainders": "Bir ülkeye atanmayan",
+    "unresolved": "Çözümlenemeyen",
+    "overCap": "Ülke sınırını aşan",
+    "unparseable": "Ayrıştırılamayan",
+    "eventsUnit": "{count} olay",
+    "explainSummary": "Kalanların anlamı",
+    "unresolvedNote": "Çözümlenemeyen, adresi özel, dahili veya GeoIP tarafından bilinmeyen olayları sayar. Arama üçü için de aynı boş sonucu döndürür, bu yüzden birbirinden ayırt edilemezler.",
+    "overCapNote": "Ülke sınırını aşan, bir kovada en yoğun 64 ülkenin ötesindeki ülkelerin olaylarını sayar; toplanır, listelenmez.",
+    "unparseableNote": "Ayrıştırılamayan, arama sonucu bir ülke olarak okunamayan olayları sayar. Bu bir kusur sayacıdır, hiçbir zaman bir ülke değildir.",
+    "fromProperty": "QRadar özelliğinden: “{property}”",
+    "fromPropertyUnnamed": "Bir QRadar özelliğinden",
+    "fromLookup": "Adresin GeoIP aramasından",
+    "atLeastKind": "En az"
+  }
+}
