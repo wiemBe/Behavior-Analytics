@@ -1868,12 +1868,15 @@ restore_dump_into_database() { # restore_dump_into_database DUMP NAME
     restore_container_dump_cleanup
     return 1
   fi
+  # timescaledb_pre_restore() and timescaledb_post_restore() return boolean true. psql -Atq
+  # prints that as a line whose whole text is `t`. The operator did not ask for it; the status
+  # is still what decides, and a failure still stops and cleans up.
   if ! postgres_sql "$database" \
       'CREATE EXTENSION IF NOT EXISTS timescaledb; CREATE EXTENSION IF NOT EXISTS pgcrypto;' \
-    || ! postgres_sql "$database" 'SELECT timescaledb_pre_restore();' \
+    || ! postgres_sql "$database" 'SELECT timescaledb_pre_restore();' >/dev/null \
     || ! dc exec -T postgres pg_restore -U "$(env_get POSTGRES_USER)" \
       -d "$database" --no-owner "$RESTORE_CONTAINER_DUMP" \
-    || ! postgres_sql "$database" 'SELECT timescaledb_post_restore();'; then
+    || ! postgres_sql "$database" 'SELECT timescaledb_post_restore();' >/dev/null; then
     restore_container_dump_cleanup
     return 1
   fi

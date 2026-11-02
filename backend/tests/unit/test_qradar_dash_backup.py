@@ -86,6 +86,9 @@ case "$*" in
         esac
         ;;
       *"SELECT count(*)"*) printf '%s\n' 1 ;;
+      *"SELECT timescaledb_pre_restore()"*|*"SELECT timescaledb_post_restore()"*)
+        printf '%s\n' t
+        ;;
     esac
     if [ -n "${STUB_SQL_FAIL_MATCH:-}" ] && [[ $query == *"$STUB_SQL_FAIL_MATCH"* ]]; then
       if [ "${STUB_SQL_FAIL_ONCE:-0}" = 1 ]; then
@@ -615,6 +618,37 @@ def test_backup_failures_remove_partial_and_drop_created_scratch(
     calls = backup.calls.read_text()
     if "STUB_RESTORE_ALEMBIC" in overrides:
         assert calls.count("DROP DATABASE IF EXISTS qradar_obs_restore_test") >= 2
+
+
+def _lines_are(text: str, line: str) -> list[str]:
+    return [item for item in text.splitlines() if item == line]
+
+
+def test_backup_verify_prints_no_boolean_line(backup: BackupFixture) -> None:
+    result = backup.run("backup")
+
+    assert result.returncode == 0, output(result)
+    assert _lines_are(output(result), "t") == []
+    calls = backup.calls.read_text()
+    assert "SELECT timescaledb_pre_restore();" in calls
+    assert "SELECT timescaledb_post_restore();" in calls
+
+
+@pytest.mark.parametrize(
+    "match",
+    ["timescaledb_pre_restore()", "timescaledb_post_restore()"],
+)
+def test_timescaledb_restore_hook_failure_removes_partial(
+    backup: BackupFixture, match: str
+) -> None:
+    result = backup.run("backup", STUB_SQL_FAIL_MATCH=match)
+
+    assert result.returncode != 0
+    assert "backup verification restore failed" in output(result)
+    assert backup.backups() == []
+    assert backup.partials() == []
+    calls = backup.calls.read_text()
+    assert f"SELECT {match}" in calls
 
 
 def test_no_verify_skips_scratch_database(backup: BackupFixture) -> None:
