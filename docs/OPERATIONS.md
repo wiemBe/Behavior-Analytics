@@ -683,12 +683,22 @@ Hiçbir konteyner durdurulmadan önce, betik kontrolleri şu sırayla yapar:
   <min_from>`; iki değer uyuşmuyorsa
   `upgrade refused: docs/releases/<hedef>.md requires at least <yerel> but the target image
   requires at least <imaj>; no container was stopped` yazılır. Bu reddedişler zararsızdır: komut
-  1 ile çıkar, hiçbir konteyner durmaz ve `state.json` değişmez. Yalnız iki şey olmuştur: imaj
-  ön eki taşınmış ve hedef imajlar çekilmiştir. Örneğin `0.1.0` kurulumunda `upgrade 0.1.2`,
-  bir önceki maddedeki yerel denetimde `upgrade refused: 0.1.2 requires at least 0.1.1; nothing
-  was changed` ile reddedilir; sonraki adım `git checkout v0.1.1 && ./qradar-dash upgrade 0.1.1`
-  ise ön eki kendisi taşır, eski imajları yeni ad altına etiketler ve `0.1.1` imajlarını çeker.
-  Bu, eski sürümler yeni ada kopyalandığı için çalışır (bkz. İmaj ön ekinin taşınması).
+  1 ile çıkar, hiçbir konteyner durmaz ve `state.json` değişmez. Ama olmuş olan yalnız iki şey
+  değildir: bu reddedişlerden önce `migrate_forwarded_allow_ips` adımı da çalışmıştır
+  (0.1.9'dan itibaren). `FORWARDED_ALLOW_IPS=` satırı varken, boş değilken ve `*` değilken bu
+  adım `.env`'e `FRONTEND_EDGE_IP=` satırı eklemiş (yalnız o satır yoksa) ve
+  `FORWARDED_ALLOW_IPS=` satırını frontend adresini (`FRONTEND_EDGE_IP`; o yoksa
+  `PROXY_EDGE_IP`'i izleyen adres) de içerecek biçimde yeniden yazmış olabilir; liste o adresi
+  çoktan içeriyorsa hiçbir satır yazmaz. Bu erken denetim betikte yalnız 0.1.9'dan beri vardır:
+  bundan eski bir hedef, o sürümün kendi betiğiyle yükseltilir ve o betik, o sürümün sürüm
+  notlarının dediği gibi, ancak imaj ön eki taşındıktan, `.env` adres satırları yazıldıktan (o
+  sürüm onları nereye yazıyorsa oraya) ve hedef imajlar çekildikten sonra reddeder (bkz. İmaj
+  ön ekinin taşınması). Örneğin `0.1.6` kurulumunda, checkout `v0.1.9` üzerindeyken
+  `upgrade 0.1.9`, bir önceki maddedeki yerel denetimde `upgrade refused: 0.1.9 requires at
+  least 0.1.8; nothing was changed` ile reddedilir ve hiçbir şey değişmemiştir. Sonraki adım
+  `git checkout v0.1.8 && ./qradar-dash upgrade 0.1.8`'dir; kurulum `0.1.8`'e ulaştıktan sonra
+  checkout `v0.1.9`'a döner ve `./qradar-dash upgrade 0.1.9` bu kez erken denetimi geçer
+  (kurulu sürüm `0.1.8`, `min_from` değeri `0.1.8`).
 - Disk koruması (bkz. Yedek ve geri alma) geçer. Yedek kökü yoksa
   `upgrade refused: backup root is unavailable`; veritabanı boyutu okunamazsa
   `upgrade refused: database size is unavailable`. Koruma
