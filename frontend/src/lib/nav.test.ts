@@ -48,6 +48,7 @@ describe("NAV", () => {
       { href: "/admin/waf-sources", label: "WAF sources" },
       { href: "/admin/ips-sources", label: "IPS sources" },
       { href: "/admin/history-backfill", label: "History backfill", permission: "read:history_backfill" },
+      { href: "/admin/siem-load", label: "SIEM load", permission: "admin:*" },
       { href: "/admin/users", label: "Users", permission: "admin:users" },
       { href: "/admin/directory", label: "Directory", permission: "admin:auth" },
     ]);

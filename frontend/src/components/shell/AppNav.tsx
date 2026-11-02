@@ -113,6 +113,7 @@ function itemLabel(href: string, fallback: string, t: NavTranslator): string {
     case "/admin/waf-sources": return t("wafSources");
     case "/admin/ips-sources": return t("ipsSources");
     case "/admin/history-backfill": return t("historyBackfill");
+    case "/admin/siem-load": return t("siemLoad");
     case "/admin/users": return t("users");
     case "/admin/directory": return t("directory");
     case "/guide": return t("guide");

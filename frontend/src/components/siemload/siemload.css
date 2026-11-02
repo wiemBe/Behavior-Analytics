@@ -1,0 +1,195 @@
+/* The SIEM load page. Built from tokens only; nothing here carries a colour, a size or a space of
+ * its own. Tables, pills, notices and the range control are the shared ones. */
+
+.sl-page {
+  display: grid;
+  gap: var(--sp-7);
+  min-width: 0;
+}
+
+/* The first screen: our load and QRadar's health side by side where the viewport is wide enough
+ * for both, stacked where it is not. Our side holds a seven-column table, so it takes the larger
+ * share. */
+.sl-top {
+  display: grid;
+  gap: var(--sp-7) var(--sp-6);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  min-width: 0;
+}
+@media (min-width: 1200px) {
+  .sl-top {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  }
+}
+
+.sl-section {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+  align-content: start;
+}
+.sl-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-5);
+}
+/* `.main h2` carries a section margin of its own; the page's sections are spaced by their grid. */
+.sl-page .sl-h {
+  margin: 0;
+}
+.sl-asof {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.sl-hint {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  max-width: var(--admin-form-max);
+}
+.sl-refresh-note {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-5);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-md);
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-size: var(--fs-sm);
+}
+
+/* A label column and a value column. The value may carry a note line under it. */
+.sl-facts {
+  display: grid;
+  grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr);
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+.sl-facts dt,
+.sl-facts dd {
+  margin: 0;
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  min-width: 0;
+}
+.sl-facts dt {
+  padding-right: var(--sp-4);
+  color: var(--text-3);
+  font-weight: var(--fw-medium);
+}
+.sl-facts dd {
+  display: grid;
+  gap: var(--sp-1);
+  align-content: start;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.sl-line {
+  display: block;
+}
+.sl-muted {
+  color: var(--text-2);
+}
+.sl-note {
+  display: block;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+}
+
+/* A field that was not read: its state in words, then the reason. */
+.sl-gap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-3);
+  min-width: 0;
+}
+.sl-reason {
+  min-width: 0;
+  color: var(--text-2);
+}
+
+/* One console of the QRadar half. A second console is set apart by a rule, not boxed. */
+.sl-console {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.sl-console + .sl-console {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--border);
+}
+.sl-console-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-5);
+}
+.sl-page .sl-console-name {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  overflow-wrap: anywhere;
+}
+.sl-hosts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+  color: var(--text-2);
+}
+.sl-host,
+.sl-id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+/* The tables: a row's first cell is its name, the rest are figures. */
+.sl-table {
+  width: 100%;
+}
+.sl-table th[scope="row"] {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  white-space: nowrap;
+}
+.sl-table td {
+  font-size: var(--fs-sm);
+}
+/* The window table sits in half a page: its cells keep their room for the figures. */
+.sl-table-compact th,
+.sl-table-compact td {
+  padding-inline: var(--sp-2);
+}
+/* The global rule drops the last row's rule under its cells only; its name cell keeps it. */
+.sl-table tbody tr:last-child th[scope="row"] {
+  border-bottom: none;
+}
+.sl-table thead th {
+  white-space: normal;
+}
+.sl-table .cell-sub {
+  display: block;
+}
+
+/* Stale searches are a group of their own under a label that says why. */
+.sl-stale .sl-stale-label {
+  padding-top: var(--sp-5);
+  color: var(--warn-text);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  white-space: normal;
+}
