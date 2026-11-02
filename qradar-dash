@@ -2761,13 +2761,16 @@ cmd_restore() {
   # A failed copy does not stop the restore. The database is already the backup's, and this
   # file only matters to a later install re-run, so the services still start. The previous
   # file stays; the operator puts the copy back with the printed install command.
-  local answers_mode=""
+  local answers_mode="" hand=""
   if [ -e "$backup/install.answers" ] || [ -L "$backup/install.answers" ]; then
     if restore_answers_file restore "$backup/install.answers"; then
       say "Restored $SAVED_ANSWERS (the answers file, not a secret)."
     else
       answers_mode=$(stat -c '%a' "$backup/install.answers" 2>/dev/null || true)
-      warn "$SAVED_ANSWERS was not restored; the previous file was kept. Put the copy back by hand: install -m $answers_mode $backup/install.answers $SAVED_ANSWERS"
+      # Quoted so a backup path with a space or a shell metacharacter pastes as one command.
+      printf -v hand 'install -m %q %q %q' \
+        "$answers_mode" "$backup/install.answers" "$SAVED_ANSWERS"
+      warn "$SAVED_ANSWERS was not restored; the previous file was kept. Put the copy back by hand: $hand"
     fi
   fi
   restore_start_and_wait "$backup" manual || return 1
@@ -3057,6 +3060,19 @@ upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE; offline, UPGRADE_
   ref=$(secrets_helper_image) \
     || { UPGRADE_MISSING_IMAGE="secrets helper (deploy/load-secrets.sh pins no digest)"; return 1; }
   docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
+}
+
+# The checkout's own notes. Fail closed: missing, unreadable, not front matter,
+# or a version field other than VERSION. No docker, and no edit of .env.
+checkout_release_min_from() { # checkout_release_min_from VERSION -> min_from
+  local target=$1 file notes fields version min_from
+  file="docs/releases/${target}.md"
+  [ -f "$file" ] && [ -r "$file" ] || return 1
+  notes=$(cat -- "$file") || return 1
+  fields=$(release_notes_fields "$notes") || return 1
+  IFS=$'\t' read -r version min_from <<<"$fields"
+  [ "$version" = "$target" ] || return 1
+  printf '%s\n' "$min_from"
 }
 
 read_target_release_notes() { # read_target_release_notes VERSION
@@ -3462,7 +3478,7 @@ migrate_forwarded_allow_ips() {
 
 cmd_upgrade() {
   local target="" offline=no bundle="" installed min_from db_size backup_root old_images prefix
-  local backup_output backup at new_images old_env_version checkout_version
+  local backup_output backup at new_images old_env_version checkout_version checkout_min
   need_installed
   need_docker || exit 1
   report_compose_override
@@ -3511,6 +3527,17 @@ cmd_upgrade() {
     return 1
   fi
   refuse_if_last_upgrade_failed upgrade || return 1
+  # This checkout is already the target. Its own notes name min_from before any .env edit,
+  # bundle load or pull, so a site that is too old keeps the files it has. The image is
+  # read again after the pull; that second read is what proves the image matches this file.
+  checkout_min=$(checkout_release_min_from "$target") || {
+    fail "upgrade refused: docs/releases/$target.md is missing, invalid, or for another version; nothing was changed"
+    return 1
+  }
+  version_ge "$installed" "$checkout_min" || {
+    fail "upgrade refused: $target requires at least $checkout_min; nothing was changed"
+    return 1
+  }
   migrate_image_prefix "$installed" || return 1
   migrate_forwarded_allow_ips || return 1
   if [ -n "$bundle" ]; then
@@ -3539,6 +3566,11 @@ cmd_upgrade() {
     fail "upgrade refused: $target requires at least $min_from"
     return 1
   }
+  # Same release as the checkout file above. A different min_from is a different image.
+  if [ "$min_from" != "$checkout_min" ]; then
+    fail "upgrade refused: docs/releases/$target.md requires at least $checkout_min but the target image requires at least $min_from; no container was stopped"
+    return 1
+  fi
   backup_root=$(env_get QRADAR_DASH_BACKUP_DIR)
   [ -d "$backup_root" ] || { fail "upgrade refused: backup root is unavailable"; return 1; }
   db_size=$(database_size_bytes) || {

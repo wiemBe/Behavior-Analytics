@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -1399,4 +1400,56 @@ def test_restore_warns_and_starts_when_the_answers_copy_fails_after_the_swap(
     assert "Database swap complete" in result.stdout
     assert "Restore complete (manual)." in result.stdout
     assert "Secrets were not restored" in result.stdout
+
+
+def test_restore_warn_command_quotes_a_backup_path_with_a_space(
+    backup: BackupFixture,
+) -> None:
+    live = _write_answers(backup.root, "PUBLIC_HOSTNAME=live-newer.example\n")
+    before = live.read_bytes()
+    inode = live.stat().st_ino
+    made = backup.make_backup()
+    spaced = backup.root.parent / "backup dir"
+    spaced.mkdir()
+    path = made.rename(spaced / made.name)
+    copied = path / "install.answers"
+    backup_bytes = (ANSWERS_HEADER + "PUBLIC_HOSTNAME=from-backup.example\n").encode()
+    copied.write_bytes(backup_bytes)
+    copied.chmod(0o400)
+
+    result = backup.run(
+        "restore",
+        "--non-interactive",
+        "--yes",
+        str(path),
+        STUB_MV_FAIL_ANSWERS="1",
+    )
+
+    assert result.returncode == 0, output(result)
+    assert live.read_bytes() == before
+    assert live.stat().st_ino == inode
+    warns = [line for line in result.stderr.splitlines() if line.startswith("[warn]")]
+    marker = "Put the copy back by hand: "
+    assert len(warns) == 1
+    assert marker in warns[0]
+    command = warns[0].split(marker, 1)[1]
+    argv = shlex.split(command)
+    assert argv[:3] == ["install", "-m", "400"]
+    assert argv[3].endswith("/install.answers")
+    assert "backup dir" in argv[3]
+    assert argv[4:] == [".secrets/install.answers"]
+    assert "from-backup.example" not in output(result)
+    assert "live-newer.example" not in output(result)
+
+    bash = shutil.which("bash") or "/bin/bash"
+    ran = subprocess.run(  # noqa: S603
+        [bash, "-c", command],
+        cwd=backup.root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert ran.returncode == 0, ran.stderr + ran.stdout
+    assert live.read_bytes() == backup_bytes
+    assert _mode(live) == 0o400
 
