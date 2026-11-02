@@ -6,6 +6,8 @@ health probes Docker and the installer poll stay the only exempt routes. Each
 route that spends a scarce Ariel search slot — a manual search run, a property
 watch preview — declares the tighter ``rate_limit_search_execution`` limit on
 its endpoint, and a decorated route is never also counted against the default.
+A counted refusal carries the same window: the dependency records it, and
+``apply_counted_window`` copies it onto the response the handler built.
 """
 
 from __future__ import annotations
@@ -42,7 +44,9 @@ def default_limit(request: Request, response: Response) -> None:
     endpoint keeps the limit it declared for itself and is not counted twice.
     What remains is exactly the check the middleware would have made, default
     limits keyed per client and per path, plus the ``X-RateLimit-*`` headers
-    slowapi would have injected.
+    slowapi would have injected. A refusal does not keep this ``Response``;
+    ``apply_counted_window`` copies the same window onto the response that
+    actually leaves.
     """
     handler = request.scope.get("endpoint")
     if not _own_limit_or_exempt(handler):
@@ -52,6 +56,28 @@ def default_limit(request: Request, response: Response) -> None:
         window = getattr(request.state, "view_rate_limit", None)
         if window is not None:
             limiter._inject_headers(response, window)
+
+
+def apply_counted_window(request: Request, response: Response) -> None:
+    """Give a counted request's response the window the dependency recorded.
+
+    ``_check_request_limit`` stores the window on ``request.state`` and
+    ``_inject_headers`` writes it. The dependency does that on the ``Response``
+    it was given, and FastAPI copies those headers only when the route returns.
+    A coded refusal, a plain ``HTTPException`` and a validation error each build
+    a fresh response, so a request that was counted left with no window (FIX-14).
+    A response that already carries the three window headers — a 200, and the
+    429 handler, which injects them itself — is not written twice.
+    ``_inject_headers`` always writes ``Retry-After`` as well. Only the 429
+    says when to retry, so every other counted response keeps the window alone.
+    """
+    window = getattr(request.state, "view_rate_limit", None)
+    if window is None:
+        return
+    if "X-RateLimit-Limit" not in response.headers:
+        limiter._inject_headers(response, window)
+    if response.status_code != 429 and "Retry-After" in response.headers:
+        del response.headers["Retry-After"]
 
 
 def _own_limit_or_exempt(handler: object) -> bool:
