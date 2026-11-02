@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { CodePanel } from "@/components/ui/CodePanel";
 import {
@@ -214,6 +214,11 @@ export function WatchEditor({
     text: React.ReactNode;
   } | null>(null);
   const [conflict, setConflict] = useState<{ currentVersion: string; updatedBy: string | null } | null>(null);
+  // The blocked New-combination reason: the checkbox describes it, so the id exists whenever the
+  // reason is mounted and never otherwise.
+  const combinationReasonId = useId();
+  const propertyInputs = useRef<(HTMLInputElement | null)[]>([]);
+  const [focusPropertyIndex, setFocusPropertyIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (!draft.scopeId) {
@@ -235,6 +240,13 @@ export function WatchEditor({
     return () => controller.abort();
   }, [draft.scopeId, draft.scopeKind]);
 
+  // A property added in place, from the blocked New-combination reason, hands focus to its picker.
+  useEffect(() => {
+    if (focusPropertyIndex === null) return;
+    propertyInputs.current[focusPropertyIndex]?.focus();
+    setFocusPropertyIndex(null);
+  }, [focusPropertyIndex]);
+
   const detectors = useMemo(() => {
     const fromCatalog = catalog.detectors.filter((d): d is PwAnomalyTypeName => Object.hasOwn(DETECTORS, d));
     return fromCatalog.length > 0 ? fromCatalog : FALLBACK_DETECTORS;
@@ -255,6 +267,15 @@ export function WatchEditor({
       Array.from({ length: properties.length }, (_, i) => pin[i] ?? ""),
     );
     patch({ properties, pins });
+  }
+
+  /** What the section-2 add button does; the blocked New-combination reason offers it in place. */
+  function addProperty() {
+    patch({
+      properties: [...draft.properties, { kind: "NORMALIZED", name: "username" }],
+      pins: draft.pins.map((pin) => [...pin, ""]),
+    });
+    setFocusPropertyIndex(draft.properties.length);
   }
 
   function setPin(row: number, column: number, value: string) {
@@ -459,6 +480,9 @@ export function WatchEditor({
                 value={property}
                 options={propertyOptions}
                 disabled={!draft.scopeId}
+                inputRef={(input) => {
+                  propertyInputs.current[index] = input;
+                }}
                 onChange={(next) => changeProperty(index, next)}
               />
               {propertyReason(property, i18n) && <p className="field-error" role="alert">{propertyReason(property, i18n)}</p>}
@@ -484,12 +508,7 @@ export function WatchEditor({
             <button
               type="button"
               className="action secondary"
-              onClick={() =>
-                patch({
-                  properties: [...draft.properties, { kind: "NORMALIZED", name: "username" }],
-                  pins: draft.pins.map((pin) => [...pin, ""]),
-                })
-              }
+              onClick={addProperty}
             >
               {t("propertyWatch.editor.addProperty")}
             </button>
@@ -560,26 +579,56 @@ export function WatchEditor({
           <div className="pw-detectors">
             {detectors.map((detector) => {
               const combinationBlocked = detector === "PW_NEW_COMBINATION" && draft.properties.length !== 2;
+              const scopeChosen = draft.scopeId !== "";
+              const secondPropertyPossible = draft.properties.length < catalog.max_properties;
+              // Why New combination is off, visible under the option: without a scope no property
+              // can be added, and without two properties the detector refuses.
+              const combinationReason = !combinationBlocked
+                ? null
+                : !scopeChosen
+                  ? t("propertyWatch.editor.combinationNeedsScope")
+                  : secondPropertyPossible
+                    ? t("propertyWatch.editor.combinationNeedsTwo")
+                    : t("propertyWatch.validation.combinationProperties");
               const copy = detectorCopy(detector, i18n);
               return (
-                <label key={detector} className="pw-detector-option">
-                  <input
-                    type="checkbox"
-                    checked={draft.detectors.includes(detector)}
-                    disabled={combinationBlocked}
-                    onChange={(event) =>
-                      patch({
-                        detectors: event.target.checked
-                          ? [...draft.detectors, detector]
-                          : draft.detectors.filter((item) => item !== detector),
-                      })
-                    }
-                  />
-                  <span>
-                    <strong>{copy.label}</strong>
-                    <span>{copy.claim} {copy.learning}</span>
-                  </span>
-                </label>
+                // The reason and its button stay outside the label: content inside a label
+                // flows into the checkbox's accessible name, and a button must not be part of it.
+                <div key={detector} className="pw-detector-item">
+                  <label className="pw-detector-option">
+                    <input
+                      type="checkbox"
+                      checked={draft.detectors.includes(detector)}
+                      disabled={combinationBlocked}
+                      aria-describedby={combinationReason !== null ? combinationReasonId : undefined}
+                      onChange={(event) =>
+                        patch({
+                          detectors: event.target.checked
+                            ? [...draft.detectors, detector]
+                            : draft.detectors.filter((item) => item !== detector),
+                        })
+                      }
+                    />
+                    <span>
+                      <strong>{copy.label}</strong>
+                      <span>{copy.claim} {copy.learning}</span>
+                    </span>
+                  </label>
+                  {combinationReason !== null && (
+                    <div id={combinationReasonId} className="field-hint pw-detector-reason">
+                      {combinationReason}
+                    </div>
+                  )}
+                  {combinationBlocked && scopeChosen && secondPropertyPossible && (
+                    <button
+                      type="button"
+                      className="action secondary pw-detector-add"
+                      onClick={addProperty}
+                    >
+                      {t("propertyWatch.editor.addProperty")}
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>

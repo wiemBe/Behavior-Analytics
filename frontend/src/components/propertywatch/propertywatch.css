@@ -343,6 +343,29 @@ td.pw-value-cell {
   font-size: var(--fs-xs);
   line-height: var(--lh-base);
 }
+/* A detector option's label and its reason share one option grid, so the reason and its button
+   sit under the option text, not under the checkbox. Both stay outside the label: content
+   inside a label flows into the checkbox's accessible name. */
+.pw-detector-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-2);
+  align-items: start;
+}
+.pw-detector-item > .pw-detector-option {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+.pw-detector-item > .pw-detector-reason {
+  grid-column: 2;
+  margin-top: 0;
+  overflow-wrap: anywhere;
+}
+.pw-detector-item > .pw-detector-add {
+  grid-column: 2;
+  justify-self: start;
+  margin-top: var(--sp-1);
+}
 .pw-editor-summary {
   margin: 0;
   padding: var(--sp-3) var(--sp-4);
