@@ -164,6 +164,31 @@ export function metricLabel(metric: string, t: TextTranslator = customRulesEngli
   return Object.hasOwn(METRIC_LABELS, metric) ? t(`customRules.authoring.metrics.${metric}`) : metric;
 }
 
+/** Catalog metrics this frontend has an analyst note for. Anything else gets no note. */
+const METRIC_NOTE_KEYS = [
+  "EVENT_COUNT",
+  "AVERAGE_EPS",
+  "EPS",
+  "REQUEST_COUNT",
+  "BLOCK_RATIO",
+  "SERVER_ERROR_RATIO",
+  "CLIENT_ERROR_RATIO",
+  "EVENTS",
+  "TOTAL_EVENTS",
+  "BLOCKED_SHARE",
+  "PW_VALUE_EVENTS",
+] as const;
+
+/**
+ * The analyst note for one catalog metric, or null when this frontend has no text for it.
+ * Never the backend `note`, and never the message key.
+ */
+export function metricNote(metric: string, t: TextTranslator = customRulesEnglishText): string | null {
+  if (!(METRIC_NOTE_KEYS as readonly string[]).includes(metric)) return null;
+  const key = `customRules.authoring.metricNotes.${metric}`;
+  return t.has?.(key) ? t(key) : null;
+}
+
 const UNIT_CODES = ["events/bucket", "requests/bucket", "events/s", "share"];
 
 /** The analyst-facing wording of a catalog unit code; an unknown code is shown as it came. */
