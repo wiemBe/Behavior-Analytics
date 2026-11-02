@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import en from "../../messages/en";
 import tr from "../../messages/tr";
+import { flattenCatalog, parityProblems } from "./trFrozen";
 
 // Turkish typography rules of the Language section (guidelines §Language), pinned over the whole
 // Turkish catalog:
@@ -66,7 +67,10 @@ describe("Turkish catalog typography", () => {
     expect(failures).toEqual([]);
   });
 
-  it("has the same keys as English (sanity for the scan)", () => {
-    expect(flatten(tr).length).toBe(flatten(en).length);
+  // D-41 (LANG-1): was "has the same keys as English (sanity for the scan)", a key-count match.
+  // The scan covers every frozen key and no key English lacks.
+  it("covers every frozen key and no key English lacks (sanity for the scan)", () => {
+    expect(parityProblems(flattenCatalog(en), flattenCatalog(tr))).toEqual([]);
+    expect(turkish.length).toBeGreaterThan(6000);
   });
 });

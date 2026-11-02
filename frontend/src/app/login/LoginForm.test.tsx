@@ -7,6 +7,7 @@ import Loading from "./loading";
 import LoginError from "./error";
 import { StaticSession, type SessionValue } from "@/components/auth/session";
 import { ApiError, sessionNavigation } from "@/lib/api";
+import { enableTurkish } from "../../../vitest.setup";
 
 const nav = vi.hoisted(() => ({ replace: vi.fn(), params: "" }));
 vi.mock("next/navigation", () => ({
@@ -175,6 +176,7 @@ describe("LoginForm", () => {
   });
 
   it("loads the first page as a document when the account language differs", async () => {
+    enableTurkish();
     document.cookie = "ba_locale=tr; Path=/";
     const assign = vi.spyOn(sessionNavigation, "assign").mockImplementation(() => {});
     nav.params = "next=/alerts";
@@ -188,6 +190,22 @@ describe("LoginForm", () => {
     await submit();
     expect(assign).toHaveBeenCalledWith("/alerts");
     expect(nav.replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps a client navigation when Turkish is not enabled (D-41)", async () => {
+    document.cookie = "ba_locale=tr; Path=/";
+    const assign = vi.spyOn(sessionNavigation, "assign").mockImplementation(() => {});
+    nav.params = "next=/alerts";
+    client.login.mockResolvedValue({
+      username: "ada",
+      auth_source: "LOCAL",
+      must_change_password: false,
+      roles: ["analyst"],
+    });
+    renderForm();
+    await submit();
+    expect(assign).not.toHaveBeenCalled();
+    expect(nav.replace).toHaveBeenCalledWith("/alerts");
   });
 
   it("stays when the account cannot be read after sign-in", async () => {
