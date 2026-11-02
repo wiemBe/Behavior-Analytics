@@ -31,6 +31,7 @@
     "wafSources": "WAF sources",
     "ipsSources": "IPS sources",
     "historyBackfill": "History backfill",
+    "siemLoad": "SIEM load",
     "users": "Users",
     "directory": "Directory",
     "adminOverview": "Administration overview",

@@ -4,8 +4,17 @@ import en from "../../messages/en";
 import tr from "../../messages/tr";
 import { GUIDE_GROUPS, GUIDE_SECTIONS, guideSection } from "./guideSections";
 import { parseBlocks, parseGuideSection, readGuideSection } from "./guideText";
+import { FROZEN_TR_KEYS } from "@/i18n/trFrozen";
 
 const CATALOGS = { en, tr } as const;
+
+// D-41: Turkish is frozen at the checkpoint, so a guide section added to English afterwards has no
+// Turkish twin yet. The Turkish checks cover the sections the frozen catalog holds.
+const FROZEN_SECTIONS = new Set(
+  FROZEN_TR_KEYS.filter((key) => key.startsWith("guide.sections.")).map((key) => key.split(".")[2]),
+);
+const sectionsOf = (locale: "en" | "tr") =>
+  GUIDE_SECTIONS.filter((section) => locale === "en" || FROZEN_SECTIONS.has(section.id));
 
 describe("the guide catalog and the section table agree", () => {
   for (const locale of ["en", "tr"] as const) {
@@ -13,16 +22,18 @@ describe("the guide catalog and the section table agree", () => {
     const sections = guide.sections as Record<string, unknown>;
 
     it(`${locale}: has exactly the table's sections, each well formed`, () => {
-      expect(Object.keys(sections).sort()).toEqual(GUIDE_SECTIONS.map((section) => section.id).sort());
-      for (const section of GUIDE_SECTIONS) {
+      expect(Object.keys(sections).sort()).toEqual(sectionsOf(locale).map((section) => section.id).sort());
+      for (const section of sectionsOf(locale)) {
         expect(() => readGuideSection(sections, section.id), section.id).not.toThrow();
       }
     });
 
     it(`${locale}: steps and states exist only where both languages have them`, () => {
       const other = (locale === "en" ? tr : en).guide.sections as Record<string, Record<string, unknown>>;
-      for (const section of GUIDE_SECTIONS) {
+      for (const section of sectionsOf(locale)) {
         const mine = sections[section.id] as Record<string, unknown>;
+        // A section only English has (added after the checkpoint) is compared once Turkish returns.
+        if (!other[section.id]) continue;
         for (const key of ["steps", "afterSteps", "states", "permission"]) {
           expect(Object.hasOwn(mine, key), `${section.id}.${key}`).toBe(Object.hasOwn(other[section.id], key));
         }

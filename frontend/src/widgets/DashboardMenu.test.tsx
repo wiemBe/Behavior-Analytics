@@ -230,7 +230,7 @@ describe("DashboardMenu controls", () => {
     await open();
     await userEvent.click(screen.getByRole("button", { name: "Restore defaults…" }));
     expect(screen.getByRole("dialog", { name: "Restore SOC Overview defaults?" })).toHaveTextContent(
-      "SOC Overview version 1",
+      "SOC Overview version 2",
     );
     expect(onResetLayout).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "Restore defaults" }));
@@ -270,7 +270,7 @@ describe("DashboardMenu writes", () => {
       name: "Day shift",
       layout: SOC_OVERVIEW.layout,
       template_key: "soc_overview",
-      template_version: 1,
+      template_version: 2,
     });
     expect(screen.queryByRole("dialog")).toBeNull();
   });

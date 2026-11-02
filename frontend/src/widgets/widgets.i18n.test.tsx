@@ -428,7 +428,7 @@ describe("the manage menu in Turkish", () => {
     await userEvent.click(screen.getByRole("button", { name: "Varsayılanları geri yükle…" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: "SOC Genel Bakışı varsayılanları geri yüklensin mi?" })).toBeInTheDocument();
-    expect(dialog).toHaveTextContent("Geçerli düzen, SOC Genel Bakışı şablonunun 1. sürümüyle değiştirilir. Bitti'yi seçene kadar hiçbir şey kaydedilmez.");
+    expect(dialog).toHaveTextContent("Geçerli düzen, SOC Genel Bakışı şablonunun 2. sürümüyle değiştirilir. Bitti'yi seçene kadar hiçbir şey kaydedilmez.");
   });
 
   it("offers a reset to empty for a dashboard with no template", async () => {

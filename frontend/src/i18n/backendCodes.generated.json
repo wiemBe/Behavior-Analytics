@@ -1458,6 +1458,20 @@
     "sample_english_params": {},
     "template": "maintenance window"
   },
+  "ariel_load.hours.invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "hours must be a whole number from 1 to 720",
+    "sample_english_params": {},
+    "template": "hours must be a whole number from 1 to 720"
+  },
+  "ariel_load.window.empty": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No Ariel search was recorded in this window.",
+    "sample_english_params": {},
+    "template": "No Ariel search was recorded in this window."
+  },
   "auth.csrf.origin_mismatch": {
     "params": {
       "origin": {
@@ -2585,6 +2599,47 @@
     "sample_english": "field is not populated for this log source",
     "sample_english_params": {},
     "template": "field is not populated for this log source"
+  },
+  "geo.note.unresolved_lookup": {
+    "params": {},
+    "sample": {},
+    "sample_english": "UNRESOLVED counts events whose address is private, internal or unknown to GeoIP. The lookup returns the same empty result for all three, so they cannot be told apart.",
+    "sample_english_params": {},
+    "template": "UNRESOLVED counts events whose address is private, internal or unknown to GeoIP. The lookup returns the same empty result for all three, so they cannot be told apart."
+  },
+  "geo.note.unresolved_property": {
+    "params": {},
+    "sample": {},
+    "sample_english": "UNRESOLVED counts events whose country property was empty.",
+    "sample_english_params": {},
+    "template": "UNRESOLVED counts events whose country property was empty."
+  },
+  "geo.property.missing": {
+    "params": {
+      "name": {
+        "kind": "text"
+      },
+      "setting": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "Source Geographic Location",
+      "setting": "GEO_SOURCE_COUNTRY_PROPERTY"
+    },
+    "sample_english": "The country property “Source Geographic Location” does not exist on this console. Set GEO_SOURCE_COUNTRY_PROPERTY to the property's exact name.",
+    "sample_english_params": {
+      "name": "Source Geographic Location",
+      "setting": "GEO_SOURCE_COUNTRY_PROPERTY"
+    },
+    "template": "The country property “{name}” does not exist on this console. Set {setting} to the property's exact name."
+  },
+  "geo.property.unreadable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The custom-property list could not be read on this console, so no country search was sent.",
+    "sample_english_params": {},
+    "template": "The custom-property list could not be read on this console, so no country search was sent."
   },
   "history.assumption.budget_ips": {
     "params": {
@@ -8999,6 +9054,153 @@
     "sample_english": "watch disabled; no longer evaluated",
     "sample_english_params": {},
     "template": "watch disabled; no longer evaluated"
+  },
+  "qradar_health.reason.ariel_search_run_not_wired": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The platform's own Ariel search record is not connected to this view.",
+    "sample_english_params": {},
+    "template": "The platform's own Ariel search record is not connected to this view."
+  },
+  "qradar_health.reason.ariel_search_run_unreadable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The platform's own Ariel search record could not be read.",
+    "sample_english_params": {},
+    "template": "The platform's own Ariel search record could not be read."
+  },
+  "qradar_health.reason.ariel_unavailable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar answered 503: its Ariel service is unavailable.",
+    "sample_english_params": {},
+    "template": "QRadar answered 503: its Ariel service is unavailable."
+  },
+  "qradar_health.reason.console_unreachable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The console did not answer the reachability probe; not read.",
+    "sample_english_params": {},
+    "template": "The console did not answer the reachability probe; not read."
+  },
+  "qradar_health.reason.empty_response": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar returned an empty list, which a console that is up does not do.",
+    "sample_english_params": {},
+    "template": "QRadar returned an empty list, which a console that is up does not do."
+  },
+  "qradar_health.reason.endpoint_not_found": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar answered 404: this version does not offer the endpoint.",
+    "sample_english_params": {},
+    "template": "QRadar answered 404: this version does not offer the endpoint."
+  },
+  "qradar_health.reason.field_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar's answer lacked a field this value needs.",
+    "sample_english_params": {},
+    "template": "QRadar's answer lacked a field this value needs."
+  },
+  "qradar_health.reason.forbidden": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar answered 403: the token lacks the capability for this read.",
+    "sample_english_params": {},
+    "template": "QRadar answered 403: the token lacks the capability for this read."
+  },
+  "qradar_health.reason.in_flight_not_read": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The count of our searches in flight was not read.",
+    "sample_english_params": {},
+    "template": "The count of our searches in flight was not read."
+  },
+  "qradar_health.reason.malformed_response": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar's answer was not the shape this read expects.",
+    "sample_english_params": {},
+    "template": "QRadar's answer was not the shape this read expects."
+  },
+  "qradar_health.reason.no_ariel_outcome_in_window": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No search in the window either completed or found Ariel unavailable.",
+    "sample_english_params": {},
+    "template": "No search in the window either completed or found Ariel unavailable."
+  },
+  "qradar_health.reason.no_search_in_window": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The platform ran no Ariel search in the window, so nothing is known.",
+    "sample_english_params": {},
+    "template": "The platform ran no Ariel search in the window, so nothing is known."
+  },
+  "qradar_health.reason.provider_not_configured": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No provider could be built for this console.",
+    "sample_english_params": {},
+    "template": "No provider could be built for this console."
+  },
+  "qradar_health.reason.provider_not_supported": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This provider cannot read this from QRadar.",
+    "sample_english_params": {},
+    "template": "This provider cannot read this from QRadar."
+  },
+  "qradar_health.reason.read_failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The read failed.",
+    "sample_english_params": {},
+    "template": "The read failed."
+  },
+  "qradar_health.reason.rejected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar rejected the request as invalid (4xx).",
+    "sample_english_params": {},
+    "template": "QRadar rejected the request as invalid (4xx)."
+  },
+  "qradar_health.reason.snapshot_inconsistent": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The search record is inconsistent (more unavailable than searches).",
+    "sample_english_params": {},
+    "template": "The search record is inconsistent (more unavailable than searches)."
+  },
+  "qradar_health.reason.timeout": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar did not answer within the read timeout.",
+    "sample_english_params": {},
+    "template": "QRadar did not answer within the read timeout."
+  },
+  "qradar_health.reason.unauthorized": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar answered 401: the token was not accepted.",
+    "sample_english_params": {},
+    "template": "QRadar answered 401: the token was not accepted."
+  },
+  "qradar_health.reason.unreachable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar did not answer: connection failed or certificate not trusted.",
+    "sample_english_params": {},
+    "template": "QRadar did not answer: connection failed or certificate not trusted."
+  },
+  "qradar_health.reason.upstream_error": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar answered with a server error.",
+    "sample_english_params": {},
+    "template": "QRadar answered with a server error."
   },
   "rule_health.age_unknown": {
     "params": {},

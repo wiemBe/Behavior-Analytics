@@ -66,6 +66,12 @@ case "$*" in
   *" exec -T backend python -m app.cli.doctor")
     printf '%s\n' 'PASS  db_connect       database accepted SELECT 1'
     ;;
+  *" exec -T backend python -m app.cli.ariel_load --json")
+    [ "${{STUB_ARIEL_RC:-0}}" -eq 0 ] || exit "$STUB_ARIEL_RC"
+    printf '%s%s\n' \
+      '{{"empty":true,"message":"No Ariel search was recorded in this window.",' \
+      '"message_code":"ariel_load.window.empty"}}'
+    ;;
   *" exec -T postgres psql "*)
     query=$(cat)
     printf '%s\n' "$query" >> "$STUB_PSQL_INPUT"

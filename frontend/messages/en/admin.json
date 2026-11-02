@@ -32,6 +32,10 @@
       "name": "History backfill",
       "description": "What has been read from QRadar's past for the baselines, and what can still be"
     },
+    "siemLoad": {
+      "name": "SIEM load",
+      "description": "How much load this platform puts on QRadar, and how QRadar itself is doing"
+    },
     "users": {
       "name": "Users",
       "description": "Who can sign in, and the roles an administrator assigned"

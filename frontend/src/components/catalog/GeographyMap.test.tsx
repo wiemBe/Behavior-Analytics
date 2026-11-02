@@ -4,7 +4,7 @@
 
 import { render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTestLocale } from "../../../vitest.setup";
 
@@ -24,6 +24,18 @@ vi.mock("echarts/charts", () => ({ MapChart: {} }));
 vi.mock("echarts/components", () => ({ TooltipComponent: {} }));
 vi.mock("echarts/renderers", () => ({ CanvasRenderer: {} }));
 
+const families = vi.hoisted(() => [] as Array<string | null | undefined>);
+vi.mock("@/widgets/cadence", async (orig) => {
+  const actual = await orig<typeof import("@/widgets/cadence")>();
+  return {
+    ...actual,
+    useFamilyTiming: (family: string | null | undefined) => {
+      families.push(family);
+      return actual.useFamilyTiming(family as never);
+    },
+  };
+});
+
 const res = vi.hoisted(() => ({ state: undefined as unknown, keys: [] as Array<string | null> }));
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (key: string | null) => {
@@ -31,6 +43,10 @@ vi.mock("@/hooks/useApiResource", () => ({
     return res.state ?? { status: "loading" };
   },
 }));
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   res.state = undefined;
@@ -174,5 +190,81 @@ describe("in Turkish", () => {
     render(<GeographyMap config={{ direction: "DESTINATION" }} />);
     expect(screen.getByRole("heading", { name: /Coğrafya/ })).toHaveTextContent("hedef adresler, 24 sa");
     expect(screen.getByText("Toplanmadı.")).toBeInTheDocument();
+  });
+});
+
+// GEO-5: the answer's own data time is `latest_bucket_end`; the frame judges it against the
+// GEO_COLLECTION cadence (2 h when the cadence is unknown, so stale past 4 h).
+describe("the age of the data", () => {
+  const NOW = new Date("2026-11-02T12:00:00Z");
+  const at = (hoursAgo: number) => new Date(NOW.getTime() - hoursAgo * 3_600_000).toISOString();
+  const withClock = () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+  };
+
+  it("shows where the data reaches, and no stale note, when the newest bucket is recent", () => {
+    withClock();
+    res.state = ok(answer({ latest_bucket_end: at(1) }));
+    render(<GeographyMap />);
+    expect(screen.getByText(/Data to/)).toHaveTextContent("Data to 11:00:00 UTC");
+    expect(screen.queryByText(/Stale:/)).toBeNull();
+  });
+
+  it("marks the answer stale past twice the cadence, and still draws the map and the table", async () => {
+    withClock();
+    res.state = ok(answer({ latest_bucket_end: at(5) }));
+    render(<GeographyMap />);
+    expect(screen.getByText(/Stale: the latest data is from/)).toHaveTextContent(
+      "Stale: the latest data is from 07:00:00 UTC, 5 h old.",
+    );
+    expect(rows()).toHaveLength(GEO_WIDGET_ROWS);
+    expect(await screen.findByRole("img")).toBeInTheDocument();
+    expect(link()).toBeInTheDocument();
+  });
+
+  it("judges the age by the GEO_COLLECTION cadence", () => {
+    withClock();
+    families.length = 0;
+    res.state = ok(answer({ latest_bucket_end: at(1) }));
+    render(<GeographyMap />);
+    expect(new Set(families)).toEqual(new Set(["GEO_COLLECTION"]));
+  });
+
+  it("is not stale at exactly the threshold and stale just past it", () => {
+    withClock();
+    res.state = ok(answer({ latest_bucket_end: at(4) }));
+    const { unmount } = render(<GeographyMap />);
+    expect(screen.queryByText(/Stale:/)).toBeNull();
+    unmount();
+    res.state = ok(answer({ latest_bucket_end: new Date(NOW.getTime() - 4 * 3_600_000 - 1000).toISOString() }));
+    render(<GeographyMap />);
+    expect(screen.getByText(/Stale:/)).toBeInTheDocument();
+  });
+
+  it("makes no claim when the newest bucket is null (NOT_COLLECTED says it already)", () => {
+    withClock();
+    res.state = ok({ ...notCollected(), latest_bucket_end: null });
+    render(<GeographyMap />);
+    expect(screen.getByText("Not collected.")).toBeInTheDocument();
+    expect(screen.queryByText(/Stale:|Data to/)).toBeNull();
+  });
+
+  it("makes no claim when an older backend does not send the field", () => {
+    withClock();
+    const older = answer();
+    delete older.latest_bucket_end;
+    res.state = ok(older);
+    render(<GeographyMap />);
+    expect(rows()).toHaveLength(GEO_WIDGET_ROWS);
+    expect(screen.queryByText(/Stale:|Data to/)).toBeNull();
+  });
+
+  it("says it in Turkish too", () => {
+    setTestLocale("tr");
+    withClock();
+    res.state = ok(answer({ latest_bucket_end: at(5) }));
+    render(<GeographyMap />);
+    expect(screen.getByText(/Güncel değil/)).toBeInTheDocument();
   });
 });

@@ -11,11 +11,12 @@ from app.geo.fold import (
     GeoKeyedRow,
     GeoRemainder,
     classify_key,
+    classify_property_value,
     fold_geo_bucket,
     parse_geo_rows,
 )
 from app.providers.base import ProviderError
-from app.providers.mock import geo_key
+from app.providers.mock import _GEO_PROPERTY_VALUES, geo_key
 
 AT = datetime(2026, 10, 13, 9, 0, tzinfo=UTC)
 US = geo_key("US", "United States", 6252001)
@@ -143,3 +144,76 @@ class TestParse:
     def test_more_than_max_rows_is_truncation(self) -> None:
         parsed, truncated = self.parse(*[self.raw(events=i) for i in range(4)], max_rows=3)
         assert truncated and len(parsed) == 3
+
+
+class TestClassifyProperty:
+    @pytest.mark.parametrize(
+        ("value", "code"),
+        [
+            ("US", "US"),
+            (" us ", "US"),
+            ("DEU", "DE"),
+            ("Japan", "JP"),
+            ("united states", "US"),
+            ("Russia", "RU"),
+            ("Türkiye", "TR"),
+            ("Europe.Turkey", "TR"),
+            ("NorthAmerica.UnitedStates", "US"),
+            (geo_key("FR"), "FR"),
+        ],
+    )
+    def test_each_format_is_a_country(self, value: str, code: str) -> None:
+        assert classify_property_value(value) == code
+
+    @pytest.mark.parametrize("value", [None, "", "   ", "null", "NULL", "{}", '{"x":1}'])
+    def test_empty_and_null_are_unresolved(self, value: str | None) -> None:
+        assert classify_property_value(value) is GeoRemainder.UNRESOLVED
+
+    @pytest.mark.parametrize(
+        "value", ["not-a-country", "Europe.Atlantis", "Unknown", "XX", "[]", "{bad json"]
+    )
+    def test_anything_else_is_unparseable_never_a_guess(self, value: str) -> None:
+        assert classify_property_value(value) is GeoRemainder.UNPARSEABLE
+
+
+class TestFoldProperty:
+    def test_the_property_fold_sums_formats_of_one_country(self) -> None:
+        fact = fold_geo_bucket(
+            rows(("US", 10), ("United States", 5), ("USA", 1), ("Germany", 4), ("", 3), ("zz", 2)),
+            source="property",
+        )
+        assert fact.countries == (("US", 16), ("DE", 4))
+        assert (fact.unresolved, fact.unparseable, fact.over_cap) == (3, 2, 0)
+
+    def test_the_default_fold_still_reads_the_lookup_json_only(self) -> None:
+        fact = fold_geo_bucket(rows(("US", 10), (US, 1)))
+        assert fact.countries == (("US", 1),)
+        assert fact.unparseable == 10
+
+    def test_an_unknown_source_is_refused(self) -> None:
+        with pytest.raises(ValueError):
+            fold_geo_bucket([], source="address")
+
+    def test_the_mock_property_values_fold_to_the_expected_countries(self) -> None:
+        fact = fold_geo_bucket(
+            rows(*((geo, events) for geo, events in _GEO_PROPERTY_VALUES)), source="property"
+        )
+        assert dict(fact.countries) == {
+            "US": 120 + 15 + 10 + 7,
+            "DE": 40,
+            "JP": 30,
+            "TR": 20 + 5 + 8,
+            "GB": 12,
+            "KR": 9,
+            "IR": 6,
+            "VN": 4,
+            "CZ": 3,
+        }
+        assert fact.unresolved == 11 + 2
+        assert fact.unparseable == 1
+
+    def test_no_property_value_is_ever_logged(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.DEBUG):
+            fold_geo_bucket(rows(("planted-secret-value", 3)), source="property")
+        assert caplog.records
+        assert "planted-secret-value" not in caplog.text

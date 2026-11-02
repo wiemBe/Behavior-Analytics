@@ -19,7 +19,7 @@ import {
 import { fetchSession, logout } from "./client";
 import { ApiError, rateLimitedText, type CallerInfo } from "@/lib/api";
 import { asTextTranslator } from "@/i18n/textTranslator";
-import { isLocale, readLocaleCookie, writeLocaleCookie } from "@/i18n/locale";
+import { isEnabledLocale, readLocaleCookie, writeLocaleCookie } from "@/i18n/locale";
 
 export interface SessionValue {
   status: "loading" | "anonymous" | "error" | "ready";
@@ -83,7 +83,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (id !== requestId.current || signal?.aborted) return;
       if (
         next.username != null &&
-        isLocale(next.ui_language) &&
+        isEnabledLocale(next.ui_language) &&
         next.ui_language !== readLocaleCookie() &&
         localeSyncAttempt.current !== next.ui_language
       ) {

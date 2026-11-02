@@ -134,6 +134,7 @@ from app.schemas.property_watch import (
 )
 from app.schemas.search_cadence import CadenceOut
 from app.services.ariel_permit import ariel_background_priority
+from app.services.ariel_search_log import CALLER_PREVIEW, ariel_caller
 from app.services.search_cadence import SearchCadenceService, bucket_seconds
 
 #: Inclusive bounds of the `hours` query on the history reads and the default, as F.1's preview.
@@ -1712,6 +1713,7 @@ async def preview_scope_ids(
     return scope.chunks[0]
 
 
+@ariel_caller(CALLER_PREVIEW)
 async def run_preview(
     watch: PropertyWatch,
     scope_ids: Sequence[int],

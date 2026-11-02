@@ -476,7 +476,7 @@ describe("writes re-read the list", () => {
     expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({
       name: "Fresh",
       template_key: "soc_overview",
-      template_version: 1,
+      template_version: 2,
     });
   });
 

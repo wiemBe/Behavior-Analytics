@@ -8,6 +8,7 @@ vi.mock("next/headers", () => ({
 }));
 
 import { requestConfiguration } from "./request";
+import { enableTurkish } from "../../vitest.setup";
 
 describe("request locale", () => {
   beforeEach(() => {
@@ -15,7 +16,7 @@ describe("request locale", () => {
   });
 
   it.each([
-    ["tr", "tr"],
+    ["tr", "en"],
     ["en", "en"],
     ["de", "en"],
     [undefined, "en"],
@@ -25,5 +26,14 @@ describe("request locale", () => {
     expect(config.locale).toBe(expected);
     expect(config.timeZone).toBe("UTC");
     expect(config.messages).toHaveProperty("common.product", "Behavior Analytics");
+    expect(config.messages).toHaveProperty("account.title", "Account settings");
+  });
+
+  it("serves the Turkish catalog for a tr cookie once Turkish is enabled (D-41)", async () => {
+    enableTurkish();
+    cookie.value = "tr";
+    const config = await requestConfiguration();
+    expect(config.locale).toBe("tr");
+    expect(config.messages).toHaveProperty("account.title", "Hesap ayarları");
   });
 });

@@ -119,6 +119,7 @@ from app.services.ariel_permit import (
     ariel_history_deferred_message,
     ariel_history_deferred_reason,
 )
+from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
 from app.services.search_cadence import SearchCadenceService
 
 logger = logging.getLogger("app.collectors.pw_collector")
@@ -908,6 +909,7 @@ class PwCollector:
         )
 
     # ------------------------------------------------------------ one watch's history
+    @ariel_caller(CALLER_HISTORY)
     async def _read_history(
         self,
         entry: _Reading,

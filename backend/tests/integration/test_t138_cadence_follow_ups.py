@@ -94,7 +94,10 @@ async def test_the_geo_first_run_looks_back_twelve_buckets_at_the_default_cadenc
 
     inst = await make_instance(db_session)
     provider = Script(steady([{"geo": geo_key("US"), "events": 40}]))
-    settings = get_settings().model_copy(update={"search_cadence_max_searches_per_tick": 50})
+    # The look-back is measured in lookup mode, where both directions are collected.
+    settings = get_settings().model_copy(
+        update={"search_cadence_max_searches_per_tick": 50, "geo_country_source": "lookup"}
+    )
     report = await GeoCollector(
         db_session, provider, settings=settings, clock=lambda: NOW
     ).collect(inst)

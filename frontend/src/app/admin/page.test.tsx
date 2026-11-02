@@ -154,9 +154,26 @@ describe("administration hub", () => {
     expect(names()).toEqual([
       ...SECTIONS.map((section) => section.name),
       "History backfill",
+      "SIEM load",
       "Users",
       "Directory",
     ]);
+    expect(screen.getByRole("link", { name: "SIEM load" })).toHaveAttribute(
+      "href",
+      "/admin/siem-load",
+    );
+  });
+
+  it("lists SIEM load for admin:* only: neither read:* nor a narrower admin permission holds it", () => {
+    for (const permissions of [["read:*"], ["admin:users"], ["admin:history_backfill"]]) {
+      const { unmount } = render(
+        <StaticSession value={ready(permissions)}>
+          <AdminPage />
+        </StaticSession>,
+      );
+      expect(screen.queryByRole("link", { name: "SIEM load" })).not.toBeInTheDocument();
+      unmount();
+    }
   });
 
   it("adds History backfill only for read:history_backfill, which read:* and admin:* grant", () => {

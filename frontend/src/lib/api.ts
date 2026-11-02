@@ -3727,6 +3727,201 @@ export const ipsApi = {
     ),
 };
 
+// --- GET /admin/ariel-load, /admin/ariel-load/current (ARL-1, ARL-3) ----------------------
+// The load the platform puts on QRadar, and how QRadar is doing. Permission `admin:*`. A part
+// the backend could not read says so (`available: false` with a reason) and carries no numbers.
+
+export type ArielPartUnavailable = { available: false; reason: string };
+
+export interface ArielInFlightEntry {
+  caller: string;
+  instance_id: string | null;
+  submitted_at: string;
+  age_seconds: number;
+  polls: number;
+  range_seconds: number | null;
+}
+
+export type ArielInFlight =
+  | {
+      available: true;
+      active: ArielInFlightEntry[];
+      stale: ArielInFlightEntry[];
+      stale_after_seconds: number;
+    }
+  | ArielPartUnavailable;
+
+/** One minute window. A percentile is null when no search completed in it. */
+export interface ArielWindow {
+  submitted: number;
+  completed: number;
+  failed: number;
+  refused: number;
+  in_flight: number;
+  wall_ms_sum: number | null;
+  wall_ms_p50: number | null;
+  wall_ms_p95: number | null;
+  qradar_execution_ms_sum: number | null;
+  qradar_execution_ms_unknown: number;
+  qradar_execution_ms_p50: number | null;
+  qradar_execution_ms_p95: number | null;
+  records_returned_sum: number | null;
+  records_returned_unknown: number;
+}
+
+export type ArielWindows =
+  | {
+      available: true;
+      minutes_5: ArielWindow;
+      minutes_15: ArielWindow;
+      minutes_60: ArielWindow;
+    }
+  | ArielPartUnavailable;
+
+export type ArielSlots =
+  | { available: true; enforced: false }
+  | {
+      available: true;
+      enforced: true;
+      global_held: number;
+      global_cap: number;
+      /** Every console-pool lock in the database, not one console's. */
+      console_pool_locks: number;
+      /** The cap of one console. */
+      console_cap: number;
+      reserved_slots: number;
+    }
+  | ArielPartUnavailable;
+
+export type QRadarFieldState = "OK" | "NOT_COLLECTED" | "FORBIDDEN" | "FAILED";
+
+/** One measured value, or the reason there is none. Only an `OK` field carries a value. */
+export interface QRadarField<T> {
+  state: QRadarFieldState;
+  value: T | null;
+  reason_code: string | null;
+  reason: string | null;
+}
+
+export interface QRadarServerEntry {
+  hostname: string | null;
+  status: string | null;
+}
+
+export interface QRadarServers {
+  total: number;
+  active: number;
+  unreported: number;
+  by_status: Record<string, number>;
+  /** Hosts not reporting ACTIVE, at most 20. */
+  not_active: QRadarServerEntry[];
+  all_active: boolean;
+}
+
+export interface QRadarEps {
+  hosts: number;
+  average_eps: number;
+  peak_eps: number;
+  allocated_eps: number;
+  average_share: number | null;
+}
+
+export interface QRadarLicenseRate {
+  total: number | null;
+  allocated: number | null;
+  overallocated: boolean | null;
+}
+
+export interface QRadarLicense {
+  eps: QRadarLicenseRate;
+  fpm: QRadarLicenseRate | null;
+}
+
+export interface QRadarArielList {
+  held: number;
+  /** The read stopped at its range cap: `held` is a lower bound. */
+  truncated: boolean;
+}
+
+export interface QRadarArielRecent {
+  window_minutes: number;
+  searches: number;
+  unavailable: number;
+  unavailable_share: number;
+  last_success_at: string | null;
+  last_unavailable_at: string | null;
+}
+
+export interface QRadarConsoleHealth {
+  instance_id: string;
+  instance_name: string;
+  /** UTC time the QRadar reads were taken; older than now when `cached`. */
+  as_of: string;
+  cached: boolean;
+  age_seconds: number;
+  cache_ttl_seconds: number;
+  reachable: QRadarField<boolean>;
+  api_latency_ms: QRadarField<number>;
+  version: QRadarField<string>;
+  servers: QRadarField<QRadarServers>;
+  eps: QRadarField<QRadarEps>;
+  license: QRadarField<QRadarLicense>;
+  ariel: {
+    list_probe: QRadarField<QRadarArielList>;
+    available: QRadarField<boolean>;
+    recent: QRadarField<QRadarArielRecent>;
+    ours_in_flight: QRadarField<number>;
+  };
+}
+
+export type QRadarHealthPart =
+  | { available: true; consoles: QRadarConsoleHealth[] }
+  | ArielPartUnavailable;
+
+export interface ArielLoadCurrent {
+  as_of: string;
+  in_flight: ArielInFlight;
+  windows: ArielWindows;
+  slots: ArielSlots;
+  qradar: QRadarHealthPart;
+}
+
+/** One caller's load over the summary window. */
+export interface ArielCallerSummary {
+  caller: string;
+  searches: number;
+  outcomes: Record<string, number>;
+  wall_ms_p50: number | null;
+  wall_ms_p95: number | null;
+  wall_ms_max: number | null;
+  wall_ms_sum: number;
+  qradar_execution_ms_p50: number | null;
+  qradar_execution_ms_p95: number | null;
+  qradar_execution_ms_sum: number | null;
+  qradar_execution_ms_unknown: number;
+  records_returned_sum: number | null;
+  records_returned_unknown: number;
+  data_total_size_sum: number | null;
+  data_total_size_unknown: number;
+}
+
+export interface ArielLoadSummary {
+  empty: boolean;
+  hours: number;
+  start: string;
+  end: string;
+  callers: ArielCallerSummary[];
+  /** Present on an empty window too, with the backend's own sentence. */
+  message?: string;
+}
+
+export const arielLoadApi = {
+  current: (signal?: AbortSignal) =>
+    request<ArielLoadCurrent>("/admin/ariel-load/current", { signal }),
+  summary: (hours: number, signal?: AbortSignal) =>
+    request<ArielLoadSummary>(`/admin/ariel-load${qs({ hours })}`, { signal }),
+};
+
 // --- shell top bar (UI-1.5) -------------------------------------------------
 // Browser reads of existing endpoints. Each takes an AbortSignal so a superseded
 // or unmounted caller can cancel; none writes anything, and none reaches QRadar.
@@ -3912,6 +4107,11 @@ export interface GeoCountries {
   measurement: GeoMeasurement | null;
   coverage: { measured_buckets: number; expected_buckets: number };
   status: GeoStatus;
+  /**
+   * The end of the newest measured bucket (GEO-3); null while NOT_COLLECTED. Absent from an older
+   * backend: the answer then has no age and is never called stale.
+   */
+  latest_bucket_end?: string | null;
   unresolved_note: string;
   country_source?: GeoCountrySource | null;
   country_property?: string | null;

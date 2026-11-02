@@ -27,7 +27,7 @@ function at(
  */
 export const SOC_OVERVIEW: DescribedDashboardTemplate = {
   key: "soc_overview",
-  version: 1,
+  version: 2,
   name: "SOC Overview",
   description:
     "Fleet volume, source health, anomalies, offenses and the countries events come from.",

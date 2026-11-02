@@ -16,7 +16,6 @@ checks scattered through services.
 
 from __future__ import annotations
 
-import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -24,24 +23,31 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+# Re-exported: the pattern lives in a leaf module so ``app.core.config`` can import it
+# without loading this package (which imports the settings).
+from app.core.patterns import PROPERTY_NAME_PATTERN as PROPERTY_NAME_PATTERN
 from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.dto import (
     AnalyticsRuleDTO,
     ArielSearchHandleDTO,
+    ArielSearchListDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
     CatchallKeyedResult,
     CustomPropertyDTO,
+    DeploymentHostDTO,
     DimensionAggregate,
     InstanceInfoDTO,
     IpsFieldProbeRequest,
     IpsKeyedResult,
     IpsSourceProbe,
+    LicensePoolDTO,
     LogSourceDTO,
     LogSourceGroupDTO,
     LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
+    ManagedServerDTO,
     OffenseListResult,
     PwKeyedResult,
     PwSearchKind,
@@ -59,13 +65,6 @@ if TYPE_CHECKING:
     # `app.geo.fold` imports this module for `ProviderError`, so the geo types are
     # annotations here only.
     from app.geo.fold import GeoDirection, GeoKeyedResult
-
-#: The only shape a site-authored QRadar property name may take before it is
-#: interpolated into AQL. Letters, digits, underscore, space and hyphen; anything
-#: else -- a quote, a comma, a parenthesis -- is rejected rather than escaped,
-#: because an allowlist a reviewer can verify by eye beats a quoting scheme that
-#: has to be trusted. Property names are never expressions.
-PROPERTY_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ -]{0,63}$")
 
 #: Upper bound on a WAF property probe window. Validation is a spot check, not a
 #: survey, and a small window keeps it cheap on a loaded appliance.
@@ -113,6 +112,7 @@ class ProviderCapability(StrEnum):
     CONFIG_SNAPSHOTS = "CONFIG_SNAPSHOTS"
     LOG_SOURCE_GROUPS = "LOG_SOURCE_GROUPS"
     CUSTOM_PROPERTY_CATALOG = "CUSTOM_PROPERTY_CATALOG"  # custom-property names, never bodies
+    HEALTH_READS = "HEALTH_READS"    # GET-only console health: servers, hosts, license, Ariel list
 
 
 class LogSourceTelemetry(StrEnum):
@@ -637,13 +637,15 @@ class QRadarProvider(ABC):
         direction: GeoDirection,
         bucket_seconds: int,
         max_rows: int,
+        country_property: str | None = None,
     ) -> GeoKeyedResult:
         """One fleet-wide keyed search of events per country (D-10).
 
-        Rows are grouped by the geo lookup of the source or destination address and by
-        bucket, and carry ``SUM(eventcount)``, ordered by volume. No address is
-        selected: the only column that reaches the result is the lookup string.
-        The span must be whole epoch-aligned `bucket_seconds` buckets. More than
+        Rows are grouped by the geo key and by bucket, and carry ``SUM(eventcount)``,
+        ordered by volume. With no ``country_property`` the key is the geo lookup of
+        the source or destination address. With one, the key is that custom property,
+        quoted only after the property-name allowlist. No address is selected either
+        way. The span must be whole epoch-aligned `bucket_seconds` buckets. More than
         `max_rows` rows set ``truncated`` and only the first `max_rows` are kept. A key
         outside the span or a non-integer key fails the whole search with a
         ProviderError.
@@ -688,6 +690,39 @@ class QRadarProvider(ABC):
     async def validate_connection(self) -> InstanceInfoDTO:
         """Prove credentials, TLS and reachability with one cheap call."""
         return await self.get_instance_info()
+
+    # -- console health (GET only, HEALTH_READS) ----------------------------
+    # One attempt each, no retry: a health read that backs off and retries against a
+    # struggling console is itself load on it. A backend that cannot read a surface
+    # raises `CapabilityNotSupportedError`, which the health reader reports as
+    # NOT_COLLECTED, never as a healthy zero.
+    async def probe_about(self) -> InstanceInfoDTO:
+        """`get_instance_info` as a single attempt, for the health reader's reachability probe."""
+        return await self.get_instance_info()
+
+    async def list_managed_servers(self) -> list[ManagedServerDTO]:
+        """Managed hosts and the status QRadar reports for each (`GET /system/servers`)."""
+        self.require(ProviderCapability.HEALTH_READS)
+        raise NotImplementedError
+
+    async def list_deployment_hosts(self) -> list[DeploymentHostDTO]:
+        """Deployment hosts with licensed and observed EPS (`GET /config/deployment/hosts`)."""
+        self.require(ProviderCapability.HEALTH_READS)
+        raise NotImplementedError
+
+    async def get_license_pool(self) -> LicensePoolDTO:
+        """Licensed EPS and FPM (`GET /config/deployment/license_pool`)."""
+        self.require(ProviderCapability.HEALTH_READS)
+        raise NotImplementedError
+
+    async def count_ariel_searches(self) -> ArielSearchListDTO:
+        """How many Ariel searches QRadar holds, all users (`GET /ariel/searches`).
+
+        A count of ids. It starts no search and fetches no result, so it is not AQL
+        execution and takes no Ariel permit.
+        """
+        self.require(ProviderCapability.HEALTH_READS)
+        raise NotImplementedError
 
     # -- offenses -----------------------------------------------------------
     @abstractmethod

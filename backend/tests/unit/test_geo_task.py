@@ -8,7 +8,9 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config import Settings
+from app.geo.fold import GeoDirection
 from app.models.enums import SearchFamily
+from app.schemas.geo import UNRESOLVED_NOTE, GeoCountrySource, country_source_fields
 from app.security.rbac import Principal
 from app.workers import tasks
 from app.workers.celery_app import celery_app
@@ -89,6 +91,70 @@ class TestSettings:
         assert Settings(geo_directions=["DESTINATION", "DESTINATION"]).geo_directions == [
             "DESTINATION"
         ]
+
+    def test_property_mode_is_the_default(self) -> None:
+        settings = Settings()
+        assert settings.geo_country_source == "property"
+        assert settings.geo_source_country_property == "Source Geographic Location"
+        assert settings.geo_destination_country_property == ""
+        assert settings.geo_property_for("SOURCE") == "Source Geographic Location"
+        assert settings.geo_property_for("DESTINATION") == ""
+
+    def test_the_country_source_accepts_either_mode_in_any_case(self) -> None:
+        assert Settings(geo_country_source="LOOKUP").geo_country_source == "lookup"
+        assert Settings(geo_country_source=" Property ").geo_country_source == "property"
+
+    def test_an_unknown_country_source_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            Settings(geo_country_source="address")
+
+    def test_an_unsafe_country_property_is_refused_by_the_allowlist(self) -> None:
+        with pytest.raises(ValidationError) as caught:
+            Settings(geo_source_country_property='Name" OR 1=1 --')
+        assert "GEO_SOURCE_COUNTRY_PROPERTY is not an allowed property name" in str(caught.value)
+        with pytest.raises(ValidationError) as destination:
+            Settings(geo_destination_country_property="Bad.Name(1)")
+        assert "GEO_DESTINATION_COUNTRY_PROPERTY is not an allowed" in str(destination.value)
+
+    def test_the_refusal_does_not_echo_other_settings(self) -> None:
+        with pytest.raises(ValidationError) as caught:
+            Settings(
+                geo_source_country_property="Bad.Name(1)",
+                qradar_sec_token="planted-sec-token-value",
+            )
+        assert "planted-sec-token-value" not in str(caught.value)
+
+    def test_an_empty_country_property_is_allowed(self) -> None:
+        settings = Settings(
+            geo_source_country_property="  ",
+            geo_destination_country_property="",
+        )
+        assert settings.geo_source_country_property == ""
+        assert settings.geo_destination_country_property == ""
+
+    def test_lookup_mode_keeps_todays_unresolved_note_and_hides_the_property(self) -> None:
+        settings = Settings(geo_country_source="lookup")
+        source, prop, note, code, params = country_source_fields(settings, GeoDirection.SOURCE)
+        assert source is GeoCountrySource.LOOKUP
+        assert prop is None
+        assert note == UNRESOLVED_NOTE
+        assert code == "geo.note.unresolved_lookup"
+        assert params == {}
+        assert note == (
+            "UNRESOLVED counts events whose address is private, internal or unknown to GeoIP. "
+            "The lookup returns the same empty result for all three, so they cannot be told apart."
+        )
+
+    def test_property_mode_names_the_configured_property_and_the_empty_note(self) -> None:
+        settings = Settings()
+        source, prop, note, code, params = country_source_fields(settings, GeoDirection.SOURCE)
+        assert source is GeoCountrySource.PROPERTY
+        assert prop == "Source Geographic Location"
+        assert note == "UNRESOLVED counts events whose country property was empty."
+        assert code == "geo.note.unresolved_property"
+        assert params == {}
+        _source, destination, *_rest = country_source_fields(settings, GeoDirection.DESTINATION)
+        assert destination is None
 
 
 class TestPermission:

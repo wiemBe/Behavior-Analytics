@@ -10,7 +10,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { PasswordChange } from "@/components/auth/PasswordChange";
 import { useSession } from "@/components/auth/session";
 import styles from "@/components/auth/auth.module.css";
-import { writeLocaleCookie, type Locale } from "@/i18n/locale";
+import { ENABLED_LOCALES, writeLocaleCookie, type Locale } from "@/i18n/locale";
 import { ApiError, updateUiLanguage } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
@@ -86,51 +86,53 @@ export function AccountHome() {
   return (
     <div className={styles.accountSettings}>
       <PageHeader guide={guideFor("/account")} title={t("title")} />
-      <section className={styles.settingsSection}>
-        <h2>{t("language")}</h2>
-        <p className={styles.sectionNote}>{t("languageDescription")}</p>
-        <form className={styles.form} onSubmit={(event) => void saveLanguage(event)}>
-          <fieldset className={styles.checks} disabled={pending}>
-            <legend className={styles.legend}>{t("languageGroup")}</legend>
-            <label className={styles.check}>
-              <input
-                type="radio"
-                name="ui-language"
-                value="en"
-                checked={choice === "en"}
-                onChange={() => {
-                  setChoice("en");
-                  setOutcome({ kind: "idle" });
-                }}
-              />
-              <span lang="en">{t("english")}</span>
-            </label>
-            <label className={styles.check} lang="tr">
-              <input
-                type="radio"
-                name="ui-language"
-                value="tr"
-                checked={choice === "tr"}
-                onChange={() => {
-                  setChoice("tr");
-                  setOutcome({ kind: "idle" });
-                }}
-              />
-              <span>{t("turkish")}</span>
-            </label>
-          </fieldset>
-          <div className={styles.actions}>
-            <button
-              type="submit"
-              className="action"
-              disabled={pending || choice === saved}
-            >
-              {pending ? common("saving") : common("save")}
-            </button>
-          </div>
-          <ChangeStatus outcome={changeOutcome} />
-        </form>
-      </section>
+      {ENABLED_LOCALES.length > 1 && (
+        <section className={styles.settingsSection}>
+          <h2>{t("language")}</h2>
+          <p className={styles.sectionNote}>{t("languageDescription")}</p>
+          <form className={styles.form} onSubmit={(event) => void saveLanguage(event)}>
+            <fieldset className={styles.checks} disabled={pending}>
+              <legend className={styles.legend}>{t("languageGroup")}</legend>
+              <label className={styles.check}>
+                <input
+                  type="radio"
+                  name="ui-language"
+                  value="en"
+                  checked={choice === "en"}
+                  onChange={() => {
+                    setChoice("en");
+                    setOutcome({ kind: "idle" });
+                  }}
+                />
+                <span lang="en">{t("english")}</span>
+              </label>
+              <label className={styles.check} lang="tr">
+                <input
+                  type="radio"
+                  name="ui-language"
+                  value="tr"
+                  checked={choice === "tr"}
+                  onChange={() => {
+                    setChoice("tr");
+                    setOutcome({ kind: "idle" });
+                  }}
+                />
+                <span>{t("turkish")}</span>
+              </label>
+            </fieldset>
+            <div className={styles.actions}>
+              <button
+                type="submit"
+                className="action"
+                disabled={pending || choice === saved}
+              >
+                {pending ? common("saving") : common("save")}
+              </button>
+            </div>
+            <ChangeStatus outcome={changeOutcome} />
+          </form>
+        </section>
+      )}
       <section className={styles.settingsSection}>
         <h2>{t("password")}</h2>
         {session.me.auth_source === "LOCAL" ? (

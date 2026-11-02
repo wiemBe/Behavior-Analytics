@@ -31,6 +31,55 @@ class InstanceInfoDTO(ProviderDTO):
     raw_about: dict = Field(default_factory=dict)
 
 
+class ManagedServerDTO(ProviderDTO):
+    """One entry of `GET /system/servers`: a managed host and the status QRadar reports.
+
+    A field the response lacked is None. It is never defaulted: the health reader
+    reads None as "not reported", not as a healthy status.
+    """
+
+    hostname: str | None = None
+    status: str | None = None
+
+
+class DeploymentHostDTO(ProviderDTO):
+    """One entry of `GET /config/deployment/hosts`: a host's licensed and observed event rate."""
+
+    hostname: str | None = None
+    status: str | None = None
+    average_eps: int | None = None
+    peak_eps: int | None = None
+    eps_allocation: int | None = None
+    average_fpm: int | None = None
+    peak_fpm: int | None = None
+    fpm_allocation: int | None = None
+
+
+class LicenseRateDTO(ProviderDTO):
+    total: int | None = None
+    allocated: int | None = None
+    overallocated: bool | None = None
+
+
+class LicensePoolDTO(ProviderDTO):
+    """`GET /config/deployment/license_pool`: the licensed EPS and FPM against what is allocated."""
+
+    eps: LicenseRateDTO | None = None
+    fpm: LicenseRateDTO | None = None
+
+
+class ArielSearchListDTO(ProviderDTO):
+    """`GET /ariel/searches`: how many search ids QRadar holds, never the ids.
+
+    The list covers every user's searches, finished and active alike, so the count is what
+    QRadar holds ("held"). `truncated` is set when the read hit its range cap and the true
+    count is at least `held`.
+    """
+
+    held: int
+    truncated: bool = False
+
+
 class LogSourceDTO(ProviderDTO):
     qradar_id: int
     name: str
@@ -629,6 +678,17 @@ class ArielSearchStatusDTO(ProviderDTO):
     progress: int = 0
     record_count: int | None = None
     error_messages: list[str] = Field(default_factory=list)
+    # Numeric cost fields from GET /ariel/searches/{search_id} (QRadar 7.6).
+    # Absent stays null. A present 0 is a measurement. query_string, snapshot,
+    # error text and cursor ids are not copied onto this DTO.
+    query_execution_time: int | None = None
+    processed_record_count: int | None = None
+    data_file_count: int | None = None
+    data_total_size: int | None = None
+    compressed_data_file_count: int | None = None
+    compressed_data_total_size: int | None = None
+    index_file_count: int | None = None
+    index_total_size: int | None = None
 
     @property
     def is_terminal(self) -> bool:

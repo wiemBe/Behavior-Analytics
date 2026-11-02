@@ -23,8 +23,12 @@ function problemsOf(root: string): string[] {
   const files = Object.fromEntries(LOCALES.map((locale) => [locale, filesOf(root, locale)]));
   for (const locale of LOCALES) {
     const other = LOCALES.find((candidate) => candidate !== locale)!;
+    // D-41: a namespace file added to English after the checkpoint needs no Turkish twin; a
+    // Turkish file English lacks is still a problem.
     for (const name of files[locale]) {
-      if (!files[other].includes(name)) problems.push(`${locale}/${name}.json has no ${other} twin`);
+      if (locale === "tr" && !files[other].includes(name)) {
+        problems.push(`${locale}/${name}.json has no ${other} twin`);
+      }
     }
     const source = readFileSync(path.join(root, locale, "index.ts"), "utf8");
     const imports = [...source.matchAll(/^import (\w+) from "\.\/([\w-]+)\.json";$/gm)];
@@ -87,9 +91,30 @@ describe("message catalog layout", () => {
     expect(problemsOf(fixture())).toEqual([]);
   });
 
-  it("fails when a namespace file exists in one locale only", () => {
-    const root = fixture({ "en/gamma.json": null });
-    expect(problemsOf(root)).toContain("en/gamma.json has no tr twin");
+  // D-41 (LANG-1): was "fails when a namespace file exists in one locale only" (en/gamma.json
+  // with no tr twin). The Turkish-only case still fails; the English-only case is now allowed.
+  it("fails when a Turkish namespace file has no English twin", () => {
+    const root = fixture({ "tr/gamma.json": null });
+    expect(problemsOf(root)).toContain("tr/gamma.json has no en twin");
+  });
+
+  it("accepts a namespace file that exists in English only", () => {
+    const root = fixture({
+      "en/gamma.json": null,
+      "en/index.ts": [
+        'import alpha from "./alpha.json";',
+        'import beta from "./beta.json";',
+        'import gamma from "./gamma.json";',
+        "",
+        "const messages = {",
+        "  alpha,",
+        "  beta,",
+        "  gamma,",
+        "};",
+        "",
+      ].join("\n"),
+    });
+    expect(problemsOf(root)).toEqual([]);
   });
 
   it("fails when a file is not registered in its module", () => {

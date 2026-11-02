@@ -41,12 +41,13 @@ from app.models.monitoring import (
 )
 from app.models.rule import RuleMatchWindow, RuleMatchWindowStatus
 from app.models.search_cadence import SearchCadenceSetting
-from app.providers.base import QRadarProvider
+from app.providers.base import CapabilityNotSupportedError, ProviderCapability, QRadarProvider
 from app.providers.factory import build_provider_for_instance
 from app.providers.tls import build_ssl_context
 from app.rules.matches import SKIPPED_REASON
 from app.security.redaction import redact
 from app.services.ariel_permit import ArielPermitBudget
+from app.services.qradar_health import HealthReadCache, read_qradar_health
 from app.workers.celery_app import (
     ANOMALY_EVALUATION_CADENCE_SECONDS,
     BEAT_HEARTBEAT_KEY,
@@ -58,6 +59,11 @@ from app.workers.celery_app import (
 FRONTEND_HEALTH_URL = "http://frontend:3000/api/health"
 BACKEND_VERSION_URL = "http://backend:8000/api/v1/version"
 CHECK_TIMEOUT_SECONDS = 10.0
+#: One QRadar read of `qradar_health`. The probe and the four reads run one after the other, so
+#: the check stays inside `CHECK_TIMEOUT_SECONDS`.
+QRADAR_HEALTH_READ_TIMEOUT_SECONDS = 3.0
+#: The average EPS share of the allocation above which `qradar_health` warns.
+QRADAR_EPS_WARN_SHARE = 0.9
 _CHECK_RUNBOOKS = (
     ("db_connect", "OPS-R36"),
     ("migration_head", "OPS-R11"),
@@ -81,7 +87,9 @@ _CHECK_RUNBOOKS = (
     ("version_match", "OPS-R11"),
     ("unknown_settings", "OPS-R62"),
     ("ariel_permits", "OPS-R63"),
+    ("geo_country_source", "OPS-R30"),
     ("rule_match_coverage", "OPS-R65"),
+    ("qradar_health", "OPS-R67"),
 )
 _TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])")
 _CREDENTIAL_URL_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
@@ -215,6 +223,10 @@ BATCH_DELETERS: tuple[BatchDeleter, ...] = (
     BatchDeleter(
         "apply_anomaly_fault_retention",
         (BatchTable("anomaly_evaluation_fault", "anomaly_fault_retention_days"),),
+    ),
+    BatchDeleter(
+        "apply_ariel_search_run_retention",
+        (BatchTable("ariel_search_run", "ariel_search_run_retention_days"),),
     ),
     BatchDeleter(
         "apply_custom_rule_retention",
@@ -671,6 +683,15 @@ class Doctor:
             )
         finally:
             await client.aclose()
+
+    async def _enabled_instances(self) -> list[QRadarInstance]:
+        async with self.sessionmaker() as session:
+            rows = await session.scalars(
+                select(QRadarInstance)
+                .where(QRadarInstance.enabled.is_(True))
+                .order_by(QRadarInstance.created_at)
+            )
+            return list(rows.all())
 
     async def _instance(self) -> QRadarInstance | None:
         async with self.sessionmaker() as session:
@@ -1366,6 +1387,206 @@ class Doctor:
             f"{int(skipped_n)} skipped beyond the catch-up horizon",
             "OPS-R65",
         )
+
+    async def check_qradar_health(self) -> CheckResult:
+        """How QRadar itself is doing: managed hosts, EPS against the allocation, the license.
+
+        One fresh read of the first enabled console (GET only, each tried once, a short
+        timeout per read). SKIP when the console does not answer (`qradar_auth` already
+        reports that) or when none of the three figures could be read: nothing is claimed
+        about what was not read. WARN when a managed host is not ACTIVE (or reports no
+        status), when the average EPS is over 90 % of the EPS allocation, or when the license
+        pool is over-allocated. The number of search ids QRadar holds is printed and has no
+        threshold.
+        """
+        check_id = "qradar_health"
+        try:
+            instance = await self._instance()
+        except Exception as exc:
+            return CheckResult(
+                check_id,
+                Status.SKIP,
+                f"the registered console could not be read ({type(exc).__name__})",
+            )
+        if instance is None:
+            return CheckResult(
+                check_id, Status.SKIP, "no enabled QRadar instance is registered; see qradar_auth"
+            )
+        try:
+            health = await read_qradar_health(
+                instance,
+                settings=self.settings,
+                provider_factory=self.provider_factory,
+                cache=HealthReadCache(),
+                read_timeout=QRADAR_HEALTH_READ_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            return CheckResult(
+                check_id,
+                Status.SKIP,
+                f"QRadar health could not be read ({type(exc).__name__})",
+            )
+        if health.reachable.value is False:
+            return CheckResult(
+                check_id, Status.SKIP, "the console did not answer; see qradar_auth"
+            )
+        facts: list[str] = []
+        warnings: list[str] = []
+        unread: list[str] = []
+        if health.servers.value is not None:
+            servers = health.servers.value
+            facts.append(f"{servers.active} of {servers.total} managed hosts ACTIVE")
+            if not servers.all_active:
+                names = ", ".join(
+                    f"{entry.hostname or 'unnamed host'} {entry.status or 'reports no status'}"
+                    for entry in servers.not_active
+                )
+                warnings.append(
+                    f"{servers.total - servers.active} managed host(s) not ACTIVE ({names})"
+                )
+        else:
+            unread.append(f"managed hosts ({health.servers.state.value})")
+        if health.eps.value is not None:
+            eps = health.eps.value
+            share = eps.average_share
+            facts.append(
+                f"average {eps.average_eps} EPS of {eps.allocated_eps} allocated"
+                + (f" ({share * 100:.1f} %)" if share is not None else "")
+            )
+            if share is not None and share > QRADAR_EPS_WARN_SHARE:
+                warnings.append(
+                    f"average EPS is {share * 100:.1f} % of the allocation "
+                    f"(over {QRADAR_EPS_WARN_SHARE * 100:.0f} %)"
+                )
+        else:
+            unread.append(f"EPS ({health.eps.state.value})")
+        if health.license.value is not None:
+            pool = health.license.value
+            over = [
+                name
+                for name, rate in (("EPS", pool.eps), ("FPM", pool.fpm))
+                if rate is not None and rate.overallocated
+            ]
+            if over:
+                warnings.append(f"license pool over-allocated ({' and '.join(over)})")
+            else:
+                facts.append("license pool not over-allocated")
+        else:
+            unread.append(f"license ({health.license.state.value})")
+        held = health.ariel.list_probe.value
+        if held is not None:
+            facts.append(
+                f"QRadar holds {'at least ' if held.truncated else ''}{held.held} Ariel search ids"
+            )
+        if len(unread) == 3:
+            return CheckResult(
+                check_id,
+                Status.SKIP,
+                "nothing could be read from QRadar: " + ", ".join(unread) + "; see qradar_auth",
+            )
+        if unread:
+            facts.append("not read: " + ", ".join(unread))
+        if warnings:
+            return CheckResult(
+                check_id, Status.WARN, "; ".join([*warnings, *facts]), "OPS-R67"
+            )
+        return CheckResult(check_id, Status.PASS, "; ".join(facts))
+
+    async def check_geo_country_source(self) -> CheckResult:
+        """One line: the geography source, each direction's property, and the consoles."""
+        check_id = "geo_country_source"
+        settings = self.settings
+        if not settings.geo_collection_enabled:
+            return CheckResult(check_id, Status.SKIP, "geography collection is off")
+        directions = list(settings.geo_directions)
+        if settings.geo_country_source == "lookup":
+            named = " and ".join(directions)
+            return CheckResult(check_id, Status.PASS, f"lookup; {named} use GEO::LOOKUP")
+        if settings.geo_country_source != "property":
+            return CheckResult(
+                check_id,
+                Status.FAIL,
+                "GEO_COUNTRY_SOURCE is property or lookup",
+                "OPS-R30",
+            )
+        names = {direction: settings.geo_property_for(direction) for direction in directions}
+        if not any(names.values()):
+            parts = [f"{direction} not collected (no property)" for direction in directions]
+            return CheckResult(
+                check_id, Status.WARN, "property; " + "; ".join(parts), "OPS-R30"
+            )
+        try:
+            instances = await self._enabled_instances()
+        except Exception as exc:
+            return CheckResult(
+                check_id,
+                Status.FAIL,
+                f"property; enabled consoles could not be read ({type(exc).__name__})",
+                "OPS-R30",
+            )
+        if not instances:
+            return CheckResult(
+                check_id,
+                Status.FAIL,
+                "property; no enabled QRadar instance is registered",
+                "OPS-R30",
+            )
+        findings: list[tuple[str, set[str] | str]] = []
+        for instance in instances:
+            try:
+                provider = self.provider_factory(instance)
+            except Exception as exc:
+                findings.append((instance.name, type(exc).__name__))
+                continue
+            try:
+                if not provider.supports(ProviderCapability.CUSTOM_PROPERTY_CATALOG):
+                    raise CapabilityNotSupportedError(
+                        f"{type(provider).__name__} does not support the custom-property catalog"
+                    )
+                listed = await provider.list_custom_properties()
+                findings.append((instance.name, {item.name for item in listed}))
+            except Exception as exc:
+                findings.append((instance.name, type(exc).__name__))
+            finally:
+                await provider.aclose()
+        any_absent = False
+        lines: list[str] = []
+        for direction in directions:
+            prop = names[direction]
+            if not prop:
+                lines.append(f"{direction} not collected (no property)")
+                continue
+            present = [
+                console
+                for console, found in findings
+                if isinstance(found, set) and prop in found
+            ]
+            absent = [
+                console
+                for console, found in findings
+                if isinstance(found, set) and prop not in found
+            ]
+            unread = [
+                f"{console} ({kind})"
+                for console, kind in findings
+                if isinstance(kind, str)
+            ]
+            bits: list[str] = []
+            if present:
+                bits.append("present on " + ", ".join(present))
+            if absent:
+                any_absent = True
+                bits.append("absent on " + ", ".join(absent))
+            if unread:
+                bits.append("could not be read on " + ", ".join(unread))
+            lines.append(f'{direction} "{prop}" ' + ", ".join(bits))
+        message = "property; " + "; ".join(lines)
+        failed = any(isinstance(found, str) for _console, found in findings)
+        if failed:
+            return CheckResult(check_id, Status.FAIL, message, "OPS-R30")
+        if any_absent:
+            return CheckResult(check_id, Status.WARN, message, "OPS-R30")
+        return CheckResult(check_id, Status.PASS, message)
 
     async def run(self) -> list[CheckResult]:
         results: list[CheckResult] = []

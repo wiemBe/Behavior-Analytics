@@ -22,7 +22,7 @@ Dört kural her bölümde geçerlidir:
 7. [Geçmiş okuma](#geçmiş-okuma)
 8. [Kapsam eşlemeleri](#kapsam-eşlemeleri)
 9. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R66; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R67; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -1089,6 +1089,7 @@ bağlanmaz.
 | `unknown_settings` | Ortamda bir ayara benzeyen ama ayar olmayan adlar. Adlar yazılır, değerler yazılmaz. Böyle bir ad yoksa PASS. Kurulumun yazdığı adlar burada görünmez. | OPS-R62 |
 | `ariel_permits` | Global havuz held/cap, ayrılmış canlı yuvalar. Konsol tarafı, tek konsol yokken `console-pool locks N (cap P per console)` olarak yazılır. N bu veritabanındaki bütün konsol kilitleridir, bir konsolun kendi tutuşu değildir. Bütçede gerçekten tek konsol varsa satır `console held/cap` yazar. Havuz doluysa (`held >= cap`) WARN; canlı iş bekler, geçmiş okuma yerini verir. Zorlama kapalıysa `not enforced` ve PASS. Okuma hatasında yalnız hata sınıfı. | OPS-R63 |
 | `rule_match_coverage` | `RULE_HEALTH_WINDOW_DAYS` içindeki `FAILED` ve `TRUNCATED` kural-eşleşme pencerelerini tek sorguda sayar; en eski pencereyi, sağlık aralığından çıkacağı UTC zamanı, onarılabilir ve catch-up ufku nedeniyle atlanmış sayıları yazar. Biri varsa WARN, yoksa PASS, toplama kapalıysa SKIP. | OPS-R65 |
+| `qradar_health` | How QRadar itself is doing, from one fresh read of the first enabled console (GET only, short timeout per read). WARN when a managed host is not `ACTIVE` or reports no status, when the average EPS is over 90 % of the EPS allocation, or when the license pool is over-allocated (EPS or FPM). SKIP when the console does not answer (`qradar_auth` reports that) or when none of managed hosts, EPS and license could be read. A figure that was not read is named in the line (`not read: ...`) and is never counted as healthy. The line also prints how many Ariel search ids QRadar holds (all users, finished and active alike); there is no threshold on that number. | OPS-R67 |
 
 `families_off` WARN değil PASS verir. Satır açık ve kapalı aileleri ayrı yazar. Yeni kurulumda
 Log source hacmi, catch-all, geo ve explanations açıktır; WAF, IPS, kural eşleşmeleri, özel kurallar ve mülk
@@ -3018,3 +3019,36 @@ filigran satırının `collection_metadata` alanındaki `watermark_stalled` değ
 paylaşan offense'lar bir yürüyüşe sığmalıdır. Temiz bir çalışma sinyali siler. Filigranı elle
 ilerletme: sınırın ötesine taşımak okunmayan offense'ları atlar. Gecikme uyarısı ayrıdır
 (OPS-R30).
+
+### OPS-R67. `qradar_health` warns: QRadar's own health
+
+**Symptom:** `doctor` shows `WARN qradar_health` with `runbook: OPS-R67`. The same facts are in
+`GET /api/v1/admin/ariel-load/current` (section `qradar`, one entry per enabled console) and in
+`python -m app.cli.ariel_load --current`.
+
+**Likely cause:** One of three things, named in the line.
+- A managed host is not `ACTIVE` (or reports no status). QRadar has a host that is down,
+  deploying or lost its connection to the console. Collection from log sources behind that host
+  may be late or missing.
+- The average EPS is over 90 % of the EPS allocation. QRadar may start to drop or queue events
+  once the allocation is reached, so the platform's volume figures can understate what the
+  sources send.
+- The license pool is over-allocated (EPS or FPM). More was allocated to hosts than the license
+  holds. On a CE lab console this is normal and the WARN stays.
+
+**Verify:** Run `./qradar-dash doctor` and read the `qradar_health` line. For the per-host detail
+and for the figures the line leaves out (peak EPS, license totals, the share of our own searches
+that found Ariel unavailable) use the `--current` command or the endpoint above.
+
+```bash
+./qradar-dash doctor
+docker compose exec -T backend python -m app.cli.ariel_load --current
+```
+
+**Fix:** The cause is in QRadar, not in this platform. Fix the host in the QRadar Admin tab
+(deployment editor), raise or rebalance the EPS allocation, or change the license. The platform
+never writes to QRadar. A line that says `not read: ...` means that figure was not available
+(the token may lack the capability, or QRadar answered an error): it is not a healthy reading.
+`SKIP` with "the console did not answer" is `qradar_auth` territory (OPS-R1). The count of Ariel
+search ids QRadar holds ("held") is shown for context only; it includes finished searches and has no
+threshold.

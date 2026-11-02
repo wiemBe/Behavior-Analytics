@@ -45,6 +45,7 @@ import pwchart from "./pwchart.json";
 import rules from "./rules.json";
 import searches from "./searches.json";
 import shell from "./shell.json";
+import siemLoad from "./siemLoad.json";
 import states from "./states.json";
 import trend from "./trend.json";
 import ui from "./ui.json";
@@ -95,6 +96,7 @@ const messages = {
   rules,
   searches,
   shell,
+  siemLoad,
   states,
   trend,
   ui,

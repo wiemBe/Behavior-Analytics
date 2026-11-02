@@ -4213,6 +4213,16 @@ support_error() { # support_error PART MESSAGE
   printf '%s\n' "$2" >"$SUPPORT_STAGE/input/$1.error.txt"
 }
 
+support_ariel_load() {
+  local target="$SUPPORT_STAGE/input/ariel-load.json"
+  if dc exec -T backend python -m app.cli.ariel_load --json >"$target" 2>/dev/null; then
+    return
+  fi
+  rm -f -- "$target"
+  support_error ariel-load \
+    "ariel load summary could not be read; inspect ./qradar-dash doctor and the service logs."
+}
+
 support_psql() { # support_psql PART QUERY
   local part=$1 query=$2 target="$SUPPORT_STAGE/input/$1.txt"
   if printf '%s\n' "$query" \
@@ -4375,6 +4385,7 @@ cmd_support_bundle() {
     'SELECT id, instance_id, collector, watermark_at, last_run_at, lag_seconds, intervals_collected, consecutive_failures, last_error, collection_metadata, created_at, updated_at FROM collection_watermark ORDER BY instance_id, collector;'
   support_psql cadence \
     'SELECT family, cadence_seconds, last_slot_start, updated_at, updated_by, last_run_at, last_run_outcome, last_run_searches, last_run_buckets, last_run_splits FROM search_cadence ORDER BY family;'
+  support_ariel_load
   support_logs
 
   if ! install -m 600 "$ENV_FILE" "$SUPPORT_STAGE/input/.support-input/config.env"; then

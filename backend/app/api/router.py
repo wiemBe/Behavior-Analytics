@@ -8,6 +8,7 @@ from app.api.deps import get_principal, requires
 from app.api.routes import (
     alerts,
     anomalies,
+    ariel_load,
     auth,
     catchall,
     classification_rules,
@@ -35,6 +36,7 @@ from app.api.routes import (
     waf_catalog,
 )
 from app.security.rbac import (
+    PERM_ADMIN,
     PERM_ALERT_READ,
     PERM_ANOMALY_READ,
     PERM_AUTH_ADMIN,
@@ -60,6 +62,8 @@ from app.security.rbac import (
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+# Platform-wide Ariel load. admin:* only: admin:waf and read:* do not see it.
+api_router.include_router(ariel_load.router, dependencies=[Depends(requires(PERM_ADMIN))])
 # Build identity: open like health, and it carries no data beyond version, SHA and head.
 api_router.include_router(version.router)
 # Login is unauthenticated. Logout and password change need a principal.

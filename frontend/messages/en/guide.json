@@ -139,7 +139,7 @@
           "p": "Reading is guarded on every route. A forbidden state names the missing permission, says that nothing was changed, and tells you to ask an administrator for a role that includes it. It never shows partial data in place of the refusal."
         },
         {
-          "p": "The Account menu in the top bar shows your name, sign-in source and roles. Account settings shows the same account's language and password options."
+          "p": "The Account menu in the top bar shows your name, sign-in source and roles. Account settings changes the password of a local account."
         }
       ]
     },
@@ -297,7 +297,7 @@
           "p": "The page heading is **Geography**. **Address** chooses which address the country is taken from: **Source** or **Destination**. **Window** offers **1 h**, **24 h** and **7 d**. The map fills each country by its events, in classes with round bounds that the legend lists under **Events per country**. A country with no row is drawn in the **No data** fill, which is not the lowest class: nothing was measured for it. The table beside the map gives **Country**, **Events** and **Share** for every country the answer holds. **Share** is over the events that have a country; the remainders are never mixed into it."
         },
         {
-          "p": "Under the map, **Buckets measured** says how much of the window was collected. **Unresolved**, **Over the country cap** and **Unparseable** count the events that could not be given a country. Unresolved events have a private, internal or GeoIP-unknown address, and the lookup cannot tell those three apart. Where the page says where the country comes from, it is either a QRadar property or the GeoIP lookup of the address. The Dashboard widget lists the five largest countries and opens this page."
+          "p": "Under the map, **Buckets measured** says how much of the window was collected. **Unresolved**, **Over the country cap** and **Unparseable** count the events that could not be given a country. Unresolved events have no country: where the country is read from a QRadar property, that property was empty; where it comes from the GeoIP lookup, the address is private, internal or unknown to GeoIP, and the lookup cannot tell those three apart. Where the page says where the country comes from, it is either a QRadar property or the GeoIP lookup of the address. The Dashboard widget lists the five largest countries and opens this page."
         }
       ],
       "states": [
@@ -530,18 +530,18 @@
     },
     "account": {
       "title": "Account settings",
-      "answers": "How do I change my interface language or password?",
+      "answers": "How do I change my password?",
       "body": [
         {
-          "p": "**Account settings** carries **Language** and **Password**. **Interface language** offers **English** and **Türkçe**; the choice is saved on the account. When the session has no account to store it on, the page says the language is saved on this browser only."
+          "p": "**Account settings** carries **Password**. A local account changes its password here with **Current password**, **New password** and **Confirm new password**. An LDAP account changes its password in the directory, not here, and an account with no local password says so."
         },
         {
-          "p": "**Password** changes the local password. An LDAP account changes its password in the directory, not here, and an account with no local password says so. The top bar's account menu shows your name, sign-in source and roles."
+          "p": "The top bar's account menu shows your name, sign-in source and roles."
         }
       ],
       "states": [
         {
-          "p": "**The language preference was saved.**; **The language preference could not be saved.**; **The language preference was not applied because this browser did not keep the cookie.**"
+          "p": "**The password is changed.**; **The password was not changed.**, with the reasons the server gave; **The new password and the confirmation do not match.**; **The password is changed, but the account could not be read again. Try again.**; an account that must change its password sees only the password form."
         }
       ]
     },
@@ -837,12 +837,48 @@
       ],
       "permission": "`read:history_backfill` (to view); `admin:history_backfill` (to change)"
     },
+    "siem-load": {
+      "title": "SIEM load",
+      "answers": "How much load is this platform putting on QRadar now, and how is QRadar itself doing?",
+      "body": [
+        {
+          "p": "The page has two halves. **Our load on QRadar** is what this platform records about the Ariel searches it sends: how many are in flight, how many permit slots are held, and what the last 5, 15 and 60 minutes held. **QRadar** is what QRadar itself reports for each enabled console: whether it answers, its managed hosts, its EPS, its license pool and its Ariel service. Reading it sends QRadar only read requests, and no search is run for it."
+        },
+        {
+          "h": "How to read it"
+        },
+        {
+          "p": "**Searches in flight** are searches this platform has sent and not yet seen finish. One that has been open longer than the stale limit is listed apart as **Stale**: its worker probably stopped before it recorded an end, so it is no longer load. **Permit slots held** are the slots this platform's own permit pool has handed out, against the cap; **Not enforced** means no cap applies. In the window table, **Failed** counts errors, cancellations, timeouts and searches that found Ariel unavailable, and **Refused** counts searches the permit pool turned away before they reached QRadar. Wall time covers completed searches only; a dash means none completed."
+        },
+        {
+          "p": "Each QRadar figure shows its own state. A value that was read is shown as it is. **Not collected**, **Forbidden** and **Failed** mean it was not read, and the sentence beside the state says why. A figure that was not read is never shown as zero and never as healthy. **Ariel** is judged from this platform's own latest searches, not from a QRadar status. **Search ids held** is the number of search ids QRadar keeps for every user, finished and active alike: it is what QRadar holds, not what it is running. QRadar's answers are reused for a short time (30 seconds by default), so a console is asked at most that often, and a cached answer says how old it is."
+        },
+        {
+          "p": "**Load by caller** summarises the searches recorded in the window you pick (1 h, 24 h, 7 d or 30 d), one row per caller. Percentiles cover completed searches only. Totals cover every finished search; a total marked ≥ leaves out searches for which QRadar reported no figure, and a dash means none did."
+        }
+      ],
+      "steps": [
+        "Open **Administration**, then **SIEM load**.",
+        "Read **Our load on QRadar** and **QRadar** first. Set **Refresh** in the top bar to 1 min or 5 min to read them again on that cadence; the figures are as of the time shown, not continuous.",
+        "Open **Searches in flight** to see which caller holds each search, on which console, and for how long.",
+        "Pick a window under **Load by caller** to see which caller costs the most."
+      ],
+      "states": [
+        {
+          "p": "**No QRadar console is enabled.**; **No search is in flight.**; **No search was submitted in the last 60 minutes.**; **No search was recorded in the last 24 h.**; a part the backend could not read, with its reason; a failed refresh keeps the last answer and says so; the forbidden notice naming `admin:*`."
+        }
+      ],
+      "permission": "`admin:*`"
+    },
     "users-and-directory": {
       "title": "Users and directory sign-in",
       "answers": "Who can sign in, with which roles, and how does directory sign-in reach the platform?",
       "body": [
         {
           "p": "An account is local, with a password stored here, or LDAP, with the password checked by the directory. Roles are always assigned here; the directory supplies none. A person who signs in through the directory without an account gets one automatically, with no roles, so it holds no permissions until an administrator assigns roles (see `roles`)."
+        },
+        {
+          "p": "There is no user delete. Disabling an account is how access is removed: **Disable {name}** under **Manage** ends the account's sessions and refuses its next sign-in. The account row and its audit trail stay."
         }
       ],
       "steps": [

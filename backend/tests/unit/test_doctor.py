@@ -1173,7 +1173,8 @@ async def test_ariel_permits_check_covers_every_state(
 ) -> None:
     doctor = make_doctor(settings)
     assert ("ariel_permits", "OPS-R63") in doctor_module._CHECK_RUNBOOKS
-    assert doctor_module._CHECK_RUNBOOKS[-1] == ("rule_match_coverage", "OPS-R65")
+    assert doctor_module._CHECK_RUNBOOKS[-1] == ("qradar_health", "OPS-R67")
+    assert ("rule_match_coverage", "OPS-R65") in doctor_module._CHECK_RUNBOOKS
 
     _install_budget(monkeypatch, _PermitBudget(_permit_counts()))
     idle = await doctor.check_ariel_permits()
