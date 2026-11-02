@@ -121,6 +121,7 @@ from app.services.ariel_permit import (
     ariel_history_deferred_message,
     ariel_history_deferred_reason,
 )
+from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
 from app.services.ips_pipeline import ips_pipeline_lock_key
 from app.services.locks import collector_lock_key, session_lock_engine
 from app.services.search_cadence import SearchCadenceService
@@ -903,6 +904,7 @@ class IpsCollector:
         )
         return live, reading, values_by_source, handoffs
 
+    @ariel_caller(CALLER_HISTORY)
     async def _run_history(
         self,
         instance: QRadarInstance,

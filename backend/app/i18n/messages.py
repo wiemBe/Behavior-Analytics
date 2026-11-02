@@ -482,6 +482,14 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "missing required permission: {permission}",
         permission="read:*",
     ),
+    _fixed(
+        "ariel_load.hours.invalid",
+        "hours must be a whole number from 1 to 720",
+    ),
+    _fixed(
+        "ariel_load.window.empty",
+        "No Ariel search was recorded in this window.",
+    ),
     # Passwords and usernames.
     _fixed("auth.password.too_short", "password must be at least 12 characters"),
     _fixed("auth.password.too_long", "password must be at most 72 bytes"),
@@ -5048,6 +5056,28 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "{rows} rows per search, plus one console total",
         {"rows": _PLAIN},
         {"rows": 1000},
+    ),
+    # --- GEO-3: country property -------------------------------------------------------------
+    _text(
+        "geo.property.missing",
+        "The country property “{name}” does not exist on this console. "
+        "Set {setting} to the property's exact name.",
+        name="Source Geographic Location",
+        setting="GEO_SOURCE_COUNTRY_PROPERTY",
+    ),
+    _fixed(
+        "geo.property.unreadable",
+        "The custom-property list could not be read on this console, "
+        "so no country search was sent.",
+    ),
+    _fixed(
+        "geo.note.unresolved_lookup",
+        "UNRESOLVED counts events whose address is private, internal or unknown to GeoIP. "
+        "The lookup returns the same empty result for all three, so they cannot be told apart.",
+    ),
+    _fixed(
+        "geo.note.unresolved_property",
+        "UNRESOLVED counts events whose country property was empty.",
     ),
     # --- end MSG-8a ---------------------------------------------------------------------------
 )

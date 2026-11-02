@@ -16,7 +16,7 @@ from app.models.enums import SearchFamily
 from app.models.geo import GeoCountryBucket
 from app.models.monitoring import CollectionWatermark
 from app.models.search_cadence import SearchCadenceSetting
-from app.providers.base import ProviderError
+from app.providers.base import ProviderCapability, ProviderError
 from app.providers.mock import MockQRadarProvider, geo_key
 from app.providers.qradar_mcp import QRadarMCPProvider
 from app.services.ariel_permit import ArielPermitUnavailable
@@ -74,7 +74,13 @@ def steady(rows):  # type: ignore[no-untyped-def]
 
 def collector(session, provider, *, now=NOW, **overrides) -> GeoCollector:  # type: ignore[no-untyped-def]
     settings = get_settings().model_copy(
-        update={"search_cadence_max_searches_per_tick": 50, **overrides}
+        # GEO-3: these scenarios were written for the address lookup; property mode has
+        # its own class below and names the mode in its overrides.
+        update={
+            "search_cadence_max_searches_per_tick": 50,
+            "geo_country_source": "lookup",
+            **overrides,
+        }
     )
     return GeoCollector(session, provider, settings=settings, clock=lambda: now)
 
@@ -452,3 +458,170 @@ class TestRetention:
 
         assert report.deleted == {"geo_country_bucket": 2} and report.incomplete == []
         assert len(await stored(db_session)) == 24
+
+
+PROP = "Source Geographic Location"
+PROPERTY_MODE = {"geo_country_source": "property", "geo_source_country_property": PROP}
+
+
+def value(text: str | None, events: int = 10) -> dict:
+    return {"geo": text, "events": events}
+
+
+class NoCatalog(Script):
+    """A console whose custom-property list cannot be read."""
+
+    async def list_custom_properties(self, *, log_source_type_id=None):  # type: ignore[no-untyped-def]
+        raise ProviderError("token=planted-secret")
+
+
+@pytest.mark.usefixtures("pin_cadence")
+class TestPropertyMode:
+    async def test_rows_carry_the_property_query_version_and_the_countries(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = Script(
+            steady([value("US", 40), value("Europe.Turkey", 6), value("", 7), value("zz", 2)])
+        )
+
+        report = await collector(db_session, provider, **PROPERTY_MODE).collect(inst)
+
+        assert report.searches_sent == 1 and report.buckets_complete == 12
+        assert not report.partial_failure
+        assert [(s.direction, s.country_property) for s in provider.geo_searches] == [
+            (SOURCE, PROP)
+        ]
+        first = await stored(db_session, direction="SOURCE", bucket_start=FIRST)
+        assert [(r.slot, r.events) for r in first] == [
+            ("TR", 6),
+            ("UNPARSEABLE", 2),
+            ("UNRESOLVED", 7),
+            ("US", 40),
+        ]
+        assert {r.query_version for r in first} == {"geo-country-property-v1"}
+        wm = await watermark(db_session, inst, SOURCE)
+        assert wm.watermark_at == LAST and wm.consecutive_failures == 0
+        assert wm.collection_metadata["country_property"] == PROP
+
+    async def test_the_raw_value_is_never_stored_or_logged(
+        self, db_session, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = Script(steady([value("planted-raw-value", 3)]))
+        with caplog.at_level(logging.DEBUG):
+            await collector(db_session, provider, **PROPERTY_MODE).collect(inst)
+        assert "planted-raw-value" not in caplog.text
+        wm = await watermark(db_session, inst, SOURCE)
+        assert "planted-raw-value" not in str(wm.collection_metadata)
+        assert "planted-raw-value" not in (wm.last_error or "")
+
+    async def test_a_missing_property_sends_no_search_and_records_a_coded_failure(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = Script(steady([value("US")]))
+
+        report = await collector(
+            db_session, provider, geo_source_country_property="No Such Property",
+            geo_country_source="property",
+        ).collect(inst)
+
+        assert provider.geo_searches == []
+        assert report.searches_sent == 0 and report.partial_failure
+        assert report.as_dict()["status"] == "failed"
+        assert "No Such Property" in (report.error or "")
+        assert "GEO_SOURCE_COUNTRY_PROPERTY" in (report.error or "")
+        assert await stored(db_session) == []
+        wm = await watermark(db_session, inst, SOURCE)
+        assert wm.watermark_at is None and wm.consecutive_failures == 1
+        assert wm.collection_metadata["failure_code"] == "geo.property.missing"
+        assert wm.collection_metadata["failure_params"] == {
+            "name": "No Such Property",
+            "setting": "GEO_SOURCE_COUNTRY_PROPERTY",
+        }
+
+    async def test_an_unreadable_property_list_fails_closed_with_its_own_reason(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = NoCatalog(steady([value("US")]))
+
+        report = await collector(db_session, provider, **PROPERTY_MODE).collect(inst)
+
+        assert provider.geo_searches == [] and report.partial_failure
+        assert await stored(db_session) == []
+        wm = await watermark(db_session, inst, SOURCE)
+        assert wm.collection_metadata["failure_code"] == "geo.property.unreadable"
+        assert "planted-secret" not in (report.error or "")
+        assert "planted-secret" not in (wm.last_error or "")
+        assert wm.consecutive_failures == 1
+
+    async def test_a_console_without_the_catalog_capability_fails_closed(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = Script(steady([value("US")]))
+        provider.capabilities = provider.capabilities - {
+            ProviderCapability.CUSTOM_PROPERTY_CATALOG
+        }
+
+        report = await collector(db_session, provider, **PROPERTY_MODE).collect(inst)
+
+        assert provider.geo_searches == [] and report.partial_failure
+        wm = await watermark(db_session, inst, SOURCE)
+        assert wm.collection_metadata["failure_code"] == "geo.property.unreadable"
+
+    async def test_a_direction_with_no_property_is_not_searched_and_not_a_failure(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = Script(steady([value("US")]))
+
+        report = await collector(db_session, provider, **PROPERTY_MODE).collect(inst)
+
+        assert [s.direction for s in provider.geo_searches] == [SOURCE]
+        assert not report.partial_failure
+        assert await stored(db_session, direction="DESTINATION") == []
+        wm = await watermark(db_session, inst, DESTINATION)
+        assert wm.watermark_at is None and wm.consecutive_failures == 0
+        assert wm.collection_metadata["not_collected"] == "no_property"
+
+    async def test_both_directions_with_properties_each_get_their_own_search(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = Script(steady([value("DE")]))
+
+        await collector(
+            db_session, provider, geo_destination_country_property=PROP, **PROPERTY_MODE
+        ).collect(inst)
+
+        assert [s.direction for s in provider.geo_searches] == [SOURCE, DESTINATION]
+        assert {r.slot for r in await stored(db_session, direction="DESTINATION")} == {"DE"}
+
+    async def test_no_property_and_a_bad_catalog_never_fall_back_to_the_lookup(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = NoCatalog(steady([value("US")]))
+
+        await collector(
+            db_session, provider, geo_source_country_property="", geo_country_source="property"
+        ).collect(inst)
+
+        assert provider.geo_searches == []
+
+    async def test_the_statement_count_does_not_grow_with_the_countries(
+        self, db_session
+    ) -> None:
+        from app.geo.countries import COUNTRIES
+
+        counts = []
+        for n in (2, 64):
+            inst = await make_instance(db_session)
+            provider = Script(steady([value(c.alpha2, 5) for c in COUNTRIES[:n]]))
+            with recorded_statements(db_session) as statements:
+                await collector(db_session, provider, **PROPERTY_MODE).collect(inst)
+            counts.append(len(statements))
+        assert counts[0] == counts[1]

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PasswordChange } from "./PasswordChange";
 import { StaticSession, type SessionValue } from "./session";
 import { ApiError, sessionNavigation } from "@/lib/api";
+import { enableTurkish } from "../../../vitest.setup";
 
 const nav = vi.hoisted(() => ({ replace: vi.fn(), params: "next=/alerts" }));
 vi.mock("next/navigation", () => ({
@@ -130,6 +131,7 @@ describe("PasswordChange", () => {
   });
 
   it("loads the next page as a document when the account language differs", async () => {
+    enableTurkish();
     document.cookie = "ba_locale=tr; Path=/";
     const assign = vi.spyOn(sessionNavigation, "assign").mockImplementation(() => {});
     client.changePassword.mockResolvedValue({

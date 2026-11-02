@@ -25,6 +25,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.patterns import PROPERTY_NAME_PATTERN
 from app.models.enums import OutagePolicyMode
 
 
@@ -549,6 +550,10 @@ class Settings(BaseSettings):
     #: Closed fault rows (resolved or given up) older than this are deleted. An
     #: open fault is the source's current state and is never pruned.
     anomaly_fault_retention_days: int = Field(default=30, ge=1, le=3650)
+    #: Ariel load rows older than this are deleted. The daily task is
+    #: ``apply_ariel_search_run_retention``. Not gated by RETENTION_ENABLED,
+    #: and the table is not a hypertable.
+    ariel_search_run_retention_days: int = Field(default=30, ge=1, le=3650)
     #: Closed Phase A incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). Live
     #: states are kept. Not gated by RETENTION_ENABLED.
     log_source_anomaly_retention_days: int = Field(default=365, ge=1, le=3650)
@@ -718,12 +723,19 @@ class Settings(BaseSettings):
 
     # --- D-10: geography (events per country, for the home map) --------------
     #: Kill switch. Two keyed searches per cadence tick (one per direction).
-    #: GEO_COLLECTION defaults to 5 minutes, so that is 24 searches an hour per instance.
+    #: GEO_COLLECTION defaults to 5 minutes, so that is 24 searches an hour per
+    #: instance. Property mode sends no search for a direction with no property.
     geo_collection_enabled: bool = True
-    #: Which address is looked up, each a separate stored series. SOURCE, DESTINATION.
+    #: Which side of the event is counted, each a separate stored series.
     geo_directions: list[str] = Field(
         default_factory=lambda: ["SOURCE", "DESTINATION"], min_length=1, max_length=2
     )
+    #: ``property`` reads a QRadar custom property. ``lookup`` keeps GEO::LOOKUP.
+    geo_country_source: str = "property"
+    #: Exact custom-property name for SOURCE. Empty: that direction is not collected.
+    geo_source_country_property: str = "Source Geographic Location"
+    #: Exact custom-property name for DESTINATION. Empty: that direction is not collected.
+    geo_destination_country_property: str = ""
     #: Rows kept per keyed search before truncation splits it.
     geo_max_rows_per_search: int = Field(default=5000, ge=10, le=100_000)
     #: Countries kept per bucket and direction; the rest is summed into OVER_CAP.
@@ -1055,7 +1067,37 @@ class Settings(BaseSettings):
     def has_qradar_token(self) -> bool:
         return bool(self.qradar_api_token_file or self.qradar_sec_token.get_secret_value())
 
+    def geo_property_for(self, direction: str) -> str:
+        """The configured country property for one direction. Empty means none."""
+        if direction == "SOURCE":
+            return self.geo_source_country_property
+        if direction == "DESTINATION":
+            return self.geo_destination_country_property
+        raise ValueError("GEO_DIRECTIONS holds SOURCE and DESTINATION")
+
     # ----------------------------------------------------------- validation
+    @field_validator("geo_country_source", mode="before")
+    @classmethod
+    def _geo_country_source_is_known(cls, value: object) -> str:
+        if isinstance(value, str):
+            mode = value.strip().lower()
+            if mode in ("property", "lookup"):
+                return mode
+        raise ValueError("GEO_COUNTRY_SOURCE is property or lookup")
+
+    @field_validator("geo_source_country_property", "geo_destination_country_property")
+    @classmethod
+    def _geo_country_property_is_safe(cls, value: str, info: ValidationInfo) -> str:
+        """Trim, then a non-empty name must be an allowlisted property name.
+
+        A field validator, so the error carries this field only and never the other
+        settings (a model validator would echo the whole input, secrets included).
+        """
+        name = value.strip()
+        if name and PROPERTY_NAME_PATTERN.fullmatch(name) is None:
+            raise ValueError(f"{(info.field_name or '').upper()} is not an allowed property name")
+        return name
+
     @field_validator("geo_directions")
     @classmethod
     def _geo_directions_are_known(cls, value: list[str]) -> list[str]:

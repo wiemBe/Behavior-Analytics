@@ -16,10 +16,12 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import random
-from collections.abc import Callable, Mapping, Sequence
+import uuid
+from collections.abc import Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import ClassVar, TypedDict
+from functools import wraps
+from typing import Any, ClassVar, TypedDict, cast
 
 from app.catchall.keyed_rows import parse_catchall_rows, validate_catchall_type_ids
 from app.collectors.bucketed_metrics import validate_bucketed_metric_window
@@ -33,6 +35,7 @@ from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.base import (
     IPS_NORMALIZED_FIELD_ALLOWLIST,
     PROPERTY_NAME_PATTERN,
+    CapabilityNotSupportedError,
     ConsoleEventTotals,
     LogSourceTelemetry,
     ProviderCapability,
@@ -82,6 +85,7 @@ from app.providers.dto import (
     WindowedRuleMatches,
 )
 from app.rules.matches import window_starts
+from app.services import ariel_search_log as ariel_log
 from app.waf.bucketed import (
     breakdown_sort_key,
     fold_breakdown_buckets,
@@ -150,6 +154,8 @@ _CUSTOM_PROPERTIES: tuple[tuple[int, str, str, str, bool, tuple[int, ...]], ...]
     (107, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1005", "IPS_Action", "string", False, (2,)),
     (108, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1006", "Unused Property", "string", False, ()),
     (109, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1007", "Bad.Name(1)", "string", False, (212,)),
+    # The default SOURCE country property, so a property-mode demo has a catalog hit.
+    (110, "GEO_SOURCE_COUNTRY", "Source Geographic Location", "string", False, ()),
 )
 
 
@@ -212,6 +218,7 @@ class MockGeoSearch:
     direction: GeoDirection
     window_start: datetime
     window_end: datetime
+    country_property: str | None = None
 
 
 #: A fault hook: given a search, an exception to raise for it, or None.
@@ -229,6 +236,29 @@ _GEO_COUNTRIES = (
     ("JP", "Japan", 1861060),
     ("BR", "Brazil", 3469034),
     ("TR", "Turkey", 298795),
+)
+
+#: Property-mode values, fixed so the demo map and the fold test do not depend on
+#: the seed. Formats: alpha-2, alpha-3, English name, alias, dotted location,
+#: empty, null and one value that is not a country. The raw text stays here.
+_GEO_PROPERTY_VALUES: tuple[tuple[str | None, int], ...] = (
+    ("US", 120),
+    ("DEU", 40),
+    ("Japan", 30),
+    ("Turkey", 20),
+    ("Europe.Turkey", 5),
+    ("NorthAmerica.UnitedStates", 15),
+    ("United States", 10),
+    ("Türkiye", 8),
+    ("USA", 7),
+    ("UK", 12),
+    ("South Korea", 9),
+    ("Iran", 6),
+    ("Vietnam", 4),
+    ("Czech Republic", 3),
+    ("", 11),
+    (None, 2),
+    ("not-a-country", 1),
 )
 
 
@@ -266,6 +296,178 @@ def _metric_source_ids(qradar_ids: Sequence[int]) -> set[int]:
         raise ValueError("metric source ids must be integers") from exc
 
 
+#: What a search note decides: given the call and what it returned, the outcome
+#: of each search the REST provider would have sent for it, in order.
+_SearchPlan = Callable[
+    ["MockQRadarProvider", tuple[object, ...], Mapping[str, object], Any], Sequence[str]
+]
+
+
+def _plan_dimensions(
+    _owner: MockQRadarProvider, _args: Any, kwargs: Any, _result: Any
+) -> Sequence[str]:
+    """REST sends one search per dimension it maps to a QRadar field."""
+    from app.providers.qradar_rest import QRadarRestProvider
+
+    dimensions = kwargs.get("dimensions")
+    if not isinstance(dimensions, Sequence) or isinstance(dimensions, (str, bytes)):
+        return []
+    return [
+        ariel_log.OUTCOME_COMPLETED
+        for name in dimensions
+        if name in QRadarRestProvider._DIMENSION_FIELDS
+    ]
+
+
+def _plan_waf_observations(
+    _owner: MockQRadarProvider, _args: Any, _kwargs: Any, _result: Any
+) -> Sequence[str]:
+    """The grouped search, then the totals search."""
+    return [ariel_log.OUTCOME_COMPLETED, ariel_log.OUTCOME_COMPLETED]
+
+
+def _plan_waf_observations_bucketed(
+    owner: MockQRadarProvider, _args: Any, _kwargs: Any, _result: Any
+) -> Sequence[str]:
+    """REST skips the totals search when the grouped page is truncated."""
+    return [ariel_log.OUTCOME_COMPLETED] * (1 if owner._bucketed_group_overflow else 2)
+
+
+def _plan_waf_probe(
+    _owner: MockQRadarProvider, _args: Any, _kwargs: Any, result: WafSourceProbe
+) -> Sequence[str]:
+    """One total, then per property: none for a name the allowlist refuses, one
+    for a rejected population search, two otherwise."""
+    outcomes = [
+        ariel_log.OUTCOME_ERROR if result.total_error else ariel_log.OUTCOME_COMPLETED
+    ]
+    for probe in result.properties:
+        if not PROPERTY_NAME_PATTERN.match(probe.property_name):
+            continue
+        if probe.rejected or (probe.error and probe.populated_events is None):
+            outcomes.append(ariel_log.OUTCOME_ERROR)
+        elif probe.error:
+            outcomes.extend([ariel_log.OUTCOME_COMPLETED, ariel_log.OUTCOME_ERROR])
+        else:
+            outcomes.extend([ariel_log.OUTCOME_COMPLETED, ariel_log.OUTCOME_COMPLETED])
+    return outcomes
+
+
+def _plan_rejection(
+    _owner: MockQRadarProvider,
+    _args: Any,
+    _kwargs: Any,
+    result: Sequence[WafRejectionObservation],
+) -> Sequence[str]:
+    """One search per observed name; none for a name REST refuses before sending."""
+    # Built per call: this module is imported while ``ariel_search_log`` is
+    # still importing the provider package, so it must not read its constants
+    # at import time.
+    outcomes = {
+        "SEARCH_COMPLETED": ariel_log.OUTCOME_COMPLETED,
+        "TIMED_OUT": ariel_log.OUTCOME_TIMEOUT,
+    }
+    return [
+        outcomes.get(item.outcome, ariel_log.OUTCOME_ERROR)
+        for item in result
+        if PROPERTY_NAME_PATTERN.match(item.property_name)
+    ]
+
+
+def _plan_ips_probe(
+    _owner: MockQRadarProvider, _args: Any, _kwargs: Any, result: IpsSourceProbe
+) -> Sequence[str]:
+    """One total, then per field in order. REST sends nothing for a normalized
+    field outside the allowlist or a property name that fails the pattern; a
+    custom property the mock rejects was still sent, and QRadar refused it."""
+    outcomes = [ariel_log.OUTCOME_COMPLETED]
+    for probe in result.fields:
+        if probe.rejected:
+            if probe.reference_kind == "CUSTOM_PROPERTY" and PROPERTY_NAME_PATTERN.match(
+                probe.name
+            ):
+                outcomes.append(ariel_log.OUTCOME_ERROR)
+            continue
+        outcomes.append(ariel_log.OUTCOME_COMPLETED)
+        if probe.generic_name_events is not None:
+            outcomes.append(ariel_log.OUTCOME_COMPLETED)
+        if probe.logical_field == "ACTION":
+            outcomes.append(ariel_log.OUTCOME_COMPLETED)
+    return outcomes
+
+
+def _notes_ariel[**P, R](
+    family: str,
+    plan: _SearchPlan | None = None,
+) -> Callable[[Callable[P, Coroutine[Any, Any, R]]], Callable[P, Coroutine[Any, Any, R]]]:
+    """Note the searches REST would send for this call, with REST's caller and outcome.
+
+    A call that raises before any search (a ``ValueError`` from argument
+    checks, an unsupported capability) notes nothing. Any other exception is
+    the search failing, and notes one row with the outcome REST would give it.
+    A nested call is part of the outer one. QRadar cost fields stay null: the
+    mock receives no status payload. ``plan`` lists the outcome of each search;
+    without it the call is one COMPLETED search.
+    """
+
+    def deco(
+        method: Callable[P, Coroutine[Any, Any, R]],
+    ) -> Callable[P, Coroutine[Any, Any, R]]:
+        @wraps(method)
+        async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+            owner = cast("MockQRadarProvider", args[0])
+            if owner._ariel_note_depth:
+                return await method(*args, **kwargs)
+            owner._ariel_note_depth += 1
+            started = datetime.now(UTC)
+            call_args = cast(tuple[object, ...], args[1:])
+            call_kwargs = cast(Mapping[str, object], kwargs)
+            try:
+                result = await method(*args, **kwargs)
+            except (ValueError, CapabilityNotSupportedError):
+                raise
+            except Exception as exc:
+                _note_searches(
+                    owner, family, started, call_args, call_kwargs,
+                    [ariel_log.outcome_for_exception(exc)],
+                )
+                raise
+            finally:
+                owner._ariel_note_depth -= 1
+            outcomes = (
+                plan(owner, call_args, call_kwargs, result)
+                if plan is not None
+                else [ariel_log.OUTCOME_COMPLETED]
+            )
+            _note_searches(owner, family, started, call_args, call_kwargs, outcomes)
+            return result
+
+        return wrapped
+
+    return deco
+
+
+def _note_searches(
+    owner: MockQRadarProvider,
+    family: str,
+    started: datetime,
+    args: tuple[object, ...],
+    kwargs: Mapping[str, object],
+    outcomes: Sequence[str],
+) -> None:
+    span = ariel_log.span_from_call(args, kwargs)
+    for outcome in outcomes:
+        ariel_log.note_finished(
+            clock=lambda: datetime.now(UTC),
+            submitted_at=started,
+            outcome=outcome,
+            polls=0,
+            instance_id=owner.instance_id,
+            caller=family,
+            range_seconds=span,
+        )
+
+
 def _offense_time_order(dto: OffenseDTO) -> tuple[bool, datetime]:
     """Oldest persisted time first. A missing time sorts last, never as a boundary."""
     updated = dto.last_updated_time
@@ -301,7 +503,11 @@ class MockQRadarProvider(QRadarProvider):
         now: datetime | None = None,
         ips_max_sources_per_search: int = 50,
         pw_max_sources_per_search: int = 50,
+        instance_id: uuid.UUID | None = None,
     ) -> None:
+        self.instance_id = instance_id
+        self._ariel_note_depth = 0
+        self._bucketed_group_overflow = False
         self._seed = seed
         self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
         self._pw_max_sources_per_search = max(1, int(pw_max_sources_per_search))
@@ -501,6 +707,7 @@ class MockQRadarProvider(QRadarProvider):
             ),
         ]
 
+    @_notes_ariel(ariel_log.CALLER_LOG_SOURCE_VOLUME)
     async def get_log_source_metrics(
         self,
         window_start: datetime,
@@ -528,6 +735,7 @@ class MockQRadarProvider(QRadarProvider):
             samples = [sample for sample in samples if sample.qradar_id in chosen]
         return samples
 
+    @_notes_ariel(ariel_log.CALLER_LOG_SOURCE_VOLUME)
     async def get_log_source_metrics_bucketed(
         self,
         window_start: datetime,
@@ -594,6 +802,7 @@ class MockQRadarProvider(QRadarProvider):
         "protocol": ["6", "17"],
     }
 
+    @_notes_ariel(ariel_log.CALLER_ANOMALY_EXPLANATION, _plan_dimensions)
     async def get_dimension_aggregates(
         self,
         *,
@@ -658,6 +867,7 @@ class MockQRadarProvider(QRadarProvider):
         5001, 5002, 5004, 6000, 6001, 6002, 999_001,
     )
 
+    @_notes_ariel(ariel_log.CALLER_RULE_MATCH)
     async def get_rule_matches(
         self, window_start: datetime, window_end: datetime, *, max_rows: int
     ) -> RuleMatchBatch:
@@ -691,6 +901,7 @@ class MockQRadarProvider(QRadarProvider):
             query=f"MOCK creEventList LIMIT {cap}",
         )
 
+    @_notes_ariel(ariel_log.CALLER_RULE_MATCH)
     async def get_rule_matches_windowed(
         self,
         window_start: datetime,
@@ -722,6 +933,7 @@ class MockQRadarProvider(QRadarProvider):
             query=f"MOCK creEventList WINDOWED LIMIT {max(1, max_rows) + 1}",
         )
 
+    @_notes_ariel(ariel_log.CALLER_HISTORY)
     async def get_console_event_totals(
         self,
         window_start: datetime,
@@ -774,6 +986,7 @@ class MockQRadarProvider(QRadarProvider):
     #: exercise the PARTIAL path without hand-building a batch.
     _MOCK_WAF_UNPARSED_SHARE = 0.05
 
+    @_notes_ariel(ariel_log.CALLER_WAF_COLLECTION, _plan_waf_observations)
     async def get_waf_observations(
         self,
         *,
@@ -837,6 +1050,7 @@ class MockQRadarProvider(QRadarProvider):
         "SOURCE_IP": (("192.0.2.30", 0.5), ("198.51.100.30", 0.3), ("203.0.113.50", 0.2)),
     }
 
+    @_notes_ariel(ariel_log.CALLER_WAF_COLLECTION)
     async def get_waf_breakdown(
         self,
         *,
@@ -884,6 +1098,7 @@ class MockQRadarProvider(QRadarProvider):
             query=f"MOCK WAF BREAKDOWN {breakdown}",
         )
 
+    @_notes_ariel(ariel_log.CALLER_WAF_COLLECTION, _plan_waf_observations_bucketed)
     async def get_waf_observations_bucketed(
         self,
         *,
@@ -941,6 +1156,9 @@ class MockQRadarProvider(QRadarProvider):
             f"MOCK WAF GROUP BY {url_property}, {method_property}, "
             f"starttime / {bucket_seconds * 1000}"
         )
+        # As REST: an overflowing grouped page ends the run before the totals
+        # search, which the search note reads.
+        self._bucketed_group_overflow = len(group_rows) > max_rows
         if len(group_rows) > max_rows or len(total_rows) > max_rows:
             return WafObservationBucketBatch(
                 truncated=True,
@@ -971,6 +1189,7 @@ class MockQRadarProvider(QRadarProvider):
             total_query="MOCK WAF TOTAL",
         )
 
+    @_notes_ariel(ariel_log.CALLER_WAF_COLLECTION)
     async def get_waf_breakdown_bucketed(
         self,
         *,
@@ -1061,6 +1280,7 @@ class MockQRadarProvider(QRadarProvider):
     }
     _MOCK_WAF_TOTAL_EVENTS = 120
 
+    @_notes_ariel(ariel_log.CALLER_WAF_COLLECTION, _plan_waf_probe)
     async def probe_waf_properties(
         self,
         *,
@@ -1141,6 +1361,7 @@ class MockQRadarProvider(QRadarProvider):
             return int(str(value)) > 0
         return True
 
+    @_notes_ariel(ariel_log.CALLER_IPS_COLLECTION)
     async def get_ips_keyed(
         self,
         dimension: IpsDimension,
@@ -1273,6 +1494,7 @@ class MockQRadarProvider(QRadarProvider):
             out.append({"values": values, "events": events})
         return out
 
+    @_notes_ariel(ariel_log.CALLER_PROPERTY_WATCH)
     async def get_pw_keyed(
         self,
         search: PwSearchKind,
@@ -1395,6 +1617,7 @@ class MockQRadarProvider(QRadarProvider):
             )
         return out
 
+    @_notes_ariel(ariel_log.CALLER_CATCHALL_SENDERS)
     async def get_catchall_senders_keyed(
         self,
         *,
@@ -1475,6 +1698,12 @@ class MockQRadarProvider(QRadarProvider):
                 )
         return out
 
+    @staticmethod
+    def _geo_property_events() -> list[dict]:
+        """The fixed property values of one bucket. The same list for every bucket."""
+        return [{"geo": geo, "events": events} for geo, events in _GEO_PROPERTY_VALUES]
+
+    @_notes_ariel(ariel_log.CALLER_GEO_COLLECTION)
     async def get_geo_keyed(
         self,
         start: datetime,
@@ -1483,6 +1712,7 @@ class MockQRadarProvider(QRadarProvider):
         direction: GeoDirection,
         bucket_seconds: int,
         max_rows: int,
+        country_property: str | None = None,
     ) -> GeoKeyedResult:
         """The geo result, aggregated here and parsed by the real row parser."""
         self.require(ProviderCapability.AQL_EXECUTION)
@@ -1490,7 +1720,7 @@ class MockQRadarProvider(QRadarProvider):
         checked = GeoDirection(direction)
         if max_rows < 1:
             raise ValueError("geo row limit must be positive")
-        search = MockGeoSearch(checked, window_start, window_end)
+        search = MockGeoSearch(checked, window_start, window_end, country_property)
         self.geo_searches.append(search)
         if self.geo_fault is not None and (fault := self.geo_fault(search)) is not None:
             raise fault
@@ -1501,6 +1731,8 @@ class MockQRadarProvider(QRadarProvider):
         for key in range(first, last):
             if self.geo_script is not None:
                 events = self.geo_script(checked, key)
+            elif country_property is not None:
+                events = self._geo_property_events()
             else:
                 events = self._geo_events(checked, key)
             for event in events:
@@ -1527,9 +1759,10 @@ class MockQRadarProvider(QRadarProvider):
             bucket_seconds=bucket_seconds,
             rows=parsed,
             truncated=truncated,
-            query="MOCK GEO",
+            query="MOCK GEO PROPERTY" if country_property is not None else "MOCK GEO",
         )
 
+    @_notes_ariel(ariel_log.CALLER_IPS_COLLECTION, _plan_ips_probe)
     async def probe_ips_fields(
         self,
         *,
@@ -1599,6 +1832,7 @@ class MockQRadarProvider(QRadarProvider):
             ariel_searches=0,
         )
 
+    @_notes_ariel(ariel_log.CALLER_WAF_COLLECTION, _plan_rejection)
     async def observe_property_rejection(
         self,
         *,

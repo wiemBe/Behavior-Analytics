@@ -3,16 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import en from "../../messages/en";
 import tr from "../../messages/tr";
-
-// A catalog value is text, an object, or (the guide's blocks, GUIDE-2) a list: lists flatten by index.
-function flatten(catalog: object, prefix = "", out: Record<string, string> = {}) {
-  for (const [key, value] of Object.entries(catalog)) {
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (typeof value === "string") out[path] = value;
-    else flatten(value, path, out);
-  }
-  return out;
-}
+import frozen from "./tr-frozen-keys.json";
+import { flattenCatalog as flatten, FROZEN_TR_KEYS, parityProblems } from "./trFrozen";
 
 function argumentsOf(message: string): string[] {
   const names = new Set<string>();
@@ -154,21 +146,60 @@ describe("message catalog contract", () => {
   const english = flatten(en);
   const turkish = flatten(tr);
 
-  it("keeps exactly the same non-empty keys", () => {
-    expect(Object.keys(turkish).sort()).toEqual(Object.keys(english).sort());
+  // D-41 (LANG-1): was "keeps exactly the same non-empty keys" (tr == en). Turkish is frozen at
+  // the checkpoint list; an English key added since needs no Turkish twin.
+  it("keeps every frozen Turkish key, adds none English lacks, and has no empty value", () => {
+    expect(parityProblems(english, turkish)).toEqual([]);
     expect(Object.values(english).every((value) => value.length > 0)).toBe(true);
     expect(Object.values(turkish).every((value) => value.length > 0)).toBe(true);
   });
 
   it("parses every Turkish value as ICU and keeps the same argument names", () => {
-    for (const key of Object.keys(english)) {
+    for (const key of Object.keys(turkish)) {
+      expect(english[key], `${key} has no English twin`).toBeDefined();
       expect(() => parse(turkish[key]), key).not.toThrow();
       expect(argumentsOf(turkish[key]), key).toEqual(argumentsOf(english[key]));
     }
   });
 
   it("allows untranslated values only through the reviewed allowlist", () => {
-    const identical = Object.keys(english).filter((key) => english[key] === turkish[key]);
+    const identical = Object.keys(turkish).filter((key) => english[key] === turkish[key]);
     expect(identical.sort()).toEqual([...IDENTICAL_ALLOWLIST].sort());
+  });
+});
+
+describe("frozen Turkish key list (D-41)", () => {
+  const english = { "a.one": "One", "a.two": "Two", "b.three": "Three" };
+  const turkish = { "a.one": "Bir", "a.two": "Iki", "b.three": "Uc" };
+  const keys = ["a.one", "a.two", "b.three"];
+
+  it("is the sorted, duplicate-free list of the checkpoint, and every key is in the catalog", () => {
+    expect(frozen.count).toBe(FROZEN_TR_KEYS.length);
+    expect(FROZEN_TR_KEYS).toEqual([...new Set(FROZEN_TR_KEYS)].sort());
+    expect(frozen._comment).toContain("checkpoint/bilingual-2026-11-02");
+    expect(FROZEN_TR_KEYS.length).toBeGreaterThan(6000);
+  });
+
+  it("accepts an English key with no Turkish twin while Turkish is not enabled", () => {
+    expect(parityProblems({ ...english, "c.new": "New" }, turkish, ["en"], keys)).toEqual([]);
+  });
+
+  it("fails when a frozen Turkish key is deleted", () => {
+    const { "a.two": _gone, ...rest } = turkish;
+    expect(parityProblems(english, rest, ["en"], keys)).toEqual([
+      "frozen Turkish key is missing: a.two",
+    ]);
+  });
+
+  it("fails when Turkish has a key English lacks", () => {
+    expect(parityProblems(english, { ...turkish, "z.only": "Sadece" }, ["en"], keys)).toEqual([
+      "Turkish key has no English twin: z.only",
+    ]);
+  });
+
+  it("asks for the Turkish twin of a new English key once Turkish is enabled", () => {
+    expect(parityProblems({ ...english, "c.new": "New" }, turkish, ["en", "tr"], keys)).toEqual([
+      "English key has no Turkish twin: c.new",
+    ]);
   });
 });

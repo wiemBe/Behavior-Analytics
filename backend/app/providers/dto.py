@@ -678,6 +678,17 @@ class ArielSearchStatusDTO(ProviderDTO):
     progress: int = 0
     record_count: int | None = None
     error_messages: list[str] = Field(default_factory=list)
+    # Numeric cost fields from GET /ariel/searches/{search_id} (QRadar 7.6).
+    # Absent stays null. A present 0 is a measurement. query_string, snapshot,
+    # error text and cursor ids are not copied onto this DTO.
+    query_execution_time: int | None = None
+    processed_record_count: int | None = None
+    data_file_count: int | None = None
+    data_total_size: int | None = None
+    compressed_data_file_count: int | None = None
+    compressed_data_total_size: int | None = None
+    index_file_count: int | None = None
+    index_total_size: int | None = None
 
     @property
     def is_terminal(self) -> bool:

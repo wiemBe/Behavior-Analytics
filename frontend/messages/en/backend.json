@@ -130,6 +130,14 @@
       "maintenance": "maintenance window"
     }
   },
+  "ariel_load": {
+    "hours": {
+      "invalid": "hours must be a whole number from 1 to 720"
+    },
+    "window": {
+      "empty": "No Ariel search was recorded in this window."
+    }
+  },
   "auth": {
     "csrf": {
       "origin_mismatch": "Cross-site request refused: origin {origin} is not the configured public origin.",
@@ -294,6 +302,16 @@
   "explanation": {
     "dimension": {
       "unpopulated": "field is not populated for this log source"
+    }
+  },
+  "geo": {
+    "note": {
+      "unresolved_lookup": "UNRESOLVED counts events whose address is private, internal or unknown to GeoIP. The lookup returns the same empty result for all three, so they cannot be told apart.",
+      "unresolved_property": "UNRESOLVED counts events whose country property was empty."
+    },
+    "property": {
+      "missing": "The country property “{name}” does not exist on this console. Set {setting} to the property''s exact name.",
+      "unreadable": "The custom-property list could not be read on this console, so no country search was sent."
     }
   },
   "history": {

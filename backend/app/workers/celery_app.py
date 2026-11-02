@@ -75,6 +75,12 @@ celery_app.conf.beat_schedule = {
         "task": "apply_anomaly_fault_retention",
         "schedule": 86400.0,
     },
+    "apply-ariel-search-run-retention": {
+        # Daily delete of Ariel load rows by submitted_at. Not a hypertable and
+        # not gated by RETENTION_ENABLED.
+        "task": "apply_ariel_search_run_retention",
+        "schedule": 86400.0,
+    },
     "apply-log-source-anomaly-retention": {
         # Closed Phase A incidents. Not gated by RETENTION_ENABLED.
         "task": "apply_log_source_anomaly_retention",

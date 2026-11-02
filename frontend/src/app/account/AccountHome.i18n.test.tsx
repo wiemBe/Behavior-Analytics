@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountHome } from "./AccountHome";
 import { StaticSession, type SessionValue } from "@/components/auth/session";
 import { ApiError, type CallerInfo } from "@/lib/api";
-import { setTestLocale } from "../../../vitest.setup";
+import { enableTurkish, setTestLocale } from "../../../vitest.setup";
 
 const nav = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -64,7 +64,11 @@ afterEach(() => {
   document.cookie = "ba_locale=; Max-Age=0; Path=/";
 });
 
-describe("account language preference", () => {
+describe("account language preference (Turkish enabled)", () => {
+  // D-41: the control is hidden while only English is enabled; these tests prove it still works
+  // once Turkish is switched back on.
+  beforeEach(() => enableTurkish());
+
   it("designs the loading state", () => {
     setTestLocale("tr");
     view(session({ status: "loading", me: null }));
@@ -129,5 +133,29 @@ describe("account language preference", () => {
     view(session({ me: me({ must_change_password: true }) }));
     expect(screen.getByRole("form", { name: "Change password" })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Interface language" })).not.toBeInTheDocument();
+  });
+});
+
+describe("account settings while only English is enabled (D-41)", () => {
+  it("shows no language control, and still shows the password form", () => {
+    view();
+    expect(screen.getByRole("heading", { level: 1, name: "Account settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Language" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Interface language" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Türkçe")).not.toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "Change password" })).toBeInTheDocument();
+  });
+
+  it("shows no language control for an account whose stored language is Turkish", () => {
+    view(session({ me: me({ ui_language: "tr" }) }));
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+  });
+
+  it("shows the control again once Turkish is enabled", () => {
+    enableTurkish();
+    view();
+    expect(screen.getByRole("group", { name: "Interface language" })).toBeInTheDocument();
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
   });
 });

@@ -16,7 +16,6 @@ checks scattered through services.
 
 from __future__ import annotations
 
-import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -24,6 +23,9 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+# Re-exported: the pattern lives in a leaf module so ``app.core.config`` can import it
+# without loading this package (which imports the settings).
+from app.core.patterns import PROPERTY_NAME_PATTERN as PROPERTY_NAME_PATTERN
 from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.dto import (
     AnalyticsRuleDTO,
@@ -63,13 +65,6 @@ if TYPE_CHECKING:
     # `app.geo.fold` imports this module for `ProviderError`, so the geo types are
     # annotations here only.
     from app.geo.fold import GeoDirection, GeoKeyedResult
-
-#: The only shape a site-authored QRadar property name may take before it is
-#: interpolated into AQL. Letters, digits, underscore, space and hyphen; anything
-#: else -- a quote, a comma, a parenthesis -- is rejected rather than escaped,
-#: because an allowlist a reviewer can verify by eye beats a quoting scheme that
-#: has to be trusted. Property names are never expressions.
-PROPERTY_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ -]{0,63}$")
 
 #: Upper bound on a WAF property probe window. Validation is a spot check, not a
 #: survey, and a small window keeps it cheap on a loaded appliance.
@@ -642,13 +637,15 @@ class QRadarProvider(ABC):
         direction: GeoDirection,
         bucket_seconds: int,
         max_rows: int,
+        country_property: str | None = None,
     ) -> GeoKeyedResult:
         """One fleet-wide keyed search of events per country (D-10).
 
-        Rows are grouped by the geo lookup of the source or destination address and by
-        bucket, and carry ``SUM(eventcount)``, ordered by volume. No address is
-        selected: the only column that reaches the result is the lookup string.
-        The span must be whole epoch-aligned `bucket_seconds` buckets. More than
+        Rows are grouped by the geo key and by bucket, and carry ``SUM(eventcount)``,
+        ordered by volume. With no ``country_property`` the key is the geo lookup of
+        the source or destination address. With one, the key is that custom property,
+        quoted only after the property-name allowlist. No address is selected either
+        way. The span must be whole epoch-aligned `bucket_seconds` buckets. More than
         `max_rows` rows set ``truncated`` and only the first `max_rows` are kept. A key
         outside the span or a non-integer key fails the whole search with a
         ProviderError.
