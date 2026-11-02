@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SessionProvider, useSession } from "./session";
 import type { CallerInfo } from "@/lib/api";
+import { enableTurkish } from "../../../vitest.setup";
 
 const nav = vi.hoisted(() => ({ refresh: vi.fn(), replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -53,6 +54,7 @@ beforeEach(() => {
 
 describe("session language synchronization", () => {
   it("writes a differing account preference and refreshes once", async () => {
+    enableTurkish();
     client.fetchSession.mockResolvedValue(me("tr"));
     locale.read.mockReturnValue("en");
     locale.write.mockReturnValue(true);
@@ -60,6 +62,19 @@ describe("session language synchronization", () => {
     await screen.findByText("ready");
     expect(locale.write).toHaveBeenCalledWith("tr");
     expect(nav.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves an account preference for a locale that is not enabled alone (D-41)", async () => {
+    client.fetchSession.mockResolvedValue(me("tr"));
+    locale.read.mockReturnValue("en");
+    locale.write.mockReturnValue(true);
+    render(<SessionProvider><Probe /></SessionProvider>);
+    await screen.findByText("ready");
+    await userEvent.click(screen.getByRole("button", { name: "reload" }));
+    await userEvent.click(screen.getByRole("button", { name: "reload" }));
+    expect(client.fetchSession).toHaveBeenCalledTimes(3);
+    expect(locale.write).not.toHaveBeenCalled();
+    expect(nav.refresh).not.toHaveBeenCalled();
   });
 
   it("does nothing when the cookie is equal or the field is missing", async () => {
@@ -91,6 +106,7 @@ describe("session language synchronization", () => {
   });
 
   it("does not loop when the browser refuses the cookie", async () => {
+    enableTurkish();
     client.fetchSession.mockResolvedValue(me("tr"));
     locale.read.mockReturnValue("en");
     locale.write.mockReturnValue(false);

@@ -1,4 +1,5 @@
-// Interface language (D-37): English and Turkish, no locale in the URL.
+// Interface language (D-37, D-41): English; Turkish is frozen behind a switch. No locale in the
+// URL.
 //
 // Which hook a component uses, so a route task does not have to rediscover it:
 //   - a server component (async page or layout): `getTranslations(namespace)` / `getLocale()`
@@ -11,7 +12,8 @@
 // Words the backend writes are not translated here (phase 1). Numbers go through
 // `formatCount` / `formatPercent` / `formatShare` with the locale passed explicitly.
 //
-// The locale is the `ba_locale` cookie; anything but `en` / `tr`, or no cookie, is English.
+// The locale is the `ba_locale` cookie; anything but an enabled locale (`ENABLED_LOCALES` in
+// `./locale`, English only since D-41), or no cookie, is English.
 // `timeZone` is UTC so no formatter ever uses the server's or the browser's zone.
 
 import { cookies } from "next/headers";

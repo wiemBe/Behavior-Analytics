@@ -3,6 +3,7 @@ import { cleanup } from "@testing-library/react";
 import { createTranslator } from "next-intl";
 import { afterEach, vi } from "vitest";
 
+import { ENABLED_LOCALES, type Locale } from "./src/i18n/locale";
 import en from "./messages/en";
 import tr from "./messages/tr";
 
@@ -17,6 +18,17 @@ const testI18n = vi.hoisted(() => ({
 
 export function setTestLocale(locale: "en" | "tr") {
   testI18n.locale = locale;
+}
+
+// D-41: only English is enabled (`ENABLED_LOCALES`). A test that proves the Turkish path still
+// works calls `enableTurkish()`; the reset below puts the switch back after every test.
+export function enableTurkish() {
+  const enabled = ENABLED_LOCALES as Locale[];
+  if (!enabled.includes("tr")) enabled.push("tr");
+}
+
+function restoreEnabledLocales() {
+  (ENABLED_LOCALES as Locale[]).splice(0, ENABLED_LOCALES.length, "en");
 }
 
 function translator(namespace?: string) {
@@ -78,4 +90,5 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   testI18n.locale = "en";
+  restoreEnabledLocales();
 });
