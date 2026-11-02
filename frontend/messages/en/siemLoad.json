@@ -5,7 +5,8 @@
   "page": {
     "title": "SIEM load",
     "description": "The load this platform puts on QRadar, and how QRadar itself is doing. Times are UTC.",
-    "loadingWhat": "the SIEM load"
+    "loadingWhat": "the SIEM load",
+    "errorWhat": "SIEM load"
   },
   "state": {
     "couldNotRead": "The SIEM load could not be read.",

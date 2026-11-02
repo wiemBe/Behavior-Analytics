@@ -4,8 +4,6 @@ import { useTranslations } from "next-intl";
 
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
-// The title and the noun are the navigation label, a shell string, so this boundary needs no key of
-// its own in the root provider.
 export default function SiemLoadError({
   error,
   reset,
@@ -13,11 +11,11 @@ export default function SiemLoadError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const t = useTranslations("shell.nav");
+  const t = useTranslations("siemLoad.page");
   return (
     <BoundaryError
-      title={t("siemLoad")}
-      what={t("siemLoad")}
+      title={t("title")}
+      what={t("errorWhat")}
       digest={error.digest}
       onRetry={reset}
     />
