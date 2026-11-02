@@ -276,6 +276,9 @@ class Settings(BaseSettings):
     # from the last bucket. The WHERE clause is NOT padded; it remains the
     # authoritative half-open bound [start, end). Default 60s, 0 disables.
     ariel_stop_pad_seconds: int = Field(default=60, ge=0, le=300)
+    # How long the console-health reads (ARL-3) are reused before QRadar is asked again, so a
+    # page polling the load endpoint every few seconds does not itself load the console.
+    qradar_health_cache_ttl_seconds: int = Field(default=30, ge=5, le=600)
 
     # --- Scheduled-search driver --------------------------------------------
     # Most searches dispatched in one scheduler cycle, so a backlog can never

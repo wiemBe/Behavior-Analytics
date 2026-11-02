@@ -61,10 +61,12 @@ from app.providers.base import (
 from app.providers.dto import (
     AnalyticsRuleDTO,
     ArielSearchHandleDTO,
+    ArielSearchListDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
     CatchallKeyedResult,
     CustomPropertyDTO,
+    DeploymentHostDTO,
     DimensionAggregate,
     DimensionValueCount,
     InstanceInfoDTO,
@@ -73,11 +75,14 @@ from app.providers.dto import (
     IpsKeyedResult,
     IpsProbeValue,
     IpsSourceProbe,
+    LicensePoolDTO,
+    LicenseRateDTO,
     LogSourceDTO,
     LogSourceGroupDTO,
     LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
+    ManagedServerDTO,
     OffenseDTO,
     OffenseListResult,
     PwKeyedResult,
@@ -273,6 +278,10 @@ def _sanitize_upstream_error(status_code: int) -> str:
     return "QRadar rejected the request"
 
 
+#: Search ids one `count_ariel_searches` read asks for. A full page is reported truncated.
+_ARIEL_LIST_PAGE = 1000
+
+
 class QRadarRestProvider(QRadarProvider):
     capabilities = frozenset(
         {
@@ -282,6 +291,7 @@ class QRadarRestProvider(QRadarProvider):
             ProviderCapability.CONFIG_SNAPSHOTS,
             ProviderCapability.LOG_SOURCE_GROUPS,
             ProviderCapability.CUSTOM_PROPERTY_CATALOG,
+            ProviderCapability.HEALTH_READS,
         }
     )
     #: Exactly what the one metric aggregate in `get_log_source_metrics`
@@ -397,15 +407,20 @@ class QRadarRestProvider(QRadarProvider):
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         allow_404: bool = False,
+        max_attempts: int | None = None,
     ) -> Any:
         """One upstream call with bounded, jittered retries.
 
         Retries cover transport failures, 429 and 5xx. Non-idempotent methods
         are attempted exactly once: replaying a POST could create a second Ariel
-        search we would then never track or cancel.
+        search we would then never track or cancel. `max_attempts` lowers the
+        attempt count further; the health reads pass 1 so that a console that is
+        already struggling is not retried by the call that asks how it is.
         """
         retryable = method.upper() in _IDEMPOTENT_METHODS
         attempts = self._max_retries + 1 if retryable else 1
+        if max_attempts is not None:
+            attempts = max(1, min(attempts, max_attempts))
         last_exc: Exception | None = None
 
         for attempt in range(1, attempts + 1):
@@ -431,7 +446,9 @@ class QRadarRestProvider(QRadarProvider):
                         outcome["error_class"] = ErrorClass.AUTH
                         # Not retryable: a bad token stays bad, and hammering an
                         # auth endpoint is how accounts get locked out.
-                        raise ProviderAuthError(_sanitize_upstream_error(status))
+                        raise ProviderAuthError(
+                            _sanitize_upstream_error(status), status_code=status
+                        )
 
                     if status == 404 and allow_404:
                         return None
@@ -580,7 +597,15 @@ class QRadarRestProvider(QRadarProvider):
         return await self.get_instance_info()
 
     async def get_instance_info(self) -> InstanceInfoDTO:
-        body = await self._request("GET", "/system/about", category=EndpointCategory.SYSTEM)
+        return await self._about(max_attempts=None)
+
+    async def probe_about(self) -> InstanceInfoDTO:
+        return await self._about(max_attempts=1)
+
+    async def _about(self, *, max_attempts: int | None) -> InstanceInfoDTO:
+        body = await self._request(
+            "GET", "/system/about", category=EndpointCategory.SYSTEM, max_attempts=max_attempts
+        )
         if not isinstance(body, dict):
             raise MalformedUpstreamResponse("QRadar /system/about did not return an object")
         version = body.get("external_version") or body.get("version")
@@ -595,6 +620,91 @@ class QRadarRestProvider(QRadarProvider):
                 if k in {"release_name", "external_version", "build_version"}
             },
         )
+
+    # ------------------------------------------------- console health (ARL-3)
+    # Four GET-only reads, one attempt each. None starts an Ariel search or fetches a
+    # result, so none takes a permit; none reads an event, a rule body or a secret.
+    async def _health_get(
+        self, path: str, category: EndpointCategory, *, range_header: str | None = None
+    ) -> Any:
+        headers = {"Range": range_header} if range_header else None
+        return await self._request(
+            "GET", path, category=category, headers=headers, max_attempts=1
+        )
+
+    async def list_managed_servers(self) -> list[ManagedServerDTO]:
+        body = await self._health_get(
+            "/system/servers", EndpointCategory.HEALTH_SERVERS, range_header="items=0-99"
+        )
+        if not isinstance(body, list):
+            raise MalformedUpstreamResponse("QRadar /system/servers did not return a list")
+        return [
+            ManagedServerDTO(
+                hostname=as_text(row.get("hostname"), limit=128),
+                status=as_text(row.get("status"), limit=32),
+            )
+            for row in body
+            if isinstance(row, dict)
+        ]
+
+    async def list_deployment_hosts(self) -> list[DeploymentHostDTO]:
+        body = await self._health_get(
+            "/config/deployment/hosts", EndpointCategory.HEALTH_HOSTS, range_header="items=0-99"
+        )
+        if not isinstance(body, list):
+            raise MalformedUpstreamResponse(
+                "QRadar /config/deployment/hosts did not return a list"
+            )
+        return [
+            DeploymentHostDTO(
+                hostname=as_text(row.get("hostname"), limit=128),
+                status=as_text(row.get("status"), limit=32),
+                average_eps=as_int(row.get("average_eps")),
+                peak_eps=as_int(row.get("peak_eps")),
+                eps_allocation=as_int(row.get("eps_allocation")),
+                average_fpm=as_int(row.get("average_fpm")),
+                peak_fpm=as_int(row.get("peak_fpm")),
+                fpm_allocation=as_int(row.get("fpm_allocation")),
+            )
+            for row in body
+            if isinstance(row, dict)
+        ]
+
+    async def get_license_pool(self) -> LicensePoolDTO:
+        body = await self._health_get(
+            "/config/deployment/license_pool", EndpointCategory.HEALTH_LICENSE
+        )
+        if not isinstance(body, dict):
+            raise MalformedUpstreamResponse(
+                "QRadar /config/deployment/license_pool did not return an object"
+            )
+
+        def rate(raw: Any) -> LicenseRateDTO | None:
+            if not isinstance(raw, dict):
+                return None
+            over = raw.get("overallocated")
+            return LicenseRateDTO(
+                total=as_int(raw.get("total")),
+                allocated=as_int(raw.get("allocated")),
+                overallocated=over if isinstance(over, bool) else None,
+            )
+
+        return LicensePoolDTO(eps=rate(body.get("eps")), fpm=rate(body.get("fpm")))
+
+    async def count_ariel_searches(self) -> ArielSearchListDTO:
+        """The number of search ids QRadar lists, from one page of at most 1000.
+
+        A full page means the true count is at least that many, so it is reported
+        truncated rather than as an exact figure.
+        """
+        body = await self._health_get(
+            "/ariel/searches",
+            EndpointCategory.HEALTH_ARIEL_LIST,
+            range_header=f"items=0-{_ARIEL_LIST_PAGE - 1}",
+        )
+        if not isinstance(body, list):
+            raise MalformedUpstreamResponse("QRadar /ariel/searches did not return a list")
+        return ArielSearchListDTO(held=len(body), truncated=len(body) >= _ARIEL_LIST_PAGE)
 
     async def list_log_sources(self) -> list[LogSourceDTO]:
         rows = await self._paginate(

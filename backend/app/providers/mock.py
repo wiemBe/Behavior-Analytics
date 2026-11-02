@@ -41,10 +41,12 @@ from app.providers.base import (
 from app.providers.dto import (
     AnalyticsRuleDTO,
     ArielSearchHandleDTO,
+    ArielSearchListDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
     CatchallKeyedResult,
     CustomPropertyDTO,
+    DeploymentHostDTO,
     DimensionAggregate,
     DimensionValueCount,
     InstanceInfoDTO,
@@ -53,11 +55,14 @@ from app.providers.dto import (
     IpsKeyedResult,
     IpsProbeValue,
     IpsSourceProbe,
+    LicensePoolDTO,
+    LicenseRateDTO,
     LogSourceDTO,
     LogSourceGroupDTO,
     LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
+    ManagedServerDTO,
     OffenseDTO,
     OffenseListResult,
     PwKeyedResult,
@@ -278,6 +283,7 @@ class MockQRadarProvider(QRadarProvider):
             ProviderCapability.CONFIG_SNAPSHOTS,
             ProviderCapability.LOG_SOURCE_GROUPS,
             ProviderCapability.CUSTOM_PROPERTY_CATALOG,
+            ProviderCapability.HEALTH_READS,
         }
     )
     #: Synthetic, but genuinely varied per shape, so dev and tests can exercise
@@ -299,6 +305,30 @@ class MockQRadarProvider(QRadarProvider):
         self._seed = seed
         self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
         self._pw_max_sources_per_search = max(1, int(pw_max_sources_per_search))
+        #: ARL-3 health reads. A test sets the answer, or puts an exception in
+        #: `health_faults` under the read's method name; `health_calls` counts every read.
+        self.health_servers: list[ManagedServerDTO] = [
+            ManagedServerDTO(hostname="mock-console", status="ACTIVE")
+        ]
+        self.health_hosts: list[DeploymentHostDTO] = [
+            DeploymentHostDTO(
+                hostname="mock-console",
+                status="Active",
+                average_eps=120,
+                peak_eps=900,
+                eps_allocation=5000,
+                average_fpm=0,
+                peak_fpm=0,
+                fpm_allocation=200000,
+            )
+        ]
+        self.health_license: LicensePoolDTO = LicensePoolDTO(
+            eps=LicenseRateDTO(total=5000, allocated=5000, overallocated=False),
+            fpm=LicenseRateDTO(total=200000, allocated=200000, overallocated=False),
+        )
+        self.health_ariel_list: ArielSearchListDTO = ArielSearchListDTO(held=4)
+        self.health_faults: dict[str, Exception] = {}
+        self.health_calls: dict[str, int] = {}
         #: Every keyed IPS search asked for, in order.
         self.ips_searches: list[MockIpsSearch] = []
         #: Test hooks, so the real driver and fold run on a failure or a
@@ -346,6 +376,32 @@ class MockQRadarProvider(QRadarProvider):
             reachable=True,
             raw_about={"release_name": "QRadar 7.5.0 UP9", "external_version": "7.5.0"},
         )
+
+    def _health(self, name: str) -> None:
+        self.health_calls[name] = self.health_calls.get(name, 0) + 1
+        fault = self.health_faults.get(name)
+        if fault is not None:
+            raise fault
+
+    async def probe_about(self) -> InstanceInfoDTO:
+        self._health("probe_about")
+        return await self.get_instance_info()
+
+    async def list_managed_servers(self) -> list[ManagedServerDTO]:
+        self._health("list_managed_servers")
+        return list(self.health_servers)
+
+    async def list_deployment_hosts(self) -> list[DeploymentHostDTO]:
+        self._health("list_deployment_hosts")
+        return list(self.health_hosts)
+
+    async def get_license_pool(self) -> LicensePoolDTO:
+        self._health("get_license_pool")
+        return self.health_license
+
+    async def count_ariel_searches(self) -> ArielSearchListDTO:
+        self._health("count_ariel_searches")
+        return self.health_ariel_list
 
     async def list_log_sources(self) -> list[LogSourceDTO]:
         out: list[LogSourceDTO] = []

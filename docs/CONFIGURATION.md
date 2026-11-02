@@ -67,6 +67,7 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 | `ARIEL_PERMIT_WAIT_SECONDS` | `30` | Maximum wait for an Ariel permit (`0`–`600` seconds) |
 | `ARIEL_PERMIT_POLL_SECONDS` | `1` | Permit retry interval (more than `0`, at most `30` seconds) |
 | `ARIEL_PERMIT_RESERVED_LIVE_SLOTS` | `2` | Low-numbered global slots only live collection may take; must be below the global cap |
+| `QRADAR_HEALTH_CACHE_TTL_SECONDS` | `30` | How long one console's health reads (reachability, managed-host status, EPS and license, the Ariel search list) are reused before QRadar is asked again (`5`–`600` seconds). The cache is per API process and the response states the value |
 
 ## Search cadence and bucket collection
 
