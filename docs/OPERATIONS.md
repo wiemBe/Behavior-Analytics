@@ -126,7 +126,7 @@ sudo chmod 700 /var/backups/qradar-dash
 Bayt/satır değerleri ölçülmüş değildir. Planlama sabiti satır başına 1 KiB'dir. İlk haftadan sonra
 `pg_database_size` ile değiştirilecek bir tahmindir. `doctor` bu boyutu yazar.
 
-- **En az:** 4 vCPU, 8 GiB RAM, **Docker kökünde 80 GiB boş** disk. Bu ana makine Phase A ile
+- **En az:** 4 vCPU, 8 GiB RAM, **Docker kökünde 80 GiB boş** disk. Bu ana makine log source hacmi ile
   varsayılanda açık aileler (catch-all, geo, explanations) içindir. Bunlar Administration →
   Search cadence sayfasından değiştirilmedikçe 5 dakikada bir aranır. WAF, IPS, kural eşleşmesi
   toplama, özel kurallar ve mülk izleme (property watch) kapalı bırakılmıştır.
@@ -141,7 +141,7 @@ Bayt/satır değerleri ölçülmüş değildir. Planlama sabiti satır başına 
   uygulanmaz. Günlük satır silicileri bu bayraktan bağımsız çalışır: arama sonuçları 90 gün,
   catch-all 35, coğrafya 35, WAF metrik 35 / kapalı olay 180, IPS metrik 35 / kapalı olay 365,
   property-watch metrik 35 / kapalı olay 180, anomaly fault 30, özel kural ihlali 180, kapalı
-  Phase A olay 365, `rule_health_snapshot` 90, `detection_coverage_snapshot` 90,
+  log source hacmi olayı 365, `rule_health_snapshot` 90, `detection_coverage_snapshot` 90,
   `rule_match_metric` ve `rule_match_window` 90. Diski izle (bkz. OPS-R14).
 
 Ana makinenin izin vermesi gereken portlar:
@@ -203,12 +203,12 @@ Sorular şu sırayla sorulur:
 
 Sorulmayanlar: LDAP (arayüzden yapılır), dedektör eşikleri, aile etkinleştirme, SMTP, webhook, LLM.
 WAF, IPS, kural eşleşmesi toplama, özel kurallar ve mülk izleme (property watch) varsayılanda
-**kapalı** kalır. Phase A her zaman açıktır. Catch-all, geo ve explanations varsayılanda açıktır.
+**kapalı** kalır. Log source hacmi her zaman açıktır. Catch-all, geo ve explanations varsayılanda açıktır.
 Kurulum özeti açık aileleri ve kapalı aileleri ayrı satırlarda yazar. Açık aileler, Administration →
 Search cadence sayfasından değiştirilmedikçe 5 dakikada bir aranır. WAF veya IPS açıksa özet, onların
 o sayfada değiştirilene kadar 15 dakika kullandığını da yazar.
 
-**Mülk izleme (Phase G).** İki anahtar vardır: `PW_COLLECTION_ENABLED` (varsayılan **false**) aile
+**Mülk izleme.** İki anahtar vardır: `PW_COLLECTION_ENABLED` (varsayılan **false**) aile
 anahtarı, `PW_ALERTING_ENABLED` (varsayılan **false**) gölge moddur; gölge modda olaylar ve yaşam
 döngüsü yazılır ama hiçbir şey sayfa açmaz. Üst sınırlar: `PW_MAX_ENABLED_WATCHES` 10, tick başına
 `PW_MAX_SEARCHES_PER_TICK` 40, izleme başına `PW_MAX_SEARCHES_PER_WATCH_PER_TICK` 12, izleme başına
@@ -1075,7 +1075,7 @@ bağlanmaz.
 | `qradar_auth` | `GET /system/about`. | OPS-R1 |
 | `watermarks` | Her `collection_watermark` satırı. `consecutive_failures` 0, `last_error` boş, gecikme kadansın iki katından az ve sayfa tavanında takılı değilse PASS. `consecutive_failures` 3 ve üstü ya da `last_error` doluysa FAIL. Gecikme kadansın iki katını aşarsa WARN. `offense_snapshot` okuması sayfa tavanında takılıysa WARN; satır `stalled at the page ceiling` der ve `offense_snapshot` adını yazar. Başka bir satır FAIL iken takılı okuma aynı satırda yine adlandırılır. | OPS-R30, OPS-R66 |
 | `cadence` | Her `search_cadence` ailesi. Son çalışma yaşı kadans + yerleşme + 60 sn içinde olmalı. | OPS-R30 |
-| `families_off` | Kimlik aynı kalır. Satır önce `NAME=on` ya da `NAME=off` listesini, sonra açık aileleri (`on:`) ve kapalı aileleri (`off:`) ayrı yazar. Phase A her zaman açıktır. Yeni kurulum kırmızı görünmesin diye PASS'tir. | OPS-R7 |
+| `families_off` | Kimlik aynı kalır. Satır önce `NAME=on` ya da `NAME=off` listesini, sonra açık aileleri (`on:`) ve kapalı aileleri (`off:`) ayrı yazar. `LOG_SOURCE_VOLUME` her zaman açıktır. Yeni kurulum kırmızı görünmesin diye PASS'tir. | OPS-R7 |
 | `errors_recent` | `consecutive_failures > 0` olan filigran satırı sayısı: sıfır PASS, bir ya da iki WARN, üç ve üstü FAIL. | OPS-R30 |
 | `anomaly_evaluation` | Son 24 saatte verdict üretmeden bırakılan kova varsa FAIL; açık bir fault varsa ya da beklenen yargılama zamanı (kova sonu + yerleşme + bir beat + iki değerlendirme tick'i) geçmiş canlı bir kovası olan izlenen kaynak varsa WARN. | OPS-R61 |
 | `pg_database_size` | Veritabanı boyutu. Boş alan ana makine kontrolündedir. | OPS-R14 |
@@ -1089,7 +1089,7 @@ bağlanmaz.
 | `rule_match_coverage` | `RULE_HEALTH_WINDOW_DAYS` içindeki `FAILED` ve `TRUNCATED` kural-eşleşme pencerelerini tek sorguda sayar; en eski pencereyi, sağlık aralığından çıkacağı UTC zamanı, onarılabilir ve catch-up ufku nedeniyle atlanmış sayıları yazar. Biri varsa WARN, yoksa PASS, toplama kapalıysa SKIP. | OPS-R65 |
 
 `families_off` WARN değil PASS verir. Satır açık ve kapalı aileleri ayrı yazar. Yeni kurulumda
-Phase A, catch-all, geo ve explanations açıktır; WAF, IPS, kural eşleşmeleri, özel kurallar ve mülk
+Log source hacmi, catch-all, geo ve explanations açıktır; WAF, IPS, kural eşleşmeleri, özel kurallar ve mülk
 izleme bilerek kapalıdır. Arayüz hiç çalışmamış bir aile için "zamanında" değil, tire gösterir.
 
 `celery_beat` kalp atışına bakar (`doctor`: Redis anahtarı, sağlıklı ise 180 s altı).
@@ -1330,7 +1330,7 @@ Komut kayıtlı bir kararı asla değiştirmez ve QRadar'a arama yapmaz.
 - **WAF ve IPS yalnız yanıttan sonra ilk kez toplanan kaynaklar için geçmiş okur.** Zaten canlı
   kovası olan bir kaynak `NOT_ELIGIBLE` olur: geçmiş onun önüne konulamaz. Profili kapatıp yeniden
   oluşturmak okumasını sağlar.
-- **Faz A'nın çapasından sonra eklenen ya da izlemeye alınan bir kaynağın geçmişi yoktur.** Okuma
+- **log source hacminin çapasından sonra eklenen ya da izlemeye alınan bir kaynağın geçmişi yoktur.** Okuma
   konsolun en eski canlı kovasında biter; sonradan eklenen bir kaynağın o noktadan önce olayı
   yoktur. Böyle bir kaynak "sessiz" sayılır ve okuma `PARTIAL` biter, gerekçesi "N sources had no
   event in the window" olur. İzlemeye alınmamış bir kaynağa ilk okumada geçmiş satırı yazılmaz;
@@ -1856,7 +1856,7 @@ gün (`apply_search_result_retention`), catch-all 35 (`apply_catchall_retention`
 `WAF_RETENTION_ENABLED`), IPS metrik 35 (`apply_ips_retention`, kapı `IPS_RETENTION_ENABLED`) /
 kapalı olay 365 (`apply_ips_anomaly_retention`), property-watch metrik 35 / kapalı olay 180
 (`apply_property_watch_retention`), anomaly fault 30 (`apply_anomaly_fault_retention`), özel kural
-ihlali 180 (`apply_custom_rule_retention`), kapalı Phase A olay 365
+ihlali 180 (`apply_custom_rule_retention`), kapalı log source hacmi olayı 365
 (`apply_log_source_anomaly_retention`), `rule_health_snapshot` 90 ve `detection_coverage_snapshot`
 90 (`apply_snapshot_retention`), `rule_match_metric` ve `rule_match_window` 90
 (`apply_rule_match_retention`). Docker json günlükleri 20 MB × 5 ile sınırlıdır ve diski dolduran

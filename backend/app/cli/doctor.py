@@ -885,7 +885,7 @@ class Doctor:
         )
         on = [name for name, enabled in flags.items() if enabled]
         off = [name for name, enabled in flags.items() if not enabled]
-        on_text = " ".join(["PHASE_A", *on])
+        on_text = " ".join(["LOG_SOURCE_VOLUME", *on])
         off_text = " ".join(off) if off else "none"
         return CheckResult(
             "families_off", Status.PASS, f"{summary}; on: {on_text}; off: {off_text}"

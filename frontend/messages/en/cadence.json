@@ -11,7 +11,7 @@
     "forbidden": "Your role cannot read search cadence (permission read:search_cadence). Nothing was changed.",
     "failed": "Search cadence could not be loaded. The backend may be unreachable; check that it is running, then reload the page. Nothing was changed.",
     "emptyTitle": "No search families were returned.",
-    "empty": "All eight families are seeded by database migrations (the cadence migration seeds Phase A volume, WAF collection, anomaly explanations and rule matches; the IPS, catch-all, geo and property-watch migrations seed the other four), so an empty list means the seed did not run. Check that the database migrations have been applied, then reload the page."
+    "empty": "All eight families are seeded by database migrations (the cadence migration seeds log source volume, WAF collection, anomaly explanations and rule matches; the IPS, catch-all, geo and property-watch migrations seed the other four), so an empty list means the seed did not run. Check that the database migrations have been applied, then reload the page."
   },
   "table": {
     "label": "Search cadence by family",
@@ -62,7 +62,7 @@
     "notChanged": "Not changed. {reason}"
   },
   "family": {
-    "PHASE_A_VOLUME": { "name": "Phase A volume", "scope": "Event count per log source" },
+    "PHASE_A_VOLUME": { "name": "Log source volume", "scope": "Event count per log source" },
     "WAF_COLLECTION": { "name": "WAF collection", "scope": "Endpoint, status and client breakdowns" },
     "ANOMALY_EXPLANATION": { "name": "Anomaly explanations", "scope": "Evidence for open anomalies" },
     "RULE_MATCH": { "name": "Rule matches", "scope": "Events matched per rule" },

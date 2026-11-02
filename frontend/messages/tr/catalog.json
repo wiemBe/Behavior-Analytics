@@ -67,7 +67,7 @@
     "onTime": "Zamanında"
   },
   "family": {
-    "PHASE_A_VOLUME": "Phase A hacmi",
+    "PHASE_A_VOLUME": "Log source hacmi",
     "WAF_COLLECTION": "WAF toplama",
     "ANOMALY_EXPLANATION": "Anomali açıklamaları",
     "RULE_MATCH": "Kural eşleşmeleri",

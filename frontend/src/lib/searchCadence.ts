@@ -74,7 +74,7 @@ export function worstCaseDelay(
 
 export const FAMILY_INFO: Record<SearchFamily, { name: string; scope: string }> = {
   PHASE_A_VOLUME: {
-    name: "Phase A volume",
+    name: "Log source volume",
     scope: "Event count per log source",
   },
   WAF_COLLECTION: {

@@ -11,7 +11,7 @@
     "forbidden": "Rolünüz arama sıklığını okuyamıyor (izin: read:search_cadence). Hiçbir şey değiştirilmedi.",
     "failed": "Arama sıklığı yüklenemedi. Backend'e erişilemiyor olabilir; çalıştığını denetleyin, sonra sayfayı yenileyin. Hiçbir şey değiştirilmedi.",
     "emptyTitle": "Hiçbir arama ailesi döndürülmedi.",
-    "empty": "Sekiz ailenin hepsi veritabanı migration'larıyla eklenir (sıklık migration'ı Phase A hacmini, WAF toplamayı, anomali açıklamalarını ve kural eşleşmelerini; IPS, catch-all, geo ve özellik izleme migration'ları diğer dördünü ekler); bu yüzden boş liste, eklemenin çalışmadığı anlamına gelir. Veritabanı migration'larının uygulandığını denetleyin, sonra sayfayı yenileyin."
+    "empty": "Sekiz ailenin hepsi veritabanı migration'larıyla eklenir (sıklık migration'ı log source hacmini, WAF toplamayı, anomali açıklamalarını ve kural eşleşmelerini; IPS, catch-all, geo ve özellik izleme migration'ları diğer dördünü ekler); bu yüzden boş liste, eklemenin çalışmadığı anlamına gelir. Veritabanı migration'larının uygulandığını denetleyin, sonra sayfayı yenileyin."
   },
   "table": {
     "label": "Aileye göre arama sıklığı",
@@ -62,7 +62,7 @@
     "notChanged": "Değiştirilmedi. {reason}"
   },
   "family": {
-    "PHASE_A_VOLUME": { "name": "Phase A hacmi", "scope": "Log source başına olay sayısı" },
+    "PHASE_A_VOLUME": { "name": "Log source hacmi", "scope": "Log source başına olay sayısı" },
     "WAF_COLLECTION": { "name": "WAF toplama", "scope": "Uç nokta, durum ve istemci dökümleri" },
     "ANOMALY_EXPLANATION": { "name": "Anomali açıklamaları", "scope": "Açık anomaliler için kanıt" },
     "RULE_MATCH": { "name": "Kural eşleşmeleri", "scope": "Kural başına eşleşen olaylar" },

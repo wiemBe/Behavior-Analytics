@@ -63,7 +63,7 @@ describe("search cadence words in Turkish", () => {
       expect(turkish.scope).toBeTruthy();
       expect(familyInfo(key, say("en"))).toEqual(FAMILY_INFO[key as keyof typeof FAMILY_INFO]);
     }
-    expect(familyInfo("PHASE_A_VOLUME", TR).name).toBe("Phase A hacmi");
+    expect(familyInfo("PHASE_A_VOLUME", TR).name).toBe("Log source hacmi");
     expect(familyInfo("NEW_FAMILY", TR)).toEqual({ name: "NEW_FAMILY", scope: null });
     expect(familyInfo("constructor", TR)).toEqual({ name: "constructor", scope: null });
   });

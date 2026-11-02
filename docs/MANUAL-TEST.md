@@ -29,7 +29,7 @@ Bu bölüm 0.1.8 sitesini 0.1.9'a yükseltir ve yükseltilmiş siteyi sınar. 0.
 
 ### Bu sürüm neyi değiştirir
 
-- **Arayüz dili.** Arayüz İngilizce ya da Türkçe çalışır. Dil, Hesap ayarları sayfasından seçilir; hesapta (`ui_language`) ve tarayıcıda (`ba_locale` çerezi) saklanır. Backend'in yazdığı cümlelerin büyük bölümü bir kodla saklanır ve Türkçe okunur. 0.1.9 buna iki grup ekler: motor uyarılarının başlığı, açıklaması ve düzelme nedeni (Phase A, WAF, IPS, özellik izleme; MSG-7b) ve geçmiş okumadaki Ariel erteleme cümlesi (MSG-8c). Yükseltmeden önce yazılmış, kodu olmayan satırlar İngilizce kalır (bölüm 4). Bildirimler (Teams, e-posta, Slack, webhook, syslog) İngilizce kalır. Yönetim grubunun ilk öğesi “Yönetim özeti”dir (“Administration overview”) ve `/admin` açar.
+- **Arayüz dili.** Arayüz İngilizce ya da Türkçe çalışır. Dil, Hesap ayarları sayfasından seçilir; hesapta (`ui_language`) ve tarayıcıda (`ba_locale` çerezi) saklanır. Backend'in yazdığı cümlelerin büyük bölümü bir kodla saklanır ve Türkçe okunur. 0.1.9 buna iki grup ekler: motor uyarılarının başlığı, açıklaması ve düzelme nedeni (log source hacmi, WAF, IPS, özellik izleme; MSG-7b) ve geçmiş okumadaki Ariel erteleme cümlesi (MSG-8c). Yükseltmeden önce yazılmış, kodu olmayan satırlar İngilizce kalır (bölüm 4). Bildirimler (Teams, e-posta, Slack, webhook, syslog) İngilizce kalır. Yönetim grubunun ilk öğesi “Yönetim özeti”dir (“Administration overview”) ve `/admin` açar.
 - **Migrasyon yok.** Bu sürüm yeni migrasyon eklemez. `upgrade` karar veren çifti yine iki kez yazar; ikisi de `database and image are at 0044` der. Alembic adımı çalışır ve `Running upgrade` satırı yazmaz; migrate konteyneri 0 ile çıkar. Bu bir hata değildir. Hedef zaten kuruluysa çift bir kez yazılır ve son satır `Version 0.1.9 is already installed and healthy; nothing changed.` olur; bu, ilk yükseltmenin beklenen çıktısı değildir.
 - **Varsayılan hız sınırı artık sayılır.** 0.1.6, 0.1.7 ve 0.1.8'de `RATE_LIMIT_DEFAULT` API rotalarına uygulanmıyordu. 0.1.9'da `/api/v1` altındaki her rota sayılır. `GET /api/v1/health/live` ve `GET /api/v1/health/ready` sayılmaz. Sayaç istemci anahtarı ve yol başınadır. Varsayılan dakikada 1200 istektir. `.env` bu adı yazıyorsa o değer kalır; `install` bu satırı yazmaz. Giriş sınırı dakikada 300, arama çalıştırma sınırı dakikada 10 kalır. Reddedilen istek `429` döner ve `Retry-After` ile `X-RateLimit-*` başlıklarını taşır. Üretim kontrolü MT-126'dır. Sınırı düşürüp 429 görmek yalnızca labdır (MT-127).
 - **Sunucuda çizilen sayfalar analistin kendi adresinden sayılır.** `upgrade`, eksikse `.env` içine `FRONTEND_EDGE_IP` yazar ve boş olmayan, `*` olmayan `FORWARDED_ALLOW_IPS` listesine bu adresi bir kez ekler. Liste yoksa, boşsa ya da `*` ise betik listeyi değiştirmez. `doctor` kimliği `forwarded_allow_ips` olur (MT-09). `*` yazma.
@@ -57,7 +57,7 @@ Bir toplamanın verisinin sayfada görünmesi için kadans ve yerleşme payı (`
 | Ne | Ne zaman bakılır | Daha erken bakılırsa sayfa ne gösterir |
 |---|---|---|
 | Sürüm, migrasyon, `doctor` (bağımsız satırlar), giriş, dil, kılavuz, yönetim sayfaları | Hemen | (veriye bağlı değil) |
-| Pano bileşenleri, anomali ve filo verisi, kural ve coverage nedenleri | Ailenin kadansı + 3 dk (Phase A: 8 dk; WAF ve IPS: 18 dk) | “Güncel değil” ya da “Toplanmadı”; doğrudur, Kaldı yazma |
+| Pano bileşenleri, anomali ve filo verisi, kural ve coverage nedenleri | Ailenin kadansı + 3 dk (log source hacmi: 8 dk; WAF ve IPS: 18 dk) | “Güncel değil” ya da “Toplanmadı”; doğrudur, Kaldı yazma |
 | Yeni Türkçe satırlar (özellik izleme nedeni, özel kural nedeni, kural sağlığı nedeni, geçmiş okuma nedeni) | Satırı yazan toplamanın bir sonraki çalışmasından sonra | Saklı İngilizce metin |
 | Yeni geçiş, yeni anomali, yeni uyarı | Bir olay olunca; beklenmez | Eski satırlar (İngilizce) |
 
@@ -739,7 +739,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 
 **Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
 
-#### MT-27 — Dil: Anomali ayrıntısı, Phase A (log source) `/anomalies/<id>` [çekirdek]
+#### MT-27 — Dil: Anomali ayrıntısı, log source hacmi `/anomalies/<id>` [çekirdek]
 
 **Eylem:**
 
@@ -905,7 +905,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 
 - Türkçe başlık: “Uyarılar” / “Uyarı ayrıntısı”.
 - Kodlu alanlar (Türkçe olmalı): MSG-7 katalog uyarıları: arama eşiği ve arama hatası, özel kural eşiği, offense toplama güncelliği, yeni log source, yeni catch-all gönderen. Başlık, “Açıklama” ve “Çözüm:” satırı Türkçedir. Offense toplama güncelliği örnektir: başlık “{instance} için offense toplama güncel değil”, açıklama “Salt okunur offense toplayıcı, yapılandırılmış güncellik eşiği içinde tamamlanmadı.”, düzelme nedeni “Offense toplama güncelliği düzeldi.” Açılış 0.1.7'den önce olsa da, yazıcı satırı kodla yenilediyse metin Türkçedir.
-- 0.1.6 eski satırı (İngilizce kalması doğru): kodu olmayan satır. Yükseltme eski satıra kod eklemez. Yazıcı bu sürümde yenilediği motor uyarısı (Phase A, WAF, IPS, özellik izleme) başlık, açıklama ve düzelme nedeninde Türkçedir (MSG-7b; MT-59). Kodu olmayan eski satır İngilizce kalır. Uyarılar bölümü (MT-87, MT-88) ile aynı sınırdır.
+- 0.1.6 eski satırı (İngilizce kalması doğru): kodu olmayan satır. Yükseltme eski satıra kod eklemez. Yazıcı bu sürümde yenilediği motor uyarısı (log source hacmi, WAF, IPS, özellik izleme) başlık, açıklama ve düzelme nedeninde Türkçedir (MSG-7b; MT-59). Kodu olmayan eski satır İngilizce kalır. Uyarılar bölümü (MT-87, MT-88) ile aynı sınırdır.
 
 **Kaydet:** Ham anahtar (sayfa, yazı) ve beklenmeyen İngilizce cümle (sayfa, ilk beş sözcük); yoksa "yok".
 
@@ -1203,7 +1203,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 **Eylem:**
 
 - Aşağıdaki listeyi oku. Türkçe turda bu listede **olmayan** bir İngilizce cümle bulursan Kaldı yaz; listedekileri hata sayma:
-- **Motor uyarılarının kodu olmayan eski satırları** (Phase A, WAF, IPS ve özellik izleme): yazıcı bu sürümde satırı yenilediyse başlık, açıklama ve düzelme nedeni Türkçedir (MSG-7b). Phase A başlığı “{log_source} üzerinde {anomaly_type}” olur; tür etiketi “Hacim düşüşü” ya da “Olay yok” gibi katalog adıdır. IPS “{log_source} üzerinde {detector}”, hedef port ya da hedef IP “: hedef port {entity}” / “: hedef IP {entity}”, imza “: imza {entity}”. Özellik izleme “{watch} üzerinde {detector}: {value}”. WAF “{log_source} üzerinde {detector}: {method} {endpoint}”. Düzelme nedeni “Koşul düzeldi” (İngilizce “condition recovered”). Yükseltmeden önce yazılmış, kodu olmayan satır İngilizce kalır. Katalog uyarıları (MSG-7) zaten Türkçedir. Offense toplama güncelliği örnektir (“{instance} için offense toplama güncel değil”, “Salt okunur offense toplayıcı, yapılandırılmış güncellik eşiği içinde tamamlanmadı.”, “Offense toplama güncelliği düzeldi.”). Bu sınır, uyarılar bölümüyle aynıdır (MT-38, MT-87, MT-88).
+- **Motor uyarılarının kodu olmayan eski satırları** (log source hacmi, WAF, IPS ve özellik izleme): yazıcı bu sürümde satırı yenilediyse başlık, açıklama ve düzelme nedeni Türkçedir (MSG-7b). Log source hacmi başlığı “{log_source} üzerinde {anomaly_type}” olur; tür etiketi “Hacim düşüşü” ya da “Olay yok” gibi katalog adıdır. IPS “{log_source} üzerinde {detector}”, hedef port ya da hedef IP “: hedef port {entity}” / “: hedef IP {entity}”, imza “: imza {entity}”. Özellik izleme “{watch} üzerinde {detector}: {value}”. WAF “{log_source} üzerinde {detector}: {method} {endpoint}”. Düzelme nedeni “Koşul düzeldi” (İngilizce “condition recovered”). Yükseltmeden önce yazılmış, kodu olmayan satır İngilizce kalır. Katalog uyarıları (MSG-7) zaten Türkçedir. Offense toplama güncelliği örnektir (“{instance} için offense toplama güncel değil”, “Salt okunur offense toplayıcı, yapılandırılmış güncellik eşiği içinde tamamlanmadı.”, “Offense toplama güncelliği düzeldi.”). Bu sınır, uyarılar bölümüyle aynıdır (MT-38, MT-87, MT-88).
 - **Geçmiş okumada Ariel erteleme nedeninin eski satırı.** Yazıcı bu sürümde nedeni yenilediyse cümle “Ariel izni N sn içinde alınamadı; okuma ertelendi” olur (MSG-8c). Yükseltmeden önce yazılmış satır `deferred: no Ariel permit within N s` olarak İngilizce kalır ve hata değildir. Catch-all dahil geçmiş okumanın diğer tüm cümleleri MSG-8a ile Türkçedir.
 - **İlk açılış sorusundaki tahmin notu** `history.estimate.empty_sources` (henüz izlenen endpoint ya da kabul edilmiş varlığı olmayan bir WAF/IPS kaynağı için, tahmin cümlesinin sonunda "…{count} sources fitted with no … yet; the … limit still bounds the reading"): Türkçe pencerede İngilizce kalır. Geçmiş okuma sayfası bunu göstermez.
 - **Eski geçmiş boşlukları ve kapsam satırları** (0.1.7'den önce yazılmış): saklı İngilizce metin.
@@ -1212,7 +1212,7 @@ Dil anahtarı **Hesap ayarları** sayfasındadır (`/account`, "Arayüz dili"). 
 - Operatörün yazdığı metin: uyarıyı çözerken yazılan neden, arama/kural adları, açıklamalar, sınıflandırma deseni.
 - QRadar'dan gelen adlar: offense açıklamaları, log source adları, kural adları, taktik ve teknik adları.
 - Hazırlık (readiness) ayrıntıları ve WAF/IPS boru hattı çalışma raporları.
-- Çevrilmeyen terimler: `coverage`, `scope`, `baseline`, `offense`, `log source`, `instance`, `custom property`, `cron`, `EPS` gibi sözlük terimleri (D-39); ayrıca `console`, `Phase A` ve `robust z`. Ayar adları, izin adları (`read:anomalies`) ve HTTP kodları da çevrilmez. `console` ve `Phase A` arayüzde olduğu gibi kalır (“Console {name}”, “Tüm console”, “Bu console için kayıtlı bir karar yok.”, “Phase A hacmi”).
+- Çevrilmeyen terimler: `coverage`, `scope`, `baseline`, `offense`, `log source`, `instance`, `custom property`, `cron`, `EPS` gibi sözlük terimleri (D-39); ayrıca `console` ve `robust z`. Ayar adları, izin adları (`read:anomalies`) ve HTTP kodları da çevrilmez. `console` arayüzde olduğu gibi kalır (“Console {name}”, “Tüm console”, “Bu console için kayıtlı bir karar yok.”, “Log source hacmi”).
 - Katalogda Türkçeye dönen parçalar: `/` sessiz kaynak cümlesi “Sessiz: algılayıcı, olay beklenen yerde hiç olay görmedi (Olay yok anomalisi).” (İngilizce sayfa “(NO_EVENTS anomaly)” der); `/searches` “arayüz hiçbir zaman kaydedilmemiş, anlık yazılmış AQL çalıştırmaz.” (İngilizce sayfa “ad-hoc” der); `/custom-rules` “CUSTOM_RULES_ENABLED kapalı olduğu için kural değerlendirmesi kapalıdır. Etkin kurallar değerlendirilmiyor.” (İngilizce sayfa “is false” der). `/guide` sorusu “Gözlenen, beklenen, sapma, robust z ve coverage ne anlama gelir?” içinde İngilizce kalan terim `robust z`'dir (`coverage` yukarıdadır).
 - 404 "bulunamadı" cümlelerinin sunucu metni (arayüz kendi sabit cümlesini gösterir), kapasite 409 nedenleri, sürüm çakışması iletileri.
 
@@ -1490,7 +1490,7 @@ Pano, `/` yolundadır. “Gösterge panelleri” menüsünün “Şablon” grub
 
 ### 6. Anomaliler
 
-Anomali listesi tek yerde dört aileyi toplar: log source (Phase A), WAF endpoint, IPS (varlık ve kaynak) ve özellik izleme değeri. Ayrıntı sayfası (`/anomalies/<id>`) aileye göre farklı bir inceleme açar. Yaşam döngüsü durumları: “ADAY”, “AÇIK”, “DÜZELİYOR”, “ÇÖZÜLDÜ”, “BASTIRILDI”; “YETERSİZ VERİ” ve “NORMAL” kaynak durumudur. Sitede bir tür anomali yoksa o türün kontrolü `Koşulmadı` olur ve Not'a "veri yok" yazılır; yeni anomali üretmeye çalışma.
+Anomali listesi tek yerde dört aileyi toplar: log source hacmi, WAF endpoint, IPS (varlık ve kaynak) ve özellik izleme değeri. Ayrıntı sayfası (`/anomalies/<id>`) aileye göre farklı bir inceleme açar. Yaşam döngüsü durumları: “ADAY”, “AÇIK”, “DÜZELİYOR”, “ÇÖZÜLDÜ”, “BASTIRILDI”; “YETERSİZ VERİ” ve “NORMAL” kaynak durumudur. Sitede bir tür anomali yoksa o türün kontrolü `Koşulmadı` olur ve Not'a "veri yok" yazılır; yeni anomali üretmeye çalışma.
 
 #### MT-80 — Anomali listesi ve filtreler
 
@@ -1506,9 +1506,9 @@ Anomali listesi tek yerde dört aileyi toplar: log source (Phase A), WAF endpoin
 
 **Kaydet:** Beş filtre ve sonuç sayfası çalıştı mı; liste satır sayısı (yaklaşık).
 
-#### MT-81 — Phase A anomali ayrıntısı ve dürüstlük durumları
+#### MT-81 — Log source hacmi anomali ayrıntısı ve dürüstlük durumları
 
-**Ön koşul:** Sitede en az bir Phase A anomalisi var (etkin ya da çözülmüş).
+**Ön koşul:** Sitede en az bir log source hacmi anomalisi var (etkin ya da çözülmüş).
 
 **Eylem:**
 
@@ -1524,7 +1524,7 @@ Anomali listesi tek yerde dört aileyi toplar: log source (Phase A), WAF endpoin
 
 #### MT-82 — Yaşam döngüsü sekmesi ve nedenler
 
-**Ön koşul:** Phase A ya da başka bir ailenin bir anomalisi açık.
+**Ön koşul:** Log source hacmi ya da başka bir ailenin bir anomalisi açık.
 
 **Ne zaman bakılır:** Yeni geçiş, ancak yükseltmeden sonra durum değişen bir anomaliyle görülür; beklenmesi gerekmez.
 
@@ -1617,7 +1617,7 @@ Arayüzde bu sayfanın adı **Uyarılar**'dır (İngilizce: Alerts), rota `/aler
 
 - Başlık “Uyarılar”; sütunlar: “Başlık”, “Önem derecesi”, “Durum”, “Oluşumlar”, “İlk görülme”, “Son görülme”. Durum filtresi: “Açık”, “Alındı”, “Çözüldü”.
 - Hiç uyarı yoksa “Hiç uyarı oluşturulmadı.” Sayım satırı: “Gösterilen uyarı sayısı: {shown} / {total}.”
-- Katalog uyarılarının başlığı Türkçedir (MSG-7): arama eşiği ve arama hatası, özel kural, offense toplama güncelliği, yeni log source, yeni catch-all gönderen. Offense toplama güncelliği “{instance} için offense toplama güncel değil” diye okunur. Açılış 0.1.7'den önce olsa da, yazıcı satırı kodla yenilediyse başlık Türkçedir. Kodu olmayan eski satırın başlığı İngilizce kalır. Yazıcının bu sürümde yenilediği motor uyarısı da Türkçedir (MSG-7b): Phase A “{log_source} üzerinde {anomaly_type}” (örneğin “Hacim düşüşü”, “Olay yok”), IPS “{log_source} üzerinde {detector}” ve hedef port, hedef IP ya da imza biçimleri, özellik izleme “{watch} üzerinde {detector}: {value}”, WAF “{log_source} üzerinde {detector}: {method} {endpoint}”. MT-38 ile aynı sınırdır.
+- Katalog uyarılarının başlığı Türkçedir (MSG-7): arama eşiği ve arama hatası, özel kural, offense toplama güncelliği, yeni log source, yeni catch-all gönderen. Offense toplama güncelliği “{instance} için offense toplama güncel değil” diye okunur. Açılış 0.1.7'den önce olsa da, yazıcı satırı kodla yenilediyse başlık Türkçedir. Kodu olmayan eski satırın başlığı İngilizce kalır. Yazıcının bu sürümde yenilediği motor uyarısı da Türkçedir (MSG-7b): log source hacmi “{log_source} üzerinde {anomaly_type}” (örneğin “Hacim düşüşü”, “Olay yok”), IPS “{log_source} üzerinde {detector}” ve hedef port, hedef IP ya da imza biçimleri, özellik izleme “{watch} üzerinde {detector}: {value}”, WAF “{log_source} üzerinde {detector}: {method} {endpoint}”. MT-38 ile aynı sınırdır.
 
 **Kaydet:** Listenin açıldığı, satır sayısı ve bir başlığın dili.
 
@@ -2049,7 +2049,7 @@ Bu bölümde sayfalar önce **yalnızca görüntülenir**. Her değişiklik **(y
 
 **Beklenen:**
 
-- Başlık “Arama sıklığı”; sütunlar: “Aile”, “Sıklık”, “Zaman dilimi”, “En kötü durum algılama gecikmesi”, “Son çalıştırma (UTC)”, “Sonraki çalıştırma (UTC)”, “Son çalıştırmadaki arama”. Sekiz aile listelenir (ör. “Phase A hacmi”, “WAF toplama”, “IPS toplama”, “Kural eşleşmeleri”). Hiç çalışmamış aile için tire ya da “Yükseltmeden beri çalışmadı”/“sayılmadı”; bunlar sıfır değildir.
+- Başlık “Arama sıklığı”; sütunlar: “Aile”, “Sıklık”, “Zaman dilimi”, “En kötü durum algılama gecikmesi”, “Son çalıştırma (UTC)”, “Sonraki çalıştırma (UTC)”, “Son çalıştırmadaki arama”. Sekiz aile listelenir (ör. “Log source hacmi”, “WAF toplama”, “IPS toplama”, “Kural eşleşmeleri”). Hiç çalışmamış aile için tire ya da “Yükseltmeden beri çalışmadı”/“sayılmadı”; bunlar sıfır değildir.
 
 **Kaydet:** Sekiz ailenin her birinin kadansı (5 dk, 15 dk…).
 
