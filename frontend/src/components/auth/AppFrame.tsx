@@ -59,7 +59,15 @@ export function AppFrame({ children }: { children: ReactNode }) {
   if (session.status === "ready" && session.me?.must_change_password) {
     return (
       <div className={styles.gate}>
-        <Suspense fallback={<p className="notice" role="status">{t("passwordLoading")}</p>}>
+        <Suspense
+          fallback={
+            <div className={styles.column}>
+              <div className="notice" role="status">
+                <p>{t("passwordLoading")}</p>
+              </div>
+            </div>
+          }
+        >
           <PasswordChange required />
         </Suspense>
       </div>
@@ -77,9 +85,11 @@ export function AppFrame({ children }: { children: ReactNode }) {
   if (session.status === "anonymous") {
     return (
       <div className={styles.gate}>
-        <p className="notice" role="status">
-          {t("signInRequired")}
-        </p>
+        <div className={styles.column}>
+          <div className="notice" role="status">
+            <p>{t("signInRequired")}</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -90,41 +100,43 @@ export function AppFrame({ children }: { children: ReactNode }) {
     const limited = session.httpStatus === 429;
     return (
       <div className={styles.gate}>
-        <div className="notice" role="alert">
-          {limited ? (
+        <div className={styles.column}>
+          <div className="notice" role="alert">
+            {limited ? (
+              <p>
+                <strong>
+                  {rateLimitedText(
+                    new ApiError(429, "", undefined, undefined, session.retryAfter ?? null),
+                    say,
+                  )}
+                </strong>
+              </p>
+            ) : (
+              <p>
+                <strong>{t("sessionFailed")}</strong>
+              </p>
+            )}
+            {limited ? null : (
+              <p>
+                {t("sessionFailedDetail", {
+                  reason: session.error ? ` ${session.error}` : "",
+                })}
+              </p>
+            )}
             <p>
-              <strong>
-                {rateLimitedText(
-                  new ApiError(429, "", undefined, undefined, session.retryAfter ?? null),
-                  say,
-                )}
-              </strong>
+              <button
+                type="button"
+                className="action secondary"
+                onClick={() => {
+                  void session.reload().catch(() => {
+                    /* `load` already recorded the error */
+                  });
+                }}
+              >
+                {common("tryAgain")}
+              </button>
             </p>
-          ) : (
-            <p>
-              <strong>{t("sessionFailed")}</strong>
-            </p>
-          )}
-          {limited ? null : (
-            <p>
-              {t("sessionFailedDetail", {
-                reason: session.error ? ` ${session.error}` : "",
-              })}
-            </p>
-          )}
-          <p>
-            <button
-              type="button"
-              className="action secondary"
-              onClick={() => {
-                void session.reload().catch(() => {
-                  /* `load` already recorded the error */
-                });
-              }}
-            >
-              {common("tryAgain")}
-            </button>
-          </p>
+          </div>
         </div>
       </div>
     );

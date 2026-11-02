@@ -3,6 +3,7 @@
   padding: var(--sp-7) var(--sp-5);
   display: flex;
   justify-content: center;
+  align-items: flex-start;
 }
 
 .column {
