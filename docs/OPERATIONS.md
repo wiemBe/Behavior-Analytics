@@ -657,6 +657,13 @@ Hiçbir konteyner durdurulmadan önce, betik kontrolleri şu sırayla yapar:
   temizleyene kadar yeni yükseltme `upgrade refused: the last upgrade failed; run rollback or
   restore first` ile engellenir. `last_upgrade.restored_from` alanı dolu olan `failed` bir kayıt
   bu engeli kaldırır (başarılı bir `restore` o alanı yazar).
+- Bu checkout'un kendi `docs/releases/<hedef>.md` dosyası okunur (FIX-12); bu `min_from`
+  denetimi, imaj ön eki taşınmadan, paket yüklenmeden ve imajlar çekilmeden önce çalışır. Dosya
+  yoksa, okunamıyorsa, sürüm notu biçiminde değilse ya da `version` alanı hedef değilse
+  `upgrade refused: docs/releases/<hedef>.md is missing, invalid, or for another version; nothing
+  was changed`; kurulu sürüm bu `min_from` değerinden eskise
+  `upgrade refused: <hedef> requires at least <min_from>; nothing was changed` yazılır ve komut
+  1 ile çıkar. `.env` bayt bayt aynı kalır; hiçbir paket yüklenmez, hiçbir imaj çekilmez.
 - İmaj ön eki taşınır (bkz. İmaj ön ekinin taşınması). Bu da hiçbir şey çekilmeden önce olur:
   kurulu imajlar yeni ön ek altında etiketlenir, `.env` ve `.secrets/install.answers` yeniden
   yazılır ve `Image prefix moved: …` satırı yazılır. Ön ek başka bir kayıt defterine ya da aynaya
@@ -669,16 +676,19 @@ Hiçbir konteyner durdurulmadan önce, betik kontrolleri şu sırayla yapar:
   `upgrade refused: target images are unavailable: image <imaj> is not loaded on this host; no container was stopped; pass the bundle: ./qradar-dash upgrade <sürüm> --offline /path/to/qradar-dash-<sürüm>-bundle.tar`
   yazılır. Paket verilmişse önce toplamlar ve sürüm denetlenir, imajlar yüklenir ve `MANIFEST`
   ile karşılaştırılır; bunların hiçbiri bir konteyneri durdurmaz.
-- Hedef imajın sürüm notları ayrıştırılır ve `installed_version`, `min_from` değerine eşit ya da
-  büyüktür. Ayrıştırılamazsa
-  `upgrade refused: target release notes are missing, invalid, or for another version`; eskiyse
-  `upgrade refused: <hedef> requires at least <min_from>`. Bu reddediş zararsızdır: komut 1 ile
-  çıkar, hiçbir konteyner durmaz ve `state.json` değişmez. Yalnız iki şey olmuştur: imaj ön eki
-  taşınmış ve hedef imajlar çekilmiştir. Örneğin `0.1.0` kurulumunda `upgrade 0.1.2`,
-  `upgrade refused: 0.1.2 requires at least 0.1.1` ile reddedilir; sonraki adım
-  `git checkout v0.1.1 && ./qradar-dash upgrade 0.1.1` ise taşınmış ön eki okur ve `0.1.1`
-  imajlarını yeni ad altında çeker. Bu, eski sürümler yeni ada kopyalandığı için çalışır
-  (bkz. İmaj ön ekinin taşınması).
+- Hedef imajın sürüm notları, çekmeden sonra yeniden okunur ve yerel dosyadakiyle aynı `min_from`
+  değerini vermelidir. Ayrıştırılamazsa
+  `upgrade refused: target release notes are missing, invalid, or for another version`; kurulu
+  sürüm imajın `min_from` değerinden eskise `upgrade refused: <hedef> requires at least
+  <min_from>`; iki değer uyuşmuyorsa
+  `upgrade refused: docs/releases/<hedef>.md requires at least <yerel> but the target image
+  requires at least <imaj>; no container was stopped` yazılır. Bu reddedişler zararsızdır: komut
+  1 ile çıkar, hiçbir konteyner durmaz ve `state.json` değişmez. Yalnız iki şey olmuştur: imaj
+  ön eki taşınmış ve hedef imajlar çekilmiştir. Örneğin `0.1.0` kurulumunda `upgrade 0.1.2`,
+  bir önceki maddedeki yerel denetimde `upgrade refused: 0.1.2 requires at least 0.1.1; nothing
+  was changed` ile reddedilir; sonraki adım `git checkout v0.1.1 && ./qradar-dash upgrade 0.1.1`
+  ise ön eki kendisi taşır, eski imajları yeni ad altına etiketler ve `0.1.1` imajlarını çeker.
+  Bu, eski sürümler yeni ada kopyalandığı için çalışır (bkz. İmaj ön ekinin taşınması).
 - Disk koruması (bkz. Yedek ve geri alma) geçer. Yedek kökü yoksa
   `upgrade refused: backup root is unavailable`; veritabanı boyutu okunamazsa
   `upgrade refused: database size is unavailable`. Koruma
@@ -976,7 +986,10 @@ Yedekte `install.answers` varsa (kip `0600` ya da `0400`), veritabanı değişim
 sonra bu dosya aynı kiple `.secrets/install.answers` yoluna geri konur; bu bir yanıt dosyasıdır,
 sır değildir, ve kopyası olmayan bir yedek mevcut dosyaya dokunmaz. Geri koyma başarısız olursa
 `restore` önceki dosyayı korur, elle çalıştırılacak `install -m <kip> <yedek>/install.answers
-.secrets/install.answers` komutunu içeren bir `[warn]` satırı yazar ve servisleri yine de başlatır.
+.secrets/install.answers` komutunu tırnaklayıp yapıştırmaya hazır yazan bir `[warn]` satırı
+yazar ve servisleri yine de başlatır (FIX-12). Komut `%q` ile tırnaklanır; yedek yolu boşluk ya
+da başka bir kabuk karakteri taşısa da komut tek satır olarak yapıştırılıp olduğu gibi
+çalıştırılabilir.
 
 ---
 
