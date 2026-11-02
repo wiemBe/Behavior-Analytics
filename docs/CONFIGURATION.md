@@ -306,7 +306,10 @@ separate task and is not skipped by that check.
 | Setting | Default | Meaning |
 |---|---:|---|
 | `GEO_COLLECTION_ENABLED` | `true` | Family collection switch |
-| `GEO_DIRECTIONS` | `SOURCE, DESTINATION` | Address directions stored as separate series |
+| `GEO_DIRECTIONS` | `SOURCE, DESTINATION` | Event sides stored as separate series |
+| `GEO_COUNTRY_SOURCE` | `property` | `property` reads a custom property; `lookup` keeps `GEO::LOOKUP` |
+| `GEO_SOURCE_COUNTRY_PROPERTY` | `Source Geographic Location` | SOURCE property. Empty: that direction is not collected |
+| `GEO_DESTINATION_COUNTRY_PROPERTY` | empty | DESTINATION property. Empty: that direction is not collected |
 | `GEO_MAX_ROWS_PER_SEARCH` | `5000` | Rows accepted before time splitting |
 | `GEO_MAX_COUNTRIES_PER_BUCKET` | `64` | Countries retained; the rest becomes `OVER_CAP` |
 | `GEO_RETENTION_DAYS` | `35` | Bucket retention |
@@ -314,8 +317,10 @@ separate task and is not skipped by that check.
 | `GEO_RETENTION_MAX_BATCHES` | `20` | Batches per retention run |
 | `GEO_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule |
 
-No IP address is selected or stored by geography collection. Country lookup occurs inside the
-QRadar query.
+No IP address is selected or stored by geography collection. In `property` mode the query
+groups by the configured country property, and a direction with no property is not searched.
+`lookup` mode still resolves the country inside the QRadar query with `GEO::LOOKUP`. A
+non-empty property name must match the property-name allowlist or settings refuse to load.
 
 ## Custom threshold rules
 

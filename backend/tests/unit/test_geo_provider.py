@@ -52,6 +52,7 @@ async def search(
     rows: list[dict[str, Any]] | None = None,
     direction: GeoDirection = GeoDirection.SOURCE,
     max_rows: int = 10,
+    country_property: str | None = None,
     **over: Any,
 ):
     handler, queries = scripted(rows or [])
@@ -62,6 +63,7 @@ async def search(
         direction=direction,
         bucket_seconds=BUCKET,
         max_rows=max_rows,
+        country_property=country_property,
     )
     return result, queries[0]
 
@@ -121,6 +123,60 @@ class TestAql:
             START, END, direction=GeoDirection.SOURCE, bucket_seconds=BUCKET, max_rows=5000
         )
         assert "LIMIT 11 " in queries[0]
+
+
+class TestPropertyAql:
+    async def test_it_selects_and_groups_by_the_quoted_property(self) -> None:
+        _, aql = await search(country_property="Source Geographic Location")
+        quoted = '"Source Geographic Location"'
+        start_ms = int(START.timestamp() * 1000)
+        end_ms = int(END.timestamp() * 1000)
+        assert aql.startswith(
+            f'SELECT {quoted} AS "geo", starttime / {BUCKET * 1000} AS "k", '  # noqa: S608
+            'SUM(eventcount) AS "events" FROM events '
+        )
+        assert f"WHERE starttime >= {start_ms} AND starttime < {end_ms} " in aql
+        assert f"GROUP BY {quoted}, starttime / {BUCKET * 1000} " in aql
+        assert "ORDER BY SUM(eventcount) DESC LIMIT 11 " in aql
+        assert re.search(r" STOP \d+$", aql)
+
+    @pytest.mark.parametrize("direction", list(GeoDirection))
+    async def test_no_lookup_and_no_address_is_in_the_text(self, direction: GeoDirection) -> None:
+        _, aql = await search(direction=direction, country_property="Country Of Origin")
+        assert "GEO::" not in aql
+        assert "sourceip" not in aql and "destinationip" not in aql
+        assert "INCIDR" not in aql
+
+    async def test_the_lookup_text_is_unchanged_without_a_property(self) -> None:
+        _, aql = await search()
+        assert aql.startswith(
+            "SELECT GEO::LOOKUP(sourceip, 'country', 'iso_code') AS \"geo\", "  # noqa: S608
+            f'starttime / {BUCKET * 1000} AS "k", SUM(eventcount) AS "events" FROM events '
+        )
+
+    @pytest.mark.parametrize(
+        "name", ['x" OR 1=1 --', "Bad.Name(1)", "", " lead", "a" * 65, "Name\n"]
+    )
+    async def test_an_unsafe_name_is_refused_before_any_request(self, name: str) -> None:
+        handler, queries = scripted([])
+        provider, _ = build_provider(handler, page_size=50, max_pages=1)
+        provider._clock = lambda: END + timedelta(hours=1)
+        with pytest.raises(ValueError):
+            await provider.get_geo_keyed(
+                START,
+                END,
+                direction=GeoDirection.SOURCE,
+                bucket_seconds=BUCKET,
+                max_rows=10,
+                country_property=name,
+            )
+        assert queries == []
+
+    async def test_a_property_row_is_carried_raw_and_may_be_null(self) -> None:
+        rows = [row(geo="Europe.Turkey", events=4), row(geo=None, events=2)]
+        result, _ = await search(rows, country_property="Source Geographic Location")
+        assert [r.key for r in result.rows] == ["Europe.Turkey", None]
+        assert "Source Geographic Location" in result.query
 
 
 class TestGuards:
@@ -257,3 +313,34 @@ class TestMock:
         mock.geo_force_truncated = lambda search: True
         assert (await self.get(mock)).truncated
         assert [s.direction for s in mock.geo_searches] == [GeoDirection.SOURCE] * 2
+
+
+class TestMockProperty:
+    async def test_it_returns_property_values_in_several_formats(self) -> None:
+        mock = MockQRadarProvider(seed=5, now=START)
+        result = await mock.get_geo_keyed(
+            START,
+            START + timedelta(seconds=BUCKET),
+            direction=GeoDirection.SOURCE,
+            bucket_seconds=BUCKET,
+            max_rows=1000,
+            country_property="Source Geographic Location",
+        )
+        keys = {r.key for r in result.rows}
+        assert {"US", "DEU", "Japan", "Europe.Turkey", "NorthAmerica.UnitedStates", ""} <= keys
+        assert None in keys
+        assert mock.geo_searches[0].country_property == "Source Geographic Location"
+        fact = fold_geo_bucket(result.rows, source="property")
+        assert {code for code, _ in fact.countries} >= {"US", "DE", "JP", "TR", "GB"}
+
+    async def test_without_a_property_the_mock_is_unchanged(self) -> None:
+        mock = MockQRadarProvider(seed=5, now=START)
+        result = await mock.get_geo_keyed(
+            START,
+            START + timedelta(seconds=BUCKET),
+            direction=GeoDirection.SOURCE,
+            bucket_seconds=BUCKET,
+            max_rows=1000,
+        )
+        assert result.query == "MOCK GEO"
+        assert mock.geo_searches[0].country_property is None

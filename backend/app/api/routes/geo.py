@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import distinct, func, select, tuple_
+from sqlalchemy import distinct, func, literal_column, select, tuple_
 
 from app.api.deps import SessionDep, SettingsDep
 from app.geo.fold import GeoDirection
@@ -27,6 +27,7 @@ from app.schemas.geo import (
     GeoMeasurement,
     GeoRemaindersOut,
     GeoStatus,
+    country_source_fields,
 )
 
 router = APIRouter(prefix="/geo", tags=["geo"])
@@ -105,7 +106,7 @@ async def get_countries(
         .where(QRadarInstance.enabled.is_(True))
         .scalar_subquery()
     )
-    measured, instances = (
+    measured, instances, newest_end = (
         await session.execute(
             select(
                 func.count(
@@ -114,6 +115,11 @@ async def get_countries(
                     )
                 ),
                 should_collect,
+                # The end of the newest measured bucket: its start plus its own width.
+                func.max(
+                    GeoCountryBucket.bucket_start
+                    + GeoCountryBucket.bucket_seconds * literal_column("INTERVAL '1 second'")
+                ),
             ).where(*in_range)
         )
     ).one()
@@ -139,6 +145,9 @@ async def get_countries(
     # Nothing was measured in a NOT_COLLECTED range, so it carries neither an exactness
     # claim nor a zero for a remainder kind that was never counted.
     unmeasured = verdict is GeoStatus.NOT_COLLECTED
+    source, country_property, note, note_code, note_params = country_source_fields(
+        settings, direction
+    )
     return GeoCountriesOut(
         direction=direction,
         since=since,
@@ -155,4 +164,10 @@ async def get_countries(
         ),
         coverage=GeoCoverageOut(measured_buckets=int(measured), expected_buckets=expected),
         status=verdict,
+        latest_bucket_end=None if unmeasured else newest_end,
+        country_source=source,
+        country_property=country_property,
+        unresolved_note=note,
+        unresolved_note_code=note_code,
+        unresolved_note_params=note_params,
     )

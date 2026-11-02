@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.core.config import Settings, get_settings
 from app.models.geo import GeoCountryBucket
 from app.schemas.geo import UNRESOLVED_NOTE
 from app.security.rbac import Principal
@@ -194,7 +195,12 @@ class TestStatus:
 
 class TestContent:
     def test_countries_are_sorted_and_the_share_excludes_the_remainders(self, full) -> None:
-        body = Client(VIEWER).get(URL, params=params()).json()
+        client = Client(VIEWER)
+        # The rows are lookup rows and the note is the lookup sentence (GEO-3).
+        client.http.app.dependency_overrides[get_settings] = lambda: Settings(
+            geo_country_source="lookup"
+        )
+        body = client.get(URL, params=params()).json()
         assert body["countries"] == [
             {"country_code": "US", "events": 720, "share": 0.75},
             {"country_code": "DE", "events": 240, "share": 0.25},
@@ -261,6 +267,83 @@ class TestContent:
         assert body["status"] == "PARTIAL"
         assert body["measurement"] == "EXACT"
         assert body["remainders"] == {"UNRESOLVED": 2, "OVER_CAP": 0, "UNPARSEABLE": 0}
+
+
+class TestSource:
+    def test_the_default_is_the_property_and_names_it(self, full) -> None:
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["country_source"] == "PROPERTY"
+        assert body["country_property"] == "Source Geographic Location"
+        assert body["unresolved_note"] == (
+            "UNRESOLVED counts events whose country property was empty."
+        )
+        assert body["unresolved_note_code"] == "geo.note.unresolved_property"
+
+    def test_a_direction_with_no_property_has_no_name(self, full) -> None:
+        body = Client(VIEWER).get(URL, params=params(direction="DESTINATION")).json()
+        assert body["country_source"] == "PROPERTY"
+        assert body["country_property"] is None
+        assert body["status"] == "NOT_COLLECTED"
+
+    def test_the_configured_destination_property_is_named(self, full) -> None:
+        client = Client(VIEWER)
+        client.http.app.dependency_overrides[get_settings] = lambda: Settings(
+            geo_destination_country_property="Destination Country"
+        )
+        body = client.get(URL, params=params(direction="DESTINATION")).json()
+        assert body["country_property"] == "Destination Country"
+
+    def test_lookup_mode_reports_lookup_and_no_property_even_when_one_is_set(self, full) -> None:
+        client = Client(VIEWER)
+        client.http.app.dependency_overrides[get_settings] = lambda: Settings(
+            geo_country_source="lookup"
+        )
+        body = client.get(URL, params=params()).json()
+        assert body["country_source"] == "LOOKUP"
+        assert body["country_property"] is None
+        assert body["unresolved_note"] == UNRESOLVED_NOTE
+        assert body["unresolved_note_code"] == "geo.note.unresolved_lookup"
+
+    def test_a_property_mode_run_is_served_with_its_query_version(self, db_schema) -> None:
+        def property_rows(inst):  # type: ignore[no-untyped-def]
+            rows = [row(inst, 0, "TR", 9)]
+            rows[0].query_version = "geo-country-property-v1"
+            return rows
+
+        seed(property_rows)
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["countries"][0]["country_code"] == "TR"
+        assert body["country_source"] == "PROPERTY"
+
+
+class TestLatestBucketEnd:
+    def test_it_is_the_end_of_the_newest_measured_bucket(self, full) -> None:
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert datetime.fromisoformat(body["latest_bucket_end"]) == HOUR + timedelta(hours=1)
+
+    def test_it_follows_the_newest_bucket_not_the_range_end(self, db_schema) -> None:
+        seed(lambda inst: [row(inst, 0, "US", 10), row(inst, 3, "DE", 4)])
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert datetime.fromisoformat(body["latest_bucket_end"]) == HOUR + timedelta(minutes=20)
+
+    def test_it_is_per_direction(self, db_schema) -> None:
+        seed(
+            lambda inst: [
+                row(inst, 0, "US", 10),
+                row(inst, 7, "US", 10, direction="DESTINATION"),
+            ]
+        )
+        source = Client(VIEWER).get(URL, params=params()).json()
+        destination = Client(VIEWER).get(URL, params=params(direction="DESTINATION")).json()
+        assert datetime.fromisoformat(source["latest_bucket_end"]) == HOUR + timedelta(minutes=5)
+        assert datetime.fromisoformat(destination["latest_bucket_end"]) == HOUR + timedelta(
+            minutes=40
+        )
+
+    def test_it_is_null_when_nothing_is_collected(self, db_schema) -> None:
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["status"] == "NOT_COLLECTED"
+        assert body["latest_bucket_end"] is None
 
 
 class TestRange:

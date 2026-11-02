@@ -1964,15 +1964,26 @@ class QRadarRestProvider(QRadarProvider):
         end_ms: int,
         bucket_ms: int,
         limit: int,
+        country_property: str | None = None,
     ) -> str:
-        """The D-10 AQL. It selects the lookup string and the bucket, never an address."""
-        lookup = f"GEO::LOOKUP({cls._GEO_FIELDS[direction]}, 'country', 'iso_code')"
+        """The D-10 AQL. It selects the geo key and the bucket, never an address.
+
+        ``country_property`` is quoted with the property allowlist and replaces
+        the lookup. The address field is not in that select list.
+        """
+        if country_property is None:
+            key = f"GEO::LOOKUP({cls._GEO_FIELDS[direction]}, 'country', 'iso_code')"
+        else:
+            # fullmatch: the shared pattern's `$` would let a trailing newline through.
+            if PROPERTY_NAME_PATTERN.fullmatch(country_property) is None:
+                raise ValueError("unsafe QRadar property name")
+            key = cls._quote_property(country_property)
         return (
-            f'SELECT {lookup} AS "geo", '  # noqa: S608
+            f'SELECT {key} AS "geo", '  # noqa: S608
             f'starttime / {bucket_ms} AS "k", '
             'SUM(eventcount) AS "events" '
             f"FROM events WHERE starttime >= {start_ms} AND starttime < {end_ms} "
-            f"GROUP BY {lookup}, starttime / {bucket_ms} "
+            f"GROUP BY {key}, starttime / {bucket_ms} "
             f"ORDER BY SUM(eventcount) DESC LIMIT {limit}"
         )
 
@@ -1984,6 +1995,7 @@ class QRadarRestProvider(QRadarProvider):
         direction: GeoDirection,
         bucket_seconds: int,
         max_rows: int,
+        country_property: str | None = None,
     ) -> GeoKeyedResult:
         """One keyed search of events per country (D-10); see the base class.
 
@@ -2003,6 +2015,7 @@ class QRadarRestProvider(QRadarProvider):
                 end_ms=end_ms,
                 bucket_ms=int(bucket_seconds) * 1000,
                 limit=cap + 1,
+                country_property=country_property,
             )
             + f" {self._ariel_scope(start_ms, end_ms)}"
         )

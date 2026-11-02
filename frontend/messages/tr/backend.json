@@ -1062,5 +1062,15 @@
     "suppression": {
       "maintenance_window": "Bakım penceresi"
     }
+  },
+  "geo": {
+    "note": {
+      "unresolved_lookup": "UNRESOLVED, adresi özel, dahili veya GeoIP tarafından bilinmeyen olayları sayar. Arama üçü için de aynı boş sonucu döndürür, bu yüzden ayırt edilemezler.",
+      "unresolved_property": "UNRESOLVED, ülke özelliği boş olan olayları sayar."
+    },
+    "property": {
+      "missing": "{name} ülke özelliği bu konsolda yok. Özelliğin tam adını {setting} ayarına yazın.",
+      "unreadable": "Bu konsolda özel özellik listesi okunamadı, bu yüzden ülke araması gönderilmedi."
+    }
   }
 }
