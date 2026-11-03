@@ -113,3 +113,69 @@ class AnomalyEvaluationFault(UUIDPrimaryKeyMixin, Base):
     given_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     #: Set when a later bucket was judged, so the retry succeeded.
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+#: The statuses one access-check result can hold (ACC-1).
+ACCESS_STATUSES: tuple[str, ...] = (
+    "ok",
+    "forbidden",
+    "unauthorized",
+    "not_found",
+    "unreachable",
+    "error",
+)
+_ACCESS_STATUSES_SQL = ", ".join(f"'{name}'" for name in ACCESS_STATUSES)
+
+
+class QRadarAccessResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """The latest access-check result of one console and one catalog entry (ACC-1).
+
+    One row per (console, entry), overwritten by each check; there is no history. It keeps the
+    status class, the HTTP status code, when the check ran, the status before this one, and the
+    syncs this check started. It never keeps a response body, a header or a query: the check
+    reads a status code and nothing else.
+    """
+
+    __tablename__ = "qradar_access_result"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "entry_id", name="uq_qradar_access_result_key"),
+        CheckConstraint(f"status IN ({_ACCESS_STATUSES_SQL})", name="status_known"),
+        CheckConstraint(
+            f"previous_status IS NULL OR previous_status IN ({_ACCESS_STATUSES_SQL})",
+            name="previous_status_known",
+        ),
+    )
+
+    instance_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("qradar_instance.id", ondelete="CASCADE"), nullable=False
+    )
+    #: The `AccessEntry.id` in `app/providers/access_catalog.py`.
+    entry_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: The status QRadar answered; None when it did not answer.
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: The status the previous check stored; None on the first check of this entry.
+    previous_status: Mapped[str | None] = mapped_column(String(16))
+    #: Sync names this check started because the entry became reachable (a JSON list).
+    syncs_started: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+
+
+class QRadarAccessRun(Base):
+    """When the access check of one console started and finished (ACC-1).
+
+    One row per console, overwritten by each run, however it was started (beat, worker start-up
+    or "check now"). A run is running while `finished_at` is empty or older than `started_at`; a
+    run started more than `ACCESS_RUN_STALE_SECONDS` ago is treated as not running, so a worker
+    that died mid-check cannot hold the flag forever. It keeps two times and nothing else.
+    """
+
+    __tablename__ = "qradar_access_run"
+
+    instance_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("qradar_instance.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

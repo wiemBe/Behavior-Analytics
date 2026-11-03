@@ -270,6 +270,46 @@ Authority Key Identifier. It relaxes only that certificate-labelling assertion; 
 hostname verification remain enabled. Reissuing the certificate with an AKI is the preferred fix.
 The application refuses disabled TLS verification.
 
+### What the token must be allowed to read
+
+The token is read-only, and the application never writes to QRadar. You do not have to know every
+capability in advance: after the installer registers the console, the application asks QRadar,
+API by API, which of the calls below the token can make, and lists what is still missing together
+with what each missing API feeds. When the QRadar administrator grants more, one **Check now**
+restarts what was blocked. The check runs at start-up, every six hours
+(`QRADAR_ACCESS_CHECK_INTERVAL_SECONDS`) and on demand. The result is
+`GET /api/v1/admin/qradar-access` ([API](API.md)) and the `qradar_access` line of
+`./qradar-dash doctor`.
+
+To request the role up front, ask for read access to these APIs. IBM's per-endpoint API reference
+states no required capability, so the last column is the closest role permission IBM documents
+for the same data in the Administration Guide ("Creating a user role"). Treat it as a hint to
+confirm with the QRadar administrator, not as a guarantee: a `403` from the check is the
+authoritative answer for your version.
+
+| API (path as the application calls it) | Method | What it feeds | Role permission (IBM hint) |
+|---|---|---|---|
+| `/system/about` | GET | The connection check and the QRadar version shown for each console. | not known |
+| `/system/servers` | GET | The managed-host status in the QRadar health section. | Admin |
+| `/config/deployment/hosts` | GET | Events per second against the allocation in the QRadar health section. | Admin |
+| `/config/deployment/license_pool` | GET | The license allocation in the QRadar health section. | Admin |
+| `/ariel/searches` | GET | How many Ariel searches QRadar holds, in the QRadar health section. | Log Activity |
+| `/config/event_sources/log_source_management/log_sources` | GET | The log source inventory, which every volume and health view starts from. | Read-only Configuration, View Log Sources |
+| `/config/event_sources/log_source_management/log_source_types` | GET | The device type of each log source, which the Fleet classification uses. | Read-only Configuration, View Log Sources |
+| `/config/event_sources/log_source_management/log_source_groups` | GET | The log source groups shown beside each source and used by the Fleet pages. | Read-only Configuration, View Log Sources |
+| `/config/event_sources/custom_properties/regex_properties` | GET | The property names offered by the WAF, IPS and property-watch mapping editors. | Log Activity, User Defined Event Properties |
+| `/config/event_sources/custom_properties/property_expressions` | GET | Which log source types each custom property covers, in the mapping editors. | Log Activity, User Defined Event Properties |
+| `/analytics/rules` | GET | The rule inventory behind the Rules and Detection coverage pages. | Log Activity, View Custom Rules |
+| `/analytics/building_blocks` | GET | The building blocks the rule inventory merges with the rules. | Log Activity, View Custom Rules |
+| `/siem/offenses` | GET | The offense snapshots behind the Offenses page and the rule firing evidence. | Offenses |
+| `/ariel/searches` | POST (+ DELETE) | Every measured view: volume per log source, WAF, IPS, property watches, catch-all senders, geography, rule matches, anomaly explanations and scheduled searches. | Log Activity |
+
+Calls on a single object of these lists (one log source, the status and the rows of a search the
+token created) are not probed separately: they are taken as the same capability as the list. The
+check sends one read per row with `Range: items=0-0`, and for Ariel one tiny stored search
+(`SELECT starttime FROM events LIMIT 1 LAST 1 MINUTES`) that is cancelled unread. It keeps the
+status code of each answer and nothing from the body.
+
 ## Register a console manually
 
 The production installer registers the console. For a manual development deployment, use the CLI:

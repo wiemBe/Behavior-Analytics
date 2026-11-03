@@ -490,6 +490,40 @@ Acknowledge, resolve and manual-search actions are authorized by the backend. Th
 identifiers and ordinary display values, never credentials. Notification enqueueing is separate
 from delivery; the worker retries and dead-letters failures without delaying the HTTP response.
 
+## QRadar access check
+
+The application is read-only against QRadar and does not know in advance which of the APIs it uses
+the token may reach. A check sends one minimal read to each API (a `GET` with `Range: items=0-0`,
+or the endpoint's own minimal form; the license pool takes no `Range`) and, for Ariel, one tiny
+stored search that is cancelled unread. It keeps the status code of each answer and nothing from
+the body. The catalog of APIs is code (`backend/app/providers/access_catalog.py`); `docs/INSTALL.md`
+lists it for the QRadar administrator. Both routes need `admin:*` (`read:*` does not satisfy it).
+
+| Route | What it does |
+|---|---|
+| `GET /api/v1/admin/qradar-access` | The latest stored result per enabled console and catalog entry, and the state of its check. Sends nothing to QRadar. `{consoles: [{instance_id, instance_name, applicable, last_checked_at, check_running, last_check_started_at, last_check_finished_at, entries, syncs_started}], check_interval_seconds}`. `applicable` is false for a console that is not on the direct REST provider: nothing is checked on it. `syncs_started` names the syncs the latest check started. `check_running` is true while a check of that console runs, whoever started it (beat, worker start-up or the POST below); `last_check_started_at` and `last_check_finished_at` are UTC, null when no check ever started or finished (while a check runs, the finished time is the previous run's). **A run that started more than 10 minutes ago and never finished counts as not running**, so a worker that died mid-check cannot leave `check_running` true; the next check then starts normally |
+| `POST /api/v1/admin/qradar-access/check` | Queues the check for every enabled REST console and answers `202` at once with the same shape as `GET` plus `started` (consoles queued by this request), `already_running` (consoles that had a check running: nothing was queued for them, the answer shows the running one) and `failed` (consoles whose task the queue refused; their run is released). It never probes inside the request, because a check takes about a minute and the proxy waits 60 seconds. Poll `GET` until `check_running` is false. Rate limited by `RATE_LIMIT_ACCESS_CHECK` (`2/minute`; `429` beyond it); a request answered with `already_running` still counts. Audited as `qradar_access.check`, with `started`, `already_running` and `failed` in the detail |
+
+An entry: `id`, `title`, `method`, `path`, `feeds` (what it feeds in this application), `used_by`
+(collectors and pages), `status`, `http_status`, `checked_at`, `previous_status`, `syncs_started`,
+`required_capability`, `capability_verified`, `capability_hint`, `sources` and `covers`.
+
+`status` is `ok`, `forbidden` (403), `unauthorized` (401: the token itself), `not_found` (404: the
+API is missing on this version), `unreachable` (network, TLS or timeout) or `error` (5xx or any other
+code); it is `null` before the first check of that entry, never a zero. `http_status` is null when
+QRadar did not answer. **`required_capability` is the capability IBM documents for that API; IBM's
+per-endpoint reference documents none, so it is `null` with `capability_verified: false` for every
+entry.** `capability_hint` is the closest role permission IBM documents for the same data (a hint
+to confirm with the QRadar administrator, never a fact), and `sources` are the IBM pages read.
+`covers` lists calls that are not probed on their own, each with the reason.
+
+When an entry goes from anything but `ok` to `ok`, the check starts the syncs that depend on it
+once per console: `log_source_inventory`, `rule_inventory`, `offense_snapshot`,
+`log_source_metrics` (volume collection) and `health_cache` (the QRadar health reads are fetched
+again). Nothing is started for an entry that stays refused, on its first check, or for one that
+was not answered. A sync the queue refused is not reported as started. The checks run at start-up,
+every `QRADAR_ACCESS_CHECK_INTERVAL_SECONDS` (six hours) and on demand.
+
 ## Alert e-mail administration
 
 Alerts go out by e-mail through the site's SMTP relay. The relay, its security mode and the password

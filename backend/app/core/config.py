@@ -398,6 +398,11 @@ class Settings(BaseSettings):
     # New, non-internal inventory rows open a deduplicated review alert.
     inventory_new_source_alerts_enabled: bool = True
 
+    # --- QRadar access check (ACC-1) ----------------------------------------
+    # How often every console is asked, API by API, whether the token can reach it. Also run at
+    # beat start and on demand.
+    qradar_access_check_interval_seconds: int = Field(default=21600, ge=300)
+
     # --- Offense collection (Phase 3) ---------------------------------------
     offense_collection_interval_seconds: int = Field(default=300, ge=60)
     # Pages of offenses walked per run. Bounds a single collection cycle so a
@@ -997,6 +1002,8 @@ class Settings(BaseSettings):
     #: The admin "send a test message" action spends a real delivery; it carries
     #: its own limit beside the API default.
     rate_limit_email_test: str = "5/minute"
+    #: "Check now" on the access page sends about a dozen reads and one search to the console.
+    rate_limit_access_check: str = "2/minute"
 
     # --- MCP ----------------------------------------------------------------
     mcp_enabled: bool = False

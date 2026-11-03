@@ -104,6 +104,7 @@ reference heading for them.
 | `COLLECTION_ADVISORY_LOCK_NAMESPACE` | `4711` | PostgreSQL advisory-lock namespace for metric collection |
 | `LOG_SOURCE_SYNC_INTERVAL_SECONDS` | `3600` | Full log-source inventory interval. Minimum `60` |
 | `INVENTORY_NEW_SOURCE_ALERTS_ENABLED` | `true` | Open a review alert for a new non-internal log source |
+| `QRADAR_ACCESS_CHECK_INTERVAL_SECONDS` | `21600` | How often every console is asked which QRadar APIs the token can reach. Minimum `300` |
 | `OFFENSE_COLLECTION_INTERVAL_SECONDS` | `300` | Offense collection interval |
 | `OFFENSE_MAX_PAGES` | `20` | Pages of offenses walked per run |
 | `OFFENSE_PAGE_SIZE` | `100` | Accepted. Offense collection does not read it |
@@ -590,6 +591,7 @@ read them there.
 | `SMTP_CA_FILE` | unset | Path of a CA bundle (PEM) that signed the relay's certificate, for a relay with a private CA. Unset uses the system trust store. The file must be readable inside the backend and worker containers |
 | `SITE_NAME` | `QRadar Behavior Analytics` | The site's name, available to e-mail templates as `{{ site.name }}` |
 | `RATE_LIMIT_EMAIL_TEST` | `5/minute` | Limit on the admin "send a test message" action, which spends a real delivery |
+| `RATE_LIMIT_ACCESS_CHECK` | `2/minute` | Limit on the admin "check QRadar access now" action, which sends about a dozen reads and one search to each console |
 
 ## LLM interface
 

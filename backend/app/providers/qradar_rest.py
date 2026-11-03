@@ -328,6 +328,13 @@ def _sanitize_upstream_error(status_code: int) -> str:
 #: Search ids one `count_ariel_searches` read asks for. A full page is reported truncated.
 _ARIEL_LIST_PAGE = 1000
 
+#: The stored query of the access check (ACC-1). It reads one event property of one event of
+#: the last minute and is cancelled before it is polled; version it with any change to the text.
+ACCESS_PROBE_QUERY_VERSION = "access_probe/v1"
+ACCESS_PROBE_AQL = "SELECT starttime FROM events LIMIT 1 LAST 1 MINUTES"
+#: QRadar documents 201 for a created Ariel search; `create_ariel_search` does not keep the code.
+ARIEL_CREATED_STATUS = 201
+
 
 class QRadarRestProvider(QRadarProvider):
     capabilities = frozenset(
@@ -783,6 +790,56 @@ class QRadarRestProvider(QRadarProvider):
         if not isinstance(body, list):
             raise MalformedUpstreamResponse("QRadar /ariel/searches did not return a list")
         return ArielSearchListDTO(held=len(body), truncated=len(body) >= _ARIEL_LIST_PAGE)
+
+    # ------------------------------------------------- access check (ACC-1)
+    async def probe_access(
+        self, path: str, *, range_header: str | None = None
+    ) -> int:
+        """One GET, one attempt: the HTTP status QRadar answered, and nothing else.
+
+        The body is never decoded, kept or logged, and a refusal is returned, not raised: the
+        access check needs the code itself (401 and 403 differ). Only a transport failure
+        raises, with a message of ours.
+        """
+        headers = {"Range": range_header} if range_header else None
+        with observe(PROVIDER_NAME, EndpointCategory.ACCESS_PROBE) as outcome:
+            try:
+                response = await self._client.request("GET", path, headers=headers)
+            except httpx.TimeoutException as exc:
+                outcome["error_class"] = ErrorClass.TIMEOUT
+                raise ProviderUnavailableError("QRadar request timed out") from exc
+            except httpx.TransportError as exc:
+                outcome["error_class"] = ErrorClass.NETWORK
+                raise ProviderUnavailableError("Could not reach QRadar") from exc
+            status = response.status_code
+            if status in (401, 403):
+                outcome["error_class"] = ErrorClass.AUTH
+            elif status == 429 or status >= 500:
+                outcome["error_class"] = (
+                    ErrorClass.RATE_LIMITED if status == 429 else ErrorClass.UPSTREAM_ERROR
+                )
+            elif status >= 400:
+                outcome["error_class"] = ErrorClass.UPSTREAM_ERROR
+            return status
+
+    @_holds_ariel_permit
+    async def probe_ariel_access(self) -> int:
+        """Create the stored probe search, then cancel it unread; return the create status.
+
+        A refusal raises as `create_ariel_search` does (`ProviderAuthError` for 401 and 403, a
+        `ProviderError` carrying the status otherwise); a permit that does not come raises
+        `ArielPermitUnavailable` before anything is sent. The cancel is best effort: a search
+        that cannot be cancelled expires on QRadar's side.
+        """
+        handle = await self.create_ariel_search(ACCESS_PROBE_AQL)
+        try:
+            await self.cancel_ariel_search(handle.search_id)
+        except ProviderError as exc:
+            logger.warning(
+                "access probe search was not cancelled",
+                extra={"error_class": type(exc).__name__},
+            )
+        return ARIEL_CREATED_STATUS
 
     async def list_log_sources(self) -> list[LogSourceDTO]:
         rows = await self._paginate(

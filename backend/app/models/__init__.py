@@ -51,6 +51,8 @@ from app.models.monitoring import (
     AnomalyEvaluationFault,
     AnomalyEvaluationWatermark,
     CollectionWatermark,
+    QRadarAccessResult,
+    QRadarAccessRun,
 )
 from app.models.offense import OffenseSnapshot
 from app.models.outage import OutageAlertPolicy
@@ -187,6 +189,8 @@ __all__ = [
     "PwValue",
     "PwValueBaseline",
     "PwValueMetric",
+    "QRadarAccessResult",
+    "QRadarAccessRun",
     "QRadarHealthMetricBucket",
     "QRadarHealthNotificationBucket",
     "QRadarHealthRestSample",

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 
 from celery import Celery
-from celery.signals import beat_init
+from celery.signals import beat_init, worker_ready
 
 from app.core.config import get_settings
 
@@ -114,6 +114,12 @@ celery_app.conf.beat_schedule = {
     "sync-log-sources": {
         "task": "sync_log_sources",
         "schedule": float(settings.log_source_sync_interval_seconds),
+    },
+    "check-qradar-access": {
+        # One minimal read per QRadar API per console: which the token can reach. Also sent
+        # when a worker becomes ready (below). Starts the syncs of an API that became reachable.
+        "task": "check_qradar_access",
+        "schedule": float(settings.qradar_access_check_interval_seconds),
     },
     "collect-offenses": {
         "task": "collect_offenses",
@@ -299,3 +305,16 @@ def _send_startup_tasks_at_beat_start(**_: object) -> None:
     """
     _send_at_beat_start("apply_timescale_policies", "app.timescale")
     _send_at_beat_start("beat_heartbeat", "app.beat")
+
+
+@worker_ready.connect
+def _check_qradar_access_when_a_worker_is_ready(**_: object) -> None:
+    """Ask the consoles what the token can reach each time a worker has started (ACC-1).
+
+    A restart is when access was most likely just changed. A second worker's request finds the
+    first one's lock held or an unchanged result: the check is idempotent, so replicas do not
+    need to elect one. Not on the beat-start signal: that one sends the two tasks the timescale
+    and heartbeat tests pin by name. The task finds no console to check on a fresh install and
+    returns; the six-hourly beat entry covers a console registered later.
+    """
+    _send_at_beat_start("check_qradar_access", "app.qradar_access")

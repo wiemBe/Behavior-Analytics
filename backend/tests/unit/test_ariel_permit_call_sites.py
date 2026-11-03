@@ -15,6 +15,7 @@ ALLOWED_CALLERS = frozenset(
         ("providers/qradar_rest.py", "QRadarRestProvider.get_log_source_metrics_bucketed"),
         ("providers/qradar_rest.py", "QRadarRestProvider.observe_property_rejection"),
         ("providers/qradar_rest.py", "QRadarRestProvider._run_bounded_aggregate"),
+        ("providers/qradar_rest.py", "QRadarRestProvider.probe_ariel_access"),
         ("services/search_executor.py", "SearchExecutor._run_once"),
     }
 )
@@ -24,6 +25,7 @@ PERMITTED_PROVIDER_METHODS = frozenset(
         "get_log_source_metrics_bucketed",
         "observe_property_rejection",
         "_run_bounded_aggregate",
+        "probe_ariel_access",
     }
 )
 

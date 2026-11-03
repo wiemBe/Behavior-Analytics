@@ -43,6 +43,8 @@ class EndpointCategory(StrEnum):
     HEALTH_HOSTS = "health_hosts"
     HEALTH_LICENSE = "health_license"
     HEALTH_ARIEL_LIST = "health_ariel_list"
+    #: ACC-1 access check: one minimal GET per API, only the status code is kept.
+    ACCESS_PROBE = "access_probe"
     MCP_TOOL = "mcp_tool"
 
 

@@ -42,7 +42,7 @@ Celery worker's process count plus whatever the API process and CLI processes ha
 
 ### P.1.1 The paths, from the code
 
-Every `create_ariel_search` call site in `backend/app` is one of the five in F4; each row below
+Every `create_ariel_search` call site in `backend/app` is one of the five in F4, or the access probe of row 20; each row below
 reaches one of them. "In flight" is how many Ariel searches the path can have running at once:
 collectors never run searches concurrently inside one task (no `asyncio.gather` or
 `asyncio.create_task` anywhere under `app/collectors/`), so a path is either **one at a time**
@@ -69,6 +69,7 @@ collectors never run searches concurrently inside one task (no `asyncio.gather` 
 | 17 | Manual execution | the same executor | route `POST /searches/{search_id}/run` (`searches.py` `run_search`), in the **API process** | one per request; **no cross-request bound at all** | on request (`search:execute`) | a fresh private limiter per request bounds nothing |
 | 18 | Property-watch preview | `app/services/property_watches.py` `run_preview` (`PREVIEW_SEARCHES` = 2) | route `POST /property-watches/{watch_id}/preview`, in the API process | one per request | on request, rate-limited `rate_limit_search_execution` 10/minute | the 2-search budget refuses a split; nothing bounds concurrent requests |
 | 19 | CLI collection by hand | `app/cli/sync.py` (`log-source-metrics` → `collect_metrics`) | operator | one at a time | on request | as row 1 |
+| 20 | QRadar access check (ACC-1) | `qradar_rest.py` `QRadarRestProvider.probe_ariel_access`: one stored probe search (`SELECT starttime FROM events LIMIT 1 LAST 1 MINUTES`), created and cancelled unread, one permit around both | task `check_qradar_access` (beat every `QRADAR_ACCESS_CHECK_INTERVAL_SECONDS`, 6 h; when a worker becomes ready) and `POST /api/v1/admin/qradar-access/check` (2/minute) | one at a time per console | every 6 h and on request | the permit; the search is never polled, so it costs QRadar one create and one delete |
 
 Rows 2, 4, 8, 11 and the history half of 12 and 14 are the history-backfill readers of
 [`HISTORY-BACKFILL.md`](HISTORY-BACKFILL.md) §B.6.1: every family's history step runs inside the
@@ -277,7 +278,7 @@ permit *source* is injected, §P.3.)
 ## P.3 Where the permit is held
 
 **One permit per lifecycle, so every search is covered once and none is counted twice.** The
-code has exactly five lifecycle owners (F4): four provider methods that run create → poll →
+code has exactly five lifecycle owners (F4), plus the access probe `probe_ariel_access` (row 20, added by ACC-1, which creates and cancels one tiny search under one permit): four provider methods that run create → poll →
 results (→ cancel) internally, and the executor, which drives the same lifecycle through
 `create_ariel_search`, `get_ariel_search_status`, `get_ariel_search_results` and
 `_safe_cancel` itself. Compared placements:
