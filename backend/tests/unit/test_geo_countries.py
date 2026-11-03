@@ -6,6 +6,7 @@ import pytest
 
 from app.geo.countries import (
     COUNTRIES,
+    USER_ASSIGNED_COUNTRIES,
     country_code_for,
     normalise_country_token,
 )
@@ -14,6 +15,18 @@ from app.geo.countries import (
 class TestTable:
     def test_it_holds_the_249_assigned_codes(self) -> None:
         assert len(COUNTRIES) == 249
+
+    def test_kosovo_is_the_one_user_assigned_code_and_not_an_iso_one(self) -> None:
+        # XK is user-assigned (GEO-7): the EU, MaxMind GeoIP and the map outline carry it,
+        # so the property table answers for it while the 249 ISO-assigned entries stand.
+        assert len(USER_ASSIGNED_COUNTRIES) == 1
+        kosovo = USER_ASSIGNED_COUNTRIES[0]
+        assert (kosovo.alpha2, kosovo.alpha3, kosovo.name) == ("XK", "XKX", "Kosovo")
+        assert "XK" not in {country.alpha2 for country in COUNTRIES}
+
+    def test_every_alpha2_still_maps_to_itself(self) -> None:
+        for country in (*COUNTRIES, *USER_ASSIGNED_COUNTRIES):
+            assert country_code_for(country.alpha2) == country.alpha2, country.alpha2
 
     def test_alpha2_and_alpha3_are_well_formed_and_unique(self) -> None:
         alpha2 = [c.alpha2 for c in COUNTRIES]
@@ -67,6 +80,12 @@ class TestMatcher:
             ("Asia.South Korea", "KR"),
             ("Europe.Germany ", "DE"),
             ("Virgin Islands (U.S.)", "VI"),
+            ("XK", "XK"),
+            ("xk", "XK"),
+            ("XKX", "XK"),
+            ("Kosovo", "XK"),
+            ("Republic of Kosovo", "XK"),
+            ("Europe.Kosovo", "XK"),
         ],
     )
     def test_each_format_is_a_country(self, value: str, code: str) -> None:

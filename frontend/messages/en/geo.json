@@ -10,6 +10,12 @@
     "loadNoun": "the country counts",
     "failedHeading": "The country counts could not be shown."
   },
+  "freshness": {
+    "staleUnreadable": "Stale: the time the latest data reaches cannot be read.",
+    "stale": "Stale: the latest data is from <time></time>, {age} old.",
+    "dataTo": "Data to <time></time>.",
+    "dataToAge": "Data to <time></time>, {age}."
+  },
   "controls": {
     "directionNav": "Address direction",
     "directionLabel": "Address",

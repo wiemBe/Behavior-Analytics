@@ -1,6 +1,7 @@
 """Static ISO 3166-1 table for a geography property value (GEO-3).
 
-249 assigned alpha-2 codes, the alpha-3 code and the English short name.
+249 assigned alpha-2 codes, the alpha-3 code and the English short name,
+plus one user-assigned code (Kosovo): 250 codes the matcher answers for.
 Aliases are common English forms of the same country. The table is static:
 collecting a country does not fetch it, and a property value is matched
 here and then dropped. No event text is stored in this module.
@@ -302,6 +303,15 @@ COUNTRIES: tuple[Country, ...] = (
     Country("ZW", "ZWE", "Zimbabwe"),
 )
 
+# Kosovo's XK is user-assigned, not ISO-assigned: ISO 3166-1 reserves no code for it. The
+# EU, MaxMind GeoIP and the map outline all carry XK, and lookup mode accepts any two
+# capitals, so the property table answers for it too or the two modes disagree (GEO-7).
+# No other user-assigned code is added: an unassigned code is not a country name a
+# property is known to carry.
+USER_ASSIGNED_COUNTRIES: tuple[Country, ...] = (
+    Country("XK", "XKX", "Kosovo", ("Republic of Kosovo",)),
+)
+
 
 def _build_index() -> dict[str, str]:
     """Map every normalised form to its alpha-2. Two countries cannot share one."""
@@ -316,7 +326,7 @@ def _build_index() -> dict[str, str]:
             raise RuntimeError(f"country token {key!r} names {previous} and {alpha2}")
         index[key] = alpha2
 
-    for country in COUNTRIES:
+    for country in (*COUNTRIES, *USER_ASSIGNED_COUNTRIES):
         add(country.alpha2, country.alpha2)
         add(country.alpha3, country.alpha2)
         add(country.name, country.alpha2)

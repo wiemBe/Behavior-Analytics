@@ -159,6 +159,12 @@ class TestClassifyProperty:
             ("Türkiye", "TR"),
             ("Europe.Turkey", "TR"),
             ("NorthAmerica.UnitedStates", "US"),
+            # Kosovo: user-assigned in the table since GEO-7, so a property value naming it
+            # is a country, not a defect; lookup mode already accepted XK.
+            ("Kosovo", "XK"),
+            ("XK", "XK"),
+            ("XKX", "XK"),
+            ("Europe.Kosovo", "XK"),
             (geo_key("FR"), "FR"),
         ],
     )
