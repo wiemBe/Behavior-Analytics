@@ -387,7 +387,7 @@
   "overview": {
     "metaTitle": "Overview",
     "title": "Behavioral overview",
-    "description": "{shown} monitored sources, each compared with its own baseline for this weekday and hour. <utc>Times are UTC.</utc>",
+    "description": "{shown} monitored sources, each against its weekday-and-hour baseline. <utc>Times are UTC.</utc>",
     "failed": "Behavioral analytics could not be loaded. The backend may be unreachable. Reload the page to try again; if it persists, check the backend health.",
     "failedShort": "Behavioral analytics could not be loaded.",
     "stats": {
@@ -409,7 +409,7 @@
     },
     "banner": {
       "lead": "{count, plural, one {{shown} of {total} monitored source has} other {{shown} of {total} monitored sources have}} no adequate baseline for the current seasonal cell.",
-      "rest": "{count, plural, one {It is} other {They are}} not being judged, so no anomaly count above covers {count, plural, one {it} other {them}}. A zero here is the absence of a verdict, not a clean bill of health."
+      "rest": "{count, plural, one {It is} other {They are}} not being judged, so no anomaly count above covers {count, plural, one {it} other {them}}."
     },
     "attention": {
       "title": "Needs attention",

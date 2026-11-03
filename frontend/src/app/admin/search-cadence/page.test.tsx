@@ -20,6 +20,17 @@ beforeEach(() => {
 });
 
 describe("search cadence page", () => {
+  it("keeps the time zone and the missing-measurement rules after the d40 text cut", async () => {
+    vi.spyOn(api, "searchCadence").mockResolvedValue([item()]);
+    render(await SearchCadencePage());
+    expect(screen.getByText("Times are UTC.")).toBeInTheDocument();
+    expect(screen.getByText("Cadence changes when a family searches, not its bucket width.")).toBeInTheDocument();
+    expect(screen.getByText("A dash in Bucket means the family has no buckets.")).toBeInTheDocument();
+    expect(
+      screen.getByText("“Not run since upgrade” and “Not counted” are missing measurements, not zero."),
+    ).toBeInTheDocument();
+  });
+
   it("has exactly one h1 and names the question in its description", async () => {
     vi.spyOn(api, "searchCadence").mockResolvedValue([item()]);
     render(await SearchCadencePage());

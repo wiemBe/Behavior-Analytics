@@ -13,15 +13,24 @@ function classRowFor(name: string) {
 }
 
 describe("outage policy page", () => {
+  it("keeps the time zone and the NO_EVENTS limit of Record only after the d40 text cut", async () => {
+    vi.spyOn(outagePolicyApi, "list").mockResolvedValue([row()]);
+    vi.spyOn(outagePolicyApi, "summary").mockResolvedValue(SUMMARY);
+    render(await OutagePolicyPage());
+    expect(screen.getByText("Times are UTC.")).toBeInTheDocument();
+    expect(document.body.textContent).toMatch(
+      /Only NO_EVENTS is affected; volume drops and spikes still alert\./,
+    );
+  });
+
   it("has one h1, states what record only does once, and leads with the classes", async () => {
     vi.spyOn(outagePolicyApi, "list").mockResolvedValue([row()]);
     vi.spyOn(outagePolicyApi, "summary").mockResolvedValue(SUMMARY);
     render(await OutagePolicyPage());
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getAllByText(/still records the outage/)).toHaveLength(1);
+    expect(screen.getAllByText(/still records the silence and its lifecycle/)).toHaveLength(1);
     const text = document.body.textContent ?? "";
-    expect(text).toMatch(/\/behavior/);
-    expect(text).toMatch(/already open resolves normally/);
+    expect(text).toMatch(/it only stops the alert/);
     expect(text).toMatch(/NO_EVENTS/);
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
     expect(headings).toEqual(["Classes", "Source overrides"]);

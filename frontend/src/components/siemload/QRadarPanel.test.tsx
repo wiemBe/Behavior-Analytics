@@ -146,7 +146,7 @@ describe("QRadarPanel: a console that answered", () => {
     expect(value("Ours in flight")).toHaveTextContent("2");
     const held = value("Search ids held");
     expect(held).toHaveTextContent("214");
-    expect(held).toHaveTextContent("what QRadar holds, not what it is running");
+    expect(held).toHaveTextContent("What QRadar holds for every user, not what it is running.");
   });
 
   it("calls Ariel not answering when our latest search found it unavailable", () => {

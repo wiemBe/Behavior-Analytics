@@ -291,7 +291,7 @@ describe("insufficient data", () => {
 
     expect(screen.getByText(/7 of 12 monitored sources/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/absence of a verdict, not a clean bill of health/i),
+      screen.getByText(/not being judged, so no anomaly count above covers them/i),
     ).toBeInTheDocument();
   });
 

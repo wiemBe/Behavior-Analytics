@@ -26,7 +26,7 @@ describe("NowBand", () => {
     band();
     const cell = value("Searches in flight");
     expect(cell).toHaveTextContent("2 active · 1 stale");
-    expect(cell).toHaveTextContent("stale after 150 s");
+    expect(cell).toHaveTextContent("Stale after 150 s without an end.");
   });
 
   it("shows the permit slots held against the cap, and what is kept back", () => {

@@ -21,14 +21,14 @@
   },
   "behavior": {
     "title": "WAF behavior",
-    "description": "Whether each WAF source is collected and judged, and where endpoint admission is overflowing. Times are UTC.",
+    "description": "Times are UTC.",
     "errorTitle": "WAF behavior could not be shown.",
     "forbidden": "You do not have permission to view WAF behavior.",
     "expired": "Your session has expired. Sign in again to continue.",
     "failed": "WAF sources could not be loaded, so nothing is shown. The backend may be unreachable; check that it is running, then reload the page. Nothing was changed.",
     "emptyTitle": "No WAF source has a behavior profile.",
     "emptyText": "Nothing is collected or judged until a log source is mapped and validated in WAF sources administration. An empty list here is not a statement that WAF traffic is normal.",
-    "lead": "<num>{judged} of {listed}</num> {listed, plural, one {source is} other {sources are}}{pages, select, page { listed on this page and} other {}} collected and judged: profile enabled and valid for its current version. The others produce no verdicts.{pages, select, page { The list has {total} sources in all; the other pages are not counted here.} other {}}",
+    "lead": "<num>{judged} of {listed}</num> {listed, plural, one {source is} other {sources are}}{pages, select, page { listed on this page and} other {}} collected and judged; the others produce no verdicts.{pages, select, page { The list has {total} sources in all; the other pages are not counted here.} other {}}",
     "covers": "Admission overflow covers <start></start> to <end></end>."
   },
   "range": {
@@ -75,7 +75,7 @@
     "inMaintenance": "In maintenance",
     "keyBuckets": "(key-buckets)",
     "keyBucketsMeaning": "Counted per bucket: an endpoint key refused in several buckets of the range counts once for each of them.",
-    "note": "A key-bucket is one endpoint key in one collected bucket, so a key refused in several buckets counts once for each. Refused over quota means the key met the volume threshold but the per-bucket quota for new endpoints, or the source's active ceiling, was full. Below admission threshold is ordinary low-volume noise, not overflow."
+    "note": "A key-bucket is one endpoint key in one collected bucket; a key refused in several buckets counts once for each. Below admission threshold is low-volume noise, not overflow."
   },
   "endpoints": {
     "tableLabel": "Tracked endpoints",

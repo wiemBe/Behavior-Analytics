@@ -18,7 +18,7 @@
   },
   "page": {
     "title": "Catch-all senders",
-    "description": "A sender is the syslog hostname QRadar recorded (logsourceidentifier) for events that landed in a catch-all source. It is often a relay, and it is a candidate unconfigured device, not a verdict. Times are UTC.",
+    "description": "A sender is a syslog hostname seen in a catch-all source: a candidate unconfigured device, not a verdict. Times are UTC.",
     "loadingWhat": "the catch-all senders",
     "errorWhat": "The catch-all senders page",
     "noticeHeading": "The catch-all senders could not be shown.",
@@ -68,7 +68,7 @@
     "thEvents": "24 h events",
     "thReview": "Review",
     "thActions": "Actions",
-    "note": "<b>24 h events</b> is a lower bound, the sum of the stored top-sender lists that name the sender. <i>unknown</i> means no stored list named it; it is not zero.",
+    "note": "<b>24 h events</b> is a lower bound; <i>unknown</i> means no stored list named the sender, not zero.",
     "loadMore": "Show more senders",
     "loadingMore": "Loading…",
     "moreError": "The next senders could not be loaded. The ones shown are unchanged; try again.",

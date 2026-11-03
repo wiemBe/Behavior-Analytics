@@ -73,12 +73,12 @@ describe("rules list layout", () => {
     ]);
     const { container } = render(await RulesPage({ searchParams: Promise.resolve({}) }));
     const notice = [...container.querySelectorAll(".notice")].find((n) =>
-      n.textContent?.includes("dependency that has not been observed"),
+      n.textContent?.includes("a dependency was not observed"),
     );
     expect(notice).toBeTruthy();
-    expect(notice).toHaveTextContent("dependency that has not been observed");
+    expect(notice).toHaveTextContent("a dependency was not observed");
     expect(notice).toHaveTextContent("no last-fired time");
-    expect(notice).toHaveTextContent("the reason under each rule name says which cause applies to it");
+    expect(notice).toHaveTextContent("The reason under each rule name says which.");
     expect(notice).not.toHaveTextContent("does not say which cause applies to each");
     expect(notice).not.toHaveTextContent("silence cannot be distinguished");
   });

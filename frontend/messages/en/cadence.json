@@ -4,7 +4,7 @@
   },
   "page": {
     "title": "Search cadence",
-    "description": "How often each search family queries QRadar, and the detection delay that costs. Times are UTC.",
+    "description": "Times are UTC.",
     "loadingWhat": "search cadence",
     "errorWhat": "Search cadence",
     "couldNotShow": "Search cadence could not be shown.",
@@ -37,9 +37,9 @@
     "saved": "Saved. Changed at <time></time>.",
     "forbidden": "Your role cannot change search cadence (permission admin:search_cadence).",
     "notesLabel": "How to read the table",
-    "noteCadence": "Cadence sets when a family searches QRadar. The bucket width it stores does not change.",
-    "noteExplanation": "Anomaly explanations have no buckets, so their delay bounds how late evidence arrives, not how late a detection does.",
-    "noteMissing": "“Not run since upgrade” means the family has not run since the cadence tracking was introduced. “Not counted” means the family does not count its searches yet. Neither is zero."
+    "noteCadence": "Cadence changes when a family searches, not its bucket width.",
+    "noteExplanation": "A dash in Bucket means the family has no buckets.",
+    "noteMissing": "“Not run since upgrade” and “Not counted” are missing measurements, not zero."
   },
   "delay": {
     "upTo": "up to {duration}",
