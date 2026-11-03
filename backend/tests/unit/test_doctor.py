@@ -543,6 +543,87 @@ async def test_watermarks_pass_warn_and_fail(settings: Settings) -> None:
     ).status is Status.FAIL
 
 
+def _watermarks_doctor(settings: Settings, rows: list[SimpleNamespace]) -> Doctor:
+    """A doctor whose watermark read returns `rows` and one volume cadence row."""
+    cadence = SimpleNamespace(family="PHASE_A_VOLUME", cadence_seconds=300)
+    return make_doctor(settings, FakeSession(scalars_values=[rows, [cadence]]))
+
+
+@pytest.mark.asyncio
+async def test_watermarks_pass_and_name_a_switched_off_family_leftover_error(
+    settings: Settings,
+) -> None:
+    """A family off in `.env` never runs again; its old error is not a current fault."""
+    row = _watermark_row("waf_endpoint_metric", last_error="boom")
+    result = await _watermarks_doctor(settings, [row]).check_watermarks()
+    assert result.status is Status.PASS
+    assert result.runbook is None
+    assert result.message == (
+        "no watermark is judged; not judged (family off): waf_endpoint_metric"
+    )
+
+
+@pytest.mark.asyncio
+async def test_watermarks_pass_with_three_failing_rows_of_switched_off_families(
+    settings: Settings,
+) -> None:
+    rows = [
+        _watermark_row("log_source_metric"),
+        _watermark_row("waf_endpoint_metric", failures=3),
+        _watermark_row("waf_endpoint_evaluation", failures=3),
+        _watermark_row("ips_collection", failures=3),
+    ]
+    result = await _watermarks_doctor(settings, rows).check_watermarks()
+    assert result.status is Status.PASS
+    assert result.message.startswith("1 watermark(s) have no error or excess lag")
+    assert "not judged (family off): " in result.message
+    for name in ("waf_endpoint_metric", "waf_endpoint_evaluation", "ips_collection"):
+        assert name in result.message
+
+
+@pytest.mark.asyncio
+async def test_watermarks_fail_on_an_enabled_family_and_name_the_off_one(
+    settings: Settings,
+) -> None:
+    enabled = settings.model_copy(update={"catchall_collection_enabled": True})
+    rows = [
+        _watermark_row("catchall_senders", last_error="boom"),
+        _watermark_row("waf_endpoint_metric", last_error="old"),
+    ]
+    result = await _watermarks_doctor(enabled, rows).check_watermarks()
+    assert result.status is Status.FAIL
+    assert result.runbook == "OPS-R30"
+    assert result.message == (
+        "1 watermark(s) failed: catchall_senders; "
+        "not judged (family off): waf_endpoint_metric"
+    )
+
+
+@pytest.mark.asyncio
+async def test_watermarks_judge_a_collector_with_no_family_switch(settings: Settings) -> None:
+    for collector in ("log_source_metric", "offense_snapshot", "mystery_collector"):
+        result = await _watermarks_doctor(
+            settings, [_watermark_row(collector, last_error="boom")]
+        ).check_watermarks()
+        assert result.status is Status.FAIL
+        assert "not judged" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_watermarks_judge_again_when_the_family_is_switched_on(
+    settings: Settings,
+) -> None:
+    row = _watermark_row("waf_endpoint_metric", last_error="boom")
+    off = await _watermarks_doctor(settings, [row]).check_watermarks()
+    assert off.status is Status.PASS
+    assert "not judged (family off): waf_endpoint_metric" in off.message
+
+    on = settings.model_copy(update={"waf_collection_enabled": True})
+    judged = await _watermarks_doctor(on, [row]).check_watermarks()
+    assert judged.status is Status.FAIL
+    assert "not judged" not in judged.message
+
+
 def _watermark_row(
     collector: str,
     *,
@@ -685,6 +766,72 @@ def test_watermark_family_fallbacks_use_the_default_cadence(
 ) -> None:
     doctor = make_doctor(settings)
     assert doctor._watermark_cadence(collector, {}) == expected
+
+
+@pytest.mark.parametrize(
+    "collector, family",
+    [
+        ("waf_endpoint_metric", SearchFamily.WAF_COLLECTION),
+        ("waf_endpoint_evaluation", SearchFamily.WAF_COLLECTION),
+        ("ips_collection", SearchFamily.IPS_COLLECTION),
+        ("ips_evaluation", SearchFamily.IPS_COLLECTION),
+        ("rule_match", SearchFamily.RULE_MATCH),
+        ("catchall_senders", SearchFamily.CATCHALL_SENDERS),
+        ("geo_countries", SearchFamily.GEO_COLLECTION),
+        ("geo_countries_source", SearchFamily.GEO_COLLECTION),
+        ("geo_countries_destination", SearchFamily.GEO_COLLECTION),
+        ("log_source_metric", None),
+        ("log_source_inventory", None),
+        ("offense_snapshot", None),
+        ("rule_inventory", None),
+        ("rule_metric", None),
+        ("property_watch", None),
+        ("anomaly_explanation", None),
+        ("unknown_collector", None),
+    ],
+)
+def test_watermark_family_maps_every_collector_kind(
+    collector: str, family: SearchFamily | None
+) -> None:
+    """The one mapping `_watermark_cadence` and both switch checks share."""
+    assert doctor_module._watermark_family(collector) is family
+
+
+@pytest.mark.parametrize(
+    "collector, expected",
+    [
+        ("waf_endpoint_metric", 900),
+        ("waf_endpoint_evaluation", 900),
+        ("ips_collection", 900),
+        ("ips_evaluation", 900),
+        ("rule_match", 300),
+        ("catchall_senders", 300),
+        ("geo_countries", 300),
+        ("geo_countries_source", 300),
+        ("geo_countries_destination", 300),
+        ("log_source_metric", 300),
+        ("log_source_inventory", 3600),
+        ("offense_snapshot", 300),
+        ("rule_inventory", 3600),
+        ("rule_metric", 3600),
+        ("property_watch", 3600),
+        ("anomaly_explanation", 3600),
+        ("unknown_collector", 3600),
+    ],
+)
+def test_watermark_cadence_is_unchanged_for_every_collector_kind(
+    settings: Settings, collector: str, expected: int
+) -> None:
+    assert make_doctor(settings)._watermark_cadence(collector, {}) == expected
+
+
+def test_watermark_cadence_reads_a_configured_family_value(settings: Settings) -> None:
+    cadences = {"WAF_COLLECTION": 7200, "GEO_COLLECTION": 1800}
+    doctor = make_doctor(settings)
+    assert doctor._watermark_cadence("waf_endpoint_metric", cadences) == 7200
+    assert doctor._watermark_cadence("geo_countries_source", cadences) == 1800
+    # A collector with no family switch ignores the family cadence table.
+    assert doctor._watermark_cadence("log_source_metric", cadences) == 300
 
 
 @pytest.mark.asyncio
@@ -935,11 +1082,65 @@ async def test_families_off_names_the_always_on_family_by_its_reader_name(
 
 @pytest.mark.asyncio
 async def test_errors_recent_pass_warn_and_fail(settings: Settings) -> None:
+    names = ("log_source_metric", "log_source_inventory", "offense_snapshot")
     for count, expected in ((0, Status.PASS), (1, Status.WARN), (3, Status.FAIL)):
+        rows = [_watermark_row(name, failures=1) for name in names[:count]]
         result = await make_doctor(
-            settings, FakeSession(scalar_values=[count])
+            settings, FakeSession(scalars_values=[rows])
         ).check_errors_recent()
         assert result.status is expected
+
+
+@pytest.mark.asyncio
+async def test_errors_recent_counts_only_judged_rows(settings: Settings) -> None:
+    rows = [
+        _watermark_row("log_source_metric", failures=1),
+        _watermark_row("waf_endpoint_metric", failures=1),
+        _watermark_row("waf_endpoint_evaluation", failures=1),
+        _watermark_row("ips_collection", failures=1),
+    ]
+    result = await make_doctor(
+        settings, FakeSession(scalars_values=[rows])
+    ).check_errors_recent()
+    assert result.status is Status.WARN
+    assert result.message.startswith("1 watermark(s) have recent failures")
+    for name in ("waf_endpoint_metric", "waf_endpoint_evaluation", "ips_collection"):
+        assert name in result.message
+
+
+@pytest.mark.asyncio
+async def test_errors_recent_passes_and_names_off_family_failures(settings: Settings) -> None:
+    rows = [
+        _watermark_row("waf_endpoint_metric", failures=1),
+        _watermark_row("waf_endpoint_evaluation", failures=1),
+        _watermark_row("ips_collection", failures=1),
+    ]
+    result = await make_doctor(
+        settings, FakeSession(scalars_values=[rows])
+    ).check_errors_recent()
+    assert result.status is Status.PASS
+    assert result.runbook is None
+    assert result.message == (
+        "no judged watermark has recent failures; not judged (family off): "
+        "waf_endpoint_metric, waf_endpoint_evaluation, ips_collection"
+    )
+
+
+@pytest.mark.asyncio
+async def test_errors_recent_judges_an_enabled_family_again(settings: Settings) -> None:
+    enabled = settings.model_copy(update={"catchall_collection_enabled": True})
+    rows = [
+        _watermark_row("catchall_senders", failures=1),
+        _watermark_row("waf_endpoint_metric", failures=1),
+    ]
+    result = await make_doctor(
+        enabled, FakeSession(scalars_values=[rows])
+    ).check_errors_recent()
+    assert result.status is Status.WARN
+    assert result.message == (
+        "1 watermark(s) have recent failures; "
+        "not judged (family off): waf_endpoint_metric"
+    )
 
 
 @pytest.mark.asyncio
