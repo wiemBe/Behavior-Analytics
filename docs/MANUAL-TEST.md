@@ -1848,7 +1848,7 @@ The page is at `/admin/history-backfill` (“History backfill”); reading needs
 
 **Precondition:** An administrator account.
 
-**When to look:** The scope rows are updated at the next collection of the family concerned; one cadence + 3 min.
+**When to look:** The scope rows are updated at the next collection of the family concerned; that family's own cadence + 3 minutes (the "Timing and total duration" table above, from the “Next run (UTC)” column of `/admin/search-cadence`): with the default cadences 8 minutes at most for Log source volume, Catch-all senders and Rule matches, and 18 minutes for WAF collection and IPS collection. A family whose collection switch is off does not run, and its scope rows do not move; the family's section on this page says which switch.
 
 **Action:**
 
@@ -1902,7 +1902,7 @@ All these pages read data collected from QRadar; none has a write operation.
 
 #### MT-102 — Rule health list
 
-**When to look:** The rule health evaluation runs with the rule sync; one cadence + 3 min.
+**When to look:** The rule health evaluation is its own beat task, not part of a cadence family and not run with the rule sync; it reads only what the collectors have stored. It runs every 30 minutes (`RULE_HEALTH_EVALUATION_INTERVAL_SECONDS`, default 1800 s), and its first run after the upgrade comes one interval, 30 minutes, after beat starts.
 
 **Action:**
 
