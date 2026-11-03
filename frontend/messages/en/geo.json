@@ -84,6 +84,19 @@
     "fromProperty": "From the QRadar property “{property}”",
     "fromPropertyUnnamed": "From a QRadar property",
     "fromLookup": "From the GeoIP lookup of the address",
+    "collectedProperty": "Collected from the QRadar property “{property}”.",
+    "collectedPropertyUnnamed": "Collected from a QRadar property.",
+    "collectedLookup": "Collected with QRadar's GEO::LOOKUP.",
+    "wayProperty": "the QRadar property “{property}”",
+    "wayPropertyUnnamed": "a QRadar property",
+    "wayLookup": "QRadar's GEO::LOOKUP",
+    "wayBuckets": "{way} ({count, plural, one {# bucket} other {# buckets}})",
+    "collectedFrom": "Collected from {ways}.",
+    "collectedMany": "Collected {count, plural, =2 {two ways} other {# ways}} in this range: {ways}.",
+    "unknownBuckets": "{count, plural, one {# bucket was} other {# buckets were}} collected before 0.1.11 and {count, plural, one {does} other {do}} not record how.",
+    "settingProperty": "The current setting is the QRadar property “{property}”.",
+    "settingLookup": "The current setting is QRadar's GEO::LOOKUP.",
+    "settingUnnamed": "The current setting names no QRadar property for {direction}. {key} sets it.",
     "atLeastKind": "At least"
   }
 }

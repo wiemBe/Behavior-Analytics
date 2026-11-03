@@ -56,6 +56,10 @@ class GeoCountryBucket(Base):
             name="code_xor_remainder",
         ),
         CheckConstraint("measurement IN ('EXACT', 'LOWER_BOUND')", name="measurement_known"),
+        CheckConstraint(
+            "country_source IS NULL OR country_source IN ('PROPERTY', 'LOOKUP')",
+            name="country_source_known",
+        ),
         CheckConstraint("bucket_seconds > 0", name="bucket_seconds_positive"),
         CheckConstraint("events >= 0", name="events_non_negative"),
     )
@@ -80,3 +84,8 @@ class GeoCountryBucket(Base):
     measurement: Mapped[str] = mapped_column(String(16), nullable=False)
     query_version: Mapped[str] = mapped_column(String(32), nullable=False)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: How the bucket was collected (`PROPERTY` or `LOOKUP`), from the settings of that run.
+    #: NULL = stored before 0.1.11, which did not record it: unknown, never a guess.
+    country_source: Mapped[str | None] = mapped_column(String(16))
+    #: The QRadar property read in `PROPERTY` mode; NULL in `LOOKUP` mode and when unknown.
+    country_property: Mapped[str | None] = mapped_column(String(255))

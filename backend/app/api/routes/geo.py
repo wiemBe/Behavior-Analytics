@@ -4,8 +4,9 @@ Guarded by `read:geo` at the router (`read:*` satisfies it). The answer is aggre
 per country and never an address. Two statements whatever the range: one aggregate and one
 coverage count, which also counts the enabled instances that should have been collected —
 the same rows `_for_each_instance` enumerates — so an instance with no row at all still
-raises the expected count. A range with no measured bucket answers NOT_COLLECTED and carries
-no measurement and no zeros.
+raises the expected count, and carries, as one bounded JSON aggregate, how the buckets in
+range were collected (`collected_with`). A range with no measured bucket answers NOT_COLLECTED
+and carries no measurement and no zeros.
 """
 
 from __future__ import annotations
@@ -15,12 +16,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import distinct, func, literal_column, select, tuple_
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.api.deps import SessionDep, SettingsDep
 from app.geo.fold import GeoDirection
 from app.models.geo import GeoCountryBucket
 from app.models.instance import QRadarInstance
 from app.schemas.geo import (
+    GeoCollectedWayOut,
+    GeoCollectedWithOut,
     GeoCountriesOut,
     GeoCountryOut,
     GeoCoverageOut,
@@ -60,6 +64,26 @@ def _expected_buckets(
     return (
         datetime.fromtimestamp(first, tz=UTC),
         max(0, (last - first) // bucket_seconds),
+    )
+
+
+def _collected_with(ways: list[dict]) -> GeoCollectedWithOut:
+    """The distinct ways in range, most buckets first, and the buckets that do not say."""
+    known = [
+        GeoCollectedWayOut(
+            country_source=item["source"],
+            country_property=item["property"],
+            buckets=int(item["buckets"]),
+        )
+        for item in ways
+        if item["source"] is not None
+    ]
+    known.sort(
+        key=lambda way: (-way.buckets, way.country_source.value, way.country_property or "")
+    )
+    return GeoCollectedWithOut(
+        ways=known,
+        unknown_buckets=sum(int(item["buckets"]) for item in ways if item["source"] is None),
     )
 
 
@@ -106,7 +130,39 @@ async def get_countries(
         .where(QRadarInstance.enabled.is_(True))
         .scalar_subquery()
     )
-    measured, instances, newest_end = (
+    # How the buckets were collected: one row per distinct (source, property) pair present,
+    # folded into one JSON value so it rides in the same statement. NULL source = stored
+    # before the buckets recorded it.
+    per_way = (
+        select(
+            GeoCountryBucket.country_source.label("source"),
+            GeoCountryBucket.country_property.label("property"),
+            func.count(
+                distinct(tuple_(GeoCountryBucket.instance_id, GeoCountryBucket.bucket_start))
+            ).label("buckets"),
+        )
+        .where(*in_range)
+        .group_by(GeoCountryBucket.country_source, GeoCountryBucket.country_property)
+        .subquery()
+    )
+    ways_json = (
+        select(
+            func.coalesce(
+                func.jsonb_agg(
+                    func.jsonb_build_object(
+                        "source", per_way.c.source,
+                        "property", per_way.c.property,
+                        "buckets", per_way.c.buckets,
+                    ),
+                    type_=JSONB,
+                ),
+                literal_column("'[]'::jsonb"),
+            )
+        )
+        .select_from(per_way)
+        .scalar_subquery()
+    )
+    measured, instances, newest_end, ways = (
         await session.execute(
             select(
                 func.count(
@@ -120,6 +176,7 @@ async def get_countries(
                     GeoCountryBucket.bucket_start
                     + GeoCountryBucket.bucket_seconds * literal_column("INTERVAL '1 second'")
                 ),
+                ways_json,
             ).where(*in_range)
         )
     ).one()
@@ -167,6 +224,7 @@ async def get_countries(
         latest_bucket_end=None if unmeasured else newest_end,
         country_source=source,
         country_property=country_property,
+        collected_with=None if unmeasured else _collected_with(ways),
         unresolved_note=note,
         unresolved_note_code=note_code,
         unresolved_note_params=note_params,

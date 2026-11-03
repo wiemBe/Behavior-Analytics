@@ -3,12 +3,14 @@
 // bound, provenance) are in `components/geo/GeographyBody.test.tsx`.
 
 import { render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTestLocale } from "../../../vitest.setup";
 
-import { answer, notCollected } from "@/components/geo/fixtures";
+import { answer, insufficient, notCollected } from "@/components/geo/fixtures";
 import { failed, forbidden, loading, ok } from "@/components/home/testkit";
 import { WidgetRuntimeContext, type WidgetRuntime } from "@/widgets/runtime";
 
@@ -266,5 +268,58 @@ describe("the age of the data", () => {
     res.state = ok(answer({ latest_bucket_end: at(5) }));
     render(<GeographyMap />);
     expect(screen.getByText(/Güncel değil/)).toBeInTheDocument();
+  });
+});
+
+// GEO-6 (OPS-30 P3): with no map to draw the widget's frame is much taller than its text. The body
+// puts the state block in a `.geo-hollow` the stylesheet centres in the room the header leaves;
+// the drill-down link stays in the header in every state. jsdom has no layout, so the markup and
+// the stylesheet rules are what is pinned here; the screenshots show the result.
+describe("the empty states fill the frame (GEO-6)", () => {
+  const hollowBody = () => document.querySelector(".tw-body > .geo-hollow");
+
+  it("NOT_COLLECTED: the sentence and the coverage sit in one centred block, with the link", () => {
+    res.state = ok(notCollected());
+    render(<GeographyMap />);
+    const block = hollowBody();
+    expect(block).not.toBeNull();
+    expect(within(block as HTMLElement).getByText("Not collected.")).toBeInTheDocument();
+    expect(within(block as HTMLElement).getByText("Buckets measured")).toBeInTheDocument();
+    expect(link()).toHaveAttribute("href", "/geography?window=24h&direction=SOURCE");
+  });
+
+  it("INSUFFICIENT_DATA: the sentence and its facts are in the centred block", () => {
+    res.state = ok(insufficient());
+    render(<GeographyMap />);
+    const block = hollowBody() as HTMLElement;
+    expect(block).not.toBeNull();
+    expect(within(block).getByText("Insufficient data.")).toBeInTheDocument();
+    expect(within(block).getByText("Unresolved")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(link()).toBeInTheDocument();
+  });
+
+  it("stale: the frame's age line stays after the block, outside it", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-02T12:00:00Z"));
+    res.state = ok({ ...insufficient(), latest_bucket_end: "2026-11-02T04:00:00Z" });
+    render(<GeographyMap />);
+    const stale = screen.getByText(/Stale:/);
+    expect(hollowBody()).not.toBeNull();
+    expect(hollowBody()?.contains(stale)).toBe(false);
+  });
+
+  it("a drawn map is not wrapped in the centred block", () => {
+    res.state = ok(answer());
+    render(<GeographyMap />);
+    expect(hollowBody()).toBeNull();
+  });
+
+  it("the stylesheet gives the block the room and centres it, in a widget only", () => {
+    const css = readFileSync(resolve(__dirname, "../geo/geo.css"), "utf8");
+    expect(css).toMatch(/\.tw-body > \.geo-hollow \{[^}]*flex: 1 1 auto;/);
+    expect(css).toMatch(/\.tw-body > \.geo-hollow > \.geo-grid,\s*\.tw-body > \.geo-hollow > \.geo-hollow-body \{[^}]*margin: auto;[^}]*max-width: var\(--geo-empty-max-w\);/);
+    // Nothing centres a bare `.geo-hollow`: the Geography page keeps its column.
+    expect(css).not.toMatch(/^\.geo-hollow \{/m);
   });
 });

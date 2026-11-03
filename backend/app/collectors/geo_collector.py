@@ -81,6 +81,8 @@ _UPDATED_COLUMNS = (
     "measurement",
     "query_version",
     "collected_at",
+    "country_source",
+    "country_property",
 )
 
 
@@ -372,6 +374,7 @@ class GeoCollector:
                             report,
                             query_version=query_version,
                             source=fold_source,
+                            country_property=name if property_mode else None,
                         )
                     )
                 self._advance_watermark(watermark, outcomes, direction, report)
@@ -456,6 +459,7 @@ class GeoCollector:
         *,
         query_version: str,
         source: str,
+        country_property: str | None,
     ) -> list[dict]:
         """The stored rows of one measured bucket: countries, then the remainders."""
         fact = fold_geo_bucket(
@@ -478,6 +482,9 @@ class GeoCollector:
                 "measurement": measurement,
                 "query_version": query_version,
                 "collected_at": now,
+                # How this bucket was collected, from the settings of this run.
+                "country_source": source.upper(),
+                "country_property": country_property,
             }
 
         out = [make(code, None, events) for code, events in fact.countries]

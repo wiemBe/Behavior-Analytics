@@ -333,6 +333,15 @@ range cap, and `direction=SOURCE` or `DESTINATION`. It returns countries, unreso
 unparseable remainder counts, exact or lower-bound measurement, expected and measured bucket counts,
 and one of `NOT_COLLECTED`, `INSUFFICIENT_DATA`, `PARTIAL` or `OK`.
 
+`country_source` and `country_property` are the **current setting** (`GEO_COUNTRY_SOURCE` and the
+direction's property name), not what the plotted buckets used. `collected_with` says how the buckets
+in the range were collected: `ways` lists each distinct `{country_source, country_property, buckets}`
+present (`PROPERTY` or `LOOKUP`; `country_property` is null in lookup mode; most buckets first, never
+a per-bucket list), and `unknown_buckets` counts buckets stored before 0.1.11, which did not record
+it. Those buckets are never given a guessed source. `collected_with` is `null` while the status is
+`NOT_COLLECTED`. It rides in the existing second statement, so the request still costs two
+statements whatever the range.
+
 Private, internal and unknown addresses all produce the same unresolved lookup result in QRadar and
 cannot be distinguished. No address is selected or stored by this collector.
 
