@@ -193,3 +193,198 @@
   text-align: left;
   white-space: normal;
 }
+
+/* --- QRadar in detail (HLT-3) ------------------------------------------------------------- */
+
+/* One section per console; its blocks (hosts, health, notifications, trends) are set apart by
+ * the section's grid gap, not boxed. */
+.sl-detail {
+  gap: var(--sp-6);
+}
+.sl-block {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+  align-content: start;
+}
+.sl-page .sl-sub {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+/* A host's name and address in a table cell. */
+.sl-table th[scope="row"] .sl-host {
+  display: block;
+  white-space: normal;
+  color: var(--text);
+}
+.sl-table .sl-id {
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.sl-hosts-table th[scope="colgroup"],
+.sl-hosts-table th.sl-group {
+  text-align: left;
+  border-bottom: 1px solid var(--border-strong);
+}
+.sl-hosts-table thead th.num {
+  white-space: normal;
+}
+.sl-appliance {
+  min-width: 7rem;
+}
+.sl-pairfig {
+  display: block;
+}
+.sl-status {
+  min-width: 8rem;
+  max-width: 16rem;
+}
+/* Seven columns have to fit a 1024 px page without a scroll bar of their own. */
+.sl-hosts-table th,
+.sl-hosts-table td {
+  padding-inline: var(--sp-2);
+}
+.sl-sentence {
+  color: var(--text-2);
+  white-space: normal;
+}
+
+/* An HA pair is one row group: its host row, then its members set in a step. */
+.sl-pair {
+  border-top: 1px solid var(--border);
+}
+.sl-pair .sl-member th[scope="row"] {
+  padding-left: var(--sp-6);
+}
+.sl-pair .sl-member td,
+.sl-pair .sl-member th {
+  background: var(--surface-3);
+}
+.sl-hosts-table tbody + tbody tr:first-child th,
+.sl-hosts-table tbody + tbody tr:first-child td {
+  border-top: none;
+}
+
+/* A figure that was not read: the word, quietly; never a number. */
+.sl-na {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.sl-stale-figure {
+  color: var(--text-2);
+}
+.sl-mount {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.sl-health-table td:first-of-type {
+  min-width: 12rem;
+}
+.sl-mounts {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.sl-mounts summary {
+  cursor: pointer;
+  min-height: var(--target-min);
+  display: inline-flex;
+  align-items: center;
+}
+.sl-mounts ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+}
+.sl-orphans .sl-group-label {
+  text-align: left;
+  padding-top: var(--sp-5);
+  color: var(--warn-text);
+  font-size: var(--fs-xs);
+  white-space: normal;
+}
+.sl-orphans .sl-group-label .sl-note {
+  color: var(--text-2);
+  font-weight: var(--fw-normal);
+}
+.sl-reasons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+
+/* The trends: four charts, two across where the page is wide enough. */
+.sl-charts {
+  display: grid;
+  gap: var(--sp-6) var(--sp-6);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  min-width: 0;
+}
+.sl-chart-panel {
+  display: grid;
+  gap: var(--sp-2);
+  align-content: start;
+  min-width: 0;
+}
+.sl-page .sl-chart-title {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+}
+.sl-chart {
+  height: calc(var(--home-chart-h) * 1.4);
+  min-height: calc(var(--home-chart-h) * 1.4);
+}
+.sl-strip {
+  width: 100%;
+  height: var(--sp-8);
+  min-width: 0;
+}
+.sl-key {
+  margin: 0;
+}
+.sl-key .sl-host {
+  font-size: var(--fs-xs);
+}
+.sl-swatch {
+  flex: none;
+  display: inline-block;
+  width: var(--sp-5);
+  height: 0;
+  border-top: 2px solid var(--text-2);
+}
+.sl-swatch-1 {
+  border-top-color: var(--chart-cat-1);
+}
+.sl-swatch-2 {
+  border-top-color: var(--chart-cat-2);
+}
+.sl-swatch-3 {
+  border-top-color: var(--chart-cat-3);
+}
+.sl-swatch-4 {
+  border-top-color: var(--chart-cat-4);
+}
+.sl-swatch-5 {
+  border-top-color: var(--chart-cat-5);
+}
+.sl-swatch-up,
+.sl-swatch-down {
+  height: var(--sp-3);
+  border-top: none;
+}
+.sl-swatch-up {
+  background: var(--ok);
+}
+.sl-swatch-down {
+  background: var(--crit);
+}

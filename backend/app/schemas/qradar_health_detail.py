@@ -151,6 +151,15 @@ class NotificationRemainder(BaseModel):
 class NotificationsValue(BaseModel):
     entries: list[NotificationEntry] = Field(default_factory=list)
     remainder: NotificationRemainder | None = None
+    #: Set only when the caller asked for a range (`notifications_hours`): the range, and what
+    #: the stored windows inside it cover. An empty `entries` with `windows` > 0 is a measured
+    #: "nothing", and `windows` = 0 never reaches this value (the list is then absent).
+    hours: int | None = None
+    #: Stored windows in the range whose notification search was measured (OK or PARTIAL).
+    windows: int | None = None
+    #: Start of the first and end of the last of those windows.
+    covered_from: datetime | None = None
+    covered_until: datetime | None = None
 
 
 class RestSampleOut(BaseModel):

@@ -27,6 +27,7 @@ const CALLERS = [
   "PREVIEW",
   "SCHEDULED_SEARCH",
   "MANUAL_RUN",
+  "QRADAR_HEALTH",
 ];
 
 describe("callerLabel", () => {

@@ -93,6 +93,10 @@ export const FAMILY_INFO: Record<SearchFamily, { name: string; scope: string }> 
     name: "IPS collection",
     scope: "Port, IP, signature and fan-out per source",
   },
+  QRADAR_HEALTH: {
+    name: "QRadar health",
+    scope: "Disk, system, pipeline and notifications per QRadar host",
+  },
   CATCHALL_SENDERS: {
     name: "Catch-all senders",
     scope: "Senders feeding SIM Generic and the Universal DSMs",

@@ -36,6 +36,55 @@ export function rangeHours(id: SummaryRangeId): number {
   return (SUMMARY_RANGES.find((range) => range.id === id) ?? SUMMARY_RANGES[1]).hours;
 }
 
-export function rangeHref(id: SummaryRangeId): string {
-  return id === DEFAULT_RANGE ? "/admin/siem-load" : `/admin/siem-load?range=${id}`;
+/** The windows the QRadar trends offer (the history API answers these two). */
+export const TREND_RANGES = [
+  { id: "24h", hours: 24 },
+  { id: "7d", hours: 168 },
+] as const;
+
+export type TrendRangeId = (typeof TREND_RANGES)[number]["id"];
+
+export const DEFAULT_TREND: TrendRangeId = "24h";
+
+/** The trend window a URL asks for; anything that is not one of the two is the default. */
+export function parseTrend(raw: string | undefined): TrendRangeId {
+  const found = TREND_RANGES.find((range) => range.id === raw);
+  return found ? found.id : DEFAULT_TREND;
+}
+
+export function trendHours(id: TrendRangeId): 24 | 168 {
+  return id === "7d" ? 168 : 24;
+}
+
+/** The page's URL for a summary window and a trend window; a default is left out. */
+export function rangeHref(id: SummaryRangeId, trend: TrendRangeId = DEFAULT_TREND): string {
+  const params = [
+    id === DEFAULT_RANGE ? null : `range=${id}`,
+    trend === DEFAULT_TREND ? null : `trend=${trend}`,
+  ].filter((part): part is string => part !== null);
+  return params.length ? `/admin/siem-load?${params.join("&")}` : "/admin/siem-load";
+}
+
+const BINARY_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"] as const;
+
+/**
+ * A size in bytes with its unit: "0 B", "512 B", "12.4 GiB". Null is unmeasured; a measured zero
+ * is "0 B". Binary units, because QRadar reports bytes of storage.
+ */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) return MISSING;
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < BINARY_UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const digits = unit === 0 ? 0 : value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(digits)}\u00A0${BINARY_UNITS[unit]}`;
+}
+
+/** A percentage figure (0 to 100) with one decimal and the sign: "88.0 %". Null is unmeasured. */
+export function formatPercentFigure(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING;
+  return `${value.toFixed(1)}\u00A0%`;
 }

@@ -20,7 +20,12 @@ from app.api.deps import SessionDep, SettingsDep
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import CodedHTTPException
 from app.schemas.qradar_health_detail import HistoryOut, LatestOut
-from app.services.qradar_health_detail import HISTORY_HOURS, read_history, read_latest
+from app.services.qradar_health_detail import (
+    HISTORY_HOURS,
+    NOTIFICATION_HOURS_MAX,
+    read_history,
+    read_latest,
+)
 
 router = APIRouter(prefix="/admin/qradar-health", tags=["qradar-health"])
 
@@ -28,8 +33,12 @@ HOURS_CODE = "qradar_health_detail.hours.invalid"
 
 
 @router.get("/latest", response_model=LatestOut)
-async def qradar_health_latest(session: SessionDep, settings: SettingsDep) -> LatestOut:
-    return await read_latest(session, settings)
+async def qradar_health_latest(
+    session: SessionDep,
+    settings: SettingsDep,
+    notifications_hours: Annotated[int | None, Query(ge=1, le=NOTIFICATION_HOURS_MAX)] = None,
+) -> LatestOut:
+    return await read_latest(session, settings, notifications_hours=notifications_hours)
 
 
 @router.get("/history", response_model=HistoryOut)

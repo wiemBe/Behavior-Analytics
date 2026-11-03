@@ -160,10 +160,18 @@ describe("health.collection in Turkish", () => {
   });
 
   it("has a Turkish name for every search family, and the English names are the cadence table's", () => {
+    // D-41: Turkish is frozen at the checkpoint, so a family added afterwards has an English name
+    // only; the Turkish name is required of the families the frozen catalog holds.
+    const frozenFamilies = new Set(Object.keys(tr.catalog.family));
     for (const family of Object.keys(FAMILY_INFO)) {
       expect(familyName(family)).toBe(FAMILY_INFO[family as keyof typeof FAMILY_INFO].name);
-      expect(familyName(family, turkish), family).not.toBe(familyName(family));
+      if (frozenFamilies.has(family)) {
+        expect(familyName(family, turkish), family).not.toBe(familyName(family));
+      } else {
+        expect(familyName(family, turkish), family).toBe(familyName(family));
+      }
     }
+    expect(frozenFamilies.has("QRADAR_HEALTH")).toBe(false);
     expect(familyName("UNKNOWN_FAMILY", turkish)).toBe("UNKNOWN_FAMILY");
   });
 

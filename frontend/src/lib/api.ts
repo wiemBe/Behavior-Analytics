@@ -608,7 +608,8 @@ export type SearchFamily =
   | "IPS_COLLECTION"
   | "CATCHALL_SENDERS"
   | "GEO_COLLECTION"
-  | "PROPERTY_WATCH";
+  | "PROPERTY_WATCH"
+  | "QRADAR_HEALTH";
 
 // Mirrors CadenceOut: one family's timing, as the Search cadence route computes it. A null bucket
 // is a family with no buckets (evidence only), never zero.
@@ -3803,9 +3804,20 @@ export interface QRadarField<T> {
   reason: string | null;
 }
 
+/** The state of one managed host as an HA pair (HLT-1). `unknown` is never read as healthy. */
+export type QRadarPairState =
+  | "single"
+  | "ha_healthy"
+  | "ha_degraded"
+  | "ha_failed_over"
+  | "ha_failed"
+  | "unknown";
+
 export interface QRadarServerEntry {
   hostname: string | null;
   status: string | null;
+  /** Set for a managed host that is an HA pair; absent or null for a single host. */
+  ha_state?: QRadarPairState | null;
 }
 
 export interface QRadarServers {
@@ -3816,6 +3828,62 @@ export interface QRadarServers {
   /** Hosts not reporting ACTIVE, at most 20. */
   not_active: QRadarServerEntry[];
   all_active: boolean;
+  /** Managed hosts that are HA pairs, and those not healthy (HLT-1). */
+  ha_pairs?: number;
+  ha_problem?: number;
+  /** The HA pairs counted in `ha_problem`, at most 20. */
+  ha_issues?: QRadarServerEntry[];
+  /** The read stopped at its bound: the figures cover the records read only. */
+  truncated?: boolean;
+}
+
+/** EPS or FPM of one managed host; a figure QRadar did not give is null, never 0. */
+export interface QRadarRate {
+  allocation: number | null;
+  hardware_limit: number | null;
+  /** Previous month, as QRadar reports it. */
+  average: number | null;
+  peak: number | null;
+}
+
+/** One server of a managed host: the only one, or one of an HA pair's two. */
+export interface QRadarHostMember {
+  server_id: number | null;
+  hostname: string | null;
+  private_ip: string | null;
+  role: "primary" | "secondary" | null;
+  /** The status QRadar reports, upper-cased. */
+  status: QRadarField<string>;
+}
+
+export interface QRadarHostEntry {
+  host_id: number | null;
+  hostname: string | null;
+  private_ip: string | null;
+  public_ip: string | null;
+  appliance_id: string | null;
+  appliance_description: string | null;
+  version: string | null;
+  status: string | null;
+  cpus: number | null;
+  total_memory_kb: number | null;
+  /** Once per managed host: an HA pair is never counted twice. */
+  eps: QRadarField<QRadarRate>;
+  fpm: QRadarField<QRadarRate>;
+  role: "console" | "managed" | null;
+  pair_state: QRadarPairState;
+  /** For `unknown`: the status strings that were read, as QRadar wrote them. */
+  unclassified: string[];
+  members: QRadarHostMember[];
+}
+
+export interface QRadarHosts {
+  hosts: number;
+  /** The answer was longer than the bound: `hosts` is the count kept, there are more. */
+  truncated: boolean;
+  ha_pairs: number;
+  ha_problem: number;
+  items: QRadarHostEntry[];
 }
 
 export interface QRadarEps {
@@ -3864,6 +3932,8 @@ export interface QRadarConsoleHealth {
   api_latency_ms: QRadarField<number>;
   version: QRadarField<string>;
   servers: QRadarField<QRadarServers>;
+  /** The per-host table with HA members (HLT-1); absent from an older backend. */
+  hosts?: QRadarField<QRadarHosts>;
   eps: QRadarField<QRadarEps>;
   license: QRadarField<QRadarLicense>;
   ariel: {
@@ -3920,6 +3990,191 @@ export const arielLoadApi = {
     request<ArielLoadCurrent>("/admin/ariel-load/current", { signal }),
   summary: (hours: number, signal?: AbortSignal) =>
     request<ArielLoadSummary>(`/admin/ariel-load${qs({ hours })}`, { signal }),
+};
+
+// --- GET /admin/qradar-health/latest, /history (HLT-2, HLT-3) ---------------------------------
+// The stored health of QRadar in detail, read from the database (nothing asks QRadar). Mirrors
+// `app/schemas/qradar_health_detail.py`. Permission `admin:*`. A part that was not measured says
+// so with a code and a sentence and carries no value.
+
+export type QRadarPartState = "OK" | "PARTIAL" | "STALE" | "NOT_COLLECTED" | "FAILED";
+
+export interface QRadarPartStatus {
+  state: QRadarPartState;
+  reason_code: string | null;
+  reason: string | null;
+}
+
+/** One figure of one host: the window's maximum and average, or why there is none. */
+export interface QRadarMetricCell {
+  state: QRadarPartState;
+  value: number | null;
+  average: number | null;
+  samples: number | null;
+  reason_code: string | null;
+  reason: string | null;
+}
+
+export interface QRadarMount {
+  mount: string;
+  /** 0 to 1. */
+  used_fraction: number | null;
+  used_percent: number | null;
+  used_bytes: number | null;
+  total_bytes: number | null;
+  free_bytes: number | null;
+  /** Against the configured thresholds; null when no usage was read. */
+  level: "OK" | "WARN" | "FAIL" | null;
+}
+
+export interface QRadarHostDisk {
+  state: QRadarPartState;
+  reason_code: string | null;
+  reason: string | null;
+  fullest: QRadarMount | null;
+  mounts: QRadarMount[];
+}
+
+export interface QRadarHostMetrics {
+  /** The hostname parsed from the Health Metrics log-source name. */
+  host: string;
+  disk: QRadarHostDisk;
+  system: {
+    cpu_percent: QRadarMetricCell;
+    memory_percent: QRadarMetricCell;
+    load_avg_5: QRadarMetricCell;
+    swap_percent: QRadarMetricCell;
+    io_wait: QRadarMetricCell;
+    running_queries: QRadarMetricCell;
+    host_running_queries: QRadarMetricCell;
+  };
+  pipeline: {
+    cre_queue: QRadarMetricCell;
+    throttle_spill_bytes: QRadarMetricCell;
+    throttle_spilling: boolean | null;
+    ect_tcp_to_ep_disk_bytes: QRadarMetricCell;
+    flow_governor_queue_disk_bytes: QRadarMetricCell;
+    busiest_stage: { stage: string; busy_percent: number } | null;
+  };
+}
+
+export interface QRadarNotificationEntry {
+  host: string;
+  qid_name: string;
+  events: number;
+  max_severity: number | null;
+  last_seen: string | null;
+}
+
+export interface QRadarNotificationList {
+  entries: QRadarNotificationEntry[];
+  remainder: { events: number; groups: number } | null;
+  /** Set when a range was asked for: the range, the windows it rolled up and what they cover. */
+  hours: number | null;
+  windows: number | null;
+  covered_from: string | null;
+  covered_until: string | null;
+}
+
+export interface QRadarRestSample {
+  sampled_at: string;
+  reachable: boolean | null;
+  api_latency_ms: number | null;
+  hosts_active: number | null;
+  hosts_total: number | null;
+  ha_problem_count: number | null;
+  license_overallocated: boolean | null;
+}
+
+export interface QRadarConsoleLatest {
+  instance_id: string;
+  instance_name: string;
+  window: {
+    start: string;
+    end: string;
+    collected_at: string;
+    cadence_seconds: number;
+  } | null;
+  metrics: QRadarPartStatus;
+  notifications: QRadarPartStatus;
+  hosts: QRadarHostMetrics[];
+  notification_list: QRadarNotificationList | null;
+  last_metrics_window_end: string | null;
+  unparseable_hosts: number;
+  dropped_mounts: number;
+  dropped_metrics: number;
+  null_values: number;
+  invalid_values: number;
+  dropped_events: number;
+  rest_sample: QRadarRestSample | null;
+}
+
+export interface QRadarHealthLatest {
+  generated_at: string;
+  consoles: QRadarConsoleLatest[];
+}
+
+export interface QRadarHistoryPoint {
+  at: string;
+  value: number;
+  mount: string | null;
+  /** Stored windows folded into this point (its value is their maximum). */
+  windows: number;
+}
+
+export interface QRadarHistorySeries {
+  state: QRadarPartState;
+  reason_code: string | null;
+  reason: string | null;
+  points: QRadarHistoryPoint[];
+}
+
+export interface QRadarHostHistory {
+  host: string;
+  /** The fullest allowlisted mount's usage, 0 to 1, per window. */
+  disk_fullest_fraction: QRadarHistorySeries;
+  cre_queue: QRadarHistorySeries;
+  throttle_spill_bytes: QRadarHistorySeries;
+}
+
+export interface QRadarReachabilityPoint {
+  at: string;
+  reachable: boolean | null;
+  api_latency_ms: number | null;
+}
+
+export interface QRadarConsoleHistory {
+  instance_id: string;
+  instance_name: string;
+  metrics: QRadarPartStatus;
+  hosts: QRadarHostHistory[];
+  reachability: {
+    state: QRadarPartState;
+    reason_code: string | null;
+    reason: string | null;
+    points: QRadarReachabilityPoint[];
+  };
+}
+
+export interface QRadarHealthHistory {
+  generated_at: string;
+  hours: number;
+  since: string;
+  until: string;
+  /** A gap longer than this between two points means windows are missing, not that the value held. */
+  expected_interval_seconds: number;
+  consoles: QRadarConsoleHistory[];
+}
+
+export const qradarHealthApi = {
+  /** `notificationsHours` rolls the notifications up over that many hours (1 to 168). */
+  latest: (notificationsHours?: number, signal?: AbortSignal) =>
+    request<QRadarHealthLatest>(
+      `/admin/qradar-health/latest${qs({ notifications_hours: notificationsHours })}`,
+      { signal },
+    ),
+  history: (hours: 24 | 168, signal?: AbortSignal) =>
+    request<QRadarHealthHistory>(`/admin/qradar-health/history${qs({ hours })}`, { signal }),
 };
 
 // --- alert e-mail administration (MAIL-2) ----------------------------------------------------

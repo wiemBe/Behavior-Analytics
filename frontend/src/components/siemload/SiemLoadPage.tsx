@@ -17,14 +17,21 @@ import { arielLoadApi } from "@/lib/api";
 import { CallerSummary } from "./CallerSummary";
 import { InFlightTable } from "./InFlightTable";
 import { NowBand } from "./NowBand";
+import { QRadarDetail } from "./QRadarDetail";
 import { QRadarPanel } from "./QRadarPanel";
-import type { SummaryRangeId } from "./siemFormat";
+import { DEFAULT_TREND, type SummaryRangeId, type TrendRangeId } from "./siemFormat";
 
 import "./siemload.css";
 
 const CURRENT = "/admin/ariel-load/current";
 
-export function SiemLoadPage({ range }: { range: SummaryRangeId }) {
+export function SiemLoadPage({
+  range,
+  trend = DEFAULT_TREND,
+}: {
+  range: SummaryRangeId;
+  trend?: TrendRangeId;
+}) {
   const t = useTranslations("siemLoad.page");
   const state = useTranslations("siemLoad.state");
   const common = useTranslations("common");
@@ -78,7 +85,7 @@ export function SiemLoadPage({ range }: { range: SummaryRangeId }) {
     return (
       <div className="sl-page">
         <LoadingState what={t("loadingWhat")} />
-        <CallerSummary range={range} />
+        <CallerSummary range={range} trend={trend} />
       </div>
     );
   }
@@ -110,8 +117,11 @@ export function SiemLoadPage({ range }: { range: SummaryRangeId }) {
         <NowBand current={current} />
         <QRadarPanel part={current.qradar} />
       </div>
+      {current.qradar?.available && current.qradar.consoles.length > 0 ? (
+        <QRadarDetail consoles={current.qradar.consoles} range={range} trend={trend} />
+      ) : null}
       <InFlightTable part={current.in_flight} qradar={current.qradar} />
-      <CallerSummary range={range} />
+      <CallerSummary range={range} trend={trend} />
     </div>
   );
 }

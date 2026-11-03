@@ -90,6 +90,11 @@ function Console({ health }: { health: QRadarConsoleHealth }) {
           <FieldValue field={health.servers}>
             {(servers) => {
               const notActive = servers.total - servers.active;
+              // The table below lists every host with its HA members; the short list stays only
+              // while that table could not be read.
+              const tableShown = health.hosts?.state === "OK" && health.hosts.value != null;
+              const pairs = servers.ha_pairs ?? 0;
+              const problem = servers.ha_problem ?? 0;
               return (
                 <>
                   <span className="sl-line num">
@@ -101,22 +106,42 @@ function Console({ health }: { health: QRadarConsoleHealth }) {
                       </>
                     ) : null}
                   </span>
-                  {servers.not_active.length > 0 ? (
-                    <ul className="sl-hosts">
-                      {servers.not_active.map((host, at) => (
-                        <li key={`${host.hostname ?? ""}-${at}`}>
-                          <span className="sl-host">{host.hostname ?? "—"}</span>
-                          {" — "}
-                          {host.status ?? t("hostStatusNone")}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  {notActive > servers.not_active.length ? (
-                    <span className="sl-note">
-                      {t("hostsMore", { count: notActive - servers.not_active.length })}
+                  {pairs > 0 ? (
+                    <span className="sl-line num">
+                      {problem > 0 ? (
+                        <>
+                          {t("hostsHa", { pairs, problem })}{" "}
+                          <span className="pill warn">{t("hostsHaCheck")}</span>
+                        </>
+                      ) : (
+                        t("hostsHaHealthy", { pairs })
+                      )}
                     </span>
                   ) : null}
+                  {tableShown ? (
+                    notActive > 0 || problem > 0 ? (
+                      <span className="sl-note">{t("hostsListed")}</span>
+                    ) : null
+                  ) : (
+                    <>
+                      {servers.not_active.length > 0 ? (
+                        <ul className="sl-hosts">
+                          {servers.not_active.map((host, at) => (
+                            <li key={`${host.hostname ?? ""}-${at}`}>
+                              <span className="sl-host">{host.hostname ?? "—"}</span>
+                              {" — "}
+                              {host.status ?? t("hostStatusNone")}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {notActive > servers.not_active.length ? (
+                        <span className="sl-note">
+                          {t("hostsMore", { count: notActive - servers.not_active.length })}
+                        </span>
+                      ) : null}
+                    </>
+                  )}
                 </>
               );
             }}

@@ -4,6 +4,7 @@ import { createTranslator } from "next-intl";
 import { ApiError } from "@/lib/api";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { asTextTranslator } from "@/i18n/textTranslator";
+import { FROZEN_TR_KEYS } from "@/i18n/trFrozen";
 
 import en from "../../messages/en";
 import tr from "../../messages/tr";
@@ -57,12 +58,24 @@ describe("search cadence words in Turkish", () => {
   });
 
   it("words every family and keeps an unknown family as recorded", () => {
+    // D-41: Turkish is frozen. A family whose name is in the frozen catalog is worded in Turkish;
+    // a family added after the freeze falls back to its English entry, never to the raw key.
+    const frozen = new Set(FROZEN_TR_KEYS);
+    const postFreeze: string[] = [];
     for (const key of Object.keys(FAMILY_INFO)) {
+      const english = FAMILY_INFO[key as keyof typeof FAMILY_INFO];
       const turkish = familyInfo(key, TR);
-      expect(turkish.name).not.toBe(FAMILY_INFO[key as keyof typeof FAMILY_INFO].name);
-      expect(turkish.scope).toBeTruthy();
-      expect(familyInfo(key, say("en"))).toEqual(FAMILY_INFO[key as keyof typeof FAMILY_INFO]);
+      if (frozen.has(`cadence.family.${key}.name`)) {
+        expect(turkish.name).not.toBe(english.name);
+        expect(turkish.scope).toBeTruthy();
+      } else {
+        postFreeze.push(key);
+        expect(turkish).toEqual(english);
+        expect(turkish.name).not.toBe(key);
+      }
+      expect(familyInfo(key, say("en"))).toEqual(english);
     }
+    expect(postFreeze).toContain("QRADAR_HEALTH");
     expect(familyInfo("PHASE_A_VOLUME", TR).name).toBe("Log source hacmi");
     expect(familyInfo("NEW_FAMILY", TR)).toEqual({ name: "NEW_FAMILY", scope: null });
     expect(familyInfo("constructor", TR)).toEqual({ name: "constructor", scope: null });

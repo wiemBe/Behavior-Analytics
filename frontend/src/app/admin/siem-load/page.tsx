@@ -1,12 +1,12 @@
 // How much load the platform puts on QRadar now, and how QRadar itself is doing. The body reads
 // from the browser so the top bar's Refresh can re-read it; the page only reads the summary window
-// out of the URL.
+// and the trend window out of the URL.
 
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { SiemLoadPage } from "@/components/siemload/SiemLoadPage";
-import { parseRange } from "@/components/siemload/siemFormat";
+import { parseRange, parseTrend } from "@/components/siemload/siemFormat";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { withRouteMessages } from "@/i18n/RouteMessages";
@@ -28,7 +28,7 @@ async function Page({ searchParams }: { searchParams: Promise<Record<string, str
         title={t("title")}
         description={t("description")}
       />
-      <SiemLoadPage range={parseRange(params.range)} />
+      <SiemLoadPage range={parseRange(params.range)} trend={parseTrend(params.trend)} />
     </>
   );
 }

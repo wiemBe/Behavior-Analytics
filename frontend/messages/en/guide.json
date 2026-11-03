@@ -855,17 +855,37 @@
         },
         {
           "p": "**Load by caller** summarises the searches recorded in the window you pick (1 h, 24 h, 7 d or 30 d), one row per caller. Percentiles cover completed searches only. Totals cover every finished search; a total marked ≥ leaves out searches for which QRadar reported no figure, and a dash means none did."
+        },
+        {
+          "h": "QRadar in detail"
+        },
+        {
+          "p": "Under the first screen, each console has a section that asks whether QRadar is healthy enough to trust what it sends. **Managed hosts** lists every host with its role, appliance, version and status, and its EPS and FPM: the allocation, the average and the peak of the previous month, and the hardware limit. These are the managed host's own figures. A dash means QRadar gave no figure, which is not the same as zero."
+        },
+        {
+          "p": "A host that has a secondary is an HA pair and is one row group: the host's own row, then one row for each member with its role (primary or secondary) and status. The pair state is a word. **Healthy pair**: the primary is active and the secondary is on standby, which is where it should be, so the standby is not a warning. **Degraded pair**: one member is active but the other is not on standby, so no failover is possible. **Failed over**: the secondary is running the host and the primary is not. **Failed pair**: no member is active. **Unknown pair state**: QRadar wrote a status this platform does not classify; it is shown as written and is never read as healthy."
+        },
+        {
+          "p": "**Disk, system and pipeline** shows, for each host and each member of a pair, the fullest mount (the share used and the bytes free, with the other mounts on expand), CPU and memory in percent, the **CRE queue**, the throttle spill and the busiest stage. The CRE queue is the number of events waiting for the rule engine: a queue that keeps growing means QRadar is falling behind its own rules. The throttle spill is the bytes of events written to disk because the host is over its EPS allocation, which is the license throttle at work; any spill above zero is flagged, and the events are delayed rather than lost. Each figure is the highest value in the window shown above the table. A host without Health Metrics, or a figure QRadar did not report, says **Not collected** and is never a zero. A host that sent Health Metrics but is not in the managed host list is listed apart."
+        },
+        {
+          "p": "**System notifications** are QRadar's own messages about itself over the last 24 hours, by name and host with the count, the highest severity and the last time seen. Information messages are left out, and the groups below the busiest fifty are counted on the last line. **Trends** draws the same figures over 24 h or 7 d: reachability and API latency of the console, the fullest mount, the CRE queue and the throttle spill per host. A break in a line is a stretch with no stored window, not a value that held."
+        },
+        {
+          "p": "These figures are read from QRadar's own Health Metrics and system notifications by the **QRadar health** search family, every 15 minutes by default (set on the Search cadence page), and stored. A figure is therefore as old as its window, which is stated above each table, and a window older than the cadence allows is marked **Stale** and kept with its time. Reading this page asks QRadar nothing for these figures."
         }
       ],
       "steps": [
         "Open **Administration**, then **SIEM load**.",
         "Read **Our load on QRadar** and **QRadar** first. Set **Refresh** in the top bar to 1 min or 5 min to read them again on that cadence; the figures are as of the time shown, not continuous.",
         "Open **Searches in flight** to see which caller holds each search, on which console, and for how long.",
-        "Pick a window under **Load by caller** to see which caller costs the most."
+        "Pick a window under **Load by caller** to see which caller costs the most.",
+        "Open the console's **Managed hosts** table, then **Disk, system and pipeline**, to see which host or HA member is full, falling behind or over its EPS allocation.",
+        "Pick **24 h** or **7 d** under **Trends** to see whether a figure is rising."
       ],
       "states": [
         {
-          "p": "**No QRadar console is enabled.**; **No search is in flight.**; **No search was submitted in the last 60 minutes.**; **No search was recorded in the last 24 h.**; a part the backend could not read, with its reason; a failed refresh keeps the last answer and says so; the forbidden notice naming `admin:*`."
+          "p": "**No QRadar console is enabled.**; **No search is in flight.**; **No search was submitted in the last 60 minutes.**; **No search was recorded in the last 24 h.**; a part the backend could not read, with its reason; a failed refresh keeps the last answer and says so; the forbidden notice naming `admin:*`; **Not collected**, **Failed**, **Stale** and **Partial** on the stored health, each with its reason (a partial window shows its figures marked ≥); **QRadar lists no managed host.**; **QRadar logged no system notification in the last 24 h**, said only of a range that was collected."
         }
       ],
       "permission": "`admin:*`"

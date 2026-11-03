@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import and_, func, select, tuple_
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,6 +67,10 @@ HISTORY_HOURS: tuple[int, ...] = (24, 168)
 #: A series longer than this is folded into windows of equal time, keeping each one's maximum.
 MAX_SERIES_POINTS = 400
 _MEASURED = ("OK", "PARTIAL")
+#: A notification range is 1 to this many hours (one week, as the history).
+NOTIFICATION_HOURS_MAX = 168
+#: Groups a notification roll-up lists; the rest is the counted remainder.
+NOTIFICATION_ROLLUP_LIMIT = 50
 _STAGE_SUFFIX = "ThreadInfo"
 
 
@@ -228,10 +232,60 @@ def _no_window() -> PartStatus:
     )
 
 
+def rollup_notifications(
+    rows: Sequence[Any], coverage: tuple[int, datetime, datetime] | None, hours: int
+) -> NotificationsValue | None:
+    """One console's notifications over a range, from the summed groups of its windows.
+
+    `rows` are (kind, host, qid_name, events, groups, max_severity, last_seen) summed over the
+    range; `coverage` is (windows, first start, last end) of the measured windows, or None. No
+    measured window in the range is no list at all, never an empty one: "nothing happened" is
+    only said of a range that was looked at.
+    """
+    if coverage is None or coverage[0] < 1:
+        return None
+    groups = sorted((r for r in rows if r[0] == "GROUP"), key=lambda r: (-r[3], r[1], r[2]))
+    kept, dropped = groups[:NOTIFICATION_ROLLUP_LIMIT], groups[NOTIFICATION_ROLLUP_LIMIT:]
+    rest_events = sum(int(r[3]) for r in rows if r[0] == "REMAINDER") + sum(
+        int(r[3]) for r in dropped
+    )
+    rest_groups = sum(int(r[4]) for r in rows if r[0] == "REMAINDER") + len(dropped)
+    return NotificationsValue(
+        entries=[
+            NotificationEntry(
+                host=r[1],
+                qid_name=r[2],
+                events=int(r[3]),
+                max_severity=r[5],
+                last_seen=r[6],
+            )
+            for r in kept
+        ],
+        remainder=(
+            NotificationRemainder(events=rest_events, groups=rest_groups)
+            if rest_groups > 0
+            else None
+        ),
+        hours=hours,
+        windows=int(coverage[0]),
+        covered_from=coverage[1],
+        covered_until=coverage[2],
+    )
+
+
 async def read_latest(
-    session: AsyncSession, settings: Settings, *, now: datetime | None = None
+    session: AsyncSession,
+    settings: Settings,
+    *,
+    now: datetime | None = None,
+    notifications_hours: int | None = None,
 ) -> LatestOut:
-    """The newest stored window of every enabled console, with a constant number of statements."""
+    """The newest stored window of every enabled console, with a constant number of statements.
+
+    With `notifications_hours` the notification list is the roll-up of the measured windows of
+    that many hours instead of the newest window alone; a fixed number of statements, however many
+    consoles there are. Everything else is the newest window either way.
+    """
     generated = now or datetime.now(UTC)
     instances = list(
         (
@@ -283,18 +337,73 @@ async def read_latest(
         ).all():
             by_host[bucket.instance_id][bucket.host][(bucket.metric, bucket.element)] = bucket
     notices: dict[UUID, list[QRadarHealthNotificationBucket]] = defaultdict(list)
-    if notice_pairs:
-        for notice in (
-            await session.scalars(
-                select(QRadarHealthNotificationBucket).where(
-                    tuple_(
-                        QRadarHealthNotificationBucket.instance_id,
-                        QRadarHealthNotificationBucket.bucket_start,
-                    ).in_(notice_pairs)
+    rollups: dict[UUID, NotificationsValue | None] = {}
+    if notifications_hours is None:
+        if notice_pairs:
+            for notice in (
+                await session.scalars(
+                    select(QRadarHealthNotificationBucket).where(
+                        tuple_(
+                            QRadarHealthNotificationBucket.instance_id,
+                            QRadarHealthNotificationBucket.bucket_start,
+                        ).in_(notice_pairs)
+                    )
                 )
+            ).all():
+                notices[notice.instance_id].append(notice)
+    else:
+        since = generated - timedelta(hours=notifications_hours)
+        measured_run = and_(
+            QRadarHealthRun.instance_id.in_(ids),
+            QRadarHealthRun.window_start >= since,
+            QRadarHealthRun.window_start <= generated,
+            QRadarHealthRun.notifications_state.in_(_MEASURED),
+        )
+        coverage = {
+            row[0]: (row[1], row[2], row[3])
+            for row in (
+                await session.execute(
+                    select(
+                        QRadarHealthRun.instance_id,
+                        func.count(),
+                        func.min(QRadarHealthRun.window_start),
+                        func.max(QRadarHealthRun.window_end),
+                    )
+                    .where(measured_run)
+                    .group_by(QRadarHealthRun.instance_id)
+                )
+            ).all()
+        }
+        summed: dict[UUID, list[Any]] = defaultdict(list)
+        nb = QRadarHealthNotificationBucket
+        for row in (
+            await session.execute(
+                select(
+                    nb.instance_id,
+                    nb.kind,
+                    nb.host,
+                    nb.qid_name,
+                    func.sum(nb.events),
+                    func.sum(nb.groups),
+                    func.max(nb.max_severity),
+                    func.max(nb.last_seen),
+                )
+                .join(
+                    QRadarHealthRun,
+                    and_(
+                        QRadarHealthRun.instance_id == nb.instance_id,
+                        QRadarHealthRun.window_start == nb.bucket_start,
+                    ),
+                )
+                .where(measured_run)
+                .group_by(nb.instance_id, nb.kind, nb.host, nb.qid_name)
             )
         ).all():
-            notices[notice.instance_id].append(notice)
+            summed[row[0]].append(row[1:])
+        for instance_id in ids:
+            rollups[instance_id] = rollup_notifications(
+                summed.get(instance_id, []), coverage.get(instance_id), notifications_hours
+            )
     last_good = {
         row[0]: row[1]
         for row in (
@@ -366,7 +475,9 @@ async def read_latest(
             for host, rows in sorted(by_host.get(instance.id, {}).items())
         ]
         listing: NotificationsValue | None = None
-        if run.notifications_state in _MEASURED:
+        if notifications_hours is not None:
+            listing = rollups.get(instance.id)
+        elif run.notifications_state in _MEASURED:
             groups = sorted(
                 (n for n in notices.get(instance.id, []) if n.kind == "GROUP"),
                 key=lambda n: (-n.events, n.host, n.qid_name),

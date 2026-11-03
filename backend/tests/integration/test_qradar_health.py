@@ -467,6 +467,82 @@ class TestLatestApi:
         assert counts[1] == counts[4], counts
 
 
+class TestNotificationRollupApi:
+    """`notifications_hours` rolls the measured windows of a range into one list (HLT-3)."""
+
+    def _seed_windows(self, inst_id, ends):  # type: ignore[no-untyped-def]
+        for end in ends:
+            run(seed_run(inst_id, end=end))
+
+    def test_the_default_is_the_newest_window_alone(self, db_schema) -> None:
+        inst = run(make_instance)
+        self._seed_windows(inst.id, [fresh_end() - timedelta(minutes=15), fresh_end()])
+        [console] = Client(ADMIN).get(URL + "/latest").json()["consoles"]
+        listing = console["notification_list"]
+        assert listing["entries"][0]["events"] == 4
+        assert listing["hours"] is None and listing["windows"] is None
+
+    def test_windows_in_the_range_are_summed_per_host_and_qid(self, db_schema) -> None:
+        inst = run(make_instance)
+        end = fresh_end()
+        self._seed_windows(inst.id, [end - timedelta(hours=h) for h in (0, 1, 2)])
+        # Older than the range: not counted.
+        self._seed_windows(inst.id, [end - timedelta(hours=30)])
+        [console] = Client(ADMIN).get(URL + "/latest?notifications_hours=24").json()["consoles"]
+        listing = console["notification_list"]
+        [entry] = listing["entries"]
+        assert (entry["host"], entry["qid_name"], entry["events"]) == ("qr1", "Warning Message", 12)
+        assert entry["max_severity"] == 4
+        assert listing["remainder"] == {"events": 27, "groups": 9}
+        assert (listing["hours"], listing["windows"]) == (24, 3)
+        assert listing["covered_until"] is not None and listing["covered_from"] is not None
+
+    def test_a_range_with_no_measured_window_has_no_list(self, db_schema) -> None:
+        inst = run(make_instance)
+        run(seed_run(inst.id, end=fresh_end(), notifications="FAILED"))
+        [console] = Client(ADMIN).get(URL + "/latest?notifications_hours=24").json()["consoles"]
+        assert console["notification_list"] is None
+        assert console["notifications"]["state"] == "FAILED"
+
+    def test_a_failed_newest_run_still_shows_the_measured_windows_before_it(
+        self, db_schema
+    ) -> None:
+        inst = run(make_instance)
+        run(seed_run(inst.id, end=fresh_end() - timedelta(minutes=30)))
+        run(seed_run(inst.id, end=fresh_end(), notifications="FAILED"))
+        [console] = Client(ADMIN).get(URL + "/latest?notifications_hours=24").json()["consoles"]
+        assert console["notifications"]["state"] == "FAILED"
+        assert console["notification_list"]["windows"] == 1
+        assert console["notification_list"]["entries"][0]["events"] == 4
+
+    def test_a_console_with_no_window_has_no_list(self, db_schema) -> None:
+        run(make_instance)
+        [console] = Client(ADMIN).get(URL + "/latest?notifications_hours=24").json()["consoles"]
+        assert console["notification_list"] is None
+
+    @pytest.mark.parametrize("hours", ["0", "169", "-1", "x"])
+    def test_a_range_outside_one_to_168_hours_is_refused(self, db_schema, hours: str) -> None:
+        assert Client(ADMIN).get(URL + f"/latest?notifications_hours={hours}").status_code == 422
+
+    def test_the_edges_one_and_168_are_accepted(self, db_schema) -> None:
+        for hours in ("1", "168"):
+            response = Client(ADMIN).get(URL + f"/latest?notifications_hours={hours}")
+            assert response.status_code == 200
+
+    def test_the_statements_do_not_grow_with_consoles_windows_or_groups(self, db_schema) -> None:
+        counts = {}
+        for consoles, windows in ((1, 1), (4, 6)):
+            for _ in range(consoles - (1 if consoles > 1 else 0)):
+                inst = run(make_instance)
+                self._seed_windows(
+                    inst.id, [fresh_end() - timedelta(hours=n) for n in range(windows)]
+                )
+            client = Client(ADMIN)
+            assert len(client.get(URL + "/latest?notifications_hours=48").json()["consoles"]) >= 1
+            counts[consoles] = client.statements
+        assert counts[1] == counts[4], counts
+
+
 class TestHistoryApi:
     def test_an_unknown_range_is_a_coded_400(self, db_schema) -> None:
         for hours in ("12", "25", "0", "abc"):

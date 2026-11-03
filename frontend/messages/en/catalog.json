@@ -74,7 +74,8 @@
     "IPS_COLLECTION": "IPS collection",
     "CATCHALL_SENDERS": "Catch-all senders",
     "GEO_COLLECTION": "Geography",
-    "PROPERTY_WATCH": "Property watches"
+    "PROPERTY_WATCH": "Property watches",
+    "QRADAR_HEALTH": "QRadar health"
   },
   "detection": {
     "title": "Detection health",

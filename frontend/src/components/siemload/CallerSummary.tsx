@@ -17,7 +17,15 @@ import { formatCount } from "@/lib/format";
 import { asTextTranslator } from "@/i18n/textTranslator";
 
 import { callerLabel } from "./callers";
-import { formatMs, rangeHours, rangeHref, SUMMARY_RANGES, type SummaryRangeId } from "./siemFormat";
+import {
+  DEFAULT_TREND,
+  formatMs,
+  rangeHours,
+  rangeHref,
+  SUMMARY_RANGES,
+  type SummaryRangeId,
+  type TrendRangeId,
+} from "./siemFormat";
 
 const RANGE_LABEL = {
   "1h": "range1h",
@@ -57,14 +65,14 @@ function Total({
   );
 }
 
-function RangeControl({ range }: { range: SummaryRangeId }) {
+function RangeControl({ range, trend }: { range: SummaryRangeId; trend: TrendRangeId }) {
   const t = useTranslations("siemLoad.summary");
   return (
     <nav className="range-selector" aria-label={t("rangeLabel")}>
       {SUMMARY_RANGES.map((choice) => (
         <Link
           key={choice.id}
-          href={rangeHref(choice.id)}
+          href={rangeHref(choice.id, trend)}
           className={`range-option${choice.id === range ? " range-option-active" : ""}`}
           aria-current={choice.id === range ? "page" : undefined}
         >
@@ -212,7 +220,13 @@ function Body({ range }: { range: SummaryRangeId }) {
   );
 }
 
-export function CallerSummary({ range }: { range: SummaryRangeId }) {
+export function CallerSummary({
+  range,
+  trend = DEFAULT_TREND,
+}: {
+  range: SummaryRangeId;
+  trend?: TrendRangeId;
+}) {
   const t = useTranslations("siemLoad.summary");
   return (
     <section className="sl-section" aria-labelledby="sl-summary-h">
@@ -220,7 +234,7 @@ export function CallerSummary({ range }: { range: SummaryRangeId }) {
         <h2 className="sl-h" id="sl-summary-h">
           {t("heading")}
         </h2>
-        <RangeControl range={range} />
+        <RangeControl range={range} trend={trend} />
       </div>
       <Body range={range} />
     </section>

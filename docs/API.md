@@ -435,6 +435,20 @@ enabled console:
 - `notification_list`: `entries[]` (`host`, `qid_name`, `events`, `max_severity`, `last_seen`), the
   50 busiest groups of the window with `Information Message` excluded, and `remainder`
   (`events`, `groups`) for the groups below them, so the window's events still add up.
+  With the query parameter `notifications_hours` (1 to 168; anything else is `422`) the list is
+  instead the roll-up of every stored window of that many hours whose notification search was
+  measured (`OK` or `PARTIAL`): the groups are summed per host and QID name (`events` summed,
+  `max_severity` and `last_seen` the largest), the 50 busiest are listed, and `remainder` holds
+  the stored remainders plus the groups cut here, so the range's events still add up (`groups`
+  there is an upper bound on distinct groups: a group can fall below the cut in several windows).
+  The list then also carries `hours`, `windows` (the measured windows rolled up) and
+  `covered_from` / `covered_until` (the start of the first and the end of the last), so a reader
+  can tell a range that was looked at from one that was only partly looked at. With no measured
+  window in the range `notification_list` is `null`, never an empty list: "nothing happened" is
+  only said of a range that was looked at. `notifications` stays the newest run's state, so a
+  failed newest run is still reported beside the earlier windows' list. Without the parameter
+  the list is the newest window alone, as before (`hours`, `windows` and the `covered_*` fields
+  are `null`). The statement count is fixed whatever the range, the consoles or the groups.
 - Counted, never shown: `unparseable_hosts` (log-source names with no hostname), `dropped_mounts`
   (mounts outside `QRADAR_HEALTH_DISK_MOUNTS`), `dropped_metrics`, `null_values`, `invalid_values`
   (negative or out-of-range), `dropped_events`.
