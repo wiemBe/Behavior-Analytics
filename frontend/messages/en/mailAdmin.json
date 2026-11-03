@@ -11,7 +11,10 @@
     "tabTemplates": "Templates",
     "tabTemplatesUnsaved": "Templates (unsaved changes)",
     "tabRecipients": "Recipients",
+    "tabRecipientsUnsaved": "Recipients (not saved)",
     "leaveConfirm": "A template has unsaved changes. Leave this page and lose them?",
+    "leaveRecipient": "A recipient has not been saved. Leave this page and lose it?",
+    "leaveBoth": "A template has unsaved changes and a recipient has not been saved. Leave this page and lose both?",
     "forbidden": {
       "heading": "Alert e-mail cannot be shown to this account.",
       "body": "Reading and changing it needs the <perm>admin:notifications</perm> permission. The read-only role does not include it. Nothing was changed."
@@ -159,6 +162,11 @@
     "viewHtml": "HTML",
     "viewText": "Text part",
     "frameTitle": "E-mail preview",
+    "scaleFit": "Shown at {percent} % of its size, to fit the column.",
+    "scaleActual": "Shown at actual size (100 %). Scroll inside the preview to see all of it.",
+    "showActual": "Show at actual size",
+    "showFit": "Fit to the column",
+    "stageLabel": "E-mail preview, scrollable",
     "textLabel": "Text part of the e-mail"
   },
   "test": {

@@ -474,7 +474,9 @@ describe("unsaved changes", () => {
       confirm.mockReturnValue(true);
       fireEvent.click(link);
       expect(confirm).toHaveBeenCalledTimes(2);
-      expect(seen).toEqual([false, false]);
+      // MAIL-3: a confirmed click is followed once the guard's history entry is off the stack, so
+      // it reaches the router a moment later instead of in the same call.
+      await waitFor(() => expect(seen).toEqual([false, false]));
       // A stay is a click nobody downstream sees at all.
       confirm.mockReturnValue(false);
       fireEvent.click(link);

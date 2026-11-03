@@ -135,14 +135,15 @@
   align-items: start;
   min-width: 0;
 }
-/* Wide: the editor on the left, the preview and the test send beside it, and the placeholders
- * under them. Narrow: editor, placeholders, preview, test send, in the order they are used. */
-@media (min-width: 1400px) {
+/* From 1024 px the preview and the test send sit beside the editor (the message is scaled to its
+ * column, see the frame below); the placeholders stay under the editor, where they are used.
+ * Below that: editor, placeholders, preview, test send, in the order they are used. */
+@media (min-width: 1024px) {
   .mail-work {
-    grid-template-columns: minmax(0, 1fr) minmax(0, var(--mail-frame-w));
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
       "editor side"
-      "editor holders";
+      "holders side";
   }
   .mail-work > :first-child {
     grid-area: editor;
@@ -152,6 +153,15 @@
   }
   .mail-placeholders-slot {
     grid-area: holders;
+  }
+}
+/* Wide: the preview has its full width, and the placeholders go under it. */
+@media (min-width: 1400px) {
+  .mail-work {
+    grid-template-columns: minmax(0, 1fr) minmax(0, var(--mail-frame-w));
+    grid-template-areas:
+      "editor side"
+      "editor holders";
   }
 }
 .mail-placeholders-slot {
@@ -304,11 +314,46 @@
   color: var(--text-2);
   font-size: var(--fs-sm);
 }
-.mail-frame {
-  display: block;
+/* The stage is the column; the frame keeps the message's own layout width and is scaled from its
+ * top left corner. Its height grows as the scale shrinks, so the stage shows the same stretch of
+ * the message at any scale. */
+.mail-scaled {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.mail-scale-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+}
+.mail-scale-bar .mail-hint {
+  flex: 1 1 14rem;
+}
+.mail-stage {
+  --mail-scale: 1;
   width: 100%;
   max-width: var(--mail-frame-w);
   height: var(--mail-frame-h);
+  overflow: hidden;
+}
+.mail-stage-actual {
+  max-width: none;
+  height: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.mail-stage-actual:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.mail-frame {
+  display: block;
+  width: var(--mail-frame-w);
+  height: calc(var(--mail-frame-h) / var(--mail-scale));
+  transform: scale(var(--mail-scale));
+  transform-origin: 0 0;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
   background: var(--mail-paper);

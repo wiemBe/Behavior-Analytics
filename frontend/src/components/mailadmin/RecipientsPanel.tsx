@@ -23,38 +23,25 @@ import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { recipientErrors, type RecipientFieldErrors } from "./mail";
 import { PartError } from "./PartError";
+import { BLANK, type FormState, type RecipientDraft } from "./recipientDraft";
 import type { Part } from "./usePart";
 
 const SEVERITIES: EmailRecipientBody["min_severity"][] = ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"];
 
-interface FormState {
-  /** Null while adding. */
-  id: string | null;
-  address: string;
-  minSeverity: EmailRecipientBody["min_severity"];
-  everyType: boolean;
-  types: string[];
-  enabled: boolean;
-}
-
-const BLANK: FormState = {
-  id: null,
-  address: "",
-  minSeverity: "LOW",
-  everyType: true,
-  types: [],
-  enabled: true,
-};
-
 export function RecipientsPanel({
   part,
   alertTypes,
+  draft,
+  onDraft,
   onChanged,
   onRetry,
 }: {
   part: Part<EmailRecipientList>;
   /** Null when the template list, which carries them, could not be read. */
   alertTypes: readonly EmailAlertType[] | null;
+  /** The open form, kept above the tabs. */
+  draft: RecipientDraft | null;
+  onDraft: (draft: RecipientDraft | null) => void;
   onChanged: () => void;
   onRetry: () => void;
 }) {
@@ -79,7 +66,13 @@ export function RecipientsPanel({
         />
       ) : null}
       {part.status === "ok" ? (
-        <Loaded list={part.data} alertTypes={alertTypes} onChanged={onChanged} />
+        <Loaded
+          list={part.data}
+          alertTypes={alertTypes}
+          draft={draft}
+          onDraft={onDraft}
+          onChanged={onChanged}
+        />
       ) : null}
     </section>
   );
@@ -92,16 +85,22 @@ function typeLabel(key: string, alertTypes: readonly EmailAlertType[] | null): s
 function Loaded({
   list,
   alertTypes,
+  draft,
+  onDraft,
   onChanged,
 }: {
   list: EmailRecipientList;
   alertTypes: readonly EmailAlertType[] | null;
+  draft: RecipientDraft | null;
+  onDraft: (draft: RecipientDraft | null) => void;
   onChanged: () => void;
 }) {
   const t = useTranslations("mailAdmin.recipients");
   const { label } = useEnumLabels();
   const { t: say, locale } = useBehaviorI18n();
-  const [form, setForm] = useState<FormState | null>(null);
+  const form = draft?.form ?? null;
+  const openForm = (next: FormState) => onDraft({ form: next, base: next });
+  const closeForm = () => onDraft(null);
   const [removing, setRemoving] = useState<EmailRecipient | null>(null);
   const [removeLines, setRemoveLines] = useState<string[]>([]);
   const [working, setWorking] = useState(false);
@@ -124,7 +123,7 @@ function Loaded({
     try {
       if (form.id === null) await mailAdminApi.addRecipient(body);
       else await mailAdminApi.saveRecipient(form.id, body);
-      setForm(null);
+      closeForm();
       onChanged();
     } catch (err) {
       setErrors(
@@ -161,7 +160,7 @@ function Loaded({
   function edit(item: EmailRecipient) {
     setRemoving(null);
     setErrors(null);
-    setForm({
+    openForm({
       id: item.id,
       address: item.address,
       minSeverity: item.min_severity,
@@ -237,7 +236,7 @@ function Loaded({
                       aria-label={t("removeNamed", { address: item.address })}
                       disabled={working}
                       onClick={() => {
-                        setForm(null);
+                        closeForm();
                         setRemoving(item);
                         setRemoveLines([]);
                       }}
@@ -291,10 +290,10 @@ function Loaded({
           alertTypes={alertTypes}
           errors={errors}
           working={working}
-          onChange={(change) => setForm({ ...form, ...change })}
+          onChange={(change) => draft && onDraft({ ...draft, form: { ...draft.form, ...change } })}
           onSubmit={(event) => void save(event)}
           onCancel={() => {
-            setForm(null);
+            closeForm();
             setErrors(null);
           }}
         />
@@ -306,7 +305,7 @@ function Loaded({
             onClick={() => {
               setErrors(null);
               setRemoving(null);
-              setForm(BLANK);
+              openForm(BLANK);
             }}
           >
             {t("add")}

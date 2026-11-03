@@ -6,11 +6,12 @@
 // editor holds says so.
 
 import { useTranslations } from "next-intl";
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import { Tabs } from "@/components/ui/Tabs";
 import type { EmailAlertType } from "@/lib/api";
 
+import { ScaledFrame } from "./ScaledFrame";
 import { previewIsStale, type Editor, type PreviewReady, type TemplateWorkspace } from "./useTemplateWorkspace";
 
 export function PreviewPane({
@@ -31,6 +32,7 @@ export function PreviewPane({
   const shown: PreviewReady | null =
     view.kind === "ok" ? view : view.kind === "loading" ? view.previous : null;
   const stale = previewIsStale(editor);
+  const [actual, setActual] = useState(false);
 
   return (
     <section className="mail-section" aria-labelledby={headingId}>
@@ -105,13 +107,7 @@ export function PreviewPane({
                 id: "html",
                 label: t("viewHtml"),
                 content: () => (
-                  <iframe
-                    className="mail-frame"
-                    title={t("frameTitle")}
-                    sandbox=""
-                    referrerPolicy="no-referrer"
-                    srcDoc={shown.data.html}
-                  />
+                  <ScaledFrame html={shown.data.html} actual={actual} onActual={setActual} />
                 ),
               },
               {
