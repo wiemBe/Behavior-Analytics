@@ -106,7 +106,8 @@
     "NOT_COLLECTED": "Not collected",
     "FORBIDDEN": "Forbidden",
     "FAILED": "Failed",
-    "noValue": "The backend sent no value."
+    "noValue": "The backend sent no value.",
+    "seeAccess": "See QRadar access"
   },
   "flight": {
     "heading": "Searches in flight",

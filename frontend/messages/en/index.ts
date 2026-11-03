@@ -43,6 +43,7 @@ import outage from "./outage.json";
 import password from "./password.json";
 import propertyWatch from "./propertyWatch.json";
 import pwchart from "./pwchart.json";
+import qradarAccess from "./qradarAccess.json";
 import rules from "./rules.json";
 import searches from "./searches.json";
 import shell from "./shell.json";
@@ -95,6 +96,7 @@ const messages = {
   password,
   propertyWatch,
   pwchart,
+  qradarAccess,
   rules,
   searches,
   shell,

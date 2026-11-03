@@ -337,6 +337,14 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
     related: ["search-cadence", "history-backfill", "honesty-states", "times-and-cadence"],
   },
   {
+    id: "qradar-access",
+    group: "adminTasks",
+    routes: ["/admin/qradar-access"],
+    audience: "admin",
+    permissions: ["admin:*"],
+    related: ["siem-load", "honesty-states", "times-and-cadence"],
+  },
+  {
     id: "alert-email",
     group: "adminTasks",
     routes: ["/admin/email"],

@@ -890,6 +890,48 @@
       ],
       "permission": "`admin:*`"
     },
+    "qradar-access": {
+      "title": "QRadar access",
+      "answers": "Which QRadar APIs can this site's token not reach, what does that switch off here, and what should I ask the QRadar administrator for?",
+      "body": [
+        {
+          "p": "The application is read-only against QRadar and does not know in advance which of the APIs it uses the token may read. A check sends one minimal read to each API in the table and keeps only the status code of the answer, nothing from the body. For Ariel it also stores one tiny search and cancels it at once, unread. Nothing is ever written to QRadar. The check runs at start-up, every few hours (the page says how many) and whenever you press **Check now**."
+        },
+        {
+          "h": "How to read it"
+        },
+        {
+          "p": "Each console has its own section. The first line says what the check found: every API reachable, the refused APIs by name, that QRadar does not accept the token itself (HTTP 401), or that nothing was checked yet. The table lists the refused APIs first, then the ones that did not answer or were not checked, then the reachable ones. **Forbidden** is HTTP 403: the API exists and this token may not read it. **Not found** is HTTP 404: this QRadar version does not offer it. **Did not answer** is a network, TLS or timeout failure, and **Error** is any other answer. A dash in the HTTP column means QRadar sent no code. **Not checked yet** is not a result: it is never read as reachable. When the status changed since the check before, the row says what it was."
+        },
+        {
+          "p": "**What it feeds here** names what the API provides in this application and which collectors and pages stop working without it. Under **Covered calls and sources** are the calls that are not probed on their own and share this probe, and the IBM pages that were read for the entry."
+        },
+        {
+          "h": "What to ask for"
+        },
+        {
+          "p": "A refused entry shows **What to ask for**. IBM's per-API reference states no required capability, so the page shows the closest role permission from IBM's user-role table and calls it a hint. It is not a fact: confirm it with your QRadar administrator, because the check itself is the answer. If an entry ever carries a capability IBM states, the page shows it plainly as the required capability."
+        },
+        {
+          "h": "Check now"
+        },
+        {
+          "p": "**Check now** queues the check for every enabled console that uses the direct REST provider and answers at once. The page then reads the stored result every 5 seconds while a check runs, pauses while the tab is hidden, and stops after 3 minutes with a note that the check is still running in the worker. A check already running is not started twice, and the number of requests is limited. When an API becomes reachable that was not before, the check restarts the syncs that depend on it, and the page names them. A check that never ends is treated as not running after 10 minutes, so the next one can start."
+        }
+      ],
+      "steps": [
+        "Open **Administration**, then **QRadar access**.",
+        "Read the first line of each console, then the refused rows at the top of its table.",
+        "Copy the **What to ask for** hints to your QRadar administrator and ask for read access to those APIs.",
+        "After the token is changed, press **Check now** and read the result. The syncs it started are listed."
+      ],
+      "states": [
+        {
+          "p": "**Not checked yet.**; **Token not accepted** (HTTP 401); **Check running**; a check still running after the page stopped reading; the rate-limit sentence with the time to retry; **No QRadar console is enabled.**; a console that is not on the direct REST provider, where nothing is checked; the forbidden notice naming `admin:*`; a read that failed, with what to do."
+        }
+      ],
+      "permission": "`admin:*`"
+    },
     "alert-email": {
       "title": "Alert e-mail",
       "answers": "What will our alert e-mail look like, who gets it, and does it reach them?",

@@ -1,0 +1,145 @@
+/* The QRadar access administration page. Built from tokens only; tables, pills, banners, notices
+ * and buttons are the shared ones. */
+
+.qa-page {
+  display: grid;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+.qa-check,
+.qa-console {
+  display: grid;
+  gap: var(--sp-4);
+  align-content: start;
+  min-width: 0;
+}
+/* `.main h2` carries a section margin of its own; the sections are spaced by their grid. */
+.qa-page .qa-h {
+  margin: 0;
+}
+.qa-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+}
+.qa-hint {
+  margin: 0;
+  max-width: var(--admin-form-max);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+}
+.qa-check-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+.qa-check-state {
+  display: grid;
+  gap: var(--sp-2);
+  max-width: var(--admin-form-max);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+}
+.qa-check-state p {
+  margin: 0;
+}
+.qa-check-state:empty {
+  display: none;
+}
+.qa-bad {
+  color: var(--warn-text);
+}
+.qa-lines {
+  margin: var(--sp-1) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--sp-1);
+}
+.qa-when {
+  margin: var(--sp-1) 0 0;
+  color: var(--text-2);
+}
+.qa-console .banner p {
+  margin: 0;
+}
+
+/* The table. Refused entries carry a bar on the leading edge, so the eye finds them first. */
+.qa-table th,
+.qa-table td {
+  padding: var(--sp-3) var(--sp-3);
+  vertical-align: top;
+}
+.qa-table td.num {
+  white-space: normal;
+}
+.qa-table th:first-child {
+  width: 34%;
+  min-width: 15rem;
+}
+.qa-table td.cell-when {
+  white-space: nowrap;
+}
+.qa-row-refused td:first-child {
+  border-left: 2px solid var(--warn-border);
+}
+.qa-title {
+  display: block;
+  font-weight: var(--fw-medium);
+}
+.qa-call {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  overflow-wrap: break-word;
+}
+.qa-table .cell-sub {
+  display: block;
+}
+.qa-details {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.qa-details summary {
+  cursor: pointer;
+  color: var(--link);
+  min-height: var(--target-min);
+  display: flex;
+  align-items: center;
+}
+.qa-details summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.qa-sub {
+  margin: var(--sp-2) 0 var(--sp-1);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+}
+.qa-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--sp-2);
+}
+.qa-list li {
+  display: grid;
+  gap: var(--sp-1);
+  overflow-wrap: anywhere;
+}
+.qa-ask {
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+}
+.qa-ask p {
+  margin: 0 0 var(--sp-1);
+}
+.qa-ask .qa-sub {
+  margin-top: 0;
+}
