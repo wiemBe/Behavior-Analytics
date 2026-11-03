@@ -4,7 +4,10 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { setTestLocale } from "../../../vitest.setup";
+import en from "../../../messages/en";
+import tr from "../../../messages/tr";
+import { ENABLED_LOCALES } from "@/i18n/locale";
+import { FROZEN_TR_KEYS, flattenCatalog, parityProblems } from "@/i18n/trFrozen";
 
 import { GeoFreshness } from "./GeoFreshness";
 
@@ -79,9 +82,24 @@ describe("GeoFreshness", () => {
     expect(reported.at(-1)).toBeNull();
   });
 
-  it("is Turkish when the interface is", () => {
-    setTestLocale("tr");
-    render(<GeoFreshness asOf={at(5)} />);
-    expect(screen.getByRole("status")).toHaveTextContent(/Güncel değil/);
+  it("carries English-only sentences that a Turkish re-enable must translate first (D-41, GEO-7)", () => {
+    // The four sentences moved from `home.frame` (frozen Turkish twins) to `geo.freshness`, added
+    // after the checkpoint. Turkish is unreachable while ENABLED_LOCALES is English only; turning
+    // it back on makes `parityProblems` demand these twins, so the line can never reach a Turkish
+    // analyst as key paths. When the twins are added, assert /Güncel değil/ here again.
+    const english = flattenCatalog(en);
+    const keys = Object.keys(english).filter((key) => key.startsWith("geo.freshness."));
+    expect(keys.sort()).toEqual([
+      "geo.freshness.dataTo",
+      "geo.freshness.dataToAge",
+      "geo.freshness.stale",
+      "geo.freshness.staleUnreadable",
+    ]);
+    for (const key of keys) expect(FROZEN_TR_KEYS).not.toContain(key);
+    expect(ENABLED_LOCALES).toEqual(["en"]);
+    const turkish = flattenCatalog(tr);
+    expect(parityProblems(english, turkish, ["en", "tr"])).toEqual(
+      expect.arrayContaining(keys.map((key) => `English key has no Turkish twin: ${key}`)),
+    );
   });
 });
