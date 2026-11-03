@@ -44,6 +44,13 @@ capability or `admin:*`.
 `read:*` does not grant any write capability. `admin:*` grants every administrative, read and write
 capability.
 
+A write is committed before its response is sent: once a client has a `2xx` (and the login
+cookie), the row is visible to the next request, and a commit that fails answers a `5xx`.
+
+A rate-limited request answers `429` with `{"detail": "rate limit exceeded", "limit": "<rate>"}`,
+where `<rate>` is the limit as text (for example `2 per 1 minute`), plus the `Retry-After` and
+`X-RateLimit-*` headers.
+
 ## Frontend routes
 
 | Route | Question answered |
