@@ -73,6 +73,21 @@ describe("QRadarPanel: a console that answered", () => {
     expect(cell).toHaveTextContent("peak 87.3 %");
   });
 
+  it("names one host in the singular", () => {
+    panel([
+      health({
+        eps: ok({
+          hosts: 1,
+          average_eps: 119,
+          peak_eps: 1_916,
+          allocated_eps: 5_000,
+          average_share: 0.024,
+        }),
+      }),
+    ]);
+    expect(value("EPS")).toHaveTextContent("of 5,000 EPS allocated over 1 host:");
+  });
+
   it("gives no share when the allocation is 0 instead of dividing by it", () => {
     panel([
       health({
@@ -88,8 +103,8 @@ describe("QRadarPanel: a console that answered", () => {
   it("shows the license pool EPS and FPM without a warning when nothing is over-allocated", () => {
     panel([health()]);
     const cell = value("License pool");
-    expect(cell).toHaveTextContent("EPS 8,000 of 10,000 allocated");
-    expect(cell).toHaveTextContent("FPM 120,000 of 200,000 allocated");
+    expect(cell).toHaveTextContent("EPS 8,000 allocated of 10,000 licensed");
+    expect(cell).toHaveTextContent("FPM 120,000 allocated of 200,000 licensed");
     expect(within(cell).queryByText("Over-allocated")).not.toBeInTheDocument();
   });
 
@@ -105,7 +120,7 @@ describe("QRadarPanel: a console that answered", () => {
     const cell = value("License pool");
     const pill = within(cell).getByText("Over-allocated");
     expect(pill).toHaveClass("pill", "warn");
-    expect(pill.parentElement).toHaveTextContent("EPS 12,500 of 10,000 allocated");
+    expect(pill.parentElement).toHaveTextContent("EPS 12,500 allocated of 10,000 licensed");
     expect(within(cell).getAllByText("Over-allocated")).toHaveLength(1);
   });
 
@@ -116,7 +131,7 @@ describe("QRadarPanel: a console that answered", () => {
       }),
     ]);
     const cell = value("License pool");
-    expect(cell).toHaveTextContent("EPS — of 10,000 allocated");
+    expect(cell).toHaveTextContent("EPS — allocated of 10,000 licensed");
     expect(cell).toHaveTextContent("FPM not reported");
     expect(within(cell).queryByText("Over-allocated")).not.toBeInTheDocument();
   });
