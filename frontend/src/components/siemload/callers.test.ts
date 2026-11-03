@@ -29,6 +29,7 @@ const CALLERS = [
   "MANUAL_RUN",
   "QRADAR_HEALTH",
   "DOCTOR_AQL",
+  "ACCESS_CHECK",
 ];
 
 describe("callerLabel", () => {

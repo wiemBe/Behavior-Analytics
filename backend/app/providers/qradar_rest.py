@@ -823,6 +823,8 @@ class QRadarRestProvider(QRadarProvider):
             return status
 
     @_holds_ariel_permit
+    @_loads(ariel_log.CALLER_ACCESS_CHECK)
+    @ariel_log.ariel_caller(ariel_log.CALLER_ACCESS_CHECK)
     async def probe_ariel_access(self) -> int:
         """Create the stored probe search, then cancel it unread; return the create status.
 
@@ -830,15 +832,33 @@ class QRadarRestProvider(QRadarProvider):
         `ProviderError` carrying the status otherwise); a permit that does not come raises
         `ArielPermitUnavailable` before anything is sent. The cancel is best effort: a search
         that cannot be cancelled expires on QRadar's side.
+
+        The search is recorded under `ACCESS_CHECK` (ACC-3). It is never polled and reads no
+        result, so the row says what happened: `CANCELED` when our cancel went through, `ERROR`
+        when it did not (the search was left to expire), the create's own outcome when the
+        create failed. No record count, no execution cost, no query version (that column is an
+        integer; the probe's version is the string `access_probe/v1`).
         """
-        handle = await self.create_ariel_search(ACCESS_PROBE_AQL)
-        try:
-            await self.cancel_ariel_search(handle.search_id)
-        except ProviderError as exc:
-            logger.warning(
-                "access probe search was not cancelled",
-                extra={"error_class": type(exc).__name__},
-            )
+        permit = self._permit
+        instance_id = getattr(permit, "instance_id", None) if permit is not None else None
+        async with ariel_log.track_search(clock=self._clock, instance_id=instance_id) as log:
+            handle = await self.create_ariel_search(ACCESS_PROBE_AQL)
+            try:
+                await self.cancel_ariel_search(handle.search_id)
+            except ProviderError as exc:
+                log.mark(ariel_log.OUTCOME_ERROR)
+                logger.warning(
+                    "access probe search was not cancelled",
+                    extra={"error_class": type(exc).__name__},
+                )
+            else:
+                log.mark(ariel_log.OUTCOME_CANCELED)
+                # `_request` returns the body, not the status, so the DELETE's HTTP status is
+                # not available here; the line says the cancel was accepted (2xx or 404).
+                logger.info(
+                    "access probe search cancelled",
+                    extra={"cancel_answered": True},
+                )
         return ARIEL_CREATED_STATUS
 
     async def list_log_sources(self) -> list[LogSourceDTO]:

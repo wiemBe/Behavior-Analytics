@@ -33,6 +33,40 @@ function rowOf(name: string): HTMLElement {
 }
 const cells = (row: HTMLElement) => within(row).getAllByRole("cell").map((c) => c.textContent);
 
+describe("CallerSummary: the access check's cancelled probe", () => {
+  const accessCheck = caller({
+    caller: "ACCESS_CHECK",
+    searches: 5,
+    outcomes: { CANCELED: 4, ERROR: 1 },
+  });
+  const history = caller({ caller: "HISTORY", searches: 4, outcomes: { CANCELED: 4 } });
+  const note = /a cancelled probe is its normal end and is not counted in Failed/;
+
+  it("does not count a cancelled probe as failed, but still counts its error", () => {
+    mocks.states["/admin/ariel-load?hours=24"] = okState(summary({ callers: [accessCheck] }));
+    render(<CallerSummary range="24h" />);
+    expect(cells(rowOf("Access check")).slice(0, 5)).toEqual(["5", "0", "1", "0", "0"]);
+  });
+
+  it("counts a cancelled search of any other caller as failed", () => {
+    mocks.states["/admin/ariel-load?hours=24"] = okState(summary({ callers: [history] }));
+    render(<CallerSummary range="24h" />);
+    expect(cells(rowOf("History")).slice(0, 5)).toEqual(["4", "0", "4", "0", "0"]);
+  });
+
+  it("explains the rule only when the access check row is there", () => {
+    mocks.states["/admin/ariel-load?hours=24"] = okState(summary({ callers: [history] }));
+    const { unmount } = render(<CallerSummary range="24h" />);
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+    unmount();
+    mocks.states["/admin/ariel-load?hours=24"] = okState(
+      summary({ callers: [accessCheck, history] }),
+    );
+    render(<CallerSummary range="24h" />);
+    expect(screen.getByText(note)).toBeInTheDocument();
+  });
+});
+
 describe("CallerSummary: the table", () => {
   it("reads the window the range names and lists the columns the analyst asked for", () => {
     mocks.states["/admin/ariel-load?hours=168"] = okState(summary({ hours: 168 }));

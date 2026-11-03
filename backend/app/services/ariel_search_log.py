@@ -76,6 +76,8 @@ CALLER_SCHEDULED_SEARCH = "SCHEDULED_SEARCH"
 CALLER_MANUAL_RUN = "MANUAL_RUN"
 #: `doctor --aql`: the operator's one-off test of every family's query (AQL-1).
 CALLER_DOCTOR_AQL = "DOCTOR_AQL"
+#: The access check's one probe search per console per check (ACC-1, ACC-3).
+CALLER_ACCESS_CHECK = "ACCESS_CHECK"
 
 OUTCOME_COMPLETED = "COMPLETED"
 OUTCOME_ERROR = "ERROR"
@@ -1469,6 +1471,18 @@ async def _current_in_flight(session: AsyncSession, *, as_of: datetime) -> dict[
     }
 
 
+def is_failed(caller: str, outcome: str) -> bool:
+    """Whether a terminal outcome counts as failed for this caller.
+
+    The access check cancels its probe search unread (ACC-3), so a CANCELED row of that caller
+    is its designed end, not a failure. Every other outcome, and every other caller, follows
+    ``TERMINAL_FAILED``.
+    """
+    if caller == CALLER_ACCESS_CHECK and outcome == OUTCOME_CANCELED:
+        return False
+    return outcome in TERMINAL_FAILED
+
+
 def _window_summary(rows: Sequence[Any], *, cutoff: datetime) -> dict[str, Any]:
     """One minute window. Counts by submit time; percentiles over COMPLETED
     rows only; sums over every terminal row in the window, a TIMEOUT's partial
@@ -1476,7 +1490,7 @@ def _window_summary(rows: Sequence[Any], *, cutoff: datetime) -> dict[str, Any]:
     has no measurement yet."""
     bucket = [row for row in rows if row.submitted_at >= cutoff]
     completed = [row for row in bucket if row.outcome == OUTCOME_COMPLETED]
-    failed = [row for row in bucket if row.outcome in TERMINAL_FAILED]
+    failed = [row for row in bucket if is_failed(row.caller, row.outcome)]
     refused = [row for row in bucket if row.outcome == OUTCOME_REFUSED]
     in_flight = [row for row in bucket if row.outcome == OUTCOME_IN_FLIGHT]
     terminal = [row for row in bucket if row.outcome != OUTCOME_IN_FLIGHT]
@@ -1512,6 +1526,7 @@ async def _current_windows(session: AsyncSession, *, as_of: datetime) -> dict[st
             await session.execute(
                 select(
                     ArielSearchRun.submitted_at,
+                    ArielSearchRun.caller,
                     ArielSearchRun.outcome,
                     ArielSearchRun.wall_ms,
                     ArielSearchRun.qradar_execution_ms,
