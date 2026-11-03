@@ -22,7 +22,7 @@ Dört kural her bölümde geçerlidir:
 7. [Geçmiş okuma](#geçmiş-okuma)
 8. [Kapsam eşlemeleri](#kapsam-eşlemeleri)
 9. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R68; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R69; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -1093,6 +1093,7 @@ bağlanmaz.
 | `unknown_settings` | Ortamda bir ayara benzeyen ama ayar olmayan adlar. Adlar yazılır, değerler yazılmaz. Böyle bir ad yoksa PASS. Kurulumun yazdığı adlar burada görünmez. | OPS-R62 |
 | `ariel_permits` | Global havuz held/cap, ayrılmış canlı yuvalar. Konsol tarafı, tek konsol yokken `console-pool locks N (cap P per console)` olarak yazılır. N bu veritabanındaki bütün konsol kilitleridir, bir konsolun kendi tutuşu değildir. Bütçede gerçekten tek konsol varsa satır `console held/cap` yazar. Havuz doluysa (`held >= cap`) WARN; canlı iş bekler, geçmiş okuma yerini verir. Zorlama kapalıysa `not enforced` ve PASS. Okuma hatasında yalnız hata sınıfı. | OPS-R63 |
 | `rule_match_coverage` | `RULE_HEALTH_WINDOW_DAYS` içindeki `FAILED` ve `TRUNCATED` kural-eşleşme pencerelerini tek sorguda sayar; en eski pencereyi, sağlık aralığından çıkacağı UTC zamanı, onarılabilir ve catch-up ufku nedeniyle atlanmış sayıları yazar. Biri varsa WARN, yoksa PASS, toplama kapalıysa SKIP. | OPS-R65 |
+| `qradar_access` | Which QRadar APIs the token can reach, from the latest stored access check (our own table; no call to QRadar). PASS when every API of every REST console answered. FAIL when one answered 401: the token itself is not accepted. WARN naming each refused (403) or missing (404) API with what it feeds, any API that did not answer, a console with no result yet (`not checked yet`) and a result older than twice `QRADAR_ACCESS_CHECK_INTERVAL_SECONDS`. SKIP when no enabled REST console is registered. | OPS-R69 |
 | `qradar_health` | How QRadar itself is doing, from one fresh read of the first enabled console (GET only, short timeout per read). WARN when a managed host is not `ACTIVE` or reports no status, when the average EPS is over 90 % of the EPS allocation, or when the license pool is over-allocated (EPS or FPM). SKIP when the console does not answer (`qradar_auth` reports that) or when none of managed hosts, EPS and license could be read. A figure that was not read is named in the line (`not read: ...`) and is never counted as healthy. The line also prints how many Ariel search ids QRadar holds (all users, finished and active alike); there is no threshold on that number. | OPS-R67 |
 | `email` | Alert e-mail in one line: whether `SMTP_HOST` is set, the relay, the security mode and whether a login is configured. SKIP when no relay is configured. FAIL when a username is set with `SMTP_SECURITY=none`: that configuration is refused because the password would cross the network in clear text, and the line says so. Only with `./qradar-dash doctor --check-smtp` it also connects, says EHLO and finishes the STARTTLS or SSL handshake, then quits: nothing is sent and no login is attempted; a failed handshake is a WARN with the failure code. | OPS-R68 |
 | `geo_country_source` | Where the world map's country comes from. SKIP when geography collection is off. In `lookup` mode PASS (`lookup; SOURCE and DESTINATION use GEO::LOOKUP`). In `property` mode it reads the custom-property list of each enabled console and prints each direction's property name with `present on <console>` or `absent on <console>`, or `not collected (no property)` for an empty name. WARN when a named property is absent on a console or both names are empty. FAIL when the list could not be read or no console is enabled. See "World map and the country source" below. | OPS-R30 |
@@ -3114,3 +3115,24 @@ threshold.
 **Verify:** Read the relay settings the application reports (`GET /api/v1/admin/email/settings`: host, port, mode, whether a username is set) and send a test message to your own address (`POST /api/v1/admin/email/test`). From the host, `./qradar-dash doctor --check-smtp` tries the connection and the handshake without sending anything.
 
 **Fix:** Correct the `SMTP_*` values in the production `.env`, make a private CA file readable inside the containers, then restart the backend and the worker. Notifications that were parked as dead letters are not resent; the next alert transition uses the new settings.
+
+### OPS-R69. `qradar_access` warns or fails: the token cannot reach a QRadar API
+
+**Symptom:** `doctor` shows `WARN qradar_access` or `FAIL qradar_access` with `runbook: OPS-R69`. The same facts are in `GET /api/v1/admin/qradar-access`, which lists every API with its status, the HTTP code, when it was checked, what it feeds, and the syncs the last check started.
+
+**Likely cause:** One of the following, named in the line.
+- `forbidden` (403): the token's role may not read that API. The line says what the API feeds, for example the rule inventory or the offense snapshots; those pages stay empty or stale until it is granted. The platform never asks for write access.
+- `not found` (404): the API does not exist on this QRadar version. The feature that needs it cannot work on this console.
+- `FAIL ... not accepted (401)`: QRadar does not accept the token itself. It was revoked, expired, or belongs to a disabled user or a role with no API access.
+- `no answer from ... (unreachable)` or `(error)`: QRadar did not answer that call (network, TLS, timeout or a 5xx). `qradar_auth` and `qradar_tls` say whether the whole console is affected.
+- `not checked yet`: no check has run for the console, or some APIs were never answered (an Ariel search needs a permit; a busy console defers it).
+- `older than twice the check interval`: the scheduled check has not run. The worker or beat is down (see OPS-R9 and OPS-R41).
+
+**Verify:** Run the check now and read the answer. It sends about a dozen minimal reads and one tiny search per console and is limited to two a minute (`RATE_LIMIT_ACCESS_CHECK`).
+
+```bash
+./qradar-dash doctor
+# as an administrator: POST /api/v1/admin/qradar-access/check, then GET /api/v1/admin/qradar-access
+```
+
+**Fix:** Ask the QRadar administrator to add the missing permission to the token's user role. IBM's API reference names no capability per API; the `capability_hint` of each entry (and the table in `docs/INSTALL.md`, "What the token must be allowed to read") gives the closest role permission IBM documents for the same data, which the administrator should confirm. After the change, run the check again: every API that went from refused or unreachable to answering starts the sync that depends on it (log source inventory, rule inventory, offense collection, volume collection, the health cache), once, and the answer lists them under `syncs_started`. An API that stays refused starts nothing. For a 401, issue a new token for a user whose role has API access, load it (`./deploy/load-secrets.sh`) and restart the stack.

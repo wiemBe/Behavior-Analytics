@@ -38,9 +38,11 @@ from app.models.monitoring import (
     AnomalyEvaluationFault,
     AnomalyEvaluationWatermark,
     CollectionWatermark,
+    QRadarAccessResult,
 )
 from app.models.rule import RuleMatchWindow, RuleMatchWindowStatus
 from app.models.search_cadence import SearchCadenceSetting
+from app.providers.access_catalog import ACCESS_CATALOG
 from app.providers.base import CapabilityNotSupportedError, ProviderCapability, QRadarProvider
 from app.providers.factory import build_provider_for_instance
 from app.providers.tls import build_ssl_context
@@ -90,6 +92,8 @@ _CHECK_RUNBOOKS = (
     ("geo_country_source", "OPS-R30"),
     ("rule_match_coverage", "OPS-R65"),
     ("email", "OPS-R68"),
+    # Before `qradar_health`: two older tests pin that one as the last check.
+    ("qradar_access", "OPS-R69"),
     ("qradar_health", "OPS-R67"),
 )
 _TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])")
@@ -1480,6 +1484,93 @@ class Doctor:
                 check_id, Status.WARN, f"{line}: handshake failed ({exc.code})", "OPS-R68"
             )
         return CheckResult(check_id, Status.PASS, f"{line}: handshake completed, nothing sent")
+
+    async def check_qradar_access(self) -> CheckResult:
+        """Which QRadar APIs the token can reach, from the latest stored access check.
+
+        Reads our own table (no call to QRadar). PASS when every API of every REST console
+        answered. FAIL when one answered 401: the token itself is not accepted. WARN naming
+        each refused (403) or missing (404) API with what it feeds, any that did not answer,
+        a console with no stored result yet ("not checked yet"), and a result older than twice
+        the check interval. SKIP when no enabled REST console is registered.
+        """
+        check_id = "qradar_access"
+        try:
+            instances = [i for i in await self._enabled_instances() if i.provider_kind == "rest"]
+            async with self.sessionmaker() as session:
+                rows = (await session.scalars(select(QRadarAccessResult))).all()
+        except Exception as exc:
+            return CheckResult(
+                check_id,
+                Status.SKIP,
+                f"the stored access results could not be read ({type(exc).__name__})",
+            )
+        if not instances:
+            return CheckResult(
+                check_id, Status.SKIP, "no enabled REST QRadar instance is registered"
+            )
+        feeds = {entry.id: (entry.title, entry.feeds) for entry in ACCESS_CATALOG}
+        order = {entry.id: index for index, entry in enumerate(ACCESS_CATALOG)}
+        stale_after = timedelta(seconds=2 * self.settings.qradar_access_check_interval_seconds)
+        now = self.now()
+        fail: list[str] = []
+        warn: list[str] = []
+        passed: list[str] = []
+        for instance in instances:
+            mine = sorted(
+                (row for row in rows if row.instance_id == instance.id),
+                key=lambda row: order.get(row.entry_id, len(order)),
+            )
+            if not mine:
+                warn.append(f"{instance.name}: not checked yet")
+                continue
+
+            def describe(row: QRadarAccessResult) -> str:
+                title, feeds_text = feeds.get(row.entry_id, (row.entry_id, ""))
+                return f"{title} (feeds: {feeds_text.rstrip('.')})"
+
+            unauthorized = [row for row in mine if row.status == "unauthorized"]
+            refused = [row for row in mine if row.status in ("forbidden", "not_found")]
+            silent = [row for row in mine if row.status in ("unreachable", "error")]
+            if unauthorized:
+                fail.append(
+                    f"{instance.name}: the token was not accepted (401) on "
+                    + ", ".join(row.entry_id for row in unauthorized)
+                )
+            if refused:
+                warn.append(
+                    f"{instance.name}: "
+                    + "; ".join(
+                        f"{'forbidden' if row.status == 'forbidden' else 'not found'} "
+                        f"{describe(row)}"
+                        for row in refused
+                    )
+                )
+            if silent:
+                warn.append(
+                    f"{instance.name}: no answer from "
+                    + ", ".join(f"{row.entry_id} ({row.status})" for row in silent)
+                )
+            checked = max(row.checked_at for row in mine)
+            if now - checked > stale_after:
+                warn.append(
+                    f"{instance.name}: last checked {checked.astimezone(UTC):%Y-%m-%d %H:%M} UTC, "
+                    "older than twice the check interval"
+                )
+            if len(mine) < len(ACCESS_CATALOG):
+                warn.append(
+                    f"{instance.name}: {len(ACCESS_CATALOG) - len(mine)} API(s) not checked yet"
+                )
+            if not (unauthorized or refused or silent):
+                passed.append(
+                    f"{instance.name}: {len(mine)} APIs reachable, last checked "
+                    f"{checked.astimezone(UTC):%Y-%m-%d %H:%M} UTC"
+                )
+        if fail:
+            return CheckResult(check_id, Status.FAIL, "; ".join([*fail, *warn]), "OPS-R69")
+        if warn:
+            return CheckResult(check_id, Status.WARN, "; ".join([*warn, *passed]), "OPS-R69")
+        return CheckResult(check_id, Status.PASS, "; ".join(passed))
 
     async def check_qradar_health(self) -> CheckResult:
         """How QRadar itself is doing: managed hosts, EPS against the allocation, the license.

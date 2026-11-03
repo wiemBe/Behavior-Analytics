@@ -13,7 +13,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from redis import Redis
 from sqlalchemy import select
@@ -68,6 +68,12 @@ from app.services.locks import CollectorAdvisoryLock
 from app.services.log_source_anomaly_retention import LogSourceAnomalyRetention
 from app.services.pw_pipeline import PwInstancePipeline
 from app.services.pw_retention import PwRetention
+from app.services.qradar_access import (
+    AccessProbeProvider,
+    check_console_access,
+    claim_run,
+    finish_run,
+)
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.rule_match_retention import RuleMatchRetention
 from app.services.search_executor import SearchExecutor
@@ -297,6 +303,57 @@ async def sync_log_sources(
     return await _for_each_instance(
         run, instance_name, instance_id=_parse_instance_id(instance_id)
     )
+
+
+async def check_qradar_access(instance_name: str | None = None, claimed: bool = False) -> dict:
+    """Ask each REST console which of its APIs the token can reach, and restart what unblocked.
+
+    One minimal read per catalog entry (ACC-1). A console on another provider is not checked.
+    The result is the status per entry, never a body. The run is recorded per console
+    (`claim_run`/`finish_run`): `claimed` is True when the API already recorded it, so "check
+    now" shows as running before a worker picks it up. A console with a run in progress is
+    skipped. The provider is built here, inside the claim, so a console that cannot be built
+    (no stored token) still ends its run.
+    """
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        if instance.provider_kind != "rest":
+            return {"status": "not_applicable"}
+        maker = get_sessionmaker()
+        instance_id = instance.id
+        if not claimed:
+            async with maker() as claim_session:
+                if not await claim_run(claim_session, instance_id):
+                    return {"status": "skipped_running"}
+        built: QRadarProvider | None = None
+        try:
+            built = build_provider_for_instance(instance, audit_session=session)
+            report = await check_console_access(
+                session, instance, cast(AccessProbeProvider, built), settings=get_settings()
+            )
+            # The results are committed before the run is marked finished, so a reader that
+            # sees "finished" sees the results of that run.
+            await session.commit()
+            return {
+                "status": "ok" if report.ran else "skipped_locked",
+                "checked": len(report.outcomes),
+                "not_ok": sorted(
+                    entry_id
+                    for entry_id, found in report.outcomes.items()
+                    if found.status != "ok"
+                ),
+                "deferred": report.deferred,
+                "syncs_started": report.syncs_started,
+            }
+        finally:
+            if built is not None:
+                await built.aclose()
+            async with maker() as finish_session:
+                await finish_run(finish_session, instance_id)
+
+    return await _for_each_instance(run, instance_name, needs_provider=False)
 
 
 async def collect_offenses(instance_name: str | None = None) -> dict:
@@ -1688,6 +1745,11 @@ def collect_metrics_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="sync_log_sources")
 def sync_log_sources_task(instance_name: str | None = None) -> dict:
     return _run(sync_log_sources(instance_name))
+
+
+@celery_app.task(name="check_qradar_access")
+def check_qradar_access_task(instance_name: str | None = None, claimed: bool = False) -> dict:
+    return _run(check_qradar_access(instance_name, claimed))
 
 
 @celery_app.task(name="collect_offenses")

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import get_principal, requires
 from app.api.routes import (
     admin_email,
+    admin_qradar_access,
     alerts,
     anomalies,
     ariel_load,
@@ -148,6 +149,10 @@ api_router.include_router(
 api_router.include_router(catchall.router, dependencies=[Depends(requires(PERM_FLEET_READ))])
 # D-10 geography: aggregate events per country for the home map; `read:geo` (`read:*`).
 api_router.include_router(geo.router, dependencies=[Depends(requires(PERM_GEO_READ))])
+# QRadar access check (ACC-1): which APIs the token can reach. `admin:*` guards every method.
+api_router.include_router(
+    admin_qradar_access.router, dependencies=[Depends(requires(PERM_ADMIN))]
+)
 # The outage alert policy is administrative: it changes what pages a human, so
 # Alert e-mail templates, recipients and the test message (MAIL-1). `admin:notifications`
 # guards every method, reads included; `read:*` does not satisfy it.
