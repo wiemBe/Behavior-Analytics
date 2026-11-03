@@ -34,14 +34,18 @@ const RANGE_LABEL = {
   "30d": "range30d",
 } as const;
 
+/** The access check cancels its probe search unread: for this caller CANCELED is its normal end. */
+const ACCESS_CHECK = "ACCESS_CHECK";
+
 /**
  * The failed outcomes: errors, cancellations, timeouts, abandoned searches (their worker stopped
- * before it recorded an end) and searches that found Ariel unavailable.
+ * before it recorded an end) and searches that found Ariel unavailable. A cancelled probe of the
+ * access check is not one of them.
  */
 function failedOf(row: ArielCallerSummary): number {
   return (
     (row.outcomes.ERROR ?? 0) +
-    (row.outcomes.CANCELED ?? 0) +
+    (row.caller === ACCESS_CHECK ? 0 : (row.outcomes.CANCELED ?? 0)) +
     (row.outcomes.TIMEOUT ?? 0) +
     (row.outcomes.ABANDONED ?? 0) +
     (row.outcomes.PROVIDER_UNAVAILABLE ?? 0)
@@ -218,6 +222,9 @@ function Body({ range }: { range: SummaryRangeId }) {
         </table>
       </TableScroll>
       <p className="sl-hint">{t("note")}</p>
+      {summary.callers.some((row) => row.caller === ACCESS_CHECK) ? (
+        <p className="sl-hint">{t("accessCheckNote")}</p>
+      ) : null}
     </>
   );
 }

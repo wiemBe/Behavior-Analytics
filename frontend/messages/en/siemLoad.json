@@ -145,6 +145,7 @@
     "records": "Records returned",
     "unreported": "{count, number} unreported",
     "note": "Percentiles cover completed searches only. Totals cover every finished search; a total marked ≥ leaves out searches for which QRadar reported no figure, and a dash means none did. Timeouts are the part of Failed that ran out of time. Abandoned searches are counted in Failed: their worker stopped before it recorded an end, so they carry no measurement.",
+    "accessCheckNote": "An access check cancels its probe search unread; a cancelled probe is its normal end and is not counted in Failed.",
     "emptyTitle": "No search was recorded in the last {range}.",
     "emptyHelp": "The window holds no recorded search, so there are no figures to show.",
     "couldNotRead": "The per-caller summary could not be read.",
@@ -164,7 +165,8 @@
     "SCHEDULED_SEARCH": "Scheduled searches",
     "MANUAL_RUN": "Manual search runs",
     "QRADAR_HEALTH": "QRadar health",
-    "DOCTOR_AQL": "Doctor AQL check"
+    "DOCTOR_AQL": "Doctor AQL check",
+    "ACCESS_CHECK": "Access check"
   },
   "detail": {
     "loadingWhat": "QRadar's health in detail",

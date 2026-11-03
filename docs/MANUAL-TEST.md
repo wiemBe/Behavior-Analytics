@@ -2230,7 +2230,7 @@ curl -s -X POST --cookie "$SESSION" -H "Origin: https://<host>" https://<host>/a
 - The verdict says "Every API the application uses is reachable with this token." when the token has the rights, and the table has 14 rows on 0.1.11, each "Reachable" with a 2xx code. A refused API reads "Forbidden" (403), a missing one "Not found" (404), a rejected token "Token not accepted" (401), one that did not answer "Did not answer", and one never asked "Not checked yet"; each row says what it feeds. While the console's Ariel is not up (for example just after a restart) the Ariel rows read "Error" (HTTP 503) and clear at the next check.
 - The response of the check is `202` with `check_running` true; the page ("A check is running. This page reads the result every … s.") and `GET /api/v1/admin/qradar-access` show `check_running` true for a few seconds and then false, with the times of the last start and finish. The third request within a minute is refused with `429` ("Too many checks were requested. Try again in … s."): the limit is `RATE_LIMIT_ACCESS_CHECK`, `2/minute` by default. That is not a failure.
 - `doctor` `qradar_access` is `PASS` (`<n> APIs reachable, last checked <UTC time>`), or a WARN naming each refused, missing or unanswered API with what it feeds, or FAIL when the token is rejected (OPS-R71). A result older than twice the interval is a WARN.
-- The probe search stays in QRadar's list until QRadar's own retention removes it, because it had already completed when the cancel was sent. It adds one id to "Search ids held" per check and is not a failure. It never selects a payload.
+- The probe search stays in QRadar's list until QRadar's own retention removes it, because it had already completed when the cancel was sent. It adds one id to "Search ids held" per check and is not a failure. The probe is recorded: on the SIEM load page (`/admin/siem-load`), "Load by caller" lists one search per check under "Access check" (the row is "canceled", with no record count). It never selects a payload.
 - The check changes no data in QRadar and no setting of the platform.
 
 **Record:** The number of entries and the status of each one that is not `ok` (with its HTTP code); the time of the last check; whether the third request gave `429`; the `doctor` line; whether the probe search was found.
@@ -2312,6 +2312,8 @@ The in-app guide is at `/guide`; it is open to everyone who is signed in and nee
 
 ### 14. Read-only against QRadar
 
+Which commands send an Ariel search: plain `doctor` sends none (its `qradar_access` line reads the stored result of the last access check; it probes nothing itself); `doctor --aql` sends one per collection family query, up to 11 per console (MT-136, caller `DOCTOR_AQL`); the access check sends exactly one probe search per console per check, every 6 hours and on each "Check now" (MT-134, caller `ACCESS_CHECK`). Every search the platform sends is recorded in `ariel_search_run`.
+
 Nothing in this tool writes to QRadar (the fourth of the four rules in `docs/OPERATIONS.md`). The provider interface (`app/providers/base.py`) has no create, update or delete method for QRadar configuration; it has only the Ariel search lifecycle methods (`create_ariel_search`, `get_ariel_search_status`, `get_ariel_search_results`, `cancel_ariel_search`). The requests the REST provider makes to QRadar are, in the code: `GET /system/about`, `GET /config/event_sources/log_source_management/log_sources`, `…/log_source_types`, `…/log_source_groups`, `GET /config/event_sources/custom_properties/…`, `GET /analytics/rules`, `GET /analytics/building_blocks`, `GET /siem/offenses`, `GET /ariel/searches/<id>` and `…/results`, and, to record an Ariel search, `POST /ariel/searches` and, to cancel its own search, `DELETE /ariel/searches/<id>`. The last two create and delete a temporary search object in QRadar; they do not create, change or delete a configuration object (rule, log source, custom property, offense, reference data).
 
 The place of the QRadar console's audit log is not documented in this repository; the console-side check is therefore a **console administrator step**.
@@ -2328,7 +2330,7 @@ The place of the QRadar console's audit log is not documented in this repository
 
 **Expected:**
 
-- The `qradar_auth` line says `GET /system/about succeeded; QRadar <version>` (a read-only `GET`). If `qradar_tls` is PASS it says `verified certificate expires in <n> days`. `doctor` does not run an Ariel search and does not write to QRadar.
+- The `qradar_auth` line says `GET /system/about succeeded; QRadar <version>` (a read-only `GET`). If `qradar_tls` is PASS it says `verified certificate expires in <n> days`. Plain `doctor` does not run an Ariel search and does not write to QRadar (`doctor --aql` and the access check do send searches; see the intro of this section, MT-136 and MT-134).
 
 **Record:** The status of the two lines and the QRadar version.
 

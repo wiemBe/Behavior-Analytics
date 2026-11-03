@@ -550,9 +550,11 @@ def _recent(
     wall: int | None,
     execution: int | None = None,
     records: int | None = None,
+    caller: str = "RULE_MATCH",
 ) -> SimpleNamespace:
     return SimpleNamespace(
         submitted_at=NOW - timedelta(minutes=minutes_ago),
+        caller=caller,
         outcome=outcome,
         wall_ms=wall,
         qradar_execution_ms=execution,
@@ -678,6 +680,24 @@ async def test_current_windows_count_by_submit_time_and_do_the_percentile_and_su
     assert (fifteen["submitted"], fifteen["failed"], fifteen["wall_ms_sum"]) == (5, 2, 9450)
     assert (sixty["submitted"], sixty["completed"], sixty["refused"]) == (7, 3, 1)
     assert sixty["wall_ms_p50"] == 300
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_access_probe_is_not_failed_but_any_other_cancel_is(
+    permit_pool: dict[str, Any],
+) -> None:
+    cancelled, error = ariel_log.OUTCOME_CANCELED, ariel_log.OUTCOME_ERROR
+    recent = [
+        _recent(1, cancelled, 10, caller="ACCESS_CHECK"),
+        _recent(2, cancelled, 10, caller="ACCESS_CHECK"),
+        _recent(3, error, 10, caller="ACCESS_CHECK"),
+        _recent(4, cancelled, 10, caller="HISTORY"),
+    ]
+    windows = (await ariel_log.load_current(_Reads(recent=recent), now=NOW))[  # type: ignore[arg-type]
+        "windows"
+    ]
+    # The probe's two cancels are its normal end; its error and another caller's cancel fail.
+    assert (windows["minutes_5"]["submitted"], windows["minutes_5"]["failed"]) == (4, 2)
 
 
 @pytest.mark.asyncio
