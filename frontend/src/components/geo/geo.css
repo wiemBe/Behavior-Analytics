@@ -60,6 +60,37 @@
   }
 }
 
+/* A body with no map to draw (not collected, insufficient data). On the page it is the plain
+   column it always was. In a widget the frame is taller than three lines of text, so the state
+   block takes the room the header leaves and sits in the middle of it, in a column as wide as
+   the sentence reads well, with the facts under it. Auto margins centre it and still let it
+   scroll from the top when the frame is shorter than the block. */
+.geo-hollow-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--widget-gap);
+}
+.tw-body > .geo-hollow {
+  flex: 1 1 auto;
+  display: flex;
+}
+.tw-body > .geo-hollow > .geo-grid,
+.tw-body > .geo-hollow > .geo-hollow-body {
+  margin: auto;
+  width: 100%;
+  max-width: var(--geo-empty-max-w);
+}
+/* One column whatever the container's width: there is no table beside it. */
+.tw-body > .geo-hollow > .geo-grid {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: none;
+}
+.tw-body > .geo-hollow .geo-main,
+.tw-body > .geo-hollow .geo-facts {
+  grid-area: auto;
+}
+
 /* --- the map ----------------------------------------------------------------- */
 
 .geo-plot {

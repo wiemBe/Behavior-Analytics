@@ -4112,6 +4112,23 @@ export interface GeoRemainders {
   UNPARSEABLE: number;
 }
 
+/** One way the buckets of a range were collected, and how many were (GEO-6). */
+export interface GeoCollectedWay {
+  country_source: GeoCountrySource;
+  /** The property read in PROPERTY mode, null in LOOKUP mode. */
+  country_property: string | null;
+  buckets: number;
+}
+
+/**
+ * How the plotted buckets were collected: the distinct ways present, and the count of buckets
+ * stored before 0.1.11, which did not record it (GEO-6).
+ */
+export interface GeoCollectedWith {
+  ways: GeoCollectedWay[];
+  unknown_buckets: number;
+}
+
 export interface GeoCountries {
   direction: GeoDirection;
   since: string;
@@ -4127,8 +4144,14 @@ export interface GeoCountries {
    */
   latest_bucket_end?: string | null;
   unresolved_note: string;
+  /** The current setting, not what the plotted buckets used: that is `collected_with`. */
   country_source?: GeoCountrySource | null;
   country_property?: string | null;
+  /**
+   * How the measured buckets of the range were collected (GEO-6); null while NOT_COLLECTED.
+   * Absent from an older backend: the page then falls back to the current setting.
+   */
+  collected_with?: GeoCollectedWith | null;
 }
 
 function geoCountriesPath(window: FleetWindow, direction: GeoDirection): string {

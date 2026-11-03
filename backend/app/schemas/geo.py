@@ -87,6 +87,25 @@ class GeoCoverageOut(BaseModel):
     expected_buckets: int
 
 
+class GeoCollectedWayOut(BaseModel):
+    """One way the buckets of the range were collected, and how many were."""
+
+    country_source: GeoCountrySource
+    #: The property read in `PROPERTY` mode, otherwise null.
+    country_property: str | None = None
+    buckets: int
+
+
+class GeoCollectedWithOut(BaseModel):
+    """How the plotted buckets were collected: the distinct ways present, no per-bucket list.
+
+    `unknown_buckets` counts the buckets stored before 0.1.11, which did not record it.
+    """
+
+    ways: list[GeoCollectedWayOut] = Field(default_factory=list)
+    unknown_buckets: int = 0
+
+
 class GeoCountriesOut(BaseModel):
     direction: GeoDirection
     since: datetime
@@ -103,10 +122,14 @@ class GeoCountriesOut(BaseModel):
     #: The end of the newest measured bucket in range for this direction. `None` while
     #: `status` is NOT_COLLECTED: no bucket was measured, so no answer has an age.
     latest_bucket_end: datetime | None = None
+    #: The current setting, not what the buckets used (that is `collected_with`).
     #: PROPERTY reads the configured property. LOOKUP is GEO::LOOKUP.
     country_source: GeoCountrySource
     #: The configured property for this direction in property mode, otherwise null.
     country_property: str | None = None
+    #: How the measured buckets of the range were collected. `None` while `status` is
+    #: NOT_COLLECTED: no bucket, so nothing to say about one.
+    collected_with: GeoCollectedWithOut | None = None
     unresolved_note: str = UNRESOLVED_NOTE
     unresolved_note_code: str
     unresolved_note_params: dict[str, MessageParamValue] = Field(default_factory=dict)

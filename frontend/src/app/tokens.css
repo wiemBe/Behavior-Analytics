@@ -322,4 +322,6 @@
   --geo-table-max-h: 26rem;
   --geo-table-min-h: 14rem;
   --geo-country-col: 16ch;
+  /* The width of the state block in a widget that has no map to draw (GEO-6). */
+  --geo-empty-max-w: 48ch;
 }

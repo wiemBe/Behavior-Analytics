@@ -346,6 +346,148 @@ class TestLatestBucketEnd:
         assert body["latest_bucket_end"] is None
 
 
+def tagged(inst, index, source, prop, **kw):  # type: ignore[no-untyped-def]
+    """A country row of one bucket that records how it was collected."""
+    out = row(inst, index, "US", 10, **kw)
+    out.country_source = source
+    out.country_property = prop
+    return out
+
+
+class TestCollectedWith:
+    """GEO-6: how the plotted buckets were collected, not what the setting says now."""
+
+    def test_one_source_in_the_range(self, db_schema) -> None:
+        def rows(inst):  # type: ignore[no-untyped-def]
+            out = []
+            for index in range(3):
+                out += [
+                    tagged(inst, index, "PROPERTY", "Source Geographic Location"),
+                    # A second row of the same bucket is still one bucket.
+                    row(inst, index, "DE", 5),
+                ]
+                out[-1].country_source = "PROPERTY"
+                out[-1].country_property = "Source Geographic Location"
+            return out
+
+        seed(rows)
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["collected_with"] == {
+            "ways": [
+                {
+                    "country_source": "PROPERTY",
+                    "country_property": "Source Geographic Location",
+                    "buckets": 3,
+                }
+            ],
+            "unknown_buckets": 0,
+        }
+
+    def test_two_sources_are_listed_most_buckets_first(self, db_schema) -> None:
+        seed(
+            lambda inst: [
+                tagged(inst, 0, "LOOKUP", None),
+                tagged(inst, 1, "PROPERTY", "Source Geographic Location"),
+                tagged(inst, 2, "PROPERTY", "Source Geographic Location"),
+            ]
+        )
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["collected_with"]["ways"] == [
+            {
+                "country_source": "PROPERTY",
+                "country_property": "Source Geographic Location",
+                "buckets": 2,
+            },
+            {"country_source": "LOOKUP", "country_property": None, "buckets": 1},
+        ]
+        assert body["collected_with"]["unknown_buckets"] == 0
+
+    def test_the_same_source_with_another_property_is_another_way(self, db_schema) -> None:
+        seed(
+            lambda inst: [
+                tagged(inst, 0, "PROPERTY", "Source Geographic Location"),
+                tagged(inst, 1, "PROPERTY", "Other Country"),
+            ]
+        )
+        ways = Client(VIEWER).get(URL, params=params()).json()["collected_with"]["ways"]
+        assert [(w["country_property"], w["buckets"]) for w in ways] == [
+            ("Other Country", 1),
+            ("Source Geographic Location", 1),
+        ]
+
+    def test_buckets_stored_before_the_columns_existed_are_counted_as_unknown(
+        self, db_schema
+    ) -> None:
+        seed(
+            lambda inst: [
+                row(inst, 0, "US", 10),
+                row(inst, 0, None, 3, kind="UNRESOLVED"),
+                row(inst, 1, "US", 10),
+                tagged(inst, 2, "LOOKUP", None),
+            ]
+        )
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["collected_with"] == {
+            "ways": [{"country_source": "LOOKUP", "country_property": None, "buckets": 1}],
+            "unknown_buckets": 2,
+        }
+
+    def test_only_unknown_buckets_name_no_way(self, db_schema) -> None:
+        seed(lambda inst: [row(inst, 0, "US", 10)])
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["collected_with"] == {"ways": [], "unknown_buckets": 1}
+
+    def test_it_follows_the_range_and_the_direction(self, db_schema) -> None:
+        seed(
+            lambda inst: [
+                tagged(inst, 0, "LOOKUP", None),
+                tagged(inst, 1, "PROPERTY", "P", direction="DESTINATION"),
+                # Outside the range.
+                tagged(inst, 24, "PROPERTY", "Elsewhere"),
+            ]
+        )
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["collected_with"]["ways"] == [
+            {"country_source": "LOOKUP", "country_property": None, "buckets": 1}
+        ]
+
+    def test_two_instances_count_their_buckets_apart(self, db_schema) -> None:
+        async def _seed(s):  # type: ignore[no-untyped-def]
+            for _ in range(2):
+                inst = await make_instance(s)
+                s.add(tagged(inst, 0, "LOOKUP", None))
+            await s.flush()
+
+        run(_seed)
+        ways = Client(VIEWER).get(URL, params=params()).json()["collected_with"]["ways"]
+        assert ways == [{"country_source": "LOOKUP", "country_property": None, "buckets": 2}]
+
+    def test_an_empty_range_says_nothing_about_how_it_was_collected(self, db_schema) -> None:
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["status"] == "NOT_COLLECTED"
+        assert body["collected_with"] is None
+
+    def test_the_setting_is_kept_beside_it_and_may_differ(self, db_schema) -> None:
+        seed(lambda inst: [tagged(inst, 0, "LOOKUP", None)])
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["country_source"] == "PROPERTY"
+        assert body["collected_with"]["ways"][0]["country_source"] == "LOOKUP"
+
+    def test_the_statement_count_does_not_grow_with_the_ways_or_the_buckets(
+        self, db_schema
+    ) -> None:
+        def many(inst):  # type: ignore[no-untyped-def]
+            return [
+                tagged(inst, index, "PROPERTY", f"Property {index % 5}") for index in range(12)
+            ]
+
+        seed(many)
+        client = Client(VIEWER)
+        body = client.get(URL, params=params()).json()
+        assert len(body["collected_with"]["ways"]) == 5
+        assert client.statements == 2
+
+
 class TestRange:
     @pytest.mark.parametrize(
         "over",

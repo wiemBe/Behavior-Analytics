@@ -20,6 +20,7 @@ import type { GeoCountries } from "@/lib/api";
 import { formatCount, formatShare, type FormatLocale } from "@/lib/format";
 
 import { GeoMap } from "./GeoMap";
+import { GeoProvenance } from "./GeoProvenance";
 import { countryName, rowsOf, scaleClasses, undrawn, type ScaleClass } from "./geoModel";
 import { useWorld } from "./world";
 
@@ -53,13 +54,15 @@ export function GeographyBody({
 
   if (data.status === "NOT_COLLECTED") {
     return (
-      <>
-        <p className="tw-state">
-          <strong>{t("state.notCollectedLead")}</strong>{" "}
-          {t("state.notCollected", { direction: directionName })}
-        </p>
-        <Coverage data={data} locale={locale} />
-      </>
+      <div className="geo-hollow">
+        <div className="geo-hollow-body">
+          <p className="tw-state">
+            <strong>{t("state.notCollectedLead")}</strong>{" "}
+            {t("state.notCollected", { direction: directionName })}
+          </p>
+          <Coverage data={data} locale={locale} />
+        </div>
+      </div>
     );
   }
 
@@ -72,7 +75,7 @@ export function GeographyBody({
     world.status === "ok" ? undrawn(data.countries, world.world.codes) : [];
 
   return (
-    <div className="geo">
+    <div className={drawsMap ? "geo" : "geo geo-hollow"}>
       <div className="geo-grid">
         {data.status === "PARTIAL" || atLeast ? (
           <ul className="tw-qual geo-qual">
@@ -296,14 +299,6 @@ function Facts({
   const remainders = data.remainders;
   const note =
     locale === "en" && data.unresolved_note ? data.unresolved_note : t("unresolvedNote");
-  const provenance =
-    data.country_source === "PROPERTY"
-      ? data.country_property
-        ? t("fromProperty", { property: data.country_property })
-        : t("fromPropertyUnnamed")
-      : data.country_source === "LOOKUP"
-        ? t("fromLookup")
-        : null;
   return (
     <>
       <dl>
@@ -328,7 +323,7 @@ function Facts({
           <p>{t("unparseableNote")}</p>
         </Disclosure>
       ) : null}
-      {provenance ? <p className="tw-note">{provenance}</p> : null}
+      <GeoProvenance data={data} />
     </>
   );
 }

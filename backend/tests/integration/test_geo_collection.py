@@ -625,3 +625,65 @@ class TestPropertyMode:
                 await collector(db_session, provider, **PROPERTY_MODE).collect(inst)
             counts.append(len(statements))
         assert counts[0] == counts[1]
+
+
+@pytest.mark.usefixtures("pin_cadence")
+class TestProvenance:
+    """GEO-6: every stored bucket records how it was collected, from the run's own settings."""
+
+    async def test_lookup_mode_stores_lookup_and_no_property_on_every_row(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = Script(steady([country("US", 40), unresolved(7)]))
+
+        # A configured property is not used in lookup mode, so it is not recorded either.
+        await collector(
+            db_session, provider, geo_source_country_property=PROP
+        ).collect(inst)
+
+        rows = await stored(db_session)
+        assert rows and {(r.country_source, r.country_property) for r in rows} == {
+            ("LOOKUP", None)
+        }
+
+    async def test_property_mode_stores_property_and_the_name_per_direction(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = Script(steady([value("US", 40), value("", 7)]))
+
+        await collector(
+            db_session,
+            provider,
+            **PROPERTY_MODE,
+            # A second name the mock console lists, so each direction reads its own.
+            geo_destination_country_property="Unused Property",
+        ).collect(inst)
+        rows = await stored(db_session)
+        pairs = {(r.direction, r.country_source, r.country_property) for r in rows}
+        assert pairs == {
+            ("SOURCE", "PROPERTY", PROP),
+            ("DESTINATION", "PROPERTY", "Unused Property"),
+        }
+
+    async def test_recollecting_a_bucket_replaces_the_provenance_with_the_new_runs(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        await collector(db_session, Script(steady([country("US", 4)]))).collect(inst)
+        # Simulate a bucket stored by 0.1.10: NULL provenance.
+        await db_session.execute(
+            text("UPDATE geo_country_bucket SET country_source = NULL, country_property = NULL")
+        )
+        await db_session.commit()
+        assert {r.country_source for r in await stored(db_session)} == {None}
+
+        # The watermark is behind nothing, so rewind it to collect the same buckets again.
+        wm = await watermark(db_session, inst, SOURCE)
+        wm.watermark_at = None
+        await db_session.commit()
+        await collector(db_session, Script(steady([country("US", 5)]))).collect(inst)
+
+        rows = await stored(db_session, direction="SOURCE")
+        assert rows and {r.country_source for r in rows} == {"LOOKUP"}
