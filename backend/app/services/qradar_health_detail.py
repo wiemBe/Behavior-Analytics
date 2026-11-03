@@ -174,9 +174,9 @@ def host_health(
             reason=reason_for("metric_not_reported"),
         )
     stages = [
-        (metric, rows[(metric, "")].max_value)
+        (metric, rows[(metric, spec.STAGE_BUSY_ELEMENT)].max_value)
         for metric in spec.STAGE_METRICS
-        if (metric, "") in rows
+        if (metric, spec.STAGE_BUSY_ELEMENT) in rows
     ]
     busiest = max(stages, key=lambda item: item[1], default=None)
     spill = _cell(rows, spec.METRIC_THROTTLE_SPILL, state)

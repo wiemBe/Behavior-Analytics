@@ -251,6 +251,42 @@ class TestHostCells:
         assert health.pipeline.busiest_stage is None
 
 
+class TestBusiestStage:
+    @staticmethod
+    def _rows(*items: tuple[str, str, float]):  # type: ignore[no-untyped-def]
+        from app.models.qradar_health import QRadarHealthMetricBucket as Row
+
+        return {
+            (metric, element): Row(
+                instance_id=uuid.uuid4(), bucket_start=NOW, bucket_end=NOW, host="h",
+                metric=metric, element=element, max_value=value, avg_value=value, samples=3,
+            )
+            for metric, element, value in items
+        }
+
+    def test_the_busiest_stage_is_the_highest_runnable_share(self) -> None:
+        rows = self._rows(
+            ("AggOutThreadInfo", "RunnableRatio", 0.0),
+            ("WorkerThreadInfo", "RunnableRatio", 80.0),
+            ("EventParserThreadInfo", "RunnableRatio", 12.5),
+        )
+        stage = host_health(rows, "h", PartState.OK, SETTINGS).pipeline.busiest_stage
+        assert stage is not None and (stage.stage, stage.busy_percent) == ("Worker", 80.0)
+
+    def test_an_idle_host_shows_a_measured_zero_not_a_hundred(self) -> None:
+        rows = self._rows(("AggOutThreadInfo", "RunnableRatio", 0.0))
+        stage = host_health(rows, "h", PartState.OK, SETTINGS).pipeline.busiest_stage
+        assert stage is not None and stage.busy_percent == 0.0
+
+    def test_a_window_with_only_old_stage_rows_has_no_busiest_stage(self) -> None:
+        rows = self._rows(("AggOutThreadInfo", "", 100.0), ("WorkerThreadInfo", "", 66.0))
+        assert host_health(rows, "h", PartState.OK, SETTINGS).pipeline.busiest_stage is None
+
+    def test_a_host_with_no_stage_rows_has_no_busiest_stage(self) -> None:
+        rows = self._rows(("SystemCPU", "", 30.0))
+        assert host_health(rows, "h", PartState.OK, SETTINGS).pipeline.busiest_stage is None
+
+
 class TestDoctorWiring:
     def test_the_checks_are_registered_before_qradar_health_with_their_runbooks(self) -> None:
         ids = list(doctor_module._CHECK_RUNBOOKS)

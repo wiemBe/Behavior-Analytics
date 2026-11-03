@@ -27,7 +27,8 @@ PIPELINE_METRICS: tuple[str, ...] = (
     "ECTCPTOEPDiskSize",
     "FlowGovernerQueueDiskSize",
 )
-#: Busy share (percent, 0-100) of each pipeline stage; the page shows the busiest.
+#: Busy share (percent, 0-100) of each pipeline stage; the page shows the busiest. A stage
+#: metric holds one event per thread state in `Element`; the busy share is the RUNNABLE one.
 STAGE_METRICS: tuple[str, ...] = (
     "AggOutThreadInfo",
     "AggregationThreadInfo",
@@ -38,6 +39,19 @@ STAGE_METRICS: tuple[str, ...] = (
     "PreprocessorThreadInfo",
     "QueuedEventThrottleFilterThreadInfo",
     "WorkerThreadInfo",
+)
+#: The `Element` of a stage metric that is the busy share: threads in the RUNNABLE state.
+STAGE_BUSY_ELEMENT = "RunnableRatio"
+#: The other thread states a stage metric reports. They are not stored and not an error.
+STAGE_OTHER_STATES: frozenset[str] = frozenset(
+    {
+        "BlockedRatio",
+        "CpuUtil",
+        "NewRatio",
+        "TerminatingRatio",
+        "TimedWaitRatio",
+        "WaitingRatio",
+    }
 )
 ARIEL_METRICS: tuple[str, ...] = ("RunningQueries", "HostRunningQueries")
 
@@ -71,7 +85,9 @@ EXCLUDED_QID_NAME = "Information Message"
 NOTIFICATION_TOP = 50
 
 #: Stored on the run row; bump it when a query or the fold changes meaning.
-QUERY_VERSION = 1
+#: 2: a stage metric is stored per thread state, only `RunnableRatio` (before, `''` held the
+#: max over all seven states, which is not a busy share).
+QUERY_VERSION = 2
 
 #: What the API calls the metrics. The fullest-mount, queue and spill series use these.
 METRIC_DISK_USAGE = "DiskUsage"
