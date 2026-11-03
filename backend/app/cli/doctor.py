@@ -27,6 +27,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import and_, case, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.cli import doctor_aql
 from app.cli.doctor_qradar_health import disk_line, pipeline_line
 from app.collectors.offense_collector import WATERMARK_STALLED_KEY
 from app.core.config import Environment, Settings, get_settings, unknown_setting_names
@@ -101,6 +102,8 @@ _CHECK_RUNBOOKS = (
     ("qradar_access", "OPS-R71"),
     ("qradar_health", "OPS-R67"),
 )
+#: `doctor --aql` (AQL-1): every `aql_<family>` check points to one runbook entry.
+_AQL_CHECK_RUNBOOKS = tuple((check_id, doctor_aql.RUNBOOK) for check_id in doctor_aql.CHECK_IDS)
 _TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])")
 _CREDENTIAL_URL_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
 _SECRET_ASSIGNMENT_RE = re.compile(
@@ -496,8 +499,10 @@ class Doctor:
         backend_version_url: str = BACKEND_VERSION_URL,
         environ: Mapping[str, str] | None = None,
         check_smtp: bool = False,
+        check_aql: bool = False,
     ) -> None:
         self.check_smtp = check_smtp
+        self.check_aql = check_aql
         self.settings = settings or get_settings()
         self.sessionmaker = sessionmaker or get_sessionmaker()
         self.now = now or (lambda: datetime.now(UTC))
@@ -1884,7 +1889,41 @@ class Doctor:
                     runbook,
                 )
             results.append(result)
+        if self.check_aql:
+            results.extend(await self.run_aql())
         return results
+
+    async def run_aql(self) -> list[CheckResult]:
+        """The opt-in `--aql` checks: each family's real query, once per REST console.
+
+        They run after the ordinary checks, one at a time, and keep their own per-search
+        timeout (`DOCTOR_AQL_TIMEOUT_SECONDS`) instead of the 10 s of the other checks.
+        """
+        try:
+            instances = await self._enabled_instances()
+        except Exception as exc:
+            return [
+                CheckResult(
+                    check_id,
+                    Status.SKIP,
+                    f"the registered consoles could not be read ({type(exc).__name__})",
+                    runbook,
+                )
+                for check_id, runbook in _AQL_CHECK_RUNBOOKS
+            ]
+        lines = await doctor_aql.run_aql_checks(
+            settings=self.settings,
+            sessionmaker=self.sessionmaker,
+            instances=instances,
+            provider_factory=self.provider_factory,
+            now=self.now(),
+        )
+        return [
+            CheckResult(
+                f"aql_{line.family}", Status(line.verdict), line.message, doctor_aql.RUNBOOK
+            )
+            for line in lines
+        ]
 
 
 def render_text(results: Sequence[CheckResult]) -> str:
@@ -1905,9 +1944,17 @@ def render_json(results: Sequence[CheckResult]) -> str:
     return json.dumps(payload, default=str, sort_keys=True)
 
 
-async def _async_main(as_json: bool, check_smtp: bool = False) -> int:
+async def _async_main(as_json: bool, check_smtp: bool = False, check_aql: bool = False) -> int:
     try:
-        doctor = Doctor(check_smtp=True) if check_smtp else Doctor()
+        # Only the flags that were given reach the constructor: plain `doctor` is `Doctor()`.
+        if check_smtp and check_aql:
+            doctor = Doctor(check_smtp=True, check_aql=True)
+        elif check_aql:
+            doctor = Doctor(check_aql=True)
+        elif check_smtp:
+            doctor = Doctor(check_smtp=True)
+        else:
+            doctor = Doctor()
         results = await doctor.run()
         print(render_json(results) if as_json else render_text(results))
         return exit_code(results)
@@ -1925,8 +1972,16 @@ def main() -> int:
         action="store_true",
         help="also connect to the SMTP relay and finish the TLS handshake (nothing is sent)",
     )
+    parser.add_argument(
+        "--aql",
+        action="store_true",
+        help=(
+            "also send each collection family's real query once to every REST console "
+            "(read-only, results discarded; up to 11 searches per console)"
+        ),
+    )
     args = parser.parse_args()
-    return asyncio.run(_async_main(args.json, args.check_smtp))
+    return asyncio.run(_async_main(args.json, args.check_smtp, args.aql))
 
 
 if __name__ == "__main__":

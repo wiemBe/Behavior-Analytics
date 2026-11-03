@@ -22,7 +22,7 @@ Dört kural her bölümde geçerlidir:
 7. [Geçmiş okuma](#geçmiş-okuma)
 8. [Kapsam eşlemeleri](#kapsam-eşlemeleri)
 9. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R71; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R72; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -1097,6 +1097,7 @@ bağlanmaz.
 | `qradar_disk` | Disk use of QRadar's hosts, from the latest stored run of the `QRADAR_HEALTH` family (not a live read). The fullest allowlisted mount of each host (`QRADAR_HEALTH_DISK_MOUNTS`) is judged: WARN at `QRADAR_HEALTH_DISK_WARN_PERCENT` (default 85 %), FAIL at `QRADAR_HEALTH_DISK_FAIL_PERCENT` (default 95 %), naming the host, the mount, the share and the free space. A missing, failed, partial or stale run is a WARN that says `not collected since <UTC time>` (or `not collected yet`); a host that reported no allowlisted mount is named as unread. It is never a PASS. SKIP when `QRADAR_HEALTH_COLLECTION_ENABLED` is off or no console is registered. | OPS-R69 |
 | `qradar_pipeline` | QRadar's event pipeline, from the same stored run. WARN when a host spilled events to disk because it is over its EPS allocation (`throttle spill` above zero) or when its rule-engine queue is above `QRADAR_HEALTH_CRE_QUEUE_WARN` (default 10,000 events), naming the host. A figure that was not read, and a missing, failed, partial or stale run, are WARNs with the same `not collected since ...` wording, never a PASS. SKIP when the family is off or no console is registered. | OPS-R70 |
 | `qradar_access` | Which QRadar APIs the token can reach, from the latest stored access check (our own table; no call to QRadar). PASS when every API of every REST console answered. FAIL when one answered 401: the token itself is not accepted. WARN naming each refused (403) or missing (404) API with what it feeds, any API that did not answer, a console with no result yet (`not checked yet`) and a result older than twice `QRADAR_ACCESS_CHECK_INTERVAL_SECONDS`. SKIP when no enabled REST console is registered. | OPS-R69 |
+| `aql_<family>` (`aql_log_source_volume`, `aql_rule_match`, `aql_history`, `aql_waf_collection`, `aql_ips_collection`, `aql_property_watch`, `aql_catchall_senders`, `aql_geo_collection`, `aql_qradar_health`) | Only with `./qradar-dash doctor --aql` (plain `doctor` sends no search). Sends each collection family's real query once to every enabled REST console and says whether QRadar accepts it. PASS: the search completed (a truncated result is still a PASS and says `truncated`); the line carries the row count and the time, never a value. FAIL: QRadar refused the query (HTTP 422) or the token (401/403), a custom property the query needs is absent from the console (`geo_collection`, `qradar_health`), or the query cannot be built from the configuration; the line prints the HTTP status, the family's query version and the property names from our settings, and never QRadar's reply. WARN: a timeout (`DOCTOR_AQL_TIMEOUT_SECONDS`), an unavailable console, a search QRadar created and then errored, or no free Ariel permit; this proves nothing about the query. SKIP: the family is switched off, nothing is configured for it (no enabled WAF profile, IPS profile or property watch, an empty geo property), the console uses MCP (AQL runs only on the REST provider), or no console is registered. A family that needs a configured entity uses the first enabled one by QRadar log source id (property watch: by watch id) and the line names it. The window is the latest complete 5-minute bucket and the row cap is the smallest the method allows (1 row). One family and one console at a time, through the Ariel permit pool: at most 11 searches per console (WAF 2, QRADAR_HEALTH 2, the other seven families 1 each). The searches are recorded in `ariel_search_run` under the caller `DOCTOR_AQL`, not under the family. Not covered, on purpose: ANOMALY_EXPLANATION, PREVIEW, SCHEDULED_SEARCH and MANUAL_RUN (on demand, or saved by a user and validated at save), and the WAF breakdown searches (action, response code, source IP). | OPS-R72 |
 | `email` | Alert e-mail in one line: whether `SMTP_HOST` is set, the relay, the security mode and whether a login is configured. SKIP when no relay is configured. FAIL when a username is set with `SMTP_SECURITY=none`: that configuration is refused because the password would cross the network in clear text, and the line says so. Only with `./qradar-dash doctor --check-smtp` it also connects, says EHLO and finishes the STARTTLS or SSL handshake, then quits: nothing is sent and no login is attempted; a failed handshake is a WARN with the failure code. | OPS-R68 |
 | `geo_country_source` | Where the world map's country comes from. SKIP when geography collection is off. In `lookup` mode PASS (`lookup; SOURCE and DESTINATION use GEO::LOOKUP`). In `property` mode it reads the custom-property list of each enabled console and prints each direction's property name with `present on <console>` or `absent on <console>`, or `not collected (no property)` for an empty name. WARN when a named property is absent on a console or both names are empty. FAIL when the list could not be read or no console is enabled. See "World map and the country source" below. | OPS-R30 |
 
@@ -3181,3 +3182,33 @@ Read `/api/v1/admin/qradar-health/latest`: `metrics.state` and `metrics.reason` 
 ```
 
 **Fix:** Ask the QRadar administrator to add the missing permission to the token's user role. IBM's API reference names no capability per API; the `capability_hint` of each entry (and the table in `docs/INSTALL.md`, "What the token must be allowed to read") gives the closest role permission IBM documents for the same data, which the administrator should confirm. After the change, run the check again: every API that went from refused or unreachable to answering starts the sync that depends on it (log source inventory, rule inventory, offense collection, volume collection, the health cache), once, and the answer lists them under `syncs_started`. An API that stays refused starts nothing. For a 401, issue a new token for a user whose role has API access, load it (`./deploy/load-secrets.sh`) and restart the stack.
+
+### OPS-R72. `aql_<family>` fails: the console refuses a family's query
+
+**Symptom:** `./qradar-dash doctor --aql` shows `FAIL aql_<family>` with `runbook: OPS-R72`. Each `aql_*` line is one collection family's real query, sent once to a console. A `FAIL` means QRadar refused it (HTTP 422), refused the token (401/403), or a property the query needs is absent. The same family would fail on its first cadence; this finds it at install or upgrade instead. A `WARN` (timeout, unavailable console, a search that errored, no free permit) proves nothing about the query: run the command again when the console is quiet.
+
+**Likely cause and fix, per family.** The line prints the HTTP status, the query version and the property names the query uses. Compare those names, character for character, with the console's custom property list (QRadar Admin tab, Custom Event Properties). QRadar's own reply is never printed.
+- `aql_geo_collection` (`property absent` or a 422 naming a property): `GEO_SOURCE_COUNTRY_PROPERTY` or `GEO_DESTINATION_COUNTRY_PROPERTY` is not the exact name of a property on the console. Set it to the exact name in `.env` and restart, or set `GEO_COUNTRY_SOURCE=lookup` to use `GEO::LOOKUP`. See OPS-R30 (`geo_country_source`).
+- `aql_qradar_health`: the query reads the shipped properties `Metric ID`, `Value` and `Element` of the Health Metrics log source type. Their names are fixed in the code and cannot be changed in `.env`. Absent means the console lacks the QRadar Health Metrics content; install it on the console, or set `QRADAR_HEALTH_COLLECTION_ENABLED=false`. `QRADAR_HEALTH_DISK_MOUNTS` does not appear in the query: it only selects which mounts are kept after the search.
+- `aql_waf_collection`: the line names the log source and the URL, method and virtual-host properties of its WAF profile. Correct the field mapping of that profile in the UI (WAF profiles), validate it, or disable the profile.
+- `aql_ips_collection`: the line names the log source, the search (dimension) and the mapped fields. Correct the field mapping of that IPS profile in the UI, validate it, or disable the profile.
+- `aql_property_watch`: the line names the watch and its properties. Correct the property of the watch in the UI (a watch is edited to name an existing property), or disable the watch.
+- `aql_log_source_volume`, `aql_rule_match`, `aql_history`, `aql_catchall_senders`: these queries name no custom property, so a 422 here is not a site mapping error. Collect the evidence below. `aql_catchall_senders` names device type ids from `CATCHALL_TYPE_IDS`; a 422 there means the list holds an id the console rejects.
+- `FAIL ... refused the token (HTTP 401/403)`: the token is not accepted or lacks the Ariel search permission. See `qradar_auth` and OPS-R71.
+- To stop collecting a family you do not need, switch it off with its `*_COLLECTION_ENABLED` setting (`families_off` lists them); a switched-off family is `SKIP`.
+
+**Verify:** Run it again after the change.
+
+```bash
+./qradar-dash doctor --aql
+```
+
+`doctor --aql` sends up to 11 read-only searches per REST console, one at a time, through the Ariel permit pool. A search that times out after `DOCTOR_AQL_TIMEOUT_SECONDS` (default 60) is not cancelled on QRadar; the console drops it with its own search retention.
+
+**What to collect for us:** the JSON line of the failing check, and nothing else from the console.
+
+```bash
+docker compose exec backend python -m app.cli.doctor --aql --json | python3 -c 'import json,sys; [print(json.dumps(c)) for c in json.load(sys.stdin) if c["id"].startswith("aql_") and c["status"] != "PASS"]'
+```
+
+The line holds the status, the query version, the property names from our settings and the HTTP status. It holds no event value and no QRadar reply.

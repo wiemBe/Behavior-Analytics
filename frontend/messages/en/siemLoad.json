@@ -163,7 +163,8 @@
     "PREVIEW": "Property watch preview",
     "SCHEDULED_SEARCH": "Scheduled searches",
     "MANUAL_RUN": "Manual search runs",
-    "QRADAR_HEALTH": "QRadar health"
+    "QRADAR_HEALTH": "QRadar health",
+    "DOCTOR_AQL": "Doctor AQL check"
   },
   "detail": {
     "loadingWhat": "QRadar's health in detail",

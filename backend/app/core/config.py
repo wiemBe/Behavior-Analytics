@@ -563,6 +563,8 @@ class Settings(BaseSettings):
     #: reaper's margin over the longest wait the application allows a search,
     #: so a terminal write that is one scan late still records the real outcome.
     ariel_search_abandon_scan_seconds: int = Field(default=600, ge=60, le=86400)
+    #: How long `doctor --aql` waits for one of its searches before it reports a WARN.
+    doctor_aql_timeout_seconds: int = Field(default=60, ge=10, le=600)
     #: Closed Phase A incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). Live
     #: states are kept. Not gated by RETENTION_ENABLED.
     log_source_anomaly_retention_days: int = Field(default=365, ge=1, le=3650)

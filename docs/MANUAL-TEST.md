@@ -34,12 +34,13 @@ This section upgrades a 0.1.9 site to 0.1.10 and tests the upgraded site. A 0.1.
 - **A console's first inventory is queued, and `QRADAR_CONSOLE_FQDN` may carry a port (FIX-13).** The installer summary prints `First inventory    queued` or `First inventory    not queued; the hourly beat will catch up`; the second is not an error.
 - **Editors and names (POL-8 to POL-14, MSG-9).** The custom rule editor uses words and "?" help; "New combination" says why it is off; the add-source control sits in the page header; a failed session shows "The server said: …" as its own clause; "Phase A" is now "Log source volume" (`doctor` token `LOG_SOURCE_VOLUME`).
 - **The page-header "Guide" link shows once, and a fixed "Guide" entry stays in the left navigation (GUIDE-3).** The link shows the first time an account opens a page of a guide section and not again (the account stores it, `guide_seen`); the entry at the bottom of the left navigation is on every page and opens the current page's section. New check: MT-132.
+- **`doctor --aql` tries every collection family's real query once (AQL-1).** The opt-in flag sends each family's query to every REST console and says per family whether QRadar accepts it (`aql_<family>`, runbook OPS-R72). Plain `doctor` sends no search. New check: MT-133.
 - **There is no user delete (GUIDE-2).** Disabling an account is how access is removed; the account row and the `user.disable` audit record stay and the account's sessions are revoked (MT-19).
 - **Before you start:** get the exact name of the country custom property from the QRadar administrator, and decide `GEO_COUNTRY_SOURCE` (`property` with that name, or `lookup`), so that MT-09 and MT-11 read a clean `geo_country_source` line.
 
 ### How to use this guide
 
-- **In production only the core is run.** The 37 checks that carry `[core]` in their heading are the production path; the full list is for the lab run (MT-1b) and in production is done only if the operator has the time. The only core checks that write (writes) are the ones the preconditions and the upgrade need (backup, support bundle, upgrade); there is no `lab only` check in the core. MT-127 is `lab only`.
+- **In production only the core is run.** The 38 checks that carry `[core]` in their heading are the production path; the full list is for the lab run (MT-1b) and in production is done only if the operator has the time. The only core checks that write (writes) are the ones the preconditions and the upgrade need (backup, support bundle, upgrade); there is no `lab only` check in the core. MT-127 is `lab only`.
 - The order of the checks is the order of the sections. Each check has the fields **Precondition**, **Action**, **Expected** and **Record**. Write the result on the results page as `Pass`, `Fail` or `Not run`; write a Note for `Fail` and `Not run`.
 - **(writes)**: the check changes the application's state (it writes a file, an account, a record). Each one has a **Cleanup** step.
 - **lab only**: the check changes the state that the analysts see or leaves a trace that cannot be deleted; in production it is written `Not run`, with the reason given in the check. The orchestrator runs the same guide to the letter on a lab VM (MT-1b).
@@ -64,9 +65,9 @@ For the data of a collection to appear on a page, the cadence and the settle mar
 | New sentence rows (property watch reason, custom rule reason, rule health reason, history backfill reason) | After the next run of the collection that writes the row | The stored previous text |
 | A new transition, a new anomaly, a new alert | When an event happens; there is no waiting | The older rows |
 
-**Core (production path):** 37 checks, about **2 hours** of active work (an estimate, not measured) and about 10 minutes of the console administrator (MT-120); the cadence wait is separate. **Production order:** the core checks are done in section order. MT-126, although its number is high, is done right after MT-11; MT-128 is also done after MT-11, once a `GEO_COLLECTION` cadence has passed. The cadence wait (18 minutes at most) is filled with read-only checks that need no new data, such as MT-12 to MT-22; the data-dependent checks (MT-24 and after) are done when the wait is over.
+**Core (production path):** 38 checks, about **2 hours** of active work (an estimate, not measured) and about 10 minutes of the console administrator (MT-120); the cadence wait is separate. **Production order:** the core checks are done in section order. MT-126, although its number is high, is done right after MT-11; MT-128 is also done after MT-11, once a `GEO_COLLECTION` cadence has passed. The cadence wait (18 minutes at most) is filled with read-only checks that need no new data, such as MT-12 to MT-22; the data-dependent checks (MT-24 and after) are done when the wait is over.
 
-Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes.
+Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes, MT-133 about 5 more.
 Fill the first cadence wait (18 minutes at most with the default cadences) with the Sign-in and Language sections. It can also be done in two half days; between the upgrade and the Dashboard and anomaly checks a wait is needed.
 
 
@@ -357,6 +358,26 @@ awk -F= '
 - The report has two lines that 0.1.9 did not have, `geo_country_source` and `qradar_health`. A WARN on either is not a Fail: write its text in the Note field (a lab CE console always gives a WARN on `qradar_health` because its license is over-allocated). When the console does not answer, `qradar_health` is `SKIP` with `the console did not answer; see qradar_auth`: a `SKIP` is neither a `WARN` nor a `FAIL` and does not raise the exit code, and `qradar_auth` is the line to read. A FAIL on `geo_country_source` is a Fail (MT-129 says what it means). A `watermarks` FAIL with “The country property … does not exist on this console” is the same finding seen from the collector; fix the setting (MT-129) and run `doctor` again.
 
 **Record:** The exit code; the ids of the WARN and FAIL lines; the text of the `migration_head`, `version_match` and `forwarded_allow_ips` lines (without the address); the line awk printed.
+
+#### MT-133 — `doctor --aql`: every family's query is accepted by the console [core]
+
+**Precondition:** MT-09 is done. The console answers (`qradar_auth` PASS). The command sends up to 11 read-only searches per REST console, one at a time, through the Ariel permit pool; they are recorded under the caller `DOCTOR_AQL`. Nothing is written to QRadar.
+
+**Action:**
+
+```bash
+./qradar-dash doctor --aql
+echo "exit: $?"
+```
+
+**Expected:**
+
+- Nine extra lines after the ordinary ones: `aql_log_source_volume`, `aql_rule_match`, `aql_history`, `aql_waf_collection`, `aql_ips_collection`, `aql_property_watch`, `aql_catchall_senders`, `aql_geo_collection`, `aql_qradar_health`.
+- **Pass = no `FAIL` among the `aql_*` lines.** A `FAIL` names the HTTP status, the query version and the property names; fix it by OPS-R72 and run the command again. A `SKIP` (family off, nothing configured, MCP console) is not a Fail.
+- A `WARN` (timeout, unavailable console, no free permit) is not a Fail: write the id and its cause in the Note field.
+- No line holds an event value, an IP address or QRadar's own error text.
+
+**Record:** The exit code, the status of each `aql_*` line, and the cause of every `WARN` or `FAIL`.
 
 #### MT-10 — Outage duration and the interface's return [core]
 
