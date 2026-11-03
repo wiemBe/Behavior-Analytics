@@ -16,7 +16,11 @@ from app.providers.factory import get_provider
 from app.security.auth import get_principal
 from app.security.rbac import PermissionDenied, Principal, require_permission
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
+# ``scope="function"``: the session commits (or rolls back) when the path function
+# returns, before the response is sent. The default ``"request"`` scope runs the
+# exit code after the response, so a client could read before the write was
+# visible, and a failed commit left a 2xx for a rolled-back write (FIX-23).
+SessionDep = Annotated[AsyncSession, Depends(get_session, scope="function")]
 ProviderDep = Annotated[QRadarProvider, Depends(get_provider)]
 # Injected rather than imported at call sites so a test can override the
 # guardrail values (page caps, SLA hours, health thresholds) per request.

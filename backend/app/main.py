@@ -114,9 +114,13 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RateLimitExceeded)
     async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
-        response = JSONResponse(
-            status_code=429, content={"detail": "rate limit exceeded", "limit": str(exc.limit)}
-        )
+        content: dict[str, str] = {"detail": "rate limit exceeded"}
+        # ``exc.limit`` is slowapi's ``Limit`` wrapper, whose repr is an object address.
+        # The rate itself is its ``RateLimitItem``; without it the key stays out.
+        item = getattr(getattr(exc, "limit", None), "limit", None)
+        if item is not None:
+            content["limit"] = str(item)
+        response = JSONResponse(status_code=429, content=content)
         # The refused request learns the same window it would have read on a
         # successful one; slowapi's own handler does the same.
         window = getattr(request.state, "view_rate_limit", None)
