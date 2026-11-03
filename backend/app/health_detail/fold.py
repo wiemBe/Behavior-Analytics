@@ -8,6 +8,11 @@ and only the bounded aggregates leave. Nothing is stored that the allowlists did
   * Only the fixed metric list is kept. Anything else is dropped and counted.
   * A host is the hostname parsed from the log-source name. A name that does not parse is
     counted (distinct names) and its rows are dropped; a host is never guessed.
+  * A stage metric (`*ThreadInfo`) holds one row per thread state in `Element`. Only
+    `RunnableRatio`, the share of the stage's threads that are RUNNABLE, is kept, stored with
+    that element. The six other known states are not a lost measurement: they are skipped and
+    not counted. A stage row with no element, or one that names no known state, is counted in
+    `dropped_stage_states`.
   * A value that is missing, negative, or outside the metric's range is not a measurement:
     the row is dropped and counted. A missing value is never turned into a zero.
   * Notifications keep the busiest `NOTIFICATION_TOP` (host, QID name) groups; the rest is
@@ -28,7 +33,9 @@ from app.health_detail.spec import (
     EXCLUDED_QID_NAME,
     METRIC_ID_SET,
     NOTIFICATION_TOP,
+    STAGE_BUSY_ELEMENT,
     STAGE_METRICS,
+    STAGE_OTHER_STATES,
     parse_host,
 )
 
@@ -39,6 +46,7 @@ _UPPER_BOUND: dict[str, float] = {
     "SystemMemoryUsed": 100.0,
     **dict.fromkeys(STAGE_METRICS, 100.0),
 }
+_STAGE_METRIC_SET = frozenset(STAGE_METRICS)
 #: Float noise on a bound (a share of 1.0000001 is 1).
 _TOLERANCE = 1e-6
 
@@ -47,7 +55,8 @@ _TOLERANCE = 1e-6
 class MetricBucketFact:
     """One stored (host, metric, element) aggregate of a window.
 
-    `element` is the mount for a disk metric and the empty string for every other metric.
+    `element` is the mount for a disk metric, `RunnableRatio` for a stage metric and the empty
+    string for every other metric.
     """
 
     host: str
@@ -71,6 +80,9 @@ class MetricFold:
     null_values: int
     #: Rows with a negative value, or one above the metric's range.
     invalid_values: int
+    #: Stage rows whose `Element` is missing or names no known thread state. The six known
+    #: states other than `RunnableRatio` are skipped without being counted.
+    dropped_stage_states: int
 
 
 def _merge(a: MetricBucketFact, b: MetricBucketFact) -> MetricBucketFact:
@@ -94,6 +106,7 @@ def fold_metrics(rows: Sequence[HealthMetricRow], *, mounts: Collection[str]) ->
     merged: dict[tuple[str, str, str], MetricBucketFact] = {}
     bad_names: set[str] = set()
     dropped_mounts = dropped_metrics = null_values = invalid_values = 0
+    dropped_stage_states = 0
     for row in rows:
         if row.metric not in METRIC_ID_SET:
             dropped_metrics += 1
@@ -110,6 +123,12 @@ def fold_metrics(rows: Sequence[HealthMetricRow], *, mounts: Collection[str]) ->
                 dropped_mounts += 1
                 continue
             element = row.element
+        elif metric in _STAGE_METRIC_SET:
+            if row.element != STAGE_BUSY_ELEMENT:
+                if row.element is None or row.element not in STAGE_OTHER_STATES:
+                    dropped_stage_states += 1
+                continue
+            element = STAGE_BUSY_ELEMENT
         if row.max_value is None:
             null_values += 1
             continue
@@ -134,6 +153,7 @@ def fold_metrics(rows: Sequence[HealthMetricRow], *, mounts: Collection[str]) ->
         dropped_metrics=dropped_metrics,
         null_values=null_values,
         invalid_values=invalid_values,
+        dropped_stage_states=dropped_stage_states,
     )
 
 

@@ -116,7 +116,7 @@ class TestMetrics:
             ("SystemCPU", None, -1.0),
             ("DiskUsage", "/", 1.7),
             ("SystemCPU", None, 140.0),
-            ("EventParserThreadInfo", None, 250.0),
+            ("EventParserThreadInfo", "RunnableRatio", 250.0),
         ],
     )
     def test_a_negative_or_out_of_range_value_is_invalid(
@@ -151,6 +151,45 @@ class TestMetrics:
     def test_a_non_disk_metric_ignores_its_element(self) -> None:
         folded = fold_metrics([metric("SystemCPU", "cpu0", 12.0)], mounts=MOUNTS)
         assert [(b.metric, b.element) for b in folded.buckets] == [("SystemCPU", "")]
+
+    def test_a_stage_keeps_only_the_runnable_share_and_skips_the_other_states(self) -> None:
+        states = (
+            "BlockedRatio", "CpuUtil", "NewRatio", "RunnableRatio", "TerminatingRatio",
+            "TimedWaitRatio", "WaitingRatio",
+        )
+        idle = {"WaitingRatio": 100.0, "RunnableRatio": 0.0}
+        busy = {"RunnableRatio": 80.0, "WaitingRatio": 20.0}
+        rows = [
+            metric(stage, state, shares.get(state, 0.0))
+            for stage, shares in (("AggOutThreadInfo", idle), ("WorkerThreadInfo", busy))
+            for state in states
+        ]
+        folded = fold_metrics(rows, mounts=MOUNTS)
+        assert [(b.metric, b.element, b.max_value) for b in folded.buckets] == [
+            ("AggOutThreadInfo", "RunnableRatio", 0.0),
+            ("WorkerThreadInfo", "RunnableRatio", 80.0),
+        ]
+        assert folded.dropped_metrics == 0 and folded.invalid_values == 0
+        assert folded.dropped_stage_states == 0 and folded.null_values == 0
+
+    @pytest.mark.parametrize("element", [None, "", "SpinningRatio"])
+    def test_a_stage_row_with_no_known_state_is_counted_and_not_stored(
+        self, element: str | None
+    ) -> None:
+        folded = fold_metrics([metric("AggOutThreadInfo", element, 100.0)], mounts=MOUNTS)
+        assert folded.buckets == ()
+        assert folded.dropped_stage_states == 1
+
+    def test_a_stage_runnable_share_is_still_bounded_and_never_null(self) -> None:
+        folded = fold_metrics(
+            [
+                metric("AggOutThreadInfo", "RunnableRatio", None),
+                metric("WorkerThreadInfo", "RunnableRatio", -1.0),
+            ],
+            mounts=MOUNTS,
+        )
+        assert folded.buckets == ()
+        assert (folded.null_values, folded.invalid_values) == (1, 1)
 
     def test_an_empty_mount_list_keeps_no_disk_row(self) -> None:
         folded = fold_metrics([metric("DiskUsage", "/", 0.4)], mounts=())

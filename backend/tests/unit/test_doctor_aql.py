@@ -351,7 +351,7 @@ async def test_a_truncated_result_is_still_a_pass_and_says_so(settings: Settings
         ("ips_collection", "unversioned", 'SIGNATURE="CUSTOM_PROPERTY:Threat Signature"'),
         ("property_watch", "unversioned", '"CUSTOM_PROPERTY:Login Country"'),
         ("geo_collection", "geo-country-property-v1", '"Source Geographic Location"'),
-        ("qradar_health", "qradar_health/v1", '"Metric ID", "Value", "Element"'),
+        ("qradar_health", "qradar_health/v2", '"Metric ID", "Value", "Element"'),
     ],
 )
 async def test_a_422_fails_with_status_version_and_names_and_no_upstream_body(

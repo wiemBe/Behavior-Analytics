@@ -115,12 +115,16 @@ class TestRun:
         assert (run_row.window_start, run_row.window_end) == (WINDOW, SLOT)
         assert run_row.cadence_seconds == CADENCE and run_row.collected_at == NOW
         assert (run_row.metrics_state, run_row.notifications_state) == ("OK", "OK")
-        assert run_row.dropped_mounts == 2 and run_row.query_version == 1
+        assert run_row.dropped_mounts == 2 and run_row.query_version == 2
         rows = await metric_rows(db_session)
         assert {(r.metric, r.element) for r in rows if r.metric == "DiskUsage"} == {
             ("DiskUsage", "/"),
             ("DiskUsage", "/store"),
             ("DiskUsage", "/tmp"),  # noqa: S108
+        }
+        assert {(r.metric, r.element) for r in rows if r.metric.endswith("ThreadInfo")} == {
+            ("EventParserThreadInfo", "RunnableRatio"),
+            ("ArielWriterThreadInfo", "RunnableRatio"),
         }
         assert {r.host for r in rows} == {"qradarce2"}
         assert all(r.bucket_start == WINDOW and r.bucket_end == SLOT for r in rows)
@@ -348,8 +352,8 @@ def seed_run(
                     ("SystemCPU", "", 30.0),
                     ("CREQueueSize", "", 120.0),
                     ("QueuedEventThrottleFilterDiskSize", "", 0.0),
-                    ("EventParserThreadInfo", "", 18.0),
-                    ("ArielWriterThreadInfo", "", 40.0),
+                    ("EventParserThreadInfo", "RunnableRatio", 18.0),
+                    ("ArielWriterThreadInfo", "RunnableRatio", 40.0),
                 ):
                     session.add(
                         QRadarHealthMetricBucket(

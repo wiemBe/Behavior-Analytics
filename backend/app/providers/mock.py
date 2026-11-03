@@ -269,8 +269,8 @@ _HEALTH_METRIC_VALUES: tuple[tuple[str, str | None, float], ...] = (
     ("LoadAvg5", None, 1.6),
     ("CREQueueSize", None, 120.0),
     ("QueuedEventThrottleFilterDiskSize", None, 0.0),
-    ("EventParserThreadInfo", None, 18.0),
-    ("ArielWriterThreadInfo", None, 9.0),
+    ("EventParserThreadInfo", "RunnableRatio", 18.0),
+    ("ArielWriterThreadInfo", "RunnableRatio", 9.0),
 )
 
 #: Lookup strings as QRadar returns them: a country, one with a different `confidence`,

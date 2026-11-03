@@ -444,6 +444,8 @@ enabled console:
   host did not report is `NOT_COLLECTED`, and in a `STALE` window the cells are `STALE` with their
   values. `throttle_spilling` is true when events spilled to disk because the host is over its EPS
   allocation.
+  `busiest_stage.busy_percent` is the share of the stage's threads in the RUNNABLE state
+  (`RunnableRatio`); a window collected before query version 2 has `busiest_stage: null`.
 - `notification_list`: `entries[]` (`host`, `qid_name`, `events`, `max_severity`, `last_seen`), the
   50 busiest groups of the window with `Information Message` excluded, and `remainder`
   (`events`, `groups`) for the groups below them, so the window's events still add up.

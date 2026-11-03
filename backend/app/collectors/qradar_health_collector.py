@@ -224,6 +224,7 @@ class QRadarHealthCollector:
                 "notifications_state": report.notifications_state,
                 "rows_written": report.rows_written,
                 "unparseable_hosts": report.unparseable_hosts,
+                "dropped_stage_states": metric_fold.dropped_stage_states if metric_fold else 0,
                 "duration_ms": report.duration_ms,
             },
         )
