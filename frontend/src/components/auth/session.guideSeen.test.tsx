@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -65,17 +65,19 @@ beforeEach(() => {
   api.recordGuideSeen.mockResolvedValue(undefined);
 });
 
+// GuideLink records the section in a passive effect after the link is committed; `findByRole`
+// resolves on the commit, so a count read right after it can run before that effect (FIX-21).
 describe("the guide link across pages of one session", () => {
   it("shows on the first visit, is gone on the return, and is recorded once per section", async () => {
     // The server never changes its answer here: it is the provider that must remember.
     client.fetchSession.mockResolvedValue(me([]));
     render(app());
     expect(await screen.findByRole("link", { name: "Guide: Rules" })).toBeInTheDocument();
-    expect(api.recordGuideSeen).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(api.recordGuideSeen).toHaveBeenCalledTimes(1));
 
     await userEvent.click(screen.getByRole("button", { name: "to alerts" }));
     expect(await screen.findByRole("link", { name: "Guide: Alerts" })).toBeInTheDocument();
-    expect(api.recordGuideSeen).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(api.recordGuideSeen).toHaveBeenCalledTimes(2));
 
     await userEvent.click(screen.getByRole("button", { name: "to rules" }));
     expect(screen.getByRole("heading", { name: "rules" })).toBeInTheDocument();
@@ -117,6 +119,6 @@ describe("the guide link across pages of one session", () => {
     await userEvent.click(screen.getByRole("button", { name: "reload" }));
     // The new account has not been shown it: the link comes back and is recorded for them.
     expect(await screen.findByRole("link", { name: "Guide: Rules" })).toBeInTheDocument();
-    expect(api.recordGuideSeen).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(api.recordGuideSeen).toHaveBeenCalledTimes(2));
   });
 });
