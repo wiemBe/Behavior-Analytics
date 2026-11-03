@@ -657,8 +657,8 @@ def test_the_docs_and_env_example_describe_the_checks_and_the_setting() -> None:
         assert f"`aql_{family}`" in operations, family
     manual = (root / "docs" / "MANUAL-TEST.md").read_text(encoding="utf-8")
     results = (root / "docs" / "MANUAL-TEST-RESULTS.md").read_text(encoding="utf-8")
-    assert "#### MT-133" in manual and "doctor --aql" in manual
-    assert "| MT-133 | yes |" in results
+    assert "#### MT-136" in manual and "doctor --aql" in manual
+    assert "| MT-136 | yes |" in results
     assert "DOCTOR_AQL_TIMEOUT_SECONDS=60" in (root / ".env.example").read_text(encoding="utf-8")
     assert "`DOCTOR_AQL_TIMEOUT_SECONDS`" in (root / "docs" / "CONFIGURATION.md").read_text(
         encoding="utf-8"

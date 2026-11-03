@@ -34,7 +34,7 @@ This section upgrades a 0.1.9 site to 0.1.10 and tests the upgraded site. A 0.1.
 - **A console's first inventory is queued, and `QRADAR_CONSOLE_FQDN` may carry a port (FIX-13).** The installer summary prints `First inventory    queued` or `First inventory    not queued; the hourly beat will catch up`; the second is not an error.
 - **Editors and names (POL-8 to POL-14, MSG-9).** The custom rule editor uses words and "?" help; "New combination" says why it is off; the add-source control sits in the page header; a failed session shows "The server said: …" as its own clause; "Phase A" is now "Log source volume" (`doctor` token `LOG_SOURCE_VOLUME`).
 - **The page-header "Guide" link shows once, and a fixed "Guide" entry stays in the left navigation (GUIDE-3).** The link shows the first time an account opens a page of a guide section and not again (the account stores it, `guide_seen`); the entry at the bottom of the left navigation is on every page and opens the current page's section. New check: MT-132.
-- **`doctor --aql` tries every collection family's real query once (AQL-1).** The opt-in flag sends each family's query to every REST console and says per family whether QRadar accepts it (`aql_<family>`, runbook OPS-R72). Plain `doctor` sends no search. New check: MT-133.
+- **`doctor --aql` tries every collection family's real query once (AQL-1).** The opt-in flag sends each family's query to every REST console and says per family whether QRadar accepts it (`aql_<family>`, runbook OPS-R72). Plain `doctor` sends no search. New check: MT-136.
 - **There is no user delete (GUIDE-2).** Disabling an account is how access is removed; the account row and the `user.disable` audit record stay and the account's sessions are revoked (MT-19).
 - **Before you start:** get the exact name of the country custom property from the QRadar administrator, and decide `GEO_COUNTRY_SOURCE` (`property` with that name, or `lookup`), so that MT-09 and MT-11 read a clean `geo_country_source` line.
 
@@ -67,7 +67,7 @@ For the data of a collection to appear on a page, the cadence and the settle mar
 
 **Core (production path):** 38 checks, about **2 hours** of active work (an estimate, not measured) and about 10 minutes of the console administrator (MT-120); the cadence wait is separate. **Production order:** the core checks are done in section order. MT-126, although its number is high, is done right after MT-11; MT-128 is also done after MT-11, once a `GEO_COLLECTION` cadence has passed. The cadence wait (18 minutes at most) is filled with read-only checks that need no new data, such as MT-12 to MT-22; the data-dependent checks (MT-24 and after) are done when the wait is over.
 
-Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes, MT-133 about 5 more.
+Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes, MT-136 about 5 more.
 Fill the first cadence wait (18 minutes at most with the default cadences) with the Sign-in and Language sections. It can also be done in two half days; between the upgrade and the Dashboard and anomaly checks a wait is needed.
 
 
@@ -359,7 +359,7 @@ awk -F= '
 
 **Record:** The exit code; the ids of the WARN and FAIL lines; the text of the `migration_head`, `version_match` and `forwarded_allow_ips` lines (without the address); the line awk printed.
 
-#### MT-133 — `doctor --aql`: every family's query is accepted by the console [core]
+#### MT-136 — `doctor --aql`: every family's query is accepted by the console [core]
 
 **Precondition:** MT-09 is done. The console answers (`qradar_auth` PASS). The command sends up to 11 read-only searches per REST console, one at a time, through the Ariel permit pool; they are recorded under the caller `DOCTOR_AQL`. Nothing is written to QRadar.
 
