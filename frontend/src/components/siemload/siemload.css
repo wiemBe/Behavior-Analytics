@@ -216,8 +216,30 @@
 /* A host's name and address in a table cell. */
 .sl-table th[scope="row"] .sl-host {
   display: block;
-  white-space: normal;
   color: var(--text);
+}
+.sl-table th[scope="row"] .sl-host:not(.sl-host-name) {
+  white-space: normal;
+}
+/* A host name keeps its labels whole and takes the room it needs: a break falls only after a
+ * ".", never inside a label (not even after a hyphen). */
+.sl-host.sl-host-name {
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.sl-host-name .sl-label,
+.sl-host.sl-host-name.sl-label {
+  white-space: nowrap;
+}
+/* The notifications table: the notification name takes the slack and wraps between words. */
+.sl-notices-table th[scope="row"] {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.sl-notices-table th,
+.sl-notices-table td {
+  padding-inline: var(--sp-2);
 }
 .sl-table .sl-id {
   color: var(--text-2);

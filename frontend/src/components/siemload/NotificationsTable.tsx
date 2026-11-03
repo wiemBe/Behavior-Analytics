@@ -13,6 +13,8 @@ import type { QRadarConsoleLatest } from "@/lib/api";
 import { formatCount } from "@/lib/format";
 import { formatDuration } from "@/lib/time";
 
+import { HostName } from "./HostName";
+
 /** A range counts as covered when its measured windows span at least this share of it. */
 const COVERED_SHARE = 0.9;
 
@@ -82,7 +84,7 @@ export function NotificationsTable({
       ) : (
         <>
           <TableScroll label={t("label", { name: console_.instance_name })}>
-            <table className="sl-table">
+            <table className="sl-table sl-notices-table">
               <caption className="sr-only">{t("label", { name: console_.instance_name })}</caption>
               <thead>
                 <tr>
@@ -104,7 +106,7 @@ export function NotificationsTable({
                   <tr key={`${entry.host}|${entry.qid_name}`}>
                     <th scope="row">{entry.qid_name}</th>
                     <td>
-                      <span className="sl-host">{entry.host}</span>
+                      <HostName host={entry.host} />
                     </td>
                     <td className="num">{formatCount(entry.events)}</td>
                     <td className="num">{entry.max_severity === null ? "—" : entry.max_severity}</td>
