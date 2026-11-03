@@ -428,8 +428,10 @@ search family (see `docs/SEARCH-CADENCE.md`). Both reads need `admin:*`, read th
 and ask QRadar nothing; each costs a fixed number of statements however many consoles and hosts
 there are.
 
-`GET /api/v1/admin/qradar-health/latest` returns `{generated_at, consoles[]}`, one entry per
-enabled console:
+`GET /api/v1/admin/qradar-health/latest` returns `{generated_at, collection_enabled, consoles[]}`, one entry
+per enabled console. `collection_enabled` is `false` when `QRADAR_HEALTH_COLLECTION_ENABLED` is off:
+the windows are then the last ones collected, returned with their own times, not hidden or zeroed.
+
 
 - `window` (`start`, `end`, `collected_at`, `cadence_seconds`): the newest window any run stored,
   or `null` when the console has none.
@@ -442,8 +444,11 @@ enabled console:
   is the end of the newest window whose metrics were collected, even when a later run failed.
 - `hosts[]`, per host (the hostname parsed from the `Health Metrics-<n> :: <hostname>` log-source
   name): `disk` (`fullest` mount and all allowlisted `mounts`, each with `used_fraction` 0 to 1,
-  `used_percent`, `used_bytes`, `total_bytes`, `free_bytes` when both were read, and `level`
-  `OK`/`WARN`/`FAIL` against the disk thresholds), `system` (`cpu_percent`, `memory_percent`,
+  `used_percent`, `used_bytes`, `total_bytes`, `free_bytes` when both were read, `total_from` and `level`
+  `OK`/`WARN`/`FAIL` against the disk thresholds; QRadar sends the total once an hour, so when
+  the window holds none, `total_bytes` is the newest stored total of that console, host and mount
+  from an earlier window at most 2 h old and `total_from` is that window's end in UTC, otherwise
+  `null` with `total_bytes` and `free_bytes` null too, never a zero), `system` (`cpu_percent`, `memory_percent`,
   `load_avg_5`, `swap_percent`, `io_wait`, `running_queries`, `host_running_queries`) and `pipeline`
   (`cre_queue`, `throttle_spill_bytes`, `throttle_spilling`, `ect_tcp_to_ep_disk_bytes`,
   `flow_governor_queue_disk_bytes`, `busiest_stage`). Every figure is a cell `{state, value,

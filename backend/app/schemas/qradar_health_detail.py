@@ -81,7 +81,11 @@ class MountValue(BaseModel):
     used_percent: float | None = None
     used_bytes: float | None = None
     total_bytes: float | None = None
-    #: `total - used`, only when both bytes figures were read.
+    #: End of the earlier window the total was carried from, when this window held none (QRadar
+    #: sends the total once an hour). None when the total is this window's own, or absent. One
+    #: field, not a flag: the page and doctor need the time, and a time says "carried" by itself.
+    total_from: datetime | None = None
+    #: `total - used`, only when both bytes figures were read (the total possibly carried).
     free_bytes: float | None = None
     #: OK, WARN or FAIL against the configured thresholds; None when `used_fraction` is None.
     level: str | None = None
@@ -205,6 +209,9 @@ class ConsoleLatest(BaseModel):
 
 class LatestOut(BaseModel):
     generated_at: datetime
+    #: False when `QRADAR_HEALTH_COLLECTION_ENABLED` is off: the windows below are then the last
+    #: ones collected, not a current reading. They are kept, with their own times.
+    collection_enabled: bool = True
     consoles: list[ConsoleLatest]
 
 

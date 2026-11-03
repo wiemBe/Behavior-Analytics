@@ -110,10 +110,16 @@ from QRadar's monthly averages.
 
 - **Hosts table**: hostname (+ IP), appliance, version, role (console / managed; HA: primary /
   secondary with status), status, EPS allocated / average / peak (month) with the hardware limit,
-  FPM the same, disk: the fullest allowlisted mount (% and free bytes) with the others on expand,
+  FPM the same, disk: the fullest allowlisted mount (% and free bytes) with the others on expand
+  (QRadar sends a mount's total once an hour, so when the latest window holds none the reader
+  carries the newest stored total of the same console, host and mount from an earlier window, at
+  most 2 h old, and the page says "total as of hh:mm UTC"; older or absent, the free figure is
+  empty, never a zero),
   CPU / memory (last window max), pipeline: CRE queue, throttle spill (bytes on disk — flagged when
   > 0), busiest stage %. HA pairs are one row group with both members. Every cell carries its own
-  state (OK / NOT_COLLECTED / FAILED / STALE with the window's time).
+  state (OK / NOT_COLLECTED / FAILED / STALE with the window's time). When
+  `QRADAR_HEALTH_COLLECTION_ENABLED` is off, a line above the section says so and gives the time of
+  the last window collected; the stored figures stay, with their own times.
 - **Notifications**: last 24 h by QID name and host, count, severity, last seen UTC; links to
   nothing in QRadar (no deep link we cannot verify).
 - **Trends** (24 h / 7 d): reachability + API latency, the fullest mount per host, CRE queue and

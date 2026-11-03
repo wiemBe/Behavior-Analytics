@@ -79,6 +79,9 @@ function DiskCell({ disk, lowerBound }: { disk: QRadarHostMetrics["disk"]; lower
       {fullest.free_bytes !== null ? (
         <span className="cell-sub">{t("free", { size: formatBytes(fullest.free_bytes) })}</span>
       ) : null}
+      {fullest.free_bytes !== null && fullest.total_from !== null ? (
+        <span className="cell-sub">{t.rich("totalAsOf", { time: () => <UtcTime value={fullest.total_from} variant="compact" /> })}</span>
+      ) : null}
       {others.length > 0 ? (
         <details className="sl-mounts">
           <summary>{t("mounts", { count: disk.mounts.length })}</summary>
@@ -89,6 +92,12 @@ function DiskCell({ disk, lowerBound }: { disk: QRadarHostMetrics["disk"]; lower
                 <span className="num">{formatPercentFigure(mount.used_percent)}</span>
                 {mount.free_bytes !== null ? (
                   <span className="sl-muted"> · {t("free", { size: formatBytes(mount.free_bytes) })}</span>
+                ) : null}
+                {mount.free_bytes !== null && mount.total_from !== null ? (
+                  <span className="sl-muted">
+                    {" · "}
+                    {t.rich("totalAsOf", { time: () => <UtcTime value={mount.total_from} variant="compact" /> })}
+                  </span>
                 ) : null}{" "}
                 <LevelPill level={mount.level} />
               </li>

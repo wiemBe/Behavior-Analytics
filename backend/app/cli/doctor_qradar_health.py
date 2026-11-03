@@ -74,7 +74,11 @@ def disk_line(latest: LatestOut, settings: Settings) -> tuple[str, str]:
                 continue
             text = f"{host.host} {fullest.mount} {fullest.used_percent:.1f} %"
             if fullest.free_bytes is not None:
-                text += f" ({_bytes(fullest.free_bytes)} free)"
+                if fullest.total_from is not None:
+                    as_of = fullest.total_from.astimezone(UTC).strftime("%H:%M UTC")
+                    text += f" ({_bytes(fullest.free_bytes)} free, total as of {as_of})"
+                else:
+                    text += f" ({_bytes(fullest.free_bytes)} free)"
             if fullest.level == "FAIL":
                 fails.append(f"{text} (at or over {settings.qradar_health_disk_fail_percent} %)")
             elif fullest.level == "WARN":

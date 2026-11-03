@@ -8,6 +8,7 @@ sends it anyway, is dropped by the fold. Metric ids are QRadar's own, from the c
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 
 #: Disk metrics are per mount: the `Element` of the event names the mount.
 DISK_METRICS: tuple[str, ...] = ("DiskUsage", "DiskSpaceUsed", "DiskSpaceTotal")
@@ -88,6 +89,13 @@ NOTIFICATION_TOP = 50
 #: 2: a stage metric is stored per thread state, only `RunnableRatio` (before, `''` held the
 #: max over all seven states, which is not a busy share).
 QUERY_VERSION = 2
+
+#: QRadar sends `DiskSpaceTotal` once an hour (its catalog: 3,600,000 ms), so a 15-minute window
+#: holds it in one of four. The reader carries the newest stored total forward from an earlier
+#: window when the latest has none, at most this old: twice QRadar's resolution. Fixed, not a
+#: setting; an older total is never used (rule 8).
+DISK_TOTAL_METRIC = "DiskSpaceTotal"
+DISK_TOTAL_MAX_AGE = timedelta(hours=2)
 
 #: What the API calls the metrics. The fullest-mount, queue and spill series use these.
 METRIC_DISK_USAGE = "DiskUsage"

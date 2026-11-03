@@ -4022,6 +4022,8 @@ export interface QRadarMount {
   used_percent: number | null;
   used_bytes: number | null;
   total_bytes: number | null;
+  /** End of the earlier window the total was carried from; null when the total is this window's own. */
+  total_from: string | null;
   free_bytes: number | null;
   /** Against the configured thresholds; null when no usage was read. */
   level: "OK" | "WARN" | "FAIL" | null;
@@ -4111,6 +4113,8 @@ export interface QRadarConsoleLatest {
 
 export interface QRadarHealthLatest {
   generated_at: string;
+  /** False when QRADAR_HEALTH_COLLECTION_ENABLED is off: the windows are the last ones collected. */
+  collection_enabled: boolean;
   consoles: QRadarConsoleLatest[];
 }
 

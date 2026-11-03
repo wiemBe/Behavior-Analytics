@@ -12,6 +12,7 @@ import { useMemo } from "react";
 
 import { useApiResource } from "@/hooks/useApiResource";
 import { LoadingState } from "@/components/ui/RouteState";
+import { UtcTime } from "@/components/ui/UtcTime";
 import {
   qradarHealthApi,
   type QRadarConsoleHealth,
@@ -118,6 +119,8 @@ function ConsoleDetail({
 }) {
   const t = useTranslations("siemLoad.detail");
   const trendT = useTranslations("siemLoad.detail.trend");
+  const healthT = useTranslations("siemLoad.detail.health");
+  const collectionOff = latestState.status === "ok" && latestState.data.collection_enabled === false;
   const hosts = health.hosts;
   const join = useMemo(
     () =>
@@ -140,6 +143,16 @@ function ConsoleDetail({
         <h3 className="sl-sub">{t("hosts.heading")}</h3>
         <HostsTable name={health.instance_name} rows={join.rows} hosts={hosts} />
       </div>
+
+      {collectionOff ? (
+        <p className="banner warn" role="status">
+          <span>
+            {latest?.window
+              ? healthT.rich("collectionOff", { time: () => <UtcTime value={latest.window?.end} /> })
+              : healthT("collectionOffNoWindow")}
+          </span>
+        </p>
+      ) : null}
 
       <div className="sl-block">
         <h3 className="sl-sub">{t("health.heading")}</h3>
