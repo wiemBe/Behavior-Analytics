@@ -29,6 +29,7 @@ This section upgrades a 0.1.9 site to 0.1.10 and tests the upgraded site. A 0.1.
 - **The map's country comes from a QRadar custom property (GEO-3).** `GEO_COUNTRY_SOURCE` defaults to `property`; `GEO_SOURCE_COUNTRY_PROPERTY` defaults to `Source Geographic Location` and `GEO_DESTINATION_COUNTRY_PROPERTY` to empty. The operator sets the exact property name from the console. An empty name means that direction is not collected. `doctor` gains `geo_country_source` (runbook OPS-R30). New check: MT-129.
 - **The world map (GEO-4, GEO-5).** The "SOC Overview" template has the Geography widget (`map.geography`) in its bottom row, and `/geography` shows the same answer at full size; a stale answer says so. Check: MT-128.
 - **SIEM load (ARL-1, ARL-2, ARL-3).** Every Ariel search the platform sends is recorded (table `ariel_search_run`, kept 30 days by default). The page `/admin/siem-load`, `GET /api/v1/admin/ariel-load` and `/current`, and `python -m app.cli.ariel_load [--current] [--json]` show the load and QRadar's own health (GET requests only). `doctor` gains `qradar_health` (OPS-R67), and the support bundle carries `ariel-load.json`. New check: MT-130.
+- **QRadar's health in detail, and the access check (HLT-1 to HLT-3, ACC-1, ACC-2).** `/admin/siem-load` gains managed hosts (with HA pairs counted once), disk, system and pipeline figures per host, QRadar's system notifications and trends, collected by the `QRADAR_HEALTH` family; `/admin/qradar-access` lists which QRadar APIs the token can reach; `doctor` gains `qradar_disk`, `qradar_pipeline` and `qradar_access`. New checks: MT-133, MT-134 and, for a site with an HA pair, MT-135 (production only).
 - **Three migrations, head `0047`.** `0045_rule_match_window_start_index` adds an index on `rule_match_window.window_start` (FIX-14); `0046_ariel_search_run` adds the table `ariel_search_run` (ARL-1); `0047_user_guide_seen` adds the column `app_user.guide_seen` (GUIDE-3). `upgrade` prints the decision pair first with `0044` and then with `0047`, and Alembic prints three `Running upgrade` lines. The only row change is the new column: every account gets an empty list.
 - **Every counted response carries the rate-limit window (FIX-14).** A counted 401, 403, 404 or 422 carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`; `Retry-After` is written only on a 429. Checks: MT-126 (production) and MT-127 (lab only).
 - **A console's first inventory is queued, and `QRADAR_CONSOLE_FQDN` may carry a port (FIX-13).** The installer summary prints `First inventory    queued` or `First inventory    not queued; the hourly beat will catch up`; the second is not an error.
@@ -67,7 +68,7 @@ For the data of a collection to appear on a page, the cadence and the settle mar
 
 **Core (production path):** 38 checks, about **2 hours** of active work (an estimate, not measured) and about 10 minutes of the console administrator (MT-120); the cadence wait is separate. **Production order:** the core checks are done in section order. MT-126, although its number is high, is done right after MT-11; MT-128 is also done after MT-11, once a `GEO_COLLECTION` cadence has passed. The cadence wait (18 minutes at most) is filled with read-only checks that need no new data, such as MT-12 to MT-22; the data-dependent checks (MT-24 and after) are done when the wait is over.
 
-Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes, MT-136 about 5 more.
+Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes, and MT-133 to MT-135 about 25 more (MT-135 only where an HA pair exists), and MT-136 about 5 more.
 Fill the first cadence wait (18 minutes at most with the default cadences) with the Sign-in and Language sections. It can also be done in two half days; between the upgrade and the Dashboard and anomaly checks a wait is needed.
 
 
@@ -355,7 +356,7 @@ awk -F= '
 - A stalled offense watermark is a separate WARN: `{n} watermark(s) stalled at the page ceiling: offense_snapshot`. The runbook is OPS-R66. If there is lag as well, the two sentences are joined with a semicolon and the runbook is still OPS-R66. This WARN is not a Fail. A provider error stays FAIL, the runbook is OPS-R30, and the same text can be appended to the end of the FAIL sentence. A clean run clears the stall (MT-11).
 - `backup_age` can stay WARN for the same reason as before the upgrade: no backup, the age cannot be read, older than 26 hours, or the backup timer is not installed or is off (a fresh backup also gives a WARN when there is no timer or it is off). This is not a fault of the upgrade. The line is in the doctor table of `docs/OPERATIONS.md`; it has no OPS-R id.
 
-- The report has two lines that 0.1.9 did not have, `geo_country_source` and `qradar_health`. A WARN on either is not a Fail: write its text in the Note field (a lab CE console always gives a WARN on `qradar_health` because its license is over-allocated). When the console does not answer, `qradar_health` is `SKIP` with `the console did not answer; see qradar_auth`: a `SKIP` is neither a `WARN` nor a `FAIL` and does not raise the exit code, and `qradar_auth` is the line to read. A FAIL on `geo_country_source` is a Fail (MT-129 says what it means). A `watermarks` FAIL with “The country property … does not exist on this console” is the same finding seen from the collector; fix the setting (MT-129) and run `doctor` again.
+- The report has two lines that 0.1.9 did not have, `geo_country_source` and `qradar_health`. A WARN on either is not a Fail: write its text in the Note field (a lab CE console always gives a WARN on `qradar_health` because its license is over-allocated). When the console does not answer, `qradar_health` is `SKIP` with `the console did not answer; see qradar_auth`: a `SKIP` is neither a `WARN` nor a `FAIL` and does not raise the exit code, and `qradar_auth` is the line to read. A FAIL on `geo_country_source` is a Fail (MT-129 says what it means), with one exception: when the console does not answer, `geo_country_source` prints `FAIL did not answer within 10 s` with the runbook OPS-R30, because the check reads the console's property list and the console is not there. That line is the same finding as `qradar_tls` and `qradar_auth` (both `FAIL`, runbook OPS-R4 and OPS-R1) and is not a product failure; it clears on the first `doctor` after the console answers again. Read `qradar_auth` first: when it is `PASS` and `geo_country_source` still says `did not answer`, the property list is the part that is slow, and that is a Fail to report (MT-129). A `watermarks` FAIL with “The country property … does not exist on this console” is the same finding seen from the collector; fix the setting (MT-129) and run `doctor` again.
 
 **Record:** The exit code; the ids of the WARN and FAIL lines; the text of the `migration_head`, `version_match` and `forwarded_allow_ips` lines (without the address); the line awk printed.
 
@@ -2177,6 +2178,98 @@ docker compose exec -T backend python -m app.cli.ariel_load --hours 24
 - In the support bundle (MT-04) the archive holds `ariel-load.json`, or `ariel-load.error.txt` when it could not be read.
 
 **Record:** Whether each part of the page read; the console's reachability, latency and `qradar_health` status (no addresses); whether the page and the command agree on searches in flight; the forbidden notice.
+
+#### MT-133 — QRadar's health in detail on the SIEM load page and `doctor` (HLT-1 to HLT-3)
+
+**Precondition:** Upgrade complete (MT-08) and the `QRADAR_HEALTH` family has stored at least two windows: two cycles of its cadence (15 minutes by default, see `/admin/search-cadence`) plus the settle time, so about 40 minutes after the console first answered. The console has the shipped custom properties `Metric ID`, `Value` and `Element` (the `watermarks` line of `doctor` says so when it does not). Signed in with an account that has `admin:*`. The check sends two aggregating Ariel searches per console per cycle (the family's own, nothing extra) and GET requests only; it changes nothing.
+
+**Action:**
+
+- Open Administration → "SIEM load" (`/admin/siem-load`) and scroll to the console's section ("{console}: hosts, health and trends"). Read, in this order: "Managed hosts", "Disk, system and pipeline", "System notifications, last 24 h", "Trends". In "Trends" pick "24 h" and "7 d".
+- In QRadar's own UI, open System and License Management and compare the managed host's status, average and peak EPS and the EPS allocation with the table. For one disk figure, open the same host's Health Metrics in Log Activity (log source type "Health Metrics", property "Metric ID" `DiskUsage`) or ask the console administrator for `df` of `/store`.
+- On the host:
+
+```bash
+./qradar-dash doctor | grep -E 'qradar_health|qradar_disk|qradar_pipeline|qradar_access'
+docker compose exec -T backend python -m app.cli.ariel_load --current
+```
+
+- Switch the family off, as the check "family off" below says, only if the site allows a recreate of the application containers (**lab only**; in production write `Not run`): set `QRADAR_HEALTH_COLLECTION_ENABLED=false` in `.env`, run `docker compose up -d --force-recreate backend celery-worker celery-beat`, read the page and `./qradar-dash doctor`, then set the line back to `true` and recreate again.
+
+**Expected:**
+
+- "Managed hosts": one row per managed host with its role (Console or Managed, from the host's component list), appliance and version, status, and the EPS and FPM of the previous month (average / peak, allocated of hardware limit). The figures equal QRadar's own. A host with an HA pair is one row group (MT-135). A dash means QRadar gave no figure; it is not a zero.
+- "Disk, system and pipeline": the window is stated in UTC ("Window … to …, one window per 15 min, collected at …"), then one row per host: the fullest mount (only the mounts of `QRADAR_HEALTH_DISK_MOUNTS`; no container overlay, `/dev`, `/run` or `/sys` mount appears), CPU, memory, CRE queue, throttle spill and busiest stage. Every figure is the maximum in that window and equals what the console's Health Metrics hold for the same window. The mount shows "{size} free" only when the window holds QRadar's hourly `DiskSpaceTotal`; without it the free space is a dash, which is expected for about three windows in four. The "Busiest stage (% busy)" figure reads 100 % on an idle host (HLT-4 finding: the console sends one share per thread state and the page takes the largest); write what it shows in the Note field and do not mark the check Fail for it. A figure the console does not send (for example `HostRunningQueries` on a lab console) is "Not collected", never a zero.
+- "System notifications": the groups of the last 24 hours (host, notification, events, severity 0 to 10, last seen in UTC). The counts equal the "System Notification" events of QRadar for the same hours, `Information Message` left out. If the family has collected fewer hours than asked, the page says "Only … of the last 24 h were collected, so these counts can be low."
+- "Trends": reachability and API latency, and the fullest mount, CRE queue and throttle spill per host, each axis with its unit and time in UTC. A break in a line is a stretch with no stored window. With less than 7 days stored, the "7 d" chart is short; that is not a fault. No raw key and no zero for a missing figure on the page.
+- `doctor`: `qradar_disk` and `qradar_pipeline` read the latest stored window: PASS or a named WARN with the runbook (OPS-R69, OPS-R70). A window that is missing, failed, partial or stale is a WARN that says `not collected since <UTC time>`; it is never a PASS. `qradar_health` (OPS-R67) reads the console afresh. On a lab CE console it WARNs permanently because the license pool is over-allocated.
+- With the family off: `qradar_disk` and `qradar_pipeline` are `SKIP` with "QRadar health collection is off", `families_off` lists `QRADAR_HEALTH_COLLECTION_ENABLED=off`, and `watermarks` does not name the family (it does not FAIL on its old row; a `watermarks` FAIL for another family, for example `geo_countries_source` on a console without the country property, is a different finding). The page keeps showing the last stored window with its own start, end and collection time, and does not say that collection is off; it turns "Stale" after three cadences plus the settle time (about 48 minutes with the defaults). No figure reads as zero. After switching it on, the next window brings the figures back.
+
+**Record:** The window shown (UTC); for the host, the fullest mount and its share, CPU, memory, CRE queue, throttle spill against what QRadar shows (give the pairs); the number of notification groups against QRadar's count; the status of the four `doctor` lines (the text of any WARN); whether the free space showed; the result of the family-off step or `Not run`.
+
+#### MT-134 — The access check: which QRadar APIs the token can reach (ACC-1, ACC-2)
+
+**Precondition:** Upgrade complete (MT-08). Signed in with an account that has `admin:*`. The check sends one GET with a one-item range to each API of the catalog and one Ariel search, `SELECT starttime FROM events LIMIT 1 LAST 1 MINUTES`, that it cancels unread. It writes nothing to QRadar. The platform runs it at start-up (once per start, in the worker), every `QRADAR_ACCESS_CHECK_INTERVAL_SECONDS` (6 hours by default) and when an administrator asks.
+
+**Action:**
+
+- Open Administration → "QRadar access" (`/admin/qradar-access`). Read the verdict line and the table for the console: one row per API with its status, HTTP code, when it was checked and what it feeds here.
+- Press "Check now", or send the request. The response is `202` at once; the check runs in the worker and takes a few seconds:
+
+```bash
+curl -s --cookie "$SESSION" https://<host>/api/v1/admin/qradar-access | head -c 600
+curl -s -X POST --cookie "$SESSION" -H "Origin: https://<host>" https://<host>/api/v1/admin/qradar-access/check
+```
+
+- Send the request three times within a minute (the interface: press "Check now" three times).
+- On the host: `./qradar-dash doctor | grep qradar_access`.
+- In QRadar's Log Activity (or `GET /ariel/searches`), look for the probe: a search with the text above.
+
+**Expected:**
+
+- The verdict says "Every API the application uses is reachable with this token." when the token has the rights, and the table has 14 rows on 0.1.11, each "Reachable" with a 2xx code. A refused API reads "Forbidden" (403), a missing one "Not found" (404), a rejected token "Token not accepted" (401), one that did not answer "Did not answer", and one never asked "Not checked yet"; each row says what it feeds. While the console's Ariel is not up (for example just after a restart) the Ariel rows read "Error" (HTTP 503) and clear at the next check.
+- The response of the check is `202` with `check_running` true; the page ("A check is running. This page reads the result every … s.") and `GET /api/v1/admin/qradar-access` show `check_running` true for a few seconds and then false, with the times of the last start and finish. The third request within a minute is refused with `429` ("Too many checks were requested. Try again in … s."): the limit is `RATE_LIMIT_ACCESS_CHECK`, `2/minute` by default. That is not a failure.
+- `doctor` `qradar_access` is `PASS` (`<n> APIs reachable, last checked <UTC time>`), or a WARN naming each refused, missing or unanswered API with what it feeds, or FAIL when the token is rejected (OPS-R71). A result older than twice the interval is a WARN.
+- The probe search stays in QRadar's list until QRadar's own retention removes it, because it had already completed when the cancel was sent. It adds one id to "Search ids held" per check and is not a failure. It never selects a payload.
+- The check changes no data in QRadar and no setting of the platform.
+
+**Record:** The number of entries and the status of each one that is not `ok` (with its HTTP code); the time of the last check; whether the third request gave `429`; the `doctor` line; whether the probe search was found.
+
+#### MT-135 — HA pairs on the SIEM load page (production only; needs a console with an HA pair)
+
+**Precondition:** A site whose QRadar deployment has at least one managed host with an HA pair (a primary and a secondary). The lab console is one host without HA, so this check has never run against a real pair: the platform's HA reading is proven with fixtures only (HLT-1, HLT-3), and this check is where it meets QRadar. Signed in with `admin:*`; access to QRadar's own Administration tab (Deployment Editor or System and License Management) on the same site, as a person with the QRadar administrator role. The platform sends only GET requests for this check (`/config/deployment/hosts` and `/system/servers`); do not change the pair, do not trigger a failover, and do not set a member offline to make a state appear. Run it on the state the site is in.
+
+**Action:**
+
+- In QRadar, open System and License Management and note, for every HA pair, the primary and the secondary host name and the **status** QRadar shows for each member (QRadar's own table shows them in its Status column), and the EPS allocation of the managed host. If a pair exists in a state other than the usual one (a failover in the past, a member offline for maintenance), note that too.
+- Open `/admin/siem-load` and read the "QRadar" panel and the "Managed hosts" table of the same console. Compare, pair by pair:
+  - the managed-host line: "ACTIVE n of N" counts managed hosts, and a pair counts once; the line says "m HA pairs, k not healthy" or "m HA pairs, all healthy";
+  - the table: the pair is one row group with both members, each with its role ("Primary", "Secondary") and its status;
+  - the EPS and FPM of the pair against QRadar's allocation of the managed host.
+- On the host, read the same facts without the page:
+
+```bash
+docker compose exec -T backend python -m app.cli.ariel_load --current
+./qradar-dash doctor
+```
+
+- Read the raw status strings the API returns, so a status the page did not recognise can be written down exactly (the strings are statuses of servers, not secrets; no address is needed):
+
+```bash
+curl -s --cookie "$SESSION" https://<host>/api/v1/admin/ariel-load/current
+```
+
+**Expected:**
+
+- A **healthy pair** (primary `ACTIVE`, secondary `STANDBY`) reads "Healthy pair" with "The primary is active and the secondary is on standby, as expected." The standby member reads "Standby, as expected". It is not listed as "not ACTIVE", it is not a WARN, and `doctor` `qradar_health` is `PASS` with "1 HA pair(s)" in its facts.
+- A pair that **failed over** (the secondary `ACTIVE`, the primary not `ACTIVE`) reads "Failed over" with "The secondary is running this host and the primary is not." and each member's status as QRadar reports it. `doctor` `qradar_health` is `WARN` and names the host and both statuses, primary first. This is a fact to tell the QRadar administrator, not a platform fault; it stays until QRadar returns the pair to normal.
+- A **degraded pair** (one member `ACTIVE`, the other in a documented state that is not `STANDBY`: for example `OFFLINE`, `FAILED`, `SYNCHRONIZING`) reads "Degraded pair" with "One member is active, but the other is not on standby, so no failover is possible."; `doctor` is `WARN`. A pair with **no `ACTIVE` member** reads "Failed pair" and `doctor` is `FAIL` (runbook OPS-R67).
+- **Statuses.** The platform normalises a status to upper case with words joined by `_` and then compares it with the statuses IBM documents for HA hosts (QRadar High Availability Guide, "Status of HA hosts"): `ACTIVE`, `STANDBY`, `FAILED`, `SYNCHRONIZING`, `ONLINE`, `OFFLINE`, `RESTORING`, `NEEDS_LICENSE`, `SETTING_OFFLINE`, `SETTING_ONLINE`, `NEEDS_UPGRADE`, `UPGRADING` (so QRadar's "Needs License" and "Setting Offline" read the same as `NEEDS_LICENSE` and `SETTING_OFFLINE`). Any other string is **not guessed at**: the pair reads "Unknown pair state", the page shows the string exactly as QRadar wrote it ("QRadar reported ..., which this platform does not classify, so the pair is not read as healthy."), and `doctor` is `WARN`. An unknown string on a pair that QRadar shows as healthy is a finding for this check (a spelling the platform does not know yet): write the exact string, both members' roles and what QRadar's own table shows. Do not edit anything.
+- **EPS is counted once per pair.** The EPS and FPM of the pair row equal QRadar's allocation, average and peak of the managed host, not twice that figure; the "EPS allocated" total of the console panel does not change when the pair has a second member.
+- Disk, system and pipeline figures are per member (each member has its own disks and its own Health Metrics log source), so a pair shows two sets of figures.
+- The two members' names on the page are the ones QRadar shows. If the page cannot match the members to the managed host (for example the server list was not read), it says so and shows the members as "HA member"; it never shows a pair as healthy on a guess.
+
+**Record:** For each pair: QRadar's two statuses, the state the page showed (Healthy pair, Failed over, Degraded pair, Failed pair, Unknown pair state), the `qradar_health` status, whether the EPS equals QRadar's figure once, and any status string the page showed as written (copy it exactly).
 
 
 ### 13. Guide
