@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.dialects import postgresql
 
+from app.anomaly.statistics import percentile
 from app.api.routes import property_watches as preview_routes
 from app.cli import ariel_load as cli
 from app.collectors.catchall_collector import CatchallCollector
@@ -925,6 +927,27 @@ def test_summary_math_percentiles_nulls_and_empty_window() -> None:
     assert empty["message"] == "No Ariel search was recorded in this window."
     assert empty["message_code"] == ariel_log.EMPTY_CODE
     assert "searches" not in empty
+
+
+def test_sql_percentiles_round_half_to_even_like_the_python_fold() -> None:
+    """The SQL path rounds its percentiles in Python, never in the query.
+
+    A percentile that lands exactly on .5 is where the two roundings differ:
+    Python takes the tie to even, PostgreSQL's round takes it away from zero.
+    """
+    ties = (0.5, 1.5, 2.5, 9.5, 10.5, 11.5, 12.5)
+    assert [ariel_log._rounded_ms(value) for value in ties] == [0, 2, 2, 10, 10, 12, 12]
+    # What SQL round would answer on the same values — never this.
+    assert [math.floor(value + 0.5) for value in ties] == [1, 2, 3, 10, 11, 12, 13]
+    assert ariel_log._rounded_ms(None) is None
+    # The ties the fixture builds, from the Python definition itself: two
+    # completed walls 10 and 11 make the p50 exactly 10.5; eleven walls 1..11
+    # make the p95 exactly 10.5.
+    for values, q in (([10, 11], 50), (list(range(1, 12)), 95)):
+        floats = [float(value) for value in values]
+        tie = percentile(floats, q)
+        assert tie == int(tie) + 0.5
+        assert ariel_log._rounded_ms(tie) == ariel_log._percentile_ms(values, q)
 
 
 def test_cli_table_and_json(
