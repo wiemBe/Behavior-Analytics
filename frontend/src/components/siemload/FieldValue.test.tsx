@@ -43,4 +43,25 @@ describe("FieldValue", () => {
     expect(screen.getByText("Not collected")).toBeInTheDocument();
     expect(screen.getByText("The backend sent no value.")).toBeInTheDocument();
   });
+
+  it("links a forbidden field to QRadar access, and no other state", () => {
+    const { unmount } = shown({
+      state: "FORBIDDEN",
+      value: null,
+      reason_code: "forbidden",
+      reason: "QRadar answered 403.",
+    });
+    expect(screen.getByRole("link", { name: "See QRadar access" })).toHaveAttribute(
+      "href",
+      "/admin/qradar-access",
+    );
+    unmount();
+    for (const state of ["NOT_COLLECTED", "FAILED"] as const) {
+      const view = shown({ state, value: null, reason_code: "x", reason: "Why." });
+      expect(screen.queryByRole("link", { name: "See QRadar access" })).not.toBeInTheDocument();
+      view.unmount();
+    }
+    shown({ state: "OK", value: 3, reason_code: null, reason: null });
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
 });

@@ -155,6 +155,7 @@ describe("administration hub", () => {
       ...SECTIONS.map((section) => section.name),
       "History backfill",
       "SIEM load",
+      "QRadar access",
       "Alert e-mail",
       "Users",
       "Directory",
@@ -187,6 +188,27 @@ describe("administration hub", () => {
       expect(screen.queryByRole("link", { name: "Alert e-mail" })).not.toBeInTheDocument();
       unmount();
     }
+  });
+
+  it("lists QRadar access for admin:* only: neither read:* nor a narrower admin permission holds it", () => {
+    for (const permissions of [["read:*"], ["admin:notifications"], ["admin:users"]]) {
+      const { unmount } = render(
+        <StaticSession value={ready(permissions)}>
+          <AdminPage />
+        </StaticSession>,
+      );
+      expect(screen.queryByRole("link", { name: "QRadar access" })).not.toBeInTheDocument();
+      unmount();
+    }
+    render(
+      <StaticSession value={ready(["admin:*"])}>
+        <AdminPage />
+      </StaticSession>,
+    );
+    expect(screen.getByRole("link", { name: "QRadar access" })).toHaveAttribute(
+      "href",
+      "/admin/qradar-access",
+    );
   });
 
   it("lists SIEM load for admin:* only: neither read:* nor a narrower admin permission holds it", () => {

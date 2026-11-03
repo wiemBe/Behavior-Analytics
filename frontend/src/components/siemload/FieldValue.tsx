@@ -3,6 +3,7 @@
 // One QRadar field. A field that was read shows its value; a field that was not read shows its
 // state in words and the sentence that says why, and never a number, a zero or a healthy look.
 
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
@@ -18,6 +19,9 @@ export function FieldGap({ field }: { field: QRadarField<unknown> }) {
     <span className="sl-gap">
       <span className={`pill ${TONE[state]}`.trim()}>{t(state)}</span>
       <span className="sl-reason">{field.reason ?? t("noValue")}</span>
+      {state === "FORBIDDEN" ? (
+        <Link href="/admin/qradar-access">{t("seeAccess")}</Link>
+      ) : null}
     </span>
   );
 }

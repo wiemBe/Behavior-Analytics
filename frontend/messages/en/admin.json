@@ -36,6 +36,10 @@
       "name": "SIEM load",
       "description": "How much load this platform puts on QRadar, and how QRadar itself is doing"
     },
+    "qradarAccess": {
+      "name": "QRadar access",
+      "description": "Which QRadar APIs this site's token can reach, what each one feeds here, and what to ask the QRadar administrator for"
+    },
     "alertEmail": {
       "name": "Alert e-mail",
       "description": "What an alert e-mail looks like, who receives it, and whether the relay accepts it"

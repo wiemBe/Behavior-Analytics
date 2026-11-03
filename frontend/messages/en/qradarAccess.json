@@ -1,0 +1,104 @@
+{
+  "meta": {
+    "title": "QRadar access"
+  },
+  "page": {
+    "title": "QRadar access",
+    "description": "Which QRadar APIs this site's token can reach, what each one feeds here, and what to ask the QRadar administrator for. Times are UTC.",
+    "loadingWhat": "the QRadar access results",
+    "errorWhat": "QRadar access",
+    "forbidden": {
+      "heading": "QRadar access cannot be shown to this account.",
+      "body": "Reading it and starting a check needs the <perm>admin:*</perm> permission. The read-only role does not include it. Nothing was changed."
+    },
+    "noConsole": {
+      "heading": "No QRadar console is enabled.",
+      "body": "There is nothing to check. Enable a console first; its APIs are listed here once it is."
+    }
+  },
+  "error": {
+    "couldNotRead": "Could not read the QRadar access results.",
+    "noAnswer": "The backend did not answer.",
+    "answeredWith": "The backend answered with HTTP {status}.",
+    "advice": "Nothing was changed and nothing was sent to QRadar. Check that the backend is reachable, then try again.",
+    "tryAgain": "Try again",
+    "refreshFailed": "The last refresh failed. The results below are from the read before it."
+  },
+  "check": {
+    "heading": "Check now",
+    "button": "Check now",
+    "queuing": "Queuing the check…",
+    "note": "Sends one minimal read to each API, in the worker. Nothing is written to QRadar.",
+    "running": "A check is running. This page reads the result every {seconds, number} s.",
+    "timedOut": "The check is still running in the worker. This page stopped reading after {minutes, number} min. Reload the page to read the result.",
+    "started": "Check started on {consoles}.",
+    "alreadyRunning": "A check was already running on {consoles}. Nothing was queued for it.",
+    "failed": "The queue refused the check for {consoles}. Nothing ran there. Try again in a minute.",
+    "limited": "Too many checks were requested.",
+    "limitedAfter": "Too many checks were requested. Try again in {seconds, number} s.",
+    "limitedLater": "Too many checks were requested. Try again in a minute.",
+    "forbidden": "Your role cannot start a check. It needs the <perm>admin:*</perm> permission. Nothing was started.",
+    "error": "The check could not be requested (HTTP {status}). Nothing ran. Try again.",
+    "errorNoAnswer": "The check could not be requested: the backend did not answer. Nothing ran. Try again.",
+    "ended": "The check ended.",
+    "syncsStarted": "Started: {syncs}.",
+    "noSyncs": "It started no syncs."
+  },
+  "console": {
+    "notApplicable": "This console is not on the direct REST provider. Nothing is checked there.",
+    "running": "Check running",
+    "lastChecked": "Last checked",
+    "neverChecked": "No check has finished on this console yet.",
+    "interval": "Scheduled checks run every {interval}.",
+    "latestSyncs": "The latest check started: {syncs}.",
+    "tableLabel": "QRadar APIs checked on {console}"
+  },
+  "verdict": {
+    "allOk": "Every API the application uses is reachable with this token.",
+    "refused": "{count, plural, one {# API is} other {# APIs are}} refused: {names}.",
+    "unauthorized": "QRadar does not accept the token itself (HTTP 401). The other statuses below say nothing about what it may read until it is replaced.",
+    "notAnswered": "No API refused the token, but {count, plural, one {# did} other {# did}} not answer: {names}.",
+    "partlyUnchecked": "No API refused the token. {count, plural, one {# API is} other {# APIs are}} not checked yet: {names}.",
+    "notChecked": "Not checked yet. The first check runs at start-up; use Check now to run it earlier."
+  },
+  "table": {
+    "api": "API",
+    "status": "Status",
+    "http": "HTTP",
+    "feeds": "What it feeds here",
+    "checked": "Checked"
+  },
+  "status": {
+    "ok": "Reachable",
+    "forbidden": "Forbidden",
+    "unauthorized": "Token not accepted",
+    "not_found": "Not found",
+    "unreachable": "Did not answer",
+    "error": "Error",
+    "never": "Not checked yet"
+  },
+  "was": {
+    "ok": "was reachable",
+    "forbidden": "was forbidden",
+    "unauthorized": "was not accepted",
+    "not_found": "was not found",
+    "unreachable": "did not answer",
+    "error": "was an error"
+  },
+  "entry": {
+    "switchesOff": "Without it: {pages}.",
+    "syncsStarted": "This check started: {syncs}.",
+    "details": "Covered calls and sources",
+    "covers": "Calls this probe stands for",
+    "sources": "IBM pages read",
+    "noDetails": "No further calls or sources are listed for this API."
+  },
+  "ask": {
+    "heading": "What to ask for",
+    "hint": "IBM's role table suggests: {hint}. This is a hint. Confirm it with your QRadar administrator.",
+    "verified": "Required capability: {capability}. IBM states this for the API.",
+    "none": "IBM documents no capability for this API. Ask your QRadar administrator which role grants read access to it.",
+    "notFound": "QRadar answered 404: this version does not offer the API. A capability will not change that.",
+    "unauthorized": "The token itself was refused. Replace or re-issue it, then press Check now. A capability cannot help until the token is accepted."
+  }
+}

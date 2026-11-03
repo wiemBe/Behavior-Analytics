@@ -4349,6 +4349,89 @@ export const mailAdminApi = {
     }),
 };
 
+// --- QRadar access (ACC-2) -------------------------------------------------------------------
+// Mirrors `app/schemas/qradar_access.py`. Both routes need `admin:*`. Nothing here carries a
+// response body, header, token or query: every field is a status, a code, a time or a catalog
+// sentence.
+export type AccessStatus =
+  | "ok"
+  | "forbidden"
+  | "unauthorized"
+  | "not_found"
+  | "unreachable"
+  | "error";
+
+export interface AccessCoveredCall {
+  method: string;
+  path: string;
+  /** Why this call is not probed on its own. */
+  reason: string;
+}
+
+export interface AccessEntry {
+  id: string;
+  title: string;
+  method: string;
+  path: string;
+  /** What this API feeds in this application. */
+  feeds: string;
+  /** The collectors and pages that depend on it. */
+  used_by: string[];
+  /** Null while the entry has not been checked on this console. */
+  status: AccessStatus | null;
+  /** The status QRadar answered; null when it did not answer or nothing was checked. */
+  http_status: number | null;
+  checked_at: string | null;
+  /** The status stored by the check before the latest one. */
+  previous_status: AccessStatus | null;
+  /** Syncs the latest check started because this entry became reachable. */
+  syncs_started: string[];
+  /** The capability IBM documents for this API; null when IBM documents none. */
+  required_capability: string | null;
+  /** True only when `required_capability` is one IBM states for this API. */
+  capability_verified: boolean;
+  /** The closest role permission IBM documents for the same data. A hint, not a fact. */
+  capability_hint: string | null;
+  /** IBM pages read for this entry. */
+  sources: string[];
+  covers: AccessCoveredCall[];
+}
+
+export interface AccessConsole {
+  instance_id: string;
+  instance_name: string;
+  /** False for a console that is not on the direct REST provider: nothing is checked on it. */
+  applicable: boolean;
+  last_checked_at: string | null;
+  check_running: boolean;
+  last_check_started_at: string | null;
+  last_check_finished_at: string | null;
+  entries: AccessEntry[];
+  /** Syncs the latest check started, by name, over all entries. */
+  syncs_started: string[];
+}
+
+export interface QRadarAccess {
+  consoles: AccessConsole[];
+  /** Seconds between the scheduled checks. */
+  check_interval_seconds: number;
+}
+
+export interface AccessCheckAnswer extends QRadarAccess {
+  /** Consoles whose check this request queued. */
+  started: string[];
+  /** Consoles that already had a check running: nothing was queued for them. */
+  already_running: string[];
+  /** Consoles whose check the queue refused. */
+  failed: string[];
+}
+
+export const qradarAccessApi = {
+  get: (signal?: AbortSignal) => request<QRadarAccess>("/admin/qradar-access", { signal }),
+  check: (signal?: AbortSignal) =>
+    request<AccessCheckAnswer>("/admin/qradar-access/check", { method: "POST", signal }),
+};
+
 // --- shell top bar (UI-1.5) -------------------------------------------------
 // Browser reads of existing endpoints. Each takes an AbortSignal so a superseded
 // or unmounted caller can cancel; none writes anything, and none reaches QRadar.
