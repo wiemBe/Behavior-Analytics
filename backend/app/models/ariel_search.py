@@ -40,7 +40,9 @@ CALLERS: tuple[str, ...] = (
 
 #: IN_FLIGHT is the row written at submit time and closed by the terminal
 #: write. REFUSED is the permit refusal (the spec's "REFUSED-by-permit"):
-#: nothing was sent, so it never has an in-flight row.
+#: nothing was sent, so it never has an in-flight row. ABANDONED is the
+#: reaper's close of a row whose worker died before the terminal write: the
+#: search did load QRadar, and a later terminal write overwrites it.
 OUTCOMES: tuple[str, ...] = (
     "IN_FLIGHT",
     "COMPLETED",
@@ -49,6 +51,7 @@ OUTCOMES: tuple[str, ...] = (
     "TIMEOUT",
     "REFUSED",
     "PROVIDER_UNAVAILABLE",
+    "ABANDONED",
 )
 
 #: The outcomes that close a search. Everything else is still running.
@@ -59,6 +62,7 @@ TERMINAL_OUTCOMES: tuple[str, ...] = (
     "TIMEOUT",
     "REFUSED",
     "PROVIDER_UNAVAILABLE",
+    "ABANDONED",
 )
 
 

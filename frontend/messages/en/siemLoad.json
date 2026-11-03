@@ -52,7 +52,7 @@
     "refused": "Refused",
     "wallP50": "Wall p50",
     "wallP95": "Wall p95",
-    "windowsNote": "Wall time runs from submit to finish and covers completed searches only; a dash means none completed in the window. Failed counts errors, cancellations, timeouts and searches that found Ariel unavailable. Refused searches were turned away by the permit pool and never reached QRadar.",
+    "windowsNote": "Wall time runs from submit to finish and covers completed searches only; a dash means none completed in the window. Failed counts errors, cancellations, timeouts, abandoned searches (their worker stopped before it recorded an end) and searches that found Ariel unavailable. Refused searches were turned away by the permit pool and never reached QRadar.",
     "noneSent": "No search was submitted in the last 60 minutes."
   },
   "qradar": {
@@ -146,7 +146,7 @@
     "executionP95": "QRadar execution p95",
     "records": "Records returned",
     "unreported": "{count, number} unreported",
-    "note": "Percentiles cover completed searches only. Totals cover every finished search; a total marked ≥ leaves out searches for which QRadar reported no figure, and a dash means none did. Timeouts are the part of Failed that ran out of time.",
+    "note": "Percentiles cover completed searches only. Totals cover every finished search; a total marked ≥ leaves out searches for which QRadar reported no figure, and a dash means none did. Timeouts are the part of Failed that ran out of time. Abandoned searches are counted in Failed: their worker stopped before it recorded an end, so they carry no measurement.",
     "emptyTitle": "No search was recorded in the last {range}.",
     "emptyHelp": "The window holds no recorded search, so there are no figures to show.",
     "couldNotRead": "The per-caller summary could not be read.",

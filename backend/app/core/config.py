@@ -558,6 +558,11 @@ class Settings(BaseSettings):
     #: ``apply_ariel_search_run_retention``. Not gated by RETENTION_ENABLED,
     #: and the table is not a hypertable.
     ariel_search_run_retention_days: int = Field(default=30, ge=1, le=3650)
+    #: How often the beat closes ``IN_FLIGHT`` Ariel load rows whose worker
+    #: died as ``ABANDONED`` (task ``reap_abandoned_ariel_searches``). Also the
+    #: reaper's margin over the longest wait the application allows a search,
+    #: so a terminal write that is one scan late still records the real outcome.
+    ariel_search_abandon_scan_seconds: int = Field(default=600, ge=60, le=86400)
     #: Closed Phase A incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). Live
     #: states are kept. Not gated by RETENTION_ENABLED.
     log_source_anomaly_retention_days: int = Field(default=365, ge=1, le=3650)
