@@ -4,7 +4,7 @@
   },
   "page": {
     "title": "Alert e-mail",
-    "description": "The relay, the message and the recipients of alert e-mail. Times are UTC.",
+    "description": "Times are UTC.",
     "loadingWhat": "the alert e-mail settings",
     "errorWhat": "alert e-mail",
     "tabsLabel": "Alert e-mail sections",
@@ -49,7 +49,7 @@
     "status": {
       "configured": "Configured",
       "notConfigured": "Not configured",
-      "note": "Configured means the host is set. The test send checks that the relay answers."
+      "note": "Configured means a host is set, not that the relay answers."
     },
     "unset": "Not set",
     "security": {
@@ -65,7 +65,7 @@
       "set": "Set",
       "none": "Not set (system trust store)"
     },
-    "envNote": "The connection and the password are set in <code>.env</code> on the server and cannot be changed here. The password is never shown. <guide>How the relay is set</guide>.",
+    "envNote": "Set in <code>.env</code> on the server, not editable here. The password is never shown. <guide>How the relay is set</guide>.",
     "credentials": {
       "set": "Username set",
       "none": "No username (unauthenticated relay)"
@@ -74,8 +74,7 @@
   "templates": {
     "loading": "Reading the templates.",
     "what": "the templates",
-    "heading": "Templates",
-    "intro": "The default template is sent for every alert type that has no template of its own. Choose one to edit it."
+    "heading": "Templates"
   },
   "table": {
     "label": "E-mail templates",

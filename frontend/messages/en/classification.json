@@ -9,14 +9,14 @@
   },
   "page": {
     "title": "Classification rules",
-    "description": "{total} rules, {builtIn} built-in and {custom} custom. Built-in rules can be switched on or off; to change what they match, add a custom rule with a higher priority.",
+    "description": "{total} rules, {builtIn} built-in and {custom} custom.",
     "descriptionError": "The rules that decide a log source's class.",
     "errorTitle": "Classification rules could not be shown.",
     "forbidden": "Your role cannot read classification rules (permission read:fleet). Nothing was changed.",
     "expired": "Your session has expired. Sign in again to continue.",
     "failed": "Classification rules could not be loaded. The backend may be unreachable; check that it is running, then reload the page. Nothing was changed.",
     "precedenceTitle": "Order of decision",
-    "precedenceNote": "The first level that decides wins. Within a level the highest priority wins; two rules of equal priority naming different classes leave the level undecided, record a conflict, and the next level is tried."
+    "precedenceNote": "The first level that decides wins; within a level, the highest priority wins."
   },
   "precedence": {
     "override": {

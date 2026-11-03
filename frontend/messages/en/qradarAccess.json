@@ -4,7 +4,7 @@
   },
   "page": {
     "title": "QRadar access",
-    "description": "Which QRadar APIs this site's token can reach, what each one feeds here, and what to ask the QRadar administrator for. Times are UTC.",
+    "description": "Times are UTC.",
     "loadingWhat": "the QRadar access results",
     "errorWhat": "QRadar access",
     "forbidden": {
@@ -28,7 +28,7 @@
     "heading": "Check now",
     "button": "Check now",
     "queuing": "Queuing the check…",
-    "note": "Sends one minimal read to each API, in the worker. Nothing is written to QRadar.",
+    "note": "Sends one read to each API. Nothing is written to QRadar.",
     "running": "A check is running. This page reads the result every {seconds, number} s.",
     "timedOut": "The check is still running in the worker. This page stopped reading after {minutes, number} min. Reload the page to read the result.",
     "started": "Check started on {consoles}.",

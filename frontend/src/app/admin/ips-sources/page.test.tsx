@@ -29,6 +29,16 @@ function pageHeader() {
 }
 
 describe("IPS sources list", () => {
+  it("keeps the time zone and the paused and never-validated meanings after the d40 text cut", async () => {
+    vi.spyOn(ipsApi, "sources").mockResolvedValue([status()]);
+    render(await IpsSourcesPage());
+    expect(screen.getByText("Times are UTC.")).toBeInTheDocument();
+    expect(
+      screen.getByText(/means paused, not unhealthy\. An older validation shows the version it checked\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText("A dash means never validated, not a failed validation.")).toBeInTheDocument();
+  });
+
   it("has one h1 and links to each source's editor", async () => {
     vi.spyOn(ipsApi, "sources").mockResolvedValue([status()]);
     render(await IpsSourcesPage());

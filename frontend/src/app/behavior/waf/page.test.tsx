@@ -33,6 +33,15 @@ async function renderPage(
 }
 
 describe("WAF behavior: composition", () => {
+  it("keeps the time zone and the not-overflow reading after the d40 text cut", async () => {
+    await renderPage();
+    expect(screen.getByText("Times are UTC.")).toBeInTheDocument();
+    expect(document.body.textContent).toContain(
+      "Below admission threshold is low-volume noise, not overflow.",
+    );
+    expect(document.body.textContent).not.toContain("Refused over quota means");
+  });
+
   it("has one h1 and leads with how many sources are judged", async () => {
     const { container } = await renderPage([
       wafSource(),
@@ -41,7 +50,7 @@ describe("WAF behavior: composition", () => {
     expect(container.querySelectorAll("h1")).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("WAF behavior");
     expect(screen.getByText("1 of 2")).toBeInTheDocument();
-    expect(screen.getByText(/The others produce no verdicts/)).toBeInTheDocument();
+    expect(screen.getByText(/the others produce no verdicts/)).toBeInTheDocument();
   });
 
   it("states the range overflow covers, in UTC", async () => {
@@ -155,7 +164,7 @@ describe("WAF behavior: headline", () => {
   it("writes 'valid' in lower case inside the sentence", async () => {
     await renderPage();
     const lead = document.querySelector(".waf-lead") as HTMLElement;
-    expect(lead).toHaveTextContent("profile enabled and valid for its current version");
+    expect(lead).toHaveTextContent("collected and judged; the others produce no verdicts");
     expect(lead).not.toHaveTextContent("VALID");
   });
 });

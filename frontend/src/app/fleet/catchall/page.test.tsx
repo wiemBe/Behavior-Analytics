@@ -17,6 +17,16 @@ async function renderPage() {
 beforeEach(() => vi.restoreAllMocks());
 
 describe("CatchallPage", () => {
+  it("keeps the time zone and the lower-bound rules after the d40 text cut", async () => {
+    vi.spyOn(catchallApi, "sources").mockResolvedValue(sources());
+    vi.spyOn(catchallApi, "senders").mockResolvedValue({ items: [sender()], total: 1, limit: 50, offset: 0 });
+    await renderPage();
+    expect(document.body.textContent).toContain("Times are UTC.");
+    expect(document.body.textContent).toContain(
+      "24 h events is a lower bound; unknown means no stored list named the sender, not zero.",
+    );
+  });
+
   it("opens with the queue, then the volume, under one h1", async () => {
     vi.spyOn(catchallApi, "sources").mockResolvedValue(sources());
     const senders = vi
@@ -29,7 +39,7 @@ describe("CatchallPage", () => {
     expect(h2).toEqual(["Senders queue"]);
     expect(screen.getByRole("region", { name: "volume stub" })).toBeInTheDocument();
     // What a sender is, said once.
-    expect(screen.getAllByText(/logsourceidentifier/)).toHaveLength(1);
+    expect(screen.getAllByText(/a candidate unconfigured device, not a verdict/)).toHaveLength(1);
   });
 
   it("names the catch-all types when the inventory holds no catch-all source", async () => {

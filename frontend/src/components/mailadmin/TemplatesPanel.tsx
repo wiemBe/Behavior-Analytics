@@ -62,7 +62,6 @@ export function TemplatesPanel({
         <h2 className="mail-h" id="mail-templates-h">
           {t("heading")}
         </h2>
-        <p className="mail-hint">{t("intro")}</p>
         <TemplateTable
           list={list}
           selected={workspace.selected}

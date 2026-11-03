@@ -237,7 +237,7 @@
     "metaTitle": "IPS sources",
     "title": "IPS sources",
     "boundaryWhat": "IPS sources",
-    "description": "Which IPS sources are configured, and which are collected right now. Times are UTC.",
+    "description": "Times are UTC.",
     "loadFailedTitle": "IPS sources could not be shown.",
     "emptyTitle": "No IPS source has a profile yet.",
     "emptyBody": "Adding one starts from a preset for Cisco Firepower Threat Defense or Palo Alto THREAT. The preset only fills in defaults; the profile still has to validate before anything is collected."
@@ -258,8 +258,8 @@
     "disabledWord": "Disabled",
     "ofVersion": "of v{version}",
     "neverValidated": "never validated",
-    "notes": "A profile change pauses collection from that source until the new version validates. “Version 5 not validated” therefore means the source is paused, not that it is unhealthy. A validation older than the current version is shown with the version it checked.",
-    "noteDash": "A dash means the source has never been validated. It is not a failed validation."
+    "notes": "A profile change pauses collection until the new version validates, so “Version 5 not validated” means paused, not unhealthy. An older validation shows the version it checked.",
+    "noteDash": "A dash means never validated, not a failed validation."
   },
   "picker": {
     "add": "Add IPS source",

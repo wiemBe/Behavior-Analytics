@@ -9,12 +9,12 @@
   },
   "page": {
     "title": "Outage alerts",
-    "description": "Which silent sources page someone, and which are only recorded. Times are UTC.",
+    "description": "Times are UTC.",
     "summaryForbidden": "Monitored sources covered and Source overrides in the class table come from the fleet summary, which your role cannot read (permission read:fleet); those two columns are left blank. The policy below is complete.",
     "summaryFailed": "The source counts are not shown: the fleet summary could not be loaded. The policy below is complete; grace is given in buckets only.",
     "failureForbidden": "The outage alert policy cannot be shown to your role.",
     "failureFailed": "The outage alert policy could not be shown.",
-    "note": "<strong>Record only</strong> still records the outage: the silence is detected, stays on the source and on <code>/behavior</code>, and follows its normal lifecycle. It only stops that anomaly from raising an alert. An alert that is already open resolves normally. Only <code>NO_EVENTS</code> is affected; volume drops and spikes still alert."
+    "note": "<strong>Record only</strong> still records the silence and its lifecycle; it only stops the alert. Only <code>NO_EVENTS</code> is affected; volume drops and spikes still alert."
   },
   "mode": {
     "ALERT": "Alert",
