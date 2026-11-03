@@ -46,10 +46,8 @@ describe("CallerSummary: the table", () => {
       "Failed",
       "Refused",
       "Timeouts",
-      "Wall time p50",
-      "Wall time p95",
-      "QRadar execution, total",
-      "QRadar execution p95",
+      "Wall time p50 / p95",
+      "QRadar execution total / p95",
       "Records returned",
     ]);
   });
@@ -58,7 +56,7 @@ describe("CallerSummary: the table", () => {
     mocks.states["/admin/ariel-load?hours=24"] = okState(summary());
     render(<CallerSummary range="24h" />);
     // 3 ERROR + 2 TIMEOUT are failed; the 2 timeouts are also shown on their own.
-    expect(cells(rowOf("Log source volume")).slice(0, 7)).toEqual(["288", "280", "5", "3", "2", "760 ms", "3.1 s"]);
+    expect(cells(rowOf("Log source volume")).slice(0, 7)).toEqual(["288", "280", "5", "3", "2", "760 ms3.1 s", "4 min 4 s2.8 s"]);
     // PROVIDER_UNAVAILABLE counts as failed too.
     expect(cells(rowOf("WAF collection")).slice(0, 5)).toEqual(["96", "90", "6", "0", "0"]);
   });
@@ -95,8 +93,8 @@ describe("CallerSummary: the table", () => {
     mocks.states["/admin/ariel-load?hours=24"] = okState(summary());
     render(<CallerSummary range="24h" />);
     const row = cells(rowOf("WAF collection"));
-    expect(row[7]).toBe("≥ 3 min 8 s4 unreported");
-    expect(row[9]).toBe("≥ 55,0004 unreported");
+    expect(row[6]).toContain("≥ 3 min 8 s4 unreported");
+    expect(row[7]).toBe("≥ 55,0004 unreported");
   });
 
   it("shows a total nobody reported as a dash, never 0", () => {
@@ -104,8 +102,33 @@ describe("CallerSummary: the table", () => {
     render(<CallerSummary range="24h" />);
     const row = cells(rowOf("Rule matches"));
     expect(row[7]).toBe("—");
-    expect(row[9]).toBe("—");
-    expect(row[8]).toBe("19.0 s");
+    expect(row[6]).toMatch(/^—/);
+    expect(row[6]).not.toMatch(/^0/);
+  });
+
+  it("stacks each related pair in one cell: both figures carry a unit, a missing one is a dash", () => {
+    mocks.states["/admin/ariel-load?hours=24"] = okState(
+      summary({
+        callers: [
+          caller({
+            caller: "HISTORY",
+            wall_ms_p50: 760,
+            wall_ms_p95: null,
+            qradar_execution_ms_sum: 244_000,
+            qradar_execution_ms_p95: null,
+          }),
+        ],
+      }),
+    );
+    render(<CallerSummary range="24h" />);
+    const row = rowOf("History backfill");
+    const [wall, execution] = within(row).getAllByRole("cell").slice(5, 7);
+    expect(Array.from(wall.querySelectorAll(".sl-pairfig")).map((n) => n.textContent)).toEqual(["760 ms", "—"]);
+    expect(Array.from(execution.querySelectorAll(".sl-pairfig")).map((n) => n.textContent)).toEqual([
+      "4 min 4 s",
+      "—",
+    ]);
+    expect(within(row).getAllByRole("cell")).toHaveLength(8);
   });
 
   it("shows a caller it does not know as its code, never blank", () => {

@@ -246,6 +246,11 @@
 .sl-hosts-table td {
   padding-inline: var(--sp-2);
 }
+/* The caller table pairs its related figures in one cell so nine columns fit 1024 px. */
+.sl-callers-table th,
+.sl-callers-table td {
+  padding-inline: var(--sp-2);
+}
 .sl-sentence {
   color: var(--text-2);
   white-space: normal;

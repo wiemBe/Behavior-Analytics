@@ -151,7 +151,7 @@ function Body({ range }: { range: SummaryRangeId }) {
         })}
       </p>
       <TableScroll label={t("label")}>
-        <table className="sl-table">
+        <table className="sl-table sl-callers-table">
           <caption className="sr-only">{t("label")}</caption>
           <thead>
             <tr>
@@ -172,16 +172,10 @@ function Body({ range }: { range: SummaryRangeId }) {
                 {t("timeouts")}
               </th>
               <th scope="col" className="num">
-                {t("wallP50")}
+                {t("wallPair")}
               </th>
               <th scope="col" className="num">
-                {t("wallP95")}
-              </th>
-              <th scope="col" className="num">
-                {t("executionSum")}
-              </th>
-              <th scope="col" className="num">
-                {t("executionP95")}
+                {t("executionPair")}
               </th>
               <th scope="col" className="num">
                 {t("records")}
@@ -197,16 +191,20 @@ function Body({ range }: { range: SummaryRangeId }) {
                 <td className="num">{formatCount(failedOf(row))}</td>
                 <td className="num">{formatCount(row.outcomes.REFUSED ?? 0)}</td>
                 <td className="num">{formatCount(row.outcomes.TIMEOUT ?? 0)}</td>
-                <td className="num">{formatMs(row.wall_ms_p50)}</td>
-                <td className="num">{formatMs(row.wall_ms_p95)}</td>
                 <td className="num">
-                  <Total
-                    sum={row.qradar_execution_ms_sum}
-                    unknown={row.qradar_execution_ms_unknown}
-                    render={formatMs}
-                  />
+                  <span className="sl-pairfig">{formatMs(row.wall_ms_p50)}</span>
+                  <span className="sl-pairfig">{formatMs(row.wall_ms_p95)}</span>
                 </td>
-                <td className="num">{formatMs(row.qradar_execution_ms_p95)}</td>
+                <td className="num">
+                  <span className="sl-pairfig">
+                    <Total
+                      sum={row.qradar_execution_ms_sum}
+                      unknown={row.qradar_execution_ms_unknown}
+                      render={formatMs}
+                    />
+                  </span>
+                  <span className="sl-pairfig">{formatMs(row.qradar_execution_ms_p95)}</span>
+                </td>
                 <td className="num">
                   <Total
                     sum={row.records_returned_sum}
