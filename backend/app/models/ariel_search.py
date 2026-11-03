@@ -36,6 +36,7 @@ CALLERS: tuple[str, ...] = (
     "PREVIEW",
     "SCHEDULED_SEARCH",
     "MANUAL_RUN",
+    "DOCTOR_AQL",
 )
 
 #: IN_FLIGHT is the row written at submit time and closed by the terminal

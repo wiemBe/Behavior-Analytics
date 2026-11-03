@@ -28,6 +28,7 @@ const CALLERS = [
   "SCHEDULED_SEARCH",
   "MANUAL_RUN",
   "QRADAR_HEALTH",
+  "DOCTOR_AQL",
 ];
 
 describe("callerLabel", () => {
