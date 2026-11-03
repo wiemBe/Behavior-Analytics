@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -49,22 +49,128 @@ class HealthField[T](BaseModel):
         return self
 
 
+class HaPairState(StrEnum):
+    """The state of one managed host as an HA pair (HLT-1, design D-42 section 2).
+
+    `unknown` is a pair that cannot be classified: a status string outside IBM's list, a member
+    that was not read, two ACTIVE members, or roles that are not known. It is never read as
+    healthy.
+    """
+
+    #: One server, no HA partner.
+    SINGLE = "single"
+    #: The primary is ACTIVE and the secondary is STANDBY.
+    HA_HEALTHY = "ha_healthy"
+    #: One member is ACTIVE and the other is not on standby: no failover is possible.
+    HA_DEGRADED = "ha_degraded"
+    #: The secondary is ACTIVE and the primary is not.
+    HA_FAILED_OVER = "ha_failed_over"
+    #: No member is ACTIVE.
+    HA_FAILED = "ha_failed"
+    UNKNOWN = "unknown"
+
+
 class ServerEntry(BaseModel):
     hostname: str | None = None
+    #: A single host: its status. An HA pair: both members' statuses, primary first
+    #: ("FAILED / OFFLINE"); a member that was not read reads "no status".
     status: str | None = None
+    #: Set for a managed host that is an HA pair (or should be); None for a single host.
+    ha_state: HaPairState | None = None
 
 
 class ServersValue(BaseModel):
-    """`GET /system/servers`: managed hosts and the status QRadar reports for each."""
+    """`GET /system/servers` grouped by managed host (an HA pair is one host).
+
+    `total` and `active` count managed hosts: a host is active when exactly one of its members
+    is `ACTIVE`, so the standby of a healthy pair is never counted as not active. `by_status`
+    and `unreported` count the members (server records), so on an HA site they add up to more
+    than `total`.
+    """
 
     total: int
     active: int
-    #: Hosts whose entry carried no status. Counted apart, never as active.
+    #: Members (servers) behind `total` managed hosts: one per single host, two per HA pair
+    #: (a member whose record was not returned counts). `by_status` and `unreported` count
+    #: these, not hosts.
+    members_total: int = 0
+    #: Members whose status was not read. Counted apart, never as active.
     unreported: int
     by_status: dict[str, int]
-    #: Hosts not reporting `ACTIVE`, at most 20, so the section stays small on a big deployment.
+    #: Managed hosts without exactly one ACTIVE member, at most 20, so the section stays small
+    #: on a big deployment.
     not_active: list[ServerEntry] = Field(default_factory=list)
     all_active: bool
+    #: Managed hosts that are HA pairs.
+    ha_pairs: int = 0
+    #: HA pairs not in the `ha_healthy` state (degraded, failed over, failed or unknown).
+    ha_problem: int = 0
+    #: The HA pairs counted in `ha_problem`, at most 20, with their state.
+    ha_issues: list[ServerEntry] = Field(default_factory=list)
+    #: The read stopped at its bound: the figures cover the records read only, and
+    #: `all_active` is not claimed.
+    truncated: bool = False
+
+
+class HostMember(BaseModel):
+    """One server of a managed host: the only one, or one of an HA pair's two."""
+
+    server_id: int | None = None
+    hostname: str | None = None
+    private_ip: str | None = None
+    #: `primary` / `secondary` from the managed host's `primary_server_id` and
+    #: `secondary_server_id`; None when the host record was not read or does not name it.
+    role: str | None = None
+    #: The status QRadar reports, upper-cased; not read -> a state and a reason, no value.
+    status: HealthField[str]
+
+
+class RateValue(BaseModel):
+    """EPS or FPM of one managed host. A figure QRadar did not give is None, never 0."""
+
+    allocation: int | None = None
+    hardware_limit: int | None = None
+    #: Previous month, as QRadar reports it.
+    average: int | None = None
+    peak: int | None = None
+
+
+class HostEntry(BaseModel):
+    """One managed host (`GET /config/deployment/hosts`) with its server members."""
+
+    host_id: int | None = None
+    hostname: str | None = None
+    private_ip: str | None = None
+    public_ip: str | None = None
+    appliance_id: str | None = None
+    appliance_description: str | None = None
+    version: str | None = None
+    #: The deployment record's status for the host ("Active"), as QRadar writes it.
+    status: str | None = None
+    cpus: int | None = None
+    total_memory_kb: int | None = None
+    #: The managed host's rates, once per host: an HA pair is never counted twice.
+    eps: HealthField[RateValue]
+    fpm: HealthField[RateValue]
+    #: `console` when the host runs the Magistrate, `managed` when it reports components and
+    #: none is the Magistrate, None when QRadar gave no component list. Never a guess.
+    role: Literal["console", "managed"] | None = None
+    pair_state: HaPairState
+    #: For `unknown`: the status strings that were read, rendered as QRadar wrote them.
+    unclassified: list[str] = Field(default_factory=list)
+    members: list[HostMember] = Field(default_factory=list)
+
+
+class HostsValue(BaseModel):
+    """The per-host table: one entry per managed host."""
+
+    #: Managed hosts read (and listed in `items`).
+    hosts: int
+    #: The answer was longer than the bound: `hosts` is the count kept, there are more.
+    truncated: bool = False
+    ha_pairs: int = 0
+    ha_problem: int = 0
+    items: list[HostEntry] = Field(default_factory=list)
 
 
 class EpsValue(BaseModel):
@@ -77,6 +183,8 @@ class EpsValue(BaseModel):
     allocated_eps: int
     #: `average_eps / allocated_eps`; None when the allocation is 0.
     average_share: float | None = None
+    #: The read stopped at its bound: the sums are lower bounds.
+    truncated: bool = False
 
 
 class LicenseRate(BaseModel):
@@ -140,6 +248,8 @@ class QRadarHealth(BaseModel):
     api_latency_ms: HealthField[int]
     version: HealthField[str]
     servers: HealthField[ServersValue]
+    #: The per-host table with HA members (HLT-1).
+    hosts: HealthField[HostsValue]
     eps: HealthField[EpsValue]
     license: HealthField[LicenseValue]
     ariel: ArielSection

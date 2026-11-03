@@ -119,6 +119,62 @@ object carries the completeness of the selected window:
 `complete_from_history` is always between `0` and `complete`. History buckets remain COMPLETE data
 and stay in the class totals; the field states how much of that measured total came from the past.
 
+## QRadar health
+
+`GET /admin/ariel-load/current` carries `qradar`: one entry per enabled console. Every field of an
+entry is `{state, value, reason_code, reason}` with `state` one of `OK`, `NOT_COLLECTED`,
+`FORBIDDEN`, `FAILED`; only an `OK` field carries a value, and a field that was not read is never
+a zero and never "healthy". The QRadar reads are reused for `QRADAR_HEALTH_CACHE_TTL_SECONDS`.
+
+**`hosts`** is the per-host table, from `GET /config/deployment/hosts` joined with
+`GET /system/servers`. `value` holds `hosts` (managed hosts read), `truncated`, `ha_pairs`,
+`ha_problem` and `items`, one per **managed host**:
+
+| Field | Meaning |
+|---|---|
+| `host_id`, `hostname`, `private_ip`, `public_ip`, `appliance_id`, `appliance_description`, `version`, `status` | The deployment record, as QRadar writes it; a field QRadar did not give is `null`. `status` is the deployment status ("Active"), not the server status. |
+| `cpus`, `total_memory_kb` | Hardware as QRadar reports it; `null` when absent. |
+| `role` | `console` when the host's component list holds `magistrate` (the Magistrate runs only on the console: IBM QRadar 7.1 MR2 Installation Guide, "You can add one Magistrate component for each deployment"; IBM support note 6558024), `managed` when the list is non-empty and does not, `null` when QRadar gave no list or an empty one. Never a guess. The component list itself is not returned. |
+| `eps`, `fpm` | A field each: `value` is `{allocation, hardware_limit, average, peak}` (average and peak are QRadar's previous month). They are the managed host's own figures, once per host: an HA pair is never counted twice. `NOT_COLLECTED` (`field_missing`) when QRadar gave none of the four. |
+| `pair_state` | `single`, `ha_healthy`, `ha_degraded`, `ha_failed_over`, `ha_failed` or `unknown`. |
+| `unclassified` | For `unknown` only: the status strings that were read, as QRadar wrote them (upper case). |
+| `members` | One entry for a single host, two for an HA pair: `server_id`, `hostname`, `private_ip`, `role` (`primary` or `secondary`, `null` when the host record does not name it) and `status`, a field of its own (`FAILED` / `NOT_COLLECTED` when `/system/servers` was not read or lacks the member). |
+
+Pair states follow IBM's HA host statuses (High Availability Guide, "Status of HA hosts": Active,
+Standby, Failed, Synchronizing, Online, Offline, Restoring, Needs License, Setting Offline,
+Setting Online, Needs Upgrade, Upgrading):
+
+| `pair_state` | When |
+|---|---|
+| `single` | The host names no secondary server. |
+| `ha_healthy` | The primary is `ACTIVE` and the secondary is `STANDBY`. |
+| `ha_degraded` | The primary is `ACTIVE` and the secondary is any other documented status: no failover is possible. |
+| `ha_failed_over` | The secondary is `ACTIVE` and the primary is any other documented status. |
+| `ha_failed` | No member is `ACTIVE`. |
+| `unknown` | A status outside the list above, a member that was not read (including a secondary that `/system/servers` did not return), two `ACTIVE` members, or roles that are not known because the deployment hosts were not read. Never read as healthy. |
+
+`hosts.value.truncated` is `true` when the deployment lists more than 100 managed hosts: `hosts`
+is the count kept, the host part is partial, and the sums in `eps` are lower bounds.
+
+**`servers`** is the managed-host summary, redefined on managed hosts with the pair rule. `total`
+and `active` count managed hosts: a host is active when exactly one of its members is `ACTIVE`,
+so the standby of a healthy pair is never counted as not active and never listed in `not_active`.
+`not_active` (at most 20) holds the hosts without exactly one `ACTIVE` member; its `status` is the
+member status for a single host, and both statuses, primary first ("FAILED / OFFLINE"), for a
+pair, with `ha_state` set. `all_active` is false when the read was cut at its bound (`truncated`).
+`members_total` is the number of members behind `total`: one per single host, two per HA pair
+(a member whose `/system/servers` record was not returned counts, with an unread status).
+`by_status` and `unreported` count members, never hosts. Example, an HA site with a console, one
+managed host and one HA pair (`ep-ha`, primary `ACTIVE`, secondary `STANDBY`):
+`total: 3`, `active: 3`, `members_total: 4`, `by_status: {"ACTIVE": 3, "STANDBY": 1}`,
+`unreported: 0`, `ha_pairs: 1`, `ha_problem: 0`. A reader compares hosts with hosts (`total`,
+`active`) and members with members (`members_total`, `by_status`, `unreported`), and never has to
+infer the count. Added fields: `ha_pairs`, `members_total`, `ha_problem` (pairs not `ha_healthy`), `ha_issues` (those
+pairs, at most 20) and `truncated`. No field was renamed or removed.
+
+**`eps`** is unchanged in meaning: the sum over managed hosts, one record per host (so an HA pair
+counts once); `truncated` was added.
+
 ## WAF profiles
 
 Each WAF source has a versioned mapping from logical URL, method, virtual-host, action,
