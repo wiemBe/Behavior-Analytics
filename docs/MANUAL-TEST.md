@@ -47,25 +47,27 @@ This section upgrades a 0.1.9 site to 0.1.10 and tests the upgraded site. A 0.1.
 - **console administrator step**: the check is done by the administrator of the QRadar console.
 - `Not run`: the check could not be done (for example the site has no data of that kind). "No data" is not a Fail; write the reason in the Note field.
 - A raw message key (a string of the form `namespace.key`) or Turkish text anywhere in the interface is a Fail of the check where it was seen (section 4).
+- **“The `h1`” and “the browser tab”.** The `h1` is the page's one level-1 heading, the title the analyst reads at the top of the page. The browser tab shows the page's `<title>`, which is “{page title} · Behavior Analytics”; a check names the tab only where it differs from the `h1`. The `h1` of a detail page is the name of what it shows (a log source, a rule, an alert's title), not a fixed word; the fixed word of such a page is its tab title. Three routes set no tab title of their own (`/coverage`, `/log-sources` with its detail, `/config-changes`); their tab reads only “Behavior Analytics”.
 - No secret is written in any step (section 16). Do not put passwords and `.env` values on the page or in a ticket.
 - SELinux is never turned off and `:z` is never used in any step.
 
 ### Timing and total duration
 
-After the upgrade, collection restarts at the cadence of the families. The default cadence is 5 minutes for every family; for WAF and IPS it is 15 minutes. The site's own values are on the `/admin/search-cadence` page.
+After the upgrade, collection restarts at the cadence of the families. The default cadence is 5 minutes for every family; for WAF collection and IPS collection it is 15 minutes (decision D-28). The site's own values are on the `/admin/search-cadence` page; an administrator can set any family to 5, 15 or 30 minutes, or 1, 2, 4 or 8 hours. Four of the eight families are switched off in the code defaults (Rule matches, Property watches, WAF collection, IPS collection); a family that is off does not run, and the `families_off` line of `doctor` says which are on.
+A family runs when beat's one-minute tick finds an unclaimed slot. Slots are aligned to the clock (a 5-minute family has slots on :00, :05, :10 …), and a slot opens after the settle margin. The first run after the restart is therefore the next slot boundary after the claimed one + the settle margin, seen at the next beat tick: at most the family's own cadence + 3 minutes after the upgrade. If a whole slot has already passed (the stack was down for longer than one cadence), the first run is at the first beat tick after beat starts, about one minute. The “Last run (UTC)” time is written when the run ends, so a run that has to catch up after an outage adds its own duration; Catch-all senders and Geography take at most the cadence's buckets plus `COLLECTION_MAX_BACKFILL_INTERVALS` of missing buckets per run, and the rest follow in the next runs. Not every collector is a cadence family: `offense_snapshot` (default 5 min), `log_source_inventory` and `rule_inventory` (default 1 h) are plain beat intervals, and beat's first run of such a task comes one interval after beat starts.
 For the data of a collection to appear on a page, the cadence and the settle margin (`SEARCH_CADENCE_SETTLE_SECONDS`, default 120 s) must pass; `doctor` also gives a 60 s margin. So:
 
 | What | When to look | What the page shows if you look earlier |
 |---|---|---|
 | Version, migration, `doctor` (independent lines), sign-in, guide, administration pages | At once | (not data dependent) |
-| Dashboard widgets, anomaly and fleet data, rule and coverage reasons | The family's cadence + 3 min (log source volume and geography: 8 min; WAF and IPS: 18 min) | “Stale” or “Not collected”; this is correct, do not write Fail |
+| Dashboard widgets, anomaly and fleet data, rule and coverage reasons | The family's own cadence + 3 min, from the “Next run (UTC)” column of `/admin/search-cadence`. With the default cadences: 8 min for Log source volume, Anomaly explanations, Rule matches, Property watches, Catch-all senders and Geography; 18 min for WAF collection and IPS collection. A family set to a longer cadence waits that long (1 hour: up to 1 h 3 min); a family that is off does not run | “Stale” or “Not collected”; this is correct, do not write Fail |
 | New sentence rows (property watch reason, custom rule reason, rule health reason, history backfill reason) | After the next run of the collection that writes the row | The stored previous text |
 | A new transition, a new anomaly, a new alert | When an event happens; there is no waiting | The older rows |
 
 **Core (production path):** 37 checks, about **2 hours** of active work (an estimate, not measured) and about 10 minutes of the console administrator (MT-120); the cadence wait is separate. **Production order:** the core checks are done in section order. MT-126, although its number is high, is done right after MT-11; MT-128 is also done after MT-11, once a `GEO_COLLECTION` cadence has passed. The cadence wait (18 minutes at most) is filled with read-only checks that need no new data, such as MT-12 to MT-22; the data-dependent checks (MT-24 and after) are done when the wait is over.
 
 Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes.
-Fill the first cadence wait (18 minutes at most) with the Sign-in and Language sections. It can also be done in two half days; between the upgrade and the Dashboard and anomaly checks a wait is needed.
+Fill the first cadence wait (18 minutes at most with the default cadences) with the Sign-in and Language sections. It can also be done in two half days; between the upgrade and the Dashboard and anomaly checks a wait is needed.
 
 
 ### 1. Preconditions
@@ -106,8 +108,9 @@ echo "exit: $?"
 
 **Expected:**
 
-- No line is `FAIL`. Exit code 0 (all PASS) or 1 (at least one WARN, no FAIL). If it is 2, the upgrade is not done; read the line's `runbook: OPS-R<n>` entry.
-- On a healthy site these lines may be `WARN` and do not block the upgrade; write each one and its cause in the Note field: `backup_age` (no backup, the age cannot be read, or older than 26 hours; when the backup timer is not installed or is off, even a fresh backup gives a WARN — the `backup_age` row of the doctor table in `docs/OPERATIONS.md`, which has no OPS-R id; the next check fixes the backup, not the timer), `disk_docker` and `disk_backup` (70% to 89% full), `qradar_tls` (the certificate expires in under 30 days), `cadence`, `errors_recent` (one or two failed watermarks), `anomaly_evaluation`, `rule_match_coverage`, `ariel_permits` (the pool is full). These are true before the upgrade as well.
+- No line is `FAIL`. Exit code 0 (all PASS) or 1 (at least one WARN, no FAIL). If it is 2, the upgrade is not done; read the line's `runbook: OPS-R<n>` entry. The one exception is a leftover failure of a collector, described in the next item.
+- **A leftover failure of a collector (`watermarks`, `errors_recent`).** This is how `doctor` decides, and it does not look at the age of the last run. `watermarks` is `FAIL` when any collector's row holds a `last_error` or three or more consecutive failures (a row stalled at the page ceiling counts as a stall, not as a failure), and `WARN` when the row has no error but its lag is more than twice its cadence or it is stalled. `errors_recent` is `WARN` for one or two rows with a failure and `FAIL` for three or more. A row is cleared only when that collector next finishes a clean run: the families of `/admin/search-cadence` at their next slot (cadence + 3 min), `offense_snapshot` at its own interval (default 5 min), and the two inventories `log_source_inventory` and `rule_inventory` once an hour, counted from the start of beat. So a healthy site that was powered off, or whose QRadar console was down or still starting, can show `FAIL` for collectors such as `catchall_senders`, `rule_match`, `geo_countries_source`, `geo_countries_destination`, `offense_snapshot`, `log_source_inventory` and `rule_inventory`, because the failure was recorded earlier and nothing has run since. The row of a family that is switched off (see `families_off`) is not skipped and is not cleared either, because that collector never runs again. The rule: when `qradar_auth` is `PASS` (the console answers now) and the only `FAIL` lines are `watermarks` and `errors_recent`, write the collector names (the text of the `watermarks` line) and the time in the Note field; this alone does not stop the upgrade, which neither runs nor resets these collectors, and the rows are read again in MT-09 and MT-11. Stop and tell the owner when `qradar_auth` or `qradar_tls` is `FAIL`, when any other line is `FAIL`, or when the same row is still failing after its collector's next run (OPS-R30).
+- On a healthy site these lines may be `WARN` and do not block the upgrade; write each one and its cause in the Note field: `backup_age` (no backup, the age cannot be read, or older than 26 hours; when the backup timer is not installed or is off, even a fresh backup gives a WARN — the `backup_age` row of the doctor table in `docs/OPERATIONS.md`, which has no OPS-R id; the next check fixes the backup, not the timer), `disk_docker` and `disk_backup` (70% to 89% full), `qradar_tls` (the certificate expires in under 30 days), `cadence`, `errors_recent` (one or two rows with a failure), `anomaly_evaluation`, `rule_match_coverage`, `ariel_permits` (the pool is full). These are true before the upgrade as well.
 - On a console that has no offenses, a `watermarks` `offense_snapshot` line does not block the upgrade. `consecutive_failures` is 0 and `last_error` is empty. 0.1.9 moves this watermark to the time of the run on a clean run; if no clean run has happened yet, the lag can stay at the `offense_max_backfill_hours` floor (default 168 hours) and exceed twice the cadence. This is a WARN, not a Fail; write it in the Note field. The line's runbook is OPS-R30. The 0.1.9 `doctor` output has the stalled sentence and OPS-R66 (MT-09).
 - If any of these is `WARN`, stop and tell the owner: `selinux` (`SELinux is permissive`: do not touch SELinux), `host_clock`. `families_off` is always PASS. A `SKIP` line says a feature is off and does not raise the exit code.
 - Line format: `PASS  db_connect         database accepted SELECT 1`. At this stage `db_connect`, `migration_head` (`database and image are at 0044`), `containers`, `celery_workers`, `celery_beat`, `qradar_auth`, `encryption` and `secrets_files` must be PASS.
@@ -138,7 +141,7 @@ cat "$BACKUP/MANIFEST"
 **Expected:**
 
 - The command exits with 0. For TimescaleDB it may print `circular foreign-key constraints` warnings; this is expected, and what decides is the exit code and that the backup exists.
-- The directory holds `database.dump`, `env.bak`, `secrets.tar`, `state.json` and `MANIFEST`; the directory mode is `0700` and the file modes are `0600`.
+- The directory holds `database.dump`, `env.bak`, `secrets.tar`, `state.json` and `MANIFEST`, and `install.answers` when `.secrets/install.answers` exists as a regular file with mode `0600` or `0400` (the copy keeps that mode); the directory mode is `0700` and the other file modes are `0600`. The support bundle (MT-04) is a different archive and is not in this directory.
 - `MANIFEST` has `VERSION=0.1.9`, `ALEMBIC_VERSION=0044`, `STATE_JSON=included` and a `DATABASE_SIZE_BYTES=<number>` line.
 
 **Record:** The name of the backup directory (only the `qradar-dash-<utc>-manual` part), and the `VERSION` and `ALEMBIC_VERSION` lines. The contents of `env.bak` and `secrets.tar` are written nowhere.
@@ -168,7 +171,7 @@ tar -tzf "$BUNDLE" | head -40
 
 - `logs` prints the last 20 lines of the backend and exits with 0.
 - `support-bundle` prints the path `<backup root>/support-<utc>.tar.gz`; the file mode is `0600`.
-- The archive holds `doctor.txt`, `version.txt`, `compose-ps.txt`, `watermarks.txt`, `cadence.txt`, `config.env` and `logs/`. It does not hold `database.dump`, `env.bak`, `secrets.tar` or `.secrets/`.
+- The archive holds `doctor.txt`, `version.txt`, `compose-ps.txt`, `watermarks.txt`, `cadence.txt`, `config.env` and `logs/`. The 0.1.10 script adds one more member: `ariel-load.json`, or `ariel-load.error.txt` when the load summary could not be read (it is the error file when the backend is still 0.1.9, which has no `app.cli.ariel_load`). Either one is correct. This check runs on the 0.1.9 checkout, whose script writes neither; a bundle taken with the 0.1.10 checkout (for example in MT-122) has one of them. A part that could not be read is replaced by `<part>.error.txt`; write each such file in the Note field. The archive does not hold `database.dump`, `env.bak`, `secrets.tar` or `.secrets/`.
 
 **Record:** The full path of the support bundle (not its contents).
 
@@ -190,7 +193,7 @@ tar -tzf "$BUNDLE" | head -40
 
 ### 2. Upgrade 0.1.9 → 0.1.10
 
-A fresh browser has no `ba_locale` cookie, and the sign-in page shows the title “Sign in” and the version line `API version 0.1.9`. The interface is English only (D-41); a `ba_locale` cookie, whatever its value, does not change it.
+A fresh browser has no `ba_locale` cookie, and the sign-in page shows the `h1` “Sign in” (the browser tab reads “Sign in · Behavior Analytics”) and the version line `API version 0.1.9`. The interface is English only (D-41); a `ba_locale` cookie, whatever its value, does not change it.
 
 There are two ways to upgrade the site from 0.1.9 to 0.1.10; choose one. The target version works the same way as the "Upgrade" and "Offline bundle" sections of `docs/OPERATIONS.md`. The upgrade takes its own verified `pre-upgrade` backup; the backup is also restore-tested. Before the upgrade the migration head is `0044`, and after it `0047`. The head moves once.
 
@@ -342,7 +345,7 @@ awk -F= '
 
 **Expected:**
 
-- There is no `FAIL`. The hourly `log_source_inventory` and `rule_inventory` FAIL on a changed console is the exception; that wait belongs to MT-11. `db_connect` PASS; `migration_head` PASS and `database and image are at 0047`; `version_match` PASS and `frontend and backend report 0.1.10`; `containers` PASS.
+- There is no `FAIL`, with one exception: a `watermarks` `FAIL` (and the `errors_recent` count that goes with it) for a collector whose failure was recorded before the upgrade, by the rule in MT-02. The hourly `log_source_inventory` and `rule_inventory` on a changed console are one case of it; the families that were not run while the site was down (for example `catchall_senders`, `rule_match`, `geo_countries_source`) are another. Write the collector names in the Note field; the wait belongs to MT-11. `db_connect` PASS; `migration_head` PASS and `database and image are at 0047`; `version_match` PASS and `frontend and backend report 0.1.10`; `containers` PASS.
 - `forwarded_allow_ips` is PASS and the text is `FORWARDED_ALLOW_IPS trusts the frontend (<address>)`. The address is the same as `FRONTEND_EDGE_IP`; do not write the address on the page. This line has no runbook. awk prints `two addresses, the frontend is in the list; addresses not printed`. On a site behind an outer proxy, the list is the operator's old list with the frontend address added once; more than two addresses is correct, and awk prints the address count.
 - If the line is missing, if awk says empty or star, or if doctor says FAIL (`FORWARDED_ALLOW_IPS is empty; every analyst shares one rate-limit key` or `FORWARDED_ALLOW_IPS is *; every analyst shares one rate-limit key`), this is Fail. The runbook is OPS-R21. Do not write `*`. If the list does not contain the frontend address, it is a WARN: `FORWARDED_ALLOW_IPS does not trust the frontend (<address>); pages drawn by the server share one rate-limit key`, runbook OPS-R21. This is also Fail.
 - Because beat and worker have just started, `celery_workers` or `celery_beat` can give a temporary FAIL in the first minute; wait a minute and repeat the command. If the FAIL stays on the second run, it is Fail.
@@ -364,7 +367,7 @@ awk -F= '
 **Expected:**
 
 - The upgrade finishes in about a minute on a small database (50-52 s was measured on a 4-vCPU test machine; this is not a promise); the outage window is shorter than that. An outage of more than 10 minutes is written in the Note field (on a large database the time of the dump is added; this is not a promise).
-- The sign-in page shows the title “Sign in” and under it `API version 0.1.10`. The page is English whatever the `ba_locale` cookie holds.
+- The sign-in page shows the `h1` “Sign in” (the browser tab reads “Sign in · Behavior Analytics”) and under it `API version 0.1.10`. The page is English whatever the `ba_locale` cookie holds.
 
 **Record:** The upgrade duration (minutes), the estimate of the outage duration, and the version line on the sign-in page.
 
@@ -372,7 +375,7 @@ awk -F= '
 
 **Precondition:** You know the end time of the upgrade. You have signed in with the administrator account (section 3).
 
-**When to look:** After the upgrade, the longest cadence on the page + 3 minutes (the "Timing and total duration" table above). Default: 8 min for the 5-minute families, 18 min for WAF and IPS.
+**When to look:** After the upgrade, for each family that is on, its own cadence on the page + 3 minutes (the "Timing and total duration" table above); the “Next run (UTC)” column gives the slot, and the run is seen up to one beat tick (1 minute) later. Default cadences: 8 min for Log source volume, Anomaly explanations, Catch-all senders and Geography (on by default) and for Rule matches and Property watches (off by default); 18 min for WAF collection and IPS collection (off by default). A family set to a longer cadence is read at that cadence + 3 minutes, so the longest cadence on the page decides when the check can be closed.
 
 **Action:**
 
@@ -388,7 +391,7 @@ awk -F= '
 
 - The “Last run (UTC)” time of every enabled family that has a cadence is after the end of the upgrade. “Next run (UTC)” shows only a future time, or, for a family that is due now (and has run at least once), the time. The next run of a disabled family is a dash (—), even if the time would be in the future. The computed time of a family that has never run is also a dash if it lies in the past. A family that has never run shows “No run yet” or “Not run since upgrade” (the dash or this text; it is not zero). It is expected that the next run of a disabled family (for example, if WAF is off on the site) is a dash.
 - If you look before the wait is over, you see “No run yet” or an old time: this is not a fault, do not write Fail, wait.
-- `doctor`: `cadence` PASS (`<n> cadence row(s) are on time or disabled`), `celery_workers` and `celery_beat` PASS. `watermarks` and `errors_recent` are PASS except for the two cases below (`errors_recent`: `no watermark has recent failures`). A `FAIL` is Fail; if `cadence` is a WARN, write the names of the families in the Note field and wait another cadence + 3 min.
+- `doctor`: `cadence` PASS (`<n> cadence row(s) are on time or disabled`), `celery_workers` and `celery_beat` PASS. `watermarks` and `errors_recent` are PASS (`errors_recent`: `no watermark has recent failures`) except for the cases below and the rows of a switched-off family (MT-02). Any other `FAIL` is Fail. A `watermarks` `FAIL` for a collector that has had its turn since the upgrade and still shows a `last_error` is Fail (OPS-R30); for a collector whose turn has not come, it is not, and `doctor` is read again after that turn. If `cadence` is a WARN, write the names of the families in the Note field and wait another cadence + 3 min.
 - On a console that has no offenses, a clean `offense_snapshot` run moves the watermark to the time of the run. This is the difference of 0.1.9: 0.1.8 kept the WARN of about 168 hours on the same console even after a clean run (MT-02). While `consecutive_failures` is 0 and `last_error` is empty, the lag stays within the cadence; no WARN is expected for this line. A failed or truncated run does not advance the watermark. In that case the WARN can remain and is not a Fail; write it in the Note field. The lag runbook is OPS-R30.
 - The same clean run also clears the page-ceiling stall. If the stall sentence remains after a clean run, the runbook is OPS-R66; this alone is not a Fail, write it in the Note field. A stall is not a `last_error`.
 - If the console was changed (an upgrade on the same console is not this case), `log_source_inventory` and `rule_inventory` are hourly (default 3600 s). These two inventories, if they failed at the change, can wait up to one hour for their next beat. Until that time is over the pages show no sources; if the rule inventory has not arrived, the rule list is empty too. This is not a Fail; write it in the Note field and wait for the hourly retry. Meanwhile `watermarks` can be FAIL for only these two rows and `errors_recent` can be WARN; neither is a Fail.
@@ -704,7 +707,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Sign in”.
+- The `h1` is “Sign in”; the browser tab reads “Sign in · Behavior Analytics”.
 - Fields built from message codes (they must read as English sentences): the failed sign-in sentence (the separate check MT-57); the line “API version {version}”.
 - No raw key and no Turkish text.
 
@@ -718,7 +721,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Dashboard”.
+- The `h1` is the name of the dashboard that opens: “SOC Overview” (the template) when the account has no default dashboard, otherwise the saved dashboard's own name. The browser tab reads “Dashboard · Behavior Analytics”.
 - Fields built from message codes (they must read as English sentences): the widgets (section 5); the status reason of the property watch widget (MSG-4b); the recent anomalies and offenses; the alert count in the top bar.
 - No raw key and no Turkish text.
 
@@ -732,7 +735,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Behavioral overview”.
+- The `h1` is “Behavioral overview”; the browser tab reads “Overview · Behavior Analytics”.
 - Fields built from message codes: the state words and the “Needs attention” table.
 - No raw key and no Turkish text.
 
@@ -746,7 +749,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Anomalies”.
+- The `h1` is “Anomalies”.
 - Fields built from message codes: the filters, the state and detector names, the subject kinds. The rows hold no stored sentence.
 - No raw key and no Turkish text.
 
@@ -760,7 +763,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Anomaly investigation”.
+- The `h1` is the name of the log source (“Unknown source” if the anomaly has none). The fixed words “Anomaly investigation” are the browser tab (“Anomaly investigation · Behavior Analytics”).
 - Fields built from message codes: on the “Technical details” tab the “Detector reasoning” sentence (MSG-5); on the “Lifecycle” tab the reason of each transition (MSG-5).
 - No raw key and no Turkish text.
 
@@ -774,7 +777,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Anomaly investigation”.
+- The `h1` is the endpoint, `<METHOD> <normalized path>` (for example `GET /portal/login`). The fixed words “Anomaly investigation” are the browser tab (“Anomaly investigation · Behavior Analytics”).
 - Fields built from message codes: the reasoning sentence and the alert note in the detector block (MSG-6), with the labels “Materiality floor” and “Verified history”; the lifecycle reasons (MSG-5).
 - No raw key and no Turkish text.
 
@@ -788,7 +791,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Anomaly investigation”.
+- The `h1` is the IPS subject: the entity the detector judged, or “Source-level” for a source-level incident (“Entity not recorded” if an entity incident has none). The fixed words “Anomaly investigation” are the browser tab (“Anomaly investigation · Behavior Analytics”).
 - Fields built from message codes: the reasoning and the alert note in the detector block (MSG-6b); the lifecycle reasons (MSG-5). A suppressed IPS anomaly shows only the “Suppressed” label; the sentence with the suppression reason is not shown.
 - No raw key and no Turkish text.
 
@@ -802,7 +805,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Anomaly investigation”.
+- The `h1` is the watched value (the value key, or its components joined with “ × ”). The fixed words “Anomaly investigation” are the browser tab (“Anomaly investigation · Behavior Analytics”).
 - Fields built from message codes: the explanation, the claim and the history verification sentences (MSG-4b); the transition reasons (MSG-5).
 - No raw key and no Turkish text.
 
@@ -816,7 +819,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Sources” / “Source behavior”.
+- The `h1` is “Sources” on the list, and the log source's name on `/behavior/sources/<id>` (its browser tab reads “Source behavior · Behavior Analytics”).
 - Fields built from message codes: the state words (`INSUFFICIENT_DATA`, “Still learning”), the baseline and collection notes.
 - No raw key and no Turkish text.
 
@@ -830,7 +833,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “WAF behavior” / “WAF source endpoints”.
+- The `h1` is “WAF behavior” on the list, and the log source's name on `/behavior/waf/sources/<id>` (its browser tab reads “WAF source endpoints · Behavior Analytics”).
 - Fields built from message codes: the collection state words; the pause and eligibility reasons (MSG-4a).
 - No raw key and no Turkish text.
 
@@ -846,7 +849,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Property watches” / “New property watch” / “Property watch”.
+- The `h1` is “Property watches” on the list, “New property watch” on the form, and the watch's name on `/behavior/watches/<id>` (its browser tab reads “Property watch · Behavior Analytics”).
 - Fields built from message codes: the “Status and reason” column (MSG-4b, rewritten at every collection); the scope reasons; the history-gap rows; the validation reasons in the editor (MSG-1b/4b).
 - No raw key and no Turkish text.
 
@@ -860,7 +863,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Log-source fleet”.
+- The `h1` is “Log-source fleet”; the browser tab reads “Fleet · Behavior Analytics”.
 - Fields built from message codes: the class table and the review queue; there is no stored sentence.
 - No raw key and no Turkish text.
 
@@ -874,7 +877,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Fleet sources”.
+- The `h1` is “Fleet sources”.
 - Fields built from message codes: the classification reasons (shown as the rule name); the conflict messages (MSG-1b) only in an error state.
 - No raw key and no Turkish text.
 
@@ -888,7 +891,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Catch-all senders”.
+- The `h1` is “Catch-all senders”.
 - Fields built from message codes: the sender table and the review state (“reviewed”).
 - No raw key and no Turkish text.
 
@@ -902,7 +905,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Offenses” / “Offense”.
+- The `h1` is “Offenses” on the list and “Offense {id}” (the QRadar offense id, for example “Offense 1234”) on the detail; the detail's browser tab reads “Offense · Behavior Analytics”.
 - Fields built from message codes: the labels and the states. The offense description is the text from QRadar and is shown as it is.
 - No raw key and no Turkish text.
 
@@ -916,7 +919,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Alerts” / “Alert Detail”.
+- The `h1` is “Alerts” on the list. On the detail the `h1` is the alert's own title (a sentence; the fixed words “Alert Detail” appear only as the `h1` of the error state), and the browser tab reads “Alert detail · Behavior Analytics”.
 - Fields built from message codes: the MSG-7 catalog alerts: search threshold and search failure, custom rule threshold, offense collection freshness, new log source, new catch-all sender. The title, the “Description” and the “Resolution:” line are English sentences. Offense collection freshness is the example: the title is “Offense collection is stale for {instance}”, the description is “The read-only offense collector has not completed within its configured freshness threshold.”, and the resolution reason is “Offense collection freshness recovered.”
 - The alerts the engine writes (log source volume, WAF, IPS, property watch) show a title, a description and a resolution reason as English sentences. The resolution reason of a recovered condition is “condition recovered”. Same limits as the Alerts section (MT-87, MT-88).
 - No raw key and no Turkish text.
@@ -933,7 +936,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Rule health” / “Rule”.
+- The `h1` is “Rule health” on the list. On the detail the `h1` is the rule's name, and the browser tab reads “Rule · Behavior Analytics”.
 - Fields built from message codes: the health reason under the rule name and the reason sentence in the detail (MSG-3). The detail heading is “Health evidence”. “Reason” is a cell of the health history table. It is rewritten at every evaluation.
 - No raw key and no Turkish text.
 
@@ -947,7 +950,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Rule statistics”.
+- The `h1` is “Rule statistics”.
 - Fields built from message codes: the measurement window sentence, the exclusion reason of silent rules, and the cost label with its unit (MSG-2); computed, not stored.
 - No raw key and no Turkish text.
 
@@ -963,7 +966,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Custom rules” / “New custom rule” / “Custom rule”.
+- The `h1` is “Custom rules” on the list, “New custom rule” on the form, and the rule's name on the detail (its browser tab reads “Custom rule · Behavior Analytics”).
 - Fields built from message codes: the status reason in the “Status and reason” column (MSG-7, rewritten at every evaluation); the save errors (MSG-1b).
 - No raw key and no Turkish text.
 
@@ -979,7 +982,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Detection Coverage”.
+- The `h1` is “Detection Coverage”. This route sets no tab title of its own: the browser tab reads only “Behavior Analytics”.
 - Fields built from message codes: the summary sentences in the “Evidence” column (MSG-2); rewritten at the coverage sync.
 - No raw key and no Turkish text.
 
@@ -993,7 +996,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Log Sources” / “Log Source Detail”.
+- The `h1` is “Log Sources” on the list and the log source's name on the detail. These routes set no tab title of their own: the browser tab reads only “Behavior Analytics”.
 - Fields built from message codes: the state words; there is no stored sentence.
 - No raw key and no Turkish text.
 
@@ -1007,7 +1010,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Search Catalog” / “New search” / “Search detail”.
+- The `h1` is “Search Catalog” on the list, “New search” on the form, and the search's name on the detail (its browser tab reads “Search · Behavior Analytics”).
 - Fields built from message codes: the “Error” sentences in the run history (MSG-8b); the save errors (MSG-1b).
 - No raw key and no Turkish text.
 
@@ -1021,7 +1024,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Configuration changes”.
+- The `h1` is “Configuration changes”. This route sets no tab title of its own: the browser tab reads only “Behavior Analytics”.
 - Fields built from message codes: the state “Configuration changes are not collected.” (this is a "not collected" honesty state).
 - No raw key and no Turkish text.
 
@@ -1035,7 +1038,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Administration”.
+- The `h1` is “Administration”.
 - Fields built from message codes: the page description.
 - No raw key and no Turkish text.
 
@@ -1049,7 +1052,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Search cadence”.
+- The `h1` is “Search cadence”.
 - Fields built from message codes: the table, the family names, the delay sentences.
 - No raw key and no Turkish text.
 
@@ -1063,7 +1066,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Classification rules”.
+- The `h1` is “Classification rules”.
 - Fields built from message codes: the rule list; the built-in rule conflict messages (MSG-1b) only in an error state.
 - No raw key and no Turkish text.
 
@@ -1077,7 +1080,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Outage alerts”.
+- The `h1` is “Outage alerts”.
 - Fields built from message codes: the policy table and the note.
 - No raw key and no Turkish text.
 
@@ -1091,7 +1094,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “WAF sources” / “WAF source”.
+- The `h1` is “WAF sources” on the list and the log source's name on the profile (its browser tab reads “WAF source · Behavior Analytics”).
 - Fields built from message codes: the reasons of the validation report, the field details and the eligibility (pause) reasons (MSG-4a); the profile conflicts (MSG-1b).
 - No raw key and no Turkish text.
 
@@ -1105,7 +1108,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “IPS sources” / “IPS source”.
+- The `h1` is “IPS sources” on the list and the log source's name on the profile (its browser tab reads “IPS source · Behavior Analytics”).
 - Fields built from message codes: the reasons of the validation report and the eligibility reasons (MSG-4a).
 - No raw key and no Turkish text.
 
@@ -1121,7 +1124,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “History backfill”.
+- The `h1` is “History backfill”.
 - Fields built from message codes: the scope reasons (all families, catch-all included), the gap reasons, the estimate sentences, the assumptions and the decision messages are English sentences (MSG-8a). The scope rewrites its reason at every step. The Ariel deferral reason that the writer rewrites is the sentence `deferred: no Ariel permit within N s` (MSG-8c).
 - No raw key and no Turkish text.
 
@@ -1135,7 +1138,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Users”.
+- The `h1` is “Users”.
 - Fields built from message codes: the table and action labels; the account action errors (MSG-1).
 - No raw key and no Turkish text.
 
@@ -1149,7 +1152,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Directory”.
+- The `h1` is “Directory”.
 - Fields built from message codes: the form labels; the validation errors (MSG-1) only when a save is tried.
 - No raw key and no Turkish text.
 
@@ -1163,7 +1166,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Guide”.
+- The `h1` is “Guide” on the list; on a section page the `h1` and the browser tab are the section's title.
 - Fields built from message codes: the section titles and texts; section 13.
 - No raw key and no Turkish text.
 
@@ -1177,7 +1180,7 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The heading is “Account settings” / “Change password”.
+- The `h1` is “Account settings” on `/account` and “Change password” on `/account/password`.
 - Fields built from message codes: the password policy errors (MSG-1): “password must be at least 12 characters”.
 - No raw key and no Turkish text.
 
@@ -1486,7 +1489,7 @@ The Dashboard is at `/`. In the “Dashboards” menu the “Template” group h
 
 - The map is drawn; the colours use the sequential `--map-0…--map-4` scale, at most four classes on a log axis, with a unit legend ("Events per country"). There is no green/amber/red status tone.
 - A country with no events uses `--map-0` as "No data", never the lowest class. A country with events shows "N events"; a lower-bound legend says "At least N events".
-- If nothing was collected for the direction in the range, "Not collected." appears and the map is not drawn; coverage reads "0 / N". With the default settings Destination reads "Not collected." once the buckets 0.1.9 stored have expired, because `GEO_DESTINATION_COUNTRY_PROPERTY` is empty (MT-129). If buckets were collected but no country could be assigned, "Insufficient data." appears and again no map is drawn. A partial read draws the map with "Partial"; a lower-bound legend says "At least". None draws a zero.
+- If nothing was collected for the direction in the range, "Not collected." appears and the map is not drawn; the coverage line under the map reads “Buckets measured 0 of N” (N is the number of settled 5-minute buckets the range should hold, per enabled console: at most 12 for the 1-hour window). With the default settings Destination reads "Not collected." once the buckets 0.1.9 stored have expired, because `GEO_DESTINATION_COUNTRY_PROPERTY` is empty (MT-129). If buckets were collected but no country could be assigned, "Insufficient data." appears and again no map is drawn. A partial read draws the map with "Partial"; a lower-bound legend says "At least". None draws a zero.
 - The page names where the country came from ("From the QRadar property “<name>”" or "From the GeoIP lookup of the address").
 - If the newest bucket is older than the `GEO_COLLECTION` cadence allows, the widget keeps the map and adds a warning line ("Stale: the latest data is from <time> UTC, <age> old."); the page shows the same age line and the top bar shows "Data to …". A fresh answer shows "Data to <time> UTC".
 - The widget's link always opens `/geography`. For a role without `read:geo`, the widget shows its forbidden sentence naming the missing permission.
@@ -1532,7 +1535,7 @@ The anomaly list gathers four families in one place: log source volume, WAF endp
 
 **Expected:**
 
-- The heading is “Anomalies”. The columns are “Subject”, “Detector”, “State”, “Observed → Expected”, “Deviation”, “Severity”, “Started”, “Evidence”.
+- The `h1` is “Anomalies”. The columns are “Subject”, “Detector”, “State”, “Observed → Expected”, “Deviation”, “Severity”, “Started”, “Evidence”.
 - The subject kind options are “Log sources”, “WAF endpoints”, “IPS entities”, “IPS sources”, “IPS entities and sources”, “Property watch values”. The “IPS entities and sources” option lists IPS entities and IPS sources together.
 - After filtering, the active filter chips (“Filtered by”) appear; if nothing matches: “No anomalies match these filters. This is a filtered view, not a statement about the fleet.” If no anomaly has ever been detected: “No anomalies have been detected. Sources without an adequate baseline are not being judged — check the behavioral overview for how many.” Times are UTC; the state words are the codes (`OPEN`, …).
 
@@ -1548,7 +1551,7 @@ The anomaly list gathers four families in one place: log source volume, WAF endp
 
 **Expected:**
 
-- The heading is “Anomaly investigation”; “What changed” and “Incident measurements”: “Observed”, “Expected”, “Deviation”, “Duration”; the timeline “Timeline”.
+- The `h1` is the name of the log source (the fixed words “Anomaly investigation” are the browser tab, “Anomaly investigation · Behavior Analytics”); “What changed” and “Incident measurements”: “Observed”, “Expected”, “Deviation”, “Duration”; the timeline “Timeline”.
 - Depending on the evidence status, one of these banners appears (only in the matching case): “Contributor evidence is still being collected. The analysis below is not yet available: this is a backlog, not a finding.” / “Some QRadar fields were unavailable or truncated. The available evidence is shown below; the dimensions that were not collected have not been checked, and no conclusion follows from the absence of contributors there.” / “This log source's DSM exposes none of the requested fields for this interval, so no contributor analysis was possible. This is a property of the source, not a transient error.” / “Contributor evidence collection failed. Detection metrics and lifecycle data remain available, and this says nothing about what happened during the anomaly — it is worth retrying.” / “No evidence collection has been requested for this anomaly. Nothing has been looked at.”; on a truncated result a text that begins with “Truncated.”. These are the honesty states "insufficient", "partial", "truncated" and "not collected"; none is drawn as a zero.
 - If the evidence failed, “Collection error.” and the provider's error text appear; this text is free text from the provider and is shown as it came (see the top of section 4).
 
@@ -1647,7 +1650,7 @@ In the interface this page is called **Alerts**, the route is `/alerts`. Lifecyc
 
 **Expected:**
 
-- The heading is “Alerts”; the columns are “Title”, “Severity”, “Status”, “Occurrences”, “First seen”, “Last seen”. The status filter: “Open”, “Acknowledged”, “Resolved”.
+- The `h1` is “Alerts”; the columns are “Title”, “Severity”, “Status”, “Occurrences”, “First seen”, “Last seen”. The status filter: “Open”, “Acknowledged”, “Resolved”.
 - If there is no alert: “No alerts have been raised.” The count line: “Showing {shown} of {total} alerts.”
 - The titles of the catalog alerts are English sentences (MSG-7): search threshold and search failure, custom rule, offense collection freshness, new log source, new catch-all sender. Offense collection freshness reads “Offense collection is stale for {instance}”. The alerts the engine writes are English sentences too (MSG-7b): log source volume “{anomaly_type} on {log_source}” (for example “Volume drop”, “No events”), IPS “{detector} on {log_source}” and the destination port, destination IP or signature forms, property watch “{detector} on {watch}: {value}”, WAF “{detector} on {log_source}: {method} {endpoint}”. The same limits as MT-38.
 
@@ -1663,7 +1666,7 @@ In the interface this page is called **Alerts**, the route is `/alerts`. Lifecyc
 
 **Expected:**
 
-- The heading is “Alert Detail”. The “Description” card carries the alert's description. There are the “Evidence” and “Lifecycle” sections and the table “Notification Delivery History”; if there is no notification: “No notifications for this alert.”
+- The `h1` is the alert's own title, and the browser tab reads “Alert detail · Behavior Analytics” (“Alert Detail” is the `h1` only when the alert could not be loaded). The “Description” card carries the alert's description. There are the “Evidence” and “Lifecycle” sections and the table “Notification Delivery History”; if there is no notification: “No notifications for this alert.”
 - On a resolved alert the “Resolution:” line shows the resolution reason. The reason of a catalog recovery is an English sentence (for example “condition recovered”, “Offense collection freshness recovered.”). The recovery reason of an engine alert is “condition recovered”. A reason written by an operator is shown as written. The same limits as MT-38.
 
 **Record:** That the Description card appeared and the text of one resolution reason. If there is no resolved alert, `Not run` for that part.
@@ -1698,7 +1701,7 @@ A custom rule is a threshold rule over the stored aggregates; it sends nothing t
 
 **Expected:**
 
-- The heading is “Custom rules”; the columns are “Name”, “Status and reason”, “Subject”, “Condition”, “Severity”, “Enabled”, “Last evaluated (UTC)”.
+- The `h1` is “Custom rules”; the columns are “Name”, “Status and reason”, “Subject”, “Condition”, “Severity”, “Enabled”, “Last evaluated (UTC)”.
 - The state words: “OK”, “Open”, “Recovering”, “No verdict”, “Stale”, “Not collected”, “Subject retired”, “Disabled”, “Not enabled”; a rule that has never been evaluated shows “Never evaluated”. The reason sentence next to the state is an English sentence (MSG-7, rewritten at every evaluation).
 - If the evaluation switch is off: “Rule evaluation is off because CUSTOM_RULES_ENABLED is false. Enabled rules are not being judged.” If alerting is off: “Breaches are recorded and nothing pages until CUSTOM_RULES_ALERTING_ENABLED is on.” If there is no rule: “No custom rules exist yet.”
 
@@ -1714,7 +1717,7 @@ A custom rule is a threshold rule over the stored aggregates; it sends nothing t
 
 **Expected:**
 
-- The heading is “Custom rule”; there are the sections “Current state”, “Subject”, “Condition”, “Last evaluated” and “Breach history”. If there is no breach: “No active breach is recorded for this rule.” An enabled rule also carries the label “Alerting mode” or “Shadow mode”.
+- The `h1` is the rule's name, and the browser tab reads “Custom rule · Behavior Analytics”; there are the sections “Current state”, “Subject”, “Condition”, “Last evaluated” and “Breach history”. If there is no breach: “No active breach is recorded for this rule.” An enabled rule also carries the label “Alerting mode” or “Shadow mode”.
 
 **Record:** That the detail page opened.
 
@@ -1764,7 +1767,7 @@ The search catalog holds stored and validated AQL searches (`/searches`). The in
 
 **Expected:**
 
-- The heading is “Search Catalog”; the columns are “Name”, “Category”, “MITRE”, “Schedule”, “Severity”, “Ver”, “Enabled”. If there is no search: “No scheduled searches defined yet.” On an account without write permission: “Creating a search needs search:write. An admin or the detection_engineer role can grant it.” or “The editor is hidden.”.
+- The `h1` is “Search Catalog”; the columns are “Name”, “Category”, “MITRE”, “Schedule”, “Severity”, “Ver”, “Enabled”. If there is no search: “No scheduled searches defined yet.” On an account without write permission: “Creating a search needs search:write. An admin or the detection_engineer role can grant it.” or “The editor is hidden.”.
 
 **Record:** That the list opened; the number of rows.
 
@@ -1780,7 +1783,7 @@ The search catalog holds stored and validated AQL searches (`/searches`). The in
 
 **Expected:**
 
-- The heading is “Search detail”; the table columns are “Started (UTC)”, “Status”, “Trigger”, “Ver”, “Duration”, “Results”, “Retries”, “Threshold”, “Error”. The statuses are `COMPLETED`, `FAILED`, `TIMEOUT`; the trigger is `SCHEDULED` or `MANUAL`.
+- The `h1` is the search's name, and the browser tab reads “Search · Behavior Analytics”; the table columns are “Started (UTC)”, “Status”, “Trigger”, “Ver”, “Duration”, “Results”, “Retries”, “Threshold”, “Error”. The statuses are `COMPLETED`, `FAILED`, `TIMEOUT`; the trigger is `SCHEDULED` or `MANUAL`.
 - On a truncated run the count is a lower bound (with the `≥` mark; the search stopped at its row cap) and the threshold column says “no verdict”.
 - The “Error” cell of a failed row: the fixed error messages are English sentences from the catalog (MSG-8b): “Ariel search failed”, “search exceeded timeout of {timeout}s”, “No Ariel permit became available within {waited} seconds (per-console cap {instance_cap}, global cap {global_cap})”. Ariel's own message and the exception text are free text and are shown as they came. If there is no failed row, `Not run`.
 
@@ -1853,7 +1856,7 @@ The page is at `/admin/history-backfill` (“History backfill”); reading needs
 
 **Expected:**
 
-- The heading is “History backfill”. For each enabled console a section “Console {name}”: the decision line (“History backfill: Yes{days}. Recorded by {by} on ‹time›.”, “History backfill: No, history is not read. Recorded by {by} on ‹time›.” or “History backfill: not decided. Nothing is read from QRadar's past.”) and the table.
+- The `h1` is “History backfill”. For each enabled console a section “Console {name}”: the decision line (“History backfill: Yes{days}. Recorded by {by} on ‹time›.”, “History backfill: No, history is not read. Recorded by {by} on ‹time›.” or “History backfill: not decided. Nothing is read from QRadar's past.”) and the table.
 - The table columns are “Family”, “Scope”, “State”, “Window asked”, “Window proved”, “Read”, “Searches”, “Read through”, “Reason”, “Later Yes”. The families are “Source volume”, “WAF”, “IPS”, “Catch-all senders”, “Rule matches”.
 - The state words include “Waiting”, “Reading”, “Complete”, “Partial”, “Unavailable”, “Not eligible”. A number that was not read is shown as a dash, not as zero.
 - The sentences in the “Reason” column are English sentences from the catalog for every family (catch-all included) (MSG-8a); the parts of a sentence start with a lower-case letter and are joined with semicolons. Examples: “the scan reached the end of the window”; “the reading reached the end, but QRadar holds less than asked or a gap exists”; “reached the end; {problems}” (inner parts: “QRadar holds less than asked for {cut} of {total}”, “{sources} had no event in the window”); “window reduced from {asked} to {days} days: {limits}”; “waiting for search budget”; the gap row “search failed {failures} times at the minimum width”; catch-all: “no catch-all source had an event in the window; nothing is written”. Numbers are grouped with commas and durations have the form "about X hours". The “Later Yes” column: “possible”, “not possible: this source already collected”, “not needed: this source has a history scope”.
@@ -1907,7 +1910,7 @@ All these pages read data collected from QRadar; none has a write operation.
 
 **Expected:**
 
-- The heading is “Rule health”; the columns are “Rule”, “Type”, “Enabled”, “Health”, “Meaning”, “Last fired (UTC)”, “Offenses”. The health words: `HEALTHY`, `NEVER OBSERVED`, `INACTIVE`, `NOISY`, `DISABLED`, `DEPENDENCY DEGRADED`, `INSUFFICIENT DATA`, `UNKNOWN`.
+- The `h1` is “Rule health”; the columns are “Rule”, “Type”, “Enabled”, “Health”, “Meaning”, “Last fired (UTC)”, “Offenses”. The health words: `HEALTHY`, `NEVER OBSERVED`, `INACTIVE`, `NOISY`, `DISABLED`, `DEPENDENCY DEGRADED`, `INSUFFICIENT DATA`, `UNKNOWN`.
 - Under the name of every rule that is neither healthy nor unknown the reason for the verdict is written; if no reason was recorded, “No reason recorded”. The reason sentence is an English sentence (MSG-3); it is rewritten at every rule evaluation, so after the first evaluation all rows show English.
 - If there are rules with no verdict, the notice “{count} rules have no health verdict yet.” appears; this is not a fault.
 
@@ -1923,7 +1926,7 @@ All these pages read data collected from QRadar; none has a write operation.
 
 **Expected:**
 
-- The heading is “Rule”; the sections are “Health”, “Health evidence”, “Metadata”, “MITRE techniques”, “Health history”. In the health history table every row has a “Reason” cell.
+- The `h1` is the rule's name, and the browser tab reads “Rule · Behavior Analytics”; the sections are “Health”, “Health evidence”, “Metadata”, “MITRE techniques”, “Health history”. In the health history table every row has a “Reason” cell.
 - If there is no benchmark, the capacity history section (“Capacity history”) says “QRadar has not re-benchmarked this rule since collection began.”; this is not a fault.
 
 **Record:** That the page opened; the reason of one history row.
@@ -1936,7 +1939,7 @@ All these pages read data collected from QRadar; none has a write operation.
 
 **Expected:**
 
-- The heading is “Rule statistics”. The sections: “Rule composition”, “Most matched”, “Silent enabled rules”, “Costliest by benchmark”, “Capacity history”. When the measurement window is complete it says “Complete.”, when partial “PARTIAL.”, when insufficient “INSUFFICIENT_DATA.”; an incomplete window is not evidence of silence (“Silence was not judged.”).
+- The `h1` is “Rule statistics”. The sections: “Rule composition”, “Most matched”, “Silent enabled rules”, “Costliest by benchmark”, “Capacity history”. When the measurement window is complete it says “Complete.”, when partial “PARTIAL.”, when insufficient “INSUFFICIENT_DATA.”; an incomplete window is not evidence of silence (“Silence was not judged.”).
 - The cost unit: “Enabled rules ordered from the lowest capacity benchmark, which is the costliest to evaluate. Unit: {unit}.” The silent-rule exclusion reason and the measurement window sentence are English sentences (MSG-2). No number is drawn as zero: a section that cannot be measured shows a heading such as “No complete window exists to measure rule matches.”
 - If no QRadar instance is registered: “No QRadar instance is registered.”
 
@@ -1950,7 +1953,7 @@ All these pages read data collected from QRadar; none has a write operation.
 
 **Expected:**
 
-- The heading is “Detection Coverage”. If there is no mapping: “Coverage has not been evaluated.” and “No ATT&CK technique mappings are configured, so coverage cannot be measured. An administrator adds them. This is not a finding of zero coverage.” If there is a mapping: the summary “{total} techniques evaluated · {covered} covered · {explicit} explicit / {inferred} inferred mappings · generated ‹time›” and the “Techniques” table with the columns “Technique”, “Name”, “Tactic”, “Status”, “Rules”, “Score”, “Evidence”. The status words: `COVERED`, `PARTIAL`, `DEGRADED`, `MISSING`, `NOT EVALUATED`.
+- The `h1` is “Detection Coverage” (the route sets no tab title of its own). If there is no mapping: “Coverage has not been evaluated.” and “No ATT&CK technique mappings are configured, so coverage cannot be measured. An administrator adds them. This is not a finding of zero coverage.” If there is a mapping: the summary “{total} techniques evaluated · {covered} covered · {explicit} explicit / {inferred} inferred mappings · generated ‹time›” and the “Techniques” table with the columns “Technique”, “Name”, “Tactic”, “Status”, “Rules”, “Score”, “Evidence”. The status words: `COVERED`, `PARTIAL`, `DEGRADED`, `MISSING`, `NOT EVALUATED`.
 - The summary sentences in the “Evidence” cells are English sentences (MSG-2) and are rewritten at the coverage sync.
 
 **Record:** That the page opened; that one evidence sentence is English.
@@ -1977,7 +1980,7 @@ All these pages read data collected from QRadar; none has a write operation.
 
 **Expected:**
 
-- The heading is “Log Sources”; “{count} sources.”; the columns are “Name”, “Type”, “Criticality”, “Status”, “Anomalies”, “Last Event”. The detail heading is “Log Source Detail”; “Last event: ‹time›”; if there is no event, “Last event: never”.
+- The `h1` is “Log Sources” (the route sets no tab title of its own); “{count} sources.”; the columns are “Name”, “Type”, “Criticality”, “Status”, “Anomalies”, “Last Event”. The `h1` of the detail is the log source's name; “Last event: ‹time›”; if there is no event, “Last event: never”.
 
 **Record:** That the pages opened; the number of sources.
 
@@ -1989,7 +1992,7 @@ All these pages read data collected from QRadar; none has a write operation.
 
 **Expected:**
 
-- The heading is “Configuration changes”; “Configuration changes are not collected.” and “A data model for them exists, but no collector or API fills it, so this page has nothing to show.” This is the "not collected" honesty state: the data is not collected, so no empty list or zero is shown.
+- The `h1` is “Configuration changes” (the route sets no tab title of its own); “Configuration changes are not collected.” and “A data model for them exists, but no collector or API fills it, so this page has nothing to show.” This is the "not collected" honesty state: the data is not collected, so no empty list or zero is shown.
 
 **Record:** That the page shows this text.
 
@@ -2023,7 +2026,7 @@ In this section the pages are first only **viewed**. Every change is a **(writes
 
 **Expected:**
 
-- The list heading is “WAF sources”; the columns are “Source”, “Product”, “Mapping”, “Validation”, “Collection”, “Last validated (UTC)”. The validation labels: `VALID`, `STALE`, `INVALID`, `INCONCLUSIVE`, `UNVALIDATED`. A source that has never been validated shows “never validated” (a dash; it is not a failed validation).
+- The list `h1` is “WAF sources”; the columns are “Source”, “Product”, “Mapping”, “Validation”, “Collection”, “Last validated (UTC)”. The validation labels: `VALID`, `STALE`, `INVALID`, `INCONCLUSIVE`, `UNVALIDATED`. A source that has never been validated shows “never validated” (a dash; it is not a failed validation).
 - The collection cell of a paused source carries a reason sentence (for example “profile version {profile_version} has never been validated”, “WAF collection is disabled (WAF_COLLECTION_ENABLED=false)”); these sentences are coded by MSG-4a. The profile page has the sections “Field mapping”, “Validation”, “Collection”, “History”.
 - If there is no WAF profile: “No log source is configured as a WAF source.”
 
@@ -2039,7 +2042,7 @@ In this section the pages are first only **viewed**. Every change is a **(writes
 
 **Expected:**
 
-- The heading is “IPS sources”; the columns are “Source”, “Profile”, “Validation”, “Enabled”, “Collection”, “Last validated (UTC)”. The profile page heading is “IPS source”; the sections are “Field mapping”, “Validation”, “Collection”, “History”.
+- The `h1` is “IPS sources”; the columns are “Source”, “Profile”, “Validation”, “Enabled”, “Collection”, “Last validated (UTC)”. The profile page's `h1` is the log source's name (its browser tab reads “IPS source · Behavior Analytics”); the sections are “Field mapping”, “Validation”, “Collection”, “History”.
 - The reasons of the validation report and the field details (for example “QRadar does not accept this field as named.”, “The field exists but no event in the window carried a usable value.”) and the eligibility reasons are English sentences (MSG-4a). If there is no profile: “No IPS source has a profile yet.” IPS operations need `admin:ips` (`admin:waf` does not grant it).
 
 **Record:** That the list and the profile opened; that one reason is English.
@@ -2081,7 +2084,7 @@ In this section the pages are first only **viewed**. Every change is a **(writes
 
 **Expected:**
 
-- The heading is “Search cadence”; the columns are “Family”, “Cadence”, “Bucket”, “Worst-case detection delay”, “Last run (UTC)”, “Next run (UTC)”, “Searches in last run”. Eight families are listed (for example “Log source volume”, “WAF collection”, “IPS collection”, “Rule matches”). For a family that has never run, a dash or “Not run since upgrade”/“not counted”; these are not zero.
+- The `h1` is “Search cadence”; the columns are “Family”, “Cadence”, “Bucket”, “Worst-case detection delay”, “Last run (UTC)”, “Next run (UTC)”, “Searches in last run”. Eight families are listed (for example “Log source volume”, “WAF collection”, “IPS collection”, “Rule matches”). For a family that has never run, a dash or “Not run since upgrade”/“not counted”; these are not zero.
 
 **Record:** The cadence of each of the eight families (5 min, 15 min…).
 
@@ -2121,7 +2124,7 @@ In this section the pages are first only **viewed**. Every change is a **(writes
 
 **Expected:**
 
-- The heading is “Administration”; the description is “Settings that control collection, source classification and outage alerting.” The item is called “Administration overview” and is the first item of the Administration group.
+- The `h1` is “Administration”; the description is “Settings that control collection, source classification and outage alerting.” The item is called “Administration overview” and is the first item of the Administration group.
 
 **Record:** That the page opened.
 
@@ -2167,7 +2170,7 @@ The in-app guide is at `/guide`; it is open to everyone who is signed in and nee
 
 **Expected:**
 
-- The heading is “Guide”, the description is “Pick a topic by the question it answers.”, the groups are “Concepts”, “Analyst pages”, “Analyst tasks”, “Administrator tasks”; the first section is “How it works”. The section page is not empty and there is no raw key.
+- The `h1` is “Guide”, the description is “Pick a topic by the question it answers.”, the groups are “Concepts”, “Analyst pages”, “Analyst tasks”, “Administrator tasks”; the first section is “How it works”. The section page is not empty and there is no raw key.
 
 **Record:** That the two pages opened.
 
@@ -2303,6 +2306,7 @@ echo "install exit: $?"
 - `cmp` prints nothing and exits with 0. `stat` prints `600`; `400` if the backup was `400`.
 - `status`: `Installed version: 0.1.9`, `Last upgrade: rolled_back, …`; `/api/v1/version`: `"version":"0.1.9"` and `"migration_head":"0044"`. Sign-in works. `doctor`: no `FAIL` when the console answers; on an unreachable console `qradar_tls` and `qradar_auth` and the `watermarks` / `errors_recent` lines that follow them are FAIL (the `install` item below explains this).
 - `install` exits with 0 when the console answers. The summary ends with the `Install time` line, followed by a line made of `=` signs. There is no separate “Install complete” line. There is no `unknown key` in the output. The summary line `QRadar connection  FAILED` is the install where the console did not answer and the exit was 1. The rollback check is Pass on that exit too: if the summary was reached (the `Install time` line and then the `=` line were written), if the output has no `unknown key` and no `install refused`, and if the `qradar_tls` and `qradar_auth` lines of `doctor` show the same console access fault. On an unreachable console both lines are FAIL; the `runbook:` value at the end of the line carries the runbook of console access (`runbook: OPS-R4` for `qradar_tls`, `runbook: OPS-R1` for `qradar_auth`). An exit of 1 that ends with the line `API readiness  NOT READY`, or while the general origin check failed (`public URL <address> failed`), is Fail. If the checkout was forgotten the script refuses: `install refused: this site runs 0.1.9 and this checkout is 0.1.10; use ./qradar-dash upgrade 0.1.10 to change versions, or check out v0.1.9 to re-run install (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container changes version on this refusal; run `git checkout v0.1.9` first.
+- `install` exits with 2 and writes `[FAIL] the answers are refused; nothing was written:`, followed by one line per refused answer in the form `<KEY>: <reason>` (for example `QRADAR_TOKEN_FILE: file not readable: <path>`), when the answers file names a file that is not there or not readable (the QRadar token, the CA certificate, the TLS certificate and key, or the registry token) or holds any other value the script refuses. The script has checked the answers before it touched anything: no file, container or setting was changed, the rollback that came before it stands, and this is not a fault of the rollback. Put the named file back at the path the answers file gives (the answers file holds paths, never the secret itself, and the rollback does not unpack `secrets.tar`), or correct that line in `.secrets/install.answers` (mode `0600`), and run the `install` command again. Write the refused lines (the key and the reason, no secret) in the Note field; the `install` exit and the `QRadar connection` result in the Record field are then `2` and `not reached`, and the install item is `Not run` until the repeat has exited with 0 or 1 as above.
 - The script writes the name of the broken database copy (`qradar_obs_broken_<utc>`) and the exact command to delete it later; do not rush to **delete** it.
 - If the rollback fails its own health check, the writers stop and `Rollback failed; the writers and the UI are stopped. Verified backup: <path>` is written (OPS-R45); repeat `./qradar-dash rollback` or use `./qradar-dash restore <path>`.
 
