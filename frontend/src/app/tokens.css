@@ -330,7 +330,8 @@
    The preview shows an e-mail the way a mail client does: on a light sheet. The sheet is the
    frame's own background, so a template that sets none stays readable on the dark page; it is
    the only light surface in the product and it holds foreign content, not interface. The frame
-   is as wide as a 600 px message plus its margin and as tall as the first screen allows. */
+   is as wide as a 600 px message plus its margin and as tall as the first screen allows. Where the
+   column is narrower (MAIL-3) the whole frame is scaled down to it, never reflowed. */
 :root {
   --mail-paper: #ffffff;
   --mail-frame-w: 40rem;

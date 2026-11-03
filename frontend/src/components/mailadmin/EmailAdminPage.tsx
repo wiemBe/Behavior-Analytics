@@ -2,14 +2,16 @@
 
 // "What will our alert e-mail look like, who gets it, and does it reach them?" The relay summary
 // comes first, because nothing below it matters when no mail can leave. Templates and recipients
-// are two tabs; the template editor's state lives above them, so a draft survives a switch.
+// are two tabs; the template editor's state and the recipient form's draft live above them, so a
+// draft survives a switch.
 
 import { useTranslations } from "next-intl";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { Tabs } from "@/components/ui/Tabs";
 import { mailAdminApi } from "@/lib/api";
 
+import { isRecipientDirty, type RecipientDraft } from "./recipientDraft";
 import { RecipientsPanel } from "./RecipientsPanel";
 import { RelaySection } from "./RelaySection";
 import { TemplatesPanel } from "./TemplatesPanel";
@@ -28,7 +30,17 @@ export function EmailAdminPage() {
   const reloadTemplates = templates.reload;
   const onListChanged = useCallback(() => reloadTemplates(), [reloadTemplates]);
   const workspace = useTemplateWorkspace(onListChanged);
-  useLeaveGuard(workspace.dirtyKeys.length > 0, t("leaveConfirm"));
+  const [recipientDraft, setRecipientDraft] = useState<RecipientDraft | null>(null);
+  const templatesUnsaved = workspace.dirtyKeys.length > 0;
+  const recipientUnsaved = isRecipientDirty(recipientDraft);
+  useLeaveGuard(
+    templatesUnsaved || recipientUnsaved,
+    templatesUnsaved && recipientUnsaved
+      ? t("leaveBoth")
+      : recipientUnsaved
+        ? t("leaveRecipient")
+        : t("leaveConfirm"),
+  );
 
   const parts = [settings.part, templates.part, placeholders.part, recipients.part];
   if (parts.some((part) => part.status === "forbidden")) {
@@ -43,7 +55,6 @@ export function EmailAdminPage() {
   }
 
   const alertTypes = templates.part.status === "ok" ? templates.part.data.alert_types : null;
-  const unsaved = workspace.dirtyKeys.length > 0;
 
   return (
     <div className="mail-page">
@@ -53,7 +64,7 @@ export function EmailAdminPage() {
         tabs={[
           {
             id: "templates",
-            label: unsaved ? t("tabTemplatesUnsaved") : t("tabTemplates"),
+            label: templatesUnsaved ? t("tabTemplatesUnsaved") : t("tabTemplates"),
             content: () => (
               <TemplatesPanel
                 templates={templates.part}
@@ -66,11 +77,13 @@ export function EmailAdminPage() {
           },
           {
             id: "recipients",
-            label: t("tabRecipients"),
+            label: recipientUnsaved ? t("tabRecipientsUnsaved") : t("tabRecipients"),
             content: () => (
               <RecipientsPanel
                 part={recipients.part}
                 alertTypes={alertTypes}
+                draft={recipientDraft}
+                onDraft={setRecipientDraft}
                 onChanged={recipients.reload}
                 onRetry={recipients.reload}
               />
