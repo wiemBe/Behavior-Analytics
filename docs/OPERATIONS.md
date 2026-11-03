@@ -22,7 +22,7 @@ Dört kural her bölümde geçerlidir:
 7. [Geçmiş okuma](#geçmiş-okuma)
 8. [Kapsam eşlemeleri](#kapsam-eşlemeleri)
 9. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R68; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R70; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -1094,6 +1094,8 @@ bağlanmaz.
 | `ariel_permits` | Global havuz held/cap, ayrılmış canlı yuvalar. Konsol tarafı, tek konsol yokken `console-pool locks N (cap P per console)` olarak yazılır. N bu veritabanındaki bütün konsol kilitleridir, bir konsolun kendi tutuşu değildir. Bütçede gerçekten tek konsol varsa satır `console held/cap` yazar. Havuz doluysa (`held >= cap`) WARN; canlı iş bekler, geçmiş okuma yerini verir. Zorlama kapalıysa `not enforced` ve PASS. Okuma hatasında yalnız hata sınıfı. | OPS-R63 |
 | `rule_match_coverage` | `RULE_HEALTH_WINDOW_DAYS` içindeki `FAILED` ve `TRUNCATED` kural-eşleşme pencerelerini tek sorguda sayar; en eski pencereyi, sağlık aralığından çıkacağı UTC zamanı, onarılabilir ve catch-up ufku nedeniyle atlanmış sayıları yazar. Biri varsa WARN, yoksa PASS, toplama kapalıysa SKIP. | OPS-R65 |
 | `qradar_health` | How QRadar itself is doing, from one fresh read of the first enabled console (GET only, short timeout per read). Managed hosts are counted with the HA pair rule (an HA pair is one host, and the standby of a healthy pair is expected, never a problem). WARN when a single host is not `ACTIVE` or reports no status, when an HA pair is degraded (the standby is not available, so no failover is possible), failed over (the secondary is `ACTIVE`, the primary is not) or in a state that cannot be classified, when the average EPS is over 90 % of the EPS allocation, or when the license pool is over-allocated (EPS or FPM). FAIL when an HA pair has no `ACTIVE` member. Each line names the host. SKIP when the console does not answer (`qradar_auth` reports that) or when none of managed hosts, EPS and license could be read. A figure that was not read is named in the line (`not read: ...`) and is never counted as healthy. The line also prints how many Ariel search ids QRadar holds (all users, finished and active alike); there is no threshold on that number. | OPS-R67 |
+| `qradar_disk` | Disk use of QRadar's hosts, from the latest stored run of the `QRADAR_HEALTH` family (not a live read). The fullest allowlisted mount of each host (`QRADAR_HEALTH_DISK_MOUNTS`) is judged: WARN at `QRADAR_HEALTH_DISK_WARN_PERCENT` (default 85 %), FAIL at `QRADAR_HEALTH_DISK_FAIL_PERCENT` (default 95 %), naming the host, the mount, the share and the free space. A missing, failed, partial or stale run is a WARN that says `not collected since <UTC time>` (or `not collected yet`); a host that reported no allowlisted mount is named as unread. It is never a PASS. SKIP when `QRADAR_HEALTH_COLLECTION_ENABLED` is off or no console is registered. | OPS-R69 |
+| `qradar_pipeline` | QRadar's event pipeline, from the same stored run. WARN when a host spilled events to disk because it is over its EPS allocation (`throttle spill` above zero) or when its rule-engine queue is above `QRADAR_HEALTH_CRE_QUEUE_WARN` (default 10,000 events), naming the host. A figure that was not read, and a missing, failed, partial or stale run, are WARNs with the same `not collected since ...` wording, never a PASS. SKIP when the family is off or no console is registered. | OPS-R70 |
 | `email` | Alert e-mail in one line: whether `SMTP_HOST` is set, the relay, the security mode and whether a login is configured. SKIP when no relay is configured. FAIL when a username is set with `SMTP_SECURITY=none`: that configuration is refused because the password would cross the network in clear text, and the line says so. Only with `./qradar-dash doctor --check-smtp` it also connects, says EHLO and finishes the STARTTLS or SSL handshake, then quits: nothing is sent and no login is attempted; a failed handshake is a WARN with the failure code. | OPS-R68 |
 | `geo_country_source` | Where the world map's country comes from. SKIP when geography collection is off. In `lookup` mode PASS (`lookup; SOURCE and DESTINATION use GEO::LOOKUP`). In `property` mode it reads the custom-property list of each enabled console and prints each direction's property name with `present on <console>` or `absent on <console>`, or `not collected (no property)` for an empty name. WARN when a named property is absent on a console or both names are empty. FAIL when the list could not be read or no console is enabled. See "World map and the country source" below. | OPS-R30 |
 
@@ -1247,6 +1249,8 @@ The platform records every Ariel search it sends in the table `ariel_search_run`
 - **Support bundle:** `./qradar-dash support-bundle` adds `ariel-load.json` (or `ariel-load.error.txt` when it cannot be read; the bundle still completes).
 - **QRadar's own health** (GET requests only): reachability and API latency, version, managed hosts by status, EPS against its allocation, the license pool, and the number of Ariel search ids QRadar holds. "Held" counts every search QRadar keeps for all users, finished or active; it is not a count of running searches. Each field has a state (`OK`, `NOT_COLLECTED`, `FORBIDDEN`, `FAILED`) and a reason, never a zero or "healthy" for something that was not read. QRadar's answers are reused per API process for `QRADAR_HEALTH_CACHE_TTL_SECONDS` (default 30, 5 to 600), so N API workers may send up to N reads per interval; the response states the age. The MCP provider does not support these reads.
 - **`doctor`:** `qradar_health` (runbook `OPS-R67`) WARNs when a single managed host is not `ACTIVE`, when an HA pair is degraded, failed over or unclassifiable (FAIL when it has no `ACTIVE` member; the standby of a healthy pair is never a problem), when average EPS is over 90 % of the allocation, or when the license pool is over-allocated. **The lab CE console has an over-allocated license, so `doctor` WARNs there permanently; that is expected.**
+- **Disk, system, pipeline and notifications (stored):** the `QRADAR_HEALTH` search family (default every 15 minutes, `/admin/search-cadence`) runs two aggregating Ariel searches per console over the `Health Metrics` and `System Notification` log sources and stores the maximum and average per host and allowlisted mount, the 50 busiest notification groups and one REST sample (reachability, API latency, hosts ACTIVE of total) per run. It needs the custom properties `Metric ID`, `Value` and `Element` on the console (IBM default content); without them the metric part says so and the notification part still runs. Read them at `GET /api/v1/admin/qradar-health/latest` and `/history?hours=24|168` (`admin:*`). A window that was not collected is `NOT_COLLECTED`, `FAILED`, `PARTIAL` or `STALE`, never a zero. Stored windows are kept `QRADAR_HEALTH_RETENTION_DAYS` days (default 35).
+- **`doctor`:** `qradar_disk` (runbook `OPS-R69`) and `qradar_pipeline` (runbook `OPS-R70`) read the latest stored run; see the doctor table.
 
 ### Alert e-mail (SMTP relay, templates, recipients)
 
@@ -3122,3 +3126,36 @@ threshold.
 **Verify:** Read the relay settings the application reports (`GET /api/v1/admin/email/settings`: host, port, mode, whether a username is set) and send a test message to your own address (`POST /api/v1/admin/email/test`). From the host, `./qradar-dash doctor --check-smtp` tries the connection and the handshake without sending anything.
 
 **Fix:** Correct the `SMTP_*` values in the production `.env`, make a private CA file readable inside the containers, then restart the backend and the worker. Notifications that were parked as dead letters are not resent; the next alert transition uses the new settings.
+
+### OPS-R69. `qradar_disk` warns or fails: a QRadar host is filling up, or its disk was not read
+
+**Symptom:** `doctor` shows `WARN qradar_disk` or `FAIL qradar_disk` with `runbook: OPS-R69`. The same figures are in `GET /api/v1/admin/qradar-health/latest` (per host, `disk.fullest` and `disk.mounts`).
+
+**Likely cause:** One of the following, named in the line.
+- `<host> <mount> <n> % (at or over 85 %)` is a WARN, and at or over 95 % a FAIL: that mount of that QRadar host is nearly full. QRadar stops accepting events or indexing when `/store` or `/transient` fills.
+- `not collected since <time>` or `not collected yet`: no usable run is stored. The newest run failed (the Ariel search failed or was rejected), was partial (a search hit its row cap), is older than `QRADAR_HEALTH_STALE_CADENCES` cadences (the `QRADAR_HEALTH` family is off, not scheduled, or its cadence was raised), or the console lacks the `Metric ID`, `Value` or `Element` custom property. A disk that was not read is not a disk that is fine.
+- `<host> reported no allowlisted mount`: the host sent disk metrics for no mount in `QRADAR_HEALTH_DISK_MOUNTS` (a different mount layout), or none at all.
+
+**Verify:**
+
+```bash
+./qradar-dash doctor
+docker compose exec -T backend python -m app.cli.ariel_load --current
+```
+
+Read `/api/v1/admin/qradar-health/latest`: `metrics.state` and `metrics.reason` say why a window was not collected, and `dropped_mounts` counts mounts that were ignored because they are not in the allowlist. `/admin/search-cadence` shows the `QRADAR_HEALTH` family's last run.
+
+**Fix:** The disk is on the QRadar host, not on this platform: free space there (retention, the `/store` partition) or extend it; the platform never writes to QRadar. For a layout with other mounts, add them to `QRADAR_HEALTH_DISK_MOUNTS` (a JSON list in the production `.env`) and restart the backend and the worker. For "not collected", fix the cause named in `metrics.reason` (create the missing properties on the console, check the permit pool and the Ariel health in OPS-R63, or switch the family on with `QRADAR_HEALTH_COLLECTION_ENABLED=true`).
+
+### OPS-R70. `qradar_pipeline` warns: events are spilling to disk, or the rule-engine queue is long
+
+**Symptom:** `doctor` shows `WARN qradar_pipeline` with `runbook: OPS-R70`. The same figures are in `GET /api/v1/admin/qradar-health/latest` (per host, `pipeline`).
+
+**Likely cause:** One of the following, named in the line.
+- `<host> spilled <size> to disk (events over the license EPS)`: the host's license-throttle queue wrote events to disk because the host receives more than its EPS allocation. QRadar is holding or shedding events, so the platform's volume figures can understate what the sources send. Compare with `qradar_health` (average EPS against the allocation, OPS-R67).
+- `<host> CRE queue <n> events (over 10000)`: the rule engine is behind. Rules fire late until it catches up.
+- `... not read` or `not collected since ...`: the figure or the whole window is missing (see OPS-R69). It is not counted as healthy.
+
+**Verify:** `./qradar-dash doctor`, then `GET /api/v1/admin/qradar-health/history?hours=24` for the queue and spill series of the host (`cre_queue`, `throttle_spill_bytes`). A spill that appears once and stops is a burst; a spill in every window is a host that is licensed below its load.
+
+**Fix:** The cause is in QRadar: raise the EPS allocation of the host or rebalance the license pool in the QRadar Admin tab, or reduce what is sent to it. For a long rule-engine queue look at the host's CPU and the heaviest rules in QRadar. To change the queue threshold set `QRADAR_HEALTH_CRE_QUEUE_WARN`. The platform never writes to QRadar.

@@ -46,7 +46,11 @@ def test_the_cadence_sentence_matches_the_code() -> None:
     waf = default_search_cadence(SearchFamily.WAF_COLLECTION)
     ips = default_search_cadence(SearchFamily.IPS_COLLECTION)
     assert waf == ips
-    fifteen = {SearchFamily.WAF_COLLECTION, SearchFamily.IPS_COLLECTION}
+    fifteen = {
+        SearchFamily.WAF_COLLECTION,
+        SearchFamily.IPS_COLLECTION,
+        SearchFamily.QRADAR_HEALTH,
+    }
     for family in SearchFamily:
         expected = waf if family in fifteen else usual
         assert default_search_cadence(family) == expected

@@ -195,6 +195,19 @@ celery_app.conf.beat_schedule = {
         "task": "apply_geo_retention",
         "schedule": float(settings.geo_retention_interval_seconds),
     },
+    # --- D-42 ----------------------------------------------------------------
+    "collect-qradar-health": {
+        # Two read-only aggregating Ariel searches per console per cadence tick (the
+        # Health Metrics and System Notification log sources). Ticks every minute; the
+        # QRADAR_HEALTH cadence gate decides whether a tick is due. A no-op while
+        # QRADAR_HEALTH_COLLECTION_ENABLED is false.
+        "task": "collect_qradar_health",
+        "schedule": 60.0,
+    },
+    "apply-qradar-health-retention": {
+        "task": "apply_qradar_health_retention",
+        "schedule": float(settings.qradar_health_retention_interval_seconds),
+    },
     "apply-waf-retention": {
         "task": "apply_waf_retention",
         "schedule": float(settings.waf_retention_interval_seconds),

@@ -26,6 +26,12 @@ from typing import Any, ClassVar, TypedDict, cast
 from app.catchall.keyed_rows import parse_catchall_rows, validate_catchall_type_ids
 from app.collectors.bucketed_metrics import validate_bucketed_metric_window
 from app.geo.fold import GeoDirection, GeoKeyedResult, parse_geo_rows
+from app.health_detail.rows import (
+    HealthMetricsResult,
+    HealthNotificationsResult,
+    parse_health_metric_rows,
+    parse_health_notification_rows,
+)
 from app.ips.keyed_rows import (
     parse_ips_keyed_rows,
     validate_ips_fields,
@@ -156,6 +162,10 @@ _CUSTOM_PROPERTIES: tuple[tuple[int, str, str, str, bool, tuple[int, ...]], ...]
     (109, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1007", "Bad.Name(1)", "string", False, (212,)),
     # The default SOURCE country property, so a property-mode demo has a catalog hit.
     (110, "GEO_SOURCE_COUNTRY", "Source Geographic Location", "string", False, ()),
+    # The shipped Health Metrics properties the QRadar health collection reads (D-42).
+    (111, "HEALTH_METRIC_ID", "Metric ID", "string", False, ()),
+    (112, "HEALTH_VALUE", "Value", "numeric", False, ()),
+    (113, "HEALTH_ELEMENT", "Element", "string", False, ()),
 )
 
 
@@ -227,6 +237,41 @@ GeoFault = Callable[[MockGeoSearch], Exception | None]
 GeoTruncation = Callable[[MockGeoSearch], bool]
 #: A script: the raw rows (`geo`, `events`) of a direction and bucket key.
 GeoScript = Callable[[GeoDirection, int], list[dict]]
+
+
+@dataclass(frozen=True)
+class MockHealthSearch:
+    """One QRadar health search the mock was asked for: ``"metrics"`` or ``"notifications"``."""
+
+    kind: str
+    window_start: datetime
+    window_end: datetime
+
+
+#: A fault hook: given a search, an exception to raise for it, or None.
+HealthFault = Callable[[MockHealthSearch], Exception | None]
+#: A script: the raw rows of a search, in the shape of the AQL result.
+HealthScript = Callable[[MockHealthSearch], list[dict]]
+
+#: One host, as the lab console shows it. Mounts include overlays so the allowlist has work.
+_HEALTH_HOST = "Health Metrics-2 :: qradarce2"
+_HEALTH_NOTIFICATION_HOST = "System Notification-2 :: qradarce2"
+_HEALTH_METRIC_VALUES: tuple[tuple[str, str | None, float], ...] = (
+    ("DiskUsage", "/", 0.42),
+    ("DiskUsage", "/store", 0.63),
+    ("DiskUsage", "/tmp", 0.03),  # noqa: S108 - a mount name, not a file
+    ("DiskUsage", "overlay", 0.42),
+    ("DiskUsage", "/dev/shm", 0.0),  # noqa: S108 - a mount name, not a file
+    ("DiskSpaceUsed", "/store", 3.1e10),
+    ("DiskSpaceTotal", "/store", 4.9e10),
+    ("SystemCPU", None, 31.0),
+    ("SystemMemoryUsed", None, 72.0),
+    ("LoadAvg5", None, 1.6),
+    ("CREQueueSize", None, 120.0),
+    ("QueuedEventThrottleFilterDiskSize", None, 0.0),
+    ("EventParserThreadInfo", None, 18.0),
+    ("ArielWriterThreadInfo", None, 9.0),
+)
 
 #: Lookup strings as QRadar returns them: a country, one with a different `confidence`,
 #: and the sentinel for a private or unknown address.
@@ -560,6 +605,12 @@ class MockQRadarProvider(QRadarProvider):
         self.geo_fault: GeoFault | None = None
         self.geo_force_truncated: GeoTruncation | None = None
         self.geo_script: GeoScript | None = None
+        #: The same hooks for the QRadar health searches (D-42).
+        self.health_searches: list[MockHealthSearch] = []
+        self.health_fault: HealthFault | None = None
+        self.health_force_truncated: Callable[[MockHealthSearch], bool] | None = None
+        self.health_metric_script: HealthScript | None = None
+        self.health_notification_script: HealthScript | None = None
         self._now = now or datetime.now(UTC)
         self._rng = random.Random(seed)  # noqa: S311 (not cryptographic)
         #: Replaces the built-in offense catalog when a test needs a backlog.
@@ -1760,6 +1811,96 @@ class MockQRadarProvider(QRadarProvider):
             rows=parsed,
             truncated=truncated,
             query="MOCK GEO PROPERTY" if country_property is not None else "MOCK GEO",
+        )
+
+    @staticmethod
+    def _health_window(start: datetime, end: datetime) -> None:
+        for moment in (start, end):
+            if moment.tzinfo is None or moment.utcoffset() is None:
+                raise ValueError("the health window must be timezone-aware")
+        if start >= end:
+            raise ValueError("the health window must not be empty")
+
+    @_notes_ariel(ariel_log.CALLER_QRADAR_HEALTH)
+    async def get_health_metrics(
+        self, start: datetime, end: datetime, *, max_rows: int
+    ) -> HealthMetricsResult:
+        """The metric result, built here and parsed by the real row parser."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        self._health_window(start, end)
+        if max_rows < 1:
+            raise ValueError("health row limit must be positive")
+        search = MockHealthSearch("metrics", start, end)
+        self.health_searches.append(search)
+        if self.health_fault is not None and (fault := self.health_fault(search)) is not None:
+            raise fault
+        if self.health_metric_script is not None:
+            raw = self.health_metric_script(search)
+        else:
+            raw = [
+                {
+                    "source": _HEALTH_HOST,
+                    "metric": metric,
+                    "element": element,
+                    "max_value": value,
+                    "avg_value": value,
+                    "samples": 30,
+                }
+                for metric, element, value in _HEALTH_METRIC_VALUES
+            ]
+        rows, truncated = parse_health_metric_rows(raw[: max_rows + 1], max_rows=max_rows)
+        if self.health_force_truncated is not None and self.health_force_truncated(search):
+            truncated = True
+        return HealthMetricsResult(
+            window_start=start,
+            window_end=end,
+            rows=rows,
+            truncated=truncated,
+            query="MOCK HEALTH METRICS",
+        )
+
+    @_notes_ariel(ariel_log.CALLER_QRADAR_HEALTH)
+    async def get_health_notifications(
+        self, start: datetime, end: datetime, *, max_rows: int
+    ) -> HealthNotificationsResult:
+        """The notification result, built here and parsed by the real row parser."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        self._health_window(start, end)
+        if max_rows < 1:
+            raise ValueError("health row limit must be positive")
+        search = MockHealthSearch("notifications", start, end)
+        self.health_searches.append(search)
+        if self.health_fault is not None and (fault := self.health_fault(search)) is not None:
+            raise fault
+        if self.health_notification_script is not None:
+            raw = self.health_notification_script(search)
+        else:
+            last_seen = int(end.timestamp() * 1000) - 60_000
+            raw = [
+                {
+                    "source": _HEALTH_NOTIFICATION_HOST,
+                    "qid_name": "Warning Message",
+                    "severity": 4,
+                    "events": 3,
+                    "last_seen": last_seen,
+                },
+                {
+                    "source": _HEALTH_NOTIFICATION_HOST,
+                    "qid_name": "SAR Sentinel: threshold crossed",
+                    "severity": 5,
+                    "events": 1,
+                    "last_seen": last_seen,
+                },
+            ]
+        rows, truncated = parse_health_notification_rows(raw[: max_rows + 1], max_rows=max_rows)
+        if self.health_force_truncated is not None and self.health_force_truncated(search):
+            truncated = True
+        return HealthNotificationsResult(
+            window_start=start,
+            window_end=end,
+            rows=rows,
+            truncated=truncated,
+            query="MOCK HEALTH NOTIFICATIONS",
         )
 
     @_notes_ariel(ariel_log.CALLER_IPS_COLLECTION, _plan_ips_probe)

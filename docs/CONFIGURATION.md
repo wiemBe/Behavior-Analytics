@@ -328,6 +328,38 @@ groups by the configured country property, and a direction with no property is n
 `lookup` mode still resolves the country inside the QRadar query with `GEO::LOOKUP`. A
 non-empty property name must match the property-name allowlist or settings refuse to load.
 
+
+## QRadar health in detail
+
+Disk, system, pipeline and QRadar's own system notifications, collected by the `QRADAR_HEALTH`
+search family (default cadence 15 minutes, set per family at `/admin/search-cadence`). Two
+aggregating Ariel searches per console per run read the `Health Metrics` and `System
+Notification` log sources, never a payload. The metric search needs the custom properties
+`Metric ID`, `Value` and `Element` on the console; without them the metric part is not collected
+and says why, and the notification part still runs.
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `QRADAR_HEALTH_COLLECTION_ENABLED` | `true` | Family collection switch |
+| `QRADAR_HEALTH_DISK_MOUNTS` | `["/", "/store", "/storetmp", "/transient", "/var/log", "/var/log/audit", "/opt", "/home", "/tmp", "/var", "/boot", "/recovery"]` | JSON list of mount points shown and stored. Any other mount (container overlays, `/run/user/...`, `/dev/shm`) is ignored. Each entry must be an absolute path of letters, digits and `_ . / -` |
+| `QRADAR_HEALTH_DISK_WARN_PERCENT` | `85` | The fullest allowlisted mount of a host warns at this share of the disk (`1`-`100`) |
+| `QRADAR_HEALTH_DISK_FAIL_PERCENT` | `95` | ... and fails at this share. Must be above the warning share |
+| `QRADAR_HEALTH_CRE_QUEUE_WARN` | `10000` | Events waiting for the rule engine above which `doctor` warns. A throttle spill above zero always warns |
+| `QRADAR_HEALTH_MAX_METRIC_ROWS` | `5000` | Rows the metric search may return before the window is PARTIAL (`100`-`100000`) |
+| `QRADAR_HEALTH_MAX_NOTIFICATION_ROWS` | `1000` | Notification groups (host and QID name) the search may return before the window is PARTIAL. The 50 busiest are stored, the rest as one counted remainder |
+| `QRADAR_HEALTH_STALE_CADENCES` | `3` | A stored window older than this many cadences (plus the settle time) is STALE in the API and a WARN in `doctor` |
+| `QRADAR_HEALTH_RETENTION_DAYS` | `35` | Stored windows older than this are deleted |
+| `QRADAR_HEALTH_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch |
+| `QRADAR_HEALTH_RETENTION_MAX_BATCHES` | `20` | Batches per table per retention run |
+| `QRADAR_HEALTH_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule |
+
+Each run stores one window per console: the maximum, the average and the sample count of each
+metric per host and allowlisted mount, the 50 busiest notification groups, and one REST sample
+(reachability, API latency, managed hosts ACTIVE of total, HA problems, license over-allocation)
+written by the console-health service once per run. A part that was not measured stores nothing
+and the API answers `NOT_COLLECTED` or `FAILED` with the reason, never a zero. `doctor` reads
+the latest stored run for its `qradar_disk` and `qradar_pipeline` lines (OPS-R69, OPS-R70).
+
 ## Custom threshold rules
 
 | Setting | Default | Meaning |

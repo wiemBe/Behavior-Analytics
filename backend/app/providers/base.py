@@ -65,6 +65,7 @@ if TYPE_CHECKING:
     # `app.geo.fold` imports this module for `ProviderError`, so the geo types are
     # annotations here only.
     from app.geo.fold import GeoDirection, GeoKeyedResult
+    from app.health_detail.rows import HealthMetricsResult, HealthNotificationsResult
 
 #: Upper bound on a WAF property probe window. Validation is a spot check, not a
 #: survey, and a small window keeps it cheap on a loaded appliance.
@@ -649,6 +650,35 @@ class QRadarProvider(ABC):
         `max_rows` rows set ``truncated`` and only the first `max_rows` are kept. A key
         outside the span or a non-integer key fails the whole search with a
         ProviderError.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_health_metrics(
+        self, start: datetime, end: datetime, *, max_rows: int
+    ) -> HealthMetricsResult:
+        """One aggregating search of the shipped Health Metrics log sources (D-42).
+
+        Per log source, metric id and element it returns the maximum, the average and the
+        event count of the `Value` property over the half-open window, for the fixed metric
+        list only. More than `max_rows` groups set ``truncated`` and only the first
+        `max_rows` are kept. No payload is selected.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_health_notifications(
+        self, start: datetime, end: datetime, *, max_rows: int
+    ) -> HealthNotificationsResult:
+        """One aggregating search of QRadar's own System Notification events (D-42).
+
+        Per log source and QID name: the event count, the highest severity and the newest
+        time, with `Information Message` left out. More than `max_rows` groups set
+        ``truncated``. No payload is selected.
 
         Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
         """

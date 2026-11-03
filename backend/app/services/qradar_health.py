@@ -799,6 +799,7 @@ async def read_qradar_health(
     now: Callable[[], datetime] | None = None,
     monotonic: Callable[[], float] | None = None,
     read_timeout: float = READ_TIMEOUT_SECONDS,
+    sample_sink: Callable[[QRadarHealth], Awaitable[None]] | None = None,
 ) -> QRadarHealth:
     """The `qradar` section for one console.
 
@@ -807,6 +808,10 @@ async def read_qradar_health(
     or `ariel_search_run_unreadable` when the caller tried to read it and could not
     (`ariel_runs_unreadable`).
     A hit in the cache builds no provider and sends nothing to QRadar.
+
+    `sample_sink` (HLT-2) receives the section of a read that was taken from QRadar just now,
+    never one served from the cache. The stored-trend collector passes one so each collection
+    run keeps one REST sample; a sink that raises is logged and never fails the read.
     """
     settings = settings or get_settings()
     cache = cache if cache is not None else HEALTH_CACHE
@@ -869,4 +874,10 @@ async def read_qradar_health(
                 "ariel_list": reads.list_probe.state.value,
             },
         )
-        return compose(entry, cached=False)
+        fresh = compose(entry, cached=False)
+        if sample_sink is not None:
+            try:
+                await sample_sink(fresh)
+            except Exception as exc:  # the section is still good; only the sample is lost
+                logger.warning("qradar health sample not stored (%s)", type(exc).__name__)
+        return fresh

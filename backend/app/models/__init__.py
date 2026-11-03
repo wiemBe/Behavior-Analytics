@@ -64,6 +64,12 @@ from app.models.property_watch import (
     PwValueBaseline,
     PwValueMetric,
 )
+from app.models.qradar_health import (
+    QRadarHealthMetricBucket,
+    QRadarHealthNotificationBucket,
+    QRadarHealthRestSample,
+    QRadarHealthRun,
+)
 from app.models.rule import (
     AnalyticsRule,
     DetectionCoverage,
@@ -113,6 +119,10 @@ HYPERTABLES: dict[str, str] = {
     "ips_entity_metric": "bucket_start",
     "pw_bucket": "bucket_start",
     "pw_value_metric": "bucket_start",
+    "qradar_health_run": "window_start",
+    "qradar_health_metric_bucket": "bucket_start",
+    "qradar_health_notice_bucket": "bucket_start",
+    "qradar_health_rest_sample": "slot_start",
 }
 
 __all__ = [
@@ -177,6 +187,10 @@ __all__ = [
     "PwValue",
     "PwValueBaseline",
     "PwValueMetric",
+    "QRadarHealthMetricBucket",
+    "QRadarHealthNotificationBucket",
+    "QRadarHealthRestSample",
+    "QRadarHealthRun",
     "QRadarInstance",
     "Role",
     "RuleCapacitySample",

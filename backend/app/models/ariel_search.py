@@ -31,6 +31,7 @@ CALLERS: tuple[str, ...] = (
     "PROPERTY_WATCH",
     "CATCHALL_SENDERS",
     "GEO_COLLECTION",
+    "QRADAR_HEALTH",
     "HISTORY",
     "PREVIEW",
     "SCHEDULED_SEARCH",

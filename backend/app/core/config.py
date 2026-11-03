@@ -8,6 +8,7 @@ Staging is the production posture for a pre-production site.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from enum import StrEnum
 from functools import lru_cache
@@ -27,6 +28,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.patterns import PROPERTY_NAME_PATTERN
 from app.models.enums import OutagePolicyMode
+
+#: A mount point: an absolute path of letters, digits and `_ . / -`. Compared, never put in AQL.
+_MOUNT_PATTERN = re.compile(r"/[A-Za-z0-9_./-]{0,127}")
 
 
 class Environment(StrEnum):
@@ -741,6 +745,48 @@ class Settings(BaseSettings):
     geo_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     geo_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
+    # --- D-42: QRadar health in detail (disk, system, pipeline, notifications) ---
+    #: Kill switch. Two aggregating Ariel searches per console per cadence tick (the
+    #: Health Metrics log source and the System Notification log source), and at most one
+    #: REST health sample per run. QRADAR_HEALTH defaults to 15 minutes in the cadence table.
+    qradar_health_collection_enabled: bool = True
+    #: Mount points shown and stored. Any other mount (container overlays, /run/user,
+    #: /dev/shm) is ignored. A JSON list in the environment.
+    qradar_health_disk_mounts: list[str] = Field(
+        default_factory=lambda: [
+            "/",
+            "/store",
+            "/storetmp",
+            "/transient",
+            "/var/log",
+            "/var/log/audit",
+            "/opt",
+            "/home",
+            "/tmp",  # noqa: S108 - a mount name to compare, not a file to open
+            "/var",
+            "/boot",
+            "/recovery",
+        ],
+        min_length=1,
+        max_length=64,
+    )
+    #: The fullest allowlisted mount warns / fails at these shares of the disk (percent).
+    qradar_health_disk_warn_percent: int = Field(default=85, ge=1, le=100)
+    qradar_health_disk_fail_percent: int = Field(default=95, ge=1, le=100)
+    #: Events waiting for the rule engine above which `doctor` warns.
+    qradar_health_cre_queue_warn: int = Field(default=10_000, ge=1)
+    #: Rows one metric search may return before the run is PARTIAL.
+    qradar_health_max_metric_rows: int = Field(default=5000, ge=100, le=100_000)
+    #: Notification groups (host x QID name) one search may return before the run is PARTIAL.
+    qradar_health_max_notification_rows: int = Field(default=1000, ge=100, le=100_000)
+    #: A stored run older than this many cadences (plus the settle time) is stale.
+    qradar_health_stale_cadences: int = Field(default=3, ge=1, le=100)
+    #: Stored windows older than this are deleted.
+    qradar_health_retention_days: int = Field(default=35, ge=2)
+    qradar_health_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    qradar_health_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    qradar_health_retention_interval_seconds: int = Field(default=86400, ge=3600)
+
     # --- Phase F: custom threshold rules (design §F.4, §F.10) ----------------
     #: Kill switch. The evaluator is DB-only and sends no Ariel search. Nothing
     #: runs until this is set, so an upgrade changes no behaviour.
@@ -1148,6 +1194,27 @@ class Settings(BaseSettings):
         if any(item not in ("SOURCE", "DESTINATION") for item in value):
             raise ValueError("GEO_DIRECTIONS holds SOURCE and DESTINATION")
         return list(dict.fromkeys(value))
+
+    @field_validator("qradar_health_disk_mounts")
+    @classmethod
+    def _qradar_health_mounts_are_paths(cls, value: list[str]) -> list[str]:
+        """Absolute paths of plain characters only: a mount is compared, never interpolated."""
+        out: list[str] = []
+        for item in value:
+            mount = item.strip()
+            if _MOUNT_PATTERN.fullmatch(mount) is None:
+                raise ValueError("QRADAR_HEALTH_DISK_MOUNTS holds absolute paths")
+            if mount not in out:
+                out.append(mount)
+        return out
+
+    @model_validator(mode="after")
+    def _qradar_health_disk_thresholds_rise(self) -> Settings:
+        if self.qradar_health_disk_warn_percent >= self.qradar_health_disk_fail_percent:
+            raise ValueError(
+                "QRADAR_HEALTH_DISK_WARN_PERCENT must be below QRADAR_HEALTH_DISK_FAIL_PERCENT"
+            )
+        return self
 
     @field_validator("catchall_type_ids")
     @classmethod

@@ -28,6 +28,7 @@ from app.api.routes import (
     overview,
     property_watches,
     providers,
+    qradar_health_detail,
     rules,
     search_cadence,
     searches,
@@ -66,6 +67,9 @@ api_router = APIRouter()
 api_router.include_router(health.router)
 # Platform-wide Ariel load. admin:* only: admin:waf and read:* do not see it.
 api_router.include_router(ariel_load.router, dependencies=[Depends(requires(PERM_ADMIN))])
+api_router.include_router(
+    qradar_health_detail.router, dependencies=[Depends(requires(PERM_ADMIN))]
+)
 # Build identity: open like health, and it carries no data beyond version, SHA and head.
 api_router.include_router(version.router)
 # Login is unauthenticated. Logout and password change need a principal.

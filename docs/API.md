@@ -39,6 +39,7 @@ capability or `admin:*`.
 | `/auth/admin` | `admin:auth` | same administrative capability |
 | `/users` | `admin:users` | same administrative capability |
 | `/admin/email` | `admin:notifications` | same administrative capability; `read:*` does not grant it |
+| `/admin/qradar-health` | `admin:*` | none (reads only) |
 
 `read:*` does not grant any write capability. `admin:*` grants every administrative, read and write
 capability.
@@ -400,6 +401,58 @@ statements whatever the range.
 
 Private, internal and unknown addresses all produce the same unresolved lookup result in QRadar and
 cannot be distinguished. No address is selected or stored by this collector.
+
+## QRadar health in detail
+
+Disk, system, pipeline and QRadar's own system notifications, stored by the `QRADAR_HEALTH`
+search family (see `docs/SEARCH-CADENCE.md`). Both reads need `admin:*`, read the database only
+and ask QRadar nothing; each costs a fixed number of statements however many consoles and hosts
+there are.
+
+`GET /api/v1/admin/qradar-health/latest` returns `{generated_at, consoles[]}`, one entry per
+enabled console:
+
+- `window` (`start`, `end`, `collected_at`, `cadence_seconds`): the newest window any run stored,
+  or `null` when the console has none.
+- `metrics` and `notifications`: `{state, reason_code, reason}` for the newest run's part. `state`
+  is `OK`, `PARTIAL` (a search hit its row cap), `STALE` (the window is older than
+  `QRADAR_HEALTH_STALE_CADENCES` cadences plus the settle time), `NOT_COLLECTED` (no window yet, or
+  the console lacks the `Metric ID`, `Value` or `Element` custom property) or `FAILED` (the
+  search failed or was rejected). Anything but `OK` carries a stable `reason_code` and an English
+  `reason`. A part that was not measured has no values below: never a zero. `last_metrics_window_end`
+  is the end of the newest window whose metrics were collected, even when a later run failed.
+- `hosts[]`, per host (the hostname parsed from the `Health Metrics-<n> :: <hostname>` log-source
+  name): `disk` (`fullest` mount and all allowlisted `mounts`, each with `used_fraction` 0 to 1,
+  `used_percent`, `used_bytes`, `total_bytes`, `free_bytes` when both were read, and `level`
+  `OK`/`WARN`/`FAIL` against the disk thresholds), `system` (`cpu_percent`, `memory_percent`,
+  `load_avg_5`, `swap_percent`, `io_wait`, `running_queries`, `host_running_queries`) and `pipeline`
+  (`cre_queue`, `throttle_spill_bytes`, `throttle_spilling`, `ect_tcp_to_ep_disk_bytes`,
+  `flow_governor_queue_disk_bytes`, `busiest_stage`). Every figure is a cell `{state, value,
+  average, samples, reason_code, reason}` holding the window's maximum and average; a metric the
+  host did not report is `NOT_COLLECTED`, and in a `STALE` window the cells are `STALE` with their
+  values. `throttle_spilling` is true when events spilled to disk because the host is over its EPS
+  allocation.
+- `notification_list`: `entries[]` (`host`, `qid_name`, `events`, `max_severity`, `last_seen`), the
+  50 busiest groups of the window with `Information Message` excluded, and `remainder`
+  (`events`, `groups`) for the groups below them, so the window's events still add up.
+- Counted, never shown: `unparseable_hosts` (log-source names with no hostname), `dropped_mounts`
+  (mounts outside `QRADAR_HEALTH_DISK_MOUNTS`), `dropped_metrics`, `null_values`, `invalid_values`
+  (negative or out-of-range), `dropped_events`.
+- `rest_sample`: the newest REST sample (`sampled_at`, `reachable`, `api_latency_ms`,
+  `hosts_active`, `hosts_total`, `ha_problem_count`, `license_overallocated`); a figure that was
+  not read is `null`.
+
+`GET /api/v1/admin/qradar-health/history?hours=24|168` (`400` for any other value) returns
+`{generated_at, hours, since, until, expected_interval_seconds, consoles[]}`. Per console:
+`metrics` (`NOT_COLLECTED` with `no_window_in_range` when no window was stored in the range),
+`hosts[]` with three series each (`disk_fullest_fraction`, the `DiskUsage` of the fullest
+allowlisted mount per window with the `mount` behind each point; `cre_queue`;
+`throttle_spill_bytes`) and `reachability` (`points[]` of `reachable` and `api_latency_ms` from the
+REST samples). A series with no point is `NOT_COLLECTED`. A gap longer than
+`expected_interval_seconds` between two points means windows are missing, not that the value held.
+A series longer than 400 points is folded into equal time slices, each keeping its maximum
+(`windows` says how many windows a point stands for); a reachability slice keeps an unreachable
+sample over a reachable one.
 
 ## Dashboards
 

@@ -26,6 +26,7 @@ _FAMILY_SWITCHES: dict[SearchFamily, str] = {
     SearchFamily.PROPERTY_WATCH: "pw_collection_enabled",
     SearchFamily.CATCHALL_SENDERS: "catchall_collection_enabled",
     SearchFamily.GEO_COLLECTION: "geo_collection_enabled",
+    SearchFamily.QRADAR_HEALTH: "qradar_health_collection_enabled",
 }
 
 
