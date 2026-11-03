@@ -870,6 +870,52 @@
       ],
       "permission": "`admin:*`"
     },
+    "alert-email": {
+      "title": "Alert e-mail",
+      "answers": "What will our alert e-mail look like, who gets it, and does it reach them?",
+      "body": [
+        {
+          "p": "The page starts with the **Relay**: whether a relay is configured, its host and port, the security mode, the sender and whether a login or a CA file is set. These come from `.env` on the server (`SMTP_*`). The page cannot change them and never shows the password. With no `SMTP_HOST` no mail can leave, and the test send is off. A username with the security mode **None** is refused, because the login would cross the network in clear text."
+        },
+        {
+          "h": "Templates"
+        },
+        {
+          "p": "A template is a subject, an HTML body and an optional text body. The default template is sent for every alert type that has no template of its own. A type with its own template sends that one, and switching a template off sends the next layer down instead. When no default is stored the template shipped with the product is sent. The table says, for each row, whether it is customised, whether the stored one is in use and what it sends today."
+        },
+        {
+          "p": "Write a placeholder as `{{ name }}`, or choose one from the list to insert it where the cursor is. An unknown name is refused when you save. In the HTML part a value is HTML-escaped, in the text part it is plain, and a missing value shows as a dash. Leave the text body empty to derive it from the HTML."
+        },
+        {
+          "p": "Saving stores only the HTML that is safe in an e-mail: the sanitiser removes other tags, attributes and styles, then the editor shows what was kept and says when it changed what you typed. **Reset** deletes the stored template after a confirmation that names what is sent from then on: the shipped template for the default, the default template for a type."
+        },
+        {
+          "h": "Preview and test send"
+        },
+        {
+          "p": "The preview renders the text in the editor, saved or not, against a fixed sample alert of the type you choose. It is never a real alert. It is drawn in a frame that runs no script. The **Text part** view shows the plain-text version. The **test send** sends that same message, with the subject starting `[Test]`, through the real relay to one mailbox you type. The outcome is a sentence that says what failed and what to do next. The relay's own reply text is never shown, and test messages are rate limited."
+        },
+        {
+          "h": "Recipients"
+        },
+        {
+          "p": "A stored recipient gets alerts at or above its minimum severity, for every alert type or only the types you tick. Addresses from `NOTIFY_EMAIL_RECIPIENTS` in `.env` are listed apart: they receive every alert, LOW and above, and cannot be changed here. With no stored and no `.env` recipient no alert e-mail is sent, and the page says so."
+        }
+      ],
+      "steps": [
+        "Open **Administration**, then **Alert e-mail**.",
+        "Read the **Relay** first. If it says no mail can leave, set `SMTP_HOST` and the other keys in `.env`, restart the backend and the worker, and reload.",
+        "Under **Templates**, choose the default or an alert type, edit it and watch the preview. Save when it reads right.",
+        "Send a test message to your own mailbox and read its outcome.",
+        "Under **Recipients**, add the mailboxes that should receive alerts."
+      ],
+      "states": [
+        {
+          "p": "**No alert e-mail can leave this site.**; **No alert e-mail is sent with this configuration.**; **No alert e-mail is sent.**; a part that could not be read, with what to do; the forbidden notice naming `admin:notifications`; unsaved template changes, flagged on the row and the tab, with a prompt before you leave."
+        }
+      ],
+      "permission": "`admin:notifications`"
+    },
     "users-and-directory": {
       "title": "Users and directory sign-in",
       "answers": "Who can sign in, with which roles, and how does directory sign-in reach the platform?",

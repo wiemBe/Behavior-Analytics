@@ -41,6 +41,7 @@
     "search-cadence": "Search cadence",
     "history-backfill": "History backfill",
     "siem-load": "SIEM load",
+    "alert-email": "Alert e-mail",
     "users-and-directory": "Users and directory sign-in"
   }
 }

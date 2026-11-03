@@ -32,6 +32,7 @@
     "ipsSources": "IPS sources",
     "historyBackfill": "History backfill",
     "siemLoad": "SIEM load",
+    "alertEmail": "Alert e-mail",
     "users": "Users",
     "directory": "Directory",
     "adminOverview": "Administration overview",

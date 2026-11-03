@@ -25,6 +25,7 @@ const SECTIONS: readonly Section[] = [
   { key: "ips", href: "/admin/ips-sources" },
   { key: "history", href: "/admin/history-backfill", permission: "read:history_backfill" },
   { key: "siemLoad", href: "/admin/siem-load", permission: "admin:*" },
+  { key: "alertEmail", href: "/admin/email", permission: "admin:notifications" },
   { key: "users", href: "/admin/users", permission: "admin:users" },
   { key: "directory", href: "/admin/directory", permission: "admin:auth" },
 ];

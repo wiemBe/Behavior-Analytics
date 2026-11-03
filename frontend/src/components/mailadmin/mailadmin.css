@@ -1,0 +1,391 @@
+/* The alert e-mail administration page. Built from tokens only; tables, pills, banners, notices,
+ * tabs and buttons are the shared ones. */
+
+.mail-page {
+  display: grid;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+.mail-templates {
+  display: grid;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+.mail-section {
+  display: grid;
+  gap: var(--sp-4);
+  align-content: start;
+  min-width: 0;
+}
+/* `.main h2` carries a section margin of its own; the sections are spaced by their grid. */
+.mail-page .mail-h {
+  margin: 0;
+}
+.mail-page .mail-h3 {
+  margin: 0;
+  font-size: var(--fs-base);
+}
+.mail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+}
+.mail-hint {
+  margin: 0;
+  max-width: var(--admin-form-max);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+}
+.mail-mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+/* The relay: a handful of facts in a wrapping row of label over value. */
+.mail-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: var(--sp-4) var(--sp-6);
+  margin: 0;
+  padding: var(--sp-4) 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.mail-facts > div {
+  min-width: 0;
+  display: grid;
+  gap: var(--sp-1);
+  align-content: start;
+}
+.mail-facts dt {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+}
+.mail-facts dd {
+  margin: 0;
+  display: grid;
+  gap: var(--sp-1);
+  justify-items: start;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* The template and recipient tables. */
+.mail-table th,
+.mail-table td {
+  padding: var(--sp-3) var(--sp-3);
+}
+.mail-table td.num {
+  white-space: normal;
+}
+/* An address is one token: it never breaks inside itself; the table scrolls locally instead. */
+.mail-table .mail-mono {
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+.mail-row-current td {
+  background: var(--surface-2);
+}
+.mail-row-current td:first-child {
+  border-left: 2px solid var(--text-2);
+}
+.mail-pick {
+  background: none;
+  border: none;
+  padding: 0;
+  min-height: var(--target-min);
+  color: var(--link);
+  font: inherit;
+  font-weight: var(--fw-medium);
+  text-align: left;
+  cursor: pointer;
+}
+.mail-pick:hover {
+  text-decoration: underline;
+}
+.mail-pick[aria-current="true"] {
+  color: var(--text);
+}
+.mail-pick:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.mail-unsaved {
+  margin-left: var(--sp-2);
+}
+.mail-row-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+.mail-row-actions .action + .action {
+  margin-left: var(--sp-2);
+}
+
+/* The editor and, where the viewport is wide enough, the preview beside it. */
+.mail-work {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-6);
+  align-items: start;
+  min-width: 0;
+}
+/* Wide: the editor on the left, the preview and the test send beside it, and the placeholders
+ * under them. Narrow: editor, placeholders, preview, test send, in the order they are used. */
+@media (min-width: 1400px) {
+  .mail-work {
+    grid-template-columns: minmax(0, 1fr) minmax(0, var(--mail-frame-w));
+    grid-template-areas:
+      "editor side"
+      "editor holders";
+  }
+  .mail-work > :first-child {
+    grid-area: editor;
+  }
+  .mail-side {
+    grid-area: side;
+  }
+  .mail-placeholders-slot {
+    grid-area: holders;
+  }
+}
+.mail-placeholders-slot {
+  min-width: 0;
+}
+.mail-side {
+  display: grid;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+
+.mail-form {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+  max-width: var(--admin-form-max);
+}
+.mail-field {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.mail-field label,
+.mail-fieldset legend {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+}
+.mail-field input,
+.mail-field textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--target-min);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.mail-field-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+.mail-field-inline input {
+  width: min(100%, 24rem);
+  flex: 1 1 14rem;
+}
+.mail-field-inline .mail-hint {
+  flex: 1 1 100%;
+}
+.mail-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+}
+.mail-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.mail-check input {
+  margin-top: var(--sp-1);
+}
+.mail-check label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+.mail-lines {
+  margin: var(--sp-2) 0 0;
+  padding-left: var(--sp-5);
+}
+.mail-field-error {
+  margin: 0;
+  color: var(--crit-text);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+}
+
+/* Placeholders: names that insert themselves, each with what it holds. */
+.mail-placeholders {
+  display: grid;
+  gap: var(--sp-3);
+  max-width: var(--admin-form-max);
+  min-width: 0;
+}
+.mail-placeholder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: var(--sp-3) var(--sp-5);
+}
+.mail-placeholder-list li {
+  min-width: 0;
+}
+.mail-insert {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
+  padding: 0 var(--sp-2);
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  max-width: 100%;
+}
+.mail-insert:hover {
+  background: var(--surface-3);
+}
+.mail-insert:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.mail-insert code {
+  overflow-wrap: anywhere;
+}
+
+/* The preview: the message on a light sheet, in a frame that cannot run anything. */
+.mail-preview-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-4);
+}
+.mail-subject {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-3);
+  min-width: 0;
+}
+.mail-subject-label {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+}
+.mail-stale {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.mail-frame {
+  display: block;
+  width: 100%;
+  max-width: var(--mail-frame-w);
+  height: var(--mail-frame-h);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--mail-paper);
+}
+.mail-text {
+  margin: 0;
+  max-width: var(--mail-frame-w);
+  max-height: var(--mail-frame-h);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-sm);
+}
+.mail-page .tablist {
+  margin-bottom: var(--sp-5);
+}
+
+.mail-send {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3);
+}
+.mail-send .mail-field-inline {
+  flex: 1 1 18rem;
+}
+.mail-reason {
+  color: var(--warn-text);
+}
+.mail-code-line {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+/* Recipients. */
+.mail-env {
+  display: grid;
+  gap: var(--sp-3);
+  max-width: var(--admin-form-max);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--border);
+}
+.mail-env-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+}
+.mail-recipient-form {
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.mail-fieldset {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.mail-fieldset legend {
+  padding: 0;
+  margin-bottom: var(--sp-1);
+}
+.mail-radio {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--target-min);
+  font-size: var(--fs-sm);
+}
+.mail-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: var(--sp-1) var(--sp-4);
+  padding-left: var(--sp-5);
+}

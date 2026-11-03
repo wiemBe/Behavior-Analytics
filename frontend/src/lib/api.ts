@@ -3922,6 +3922,178 @@ export const arielLoadApi = {
     request<ArielLoadSummary>(`/admin/ariel-load${qs({ hours })}`, { signal }),
 };
 
+// --- alert e-mail administration (MAIL-2) ----------------------------------------------------
+// Mirrors `app/schemas/email.py`. Every route needs `admin:notifications`. The settings view
+// carries no password: only whether a username or a CA file is set.
+export type EmailSecurityMode = "starttls" | "ssl" | "none";
+
+export interface EmailSettings {
+  configured: boolean;
+  host: string;
+  port: number;
+  security: EmailSecurityMode;
+  security_source: "SMTP_SECURITY" | "SMTP_USE_TLS";
+  from_address: string;
+  from_name: string;
+  username_set: boolean;
+  ca_file_set: boolean;
+  site_name: string;
+  /** The tighter limit on the test send, for example `5/minute`. */
+  test_rate_limit: string;
+}
+
+export interface EmailPlaceholder {
+  name: string;
+  description: string;
+}
+
+export interface EmailPlaceholders {
+  syntax: string;
+  placeholders: EmailPlaceholder[];
+}
+
+export interface EmailTemplateSummary {
+  /** `default` or an alert type key. */
+  key: string;
+  alert_type: string | null;
+  label: string;
+  customised: boolean;
+  enabled: boolean;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface EmailAlertType {
+  key: string;
+  label: string;
+}
+
+export interface EmailTemplateList {
+  templates: EmailTemplateSummary[];
+  alert_types: EmailAlertType[];
+}
+
+export type EmailEffectiveSource = "own" | "default" | "shipped";
+
+export interface EmailTemplate {
+  key: string;
+  alert_type: string | null;
+  label: string;
+  customised: boolean;
+  enabled: boolean;
+  effective_source: EmailEffectiveSource;
+  subject: string;
+  html_body: string;
+  /** Empty means the text part is derived from the HTML. */
+  text_body: string;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface EmailTemplateBody {
+  subject: string;
+  html_body: string;
+  text_body: string | null;
+  enabled: boolean;
+}
+
+export interface EmailPreviewRequest extends EmailTemplateBody {
+  /** Null is the generic sample alert. */
+  alert_type: string | null;
+}
+
+export interface EmailPreview {
+  subject: string;
+  html: string;
+  text: string;
+  sanitized_html_body: string;
+  sample_alert_type: string;
+}
+
+export interface EmailTestRequest extends EmailPreviewRequest {
+  to: string;
+}
+
+export interface EmailMessageOut {
+  code: string;
+  params: Record<string, unknown>;
+  message: string;
+}
+
+export interface EmailTestResult {
+  ok: boolean;
+  outcome: EmailMessageOut;
+}
+
+export interface EmailRecipient {
+  id: string;
+  address: string;
+  min_severity: "INFO" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  /** Null: every alert type. */
+  alert_types: string[] | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface EmailRecipientBody {
+  address: string;
+  min_severity: EmailRecipient["min_severity"];
+  alert_types: string[] | null;
+  enabled: boolean;
+}
+
+export interface EmailRecipientList {
+  recipients: EmailRecipient[];
+  /** `NOTIFY_EMAIL_RECIPIENTS` from `.env`: every alert, LOW and above. Read-only. */
+  from_env: string[];
+}
+
+const jsonBody = (method: string, body: unknown, signal?: AbortSignal): RequestInit => ({
+  method,
+  body: JSON.stringify(body),
+  signal,
+});
+
+export const mailAdminApi = {
+  settings: (signal?: AbortSignal) => request<EmailSettings>("/admin/email/settings", { signal }),
+  placeholders: (signal?: AbortSignal) =>
+    request<EmailPlaceholders>("/admin/email/placeholders", { signal }),
+  templates: (signal?: AbortSignal) =>
+    request<EmailTemplateList>("/admin/email/templates", { signal }),
+  template: (key: string, signal?: AbortSignal) =>
+    request<EmailTemplate>(`/admin/email/templates/${encodeURIComponent(key)}`, { signal }),
+  saveTemplate: (key: string, body: EmailTemplateBody, signal?: AbortSignal) =>
+    request<EmailTemplate>(
+      `/admin/email/templates/${encodeURIComponent(key)}`,
+      jsonBody("PUT", body, signal),
+    ),
+  resetTemplate: (key: string, signal?: AbortSignal) =>
+    request<void>(`/admin/email/templates/${encodeURIComponent(key)}`, {
+      method: "DELETE",
+      signal,
+    }),
+  preview: (body: EmailPreviewRequest, signal?: AbortSignal) =>
+    request<EmailPreview>("/admin/email/preview", jsonBody("POST", body, signal)),
+  sendTest: (body: EmailTestRequest, signal?: AbortSignal) =>
+    request<EmailTestResult>("/admin/email/test", jsonBody("POST", body, signal)),
+  recipients: (signal?: AbortSignal) =>
+    request<EmailRecipientList>("/admin/email/recipients", { signal }),
+  addRecipient: (body: EmailRecipientBody, signal?: AbortSignal) =>
+    request<EmailRecipient>("/admin/email/recipients", jsonBody("POST", body, signal)),
+  saveRecipient: (id: string, body: EmailRecipientBody, signal?: AbortSignal) =>
+    request<EmailRecipient>(
+      `/admin/email/recipients/${encodeURIComponent(id)}`,
+      jsonBody("PUT", body, signal),
+    ),
+  removeRecipient: (id: string, signal?: AbortSignal) =>
+    request<void>(`/admin/email/recipients/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      signal,
+    }),
+};
+
 // --- shell top bar (UI-1.5) -------------------------------------------------
 // Browser reads of existing endpoints. Each takes an AbortSignal so a superseded
 // or unmounted caller can cancel; none writes anything, and none reaches QRadar.

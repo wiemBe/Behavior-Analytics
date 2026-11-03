@@ -48,4 +48,7 @@ export const KNOWN_PERMISSIONS = [
   // History backfill spends Ariel searches: `read:*` does not grant the admin one, `admin:*` does.
   "read:history_backfill",
   "admin:history_backfill",
+  // Alert e-mail administration (MAIL-1/MAIL-2): templates, recipients, test send. `admin:*`
+  // satisfies it; `read:*` does not.
+  "admin:notifications",
 ] as const;

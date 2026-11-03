@@ -1,0 +1,256 @@
+{
+  "meta": {
+    "title": "Alert e-mail"
+  },
+  "page": {
+    "title": "Alert e-mail",
+    "description": "The relay, the message and the recipients of alert e-mail. Times are UTC.",
+    "loadingWhat": "the alert e-mail settings",
+    "errorWhat": "alert e-mail",
+    "tabsLabel": "Alert e-mail sections",
+    "tabTemplates": "Templates",
+    "tabTemplatesUnsaved": "Templates (unsaved changes)",
+    "tabRecipients": "Recipients",
+    "leaveConfirm": "A template has unsaved changes. Leave this page and lose them?",
+    "forbidden": {
+      "heading": "Alert e-mail cannot be shown to this account.",
+      "body": "Reading and changing it needs the <perm>admin:notifications</perm> permission. The read-only role does not include it. Nothing was changed."
+    }
+  },
+  "error": {
+    "couldNotRead": "Could not read {what}.",
+    "noAnswer": "The backend did not answer.",
+    "answeredWith": "The backend answered with HTTP {status}.",
+    "advice": "Nothing was changed. Check that the backend is reachable, then try again.",
+    "tryAgain": "Try again"
+  },
+  "relay": {
+    "heading": "Relay",
+    "loadingWhat": "the relay settings",
+    "what": "the relay settings",
+    "notConfigured": {
+      "heading": "No alert e-mail can leave this site.",
+      "body": "<code>SMTP_HOST</code> is empty. Set <code>SMTP_HOST</code> and <code>SMTP_PORT</code> in <code>.env</code> on the server, with <code>SMTP_SECURITY</code>, <code>SMTP_USERNAME</code>, <code>SMTP_PASSWORD</code> and <code>SMTP_FROM</code> as the relay needs them, then restart the backend and the worker and reload this page. <guide>Read the guide</guide>."
+    },
+    "insecure": {
+      "heading": "No alert e-mail is sent with this configuration."
+    },
+    "fact": {
+      "status": "Status",
+      "relay": "Relay",
+      "security": "Security",
+      "from": "From",
+      "login": "Login",
+      "caFile": "CA file"
+    },
+    "status": {
+      "configured": "Configured",
+      "notConfigured": "Not configured",
+      "note": "Configured means the host is set. The test send checks that the relay answers."
+    },
+    "unset": "Not set",
+    "security": {
+      "starttls": "STARTTLS (connects, then upgrades)",
+      "ssl": "SSL/TLS (encrypted from the start)",
+      "none": "None (plain connection)"
+    },
+    "securitySource": {
+      "explicit": "Set by SMTP_SECURITY",
+      "derived": "Derived from SMTP_USE_TLS"
+    },
+    "caFile": {
+      "set": "Set",
+      "none": "Not set (system trust store)"
+    },
+    "envNote": "The connection and the password are set in <code>.env</code> on the server and cannot be changed here. The password is never shown. <guide>How the relay is set</guide>.",
+    "credentials": {
+      "set": "Username set",
+      "none": "No username (unauthenticated relay)"
+    }
+  },
+  "templates": {
+    "loading": "Reading the templates.",
+    "what": "the templates",
+    "heading": "Templates",
+    "intro": "The default template is sent for every alert type that has no template of its own. Choose one to edit it."
+  },
+  "table": {
+    "label": "E-mail templates",
+    "template": "Template",
+    "customised": "Customised",
+    "enabled": "Enabled",
+    "sends": "Sends today",
+    "updated": "Updated (UTC)",
+    "yes": "Yes",
+    "no": "No",
+    "unsaved": "Unsaved changes",
+    "source": {
+      "own": "Its own template",
+      "default": "The default template",
+      "shipped": "The shipped template"
+    }
+  },
+  "editor": {
+    "heading": "{label} template",
+    "loading": "Reading the {label} template.",
+    "what": "the {label} template",
+    "unsaved": "Unsaved changes",
+    "state": {
+      "defaultOwn": "This is the stored default template. Every alert type without a template of its own sends it.",
+      "defaultOff": "A default template is stored but switched off, so alert e-mail sends the shipped template. The fields show the stored text.",
+      "defaultNone": "No default template is stored, so alert e-mail sends the shipped template. The fields show it; saving stores your version as the default.",
+      "typeOwn": "This is the stored template for {label} alerts.",
+      "typeOff": "A template for {label} alerts is stored but switched off, so these alerts send {fallback}. The fields show the stored text.",
+      "typeFallback": "{label} alerts have no template of their own, so they send {fallback}. The fields show it; saving stores your version for this type only."
+    },
+    "fallback": {
+      "default": "the default template",
+      "shipped": "the shipped template"
+    },
+    "saved": "Saved <time></time>{hasBy, select, yes { by {by}} other {}}.",
+    "formLabel": "{label} template",
+    "subject": "Subject",
+    "html": "HTML body",
+    "htmlHint": "Saving keeps only the HTML that is safe in an e-mail. Other tags, attributes and styles are removed, and the editor then shows what was kept.",
+    "text": "Text body (optional)",
+    "textHint": "Leave empty to derive the plain-text part from the HTML body.",
+    "enabled": "Use this template",
+    "enabledHint": "When off, the template stays stored and alert e-mail sends {fallback} instead.",
+    "save": "Save template",
+    "saving": "Saving",
+    "discard": "Discard changes",
+    "resetDefault": "Reset to the shipped template",
+    "resetType": "Remove this template",
+    "savedHeading": "Template saved.",
+    "sanitiserChanged": "The sanitiser changed the HTML you typed. The editor now shows what is stored and what will be sent.",
+    "sanitiserKept": "The sanitiser kept the HTML as typed.",
+    "notSaved": "The template was not saved.",
+    "resetHeading": "Reset the {label} template?",
+    "resetDefaultBody": "The stored default template is deleted and alert e-mail goes back to the template shipped with the product. Types with a template of their own keep it.",
+    "resetTypeBody": {
+      "default": "The stored {label} template is deleted. These alerts then send the default template. The default is not changed.",
+      "shipped": "The stored {label} template is deleted. These alerts then send the shipped template, because no default template is in use."
+    },
+    "resetLosesDraft": "Your unsaved changes to it are lost as well.",
+    "resetting": "Resetting",
+    "resetConfirm": "Reset template",
+    "resetKeep": "Keep it"
+  },
+  "placeholders": {
+    "heading": "Placeholders",
+    "unavailable": "The placeholder list could not be read, so none can be inserted. Reload the page to try again.",
+    "help": "Choose a placeholder to insert it at the cursor, in the field you used last. Write it as {syntax}. In the HTML part its value is HTML-escaped; in the text part it is plain; a missing value shows as a dash.",
+    "insert": "Insert {name}"
+  },
+  "preview": {
+    "heading": "Preview",
+    "sample": "Sample alert",
+    "sampleGeneric": "Generic sample",
+    "update": "Update preview",
+    "updating": "Updating",
+    "sampleNote": "The preview fills the placeholders with a fixed sample alert of the chosen type. It is never a real alert.",
+    "failed": "The preview could not be built.",
+    "failedAdvice": "Correct the template and update the preview. Nothing was saved.",
+    "building": "Building the preview.",
+    "outOfDate": "Out of date",
+    "outOfDateNote": "The editor has changed since this preview was built.",
+    "subject": "Subject",
+    "viewLabel": "Preview view",
+    "viewHtml": "HTML",
+    "viewText": "Text part",
+    "frameTitle": "E-mail preview",
+    "textLabel": "Text part of the e-mail"
+  },
+  "test": {
+    "heading": "Send a test message",
+    "note": "Sends the message above, as the editor holds it now whether saved or not, to one mailbox through the relay. The subject starts with [Test]. Limited to {limit}.",
+    "noteNoLimit": "Sends the message above, as the editor holds it now whether saved or not, to one mailbox through the relay. The subject starts with [Test].",
+    "to": "Send to",
+    "send": "Send test message",
+    "sending": "Sending",
+    "notConfigured": "No relay is configured, so nothing can be sent. Set <code>SMTP_HOST</code> in <code>.env</code> first.",
+    "settingsUnread": "The relay settings could not be read, so the test send stays off until they can be.",
+    "acceptedHeading": "The relay accepted the test message.",
+    "failedHeading": "The test message was not sent.",
+    "code": "Code: {code}",
+    "limitedHeading": "Too many test messages.",
+    "limitedBody": "Test messages are limited to {limit}.",
+    "limitedBodyNoLimit": "Test messages are rate limited.",
+    "retryLater": "Wait a minute, then send again.",
+    "retryAfter": "Try again in {seconds, number} s.",
+    "notSent": "The test message was not sent.",
+    "unknownOutcome": "The relay reported an outcome this page does not word.",
+    "next": {
+      "sent": "Check the mailbox, including its junk folder. A relay accepting a message does not prove it was delivered.",
+      "not_configured": "After setting it, restart the backend and the worker and reload this page.",
+      "insecure_login": "Restart the backend and the worker after the change, then send again.",
+      "connection_refused": "Run ./qradar-dash doctor --check-smtp on the server to test the connection without sending anything.",
+      "timeout": "Run ./qradar-dash doctor --check-smtp on the server to test the connection without sending anything.",
+      "connection_failed": "Run ./qradar-dash doctor --check-smtp on the server to test the connection without sending anything.",
+      "tls_failed": "Run ./qradar-dash doctor --check-smtp on the server to see the handshake without sending anything.",
+      "auth_failed": "Correct the credentials in .env, restart the backend and the worker, then send again. The password is never shown here.",
+      "recipient_refused": "Try another mailbox. If every mailbox is refused, ask the relay's administrator which domains it accepts.",
+      "sender_refused": "Ask the relay's administrator which sender addresses it accepts, correct SMTP_FROM in .env, then restart the backend and the worker.",
+      "server_error": "Read the relay's own log: this page never shows the relay's reply text. Then send again."
+    }
+  },
+  "recipients": {
+    "heading": "Recipients",
+    "loading": "Reading the recipients.",
+    "what": "the recipients",
+    "tableLabel": "Stored recipients",
+    "col": {
+      "address": "Address",
+      "severity": "Minimum severity",
+      "types": "Alert types",
+      "enabled": "Enabled",
+      "updated": "Updated (UTC)",
+      "actions": "Actions"
+    },
+    "everyType": "Every type",
+    "yes": "Yes",
+    "no": "No",
+    "edit": "Edit",
+    "remove": "Remove",
+    "editNamed": "Edit {address}",
+    "removeNamed": "Remove {address}",
+    "noneStored": "No recipient is stored in the application.",
+    "nobody": {
+      "heading": "No alert e-mail is sent.",
+      "noneStored": "No recipient is stored here and <code>NOTIFY_EMAIL_RECIPIENTS</code> in <code>.env</code> is empty. Add a recipient to start sending.",
+      "allOff": "Every stored recipient is switched off and <code>NOTIFY_EMAIL_RECIPIENTS</code> in <code>.env</code> is empty. Switch a recipient on to start sending."
+    },
+    "removeHeading": "Remove {address}?",
+    "removeBody": "This address stops receiving alert e-mail at once. Nothing else changes.",
+    "removing": "Removing",
+    "removeConfirm": "Remove recipient",
+    "removeKeep": "Keep it",
+    "add": "Add recipient",
+    "env": {
+      "heading": "From .env",
+      "none": "<code>NOTIFY_EMAIL_RECIPIENTS</code> in <code>.env</code> is empty.",
+      "note": "These addresses come from <code>NOTIFY_EMAIL_RECIPIENTS</code> in <code>.env</code>. They receive every alert, LOW and above, and cannot be changed here."
+    },
+    "form": {
+      "addLabel": "Add a recipient",
+      "editLabel": "Edit a recipient",
+      "addHeading": "Add recipient",
+      "editHeading": "Edit recipient",
+      "address": "E-mail address",
+      "severity": "Minimum severity",
+      "severityHint": "The recipient gets alerts at this severity and above.",
+      "types": "Alert types",
+      "everyType": "Every alert type",
+      "onlyTypes": "Only these alert types",
+      "typesGroup": "Alert types",
+      "typesNone": "Choose at least one alert type.",
+      "typesUnavailable": "The alert types could not be read, so a recipient can only be added for every type. Reload the page to try again.",
+      "enabled": "Send alert e-mail to this address",
+      "notSaved": "The recipient was not saved.",
+      "add": "Add recipient",
+      "save": "Save recipient",
+      "saving": "Saving",
+      "cancel": "Cancel"
+    }
+  }
+}

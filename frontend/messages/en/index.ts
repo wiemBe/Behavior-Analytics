@@ -36,6 +36,7 @@ import home from "./home.json";
 import ips from "./ips.json";
 import logSources from "./logSources.json";
 import login from "./login.json";
+import mailAdmin from "./mailAdmin.json";
 import meta from "./meta.json";
 import offenses from "./offenses.json";
 import outage from "./outage.json";
@@ -87,6 +88,7 @@ const messages = {
   ips,
   logSources,
   login,
+  mailAdmin,
   meta,
   offenses,
   outage,

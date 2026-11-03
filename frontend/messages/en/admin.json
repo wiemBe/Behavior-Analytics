@@ -36,6 +36,10 @@
       "name": "SIEM load",
       "description": "How much load this platform puts on QRadar, and how QRadar itself is doing"
     },
+    "alertEmail": {
+      "name": "Alert e-mail",
+      "description": "What an alert e-mail looks like, who receives it, and whether the relay accepts it"
+    },
     "users": {
       "name": "Users",
       "description": "Who can sign in, and the roles an administrator assigned"
