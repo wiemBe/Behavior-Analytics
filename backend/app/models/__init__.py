@@ -11,6 +11,7 @@ from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.config_change import ConfigurationChange, ConfigurationSnapshot
 from app.models.custom_rule import CustomRule, CustomRuleBreach, CustomRuleWatermark
 from app.models.dashboard import Dashboard, UserDashboardPref
+from app.models.email import EMAIL_ALERT_TYPES, EmailRecipient, EmailTemplate
 from app.models.explanation import (
     EXPLANATION_SCHEMA_VERSION,
     AnomalyExplanation,
@@ -115,6 +116,7 @@ HYPERTABLES: dict[str, str] = {
 }
 
 __all__ = [
+    "EMAIL_ALERT_TYPES",
     "EXPLANATION_SCHEMA_VERSION",
     "HYPERTABLES",
     "Alert",
@@ -142,6 +144,8 @@ __all__ = [
     "Dashboard",
     "DetectionCoverage",
     "DetectionCoverageSnapshot",
+    "EmailRecipient",
+    "EmailTemplate",
     "GeoCountryBucket",
     "HistoryBackfillDecision",
     "HistoryBackfillScope",

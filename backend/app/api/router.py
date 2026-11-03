@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_principal, requires
 from app.api.routes import (
+    admin_email,
     alerts,
     anomalies,
     ariel_load,
@@ -48,6 +49,7 @@ from app.security.rbac import (
     PERM_HISTORY_BACKFILL_READ,
     PERM_IPS_ADMIN,
     PERM_LOG_SOURCE_READ,
+    PERM_NOTIFICATIONS_ADMIN,
     PERM_OFFENSE_READ,
     PERM_OUTAGE_ADMIN,
     PERM_OVERVIEW_READ,
@@ -147,6 +149,11 @@ api_router.include_router(catchall.router, dependencies=[Depends(requires(PERM_F
 # D-10 geography: aggregate events per country for the home map; `read:geo` (`read:*`).
 api_router.include_router(geo.router, dependencies=[Depends(requires(PERM_GEO_READ))])
 # The outage alert policy is administrative: it changes what pages a human, so
+# Alert e-mail templates, recipients and the test message (MAIL-1). `admin:notifications`
+# guards every method, reads included; `read:*` does not satisfy it.
+api_router.include_router(
+    admin_email.router, dependencies=[Depends(requires(PERM_NOTIFICATIONS_ADMIN))]
+)
 # `admin:outage` guards every method, reads included; `read:*` does not satisfy it.
 api_router.include_router(
     outage_policy.router, dependencies=[Depends(requires(PERM_OUTAGE_ADMIN))]

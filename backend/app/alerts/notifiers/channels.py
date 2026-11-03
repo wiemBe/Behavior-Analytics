@@ -15,6 +15,7 @@ import socket
 import httpx
 
 from app.alerts.notifiers.base import NotificationMessage, Notifier, NotifierError
+from app.core.config import Settings, get_settings
 from app.models.enums import NotificationChannel, Severity
 
 logger = logging.getLogger("app.notifiers")
@@ -110,27 +111,18 @@ class GenericWebhookNotifier(_HttpNotifier):
 
 
 class EmailNotifier(Notifier):
-    """SMTP email. Runs the blocking smtplib call in a thread so it does not
-    block the event loop. Config (host/port/creds/TLS) is injected."""
+    """SMTP e-mail: a multipart text + HTML message rendered from the template
+    the dispatcher chose for the alert's type (the shipped default when none).
+
+    Runs the blocking smtplib call in a thread so it does not block the event
+    loop. The relay, its security mode and the credentials come from
+    ``Settings`` (MAIL-1); the transport lives in ``app/services/email_delivery``.
+    """
 
     channel = NotificationChannel.EMAIL
 
-    def __init__(
-        self,
-        *,
-        host: str,
-        port: int,
-        username: str | None,
-        password: str | None,
-        sender: str,
-        use_tls: bool = True,
-    ) -> None:
-        self._host = host
-        self._port = port
-        self._username = username
-        self._password = password
-        self._sender = sender
-        self._use_tls = use_tls
+    def __init__(self, settings: Settings | None = None) -> None:
+        self._settings = settings
 
     async def send(self, target: str, message: NotificationMessage) -> None:
         import asyncio
@@ -138,30 +130,33 @@ class EmailNotifier(Notifier):
         await asyncio.to_thread(self._send_sync, target, message)
 
     def _send_sync(self, target: str, message: NotificationMessage) -> None:
-        import smtplib
-        from email.message import EmailMessage
-
-        if not self._host:
-            raise NotifierError("SMTP host not configured", permanent=True)
-        email = EmailMessage()
-        email["Subject"] = message.summary_line()
-        email["From"] = self._sender
-        email["To"] = target
-        body = message.body + "\n\n" + "\n".join(
-            f"{k}: {v}" for k, v in message.fields.items()
+        from app.services.email_delivery import (
+            EmailDeliveryError,
+            MailParts,
+            build_message,
+            deliver,
+            valid_mailbox,
         )
-        email.set_content(body)
+        from app.services.email_templates import render_for_message, shipped_template
+
+        settings = self._settings or get_settings()
+        if not settings.smtp_configured:
+            raise NotifierError("SMTP host not configured", permanent=True)
+        if not valid_mailbox(target):
+            # A stored or env recipient with a CR/LF or a display name would
+            # reach a header; refuse it here as well as at the admin API.
+            raise NotifierError("recipient address is not a plain mailbox", permanent=True)
+        rendered = render_for_message(message.template or shipped_template(), message, settings)
+        email = build_message(
+            settings,
+            target,
+            MailParts(subject=rendered.subject, html=rendered.html, text=rendered.text),
+        )
         try:
-            with smtplib.SMTP(self._host, self._port, timeout=15) as server:
-                if self._use_tls:
-                    server.starttls()
-                if self._username:
-                    server.login(self._username, self._password or "")
-                server.send_message(email)
-        except (smtplib.SMTPAuthenticationError, smtplib.SMTPRecipientsRefused) as exc:
-            raise NotifierError(f"permanent SMTP error: {exc}", permanent=True) from exc
-        except OSError as exc:
-            raise NotifierError(f"SMTP transport error: {exc}") from exc
+            deliver(settings, email)
+        except EmailDeliveryError as exc:
+            # The code only: a relay's reply text never reaches the audit row.
+            raise NotifierError(str(exc), permanent=exc.permanent) from exc
 
 
 class SyslogNotifier(Notifier):

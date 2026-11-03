@@ -2600,6 +2600,158 @@
     },
     "template": "changing visibility needs the {permission} permission"
   },
+  "email.recipient.address_invalid": {
+    "params": {
+      "address": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "address": "not an address"
+    },
+    "sample_english": "not an address is not a plain e-mail address such as soc@example.org.",
+    "sample_english_params": {
+      "address": "not an address"
+    },
+    "template": "{address} is not a plain e-mail address such as soc@example.org."
+  },
+  "email.recipient.alert_type_unknown": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "made_up_type"
+    },
+    "sample_english": "made_up_type is not an alert type a recipient can be limited to.",
+    "sample_english_params": {
+      "name": "made_up_type"
+    },
+    "template": "{name} is not an alert type a recipient can be limited to."
+  },
+  "email.recipient.duplicate": {
+    "params": {
+      "address": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "address": "soc@example.org"
+    },
+    "sample_english": "soc@example.org is already a recipient. Edit the existing entry instead.",
+    "sample_english_params": {
+      "address": "soc@example.org"
+    },
+    "template": "{address} is already a recipient. Edit the existing entry instead."
+  },
+  "email.template.alert_type_unknown": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "made_up_type"
+    },
+    "sample_english": "made_up_type is not an alert type that can have its own e-mail template.",
+    "sample_english_params": {
+      "name": "made_up_type"
+    },
+    "template": "{name} is not an alert type that can have its own e-mail template."
+  },
+  "email.template.unknown_placeholder": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "alert.unknown"
+    },
+    "sample_english": "The template uses the placeholder alert.unknown, which is not available. Use one of the names the placeholder list shows.",
+    "sample_english_params": {
+      "name": "alert.unknown"
+    },
+    "template": "The template uses the placeholder {name}, which is not available. Use one of the names the placeholder list shows."
+  },
+  "email.test.auth_failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The relay rejected the sign-in. Check SMTP_USERNAME and SMTP_PASSWORD.",
+    "sample_english_params": {},
+    "template": "The relay rejected the sign-in. Check SMTP_USERNAME and SMTP_PASSWORD."
+  },
+  "email.test.connection_failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The connection to the relay failed. Check that SMTP_HOST resolves and is reachable.",
+    "sample_english_params": {},
+    "template": "The connection to the relay failed. Check that SMTP_HOST resolves and is reachable."
+  },
+  "email.test.connection_refused": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The relay refused the connection. Check SMTP_HOST and SMTP_PORT, and that the relay listens there.",
+    "sample_english_params": {},
+    "template": "The relay refused the connection. Check SMTP_HOST and SMTP_PORT, and that the relay listens there."
+  },
+  "email.test.insecure_login": {
+    "params": {},
+    "sample": {},
+    "sample_english": "SMTP_USERNAME is set while SMTP_SECURITY is none, so the login would cross the network in clear text. Nothing was sent. Use starttls or ssl, or clear SMTP_USERNAME for an unauthenticated relay.",
+    "sample_english_params": {},
+    "template": "SMTP_USERNAME is set while SMTP_SECURITY is none, so the login would cross the network in clear text. Nothing was sent. Use starttls or ssl, or clear SMTP_USERNAME for an unauthenticated relay."
+  },
+  "email.test.not_configured": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No SMTP relay is configured. Set SMTP_HOST in the server environment.",
+    "sample_english_params": {},
+    "template": "No SMTP relay is configured. Set SMTP_HOST in the server environment."
+  },
+  "email.test.recipient_refused": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The relay refused the recipient address.",
+    "sample_english_params": {},
+    "template": "The relay refused the recipient address."
+  },
+  "email.test.sender_refused": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The relay refused the sender address. Check SMTP_FROM.",
+    "sample_english_params": {},
+    "template": "The relay refused the sender address. Check SMTP_FROM."
+  },
+  "email.test.sent": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The relay accepted the test message. Delivery to the mailbox is up to the relay.",
+    "sample_english_params": {},
+    "template": "The relay accepted the test message. Delivery to the mailbox is up to the relay."
+  },
+  "email.test.server_error": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The relay returned an error. Check its log for the reason.",
+    "sample_english_params": {},
+    "template": "The relay returned an error. Check its log for the reason."
+  },
+  "email.test.timeout": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The relay did not answer in time. Check the network path and the port.",
+    "sample_english_params": {},
+    "template": "The relay did not answer in time. Check the network path and the port."
+  },
+  "email.test.tls_failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The secure connection to the relay failed. Check SMTP_SECURITY, the port and the relay's certificate (SMTP_CA_FILE).",
+    "sample_english_params": {},
+    "template": "The secure connection to the relay failed. Check SMTP_SECURITY, the port and the relay's certificate (SMTP_CA_FILE)."
+  },
   "explanation.dimension.unpopulated": {
     "params": {},
     "sample": {},

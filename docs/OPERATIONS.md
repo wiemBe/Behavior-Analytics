@@ -22,7 +22,7 @@ Dört kural her bölümde geçerlidir:
 7. [Geçmiş okuma](#geçmiş-okuma)
 8. [Kapsam eşlemeleri](#kapsam-eşlemeleri)
 9. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R67; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R68; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -1044,6 +1044,10 @@ numarasıdır (`OPS-R30` 30. girişi gösterir). Çıktıda token, `.env` değer
 konteynerin kendi `--json` çıktısı. `-h` ve `--help` kullanımı yazdırır ve 0 ile çıkar. Bilinmeyen
 argüman (`doctor --json extra` dahil) kullanımı yazdırır ve 2 ile çıkar.
 
+`./qradar-dash doctor --check-smtp` (alone or together with `--json`) also asks the backend
+`doctor` to connect to the SMTP relay and finish the TLS handshake; nothing is sent and no login is
+attempted. Every other argument is still rejected.
+
 `doctor` hiçbir yazma işlemi yapmaz. Tek QRadar çağrısı `GET /system/about` isteğidir. QRadar'a ayrı
 bir TLS el sıkışması CA paketiyle yapılır ve `SEC` başlığı göndermez; sertifika süresi token
 gösterilmeden okunur. `doctor` senkronizasyon başlatmaz, Ariel araması çalıştırmaz ve LDAP'a
@@ -1090,6 +1094,7 @@ bağlanmaz.
 | `ariel_permits` | Global havuz held/cap, ayrılmış canlı yuvalar. Konsol tarafı, tek konsol yokken `console-pool locks N (cap P per console)` olarak yazılır. N bu veritabanındaki bütün konsol kilitleridir, bir konsolun kendi tutuşu değildir. Bütçede gerçekten tek konsol varsa satır `console held/cap` yazar. Havuz doluysa (`held >= cap`) WARN; canlı iş bekler, geçmiş okuma yerini verir. Zorlama kapalıysa `not enforced` ve PASS. Okuma hatasında yalnız hata sınıfı. | OPS-R63 |
 | `rule_match_coverage` | `RULE_HEALTH_WINDOW_DAYS` içindeki `FAILED` ve `TRUNCATED` kural-eşleşme pencerelerini tek sorguda sayar; en eski pencereyi, sağlık aralığından çıkacağı UTC zamanı, onarılabilir ve catch-up ufku nedeniyle atlanmış sayıları yazar. Biri varsa WARN, yoksa PASS, toplama kapalıysa SKIP. | OPS-R65 |
 | `qradar_health` | How QRadar itself is doing, from one fresh read of the first enabled console (GET only, short timeout per read). WARN when a managed host is not `ACTIVE` or reports no status, when the average EPS is over 90 % of the EPS allocation, or when the license pool is over-allocated (EPS or FPM). SKIP when the console does not answer (`qradar_auth` reports that) or when none of managed hosts, EPS and license could be read. A figure that was not read is named in the line (`not read: ...`) and is never counted as healthy. The line also prints how many Ariel search ids QRadar holds (all users, finished and active alike); there is no threshold on that number. | OPS-R67 |
+| `email` | Alert e-mail in one line: whether `SMTP_HOST` is set, the relay, the security mode and whether a login is configured. SKIP when no relay is configured. FAIL when a username is set with `SMTP_SECURITY=none`: that configuration is refused because the password would cross the network in clear text, and the line says so. Only with `./qradar-dash doctor --check-smtp` it also connects, says EHLO and finishes the STARTTLS or SSL handshake, then quits: nothing is sent and no login is attempted; a failed handshake is a WARN with the failure code. | OPS-R68 |
 | `geo_country_source` | Where the world map's country comes from. SKIP when geography collection is off. In `lookup` mode PASS (`lookup; SOURCE and DESTINATION use GEO::LOOKUP`). In `property` mode it reads the custom-property list of each enabled console and prints each direction's property name with `present on <console>` or `absent on <console>`, or `not collected (no property)` for an empty name. WARN when a named property is absent on a console or both names are empty. FAIL when the list could not be read or no console is enabled. See "World map and the country source" below. | OPS-R30 |
 
 `families_off` WARN değil PASS verir. Satır açık ve kapalı aileleri ayrı yazar. Yeni kurulumda
@@ -1242,6 +1247,18 @@ The platform records every Ariel search it sends in the table `ariel_search_run`
 - **Support bundle:** `./qradar-dash support-bundle` adds `ariel-load.json` (or `ariel-load.error.txt` when it cannot be read; the bundle still completes).
 - **QRadar's own health** (GET requests only): reachability and API latency, version, managed hosts by status, EPS against its allocation, the license pool, and the number of Ariel search ids QRadar holds. "Held" counts every search QRadar keeps for all users, finished or active; it is not a count of running searches. Each field has a state (`OK`, `NOT_COLLECTED`, `FORBIDDEN`, `FAILED`) and a reason, never a zero or "healthy" for something that was not read. QRadar's answers are reused per API process for `QRADAR_HEALTH_CACHE_TTL_SECONDS` (default 30, 5 to 600), so N API workers may send up to N reads per interval; the response states the age. The MCP provider does not support these reads.
 - **`doctor`:** `qradar_health` (runbook `OPS-R67`) WARNs when a managed host is not `ACTIVE`, when average EPS is over 90 % of the allocation, or when the license pool is over-allocated. **The lab CE console has an over-allocated license, so `doctor` WARNs there permanently; that is expected.**
+
+### Alert e-mail (SMTP relay, templates, recipients)
+
+Alerts can be mailed through the site's own SMTP relay. The relay is set in the production `.env`; the message text and the recipients are edited by an administrator in the application (`admin:notifications`, API in `docs/API.md`). The password never leaves the server: it is not shown in the application, not logged and not in a support bundle.
+
+- **Relay, in `.env`:** `SMTP_HOST` (empty means e-mail is not configured: a notification routed to an address is parked in the dead letter list as "SMTP host not configured"), `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_FROM_NAME`, `SMTP_CA_FILE`. Restart the backend and the worker after a change.
+- **Security modes:** `starttls` (port 587, upgrade after connecting; the message is not sent if the relay does not offer STARTTLS), `ssl` (implicit TLS, port 465) and `none` (a plain relay on port 25 inside the network). With `starttls` and `ssl` the relay's certificate and host name are always verified; there is no switch to turn that off. A relay with a private CA needs `SMTP_CA_FILE` pointing at its PEM bundle, readable inside the containers. An empty `SMTP_SECURITY` keeps an older site working: `SMTP_USE_TLS=true` means `starttls` and `false` means `none`. An empty `SMTP_USERNAME` is an unauthenticated relay; no login is attempted. With `none`, a username is refused: the delivery fails (`insecure_login`) and nothing is sent, because the login would cross the network in clear text. `none` without a username (an unauthenticated plain relay) is allowed.
+- **Recipients:** the comma-separated `NOTIFY_EMAIL_RECIPIENTS` list still works and receives every alert at LOW and above. Recipients added in the application can have a minimum severity and a list of alert types. Both are used together, and an address in both gets one mail per alert.
+- **Message:** `multipart/alternative` (plain text and HTML, UTF-8). The subject and the two parts come from a template: one default and an optional template per alert type; a type without its own uses the default, and with no stored default the shipped template is used. Deleting a stored template returns to the next layer. The shipped template is a 600 px table layout with inline styles only: no images, no external resources, no tracking.
+- **Test first:** the administrator's "send a test message" action sends a fixed sample alert (never a real one) through the relay and reports the outcome as a short coded message (connection refused, timeout, secure connection failed, sign-in rejected, recipient refused). It is limited to `RATE_LIMIT_EMAIL_TEST` (default 5 a minute).
+- **Failures:** a refused recipient or a rejected login is not retried; a connection, timeout or TLS failure is retried with the usual notification backoff, then parked. The failure is recorded as a code (`SMTP delivery failed: tls_failed`), never the relay's reply text.
+- **`doctor`:** the `email` line (runbook `OPS-R68`); `./qradar-dash doctor --check-smtp` (alone or with `--json`) adds the handshake: connect, EHLO and STARTTLS or SSL, then quit. Nothing is sent and no login is attempted.
 
 ---
 
@@ -3081,3 +3098,19 @@ never writes to QRadar. A line that says `not read: ...` means that figure was n
 `SKIP` with "the console did not answer" is `qradar_auth` territory (OPS-R1). The count of Ariel
 search ids QRadar holds ("held") is shown for context only; it includes finished searches and has no
 threshold.
+
+### OPS-R68. `email` warns, or alert e-mail does not arrive
+
+**Symptom:** `doctor` shows `WARN email` or `FAIL email` with `runbook: OPS-R68`, or notifications for the e-mail channel sit in the dead letter list, or the administrator's test message reports a failure.
+
+**Likely cause:** One of the following, named by the failure code.
+- `SMTP_HOST` is empty ("SMTP host not configured"): e-mail is not set up on this site.
+- `connection_refused`, `timeout`, `connection_failed`: the relay is not reachable from the backend and worker containers on `SMTP_HOST:SMTP_PORT`. The port does not match the mode (587 with `starttls`, 465 with `ssl`, 25 with `none`).
+- `tls_failed`: the secure connection failed. `SMTP_SECURITY` does not match the port, the relay does not offer STARTTLS, or its certificate is not trusted (a private CA needs `SMTP_CA_FILE`).
+- `auth_failed`: the relay rejected `SMTP_USERNAME` / `SMTP_PASSWORD`.
+- `recipient_refused` or `sender_refused`: the relay refused the address; for the sender check `SMTP_FROM`.
+- `insecure_login` (`FAIL` in `doctor`): a username is set with `SMTP_SECURITY=none`. The configuration is refused and nothing is sent. Use `starttls` or `ssl`, or clear `SMTP_USERNAME` for an unauthenticated relay.
+
+**Verify:** Read the relay settings the application reports (`GET /api/v1/admin/email/settings`: host, port, mode, whether a username is set) and send a test message to your own address (`POST /api/v1/admin/email/test`). From the host, `./qradar-dash doctor --check-smtp` tries the connection and the handshake without sending anything.
+
+**Fix:** Correct the `SMTP_*` values in the production `.env`, make a private CA file readable inside the containers, then restart the backend and the worker. Notifications that were parked as dead letters are not resent; the next alert transition uses the new settings.

@@ -38,6 +38,7 @@ capability or `admin:*`.
 | `/admin/history-backfill` | `read:history_backfill` | `admin:history_backfill` |
 | `/auth/admin` | `admin:auth` | same administrative capability |
 | `/users` | `admin:users` | same administrative capability |
+| `/admin/email` | `admin:notifications` | same administrative capability; `read:*` does not grant it |
 
 `read:*` does not grant any write capability. `admin:*` grants every administrative, read and write
 capability.
@@ -356,3 +357,55 @@ same transition pipeline.
 Acknowledge, resolve and manual-search actions are authorized by the backend. The browser receives
 identifiers and ordinary display values, never credentials. Notification enqueueing is separate
 from delivery; the worker retries and dead-letters failures without delaying the HTTP response.
+
+## Alert e-mail administration
+
+Alerts go out by e-mail through the site's SMTP relay. The relay, its security mode and the password
+stay in the server environment (`.env`) and never reach the browser; the application administers
+only what an analyst may change: the message templates and the recipients. Every route below
+needs `admin:notifications` (`admin:*` includes it, `read:*` does not), is audited on write, and
+answers `403` with the usual coded permission message otherwise. All texts are English.
+
+| Route | What it does |
+|---|---|
+| `GET /api/v1/admin/email/settings` | The transport as configured. Fields: `configured` (is `SMTP_HOST` set; when false, no mail can leave), `host`, `port`, `security` (`starttls`, `ssl` or `none`), `security_source` (`SMTP_SECURITY` or `SMTP_USE_TLS`), `from_address`, `from_name`, `username_set`, `ca_file_set`, `site_name`, `test_rate_limit`. **Never the password.** |
+| `GET /api/v1/admin/email/placeholders` | `{syntax, placeholders: [{name, description}]}`, the fixed allowlist of `{{ name }}` placeholders |
+| `GET /api/v1/admin/email/templates` | `{templates: [{key, alert_type, label, customised, enabled, updated_at, updated_by}], alert_types: [{key, label}]}`: the default plus one entry per alert type, `customised` meaning a stored row exists |
+| `GET /api/v1/admin/email/templates/{key}` | One template. `key` is `default` or an alert type. Fields: `key`, `alert_type`, `label`, `customised`, `enabled`, `effective_source` (`own`, `default` or `shipped`: what this key sends today), `subject`, `html_body`, `text_body` (empty means derived from the HTML), `updated_at`, `updated_by`. A key with no stored row returns the template it falls back to, so an editor can start from it |
+| `PUT /api/v1/admin/email/templates/{key}` | Create or replace. Body `{subject, html_body, text_body?, enabled?}`; unknown fields are refused. Returns the stored template, so the editor shows the **sanitised** HTML that will be sent |
+| `DELETE /api/v1/admin/email/templates/{key}` | Remove the stored row: the default key returns to the shipped template, a type key returns to the default. `404` when no row exists |
+| `POST /api/v1/admin/email/preview` | Body as `PUT` plus `alert_type` (null for the generic sample). Renders against a **fixed sample alert** of that type, never a real one. Returns `{subject, html, text, sanitized_html_body, sample_alert_type}` |
+| `POST /api/v1/admin/email/test` | Body as `preview` plus `to`, one mailbox typed by the administrator. Sends the rendered sample, subject prefixed `[Test] `, through the configured relay. Rate limited by `RATE_LIMIT_EMAIL_TEST` (`5/minute` by default; `429` beyond it). Returns `{ok, outcome: {code, params, message}}` with `200` for any SMTP outcome: `email.test.sent`, `email.test.not_configured`, `insecure_login` (a username with `SMTP_SECURITY=none`: refused, nothing connects), `connection_refused`, `timeout`, `connection_failed`, `tls_failed`, `auth_failed`, `recipient_refused`, `sender_refused`, `server_error`. The relay's own reply text is never returned |
+| `GET /api/v1/admin/email/recipients` | `{recipients: [{id, address, min_severity, alert_types, enabled, created_at, updated_at, updated_by}], from_env: [address]}`. `from_env` lists `NOTIFY_EMAIL_RECIPIENTS`, read-only: they receive every alert at LOW and above |
+| `POST /api/v1/admin/email/recipients` | Body `{address, min_severity?, alert_types?, enabled?}`. `min_severity` is `INFO`, `LOW` (default), `MEDIUM`, `HIGH` or `CRITICAL`. `alert_types` null (default) means every type, otherwise a non-empty list of alert types. The address is validated (one plain mailbox, no display name or list) and stored in lower case. `201`; `409` for a duplicate; `422` with a coded message otherwise |
+| `PUT /api/v1/admin/email/recipients/{id}` | Replace the recipient's fields |
+| `DELETE /api/v1/admin/email/recipients/{id}` | Remove it. `204` |
+
+**Alert types** are the alert's own `source_type`: `log_source`, `waf_endpoint`, `ips_entity`,
+`custom_rule`, `pw_value`, `catchall_sender`, `qradar_instance`, `scheduled_search`.
+
+**Templates.** One default template (`default`) and an optional template per alert type. An alert
+uses the enabled template of its type, else the enabled default, else the shipped default that
+lives in the code. A disabled row is skipped, never an error. A template has a one-line `subject`,
+an `html_body` and an optional `text_body`; without a text body the plain-text part is derived
+from the HTML.
+
+**Placeholders** are written `{{ name }}`; there is no logic and no template engine. Allowed names:
+`alert.title`, `alert.description`, `alert.severity`, `alert.transition`, `alert.type` (the label),
+`alert.occurrences`, `alert.first_seen`, `alert.opened_at` (UTC), `alert.url`, `evidence.observed`,
+`evidence.expected`, `evidence.deviation`, `evidence.reason`, `instance.name`, `site.name`. Saving
+or previewing a template that names anything else is refused with `422`: `detail` lists one
+English sentence per unknown name, and `detail_codes` carries `email.template.unknown_placeholder`
+with the `name` for each. Values are HTML-escaped in the HTML part, plain in the text part and
+stripped of line breaks in the subject; a value that is missing renders as an em dash.
+
+**Sanitising.** The HTML body is cleaned on save and again returned in the response: only e-mail
+layout tags (tables, headings, paragraphs, lists, links, `img`), `https:` image sources, `https:`
+or `mailto:` links, and an allowlist of inline style properties survive. Scripts, `<style>`
+blocks, event handlers, forms, frames and `url(...)` values are removed. A link target may be a
+placeholder only when it is `{{ alert.url }}`. An HTML body with nothing left after cleaning is
+refused with `422`.
+
+The e-mail is a `multipart/alternative` message (text, then HTML), UTF-8, with `Date`,
+`Message-ID`, `From` (`SMTP_FROM`, optional display name `SMTP_FROM_NAME`) and the recipient in
+`To`.

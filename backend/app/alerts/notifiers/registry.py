@@ -7,8 +7,6 @@ MockNotifiers wholesale.
 
 from __future__ import annotations
 
-import os
-
 import httpx
 
 from app.alerts.notifiers.base import Notifier
@@ -19,22 +17,19 @@ from app.alerts.notifiers.channels import (
     SyslogNotifier,
     TeamsNotifier,
 )
+from app.core.config import Settings
 from app.models.enums import NotificationChannel
 
 
-def build_notifiers(client: httpx.AsyncClient | None = None) -> dict[NotificationChannel, Notifier]:
+def build_notifiers(
+    client: httpx.AsyncClient | None = None, settings: Settings | None = None
+) -> dict[NotificationChannel, Notifier]:
     client = client or httpx.AsyncClient()
     return {
         NotificationChannel.TEAMS: TeamsNotifier(client),
         NotificationChannel.SLACK: SlackNotifier(client),
         NotificationChannel.WEBHOOK: GenericWebhookNotifier(client),
         NotificationChannel.SYSLOG: SyslogNotifier(),
-        NotificationChannel.EMAIL: EmailNotifier(
-            host=os.environ.get("SMTP_HOST", ""),
-            port=int(os.environ.get("SMTP_PORT", "587")),
-            username=os.environ.get("SMTP_USERNAME") or None,
-            password=os.environ.get("SMTP_PASSWORD") or None,
-            sender=os.environ.get("SMTP_FROM", "qradar-observability@example.internal"),
-            use_tls=os.environ.get("SMTP_USE_TLS", "true").lower() == "true",
-        ),
+        # Read through Settings at send time (MAIL-1), never os.environ here.
+        NotificationChannel.EMAIL: EmailNotifier(settings),
     }

@@ -66,8 +66,9 @@ _FERNET_KEY_GENERATE = (
 #: Exact names, not prefixes: a prefix would also hide a typo of a real ``NOTIFY_*``
 #: setting (``notify_per_channel_rate`` and the other ``notify_*`` fields).
 #:   ``NOTIFY_TEAMS_WEBHOOK_URL`` and the other ``NOTIFY_*`` names — ``app/alerts/routing.py``
-#:   ``SMTP_*`` — ``app/alerts/notifiers/registry.py``
 #:   ``GIT_SHA`` — ``app/core/version.py``
+#:   The ``SMTP_*`` names are ``Settings`` fields (MAIL-1); the notifier and the
+#:   admin API read them there, never from ``os.environ``.
 SETTINGS_ENV_ALLOWLIST: frozenset[str] = frozenset(
     {
         "NOTIFY_TEAMS_WEBHOOK_URL",
@@ -76,12 +77,6 @@ SETTINGS_ENV_ALLOWLIST: frozenset[str] = frozenset(
         "NOTIFY_EMAIL_RECIPIENTS",
         "NOTIFY_SYSLOG_HOST",
         "NOTIFY_SYSLOG_PORT",
-        "SMTP_HOST",
-        "SMTP_PORT",
-        "SMTP_USERNAME",
-        "SMTP_PASSWORD",
-        "SMTP_FROM",
-        "SMTP_USE_TLS",
         "GIT_SHA",
     }
 )
@@ -926,6 +921,37 @@ class Settings(BaseSettings):
     notify_send_recovery: bool = True
     notify_per_channel_rate: str = "30/minute"
 
+    # --- E-mail delivery (MAIL-1) -------------------------------------------
+    # The transport every alert e-mail is sent through: the site's SMTP relay.
+    # ``smtp_host`` empty means e-mail is not configured; routing to the e-mail
+    # channel still enqueues nothing unless recipients exist, and the notifier
+    # fails closed ("not configured") rather than sending anywhere else.
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    # Empty username = an unauthenticated relay; no ``login()`` is attempted.
+    smtp_username: str = ""
+    #: Never logged, never in an API response, never in the support bundle.
+    smtp_password: SecretStr = SecretStr("")
+    smtp_from: str = "qradar-observability@example.internal"
+    #: Optional display name for the From header ("Operations <ops@example>").
+    smtp_from_name: str = ""
+    #: Legacy switch, kept so a deployment that only knows ``SMTP_USE_TLS`` keeps
+    #: its behaviour: ``true`` -> ``starttls``, anything else -> ``none``.
+    #: ``SMTP_SECURITY``, when set, wins over this field.
+    smtp_use_tls: bool = True
+    #: ``starttls`` | ``ssl`` (implicit TLS, usually port 465) | ``none`` (a plain
+    #: relay inside the network). Empty derives from ``smtp_use_tls``. Certificate
+    #: verification is always on for the two TLS modes; there is no switch for it.
+    smtp_security: str = ""
+    #: Optional CA bundle for the relay's certificate. Empty uses the system trust
+    #: store.
+    smtp_ca_file: str | None = None
+    #: The site's own name, shown in e-mail subjects/footers (``{{ site.name }}``).
+    site_name: str = "QRadar Behavior Analytics"
+    #: The admin "send a test message" action spends a real delivery; it carries
+    #: its own limit beside the API default.
+    rate_limit_email_test: str = "5/minute"
+
     # --- MCP ----------------------------------------------------------------
     mcp_enabled: bool = False
     mcp_base_url: str = "http://qradar-mcp:5000"
@@ -1067,6 +1093,24 @@ class Settings(BaseSettings):
     def has_qradar_token(self) -> bool:
         return bool(self.qradar_api_token_file or self.qradar_sec_token.get_secret_value())
 
+    @property
+    def smtp_security_mode(self) -> str:
+        """The resolved transport security: ``starttls``, ``ssl`` or ``none``.
+
+        ``SMTP_SECURITY`` wins when set; an unset value derives from the legacy
+        ``SMTP_USE_TLS`` switch so an existing site keeps sending exactly as it
+        did (``true`` -> ``starttls``, ``false`` -> ``none``).
+        """
+        if self.smtp_security:
+            return self.smtp_security
+        return "starttls" if self.smtp_use_tls else "none"
+
+    @property
+    def smtp_configured(self) -> bool:
+        """True when a relay host is set. E-mail is optional, so this is a
+        state, not a startup refusal; the notifier fails closed without it."""
+        return bool(self.smtp_host.strip())
+
     def geo_property_for(self, direction: str) -> str:
         """The configured country property for one direction. Empty means none."""
         if direction == "SOURCE":
@@ -1114,6 +1158,15 @@ class Settings(BaseSettings):
             if isinstance(item, bool) or not isinstance(item, int) or not 1 <= item <= 100_000:
                 raise ValueError("CATCHALL_TYPE_IDS holds integers from 1 to 100000")
         return value
+
+    @field_validator("smtp_security", mode="before")
+    @classmethod
+    def _smtp_security_is_known(cls, value: object) -> str:
+        """Normalise to a lowercase known mode, or empty (= derive from SMTP_USE_TLS)."""
+        text = str(value or "").strip().lower()
+        if text in ("", "starttls", "ssl", "none"):
+            return text
+        raise ValueError("SMTP_SECURITY is starttls, ssl or none")
 
     @field_validator("qradar_host")
     @classmethod
