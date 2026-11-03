@@ -120,6 +120,18 @@ object carries the completeness of the selected window:
 `complete_from_history` is always between `0` and `complete`. History buckets remain COMPLETE data
 and stay in the class totals; the field states how much of that measured total came from the past.
 
+## Ariel load rows
+
+`GET /admin/ariel-load` (`admin:*`) counts every closed search by `outcome`, per caller: `COMPLETED`,
+`ERROR`, `CANCELED`, `TIMEOUT`, `REFUSED`, `PROVIDER_UNAVAILABLE` and `ABANDONED`. A search that is
+still running is `IN_FLIGHT` and only `/admin/ariel-load/current` lists it. A row becomes
+`ABANDONED` when it has been `IN_FLIGHT` for longer than the longest wait the application allows a
+search plus `ARIEL_SEARCH_ABANDON_SCAN_SECONDS` (default 600): its worker stopped before it recorded
+an end, and the beat task `reap_abandoned_ariel_searches` closes it with one UPDATE. An abandoned
+search is counted in `searches` and `outcomes` and adds nothing to the percentiles; its wall time,
+execution time and record count stay null and are counted in the `*_unknown` fields, never 0. A
+worker that ends late still records its real outcome over `ABANDONED`.
+
 ## QRadar health
 
 `GET /admin/ariel-load/current` carries `qradar`: one entry per enabled console. Every field of an

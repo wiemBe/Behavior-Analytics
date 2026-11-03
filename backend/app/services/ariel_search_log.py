@@ -15,6 +15,11 @@ collection transaction cannot take them:
   submit row (the mock provider, a permit refusal) and closes any row whose
   immediate UPDATE failed.
 
+The reaper (``reap_abandoned``) is a third, maintenance write: one UPDATE
+closes the rows whose worker died before the terminal write as ``ABANDONED``,
+measured columns left null, and a terminal write that arrives after the reaper
+overwrites it with the truth.
+
 A failed write is counted and logged without the exception text. It never
 raises into the collection. ``worker_engine`` supplies the connection for all
 of these; the test suite replaces that one function, and only that function,
@@ -77,13 +82,17 @@ OUTCOME_TIMEOUT = "TIMEOUT"
 OUTCOME_REFUSED = "REFUSED"
 OUTCOME_PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
 OUTCOME_IN_FLIGHT = "IN_FLIGHT"
+OUTCOME_ABANDONED = "ABANDONED"
 
 #: Terminal outcomes that are not COMPLETED: the "failed" band of a window.
+#: ABANDONED is here too: a search whose worker died is a failure of the
+#: platform's own pipeline, not a load that went away.
 TERMINAL_FAILED = (
     OUTCOME_ERROR,
     OUTCOME_CANCELED,
     OUTCOME_TIMEOUT,
     OUTCOME_PROVIDER_UNAVAILABLE,
+    OUTCOME_ABANDONED,
 )
 
 #: The REST provider polls a search at most this many times, once a second,
@@ -111,6 +120,32 @@ def stale_after_seconds() -> int:
 
         longest = max(longest, int(get_settings().ariel_max_timeout_seconds))
     return longest + STALE_SLACK_SECONDS
+
+
+#: The reaper's cadence when the setting cannot be read, and the margin it
+#: adds on top of ``stale_after_seconds()``. One scan interval, so a terminal
+#: write that is late by less than a full scan still wins the race.
+ABANDON_SCAN_DEFAULT_SECONDS = 600
+
+
+def _abandon_margin_seconds() -> int:
+    with suppress(Exception):
+        from app.core.config import get_settings
+
+        return int(get_settings().ariel_search_abandon_scan_seconds)
+    return ABANDON_SCAN_DEFAULT_SECONDS
+
+
+def abandon_cutoff(now: datetime) -> datetime:
+    """The moment before which an ``IN_FLIGHT`` row is reaped as ``ABANDONED``.
+
+    The row must be older than the longest wait the application allows a
+    search — ``stale_after_seconds()``, round trips included — so a search
+    that is still running is never reaped, plus one scan interval of margin:
+    a terminal write held up by a busy worker or a queued beat task then
+    still finds its row ``IN_FLIGHT`` and closes it with the real outcome.
+    """
+    return now - timedelta(seconds=stale_after_seconds() + _abandon_margin_seconds())
 
 
 #: Nothing in the current read scans further back than this.
@@ -386,6 +421,10 @@ async def _insert(bind: Any, rows: Sequence[ArielSearchObservation]) -> None:
     statement = statement.on_conflict_do_update(
         index_elements=[ArielSearchRun.id],
         set_={name: statement.excluded[name] for name in _TERMINAL_COLUMNS},
+        # The truth wins here too: a buffered observation closes a row that is
+        # still open or was reaped as ABANDONED, and never overwrites another
+        # terminal outcome a worker already recorded.
+        where=ArielSearchRun.outcome.in_((OUTCOME_IN_FLIGHT, OUTCOME_ABANDONED)),
     )
     try:
         async with bind.connect() as conn:
@@ -517,9 +556,11 @@ async def refresh_polls(observation_id: uuid.UUID | None, polls: int) -> None:
 async def _close_in_flight(observation: ArielSearchObservation) -> bool:
     """Close the submit-time row with the terminal facts, at the terminal state.
 
-    One UPDATE per search, guarded by ``outcome = 'IN_FLIGHT'``. True only when
-    that row was closed here; otherwise the caller buffers the observation and
-    the run's one upsert writes it.
+    One UPDATE per search, guarded by ``outcome IN ('IN_FLIGHT', 'ABANDONED')``:
+    the real outcome is the truth, so it overwrites a row the reaper already
+    closed, and it never touches a row another terminal write closed first.
+    True only when that row was closed here; otherwise the caller buffers the
+    observation and the run's one upsert writes it.
     """
     engine = worker_engine()
     if engine is None:
@@ -531,7 +572,7 @@ async def _close_in_flight(observation: ArielSearchObservation) -> bool:
                 update(ArielSearchRun)
                 .where(
                     ArielSearchRun.id == observation.id,
-                    ArielSearchRun.outcome == OUTCOME_IN_FLIGHT,
+                    ArielSearchRun.outcome.in_((OUTCOME_IN_FLIGHT, OUTCOME_ABANDONED)),
                 )
                 .values(**values)
             )
@@ -591,6 +632,56 @@ async def finish_worker_buffer(
     if engine is None:
         return
     await _insert(engine, rows)
+
+
+async def reap_abandoned(session: AsyncSession, *, now: datetime | None = None) -> int:
+    """Close ``IN_FLIGHT`` rows whose worker died, as ``ABANDONED``.
+
+    One UPDATE statement whatever the number of rows. Rows older than the
+    retention window are retention's to delete, not the reaper's, so the
+    statement has that lower bound on ``submitted_at``. Only ``outcome`` and
+    ``finished_at`` change — every measured column stays NULL, because the
+    search did run on QRadar but nobody measured it, and a zero would read as
+    a measurement. The poll count the refreshes wrote stays. A worker that
+    reaches its terminal state later still wins: both closers accept
+    ``ABANDONED``, so the real outcome overwrites the guess.
+
+    Returns how many rows closed. The count is logged, never row content.
+    """
+    from app.core.config import get_settings
+
+    at = now or datetime.now(UTC)
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
+    oldest = at - timedelta(days=get_settings().ariel_search_run_retention_days)
+    result = await session.execute(
+        update(ArielSearchRun)
+        .where(
+            ArielSearchRun.outcome == OUTCOME_IN_FLIGHT,
+            ArielSearchRun.submitted_at < abandon_cutoff(at),
+            ArielSearchRun.submitted_at >= oldest,
+        )
+        .values(
+            outcome=OUTCOME_ABANDONED,
+            finished_at=at,
+            wall_ms=None,
+            qradar_execution_ms=None,
+            qradar_record_count=None,
+            processed_record_count=None,
+            data_file_count=None,
+            data_total_size=None,
+            compressed_data_file_count=None,
+            compressed_data_total_size=None,
+            index_file_count=None,
+            index_total_size=None,
+            record_count=None,
+        )
+    )
+    await session.commit()
+    closed = int(getattr(result, "rowcount", 0) or 0)
+    if closed:
+        logger.info("ariel search reaper closed abandoned rows=%s", closed)
+    return closed
 
 
 class SearchAttempt:

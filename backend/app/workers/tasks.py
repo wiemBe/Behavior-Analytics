@@ -1564,6 +1564,20 @@ async def apply_ariel_search_run_retention() -> dict:
         return (await ArielSearchRunRetention(session).run()).as_dict()
 
 
+async def reap_abandoned_ariel_searches() -> dict:
+    """Close ``IN_FLIGHT`` Ariel load rows whose worker died, as ``ABANDONED``.
+
+    One UPDATE per scan, whatever the number of rows. Not gated by
+    RETENTION_ENABLED: an abandoned search did load QRadar, and the summary
+    must stop dropping it. A worker that ends later still records the truth.
+    """
+    from app.services.ariel_search_log import reap_abandoned
+
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return {"closed": await reap_abandoned(session)}
+
+
 async def apply_anomaly_fault_retention() -> dict:
     """Delete closed anomaly evaluation faults older than the retention window.
 
@@ -1953,6 +1967,11 @@ def apply_anomaly_fault_retention_task() -> dict:
 @celery_app.task(name="apply_ariel_search_run_retention")
 def apply_ariel_search_run_retention_task() -> dict:
     return _run(apply_ariel_search_run_retention())
+
+
+@celery_app.task(name="reap_abandoned_ariel_searches")
+def reap_abandoned_ariel_searches_task() -> dict:
+    return _run(reap_abandoned_ariel_searches())
 
 
 @celery_app.task(name="apply_log_source_anomaly_retention")

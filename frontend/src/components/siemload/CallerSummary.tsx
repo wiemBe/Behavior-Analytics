@@ -34,12 +34,16 @@ const RANGE_LABEL = {
   "30d": "range30d",
 } as const;
 
-/** The failed outcomes: errors, cancellations, timeouts and searches that found Ariel unavailable. */
+/**
+ * The failed outcomes: errors, cancellations, timeouts, abandoned searches (their worker stopped
+ * before it recorded an end) and searches that found Ariel unavailable.
+ */
 function failedOf(row: ArielCallerSummary): number {
   return (
     (row.outcomes.ERROR ?? 0) +
     (row.outcomes.CANCELED ?? 0) +
     (row.outcomes.TIMEOUT ?? 0) +
+    (row.outcomes.ABANDONED ?? 0) +
     (row.outcomes.PROVIDER_UNAVAILABLE ?? 0)
   );
 }

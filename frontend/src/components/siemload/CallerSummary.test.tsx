@@ -63,6 +63,25 @@ describe("CallerSummary: the table", () => {
     expect(cells(rowOf("WAF collection")).slice(0, 5)).toEqual(["96", "90", "6", "0", "0"]);
   });
 
+  it("counts an abandoned search with the failures and the footnote says what it means", () => {
+    mocks.states["/admin/ariel-load?hours=24"] = okState(
+      summary({
+        callers: [
+          caller({
+            caller: "IPS_COLLECTION",
+            searches: 10,
+            outcomes: { COMPLETED: 6, ERROR: 1, ABANDONED: 3 },
+          }),
+        ],
+      }),
+    );
+    render(<CallerSummary range="24h" />);
+    expect(cells(rowOf("IPS collection")).slice(0, 5)).toEqual(["10", "6", "4", "0", "0"]);
+    expect(
+      screen.getByText(/Abandoned searches are counted in Failed: their worker stopped before it recorded an end/),
+    ).toBeInTheDocument();
+  });
+
   it("right-aligns every figure column and gives each figure its unit", () => {
     mocks.states["/admin/ariel-load?hours=24"] = okState(summary());
     render(<CallerSummary range="24h" />);

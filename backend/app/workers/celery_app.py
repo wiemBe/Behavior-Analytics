@@ -81,6 +81,13 @@ celery_app.conf.beat_schedule = {
         "task": "apply_ariel_search_run_retention",
         "schedule": 86400.0,
     },
+    "reap-abandoned-ariel-searches": {
+        # Close IN_FLIGHT Ariel load rows whose worker died before the terminal
+        # write, as ABANDONED. One UPDATE per scan; a terminal write that
+        # arrives later still overwrites it. Not gated by RETENTION_ENABLED.
+        "task": "reap_abandoned_ariel_searches",
+        "schedule": float(settings.ariel_search_abandon_scan_seconds),
+    },
     "apply-log-source-anomaly-retention": {
         # Closed Phase A incidents. Not gated by RETENTION_ENABLED.
         "task": "apply_log_source_anomaly_retention",
