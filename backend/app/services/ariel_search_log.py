@@ -39,7 +39,7 @@ from datetime import UTC, datetime, timedelta
 from functools import wraps
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import BigInteger, ColumnElement, Row, Select, case, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1096,6 +1096,192 @@ def _series(
     return series
 
 
+# -------------------------------------------------------- the window summary
+#: Outcomes the window summary counts per caller. ``IN_FLIGHT`` cannot appear:
+#: every summary statement carries the terminal-rows predicate below.
+_COUNTED_OUTCOMES: tuple[str, ...] = tuple(
+    outcome for outcome in OUTCOMES if outcome != OUTCOME_IN_FLIGHT
+)
+
+
+def _terminal_rows_between(start: datetime, end: datetime) -> tuple[ColumnElement[bool], ...]:
+    """The predicate every summary statement shares: terminal rows inside the
+    window, the same half-open bounds as before."""
+    return (
+        ArielSearchRun.submitted_at >= start,
+        ArielSearchRun.submitted_at < end,
+        ArielSearchRun.outcome != OUTCOME_IN_FLIGHT,
+    )
+
+
+#: A COMPLETED-only value for the aggregates: ``percentile_cont`` and ``max``
+#: skip NULL inputs, so every other row contributes nothing — exactly what the
+#: list comprehensions in ``_caller_summary`` skip on the Python side.
+_completed_wall = case(
+    (ArielSearchRun.outcome == OUTCOME_COMPLETED, ArielSearchRun.wall_ms),
+)
+_completed_execution = case(
+    (ArielSearchRun.outcome == OUTCOME_COMPLETED, ArielSearchRun.qradar_execution_ms),
+)
+
+
+def _caller_aggregates(start: datetime, end: datetime) -> Select:
+    """One row per caller: counts, the COMPLETED-only percentiles, the sums.
+
+    ``percentile_cont`` is linear interpolation at rank ``q/100·(n-1)`` — the
+    definition of ``statistics.percentile`` — and it returns a float, which
+    Python then rounds (``_rounded_ms``). ``sum`` over a bigint column is
+    ``numeric`` in PostgreSQL; the cast keeps today's ``int``, never a
+    ``Decimal``.
+    """
+    return (
+        select(
+            ArielSearchRun.caller.label("caller"),
+            func.count().label("searches"),
+            *(
+                func.count()
+                .filter(ArielSearchRun.outcome == outcome)
+                .label(f"outcome_{outcome.lower()}")
+                for outcome in _COUNTED_OUTCOMES
+            ),
+            func.percentile_cont(0.5).within_group(_completed_wall).label("wall_ms_p50"),
+            func.percentile_cont(0.95).within_group(_completed_wall).label("wall_ms_p95"),
+            func.max(_completed_wall).label("wall_ms_max"),
+            # sum(walls): an int in the Python fold even when nothing was measured.
+            func.coalesce(func.sum(ArielSearchRun.wall_ms), 0).label("wall_ms_sum"),
+            func.percentile_cont(0.5)
+            .within_group(_completed_execution)
+            .label("qradar_execution_ms_p50"),
+            func.percentile_cont(0.95)
+            .within_group(_completed_execution)
+            .label("qradar_execution_ms_p95"),
+            func.sum(ArielSearchRun.qradar_execution_ms)
+            .cast(BigInteger)
+            .label("qradar_execution_ms_sum"),
+            func.count()
+            .filter(ArielSearchRun.qradar_execution_ms.is_(None))
+            .label("qradar_execution_ms_unknown"),
+            func.sum(ArielSearchRun.record_count)
+            .cast(BigInteger)
+            .label("records_returned_sum"),
+            func.count()
+            .filter(ArielSearchRun.record_count.is_(None))
+            .label("records_returned_unknown"),
+            func.sum(ArielSearchRun.data_total_size)
+            .cast(BigInteger)
+            .label("data_total_size_sum"),
+            func.count()
+            .filter(ArielSearchRun.data_total_size.is_(None))
+            .label("data_total_size_unknown"),
+        )
+        .where(*_terminal_rows_between(start, end))
+        .group_by(ArielSearchRun.caller)
+    )
+
+
+def _hour_aggregates(start: datetime, end: datetime) -> Select:
+    """One row per hour that has a row: searches and the execution load.
+
+    ``timezone('UTC', …)`` truncates in UTC whatever the session's zone is,
+    the same hour ``_hour_start`` computes on the aware datetimes the ORM
+    returns.
+    """
+    hour = func.date_trunc(
+        "hour", func.timezone("UTC", ArielSearchRun.submitted_at)
+    ).label("hour")
+    return select(
+        hour,
+        func.count().label("searches"),
+        func.sum(ArielSearchRun.qradar_execution_ms)
+        .cast(BigInteger)
+        .label("qradar_execution_ms_sum"),
+        func.count()
+        .filter(ArielSearchRun.qradar_execution_ms.is_(None))
+        .label("qradar_execution_ms_unknown"),
+    ).where(*_terminal_rows_between(start, end)).group_by(hour)
+
+
+def _int_from_db(value: Any) -> int:
+    """A count column as an ``int``, whatever the driver hands back."""
+    return int(value)
+
+
+def _int_or_none_from_db(value: Any) -> int | None:
+    """A nullable bigint column as ``int | None`` — never a ``Decimal``."""
+    return None if value is None else int(value)
+
+
+def _rounded_ms(value: float | None) -> int | None:
+    """Round a SQL percentile exactly as ``_percentile_ms`` does.
+
+    Python rounds halves to even; PostgreSQL's ``round`` takes them away from
+    zero, so a percentile that lands on ``.5`` is rounded here, never in SQL.
+    """
+    return None if value is None else round(value)
+
+
+def _caller_summaries(rows: Sequence[Row[Any]]) -> list[dict[str, Any]]:
+    """Per-caller dicts in the shape ``_caller_summary`` has always produced."""
+    summaries: list[dict[str, Any]] = []
+    for row in sorted(rows, key=lambda row: row.caller):
+        counts = {
+            outcome: _int_from_db(getattr(row, f"outcome_{outcome.lower()}"))
+            for outcome in _COUNTED_OUTCOMES
+        }
+        summaries.append(
+            {
+                "caller": row.caller,
+                "searches": _int_from_db(row.searches),
+                # A zero count is not an outcome the caller had: the per-row
+                # defaultdict only ever held outcomes that appeared.
+                "outcomes": dict(
+                    sorted((name, count) for name, count in counts.items() if count)
+                ),
+                "wall_ms_p50": _rounded_ms(row.wall_ms_p50),
+                "wall_ms_p95": _rounded_ms(row.wall_ms_p95),
+                "wall_ms_max": _int_or_none_from_db(row.wall_ms_max),
+                "wall_ms_sum": _int_from_db(row.wall_ms_sum),
+                "qradar_execution_ms_p50": _rounded_ms(row.qradar_execution_ms_p50),
+                "qradar_execution_ms_p95": _rounded_ms(row.qradar_execution_ms_p95),
+                "qradar_execution_ms_sum": _int_or_none_from_db(row.qradar_execution_ms_sum),
+                "qradar_execution_ms_unknown": _int_from_db(row.qradar_execution_ms_unknown),
+                "records_returned_sum": _int_or_none_from_db(row.records_returned_sum),
+                "records_returned_unknown": _int_from_db(row.records_returned_unknown),
+                "data_total_size_sum": _int_or_none_from_db(row.data_total_size_sum),
+                "data_total_size_unknown": _int_from_db(row.data_total_size_unknown),
+            }
+        )
+    return summaries
+
+
+def _series_summaries(
+    rows: Sequence[Row[Any]], start: datetime, end: datetime
+) -> list[dict[str, Any]]:
+    """Every hour of the window in order, as ``_series`` builds it: an hour
+    with no row carries ``searches: 0`` and the empty-bucket sums — a null
+    sum, no unknowns — which is what ``_sum_known([])`` has always returned."""
+    found = {
+        row.hour.replace(tzinfo=UTC): (
+            _int_from_db(row.searches),
+            _int_or_none_from_db(row.qradar_execution_ms_sum),
+            _int_from_db(row.qradar_execution_ms_unknown),
+        )
+        for row in rows
+    }
+    series: list[dict[str, Any]] = []
+    for hour in _hours_between(start, end):
+        searches, execution_sum, execution_unknown = found.get(hour, (0, None, 0))
+        series.append(
+            {
+                "hour": hour.isoformat(),
+                "searches": searches,
+                "qradar_execution_ms_sum": execution_sum,
+                "qradar_execution_ms_unknown": execution_unknown,
+            }
+        )
+    return series
+
+
 async def load_summary(
     session: AsyncSession,
     *,
@@ -1103,23 +1289,37 @@ async def load_summary(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Summarise a window. Only terminal rows: an ``IN_FLIGHT`` search has no
-    measured load yet, and the current read owns reporting it."""
+    measured load yet, and the current read owns reporting it.
+
+    The database does the folding in two statements — one per-caller aggregate,
+    one per-hour aggregate — whatever the window and whatever the number of
+    callers; no row of the window is materialised in Python. ``summarize_runs``
+    stays as the reference the equivalence tests fold the same rows against.
+    """
     if hours < 1 or hours > MAX_HOURS:
         raise ValueError(render(MessageRef(HOURS_CODE)))
     end = now or datetime.now(UTC)
     if end.tzinfo is None:
         end = end.replace(tzinfo=UTC)
     start = end - timedelta(hours=hours)
-    found = (
-        await session.scalars(
-            select(ArielSearchRun).where(
-                ArielSearchRun.submitted_at >= start,
-                ArielSearchRun.submitted_at < end,
-                ArielSearchRun.outcome != OUTCOME_IN_FLIGHT,
-            )
-        )
-    ).all()
-    return summarize_runs(found, start=start, end=end, hours=hours)
+    caller_rows = (await session.execute(_caller_aggregates(start, end))).all()
+    window = {"hours": hours, "start": start.isoformat(), "end": end.isoformat()}
+    if not caller_rows:
+        return {
+            "empty": True,
+            "message": empty_message(),
+            "message_code": EMPTY_CODE,
+            **window,
+            "callers": [],
+            "series": [],
+        }
+    hour_rows = (await session.execute(_hour_aggregates(start, end))).all()
+    return {
+        "empty": False,
+        **window,
+        "callers": _caller_summaries(caller_rows),
+        "series": _series_summaries(hour_rows, start, end),
+    }
 
 
 # --------------------------------------------------------------- current load
