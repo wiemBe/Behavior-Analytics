@@ -138,3 +138,53 @@ describe("NotificationsTable", () => {
     expect(screen.getByRole("status")).toHaveTextContent("older than the cadence allows");
   });
 });
+
+describe("NotificationsTable host names", () => {
+  const withHosts = (hosts: string[]) =>
+    render(
+      <NotificationsTable
+        console_={consoleLatest({
+          notification_list: list({
+            entries: hosts.map((host) => ({
+              host,
+              qid_name: `Name of ${host}`,
+              events: 1,
+              max_severity: 1,
+              last_seen: null,
+            })),
+            remainder: null,
+          }),
+        })}
+        hours={24}
+      />,
+    );
+
+  it("renders a short host name as one unbreakable run with no break opportunity", () => {
+    const { container } = withHosts(["qradarce2"]);
+    const host = container.querySelector(".sl-host-name") as HTMLElement;
+    expect(host).toHaveTextContent("qradarce2");
+    expect(host).toHaveClass("sl-label");
+    expect(host.children).toHaveLength(0);
+  });
+
+  it("offers a break only after the dots of an FQDN, each label staying whole", () => {
+    const fqdn = "ep-01.eventprocessor.dc1.corp.example.com";
+    const { container } = withHosts([fqdn]);
+    const host = container.querySelector(".sl-host-name") as HTMLElement;
+    expect(host).toHaveTextContent(fqdn);
+    const labels = [...host.querySelectorAll(".sl-label")].map((el) => el.textContent);
+    expect(labels).toEqual(["ep-01.", "eventprocessor.", "dc1.", "corp.", "example.", "com"]);
+    expect(host.querySelectorAll("wbr")).toHaveLength(5);
+    for (const wbr of host.querySelectorAll("wbr")) {
+      expect(wbr.previousElementSibling?.textContent).toMatch(/\.$/);
+    }
+  });
+
+  it("keeps the number columns right-aligned and the QID name as the row header", () => {
+    const { container } = withHosts(["qradarce2"]);
+    expect(container.querySelector("table")).toHaveClass("sl-notices-table");
+    const row = screen.getByRole("row", { name: /Name of qradarce2/ });
+    expect(within(row).getByRole("rowheader")).toHaveTextContent("Name of qradarce2");
+    for (const cell of within(row).getAllByRole("cell").slice(1)) expect(cell).toHaveClass("num");
+  });
+});

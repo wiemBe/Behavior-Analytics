@@ -20,6 +20,7 @@ import type {
 import { formatCount } from "@/lib/format";
 import { formatDuration } from "@/lib/time";
 
+import { HostName } from "./HostName";
 import { cellHasValue, distinctReasons, type HealthJoin, type MemberRow } from "./qradarDetail";
 import { formatBytes, formatPercentFigure } from "./siemFormat";
 
@@ -152,7 +153,7 @@ function Row({ member, lowerBound }: { member: MemberRow; lowerBound: boolean })
   return (
     <tr>
       <th scope="row">
-        <span className="sl-host">{member.hostname ?? "—"}</span>
+        {member.hostname === null ? <span className="sl-host">—</span> : <HostName host={member.hostname} />}
         {member.role ? (
           <span className="cell-sub">
             {member.role === "primary" ? hosts("memberPrimary") : hosts("memberSecondary")}
@@ -177,7 +178,7 @@ function OrphanRow({ metrics, lowerBound }: { metrics: QRadarHostMetrics; lowerB
   return (
     <tr>
       <th scope="row">
-        <span className="sl-host">{metrics.host}</span>
+        <HostName host={metrics.host} />
       </th>
       <MetricsCells metrics={metrics} lowerBound={lowerBound} />
     </tr>

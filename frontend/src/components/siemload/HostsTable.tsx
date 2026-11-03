@@ -13,6 +13,7 @@ import type { QRadarField, QRadarHostEntry, QRadarHosts, QRadarRate } from "@/li
 import { formatCount } from "@/lib/format";
 
 import { FieldGap } from "./FieldValue";
+import { HostName } from "./HostName";
 import { isExpectedStandby, memberStatus, pairStatuses, pairTone, type MemberRow } from "./qradarDetail";
 import type { HostRow } from "./qradarDetail";
 
@@ -57,7 +58,7 @@ function Rates({ field }: { field: QRadarField<QRadarRate> }) {
 function HostCell({ name, ip, note }: { name: string | null; ip: string | null; note?: ReactNode }) {
   return (
     <th scope="row">
-      <span className="sl-host">{name ?? MISSING}</span>
+      {name === null ? <span className="sl-host">{MISSING}</span> : <HostName host={name} />}
       {ip ? <span className="cell-sub sl-id">{ip}</span> : null}
       {note}
     </th>
