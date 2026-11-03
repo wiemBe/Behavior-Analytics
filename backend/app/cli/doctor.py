@@ -319,6 +319,28 @@ def _watermark_list(names: Sequence[str]) -> str:
     return ", ".join(n if n in _WATERMARK_NAMES else _safe_text(n) for n in names)[:_MESSAGE_CAP]
 
 
+def _watermark_family(collector: str) -> SearchFamily | None:
+    """The search family whose off switch governs a watermark collector, or None.
+
+    ``None`` means the collector has no family switch and is always judged: the
+    volumes, the two inventories, the offense snapshot, and any name this code
+    does not know. ``_watermark_cadence`` maps a collector through this same
+    function, so the cadence and the switch can never disagree about which
+    family a row belongs to.
+    """
+    if collector.startswith("waf_"):
+        return SearchFamily.WAF_COLLECTION
+    if collector.startswith("ips_"):
+        return SearchFamily.IPS_COLLECTION
+    if collector == "rule_match":
+        return SearchFamily.RULE_MATCH
+    if collector == "catchall_senders":
+        return SearchFamily.CATCHALL_SENDERS
+    if collector.startswith("geo_countries"):
+        return SearchFamily.GEO_COLLECTION
+    return None
+
+
 def _watermark_stalled(row: object) -> bool:
     """True when the collector recorded a page-ceiling stall on this row.
 
@@ -781,19 +803,9 @@ class Doctor:
                 await provider.aclose()
 
     def _watermark_cadence(self, collector: str, cadences: dict[str, int]) -> int:
-        def family_cadence(family: SearchFamily) -> int:
+        family = _watermark_family(collector)
+        if family is not None:
             return cadences.get(family.value, int(default_search_cadence(family)))
-
-        if collector.startswith("waf_"):
-            return family_cadence(SearchFamily.WAF_COLLECTION)
-        if collector.startswith("ips_"):
-            return family_cadence(SearchFamily.IPS_COLLECTION)
-        if collector == "rule_match":
-            return family_cadence(SearchFamily.RULE_MATCH)
-        if collector == "catchall_senders":
-            return family_cadence(SearchFamily.CATCHALL_SENDERS)
-        if collector.startswith("geo_countries"):
-            return family_cadence(SearchFamily.GEO_COLLECTION)
         return {
             "log_source_metric": self.settings.collection_interval_seconds,
             "log_source_inventory": self.settings.log_source_sync_interval_seconds,
@@ -813,7 +825,17 @@ class Doctor:
             failed: list[str] = []
             stalled: list[str] = []
             late: list[str] = []
+            not_judged: list[str] = []
+            judged = 0
             for row in rows:
+                family = _watermark_family(row.collector)
+                if family is not None and not self._family_enabled(family.value):
+                    # A switched-off family never runs its collector again, so a
+                    # leftover `last_error` on its row is not evidence of a fault
+                    # now. The row is named, never hidden, and never cleared.
+                    not_judged.append(row.collector)
+                    continue
+                judged += 1
                 # The flag is the latest finished read. It wins over a leftover
                 # last_error and over lag: the operator has to raise the page
                 # ceiling, and a lag line would send them to the cadence runbook.
@@ -827,6 +849,9 @@ class Doctor:
                     row.collector, cadences
                 ):
                     late.append(row.collector)
+            off_clause = ""
+            if not_judged:
+                off_clause = f"; not judged (family off): {_watermark_list(not_judged)}"
             if failed:
                 # A failing row used to hide every other row. The failure stays
                 # the status. A stall on another collector is still named, or
@@ -834,17 +859,22 @@ class Doctor:
                 message = f"{len(failed)} watermark(s) failed: {_watermark_list(failed)}"
                 if stalled or late:
                     message = f"{message}; {_watermark_warn_message(stalled, late)}"
-                return CheckResult("watermarks", Status.FAIL, message, "OPS-R30")
+                return CheckResult(
+                    "watermarks", Status.FAIL, f"{message}{off_clause}", "OPS-R30"
+                )
             if stalled or late:
                 return CheckResult(
                     "watermarks",
                     Status.WARN,
-                    _watermark_warn_message(stalled, late),
+                    f"{_watermark_warn_message(stalled, late)}{off_clause}",
                     "OPS-R66" if stalled else "OPS-R30",
                 )
-            return CheckResult(
-                "watermarks", Status.PASS, f"{len(rows)} watermark(s) have no error or excess lag"
+            base = (
+                f"{judged} watermark(s) have no error or excess lag"
+                if judged
+                else "no watermark is judged"
             )
+            return CheckResult("watermarks", Status.PASS, f"{base}{off_clause}")
         except Exception as exc:
             return CheckResult(
                 "watermarks",
@@ -918,27 +948,43 @@ class Doctor:
     async def check_errors_recent(self) -> CheckResult:
         try:
             async with self.sessionmaker() as session:
-                count = int(
-                    await session.scalar(
-                        select(text("count(*)")).select_from(CollectionWatermark).where(
-                            CollectionWatermark.consecutive_failures > 0
+                rows = list(
+                    (
+                        await session.scalars(
+                            select(CollectionWatermark).where(
+                                CollectionWatermark.consecutive_failures > 0
+                            )
                         )
-                    )
-                    or 0
+                    ).all()
                 )
+            judged: list[str] = []
+            not_judged: list[str] = []
+            for row in rows:
+                family = _watermark_family(row.collector)
+                if family is not None and not self._family_enabled(family.value):
+                    not_judged.append(row.collector)
+                else:
+                    judged.append(row.collector)
+            off_clause = ""
+            if not_judged:
+                off_clause = f"; not judged (family off): {_watermark_list(not_judged)}"
+            count = len(judged)
             if count == 0:
-                return CheckResult("errors_recent", Status.PASS, "no watermark has recent failures")
+                message = "no watermark has recent failures"
+                if not_judged:
+                    message = "no judged watermark has recent failures"
+                return CheckResult("errors_recent", Status.PASS, f"{message}{off_clause}")
             if count < 3:
                 return CheckResult(
                     "errors_recent",
                     Status.WARN,
-                    f"{count} watermark(s) have recent failures",
+                    f"{count} watermark(s) have recent failures{off_clause}",
                     "OPS-R30",
                 )
             return CheckResult(
                 "errors_recent",
                 Status.FAIL,
-                f"{count} watermark(s) have recent failures",
+                f"{count} watermark(s) have recent failures{off_clause}",
                 "OPS-R30",
             )
         except Exception as exc:
