@@ -42,6 +42,7 @@ const okState = <T,>(data: T): ResourceState<T> => ({
 });
 const latestOf = (...consoles: ReturnType<typeof consoleLatest>[]): QRadarHealthLatest => ({
   generated_at: "2026-11-02T10:16:30Z",
+  collection_enabled: true,
   consoles,
 });
 
@@ -201,5 +202,40 @@ describe("QRadarDetail: states", () => {
     expect(screen.getByText("QRadar did not answer the host list.")).toBeInTheDocument();
     expect(screen.getByText(/not matched to it/)).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Disk, system and pipeline per host of qradar-lab" })).toBeInTheDocument();
+  });
+});
+
+describe("QRadarDetail: collection switched off", () => {
+  const OFF_SENTENCE = /QRadar health collection is off \(QRADAR_HEALTH_COLLECTION_ENABLED\)/;
+
+  it("says so once, with the time of the last window in UTC, and keeps the stored figures", () => {
+    mocks.states[LATEST] = okState({ ...latestOf(consoleLatest()), collection_enabled: false });
+    mocks.states[HISTORY_24] = okState(historyOf([consoleHistory()]));
+    render(<QRadarDetail consoles={[withHosts()]} range="24h" trend="24h" />);
+    const banner = screen.getByText(OFF_SENTENCE);
+    expect(banner).toHaveTextContent("Disk, system, pipeline, notifications and trends show the last window collected, at");
+    expect(banner).toHaveTextContent("2026-11-02 10:15:00 UTC");
+    const managed = screen.getByRole("heading", { name: "Managed hosts" });
+    const disk = screen.getByRole("heading", { name: "Disk, system and pipeline" });
+    expect(managed.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(banner.compareDocumentPosition(disk) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByText("549 GiB free").length).toBeGreaterThan(0);
+  });
+
+  it("does not say it while collection is on", () => {
+    mocks.states[LATEST] = okState(latestOf(consoleLatest()));
+    mocks.states[HISTORY_24] = okState(historyOf([consoleHistory()]));
+    render(<QRadarDetail consoles={[withHosts()]} range="24h" trend="24h" />);
+    expect(screen.queryByText(OFF_SENTENCE)).toBeNull();
+  });
+
+  it("names the missing window instead of a time when none was ever collected", () => {
+    mocks.states[LATEST] = okState({
+      ...latestOf(consoleLatest({ window: null, hosts: [] })),
+      collection_enabled: false,
+    });
+    mocks.states[HISTORY_24] = okState(historyOf([consoleHistory()]));
+    render(<QRadarDetail consoles={[withHosts()]} range="24h" trend="24h" />);
+    expect(screen.getByText(/none was ever collected/)).toBeInTheDocument();
   });
 });

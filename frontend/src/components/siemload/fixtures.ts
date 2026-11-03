@@ -350,6 +350,7 @@ export function mount(over: Partial<QRadarMount> = {}): QRadarMount {
     used_percent: 50,
     used_bytes: 500e9,
     total_bytes: 1000e9,
+    total_from: null,
     free_bytes: 500e9,
     level: "OK",
     ...over,

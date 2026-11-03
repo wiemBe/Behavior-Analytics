@@ -9,6 +9,7 @@ import {
   consoleLatest,
   hostEntry,
   member,
+  mount,
   metricsHost,
   pairEntry,
 } from "./fixtures";
@@ -287,5 +288,40 @@ describe("HealthTable: the window and its state", () => {
     const host = metricsHost("qr-console");
     health(consoleLatest({ hosts: [{ ...host, system: { ...host.system, cpu_percent: cellOk(0) } }] }));
     expect(cells(rowOf("qr-console"))[1]).toHaveTextContent("0.0 %");
+  });
+});
+
+describe("HealthTable: a total carried from an earlier window", () => {
+  const carried = (over: Partial<ReturnType<typeof mount>> = {}) => {
+    const fullest = mount({ total_from: "2026-11-02T09:45:00Z", ...over });
+    return consoleLatest({
+      hosts: [
+        metricsHost("qr-console", {
+          disk: { state: "OK", reason_code: null, reason: null, fullest, mounts: [fullest] },
+        }),
+      ],
+    });
+  };
+
+  it("says when the total is from, in UTC, under the free figure", () => {
+    health(carried());
+    const [disk] = cells(rowOf("qr-console"));
+    expect(disk).toHaveTextContent("466 GiB free"); // 500e9 bytes
+    expect(disk).toHaveTextContent(/total as of .*09:45 UTC/);
+  });
+
+  it("does not say it when the total is the window's own", () => {
+    health(consoleLatest());
+    const [disk] = cells(rowOf("qr-console"));
+    expect(disk).toHaveTextContent("549 GiB free");
+    expect(disk).not.toHaveTextContent("total as of");
+  });
+
+  it("shows no free figure and no note when the free space is unknown, never a zero", () => {
+    health(carried({ total_bytes: null, total_from: null, free_bytes: null }));
+    const [disk] = cells(rowOf("qr-console"));
+    expect(disk).not.toHaveTextContent("free");
+    expect(disk).not.toHaveTextContent("total as of");
+    expect(disk).not.toHaveTextContent("0 B");
   });
 });

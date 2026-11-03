@@ -303,3 +303,24 @@ class TestDoctorWiring:
         )
         assert (await d.check_qradar_disk()).status is Status.SKIP
         assert (await d.check_qradar_pipeline()).status is Status.SKIP
+
+
+class TestCarriedTotalInDoctor:
+    def _latest(self, total_from: datetime | None) -> LatestOut:
+        mount = MountValue(
+            mount="/store", used_fraction=0.5, used_percent=50.0, used_bytes=1.0e9,
+            total_bytes=3.0e9, total_from=total_from, free_bytes=2.0e9,
+            level=disk_level(0.5, SETTINGS),
+        )
+        disk = HostDisk(state=PartState.OK, fullest=mount, mounts=[mount])
+        base = host()
+        return latest(console([base.model_copy(update={"disk": disk})]))
+
+    def test_a_carried_total_is_named_with_its_time(self) -> None:
+        word, text = disk_line(self._latest(datetime(2026, 11, 3, 11, 45, tzinfo=UTC)), SETTINGS)
+        assert word == "PASS"
+        assert "(1.9 GB free, total as of 11:45 UTC)" in text
+
+    def test_an_own_total_reads_as_before(self) -> None:
+        _, text = disk_line(self._latest(None), SETTINGS)
+        assert "(1.9 GB free)" in text and "total as of" not in text

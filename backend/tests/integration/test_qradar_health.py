@@ -609,3 +609,205 @@ class TestHistoryApi:
 def test_a_custom_property_dto_is_what_the_check_reads() -> None:
     # The collector compares names only; this pins that the DTO field is called `name`.
     assert "name" in CustomPropertyDTO.model_fields
+
+
+# ------------------------------------------------------------- HLT-5: carried total, collection off
+SETTINGS = get_settings()
+
+
+def put_window(inst_id, end, rows, *, state="OK"):  # type: ignore[no-untyped-def]
+    """One stored window with exactly the metric rows given: (host, metric, element, value)."""
+
+    async def _seed(session):  # type: ignore[no-untyped-def]
+        start = end - timedelta(seconds=CADENCE)
+        session.add(
+            QRadarHealthRun(
+                instance_id=inst_id, window_start=start, window_end=end, cadence_seconds=CADENCE,
+                collected_at=end, query_version=2, metrics_state=state,
+                notifications_state="OK", unparseable_hosts=0, dropped_mounts=0,
+                dropped_metrics=0, null_values=0, invalid_values=0, dropped_events=0,
+            )
+        )
+        for host, metric, element, value in rows:
+            session.add(
+                QRadarHealthMetricBucket(
+                    instance_id=inst_id, bucket_start=start, bucket_end=end, host=host,
+                    metric=metric, element=element, max_value=value, avg_value=value, samples=3,
+                )
+            )
+        await session.flush()
+
+    return _seed
+
+
+def disk_rows(host, mount, *, used, total=None):  # type: ignore[no-untyped-def]
+    rows = [(host, "DiskUsage", mount, 0.5), (host, "DiskSpaceUsed", mount, used)]
+    if total is not None:
+        rows.append((host, "DiskSpaceTotal", mount, total))
+    return rows
+
+
+async def latest_mounts(session, now, **kw):  # type: ignore[no-untyped-def]
+    from app.services.qradar_health_detail import read_latest
+
+    out = await read_latest(session, SETTINGS, now=now, **kw)
+    return {
+        (h.host, m.mount): m for c in out.consoles for h in c.hosts for m in h.disk.mounts
+    }
+
+
+class TestCarriedDiskTotal:
+    async def test_a_window_with_its_own_total_does_not_carry(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        end = WINDOW + timedelta(minutes=30)
+        await put_window(inst.id, end - timedelta(minutes=15),
+                         disk_rows("qr1", "/store", used=10.0, total=999.0))(db_session)
+        await put_window(inst.id, end, disk_rows("qr1", "/store", used=40.0, total=100.0))(
+            db_session
+        )
+        mount = (await latest_mounts(db_session, end))[("qr1", "/store")]
+        assert mount.total_bytes == 100.0 and mount.total_from is None
+        assert mount.free_bytes == 60.0
+
+    async def test_an_earlier_total_45_minutes_old_is_carried(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        end = WINDOW + timedelta(hours=1)
+        old_end = end - timedelta(minutes=45)
+        await put_window(inst.id, old_end, disk_rows("qr1", "/store", used=10.0, total=100.0))(
+            db_session
+        )
+        await put_window(inst.id, end, disk_rows("qr1", "/store", used=40.0))(db_session)
+        mount = (await latest_mounts(db_session, end))[("qr1", "/store")]
+        assert mount.total_bytes == 100.0 and mount.total_from == old_end
+        assert mount.free_bytes == 60.0
+
+    async def test_the_newest_earlier_total_wins(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        end = WINDOW + timedelta(hours=1)
+        for age, total in ((90, 500.0), (30, 200.0)):
+            await put_window(inst.id, end - timedelta(minutes=age),
+                             disk_rows("qr1", "/store", used=1.0, total=total))(db_session)
+        await put_window(inst.id, end, disk_rows("qr1", "/store", used=40.0))(db_session)
+        mount = (await latest_mounts(db_session, end))[("qr1", "/store")]
+        assert mount.total_bytes == 200.0 and mount.free_bytes == 160.0
+
+    async def test_a_total_older_than_two_hours_is_not_used(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        end = WINDOW + timedelta(hours=3)
+        await put_window(inst.id, end - timedelta(hours=2, minutes=1),
+                         disk_rows("qr1", "/store", used=10.0, total=100.0))(db_session)
+        await put_window(inst.id, end, disk_rows("qr1", "/store", used=40.0))(db_session)
+        mount = (await latest_mounts(db_session, end))[("qr1", "/store")]
+        assert mount.total_bytes is None and mount.total_from is None
+        assert mount.free_bytes is None
+
+    async def test_a_total_exactly_two_hours_old_is_used(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        end = WINDOW + timedelta(hours=3)
+        await put_window(inst.id, end - timedelta(hours=2),
+                         disk_rows("qr1", "/store", used=10.0, total=100.0))(db_session)
+        await put_window(inst.id, end, disk_rows("qr1", "/store", used=40.0))(db_session)
+        mount = (await latest_mounts(db_session, end))[("qr1", "/store")]
+        assert mount.free_bytes == 60.0
+
+    async def test_no_earlier_total_stays_null(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        end = WINDOW + timedelta(hours=1)
+        await put_window(inst.id, end, disk_rows("qr1", "/store", used=40.0))(db_session)
+        mount = (await latest_mounts(db_session, end))[("qr1", "/store")]
+        assert mount.total_bytes is None and mount.free_bytes is None
+
+    async def test_a_total_smaller_than_the_used_bytes_gives_no_free(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        end = WINDOW + timedelta(hours=1)
+        await put_window(inst.id, end - timedelta(minutes=30),
+                         disk_rows("qr1", "/store", used=1.0, total=30.0))(db_session)
+        await put_window(inst.id, end, disk_rows("qr1", "/store", used=40.0))(db_session)
+        mount = (await latest_mounts(db_session, end))[("qr1", "/store")]
+        assert mount.free_bytes is None
+
+    async def test_a_later_window_is_never_carried_backwards(self, db_session) -> None:
+        """Only windows before the latest count: the latest is what is shown."""
+        inst = await make_instance(db_session)
+        end = WINDOW + timedelta(hours=1)
+        await put_window(inst.id, end, disk_rows("qr1", "/store", used=40.0))(db_session)
+        mount = (await latest_mounts(db_session, end))[("qr1", "/store")]
+        assert mount.total_from is None
+
+    async def test_mounts_and_hosts_each_carry_their_own_total(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        end = WINDOW + timedelta(hours=1)
+        earlier = (
+            disk_rows("qr1", "/store", used=1.0, total=100.0)
+            + disk_rows("qr1", "/", used=1.0, total=50.0)
+            + disk_rows("qr2", "/store", used=1.0, total=400.0)
+        )
+        await put_window(inst.id, end - timedelta(minutes=30), earlier)(db_session)
+        latest = (
+            disk_rows("qr1", "/store", used=40.0)
+            + disk_rows("qr1", "/", used=10.0)
+            + disk_rows("qr2", "/store", used=100.0)
+        )
+        await put_window(inst.id, end, latest)(db_session)
+        mounts = await latest_mounts(db_session, end)
+        assert mounts[("qr1", "/store")].free_bytes == 60.0
+        assert mounts[("qr1", "/")].free_bytes == 40.0
+        assert mounts[("qr2", "/store")].free_bytes == 300.0
+
+    async def test_statements_do_not_grow_with_hosts_and_mounts(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        end = WINDOW + timedelta(hours=1)
+        counts = []
+        for hosts, mounts in ((1, 1), (6, 4)):
+            rows_old, rows_new = [], []
+            for h in range(hosts):
+                for m in range(mounts):
+                    rows_old += disk_rows(f"h{h}", f"/m{m}", used=1.0, total=100.0)
+                    rows_new += disk_rows(f"h{h}", f"/m{m}", used=40.0)
+            await db_session.execute(QRadarHealthRun.__table__.delete())
+            await db_session.execute(QRadarHealthMetricBucket.__table__.delete())
+            await put_window(inst.id, end - timedelta(minutes=30), rows_old)(db_session)
+            await put_window(inst.id, end, rows_new)(db_session)
+            with recorded_statements(db_session) as statements:
+                found = await latest_mounts(db_session, end)
+            assert all(m.free_bytes == 60.0 for m in found.values())
+            counts.append(len(statements))
+        assert counts[0] == counts[1], counts
+
+    async def test_collection_enabled_follows_the_setting_and_keeps_the_figures(
+        self, db_session
+    ) -> None:
+        from app.core.config import Settings
+        from app.services.qradar_health_detail import read_latest
+
+        inst = await make_instance(db_session)
+        end = WINDOW + timedelta(hours=1)
+        await put_window(inst.id, end, disk_rows("qr1", "/store", used=40.0, total=100.0))(
+            db_session
+        )
+        for flag in (True, False):
+            settings = Settings(
+                encryption_key=SETTINGS.encryption_key, qradar_health_collection_enabled=flag
+            )
+            out = await read_latest(db_session, settings, now=end)
+            assert out.collection_enabled is flag
+            [console] = out.consoles
+            assert console.window is not None and console.window.end == end
+            assert console.hosts[0].disk.mounts[0].free_bytes == 60.0
+
+
+class TestCollectionEnabledApi:
+    def test_the_latest_response_says_collection_is_on(self, db_schema) -> None:
+        body = Client(ADMIN).get(URL + "/latest").json()
+        assert body["collection_enabled"] is True
+
+    def test_a_carried_total_is_in_the_response_with_its_window(self, db_schema) -> None:
+        inst = run(make_instance)
+        end = fresh_end()
+        old_end = end - timedelta(minutes=45)
+        run(put_window(inst.id, old_end, disk_rows("qr1", "/store", used=10.0, total=100.0)))
+        run(put_window(inst.id, end, disk_rows("qr1", "/store", used=40.0)))
+        [console] = Client(ADMIN).get(URL + "/latest").json()["consoles"]
+        mount = console["hosts"][0]["disk"]["fullest"]
+        assert mount["free_bytes"] == 60.0 and mount["total_bytes"] == 100.0
+        assert datetime.fromisoformat(mount["total_from"]) == old_end

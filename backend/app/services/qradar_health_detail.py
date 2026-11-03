@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, func, select, tuple_
+from sqlalchemy import and_, func, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -129,7 +129,9 @@ def _cell(
 
 
 def _mount_values(
-    rows: Mapping[tuple[str, str], QRadarHealthMetricBucket], settings: Settings
+    rows: Mapping[tuple[str, str], QRadarHealthMetricBucket],
+    settings: Settings,
+    carried: Mapping[str, tuple[float, datetime]] | None = None,
 ) -> list[MountValue]:
     mounts = sorted({element for (metric, element) in rows if metric in spec.DISK_METRIC_SET})
     out: list[MountValue] = []
@@ -138,16 +140,21 @@ def _mount_values(
         used = rows.get(("DiskSpaceUsed", mount))
         total = rows.get(("DiskSpaceTotal", mount))
         fraction = usage.max_value if usage is not None else None
+        total_bytes = total.max_value if total is not None else None
+        total_from: datetime | None = None
+        if total is None and carried is not None and mount in carried:
+            total_bytes, total_from = carried[mount]
         free: float | None = None
-        if used is not None and total is not None and total.max_value >= used.max_value:
-            free = total.max_value - used.max_value
+        if used is not None and total_bytes is not None and total_bytes >= used.max_value:
+            free = total_bytes - used.max_value
         out.append(
             MountValue(
                 mount=mount,
                 used_fraction=fraction,
                 used_percent=fraction * 100 if fraction is not None else None,
                 used_bytes=used.max_value if used is not None else None,
-                total_bytes=total.max_value if total is not None else None,
+                total_bytes=total_bytes,
+                total_from=total_from,
                 free_bytes=free,
                 level=disk_level(fraction, settings),
             )
@@ -160,9 +167,14 @@ def host_health(
     host: str,
     state: PartState,
     settings: Settings,
+    carried: Mapping[str, tuple[float, datetime]] | None = None,
 ) -> HostHealth:
-    """One host's cells from its stored aggregates of a window. `state` is OK or STALE."""
-    mounts = _mount_values(rows, settings)
+    """One host's cells from its stored aggregates of a window. `state` is OK or STALE.
+
+    `carried` maps a mount to (total bytes, end of its window) from an earlier window, used only
+    for a mount whose own window holds no `DiskSpaceTotal`.
+    """
+    mounts = _mount_values(rows, settings, carried)
     measured = [m for m in mounts if m.used_fraction is not None]
     fullest = max(measured, key=lambda m: (m.used_fraction or 0.0, m.mount), default=None)
     if mounts:
@@ -296,8 +308,9 @@ async def read_latest(
             )
         ).all()
     )
+    enabled = settings.qradar_health_collection_enabled
     if not instances:
-        return LatestOut(generated_at=generated, consoles=[])
+        return LatestOut(generated_at=generated, collection_enabled=enabled, consoles=[])
     ids = [instance.id for instance in instances]
 
     runs = {
@@ -324,6 +337,9 @@ async def read_latest(
     by_host: dict[UUID, dict[str, dict[tuple[str, str], QRadarHealthMetricBucket]]] = defaultdict(
         lambda: defaultdict(dict)
     )
+    carried_totals: dict[UUID, dict[str, dict[str, tuple[float, datetime]]]] = defaultdict(
+        lambda: defaultdict(dict)
+    )
     if metric_pairs:
         for bucket in (
             await session.scalars(
@@ -336,6 +352,35 @@ async def read_latest(
             )
         ).all():
             by_host[bucket.instance_id][bucket.host][(bucket.metric, bucket.element)] = bucket
+        # One statement for every console, host and mount: the newest stored total in the
+        # carry bound before each console's latest window (QRadar sends it once an hour).
+        nb_total = QRadarHealthMetricBucket
+        in_bound = [
+            and_(
+                nb_total.instance_id == run.instance_id,
+                nb_total.bucket_start < run.window_start,
+                nb_total.bucket_end >= run.window_end - spec.DISK_TOTAL_MAX_AGE,
+            )
+            for run in runs.values()
+            if run.metrics_state in _MEASURED
+        ]
+        for total in (
+            await session.scalars(
+                select(nb_total)
+                .where(nb_total.metric == spec.DISK_TOTAL_METRIC, or_(*in_bound))
+                .ext(distinct_on(nb_total.instance_id, nb_total.host, nb_total.element))
+                .order_by(
+                    nb_total.instance_id,
+                    nb_total.host,
+                    nb_total.element,
+                    nb_total.bucket_start.desc(),
+                )
+            )
+        ).all():
+            carried_totals[total.instance_id][total.host][total.element] = (
+                total.max_value,
+                total.bucket_end,
+            )
     notices: dict[UUID, list[QRadarHealthNotificationBucket]] = defaultdict(list)
     rollups: dict[UUID, NotificationsValue | None] = {}
     if notifications_hours is None:
@@ -471,7 +516,9 @@ async def read_latest(
         )
         cell_state = PartState.STALE if stale else PartState.OK
         hosts = [
-            host_health(rows, host, cell_state, settings)
+            host_health(
+                rows, host, cell_state, settings, carried_totals.get(instance.id, {}).get(host)
+            )
             for host, rows in sorted(by_host.get(instance.id, {}).items())
         ]
         listing: NotificationsValue | None = None
@@ -526,7 +573,7 @@ async def read_latest(
                 rest_sample=rest,
             )
         )
-    return LatestOut(generated_at=generated, consoles=consoles)
+    return LatestOut(generated_at=generated, collection_enabled=enabled, consoles=consoles)
 
 
 # ---------------------------------------------------------------------------- history
