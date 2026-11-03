@@ -39,6 +39,13 @@ from app.collectors.bucketed_metrics import (
     validate_bucketed_metric_window,
 )
 from app.geo.fold import GeoDirection, GeoKeyedResult, parse_geo_rows
+from app.health_detail import queries as health_queries
+from app.health_detail.rows import (
+    HealthMetricsResult,
+    HealthNotificationsResult,
+    parse_health_metric_rows,
+    parse_health_notification_rows,
+)
 from app.ips.keyed_rows import (
     parse_ips_keyed_rows,
     validate_ips_fields,
@@ -2184,6 +2191,64 @@ class QRadarRestProvider(QRadarProvider):
             window_start=window_start,
             window_end=window_end,
             bucket_seconds=bucket_seconds,
+            rows=rows,
+            truncated=truncated,
+            query=aql,
+        )
+
+    @staticmethod
+    def _health_window(start: datetime, end: datetime) -> tuple[datetime, datetime, int, int]:
+        """A tz-aware, non-empty window and its epoch-millisecond bounds."""
+        for moment in (start, end):
+            if moment.tzinfo is None or moment.utcoffset() is None:
+                raise ValueError("the health window must be timezone-aware")
+        if start >= end:
+            raise ValueError("the health window must not be empty")
+        return start, end, int(start.timestamp() * 1000), int(end.timestamp() * 1000)
+
+    @_loads(ariel_log.CALLER_QRADAR_HEALTH)
+    async def get_health_metrics(
+        self, start: datetime, end: datetime, *, max_rows: int
+    ) -> HealthMetricsResult:
+        """One aggregating search of the Health Metrics log sources (D-42); see the base class.
+
+        ``LIMIT cap + 1`` with ``cap = _keyed_row_cap(max_rows)``. Read-only: an Ariel search
+        over ``events`` that selects no payload.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        window_start, window_end, start_ms, end_ms = self._health_window(start, end)
+        cap = self._keyed_row_cap(max_rows)
+        aql = (
+            health_queries.metrics_query(start_ms=start_ms, end_ms=end_ms, limit=cap + 1)
+            + f" {self._ariel_scope(start_ms, end_ms)}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        rows, truncated = parse_health_metric_rows(raw, max_rows=cap)
+        return HealthMetricsResult(
+            window_start=window_start,
+            window_end=window_end,
+            rows=rows,
+            truncated=truncated,
+            query=aql,
+        )
+
+    @_loads(ariel_log.CALLER_QRADAR_HEALTH)
+    async def get_health_notifications(
+        self, start: datetime, end: datetime, *, max_rows: int
+    ) -> HealthNotificationsResult:
+        """One aggregating search of the System Notification events (D-42); see the base class."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        window_start, window_end, start_ms, end_ms = self._health_window(start, end)
+        cap = self._keyed_row_cap(max_rows)
+        aql = (
+            health_queries.notifications_query(start_ms=start_ms, end_ms=end_ms, limit=cap + 1)
+            + f" {self._ariel_scope(start_ms, end_ms)}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        rows, truncated = parse_health_notification_rows(raw, max_rows=cap)
+        return HealthNotificationsResult(
+            window_start=window_start,
+            window_end=window_end,
             rows=rows,
             truncated=truncated,
             query=aql,

@@ -154,8 +154,10 @@ def test_bucket_seconds_is_none_only_for_a_family_with_no_buckets() -> None:
     assert bucket_seconds(SearchFamily.ANOMALY_EXPLANATION, settings) is None
     assert bucket_seconds(SearchFamily.PROPERTY_WATCH, settings) == 900
     assert bucket_seconds(SearchFamily.RULE_MATCH, settings) == 3600
+    # QRADAR_HEALTH stores one window per run (the cadence), not fixed-width buckets.
+    assert bucket_seconds(SearchFamily.QRADAR_HEALTH, settings) is None
     for family in SearchFamily:
-        if family is not SearchFamily.ANOMALY_EXPLANATION:
+        if family not in (SearchFamily.ANOMALY_EXPLANATION, SearchFamily.QRADAR_HEALTH):
             assert bucket_seconds(family, settings) is not None
 
 
@@ -170,6 +172,7 @@ def test_family_enabled_matches_every_collection_switch() -> None:
         pw_collection_enabled=False,
         catchall_collection_enabled=False,
         geo_collection_enabled=False,
+        qradar_health_collection_enabled=False,
     )
     assert family_enabled(SearchFamily.PHASE_A_VOLUME, settings) is True
     assert all(
@@ -187,6 +190,7 @@ def test_family_enabled_matches_every_collection_switch() -> None:
             "pw_collection_enabled": True,
             "catchall_collection_enabled": True,
             "geo_collection_enabled": True,
+            "qradar_health_collection_enabled": True,
         }
     )
     assert all(family_enabled(family, enabled) for family in SearchFamily)

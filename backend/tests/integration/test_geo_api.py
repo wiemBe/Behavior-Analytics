@@ -521,6 +521,7 @@ class TestCadenceFamily:
     def test_the_family_is_listed_last_with_the_collection_bucket(self, db_schema) -> None:
         body = Client(VIEWER).get("/api/v1/admin/search-cadence").json()
         by_family = {item["family"]: item for item in body}
-        assert body[-1]["family"] == "GEO_COLLECTION"
+        # D-42 appended QRADAR_HEALTH after it.
+        assert [item["family"] for item in body][-2:] == ["GEO_COLLECTION", "QRADAR_HEALTH"]
         assert by_family["GEO_COLLECTION"]["bucket_seconds"] == 300
         assert by_family["GEO_COLLECTION"]["cadence_seconds"] == 300

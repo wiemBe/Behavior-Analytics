@@ -27,6 +27,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import and_, case, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.cli.doctor_qradar_health import disk_line, pipeline_line
 from app.collectors.offense_collector import WATERMARK_STALLED_KEY
 from app.core.config import Environment, Settings, get_settings, unknown_setting_names
 from app.core.database import dispose_engine, get_sessionmaker
@@ -48,6 +49,7 @@ from app.rules.matches import SKIPPED_REASON
 from app.security.redaction import redact
 from app.services.ariel_permit import ArielPermitBudget
 from app.services.qradar_health import HealthReadCache, read_qradar_health
+from app.services.qradar_health_detail import read_latest
 from app.workers.celery_app import (
     ANOMALY_EVALUATION_CADENCE_SECONDS,
     BEAT_HEARTBEAT_KEY,
@@ -90,6 +92,8 @@ _CHECK_RUNBOOKS = (
     ("geo_country_source", "OPS-R30"),
     ("rule_match_coverage", "OPS-R65"),
     ("email", "OPS-R68"),
+    ("qradar_disk", "OPS-R69"),
+    ("qradar_pipeline", "OPS-R70"),
     ("qradar_health", "OPS-R67"),
 )
 _TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])")
@@ -143,6 +147,7 @@ _WATERMARK_NAMES = frozenset(
         "anomaly_explanation",
         "catchall_senders",
         "property_watch",
+        "qradar_health",
     }
 )
 
@@ -187,6 +192,15 @@ BATCH_DELETERS: tuple[BatchDeleter, ...] = (
     BatchDeleter(
         "apply_geo_retention",
         (BatchTable("geo_country_bucket", "geo_retention_days"),),
+    ),
+    BatchDeleter(
+        "apply_qradar_health_retention",
+        (
+            BatchTable("qradar_health_run", "qradar_health_retention_days"),
+            BatchTable("qradar_health_metric_bucket", "qradar_health_retention_days"),
+            BatchTable("qradar_health_notice_bucket", "qradar_health_retention_days"),
+            BatchTable("qradar_health_rest_sample", "qradar_health_retention_days"),
+        ),
     ),
     BatchDeleter(
         "apply_waf_retention",
@@ -414,6 +428,7 @@ _FAMILY_SWITCHES: dict[str, str] = {
     SearchFamily.PROPERTY_WATCH.value: "pw_collection_enabled",
     SearchFamily.CATCHALL_SENDERS.value: "catchall_collection_enabled",
     SearchFamily.GEO_COLLECTION.value: "geo_collection_enabled",
+    SearchFamily.QRADAR_HEALTH.value: "qradar_health_collection_enabled",
 }
 
 #: The families with no off switch, listed so the drift test can tell "deliberately switchless"
@@ -1538,6 +1553,46 @@ class Doctor:
                 check_id, Status.WARN, "; ".join([*warnings, *facts]), "OPS-R67"
             )
         return CheckResult(check_id, Status.PASS, "; ".join(facts))
+
+    async def _stored_health_line(
+        self, check_id: str, runbook: str, line: Callable[[Any, Settings], tuple[str, str]]
+    ) -> CheckResult:
+        """One line from the latest stored QRadar health window of every enabled console."""
+        if not self.settings.qradar_health_collection_enabled:
+            return CheckResult(check_id, Status.SKIP, "QRadar health collection is off")
+        try:
+            async with self.sessionmaker() as session:
+                latest = await read_latest(session, self.settings)
+        except Exception as exc:
+            return CheckResult(
+                check_id,
+                Status.FAIL,
+                f"the stored QRadar health could not be read ({type(exc).__name__})",
+                runbook,
+            )
+        word, message = line(latest, self.settings)
+        status = Status(word)
+        return CheckResult(
+            check_id, status, message, runbook if status in (Status.WARN, Status.FAIL) else None
+        )
+
+    async def check_qradar_disk(self) -> CheckResult:
+        """Disk use of the fullest allowlisted mount of every QRadar host (stored, not live).
+
+        WARN at `QRADAR_HEALTH_DISK_WARN_PERCENT`, FAIL at `QRADAR_HEALTH_DISK_FAIL_PERCENT`,
+        naming host and mount. A missing, failed, partial or stale window is a WARN that says
+        since when it was not collected; it is never a PASS.
+        """
+        return await self._stored_health_line("qradar_disk", "OPS-R69", disk_line)
+
+    async def check_qradar_pipeline(self) -> CheckResult:
+        """The event pipeline of every QRadar host: throttle spill and rule-engine queue.
+
+        WARN when events spilled to disk because a host is over its EPS allocation, or when the
+        rule-engine queue is above `QRADAR_HEALTH_CRE_QUEUE_WARN`. A missing, failed, partial
+        or stale window is a WARN that says since when it was not collected.
+        """
+        return await self._stored_health_line("qradar_pipeline", "OPS-R70", pipeline_line)
 
     async def check_geo_country_source(self) -> CheckResult:
         """One line: the geography source, each direction's property, and the consoles."""

@@ -575,6 +575,63 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "qradar_health.reason.snapshot_inconsistent",
         "The search record is inconsistent (more unavailable than searches).",
     ),
+    # --- HLT-2: why a part of the stored QRadar health was not collected (English only, D-41) ---
+    _text(
+        "qradar_health_detail.reason.property_missing",
+        "These custom properties do not exist on this console: {names}. "
+        "No health metric search was sent.",
+        names="Metric ID, Value, Element",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.property_unreadable",
+        "The custom-property list could not be read on this console, "
+        "so no health metric search was sent.",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.provider_unsupported",
+        "This provider cannot run Ariel searches, so nothing was collected.",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.search_failed",
+        "The Ariel search failed or timed out; nothing was stored for this window.",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.search_rejected",
+        "QRadar rejected the search; nothing was stored for this window.",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.truncated",
+        "The search returned more rows than the cap allows, so some rows are missing.",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.no_window",
+        "No window has been collected for this console yet.",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.no_window_in_range",
+        "No window was collected for this console in this range.",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.host_not_reporting",
+        "This host sent no Health Metrics events in the window.",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.metric_not_reported",
+        "This metric had no usable value for this host in the window.",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.stale",
+        "The newest stored window is older than the collection cadence allows.",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.no_events",
+        "The Health Metrics log sources sent no usable events in the window.",
+    ),
+    _fixed("qradar_health_detail.hours.invalid", "hours must be 24 or 168"),
+    _fixed(
+        "qradar_health_detail.reason.no_sample",
+        "No REST health sample was stored for this console in the range.",
+    ),
     # Passwords and usernames.
     _fixed("auth.password.too_short", "password must be at least 12 characters"),
     _fixed("auth.password.too_long", "password must be at most 72 bytes"),

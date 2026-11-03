@@ -9361,6 +9361,112 @@
     "sample_english_params": {},
     "template": "QRadar answered with a server error."
   },
+  "qradar_health_detail.hours.invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "hours must be 24 or 168",
+    "sample_english_params": {},
+    "template": "hours must be 24 or 168"
+  },
+  "qradar_health_detail.reason.host_not_reporting": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This host sent no Health Metrics events in the window.",
+    "sample_english_params": {},
+    "template": "This host sent no Health Metrics events in the window."
+  },
+  "qradar_health_detail.reason.metric_not_reported": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This metric had no usable value for this host in the window.",
+    "sample_english_params": {},
+    "template": "This metric had no usable value for this host in the window."
+  },
+  "qradar_health_detail.reason.no_events": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The Health Metrics log sources sent no usable events in the window.",
+    "sample_english_params": {},
+    "template": "The Health Metrics log sources sent no usable events in the window."
+  },
+  "qradar_health_detail.reason.no_sample": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No REST health sample was stored for this console in the range.",
+    "sample_english_params": {},
+    "template": "No REST health sample was stored for this console in the range."
+  },
+  "qradar_health_detail.reason.no_window": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No window has been collected for this console yet.",
+    "sample_english_params": {},
+    "template": "No window has been collected for this console yet."
+  },
+  "qradar_health_detail.reason.no_window_in_range": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No window was collected for this console in this range.",
+    "sample_english_params": {},
+    "template": "No window was collected for this console in this range."
+  },
+  "qradar_health_detail.reason.property_missing": {
+    "params": {
+      "names": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "names": "Metric ID, Value, Element"
+    },
+    "sample_english": "These custom properties do not exist on this console: Metric ID, Value, Element. No health metric search was sent.",
+    "sample_english_params": {
+      "names": "Metric ID, Value, Element"
+    },
+    "template": "These custom properties do not exist on this console: {names}. No health metric search was sent."
+  },
+  "qradar_health_detail.reason.property_unreadable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The custom-property list could not be read on this console, so no health metric search was sent.",
+    "sample_english_params": {},
+    "template": "The custom-property list could not be read on this console, so no health metric search was sent."
+  },
+  "qradar_health_detail.reason.provider_unsupported": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This provider cannot run Ariel searches, so nothing was collected.",
+    "sample_english_params": {},
+    "template": "This provider cannot run Ariel searches, so nothing was collected."
+  },
+  "qradar_health_detail.reason.search_failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The Ariel search failed or timed out; nothing was stored for this window.",
+    "sample_english_params": {},
+    "template": "The Ariel search failed or timed out; nothing was stored for this window."
+  },
+  "qradar_health_detail.reason.search_rejected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar rejected the search; nothing was stored for this window.",
+    "sample_english_params": {},
+    "template": "QRadar rejected the search; nothing was stored for this window."
+  },
+  "qradar_health_detail.reason.stale": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The newest stored window is older than the collection cadence allows.",
+    "sample_english_params": {},
+    "template": "The newest stored window is older than the collection cadence allows."
+  },
+  "qradar_health_detail.reason.truncated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The search returned more rows than the cap allows, so some rows are missing.",
+    "sample_english_params": {},
+    "template": "The search returned more rows than the cap allows, so some rows are missing."
+  },
   "rule_health.age_unknown": {
     "params": {},
     "sample": {},

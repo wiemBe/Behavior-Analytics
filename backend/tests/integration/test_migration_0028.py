@@ -136,8 +136,9 @@ def test_fresh_install_has_all_eight_families_at_their_default(clean_db: str) ->
     try:
         with engine.connect() as connection:
             rows = _cadences(connection)
-            assert len(rows) == 8
-            assert set(rows) == {
+            # 0050 (D-42) seeds QRADAR_HEALTH at 15 minutes; 0028 audited the eight before it.
+            assert len(rows) == 9
+            eight = {
                 "PHASE_A_VOLUME",
                 "WAF_COLLECTION",
                 "ANOMALY_EXPLANATION",
@@ -147,11 +148,13 @@ def test_fresh_install_has_all_eight_families_at_their_default(clean_db: str) ->
                 "CATCHALL_SENDERS",
                 "GEO_COLLECTION",
             }
+            assert set(rows) == eight | {"QRADAR_HEALTH"}
             for family, value in rows.items():
-                expected = 900 if family in {"WAF_COLLECTION", "IPS_COLLECTION"} else 300
+                fifteen = {"WAF_COLLECTION", "IPS_COLLECTION", "QRADAR_HEALTH"}
+                expected = 900 if family in fifteen else 300
                 assert value == (expected, None)
             audits = _migration_audits(connection)
             assert len(audits) == 8
-            assert {family for family, _detail in audits} == set(rows)
+            assert {family for family, _detail in audits} == eight
     finally:
         engine.dispose()

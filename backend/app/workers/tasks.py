@@ -37,6 +37,7 @@ from app.collectors.ips_collector import IpsCollector
 from app.collectors.log_source_collector import LogSourceCollector
 from app.collectors.metric_collector import MetricCollector
 from app.collectors.offense_collector import OffenseCollector
+from app.collectors.qradar_health_collector import QRadarHealthCollector
 from app.collectors.rule_collector import RuleCollector
 from app.collectors.rule_match_collector import RuleMatchCollector
 from app.collectors.rule_metric_collector import RuleMetricCollector
@@ -68,6 +69,7 @@ from app.services.locks import CollectorAdvisoryLock
 from app.services.log_source_anomaly_retention import LogSourceAnomalyRetention
 from app.services.pw_pipeline import PwInstancePipeline
 from app.services.pw_retention import PwRetention
+from app.services.qradar_health_retention import QRadarHealthRetention
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.rule_match_retention import RuleMatchRetention
 from app.services.search_executor import SearchExecutor
@@ -614,6 +616,71 @@ async def collect_geo_countries(instance_name: str | None = None) -> dict:
         )
         await cadence_session.commit()
     return result
+
+
+async def collect_qradar_health(instance_name: str | None = None) -> dict:
+    """Collect QRadar's disk, system, pipeline and notification figures, two searches per tick.
+
+    A no-op while QRADAR_HEALTH_COLLECTION_ENABLED is false. The QRADAR_HEALTH cadence slot
+    is claimed first, in its own committed session, so a tick that is not due builds no
+    provider and sends nothing to QRadar. The claimed slot also keys the run's REST sample.
+    """
+    settings = get_settings()
+    if not settings.qradar_health_collection_enabled:
+        return {"status": "disabled"}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.QRADAR_HEALTH
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed_slot = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed_slot is None:
+        return {"status": "not_due", "family": family.value}
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        assert provider is not None
+        report = await QRadarHealthCollector(session, provider, settings=settings).collect(
+            instance, slot=claimed_slot
+        )
+        return report.as_dict()
+
+    result = await _for_each_instance(run, instance_name)
+    results = result.get("results", [])
+    outcome = result.get("status")
+    if outcome is None:
+        outcome = (
+            "failed" if any(item.get("status") == "failed" for item in results) else "ok"
+        )
+    # An instance that raised reports no counts, so the totals are unknown, not
+    # a smaller number: record None rather than a count that under-reports.
+    measured = bool(results) and all("searches_sent" in item for item in results)
+    async with maker() as cadence_session:
+        await SearchCadenceService(cadence_session, settings).record_run(
+            family,
+            outcome=outcome,
+            searches=sum(i["searches_sent"] for i in results) if measured else None,
+            buckets=(
+                sum(i["buckets_complete"] + i["buckets_lower_bound"] for i in results)
+                if measured
+                else None
+            ),
+            splits=sum(i["splits"] for i in results) if measured else None,
+        )
+        await cadence_session.commit()
+    return result
+
+
+async def apply_qradar_health_retention() -> dict:
+    maker = get_sessionmaker()
+    async with maker() as session:
+        report = await QRadarHealthRetention(session).run()
+        return report.as_dict()
 
 
 async def apply_geo_retention() -> dict:
@@ -1794,6 +1861,16 @@ def collect_geo_countries_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="apply_geo_retention")
 def apply_geo_retention_task() -> dict:
     return _run(apply_geo_retention())
+
+
+@celery_app.task(name="collect_qradar_health")
+def collect_qradar_health_task(instance_name: str | None = None) -> dict:
+    return _run(collect_qradar_health(instance_name))
+
+
+@celery_app.task(name="apply_qradar_health_retention")
+def apply_qradar_health_retention_task() -> dict:
+    return _run(apply_qradar_health_retention())
 
 
 @celery_app.task(name="apply_catchall_retention")

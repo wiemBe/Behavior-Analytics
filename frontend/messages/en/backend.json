@@ -839,6 +839,26 @@
       "upstream_error": "QRadar answered with a server error."
     }
   },
+  "qradar_health_detail": {
+    "hours": {
+      "invalid": "hours must be 24 or 168"
+    },
+    "reason": {
+      "host_not_reporting": "This host sent no Health Metrics events in the window.",
+      "metric_not_reported": "This metric had no usable value for this host in the window.",
+      "no_events": "The Health Metrics log sources sent no usable events in the window.",
+      "no_sample": "No REST health sample was stored for this console in the range.",
+      "no_window": "No window has been collected for this console yet.",
+      "no_window_in_range": "No window was collected for this console in this range.",
+      "property_missing": "These custom properties do not exist on this console: {names}. No health metric search was sent.",
+      "property_unreadable": "The custom-property list could not be read on this console, so no health metric search was sent.",
+      "provider_unsupported": "This provider cannot run Ariel searches, so nothing was collected.",
+      "search_failed": "The Ariel search failed or timed out; nothing was stored for this window.",
+      "search_rejected": "QRadar rejected the search; nothing was stored for this window.",
+      "stale": "The newest stored window is older than the collection cadence allows.",
+      "truncated": "The search returned more rows than the cap allows, so some rows are missing."
+    }
+  },
   "rule_health": {
     "age_unknown": "The rule''s age is unknown, so inactivity cannot be assessed.",
     "dependency": {

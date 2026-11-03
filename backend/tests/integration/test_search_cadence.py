@@ -84,7 +84,13 @@ async def test_get_and_list_treat_missing_seed_rows_as_the_default(db_session) -
     rows = await service.list()
     assert [row.family for row in rows] == [family.value for family in SearchFamily]
     assert {row.family: row.cadence_seconds for row in rows} == {
-        family.value: 900 if family in (SearchFamily.WAF_COLLECTION, SearchFamily.IPS_COLLECTION)
+        family.value: 900
+        if family
+        in (
+            SearchFamily.WAF_COLLECTION,
+            SearchFamily.IPS_COLLECTION,
+            SearchFamily.QRADAR_HEALTH,
+        )
         else 300
         for family in SearchFamily
     }

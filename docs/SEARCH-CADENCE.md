@@ -9,8 +9,8 @@ window of 184 rows takes 0.61 s.
 ## SC.0 What the user asked for
 
 **The decision of 2026-10-18 replaces the 2026-10-12 default:** every search family now defaults to **5 min**,
-except `WAF_COLLECTION` and `IPS_COLLECTION`, which default to **15 min** (amended 2026-10-18: at
-5 min WAF costs 36–72 searches per source an hour). A new operator-defined search still defaults to
+except `WAF_COLLECTION`, `IPS_COLLECTION` and `QRADAR_HEALTH` (D-42, 2026-11-03), which default to
+**15 min** (amended 2026-10-18: at 5 min WAF costs 36–72 searches per source an hour). A new operator-defined search still defaults to
 the 5 min schedule preset. The migration moves only the untouched 1 h seed rows
 (`updated_by IS NULL`), to 15 min for WAF and IPS and to 5 min for every other family; an
 operator-set cadence stays as set. Cadence
@@ -55,6 +55,7 @@ and `C` is a property watch's scope chunks (1–4).
 | `PROPERTY_WATCH` | `C × (2 + pinned)` per watch; caps 12/watch and 40/instance | cap 480/instance | same formula; caps 12/watch and 40/instance | cap 40/instance | n/a (5 min default) | Not measured in T-032/T-040 |
 | `CATCHALL_SENDERS` | 1 | 12 | 1 | 1 | n/a (5 min default) | Not measured in T-032/T-040 |
 | `GEO_COLLECTION` | 2 with both default directions | 24 | 2 | 2 | n/a (5 min default) | Not measured in T-032/T-040 |
+| `QRADAR_HEALTH` | 2 per console (metrics, notifications) | 24 per console | 2 per console | 2 per console | 8 per console (the default) | Not measured |
 
 Every family resumes from its own watermark (or `collected_through`) and takes only complete,
 settled buckets after it, so a tick that finds nothing new sends no search. A faster tick never
@@ -62,6 +63,15 @@ re-searches a collected bucket. Neither the first run nor `NOT_APPLICABLE` depen
 bucket) on their first run, the catch-all and geo first runs look back a fixed 12 buckets (1 h), and a property watch is marked `NOT_APPLICABLE`
 after 12 consecutive collected buckets in which the property parsed on no event, counted across
 ticks (`pw_collector.py`).
+
+**`QRADAR_HEALTH` (D-42) is the exception to the watermark rule.** It is a state-of-the-console
+read, not a bucketed volume: each tick claims its cadence slot `S` and searches the one window
+`[S - cadence, S)`, with two aggregating searches per console (the `Health Metrics` and `System
+Notification` log sources, never a payload). It keeps no watermark and does not back-fill: a slot
+the worker missed is a gap in the trend, not a catch-up. The claimed slot also keys the run's REST
+health sample, so that row lands once per run however often the console-health service is polled.
+It has no scope table, so the history-backfill family map (`app/history/families.py`) does not list
+it. See `docs/QRADAR-HEALTH-DETAIL.md` and the settings in `docs/CONFIGURATION.md`.
 
 The Phase A, WAF and rule-match timings are lab measurements, not production capacity claims.
 The T-040 lab was nearly idle and did not exercise a truncation split or a failing wide search.
