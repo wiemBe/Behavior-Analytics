@@ -6,15 +6,21 @@ and one console at a time, through the Ariel permit pool. The window is the late
 5-minute bucket and the row cap is the smallest the method allows. The result is discarded: only
 the status, a row count and the elapsed time are kept, so no raw value can reach the output.
 
+A family sends one search for each distinct provider method the collector calls per cycle (the
+WAF volume search plus each breakdown the profile's `breakdown_plan` collects; one IPS search per
+planned dimension). Every step is tried even when an earlier one failed, so one bad property
+does not hide the others; the line names the step that failed and the properties it uses.
+
 Verdicts (docs/OPERATIONS.md, OPS-R72):
 
 * PASS: the search completed (a truncated result is still a PASS and says so).
-* FAIL: QRadar refused the query (422) or the token (401/403), a property the query names is
-  absent from the console, or the query could not be built from the configuration. QRadar's
-  reply is never printed: the line carries our fixed sentence, the HTTP status, the family's
-  query version and the property names from our own settings.
-* WARN: a timeout, an unavailable console, a search QRadar created and then errored, no free
-  permit. These prove nothing about the query.
+* FAIL: QRadar refused the search request (400, 404, 409, 422 and any other 4xx) or the token
+  (401/403), a property the query names is absent from the console, or the query could not be
+  built from the configuration. QRadar's reply is never printed: the line carries our fixed
+  sentence, the HTTP status, the family's query version and the property names from our own
+  settings.
+* WARN: a timeout, an unavailable console, rate limiting (429), a 5xx, a search QRadar created
+  and then errored, no free permit. These prove nothing about the query.
 * SKIP: the family is off, nothing is configured for it, or no REST console is registered.
   Never a PASS on missing input (rule 8).
 
@@ -26,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import re
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
@@ -45,7 +52,7 @@ from app.health_detail import spec as health_spec
 from app.i18n.messages import MessageRef, render
 from app.ips.collection_plan import plan_searches
 from app.ips.profile import IpsFieldMapping, IpsProfileError
-from app.models.enums import PwScopeKind
+from app.models.enums import PwScopeKind, WafBreakdown
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
 from app.models.log_source import LogSource
@@ -68,6 +75,7 @@ from app.providers.qradar_rest import (
 from app.repositories.property_watch import PropertyWatchRepository
 from app.services import ariel_search_log as ariel_log
 from app.services.ariel_permit import ArielPermitUnavailable
+from app.waf.profile import WafFieldMapping, WafProfileError, breakdown_plan
 
 PASS = "PASS"  # noqa: S105 - diagnostic verdict, not a credential
 WARN = "WARN"
@@ -105,7 +113,7 @@ _SWITCHES: dict[str, str] = {
     "qradar_health": "qradar_health_collection_enabled",
 }
 
-UNVERSIONED = "unversioned"
+UNVERSIONED = "this family's query has no version number"
 NO_PROPERTIES = "none (the query names no custom property)"
 
 
@@ -117,17 +125,27 @@ class StepResult:
     truncated: bool
 
 
-Step = Callable[[], Awaitable[StepResult]]
+@dataclass(frozen=True)
+class Step:
+    """One search: the provider call, a label for the line, and the property names it uses."""
+
+    run: Callable[[], Awaitable[StepResult]]
+    label: str = ""
+    properties: str = NO_PROPERTIES
 
 
 @dataclass(frozen=True)
 class Plan:
-    """What one family sends on one console, and what to say about it on a FAIL."""
+    """What one family sends on one console, and what to say about it on a FAIL.
+
+    `names` are the property names from our own settings or mapping that the line may print
+    whole: the output layer would mask a long one without a space as a secret-looking token.
+    """
 
     steps: tuple[Step, ...]
     entity: str = ""
-    properties: str = NO_PROPERTIES
     query_version: str = UNVERSIONED
+    names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -136,6 +154,7 @@ class Early:
 
     verdict: str
     message: str
+    names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -143,6 +162,8 @@ class AqlLine:
     family: str
     verdict: str
     message: str
+    #: The property names the message may print whole (see `Plan.names`).
+    names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -174,7 +195,7 @@ async def _prepare_log_source_volume(ctx: _Context) -> Plan | Early:
         )
         return StepResult(batch.rows_returned, batch.truncated)
 
-    return Plan((step,))
+    return Plan((Step(step),))
 
 
 async def _prepare_rule_match(ctx: _Context) -> Plan | Early:
@@ -185,7 +206,7 @@ async def _prepare_rule_match(ctx: _Context) -> Plan | Early:
         rows = sum(len(batch.rows) for batch in result.batches.values())
         return StepResult(rows, result.truncated)
 
-    return Plan((step,), query_version=RULE_MATCH_WINDOWED_QUERY_VERSION)
+    return Plan((Step(step),), query_version=RULE_MATCH_WINDOWED_QUERY_VERSION)
 
 
 async def _prepare_history(ctx: _Context) -> Plan | Early:
@@ -195,7 +216,7 @@ async def _prepare_history(ctx: _Context) -> Plan | Early:
         )
         return StepResult(len(result.totals), False)
 
-    return Plan((step,), query_version=CONSOLE_EVENT_TOTALS_QUERY_VERSION)
+    return Plan((Step(step),), query_version=CONSOLE_EVENT_TOTALS_QUERY_VERSION)
 
 
 async def _prepare_waf(ctx: _Context) -> Plan | Early:
@@ -215,29 +236,64 @@ async def _prepare_waf(ctx: _Context) -> Plan | Early:
     if row is None:
         return Early(SKIP, "no WAF profile is enabled on this console")
     profile, source = row
-    names = [profile.url_property, profile.method_property]
+    entity = f"WAF profile of log source {source.name} (QRadar id {source.qradar_id})"
+    try:
+        mapping = WafFieldMapping.from_profile(profile)
+        # The collector sends the volume search plus each breakdown this plan collects.
+        collected = breakdown_plan(profile, ctx.settings).collect
+    except WafProfileError:
+        return Early(FAIL, f"{entity}: the stored field mapping is not valid; no search was sent")
+    base = [profile.url_property, profile.method_property]
     if profile.virtual_host_property:
-        names.append(profile.virtual_host_property)
+        base.append(profile.virtual_host_property)
+    common: dict[str, Any] = {
+        "qradar_log_source_id": source.qradar_id,
+        "window_start": ctx.start,
+        "window_end": ctx.end,
+        "bucket_seconds": BUCKET_SECONDS,
+        "url_property": profile.url_property,
+        "method_property": profile.method_property,
+        "virtual_host_property": profile.virtual_host_property,
+        "max_groups": ROW_CAP,
+        "max_rows": ROW_CAP,
+    }
 
-    async def step() -> StepResult:
-        batch = await ctx.provider.get_waf_observations_bucketed(
-            qradar_log_source_id=source.qradar_id,
-            window_start=ctx.start,
-            window_end=ctx.end,
-            bucket_seconds=BUCKET_SECONDS,
-            url_property=profile.url_property,
-            method_property=profile.method_property,
-            virtual_host_property=profile.virtual_host_property,
-            max_groups=ROW_CAP,
-            max_rows=ROW_CAP,
-        )
+    async def volume() -> StepResult:
+        batch = await ctx.provider.get_waf_observations_bucketed(**common)
         return StepResult(batch.rows_returned, batch.truncated)
 
-    return Plan(
-        (step,),
-        entity=f"WAF profile of log source {source.name} (QRadar id {source.qradar_id})",
-        properties=", ".join(f'"{name}"' for name in names),
-    )
+    def breakdown_step(breakdown: WafBreakdown) -> tuple[Step, str | None]:
+        # The same property the collector hands the provider; SOURCE_IP reads `sourceip`.
+        property_name = {
+            WafBreakdown.ACTION: mapping.action,
+            WafBreakdown.RESPONSE_CODE: mapping.response_code,
+            WafBreakdown.SOURCE_IP: None,
+        }[breakdown]
+
+        async def run() -> StepResult:
+            batch = await ctx.provider.get_waf_breakdown_bucketed(
+                **common, breakdown=breakdown.value, breakdown_property=property_name
+            )
+            return StepResult(batch.rows_returned, batch.truncated)
+
+        used = [*base, property_name] if property_name else base
+        listed = ", ".join(f'"{name}"' for name in used)
+        if property_name is None:
+            listed += " and QRadar's normalized sourceip"
+        return Step(run, label=f"{breakdown.value} breakdown search", properties=listed), (
+            property_name
+        )
+
+    steps = [
+        Step(volume, label="volume search", properties=", ".join(f'"{n}"' for n in base))
+    ]
+    names = list(base)
+    for item in sorted(collected):
+        step, property_name = breakdown_step(item)
+        steps.append(step)
+        if property_name:
+            names.append(property_name)
+    return Plan(tuple(steps), entity=entity, names=tuple(dict.fromkeys(names)))
 
 
 async def _prepare_ips(ctx: _Context) -> Plan | Early:
@@ -266,38 +322,34 @@ async def _prepare_ips(ctx: _Context) -> Plan | Early:
         [(source.qradar_id, mapping)],
         max_sources_per_search=ctx.settings.ips_max_sources_per_search,
     )
-    # The search most likely to be refused comes first: one that reads a custom property, then
-    # one that reads any mapped field. TOTALS names no property, so it is the last resort.
-    chosen = next(
-        (
-            item
-            for item in planned
-            if any(kind == "CUSTOM_PROPERTY" for _logical, kind, _name in item.group.fields)
-        ),
-        None,
-    ) or next((item for item in planned if item.group.fields), planned[0] if planned else None)
-    if chosen is None:
+    if not planned:
         return Early(SKIP, f"{entity}: the profile plans no search")
-    group = chosen.group
 
-    async def step() -> StepResult:
-        result = await ctx.provider.get_ips_keyed(
-            chosen.dimension,
-            qradar_log_source_ids=group.source_ids,
-            fields=group.provider_fields(),
-            window_start=ctx.start,
-            window_end=ctx.end,
-            bucket_seconds=BUCKET_SECONDS,
-            max_rows=ROW_CAP,
+    def search_step(item: Any) -> Step:
+        group = item.group
+
+        async def run() -> StepResult:
+            result = await ctx.provider.get_ips_keyed(
+                item.dimension,
+                qradar_log_source_ids=group.source_ids,
+                fields=group.provider_fields(),
+                window_start=ctx.start,
+                window_end=ctx.end,
+                bucket_seconds=BUCKET_SECONDS,
+                max_rows=ROW_CAP,
+            )
+            return StepResult(len(result.rows), result.truncated)
+
+        listed = ", ".join(f'{logical}="{kind}:{name}"' for logical, kind, name in group.fields)
+        return Step(
+            run, label=f"{item.dimension.value} search", properties=listed or NO_PROPERTIES
         )
-        return StepResult(len(result.rows), result.truncated)
 
-    names = ", ".join(f'{logical}="{kind}:{name}"' for logical, kind, name in group.fields)
-    return Plan(
-        (step,),
-        entity=f"{entity}, {chosen.dimension.value} search",
-        properties=names or NO_PROPERTIES,
+    # The collector sends one search per planned dimension; so does this check.
+    names = tuple(
+        dict.fromkeys(name for item in planned for _l, _k, name in item.group.fields)
     )
+    return Plan(tuple(search_step(item) for item in planned), entity=entity, names=names)
 
 
 async def _prepare_property_watch(ctx: _Context) -> Plan | Early:
@@ -354,9 +406,14 @@ async def _prepare_property_watch(ctx: _Context) -> Plan | Early:
         return StepResult(len(result.rows), result.truncated)
 
     return Plan(
-        (step,),
+        (
+            Step(
+                step,
+                properties=", ".join(f'"{kind_}:{name}"' for kind_, name in properties),
+            ),
+        ),
         entity=entity,
-        properties=", ".join(f'"{kind_}:{name}"' for kind_, name in properties),
+        names=tuple(name for _kind, name in properties),
     )
 
 
@@ -377,9 +434,8 @@ async def _prepare_catchall(ctx: _Context) -> Plan | Early:
         return StepResult(len(result.rows), result.truncated)
 
     return Plan(
-        (step,),
+        (Step(step, properties="none (the query filters on device type ids)"),),
         entity=f"device type {first} of CATCHALL_TYPE_IDS",
-        properties="none (the query filters on device type ids)",
     )
 
 
@@ -408,7 +464,7 @@ async def _prepare_geo(ctx: _Context) -> Plan | Early:
                     {"name": name, "setting": _PROPERTY_SETTING[direction]},
                 )
             )
-            return Early(FAIL, f"property absent. {sentence} No search was sent.")
+            return Early(FAIL, f"property absent. {sentence} No search was sent.", (name,))
 
     async def step() -> StepResult:
         result = await ctx.provider.get_geo_keyed(
@@ -422,12 +478,19 @@ async def _prepare_geo(ctx: _Context) -> Plan | Early:
         return StepResult(len(result.rows), result.truncated)
 
     return Plan(
-        (step,),
-        entity=f"{direction.value} direction",
-        properties=(
-            f'"{name}"' if property_mode else "none (GEO::LOOKUP, GEO_COUNTRY_SOURCE=lookup)"
+        (
+            Step(
+                step,
+                properties=(
+                    f'"{name}"'
+                    if property_mode
+                    else "none (GEO::LOOKUP, GEO_COUNTRY_SOURCE=lookup)"
+                ),
+            ),
         ),
+        entity=f"{direction.value} direction",
         query_version=GEO_PROPERTY_VERSION if property_mode else GEO_LOOKUP_VERSION,
+        names=(name,) if property_mode else (),
     )
 
 
@@ -443,7 +506,7 @@ async def _prepare_health(ctx: _Context) -> Plan | Early:
                 "qradar_health_detail.reason.property_missing", {"names": ", ".join(missing)}
             )
         )
-        return Early(FAIL, f"property absent. {sentence}")
+        return Early(FAIL, f"property absent. {sentence}", tuple(missing))
 
     async def metrics() -> StepResult:
         result = await ctx.provider.get_health_metrics(ctx.start, ctx.end, max_rows=ROW_CAP)
@@ -455,11 +518,14 @@ async def _prepare_health(ctx: _Context) -> Plan | Early:
         )
         return StepResult(len(result.rows), result.truncated)
 
+    listed = ", ".join(f'"{name}"' for name in health_spec.REQUIRED_PROPERTIES)
     return Plan(
-        (metrics, notifications),
-        entity="metrics and notifications searches",
-        properties=", ".join(f'"{name}"' for name in health_spec.REQUIRED_PROPERTIES),
+        (
+            Step(metrics, label="metrics search", properties=listed),
+            Step(notifications, label="notifications search", properties=listed),
+        ),
         query_version=f"qradar_health/v{health_spec.QUERY_VERSION}",
+        names=tuple(health_spec.REQUIRED_PROPERTIES),
     )
 
 
@@ -478,7 +544,7 @@ _PREPARE: dict[str, Prepare] = {
 
 # -------------------------------------------------------------------- the search
 @ariel_log.ariel_caller(ariel_log.CALLER_DOCTOR_AQL)
-async def _send(step: Step, timeout: float) -> StepResult:
+async def _send(step: Callable[[], Awaitable[StepResult]], timeout: float) -> StepResult:
     """One search, attributed to DOCTOR_AQL so a doctor run never shows as family load."""
     return await asyncio.wait_for(step(), timeout=timeout)
 
@@ -488,9 +554,20 @@ def _status(exc: BaseException) -> str:
     return f"HTTP {code}" if isinstance(code, int) else "no HTTP status"
 
 
-def classify(exc: BaseException, plan: Plan, *, timeout: float) -> tuple[str, str]:
+#: A 4xx that is not an auth refusal: QRadar read the request and said no. (429 is not here:
+#: the provider raises it as "unavailable", and it says nothing about the query.)
+_REFUSED_CODES = range(400, 500)
+
+
+def classify(exc: BaseException, plan: Plan, step: Step, *, timeout: float) -> tuple[str, str]:
     """The verdict of a search that raised. The exception text is never read: it can echo
-    request detail (`_sanitize_upstream_error`)."""
+    request detail (`_sanitize_upstream_error`).
+
+    The provider tells a refusal at create from a failed search by what the exception carries,
+    and only partly: a `ProviderError` with an HTTP status is a refused request, one without is
+    a search QRadar created and then ended. It cannot say which request of the search (create,
+    poll or fetch) drew the refusal, so the sentence says "the search request" and no more.
+    """
     if isinstance(exc, ArielPermitUnavailable):
         return WARN, (
             f"no free Ariel permit within {exc.waited_seconds:g} s; nothing was sent. "
@@ -501,10 +578,18 @@ def classify(exc: BaseException, plan: Plan, *, timeout: float) -> tuple[str, st
             f"no answer within {timeout:g} s (DOCTOR_AQL_TIMEOUT_SECONDS). "
             "This proves nothing about the query"
         )
-    if isinstance(exc, ProviderQueryRejectedError):
+    status = getattr(exc, "status_code", None)
+    refused = isinstance(exc, ProviderQueryRejectedError) or (
+        isinstance(exc, ProviderError)
+        and not isinstance(exc, ProviderUnavailableError | ProviderAuthError)
+        and isinstance(status, int)
+        and status in _REFUSED_CODES
+    )
+    if refused:
         return FAIL, (
-            f"QRadar refused the query ({_status(exc)}). Query version {plan.query_version}; "
-            f"properties the query names: {plan.properties}. Compare them with the console's "
+            f"QRadar refused the search request ({_status(exc)}). "
+            f"Query version: {plan.query_version}; "
+            f"properties the query names: {step.properties}. Compare them with the console's "
             "custom property list. QRadar's reply is not shown"
         )
     if isinstance(exc, ProviderAuthError):
@@ -515,6 +600,10 @@ def classify(exc: BaseException, plan: Plan, *, timeout: float) -> tuple[str, st
     if isinstance(exc, CapabilityNotSupportedError):
         return SKIP, "AQL runs only on the REST provider"
     if isinstance(exc, ProviderUnavailableError):
+        if status == 429:
+            return WARN, (
+                "QRadar is rate-limiting searches (HTTP 429). This proves nothing about the query"
+            )
         if ariel_log.outcome_for_exception(exc) == ariel_log.OUTCOME_TIMEOUT:
             return WARN, (
                 "QRadar did not finish the search in time. This proves nothing about the query"
@@ -528,30 +617,55 @@ def classify(exc: BaseException, plan: Plan, *, timeout: float) -> tuple[str, st
     if isinstance(exc, ValueError):
         return FAIL, (
             "the query could not be built from the configuration "
-            f"(properties: {plan.properties}); no search was sent"
+            f"(properties: {step.properties}); no search was sent"
         )
     return WARN, f"the check failed before an answer ({type(exc).__name__})"
 
 
 async def _run_plan(plan: Plan, *, timeout: float) -> tuple[str, str]:
+    """Every step is tried: a failed step never hides the others (OPS-R72)."""
     rows = 0
     truncated = False
+    completed = 0
+    problems: list[tuple[str, str]] = []
     started = time.monotonic()
     for step in plan.steps:
         try:
-            result = await _send(step, timeout)
+            result = await _send(step.run, timeout)
         except Exception as exc:
-            verdict, text = classify(exc, plan, timeout=timeout)
-            return verdict, (f"{plan.entity}: {text}" if plan.entity and verdict != SKIP else text)
+            verdict, text = classify(exc, plan, step, timeout=timeout)
+            problems.append((verdict, f"{step.label}: {text}" if step.label else text))
+            continue
+        completed += 1
         rows += result.rows
         truncated = truncated or result.truncated
+    prefix = f"{plan.entity}: " if plan.entity else ""
+    if problems:
+        verdict = min((item[0] for item in problems), key=lambda item: _ORDER[item])
+        if verdict == SKIP:
+            # Only a provider without AQL says SKIP; it has no step to name.
+            return SKIP, problems[0][1]
+        detail = "; ".join(text for _verdict, text in problems)
+        if len(plan.steps) > 1:
+            detail += f". {completed} of {len(plan.steps)} searches completed"
+        return verdict, f"{prefix}{detail}"
     elapsed_ms = int((time.monotonic() - started) * 1000)
-    searches = len(plan.steps)
     text = (
-        f"{searches} search(es) completed, {rows} row(s) returned, {elapsed_ms} ms"
+        f"{completed} search(es) completed, {rows} row(s) returned, {elapsed_ms} ms"
         + (", truncated at the 1-row cap" if truncated else "")
     )
-    return PASS, f"{plan.entity}: {text}" if plan.entity else text
+    return PASS, f"{prefix}{text}"
+
+
+def _allowed(names: Sequence[str]) -> tuple[str, ...]:
+    """The names the output layer must print whole: each one, and each unbroken run in it (a
+    name with a space can hold a 24+ character run the token filter would still mask)."""
+    out: dict[str, None] = {}
+    for name in names:
+        out[name] = None
+        for run in re.findall(r"[A-Za-z0-9_-]+", name):
+            out[run] = None
+    return tuple(out)
 
 
 _ORDER = {FAIL: 0, WARN: 1, PASS: 2, SKIP: 3}
@@ -573,7 +687,7 @@ async def run_aql_checks(
     now: datetime,
     families: Sequence[str] = FAMILIES,
 ) -> list[AqlLine]:
-    """One line per family. At most len(families) x REST consoles x 2 searches are sent."""
+    """One line per family. Each family sends one search per provider method its collector calls."""
     rest = [item for item in instances if item.provider_kind == "rest"]
     others = [item for item in instances if item.provider_kind != "rest"]
     start, end = window_for(now)
@@ -597,6 +711,7 @@ async def run_aql_checks(
                 )
                 continue
             parts: list[tuple[str, str, str]] = []
+            names: list[str] = []
             for instance in rest:
                 provider = providers.get(instance.id)
                 if provider is None:
@@ -615,6 +730,7 @@ async def run_aql_checks(
                         (WARN, instance.name, f"inputs could not be read ({type(exc).__name__})")
                     )
                     continue
+                names.extend(plan.names)
                 if isinstance(plan, Early):
                     parts.append((plan.verdict, instance.name, plan.message))
                     continue
@@ -624,7 +740,7 @@ async def run_aql_checks(
                 (SKIP, item.name, "AQL runs only on the REST provider") for item in others
             )
             verdict, message = _merge(parts)
-            lines.append(AqlLine(family, verdict, message))
+            lines.append(AqlLine(family, verdict, message, _allowed(names)))
     finally:
         for provider in providers.values():
             # Closing a client must not hide the verdicts.

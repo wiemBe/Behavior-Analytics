@@ -12,7 +12,7 @@ import json
 import os
 import re
 import ssl
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -125,6 +125,10 @@ class CheckResult:
     status: Status
     message: str
     runbook: str | None = None
+    #: Property names from our own settings or mapping that the message prints whole
+    #: (`doctor --aql`). The output layer would mask a long one as a secret-looking token.
+    #: Never text from QRadar. Not part of the JSON output.
+    allow: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -315,8 +319,12 @@ def _batch_retention_message(settings: Settings) -> str:
     return "; ".join(parts) + "; " + tail
 
 
-def _safe_text(value: object) -> str:
-    """Redact untrusted text before it can reach terminal or JSON output."""
+def _safe_text(value: object, allow: Collection[str] = ()) -> str:
+    """Redact untrusted text before it can reach terminal or JSON output.
+
+    `allow` is an explicit list of exact names from our own configuration; a token that is not
+    one of them is still masked.
+    """
     cleaned = str(redact(str(value))).replace("\r", " ").replace("\n", " ")
     cleaned = _CREDENTIAL_URL_RE.sub(r"\1<redacted>@", cleaned)
     cleaned = _SECRET_ASSIGNMENT_RE.sub(r"\1=<redacted>", cleaned)
@@ -327,7 +335,7 @@ def _safe_text(value: object) -> str:
         # every message a second time, so without this the name would be masked here and the
         # operator would never learn which collector failed. Catalog table names are the
         # same kind of constant: derived from ``BATCH_DELETERS``, not operator text.
-        if candidate in _WATERMARK_NAMES or candidate in _BATCH_TABLE_NAMES:
+        if candidate in _WATERMARK_NAMES or candidate in _BATCH_TABLE_NAMES or candidate in allow:
             return candidate
         if "_" in candidate and candidate.upper() == candidate:
             return candidate
@@ -1920,7 +1928,11 @@ class Doctor:
         )
         return [
             CheckResult(
-                f"aql_{line.family}", Status(line.verdict), line.message, doctor_aql.RUNBOOK
+                f"aql_{line.family}",
+                Status(line.verdict),
+                line.message,
+                doctor_aql.RUNBOOK,
+                line.names,
             )
             for line in lines
         ]
@@ -1932,14 +1944,19 @@ def render_text(results: Sequence[CheckResult]) -> str:
     for result in results:
         suffix = f"    runbook: {result.runbook}" if result.runbook else ""
         lines.append(
-            f"{result.status.value:<5} {result.id:<{width}} {_safe_text(result.message)}{suffix}"
+            f"{result.status.value:<5} {result.id:<{width}} "
+            f"{_safe_text(result.message, result.allow)}{suffix}"
         )
     return "\n".join(lines)
 
 
 def render_json(results: Sequence[CheckResult]) -> str:
     payload = [
-        {**asdict(result), "message": _safe_text(result.message)} for result in results
+        {
+            **{k: v for k, v in asdict(result).items() if k != "allow"},
+            "message": _safe_text(result.message, result.allow),
+        }
+        for result in results
     ]
     return json.dumps(payload, default=str, sort_keys=True)
 
@@ -1977,7 +1994,7 @@ def main() -> int:
         action="store_true",
         help=(
             "also send each collection family's real query once to every REST console "
-            "(read-only, results discarded; up to 11 searches per console)"
+            "(read-only, results discarded; up to 20 searches per console)"
         ),
     )
     args = parser.parse_args()

@@ -6,6 +6,7 @@ import json
 import pathlib
 import sys
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, ClassVar, cast
@@ -17,8 +18,10 @@ from app.cli import doctor as doctor_module
 from app.cli import doctor_aql
 from app.cli.doctor import CheckResult, Doctor, Status, render_json, render_text
 from app.core.config import Settings
+from app.ips.collection_plan import plan_searches
+from app.ips.profile import IpsFieldMapping
 from app.models.ariel_search import CALLERS
-from app.models.enums import PwScopeKind
+from app.models.enums import PwScopeKind, WafFieldStatus, WafProfileValidationStatus
 from app.providers.base import (
     CapabilityNotSupportedError,
     ProviderAuthError,
@@ -28,20 +31,23 @@ from app.providers.base import (
 )
 from app.services import ariel_search_log as ariel_log
 from app.services.ariel_permit import ArielPermitUnavailable
+from app.waf.profile import breakdown_plan
 
 #: A recognisable value no output may carry: it stands for a path, an IP or a property value.
 RAW_VALUE = "RAW-VALUE-/admin/secret-10.9.8.7"
 #: What a real 422 body can echo back (`_sanitize_upstream_error` exists for this).
 UPSTREAM_BODY = "Authorization: SEC fake-header-token-0123456789 query was invalid"
 
+NO_VERSION = "this family's query has no version number"
+
 NOW = datetime(2026, 11, 3, 12, 7, 31, tzinfo=UTC)
 
+#: Provider methods per family that need no profile to count. WAF and IPS are derived from the
+#: collector's own planners (`breakdown_plan`, `plan_searches`) in `_expected_calls`.
 FAMILY_CALLS = {
     "log_source_volume": ["get_log_source_metrics_bucketed"],
     "rule_match": ["get_rule_matches_windowed"],
     "history": ["get_console_event_totals"],
-    "waf_collection": ["get_waf_observations_bucketed"],
-    "ips_collection": ["get_ips_keyed"],
     "property_watch": ["get_pw_keyed"],
     "catchall_senders": ["get_catchall_senders_keyed"],
     "geo_collection": ["get_geo_keyed"],
@@ -53,6 +59,7 @@ METHOD_FAMILY = {
     "get_rule_matches_windowed": ariel_log.CALLER_RULE_MATCH,
     "get_console_event_totals": ariel_log.CALLER_HISTORY,
     "get_waf_observations_bucketed": ariel_log.CALLER_WAF_COLLECTION,
+    "get_waf_breakdown_bucketed": ariel_log.CALLER_WAF_COLLECTION,
     "get_ips_keyed": ariel_log.CALLER_IPS_COLLECTION,
     "get_pw_keyed": ariel_log.CALLER_PROPERTY_WATCH,
     "get_catchall_senders_keyed": ariel_log.CALLER_CATCHALL_SENDERS,
@@ -70,6 +77,7 @@ class FakeProvider:
         *,
         error: BaseException | None = None,
         truncated: bool = False,
+        fail_if: Callable[[str, dict[str, Any]], BaseException | None] | None = None,
         properties: tuple[str, ...] = (
             "Metric ID",
             "Value",
@@ -78,6 +86,7 @@ class FakeProvider:
         ),
     ) -> None:
         self.error = error
+        self.fail_if = fail_if
         self.truncated = truncated
         self.properties = properties
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -104,6 +113,10 @@ class FakeProvider:
             self.callers.append(ariel_log.effective_caller(METHOD_FAMILY[name]))
             if self.error is not None:
                 raise self.error
+            if self.fail_if is not None:
+                failure = self.fail_if(name, {"args": args, **kwargs})
+                if failure is not None:
+                    raise failure
             rows = [SimpleNamespace(value=RAW_VALUE)]
             return SimpleNamespace(
                 rows=rows,
@@ -149,11 +162,31 @@ class FakeSession:
         return FakeRows(self.row)
 
 
+ACTION_PROPERTY = "Action Taken"
+CODE_PROPERTY = "Response Status Code"
+
+
 def _waf_row(virtual_host: str | None = None) -> Any:
+    """A validated profile that collects all three breakdowns (given the settings in ALL_ON)."""
+    report = {
+        "fields": [
+            {"field": "ACTION", "status": WafFieldStatus.AVAILABLE, "discovered_values": []},
+            {"field": "RESPONSE_CODE", "status": WafFieldStatus.AVAILABLE},
+        ]
+    }
     profile = SimpleNamespace(
         url_property="Request URL",
         method_property="Request Method",
         virtual_host_property=virtual_host,
+        action_property=ACTION_PROPERTY,
+        response_code_property=CODE_PROPERTY,
+        rule_id_property=None,
+        user_agent_property=None,
+        action_value_map={"BLOCKED": ["deny"], "ALLOWED": ["allow"]},
+        validation_status=WafProfileValidationStatus.VALID,
+        validated_profile_version=3,
+        profile_version=3,
+        validation_report=report,
     )
     return profile, SimpleNamespace(qradar_id=77, name="waf-edge-1")
 
@@ -206,6 +239,8 @@ ALL_ON = {
     "catchall_collection_enabled": True,
     "geo_collection_enabled": True,
     "qradar_health_collection_enabled": True,
+    "waf_outcome_collection_enabled": True,
+    "waf_client_collection_enabled": True,
 }
 
 
@@ -280,6 +315,24 @@ def _full(settings: Settings, provider: FakeProvider, **kwargs: Any):
     return _run(settings, provider, waf=_waf_row(), ips=_ips_row(), **kwargs)
 
 
+def _expected_calls(settings: Settings) -> dict[str, list[str]]:
+    """The provider methods each family sends, derived from what the collectors plan."""
+    waf_profile, _source = _waf_row()
+    collected = breakdown_plan(waf_profile, settings).collect
+    ips_profile, source = _ips_row()
+    planned = plan_searches(
+        [(source.qradar_id, IpsFieldMapping.from_profile(ips_profile))],
+        max_sources_per_search=settings.ips_max_sources_per_search,
+    )
+    out = dict(FAMILY_CALLS)
+    out["waf_collection"] = [
+        "get_waf_observations_bucketed",
+        *["get_waf_breakdown_bucketed"] * len(collected),
+    ]
+    out["ips_collection"] = ["get_ips_keyed"] * len(planned)
+    return {family: out[family] for family in doctor_aql.FAMILIES}
+
+
 # ---------------------------------------------------------------------- verdicts
 @pytest.mark.asyncio
 async def test_every_family_passes_with_row_count_and_no_raw_value(settings: Settings) -> None:
@@ -313,15 +366,19 @@ async def test_each_family_calls_its_real_method_once_with_the_smallest_cap(
     provider = FakeProvider()
     await _full(settings, provider)
     asked = [name for name, _ in provider.calls]
-    assert asked == [name for names in FAMILY_CALLS.values() for name in names]
-    assert len(asked) == 10
+    expected = _expected_calls(settings)
+    assert asked == [name for names in expected.values() for name in names]
+    # WAF: the volume search and its three breakdowns; IPS: one search per planned dimension.
+    assert len(expected["waf_collection"]) == 4
+    assert len(expected["ips_collection"]) == 6
+    assert len(asked) == 18
     start, end = doctor_aql.window_for(NOW)
     assert (end - start).total_seconds() == 300
     assert end == datetime(2026, 11, 3, 12, 5, tzinfo=UTC)
     for name, kwargs in provider.calls:
         if "max_rows" in kwargs:
             assert kwargs["max_rows"] == 1, name
-        if name == "get_waf_observations_bucketed":
+        if name.startswith("get_waf_"):
             assert kwargs["max_groups"] == 1
         values = (*kwargs["args"], *kwargs.values())
         window = [item for item in values if isinstance(item, datetime)]
@@ -347,9 +404,9 @@ async def test_a_truncated_result_is_still_a_pass_and_says_so(settings: Settings
     [
         ("rule_match", "rule_match/v2", "none"),
         ("history", "console_event_totals/v1", "none"),
-        ("waf_collection", "unversioned", '"Request URL", "Request Method"'),
-        ("ips_collection", "unversioned", 'SIGNATURE="CUSTOM_PROPERTY:Threat Signature"'),
-        ("property_watch", "unversioned", '"CUSTOM_PROPERTY:Login Country"'),
+        ("waf_collection", NO_VERSION, '"Request URL", "Request Method"'),
+        ("ips_collection", NO_VERSION, 'SIGNATURE="CUSTOM_PROPERTY:Threat Signature"'),
+        ("property_watch", NO_VERSION, '"CUSTOM_PROPERTY:Login Country"'),
         ("geo_collection", "geo-country-property-v1", '"Source Geographic Location"'),
         ("qradar_health", "qradar_health/v2", '"Metric ID", "Value", "Element"'),
     ],
@@ -399,6 +456,163 @@ async def test_warn_proves_nothing_about_the_query(
     assert fragment in line.message
     assert "proves nothing about the query" in line.message
     assert "fake-header-token" not in line.message
+
+
+def _breakdown_fails(property_name: str) -> Callable[[str, dict[str, Any]], BaseException | None]:
+    def fail_if(name: str, kwargs: dict[str, Any]) -> BaseException | None:
+        if name == "get_waf_breakdown_bucketed" and kwargs["breakdown_property"] == property_name:
+            return ProviderQueryRejectedError(UPSTREAM_BODY, status_code=422)
+        return None
+
+    return fail_if
+
+
+@pytest.mark.asyncio
+async def test_a_bad_waf_breakdown_property_fails_naming_the_step_and_the_others_still_run(
+    settings: Settings,
+) -> None:
+    provider = FakeProvider(fail_if=_breakdown_fails(ACTION_PROPERTY))
+    line = (await _full(settings, provider, families=("waf_collection",)))["waf_collection"]
+    assert line.verdict == doctor_aql.FAIL
+    assert "ACTION breakdown search" in line.message
+    assert f'"{ACTION_PROPERTY}"' in line.message
+    assert "HTTP 422" in line.message
+    assert "3 of 4 searches completed" in line.message
+    # The good steps are named by nothing but the count: no other step is reported as failed.
+    assert "RESPONSE_CODE breakdown search: QRadar refused" not in line.message
+    assert "volume search: QRadar refused" not in line.message
+    # A FAIL does not stop the family: the volume search and every breakdown were sent.
+    sent = [(n, k.get("breakdown")) for n, k in provider.calls]
+    assert sent == [
+        ("get_waf_observations_bucketed", None),
+        ("get_waf_breakdown_bucketed", "ACTION"),
+        ("get_waf_breakdown_bucketed", "RESPONSE_CODE"),
+        ("get_waf_breakdown_bucketed", "SOURCE_IP"),
+    ]
+    assert "fake-header-token" not in line.message
+    assert line.names and ACTION_PROPERTY in line.names
+
+
+@pytest.mark.asyncio
+async def test_a_bad_response_code_property_names_that_property_only(settings: Settings) -> None:
+    provider = FakeProvider(fail_if=_breakdown_fails(CODE_PROPERTY))
+    line = (await _full(settings, provider, families=("waf_collection",)))["waf_collection"]
+    assert line.verdict == doctor_aql.FAIL
+    assert "RESPONSE_CODE breakdown search: QRadar refused" in line.message
+    assert f'"{CODE_PROPERTY}"' in line.message
+    assert "ACTION breakdown search: QRadar refused" not in line.message
+
+
+@pytest.mark.asyncio
+async def test_a_bad_non_primary_ips_dimension_fails_naming_it_and_the_rest_run(
+    settings: Settings,
+) -> None:
+    def fail_if(name: str, kwargs: dict[str, Any]) -> BaseException | None:
+        if name == "get_ips_keyed" and kwargs["args"][0].value == "DESTINATION_PORT":
+            return ProviderQueryRejectedError(UPSTREAM_BODY, status_code=422)
+        return None
+
+    provider = FakeProvider(fail_if=fail_if)
+    line = (await _full(settings, provider, families=("ips_collection",)))["ips_collection"]
+    assert line.verdict == doctor_aql.FAIL, line.message
+    assert "DESTINATION_PORT search: QRadar refused" in line.message
+    assert 'DESTINATION_PORT="NORMALIZED:destinationport"' in line.message
+    assert "5 of 6 searches completed" in line.message
+    assert len(provider.calls) == len(_expected_calls(settings)["ips_collection"]) == 6
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", [400, 404, 409, 422])
+async def test_a_refused_search_request_fails_with_the_status_version_and_names(
+    settings: Settings, code: int
+) -> None:
+    error = (
+        ProviderQueryRejectedError(UPSTREAM_BODY, status_code=code)
+        if code == 422
+        else ProviderError(UPSTREAM_BODY, status_code=code)
+    )
+    line = (await _full(settings, FakeProvider(error=error), families=("rule_match",)))[
+        "rule_match"
+    ]
+    assert line.verdict == doctor_aql.FAIL
+    assert f"QRadar refused the search request (HTTP {code})" in line.message
+    assert "rule_match/v2" in line.message
+    assert "properties the query names:" in line.message
+    assert "without completing" not in line.message
+    assert "fake-header-token" not in line.message
+
+
+@pytest.mark.asyncio
+async def test_rate_limiting_warns_and_proves_nothing(settings: Settings) -> None:
+    error = ProviderUnavailableError(UPSTREAM_BODY, status_code=429)
+    line = (await _full(settings, FakeProvider(error=error), families=("rule_match",)))[
+        "rule_match"
+    ]
+    assert line.verdict == doctor_aql.WARN
+    assert "QRadar is rate-limiting searches (HTTP 429)" in line.message
+    assert "proves nothing about the query" in line.message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", [500, 502, 503])
+async def test_a_5xx_warns(settings: Settings, code: int) -> None:
+    error = ProviderUnavailableError(UPSTREAM_BODY, status_code=code)
+    line = (await _full(settings, FakeProvider(error=error), families=("rule_match",)))[
+        "rule_match"
+    ]
+    assert line.verdict == doctor_aql.WARN
+    assert "did not answer" in line.message
+
+
+@pytest.mark.asyncio
+async def test_a_search_that_was_created_and_then_errored_warns_as_before(
+    settings: Settings,
+) -> None:
+    error = ProviderError("QRadar Ariel metric search did not complete")
+    line = (await _full(settings, FakeProvider(error=error), families=("rule_match",)))[
+        "rule_match"
+    ]
+    assert line.verdict == doctor_aql.WARN
+    assert "accepted the search but it ended without completing" in line.message
+
+
+#: 30 characters, no space: a configured property name the token filter would otherwise mask.
+LONG_PROPERTY = "Request_URL_Property_Name_Long"
+#: 40 characters of QRadar-supplied text (a log source name) that must still be masked.
+SECRET_LOOKING = "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1eF3hJ5kL7n"
+
+
+@pytest.mark.asyncio
+async def test_a_long_configured_property_name_prints_whole_and_a_secret_looking_token_does_not(
+    settings: Settings,
+) -> None:
+    assert len(LONG_PROPERTY) == 30 and len(SECRET_LOOKING) == 40
+    profile, source = _waf_row()
+    profile.url_property = LONG_PROPERTY
+    source.name = SECRET_LOOKING
+    provider = FakeProvider(
+        error=ProviderQueryRejectedError(f"{SECRET_LOOKING} {UPSTREAM_BODY}", status_code=422)
+    )
+    line = (
+        await _run(settings, provider, waf=(profile, source), families=("waf_collection",))
+    )["waf_collection"]
+    assert line.verdict == doctor_aql.FAIL
+    result = CheckResult("aql_waf_collection", Status.FAIL, line.message, "OPS-R72", line.names)
+    text = render_text([result])
+    payload = render_json([result])
+    for output in (text, payload):
+        assert LONG_PROPERTY in output
+        assert SECRET_LOOKING not in output
+        assert "***redacted***" in output
+        assert "fake-header-token" not in output
+    assert "allow" not in json.loads(payload)[0]
+
+
+def test_the_output_layer_masks_a_long_name_that_is_not_on_the_allowlist() -> None:
+    message = f'properties the query names: "{LONG_PROPERTY}"'
+    assert LONG_PROPERTY in doctor_module._safe_text(message, (LONG_PROPERTY,))
+    assert LONG_PROPERTY not in doctor_module._safe_text(message)
+    assert LONG_PROPERTY not in doctor_module._safe_text(message, ("Another_Name",))
 
 
 @pytest.mark.asyncio
@@ -529,8 +743,8 @@ async def test_searches_are_sequential_and_bounded_by_families_times_consoles(
     consoles = [_console(name="a"), _console(name="b")]
     await _full(settings, provider, instances=consoles)
     assert provider.max_running == 1
-    assert len(provider.calls) == 20
-    assert len(provider.calls) <= len(doctor_aql.FAMILIES) * 2 * 2
+    per_console = sum(len(names) for names in _expected_calls(settings).values())
+    assert len(provider.calls) == 2 * per_console == 36
 
 
 @pytest.mark.asyncio
@@ -591,7 +805,7 @@ async def test_aql_checks_follow_the_ordinary_ones_in_text_and_json(settings: Se
     payload = json.loads(render_json(results))
     assert [item["id"] for item in payload][-9:] == list(doctor_aql.CHECK_IDS)
     assert "aql_log_source_volume" in render_text(results)
-    assert len(provider.calls) == 10
+    assert len(provider.calls) == 18
 
 
 @pytest.mark.asyncio
@@ -643,6 +857,32 @@ def test_main_with_aql_and_json_exits_with_the_worst_verdict(
     else:
         assert any(item["status"] == verdict for item in aql)
     assert "fake-header-token" not in json.dumps(payload)
+
+
+def test_main_with_aql_and_json_exits_2_on_a_waf_breakdown_fail(
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    provider = FakeProvider(fail_if=_breakdown_fails(CODE_PROPERTY))
+
+    def build(**kwargs: Any) -> Doctor:
+        return _doctor(settings, provider, **kwargs)
+
+    async def no_dispose() -> None:
+        return None
+
+    monkeypatch.setattr(doctor_module, "Doctor", build)
+    monkeypatch.setattr(doctor_module, "dispose_engine", no_dispose)
+    monkeypatch.setattr(sys, "argv", ["doctor", "--aql", "--json"])
+    assert doctor_module.main() == 2
+    payload = {item["id"]: item for item in json.loads(capsys.readouterr().out)}
+    waf = payload["aql_waf_collection"]
+    assert waf["status"] == "FAIL"
+    assert "RESPONSE_CODE breakdown search" in waf["message"]
+    assert CODE_PROPERTY in waf["message"]
+    assert "allow" not in waf
+    assert payload["aql_rule_match"]["status"] == "PASS"
 
 
 def test_the_docs_and_env_example_describe_the_checks_and_the_setting() -> None:

@@ -362,7 +362,7 @@ awk -F= '
 
 #### MT-136 — `doctor --aql`: every family's query is accepted by the console [core]
 
-**Precondition:** MT-09 is done. The console answers (`qradar_auth` PASS). The command sends up to 11 read-only searches per REST console, one at a time, through the Ariel permit pool; they are recorded under the caller `DOCTOR_AQL`. Nothing is written to QRadar.
+**Precondition:** MT-09 is done. The console answers (`qradar_auth` PASS). The command sends up to 20 read-only searches per REST console (WAF volume plus each breakdown, each IPS dimension, two health searches, one for each other family), one at a time, through the Ariel permit pool; they are recorded under the caller `DOCTOR_AQL`. Nothing is written to QRadar.
 
 **Action:**
 
@@ -374,8 +374,8 @@ echo "exit: $?"
 **Expected:**
 
 - Nine extra lines after the ordinary ones: `aql_log_source_volume`, `aql_rule_match`, `aql_history`, `aql_waf_collection`, `aql_ips_collection`, `aql_property_watch`, `aql_catchall_senders`, `aql_geo_collection`, `aql_qradar_health`.
-- **Pass = no `FAIL` among the `aql_*` lines.** A `FAIL` names the HTTP status, the query version and the property names; fix it by OPS-R72 and run the command again. A `SKIP` (family off, nothing configured, MCP console) is not a Fail.
-- A `WARN` (timeout, unavailable console, no free permit) is not a Fail: write the id and its cause in the Note field.
+- **Pass = no `FAIL` among the `aql_*` lines.** A `FAIL` names the step that failed (for WAF and IPS: the breakdown or dimension), the HTTP status, the query version and the property names; fix it by OPS-R72 and run the command again. A `SKIP` (family off, nothing configured, MCP console) is not a Fail.
+- A `WARN` (timeout, unavailable console, rate limiting HTTP 429, a 5xx, no free permit) is not a Fail: write the id and its cause in the Note field.
 - No line holds an event value, an IP address or QRadar's own error text.
 
 **Record:** The exit code, the status of each `aql_*` line, and the cause of every `WARN` or `FAIL`.
@@ -2312,7 +2312,7 @@ The in-app guide is at `/guide`; it is open to everyone who is signed in and nee
 
 ### 14. Read-only against QRadar
 
-Which commands send an Ariel search: plain `doctor` sends none (its `qradar_access` line reads the stored result of the last access check; it probes nothing itself); `doctor --aql` sends one per collection family query, up to 11 per console (MT-136, caller `DOCTOR_AQL`); the access check sends exactly one probe search per console per check, every 6 hours and on each "Check now" (MT-134, caller `ACCESS_CHECK`). Every search the platform sends is recorded in `ariel_search_run`.
+Which commands send an Ariel search: plain `doctor` sends none (its `qradar_access` line reads the stored result of the last access check; it probes nothing itself); `doctor --aql` sends one per collection family query, up to 20 per console (MT-136, caller `DOCTOR_AQL`); the access check sends exactly one probe search per console per check, every 6 hours and on each "Check now" (MT-134, caller `ACCESS_CHECK`). Every search the platform sends is recorded in `ariel_search_run`.
 
 Nothing in this tool writes to QRadar (the fourth of the four rules in `docs/OPERATIONS.md`). The provider interface (`app/providers/base.py`) has no create, update or delete method for QRadar configuration; it has only the Ariel search lifecycle methods (`create_ariel_search`, `get_ariel_search_status`, `get_ariel_search_results`, `cancel_ariel_search`). The requests the REST provider makes to QRadar are, in the code: `GET /system/about`, `GET /config/event_sources/log_source_management/log_sources`, `…/log_source_types`, `…/log_source_groups`, `GET /config/event_sources/custom_properties/…`, `GET /analytics/rules`, `GET /analytics/building_blocks`, `GET /siem/offenses`, `GET /ariel/searches/<id>` and `…/results`, and, to record an Ariel search, `POST /ariel/searches` and, to cancel its own search, `DELETE /ariel/searches/<id>`. The last two create and delete a temporary search object in QRadar; they do not create, change or delete a configuration object (rule, log source, custom property, offense, reference data).
 
