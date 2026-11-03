@@ -31,28 +31,60 @@ class InstanceInfoDTO(ProviderDTO):
     raw_about: dict = Field(default_factory=dict)
 
 
-class ManagedServerDTO(ProviderDTO):
-    """One entry of `GET /system/servers`: a managed host and the status QRadar reports.
+#: The most managed hosts one health read keeps. `GET /config/deployment/hosts` is asked for one
+#: row more than this, so a longer answer is known to be cut and is reported PARTIAL, never read
+#: as the whole deployment.
+HEALTH_HOSTS_BOUND = 100
+#: The most `/system/servers` rows one health read keeps: two members per managed host.
+HEALTH_SERVERS_BOUND = 2 * HEALTH_HOSTS_BOUND
 
-    A field the response lacked is None. It is never defaulted: the health reader
-    reads None as "not reported", not as a healthy status.
+
+class ManagedServerDTO(ProviderDTO):
+    """One entry of `GET /system/servers`: a server host and the status QRadar reports.
+
+    An HA pair is two entries with the same `managed_host_id`. A field the response lacked is
+    None. It is never defaulted: the health reader reads None as "not reported", not as a
+    healthy status.
     """
 
     hostname: str | None = None
     status: str | None = None
+    server_id: int | None = None
+    managed_host_id: int | None = None
+    private_ip: str | None = None
 
 
 class DeploymentHostDTO(ProviderDTO):
-    """One entry of `GET /config/deployment/hosts`: a host's licensed and observed event rate."""
+    """One entry of `GET /config/deployment/hosts`: a managed host, its licensed and observed rates.
 
+    EPS and FPM are the managed host's, one set per host even when it is an HA pair. Averages
+    and peaks are QRadar's figures for the previous month.
+    """
+
+    host_id: int | None = None
     hostname: str | None = None
+    private_ip: str | None = None
+    public_ip: str | None = None
+    appliance_id: str | None = None
+    appliance_description: str | None = None
+    version: str | None = None
     status: str | None = None
     average_eps: int | None = None
     peak_eps: int | None = None
     eps_allocation: int | None = None
+    eps_rate_hardware_limit: int | None = None
     average_fpm: int | None = None
     peak_fpm: int | None = None
     fpm_allocation: int | None = None
+    fpm_rate_hardware_limit: int | None = None
+    primary_server_id: int | None = None
+    secondary_server_id: int | None = None
+    cpus: int | None = None
+    #: Kilobytes, as the API reports it.
+    total_memory_kb: int | None = None
+    #: The component names the host runs; None when the answer carried no list. Only the
+    #: console role is derived from it (HLT-1 round 1); the names are not returned by the API.
+    components: list[str] | None = None
 
 
 class LicenseRateDTO(ProviderDTO):

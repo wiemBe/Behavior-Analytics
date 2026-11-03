@@ -125,6 +125,26 @@ def _percent(share: float | None) -> str:
     return "allocation is 0" if share is None else f"{share * 100:.1f} % of the allocation"
 
 
+def _ha_lines(servers: dict[str, Any]) -> list[str]:
+    """The HA pairs that are not healthy, one line each: host, pair state, both statuses.
+
+    Statuses are the primary's first. The standby of a healthy pair is never listed.
+    """
+    if not servers.get("ha_pairs"):
+        return []
+    problem = servers.get("ha_problem", 0)
+    lines = [f"  HA pairs: {servers['ha_pairs']}, {problem} not healthy"]
+    for issue in servers.get("ha_issues", []):
+        lines.append(
+            f"    {issue['hostname'] or 'unnamed host'} {issue['ha_state']}: "
+            f"{issue['status'] or 'no status'}"
+        )
+    hidden = problem - len(servers.get("ha_issues", []))
+    if hidden > 0:
+        lines.append(f"    and {hidden} more")
+    return lines
+
+
 def _console_lines(entry: dict[str, Any]) -> list[str]:
     """One console's health as a short block. A field that was not read says why."""
     reachable = entry["reachable"]
@@ -152,6 +172,7 @@ def _console_lines(entry: dict[str, Any]) -> list[str]:
             text += f", {v['unreported']} without a status"
         others = [f"{h['hostname'] or '?'} {h['status'] or 'no status'}" for h in v["not_active"]]
         lines.append(f"  managed hosts: {text}" + (f" ({', '.join(others)})" if others else ""))
+        lines.extend(_ha_lines(v))
     eps = entry["eps"]
     if eps["state"] != "OK":
         lines.append(_not_read("EPS", eps))

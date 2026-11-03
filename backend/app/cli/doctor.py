@@ -45,6 +45,7 @@ from app.providers.base import CapabilityNotSupportedError, ProviderCapability, 
 from app.providers.factory import build_provider_for_instance
 from app.providers.tls import build_ssl_context
 from app.rules.matches import SKIPPED_REASON
+from app.schemas.qradar_health import HaPairState, ServerEntry
 from app.security.redaction import redact
 from app.services.ariel_permit import ArielPermitBudget
 from app.services.qradar_health import HealthReadCache, read_qradar_health
@@ -410,6 +411,23 @@ async def _tls_handshake(host: str, port: int, context: ssl.SSLContext) -> TlsPr
     finally:
         writer.close()
         await writer.wait_closed()
+
+
+def _ha_issue_text(issue: ServerEntry) -> tuple[str, bool]:
+    """One HA pair that is not healthy, as a doctor sentence, and whether it is a failure."""
+    name = issue.hostname or "unnamed host"
+    status = issue.status or "no status"
+    if issue.ha_state is HaPairState.HA_FAILED:
+        return f"HA pair {name} failed: no member is ACTIVE ({status})", True
+    if issue.ha_state is HaPairState.HA_DEGRADED:
+        return (
+            f"HA pair {name} degraded: the standby is not available, "
+            f"no failover is possible ({status})",
+            False,
+        )
+    if issue.ha_state is HaPairState.HA_FAILED_OVER:
+        return f"HA pair {name} runs on its secondary, the primary is not ACTIVE ({status})", False
+    return f"HA pair {name} is in a state that cannot be classified ({status})", False
 
 
 def _worst(results: Sequence[CheckResult]) -> Status:
@@ -1487,9 +1505,13 @@ class Doctor:
         One fresh read of the first enabled console (GET only, each tried once, a short
         timeout per read). SKIP when the console does not answer (`qradar_auth` already
         reports that) or when none of the three figures could be read: nothing is claimed
-        about what was not read. WARN when a managed host is not ACTIVE (or reports no
-        status), when the average EPS is over 90 % of the EPS allocation, or when the license
-        pool is over-allocated. The number of search ids QRadar holds is printed and has no
+        about what was not read. Managed hosts are counted with the HA pair rule: the standby
+        of a healthy pair is expected and never a problem. WARN when a single host is not
+        ACTIVE (or reports no status), when an HA pair is degraded (the standby is not
+        available), failed over (the secondary is ACTIVE, the primary is not) or in a state
+        that cannot be classified, when the average EPS is over 90 % of the EPS allocation,
+        or when the license pool is over-allocated. FAIL when an HA pair has no ACTIVE member;
+        each line names the host. The number of search ids QRadar holds is printed and has no
         threshold.
         """
         check_id = "qradar_health"
@@ -1525,17 +1547,34 @@ class Doctor:
             )
         facts: list[str] = []
         warnings: list[str] = []
+        failures: list[str] = []
         unread: list[str] = []
         if health.servers.value is not None:
             servers = health.servers.value
             facts.append(f"{servers.active} of {servers.total} managed hosts ACTIVE")
-            if not servers.all_active:
+            if servers.ha_pairs:
+                facts.append(f"{servers.ha_pairs} HA pair(s)")
+            if servers.truncated:
+                warnings.append("only the first QRadar server records were read")
+            # The standby of a healthy pair is expected and never listed. A pair is reported by
+            # its state below, so only single hosts are named here.
+            singles = [entry for entry in servers.not_active if entry.ha_state is None]
+            overflow = max(0, servers.total - servers.active - len(servers.not_active))
+            if singles or overflow:
                 names = ", ".join(
                     f"{entry.hostname or 'unnamed host'} {entry.status or 'reports no status'}"
-                    for entry in servers.not_active
+                    for entry in singles
                 )
+                more = f" and {overflow} more" if overflow else ""
                 warnings.append(
-                    f"{servers.total - servers.active} managed host(s) not ACTIVE ({names})"
+                    f"{len(singles) + overflow} managed host(s) not ACTIVE ({names}{more})"
+                )
+            for issue in servers.ha_issues:
+                text, severe = _ha_issue_text(issue)
+                (failures if severe else warnings).append(text)
+            if servers.ha_problem > len(servers.ha_issues):
+                warnings.append(
+                    f"{servers.ha_problem - len(servers.ha_issues)} more HA pair(s) not healthy"
                 )
         else:
             unread.append(f"managed hosts ({health.servers.state.value})")
@@ -1579,6 +1618,10 @@ class Doctor:
             )
         if unread:
             facts.append("not read: " + ", ".join(unread))
+        if failures:
+            return CheckResult(
+                check_id, Status.FAIL, "; ".join([*failures, *warnings, *facts]), "OPS-R67"
+            )
         if warnings:
             return CheckResult(
                 check_id, Status.WARN, "; ".join([*warnings, *facts]), "OPS-R67"

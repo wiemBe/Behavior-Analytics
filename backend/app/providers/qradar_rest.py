@@ -60,6 +60,8 @@ from app.providers.base import (
     QRadarProvider,
 )
 from app.providers.dto import (
+    HEALTH_HOSTS_BOUND,
+    HEALTH_SERVERS_BOUND,
     AnalyticsRuleDTO,
     ArielSearchHandleDTO,
     ArielSearchListDTO,
@@ -671,8 +673,11 @@ class QRadarRestProvider(QRadarProvider):
         )
 
     async def list_managed_servers(self) -> list[ManagedServerDTO]:
+        """Server hosts; one row more than the bound is asked for, so a cut answer shows."""
         body = await self._health_get(
-            "/system/servers", EndpointCategory.HEALTH_SERVERS, range_header="items=0-99"
+            "/system/servers",
+            EndpointCategory.HEALTH_SERVERS,
+            range_header=f"items=0-{HEALTH_SERVERS_BOUND}",
         )
         if not isinstance(body, list):
             raise MalformedUpstreamResponse("QRadar /system/servers did not return a list")
@@ -680,33 +685,61 @@ class QRadarRestProvider(QRadarProvider):
             ManagedServerDTO(
                 hostname=as_text(row.get("hostname"), limit=128),
                 status=as_text(row.get("status"), limit=32),
+                server_id=as_int(row.get("server_id")),
+                managed_host_id=as_int(row.get("managed_host_id")),
+                private_ip=as_text(row.get("private_ip"), limit=64),
             )
             for row in body
             if isinstance(row, dict)
         ]
 
     async def list_deployment_hosts(self) -> list[DeploymentHostDTO]:
+        """Managed hosts; one row more than the bound is asked for, so a cut answer shows."""
         body = await self._health_get(
-            "/config/deployment/hosts", EndpointCategory.HEALTH_HOSTS, range_header="items=0-99"
+            "/config/deployment/hosts",
+            EndpointCategory.HEALTH_HOSTS,
+            range_header=f"items=0-{HEALTH_HOSTS_BOUND}",
         )
         if not isinstance(body, list):
             raise MalformedUpstreamResponse(
                 "QRadar /config/deployment/hosts did not return a list"
             )
-        return [
-            DeploymentHostDTO(
-                hostname=as_text(row.get("hostname"), limit=128),
-                status=as_text(row.get("status"), limit=32),
-                average_eps=as_int(row.get("average_eps")),
-                peak_eps=as_int(row.get("peak_eps")),
-                eps_allocation=as_int(row.get("eps_allocation")),
-                average_fpm=as_int(row.get("average_fpm")),
-                peak_fpm=as_int(row.get("peak_fpm")),
-                fpm_allocation=as_int(row.get("fpm_allocation")),
+        out: list[DeploymentHostDTO] = []
+        for row in body:
+            if not isinstance(row, dict):
+                continue
+            appliance = row.get("appliance")
+            appliance = appliance if isinstance(appliance, dict) else {}
+            out.append(
+                DeploymentHostDTO(
+                    host_id=as_int(row.get("id")),
+                    hostname=as_text(row.get("hostname"), limit=128),
+                    private_ip=as_text(row.get("private_ip"), limit=64),
+                    public_ip=as_text(row.get("public_ip"), limit=64),
+                    appliance_id=as_text(appliance.get("id"), limit=64),
+                    appliance_description=as_text(appliance.get("description"), limit=128),
+                    version=as_text(row.get("version"), limit=32),
+                    status=as_text(row.get("status"), limit=32),
+                    average_eps=as_int(row.get("average_eps")),
+                    peak_eps=as_int(row.get("peak_eps")),
+                    eps_allocation=as_int(row.get("eps_allocation")),
+                    eps_rate_hardware_limit=as_int(row.get("eps_rate_hardware_limit")),
+                    average_fpm=as_int(row.get("average_fpm")),
+                    peak_fpm=as_int(row.get("peak_fpm")),
+                    fpm_allocation=as_int(row.get("fpm_allocation")),
+                    fpm_rate_hardware_limit=as_int(row.get("fpm_rate_hardware_limit")),
+                    primary_server_id=as_int(row.get("primary_server_id")),
+                    secondary_server_id=as_int(row.get("secondary_server_id")),
+                    cpus=as_int(row.get("cpus")),
+                    total_memory_kb=as_int(row.get("total_memory")),
+                    components=(
+                        as_str_list(row.get("components"), limit=256)
+                        if isinstance(row.get("components"), list)
+                        else None
+                    ),
+                )
             )
-            for row in body
-            if isinstance(row, dict)
-        ]
+        return out
 
     async def get_license_pool(self) -> LicensePoolDTO:
         body = await self._health_get(

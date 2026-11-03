@@ -1093,7 +1093,7 @@ bağlanmaz.
 | `unknown_settings` | Ortamda bir ayara benzeyen ama ayar olmayan adlar. Adlar yazılır, değerler yazılmaz. Böyle bir ad yoksa PASS. Kurulumun yazdığı adlar burada görünmez. | OPS-R62 |
 | `ariel_permits` | Global havuz held/cap, ayrılmış canlı yuvalar. Konsol tarafı, tek konsol yokken `console-pool locks N (cap P per console)` olarak yazılır. N bu veritabanındaki bütün konsol kilitleridir, bir konsolun kendi tutuşu değildir. Bütçede gerçekten tek konsol varsa satır `console held/cap` yazar. Havuz doluysa (`held >= cap`) WARN; canlı iş bekler, geçmiş okuma yerini verir. Zorlama kapalıysa `not enforced` ve PASS. Okuma hatasında yalnız hata sınıfı. | OPS-R63 |
 | `rule_match_coverage` | `RULE_HEALTH_WINDOW_DAYS` içindeki `FAILED` ve `TRUNCATED` kural-eşleşme pencerelerini tek sorguda sayar; en eski pencereyi, sağlık aralığından çıkacağı UTC zamanı, onarılabilir ve catch-up ufku nedeniyle atlanmış sayıları yazar. Biri varsa WARN, yoksa PASS, toplama kapalıysa SKIP. | OPS-R65 |
-| `qradar_health` | How QRadar itself is doing, from one fresh read of the first enabled console (GET only, short timeout per read). WARN when a managed host is not `ACTIVE` or reports no status, when the average EPS is over 90 % of the EPS allocation, or when the license pool is over-allocated (EPS or FPM). SKIP when the console does not answer (`qradar_auth` reports that) or when none of managed hosts, EPS and license could be read. A figure that was not read is named in the line (`not read: ...`) and is never counted as healthy. The line also prints how many Ariel search ids QRadar holds (all users, finished and active alike); there is no threshold on that number. | OPS-R67 |
+| `qradar_health` | How QRadar itself is doing, from one fresh read of the first enabled console (GET only, short timeout per read). Managed hosts are counted with the HA pair rule (an HA pair is one host, and the standby of a healthy pair is expected, never a problem). WARN when a single host is not `ACTIVE` or reports no status, when an HA pair is degraded (the standby is not available, so no failover is possible), failed over (the secondary is `ACTIVE`, the primary is not) or in a state that cannot be classified, when the average EPS is over 90 % of the EPS allocation, or when the license pool is over-allocated (EPS or FPM). FAIL when an HA pair has no `ACTIVE` member. Each line names the host. SKIP when the console does not answer (`qradar_auth` reports that) or when none of managed hosts, EPS and license could be read. A figure that was not read is named in the line (`not read: ...`) and is never counted as healthy. The line also prints how many Ariel search ids QRadar holds (all users, finished and active alike); there is no threshold on that number. | OPS-R67 |
 | `email` | Alert e-mail in one line: whether `SMTP_HOST` is set, the relay, the security mode and whether a login is configured. SKIP when no relay is configured. FAIL when a username is set with `SMTP_SECURITY=none`: that configuration is refused because the password would cross the network in clear text, and the line says so. Only with `./qradar-dash doctor --check-smtp` it also connects, says EHLO and finishes the STARTTLS or SSL handshake, then quits: nothing is sent and no login is attempted; a failed handshake is a WARN with the failure code. | OPS-R68 |
 | `geo_country_source` | Where the world map's country comes from. SKIP when geography collection is off. In `lookup` mode PASS (`lookup; SOURCE and DESTINATION use GEO::LOOKUP`). In `property` mode it reads the custom-property list of each enabled console and prints each direction's property name with `present on <console>` or `absent on <console>`, or `not collected (no property)` for an empty name. WARN when a named property is absent on a console or both names are empty. FAIL when the list could not be read or no console is enabled. See "World map and the country source" below. | OPS-R30 |
 
@@ -1246,7 +1246,7 @@ The platform records every Ariel search it sends in the table `ariel_search_run`
 - **Command:** `docker compose exec -T backend python -m app.cli.ariel_load [--hours N | --current] [--json]`. `--current` includes QRadar's health and always asks QRadar afresh.
 - **Support bundle:** `./qradar-dash support-bundle` adds `ariel-load.json` (or `ariel-load.error.txt` when it cannot be read; the bundle still completes).
 - **QRadar's own health** (GET requests only): reachability and API latency, version, managed hosts by status, EPS against its allocation, the license pool, and the number of Ariel search ids QRadar holds. "Held" counts every search QRadar keeps for all users, finished or active; it is not a count of running searches. Each field has a state (`OK`, `NOT_COLLECTED`, `FORBIDDEN`, `FAILED`) and a reason, never a zero or "healthy" for something that was not read. QRadar's answers are reused per API process for `QRADAR_HEALTH_CACHE_TTL_SECONDS` (default 30, 5 to 600), so N API workers may send up to N reads per interval; the response states the age. The MCP provider does not support these reads.
-- **`doctor`:** `qradar_health` (runbook `OPS-R67`) WARNs when a managed host is not `ACTIVE`, when average EPS is over 90 % of the allocation, or when the license pool is over-allocated. **The lab CE console has an over-allocated license, so `doctor` WARNs there permanently; that is expected.**
+- **`doctor`:** `qradar_health` (runbook `OPS-R67`) WARNs when a single managed host is not `ACTIVE`, when an HA pair is degraded, failed over or unclassifiable (FAIL when it has no `ACTIVE` member; the standby of a healthy pair is never a problem), when average EPS is over 90 % of the allocation, or when the license pool is over-allocated. **The lab CE console has an over-allocated license, so `doctor` WARNs there permanently; that is expected.**
 
 ### Alert e-mail (SMTP relay, templates, recipients)
 
@@ -3068,14 +3068,22 @@ ilerletme: sınırın ötesine taşımak okunmayan offense'ları atlar. Gecikme 
 
 ### OPS-R67. `qradar_health` warns: QRadar's own health
 
-**Symptom:** `doctor` shows `WARN qradar_health` with `runbook: OPS-R67`. The same facts are in
+**Symptom:** `doctor` shows `WARN qradar_health` (`FAIL` when an HA pair has no active member) with `runbook: OPS-R67`. The same facts are in
 `GET /api/v1/admin/ariel-load/current` (section `qradar`, one entry per enabled console) and in
 `python -m app.cli.ariel_load --current`.
 
-**Likely cause:** One of three things, named in the line.
+**Likely cause:** One of these things, named in the line.
 - A managed host is not `ACTIVE` (or reports no status). QRadar has a host that is down,
   deploying or lost its connection to the console. Collection from log sources behind that host
   may be late or missing.
+- An HA pair is not healthy. The line names the host and both members' statuses, primary first.
+  **Degraded:** one member is `ACTIVE` and the other is not on `STANDBY` (offline, failed,
+  synchronizing, restoring, needs upgrade, upgrading, needs license): events are served, but a
+  failure of the active member cannot fail over. **Failed over:** the secondary is `ACTIVE` and
+  the primary is not; the primary must be repaired and restored. **Failed (FAIL):** no member is
+  `ACTIVE`. **Not classified:** a status outside IBM's list (HA Guide, "Status of HA hosts"), two
+  `ACTIVE` members, or a member whose record `/system/servers` did not return; the statuses are
+  printed as QRadar wrote them. Act in the QRadar Admin tab, System and License Management.
 - The average EPS is over 90 % of the EPS allocation. QRadar may start to drop or queue events
   once the allocation is reached, so the platform's volume figures can understate what the
   sources send.
