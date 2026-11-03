@@ -2,7 +2,7 @@
 // replaced by a recorder, so the option the map was given can be read; the outlines are the real
 // lazy chunk.
 
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTestLocale } from "../../../vitest.setup";
@@ -50,7 +50,8 @@ describe("an OK answer", () => {
     expect(map).toHaveAccessibleName(
       "Map of events by country, source addresses. Largest: United States (1,240,000), Germany (402,300), China (310,000). The table lists every country.",
     );
-    expect(init).toHaveBeenCalledTimes(1);
+    // The image is in the DOM one commit before its effect creates the chart.
+    await waitFor(() => expect(init).toHaveBeenCalledTimes(1));
     expect(registerMap).toHaveBeenCalledTimes(1);
     expect(setOption).toHaveBeenCalledTimes(1);
   });
