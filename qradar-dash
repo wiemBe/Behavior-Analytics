@@ -6,7 +6,7 @@
 #                         [--skip-qradar-check]
 #   ./qradar-dash status
 #   ./qradar-dash logs [docker compose logs arguments]
-#   ./qradar-dash doctor [--json]
+#   ./qradar-dash doctor [--json] [--check-smtp]
 #   ./qradar-dash backup [manual|scheduled|pre-upgrade] [--no-verify]
 #                        [--print-timer | --install-timer]
 #   ./qradar-dash restore <backup-directory> [--non-interactive --yes]
@@ -94,6 +94,8 @@ install options
 
 doctor options
   --json            Print one JSON array and no text lines.
+  --check-smtp      Also connect to the SMTP relay and finish the TLS handshake (nothing is
+                    sent, no login is attempted). Without it the e-mail check never connects.
 
 repair-state
   No options. Refuses unless the API is ready, the database revision matches the running
@@ -4136,13 +4138,15 @@ doctor_containers() {
 
 doctor_incontainer() {
   local rc body
+  local smtp_flag=()
+  [ "${DOCTOR_CHECK_SMTP:-0}" -eq 0 ] || smtp_flag=(--check-smtp)
   if [ "$DOCTOR_BACKEND_RUNNING" -eq 0 ]; then
     doctor_line FAIL doctor_incontainer "backend container is not running. Next: ./qradar-dash logs backend" OPS-R36
     return
   fi
   if [ "$DOCTOR_AS_JSON" -eq 1 ]; then
     set +e
-    body=$(dc exec -T backend python -m app.cli.doctor --json)
+    body=$(dc exec -T backend python -m app.cli.doctor --json ${smtp_flag[@]+"${smtp_flag[@]}"})
     rc=$?
     set -e
     case "$rc" in
@@ -4157,7 +4161,7 @@ doctor_incontainer() {
     return
   fi
   set +e
-  dc exec -T backend python -m app.cli.doctor
+  dc exec -T backend python -m app.cli.doctor ${smtp_flag[@]+"${smtp_flag[@]}"}
   rc=$?
   set -e
   case "$rc" in
@@ -4169,18 +4173,26 @@ doctor_incontainer() {
 
 cmd_doctor() {
   DOCTOR_AS_JSON=0
+  DOCTOR_CHECK_SMTP=0
   DOCTOR_JSON_ITEMS=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --json)
         [ "$DOCTOR_AS_JSON" -eq 0 ] || {
-          fail "unknown doctor argument: $1; usage: ./qradar-dash doctor [--json]"
+          fail "unknown doctor argument: $1; usage: ./qradar-dash doctor [--json] [--check-smtp]"
           return 2
         }
         DOCTOR_AS_JSON=1
         ;;
+      --check-smtp)
+        [ "$DOCTOR_CHECK_SMTP" -eq 0 ] || {
+          fail "unknown doctor argument: $1; usage: ./qradar-dash doctor [--json] [--check-smtp]"
+          return 2
+        }
+        DOCTOR_CHECK_SMTP=1
+        ;;
       -h | --help) usage; return 0 ;;
-      *) fail "unknown doctor argument: $1; usage: ./qradar-dash doctor [--json]"; return 2 ;;
+      *) fail "unknown doctor argument: $1; usage: ./qradar-dash doctor [--json] [--check-smtp]"; return 2 ;;
     esac
     shift
   done

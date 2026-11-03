@@ -147,6 +147,10 @@ PERM_HISTORY_BACKFILL_ADMIN = "admin:history_backfill"
 # the application at a directory.
 PERM_USER_ADMIN = "admin:users"
 PERM_AUTH_ADMIN = "admin:auth"
+# Alert e-mail administration (MAIL-1): templates, recipients, the test message. The
+# recipients decide who is mailed about the estate and the test action spends a real
+# delivery, so `read:*` does not grant it; `admin:*` does.
+PERM_NOTIFICATIONS_ADMIN = "admin:notifications"
 
 
 class PermissionDenied(Exception):

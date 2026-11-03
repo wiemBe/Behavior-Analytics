@@ -532,26 +532,32 @@ compression; a repeat install keeps operator-set values. The install summary nam
 | `NOTIFY_SEND_RECOVERY` | `true` | Deliver recovery transitions |
 | `NOTIFY_PER_CHANNEL_RATE` | `30/minute` | Accepted. No notifier reads it |
 
-These channel values are not `Settings` fields. `alerts/routing.py` and
-`alerts/notifiers/registry.py` read them from the process environment, so they belong in the
-production `.env`. A blank target adds no route. Doctor's unknown-setting check already
-allowlists the names, so a site that sets them is not warned. The installer does not write
-them; a repeat install keeps extra lines it does not own.
+The `NOTIFY_*` target names are not `Settings` fields. `alerts/routing.py` reads them from the
+process environment, so they belong in the production `.env`. A blank target adds no route.
+Doctor's unknown-setting check already allowlists the names, so a site that sets them is not
+warned. The installer does not write them; a repeat install keeps extra lines it does not own.
+The `SMTP_*` names below are `Settings` fields (MAIL-1); the e-mail notifier and the admin API
+read them there.
 
 | Setting | Default when unset | Meaning |
 |---|---:|---|
 | `NOTIFY_TEAMS_WEBHOOK_URL` | empty | Teams webhook. Blank adds no Teams route |
 | `NOTIFY_SLACK_WEBHOOK_URL` | empty | Slack webhook. Blank adds no Slack route |
 | `NOTIFY_GENERIC_WEBHOOK_URL` | empty | Generic webhook. Blank adds no generic route |
-| `NOTIFY_EMAIL_RECIPIENTS` | empty | Comma-separated recipients. Blank adds no email route |
+| `NOTIFY_EMAIL_RECIPIENTS` | empty | Comma-separated recipients that receive every alert at LOW and above. Blank adds no route from the environment. Recipients with a minimum severity or an alert-type filter are administered in the application (`admin:notifications`); both lists are used together, and an address in both gets one mail. The API shows this list read-only as "from .env" |
 | `NOTIFY_SYSLOG_HOST` | empty | Syslog host. Blank adds no syslog route |
 | `NOTIFY_SYSLOG_PORT` | `514` | Syslog port |
-| `SMTP_HOST` | empty | SMTP host. Unused while email recipients are blank |
-| `SMTP_PORT` | `587` | SMTP port. Read as an integer from the environment, not validated by `Settings` |
-| `SMTP_USERNAME` | empty | SMTP username |
-| `SMTP_PASSWORD` | empty | SMTP password |
-| `SMTP_FROM` | `qradar-observability@example.internal` | Envelope sender |
-| `SMTP_USE_TLS` | `true` | Use TLS unless the value is not the word `true` |
+| `SMTP_HOST` | empty | The site's SMTP relay. Empty means alert e-mail is not configured: a notification routed to an address then goes to the dead letter list with the reason "SMTP host not configured" |
+| `SMTP_PORT` | `587` | Relay port, 1 to 65535. Use `465` with `SMTP_SECURITY=ssl` and `25` for a plain relay |
+| `SMTP_SECURITY` | empty | `starttls`, `ssl` or `none`. `starttls` connects in the clear and upgrades (usually port 587; the send is refused if the relay does not offer STARTTLS). `ssl` is implicit TLS (usually port 465). `none` is a plain relay inside the network (usually port 25) and is allowed only without `SMTP_USERNAME`. Empty derives the mode from `SMTP_USE_TLS`. Certificate and host-name verification are always on for `starttls` and `ssl`; there is no setting to turn them off |
+| `SMTP_USERNAME` | empty | Relay login. Empty means an unauthenticated relay: no login is attempted. With `none` and a username set, nothing is sent: the configuration is refused (the login would cross the network in clear text), the delivery fails with the code `insecure_login`, and `doctor` reports FAIL. Clear this setting for an unauthenticated plain relay, or use `starttls` or `ssl` |
+| `SMTP_PASSWORD` | empty | Relay password. A secret: never logged, never in an API response, never in a support bundle |
+| `SMTP_FROM` | `qradar-observability@example.internal` | The `From` address and the envelope sender |
+| `SMTP_FROM_NAME` | empty | Optional display name in `From`, for example `QRadar Behavior Analytics` |
+| `SMTP_USE_TLS` | `true` | Legacy switch, kept so an existing site sends as before: `true` means `starttls`, `false` means `none`. Ignored when `SMTP_SECURITY` is set |
+| `SMTP_CA_FILE` | unset | Path of a CA bundle (PEM) that signed the relay's certificate, for a relay with a private CA. Unset uses the system trust store. The file must be readable inside the backend and worker containers |
+| `SITE_NAME` | `QRadar Behavior Analytics` | The site's name, available to e-mail templates as `{{ site.name }}` |
+| `RATE_LIMIT_EMAIL_TEST` | `5/minute` | Limit on the admin "send a test message" action, which spends a real delivery |
 
 ## LLM interface
 

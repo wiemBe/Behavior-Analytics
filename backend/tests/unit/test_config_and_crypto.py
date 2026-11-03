@@ -16,6 +16,7 @@ from app.core.config import (
     Environment,
     ProviderKind,
     Settings,
+    _known_setting_env_names,
     unknown_setting_names,
 )
 
@@ -289,7 +290,10 @@ def test_unknown_setting_names_on_a_crafted_environment() -> None:
     assert names == ("CATCHALL_COLLECTION_ENABLE", "NOTIFY_PER_CHANNEL_RAT")
     assert planted not in names
     assert any(name.startswith("NOTIFY_") for name in SETTINGS_ENV_ALLOWLIST)
-    assert any(name.startswith("SMTP_") for name in SETTINGS_ENV_ALLOWLIST)
+    # MAIL-1: the SMTP_* names are Settings fields now, read through Settings and no
+    # longer by os.environ, so they are known names and not on the allowlist.
+    assert not any(name.startswith("SMTP_") for name in SETTINGS_ENV_ALLOWLIST)
+    assert {"SMTP_HOST", "SMTP_SECURITY", "SMTP_PASSWORD"} <= _known_setting_env_names()
     assert "GIT_SHA" in SETTINGS_ENV_ALLOWLIST
 
 

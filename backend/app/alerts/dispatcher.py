@@ -29,9 +29,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.notifiers.base import NotificationMessage, Notifier, NotifierError
-from app.alerts.routing import RoutingPolicy
+from app.alerts.routing import RoutingPolicy, RoutingRule
 from app.core.config import Settings, get_settings
 from app.models.alert import Alert, AlertNotification
+from app.models.email import EmailRecipient, EmailTemplate
 from app.models.enums import AlertTransition, NotificationChannel, NotificationStatus, Severity
 from app.security.redaction import redact
 from app.services.backoff import backoff_delay
@@ -64,13 +65,54 @@ class NotificationDispatcher:
         self.settings = settings or get_settings()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._rng = rng or random.Random()  # noqa: S311 - jitter, not crypto
+        # MAIL-1. Loaded on first use and kept for this dispatcher's life, so a run
+        # costs one recipient query and one template query however many alerts it
+        # routes or delivers.
+        self._stored_rules: list[RoutingRule] | None = None
+        self._email_templates: list[EmailTemplate] | None = None
+
+    async def _stored_email_rules(self) -> list[RoutingRule]:
+        """One routing rule per enabled administered recipient (MAIL-1)."""
+        if not self.policy.include_stored_recipients:
+            return []
+        if self._stored_rules is None:
+            rows = (
+                await self.session.scalars(
+                    select(EmailRecipient)
+                    .where(EmailRecipient.enabled.is_(True))
+                    .order_by(EmailRecipient.address)
+                )
+            ).all()
+            self._stored_rules = [
+                RoutingRule(
+                    channel=NotificationChannel.EMAIL,
+                    target=row.address,
+                    min_severity=Severity(row.min_severity),
+                    source_types=(
+                        frozenset(row.alert_types) if row.alert_types is not None else None
+                    ),
+                )
+                for row in rows
+            ]
+        return self._stored_rules
+
+    async def _templates(self) -> list[EmailTemplate]:
+        if self._email_templates is None:
+            self._email_templates = list(
+                (
+                    await self.session.scalars(
+                        select(EmailTemplate).where(EmailTemplate.enabled.is_(True))
+                    )
+                ).all()
+            )
+        return self._email_templates
 
     async def enqueue(self, alert: Alert, transition: AlertTransition) -> list[AlertNotification]:
         if transition is AlertTransition.RESOLVED and not self.settings.notify_send_recovery:
             return []
 
         created: list[AlertNotification] = []
-        for route in self.policy.resolve(alert):
+        for route in self.policy.resolve(alert, await self._stored_email_rules()):
             payload = self._render(alert, transition)
             notif = AlertNotification(
                 alert_id=alert.id,
@@ -134,6 +176,10 @@ class NotificationDispatcher:
             return
 
         message = self._message_from_payload(notif)
+        if notif.channel == NotificationChannel.EMAIL:
+            from app.services.email_templates import choose_template
+
+            message.template = choose_template(await self._templates(), message.alert_type)
         try:
             await notifier.send(notif.target, message)
         except NotifierError as exc:
@@ -176,6 +222,10 @@ class NotificationDispatcher:
             "transition": transition.value,
             "alert_id": str(alert.id),
             "fingerprint": alert.fingerprint,
+            # MAIL-1: what an e-mail template needs beyond the shared fields.
+            "alert_type": alert.source_type,
+            "opened_at": alert.opened_at.isoformat() if alert.opened_at else None,
+            "instance": (alert.context or {}).get("instance"),
             "fields": {
                 "occurrences": alert.occurrence_count,
                 "first_seen": alert.first_seen_at.isoformat() if alert.first_seen_at else None,
@@ -194,7 +244,12 @@ class NotificationDispatcher:
             # yields a plain str rather than the annotated enum. StrEnum accepts
             # both, so construct from the raw value instead of reaching for .value.
             transition=AlertTransition(p.get("transition") or notif.transition),
-            alert_id=p.get("alert_id", str(notif.alert_id)),
+            # The column, not the payload: ``redact`` masks a UUID as token-shaped, so the
+            # stored copy reads ***redacted*** and a link built from it would be dead.
+            alert_id=str(notif.alert_id),
             fingerprint=p.get("fingerprint", ""),
             fields=p.get("fields", {}),
+            alert_type=p.get("alert_type"),
+            opened_at=p.get("opened_at"),
+            instance=p.get("instance"),
         )

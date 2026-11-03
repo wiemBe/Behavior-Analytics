@@ -13,6 +13,7 @@ whatever webhooks are configured.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from app.core.config import Settings, get_settings
@@ -44,6 +45,10 @@ class RoutingRule:
     # context. A rule with classes never matches an alert that has none, so an
     # unclassified or non-source alert cannot slip into a class-scoped route.
     source_classes: frozenset[str] | None = None
+    # MAIL-1: the alert's own type (``alert.source_type``: log_source, waf_endpoint,
+    # ...), distinct from ``alert_types`` above, which matches the fingerprint's
+    # condition family. A stored e-mail recipient scopes on this one.
+    source_types: frozenset[str] | None = None
 
     def matches(self, alert: Alert) -> bool:
         if _SEVERITY_RANK[alert.severity] < _SEVERITY_RANK[self.min_severity]:
@@ -52,6 +57,8 @@ class RoutingRule:
             condition = alert.fingerprint.split(":", 1)[0]
             if condition not in self.alert_types:
                 return False
+        if self.source_types is not None and alert.source_type not in self.source_types:
+            return False
         if self.owners is not None:
             owner = (alert.context or {}).get("owner")
             if owner not in self.owners:
@@ -70,17 +77,40 @@ class RoutingRule:
 @dataclass
 class RoutingPolicy:
     rules: list[RoutingRule] = field(default_factory=list)
+    # MAIL-1. True only for the production policy (``default_policy``): the
+    # dispatcher then loads the administered e-mail recipients once per
+    # dispatcher (one query, never one per alert) and resolves them beside
+    # ``rules``. A hand-built policy leaves it off and touches no table.
+    include_stored_recipients: bool = False
 
-    def resolve(self, alert: Alert) -> list[Route]:
+    def resolve(self, alert: Alert, extra_rules: Sequence[RoutingRule] = ()) -> list[Route]:
         seen: set[tuple[str, str]] = set()
         routes: list[Route] = []
-        for rule in self.rules:
+        for rule in [*self.rules, *extra_rules]:
             if rule.matches(alert):
-                key = (rule.channel.value, rule.target)
+                # An address is one mailbox whatever its case: the env list and a
+                # stored row naming it twice send one mail.
+                target = (
+                    rule.target.lower()
+                    if rule.channel is NotificationChannel.EMAIL
+                    else rule.target
+                )
+                key = (rule.channel.value, target)
                 if key not in seen:
                     seen.add(key)
                     routes.append(Route(channel=rule.channel, target=rule.target))
         return routes
+
+
+def env_email_recipients() -> list[str]:
+    """The comma-separated ``NOTIFY_EMAIL_RECIPIENTS`` list, blanks dropped."""
+    import os
+
+    return [
+        item.strip()
+        for item in os.environ.get("NOTIFY_EMAIL_RECIPIENTS", "").split(",")
+        if item.strip()
+    ]
 
 
 def default_policy(settings: Settings | None = None) -> RoutingPolicy:
@@ -101,12 +131,13 @@ def default_policy(settings: Settings | None = None) -> RoutingPolicy:
     _add(NotificationChannel.TEAMS, os.environ.get("NOTIFY_TEAMS_WEBHOOK_URL"))
     _add(NotificationChannel.SLACK, os.environ.get("NOTIFY_SLACK_WEBHOOK_URL"))
     _add(NotificationChannel.WEBHOOK, os.environ.get("NOTIFY_GENERIC_WEBHOOK_URL"))
-    # One rule per recipient, so delivery to one mailbox failing does not park
-    # the notification for the others.
-    for recipient in os.environ.get("NOTIFY_EMAIL_RECIPIENTS", "").split(","):
-        _add(NotificationChannel.EMAIL, recipient.strip())
+    # One rule per recipient, so delivery to one mailbox failing does not park the
+    # notification for the others. Administered recipients (MAIL-1) join these at
+    # dispatch; this env list keeps working and the API shows it read-only.
+    for recipient in env_email_recipients():
+        _add(NotificationChannel.EMAIL, recipient)
     syslog_host = os.environ.get("NOTIFY_SYSLOG_HOST")
     if syslog_host:
         syslog_port = os.environ.get("NOTIFY_SYSLOG_PORT", "514")
         _add(NotificationChannel.SYSLOG, f"{syslog_host}:{syslog_port}")
-    return RoutingPolicy(rules=rules)
+    return RoutingPolicy(rules=rules, include_stored_recipients=True)

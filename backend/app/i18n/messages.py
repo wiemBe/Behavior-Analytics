@@ -600,6 +600,81 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "account.guide_seen.full",
         "This account already records the maximum number of guide sections.",
     ),
+    # Alert e-mail administration (MAIL-1).
+    _text(
+        "email.template.unknown_placeholder",
+        "The template uses the placeholder {name}, which is not available. "
+        "Use one of the names the placeholder list shows.",
+        name="alert.unknown",
+    ),
+    _text(
+        "email.template.alert_type_unknown",
+        "{name} is not an alert type that can have its own e-mail template.",
+        name="made_up_type",
+    ),
+    _text(
+        "email.recipient.address_invalid",
+        "{address} is not a plain e-mail address such as soc@example.org.",
+        address="not an address",
+    ),
+    _text(
+        "email.recipient.duplicate",
+        "{address} is already a recipient. Edit the existing entry instead.",
+        address="soc@example.org",
+    ),
+    _text(
+        "email.recipient.alert_type_unknown",
+        "{name} is not an alert type a recipient can be limited to.",
+        name="made_up_type",
+    ),
+    _fixed(
+        "email.test.sent",
+        "The relay accepted the test message. Delivery to the mailbox is up to the relay.",
+    ),
+    _fixed(
+        "email.test.not_configured",
+        "No SMTP relay is configured. Set SMTP_HOST in the server environment.",
+    ),
+    _fixed(
+        "email.test.insecure_login",
+        "SMTP_USERNAME is set while SMTP_SECURITY is none, so the login would cross the "
+        "network in clear text. Nothing was sent. Use starttls or ssl, or clear SMTP_USERNAME "
+        "for an unauthenticated relay.",
+    ),
+    _fixed(
+        "email.test.connection_refused",
+        "The relay refused the connection. Check SMTP_HOST and SMTP_PORT, and that the "
+        "relay listens there.",
+    ),
+    _fixed(
+        "email.test.timeout",
+        "The relay did not answer in time. Check the network path and the port.",
+    ),
+    _fixed(
+        "email.test.connection_failed",
+        "The connection to the relay failed. Check that SMTP_HOST resolves and is reachable.",
+    ),
+    _fixed(
+        "email.test.tls_failed",
+        "The secure connection to the relay failed. Check SMTP_SECURITY, the port and the "
+        "relay's certificate (SMTP_CA_FILE).",
+    ),
+    _fixed(
+        "email.test.auth_failed",
+        "The relay rejected the sign-in. Check SMTP_USERNAME and SMTP_PASSWORD.",
+    ),
+    _fixed(
+        "email.test.recipient_refused",
+        "The relay refused the recipient address.",
+    ),
+    _fixed(
+        "email.test.sender_refused",
+        "The relay refused the sender address. Check SMTP_FROM.",
+    ),
+    _fixed(
+        "email.test.server_error",
+        "The relay returned an error. Check its log for the reason.",
+    ),
     _fixed(
         "auth.session.must_change_password",
         "A password change is required before any other request.",

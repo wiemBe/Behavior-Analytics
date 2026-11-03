@@ -89,6 +89,7 @@ _CHECK_RUNBOOKS = (
     ("ariel_permits", "OPS-R63"),
     ("geo_country_source", "OPS-R30"),
     ("rule_match_coverage", "OPS-R65"),
+    ("email", "OPS-R68"),
     ("qradar_health", "OPS-R67"),
 )
 _TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])")
@@ -435,7 +436,9 @@ class Doctor:
         frontend_health_url: str = FRONTEND_HEALTH_URL,
         backend_version_url: str = BACKEND_VERSION_URL,
         environ: Mapping[str, str] | None = None,
+        check_smtp: bool = False,
     ) -> None:
+        self.check_smtp = check_smtp
         self.settings = settings or get_settings()
         self.sessionmaker = sessionmaker or get_sessionmaker()
         self.now = now or (lambda: datetime.now(UTC))
@@ -1229,8 +1232,8 @@ class Doctor:
         """WARN when an environment name looks like a setting and is not one.
 
         The message lists names and never values. A deployment with no such
-        names passes, including the ``NOTIFY_*`` and ``SMTP_*`` names the
-        notifier reads outside ``Settings``.
+        names passes, including the ``NOTIFY_*`` names the notifier reads outside
+        ``Settings``. The ``SMTP_*`` names are ``Settings`` fields (MAIL-1).
         """
         names = unknown_setting_names(self.environ)
         if not names:
@@ -1387,6 +1390,50 @@ class Doctor:
             f"{int(skipped_n)} skipped beyond the catch-up horizon",
             "OPS-R65",
         )
+
+    async def check_email(self) -> CheckResult:
+        """One line: is alert e-mail configured, and in which security mode.
+
+        Without ``--check-smtp`` nothing leaves this host. With it, the check
+        connects, says EHLO and finishes the STARTTLS or SSL handshake, then
+        quits: no login, no message. The line carries the host and port, never
+        a credential and never the relay's reply text.
+        """
+        check_id = "email"
+        settings = self.settings
+        if not settings.smtp_configured:
+            return CheckResult(
+                check_id, Status.SKIP, "not configured (SMTP_HOST is empty); alerts are not mailed"
+            )
+        mode = settings.smtp_security_mode
+        login = "authenticated" if settings.smtp_username else "no login"
+        line = (
+            f"relay {settings.smtp_host}:{settings.smtp_port}, security {mode}, {login}"
+        )
+        if mode == "none" and settings.smtp_username:
+            # Fail closed, like the notifier: this configuration never logs in.
+            return CheckResult(
+                check_id,
+                Status.FAIL,
+                f"{line}: refused, the username and password would cross the network in "
+                "clear text; no mail is sent (use starttls or ssl, or clear SMTP_USERNAME)",
+                "OPS-R68",
+            )
+        if not self.check_smtp:
+            return CheckResult(
+                check_id,
+                Status.PASS,
+                f"configured: {line} (handshake not tested; use --check-smtp)",
+            )
+        from app.services.email_delivery import EmailDeliveryError, check_handshake
+
+        try:
+            await asyncio.to_thread(check_handshake, settings, CHECK_TIMEOUT_SECONDS - 2)
+        except EmailDeliveryError as exc:
+            return CheckResult(
+                check_id, Status.WARN, f"{line}: handshake failed ({exc.code})", "OPS-R68"
+            )
+        return CheckResult(check_id, Status.PASS, f"{line}: handshake completed, nothing sent")
 
     async def check_qradar_health(self) -> CheckResult:
         """How QRadar itself is doing: managed hosts, EPS against the allocation, the license.
@@ -1623,9 +1670,10 @@ def render_json(results: Sequence[CheckResult]) -> str:
     return json.dumps(payload, default=str, sort_keys=True)
 
 
-async def _async_main(as_json: bool) -> int:
+async def _async_main(as_json: bool, check_smtp: bool = False) -> int:
     try:
-        results = await Doctor().run()
+        doctor = Doctor(check_smtp=True) if check_smtp else Doctor()
+        results = await doctor.run()
         print(render_json(results) if as_json else render_text(results))
         return exit_code(results)
     finally:
@@ -1637,8 +1685,13 @@ def main() -> int:
     parser.add_argument(
         "--json", action="store_true", help="emit the same redacted results as JSON"
     )
+    parser.add_argument(
+        "--check-smtp",
+        action="store_true",
+        help="also connect to the SMTP relay and finish the TLS handshake (nothing is sent)",
+    )
     args = parser.parse_args()
-    return asyncio.run(_async_main(args.json))
+    return asyncio.run(_async_main(args.json, args.check_smtp))
 
 
 if __name__ == "__main__":
