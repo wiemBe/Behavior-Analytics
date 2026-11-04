@@ -67,6 +67,16 @@ describe("HostName: a short dotted name keeps its line while the table has room 
     expect(render(<HostName host={longer} />).container.querySelectorAll("wbr")).toHaveLength(1);
   });
 
+  it("pins the bound at 20 (UX-6 measured 24: the Health table scrolls inside its box at 1024): a 22- and a 24-character FQDN break after dots", () => {
+    expect(HOST_RUN_MAX).toBe(20);
+    for (const host of ["qradar-ep1.dc1.example", "qradar-ep001.dc1.example"]) {
+      expect([22, 24]).toContain(host.length);
+      const { container } = render(<HostName host={host} />);
+      expect(container.querySelectorAll("wbr")).toHaveLength(2);
+      expect(container.querySelector(".sl-host")?.textContent).toBe(host);
+    }
+  });
+
   it("styles a run as nowrap, so an auto layout sizes the column to the whole name", () => {
     const sheet = readFileSync(path.join(__dirname, "siemload.css"), "utf8");
     expect(/\.sl-host-name \.sl-label,[^{]*\{([^}]*)\}/.exec(sheet)?.[1]).toMatch(/white-space:\s*nowrap/);

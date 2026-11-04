@@ -50,8 +50,6 @@ import "./anomalies.css";
 
 /** The list API's default window when `since` is not sent. */
 const DEFAULT_WINDOW_MS = 86_400_000;
-/** How far back the "widen" link and the outside-window count reach (the API allows 365 d). */
-const WIDEN_DAYS = 364;
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("anomalies.list");
@@ -139,16 +137,15 @@ async function AnomaliesPage({
   const items = page?.items ?? [];
 
   // An empty, unfiltered list only describes the window the page asked for (the API's last
-  // 24 h). One bounded count of the active anomalies over the widest range says whether the
-  // fleet has older ones. If that read fails the sentence carries no number, never a zero.
+  // 24 h). One bounded count of the active list, sent without `since` (the API then has no
+  // lower bound: every active anomaly, whatever its age), says whether the fleet has older ones. If that read fails the sentence carries no number, never a zero.
   const nowMs = Date.now();
   const windowTo = new Date(nowMs).toISOString();
   const windowFrom = new Date(nowMs - DEFAULT_WINDOW_MS).toISOString();
-  const widenSince = new Date(nowMs - WIDEN_DAYS * DEFAULT_WINDOW_MS).toISOString();
   let outsideActive: number | null = null;
   if (!error && !filtered && items.length === 0) {
     try {
-      const wide = await api.anomalies({ active_only: true, limit: 1, since: widenSince });
+      const wide = await api.anomalies({ active_only: true, limit: 1 });
       outsideActive = wide.total;
     } catch {
       outsideActive = null;
@@ -215,7 +212,6 @@ async function AnomaliesPage({
                       <Link
                         href={`/anomalies?${new URLSearchParams({
                           active_only: "true",
-                          since: widenSince,
                         }).toString()}`}
                       >
                         {chunks}

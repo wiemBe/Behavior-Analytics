@@ -15,7 +15,9 @@ beforeEach(() => setTestLocale("tr"));
 
 describe("the Home route in Turkish", () => {
   it("titles the document in Turkish", async () => {
-    expect(await generateMetadata()).toEqual({ title: "Gösterge paneli" });
+    expect(await generateMetadata()).toEqual({
+      title: { absolute: "Gösterge paneli · Behavior Analytics" },
+    });
   });
 
   it("says the dashboard is loading, as polite text", () => {
@@ -27,6 +29,6 @@ describe("the Home route in Turkish", () => {
 
   it("titles the document in English by default", async () => {
     setTestLocale("en");
-    expect(await generateMetadata()).toEqual({ title: "Dashboard" });
+    expect(await generateMetadata()).toEqual({ title: { absolute: "Dashboard · Behavior Analytics" } });
   });
 });

@@ -37,7 +37,7 @@ export function NotificationsTable({
             <span className={`pill${notifications.state === "FAILED" ? " crit" : ""}`}>
               {state(notifications.state === "FAILED" ? "FAILED" : "NOT_COLLECTED")}
             </span>
-            <span className="sl-reason">{notifications.reason ?? t("notRead")}</span>
+            <span className="sl-reason">{notifications.reason?.trim() || t("notRead")}</span>
           </span>
         </p>
       </div>

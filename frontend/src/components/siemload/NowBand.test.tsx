@@ -129,3 +129,20 @@ describe("NowBand: a part that could not be read", () => {
     expect(screen.queryByText("No search was submitted in the last 60 minutes.")).not.toBeInTheDocument();
   });
 });
+
+describe("NowBand: a part without a reason (UX-6)", () => {
+  it.each([["null", null], ["empty", ""], ["blank", "  "]])(
+    "shows the pill and no Reason line when the reason is %s",
+    (_name, reason) => {
+      band({ windows: { available: false, reason: reason as unknown as string } });
+      expect(screen.getByText("Not read")).toBeInTheDocument();
+      expect(screen.queryByText(/Reason:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/none/i)).not.toBeInTheDocument();
+    },
+  );
+
+  it("still shows a present reason after the label", () => {
+    band({ windows: { available: false, reason: "recent searches could not be read" } });
+    expect(screen.getByText("Reason: recent searches could not be read")).toBeInTheDocument();
+  });
+});

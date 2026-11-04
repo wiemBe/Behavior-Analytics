@@ -8,6 +8,9 @@ import { Fragment } from "react";
  * Host column as wide as "qradarce2." and the name wrapped while the row had room (FIX-26).
  */
 export const HOST_RUN_MAX = 20;
+// UX-6 tried 24: with a 24-character FQDN in every table the Health table scrolls inside its own
+// box at 1024x768 (811 of 780 px), so the bound stays 20 and a 21-24 character name breaks after
+// a dot.
 
 /**
  * A host name breaks only after a ".": each DNS label is one unbreakable run, and a `<wbr>`

@@ -415,19 +415,21 @@ describe("empty list", () => {
     expect(notice).toHaveTextContent(/the last 24 h, \d{4}-\d{2}-\d{2} [\d:]+ UTC to \d{4}-\d{2}-\d{2} [\d:]+ UTC/);
     expect(notice).toHaveTextContent("Set the Start time (UTC) filter to look further back.");
     expect(notice).toHaveTextContent("Sources without an adequate baseline are not being judged");
-    expect(screen.queryByRole("link", { name: /Show active anomalies/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Show every active anomaly/ })).toBeNull();
     expect(notice).not.toHaveTextContent("No anomalies have been detected.");
   });
 
-  it("counts the active anomalies outside the window and links to a wider range", async () => {
+  it("counts every active anomaly outside the window, whatever its age, and links to the list without a start time", async () => {
     const spy = await renderEmpty({}, page([anomaly()], 4));
     expect(screen.getByText(/4 active anomalies were detected before this window/)).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: "Show active anomalies from the last year" });
+    const link = screen.getByRole("link", { name: "Show every active anomaly" });
     const href = new URL(link.getAttribute("href")!, "http://x");
     expect(href.pathname).toBe("/anomalies");
     expect(href.searchParams.get("active_only")).toBe("true");
-    expect(Date.parse(href.searchParams.get("since")!)).toBeLessThan(Date.now() - 300 * 86400_000);
+    expect(href.searchParams.has("since")).toBe(false);
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ active_only: true, limit: 1 }));
+    const count = spy.mock.calls.find(([p]) => p?.limit === 1)![0]!;
+    expect(count).not.toHaveProperty("since");
   });
 
   it("uses the singular for one", async () => {
@@ -439,7 +441,7 @@ describe("empty list", () => {
     await renderEmpty({}, new ApiError(500, "boom"));
     const notice = screen.getByText(/No anomalies were detected in the window/);
     expect(notice).not.toHaveTextContent(/\d+ active/);
-    expect(screen.queryByRole("link", { name: /Show active anomalies/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Show every active anomaly/ })).toBeNull();
   });
 
   it("keeps the filtered sentence for a filtered view and makes no extra read", async () => {

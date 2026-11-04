@@ -66,7 +66,7 @@ export function InFlightTable({
           <p>
             <strong>{state("partUnavailable", { part: parts("inFlight") })}</strong>
           </p>
-          <p>{state("reason", { reason: part.reason })}</p>
+          {part.reason?.trim() ? <p>{state("reason", { reason: part.reason })}</p> : null}
         </div>
       ) : part.active.length === 0 && part.stale.length === 0 ? (
         <p className="sl-hint">{t("empty")}</p>
