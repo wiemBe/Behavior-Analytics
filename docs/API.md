@@ -447,11 +447,12 @@ the windows are then the last ones collected, returned with their own times, not
   or `null` when the console has none.
 - `metrics` and `notifications`: `{state, reason_code, reason}` for the newest run's part. `state`
   is `OK`, `PARTIAL` (a search hit its row cap), `STALE` (the window is older than
-  `QRADAR_HEALTH_STALE_CADENCES` cadences plus the settle time), `NOT_COLLECTED` (no window yet, or
-  the console lacks the `Metric ID`, `Value` or `Element` custom property) or `FAILED` (the
-  search failed or was rejected). Anything but `OK` carries a stable `reason_code` and an English
-  `reason`. A part that was not measured has no values below: never a zero. `last_metrics_window_end`
-  is the end of the newest window whose metrics were collected, even when a later run failed.
+  `QRADAR_HEALTH_STALE_CADENCES` cadences plus the settle time), `NOT_COLLECTED` (no window yet, the
+  console lacks the `Metric ID`, `Value` or `Element` custom property, or an empty notification
+  answer on a console that cannot report notifications) or `FAILED` (the search failed or was
+  rejected). Anything but `OK` carries a stable `reason_code` and an English `reason`. A part that
+  was not measured has no values below: never a zero. `last_metrics_window_end` is the end of the
+  newest window whose metrics were collected, even when a later run failed.
 - `hosts[]`, per host (the hostname parsed from the `Health Metrics-<n> :: <hostname>` log-source
   name): `disk` (`fullest` mount and all allowlisted `mounts`, each with `used_fraction` 0 to 1,
   `used_percent`, `used_bytes`, `total_bytes`, `free_bytes` when both were read, `total_from` and `level`
@@ -471,6 +472,11 @@ the windows are then the last ones collected, returned with their own times, not
 - `notification_list`: `entries[]` (`host`, `qid_name`, `events`, `max_severity`, `last_seen`), the
   50 busiest groups of the window with `Information Message` excluded, and `remainder`
   (`events`, `groups`) for the groups below them, so the window's events still add up.
+  An empty answer is `OK` with no entries only when the console has an enabled
+  `System Notification` log source in our synced log-source inventory; a console without one has
+  the notification part `NOT_COLLECTED` with `notification_source_missing` (or
+  `notification_source_unreadable` when that inventory could not be read), so a search that found
+  nothing on a console that could not send anything is never reported as "no notifications".
   With the query parameter `notifications_hours` (1 to 168; anything else is `422`) the list is
   instead the roll-up of every stored window of that many hours whose notification search was
   measured (`OK` or `PARTIAL`): the groups are summed per host and QID name (`events` summed,

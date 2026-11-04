@@ -11,6 +11,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
 
+from app.collectors import qradar_health_collector
 from app.collectors.qradar_health_collector import QRadarHealthCollector
 from app.core.config import get_settings
 from app.models.enums import SearchFamily
@@ -26,7 +27,7 @@ from app.providers.dto import CustomPropertyDTO
 from app.providers.mock import MockQRadarProvider
 from app.security.rbac import Principal
 from app.services.qradar_health_retention import QRadarHealthRetention
-from tests.integration.factories import make_instance
+from tests.integration.factories import make_instance, make_log_source
 from tests.integration.test_fleet_api import Client, run
 from tests.integration.test_rule_match_collection import recorded_statements
 
@@ -94,6 +95,25 @@ async def metric_rows(session) -> list[QRadarHealthMetricBucket]:  # type: ignor
 async def only_run(session) -> QRadarHealthRun:  # type: ignore[no-untyped-def]
     return await session.scalar(
         select(QRadarHealthRun).execution_options(populate_existing=True)
+    )
+
+
+async def add_notification_source(  # type: ignore[no-untyped-def]
+    session,
+    instance,
+    *,
+    qradar_id: int = 9001,
+    enabled: bool = True,
+    type_name: str = "System Notification",
+):  # type: ignore[no-untyped-def]
+    """A log source of the type the notification search reads, shaped as the sync stores it."""
+    return await make_log_source(
+        session,
+        instance,
+        qradar_id=qradar_id,
+        name=f"System Notification-{qradar_id} :: qradarce2",
+        type_name=type_name,
+        enabled=enabled,
     )
 
 
@@ -281,6 +301,127 @@ class TestRun:
         assert counts[1] == counts[40], counts
 
 
+@pytest.mark.usefixtures("pin_cadence")
+class TestNotificationSource:
+    """HLT-8: an empty answer is "none" only when the console can report a notification."""
+
+    async def test_an_empty_answer_with_an_enabled_source_is_ok_and_empty(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        await add_notification_source(db_session, inst)
+        provider = MockQRadarProvider(seed=1)
+        provider.health_notification_script = lambda _s: []
+
+        report = await collector(db_session, provider).collect(inst, slot=SLOT)
+
+        run_row = await only_run(db_session)
+        assert run_row.notifications_state == "OK"
+        assert run_row.notifications_reason_code is None
+        assert (await db_session.scalars(select(QRadarHealthNotificationBucket))).all() == []
+        assert run_row.metrics_state == "OK"
+        assert report.notifications_state == "OK" and report.buckets_complete == 1
+        assert report.as_dict()["status"] == "ok"
+
+    async def test_an_empty_answer_without_a_source_is_not_collected(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        provider = MockQRadarProvider(seed=1)
+        provider.health_notification_script = lambda _s: []
+
+        report = await collector(db_session, provider).collect(inst, slot=SLOT)
+
+        run_row = await only_run(db_session)
+        assert run_row.notifications_state == "NOT_COLLECTED"
+        assert run_row.notifications_reason_code == (
+            "qradar_health_detail.reason.notification_source_missing"
+        )
+        assert run_row.metrics_state == "OK"
+        assert (await db_session.scalars(select(QRadarHealthNotificationBucket))).all() == []
+        # The search still ran, and the run says so rather than reading as healthy (rule 8).
+        assert report.searches_sent == 2 and report.as_dict()["status"] == "failed"
+        assert report.notifications_state == "NOT_COLLECTED"
+
+    async def test_an_empty_answer_with_only_a_disabled_source_is_not_collected(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        await add_notification_source(db_session, inst, enabled=False)
+        provider = MockQRadarProvider(seed=1)
+        provider.health_notification_script = lambda _s: []
+
+        await collector(db_session, provider).collect(inst, slot=SLOT)
+
+        run_row = await only_run(db_session)
+        assert run_row.notifications_state == "NOT_COLLECTED"
+        assert run_row.notifications_reason_code == (
+            "qradar_health_detail.reason.notification_source_missing"
+        )
+
+    async def test_a_source_of_another_type_is_not_evidence(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        await add_notification_source(db_session, inst, type_name="Health Metrics")
+        provider = MockQRadarProvider(seed=1)
+        provider.health_notification_script = lambda _s: []
+
+        await collector(db_session, provider).collect(inst, slot=SLOT)
+
+        run_row = await only_run(db_session)
+        assert run_row.notifications_state == "NOT_COLLECTED"
+        assert run_row.notifications_reason_code == (
+            "qradar_health_detail.reason.notification_source_missing"
+        )
+
+    async def test_an_unreadable_inventory_is_not_collected_never_ok(
+        self, db_session, monkeypatch
+    ) -> None:
+        inst = await make_instance(db_session)
+        provider = MockQRadarProvider(seed=1)
+        provider.health_notification_script = lambda _s: []
+
+        async def boom(_session, _ids):  # type: ignore[no-untyped-def]
+            raise ProviderUnavailableError("inventory down")
+
+        monkeypatch.setattr(qradar_health_collector, "notification_source_consoles", boom)
+
+        report = await collector(db_session, provider).collect(inst, slot=SLOT)
+
+        run_row = await only_run(db_session)
+        assert run_row.notifications_state == "NOT_COLLECTED"
+        assert run_row.notifications_reason_code == (
+            "qradar_health_detail.reason.notification_source_unreadable"
+        )
+        assert run_row.metrics_state == "OK"
+        assert report.searches_sent == 2 and report.as_dict()["status"] == "failed"
+
+    async def test_rows_present_never_read_the_inventory(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        await add_notification_source(db_session, inst, enabled=False)
+        provider = MockQRadarProvider(seed=1)
+
+        with recorded_statements(db_session) as statements:
+            report = await collector(db_session, provider).collect(inst, slot=SLOT)
+
+        assert report.notifications_state == "OK"
+        assert [s for s in statements if "FROM log_source" in s] == []
+
+    async def test_the_inventory_read_is_one_statement_whatever_the_log_sources(
+        self, db_session
+    ) -> None:
+        counts: dict[int, int] = {}
+        for sources in (1, 40):
+            inst = await make_instance(db_session)
+            for n in range(sources):
+                await add_notification_source(db_session, inst, qradar_id=9000 + n)
+            provider = MockQRadarProvider(seed=1)
+            provider.health_notification_script = lambda _s: []
+            with recorded_statements(db_session) as statements:
+                await collector(db_session, provider).collect(inst, slot=SLOT)
+            inventory = [s for s in statements if "FROM log_source" in s]
+            assert len(inventory) == 1, inventory
+            counts[sources] = len(statements)
+        assert counts[1] == counts[40], counts
+
+
 class TestRetention:
     async def test_old_windows_are_deleted_and_recent_ones_stay(self, db_session) -> None:
         inst = await make_instance(db_session)
@@ -321,6 +462,7 @@ def seed_run(
     notifications: str = "OK",
     hosts: tuple[str, ...] = ("qr1",),
     fraction: float = 0.5,
+    notifications_reason: str | None = None,
 ):  # type: ignore[no-untyped-def]
     """Rows of one stored window, as the collector would write them."""
 
@@ -336,7 +478,10 @@ def seed_run(
                 ),
                 notifications_state=notifications,
                 notifications_reason_code=(
-                    None if notifications == "OK" else "qradar_health_detail.reason.search_failed"
+                    None
+                    if notifications == "OK"
+                    else notifications_reason
+                    or "qradar_health_detail.reason.search_failed"
                 ),
                 unparseable_hosts=0, dropped_mounts=2, dropped_metrics=0, null_values=0,
                 invalid_values=0, dropped_events=0,
@@ -437,6 +582,35 @@ class TestLatestApi:
         assert console["notification_list"]["remainder"] == {"events": 9, "groups": 3}
         assert console["rest_sample"]["api_latency_ms"] == 42
         assert console["dropped_mounts"] == 2
+
+    def test_a_window_without_a_notification_source_shows_the_new_reason(
+        self, db_schema
+    ) -> None:
+        """HLT-8: an empty answer on a console with no such source is not "none"."""
+        inst = run(make_instance)
+        run(
+            seed_run(
+                inst.id,
+                end=fresh_end(),
+                notifications="NOT_COLLECTED",
+                notifications_reason=(
+                    "qradar_health_detail.reason.notification_source_missing"
+                ),
+            )
+        )
+        [console] = Client(ADMIN).get(URL + "/latest").json()["consoles"]
+        assert console["notifications"] == {
+            "state": "NOT_COLLECTED",
+            "reason_code": "qradar_health_detail.reason.notification_source_missing",
+            "reason": (
+                "The console has no enabled System Notification log source, so an empty "
+                "notification answer does not show that nothing happened."
+            ),
+        }
+        assert console["notification_list"] is None and console["metrics"]["state"] == "OK"
+        # The roll-up counts measured windows only, so this window adds nothing to it.
+        [rolled] = Client(ADMIN).get(URL + "/latest?notifications_hours=24").json()["consoles"]
+        assert rolled["notification_list"] is None
 
     def test_a_failed_newest_run_shows_the_failure_not_the_older_values(self, db_schema) -> None:
         inst = run(make_instance)

@@ -12,8 +12,12 @@ Guarantees:
     NOT_COLLECTED with a coded reason and the notification part still runs.
   * A part that was not measured stores no bucket, so its absence is never a zero. Its state
     (OK, PARTIAL, NOT_COLLECTED, FAILED) and coded reason go on the run row.
+  * An empty notification answer is "none" only when the stored log-source inventory holds an
+    enabled `System Notification` source for that console; a console that cannot report one is
+    NOT_COLLECTED with a coded reason, never OK (rule 8).
   * A constant number of searches and statements per run, whatever the number of hosts:
-    two searches, one delete per bucket table and one chunked bulk insert per table.
+    two searches, one delete per bucket table and one chunked bulk insert per table. The
+    inventory is read only when an empty notification answer needs it: one statement.
   * Idempotent: a window is replaced as a whole, so a metric that left the answer leaves no
     stale row. No overlapping runs for one instance: the advisory lock is keyed on
     (instance, collector).
@@ -25,11 +29,11 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +49,7 @@ from app.health_detail.rows import HealthMetricsResult, HealthNotificationsResul
 from app.i18n.messages import MessageRef, render
 from app.models.enums import SearchFamily
 from app.models.instance import QRadarInstance
+from app.models.log_source import LogSource
 from app.models.qradar_health import (
     QRadarHealthMetricBucket,
     QRadarHealthNotificationBucket,
@@ -139,6 +144,66 @@ def window_for(slot: datetime, cadence_seconds: int) -> tuple[datetime, datetime
     return slot - timedelta(seconds=cadence_seconds), slot
 
 
+async def notification_source_consoles(
+    session: AsyncSession, instance_ids: Collection[uuid.UUID]
+) -> set[uuid.UUID]:
+    """The consoles that hold at least one enabled `System Notification` log source.
+
+    One statement for every console asked about, whatever their number of log sources (rule 9).
+    `LogSource.type_name` is QRadar's own type name as the inventory sync stores it
+    (`app/services/inventory_sync.py`: the log source's `type.name`, else the type list's `name`),
+    which is the same string the notification query matches on
+    (`app/health_detail/queries.py`). `enabled` mirrors QRadar's `enabled` flag.
+    """
+    if not instance_ids:
+        return set()
+    found = await session.scalars(
+        select(LogSource.instance_id)
+        .where(
+            LogSource.instance_id.in_(list(instance_ids)),
+            LogSource.enabled.is_(True),
+            LogSource.type_name == spec.LOG_SOURCE_TYPE_NOTIFICATIONS,
+        )
+        .distinct()
+    )
+    return set(found.all())
+
+
+class _NotificationSource:
+    """Whether a console can report a system notification at all, read at most once per run.
+
+    The read is deferred until an empty notification answer needs it: a window with rows is
+    evidence on its own, and those windows pay no extra statement. A failed read is a coded
+    reason, never "none".
+    """
+
+    def __init__(self, session: AsyncSession, instance_id: uuid.UUID) -> None:
+        self._session = session
+        self._instance_id = instance_id
+        self._reason: MessageRef | None = None
+        self._read = False
+
+    async def absent_reason(self) -> MessageRef | None:
+        """None when an enabled source exists, else the reason an empty answer is not "none"."""
+        if not self._read:
+            self._read = True
+            try:
+                present = await notification_source_consoles(self._session, (self._instance_id,))
+            except Exception as exc:
+                # The text may quote connection details: class only.
+                logger.warning(
+                    "qradar health log-source inventory unreadable (%s)", type(exc).__name__
+                )
+                self._reason = MessageRef(_REASON + "notification_source_unreadable")
+            else:
+                self._reason = (
+                    None
+                    if self._instance_id in present
+                    else MessageRef(_REASON + "notification_source_missing")
+                )
+        return self._reason
+
+
 class QRadarHealthCollector:
     def __init__(
         self,
@@ -186,7 +251,7 @@ class QRadarHealthCollector:
 
             metrics, metric_fold = await self._collect_metrics(window_start, window_end, report)
             notifications, notice_fold = await self._collect_notifications(
-                window_start, window_end, report
+                window_start, window_end, report, _NotificationSource(self.session, instance.id)
             )
             report.metrics_state = metrics.state
             report.notifications_state = notifications.state
@@ -284,8 +349,17 @@ class QRadarHealthCollector:
 
     # ---------------------------------------------------------- notifications
     async def _collect_notifications(
-        self, start: datetime, end: datetime, report: QRadarHealthReport
+        self,
+        start: datetime,
+        end: datetime,
+        report: QRadarHealthReport,
+        source: _NotificationSource | None = None,
     ) -> tuple[PartOutcome, NotificationFold | None]:
+        """The notification part. `source` is the console's inventory probe of this run.
+
+        A caller that passes none proves nothing about the console: an empty answer is then
+        NOT_COLLECTED as unreadable, never OK (rule 8). The collector itself always passes one.
+        """
         report.searches_sent += 1
         try:
             result: HealthNotificationsResult = await self.provider.get_health_notifications(
@@ -300,6 +374,14 @@ class QRadarHealthCollector:
         folded = fold_notifications(result.rows)
         if result.truncated:
             return PartOutcome("PARTIAL", MessageRef(_REASON + "truncated")), folded
+        if not result.rows:
+            absent = (
+                await source.absent_reason()
+                if source is not None
+                else MessageRef(_REASON + "notification_source_unreadable")
+            )
+            if absent is not None:
+                return PartOutcome("NOT_COLLECTED", absent), folded
         return PartOutcome("OK"), folded
 
     # ----------------------------------------------------------------- writes

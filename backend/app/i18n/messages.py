@@ -627,6 +627,16 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "qradar_health_detail.reason.no_events",
         "The Health Metrics log sources sent no usable events in the window.",
     ),
+    _fixed(
+        "qradar_health_detail.reason.notification_source_missing",
+        "The console has no enabled System Notification log source, so an empty "
+        "notification answer does not show that nothing happened.",
+    ),
+    _fixed(
+        "qradar_health_detail.reason.notification_source_unreadable",
+        "The stored log-source inventory could not be read, so an empty notification "
+        "answer was not taken as none.",
+    ),
     _fixed("qradar_health_detail.hours.invalid", "hours must be 24 or 168"),
     _fixed(
         "qradar_health_detail.reason.no_sample",

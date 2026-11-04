@@ -197,6 +197,18 @@ class TestNotificationsPart:
         outcome, folded = await collector(provider)._collect_notifications(START, END, report())
         assert outcome.state == "PARTIAL" and folded is not None
 
+    async def test_an_empty_answer_without_the_console_check_is_never_ok(self) -> None:
+        """HLT-8: no inventory read means nothing is known about the console, so not "none"."""
+        provider = MockQRadarProvider(seed=1)
+        provider.health_notification_script = lambda _s: []
+        outcome, folded = await collector(provider)._collect_notifications(START, END, report())
+        assert outcome.state == "NOT_COLLECTED" and not outcome.measured
+        assert folded is not None and folded.entries == ()
+        assert outcome.reason is not None
+        assert outcome.reason.code == (
+            "qradar_health_detail.reason.notification_source_unreadable"
+        )
+
 
 class TestRunShape:
     def test_the_window_is_the_last_whole_cadence_before_the_slot(self) -> None:

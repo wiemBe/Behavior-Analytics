@@ -9410,6 +9410,20 @@
     "sample_english_params": {},
     "template": "No window was collected for this console in this range."
   },
+  "qradar_health_detail.reason.notification_source_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The console has no enabled System Notification log source, so an empty notification answer does not show that nothing happened.",
+    "sample_english_params": {},
+    "template": "The console has no enabled System Notification log source, so an empty notification answer does not show that nothing happened."
+  },
+  "qradar_health_detail.reason.notification_source_unreadable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The stored log-source inventory could not be read, so an empty notification answer was not taken as none.",
+    "sample_english_params": {},
+    "template": "The stored log-source inventory could not be read, so an empty notification answer was not taken as none."
+  },
   "qradar_health_detail.reason.property_missing": {
     "params": {
       "names": {
