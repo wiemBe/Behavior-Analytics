@@ -222,11 +222,13 @@ acceptance scenario clears the production guards on merit: at 60s buckets that i
 ## 8. API
 
 All routes are read-only, authenticated behind `read:anomalies` (satisfied by the
-`read:*` wildcard), paginated and range-bounded by `API_MAX_RANGE_DAYS`.
+`read:*` wildcard), paginated and range-bounded by `API_MAX_RANGE_DAYS`. The one
+exception is the active-only anomaly list without `since`, which has no lower
+bound: see below.
 
 | Route | Purpose |
 |---|---|
-| `GET /api/v1/anomalies` | Paged list; filters: `log_source_id`, `instance_id`, `anomaly_type`, `state`, `severity`, `evidence_status`, `active_only`, `since`, `until`; without `since` the range is the last day, or `API_MAX_RANGE_DAYS` when `active_only` is set |
+| `GET /api/v1/anomalies` | Paged list; filters: `log_source_id`, `instance_id`, `anomaly_type`, `state`, `severity`, `evidence_status`, `active_only`, `since`, `until`; without `since` the range is the last day; with `active_only` and no `since` there is no lower bound (every active anomaly up to `until`, whatever its age); an explicit `since`/`until` is still validated against the `API_MAX_RANGE_DAYS` ceiling |
 | `GET /api/v1/anomalies/summary` | Open/spike/drop/silence counts, insufficient-data sources, pending/failed evidence, recently resolved, highest deviation |
 | `GET /api/v1/anomalies/{id}` | Investigation detail: measurements, `detection` block, lifecycle history, evidence package, contributors by dimension |
 | `GET /api/v1/behavior/sources` | Observed vs expected EPS, expected band, deviation ratio, state per source |
