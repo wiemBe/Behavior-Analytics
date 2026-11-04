@@ -9,7 +9,7 @@
 import cadence from "../../messages/en/cadence.json";
 import errors from "../../messages/en/errors.json";
 import units from "../../messages/en/units.json";
-import { durationText } from "@/i18n/measures";
+import { exactDurationText } from "@/i18n/measures";
 import { createTextTranslator } from "@/i18n/textTranslator";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 
@@ -23,5 +23,5 @@ export function cadenceDuration(
   seconds: number | null | undefined,
   i18n: BehaviorI18n = ENGLISH_CADENCE,
 ): string {
-  return durationText((key, values) => i18n.t(`units.${key}`, values), seconds);
+  return exactDurationText((key, values) => i18n.t(`units.${key}`, values), seconds);
 }

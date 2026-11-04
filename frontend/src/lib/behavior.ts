@@ -17,10 +17,13 @@ import type {
   RobustScoreStatus,
 } from "@/lib/api";
 import { ENGLISH_BEHAVIOR, fixed, grouped, wordOrValue, type BehaviorI18n } from "@/lib/behaviorI18n";
-import { durationText, formatRatioLocale, formatSignedPercent } from "@/i18n/measures";
+import { durationText, exactDurationText, formatRatioLocale, formatSignedPercent } from "@/i18n/measures";
 import type { FormatLocale } from "@/lib/format";
 import type { Tone } from "@/lib/health";
-import { formatDuration as englishDuration } from "@/lib/time";
+import {
+  formatDuration as englishDuration,
+  formatExactDuration as englishExactDuration,
+} from "@/lib/time";
 
 // Re-exported for components that only need the tone union.
 export type { Tone };
@@ -75,13 +78,22 @@ export function formatDelta(value: number | null | undefined, locale: FormatLoca
   return `${sign}${grouped(value, locale)}`;
 }
 
-/** "3 h 20 min" / "3 sa 20 dk"; without a translator exactly `lib/time`'s English. */
+/** "3 h 20 min" / "3 sa 20 dk", two units at most; without a translator `lib/time`'s English. */
 export function formatDuration(
   totalSeconds: number | null | undefined,
   i18n?: BehaviorI18n,
 ): string {
   if (!i18n) return englishDuration(totalSeconds);
   return durationText((key, values) => i18n.t(`units.${key}`, values), totalSeconds);
+}
+
+/** The same spelling with every unit: for a configured value such as a cadence. */
+export function formatExactDuration(
+  totalSeconds: number | null | undefined,
+  i18n?: BehaviorI18n,
+): string {
+  if (!i18n) return englishExactDuration(totalSeconds);
+  return exactDurationText((key, values) => i18n.t(`units.${key}`, values), totalSeconds);
 }
 
 // --- detectors -------------------------------------------------------------

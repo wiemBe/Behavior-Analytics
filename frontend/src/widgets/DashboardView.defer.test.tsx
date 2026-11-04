@@ -129,7 +129,9 @@ describe("the read grid defers widget bodies", () => {
     // existing loading line — no skeleton, and nothing mounted behind it.
     expect(bravo).toHaveAttribute("data-y", "100");
     expect(screen.getByRole("heading", { name: "Bravo" })).toBeInTheDocument();
-    expect(screen.getByText("Loading bravo…")).toBeInTheDocument();
+    // Nothing loads there, so the box does not say it does.
+    expect(screen.getByText("Bravo is read when this box scrolls into view.")).toBeInTheDocument();
+    expect(screen.queryByText("Loading bravo…")).toBeNull();
     expect(screen.queryByText("Bravo body")).toBeNull();
 
     // Only the box below is observed; the on-screen one never needs an observer.
@@ -139,7 +141,7 @@ describe("the read grid defers widget bodies", () => {
     intersect(bravo);
 
     expect(screen.getByText("Bravo body")).toBeInTheDocument();
-    expect(screen.queryByText("Loading bravo…")).toBeNull();
+    expect(screen.queryByText("Bravo is read when this box scrolls into view.")).toBeNull();
   });
 
   it("mounts every widget below 12 columns, where a short placeholder would shift the page", () => {

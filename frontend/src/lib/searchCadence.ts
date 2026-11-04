@@ -7,9 +7,10 @@
 import { ApiError, actionErrorMessage, type SearchCadenceItem, type SearchFamily } from "@/lib/api";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { ENGLISH_CADENCE, cadenceDuration } from "@/lib/cadenceText";
-import { formatDuration } from "@/lib/time";
+import { formatExactDuration } from "@/lib/time";
 
-export { formatDuration };
+/** A cadence is a configured value, so it is spelled whole. */
+export const formatDuration = formatExactDuration;
 
 /** A bucket width. Null means the family has no buckets, which is not zero. */
 export function formatBucket(seconds: number | null, i18n?: BehaviorI18n): string {

@@ -1,5 +1,6 @@
 {
   "loading": "Loading {what}…",
+  "deferred": "{what} is read when this box scrolls into view.",
   "couldNotDisplay": "{what} could not be displayed.",
   "renderFailed": "The page failed while rendering. Nothing on it was changed. Try again; if it keeps failing, check that the backend is reachable.",
   "reference": " Reference: {digest}.",

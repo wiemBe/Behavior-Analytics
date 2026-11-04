@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { LoadingState } from "@/components/ui/RouteState";
 import { UtcTime } from "@/components/ui/UtcTime";
 import type { AccessConsole } from "@/lib/api";
-import { formatDuration, relativeAge } from "@/lib/time";
+import { formatExactDuration, relativeAge } from "@/lib/time";
 
 import { anyRunning, POLL_LIMIT_SECONDS, POLL_SECONDS, sharedAsk, syncWord, verdictOf, verdictTone } from "./access";
 import { Ask, EntryTable } from "./EntryTable";
@@ -255,7 +255,7 @@ function ConsoleSection({
                 ) : (
                   <>{t("console.neverChecked")} </>
                 )}
-                {t("console.interval", { interval: formatDuration(interval) })}
+                {t("console.interval", { interval: formatExactDuration(interval) })}
               </p>
               {shared ? <Ask entry={shared} /> : null}
               {console.syncs_started.length > 0 ? (

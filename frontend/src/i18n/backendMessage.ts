@@ -14,7 +14,7 @@ import { formatCount, formatPercent, type FormatLocale } from "@/lib/format";
 import codesJson from "./backendCodes.generated.json";
 import { enumLabel, type EnumTranslator } from "./enumLabels";
 import type { Locale } from "./locale";
-import { durationText } from "./measures";
+import { exactDurationText } from "./measures";
 import { own } from "./ownKey";
 import { asTextTranslator, type TextTranslator } from "./textTranslator";
 
@@ -131,7 +131,7 @@ function formatUntyped(
   }
   if (typeof value === "boolean") return String(value);
   if (taggedKind(value, "duration") && finite(value.seconds)) {
-    return durationText(context.units, value.seconds);
+    return exactDurationText(context.units, value.seconds);
   }
   if (taggedKind(value, "percent") && finite(value.ratio)) {
     return formatPercent(value.ratio, null, precision(value.precision, 0), context.locale);
@@ -221,7 +221,7 @@ function formatParam(
         : undefined;
     case "duration":
       return taggedKind(value, "duration") && finite(value.seconds)
-        ? durationText(context.units, value.seconds)
+        ? exactDurationText(context.units, value.seconds)
         : undefined;
     case "timestamp": {
       if (typeof value !== "string") return undefined;

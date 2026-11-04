@@ -18,7 +18,7 @@ import type {
   QRadarMount,
 } from "@/lib/api";
 import { formatCount } from "@/lib/format";
-import { formatDuration } from "@/lib/time";
+import { formatExactDuration } from "@/lib/time";
 
 import { HostName } from "./HostName";
 import { cellHasValue, distinctReasons, type HealthJoin, type MemberRow } from "./qradarDetail";
@@ -246,7 +246,7 @@ export function HealthTable({
         {t.rich("window", {
           from: () => <UtcTime value={window.start} />,
           to: () => <UtcTime value={window.end} />,
-          cadence: formatDuration(window.cadence_seconds),
+          cadence: formatExactDuration(window.cadence_seconds),
           collected: () => <UtcTime value={window.collected_at} />,
         })}
       </p>
