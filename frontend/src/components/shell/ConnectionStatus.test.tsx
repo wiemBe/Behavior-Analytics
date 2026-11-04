@@ -164,4 +164,44 @@ describe("worst-of", () => {
     );
     expect(control()).toHaveAccessibleName("Connection status: Checking");
   });
+
+  it("keeps saying Checking, never Unknown or Connected, while one signal has not answered", () => {
+    const { unmount } = render(
+      <ConnectionStatus health={READY} overview={{ state: "loading" }} cadence={{ state: "loading" }} />,
+    );
+    expect(control()).toHaveAccessibleName("Connection status: Checking");
+    expect(control().querySelector(".pill")?.className).toBe("pill");
+    unmount();
+    render(
+      <ConnectionStatus
+        health={READY}
+        overview={overview("HEALTHY")}
+        cadence={{ state: "loading" }}
+      />,
+    );
+    expect(control()).toHaveAccessibleName("Connection status: Checking");
+    expect(control().querySelector(".pill")?.className).toBe("pill");
+  });
+
+  it("a problem already answered is not hidden behind a signal still checking", () => {
+    render(
+      <ConnectionStatus
+        health={{ state: "error", status: 503 } as unknown as Loaded<HealthReady>}
+        overview={{ state: "loading" }}
+        cadence={{ state: "loading" }}
+      />,
+    );
+    expect(control()).toHaveAccessibleName("Connection status: Problem");
+  });
+
+  it("answers Unknown only once every signal has answered and one is unknown", () => {
+    render(
+      <ConnectionStatus
+        health={READY}
+        overview={overview("UNKNOWN")}
+        cadence={cadence(run("ok"))}
+      />,
+    );
+    expect(control()).toHaveAccessibleName("Connection status: Unknown");
+  });
 });

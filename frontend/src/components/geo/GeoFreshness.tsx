@@ -12,7 +12,7 @@
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
-import { formatClockUtc, useReportDataAge } from "@/components/shell/AutoRefresh";
+import { formatClockUtcDated, useReportDataAge } from "@/components/shell/AutoRefresh";
 import { useMeasures } from "@/i18n/measures";
 import { CadenceProvider, useFamilyTiming } from "@/widgets/cadence";
 import { deriveStale } from "@/widgets/state";
@@ -29,7 +29,7 @@ function Line({ asOf }: { asOf: string }) {
   if (now === null) return null;
 
   const verdict = deriveStale(asOf, timing.cadenceSeconds, now);
-  const time = () => <time dateTime={asOf}>{formatClockUtc(asOf)}</time>;
+  const time = () => <time dateTime={asOf}>{formatClockUtcDated(asOf, verdict.ageSeconds)}</time>;
   if (verdict.ageSeconds === null) {
     return (
       <p className="tw-note warn" role="status">

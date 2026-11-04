@@ -102,4 +102,17 @@ describe("GeoFreshness", () => {
       expect.arrayContaining(keys.map((key) => `English key has no Turkish twin: ${key}`)),
     );
   });
+
+  it("carries the date when the stale time is on an earlier UTC day", () => {
+    render(<GeoFreshness asOf={at(30)} />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Stale: the latest data is from 2026-11-01 06:00:00 UTC, 1 d 6 h old.",
+    );
+  });
+
+  it("keeps a same-day stale time as a clock", () => {
+    render(<GeoFreshness asOf={at(5)} />);
+    const text = screen.getByRole("status").textContent ?? "";
+    expect(text).not.toMatch(/2026-11-02/);
+  });
 });

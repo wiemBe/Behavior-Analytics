@@ -29,6 +29,21 @@ function session(): SessionValue {
   };
 }
 
+function signedIn(over: Partial<SessionValue["me"] & object> = {}): SessionValue {
+  return {
+    ...session(),
+    status: "ready",
+    me: {
+      subject: "ada",
+      email: null,
+      permissions: [],
+      effective_permissions: [],
+      username: "ada",
+      ...over,
+    },
+  };
+}
+
 function renderForm(value = session()) {
   return render(
     <StaticSession value={value}>
@@ -56,6 +71,53 @@ afterEach(() => {
 });
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("LoginForm when the account is already signed in", () => {
+  it("sends it to the page next names, without showing the form", () => {
+    nav.params = "next=%2Falerts%3Fstate%3DOPEN";
+    renderForm(signedIn());
+    expect(nav.replace).toHaveBeenCalledWith("/alerts?state=OPEN");
+    expect(screen.queryByLabelText("Username")).toBeNull();
+  });
+
+  it("sends it to / without a next", () => {
+    renderForm(signedIn());
+    expect(nav.replace).toHaveBeenCalledWith("/");
+    expect(screen.queryByRole("form")).toBeNull();
+  });
+
+  it("refuses an off-site next", () => {
+    nav.params = "next=https%3A%2F%2Fevil.example%2Fx";
+    renderForm(signedIn());
+    expect(nav.replace).toHaveBeenCalledTimes(1);
+    expect(nav.replace).toHaveBeenCalledWith("/");
+  });
+
+  it("sends an account that must change its password there first", () => {
+    nav.params = "next=%2Falerts";
+    renderForm(signedIn({ must_change_password: true }));
+    expect(nav.replace).toHaveBeenCalledWith("/account/password?next=%2Falerts");
+  });
+
+  it("shows the form to a signed-out visitor and does not navigate", () => {
+    renderForm();
+    expect(screen.getByLabelText("Username")).toBeInTheDocument();
+    expect(nav.replace).not.toHaveBeenCalled();
+  });
+
+  it("shows the form when the account could not be read", () => {
+    renderForm({ ...session(), status: "error", error: "x" });
+    expect(screen.getByLabelText("Username")).toBeInTheDocument();
+    expect(nav.replace).not.toHaveBeenCalled();
+  });
+
+  it("shows a loading line, not the form, while the session is being read", () => {
+    renderForm({ ...session(), status: "loading" });
+    expect(screen.queryByLabelText("Username")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(/sign-in form/);
+    expect(nav.replace).not.toHaveBeenCalled();
+  });
+});
 
 describe("LoginForm", () => {
   it("shows the API version, or says it could not be read", async () => {

@@ -92,6 +92,17 @@ describe("WidgetFrame data time", () => {
     expect(screen.queryByText(/Data to/)).not.toBeInTheDocument();
   });
 
+  it("puts the date on a stale time from an earlier UTC day, in the Fleet widget's sentence", () => {
+    frame(answer(), { at: ago(86400 + 460), family: "PHASE_A_VOLUME" });
+    const text = note(/Stale: the latest data is from/).textContent ?? "";
+    expect(text).toMatch(/is from \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC, 1 d 7 min 40 s old\./);
+  });
+
+  it("leaves the date off a stale time from today", () => {
+    frame(answer(), { at: ago(601), family: "PHASE_A_VOLUME" });
+    expect(note(/Stale: the latest data is from 11:49:59 UTC/)).toBeInTheDocument();
+  });
+
   it("judges each widget against its own family's cadence", () => {
     // 20 min old: past 2 x 5 min (Phase A), inside 2 x 15 min (WAF).
     const view = frame(answer(), { at: ago(1200), family: "WAF_COLLECTION" });

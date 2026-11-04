@@ -237,8 +237,13 @@ export function ConnectionStatus({
 
   const signals = buildSignals(health, overview, cadence, now, t);
   const worst = worstTone(signals) ?? "neutral";
-  const word = signals.every((s) => s.value === t("shell.connection.checking"))
-    ? t("shell.connection.checking")
+  // A signal that has not answered yet is no measurement. While any is still checking and none
+  // answered with a problem, the control says Checking, not "Unknown" (or a premature "Connected").
+  const checkingWord = t("shell.connection.checking");
+  const stillChecking =
+    signals.some((s) => s.value === checkingWord) && (worst === "ok" || worst === "neutral");
+  const word = stillChecking
+    ? checkingWord
     : t(
         `shell.connection.${
           worst === "ok"
@@ -250,7 +255,7 @@ export function ConnectionStatus({
                 : "problem"
         }`,
       );
-  const toneClass = worst === "neutral" ? "" : worst;
+  const toneClass = worst === "neutral" || stillChecking ? "" : worst;
 
   return (
     <details className="topbar-status" ref={ref}>

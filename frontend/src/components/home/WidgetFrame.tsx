@@ -30,7 +30,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { formatClockUtc } from "@/components/shell/AutoRefresh";
+import { formatClockUtc, formatClockUtcDated } from "@/components/shell/AutoRefresh";
 import type { ResourceState } from "@/hooks/useApiResource";
 import { type TextTranslator } from "@/i18n/textTranslator";
 import { englishText } from "@/widgets/englishText";
@@ -335,7 +335,7 @@ function StaleNote({
   return (
     <p className={className} role="status">
       {t.rich("stale", {
-        time: () => <time dateTime={asOf}>{formatClockUtc(asOf)}</time>,
+        time: () => <time dateTime={asOf}>{formatClockUtcDated(asOf, ageSeconds)}</time>,
         age: measures.duration(ageSeconds),
       })}
     </p>
@@ -355,7 +355,7 @@ function DataToNote({
   const t = useTranslations("home.frame");
   const measures = useMeasures();
   const age = measures.age(ageSeconds);
-  const time = () => <time dateTime={at}>{formatClockUtc(at)}</time>;
+  const time = () => <time dateTime={at}>{formatClockUtcDated(at, ageSeconds)}</time>;
   return (
     <p className={variant === "kpi" ? "kpi-foot" : "tw-note"}>
       {age === "—" ? t.rich("dataTo", { time }) : t.rich("dataToAge", { time, age })}
