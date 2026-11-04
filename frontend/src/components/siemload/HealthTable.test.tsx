@@ -53,7 +53,7 @@ describe("HealthTable: the figures of a host", () => {
       "CPU (%)",
       "Memory (%)",
       "CRE queue (events)",
-      "Throttle spill (bytes on disk)",
+      "Throttle spill (bytes\u00a0on\u00a0disk)", // non-breaking: the unit stays whole
       "Busiest stage (avg\u00a0%\u00a0busy)", // non-breaking: the unit stays whole
     ]) {
       expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
