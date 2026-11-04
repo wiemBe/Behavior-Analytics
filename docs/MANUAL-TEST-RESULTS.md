@@ -17,7 +17,7 @@ This page is the results page for the **0.1.11** section of the guide `docs/MANU
 
 **Core (production path)**, 38 checks: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-136, MT-10, MT-11, MT-126, MT-12, MT-13, MT-14, MT-15, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-128, MT-95, MT-119, MT-120, MT-121, MT-125. In production only the rows whose `Core` column says "yes" are filled in; the others are for the lab run. MT-126, although its number is high, is done right after MT-11. MT-128 is also done after a `GEO_COLLECTION` cadence has passed.
 
-Since 0.1.10 the interface is English only (D-41). The checks of section 4 that tested the Turkish interface or the language switch were removed (MT-20, MT-58, MT-59, MT-124: the result cell says `Removed`; nothing to run) or rewritten as English checks with the same ids. A raw message key or Turkish text anywhere is a Fail of the check where it was seen. New checks in 0.1.11: MT-133, MT-134, MT-135 and MT-136.
+Since 0.1.10 the interface is English only (D-41). The checks of section 4 that tested the Turkish interface or the language switch were removed (MT-20, MT-58, MT-59, MT-124: the result cell says `Removed`; nothing to run) or rewritten as English checks with the same ids. A raw message key or Turkish text anywhere is a Fail of the check where it was seen. New checks in 0.1.11: MT-133, MT-134, MT-135, MT-136, MT-137, MT-138, MT-139, MT-140, MT-141 and MT-142.
 
 Version before: `0.1.10`, migration head `0047`. Version after: `0.1.11`, migration head `0054`.
 
@@ -208,6 +208,12 @@ Version before: `0.1.10`, migration head `0047`. Version after: `0.1.11`, migrat
 | MT-133 |  | QRadar's health in detail on the SIEM load page and `doctor` (HLT-1 to HLT-3) | | |
 | MT-134 |  | The access check: which QRadar APIs the token can reach (ACC-1, ACC-2) | | |
 | MT-135 |  | HA pairs on the SIEM load page — production only, needs an HA pair | | |
+| MT-137 |  | Abandoned searches: the reaper's schedule and the `ABANDONED` count (ARL-5) | | |
+| MT-138 |  | Alert e-mail page (view only) (MAIL-1 to MAIL-3) | | |
+| MT-139 |  | Alert e-mail is refused to an account without `admin:notifications` | | |
+| MT-140 |  | `./qradar-dash doctor --check-smtp` against the site's relay | | |
+| MT-141 |  | Alert e-mail: one test message through the relay — (writes) lab only | | |
+| MT-142 |  | A username with `SMTP_SECURITY=none` is refused (`insecure_login`) — (writes) lab only | | |
 
 ## 13. Guide
 

@@ -28,10 +28,10 @@ This section upgrades a 0.1.10 site to 0.1.11 and tests the upgraded site. A 0.1
 - **QRadar's health in detail, on the SIEM load page (HLT-1 to HLT-3, HLT-5).** The QRadar section of `/admin/siem-load` holds a managed-hosts table (HA pairs counted once), a "Disk, system and pipeline" block per host, QRadar's system notifications of the last 24 hours, and trends. The figures come from the new ninth search family `QRADAR_HEALTH` (HLT-2): two aggregating Ariel searches per console, every 15 minutes, **on by default** (`QRADAR_HEALTH_COLLECTION_ENABLED=true`), rows kept `QRADAR_HEALTH_RETENTION_DAYS` (default 35). It needs the custom properties `Metric ID`, `Element` and `Value` on each console. Free space is carried between QRadar's hourly `DiskSpaceTotal` values and the page says "total as of hh:mm UTC" (HLT-5). When the family is off, the page says so above the stored figures. `doctor` gains `qradar_disk` (OPS-R69) and `qradar_pipeline` (OPS-R70), and `qradar_health` is HA-aware (OPS-R67). Checks: MT-133 and, for a site with an HA pair, MT-135 (production only).
 - **QRadar access, stored and paged (ACC-1 to ACC-3).** Every 6 hours (`QRADAR_ACCESS_CHECK_INTERVAL_SECONDS`, 21600) and on demand, each enabled REST console is asked which of its 14 APIs the token reaches. `/admin/qradar-access` shows the verdict per console, "Check now" is `POST /api/v1/admin/qradar-access/check` (202, `RATE_LIMIT_ACCESS_CHECK` 2 per minute), and `doctor` gains `qradar_access` (OPS-R71), which reads the stored result and sends no search. The probe is recorded under its own caller `ACCESS_CHECK`. Check: MT-134.
 - **`doctor --aql` tries every family's real query once (AQL-1, AQL-2).** The opt-in flag sends each collection family's own query, one at a time, to every REST console and says per family whether QRadar accepts it (`aql_<family>`, runbook OPS-R72). The searches are recorded under the caller `DOCTOR_AQL`. Plain `doctor` sends no search. Check: MT-136.
-- **Alert e-mail through the site's SMTP relay (MAIL-1 to MAIL-3).** Templates and recipients are administered at `/admin/email`. **Nothing is sent until `SMTP_HOST` is set in `.env`**, and a username with `SMTP_SECURITY=none` is refused (`doctor` `email` FAIL, runbook OPS-R68). `./qradar-dash doctor --check-smtp` connects to the relay and finishes the handshake; nothing is sent. No check in this guide covers the e-mail page or `--check-smtp`; if the site uses alert e-mail, write in the Note field of MT-09 what `doctor` `email` printed.
+- **Alert e-mail through the site's SMTP relay (MAIL-1 to MAIL-3).** Templates and recipients are administered at `/admin/email`. **Nothing is sent until `SMTP_HOST` is set in `.env`**, and a username with `SMTP_SECURITY=none` is refused (`doctor` `email` FAIL, runbook OPS-R68). `./qradar-dash doctor --check-smtp` connects to the relay and finishes the handshake; nothing is sent. Checks: MT-138 (the page, no password anywhere, the `SKIP` line when `SMTP_HOST` is empty), MT-139 (an account without `admin:notifications` is refused), MT-140 (`--check-smtp`), MT-141 (one test message, `lab only`) and MT-142 (the `insecure_login` refusal, `lab only`). MT-09 still reads the `email` line in the core; write in its Note field what it printed. The generic webhook now carries the real `alert_id` (MAIL-1); no check reads it, because the application shows no webhook payload and the project ships no receiver for it.
 - **The world map states how each bucket was collected, and Kosovo is a country (GEO-6, GEO-7).** Buckets stored from 0.1.11 on record `country_source` and `country_property`; older buckets read as unknown. The line under the map states the way or ways, and the map names a country its outlines do not draw. Checks: MT-128 and MT-129.
 - **Seven migrations, head `0054`.** `0048` … `0054`, listed with their `Running upgrade` lines in section 2. `upgrade` prints the decision pair first with `0047` and then with `0054`.
-- **Load numbers follow the code (ARL-4, ARL-5, FIX-23).** The load summary is folded in PostgreSQL (same figures); a search whose worker died is closed as `ABANDONED` and counted as Failed by the beat task `reap_abandoned_ariel_searches`; the session commits before the response is sent. MT-130 reads the page; the fold, the reaper and the commit have no step of their own.
+- **Load numbers follow the code (ARL-4, ARL-5, FIX-23).** The load summary is folded in PostgreSQL (same figures); a search whose worker died is closed as `ABANDONED` and counted as Failed by the beat task `reap_abandoned_ariel_searches`; the session commits before the response is sent. MT-130 reads the page and MT-137 checks the reaper's schedule and the `ABANDONED` count; the fold and the commit have no step of their own.
 - **Tables and units (POL-15, POL-16, FIX-26), and less first-screen text (D40-2).** "Load by caller" stacks its p50 and p95 cells so the table fits at 1024 pixels, host names break only after a dot, `doctor` prints free space in KiB, MiB, GiB and TiB, and eleven pages carry less prose. No check of its own; MT-130 and MT-133 read the pages.
 - **The manual test follows the code (DOC-7, DOC-8, HLT-4).** MT-99 and MT-102 state each family's cadence; MT-10 carries measured upgrade times.
 - **An 0.1.10 site upgrades directly.** `min_from` is `0.1.10` (`docs/releases/0.1.11.md`). A 0.1.9 site upgrades to 0.1.10 first; that path is in `docs/releases/0.1.10.md`.
@@ -66,7 +66,7 @@ For the data of a collection to appear on a page, the cadence and the settle mar
 
 **Core (production path):** 38 checks, about **2 hours** of active work (an estimate, not measured) and about 10 minutes of the console administrator (MT-120); the cadence wait is separate. **Production order:** the core checks are done in section order. MT-126, although its number is high, is done right after MT-11; MT-128 is also done after MT-11, once a `GEO_COLLECTION` cadence has passed. The cadence wait (18 minutes at most) is filled with read-only checks that need no new data, such as MT-12 to MT-22; the data-dependent checks (MT-24 and after) are done when the wait is over.
 
-Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes, and MT-133 to MT-135 about 25 more (MT-135 only where an HA pair exists), and MT-136 about 5 more.
+Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes, and MT-133 to MT-135 about 25 more (MT-135 only where an HA pair exists), MT-136 about 5 more, and MT-137 to MT-142 about 35 more (MT-141 and MT-142 only in the lab).
 Fill the first cadence wait (18 minutes at most with the default cadences) with the Sign-in and Language sections. It can also be done in two half days; between the upgrade and the Dashboard and anomaly checks a wait is needed.
 
 
@@ -2280,6 +2280,161 @@ curl -s --cookie "$SESSION" https://<host>/api/v1/admin/ariel-load/current
 - The two members' names on the page are the ones QRadar shows. If the page cannot match the members to the managed host (for example the server list was not read), it says so and shows the members as "HA member"; it never shows a pair as healthy on a guess.
 
 **Record:** For each pair: QRadar's two statuses, the state the page showed (Healthy pair, Failed over, Degraded pair, Failed pair, Unknown pair state), the `qradar_health` status, whether the EPS equals QRadar's figure once, and any status string the page showed as written (copy it exactly).
+
+
+#### MT-137 — Abandoned searches: the reaper's schedule and the `ABANDONED` count (ARL-5)
+
+**Precondition:** Upgrade complete (MT-08). Signed in with an account that has `admin:*`. The check reads the beat schedule in the application's code and settings, the worker's log, and our own `ariel_search_run` table. It sends no search to QRadar and writes nothing. No step makes a worker die: killing a worker in the middle of a search loses that search's result and spends console capacity for nothing, so the closing itself is not provoked here. The check proves that the reaper is scheduled and runs, and that the page and the command report what it closed.
+
+**Action:**
+
+- Read the schedule the application hands to beat, and the worker's log of the last 30 minutes:
+
+```bash
+docker compose exec -T backend python -c "from app.workers.celery_app import celery_app; print(celery_app.conf.beat_schedule['reap-abandoned-ariel-searches'])"
+./qradar-dash logs --since=30m celery-worker | grep reap_abandoned_ariel_searches
+grep -E '^ARIEL_SEARCH_ABANDON_SCAN_SECONDS=' .env || echo "not set: the default applies"
+```
+
+- Read the searches by outcome and the searches in flight now:
+
+```bash
+docker compose exec -T backend python -m app.cli.ariel_load --hours 24
+docker compose exec -T backend python -m app.cli.ariel_load --current
+```
+
+- Open Administration → "SIEM load" (`/admin/siem-load`), read "Load by caller" and the note under it.
+
+**Expected:**
+
+- The first command prints `{'task': 'reap_abandoned_ariel_searches', 'schedule': 600.0}`. The `schedule` is `ARIEL_SEARCH_ABANDON_SCAN_SECONDS` in seconds (default 600; the setting accepts 60 to 86400). A site that set another value in `.env` prints that value; the third command shows the line.
+- The worker's log has one line for each scan that ran in the last 30 minutes (about three with the default). Celery writes it, names the task `reap_abandoned_ariel_searches` and ends it with the returned dictionary, `{'closed': 0}` when no search had to be closed. A line with a number above 0 is not a Fail: it says how many searches the reaper closed in that scan. No line at all in 30 minutes, with `celery_beat` PASS in `doctor`, is written in the Note field.
+- `--hours 24`: in the `outcomes` column of each caller, `ABANDONED:<n>` appears only for a caller that had such a search. On a site where no worker was stopped during a search, the word is absent; that is the expected state, and it is not a zero drawn by the page. After an upgrade or a restart of the worker (MT-06, MT-07) a search that was running at that moment can be listed `ABANDONED`: write its caller and count, and the time of the restart. The row is closed only after the longest wait a search may have (`ARIEL_MAX_TIMEOUT_SECONDS` 900 s plus 30 s) plus one scan interval (600 s), so with the defaults 25 minutes and 30 seconds after it was sent, at the next scan. An `ABANDONED` count that grows with no restart is a finding: write it.
+- `--current`: the line `in flight: <n> (stale, worker gone: <m>, older than <s> s)` counts in `<m>` the rows older than `<s>` (930 s with the defaults) that are not yet closed; `<m>` falls to 0 within one scan interval after they pass the closing time. A stale row that stays beyond that, with the worker log showing the scans, is written in the Note field.
+- On the page, "Load by caller" counts an abandoned search under "Failed" and the note under the table says so ("Abandoned searches are counted in Failed: their worker stopped before it recorded an end, so they carry no measurement."). The percentile cells of an abandoned search stay a dash; none of its figures is drawn as a zero.
+
+**Record:** The schedule line, the number of reaper lines in the log and the largest `closed` value among them, the `ABANDONED` counts per caller with the time of the last worker restart (or "none"), the stale count of `--current`, and whether the note under "Load by caller" is there.
+
+#### MT-138 — Alert e-mail page (view only) (MAIL-1 to MAIL-3)
+
+**Precondition:** Upgrade complete (MT-08). Signed in with an account that has `admin:notifications` (the administrator role has it through `admin:*`). **Do not save a template or a recipient, do not press "Send test message"** (MT-141).
+
+**Action:**
+
+- Open Administration → "Alert e-mail" (`/admin/email`). Read the "Relay" block first, then the tabs "Templates" and "Recipients".
+- In the browser's developer tools, search the page for an input of type `password`, or run in the console `document.querySelectorAll('input[type=password]').length`.
+- Read what the application reports about the relay, and the `email` line of `doctor`:
+
+```bash
+curl -s --cookie "$SESSION" https://<host>/api/v1/admin/email/settings
+./qradar-dash doctor | grep -E '^(PASS|WARN|FAIL|SKIP) +email'
+```
+
+**Expected:**
+
+- The `h1` is “Alert e-mail” (the tab reads “Alert e-mail · Behavior Analytics”); the description is “Times are UTC.” The "Relay" block lists “Status”, “Relay”, “Security”, “From”, “Login” and “CA file”. The note says “Set in .env on the server, not editable here. The password is never shown.” The page has two tabs, “Templates” and “Recipients”. The Templates tab has the table “E-mail templates” (columns “Template”, “Customised”, “Enabled”, “Sends today”, “Updated (UTC)”), the editor, the placeholders, the preview and “Send a test message”. The Recipients tab has the table “Stored recipients” (columns “Address”, “Minimum severity”, “Alert types”, “Enabled”, “Updated (UTC)”, “Actions”) and the “From .env” block for `NOTIFY_EMAIL_RECIPIENTS`.
+- **No password input and no password value.** The count of `input[type=password]` is 0. The JSON of `/settings` holds `configured`, `host`, `port`, `security`, `security_source`, `from_address`, `from_name`, `username_set`, `ca_file_set`, `site_name` and `test_rate_limit`; `username_set` is only true or false. The username, the password and the CA file's path are not in it.
+- **With `SMTP_HOST` empty** (the code default, and the state of a site that did not choose alert e-mail): “Status” is “Not configured” and a warning says “No alert e-mail can leave this site.” and that `SMTP_HOST` is empty; `/settings` has `"configured":false`. The `doctor` line is `SKIP  email` with the text `not configured (SMTP_HOST is empty); alerts are not mailed`. In the Templates tab, under “Send a test message”, the page says “No relay is configured, so nothing can be sent. Set SMTP_HOST in .env first.” and the send button cannot be used. Nothing is sent by this site: with no host there is no connection to open (the same refusal answers `POST /api/v1/admin/email/test` with the code `not_configured`).
+- **With `SMTP_HOST` set:** “Status” is “Configured” with the note “Configured means a host is set, not that the relay answers.”; “Relay” shows `<host>:<port>` and “Security” one of “STARTTLS (connects, then upgrades)”, “SSL/TLS (encrypted from the start)” or “None (plain connection)”, with “Set by SMTP_SECURITY” or “Derived from SMTP_USE_TLS” under it. “Login” reads “Username set” or “No username (unauthenticated relay)”. The `doctor` line is `PASS  email` with `configured: relay <host>:<port>, security <mode>, <authenticated|no login> (handshake not tested; use --check-smtp)`; a username with the mode `none` is `FAIL` (MT-142).
+- If no recipient is stored and `NOTIFY_EMAIL_RECIPIENTS` is empty, the Recipients tab says “No alert e-mail is sent.” and why. That is a statement of the site's configuration, not a Fail.
+- No raw message key and no Turkish text on the page (section 4).
+
+**Record:** Whether the site has `SMTP_HOST` set (yes/no), the “Status” and “Security” values, the count of password inputs, the keys of the `/settings` JSON, and the `doctor` `email` line (the host may be written; the credentials are not on the line).
+
+#### MT-139 — Alert e-mail is refused to an account without `admin:notifications`
+
+**Precondition:** An account that already exists and has neither `admin:notifications` nor `admin:*` (for example one with the `viewer` role). **Do not create an account for this check**: creating one is MT-16 (`lab only`); where there is no such account, write `Not run` with that reason. Sign in with it in a private window; take its session cookie from the browser for the second step.
+
+**Action:**
+
+- Type the address `/admin/email`. Look at the Administration group of the navigation.
+- Send the request with the account's session:
+
+```bash
+curl -s -i --cookie "$SESSION" https://<host>/api/v1/admin/email/settings | head -20
+```
+
+**Expected:**
+
+- The navigation has no “Alert e-mail” item. The page opens with the `h1` “Alert e-mail” and, in place of the content, the notice “Alert e-mail cannot be shown to this account.” with “Reading and changing it needs the admin:notifications permission. The read-only role does not include it. Nothing was changed.” No relay fact, template or recipient is on the page.
+- The request answers `403` with the text `missing required permission: admin:notifications`. Every route under `/api/v1/admin/email` is refused the same way, so no template, recipient or relay setting is in the answer.
+
+**Record:** That the item was absent, the notice's heading, the HTTP status and the permission the answer names.
+
+#### MT-140 — `./qradar-dash doctor --check-smtp` against the site's relay
+
+**Precondition:** `SMTP_HOST` is set in `.env` and the backend was recreated after it was set (MT-138 shows “Configured”). The relay is the site's own, reachable from the backend container. If `SMTP_HOST` is empty, run the command anyway and write `Not run` for the rest: the line is a `SKIP`. The project ships no test relay, so a lab that wants this check needs a relay the operator provides. The command opens one connection to that relay, says EHLO, finishes the STARTTLS or SSL handshake and quits: no login is attempted and no message is sent, so the check is safe in production when the site uses alert e-mail. It sends nothing to QRadar. It is not in the core, because only a site with a relay can run it.
+
+**Action:**
+
+```bash
+./qradar-dash doctor --check-smtp | grep -E '^(PASS|WARN|FAIL|SKIP) +email'
+echo "exit: ${PIPESTATUS[0]}"
+```
+
+**Expected:**
+
+- `PASS  email` with `relay <host>:<port>, security <mode>, <authenticated|no login>: handshake completed, nothing sent`.
+- A failed handshake is `WARN  email` with `...: handshake failed (<code>)` and `runbook: OPS-R68`. The code is one of `connection_refused`, `timeout`, `connection_failed`, `tls_failed` (the codes and their causes are in OPS-R68). A WARN is not a Fail of the product: write the code and have the relay's owner look at the port and the mode (587 with `starttls`, 465 with `ssl`, 25 with `none`) and, for a private CA, `SMTP_CA_FILE`. The line never holds the relay's own reply text or a credential.
+- With `SMTP_HOST` empty: `SKIP  email  not configured (SMTP_HOST is empty); alerts are not mailed`.
+- The same command with `--json` (`./qradar-dash doctor --check-smtp --json`) prints the same line as one JSON array and no text lines.
+
+**Record:** The `email` line (host and port may be written; no credential is on it), the exit code, and the failure code if any.
+
+#### MT-141 — Alert e-mail: one test message through the relay (writes) lab only
+
+**Precondition:** **lab only**: the check sends one real e-mail through the relay to a mailbox and leaves an audit record (`email.test_send`) that cannot be deleted; in production mark `Not run`. It needs a relay and a mailbox the operator provides (the project ships none) and `SMTP_HOST` set as MT-140 says. Signed in with `admin:notifications`.
+
+**Action:**
+
+- Open `/admin/email`, the Templates tab. Under “Send a test message” type a mailbox you can read in “Send to” and press “Send test message”.
+- Then press it five more times within the same minute.
+- Read the mailbox, including its junk folder.
+
+**Expected:**
+
+- The page says “The relay accepted the test message.” with “The relay accepted the test message. Delivery to the mailbox is up to the relay.” and “Check the mailbox, including its junk folder. A relay accepting a message does not prove it was delivered.” The mail arrives; its subject starts with `[Test] `. The mail is a fixed sample alert (the preview's sample), never a real alert, and it has a text part and an HTML part.
+- A failure is a coded sentence, never the relay's own text: for example “The relay rejected the sign-in. Check SMTP_USERNAME and SMTP_PASSWORD.” (`auth_failed`), “The connection to the relay failed. …”, “The secure connection to the relay failed. …” (OPS-R68 lists them). A failure is a finding about the relay or `.env`, to write down; it is not a defect of the page.
+- The limit is `RATE_LIMIT_EMAIL_TEST`, `5/minute` by default (the note under the button says “Limited to 5/minute.”): the sixth press within a minute is refused with `429` and the page says “Too many test messages.” with “Test messages are limited to 5/minute.” and “Try again in <n> s.” That is not a failure.
+
+**Record:** The sentence the page showed, whether the mail arrived and how its subject began, whether the sixth press was refused, and the code of any failure.
+
+**Cleanup:** The sent mail cannot be recalled; delete it from the mailbox. Up to five `email.test_send` rows (one for each message the relay was asked to send) stay in the audit log. No template, recipient or setting was changed.
+
+#### MT-142 — A username with `SMTP_SECURITY=none` is refused (`insecure_login`) (writes) lab only
+
+**Precondition:** **lab only**: the check edits `.env` and recreates the application containers (a short outage), and the page and `doctor` show the fault until the cleanup. In production mark `Not run`. Take a backup of the `.env` first: `cp -p .env .env.mt142.bak` (the copy holds the site's `.env` values: keep it in the install directory, with the file's own permissions, and delete it in the cleanup). Do not type a real password anywhere: leave `SMTP_PASSWORD` empty. The mode refuses before any connection is made, so the host does not have to exist.
+
+**Action:**
+
+- In `.env` set the four lines below (change the lines that exist; add the ones that do not), then recreate the containers that read it:
+
+```bash
+SMTP_HOST=smtp.invalid
+SMTP_PORT=25
+SMTP_SECURITY=none
+SMTP_USERNAME=mt142-user
+```
+
+```bash
+docker compose up -d --force-recreate backend celery-worker celery-beat
+./qradar-dash doctor | grep -E '^(PASS|WARN|FAIL|SKIP) +email'
+echo "exit: ${PIPESTATUS[0]}"
+```
+
+- Open `/admin/email` and read the top of the page.
+- Run `./qradar-dash doctor --check-smtp | grep -E '^(PASS|WARN|FAIL|SKIP) +email'`.
+
+**Expected:**
+
+- `FAIL  email` with `relay smtp.invalid:25, security none, authenticated: refused, the username and password would cross the network in clear text; no mail is sent (use starttls or ssl, or clear SMTP_USERNAME)` and `runbook: OPS-R68`. The exit code of `doctor` is 2.
+- On the page a banner says “No alert e-mail is sent with this configuration.” and “SMTP_USERNAME is set while SMTP_SECURITY is none, so the login would cross the network in clear text. Nothing was sent. Use starttls or ssl, or clear SMTP_USERNAME for an unauthenticated relay.” “Login” reads “Username set”.
+- With `--check-smtp` the line is the same `FAIL`: no connection is opened, so it does not become a handshake WARN, and no host lookup is attempted.
+- No password is on the page or in any line.
+
+**Record:** The `doctor` line and exit code, and the banner's heading.
+
+**Cleanup:** Restore the `.env` (`mv .env.mt142.bak .env`), recreate the containers again with the same `docker compose up -d --force-recreate backend celery-worker celery-beat`, and run `./qradar-dash doctor | grep -E '^(PASS|WARN|FAIL|SKIP) +email'`: the line must be what it was before the check (MT-138). Confirm that `.env` no longer holds `smtp.invalid` or `mt142-user`: `grep -cE 'smtp.invalid|mt142-user' .env` prints 0. The refusal wrote nothing to QRadar and nothing to the database.
 
 
 ### 13. Guide
