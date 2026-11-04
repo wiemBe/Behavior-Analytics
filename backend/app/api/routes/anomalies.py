@@ -63,6 +63,8 @@ from app.repositories.anomaly_faults import AnomalyFaultRepository
 from app.repositories.anomaly_histogram import BUCKET_SECONDS, check_range, histogram
 from app.repositories.ips_behavior import IpsBehaviorRepository
 from app.schemas.anomaly import (
+    ActiveByFamily,
+    ActiveStateCounts,
     AnomalyDetailOut,
     AnomalyHistogramHourOut,
     AnomalyHistogramOut,
@@ -287,7 +289,7 @@ async def _list_items(
 
 
 @router.get("/summary", response_model=BehaviorSummaryOut)
-async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
+async def anomaly_summary(session: SessionDep, settings: SettingsDep) -> BehaviorSummaryOut:
     repo = AnomalyRepository(session)
     counts = await repo.state_counts()
     evidence = await repo.evidence_counts()
@@ -324,6 +326,21 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
         since=now - timedelta(hours=24), until=now
     )
 
+    # The same window as `GET /anomalies?active_only=true` without `since`: back to the range
+    # ceiling, so the family counts add up to that list's total.
+    family_counts = await repo.active_family_counts(
+        since=now - timedelta(days=settings.api_max_range_days), until=now
+    )
+
+    def family(name: str) -> ActiveStateCounts:
+        by_state = {s.value: family_counts.get((name, s.value), 0) for s in active}
+        return ActiveStateCounts(
+            open=by_state[AnomalyState.OPEN.value],
+            candidate=by_state[AnomalyState.CANDIDATE.value],
+            recovering=by_state[AnomalyState.RECOVERING.value],
+            total=sum(by_state.values()),
+        )
+
     return BehaviorSummaryOut(
         open_anomalies=open_total,
         spikes=sum(total(s, AnomalyType.VOLUME_SPIKE) for s in active),
@@ -340,6 +357,12 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
         resolved_last_24h=resolved_last_24h,
         recently_resolved=await _list_items(repo, await repo.recently_resolved()),
         highest_deviation=await _list_items(repo, await repo.highest_deviation()),
+        active_by_family=ActiveByFamily(
+            log_source=family("log_source"),
+            waf=family("waf"),
+            ips=family("ips"),
+            property_watch=family("property_watch"),
+        ),
     )
 
 

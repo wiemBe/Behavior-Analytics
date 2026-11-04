@@ -2,6 +2,7 @@
 // valid response object, so a test names only the field it is about.
 
 import type {
+  ActiveStateCounts,
   AnomalySummary,
   BehaviorSummary,
   EpsSeriesPoint,
@@ -79,7 +80,26 @@ export function behavior(over: Partial<SourceBehavior> = {}): SourceBehavior {
   };
 }
 
+/** Active counts for one family from its by-state parts; `total` is their sum. */
+export function activeCounts(
+  open: number,
+  candidate = 0,
+  recovering = 0,
+): ActiveStateCounts {
+  return { open, candidate, recovering, total: open + candidate + recovering };
+}
+
 export function summary(over: Partial<BehaviorSummary> = {}): BehaviorSummary {
+  // Unless a test names the families, the Phase A overrides describe the log-source family
+  // and the other three are measured zeros.
+  const phaseA = activeCounts(
+    Math.max(
+      0,
+      (over.open_anomalies ?? 0) - (over.candidates ?? 0) - (over.recovering ?? 0),
+    ),
+    over.candidates ?? 0,
+    over.recovering ?? 0,
+  );
   return {
     open_anomalies: 0,
     spikes: 0,
@@ -96,6 +116,12 @@ export function summary(over: Partial<BehaviorSummary> = {}): BehaviorSummary {
     resolved_last_24h: 0,
     recently_resolved: [],
     highest_deviation: [],
+    active_by_family: {
+      log_source: phaseA,
+      waf: activeCounts(0),
+      ips: activeCounts(0),
+      property_watch: activeCounts(0),
+    },
     ...over,
   };
 }

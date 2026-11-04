@@ -1452,6 +1452,16 @@ export interface AnomalyDetail extends AnomalySummary {
   detection: DetectionDetail | null;
 }
 
+/** Active anomalies of one family by lifecycle state; `total` is their sum. */
+export interface ActiveStateCounts {
+  open: number;
+  candidate: number;
+  recovering: number;
+  total: number;
+}
+
+export type AnomalyFamily = "log_source" | "waf" | "ips" | "property_watch";
+
 export interface BehaviorSummary {
   open_anomalies: number;
   spikes: number;
@@ -1473,6 +1483,9 @@ export interface BehaviorSummary {
   resolved_last_24h: number;
   recently_resolved: AnomalySummary[];
   highest_deviation: AnomalySummary[];
+  // Active anomalies of every family (the active list's window). A family that is absent
+  // was not read; it is never a zero. The Phase A fields above count log sources only.
+  active_by_family?: Partial<Record<AnomalyFamily, ActiveStateCounts>> | null;
 }
 
 export interface AnomalyListParams {

@@ -622,6 +622,24 @@ class AnomalyDetailOut(AnomalyListItem):
     ) = None
 
 
+class ActiveStateCounts(BaseModel):
+    """Active anomalies of one family by lifecycle state; `total` is their sum."""
+
+    open: int = 0
+    candidate: int = 0
+    recovering: int = 0
+    total: int = 0
+
+
+class ActiveByFamily(BaseModel):
+    """Active anomalies of every family, each a measured count (zero when none matched)."""
+
+    log_source: ActiveStateCounts
+    waf: ActiveStateCounts
+    ips: ActiveStateCounts
+    property_watch: ActiveStateCounts
+
+
 class BehaviorSummaryOut(BaseModel):
     """Fleet-level behavioral posture for the overview page."""
 
@@ -651,6 +669,9 @@ class BehaviorSummaryOut(BaseModel):
     resolved_last_24h: int = 0
     recently_resolved: list[AnomalyListItem] = Field(default_factory=list)
     highest_deviation: list[AnomalyListItem] = Field(default_factory=list)
+    #: Active anomalies of all four families, in the active list's window (the last
+    #: `api_max_range_days`). The Phase A fields above keep their own meaning.
+    active_by_family: ActiveByFamily | None = None
 
 
 def detection_detail(details: dict[str, Any] | None) -> DetectionDetailOut | None:
