@@ -30,7 +30,7 @@ SCRIPT = BACKEND / "scripts" / "ci_shard.py"
 INTEGRATION_DIR = BACKEND / "tests" / "integration"
 UNIT_DIR = BACKEND / "tests" / "unit"
 WORKFLOW = REPO / ".github" / "workflows" / "ci.yml"
-SHARDS = 5
+SHARDS = 12
 
 # The known weights of the fixture below. Their median is 2.
 KNOWN_WEIGHTS = {"test_a.py": 1, "test_b.py": 1, "test_c.py": 3, "test_d.py": 5}
@@ -38,9 +38,9 @@ FIXTURE_FILES = ["test_a.py", "test_b.py", "test_c.py", "test_d.py", "test_z.py"
 # The arguments that make the split invalid.
 INVALID_ARGUMENTS = [
     ("--shard", "1", "--of", "0"),
-    ("--shard", "1", "--of", "9"),
+    ("--shard", "1", "--of", "17"),
     ("--shard", "0", "--of", "5"),
-    ("--shard", "6", "--of", "5"),
+    ("--shard", "13", "--of", "12"),
 ]
 # A parametrized test whose id carries a random uuid.
 UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
@@ -82,7 +82,7 @@ def make_tree(root: Path, weights: dict[str, int], files: list[str]) -> Path:
     return root
 
 
-@pytest.mark.parametrize("of", range(1, 9))
+@pytest.mark.parametrize("of", range(1, 17))
 def test_the_shards_cover_every_integration_file_exactly_once(of: int) -> None:
     expected = {f"tests/integration/{path.name}" for path in INTEGRATION_DIR.glob("test_*.py")}
     seen: list[str] = []
@@ -222,7 +222,17 @@ def _expand(run: str, shard: int) -> list[str]:
 
 
 def _without_junitxml(arguments: list[str]) -> list[str]:
-    return [token for token in arguments if not token.startswith("--junitxml=")]
+    """Drop the flags that only matter to a real run: the report and the xdist workers."""
+    kept: list[str] = []
+    skip = False
+    for token in arguments:
+        if skip:
+            skip = False
+        elif token == "-n":
+            skip = True
+        elif not token.startswith(("--junitxml=", "-n")):
+            kept.append(token)
+    return kept
 
 
 def _collect(arguments: list[str]) -> set[str]:
@@ -557,12 +567,12 @@ def test_unmeasured_file_counts_as_median_in_both_columns(tmp_path: Path) -> Non
     assert rows == [(1, 10, 6), (2, 2, 6)]
 
 
-def test_the_shard_mode_defaults_to_five_shards(tmp_path: Path) -> None:
+def test_the_shard_mode_defaults_to_the_ci_matrix_size(tmp_path: Path) -> None:
     """``--of`` is optional now; it defaults to the CI matrix size."""
     make_tree(tmp_path, KNOWN_WEIGHTS, FIXTURE_FILES)
     result = run_script("--shard", "3", root=tmp_path)
     assert result.returncode == 0, result.stderr
-    assert result.stdout.split() == shard_files(3, 5, root=tmp_path)
+    assert result.stdout.split() == shard_files(3, SHARDS, root=tmp_path)
 
 
 def test_the_modes_cannot_be_combined(tmp_path: Path) -> None:
@@ -574,7 +584,7 @@ def test_the_modes_cannot_be_combined(tmp_path: Path) -> None:
     report = tmp_path / "shard-1.xml"
     write_report(report, [("tests.integration.test_x", "test_here", "2.0")])
     result = run_script(
-        "--weights-from", str(report), "--shard", "1", "--of", "5", root=tmp_path
+        "--weights-from", str(report), "--shard", "1", "--of", "12", root=tmp_path
     )
     assert result.returncode == 2
     assert result.stdout == ""
@@ -592,7 +602,7 @@ def test_the_integration_shards_publish_their_durations() -> None:
     job = workflow["jobs"]["backend-integration"]
     run = _job_run(job)
     assert "--junitxml=integration-shard-${{ matrix.shard }}.xml" in run
-    assert "$(python scripts/ci_shard.py --shard ${{ matrix.shard }} --of 5)" in run
+    assert "$(python scripts/ci_shard.py --shard ${{ matrix.shard }} --of 12)" in run
 
     uploads = [
         step
@@ -614,3 +624,55 @@ def test_the_integration_shards_publish_their_durations() -> None:
         WORKFLOW.read_text(encoding="utf-8"),
     )
     assert pinned is not None, "pin the upload by commit, with a version comment"
+
+
+def test_the_matrix_and_the_script_agree_on_the_shard_count() -> None:
+    """The matrix, the ``--of`` argument, the job name and the script default are one number.
+
+    A matrix wider than ``--of`` would run a shard that does not exist; a narrower
+    one would leave files in no shard.
+    """
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["backend-integration"]
+    assert job["strategy"]["matrix"]["shard"] == list(range(1, SHARDS + 1))
+    assert f"--of {SHARDS})" in _job_run(job)
+    assert job["name"] == f"backend-integration (shard ${{{{ matrix.shard }}}}/{SHARDS})"
+    spec = importlib.util.spec_from_file_location("ci_shard", BACKEND / "scripts" / "ci_shard.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.DEFAULT_SHARDS == SHARDS
+    assert module.MAX_SHARDS >= SHARDS
+
+
+def test_the_unit_job_runs_in_parallel_and_the_shards_stay_serial() -> None:
+    """``-n auto`` belongs to the unit job only: the integration schema fixture drops tables."""
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    unit = shlex.split(_job_run(workflow["jobs"]["backend-unit"]))
+    assert unit[unit.index("-n") + 1] == "auto"
+    assert "-n" not in shlex.split(_job_run(workflow["jobs"]["backend-integration"]))
+
+
+def test_a_push_to_merge_h_is_never_cancelled() -> None:
+    """The concurrency expression, evaluated for the refs that matter (CI-6).
+
+    ``agent/merge-h``, ``main``, a tag and a pull request keep their run; any
+    other branch is cancelled by a newer push.
+    """
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    expression = workflow["concurrency"]["cancel-in-progress"]
+    assert expression.startswith("${{") and expression.endswith("}}")
+    condition = expression[3:-2].strip()
+
+    def cancels(ref: str) -> bool:
+        # The expression only uses startsWith(), == / != and &&, which Python spells alike.
+        python = re.sub(r"startsWith\(github\.ref, '([^']*)'\)", r"ref.startswith('\1')", condition)
+        python = python.replace("github.ref", "ref").replace("&&", " and ")
+        return bool(eval(python, {"ref": ref}))  # noqa: S307
+
+    assert cancels("refs/heads/agent/ci6")
+    assert cancels("refs/heads/feat/phase-ce")
+    assert not cancels("refs/heads/agent/merge-h")
+    assert not cancels("refs/heads/main")
+    assert not cancels("refs/tags/v0.1.11")
+    assert not cancels("refs/pull/12/merge")

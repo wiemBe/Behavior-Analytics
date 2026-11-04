@@ -9,11 +9,14 @@ on:
   workflow_call:
 
 # A newer push to the same branch cancels the older run. `main`, the tags (the
-# release's workflow_call runs with the tag's ref) and pull requests are never
-# cancelled: they are the runs a release waits for.
+# release's workflow_call runs with the tag's ref), pull requests and the
+# integration branch `agent/merge-h` are never cancelled: a push to merge-h
+# queues behind the running one (CI-6). For a pull request `github.ref` is
+# `refs/pull/<n>/merge`, so the `refs/heads/` test is false and it is never
+# cancelled either.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/agent/merge-h' }}
 
 # Read-only: no CI job pushes a package or writes to the repository. The
 # release workflow calls this file through workflow_call, and a called workflow
@@ -22,6 +25,26 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    # Which jobs can this push affect? backend/scripts/ci_changes.py decides from the
+    # changed paths. Only a push to a branch other than `main` can skip anything; `main`,
+    # tags, pull requests, dispatched runs and the release's workflow_call run everything.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.decide.outputs.backend }}
+      frontend: ${{ steps.decide.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Decide
+        id: decide
+        run: >-
+          python3 backend/scripts/ci_changes.py
+          --event "${{ github.event_name }}"
+          --ref "${{ github.ref }}"
+          --before "${{ github.event.before }}"
+          --sha "${{ github.sha }}"
+
   backend-static:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -96,6 +119,8 @@ jobs:
         run: alembic check
 
   backend-unit:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # No database: the unit suite never asks for one (see docs/DEVELOPMENT.md).
@@ -126,13 +151,17 @@ jobs:
         # Everything that is not marked `integration` runs here: the unit suite and
         # the two tests in tests/integration/test_api.py that carry no marker. The
         # integration shards run everything that is marked, so the two sets never
-        # overlap and together they are the whole suite.
-        run: pytest -rs -m "not integration" tests
+        # overlap and together they are the whole suite. `-n auto` runs the suite on every
+        # core of the runner (pytest-xdist); the integration shards stay serial, because
+        # their schema fixture drops tables.
+        run: pytest -rs -n auto -m "not integration" tests
 
   backend-integration:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     # The shard number is in the job name, so the GitHub UI shows which shard
-    # a run is: "backend-integration (shard 3/5)".
-    name: backend-integration (shard ${{ matrix.shard }}/5)
+    # a run is: "backend-integration (shard 3/12)".
+    name: backend-integration (shard ${{ matrix.shard }}/12)
     runs-on: ubuntu-latest
     timeout-minutes: 35
     strategy:
@@ -140,7 +169,7 @@ jobs:
       # the others.
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
     services:
       # Every shard gets its own PostgreSQL + TimescaleDB: the schema fixture
@@ -181,11 +210,11 @@ jobs:
         working-directory: backend
         # `-rs` prints the short summary of skip reasons. The backend's addopts already
         # carry one `-q`; a second one (-qq) hides the "N passed, M skipped" line.
-        # The shard script splits tests/integration into five shards that weigh
-        # the same; together with the unit job they run every test exactly once.
+        # The shard script splits tests/integration into twelve shards that weigh
+        # the same (CI-6: about 70 minutes of tests, so twelve keep the slowest shard near six); together with the unit job they run every test exactly once.
         # The JUnit XML report records each test's setup + call + teardown time;
         # the shard weights are refreshed from these reports (docs/DEVELOPMENT.md).
-        run: pytest -rs -m integration --durations=15 --junitxml=integration-shard-${{ matrix.shard }}.xml $(python scripts/ci_shard.py --shard ${{ matrix.shard }} --of 5)
+        run: pytest -rs -m integration --durations=15 --junitxml=integration-shard-${{ matrix.shard }}.xml $(python scripts/ci_shard.py --shard ${{ matrix.shard }} --of 12)
 
       - name: Upload the integration durations
         # The report holds test timings only: test and class names, times, and
@@ -203,6 +232,11 @@ jobs:
           if-no-files-found: warn
 
   frontend:
+    # Lint, type check and the production build. The unit tests run in `frontend-test`
+    # beside it (CI-6): the two halves take about four minutes each, so the job pair
+    # finishes in the time of the slower half instead of the sum.
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -221,12 +255,38 @@ jobs:
       - name: Type check
         working-directory: frontend
         run: npm run typecheck
-      - name: Unit tests
-        working-directory: frontend
-        run: npm test
+      - name: Next build cache
+        # `npm` caches the downloads only; `next build` keeps its compiler and
+        # webpack cache in .next/cache, which this restores (a miss is harmless).
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/.next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ hashFiles('frontend/src/**') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-
       - name: Build
         working-directory: frontend
         env:
           # The production base. The release workflow builds the images with the same value.
           NEXT_PUBLIC_API_BASE_URL: /api/v1
         run: npm run build
+
+  frontend-test:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+      - name: Unit tests
+        working-directory: frontend
+        # vitest already runs one worker per core (it is not single-threaded here).
+        run: npm test

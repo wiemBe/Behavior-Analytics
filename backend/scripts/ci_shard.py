@@ -1,8 +1,8 @@
 """Split the integration suite into shards for the CI matrix.
 
-    python scripts/ci_shard.py --shard 3 --of 5
+    python scripts/ci_shard.py --shard 3 --of 12
 
-Prints the integration test files of shard 3 of 5, one path per line, relative
+Prints the integration test files of shard 3 of 12, one path per line, relative
 to the backend directory (``tests/integration/test_x.py``). The files are the
 ``tests/integration/test_*.py`` files, sorted.
 
@@ -37,8 +37,11 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-# The CI matrix has five shards; eight is the ceiling the workflow allows.
-MAX_SHARDS = 8
+# The CI matrix has twelve shards (CI-6); sixteen is the ceiling the workflow allows: the
+# repository is public, so GitHub runs 20 jobs at once, and sixteen shards plus the three
+# other jobs must still fit under that.
+MAX_SHARDS = 16
+DEFAULT_SHARDS = 12
 INTEGRATION_DIR = "tests/integration"
 WEIGHTS_FILE = "tests/integration/shard_weights.json"
 
@@ -230,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Print one shard's files, or new shard weights from JUnit XML reports."
     )
     parser.add_argument("--shard", type=int, help="the shard to print, 1-based")
-    parser.add_argument("--of", type=int, help="the number of shards (default: 5)")
+    parser.add_argument("--of", type=int, help="the number of shards (default: 12)")
     parser.add_argument(
         "--weights-from",
         nargs="+",
@@ -247,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    of = 5 if args.of is None else args.of
+    of = DEFAULT_SHARDS if args.of is None else args.of
     if not 1 <= of <= MAX_SHARDS:
         print(f"--of must be between 1 and {MAX_SHARDS}", file=sys.stderr)
         return 2
