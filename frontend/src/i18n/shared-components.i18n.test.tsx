@@ -124,14 +124,21 @@ describe("Turkish shared interface", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Oturum açmanız gerekiyor.");
     unmount();
 
+    // The sign-in form is for a signed-out visitor (UX-1): a signed-in account is sent on.
+    const login = render(
+      <StaticSession value={anonymous}>
+        <LoginForm />
+      </StaticSession>,
+    );
+    expect(screen.getByRole("form", { name: "Oturum aç" })).toBeInTheDocument();
+    login.unmount();
+
     render(
       <StaticSession value={session()}>
-        <LoginForm />
         <PasswordChange />
         <NoRole me={me()} />
       </StaticSession>,
     );
-    expect(screen.getByRole("form", { name: "Oturum aç" })).toBeInTheDocument();
     expect(screen.getByRole("form", { name: "Parolayı değiştir" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Rol atanmadı" })).toBeInTheDocument();
   });

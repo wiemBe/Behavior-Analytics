@@ -11,6 +11,7 @@
 // the detail link were off-screen entirely.
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { asTextTranslator } from "@/i18n/textTranslator";
 
@@ -42,9 +43,15 @@ import {
 } from "@/lib/anomalyQuery";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { sourcesAsOf } from "@/lib/home/asOf";
+import { utcTimeText } from "@/components/ui/UtcTime";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "./anomalies.css";
+
+/** The list API's default window when `since` is not sent. */
+const DEFAULT_WINDOW_MS = 86_400_000;
+/** How far back the "widen" link and the outside-window count reach (the API allows 365 d). */
+const WIDEN_DAYS = 364;
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("anomalies.list");
@@ -58,6 +65,7 @@ async function AnomaliesPage({
 }) {
   const raw = await searchParams;
   const t = await getTranslations("anomalies.list");
+  const filterText = await getTranslations("anomalies.filters");
   const say = asTextTranslator(await getTranslations());
   const i18n = await getBehaviorI18n();
   const q = parseAnomalyQuery(raw, i18n);
@@ -129,6 +137,23 @@ async function AnomaliesPage({
       q.until,
   );
   const items = page?.items ?? [];
+
+  // An empty, unfiltered list only describes the window the page asked for (the API's last
+  // 24 h). One bounded count of the active anomalies over the widest range says whether the
+  // fleet has older ones. If that read fails the sentence carries no number, never a zero.
+  const nowMs = Date.now();
+  const windowTo = new Date(nowMs).toISOString();
+  const windowFrom = new Date(nowMs - DEFAULT_WINDOW_MS).toISOString();
+  const widenSince = new Date(nowMs - WIDEN_DAYS * DEFAULT_WINDOW_MS).toISOString();
+  let outsideActive: number | null = null;
+  if (!error && !filtered && items.length === 0) {
+    try {
+      const wide = await api.anomalies({ active_only: true, limit: 1, since: widenSince });
+      outsideActive = wide.total;
+    } catch {
+      outsideActive = null;
+    }
+  }
   // Every cell of the observed column names its own unit (EPS, req / 5 min, events,
   // ports or %), so the heading carries none once a WAF or IPS row is on the page. A
   // page of log sources keeps the "(EPS)" its existing test pins.
@@ -172,7 +197,37 @@ async function AnomaliesPage({
         </div>
       ) : items.length === 0 ? (
         <div className="notice">
-          {filtered ? t("noMatch") : t("none")}
+          {filtered ? (
+            t("noMatch")
+          ) : (
+            <>
+              {t("noneWindow", {
+                from: utcTimeText(windowFrom),
+                to: utcTimeText(windowTo),
+                since: filterText("since"),
+              })}
+              {outsideActive ? (
+                <>
+                  {" "}
+                  {t.rich("noneOutside", {
+                    count: outsideActive,
+                    link: (chunks) => (
+                      <Link
+                        href={`/anomalies?${new URLSearchParams({
+                          active_only: "true",
+                          since: widenSince,
+                        }).toString()}`}
+                      >
+                        {chunks}
+                      </Link>
+                    ),
+                  })}
+                </>
+              ) : null}
+              {" "}
+              {t("noneBaseline")}
+            </>
+          )}
         </div>
       ) : (
         <>

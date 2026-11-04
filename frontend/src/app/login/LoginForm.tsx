@@ -6,7 +6,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { login } from "@/components/auth/client";
 import { ApiVersionLine } from "@/components/auth/ApiVersionLine";
@@ -17,6 +17,7 @@ import { useSession } from "@/components/auth/session";
 import styles from "@/components/auth/auth.module.css";
 import { ApiError, destinationAfterLogin, rateLimitedText } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { LoadingState } from "@/components/ui/RouteState";
 import type { Locale } from "@/i18n/locale";
 import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
 
@@ -34,9 +35,23 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
+  // The form's own submit navigates itself once the session has loaded; the effect below is for
+  // an account that arrives already signed in and must not race it.
+  const submitted = useRef(false);
+
+  const signedIn = session.status === "ready" && session.me?.username != null;
+  const next = params.get("next");
+  const mustChange = session.me?.must_change_password === true;
+  useEffect(() => {
+    if (!signedIn || submitted.current) return;
+    continueInAccountLanguage(locale, destinationAfterLogin(next, mustChange), (url) =>
+      router.replace(url),
+    );
+  }, [signedIn, next, mustChange, locale, router]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    submitted.current = true;
     setPending(true);
     setProblem(null);
     let result;
@@ -68,6 +83,11 @@ export function LoginForm() {
   }
 
   const refused = problem != null && problem.alert;
+
+  // Never show the form to an account that is signed in, nor flash it while that is unknown.
+  if (!submitted.current && (signedIn || (session.status === "loading" && !session.detached))) {
+    return <LoadingState what={t("loading")} />;
+  }
 
   return (
     <div className={styles.column}>

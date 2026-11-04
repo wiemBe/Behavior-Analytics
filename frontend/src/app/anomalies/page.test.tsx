@@ -391,3 +391,61 @@ describe("links", () => {
     expect(screen.getByRole("link", { name: SOURCE_ID })).toBeInTheDocument();
   });
 });
+
+describe("empty list", () => {
+  async function renderEmpty(
+    params: Record<string, string | undefined>,
+    wide: Page<AnomalySummary> | Error,
+  ) {
+    const spy = vi.spyOn(api, "anomalies").mockImplementation(async (p) => {
+      if (p?.limit === 1) {
+        if (wide instanceof Error) throw wide;
+        return wide;
+      }
+      return page([]);
+    });
+    vi.spyOn(api, "sourceBehaviors").mockResolvedValue(SOURCES);
+    render(await AnomaliesPage({ searchParams: Promise.resolve(params) }));
+    return spy;
+  }
+
+  it("names the window the page asked for and how to widen it", async () => {
+    await renderEmpty({}, page([], 0));
+    const notice = screen.getByText(/No anomalies were detected in the window/);
+    expect(notice).toHaveTextContent(/the last 24 h, \d{4}-\d{2}-\d{2} [\d:]+ UTC to \d{4}-\d{2}-\d{2} [\d:]+ UTC/);
+    expect(notice).toHaveTextContent("Set the Start time (UTC) filter to look further back.");
+    expect(notice).toHaveTextContent("Sources without an adequate baseline are not being judged");
+    expect(screen.queryByRole("link", { name: /Show active anomalies/ })).toBeNull();
+    expect(notice).not.toHaveTextContent("No anomalies have been detected.");
+  });
+
+  it("counts the active anomalies outside the window and links to a wider range", async () => {
+    const spy = await renderEmpty({}, page([anomaly()], 4));
+    expect(screen.getByText(/4 active anomalies were detected before this window/)).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Show active anomalies from the last year" });
+    const href = new URL(link.getAttribute("href")!, "http://x");
+    expect(href.pathname).toBe("/anomalies");
+    expect(href.searchParams.get("active_only")).toBe("true");
+    expect(Date.parse(href.searchParams.get("since")!)).toBeLessThan(Date.now() - 300 * 86400_000);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ active_only: true, limit: 1 }));
+  });
+
+  it("uses the singular for one", async () => {
+    await renderEmpty({}, page([anomaly()], 1));
+    expect(screen.getByText(/1 active anomaly was detected before this window/)).toBeInTheDocument();
+  });
+
+  it("says no number, and never a zero, when the count could not be read", async () => {
+    await renderEmpty({}, new ApiError(500, "boom"));
+    const notice = screen.getByText(/No anomalies were detected in the window/);
+    expect(notice).not.toHaveTextContent(/\d+ active/);
+    expect(screen.queryByRole("link", { name: /Show active anomalies/ })).toBeNull();
+  });
+
+  it("keeps the filtered sentence for a filtered view and makes no extra read", async () => {
+    const spy = await renderEmpty({ severity: "HIGH" }, page([], 9));
+    expect(screen.getByText(/No anomalies match these filters/)).toBeInTheDocument();
+    expect(screen.queryByText(/in the window this page asked for/)).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});

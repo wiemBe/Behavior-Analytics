@@ -93,6 +93,22 @@ export function formatClockUtc(value: Date | string): string {
   return `${d.toISOString().slice(11, 19)} UTC`;
 }
 
+/**
+ * `14:02:11 UTC` when the instant is on the same UTC day as "now", otherwise
+ * `2026-11-03 14:02:11 UTC` (the `formatDateTime` form). "Now" is the instant plus its age,
+ * so the server render and the browser agree. A time on another day without its date cannot
+ * be placed (guidelines section 10).
+ */
+export function formatClockUtcDated(value: string, ageSeconds: number | null): string {
+  const clock = formatClockUtc(value);
+  if (!clock || ageSeconds === null) return clock;
+  const at = new Date(value);
+  const now = new Date(at.getTime() + ageSeconds * 1000);
+  return at.toISOString().slice(0, 10) === now.toISOString().slice(0, 10)
+    ? clock
+    : `${at.toISOString().slice(0, 10)} ${clock}`;
+}
+
 function dialogOpen(): boolean {
   return document.querySelector('dialog[open], [aria-modal="true"]') !== null;
 }
