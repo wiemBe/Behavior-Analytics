@@ -1916,8 +1916,13 @@ class Doctor:
             try:
                 await ariel_log.finish_worker_buffer(token)
             except Exception:
-                # The flush catches its own write errors; this covers the engine lookup.
-                ariel_log._count_failure(1)
+                # The flush catches its own write errors, and a raising
+                # ``worker_engine()`` no longer leaves it. A flush can still fail
+                # some other way — a caller that replaced the function (the FIX-24
+                # integration test does), or a defect — and the doctor's contract
+                # holds either way: a failed flush never changes a verdict or the
+                # exit code.
+                ariel_log.count_write_failure(1)
 
     async def _run_aql_recorded(self) -> list[CheckResult]:
         try:

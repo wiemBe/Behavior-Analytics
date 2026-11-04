@@ -256,6 +256,36 @@ async def test_a_failed_flush_changes_no_verdict_and_no_exit_code(
     assert ariel_log.write_failure_count() == len(broken_provider.calls) + 1
 
 
+async def test_a_raising_engine_lookup_changes_no_verdict_and_no_exit_code(
+    db_schema, ariel_load_engine, monkeypatch: pytest.MonkeyPatch
+):
+    """FIX-27: a ``worker_engine()`` that raises is a counted failure, not a doctor failure."""
+    maker = async_sessionmaker(ariel_load_engine, expire_on_commit=False)
+    instance = await _seed_console(maker)
+    settings = _settings(db_schema)
+
+    healthy_provider = RecordingProvider(lambda: _in_flight_count(maker), instance.id)
+    healthy = await _doctor(settings, maker, healthy_provider, check_aql=True).run()
+    recorded = await _row_count(maker)
+    assert recorded == len(healthy_provider.calls) > 0
+
+    def _raise() -> None:
+        raise RuntimeError("engine lookup failed")
+
+    monkeypatch.setattr(ariel_log, "worker_engine", _raise)
+    broken_provider = RecordingProvider(lambda: _in_flight_count(maker), instance.id)
+    broken = await _doctor(settings, maker, broken_provider, check_aql=True).run()
+
+    assert [(r.id, r.status) for r in broken] == [(r.id, r.status) for r in healthy]
+    assert exit_code(broken) == exit_code(healthy) == 0
+    assert await _row_count(maker) == recorded
+    assert broken_provider.calls == healthy_provider.calls
+    # No submit row could be opened, so no search ever saw itself in flight.
+    assert broken_provider.in_flight_seen == [0] * len(broken_provider.calls)
+    # One counted failure per submit and one for the flush of their rows.
+    assert ariel_log.write_failure_count() == len(broken_provider.calls) + 1
+
+
 async def test_a_flush_that_raises_changes_no_verdict_and_no_exit_code(
     db_schema, ariel_load_engine, monkeypatch: pytest.MonkeyPatch
 ):

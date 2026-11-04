@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import inspect
 import json
@@ -505,6 +506,152 @@ async def test_the_poll_count_is_refreshed_on_every_fifth_status_read(
             await attempt.saw(status)
         refreshed = [params["polls"] for kind, params in engine.statements if kind == "Update"]
     assert refreshed == [5, 10]
+
+
+# ------------------------------------------------- a raising engine lookup
+def _raising_engine() -> Any:
+    raise RuntimeError("engine lookup failed")
+
+
+def _observation() -> ariel_log.ArielSearchObservation:
+    return ariel_log.ArielSearchObservation(
+        id=uuid.uuid4(),
+        instance_id=None,
+        caller=IPS,
+        scheduled_search_id=None,
+        query_version=None,
+        submitted_at=START,
+        finished_at=END,
+        wall_ms=300_000,
+        qradar_execution_ms=80,
+        qradar_record_count=4,
+        processed_record_count=None,
+        data_file_count=None,
+        data_total_size=None,
+        compressed_data_file_count=None,
+        compressed_data_total_size=None,
+        index_file_count=None,
+        index_total_size=None,
+        record_count=1,
+        range_seconds=300,
+        polls=1,
+        outcome=C,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_raising_engine_lookup_does_not_stop_the_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The submit row cannot be opened, so the search runs and the flush writes it."""
+    monkeypatch.setattr(ariel_log, "worker_engine", _raising_engine)
+    ran: list[str] = []
+    async with (
+        captured() as buffered,
+        ariel_log.track_search(
+            clock=_ticking(START, END), instance_id=None, caller=IPS
+        ) as attempt,
+    ):
+        ran.append("sent")
+        assert attempt.submitted is not None
+        assert attempt.submitted.written is False
+    assert ran == ["sent"], "a fault in the search log must not fail the search"
+    assert ariel_log.write_failure_count() == 1
+    [row] = buffered
+    assert row.outcome == C and row.caller == IPS
+    assert attempt.submitted is not None
+    assert row.id == attempt.submitted.id, "the terminal note names the row the submit opened"
+
+
+@pytest.mark.asyncio
+async def test_note_submit_with_a_raising_lookup_returns_not_written(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ariel_log, "worker_engine", _raising_engine)
+    async with captured():
+        submitted = await ariel_log.note_submit(clock=lambda: START, caller=IPS)
+    assert submitted is not None
+    assert submitted.written is False
+    assert submitted.submitted_at == START
+    assert ariel_log.write_failure_count() == 1
+
+
+@pytest.mark.asyncio
+async def test_a_raising_lookup_swallows_the_poll_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ariel_log, "worker_engine", _raising_engine)
+    async with captured():
+        await ariel_log.refresh_polls(uuid.uuid4(), ariel_log.POLL_REFRESH_EVERY)
+    assert ariel_log.write_failure_count() == 0, (
+        "a refresh failure is swallowed like a failed UPDATE"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_raising_lookup_at_the_terminal_close_buffers_the_observation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ariel_log, "worker_engine", _raising_engine)
+    observation = _observation()
+    async with captured() as buffered:
+        await ariel_log.settle(observation, written=True)
+    assert buffered == [observation], "an unclosed row is left to the run's flush"
+    assert ariel_log.write_failure_count() == 0
+
+
+@pytest.mark.asyncio
+async def test_a_raising_lookup_at_the_flush_counts_every_row(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(ariel_log, "worker_engine", _raising_engine)
+    token = ariel_log.open_run_buffer()
+    assert token is not None
+    ariel_log.note(_observation())
+    ariel_log.note(_observation())
+    with caplog.at_level("WARNING", logger="app.ariel_search_log"):
+        await ariel_log.finish_worker_buffer(token)
+    assert ariel_log.write_failure_count() == 1
+    assert [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "app.ariel_search_log"
+    ] == ["ariel search log flush failed rows=2"]
+    assert "engine lookup failed" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_empty_flush_never_looks_the_engine_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lookups: list[str] = []
+
+    def lookup() -> Any:
+        lookups.append("called")
+        raise RuntimeError("engine lookup failed")
+
+    monkeypatch.setattr(ariel_log, "worker_engine", lookup)
+    token = ariel_log.open_run_buffer()
+    assert token is not None
+    await ariel_log.finish_worker_buffer(token)
+    assert lookups == []
+    assert ariel_log.write_failure_count() == 0
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_lookup_still_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``note_submit``: the awaited site where the cancellation is observable."""
+
+    def cancelled() -> Any:
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(ariel_log, "worker_engine", cancelled)
+    async with captured():
+        with pytest.raises(asyncio.CancelledError):
+            await ariel_log.note_submit(clock=lambda: START, caller=IPS)
+    assert ariel_log.write_failure_count() == 0
 
 
 # ---------------------------------------------------------- the current load
