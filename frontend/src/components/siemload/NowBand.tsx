@@ -14,12 +14,13 @@ import { formatCount } from "@/lib/format";
 
 import { formatMs } from "./siemFormat";
 
-function PartGap({ reason }: { reason: string }) {
+/** A part that was not read: the pill, and the reason only when the API gave one (UX-6). */
+function PartGap({ reason }: { reason: string | null | undefined }) {
   const state = useTranslations("siemLoad.state");
   return (
     <span className="sl-gap">
       <span className="pill">{state("notRead")}</span>
-      <span className="sl-reason">{state("reason", { reason })}</span>
+      {reason?.trim() ? <span className="sl-reason">{state("reason", { reason })}</span> : null}
     </span>
   );
 }

@@ -110,4 +110,10 @@ describe("InFlightTable", () => {
     expect(screen.queryByText("No search is in flight.")).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
+
+  it("prints no Reason line when the part gives none (UX-6)", () => {
+    flight({ available: false, reason: "" });
+    expect(screen.getByText(/could not be read/)).toBeInTheDocument();
+    expect(screen.queryByText(/Reason:/)).not.toBeInTheDocument();
+  });
 });

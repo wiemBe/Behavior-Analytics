@@ -216,7 +216,7 @@ export function HealthTable({
             <span className={`pill${metrics.state === "FAILED" ? " crit" : ""}`}>
               {state(metrics.state === "FAILED" ? "FAILED" : "NOT_COLLECTED")}
             </span>
-            <span className="sl-reason">{metrics.reason ?? t("noMetricsReason")}</span>
+            <span className="sl-reason">{metrics.reason?.trim() || t("noMetricsReason")}</span>
           </span>
         </p>
         {console_.last_metrics_window_end ? (

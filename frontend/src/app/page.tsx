@@ -16,7 +16,11 @@ import { withRouteMessages } from "@/i18n/RouteMessages";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("dashboard");
-  return { title: t("title") };
+  const meta = await getTranslations("meta");
+  // Next.js applies the root layout's `title.template` to child segments only: the page that
+  // shares the root segment with the layout is skipped (resolve-metadata.js, "the leaf layout
+  // and page are the last two items"). So `/` forms the same title from the same catalog key.
+  return { title: { absolute: meta("titleTemplate", { title: t("title") }) } };
 }
 
 function HomePage() {

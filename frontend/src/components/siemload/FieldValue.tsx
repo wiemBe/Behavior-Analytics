@@ -18,7 +18,7 @@ export function FieldGap({ field }: { field: QRadarField<unknown> }) {
   return (
     <span className="sl-gap">
       <span className={`pill ${TONE[state]}`.trim()}>{t(state)}</span>
-      <span className="sl-reason">{field.reason ?? t("noValue")}</span>
+      <span className="sl-reason">{field.reason?.trim() || t("noValue")}</span>
       {state === "FORBIDDEN" ? (
         <Link href="/admin/qradar-access">{t("seeAccess")}</Link>
       ) : null}

@@ -262,7 +262,7 @@ export function QRadarPanel({ part }: { part: QRadarHealthPart | undefined }) {
           <p>
             <strong>{state("partUnavailable", { part: parts("qradar") })}</strong>
           </p>
-          <p>{state("reason", { reason: part?.reason ?? state("notRead") })}</p>
+          {part?.reason?.trim() ? <p>{state("reason", { reason: part.reason })}</p> : null}
         </div>
       ) : part.consoles.length === 0 ? (
         <div className="notice" role="status">
