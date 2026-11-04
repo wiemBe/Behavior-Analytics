@@ -374,6 +374,59 @@ class TestAnomalyList:
         assert item.model_dump()["duration_seconds"] is None
 
 
+class TestActiveOnlyWindow:
+    """"Active" is a state, not a time window: without `since`, `active_only` reaches back
+    to the range ceiling, not to 1 day."""
+
+    @staticmethod
+    def _age(days: int) -> None:
+        import asyncio
+
+        from sqlalchemy import update
+
+        async def _go() -> None:
+            engine = create_async_engine(
+                os.environ["TEST_DATABASE_URL"], future=True, poolclass=NullPool
+            )
+            async with async_sessionmaker(engine)() as session:
+                await session.execute(
+                    update(LogSourceAnomaly).values(
+                        detected_at=datetime.now(UTC) - timedelta(days=days)
+                    )
+                )
+                await session.commit()
+            await engine.dispose()
+
+        asyncio.run(_go())
+
+    def test_active_only_without_since_lists_a_three_day_old_anomaly(self, seeded) -> None:
+        self._age(3)
+        c = client_for(READER)
+        assert c.get("/api/v1/anomalies?active_only=true").json()["total"] == 1
+        assert c.get("/api/v1/anomalies").json()["total"] == 0
+
+    def test_an_explicit_since_still_bounds_an_active_only_list(self, seeded) -> None:
+        self._age(3)
+        since = _iso(datetime.now(UTC) - timedelta(days=1))
+        c = client_for(READER)
+        assert c.get(f"/api/v1/anomalies?active_only=true&since={since}").json()["total"] == 0
+        assert c.get(f"/api/v1/anomalies?since={since}").json()["total"] == 0
+        wide = _iso(datetime.now(UTC) - timedelta(days=5))
+        assert c.get(f"/api/v1/anomalies?active_only=true&since={wide}").json()["total"] == 1
+        assert c.get(f"/api/v1/anomalies?since={wide}").json()["total"] == 1
+
+    def test_an_active_only_list_older_than_the_ceiling_is_not_reached(self, seeded) -> None:
+        self._age(400)
+        c = client_for(READER)
+        assert c.get("/api/v1/anomalies?active_only=true").json()["total"] == 0
+
+    def test_a_range_over_the_ceiling_is_still_refused_with_active_only(self, seeded) -> None:
+        r = client_for(READER).get(
+            f"/api/v1/anomalies?active_only=true&since=1990-01-01T00:00:00Z&until={_iso(NOW)}"
+        )
+        assert r.status_code == 422
+
+
 class TestRangeBounds:
     def test_inverted_range_is_rejected(self, seeded) -> None:
         r = client_for(READER).get(
