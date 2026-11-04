@@ -17,6 +17,7 @@ import re
 import shlex
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -274,12 +275,16 @@ def test_the_split_runs_every_test_exactly_once() -> None:
     """
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
-    unit = _collect(_expand(_job_run(jobs["backend-unit"]), 1))
-    shards = [
-        _collect(_expand(_job_run(jobs["backend-integration"]), shard))
-        for shard in range(1, SHARDS + 1)
+    commands = [_expand(_job_run(jobs["backend-unit"]), 1)]
+    commands += [
+        _expand(_job_run(jobs["backend-integration"]), shard) for shard in range(1, SHARDS + 1)
     ]
-    everything = _collect(["pytest"])
+    commands.append(["pytest"])
+    # Each collection is a pytest process of its own; they run side by side (CI-6: the
+    # twelve shards made this test the longest in the unit suite).
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        collected = list(pool.map(_collect, commands))
+    unit, *shards, everything = collected
 
     sharded = set().union(*shards)
     assert unit.isdisjoint(sharded), "a test runs in the unit job and in a shard"

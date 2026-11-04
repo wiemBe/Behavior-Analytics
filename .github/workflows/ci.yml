@@ -144,6 +144,10 @@ jobs:
           pip install --require-hashes -r requirements.txt -r requirements-dev.txt
           pip install --no-deps -e .
 
+      - name: Runner cores
+        # xdist's `-n auto` uses this many workers; the number is in the log for the next tuning.
+        run: nproc
+
       - name: Unit tests
         working-directory: backend
         # `-rs` prints the short summary of skip reasons. The backend's addopts already
@@ -154,7 +158,7 @@ jobs:
         # overlap and together they are the whole suite. `-n auto` runs the suite on every
         # core of the runner (pytest-xdist); the integration shards stay serial, because
         # their schema fixture drops tables.
-        run: pytest -rs -n auto -m "not integration" tests
+        run: pytest -rs -n auto --durations=10 -m "not integration" tests
 
   backend-integration:
     needs: changes
