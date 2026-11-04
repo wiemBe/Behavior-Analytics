@@ -15,27 +15,23 @@ The results are written to `docs/MANUAL-TEST-RESULTS.md`. This guide is divided 
 
 **Contents**
 
-1. [0.1.11](#0111)
+1. [0.1.12](#0112)
 
 ---
 
-## 0.1.11
+## 0.1.12
 
-This section upgrades a 0.1.10 site to 0.1.11 and tests the upgraded site. A 0.1.9 site upgrades to 0.1.10 first; that path is in `docs/releases/0.1.10.md` and is not described here. The migration head is `0047` before the upgrade and `0054` after it (`migration_head` in `/api/v1/version`). The production IPS sources are Cisco Firepower/FTD and Palo Alto Threat.
+This section upgrades a 0.1.11 site to 0.1.12 and tests the upgraded site. A 0.1.10 site upgrades to 0.1.11 first; that path is in `docs/releases/0.1.11.md` and is not described here. 0.1.12 has no migration: the migration head is `0054` before the upgrade and `0054` after it (`migration_head` in `/api/v1/version`). The production IPS sources are Cisco Firepower/FTD and Palo Alto Threat.
 
 ### What this release changes
 
-- **QRadar's health in detail, on the SIEM load page (HLT-1 to HLT-3, HLT-5).** The QRadar section of `/admin/siem-load` holds a managed-hosts table (HA pairs counted once), a "Disk, system and pipeline" block per host, QRadar's system notifications of the last 24 hours, and trends. The figures come from the new ninth search family `QRADAR_HEALTH` (HLT-2): two aggregating Ariel searches per console, every 15 minutes, **on by default** (`QRADAR_HEALTH_COLLECTION_ENABLED=true`), rows kept `QRADAR_HEALTH_RETENTION_DAYS` (default 35). It needs the custom properties `Metric ID`, `Element` and `Value` on each console. Free space is carried between QRadar's hourly `DiskSpaceTotal` values and the page says "total as of hh:mm UTC" (HLT-5). When the family is off, the page says so above the stored figures. `doctor` gains `qradar_disk` (OPS-R69) and `qradar_pipeline` (OPS-R70), and `qradar_health` is HA-aware (OPS-R67). Checks: MT-133 and, for a site with an HA pair, MT-135 (production only).
-- **QRadar access, stored and paged (ACC-1 to ACC-3).** Every 6 hours (`QRADAR_ACCESS_CHECK_INTERVAL_SECONDS`, 21600) and on demand, each enabled REST console is asked which of its 14 APIs the token reaches. `/admin/qradar-access` shows the verdict per console, "Check now" is `POST /api/v1/admin/qradar-access/check` (202, `RATE_LIMIT_ACCESS_CHECK` 2 per minute), and `doctor` gains `qradar_access` (OPS-R71), which reads the stored result and sends no search. The probe is recorded under its own caller `ACCESS_CHECK`. Check: MT-134.
-- **`doctor --aql` tries every family's real query once (AQL-1, AQL-2).** The opt-in flag sends each collection family's own query, one at a time, to every REST console and says per family whether QRadar accepts it (`aql_<family>`, runbook OPS-R72). The searches are recorded under the caller `DOCTOR_AQL`. Plain `doctor` sends no search. Check: MT-136.
-- **Alert e-mail through the site's SMTP relay (MAIL-1 to MAIL-3).** Templates and recipients are administered at `/admin/email`. **Nothing is sent until `SMTP_HOST` is set in `.env`**, and a username with `SMTP_SECURITY=none` is refused (`doctor` `email` FAIL, runbook OPS-R68). `./qradar-dash doctor --check-smtp` connects to the relay and finishes the handshake; nothing is sent. Checks: MT-138 (the page, no password anywhere, the `SKIP` line when `SMTP_HOST` is empty), MT-139 (an account without `admin:notifications` is refused), MT-140 (`--check-smtp`), MT-141 (one test message, `lab only`) and MT-142 (the `insecure_login` refusal, `lab only`). MT-09 still reads the `email` line in the core; write in its Note field what it printed. The generic webhook now carries the real `alert_id` (MAIL-1); no check reads it, because the application shows no webhook payload and the project ships no receiver for it.
-- **The world map states how each bucket was collected, and Kosovo is a country (GEO-6, GEO-7).** Buckets stored from 0.1.11 on record `country_source` and `country_property`; older buckets read as unknown. The line under the map states the way or ways, and the map names a country its outlines do not draw. Checks: MT-128 and MT-129.
-- **Seven migrations, head `0054`.** `0048` … `0054`, listed with their `Running upgrade` lines in section 2. `upgrade` prints the decision pair first with `0047` and then with `0054`.
-- **Load numbers follow the code (ARL-4, ARL-5, FIX-23).** The load summary is folded in PostgreSQL (same figures); a search whose worker died is closed as `ABANDONED` and counted as Failed by the beat task `reap_abandoned_ariel_searches`; the session commits before the response is sent. MT-130 reads the page and MT-137 checks the reaper's schedule and the `ABANDONED` count; the fold and the commit have no step of their own.
-- **Tables and units (POL-15, POL-16, FIX-26), and less first-screen text (D40-2).** "Load by caller" stacks its p50 and p95 cells so the table fits at 1024 pixels, host names break only after a dot, `doctor` prints free space in KiB, MiB, GiB and TiB, and eleven pages carry less prose. No check of its own; MT-130 and MT-133 read the pages.
-- **The manual test follows the code (DOC-7, DOC-8, HLT-4).** MT-99 and MT-102 state each family's cadence; MT-10 carries measured upgrade times.
-- **An 0.1.10 site upgrades directly.** `min_from` is `0.1.10` (`docs/releases/0.1.11.md`). A 0.1.9 site upgrades to 0.1.10 first; that path is in `docs/releases/0.1.10.md`.
-- **Before you start:** decide whether the site wants alert e-mail (then `SMTP_HOST`, and `SMTP_SECURITY` of `starttls` or `ssl` when a username is set), and ask the QRadar administrator whether the console has the custom properties `Metric ID`, `Element` and `Value` (without them `QRADAR_HEALTH` records the metric part as not collected). The country property of 0.1.10 (MT-129) is already in place on an 0.1.10 site.
+- **`upgrade` no longer refuses a healthy site on a long `doctor` report (FIX-28).** The wrapper tested the report with `printf … | grep -q` under `set -o pipefail`; `grep -q` leaves at its first match, the writer gets SIGPIPE, the pipeline reports 141 and an `if` read "no match". A `doctor` report longer than one pipe write could therefore make `upgrade` print `upgrade refused: doctor did not report db_connect and migration_head as PASS` for a healthy site. Every such test now reads the report from a here-string. MT-06 and MT-07 run the real command; there is no check of the long report itself (the unit tests of the wrapper pin it).
+- **The offline bundle's link and path check no longer misses a bad member in a long listing (FIX-28).** 0.1.11 had the same pipe fault in `bundle_precheck`; GNU tar's `..` refusal and the `SHA256SUMS` coverage check after extraction still guarded `bundle_load`, and a bundle made by `./qradar-dash bundle` never holds such a member. MT-07 runs a bundle made by the real command.
+- **A raising engine lookup never fails an Ariel search (FIX-27).** A failure to look up the database engine while a search is recorded is counted as a failed write and the search runs on. No check of its own; MT-130 reads the load figures.
+- **New checks MT-137 to MT-142 (DOC-MT1).** Alert e-mail (MT-138 the page and no password anywhere, MT-139 an account without `admin:notifications`, MT-140 `./qradar-dash doctor --check-smtp`, MT-141 one test message, `lab only`, MT-142 the `insecure_login` refusal, `lab only`) and the abandoned-search reaper (MT-137: the beat schedule and the `ABANDONED` count). None is core: the core stays 38 checks. These features were released in 0.1.11; the checks are new. MT-09 still reads the `email` line in the core; write in its Note field what it printed.
+- **No migration; head `0054`.** `upgrade` prints the decision pair twice, both with `0054`, and no `Running upgrade` line (section 2).
+- **A 0.1.11 site upgrades directly.** `min_from` is `0.1.11` (`docs/releases/0.1.12.md`). A 0.1.10 site upgrades to 0.1.11 first; that path is in `docs/releases/0.1.11.md`.
+- **Before you start:** nothing in `.env` needs an edit for this release. If the site never took the 0.1.11 steps (alert e-mail through `SMTP_HOST`, the custom properties `Metric ID`, `Element` and `Value` for `QRADAR_HEALTH`), they are described in `docs/releases/0.1.11.md`; MT-138 to MT-142 and MT-133 need them.
 
 ### How to use this guide
 
@@ -89,9 +85,9 @@ curl -s http://127.0.0.1:8000/api/v1/health/ready
 
 **Expected:**
 
-- `status`: `Installed version: 0.1.10`; `API ready: HTTP 200 (http://127.0.0.1:8000/api/v1/health/ready)`; every service in the `docker compose ps` table is running and healthy; the `Last upgrade:` line is present; exit code 0.
-- `/api/v1/version`: `"version":"0.1.10"` and `"migration_head":"0047"`.
-- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0047"`.
+- `status`: `Installed version: 0.1.11`; `API ready: HTTP 200 (http://127.0.0.1:8000/api/v1/health/ready)`; every service in the `docker compose ps` table is running and healthy; the `Last upgrade:` line is present; exit code 0.
+- `/api/v1/version`: `"version":"0.1.11"` and `"migration_head":"0054"`.
+- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0054"`.
 
 **Record:** The `Installed version` line, the `Last upgrade:` line, and the `git_sha` and `migration_head` values.
 
@@ -113,7 +109,7 @@ echo "exit: $?"
 - On a healthy site these lines may be `WARN` and do not block the upgrade; write each one and its cause in the Note field: `backup_age` (no backup, the age cannot be read, or older than 26 hours; when the backup timer is not installed or is off, even a fresh backup gives a WARN — the `backup_age` row of the doctor table in `docs/OPERATIONS.md`, which has no OPS-R id; the next check fixes the backup, not the timer), `disk_docker` and `disk_backup` (70% to 89% full), `qradar_tls` (the certificate expires in under 30 days), `cadence`, `errors_recent` (one or two rows with a failure), `anomaly_evaluation`, `rule_match_coverage`, `ariel_permits` (the pool is full). These are true before the upgrade as well.
 - On a console that has no offenses, a `watermarks` `offense_snapshot` line does not block the upgrade. `consecutive_failures` is 0 and `last_error` is empty. Since 0.1.9 a clean run moves this watermark to the time of the run; if no clean run has happened yet, the lag can stay at the `offense_max_backfill_hours` floor (default 168 hours) and exceed twice the cadence. This is a WARN, not a Fail; write it in the Note field. The line's runbook is OPS-R30. The 0.1.10 `doctor` output has the stalled sentence and OPS-R66 (MT-09).
 - If any of these is `WARN`, stop and tell the owner: `selinux` (`SELinux is permissive`: do not touch SELinux), `host_clock`. `families_off` is always PASS. A `SKIP` line says a feature is off and does not raise the exit code.
-- Line format: `PASS  db_connect         database accepted SELECT 1`. At this stage `db_connect`, `migration_head` (`database and image are at 0047`), `containers`, `celery_workers`, `celery_beat`, `qradar_auth`, `encryption` and `secrets_files` must be PASS.
+- Line format: `PASS  db_connect         database accepted SELECT 1`. At this stage `db_connect`, `migration_head` (`database and image are at 0054`), `containers`, `celery_workers`, `celery_beat`, `qradar_auth`, `encryption` and `secrets_files` must be PASS.
 
 **Record:** The exit code, the id of every `WARN` line and, if there is a `FAIL`, its id.
 
@@ -142,7 +138,7 @@ cat "$BACKUP/MANIFEST"
 
 - The command exits with 0. For TimescaleDB it may print `circular foreign-key constraints` warnings; this is expected, and what decides is the exit code and that the backup exists.
 - The directory holds `database.dump`, `env.bak`, `secrets.tar`, `state.json` and `MANIFEST`, and `install.answers` when `.secrets/install.answers` exists as a regular file with mode `0600` or `0400` (the copy keeps that mode); the directory mode is `0700` and the other file modes are `0600`. The support bundle (MT-04) is a different archive and is not in this directory.
-- `MANIFEST` has `VERSION=0.1.10`, `ALEMBIC_VERSION=0047`, `STATE_JSON=included` and a `DATABASE_SIZE_BYTES=<number>` line.
+- `MANIFEST` has `VERSION=0.1.11`, `ALEMBIC_VERSION=0054`, `STATE_JSON=included` and a `DATABASE_SIZE_BYTES=<number>` line.
 
 **Record:** The name of the backup directory (only the `qradar-dash-<utc>-manual` part), and the `VERSION` and `ALEMBIC_VERSION` lines. The contents of `env.bak` and `secrets.tar` are written nowhere.
 
@@ -191,25 +187,13 @@ tar -tzf "$BUNDLE" | head -40
 
 **Record:** The start and end of the window (UTC), the name of the path, and the person or role who was told.
 
-### 2. Upgrade 0.1.10 → 0.1.11
+### 2. Upgrade 0.1.11 → 0.1.12
 
-A fresh browser has no `ba_locale` cookie, and the sign-in page shows the `h1` “Sign in” (the browser tab reads “Sign in · Behavior Analytics”) and the version line `API version 0.1.10`. The interface is English only (D-41); a `ba_locale` cookie, whatever its value, does not change it.
+A fresh browser has no `ba_locale` cookie, and the sign-in page shows the `h1` “Sign in” (the browser tab reads “Sign in · Behavior Analytics”) and the version line `API version 0.1.11`. The interface is English only (D-41); a `ba_locale` cookie, whatever its value, does not change it.
 
-There are two ways to upgrade the site from 0.1.10 to 0.1.11; choose one. The target version works the same way as the "Upgrade" and "Offline bundle" sections of `docs/OPERATIONS.md`. The upgrade takes its own verified `pre-upgrade` backup; the backup is also restore-tested. Before the upgrade the migration head is `0047`, and after it `0054`. The head moves once, through seven migrations. Each is additive; none is run downward on a site.
+There are two ways to upgrade the site from 0.1.11 to 0.1.12; choose one. The target version works the same way as the "Upgrade" and "Offline bundle" sections of `docs/OPERATIONS.md`. The upgrade takes its own verified `pre-upgrade` backup; the backup is also restore-tested. 0.1.12 adds no migration: the migration head is `0054` before the upgrade and `0054` after it, and the newest file in `backend/alembic/versions/` is `0054_ariel_caller_access_check.py`. The migrate step still runs (`alembic upgrade head`) and finds nothing to do, so it prints no `Running upgrade` line. No migration is run downward on a site.
 
-| Migration | What it adds |
-|---|---|
-| `0048_email_templates_recipients` | the tables `email_template` and `email_recipient` (MAIL-1) |
-| `0049_geo_bucket_provenance` | the nullable columns `geo_country_bucket.country_source` and `country_property` (GEO-6) |
-| `0050_qradar_health_detail` | the four `QRADAR_HEALTH` tables (`qradar_health_run`, `qradar_health_metric_bucket`, `qradar_health_notice_bucket`, `qradar_health_rest_sample`), the `QRADAR_HEALTH` cadence row (900 s) and caller (HLT-2) |
-| `0051_qradar_access_result` | the tables `qradar_access_result` and `qradar_access_run` (ACC-1) |
-| `0052_ariel_search_abandoned` | the `ABANDONED` outcome of `ariel_search_run` (ARL-5) |
-| `0053_ariel_caller_doctor_aql` | the `DOCTOR_AQL` caller (AQL-1) |
-| `0054_ariel_caller_access_check` | the `ACCESS_CHECK` caller (ACC-3) |
-
-No migration rewrites or updates an existing row. The only row written is the new `QRADAR_HEALTH` row in `search_cadence` (`0050`, inserted with `ON CONFLICT DO NOTHING`); existing `geo_country_bucket` rows keep NULL in the new columns, which reads as unknown (`0049`).
-
-**Outage.** The backend, worker and beat are down from the start of `pg_dump` until `/api/v1/health/ready` returns 200; `frontend` and `proxy` are stopped too. On a small database the upgrade outage was measured at about 15-25 s (22.9 s in the last run); the budget for a database under 5 GiB is 10 minutes. Pulling the images is outside this window. These are not promises. The upgrade empties Redis (`FLUSHALL`); queued tasks are lost and are set up again at the next beat tick, and the important data is in PostgreSQL. Nothing is written to QRadar.
+**Outage.** The backend, worker and beat are down from the start of `pg_dump` until `/api/v1/health/ready` returns 200; `frontend` and `proxy` are stopped too. On a small database the upgrade outage was measured at about 15-25 s (22.9 s in the last run, measured on 0.1.11 with seven migrations; this release runs none); the budget for a database under 5 GiB is 10 minutes. Pulling the images is outside this window. These are not promises. The upgrade empties Redis (`FLUSHALL`); queued tasks are lost and are set up again at the next beat tick, and the important data is in PostgreSQL. Nothing is written to QRadar.
 
 #### MT-06 — Upgrade, online path (writes) [core]
 
@@ -220,25 +204,17 @@ No migration rewrites or updates an existing row. The only row written is the ne
 
 ```bash
 git fetch --tags
-git checkout v0.1.11
-./qradar-dash upgrade 0.1.11
+git checkout v0.1.12
+./qradar-dash upgrade 0.1.12
 ```
 
 - Write the start and end time in the Note field with `date -u`.
 
 **Expected:**
 
-- The command exits with 0 and the last line is `Upgrade complete: 0.1.10 -> 0.1.11.`.
-- Alembic prints seven `Running upgrade` lines: `0047 -> 0048`, `0048 -> 0049`, `0049 -> 0050`, `0050 -> 0051`, `0051 -> 0052`, `0052 -> 0053` and `0053 -> 0054`. The migrate container exits with 0. Three lines were expected in 0.1.10; seven is correct here.
-- In the pre-check (before the writers stop) these three lines are printed; the head is that of the **installed** version, which is `0047`:
-
-```
-PASS  db_connect     database accepted SELECT 1
-PASS  migration_head database and image are at 0047
-Full report: ./qradar-dash doctor
-```
-
-- After the new stack has started, the second pair is printed; the head is that of the **target** version and is `0054`:
+- The command exits with 0 and the last line is `Upgrade complete: 0.1.11 -> 0.1.12.`.
+- No migration runs: Alembic prints no `Running upgrade` line, and a `Running upgrade` line here is a Fail (write it in the Note field). The migrate container exits with 0. Alembic's own start-up lines `Context impl PostgresqlImpl.` and `Will assume transactional DDL.` are expected before it exits (read from Alembic's source, not from this repository; the lab run, MT-1b, confirms the exact text, and a different start-up line is written in the Note field, not a Fail).
+- In the pre-check (before the writers stop) these three lines are printed; the head is that of the **installed** version, which is `0054`:
 
 ```
 PASS  db_connect     database accepted SELECT 1
@@ -246,15 +222,23 @@ PASS  migration_head database and image are at 0054
 Full report: ./qradar-dash doctor
 ```
 
-- Both pairs are printed; the first is `0047`, the second `0054`. A single pair is printed only if the target is already installed: `Version 0.1.11 is already installed and healthy; nothing changed.` That is not the output of a first upgrade.
+- After the new stack has started, the second pair is printed; the head is that of the **target** version and is also `0054`:
+
+```
+PASS  db_connect     database accepted SELECT 1
+PASS  migration_head database and image are at 0054
+Full report: ./qradar-dash doctor
+```
+
+- Both pairs are printed and both say `0054`. A single pair is printed only if the target is already installed: `Version 0.1.12 is already installed and healthy; nothing changed.` That is not the output of a first upgrade.
 - The number of spaces in the `PASS` lines can change with the release; the text is the same.
-- If the `.env` of 0.1.10 has no `FRONTEND_EDGE_IP` and `FORWARDED_ALLOW_IPS` is a non-empty list that is not `*` and does not contain the frontend address, these two lines are printed as well. Do not write the addresses on the page; write only that the lines appeared:
+- If the `.env` of 0.1.11 has no `FRONTEND_EDGE_IP` and `FORWARDED_ALLOW_IPS` is a non-empty list that is not `*` and does not contain the frontend address, these two lines are printed as well. Do not write the addresses on the page; write only that the lines appeared:
   - `Frontend address <address> added to .env (FRONTEND_EDGE_IP).`
   - `FORWARDED_ALLOW_IPS now also trusts the frontend (<address>): <list>`
 - If `FRONTEND_EDGE_IP` is already in `.env` and the list does not contain the frontend address, only `FORWARDED_ALLOW_IPS now also trusts the frontend (<address>): <list>` is printed; that is also correct.
 - If the keys are already correct (the list already contains the frontend address), these lines are not printed; that is also correct.
-- If the output is `upgrade refused: …`, no container has been stopped; read the reason (for example `this checkout is version <x>, not 0.1.11` means `git checkout v0.1.11` was forgotten; `upgrade refused: 0.1.11 requires at least 0.1.10; nothing was changed` means the site is older than 0.1.10 (the minimum comes from `min_from` in the checkout's own `docs/releases/0.1.11.md`, read before any `.env` edit, bundle load or pull), and `.env` and the images are unchanged) and fix it. If there are two lines of the same name, `upgrade refused: .env has more than one FRONTEND_EDGE_IP line; nothing was changed` (or `FORWARDED_ALLOW_IPS`) is printed; delete the extra line and do not write `*`.
-- If the exit is non-zero and the last line is `upgrade to 0.1.11 failed and was rolled back to 0.1.10; the broken database was kept`, the automatic rollback has run: go to section 15 (OPS-R44).
+- If the output is `upgrade refused: …`, no container has been stopped; read the reason (for example `this checkout is version <x>, not 0.1.12` means `git checkout v0.1.12` was forgotten; `upgrade refused: 0.1.12 requires at least 0.1.11; nothing was changed` means the site is older than 0.1.11 (the minimum comes from `min_from` in the checkout's own `docs/releases/0.1.12.md`, read before any `.env` edit, bundle load or pull), and `.env` and the images are unchanged) and fix it. If there are two lines of the same name, `upgrade refused: .env has more than one FRONTEND_EDGE_IP line; nothing was changed` (or `FORWARDED_ALLOW_IPS`) is printed; delete the extra line and do not write `*`.
+- If the exit is non-zero and the last line is `upgrade to 0.1.12 failed and was rolled back to 0.1.11; the broken database was kept`, the automatic rollback has run: go to section 15 (OPS-R44).
 
 **Record:** The exit code, the start and end time (UTC), the two `migration_head` lines, the last line, and which of the address lines appeared (not the addresses themselves). If it is Fail, the first error line.
 
@@ -262,17 +246,17 @@ Full report: ./qradar-dash doctor
 
 #### MT-07 — Upgrade, offline bundle path (writes) [core]
 
-**Precondition:** The bundle is prepared on a connected machine from the same tag: `git fetch --tags && git checkout v0.1.11 && ./qradar-dash bundle --output <bundle directory>`. `--output DIR` is the directory the bundle is written to; if it is not given, the file is written to the current directory. The file name is `qradar-dash-0.1.11-bundle.tar`. A file at the same path is not overwritten. The bundle is carried to the site. If you chose the online path, this check is `Not run`.
+**Precondition:** The bundle is prepared on a connected machine from the same tag: `git fetch --tags && git checkout v0.1.12 && ./qradar-dash bundle --output <bundle directory>`. `--output DIR` is the directory the bundle is written to; if it is not given, the file is written to the current directory. The file name is `qradar-dash-0.1.12-bundle.tar`. A file at the same path is not overwritten. The bundle is carried to the site. If you chose the online path, this check is `Not run`.
 
 **Action:**
 
 - Compare the checksum on both machines, then unpack the bundle in the install directory and upgrade:
 
 ```bash
-sha256sum /path/qradar-dash-0.1.11-bundle.tar
+sha256sum /path/qradar-dash-0.1.12-bundle.tar
 cd <install directory>
-tar -xf /path/qradar-dash-0.1.11-bundle.tar --exclude=images.tar
-./qradar-dash upgrade 0.1.11 --offline /path/qradar-dash-0.1.11-bundle.tar
+tar -xf /path/qradar-dash-0.1.12-bundle.tar --exclude=images.tar
+./qradar-dash upgrade 0.1.12 --offline /path/qradar-dash-0.1.12-bundle.tar
 ```
 
 
@@ -280,7 +264,7 @@ tar -xf /path/qradar-dash-0.1.11-bundle.tar --exclude=images.tar
 
 - The two checksums are the same.
 - The bundle is verified and loaded; the line `bundle images loaded and checked against MANIFEST` appears in the output. No container is stopped before the images are loaded and checked.
-- The rest is as in the online path: two `PASS` pairs (first `0047`, then `0054`), seven `Running upgrade` lines (`0047 -> 0048` to `0053 -> 0054`), and the last line `Upgrade complete: 0.1.10 -> 0.1.11.`, exit code 0.
+- The rest is as in the online path: two `PASS` pairs (both `0054`), no `Running upgrade` line, and the last line `Upgrade complete: 0.1.11 -> 0.1.12.`, exit code 0.
 - If an image is missing, `upgrade refused: target images are unavailable: image <image> is not loaded on this host; no container was stopped; pass the bundle: …` is printed and nothing stops.
 
 **Record:** Both checksums, the exit code, the start and end time (UTC), the two `migration_head` lines.
@@ -308,8 +292,8 @@ stat -c '%a %n' "$BACKUP/install.answers"
 
 **Expected:**
 
-- `status`: `Installed version: 0.1.11`; `Last upgrade: success, 0.1.10 -> 0.1.11 at <utc>`; `Last upgrade backup: <path> (age <age>)`; `API ready: HTTP 200 (…)`; exit code 0; every service healthy.
-- `/api/v1/version`: `"version":"0.1.11"` and `"migration_head":"0054"`.
+- `status`: `Installed version: 0.1.12`; `Last upgrade: success, 0.1.11 -> 0.1.12 at <utc>`; `Last upgrade backup: <path> (age <age>)`; `API ready: HTTP 200 (…)`; exit code 0; every service healthy.
+- `/api/v1/version`: `"version":"0.1.12"` and `"migration_head":"0054"`.
 - `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0054"`.
 - The backup has `install.answers`. `stat` prints the mode `600` (`0600`). If the live file was `0400` before the upgrade, the mode is `400`. The file is missing only if the live file is missing, if it is a symbolic link, or if its mode is neither of these two; on an ordinary install the file exists and its absence is Fail.
 
@@ -357,7 +341,7 @@ awk -F= '
 
 **Expected:**
 
-- There is no `FAIL`, with one exception: a `watermarks` `FAIL` (and the `errors_recent` count that goes with it) for a collector whose failure was recorded before the upgrade, by the rule in MT-02. The hourly `log_source_inventory` and `rule_inventory` on a changed console are one case of it; the families that were not run while the site was down (for example `catchall_senders`, `rule_match`, `geo_countries_source`) are another. Write the collector names in the Note field; the wait belongs to MT-11. `db_connect` PASS; `migration_head` PASS and `database and image are at 0054`; `version_match` PASS and `frontend and backend report 0.1.11`; `containers` PASS.
+- There is no `FAIL`, with one exception: a `watermarks` `FAIL` (and the `errors_recent` count that goes with it) for a collector whose failure was recorded before the upgrade, by the rule in MT-02. The hourly `log_source_inventory` and `rule_inventory` on a changed console are one case of it; the families that were not run while the site was down (for example `catchall_senders`, `rule_match`, `geo_countries_source`) are another. Write the collector names in the Note field; the wait belongs to MT-11. `db_connect` PASS; `migration_head` PASS and `database and image are at 0054`; `version_match` PASS and `frontend and backend report 0.1.12`; `containers` PASS.
 - `forwarded_allow_ips` is PASS and the text is `FORWARDED_ALLOW_IPS trusts the frontend (<address>)`. The address is the same as `FRONTEND_EDGE_IP`; do not write the address on the page. This line has no runbook. awk prints `two addresses, the frontend is in the list; addresses not printed`. On a site behind an outer proxy, the list is the operator's old list with the frontend address added once; more than two addresses is correct, and awk prints the address count.
 - If the line is missing, if awk says empty or star, or if doctor says FAIL (`FORWARDED_ALLOW_IPS is empty; every analyst shares one rate-limit key` or `FORWARDED_ALLOW_IPS is *; every analyst shares one rate-limit key`), this is Fail. The runbook is OPS-R21. Do not write `*`. If the list does not contain the frontend address, it is a WARN: `FORWARDED_ALLOW_IPS does not trust the frontend (<address>); pages drawn by the server share one rate-limit key`, runbook OPS-R21. This is also Fail.
 - Because beat and worker have just started, `celery_workers` or `celery_beat` can give a temporary FAIL in the first minute; wait a minute and repeat the command. If the FAIL stays on the second run, it is Fail.
@@ -366,7 +350,7 @@ awk -F= '
 - A stalled offense watermark is a separate WARN: `{n} watermark(s) stalled at the page ceiling: offense_snapshot`. The runbook is OPS-R66. If there is lag as well, the two sentences are joined with a semicolon and the runbook is still OPS-R66. This WARN is not a Fail. A provider error stays FAIL, the runbook is OPS-R30, and the same text can be appended to the end of the FAIL sentence. A clean run clears the stall (MT-11).
 - `backup_age` can stay WARN for the same reason as before the upgrade: no backup, the age cannot be read, older than 26 hours, or the backup timer is not installed or is off (a fresh backup also gives a WARN when there is no timer or it is off). This is not a fault of the upgrade. The line is in the doctor table of `docs/OPERATIONS.md`; it has no OPS-R id.
 
-- The report has four lines that 0.1.10 did not have: `email` (SKIP `not configured (SMTP_HOST is empty); alerts are not mailed` until `SMTP_HOST` is set), `qradar_access`, `qradar_disk` and `qradar_pipeline` (MT-133, MT-134). Right after the upgrade `qradar_disk` and `qradar_pipeline` are `WARN` with `not collected yet`, because the `QRADAR_HEALTH` family has not run once; they clear after its first run (15 minutes by default, MT-11). The report also has `geo_country_source` and `qradar_health`. A WARN on either is not a Fail: write its text in the Note field (a lab CE console always gives a WARN on `qradar_health` because its license is over-allocated). When the console does not answer, `qradar_health` is `SKIP` with `the console did not answer; see qradar_auth`: a `SKIP` is neither a `WARN` nor a `FAIL` and does not raise the exit code, and `qradar_auth` is the line to read. For about the first 10 minutes after the QRadar console boots, `qradar_auth` is `PASS` while `qradar_health` is `SKIP` with the same text, because the console's Ariel and health services are not ready yet (measured once, OPS-32); this is expected, not a Fail. Run `doctor` again after 10 to 15 minutes; a `SKIP` that stays after that, with `qradar_auth` PASS, is written in the Note field. A FAIL on `geo_country_source` is a Fail (MT-129 says what it means), with one exception: when the console does not answer, `geo_country_source` prints `FAIL did not answer within 10 s` with the runbook OPS-R30, because the check reads the console's property list and the console is not there. That line is the same finding as `qradar_tls` and `qradar_auth` (both `FAIL`, runbook OPS-R4 and OPS-R1) and is not a product failure; it clears on the first `doctor` after the console answers again. Read `qradar_auth` first: when it is `PASS` and `geo_country_source` still says `did not answer`, the property list is the part that is slow, and that is a Fail to report (MT-129). A `watermarks` FAIL with “The country property … does not exist on this console” is the same finding seen from the collector; fix the setting (MT-129) and run `doctor` again.
+- The report has these lines, which 0.1.11 added (they are present before this upgrade too): `email` (SKIP `not configured (SMTP_HOST is empty); alerts are not mailed` until `SMTP_HOST` is set), `qradar_access`, `qradar_disk` and `qradar_pipeline` (MT-133, MT-134). On a 0.1.11 site the `QRADAR_HEALTH` family has already run, so `qradar_disk` and `qradar_pipeline` read the stored windows; `not collected since <time> UTC` (a window older than the family's cadence allows) clears after its next run (15 minutes by default, MT-11), and `not collected yet` appears only where the family never ran (family off, or a console added since). The report also has `geo_country_source` and `qradar_health`. A WARN on either is not a Fail: write its text in the Note field (a lab CE console always gives a WARN on `qradar_health` because its license is over-allocated). When the console does not answer, `qradar_health` is `SKIP` with `the console did not answer; see qradar_auth`: a `SKIP` is neither a `WARN` nor a `FAIL` and does not raise the exit code, and `qradar_auth` is the line to read. For about the first 10 minutes after the QRadar console boots, `qradar_auth` is `PASS` while `qradar_health` is `SKIP` with the same text, because the console's Ariel and health services are not ready yet (measured once, OPS-32); this is expected, not a Fail. Run `doctor` again after 10 to 15 minutes; a `SKIP` that stays after that, with `qradar_auth` PASS, is written in the Note field. A FAIL on `geo_country_source` is a Fail (MT-129 says what it means), with one exception: when the console does not answer, `geo_country_source` prints `FAIL did not answer within 10 s` with the runbook OPS-R30, because the check reads the console's property list and the console is not there. That line is the same finding as `qradar_tls` and `qradar_auth` (both `FAIL`, runbook OPS-R4 and OPS-R1) and is not a product failure; it clears on the first `doctor` after the console answers again. Read `qradar_auth` first: when it is `PASS` and `geo_country_source` still says `did not answer`, the property list is the part that is slow, and that is a Fail to report (MT-129). A `watermarks` FAIL with “The country property … does not exist on this console” is the same finding seen from the collector; fix the setting (MT-129) and run `doctor` again.
 
 **Record:** The exit code; the ids of the WARN and FAIL lines; the text of the `migration_head`, `version_match` and `forwarded_allow_ips` lines (without the address); the line awk printed.
 
@@ -398,8 +382,8 @@ echo "exit: $?"
 
 **Expected:**
 
-- The upgrade finishes in about a minute to a minute and a half on a small database (47 to 99 s wall in the measured runs, depending on the path). The upgrade outage was 15 to 25 s in the measured runs. The measured 0.1.10 times: online, which pulls the images from the registry inside the command, 99 s wall and 25.9 s of outage; offline from the bundle, which loads the images from it inside the command, 80 s wall and 20.3 s of outage; and with the images already on the machine, 47 s wall and 21.3 s of outage. The first 0.1.11 run (0.1.10 → 0.1.11, online, seven migrations, the lab VM) took 71 s wall and 22.9 s of outage. These are not promises: the outage window is shorter than the wall time because the image step is outside it. An outage of more than 10 minutes is written in the Note field (on a large database the time of the dump is added; this is not a promise).
-- The sign-in page shows the `h1` “Sign in” (the browser tab reads “Sign in · Behavior Analytics”) and under it `API version 0.1.11`. The page is English whatever the `ba_locale` cookie holds.
+- The upgrade finishes in about a minute to a minute and a half on a small database (47 to 99 s wall in the measured runs, depending on the path). The upgrade outage was 15 to 25 s in the measured runs. The measured 0.1.10 → 0.1.11 times: online, which pulls the images from the registry inside the command, 99 s wall and 25.9 s of outage; offline from the bundle, which loads the images from it inside the command, 80 s wall and 20.3 s of outage; and with the images already on the machine, 47 s wall and 21.3 s of outage. The first 0.1.11 run (0.1.10 → 0.1.11, online, seven migrations, the lab VM) took 71 s wall and 22.9 s of outage. All these figures were measured on 0.1.11, which ran seven migrations; 0.1.12 runs none and has no measured time yet (write yours in the Note field). These are not promises: the outage window is shorter than the wall time because the image step is outside it. An outage of more than 10 minutes is written in the Note field (on a large database the time of the dump is added; this is not a promise).
+- The sign-in page shows the `h1` “Sign in” (the browser tab reads “Sign in · Behavior Analytics”) and under it `API version 0.1.12`. The page is English whatever the `ba_locale` cookie holds.
 
 **Record:** The upgrade duration (minutes), the estimate of the outage duration, and the version line on the sign-in page.
 
@@ -563,7 +547,7 @@ Open `https://<host>/` in the browser. The interface is English only (D-41); the
 **Expected:**
 
 - The menu has the line “Signed in as {name}”, the line “Source: {source}” (`LOCAL` or `LDAP`), the line “Roles: {roles}”, the link “Account settings” and the button “Sign out”. A local account also has a “Change password” link.
-- The version line in the menu is `API version 0.1.11`.
+- The version line in the menu is `API version 0.1.12`.
 
 **Record:** The API version in the menu.
 
@@ -2237,7 +2221,7 @@ curl -s -X POST --cookie "$SESSION" -H "Origin: https://<host>" https://<host>/a
 
 **Expected:**
 
-- The verdict says "Every API the application uses is reachable with this token." when the token has the rights, and the table has 14 rows on 0.1.11, each "Reachable" with a 2xx code. A refused API reads "Forbidden" (403), a missing one "Not found" (404), a rejected token "Token not accepted" (401), one that did not answer "Did not answer", and one never asked "Not checked yet"; each row says what it feeds. While the console's Ariel is not up (for example just after a restart) the Ariel rows read "Error" (HTTP 503) and clear at the next check.
+- The verdict says "Every API the application uses is reachable with this token." when the token has the rights, and the table has 14 rows, each "Reachable" with a 2xx code. A refused API reads "Forbidden" (403), a missing one "Not found" (404), a rejected token "Token not accepted" (401), one that did not answer "Did not answer", and one never asked "Not checked yet"; each row says what it feeds. While the console's Ariel is not up (for example just after a restart) the Ariel rows read "Error" (HTTP 503) and clear at the next check.
 - The response of the check is `202` with `check_running` true; the page ("A check is running. This page reads the result every … s.") and `GET /api/v1/admin/qradar-access` show `check_running` true for a few seconds and then false, with the times of the last start and finish. The third request within a minute is refused with `429` ("Too many checks were requested. Try again in … s."): the limit is `RATE_LIMIT_ACCESS_CHECK`, `2/minute` by default. That is not a failure.
 - `doctor` `qradar_access` is `PASS` (`<n> APIs reachable, last checked <UTC time>`), or a WARN naming each refused, missing or unanswered API with what it feeds, or FAIL when the token is rejected (OPS-R71). A result older than twice the interval is a WARN.
 - The probe search stays in QRadar's list until QRadar's own retention removes it, because it had already completed when the cancel was sent. It adds one id to "Search ids held" per check and is not a failure. The probe is recorded: on the SIEM load page (`/admin/siem-load`), "Load by caller" lists one search per check under "Access check" (the row is "canceled", with no record count). It never selects a payload.
@@ -2523,7 +2507,7 @@ The place of the QRadar console's audit log is not documented in this repository
 - The upgrade seems successful but `doctor` after the upgrade gives a `FAIL` and the related OPS-R entry in `docs/OPERATIONS.md` does not clear it (especially `db_connect`, `migration_head`, `encryption`, `secrets_files`, `watermarks`). On a changed console, the `watermarks` FAIL until the hourly `log_source_inventory` and `rule_inventory` are retried is not this item (MT-11). On a console that has no offenses, the `watermarks` WARN for `offense_snapshot` is not a FAIL.
 - Sign-in is broken: the administrator and existing users cannot get in, and `/api/v1/health/ready` is not 200.
 - After the first cadence + 3 min, no family in `/admin/search-cadence` is running and `doctor` gives `celery_beat` or `celery_workers` FAIL.
-- The data that 0.1.10 showed is gone: anomalies, alerts, rules, log sources or offenses are empty or missing (and the reason is not a "not collected" honesty state). On a changed console, source pages looking empty until the two hourly inventories are retried is not this item (MT-11).
+- The data that 0.1.11 showed is gone: anomalies, alerts, rules, log sources or offenses are empty or missing (and the reason is not a "not collected" honesty state). On a changed console, source pages looking empty until the two hourly inventories are retried is not this item (MT-11).
 
 **Note and continue:**
 
@@ -2559,10 +2543,10 @@ The place of the QRadar console's audit log is not documented in this repository
 ```
 
 - The command writes `Rollback replaces the live database with <path>; data written since is kept only in the broken copy.` and waits for `Type rollback to continue: `; type `rollback`.
-- When it is finished, return the checkout to the running version. The script on disk is still 0.1.11 before the checkout; `install` is not run before it. Then verify:
+- When it is finished, return the checkout to the running version. The script on disk is still 0.1.12 before the checkout; `install` is not run before it. Then verify:
 
 ```bash
-git checkout v0.1.10
+git checkout v0.1.11
 ./qradar-dash status
 curl -s http://127.0.0.1:8000/api/v1/version
 ./qradar-dash doctor
@@ -2582,11 +2566,11 @@ echo "install exit: $?"
 
 **Expected:**
 
-- The line `Rollback complete.`; exit code 0; `PASS  migration_head database and image are at 0047` (once). The rollback restores the pre-upgrade backup and runs no downgrade, so the database is the one the backup holds and the head is `0047`, not `0054`.
-- This backup holds `install.answers`. The rollback puts the file back and writes no line for it. The `Removed answer key` line is not expected. That line appears for an old backup that has no copy: `Removed answer key <name> (unknown to 0.1.10).` This upgrade's own backup is not that case.
+- The line `Rollback complete.`; exit code 0; `PASS  migration_head database and image are at 0054` (once). The rollback restores the pre-upgrade backup and runs no downgrade, so the database is the one the backup holds; its head is `0054`, the same as after the upgrade, because 0.1.12 has no migration.
+- This backup holds `install.answers`. The rollback puts the file back and writes no line for it. The `Removed answer key` line is not expected. That line appears for an old backup that has no copy: `Removed answer key <name> (unknown to 0.1.11).` This upgrade's own backup is not that case.
 - `cmp` prints nothing and exits with 0. `stat` prints `600`; `400` if the backup was `400`.
-- `status`: `Installed version: 0.1.10`, `Last upgrade: rolled_back, …`; `/api/v1/version`: `"version":"0.1.10"` and `"migration_head":"0047"`. Sign-in works. `doctor`: no `FAIL` when the console answers; on an unreachable console `qradar_tls` and `qradar_auth` and the `watermarks` / `errors_recent` lines that follow them are FAIL (the `install` item below explains this).
-- `install` exits with 0 when the console answers. The summary ends with the `Install time` line, followed by a line made of `=` signs. There is no separate “Install complete” line. There is no `unknown key` in the output. The summary line `QRadar connection  FAILED` is the install where the console did not answer and the exit was 1. The rollback check is Pass on that exit too: if the summary was reached (the `Install time` line and then the `=` line were written), if the output has no `unknown key` and no `install refused`, and if the `qradar_tls` and `qradar_auth` lines of `doctor` show the same console access fault. On an unreachable console both lines are FAIL; the `runbook:` value at the end of the line carries the runbook of console access (`runbook: OPS-R4` for `qradar_tls`, `runbook: OPS-R1` for `qradar_auth`). An exit of 1 that ends with the line `API readiness  NOT READY`, or while the general origin check failed (`public URL <address> failed`), is Fail. If the checkout was forgotten the script refuses: `install refused: this site runs 0.1.10 and this checkout is 0.1.11; use ./qradar-dash upgrade 0.1.11 to change versions, or check out v0.1.10 to re-run install (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container changes version on this refusal; run `git checkout v0.1.10` first.
+- `status`: `Installed version: 0.1.11`, `Last upgrade: rolled_back, …`; `/api/v1/version`: `"version":"0.1.11"` and `"migration_head":"0054"`. Sign-in works. `doctor`: no `FAIL` when the console answers; on an unreachable console `qradar_tls` and `qradar_auth` and the `watermarks` / `errors_recent` lines that follow them are FAIL (the `install` item below explains this).
+- `install` exits with 0 when the console answers. The summary ends with the `Install time` line, followed by a line made of `=` signs. There is no separate “Install complete” line. There is no `unknown key` in the output. The summary line `QRadar connection  FAILED` is the install where the console did not answer and the exit was 1. The rollback check is Pass on that exit too: if the summary was reached (the `Install time` line and then the `=` line were written), if the output has no `unknown key` and no `install refused`, and if the `qradar_tls` and `qradar_auth` lines of `doctor` show the same console access fault. On an unreachable console both lines are FAIL; the `runbook:` value at the end of the line carries the runbook of console access (`runbook: OPS-R4` for `qradar_tls`, `runbook: OPS-R1` for `qradar_auth`). An exit of 1 that ends with the line `API readiness  NOT READY`, or while the general origin check failed (`public URL <address> failed`), is Fail. If the checkout was forgotten the script refuses: `install refused: this site runs 0.1.11 and this checkout is 0.1.12; use ./qradar-dash upgrade 0.1.12 to change versions, or check out v0.1.11 to re-run install (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container changes version on this refusal; run `git checkout v0.1.11` first.
 - `install` exits with 2 and writes `[FAIL] the answers are refused; nothing was written:`, followed by one line per refused answer in the form `<KEY>: <reason>` (for example `QRADAR_TOKEN_FILE: file not readable: <path>`), when the answers file names a file that is not there or not readable (the QRadar token, the CA certificate, the TLS certificate and key, or the registry token) or holds any other value the script refuses. The script has checked the answers before it touched anything: no file, container or setting was changed, the rollback that came before it stands, and this is not a fault of the rollback. Put the named file back at the path the answers file gives (the answers file holds paths, never the secret itself, and the rollback does not unpack `secrets.tar`), or correct that line in `.secrets/install.answers` (mode `0600`), and run the `install` command again. Write the refused lines (the key and the reason, no secret) in the Note field; the `install` exit and the `QRadar connection` result in the Record field are then `2` and `not reached`, and the install item is `Not run` until the repeat has exited with 0 or 1 as above.
 - The script writes the name of the broken database copy (`qradar_obs_broken_<utc>`) and the exact command to delete it later; do not rush to **delete** it.
 - If the rollback fails its own health check, the writers stop and `Rollback failed; the writers and the UI are stopped. Verified backup: <path>` is written (OPS-R45); repeat `./qradar-dash rollback` or use `./qradar-dash restore <path>`.
@@ -2601,20 +2585,20 @@ echo "install exit: $?"
 
 **Action:**
 
-- On the lab VM, after the upgrade, run the rollback steps of MT-122. The checkout is `v0.1.10` in this step and `./qradar-dash install --non-interactive .secrets/install.answers` exits with 0 if the console answers (the condition is in the `install` item of MT-122). MT-16…19 must not have been done yet. Then upgrade again:
+- On the lab VM, after the upgrade, run the rollback steps of MT-122. The checkout is `v0.1.11` in this step and `./qradar-dash install --non-interactive .secrets/install.answers` exits with 0 if the console answers (the condition is in the `install` item of MT-122). MT-16…19 must not have been done yet. Then upgrade again:
 
 ```bash
 git fetch --tags
-git checkout v0.1.11
-./qradar-dash upgrade 0.1.11
+git checkout v0.1.12
+./qradar-dash upgrade 0.1.12
 ```
 
 - MT-16, MT-17, MT-18 and MT-19 are done after this re-upgrade.
 
 **Expected:**
 
-- After the rollback the head is `0047`, the head of the restored backup. The second upgrade is first `0047`, then `0054`; the two `PASS` pairs say this and seven `Running upgrade` lines (`0047 -> 0048` to `0053 -> 0054`) are written. The last line is `Upgrade complete: 0.1.10 -> 0.1.11.`. The `Last upgrade:` line shows the latest operation.
-- When the checkout is not `v0.1.11`, `upgrade 0.1.11` is refused: `upgrade refused: this checkout is version 0.1.10, not 0.1.11; run git fetch --tags && git checkout v0.1.11 first (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container stops.
+- After the rollback the head is `0054`, the head of the restored backup. The second upgrade prints two `PASS` pairs, both `0054`, and no `Running upgrade` line. The last line is `Upgrade complete: 0.1.11 -> 0.1.12.`. The `Last upgrade:` line shows the latest operation.
+- When the checkout is not `v0.1.12`, `upgrade 0.1.12` is refused: `upgrade refused: this checkout is version 0.1.11, not 0.1.12; run git fetch --tags && git checkout v0.1.12 first (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container stops.
 - The rollback removes the accounts created after the upgrade.
 
 **Record:** The two results.
