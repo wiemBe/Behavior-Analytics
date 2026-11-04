@@ -850,6 +850,8 @@
       "no_sample": "No REST health sample was stored for this console in the range.",
       "no_window": "No window has been collected for this console yet.",
       "no_window_in_range": "No window was collected for this console in this range.",
+      "notification_source_missing": "The console has no enabled System Notification log source, so an empty notification answer does not show that nothing happened.",
+      "notification_source_unreadable": "The stored log-source inventory could not be read, so an empty notification answer was not taken as none.",
       "property_missing": "These custom properties do not exist on this console: {names}. No health metric search was sent.",
       "property_unreadable": "The custom-property list could not be read on this console, so no health metric search was sent.",
       "provider_unsupported": "This provider cannot run Ariel searches, so nothing was collected.",
