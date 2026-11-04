@@ -1,6 +1,6 @@
 # QRadar-Dash manual test results page
 
-This page is the results page for the **0.1.10** section of the guide `docs/MANUAL-TEST.md`. It can be printed or a copy can be filled in. The result cells are left empty: write `Pass`, `Fail` or `Not run`; write a Note for `Fail` and `Not run`. **Do not write** passwords, tokens, `.env` values or customer data.
+This page is the results page for the **0.1.11** section of the guide `docs/MANUAL-TEST.md`. It can be printed or a copy can be filled in. The result cells are left empty: write `Pass`, `Fail` or `Not run`; write a Note for `Fail` and `Not run`. **Do not write** passwords, tokens, `.env` values or customer data.
 
 | Field | Value |
 |---|---|
@@ -12,14 +12,14 @@ This page is the results page for the **0.1.10** section of the guide `docs/MANU
 | Start (UTC) | |
 | End (UTC) | |
 | Upgrade path (online / offline bundle) | |
-| Migration head after (`0047`) | |
+| Migration head after (`0054`) | |
 | Rollback done (no / yes, time) | |
 
 **Core (production path)**, 38 checks: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-136, MT-10, MT-11, MT-126, MT-12, MT-13, MT-14, MT-15, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-128, MT-95, MT-119, MT-120, MT-121, MT-125. In production only the rows whose `Core` column says "yes" are filled in; the others are for the lab run. MT-126, although its number is high, is done right after MT-11. MT-128 is also done after a `GEO_COLLECTION` cadence has passed.
 
-In 0.1.10 the interface is English only (D-41). The checks of section 4 that tested the Turkish interface or the language switch were removed (MT-20, MT-58, MT-59, MT-124: the result cell says `Removed`; nothing to run) or rewritten as English checks with the same ids. A raw message key or Turkish text anywhere is a Fail of the check where it was seen. New checks: MT-129, MT-130, MT-131, MT-132, MT-133, MT-134, MT-135, MT-136.
+Since 0.1.10 the interface is English only (D-41). The checks of section 4 that tested the Turkish interface or the language switch were removed (MT-20, MT-58, MT-59, MT-124: the result cell says `Removed`; nothing to run) or rewritten as English checks with the same ids. A raw message key or Turkish text anywhere is a Fail of the check where it was seen. New checks in 0.1.11: MT-133, MT-134, MT-135 and MT-136.
 
-Version before: `0.1.9`, migration head `0044`. Version after: `0.1.10`, migration head `0047`.
+Version before: `0.1.10`, migration head `0047`. Version after: `0.1.11`, migration head `0054`.
 
 
 ## 1. Preconditions
@@ -32,7 +32,7 @@ Version before: `0.1.9`, migration head `0044`. Version after: `0.1.10`, migrati
 | MT-04 | yes | Where the logs and the support bundle are — (writes) | | |
 | MT-05 | yes | The window and the people to inform | | |
 
-## 2. Upgrade 0.1.9 → 0.1.10
+## 2. Upgrade 0.1.10 → 0.1.11
 
 | Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
