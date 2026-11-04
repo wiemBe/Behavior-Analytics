@@ -273,6 +273,13 @@
 .sl-callers-table td {
   padding-inline: var(--sp-2);
 }
+/* The caller name takes the slack and wraps between words, like the notification name: a long
+   label or an unknown caller code never widens the table past its frame. A code with no space
+   in it breaks at any letter, only when it does not fit. */
+.sl-callers-table th[scope="row"] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .sl-sentence {
   color: var(--text-2);
   white-space: normal;

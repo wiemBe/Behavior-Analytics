@@ -91,6 +91,15 @@
   grid-area: auto;
 }
 
+/* In the dashboard's fixed-row grid the box is as tall as the layout made it for the map. A
+   frame with no map to draw (not collected, insufficient data) is only as tall as its own
+   content: it does not stretch to the box, so it holds no empty field. The map state, which has
+   no `.geo-hollow`, keeps the whole box. The drag-and-resize grid (`.dg-edit`) is not touched:
+   there the analyst sees the box they are sizing. */
+.dg[data-cols="12"] .dg-item > .tw:has(.geo-hollow) {
+  align-self: flex-start;
+}
+
 /* --- the map ----------------------------------------------------------------- */
 
 .geo-plot {
