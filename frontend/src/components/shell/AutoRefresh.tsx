@@ -145,6 +145,14 @@ export function AutoRefresh({ onRefresh }: { onRefresh?: () => void }) {
     return () => clearInterval(timer);
   }, [choice, visible, router, onRefresh, bump]);
 
+  // The browser's clock is "now" here, as it is for "Refreshed": the data instant carries its
+  // date when it is not on the current UTC day, the same rule as the Dashboard widgets. The
+  // value only exists after a page reported it in an effect, so there is no server render to
+  // disagree with.
+  const dataToText = dataTo
+    ? formatClockUtcDated(dataTo, (Date.now() - new Date(dataTo).getTime()) / 1000)
+    : "";
+
   return (
     <div className="topbar-refresh">
       <label htmlFor={selectId} className="topbar-label">
@@ -166,9 +174,9 @@ export function AutoRefresh({ onRefresh }: { onRefresh?: () => void }) {
             {t("refreshed")} <time dateTime={last.toISOString()}>{formatClockUtc(last)}</time>
           </span>
         )}
-        {dataTo && formatClockUtc(dataTo) && (
+        {dataToText && (
           <span>
-            {t("dataTo")} <time dateTime={dataTo}>{formatClockUtc(dataTo)}</time>
+            {t("dataTo")} <time dateTime={dataTo ?? undefined}>{dataToText}</time>
           </span>
         )}
       </div>

@@ -245,6 +245,17 @@ describe("HealthTable: the window and its state", () => {
     expect(cells(rowOf("qr-console"))[0]).toHaveTextContent("66.0 %");
   });
 
+  it.each([
+    ["STALE", null, "Stale."],
+    ["STALE", "", "Stale."],
+    ["STALE", "   ", "Stale."],
+    ["PARTIAL", null, "Partial. The figures marked ≥ are lower bounds."],
+    ["PARTIAL", "", "Partial. The figures marked ≥ are lower bounds."],
+  ] as const)("says a %s window with reason %j without an empty tail", (state, reason, text) => {
+    health(consoleLatest({ metrics: { state, reason_code: "stale", reason } }));
+    expect(screen.getByRole("status").textContent?.trim()).toBe(text);
+  });
+
   it("marks the figures of a partial window as lower bounds", () => {
     health(
       consoleLatest({

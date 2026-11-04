@@ -252,12 +252,16 @@ export function HealthTable({
       </p>
       {metrics.state === "STALE" ? (
         <p className="banner warn" role="status">
-          {t("stale", { reason: metrics.reason ?? "" })}
+          {metrics.reason?.trim()
+            ? t("stale", { reason: metrics.reason })
+            : t("staleNoReason")}
         </p>
       ) : null}
       {metrics.state === "PARTIAL" ? (
         <p className="banner warn" role="status">
-          {t("partial", { reason: metrics.reason ?? "" })}
+          {metrics.reason?.trim()
+            ? t("partial", { reason: metrics.reason })
+            : t("partialNoReason")}
         </p>
       ) : null}
       {!hostsRead ? <p className="sl-hint">{t("hostsNotRead")}</p> : null}

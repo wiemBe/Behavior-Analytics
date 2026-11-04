@@ -133,6 +133,38 @@ describe("the times", () => {
     expect(screen.queryByText(/Data to/)).not.toBeInTheDocument();
   });
 
+  function reported(iso: string | null) {
+    function Page() {
+      useReportDataAge(iso);
+      return null;
+    }
+    render(
+      <DataAgeProvider>
+        <AutoRefresh />
+        <Page />
+      </DataAgeProvider>,
+    );
+  }
+
+  it("shows the data instant as a clock when it is on the current UTC day", () => {
+    reported("2026-10-14T00:00:01Z");
+    expect(screen.getByText(/Data to/)).toHaveTextContent(/^Data to 00:00:01 UTC$/);
+  });
+
+  it("dates the data instant when it is on an earlier UTC day", () => {
+    reported("2026-10-13T21:05:00Z");
+    expect(screen.getByText(/Data to/)).toHaveTextContent("Data to 2026-10-13 21:05:00 UTC");
+    expect(screen.getByText(/Refreshed/)).toHaveTextContent(/^Refreshed 14:02:11 UTC$/);
+  });
+
+  it("invents no data instant for null or an unparseable value", () => {
+    reported(null);
+    expect(screen.queryByText(/Data to/)).not.toBeInTheDocument();
+    document.body.innerHTML = "";
+    reported("not a date");
+    expect(screen.queryByText(/Data to/)).not.toBeInTheDocument();
+  });
+
   it("shows the data age a page supplies, and drops it when the page goes", () => {
     function Page() {
       useReportDataAge("2026-10-14T13:55:00Z");
