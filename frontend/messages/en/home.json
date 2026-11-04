@@ -113,9 +113,8 @@
     "link": "Anomalies",
     "linkLabel": "View active anomalies",
     "what": "anomalies",
-    "description": "Anomalies in an active state (candidate, open or recovering), by type. Sources without a baseline are not judged and are not counted.",
+    "description": "Anomalies in an active state (candidate, open or recovering) across log sources, WAF endpoints, IPS and property watches. Log sources without a baseline are not judged and are not counted.",
     "unit": "active anomalies",
-    "byDetector": "By detector",
     "lifecycle": "Lifecycle",
     "short": {
       "spikes": "spikes",
@@ -126,9 +125,35 @@
       "candidates": "candidates",
       "recovering": "recovering"
     },
-    "notJudged": "{count, plural, one {# source not judged; it is not in these counts.} other {# sources not judged; they are not in these counts.}}",
+    "notJudged": "{count, plural, one {# log source not judged; it is not in these counts.} other {# log sources not judged; they are not in these counts.}}",
     "notJudgedTitle": "A source without a baseline gets no verdict, so it cannot raise an anomaly.",
-    "nothingToJudge": "No monitored log source; there is nothing to judge yet."
+    "nothingToJudge": "No monitored log source; there is nothing to judge yet.",
+    "logSources": "Log sources",
+    "otherFamilies": "Also",
+    "family": {
+      "log_source": "log sources",
+      "waf": "WAF",
+      "ips": "IPS",
+      "property_watch": "property watches"
+    },
+    "familyNotRead": "{family} not read",
+    "notRead": "not read",
+    "lowerBound": "At least this many: a family could not be read.",
+    "logSourcesNotRead": "Log source count not read.",
+    "byDetector": "By detector",
+    "count": {
+      "spikes": "{count, plural, one {# spike} other {# spikes}}",
+      "drops": "{count, plural, one {# drop} other {# drops}}",
+      "silent": "{count, plural, one {# silent} other {# silent}}",
+      "other": "{count, plural, one {# other} other {# other}}",
+      "open": "{count, plural, one {# open} other {# open}}",
+      "candidates": "{count, plural, one {# candidate} other {# candidates}}",
+      "recovering": "{count, plural, one {# recovering} other {# recovering}}",
+      "log_source": "{count, plural, one {# log source} other {# log sources}}",
+      "waf": "{count, plural, one {# WAF} other {# WAF}}",
+      "ips": "{count, plural, one {# IPS} other {# IPS}}",
+      "property_watch": "{count, plural, one {# property watch} other {# property watches}}"
+    }
   },
   "eps": {
     "title": "Fleet EPS",

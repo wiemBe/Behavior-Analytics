@@ -1,11 +1,13 @@
-// KPI card 4 (UR.4.2): active anomalies.
+// KPI card 4 (UR.4.2): active anomalies of every family.
 //
-// The summary supplies two dimensions of the active total, each a partition of it: the
-// detector that raised the anomaly (spikes, drops, silent, and every other detector as
-// one remainder) and its lifecycle state (open, candidate, recovering). Severity is
-// retained for the chart model and is a lower bound when the active list is capped.
+// The total is the sum of the four families' active counts (log sources, WAF, IPS, property
+// watches), as `GET /anomalies/summary` measured them in the active list's window. The card
+// shows two partitions of it: by family (log sources split by detector, then the other three
+// as their own parts) and by lifecycle state. A family whose count is absent was not read: it is
+// named as such, never drawn as 0, and the total becomes a lower bound. Severity is retained
+// for the chart model and is a lower bound when the active list is capped.
 
-import type { AnomalySummary, BehaviorSummary, Page } from "@/lib/api";
+import type { AnomalyFamily, AnomalySummary, BehaviorSummary, Page } from "@/lib/api";
 
 import { truncated, type Qualifier } from "./qualifiers";
 
@@ -17,19 +19,40 @@ export interface TypeCount {
   count: number;
 }
 
+/** One of the three families the card names beside the log sources. */
+export interface FamilyCount {
+  key: Exclude<AnomalyFamily, "log_source">;
+  /** Null when the count could not be read: not a zero. */
+  count: number | null;
+}
+
 export interface SeverityCount {
   severity: string;
   count: number;
 }
 
+export const FAMILY_ORDER: AnomalyFamily[] = ["log_source", "waf", "ips", "property_watch"];
+
 export interface AnomaliesCard {
-  open: number;
-  /** Active anomalies by detector; the remainder is "other", so the parts sum to `open`. */
+  /** All-family active count over the families read; null when none was read. */
+  open: number | null;
+  /** True when a family was not read, so `open` is a floor. */
+  lowerBound: boolean;
+  /** The families whose counts were not read. */
+  unread: AnomalyFamily[];
+  /** Log-source active anomalies; null when not read. */
+  logSources: number | null;
+  /**
+   * Log sources by detector; the remainder is "other", so the parts sum to `logSources`.
+   * Empty when the family was not read or the detector counts disagree with it.
+   */
   byDetector: TypeCount[];
-  /** Active anomalies by lifecycle state; these also sum to `open`. */
+  /** WAF, IPS and property watches, each its own part of the total. */
+  families: FamilyCount[];
+  /** Active anomalies by lifecycle state, over the families read. */
   byLifecycle: TypeCount[];
   severity: { entries: SeverityCount[]; qualifiers: Qualifier[] };
-  /** Sources without a baseline: unjudged, so absent from every count above. */
+  /** Log sources without a baseline: unjudged, so absent from every count above. */
   notJudged: number;
   notJudgedText: string;
 }
@@ -55,26 +78,50 @@ export function anomaliesCard(
   if (active.total > active.items.length) {
     qualifiers.push(truncated(active.items.length, active.total));
   }
+  const by = summary.active_by_family ?? {};
+  const unread = FAMILY_ORDER.filter((family) => by[family] == null);
+  const read = FAMILY_ORDER.flatMap((family) => by[family] ?? []);
+  const logSource = by.log_source ?? null;
+
+  // The detector counts are the Phase A summary's own (any age); the family count is bounded to
+  // the list's window. If they disagree there is no honest "other" to draw, so the split is
+  // dropped and the family shows as one part.
+  const named = summary.spikes + summary.drops + summary.silent_sources;
+  const splittable = logSource !== null && named <= logSource.total;
+  const otherDetectors = logSource !== null ? logSource.total - named : 0;
   const n = summary.insufficient_data_sources;
-  const otherDetectors = Math.max(
-    0,
-    summary.open_anomalies - summary.spikes - summary.drops - summary.silent_sources,
-  );
-  const openState = Math.max(0, summary.open_anomalies - summary.candidates - summary.recovering);
   return {
-    open: summary.open_anomalies,
-    byDetector: [
-      { key: "spikes", label: "Spikes", count: summary.spikes },
-      { key: "drops", label: "Drops", count: summary.drops },
-      { key: "silent", label: "Silent sources", count: summary.silent_sources },
-      ...(otherDetectors > 0
-        ? [{ key: "other" as const, label: "Other detectors", count: otherDetectors }]
-        : []),
+    open: read.length === 0 ? null : read.reduce((sum, c) => sum + c.total, 0),
+    lowerBound: unread.length > 0,
+    unread,
+    logSources: logSource?.total ?? null,
+    byDetector: splittable
+      ? [
+          { key: "spikes", label: "Spikes", count: summary.spikes },
+          { key: "drops", label: "Drops", count: summary.drops },
+          { key: "silent", label: "Silent sources", count: summary.silent_sources },
+          ...(otherDetectors > 0
+            ? [{ key: "other" as const, label: "Other detectors", count: otherDetectors }]
+            : []),
+        ]
+      : [],
+    families: [
+      { key: "waf", count: by.waf?.total ?? null },
+      { key: "ips", count: by.ips?.total ?? null },
+      { key: "property_watch", count: by.property_watch?.total ?? null },
     ],
     byLifecycle: [
-      { key: "open", label: "Open", count: openState },
-      { key: "candidates", label: "Candidates", count: summary.candidates },
-      { key: "recovering", label: "Recovering", count: summary.recovering },
+      { key: "open", label: "Open", count: read.reduce((sum, c) => sum + c.open, 0) },
+      {
+        key: "candidates",
+        label: "Candidates",
+        count: read.reduce((sum, c) => sum + c.candidate, 0),
+      },
+      {
+        key: "recovering",
+        label: "Recovering",
+        count: read.reduce((sum, c) => sum + c.recovering, 0),
+      },
     ],
     severity: { entries: countBySeverity(active.items), qualifiers },
     notJudged: n,

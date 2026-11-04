@@ -491,6 +491,47 @@ class AnomalyRepository:
         )
         return {(str(s), str(t)): int(c) for s, t, c in rows.all()}
 
+    async def active_family_counts(
+        self, *, since: datetime, until: datetime
+    ) -> dict[tuple[str, str], int]:
+        """Active anomalies keyed by (family, state): one statement over the four families.
+
+        The population is `list_unified(active_only=True)` for the same window --
+        the same states, the same `detected_at` bounds and the same joins -- so the
+        counts add up to that list's `total`. The family key is `log_source`, `waf`,
+        `ips` or `property_watch`.
+        """
+        active = [s.value for s in ACTIVE_ANOMALY_STATES]
+
+        def branch(family: str, model: Any, *joins: Any) -> Select:
+            stmt = select(
+                literal_column(f"'{family}'").label("family"),
+                model.state.label("state"),
+                func.count().label("n"),
+            ).select_from(model)
+            for target, on in joins:
+                stmt = stmt.join(target, on)
+            return stmt.where(
+                model.state.in_(active),
+                model.detected_at >= since,
+                model.detected_at < until,
+            ).group_by(model.state)
+
+        union = union_all(
+            branch("log_source", LogSourceAnomaly),
+            branch(
+                "waf", WafAnomaly, (WafEndpoint, WafEndpoint.id == WafAnomaly.waf_endpoint_id)
+            ),
+            branch("ips", IpsAnomaly),
+            branch(
+                "property_watch",
+                PwAnomaly,
+                (PropertyWatch, PropertyWatch.id == PwAnomaly.watch_id),
+            ),
+        ).subquery()
+        rows = await self.session.execute(select(union.c.family, union.c.state, union.c.n))
+        return {(str(f), str(s)): int(n) for f, s, n in rows.all()}
+
     async def recently_resolved(self, *, limit: int = 10) -> list[LogSourceAnomaly]:
         return list(
             (

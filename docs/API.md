@@ -106,8 +106,12 @@ property-watch incidents share the analyst surface while retaining their own ano
 Without `since` the list covers the last 24 hours of detections. With `active_only=true` and no
 `since`, it reaches back to `API_MAX_RANGE_DAYS` (365 days by default), because an active
 anomaly is active whatever its age. An explicit `since` or `until` is used as sent and is
-validated against the same ceiling. `GET /anomalies/summary` counts Phase A active anomalies of
-any age, so one older than the ceiling is counted there and not listed.
+validated against the same ceiling. `GET /anomalies/summary` keeps its Phase A fields
+(`open_anomalies`, `spikes`, ...), which count log-source active anomalies of any age. It also
+returns `active_by_family`: the active anomalies of log sources, WAF, IPS and property watches
+(`log_source`, `waf`, `ips`, `property_watch`), each with its `open`, `candidate`, `recovering`
+and `total` counts. These are read in one statement over the same window as the active list
+(back to `API_MAX_RANGE_DAYS`), so their sum equals the `total` of `GET /anomalies?active_only=true`.
 
 The investigation page exposes every expected evidence dimension even when it is unavailable. An
 unavailable dimension includes a reason and is never hidden as though it were checked and clean.
