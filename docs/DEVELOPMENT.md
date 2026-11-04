@@ -151,6 +151,7 @@ in automated tests, and `MockNotifier` prevents external delivery.
 | Job | What it runs | Limit |
 | --- | --- | --- |
 | `changes` | decides from the changed paths which of the jobs below run (see "Skipped jobs") | 5 min |
+| `shellcheck` | `shellcheck -x --severity=info` over `qradar-dash`, `deploy/*.sh` and `scripts/*.sh`, from a hash-pinned wheel; always runs | 5 min |
 | `backend-static` | the version check, `ruff check app tests scripts`, `mypy app`, `alembic upgrade head`, `alembic check`; always runs | 15 min |
 | `backend-unit` | every test that is not marked `integration`, without a database, on every core (`pytest -n auto`) | 15 min |
 | `backend-integration` | the integration suite in twelve shards, each with its own database, serial inside the shard | 35 min |
@@ -202,14 +203,14 @@ Sum the setup, call and teardown seconds of each file in that report and write t
 
 ### Concurrent jobs
 
-One full run starts 17 jobs: `changes`, `backend-static`, `backend-unit`, 12 integration shards,
-`frontend` and `frontend-test`. GitHub documents 20 concurrent jobs for a Free plan account; this
-repository is public and owned by a personal account, and the plan itself is not readable
-through the API, so 20 is the documented figure, not a measured one. Two overlapping runs (a
-`main` push during a merge-h run, a release on top of a branch run) ask for 34: the first 20 jobs
-start and the rest wait in the queue until a slot frees; nothing fails, but the later run's wall
-time grows by up to a shard's length. A docs-only run needs 2 jobs and waits behind them too.
-Do not raise the shard count: at 15 shards one run alone reaches 20.
+One full run starts 18 jobs: `changes`, `shellcheck`, `backend-static`, `backend-unit`, 12
+integration shards, `frontend` and `frontend-test`. GitHub documents 20 concurrent jobs for a
+Free plan account; this repository is public and owned by a personal account, and the plan itself
+is not readable through the API, so 20 is the documented figure, not a measured one. Two
+overlapping runs (a `main` push during a merge-h run, a release on top of a branch run) ask for
+36: the first 20 jobs start and the rest wait in the queue until a slot frees; nothing fails, but
+the later run's wall time grows by up to a shard's length. A docs-only run needs 3 jobs and waits
+behind them too. Do not raise the shard count: at 15 shards one run alone reaches 20.
 
 ### Skipped jobs and concurrency
 
@@ -220,9 +221,9 @@ dispatched runs and the release's `workflow_call` always run every job, as does 
 
 | Changed files | Runs |
 | --- | --- |
-| only documents (`docs/`, `*.md`, `LICENSE`, `NOTICE`) | `backend-static` |
-| only `frontend/src/` or `frontend/public/` | `backend-static`, `frontend`, `frontend-test` |
-| only `backend/app/`, `backend/tests/` or `backend/alembic/` | `backend-static`, `backend-unit`, `backend-integration` |
+| only documents (`docs/`, `*.md`, `LICENSE`, `NOTICE`) | `shellcheck`, `backend-static` |
+| only `frontend/src/` or `frontend/public/` | `shellcheck`, `backend-static`, `frontend`, `frontend-test` |
+| only `backend/app/`, `backend/tests/` or `backend/alembic/` | `shellcheck`, `backend-static`, `backend-unit`, `backend-integration` |
 | anything else (workflows, `scripts/`, `qradar-dash`, `deploy/`, requirements, `pyproject.toml`, `frontend/messages/`, Dockerfiles, `VERSION`, `docs/releases/`) | everything |
 
 A file that a test of the other side mentions by name counts for that side too (a unit test reads

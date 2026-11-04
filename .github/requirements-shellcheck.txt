@@ -1,0 +1,15 @@
+# CI-8: the shellcheck binary for the shell-lint job, pinned by version and by hash.
+#
+# `shellcheck-py` 0.11.0.1 bundles the shellcheck 0.11.0 binary. The package version carries a
+# fourth part; 0.11.0 is not a shellcheck-py release (`pip install shellcheck-py==0.11.0` finds
+# no distribution). The file also pins the runner's platform, linux x86_64: the wheel hash below
+# belongs to
+# shellcheck_py-0.11.0.1-py2.py3-none-manylinux1_x86_64.manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_5_x86_64.whl
+# and to no other file (PyPI's JSON API and `pip hash` agree). `ubuntu-latest` is x86_64, so the
+# step installs exactly this wheel; on another platform pip fails on the missing hash instead of
+# quietly linting with a different binary.
+#
+# Install: python -m pip install --disable-pip-version-check --require-hashes -r \
+#            .github/requirements-shellcheck.txt
+shellcheck-py==0.11.0.1 \
+    --hash=sha256:1b274df81de5b000ff78db433e7328b87e52e3c38481c60f8e488c3095beef05

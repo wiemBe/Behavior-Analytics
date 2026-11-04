@@ -51,6 +51,40 @@ jobs:
           --before "${{ github.event.before }}"
           --sha "${{ github.sha }}"
 
+  shellcheck:
+    # CI-8: the CLI (install, upgrade, rollback, backup, bundle, restore) and the deploy/scripts
+    # helpers are bash that runs as root on the production host, so a quoting bug is an outage.
+    # `bash -n` and the stubbed tests do not see that class of defect; an info-level shellcheck
+    # finding fails the build. No `changes` gate and no services: the step takes seconds and
+    # needs neither a database nor Docker, and the one change most worth linting is `qradar-dash`
+    # itself, which a path rule could skip.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install shellcheck
+        # The pinned wheel rather than the runner's preinstalled shellcheck: the scripts were
+        # made clean under this version, and `ubuntu-latest`'s version changes when GitHub moves
+        # the image, which could change the verdict without a change in this repository. The
+        # wheel is pinned by hash too (`.github/requirements-shellcheck.txt`), like every other
+        # dependency lock; a version bump edits that file and the pin in
+        # backend/tests/unit/test_shellcheck_ci.py.
+        run: >-
+          python -m pip install --disable-pip-version-check --require-hashes
+          -r .github/requirements-shellcheck.txt
+      - name: shellcheck
+        # -x follows the `source` in scripts/; --severity=info is the gate because the class the
+        # task names (an unquoted expansion, SC2086) is info-level, not warning-level. That level
+        # also fails the error-level SC2148 (no dialect), so every shipped script must carry a
+        # shebang or a `# shellcheck shell=bash` directive (scripts/_venv.sh is sourced, so it
+        # has the latter).
+        run: |
+          shellcheck --version
+          shellcheck -x --severity=info qradar-dash deploy/*.sh scripts/*.sh
+
   backend-static:
     runs-on: ubuntu-latest
     timeout-minutes: 15
