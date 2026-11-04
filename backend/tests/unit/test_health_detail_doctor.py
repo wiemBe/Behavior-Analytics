@@ -264,6 +264,44 @@ class TestBusiestStage:
             for metric, element, value in items
         }
 
+    @staticmethod
+    def _stage_rows(*items: tuple[str, float, float | None]):  # type: ignore[no-untyped-def]
+        """(metric, max, avg) of `RunnableRatio` rows."""
+        from app.models.qradar_health import QRadarHealthMetricBucket as Row
+
+        return {
+            (metric, "RunnableRatio"): Row(
+                instance_id=uuid.uuid4(), bucket_start=NOW, bucket_end=NOW, host="h",
+                metric=metric, element="RunnableRatio", max_value=mx, avg_value=avg, samples=3,
+            )
+            for metric, mx, avg in items
+        }
+
+    def test_the_busiest_stage_is_the_highest_average_not_the_highest_maximum(self) -> None:
+        rows = self._stage_rows(
+            ("EventsIndexerThreadInfo", 100.0, 3.0), ("WorkerThreadInfo", 60.0, 40.0)
+        )
+        stage = host_health(rows, "h", PartState.OK, SETTINGS).pipeline.busiest_stage
+        assert stage is not None and (stage.stage, stage.busy_percent) == ("Worker", 40.0)
+
+    def test_a_stage_without_an_average_is_left_out_not_read_as_zero(self) -> None:
+        rows = self._stage_rows(
+            ("EventsIndexerThreadInfo", 100.0, None), ("WorkerThreadInfo", 5.0, 2.0)
+        )
+        stage = host_health(rows, "h", PartState.OK, SETTINGS).pipeline.busiest_stage
+        assert stage is not None and (stage.stage, stage.busy_percent) == ("Worker", 2.0)
+
+    def test_no_stage_average_at_all_has_no_busiest_stage(self) -> None:
+        rows = self._stage_rows(("WorkerThreadInfo", 100.0, None), ("AggOutThreadInfo", 0.0, None))
+        assert host_health(rows, "h", PartState.OK, SETTINGS).pipeline.busiest_stage is None
+
+    def test_equal_averages_go_to_the_earlier_stage_in_spec_order(self) -> None:
+        rows = self._stage_rows(
+            ("WorkerThreadInfo", 50.0, 25.0), ("AggregationThreadInfo", 90.0, 25.0)
+        )
+        stage = host_health(rows, "h", PartState.OK, SETTINGS).pipeline.busiest_stage
+        assert stage is not None and stage.stage == "Aggregation"
+
     def test_the_busiest_stage_is_the_highest_runnable_share(self) -> None:
         rows = self._rows(
             ("AggOutThreadInfo", "RunnableRatio", 0.0),

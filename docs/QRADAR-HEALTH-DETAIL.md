@@ -33,7 +33,10 @@ Metric ids used (from the console's catalog; each is per host):
   allocation — the license throttle), `ECTCPTOEPDiskSize`, `FlowGovernerQueueDiskSize` (bytes of
   pipeline queue on disk), and the busiest of the `*ThreadInfo` stages (% busy, 0–100:
   `EventParserThreadInfo`, `CREPRocessorThreadInfo`, `ArielWriterThreadInfo`, …). A stage's
-  % busy is the share of its threads in the RUNNABLE state (the `RunnableRatio` element); the
+  % busy is the window average of the share of its threads in the RUNNABLE state (the
+  `RunnableRatio` element, 0 or 100 per sample, so the average is the share of the window the
+  stage was busy; D-43). The busiest stage is the one with the highest average; every other
+  figure is the window maximum. Equal averages go to the earlier stage in `STAGE_METRICS`. The
   other thread states (`WaitingRatio`, `TimedWaitRatio`, `BlockedRatio`, …) are not stored. A
   window collected before query version 2 shows no busiest stage, because its stage row was the
   maximum over all states, not a busy share.
