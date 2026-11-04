@@ -618,6 +618,38 @@ def test_links_and_escaping_paths_are_refused_before_extraction(
     assert not (consumer.root / ".install-tmp").exists()
 
 
+@pytest.mark.parametrize(
+    ("kind", "name", "needle"),
+    [
+        (tarfile.SYMTYPE, "link", "holds links"),
+        (tarfile.REGTYPE, "../escape", "absolute or parent-directory paths"),
+    ],
+)
+def test_a_bad_member_is_refused_when_the_listing_is_far_longer_than_a_pipe_write(
+    consumer: Install, producer: Producer, kind: bytes, name: str, needle: str
+) -> None:
+    # The bad member comes first, so grep finds it at once while the rest of a 64 KiB+ listing
+    # is still to be written: a `printf | grep -q` under pipefail would read SIGPIPE as "none".
+    bundle = producer.make()
+    bad = bundle.with_name("bad.tar")
+    with tarfile.open(bundle) as src, tarfile.open(bad, "w") as dst:
+        info = tarfile.TarInfo(name)
+        info.type = kind
+        if kind == tarfile.SYMTYPE:
+            info.linkname = "/etc/passwd"
+        dst.addfile(info)
+        for index in range(1500):
+            dst.addfile(tarfile.TarInfo(f"padding/{index:05d}-" + "x" * 60))
+        for member in src.getmembers():
+            dst.addfile(member, src.extractfile(member) if member.isfile() else None)
+
+    result = offline_install(consumer, bad)
+
+    assert result.returncode == 1
+    assert needle in result.stderr
+    assert not [c for c in consumer_calls(consumer) if c.startswith("load")]
+
+
 def test_a_member_the_sums_do_not_cover_is_refused(
     consumer: Install, producer: Producer
 ) -> None:

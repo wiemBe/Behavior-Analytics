@@ -414,7 +414,7 @@ free_kb() { # free space of the nearest existing parent of $1
   df -Pk "$p" 2>/dev/null | awk 'NR==2 {print $4}'
 }
 
-port_free() { ! ss -ltnH "sport = :$1" 2>/dev/null | grep -q .; }
+port_free() { ! ss -ltnH "sport = :$1" 2>/dev/null | grep . >/dev/null; }
 
 preflight_host() {
   local bad=0 arch cv mem cpus root free
@@ -1070,10 +1070,10 @@ bundle_precheck() {
   local bundle=$1 expected=$2 what=$3 prefix=$4 listing found manifest bundle_prefix
   listing=$(tar -tvf "$bundle" 2>/dev/null) \
     || die "cannot read $bundle as a tar file; copy it again from the connected host (made by ./qradar-dash bundle); nothing was loaded"
-  if printf '%s\n' "$listing" | grep -Eq '^[lh]'; then
+  if grep -Eq '^[lh]' <<<"$listing"; then
     die "$bundle holds links, which a ./qradar-dash bundle never does; nothing was loaded; copy it again from the connected host"
   fi
-  if printf '%s\n' "$listing" | awk '{print $NF}' | grep -Eq '^/|(^|/)\.\.(/|$)'; then
+  if awk '{print $NF}' <<<"$listing" | grep -E '^/|(^|/)\.\.(/|$)' >/dev/null; then
     die "$bundle holds absolute or parent-directory paths, which a ./qradar-dash bundle never does; nothing was loaded; copy it again from the connected host"
   fi
   found=$(bundle_member "$bundle" VERSION | tr -d '[:space:]') || found=""
@@ -1167,7 +1167,7 @@ bundle_load() {
   members=$(cd "$dir" && find . -type f ! -name SHA256SUMS -printf '%P\n') \
     || { bundle_clean_tmp; die "cannot list the members of the bundle (is find installed?); nothing was loaded"; }
   while IFS= read -r member; do
-    printf '%s\n' "$listed" | grep -qxF -- "$member" \
+    grep -qxF -- "$member" <<<"$listed" \
       || { bundle_clean_tmp; die "the bundle holds $member, which SHA256SUMS does not cover; nothing was loaded; copy the bundle again from the connected host"; }
   done <<<"$members"
   say "Bundle checksums match; loading the images (this takes a while)"
@@ -2643,7 +2643,7 @@ restore_stop_services() {
   running_text=$(dc ps --services --status running) || return 1
   mapfile -t running <<<"$running_text"
   for service in backend celery-worker celery-beat frontend proxy; do
-    if printf '%s\n' "${running[@]}" | grep -qx "$service"; then
+    if grep -qx "$service" <<<"$running_text"; then
       RESTORE_STOPPED_SERVICES+=("$service")
     fi
   done
@@ -3135,14 +3135,13 @@ upgrade_doctor_preflight() {
   local report
   report=$(cmd_doctor || true)
   print_deciding_checks "$report"
-  if printf '%s\n' "$report" \
-      | grep -Eq '^FAIL[[:space:]]+(db_connect|migration_head)([[:space:]]|$)'; then
+  if grep -Eq '^FAIL[[:space:]]+(db_connect|migration_head)([[:space:]]|$)' <<<"$report"; then
     fail "upgrade refused: database readiness is already failing; see runbook OPS-R11"
     return 1
   fi
   # Fail closed: a doctor that could not report either check proves nothing.
-  if ! printf '%s\n' "$report" | grep -Eq '^PASS[[:space:]]+db_connect([[:space:]]|$)' \
-    || ! printf '%s\n' "$report" | grep -Eq '^PASS[[:space:]]+migration_head([[:space:]]|$)'; then
+  if ! grep -Eq '^PASS[[:space:]]+db_connect([[:space:]]|$)' <<<"$report" \
+    || ! grep -Eq '^PASS[[:space:]]+migration_head([[:space:]]|$)' <<<"$report"; then
     fail "upgrade refused: doctor did not report db_connect and migration_head as PASS; see runbook OPS-R11"
     return 1
   fi
@@ -3175,13 +3174,11 @@ upgrade_runtime_checks() { # upgrade_runtime_checks EXPECTED_VERSION
   fi
   report=$(cmd_doctor || true)
   print_deciding_checks "$report"
-  if ! printf '%s\n' "$report" \
-      | grep -Eq '^PASS[[:space:]]+db_connect([[:space:]]|$)'; then
+  if ! grep -Eq '^PASS[[:space:]]+db_connect([[:space:]]|$)' <<<"$report"; then
     UPGRADE_CHECK_FAILURE="doctor db_connect is not PASS"
     return 1
   fi
-  if ! printf '%s\n' "$report" \
-      | grep -Eq '^PASS[[:space:]]+migration_head([[:space:]]|$)'; then
+  if ! grep -Eq '^PASS[[:space:]]+migration_head([[:space:]]|$)' <<<"$report"; then
     UPGRADE_CHECK_FAILURE="doctor migration_head is not PASS"
     return 1
   fi
