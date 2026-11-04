@@ -103,6 +103,12 @@ where `<rate>` is the limit as text (for example `2 per 1 minute`), plus the `Re
 detector observation, expected range and evidence metadata. Source-volume, WAF, IPS and
 property-watch incidents share the analyst surface while retaining their own anomaly taxonomies.
 
+Without `since` the list covers the last 24 hours of detections. With `active_only=true` and no
+`since`, it reaches back to `API_MAX_RANGE_DAYS` (365 days by default), because an active
+anomaly is active whatever its age. An explicit `since` or `until` is used as sent and is
+validated against the same ceiling. `GET /anomalies/summary` counts Phase A active anomalies of
+any age, so one older than the ceiling is counted there and not listed.
+
 The investigation page exposes every expected evidence dimension even when it is unavailable. An
 unavailable dimension includes a reason and is never hidden as though it were checked and clean.
 Evidence states are explicit: `NOT_REQUESTED`, `PENDING`, `COMPLETE`, `PARTIAL`, `UNAVAILABLE` and

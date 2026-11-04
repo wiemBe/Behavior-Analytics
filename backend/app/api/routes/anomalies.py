@@ -126,16 +126,22 @@ behavior_router = APIRouter(prefix="/behavior", tags=["behavior"])
 
 
 def _validate_range(
-    since: datetime | None, until: datetime | None, max_days: int
+    since: datetime | None,
+    until: datetime | None,
+    max_days: int,
+    *,
+    default_days: int = 1,
 ) -> tuple[datetime, datetime]:
     """Clamp and validate a caller-supplied time range.
+
+    Without `since` the range starts `default_days` before its end.
 
     An unbounded range on a hypertable is a denial-of-service against our own
     database, so the ceiling is enforced here rather than trusted to the client.
     """
     now = datetime.now(UTC)
     end = until or now
-    start = since or (end - timedelta(days=1))
+    start = since or (end - timedelta(days=default_days))
     if start.tzinfo is None:
         start = start.replace(tzinfo=UTC)
     if end.tzinfo is None:
@@ -177,7 +183,16 @@ async def list_anomalies(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> PagedAnomalies:
-    start, end = _validate_range(since, until, settings.api_max_range_days)
+    # "Active" is a state, not a time window: without `since`, an active-only list reaches
+    # back to the range ceiling instead of 1 day, so it holds what the Dashboard counts. The
+    # summary (`/anomalies/summary`) counts Phase A rows of any age, so an active anomaly
+    # older than the ceiling is counted there but not listed here; the summary is unchanged.
+    start, end = _validate_range(
+        since,
+        until,
+        settings.api_max_range_days,
+        default_days=settings.api_max_range_days if active_only else 1,
+    )
     repo = AnomalyRepository(session)
     rows, total = await repo.list_unified(
         limit=min(limit, settings.api_max_page_size),
