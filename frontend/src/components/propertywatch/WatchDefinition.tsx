@@ -5,7 +5,7 @@ import Link from "next/link";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { enumLabel } from "@/i18n/enumLabels";
 import { formatCount } from "@/lib/format";
-import { formatDuration } from "@/lib/behavior";
+import { formatDuration, formatExactDuration } from "@/lib/behavior";
 import type { PropertyWatch, PropertyWatchCatalog, WatchScope } from "@/lib/api";
 
 import { WatchAqlSection, type AqlRead } from "./WatchAql";
@@ -94,7 +94,7 @@ export function WatchDefinition({
           <div><dt>{t("propertyWatch.definition.version")}</dt><dd className="num">{formatCount(watch.watch_version, i18n.locale)}<span className="muted">{t("propertyWatch.definition.versionNote")}</span></dd></div>
           <div>
             <dt>{t("propertyWatch.definition.cadence")}</dt>
-            <dd>{t("propertyWatch.definition.cadenceBeforeLink", { duration: formatDuration(watch.cadence_seconds, i18n) })}<Link href="/admin/search-cadence">{t("propertyWatch.definition.searchCadence")}</Link>{t("propertyWatch.definition.cadenceAfterLink")}</dd>
+            <dd>{t("propertyWatch.definition.cadenceBeforeLink", { duration: formatExactDuration(watch.cadence_seconds, i18n) })}<Link href="/admin/search-cadence">{t("propertyWatch.definition.searchCadence")}</Link>{t("propertyWatch.definition.cadenceAfterLink")}</dd>
           </div>
           <div><dt>{t("propertyWatch.definition.alerting")}</dt><dd>{t(watch.alerting_mode === "shadow" ? "propertyWatch.definition.shadow" : "propertyWatch.definition.paging")}</dd></div>
           <div><dt>{t("propertyWatch.definition.created")}</dt><dd className="num"><UtcTime value={watch.created_at} />{watch.created_by && <span className="muted">{t("propertyWatch.definition.by", { operator: watch.created_by })}</span>}</dd></div>

@@ -14,6 +14,8 @@ import { useLocale, useTranslations } from "next-intl";
 import type { FormatLocale } from "@/lib/format";
 import { formatCount, formatPercent, formatShare } from "@/lib/format";
 
+import { DURATION_UNITS, EXACT_UNITS, durationParts } from "@/lib/time";
+
 import type { Locale } from "./locale";
 
 const MISSING = "—";
@@ -64,23 +66,29 @@ export function formatSignedPercent(value: number, locale: FormatLocale): string
 /** The minimal translator shape: next-intl's `t` for one namespace. */
 type Say = (key: string, values?: Record<string, string | number>) => string;
 
-/** "3 h 20 min", "45 s": every non-zero part; null, negative or non-finite is the em dash. */
+/**
+ * "3 h 20 min", "45 s": at most two consecutive units from the largest non-zero one, the rest
+ * floored away (see `lib/time.durationParts`); null, negative or non-finite is the em dash.
+ */
 export function durationText(say: Say, totalSeconds: number | null | undefined): string {
+  return spell(say, totalSeconds, DURATION_UNITS);
+}
+
+/** Every non-zero unit: for a configured value or a figure the backend states whole. */
+export function exactDurationText(say: Say, totalSeconds: number | null | undefined): string {
+  return spell(say, totalSeconds, EXACT_UNITS);
+}
+
+function spell(say: Say, totalSeconds: number | null | undefined, units: number): string {
   if (typeof totalSeconds !== "number" || !Number.isFinite(totalSeconds) || totalSeconds < 0) {
     return MISSING;
   }
-  const total = Math.round(totalSeconds);
+  const total = Math.floor(totalSeconds);
   if (total === 0) return say("second", { count: 0 });
-  const parts: string[] = [];
-  const days = Math.floor(total / 86400);
-  const hours = Math.floor((total % 86400) / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
-  if (days) parts.push(say("day", { count: days }));
-  if (hours) parts.push(say("hour", { count: hours }));
-  if (minutes) parts.push(say("minute", { count: minutes }));
-  if (seconds) parts.push(say("second", { count: seconds }));
-  return parts.join(" ");
+  const word = { d: "day", h: "hour", min: "minute", s: "second" } as const;
+  return durationParts(total, units)
+    .map((part) => say(word[part.unit], { count: part.count }))
+    .join(" ");
 }
 
 /** "under 1 min ago" .. "2 d ago" from seconds; the em dash for a value that is not an age. */

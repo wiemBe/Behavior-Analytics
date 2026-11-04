@@ -53,26 +53,58 @@ export function relativeAge(
 }
 
 /**
- * A duration: "0 s", "59 s", "1 min", "3 h 20 min", "2 d 4 h".
- * Zero parts are dropped. A measured zero is "0 s". Anything that is not a
- * measured duration is an em dash.
+ * How many consecutive units a duration shows. Two keeps an age readable: "1 d" or "1 d 3 h",
+ * not "1 d 7 min 39 s", where the seconds after a day are noise.
+ */
+export const DURATION_UNITS = 2;
+
+/** Enough units to show every part of a duration. */
+export const EXACT_UNITS = 4;
+
+/**
+ * The parts of a whole number of seconds, largest first, cut to `units` consecutive units that
+ * start at the largest non-zero one. Zero parts inside the window are dropped. The rest is
+ * floored away, so an age is never overstated. Shared with `i18n/measures.durationText`.
+ */
+export function durationParts(
+  total: number,
+  units: number,
+): { unit: "d" | "h" | "min" | "s"; count: number }[] {
+  const all = [
+    { unit: "d" as const, count: Math.floor(total / 86400) },
+    { unit: "h" as const, count: Math.floor((total % 86400) / 3600) },
+    { unit: "min" as const, count: Math.floor((total % 3600) / 60) },
+    { unit: "s" as const, count: total % 60 },
+  ];
+  const first = all.findIndex((part) => part.count > 0);
+  if (first < 0) return [];
+  return all.slice(first, first + units).filter((part) => part.count > 0);
+}
+
+/**
+ * A duration, at most two units: "0 s", "59 s", "1 min", "3 h 20 min", "2 d 4 h". Smaller units
+ * are floored away ("1 d 7 min 39 s" is "1 d"), zero parts are dropped. A measured zero is
+ * "0 s". Anything that is not a measured duration is an em dash. For an age or a measured
+ * span. A configured value (a cadence, an interval) uses `formatExactDuration`.
  */
 export function formatDuration(totalSeconds: number | null | undefined): string {
+  return spell(totalSeconds, DURATION_UNITS);
+}
+
+/** Every non-zero unit, "1 h 1 s": a configured value must not be shortened. */
+export function formatExactDuration(totalSeconds: number | null | undefined): string {
+  return spell(totalSeconds, EXACT_UNITS);
+}
+
+function spell(totalSeconds: number | null | undefined, units: number): string {
   if (typeof totalSeconds !== "number" || !Number.isFinite(totalSeconds) || totalSeconds < 0) {
     return MISSING;
   }
-  const total = Math.round(totalSeconds);
+  const total = Math.floor(totalSeconds);
   if (total === 0) return "0 s";
-  const days = Math.floor(total / 86400);
-  const hours = Math.floor((total % 86400) / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
-  const parts: string[] = [];
-  if (days) parts.push(`${days} d`);
-  if (hours) parts.push(`${hours} h`);
-  if (minutes) parts.push(`${minutes} min`);
-  if (seconds) parts.push(`${seconds} s`);
-  return parts.join(" ");
+  return durationParts(total, units)
+    .map((part) => `${part.count} ${part.unit}`)
+    .join(" ");
 }
 
 /** The same duration spelling. Offense ages and stale-data ages use this name. */

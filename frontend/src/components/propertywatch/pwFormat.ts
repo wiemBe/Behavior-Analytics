@@ -20,7 +20,7 @@ import type {
   PwWatchStatus,
 } from "@/lib/api";
 import { delayText, latencyCadence, latencyParts, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
-import { formatDuration, NOT_MEASURED } from "@/lib/behavior";
+import { formatExactDuration, NOT_MEASURED } from "@/lib/behavior";
 import { wordOrValue } from "@/lib/behaviorI18n";
 import type { Tone } from "@/lib/health";
 import { formatCount, formatPercent } from "@/lib/format";
@@ -42,7 +42,7 @@ function localizedDelay(
     cadence.settleSeconds,
   ).seconds;
   return i18n.t("propertyWatch.format.latencyUpTo", {
-    duration: formatDuration(seconds, i18n),
+    duration: formatExactDuration(seconds, i18n),
   });
 }
 

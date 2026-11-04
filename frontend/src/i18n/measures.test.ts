@@ -4,6 +4,7 @@ import { createLocaleTranslator } from "./testTranslator";
 import {
   ageText,
   durationText,
+  exactDurationText,
   formatEps,
   formatRatioLocale,
   formatSignedPercent,
@@ -49,6 +50,12 @@ describe("figures with their unit", () => {
     expect(durationText(units("tr"), 0)).toBe("0\u00a0sn");
     expect(durationText(units("tr"), null)).toBe("—");
     expect(durationText(units("tr"), -1)).toBe("—");
+    // Two units at most, floored: the seconds after a day are dropped, in both languages.
+    expect(durationText(units("en"), 86400 + 7 * 60 + 39)).toBe("1 d");
+    expect(durationText(units("en"), 86400 + 3 * 3600 + 7 * 60)).toBe("1 d 3 h");
+    expect(durationText(units("tr"), 3 * 3600 + 20 * 60 + 5)).toBe("3\u00a0sa 20\u00a0dk");
+    expect(exactDurationText(units("en"), 86400 + 7 * 60 + 39)).toBe("1 d 7 min 39 s");
+    expect(exactDurationText(units("en"), null)).toBe("—");
   });
 
   it("writes a relative age with the largest unit, and a missing one as the dash", () => {

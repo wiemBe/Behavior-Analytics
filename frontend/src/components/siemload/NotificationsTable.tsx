@@ -11,7 +11,7 @@ import { TableScroll } from "@/components/ui/TableScroll";
 import { UtcTime } from "@/components/ui/UtcTime";
 import type { QRadarConsoleLatest } from "@/lib/api";
 import { formatCount } from "@/lib/format";
-import { formatDuration } from "@/lib/time";
+import { formatDuration, formatExactDuration } from "@/lib/time";
 
 import { HostName } from "./HostName";
 
@@ -68,7 +68,7 @@ export function NotificationsTable({
         <p className="sl-asof">
           {t.rich("coverage", {
             windows: list.windows,
-            cadence: cadence !== null ? formatDuration(cadence) : "—",
+            cadence: cadence !== null ? formatExactDuration(cadence) : "—",
             from: () => <UtcTime value={list.covered_from} />,
             to: () => <UtcTime value={list.covered_until} />,
           })}

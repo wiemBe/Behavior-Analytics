@@ -225,7 +225,7 @@ function PlacedCell({
   const Deferred = useMemo(
     () =>
       def && def.status === "live"
-        ? placeholderFor(def, def.category === "KPI")
+        ? placeholderFor(def, def.category === "KPI", true)
         : null,
     [def],
   );

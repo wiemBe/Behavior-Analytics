@@ -11,7 +11,7 @@ import { UtcTime } from "@/components/ui/UtcTime";
 import type { ArielInFlight, ArielInFlightEntry, QRadarHealthPart } from "@/lib/api";
 import { formatCount } from "@/lib/format";
 import { asTextTranslator } from "@/i18n/textTranslator";
-import { formatDuration } from "@/lib/time";
+import { formatDuration, formatExactDuration } from "@/lib/time";
 
 import { callerLabel } from "./callers";
 
@@ -52,7 +52,7 @@ export function InFlightTable({
       </td>
       <td className="num">{formatDuration(entry.age_seconds)}</td>
       <td className="num">{formatCount(entry.polls)}</td>
-      <td className="num">{formatDuration(entry.range_seconds)}</td>
+      <td className="num">{formatExactDuration(entry.range_seconds)}</td>
     </tr>
   );
 
