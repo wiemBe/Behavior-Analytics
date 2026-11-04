@@ -159,9 +159,8 @@ in automated tests, and `MockNotifier` prevents external delivery.
 
 The twelve shards show up as `backend-integration (shard 3/12)`. The suite holds about 70 minutes of
 test time and a shard costs about one minute of set-up (service container, checkout, pip), so twelve
-shards put the slowest at about six minutes of tests. The ceiling in `ci_shard.py` is sixteen
-(`MAX_SHARDS`): the repository is public and GitHub runs 20 jobs at once, and the shards plus the
-other jobs must fit under that. Changing the count means editing four places, which
+shards put the slowest at about six minutes of tests. The ceiling in `ci_shard.py` is fifteen
+(`MAX_SHARDS`): see "Concurrent jobs" below. Changing the count means editing four places, which
 `test_ci_shard.py` checks agree: the matrix, the job name, `--of`, and `DEFAULT_SHARDS` in
 `ci_shard.py`; then refresh the weights. Together the unit job and the shards run every test in the
 repository exactly once: the shards run everything marked `integration`, the unit job everything
@@ -201,6 +200,17 @@ pytest -rs -m integration --durations=0 --durations-min=0
 Sum the setup, call and teardown seconds of each file in that report and write them into
 `backend/tests/integration/shard_weights.json` as `{"tests/integration/test_x.py": seconds, ...}`.
 
+### Concurrent jobs
+
+One full run starts 17 jobs: `changes`, `backend-static`, `backend-unit`, 12 integration shards,
+`frontend` and `frontend-test`. GitHub documents 20 concurrent jobs for a Free plan account; this
+repository is public and owned by a personal account, and the plan itself is not readable
+through the API, so 20 is the documented figure, not a measured one. Two overlapping runs (a
+`main` push during a merge-h run, a release on top of a branch run) ask for 34: the first 20 jobs
+start and the rest wait in the queue until a slot frees; nothing fails, but the later run's wall
+time grows by up to a shard's length. A docs-only run needs 2 jobs and waits behind them too.
+Do not raise the shard count: at 15 shards one run alone reaches 20.
+
 ### Skipped jobs and concurrency
 
 `backend/scripts/ci_changes.py` (job `changes`) decides, for a push to a branch other than `main`,
@@ -217,8 +227,11 @@ dispatched runs and the release's `workflow_call` always run every job, as does 
 
 A file that a test of the other side mentions by name counts for that side too (a unit test reads
 `docs/OPERATIONS.md`; a frontend test reads `backend/app/security/rbac.py`). `main` has no branch
-protection, so a skipped job blocks nothing. Note that a docs-only push after a failing code push
-on the same branch is green: the skipped jobs do not re-run the earlier failure.
+protection, so a skipped job blocks nothing. 
+On `agent/merge-h` the base is the merge base with `origin/feat/phase-ce` instead (the
+`changes` job fetches the full history without file contents, about 4 s), so every change not yet
+on feat gets its jobs; if that ref or merge base is unavailable, everything runs. On other
+branches a docs-only push after a red code push is green: the diff base is the previous push.
 
 A newer push to a branch cancels the older run, except on `main`, tags, pull requests and
 `agent/merge-h`: those queue (GitHub keeps one waiting run per branch, so a third push replaces

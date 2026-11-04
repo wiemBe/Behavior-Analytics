@@ -39,7 +39,7 @@ FIXTURE_FILES = ["test_a.py", "test_b.py", "test_c.py", "test_d.py", "test_z.py"
 # The arguments that make the split invalid.
 INVALID_ARGUMENTS = [
     ("--shard", "1", "--of", "0"),
-    ("--shard", "1", "--of", "17"),
+    ("--shard", "1", "--of", "16"),
     ("--shard", "0", "--of", "5"),
     ("--shard", "13", "--of", "12"),
 ]
@@ -83,7 +83,7 @@ def make_tree(root: Path, weights: dict[str, int], files: list[str]) -> Path:
     return root
 
 
-@pytest.mark.parametrize("of", range(1, 17))
+@pytest.mark.parametrize("of", range(1, 16))
 def test_the_shards_cover_every_integration_file_exactly_once(of: int) -> None:
     expected = {f"tests/integration/{path.name}" for path in INTEGRATION_DIR.glob("test_*.py")}
     seen: list[str] = []

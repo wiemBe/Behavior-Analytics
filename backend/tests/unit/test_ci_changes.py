@@ -230,3 +230,80 @@ def test_the_mentions_a_test_reads_across_the_sides_are_still_found() -> None:
     assert "OPERATIONS.md" in backend
     assert "backendCodes.generated.json" in backend
     assert "rbac.py" in frontend
+
+
+def _remote_with_feat(tmp_path: Path, *, feat: bool = True) -> tuple[Path, Path]:
+    """A remote with ``feat/phase-ce`` (or only ``main``) and a full clone of it."""
+    remote = tmp_path / "remote"
+    work = tmp_path / "work"
+    remote.mkdir()
+    work.mkdir()
+
+    def git(cwd: Path, *args: str) -> str:
+        done = subprocess.run(  # noqa: S603
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],  # noqa: S607
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return done.stdout.strip()
+
+    git(remote, "init", "-q", "-b", "feat/phase-ce" if feat else "main")
+    (remote / "backend" / "app").mkdir(parents=True)
+    (remote / "backend" / "app" / "x.py").write_text("x = 1\n")
+    git(remote, "add", "-A")
+    git(remote, "commit", "-q", "-m", "feat")
+    git(remote, "checkout", "-q", "-b", "agent/merge-h")
+
+    git(work, "clone", "-q", "--no-tags", str(remote), ".")
+    return remote, work
+
+
+def _merge_h_outputs(tmp_path: Path, *relatives: str, feat: bool = True) -> list[str]:
+    """Push ``relatives`` one commit each to merge-h; the outputs for the LAST push only."""
+    remote, work = _remote_with_feat(tmp_path, feat=feat)
+
+    def git(cwd: Path, *args: str) -> str:
+        return subprocess.run(  # noqa: S603
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],  # noqa: S607
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    shas: list[str] = []
+    for relative in relatives:
+        target = remote / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("changed\n")
+        git(remote, "add", "-A")
+        git(remote, "commit", "-q", "-m", relative)
+        shas.append(git(remote, "rev-parse", "HEAD"))
+    before = shas[-2] if len(shas) > 1 else git(remote, "rev-parse", "HEAD~1")
+    git(work, "fetch", "-q", "origin", "agent/merge-h")
+    git(work, "checkout", "-q", "--detach", shas[-1])
+    result = run_script(
+        work, "--event", "push", "--ref", ci_changes.MERGE_H_REF, "--before", before,
+        "--sha", shas[-1],
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.splitlines()[-2:]
+
+
+def test_merge_h_with_a_docs_only_diff_against_feat_runs_only_static(tmp_path: Path) -> None:
+    assert _merge_h_outputs(tmp_path, "docs/NEW-DESIGN.md") == ["backend=false", "frontend=false"]
+
+
+def test_merge_h_docs_push_after_an_unlanded_code_commit_still_runs_the_backend(
+    tmp_path: Path,
+) -> None:
+    """The last push is docs-only, but a backend change is not on feat yet: its jobs run."""
+    outputs = _merge_h_outputs(tmp_path, "backend/app/y.py", "docs/NEW-DESIGN.md")
+    assert outputs == ["backend=true", "frontend=false"]
+
+
+def test_merge_h_without_a_feat_ref_runs_everything(tmp_path: Path) -> None:
+    outputs = _merge_h_outputs(tmp_path, "docs/NEW-DESIGN.md", feat=False)
+    assert outputs == ["backend=true", "frontend=true"]

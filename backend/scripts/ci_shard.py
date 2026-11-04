@@ -37,10 +37,11 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-# The CI matrix has twelve shards (CI-6); sixteen is the ceiling the workflow allows: the
-# repository is public, so GitHub runs 20 jobs at once, and sixteen shards plus the three
-# other jobs must still fit under that.
-MAX_SHARDS = 16
+# The CI matrix has twelve shards (CI-6). One full run starts the shards plus five other jobs
+# (changes, backend-static, backend-unit, frontend, frontend-test). The ceiling keeps that at
+# 20, the concurrent-job limit of a Free plan account (the repository is public, owned by a
+# personal account), so one run never waits on itself.
+MAX_SHARDS = 15
 DEFAULT_SHARDS = 12
 INTEGRATION_DIR = "tests/integration"
 WEIGHTS_FILE = "tests/integration/shard_weights.json"

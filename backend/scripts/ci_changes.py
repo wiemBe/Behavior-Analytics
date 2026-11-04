@@ -13,6 +13,11 @@ Only a push to a branch other than ``main`` may skip anything. ``main``, a tag
 dispatched run, a new branch (a ``before`` of all zeros), a ``before`` commit
 that cannot be fetched or diffed, and an empty diff all run everything.
 
+The diff base is the push's ``before`` commit, except for ``agent/merge-h``: its base is the
+merge base of the head and ``origin/feat/phase-ce``. A ``before`` base has a known limit on
+the other branches: a docs-only push after a red code push is green. If the feat ref cannot
+be fetched or no merge base exists, everything runs.
+
 For a branch push the changed paths decide, file by file, and the answers are
 joined:
 
@@ -40,6 +45,12 @@ import sys
 from pathlib import Path
 
 ZEROS = "0" * 40
+# The integration branch is judged against the branch it is merged into, not against the
+# previous push: a red code push followed by a docs-only push must not turn it green.
+# `feat/phase-ce` moves only after a green run of this branch, so everything not yet on it
+# gets its jobs.
+MERGE_H_REF = "refs/heads/agent/merge-h"
+FEAT_BRANCH = "feat/phase-ce"
 DOC_SUFFIX = ".md"
 DOC_NAMES = {"LICENSE", "NOTICE"}
 # Where the tests and the application that could read a file of the other side live.
@@ -104,6 +115,36 @@ def decide(
     return backend, frontend
 
 
+def merge_base(sha: str) -> str | None:
+    """The merge base of ``sha`` and ``origin/feat/phase-ce``; ``None`` when git cannot say."""
+    fetch = subprocess.run(  # noqa: S603
+        [  # noqa: S607
+            "git",
+            "fetch",
+            "--no-tags",
+            "origin",
+            f"+refs/heads/{FEAT_BRANCH}:refs/remotes/origin/{FEAT_BRANCH}",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if fetch.returncode != 0:
+        print(f"cannot fetch {FEAT_BRANCH}: {fetch.stderr.strip()}", file=sys.stderr)
+        return None
+    found = subprocess.run(  # noqa: S603
+        ["git", "merge-base", sha, f"origin/{FEAT_BRANCH}"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    base = found.stdout.strip()
+    if found.returncode != 0 or not base:
+        print(f"no merge base of {sha} and {FEAT_BRANCH}: {found.stderr.strip()}", file=sys.stderr)
+        return None
+    return base
+
+
 def changed_files(before: str, sha: str) -> list[str] | None:
     """The paths that differ between ``before`` and ``sha``; ``None`` when git cannot say."""
     fetch = subprocess.run(  # noqa: S603
@@ -139,7 +180,10 @@ def main(argv: list[str] | None = None) -> int:
     backend = frontend = True
     reason = "trigger runs everything"
     if not runs_everything(args.event, args.ref, args.before):
-        files = changed_files(args.before, args.sha)
+        base = args.before
+        if args.ref == MERGE_H_REF:
+            base = merge_base(args.sha) or ""
+        files = changed_files(base, args.sha) if base else None
         if files is None:
             reason = "diff unavailable"
         else:

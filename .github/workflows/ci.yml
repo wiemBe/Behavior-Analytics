@@ -36,6 +36,12 @@ jobs:
       frontend: ${{ steps.decide.outputs.frontend }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history without file contents: `agent/merge-h` is diffed against the merge
+          # base with `origin/feat/phase-ce`, which a shallow clone cannot find. A
+          # blob-less clone of this repository takes about 4 s (20 MB pack, 1,500 commits).
+          fetch-depth: 0
+          filter: blob:none
       - name: Decide
         id: decide
         run: >-
