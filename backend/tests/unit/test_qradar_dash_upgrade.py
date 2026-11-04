@@ -202,6 +202,13 @@ case "$*" in
       exit 2
     fi
     printf '%s\n' 'PASS  migration_head   database at image head'
+    if [ "${STUB_DOCTOR_PAD_VERSION:-none}" = "$running_version" ]; then
+      pad=0
+      while [ "$pad" -lt 3000 ]; do
+        printf 'PASS  filler_%04d      padding that keeps the report above one pipe write\n' "$pad"
+        pad=$((pad + 1))
+      done
+    fi
     [ "${STUB_QRADAR_FAIL:-0}" -eq 0 ] \
       || printf '%s\n' 'FAIL  qradar_auth      QRadar refused credentials'
     [ "${STUB_BEAT_FAIL:-0}" -eq 0 ] \
@@ -1192,6 +1199,22 @@ def test_doctor_that_reports_nothing_refuses_before_stop(upgrade: UpgradeFixture
     assert result.returncode != 0
     assert "did not report db_connect and migration_head" in result.stderr
     assert_no_stop(upgrade)
+
+
+@pytest.mark.parametrize("padded_version", [OLD_VERSION, TARGET_VERSION])
+def test_large_doctor_report_with_both_pass_lines_does_not_refuse_the_upgrade(
+    upgrade: UpgradeFixture, padded_version: str
+) -> None:
+    # The report is far above one pipe write (64 KiB) with both PASS lines first. A
+    # `printf | grep -q` under pipefail reads grep's early exit as "no match" (SIGPIPE, 141).
+    # The old version pads the pre-upgrade report, the target version the post-upgrade one.
+    result = upgrade.run("upgrade", TARGET_VERSION, STUB_DOCTOR_PAD_VERSION=padded_version)
+
+    assert result.returncode == 0, output(result)
+    assert "did not report db_connect and migration_head" not in result.stderr
+    assert "doctor db_connect is not PASS" not in output(result)
+    assert upgrade.state()["last_upgrade"]["outcome"] == "success"  # type: ignore[index]
+    assert upgrade.running_version.read_text().strip() == TARGET_VERSION
 
 
 def test_env_version_that_differs_from_state_refuses_before_stop(
