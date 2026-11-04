@@ -669,8 +669,9 @@ class BehaviorSummaryOut(BaseModel):
     resolved_last_24h: int = 0
     recently_resolved: list[AnomalyListItem] = Field(default_factory=list)
     highest_deviation: list[AnomalyListItem] = Field(default_factory=list)
-    #: Active anomalies of all four families, in the active list's window (the last
-    #: `api_max_range_days`). The Phase A fields above keep their own meaning.
+    #: Active anomalies of all four families: the same population as
+    #: `GET /anomalies?active_only=true` without `since`, every active incident up to now
+    #: whatever its age. The Phase A fields above keep their own meaning.
     active_by_family: ActiveByFamily | None = None
 
 

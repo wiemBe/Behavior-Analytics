@@ -123,7 +123,9 @@ def test_an_empty_database_measures_zero_in_every_family(db_schema) -> None:  # 
     assert fam == {"log_source": zero, "waf": zero, "ips": zero, "property_watch": zero}
 
 
-def test_an_active_anomaly_older_than_the_ceiling_is_not_counted(db_schema) -> None:  # type: ignore[no-untyped-def]
+def test_an_active_anomaly_older_than_the_ceiling_is_counted(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """The range ceiling bounds a named window, not the active set: an incident still
+    active after a year is still active, and the count must say so."""
     async def setup(s):  # type: ignore[no-untyped-def]
         inst = await make_instance(s)
         fw = await make_log_source(s, inst, qradar_id=1, name="fw-1")
@@ -132,8 +134,74 @@ def test_an_active_anomaly_older_than_the_ceiling_is_not_counted(db_schema) -> N
     run(setup)
     client = Client(READER)
     fam = client.get(SUMMARY).json()["active_by_family"]
-    assert fam["log_source"]["total"] == 0
-    assert client.get("/api/v1/anomalies", params={"active_only": "true"}).json()["total"] == 0
+    assert fam["log_source"]["total"] == 1
+    assert client.get("/api/v1/anomalies", params={"active_only": "true"}).json()["total"] == 1
+
+
+def test_every_family_counts_an_old_active_anomaly_at_any_age(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """One active incident per family, all detected far beyond the ceiling, plus one
+    resolved incident per family at the same age. Each family must count its active row
+    only, and the four totals must equal the list's `total`."""
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        fw = await make_log_source(s, inst, qradar_id=1, name="fw-1")
+        ws = await make_log_source(s, inst, qradar_id=2, name="waf-1")
+        ep = endpoint(inst.id, ws.id)
+        s.add(ep)
+        watch = PropertyWatch(
+            instance_id=inst.id, name="w-1", scope_kind="LOG_SOURCE", log_source_id=fw.id,
+            properties=[{"name": "x"}], pinned_values=[], detectors=[], watch_version=1,
+            enabled=True,
+        )
+        s.add(watch)
+        await s.flush()
+        old = _ago(24 * 400)
+        s.add_all([
+            phase_a(fw.id, old),
+            waf(ep.id, old),
+            _ips(fw.id, when=old),
+            _pw(watch.id, when=old),
+            phase_a(fw.id, old, state=AnomalyState.RESOLVED),
+            waf(ep.id, old, state=AnomalyState.RESOLVED),
+            _ips(fw.id, AnomalyState.RESOLVED, when=old),
+            _pw(watch.id, AnomalyState.RESOLVED, when=old),
+        ])
+
+    run(setup)
+    client = Client(READER)
+    body = client.get(SUMMARY).json()
+    fam = body["active_by_family"]
+    assert {name: counts["total"] for name, counts in fam.items()} == {
+        "log_source": 1,
+        "waf": 1,
+        "ips": 1,
+        "property_watch": 1,
+    }
+    listed = client.get(
+        "/api/v1/anomalies", params={"active_only": "true", "limit": 200}
+    ).json()
+    assert sum(counts["total"] for counts in fam.values()) == listed["total"] == 4
+    assert {item["state"] for item in listed["items"]} <= {
+        "OPEN", "CANDIDATE", "RECOVERING",
+    }
+
+
+def test_the_legacy_fields_and_the_log_source_family_count_one_population(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """Legacy fields count Phase A of any age; the family count must be the same rows."""
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        fw = await make_log_source(s, inst, qradar_id=1, name="fw-1")
+        s.add_all([
+            phase_a(fw.id, _ago(24 * 400)),
+            phase_a(fw.id, _ago(2), state=AnomalyState.CANDIDATE),
+            phase_a(fw.id, _ago(1)),
+            phase_a(fw.id, _ago(24 * 400), state=AnomalyState.RESOLVED),
+        ])
+
+    run(setup)
+    body = Client(READER).get(SUMMARY).json()
+    assert body["open_anomalies"] == 3
+    assert body["active_by_family"]["log_source"]["total"] == body["open_anomalies"]
 
 
 def test_more_anomalies_cost_no_more_statements(db_schema) -> None:  # type: ignore[no-untyped-def]

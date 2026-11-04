@@ -70,6 +70,11 @@ def _iso(dt: datetime) -> str:
     return dt.isoformat().replace("+00:00", "Z")
 
 
+def settings_days() -> int:
+    """The range ceiling the endpoint enforces, read from the running settings."""
+    return get_settings().api_max_range_days
+
+
 ADMIN = Principal(subject="admin", permissions=frozenset({"admin:*"}))
 READER = Principal(subject="reader", permissions=frozenset({"read:*"}))
 NOBODY = Principal(subject="nobody", permissions=frozenset())
@@ -375,11 +380,11 @@ class TestAnomalyList:
 
 
 class TestActiveOnlyWindow:
-    """"Active" is a state, not a time window: without `since`, `active_only` reaches back
-    to the range ceiling, not to 1 day."""
+    """"Active" is a state, not a time window: without `since`, `active_only` has no lower
+    bound at all, so an incident older than the range ceiling is still listed."""
 
     @staticmethod
-    def _age(days: int) -> None:
+    def _age(days: float, state: AnomalyState | None = None) -> None:
         import asyncio
 
         from sqlalchemy import update
@@ -389,11 +394,12 @@ class TestActiveOnlyWindow:
                 os.environ["TEST_DATABASE_URL"], future=True, poolclass=NullPool
             )
             async with async_sessionmaker(engine)() as session:
-                await session.execute(
-                    update(LogSourceAnomaly).values(
-                        detected_at=datetime.now(UTC) - timedelta(days=days)
-                    )
-                )
+                values: dict[str, object] = {
+                    "detected_at": datetime.now(UTC) - timedelta(days=days)
+                }
+                if state is not None:
+                    values["state"] = state
+                await session.execute(update(LogSourceAnomaly).values(**values))
                 await session.commit()
             await engine.dispose()
 
@@ -415,10 +421,28 @@ class TestActiveOnlyWindow:
         assert c.get(f"/api/v1/anomalies?active_only=true&since={wide}").json()["total"] == 1
         assert c.get(f"/api/v1/anomalies?since={wide}").json()["total"] == 1
 
-    def test_an_active_only_list_older_than_the_ceiling_is_not_reached(self, seeded) -> None:
-        self._age(400)
+    def test_an_active_anomaly_older_than_the_ceiling_is_listed(self, seeded) -> None:
+        """The ceiling is a guard against a named window, not against the active set: hiding
+        an open incident because it is old is drawing a zero over a measurement."""
+        self._age(settings_days() + 30)
         c = client_for(READER)
-        assert c.get("/api/v1/anomalies?active_only=true").json()["total"] == 0
+        body = c.get("/api/v1/anomalies?active_only=true").json()
+        assert body["total"] == 1
+        assert body["items"][0]["state"] == "OPEN"
+        # Without `active_only` the 1-day default is unchanged.
+        assert c.get("/api/v1/anomalies").json()["total"] == 0
+
+    def test_a_resolved_anomaly_that_old_is_not_listed(self, seeded) -> None:
+        self._age(settings_days() + 30, state=AnomalyState.RESOLVED)
+        assert client_for(READER).get("/api/v1/anomalies?active_only=true").json()["total"] == 0
+
+    def test_an_explicit_until_still_caps_an_active_only_list(self, seeded) -> None:
+        """No lower bound does not mean no bounds: `until` still ends the population."""
+        self._age(settings_days() + 30)
+        before = _iso(datetime.now(UTC) - timedelta(days=settings_days() + 40))
+        assert client_for(READER).get(
+            f"/api/v1/anomalies?active_only=true&until={before}"
+        ).json()["total"] == 0
 
     def test_a_range_over_the_ceiling_is_still_refused_with_active_only(self, seeded) -> None:
         r = client_for(READER).get(

@@ -131,19 +131,17 @@ def _validate_range(
     since: datetime | None,
     until: datetime | None,
     max_days: int,
-    *,
-    default_days: int = 1,
 ) -> tuple[datetime, datetime]:
     """Clamp and validate a caller-supplied time range.
 
-    Without `since` the range starts `default_days` before its end.
+    Without `since` the range covers the day before its end.
 
     An unbounded range on a hypertable is a denial-of-service against our own
     database, so the ceiling is enforced here rather than trusted to the client.
     """
     now = datetime.now(UTC)
     end = until or now
-    start = since or (end - timedelta(days=default_days))
+    start = since or (end - timedelta(days=1))
     if start.tzinfo is None:
         start = start.replace(tzinfo=UTC)
     if end.tzinfo is None:
@@ -158,6 +156,28 @@ def _validate_range(
             f"range exceeds the maximum of {max_days} days",
         )
     return start, end
+
+
+def _active_only_range(
+    since: datetime | None,
+    until: datetime | None,
+    max_days: int,
+) -> tuple[datetime | None, datetime]:
+    """The range of an active-only list: no lower bound unless `since` is sent.
+
+    "Active" is a state, not a window. An incident detected before the range
+    ceiling is still active, and dropping it would hide an open investigation
+    while the summary still counted it. Without `since`, an active-only list
+    therefore has an end only (`until`, or now), however old its rows are. An
+    explicit range keeps the ceiling `_validate_range` enforces: that one is a
+    request to scan a named window, not a request for the active set.
+    """
+    if since is None:
+        end = until or datetime.now(UTC)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=UTC)
+        return None, end
+    return _validate_range(since, until, max_days)
 
 
 # --------------------------------------------------------------------- list
@@ -185,16 +205,16 @@ async def list_anomalies(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> PagedAnomalies:
-    # "Active" is a state, not a time window: without `since`, an active-only list reaches
-    # back to the range ceiling instead of 1 day, so it holds what the Dashboard counts. The
-    # summary (`/anomalies/summary`) counts Phase A rows of any age, so an active anomaly
-    # older than the ceiling is counted there but not listed here; the summary is unchanged.
-    start, end = _validate_range(
-        since,
-        until,
-        settings.api_max_range_days,
-        default_days=settings.api_max_range_days if active_only else 1,
-    )
+    # "Active" is a state, not a time window: without `since`, an active-only list has no
+    # lower bound, so it holds every active incident up to `until`, whatever its age, and
+    # matches the Dashboard's count. Without `active_only` the list keeps its 1-day default.
+    # An explicit `since`/`until` is used and bounded exactly as before; the summary
+    # (`/anomalies/summary`) counts the same active population with no lower bound either.
+    if active_only:
+        start, end = _active_only_range(since, until, settings.api_max_range_days)
+    else:
+        start, end = _validate_range(since, until, settings.api_max_range_days)
+
     repo = AnomalyRepository(session)
     rows, total = await repo.list_unified(
         limit=min(limit, settings.api_max_page_size),
@@ -289,7 +309,7 @@ async def _list_items(
 
 
 @router.get("/summary", response_model=BehaviorSummaryOut)
-async def anomaly_summary(session: SessionDep, settings: SettingsDep) -> BehaviorSummaryOut:
+async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
     repo = AnomalyRepository(session)
     counts = await repo.state_counts()
     evidence = await repo.evidence_counts()
@@ -326,11 +346,9 @@ async def anomaly_summary(session: SessionDep, settings: SettingsDep) -> Behavio
         since=now - timedelta(hours=24), until=now
     )
 
-    # The same window as `GET /anomalies?active_only=true` without `since`: back to the range
-    # ceiling, so the family counts add up to that list's total.
-    family_counts = await repo.active_family_counts(
-        since=now - timedelta(days=settings.api_max_range_days), until=now
-    )
+    # The same population as `GET /anomalies?active_only=true` without `since`: every active
+    # incident up to `now`, however old, so the family counts add up to that list's total.
+    family_counts = await repo.active_family_counts(since=None, until=now)
 
     def family(name: str) -> ActiveStateCounts:
         by_state = {s.value: family_counts.get((name, s.value), 0) for s in active}

@@ -492,14 +492,16 @@ class AnomalyRepository:
         return {(str(s), str(t)): int(c) for s, t, c in rows.all()}
 
     async def active_family_counts(
-        self, *, since: datetime, until: datetime
+        self, *, since: datetime | None, until: datetime
     ) -> dict[tuple[str, str], int]:
         """Active anomalies keyed by (family, state): one statement over the four families.
 
         The population is `list_unified(active_only=True)` for the same window --
         the same states, the same `detected_at` bounds and the same joins -- so the
-        counts add up to that list's `total`. The family key is `log_source`, `waf`,
-        `ips` or `property_watch`.
+        counts add up to that list's `total`. Without a `since` there is no lower
+        bound, as on that list: an active incident older than the range ceiling is
+        still active. The family key is `log_source`, `waf`, `ips` or
+        `property_watch`.
         """
         active = [s.value for s in ACTIVE_ANOMALY_STATES]
 
@@ -511,11 +513,13 @@ class AnomalyRepository:
             ).select_from(model)
             for target, on in joins:
                 stmt = stmt.join(target, on)
-            return stmt.where(
+            conditions: list[ColumnElement[bool]] = [
                 model.state.in_(active),
-                model.detected_at >= since,
                 model.detected_at < until,
-            ).group_by(model.state)
+            ]
+            if since is not None:
+                conditions.append(model.detected_at >= since)
+            return stmt.where(*conditions).group_by(model.state)
 
         union = union_all(
             branch("log_source", LogSourceAnomaly),
