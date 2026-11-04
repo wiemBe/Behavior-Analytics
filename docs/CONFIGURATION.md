@@ -75,15 +75,36 @@ The same `/current` document carries `qradar`: how QRadar itself is doing, a lis
 
 ## Search cadence and bucket collection
 
-Every QRadar search family defaults to a five-minute cadence, except WAF and IPS, which default to fifteen minutes. Operators can select 5 minutes,
-15 minutes, 30 minutes, 1 hour, 2 hours, 4 hours or 8 hours. Cadence controls when a family
-searches; `COLLECTION_INTERVAL_SECONDS` controls bucket width. A tick may collect several complete
-buckets in one keyed search. Truncated multi-bucket results are split and are never stored as
-complete data.
+Six search families default to a five-minute cadence, and three default to fifteen minutes: WAF,
+IPS and QRadar health. Operators can select 5 minutes, 15 minutes, 30 minutes, 1 hour, 2 hours, 4
+hours or 8 hours; those seven presets are the only accepted set, and the API, the service and the
+table's check constraint all enforce it. Cadence controls when a family searches;
+`COLLECTION_INTERVAL_SECONDS` controls bucket width. A tick may collect several complete buckets
+in one keyed search. Truncated multi-bucket results are split and are never stored as complete
+data.
+
+| Family | Seeded cadence | Enabled by default | Switch |
+|---|---:|---|---|
+| `PHASE_A_VOLUME` | 5 minutes | yes | none; the source-volume collector always runs |
+| `ANOMALY_EXPLANATION` | 5 minutes | yes | `EXPLANATION_ENABLED` |
+| `RULE_MATCH` | 5 minutes | no | `RULE_MATCH_COLLECTION_ENABLED` |
+| `PROPERTY_WATCH` | 5 minutes | no | `PW_COLLECTION_ENABLED` |
+| `CATCHALL_SENDERS` | 5 minutes | yes | `CATCHALL_COLLECTION_ENABLED` |
+| `GEO_COLLECTION` | 5 minutes | yes | `GEO_COLLECTION_ENABLED` |
+| `WAF_COLLECTION` | 15 minutes | no | `WAF_COLLECTION_ENABLED` |
+| `IPS_COLLECTION` | 15 minutes | no | `IPS_COLLECTION_ENABLED` |
+| `QRADAR_HEALTH` | 15 minutes | yes | `QRADAR_HEALTH_COLLECTION_ENABLED` |
+
+The seed rows come from the family migrations: `0013` creates the table and seeds `PHASE_A_VOLUME`,
+`WAF_COLLECTION`, `ANOMALY_EXPLANATION` and `RULE_MATCH` at one hour; `0018`, `0020`, `0022` and
+`0026` add `IPS_COLLECTION`, `CATCHALL_SENDERS`, `GEO_COLLECTION` and `PROPERTY_WATCH` at one hour;
+`0028` moves every row the operator has not changed to the current default, fifteen minutes for WAF
+and IPS and five for the rest; `0050` seeds `QRADAR_HEALTH` at fifteen minutes. A family row that
+is missing is recreated at its default when the next slot is claimed.
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| search-family cadence | `5 minutes` | Initial cadence; `15 minutes` for WAF and IPS |
+| search-family cadence | `5 minutes` | Initial cadence; `15 minutes` for `WAF_COLLECTION`, `IPS_COLLECTION` and `QRADAR_HEALTH` |
 | `COLLECTION_INTERVAL_SECONDS` | `300` | Bucket width; it does not schedule collection |
 | `COLLECTION_BATCH_SIZE` | `50` | Accepted. No collector reads it |
 | `COLLECTION_MAX_BACKFILL_INTERVALS` | `12` | Buckets a metric run may backfill |

@@ -65,11 +65,24 @@ collectors never run searches concurrently inside one task (no `asyncio.gather` 
 | 13 | Anomaly explanations | `explanation_collector.py` `ExplanationCollector.collect` → `get_dimension_aggregates` twice (anomaly window, baseline window), each one `_aggregate_one_dimension` search per dimension | task `collect_anomaly_explanations` (beat 60 s, cadence 5 min) | one at a time per instance | 5-min cadence, **on by default** | `explanation_max_per_run` 5 anomalies per run × 2 windows × 10 dimensions = **≤ 100 searches per tick**; no per-tick count budget; 120-poll bound per search |
 | 14 | Property watches (live and bootstrap history) | `app/property_watch/keyed_search.py` `run_search` → `get_pw_keyed` | task `dispatch_property_watch_collection` (beat 60 s, cadence 5 min) | one at a time per instance | 5-min cadence, off by default | `PwSearchBudget(pw_max_searches_per_tick = 40)`, 12 per watch |
 | 15 | Geography | `geo_collector.py` → `get_geo_keyed`, one per direction (2 with the default directions) | task `collect_geo_countries` (beat 60 s, cadence 5 min) | one at a time per instance | 5-min cadence, **on by default** | 16-search tick cap |
-| 16 | Scheduled searches | `search_executor.py` `SearchExecutor._run_once` → `create_ariel_search` → poll → results | task `run_due_searches` (beat 60 s) → `search_scheduler.py` `SearchScheduler.run_due`, sequential, ≤ `search_max_dispatch_per_cycle` 10 per cycle | one at a time within the task; one task per worker | each stored cron ≥ 5 min apart (`CRON_FLOOR_SECONDS`); ≤ 25 enabled | the fictional caps (F2); retry ≤ 3; timeout ≤ 900 s |
-| 17 | Manual execution | the same executor | route `POST /searches/{search_id}/run` (`searches.py` `run_search`), in the **API process** | one per request; **no cross-request bound at all** | on request (`search:execute`) | a fresh private limiter per request bounds nothing |
-| 18 | Property-watch preview | `app/services/property_watches.py` `run_preview` (`PREVIEW_SEARCHES` = 2) | route `POST /property-watches/{watch_id}/preview`, in the API process | one per request | on request, rate-limited `rate_limit_search_execution` 10/minute | the 2-search budget refuses a split; nothing bounds concurrent requests |
+| 16 | Scheduled searches | `search_executor.py` `SearchExecutor._run_once` → `create_ariel_search` → poll → results | task `run_due_searches` (beat 60 s) → `search_scheduler.py` `SearchScheduler.run_due`, sequential, ≤ `search_max_dispatch_per_cycle` 10 per cycle | one at a time within the task; one task per worker | each stored cron ≥ 5 min apart (`CRON_FLOOR_SECONDS`); ≤ 25 enabled | the permit, global-only (`ArielPermitBudget.for_session(..., instance_id=None)`); a refusal is `FAILED`/`CAPACITY` and is not retried; retry ≤ 3; timeout ≤ 900 s |
+| 17 | Manual execution | the same executor | route `POST /searches/{search_id}/run` (`searches.py` `run_search`), in the **API process** | one per request, in the API process; the global pool bounds how many hold a permit | on request (`search:execute`) | the same global-only permit as row 16; a refusal writes the `FAILED`/`CAPACITY` execution row and answers 503 |
+| 18 | Property-watch preview | `app/services/property_watches.py` `run_preview` (`PREVIEW_SEARCHES` = 2) | route `POST /property-watches/{watch_id}/preview`, in the API process | one per request; the two searches are sequential | on request, rate-limited `rate_limit_search_execution` 10/minute | the 2-search budget refuses a split; each search takes the global-only permit, and a refusal answers 503 |
 | 19 | CLI collection by hand | `app/cli/sync.py` (`log-source-metrics` → `collect_metrics`) | operator | one at a time | on request | as row 1 |
 | 20 | QRadar access check (ACC-1) | `qradar_rest.py` `QRadarRestProvider.probe_ariel_access`: one stored probe search (`SELECT starttime FROM events LIMIT 1 LAST 1 MINUTES`), created and cancelled unread, one permit around both; recorded in `ariel_search_run` under the caller `ACCESS_CHECK` (ACC-3), as `CANCELED` when the cancel went through | task `check_qradar_access` (beat every `QRADAR_ACCESS_CHECK_INTERVAL_SECONDS`, 6 h; when a worker becomes ready) and `POST /api/v1/admin/qradar-access/check` (2/minute) | one at a time per console | every 6 h and on request | the permit; the search is never polled, so it costs QRadar one create and one delete |
+| 21 | QRadar health (D-42) | `qradar_health_collector.py` `QRadarHealthCollector._collect_metrics` → `get_health_metrics`, `_collect_notifications` → `get_health_notifications` | task `collect_qradar_health` (beat 60 s, cadence `QRADAR_HEALTH` 15 min), one run per console, consoles sequential (`workers/tasks.py` `_for_each_instance`) | one at a time per instance; the two searches of a tick are sequential | 15-min cadence, **on by default** | two aggregating searches per console per tick, one permit each; one when the console lacks the `Metric ID`, `Value` and `Element` properties (the metric part is then `NOT_COLLECTED` and the notification search still runs); `qradar_health_max_metric_rows` 5 000 and `qradar_health_max_notification_rows` 1 000 |
+| 22 | `doctor --aql` (AQL-1) | `app/cli/doctor_aql.py` `_send` → one provider call per plan step, from the nine family plans of `_PREPARE`; recorded under the caller `DOCTOR_AQL` | CLI `python -m app.cli.doctor --aql`, one plan per family per REST console | one at a time; the steps run sequentially | on request | 2 + B for WAF (B collected breakdowns), one per planned IPS dimension, two for QRadar health, and one for each of the other six families — at most 20 per console; `doctor_aql_timeout_seconds` 60 per search |
+
+Every row above is a permit caller. `probe_ariel_access` and the four methods that run a lifecycle
+themselves are decorated `_holds_ariel_permit` (`qradar_rest.py`), and `_run_bounded_aggregate` is
+the one the family reads share, so no search in this inventory is sent without a permit (§P.3).
+The caller each search records in `ariel_search_run.caller` is the family's Ariel label:
+`LOG_SOURCE_VOLUME` for Phase A (the family is `PHASE_A_VOLUME`), then `ANOMALY_EXPLANATION`,
+`RULE_MATCH`, `WAF_COLLECTION`, `IPS_COLLECTION`, `PROPERTY_WATCH`, `CATCHALL_SENDERS`,
+`GEO_COLLECTION` and `QRADAR_HEALTH`; a history step records `HISTORY`, a property-watch preview
+`PREVIEW`, a scheduled run `SCHEDULED_SEARCH`, a manual run `MANUAL_RUN`, the access probe
+`ACCESS_CHECK` and `doctor --aql` `DOCTOR_AQL` (`ariel_search_log.py` `effective_caller` and
+`caller_for_trigger`).
 
 Rows 2, 4, 8, 11 and the history half of 12 and 14 are the history-backfill readers of
 [`HISTORY-BACKFILL.md`](HISTORY-BACKFILL.md) §B.6.1: every family's history step runs inside the
@@ -78,36 +91,51 @@ them without double-counting the live pass.
 
 ### P.1.2 The worst case in flight today, default install
 
-Defaults (`config.py`): Phase A always on; `explanation_enabled`, `catchall_collection_enabled`
-and `geo_collection_enabled` true; `waf_collection_enabled`, `ips_collection_enabled`,
-`rule_match_collection_enabled`, `pw_collection_enabled` false. Worker: `celery ... worker
---concurrency=4 --max-tasks-per-child=200` (`docker-compose.yml`), i.e. **four prefork
-processes**, each running one task at a time. Beat sends every family's dispatch task every 60 s;
-the cadence gate (`search_cadence.py` `SearchCadenceService.claim_slot` over `slot_start`)
-admits one tick per family per slot, and slots are epoch-aligned with a 120 s settle
-(`search_cadence_settle_seconds`), so **every 5-minute family's slot opens on the same
-wall-clock second**; every 15 minutes the WAF and IPS slots open on that same second too.
+Defaults (`config.py`): Phase A always on; `explanation_enabled`, `catchall_collection_enabled`,
+`geo_collection_enabled` and `qradar_health_collection_enabled` true; `waf_collection_enabled`,
+`ips_collection_enabled`, `rule_match_collection_enabled` and `pw_collection_enabled` false.
+Worker: `celery ... worker --concurrency=4 --max-tasks-per-child=200` (`docker-compose.yml`),
+i.e. **four prefork processes**, each running one task at a time. Beat sends every family's
+dispatch task every 60 s; the cadence gate (`search_cadence.py`
+`SearchCadenceService.claim_slot` over `slot_start`) admits one tick per family per slot, and
+slots are epoch-aligned with a 120 s settle (`search_cadence_settle_seconds`), so **every
+5-minute family's slot opens on the same wall-clock second**; every 15 minutes the `QRADAR_HEALTH`
+slot (on by default) opens on that same second, and so do the WAF and IPS slots when those
+families are on.
 
-At that second, four Ariel-searching tasks are due at once and the four worker processes run
-them concurrently. Each task holds at most **one** search in flight (sequential loops, §P.1.1).
-So the appliance sees:
+At a 15-minute boundary five Ariel-searching tasks are due at the default install —
+`PHASE_A_VOLUME`, `ANOMALY_EXPLANATION`, `CATCHALL_SENDERS` and `GEO_COLLECTION` every
+5 minutes, `QRADAR_HEALTH` every 15 — and at a 5-minute boundary four of them are. The four worker
+processes run four concurrently and the rest wait in the queue. Each task holds at most **one**
+search in flight (sequential loops, §P.1.1), however many searches it spends in the tick. The
+access check (`check_qradar_access`, one `ACCESS_CHECK` probe search per console per 6-hour check)
+is another beat task competing for the same four processes, not a fifth process. So the appliance
+can be asked for:
 
 ```text
-worker processes            4   (each ≤ 1 search in flight)
-+ manual runs (API process) N   (one per concurrent POST /searches/{id}/run; unbounded)
+worker processes            4   (each ≤ 1 search in flight; the due families queue behind them)
++ manual runs (API process) N   (one per concurrent POST /searches/{id}/run)
 + PW previews (API process) N'  (2 searches each, 10/minute rate limit)
-+ CLI processes             M   (sync log-source-metrics, waf validate, waf probe-rejection)
-= 4 + N + N' + M            with the documented global cap at 6
++ CLI processes             M   (sync log-source-metrics, waf validate, waf probe-rejection,
+                                 doctor --aql)
+= 4 + N + N' + M            demanded at once, against G = 6 admitted by the permit
 ```
 
-A default install with one manual search in flight and no CLI activity reaches exactly **5**
-(one under the documented cap); a third concurrent manual run makes **7 > 6**, and nothing stops
-it — F2. Raising the worker concurrency (a one-line compose edit) raises the first term linearly. With
-WAF enabled the fan-out is the exception: `WafArielBudget` caps it at 2 sources world-wide, and
-those two tasks occupy two of the four worker processes.
+A default install with one manual search in flight and no CLI activity demands exactly **5**, one
+under the permit's global cap. A third concurrent manual run demands **7**; the permit admits at
+most `G` = 6 searches in total and refuses the rest, and manual runs are background work, so the
+reserved live slots of §P.2.5 can refuse one even below the cap. Raising the worker concurrency
+(a one-line compose edit) raises the first term linearly; the admitted count stays at `G`, because
+the global pool is a database lock, not a process-local semaphore. With WAF enabled the fan-out is
+the exception: `WafArielBudget` caps it at 2 sources world-wide, and those two tasks occupy two of
+the four worker processes.
 
-So today's honest statement is: **the only real cross-process Ariel budget on the platform is
-the WAF one, and everything else is bounded by accident of process counts.**
+So the worst case the platform can demand at the default install is `4 + N + N' + M`. The worst
+case it can put **in flight** is the permit's `G` (six) in total, and `P` (three) per console for
+the console-scoped paths (the collectors and the CLI, whose providers the factory builds per
+console); whatever the process count, no seventh search is admitted. Before the permit, the only
+real cross-process Ariel budget was the WAF one and everything else was bounded by accident of
+process counts (F1–F6).
 
 ## P.2 The mechanism: `ArielPermitBudget`
 
