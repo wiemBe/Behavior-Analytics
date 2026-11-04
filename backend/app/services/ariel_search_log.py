@@ -43,7 +43,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import wraps
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import BigInteger, ColumnElement, Row, Select, case, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -372,11 +372,18 @@ def note(observation: ArielSearchObservation) -> None:
     buf.append(observation)
 
 
-def count_write_failure(count: int) -> None:
-    """Count one failed write of ``count`` rows and log it, without the exception text."""
+WriteKind = Literal["submit", "flush", "lookup"]
+
+
+def count_write_failure(count: int, *, what: WriteKind) -> None:
+    """Count one failed write of ``count`` rows and log it, without the exception text.
+
+    ``what`` names the write that failed: ``submit`` (the in-flight INSERT),
+    ``flush`` (the run's upsert) or ``lookup`` (no bind or engine to flush on).
+    """
     global _write_failures
     _write_failures += 1
-    logger.warning("ariel search log flush failed rows=%s", count)
+    logger.warning("ariel search log write failed what=%s rows=%s", what, count)
 
 
 def _default_worker_engine() -> Any:
@@ -459,7 +466,7 @@ async def _insert(bind: Any, rows: Sequence[ArielSearchObservation]) -> None:
             await conn.execute(statement)
             await conn.commit()
     except Exception:
-        count_write_failure(len(rows))
+        count_write_failure(len(rows), what="flush")
 
 
 @dataclass(frozen=True)
@@ -497,7 +504,7 @@ async def _submit_in_flight(
         return Submitted(row_id, submitted_at, False)
     engine = _worker_engine_or_failed()
     if engine is _LOOKUP_FAILED:
-        count_write_failure(1)
+        count_write_failure(1, what="submit")
         return Submitted(row_id, submitted_at, False)
     if engine is None:
         return Submitted(row_id, submitted_at, False)
@@ -521,7 +528,7 @@ async def _submit_in_flight(
             await conn.execute(insert(ArielSearchRun).values(observation.as_dict()))
             await conn.commit()
     except Exception:
-        count_write_failure(1)
+        count_write_failure(1, what="submit")
         return Submitted(row_id, submitted_at, False)
     return Submitted(row_id, submitted_at, True)
 
@@ -641,7 +648,7 @@ async def finish_session_buffer(
         return
     bind = session.bind
     if bind is None:
-        count_write_failure(len(rows))
+        count_write_failure(len(rows), what="lookup")
         return
     await _insert(bind, rows)
 
@@ -662,7 +669,7 @@ async def finish_worker_buffer(
         return
     engine = _worker_engine_or_failed()
     if engine is _LOOKUP_FAILED:
-        count_write_failure(len(rows))
+        count_write_failure(len(rows), what="lookup")
         return
     if engine is None:
         return

@@ -1922,7 +1922,7 @@ class Doctor:
                 # integration test does), or a defect — and the doctor's contract
                 # holds either way: a failed flush never changes a verdict or the
                 # exit code.
-                ariel_log.count_write_failure(1)
+                ariel_log.count_write_failure(1, what="flush")
 
     async def _run_aql_recorded(self) -> list[CheckResult]:
         try:
