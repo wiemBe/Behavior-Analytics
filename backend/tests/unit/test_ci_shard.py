@@ -202,16 +202,17 @@ def _job_run(job: dict[str, Any]) -> str:
     raise AssertionError("the job has no pytest step")
 
 
-def _expand(run: str, shard: int) -> list[str]:
-    """The pytest arguments, with the shard substitution expanded.
+def _expand(run: str, shard: int) -> tuple[list[str], list[str]]:
+    """A job's pytest flags and the file list it passes, shard expanded.
 
-    The ``--junitxml`` report is written by a real run; a collection must not
+    The files come from the workflow's own ``$(…)`` substitution. The
+    ``--junitxml`` report is written by a real run only: a collection must not
     leave one in the worktree.
     """
     run = run.replace("${{ matrix.shard }}", str(shard))
     match = re.search(r"\$\(([^)]*)\)", run)
     if match is None:
-        return _without_junitxml(shlex.split(run))
+        return _without_junitxml(shlex.split(run)), []
     inner = [
         sys.executable if token == "python" else token
         for token in shlex.split(match.group(1))
@@ -219,7 +220,7 @@ def _expand(run: str, shard: int) -> list[str]:
     files = subprocess.run(  # noqa: S603
         inner, cwd=BACKEND, capture_output=True, text=True, check=True
     ).stdout.split()
-    return _without_junitxml(shlex.split(run[: match.start()]) + files)
+    return _without_junitxml(shlex.split(run[: match.start()])), files
 
 
 def _without_junitxml(arguments: list[str]) -> list[str]:
@@ -266,29 +267,74 @@ def _collect(arguments: list[str]) -> set[str]:
     }
 
 
+def _workflow_text() -> str:
+    """The workflow file as text: the seam the break-its of this test edit.
+
+    A break-it replaces this with a copy of the workflow that has one shard's
+    flags changed, or a unit job without ``-m "not integration"``, and the
+    workflow file itself is never touched.
+    """
+    return WORKFLOW.read_text(encoding="utf-8")
+
+
 def test_the_split_runs_every_test_exactly_once() -> None:
-    """The unit job and the five shards together run every test, once.
+    """The unit job and the twelve shards together run every test, once.
 
     This reads the commands out of the workflow, so the workflow and this
     test cannot drift apart: a test that no job runs, or a test that two
     jobs run, fails here.
+
+    A shard is no longer collected as a pytest process of its own, so this no
+    longer shows directly that pytest given a shard's file list collects
+    exactly that list's marked tests. That is pytest's own selection
+    behaviour, and the lists themselves are pinned here: identical flags, real
+    test files, pairwise disjoint, union equal to the files of the
+    all-integration collection.
     """
-    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    workflow = yaml.safe_load(_workflow_text())
     jobs = workflow["jobs"]
-    commands = [_expand(_job_run(jobs["backend-unit"]), 1)]
-    commands += [
+    unit_arguments, unit_files = _expand(_job_run(jobs["backend-unit"]), 1)
+    shard_parts = [
         _expand(_job_run(jobs["backend-integration"]), shard) for shard in range(1, SHARDS + 1)
     ]
-    commands.append(["pytest"])
-    # Each collection is a pytest process of its own; they run side by side (CI-6: the
-    # twelve shards made this test the longest in the unit suite).
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        collected = list(pool.map(_collect, commands))
-    unit, *shards, everything = collected
 
-    sharded = set().union(*shards)
-    assert unit.isdisjoint(sharded), "a test runs in the unit job and in a shard"
-    assert unit | sharded == everything, "a test runs in no job"
+    # The flags of the first shard, applied to the whole tree, stand for all the
+    # shards only if every shard runs the same flags. A message says which one
+    # differs, so a future workflow mistake is read, not guessed.
+    shard_flags, first_files = shard_parts[0]
+    assert first_files, "the shard command passes no files"
+    file_lists = [files for _, files in shard_parts]
+    for shard, (flags, _) in enumerate(shard_parts, 1):
+        assert flags == shard_flags, f"shard {shard} runs {flags}, unlike shard 1's {shard_flags}"
+
+    # Every token is an existing test file path: not a directory, not a node id.
+    for shard, files in enumerate(file_lists, 1):
+        for rel in files:
+            assert "::" not in rel and rel.endswith(".py") and rel.startswith("tests/"), (
+                f"shard {shard} names {rel}, which is not a test file path"
+            )
+            assert (BACKEND / rel).is_file(), f"shard {shard} names {rel}, which is not a file"
+
+    # No file in two shards, and every file that holds an integration test in one.
+    placed: dict[str, int] = {}
+    for shard, files in enumerate(file_lists, 1):
+        for rel in files:
+            assert rel not in placed, f"{rel} is in shard {placed[rel]} and in shard {shard}"
+            placed[rel] = shard
+
+    commands = [unit_arguments + unit_files, [*shard_flags, "tests"], ["pytest"]]
+    # Each collection is a pytest process of its own; they run side by side (CI-7:
+    # three instead of fourteen).
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        collected = list(pool.map(_collect, commands))
+    unit, integration, everything = collected
+
+    covered = {test_id.split("::")[0] for test_id in integration}
+    assert set(placed) == covered, (
+        "a file in a shard holds no integration test, or a file that holds one is in no shard"
+    )
+    assert unit.isdisjoint(integration), "a test runs in the unit job and in a shard"
+    assert unit | integration == everything, "a test runs in no job"
 
 
 # The weights mode: the CI shards publish their own durations as JUnit XML
