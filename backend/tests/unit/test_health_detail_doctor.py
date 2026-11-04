@@ -357,8 +357,34 @@ class TestCarriedTotalInDoctor:
     def test_a_carried_total_is_named_with_its_time(self) -> None:
         word, text = disk_line(self._latest(datetime(2026, 11, 3, 11, 45, tzinfo=UTC)), SETTINGS)
         assert word == "PASS"
-        assert "(1.9 GB free, total as of 11:45 UTC)" in text
+        assert "(1.9 GiB free, total as of 11:45 UTC)" in text
 
     def test_an_own_total_reads_as_before(self) -> None:
         _, text = disk_line(self._latest(None), SETTINGS)
-        assert "(1.9 GB free)" in text and "total as of" not in text
+        assert "(1.9 GiB free)" in text and "total as of" not in text
+
+
+class TestDoctorBytesAreBinary:
+    """The figure is divided by 1024, so the label is IEC, as the SIEM load page prints it (D-2)."""
+
+    def test_the_exact_free_line_for_the_page_figure(self) -> None:
+        mount = MountValue(
+            mount="/store", used_fraction=0.5, used_percent=50.0, used_bytes=1.0e9,
+            total_bytes=3.0e9, total_from=None, free_bytes=44_283_281_408,
+            level=disk_level(0.5, SETTINGS),
+        )
+        disk = HostDisk(state=PartState.OK, fullest=mount, mounts=[mount])
+        _, text = disk_line(latest(console([host().model_copy(update={"disk": disk})])), SETTINGS)
+        assert "(41.2 GiB free)" in text
+        assert "GB" not in text
+
+    def test_the_spill_figure_prints_gibibytes(self) -> None:
+        _, text = pipeline_line(latest(console([host(spill=ok(3.4 * 1024**3))])), SETTINGS)
+        assert "qr1 spilled 3.4 GiB to disk" in text
+
+    def test_every_unit_step_is_iec(self) -> None:
+        from app.cli.doctor_qradar_health import human_bytes
+
+        assert [human_bytes(v) for v in (512, 1024, 1024**2, 1024**3, 1024**4, 1024**5)] == [
+            "512 B", "1.0 KiB", "1.0 MiB", "1.0 GiB", "1.0 TiB", "1.0 PiB",
+        ]

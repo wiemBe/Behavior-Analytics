@@ -28,7 +28,7 @@ from sqlalchemy import and_, case, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.cli import doctor_aql
-from app.cli.doctor_qradar_health import disk_line, pipeline_line
+from app.cli.doctor_qradar_health import disk_line, human_bytes, pipeline_line
 from app.collectors.offense_collector import WATERMARK_STALLED_KEY
 from app.core.config import Environment, Settings, get_settings, unknown_setting_names
 from app.core.database import dispose_engine, get_sessionmaker
@@ -404,12 +404,7 @@ def _host_from_url(value: str, fallback: str) -> str:
 
 
 def _human_bytes(size: int) -> str:
-    amount = float(size)
-    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
-        if amount < 1024 or unit == "TiB":
-            return f"{amount:.1f} {unit}" if unit != "B" else f"{int(amount)} B"
-        amount /= 1024
-    return f"{amount:.1f} TiB"
+    return human_bytes(size)
 
 
 def _image_migration_head() -> str:

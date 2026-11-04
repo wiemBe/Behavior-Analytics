@@ -22,7 +22,7 @@ describe("NotificationsTable", () => {
     expect(cells[2]).toHaveTextContent("4");
     expect(cells[3]).toHaveTextContent("2026-11-02 10:09:12 UTC");
     for (const cell of cells.slice(1)) expect(cell).toHaveClass("num");
-    expect(screen.getByRole("columnheader", { name: "Severity (0 to 10)" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Severity (0\u00a0to\u00a010)" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Last seen (UTC)" })).toBeInTheDocument();
   });
 

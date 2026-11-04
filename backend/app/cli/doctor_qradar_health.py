@@ -26,8 +26,9 @@ def _utc(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def _bytes(value: float) -> str:
-    units = ("B", "KB", "MB", "GB", "TB", "PB")
+def human_bytes(value: float) -> str:
+    """A byte count in IEC units, the same figure and label the SIEM load page prints."""
+    units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
     number = float(value)
     for unit in units[:-1]:
         if abs(number) < 1024:
@@ -76,9 +77,9 @@ def disk_line(latest: LatestOut, settings: Settings) -> tuple[str, str]:
             if fullest.free_bytes is not None:
                 if fullest.total_from is not None:
                     as_of = fullest.total_from.astimezone(UTC).strftime("%H:%M UTC")
-                    text += f" ({_bytes(fullest.free_bytes)} free, total as of {as_of})"
+                    text += f" ({human_bytes(fullest.free_bytes)} free, total as of {as_of})"
                 else:
-                    text += f" ({_bytes(fullest.free_bytes)} free)"
+                    text += f" ({human_bytes(fullest.free_bytes)} free)"
             if fullest.level == "FAIL":
                 fails.append(f"{text} (at or over {settings.qradar_health_disk_fail_percent} %)")
             elif fullest.level == "WARN":
@@ -117,7 +118,8 @@ def pipeline_line(latest: LatestOut, settings: Settings) -> tuple[str, str]:
                 unread.append(f"{console.instance_name}: {host.host} throttle spill not read")
             elif spill > 0:
                 warns.append(
-                    f"{host.host} spilled {_bytes(spill)} to disk (events over the license EPS)"
+                    f"{host.host} spilled {human_bytes(spill)} to disk "
+                    "(events over the license EPS)"
                 )
             if queue is None:
                 unread.append(f"{console.instance_name}: {host.host} CRE queue not read")
