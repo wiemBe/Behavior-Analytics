@@ -616,7 +616,7 @@ async def test_a_raising_lookup_at_the_flush_counts_every_row(
         record.getMessage()
         for record in caplog.records
         if record.name == "app.ariel_search_log"
-    ] == ["ariel search log flush failed rows=2"]
+    ] == ["ariel search log write failed what=lookup rows=2"]
     assert "engine lookup failed" not in caplog.text
 
 
@@ -1089,3 +1089,32 @@ def test_the_log_imports_cleanly_as_the_first_import_of_a_process(
     assert "ImportError" not in done.stderr and "circular" not in done.stderr, done.stderr
     # The CLI refuses hours=0 with its own exit code; the imports exit 0.
     assert done.returncode == (2 if argv[0] == "-m" else 0), done.stderr
+
+
+def _log_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == "app.ariel_search_log"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_submit_insert_logs_what_submit(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(ariel_log, "worker_engine", lambda: _Engine(fail_insert=True))
+    with caplog.at_level("WARNING", logger="app.ariel_search_log"):
+        async with captured():
+            submitted = await ariel_log.note_submit(clock=lambda: START, caller=IPS)
+    assert submitted is not None and submitted.written is False
+    assert _log_lines(caplog) == ["ariel search log write failed what=submit rows=1"]
+    assert ariel_log.write_failure_count() == 1
+
+
+@pytest.mark.asyncio
+async def test_a_raising_lookup_at_the_submit_logs_what_submit(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(ariel_log, "worker_engine", _raising_engine)
+    with caplog.at_level("WARNING", logger="app.ariel_search_log"):
+        async with captured():
+            await ariel_log.note_submit(clock=lambda: START, caller=IPS)
+    assert _log_lines(caplog) == ["ariel search log write failed what=submit rows=1"]
+    assert ariel_log.write_failure_count() == 1

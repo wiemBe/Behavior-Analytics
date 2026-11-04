@@ -35,7 +35,7 @@ This section upgrades a 0.1.11 site to 0.1.12 and tests the upgraded site. A 0.1
 
 ### How to use this guide
 
-- **In production only the core is run.** The 38 checks that carry `[core]` in their heading are the production path; the full list is for the lab run (MT-1b) and in production is done only if the operator has the time. The only core checks that write (writes) are the ones the preconditions and the upgrade need (backup, support bundle, upgrade); there is no `lab only` check in the core. MT-127 is `lab only`.
+- **In production only the core is run.** The 38 checks that carry `[core]` in their heading are the production path; the full list is for the lab run (MT-1b) and in production is done only if the operator has the time. The only core checks that write (writes) are the ones the preconditions and the upgrade need (backup, support bundle, upgrade); there is no `lab only` check in the core (none of the `lab only` headings carries `[core]`). The `lab only` checks are not listed here: each one says so in its heading, so search this guide for `lab only`.
 - The order of the checks is the order of the sections. Each check has the fields **Precondition**, **Action**, **Expected** and **Record**. Write the result on the results page as `Pass`, `Fail` or `Not run`; write a Note for `Fail` and `Not run`.
 - **(writes)**: the check changes the application's state (it writes a file, an account, a record). Each one has a **Cleanup** step.
 - **lab only**: the check changes the state that the analysts see or leaves a trace that cannot be deleted; in production it is written `Not run`, with the reason given in the check. The orchestrator runs the same guide to the letter on a lab VM (MT-1b).

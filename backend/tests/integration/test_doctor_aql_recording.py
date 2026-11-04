@@ -287,7 +287,7 @@ async def test_a_raising_engine_lookup_changes_no_verdict_and_no_exit_code(
 
 
 async def test_a_flush_that_raises_changes_no_verdict_and_no_exit_code(
-    db_schema, ariel_load_engine, monkeypatch: pytest.MonkeyPatch
+    db_schema, ariel_load_engine, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ):
     maker = async_sessionmaker(ariel_load_engine, expire_on_commit=False)
     instance = await _seed_console(maker)
@@ -308,8 +308,12 @@ async def test_a_flush_that_raises_changes_no_verdict_and_no_exit_code(
 
     monkeypatch.setattr(ariel_log, "finish_worker_buffer", _raise)
     broken_provider = RecordingProvider(lambda: _in_flight_count(maker), instance.id)
-    broken = await _doctor(settings, maker, broken_provider, check_aql=True).run()
+    with caplog.at_level("WARNING", logger="app.ariel_search_log"):
+        broken = await _doctor(settings, maker, broken_provider, check_aql=True).run()
 
     assert [(r.id, r.status) for r in broken] == [(r.id, r.status) for r in healthy]
     assert exit_code(broken) == 0
     assert ariel_log.write_failure_count() == 1
+    assert [
+        r.getMessage() for r in caplog.records if r.name == "app.ariel_search_log"
+    ] == ["ariel search log write failed what=flush rows=1"]
