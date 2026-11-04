@@ -94,6 +94,9 @@ mypy app
 PYTHONPATH=. ENCRYPTION_KEY=<fernet-key> pytest -m "not integration"
 ```
 
+`pytest -n auto` (pytest-xdist) runs the unit suite on every core; CI does, and `scripts/quick-check.sh`
+does. Integration files stay serial: the schema fixture drops tables.
+
 `pyproject.toml` already passes `-q`; adding another hides pytest's summary line. `make test`
 runs that unit selection and does not add `-q`.
 
