@@ -54,7 +54,7 @@ describe("HealthTable: the figures of a host", () => {
       "Memory (%)",
       "CRE queue (events)",
       "Throttle spill (bytes on disk)",
-      "Busiest stage (% busy)",
+      "Busiest stage (avg\u00a0%\u00a0busy)", // non-breaking: the unit stays whole
     ]) {
       expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
     }
@@ -224,6 +224,14 @@ describe("HealthTable: the window and its state", () => {
     expect(line).toHaveTextContent("one window per 15 min");
     expect(line).toHaveTextContent("2026-11-02 10:16:10 UTC");
     expect(screen.getAllByText(/^Window/)).toHaveLength(1);
+  });
+
+  it("says in the window sentence that the busiest stage is the average, not the maximum", () => {
+    health(consoleLatest());
+    const line = screen.getByText(/^Window/);
+    expect(line).toHaveTextContent(
+      "Each figure is the maximum in that window, from QRadar's own Health Metrics, except the busiest stage, which is the window average.",
+    );
   });
 
   it("shows a stale window's figures with the staleness said above them", () => {

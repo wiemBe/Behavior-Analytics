@@ -102,7 +102,7 @@ class HostDisk(BaseModel):
 
 class StageValue(BaseModel):
     stage: str
-    #: Percent busy, 0 to 100 (the window's maximum).
+    #: Percent busy, 0 to 100 (the window's average of the RUNNABLE share, D-43).
     busy_percent: float
 
 

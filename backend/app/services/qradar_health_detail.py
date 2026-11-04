@@ -185,10 +185,15 @@ def host_health(
             reason_code="metric_not_reported",
             reason=reason_for("metric_not_reported"),
         )
+    # D-43: a stage's RunnableRatio is 0 or 100 per sample, so its maximum only says "busy at
+    # least once"; the busiest stage is the highest window average (the share of the window it was
+    # busy). A row without an average is left out, never read as 0. `max` keeps the first of equal
+    # averages, so a tie goes to the earlier stage in `spec.STAGE_METRICS`.
     stages = [
-        (metric, rows[(metric, spec.STAGE_BUSY_ELEMENT)].max_value)
+        (metric, average)
         for metric in spec.STAGE_METRICS
-        if (metric, spec.STAGE_BUSY_ELEMENT) in rows
+        if (row := rows.get((metric, spec.STAGE_BUSY_ELEMENT))) is not None
+        and (average := row.avg_value) is not None
     ]
     busiest = max(stages, key=lambda item: item[1], default=None)
     spill = _cell(rows, spec.METRIC_THROTTLE_SPILL, state)
