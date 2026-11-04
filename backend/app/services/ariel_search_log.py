@@ -23,7 +23,8 @@ overwrites it with the truth.
 A failed write is counted and logged without the exception text. It never
 raises into the collection. ``worker_engine`` supplies the connection for all
 of these; the test suite replaces that one function, and only that function,
-to point them elsewhere.
+to point them elsewhere. A lookup that raises is a failed write at every one
+of these sites, never an exception into the search.
 
 Percentiles (wall and execution) are over COMPLETED rows only: they answer how
 long a finished search takes. Sums are the load itself and cover every
@@ -371,7 +372,8 @@ def note(observation: ArielSearchObservation) -> None:
     buf.append(observation)
 
 
-def _count_failure(count: int) -> None:
+def count_write_failure(count: int) -> None:
+    """Count one failed write of ``count`` rows and log it, without the exception text."""
     global _write_failures
     _write_failures += 1
     logger.warning("ariel search log flush failed rows=%s", count)
@@ -390,6 +392,28 @@ def _default_worker_engine() -> Any:
 #: single function so a test can point the writes at its own database, or at
 #: nothing (``None``) so a unit test cannot write the developer's database.
 worker_engine: Callable[[], Any] = _default_worker_engine
+
+#: What ``_worker_engine_or_failed`` answers when the lookup itself raised. A
+#: sentinel, not ``None``: ``None`` already means "drop on purpose, no count".
+_LOOKUP_FAILED = object()
+
+
+def _worker_engine_or_failed() -> Any:
+    """``worker_engine()``, or ``_LOOKUP_FAILED`` when the lookup itself raised.
+
+    Building the engine can raise (an unreadable URL, a pool that cannot be
+    built). The module's contract is that recording a search never raises into
+    the search, so every write path treats that as a failed write and keeps its
+    own accounting: a submit row that could not be opened counts one, a poll
+    refresh and a terminal close are swallowed like their failed statements, and
+    the flush counts its rows. ``asyncio.CancelledError`` is a ``BaseException``
+    and still propagates.
+    """
+    try:
+        return worker_engine()
+    except Exception:
+        return _LOOKUP_FAILED
+
 
 #: Columns the terminal write may set. Everything else on a row is fixed at
 #: submit time (who asked, when, for what span), so the flush's upsert never
@@ -435,7 +459,7 @@ async def _insert(bind: Any, rows: Sequence[ArielSearchObservation]) -> None:
             await conn.execute(statement)
             await conn.commit()
     except Exception:
-        _count_failure(len(rows))
+        count_write_failure(len(rows))
 
 
 @dataclass(frozen=True)
@@ -471,7 +495,10 @@ async def _submit_in_flight(
     row_id = uuid.uuid4()
     if _buffer.get() is None:
         return Submitted(row_id, submitted_at, False)
-    engine = worker_engine()
+    engine = _worker_engine_or_failed()
+    if engine is _LOOKUP_FAILED:
+        count_write_failure(1)
+        return Submitted(row_id, submitted_at, False)
     if engine is None:
         return Submitted(row_id, submitted_at, False)
     span = range_seconds if range_seconds is not None else load_range()
@@ -494,7 +521,7 @@ async def _submit_in_flight(
             await conn.execute(insert(ArielSearchRun).values(observation.as_dict()))
             await conn.commit()
     except Exception:
-        _count_failure(1)
+        count_write_failure(1)
         return Submitted(row_id, submitted_at, False)
     return Submitted(row_id, submitted_at, True)
 
@@ -539,8 +566,8 @@ async def refresh_polls(observation_id: uuid.UUID | None, polls: int) -> None:
     """
     if observation_id is None or polls % POLL_REFRESH_EVERY != 0:
         return
-    engine = worker_engine()
-    if engine is None or _buffer.get() is None:
+    engine = _worker_engine_or_failed()
+    if engine is None or engine is _LOOKUP_FAILED or _buffer.get() is None:
         return
     try:
         async with engine.connect() as conn:
@@ -566,8 +593,8 @@ async def _close_in_flight(observation: ArielSearchObservation) -> bool:
     True only when that row was closed here; otherwise the caller buffers the
     observation and the run's one upsert writes it.
     """
-    engine = worker_engine()
-    if engine is None:
+    engine = _worker_engine_or_failed()
+    if engine is None or engine is _LOOKUP_FAILED:
         return False
     values = {name: getattr(observation, name) for name in _TERMINAL_COLUMNS}
     try:
@@ -614,7 +641,7 @@ async def finish_session_buffer(
         return
     bind = session.bind
     if bind is None:
-        _count_failure(len(rows))
+        count_write_failure(len(rows))
         return
     await _insert(bind, rows)
 
@@ -627,12 +654,16 @@ async def finish_worker_buffer(
     The connection comes from ``worker_engine``: production's own process
     engine, always — there is no test switch in this code. The suite's
     fixture points the function at a test engine or at nothing; ``None``
-    drops the rows on purpose and without a failure count.
+    drops the rows on purpose and without a failure count. A lookup that
+    raises is a failed write of every row, exactly as a failed statement is.
     """
     rows = take_run_buffer(token)
     if token is None or not rows:
         return
-    engine = worker_engine()
+    engine = _worker_engine_or_failed()
+    if engine is _LOOKUP_FAILED:
+        count_write_failure(len(rows))
+        return
     if engine is None:
         return
     await _insert(engine, rows)

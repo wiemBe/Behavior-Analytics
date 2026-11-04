@@ -580,6 +580,25 @@ async def test_buffer_flushes_once_and_a_failed_write_does_not_fail_the_run(
     assert failing.statements == []
 
 
+def test_count_write_failure_increments_and_logs_the_row_count(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The counter a caller outside the module uses; the fixture resets it around every test."""
+    with caplog.at_level("WARNING", logger="app.ariel_search_log"):
+        ariel_log.count_write_failure(3)
+        ariel_log.count_write_failure(1)
+    assert ariel_log.write_failure_count() == 2
+    assert [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "app.ariel_search_log"
+    ] == [
+        "ariel search log flush failed rows=3",
+        "ariel search log flush failed rows=1",
+    ]
+    assert not hasattr(ariel_log, "_count_failure"), "the counter is public only"
+
+
 @pytest.mark.asyncio
 async def test_execute_flushes_once_when_the_run_fails_or_the_write_fails() -> None:
     conn = _Conn()
