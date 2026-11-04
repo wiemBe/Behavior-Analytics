@@ -17,7 +17,7 @@ This page is the results page for the **0.1.13** section of the guide `docs/MANU
 
 **Core (production path)**, 38 checks: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-136, MT-10, MT-11, MT-126, MT-12, MT-13, MT-14, MT-15, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-128, MT-95, MT-119, MT-120, MT-121, MT-125. In production only the rows whose `Core` column says "yes" are filled in; the others are for the lab run. MT-126, although its number is high, is done right after MT-11. MT-128 is also done after a `GEO_COLLECTION` cadence has passed.
 
-Since 0.1.10 the interface is English only (D-41). The checks of section 4 that tested the Turkish interface or the language switch were removed (MT-20, MT-58, MT-59, MT-124: the result cell says `Removed`; nothing to run) or rewritten as English checks with the same ids. A raw message key or Turkish text anywhere is a Fail of the check where it was seen. No check is new in 0.1.13 (the last new checks, MT-137 to MT-142, came in 0.1.12).
+Since 0.1.10 the interface is English only (D-41). The checks of section 4 that tested the Turkish interface or the language switch were removed (MT-20, MT-58, MT-59, MT-124: the result cell says `Removed`; nothing to run) or rewritten as English checks with the same ids. A raw message key or Turkish text anywhere is a Fail of the check where it was seen. One check is new in 0.1.13: MT-143, for FIX-23 (a request made right after the sign-in is accepted). The checks MT-137 to MT-142 came in 0.1.12.
 
 Version before: `0.1.12`, migration head `0054`. Version after: `0.1.13`, migration head `0054`.
 
@@ -54,6 +54,7 @@ Version before: `0.1.12`, migration head `0054`. Version after: `0.1.13`, migrat
 | MT-13 | yes | Account menu and API version | | |
 | MT-14 | yes | Account page | | |
 | MT-15 | yes | Signing out and in again | | |
+| MT-143 |  | A request right after sign-in is accepted (FIX-23) | | |
 | MT-16 |  | Creating a new user — (writes) lab only | | |
 | MT-17 |  | Forced password change — (writes) lab only | | |
 | MT-18 |  | The viewer role's limit — (writes) lab only | | |
