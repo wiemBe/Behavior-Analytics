@@ -7,6 +7,7 @@ states, admission and privacy of what reaches the database.
 
 from __future__ import annotations
 
+import itertools
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -89,6 +90,14 @@ def provider_with(events: dict[str, int], **kw: int) -> MockQRadarProvider:
     return provider
 
 
+#: The qradar_id of the log source `add_watch` creates for a watch that has none. A counter
+#: makes every one distinct by construction, within a test and across the tests of one run.
+#: It starts at 1_000_000: the highest fixed id these tests pass to `make_log_source` on an
+#: instance that also gets such a source is 4242, and PostgreSQL's integer has room for
+#: another 2.1 billion ids after the start. A random draw here collided in CI (FIX-30).
+_NEXT_WATCH_SOURCE_QRADAR_ID = itertools.count(1_000_000)
+
+
 async def add_watch(  # type: ignore[no-untyped-def]
     session,
     instance,
@@ -103,7 +112,7 @@ async def add_watch(  # type: ignore[no-untyped-def]
 ) -> PropertyWatch:
     if scope_kind is PwScopeKind.LOG_SOURCE and source is None:
         source = await make_log_source(
-            session, instance, qradar_id=1000 + int(uuid.uuid4().int % 50000)
+            session, instance, qradar_id=next(_NEXT_WATCH_SOURCE_QRADAR_ID)
         )
     watch = PropertyWatch(
         instance_id=instance.id,
