@@ -94,6 +94,9 @@ mypy app
 PYTHONPATH=. ENCRYPTION_KEY=<fernet-key> pytest -m "not integration"
 ```
 
+`pytest -n auto` (pytest-xdist) runs the unit suite on every core; CI does, and `scripts/quick-check.sh`
+does. Integration files stay serial: the schema fixture drops tables.
+
 `pyproject.toml` already passes `-q`; adding another hides pytest's summary line. `make test`
 runs that unit selection and does not add `-q`.
 
@@ -147,14 +150,21 @@ in automated tests, and `MockNotifier` prevents external delivery.
 
 | Job | What it runs | Limit |
 | --- | --- | --- |
-| `backend-static` | the version check, `ruff check app tests`, `mypy app`, `alembic upgrade head`, `alembic check` | 15 min |
-| `backend-unit` | every test that is not marked `integration`, without a database | 15 min |
-| `backend-integration` | the integration suite in five shards, each with its own database | 35 min |
-| `frontend` | `npm ci`, lint, typecheck, vitest, build | 20 min |
+| `changes` | decides from the changed paths which of the jobs below run (see "Skipped jobs") | 5 min |
+| `backend-static` | the version check, `ruff check app tests scripts`, `mypy app`, `alembic upgrade head`, `alembic check`; always runs | 15 min |
+| `backend-unit` | every test that is not marked `integration`, without a database, on every core (`pytest -n auto`) | 15 min |
+| `backend-integration` | the integration suite in twelve shards, each with its own database, serial inside the shard | 35 min |
+| `frontend` | `npm ci`, lint, typecheck, build (with the `.next/cache` restored) | 20 min |
+| `frontend-test` | `npm ci`, vitest | 20 min |
 
-The five shards show up as `backend-integration (shard 3/5)`. Together the unit job and the five
-shards run every test in the repository exactly once: the shards run everything marked
-`integration`, the unit job everything else.
+The twelve shards show up as `backend-integration (shard 3/12)`. The suite holds about 70 minutes of
+test time and a shard costs about one minute of set-up (service container, checkout, pip), so twelve
+shards put the slowest at about six minutes of tests. The ceiling in `ci_shard.py` is fifteen
+(`MAX_SHARDS`): see "Concurrent jobs" below. Changing the count means editing four places, which
+`test_ci_shard.py` checks agree: the matrix, the job name, `--of`, and `DEFAULT_SHARDS` in
+`ci_shard.py`; then refresh the weights. Together the unit job and the shards run every test in the
+repository exactly once: the shards run everything marked `integration`, the unit job everything
+else.
 `backend/tests/unit/test_ci_shard.py` reads the commands out of the workflow and fails if a test
 runs in no job or in two.
 
@@ -189,6 +199,62 @@ pytest -rs -m integration --durations=0 --durations-min=0
 
 Sum the setup, call and teardown seconds of each file in that report and write them into
 `backend/tests/integration/shard_weights.json` as `{"tests/integration/test_x.py": seconds, ...}`.
+
+### Concurrent jobs
+
+One full run starts 17 jobs: `changes`, `backend-static`, `backend-unit`, 12 integration shards,
+`frontend` and `frontend-test`. GitHub documents 20 concurrent jobs for a Free plan account; this
+repository is public and owned by a personal account, and the plan itself is not readable
+through the API, so 20 is the documented figure, not a measured one. Two overlapping runs (a
+`main` push during a merge-h run, a release on top of a branch run) ask for 34: the first 20 jobs
+start and the rest wait in the queue until a slot frees; nothing fails, but the later run's wall
+time grows by up to a shard's length. A docs-only run needs 2 jobs and waits behind them too.
+Do not raise the shard count: at 15 shards one run alone reaches 20.
+
+### Skipped jobs and concurrency
+
+`backend/scripts/ci_changes.py` (job `changes`) decides, for a push to a branch other than `main`,
+from the files between the push's `before` commit and its head. `main`, tags, pull requests,
+dispatched runs and the release's `workflow_call` always run every job, as does a new branch, a
+`before` commit that cannot be fetched, and an empty diff.
+
+| Changed files | Runs |
+| --- | --- |
+| only documents (`docs/`, `*.md`, `LICENSE`, `NOTICE`) | `backend-static` |
+| only `frontend/src/` or `frontend/public/` | `backend-static`, `frontend`, `frontend-test` |
+| only `backend/app/`, `backend/tests/` or `backend/alembic/` | `backend-static`, `backend-unit`, `backend-integration` |
+| anything else (workflows, `scripts/`, `qradar-dash`, `deploy/`, requirements, `pyproject.toml`, `frontend/messages/`, Dockerfiles, `VERSION`, `docs/releases/`) | everything |
+
+A file that a test of the other side mentions by name counts for that side too (a unit test reads
+`docs/OPERATIONS.md`; a frontend test reads `backend/app/security/rbac.py`). `main` has no branch
+protection, so a skipped job blocks nothing. 
+On `agent/merge-h` the base is the merge base with `origin/feat/phase-ce` instead (the
+`changes` job fetches the full history without file contents, about 4 s), so every change not yet
+on feat gets its jobs; if that ref or merge base is unavailable, everything runs. On other
+branches a docs-only push after a red code push is green: the diff base is the previous push.
+
+A newer push to a branch cancels the older run, except on `main`, tags, pull requests and
+`agent/merge-h`: those queue (GitHub keeps one waiting run per branch, so a third push replaces
+the waiting one).
+
+### Local checks
+
+| Script | When | What |
+| --- | --- | --- |
+| `scripts/merge-check.sh` | after a merge into `agent/merge-h`, before its push | about a minute: no conflict markers, one migration head with rising ids, the English catalogs parse, `ruff`, `mypy`, cold imports of the five entry points. Exits non-zero on any failure |
+| `scripts/quick-check.sh` | CI is down, or before a risky push | the above plus the artifact check, the whole unit suite with `-n auto`, the integration files you name or your branch changed, and the frontend type check and tests |
+
+```bash
+export QRADAR_VENV=/path/to/venv          # default: backend/.venv, else python3 on PATH
+scripts/merge-check.sh
+scripts/quick-check.sh -d postgresql+asyncpg://user:pass@localhost:5433/mine_only \
+  backend/tests/integration/test_auth_api.py
+scripts/quick-check.sh -b origin/main -d "$TEST_DATABASE_URL"   # files changed since main
+```
+
+The database for `quick-check.sh` must be yours alone: the integration schema fixture drops
+tables. Without one, the integration step is skipped and says so. The unit suite is safe under
+`pytest -n auto` (xdist); the integration suite is not, and runs serially inside each shard.
 
 ## Frontend tests
 
