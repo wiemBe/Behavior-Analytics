@@ -19,6 +19,8 @@
 #              check for a merge into the integration branch is scripts/merge-check.sh.
 # Exit code: 0 when every step passed or was skipped on purpose, 1 otherwise.
 set -u
+# shellcheck source-path=SCRIPTDIR # _venv.sh sits next to this file, whatever the cwd
+# shellcheck source=_venv.sh
 source "$(dirname "${BASH_SOURCE[0]}")/_venv.sh"
 db="${TEST_DATABASE_URL:-}"; base=""; frontend=1; files=()
 while [ $# -gt 0 ]; do

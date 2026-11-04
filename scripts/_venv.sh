@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Sourced by quick-check.sh and merge-check.sh: finds the Python tools and exports the test
 # environment. The virtualenv comes from $QRADAR_VENV (a venv directory), else backend/.venv
 # of this checkout, else the python3 on PATH. Nothing here names a host path.

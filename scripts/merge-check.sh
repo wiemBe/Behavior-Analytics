@@ -9,6 +9,8 @@
 # any check failed (every check still runs), 2 when the tools are missing.
 # Environment: QRADAR_VENV = a virtualenv directory (default backend/.venv, else PATH).
 set -u
+# shellcheck source-path=SCRIPTDIR # _venv.sh sits next to this file, whatever the cwd
+# shellcheck source=_venv.sh
 source "$(dirname "${BASH_SOURCE[0]}")/_venv.sh"
 cd "$ROOT/backend" || exit 2
 failed=0
@@ -25,6 +27,7 @@ step() { # step <name> <command...>
   rm -f "${TMPDIR:-/tmp}/merge-check.$$"
 }
 
+# shellcheck disable=SC2329 # invoked by name from the step list at the end
 no_conflict_markers() (
   cd "$ROOT" || return 1
   if [ -n "$(git ls-files -u)" ]; then echo "unmerged paths:"; git ls-files -u | cut -f2 | sort -u; return 1; fi
@@ -33,6 +36,7 @@ no_conflict_markers() (
   return 0
 )
 
+# shellcheck disable=SC2329 # invoked by name from the step list at the end
 migration_chain() {
   "$BIN/python" - <<'PY'
 import re, sys
@@ -56,6 +60,7 @@ print("one head:", heads[0])
 PY
 }
 
+# shellcheck disable=SC2329 # invoked by name from the step list at the end
 catalogs_parse() {
   "$BIN/python" - <<'PY'
 import json, sys
@@ -71,6 +76,7 @@ if bad:
 PY
 }
 
+# shellcheck disable=SC2329 # invoked by name from the step list at the end
 cold_imports() {
   local module
   for module in app.main app.workers.celery_app app.workers.tasks app.cli.doctor app.cli.ariel_load; do

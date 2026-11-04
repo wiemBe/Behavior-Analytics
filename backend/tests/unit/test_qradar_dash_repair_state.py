@@ -110,6 +110,28 @@ def test_repair_state_refuses_a_bad_state_field(upgrade: UpgradeFixture) -> None
     assert "Nothing was written." in result.stderr
 
 
+def test_repair_state_refuses_a_backup_path_with_a_control_character(
+    upgrade: UpgradeFixture,
+) -> None:
+    """A path from state.json is checked for control characters, not just for a quote.
+
+    The check runs in bash (`valid_state_path`), so it holds whatever the file says; a
+    `printf | grep -q` pipeline would report the opposite when grep exits on the first match
+    and SIGPIPE fails the pipeline under `set -o pipefail` (CI-8).
+    """
+    upgrade.write_state(previous=OLD_IMAGES, outcome="failed")
+    path = upgrade.state_dir / "state.json"
+    backup = str(upgrade.backup_root / "missing")
+    assert backup in path.read_text()
+    path.write_text(path.read_text().replace(backup, f"{backup}\x01"))
+
+    result = upgrade.run("repair-state")
+
+    assert result.returncode == 1, output(result)
+    assert "field last_upgrade.backup" in result.stderr
+    assert "Nothing was written." in result.stderr
+
+
 def test_repair_state_refuses_when_last_upgrade_is_missing(upgrade: UpgradeFixture) -> None:
     result = upgrade.run("repair-state")
 

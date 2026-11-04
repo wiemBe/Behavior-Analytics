@@ -874,7 +874,7 @@ get_images() { # get_images MODE OFFLINE_BUNDLE
         docker login ghcr.io --username "${ANS[GHCR_USER]}" --password-stdin <.secrets/ghcr.token \
           || die "docker login ghcr.io failed"
       fi
-      # shellcheck disable=SC2086
+      # shellcheck disable=SC2086 # word splitting of the service list is intended
       if ! dc pull $svc; then
         die "docker compose pull failed. A private registry needs a read:packages token: set GHCR_USER and GHCR_TOKEN_FILE (it is stored as .secrets/ghcr.token)."
       fi
@@ -1025,6 +1025,7 @@ cmd_bundle() {
   [ -z "$member" ] || die "bundle refused: ${member#"$BUNDLE_STAGE"/} would go into the bundle and holds this site's configuration; remove it from deploy/ and run ./qradar-dash bundle again"
   (
     cd "$BUNDLE_STAGE"
+    # shellcheck disable=SC2094 # the output is excluded from the input: find never reads SHA256SUMS
     find . -type f ! -name SHA256SUMS -printf '%P\n' | LC_ALL=C sort | while IFS= read -r member; do
       sha256sum -- "$member"
     done >SHA256SUMS
@@ -1379,7 +1380,7 @@ cmd_install() {
   fi
   local svc="backend celery-worker celery-beat frontend"
   if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then svc="$svc proxy"; fi
-  # shellcheck disable=SC2086
+  # shellcheck disable=SC2086 # word splitting of the service list is intended
   if ! dc up -d --wait --wait-timeout 180 $svc; then
     read_unhealthy_services
     fail "a service did not become healthy within 180 s: ${UNHEALTHY_DESC}. Next: ${UNHEALTHY_NEXT:-./qradar-dash logs backend} and ./qradar-dash doctor"
@@ -1735,13 +1736,12 @@ need_installed() {
 }
 
 cmd_status() {
-  while [ $# -gt 0 ]; do
+  if [ $# -gt 0 ]; then
     case "$1" in
       -h | --help) usage; return 0 ;;
       *) fail "unknown status argument: $1; usage: ./qradar-dash status"; return 2 ;;
     esac
-    shift
-  done
+  fi
   need_installed
   need_docker || exit 1
   dc ps
@@ -2010,7 +2010,9 @@ state_now() {
 valid_state_path() {
   [[ $1 == /* ]] || return 1
   [[ $1 != *['"'\\]* ]] || return 1
-  ! printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'
+  # No pipeline: `printf | grep -q` would let a SIGPIPE (grep exits on the first control
+  # character) turn into a non-zero pipeline status, and `!` would then accept the path.
+  [[ $1 != *[[:cntrl:]]* ]]
 }
 
 validate_image_map() { # comma-separated service:sha256 image ids
@@ -2639,9 +2641,7 @@ RESTORE_STOPPED_SERVICES=()
 
 restore_stop_services() {
   local service running_text
-  local -a running=()
   running_text=$(dc ps --services --status running) || return 1
-  mapfile -t running <<<"$running_text"
   for service in backend celery-worker celery-beat frontend proxy; do
     if grep -qx "$service" <<<"$running_text"; then
       RESTORE_STOPPED_SERVICES+=("$service")
@@ -2943,7 +2943,7 @@ prepare_answer_rollback() { # prepare_answer_rollback BACKUP VERSION; sets ANSWE
     fail "rollback refused: cannot read the answer keys of v$version (git show v$version:qradar-dash)"
     return 1
   }
-  ANSWER_ROLLBACK_PLAN=strip
+  ANSWER_ROLLBACK_PLAN="strip" # quoted: SC2209 reads the bare word as the strip(1) command
 }
 
 restore_answers_file() { # restore_answers_file COMMAND SRC; atomic, source mode, next to .env
@@ -4369,13 +4369,12 @@ support_stage_secret() { # support_stage_secret SOURCE NAME
 }
 
 cmd_support_bundle() {
-  while [ $# -gt 0 ]; do
+  if [ $# -gt 0 ]; then
     case "$1" in
       -h | --help) usage; return 0 ;;
       *) fail "unknown support-bundle argument: $1; usage: ./qradar-dash support-bundle"; return 2 ;;
     esac
-    shift
-  done
+  fi
   need_installed
   need_docker || exit 1
   command -v tar >/dev/null 2>&1 || die \
@@ -4437,7 +4436,7 @@ cmd_support_bundle() {
 cmd_repair_state() {
   local code="" body="" version="" head="" db_rev="" images="" outcome="" previous=""
   local port api rc=0
-  while [ $# -gt 0 ]; do
+  if [ $# -gt 0 ]; then
     case "$1" in
       -h | --help) usage; return 0 ;;
       *)
@@ -4445,8 +4444,7 @@ cmd_repair_state() {
         return 2
         ;;
     esac
-    shift
-  done
+  fi
   if [ ! -f "$ENV_FILE" ]; then
     fail "repair-state refused: not installed here: $ENV_FILE is missing. Run ./qradar-dash install. Nothing was written."
     return 1
