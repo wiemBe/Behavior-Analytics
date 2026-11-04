@@ -51,6 +51,7 @@ from app.providers.tls import build_ssl_context
 from app.rules.matches import SKIPPED_REASON
 from app.schemas.qradar_health import HaPairState, ServerEntry
 from app.security.redaction import redact
+from app.services import ariel_search_log as ariel_log
 from app.services.ariel_permit import ArielPermitBudget
 from app.services.qradar_health import HealthReadCache, read_qradar_health
 from app.services.qradar_health_detail import read_latest
@@ -1906,7 +1907,24 @@ class Doctor:
 
         They run after the ordinary checks, one at a time, and keep their own per-search
         timeout (`DOCTOR_AQL_TIMEOUT_SECONDS`) instead of the 10 s of the other checks.
+
+        One run buffer covers every search the checks send, as a worker task's covers its
+        collection: each search is recorded while it runs and closed at its terminal state,
+        and one flush at the end writes whatever stayed in the buffer — one statement for
+        the whole run, whatever the number of searches. A failed flush is counted by the
+        log; it never changes a verdict or the exit code.
         """
+        token = ariel_log.open_run_buffer()
+        try:
+            return await self._run_aql_recorded()
+        finally:
+            try:
+                await ariel_log.finish_worker_buffer(token)
+            except Exception:
+                # The flush catches its own write errors; this covers the engine lookup.
+                ariel_log._count_failure(1)
+
+    async def _run_aql_recorded(self) -> list[CheckResult]:
         try:
             instances = await self._enabled_instances()
         except Exception as exc:
