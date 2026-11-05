@@ -17,7 +17,8 @@ Guarantees:
     NOT_COLLECTED with a coded reason, never OK (rule 8).
   * A constant number of searches and statements per run, whatever the number of hosts:
     two searches, one delete per bucket table and one chunked bulk insert per table. The
-    inventory is read only when an empty notification answer needs it: one statement.
+    inventory is read only when an empty notification answer needs it: one statement inside a
+    savepoint, so a read the database rejects still leaves the run's own transaction usable.
   * Idempotent: a window is replaced as a whole, so a metric that left the answer leaves no
     stale row. No overlapping runs for one instance: the advisory lock is keyed on
     (instance, collector).
@@ -174,7 +175,8 @@ class _NotificationSource:
 
     The read is deferred until an empty notification answer needs it: a window with rows is
     evidence on its own, and those windows pay no extra statement. A failed read is a coded
-    reason, never "none".
+    reason, never "none", and it is contained by its own savepoint so the run can still store
+    that reason on its row.
     """
 
     def __init__(self, session: AsyncSession, instance_id: uuid.UUID) -> None:
@@ -188,7 +190,14 @@ class _NotificationSource:
         if not self._read:
             self._read = True
             try:
-                present = await notification_source_consoles(self._session, (self._instance_id,))
+                # A savepoint, as the REST sample's sink takes one (`qradar_health_sample`): a
+                # statement PostgreSQL rejects aborts the run's own transaction, and then the
+                # run row that should record this reason could not be written at all. Rolled
+                # back alone, the failure leaves the transaction usable.
+                async with self._session.begin_nested():
+                    present = await notification_source_consoles(
+                        self._session, (self._instance_id,)
+                    )
             except Exception as exc:
                 # The text may quote connection details: class only.
                 logger.warning(
