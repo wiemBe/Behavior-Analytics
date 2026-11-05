@@ -7,6 +7,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.alerts.query import AlertFamily, AlertSort, SortOrder
 from app.models.enums import (
     AlertStatus,
     NotificationChannel,
@@ -46,6 +47,22 @@ class AlertOut(BaseModel):
     source_anomaly_ids: list[str]
 
 
+class AlertFiltersApplied(BaseModel):
+    """Every filter the server applied, resolved, so a client reproduces the view.
+
+    A time bound is null when the request asked for no window: the echo never
+    shows a default range the caller did not send, and never hides one it did.
+    """
+
+    status: AlertStatus | None
+    severity: list[Severity]
+    log_source_id: list[uuid.UUID]
+    family: AlertFamily | None
+    q: str | None
+    since: datetime | None
+    until: datetime | None
+
+
 class AlertPage(BaseModel):
     """Offset pagination with an explicit total, matching the other list APIs."""
 
@@ -53,6 +70,31 @@ class AlertPage(BaseModel):
     total: int
     limit: int
     offset: int
+    filters_applied: AlertFiltersApplied
+    sort: AlertSort
+    order: SortOrder
+
+
+class AlertFacetValue(BaseModel):
+    """One chip: a closed value of a facet and how many alerts the filters leave."""
+
+    value: str
+    count: int
+
+
+class AlertFacetsOut(BaseModel):
+    """The filtered counts a filter bar draws its chips from.
+
+    Every closed value is present, in a stable order, even when its count is
+    zero: zero is a measured count under the same filters, and a missing value
+    would make the client guess.
+    """
+
+    severity: list[AlertFacetValue]
+    family: list[AlertFacetValue]
+    status: list[AlertFacetValue]
+    total: int
+    filters_applied: AlertFiltersApplied
 
 
 class NotificationOut(BaseModel):
