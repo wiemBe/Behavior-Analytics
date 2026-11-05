@@ -1,6 +1,8 @@
 import { api, type OffenseDetail, type OffenseHistoryPoint } from "@/lib/api";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
+import { PivotBlock } from "@/components/pivot/PivotBlock";
+import { pivotReads } from "@/lib/pivot";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -112,6 +114,7 @@ async function OffenseDetailPage({
   }
 
   const o = offense!;
+  const pivotRead = await pivotReads.offense(offenseId);
 
   return (
     <>
@@ -228,6 +231,8 @@ async function OffenseDetailPage({
         <List label={t("ruleIds")} values={o.rule_ids ?? []} empty={t("noneRecorded")} />
         <List label={t("logSourceIds")} values={o.log_source_ids ?? []} empty={t("noneRecorded")} />
       </div>
+
+      {pivotRead && <PivotBlock pivot={pivotRead.pivot} failed={pivotRead.failed} />}
 
       <h3>{t("history")}</h3>
       {history === null ? (

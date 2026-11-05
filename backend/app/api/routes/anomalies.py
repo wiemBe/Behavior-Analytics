@@ -56,6 +56,7 @@ from app.models.log_source import LogSource, LogSourceAnomaly, LogSourceBaseline
 from app.models.monitoring import AnomalyEvaluationFault
 from app.models.property_watch import PropertyWatch, PwAnomaly, PwAnomalyTransition
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
+from app.pivot.service import PivotNotFound, anomaly_pivot
 from app.property_watch.facts import split_tuple_key
 from app.providers.base import LogSourceTelemetry
 from app.repositories.anomaly import AnomalyRepository
@@ -122,6 +123,7 @@ from app.schemas.ips_behavior import (
     PagedIpsSources,
 )
 from app.schemas.messages import stored_message_parts, stored_reasons
+from app.schemas.pivot import PivotOut
 
 router = APIRouter(prefix="/anomalies", tags=["anomalies"])
 behavior_router = APIRouter(prefix="/behavior", tags=["behavior"])
@@ -448,6 +450,15 @@ async def get_anomaly(anomaly_id: uuid.UUID, session: SessionDep) -> AnomalyDeta
     detail.explanation_package = _explanation_out(anomaly.explanation_package)
     detail.detection = detection_detail(anomaly.details)
     return detail
+
+
+@router.get("/{anomaly_id}/pivot", response_model=PivotOut)
+async def get_anomaly_pivot(anomaly_id: uuid.UUID, session: SessionDep) -> PivotOut:
+    """AQL text and a console link for the analyst. The product does not run the AQL."""
+    try:
+        return await anomaly_pivot(session, anomaly_id)
+    except PivotNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
 
 async def _waf_detail(

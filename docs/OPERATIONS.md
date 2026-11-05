@@ -3213,3 +3213,36 @@ docker compose exec backend python -m app.cli.doctor --aql --json | python3 -c '
 ```
 
 The line holds the status, the query version, the property names from our settings and the HTTP status. It holds no event value and no QRadar reply.
+
+
+## Investigate in QRadar (pivot blocks)
+
+Anomaly, alert, offense and log-source detail pages carry an "Investigate in QRadar" block: an AQL
+query, the UTC time range it covers, and a link into the QRadar console. It saves the analyst from
+retyping the source, the window and the entity.
+
+**The product never runs this AQL.** The text is for you to copy or to open in the console, where
+it runs under your own console login. The backend builds it from stored, validated values only:
+numeric log source ids, the property names a WAF or IPS profile maps, an IP address that parses,
+and epoch times taken from stored timestamps. The browser sends nothing that becomes AQL.
+
+- **Copy AQL** copies the query text. **Copy window** copies the UTC start and stop.
+- **Open in QRadar** opens the console in a new tab. For an offense it opens the offense page, and a
+  second link opens the offense's events in Log Activity. No token or credential is in any link.
+- The link needs the console address of the QRadar instance registered in the product. For a mock
+  instance, or an instance with no valid host, the block shows the AQL with Copy and says why there
+  is no Open button.
+- A value that is not plainly safe to put in a query (it holds a quote, a backslash or a control
+  character) is left out, never escaped, and the notes say which filter was omitted. A WAF endpoint
+  with templated segments such as `{id}` is matched by its literal prefix only; the notes say so.
+- The window is the anomaly's own interval. An open anomaly's window ends when the page was built.
+  A log source's block covers its last hour. A window is kept between one minute and 168 hours.
+
+The console URL forms (the Log Activity AQL search and the offense summary page) live in
+`backend/app/pivot/aql.py` and are marked unverified on the lab console. If a link lands on the wrong
+page after a QRadar upgrade, correct `ARIEL_SEARCH_PATH`, `ARIEL_SEARCH_FIXED` or
+`OFFENSE_SUMMARY_PATH` there.
+
+The API: `GET /api/v1/anomalies/{id}/pivot`, `/alerts/{id}/pivot`, `/offenses/{id}/pivot` and
+`/log-sources/{id}/pivot`. Each uses the permission of its object's detail route and answers 404 for
+an unknown id (or an alert that has no QRadar object behind it, such as a stored-search threshold).

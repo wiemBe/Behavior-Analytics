@@ -5,6 +5,7 @@
 
 import type { TextTranslator } from "@/i18n/textTranslator";
 import { missingPermission } from "@/lib/refusal";
+import type { Pivot } from "@/lib/pivot";
 
 const PUBLIC_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -2618,6 +2619,7 @@ function qs(params: Record<string, QueryValue | QueryValue[] | undefined>): stri
 export const api = {
   logSources: () => request<LogSourceSummary[]>("/log-sources"),
   logSource: (id: string) => request<LogSourceDetail>(`/log-sources/${id}`),
+  logSourcePivot: (id: string) => request<Pivot>(`/log-sources/${id}/pivot`),
 
   searches: (signal?: AbortSignal) => request<ScheduledSearch[]>("/searches", { signal }),
   search: (id: string, signal?: AbortSignal) =>
@@ -2699,6 +2701,7 @@ export const api = {
   alerts: (params: { status?: string; limit?: number; offset?: number } = {}) =>
     request<Page<Alert>>(`/alerts${qs(params)}`),
   alert: (id: string) => request<Alert>(`/alerts/${id}`),
+  alertPivot: (id: string) => request<Pivot>(`/alerts/${id}/pivot`),
   alertNotifications: (id: string) => request<Notification[]>(`/alerts/${id}/notifications`),
 
   // --- Phase 3: offenses, rules, coverage ----------------------------------
@@ -2712,6 +2715,7 @@ export const api = {
     sort?: string;
   } = {}) => request<Page<OffenseSummary>>(`/offenses${qs(params)}`),
   offense: (id: number) => request<OffenseDetail>(`/offenses/${id}`),
+  offensePivot: (id: number) => request<Pivot>(`/offenses/${id}/pivot`),
   offenseHistory: (id: number) =>
     request<OffenseHistoryPoint[]>(`/offenses/${id}/history`),
   offenseAggregates: () => request<OffenseAggregates>("/offenses/aggregates"),
@@ -2744,6 +2748,7 @@ export const api = {
     request<AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail>(
       `/anomalies/${id}`,
     ),
+  anomalyPivot: (id: string) => request<Pivot>(`/anomalies/${id}/pivot`),
   // The caller's identity and grants, for links the caller may not follow.
   caller: () => request<CallerInfo>("/me"),
   // --- Phase G: property watches. Read-only; the editor's writes are PW-8's. -------

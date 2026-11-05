@@ -1,3 +1,4 @@
+import type { Pivot } from "@/lib/pivot";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -70,6 +71,7 @@ async function renderPage(id = "a-1") {
 beforeEach(() => {
   setTestLocale("en");
   vi.restoreAllMocks();
+  vi.spyOn(api, "alertPivot").mockRejectedValue(new ApiError(404, "no pivot"));
   vi.spyOn(api, "alert").mockResolvedValue(alert());
   vi.spyOn(api, "alertNotifications").mockResolvedValue([notification()]);
 });
@@ -428,5 +430,43 @@ describe("alert detail honesty", () => {
     expect(rule).toMatch(/min-width:\s*12ch/);
     expect(rule).toMatch(/overflow-wrap:\s*anywhere/);
     expect(rule).not.toMatch(/break-all|break-word/);
+  });
+});
+
+const PIVOT_AQL = "SELECT 1 FROM events START 1 STOP 2";
+const PIVOT: Pivot = {
+  kind: "KIND",
+  aql: PIVOT_AQL,
+  console_url: "https://qr.lab.example/console/x",
+  aql_search_url: "https://qr.lab.example/console/x",
+  console_unavailable_reason: null,
+  time_range: { start: "2026-11-05T10:00:00Z", stop: "2026-11-05T10:30:00Z" },
+  notes: [],
+};
+
+describe("Investigate in QRadar", () => {
+  it("shows the block with the server's AQL and keeps the page", async () => {
+
+    vi.spyOn(api, "alertPivot").mockResolvedValue({ ...PIVOT, kind: "anomaly" });
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Investigate in QRadar" })).toBeInTheDocument();
+    expect(screen.getByLabelText("AQL query")).toHaveTextContent(PIVOT_AQL);
+    expect(screen.getByRole("link", { name: /Open in QRadar/ })).toHaveAttribute("target", "_blank");
+  });
+
+  it("omits the block when the object has no pivot (404)", async () => {
+
+    vi.spyOn(api, "alertPivot").mockRejectedValue(new ApiError(404, "none"));
+    await renderPage();
+    expect(screen.queryByRole("heading", { name: "Investigate in QRadar" })).toBeNull();
+  });
+
+  it("says the pivot could not be built, without taking the page down", async () => {
+
+    vi.spyOn(api, "alertPivot").mockRejectedValue(new ApiError(500, "secret"));
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Investigate in QRadar" })).toBeInTheDocument();
+    expect(screen.getByText(/could not be built/)).toBeInTheDocument();
+    expect(screen.queryByText("secret")).toBeNull();
   });
 });

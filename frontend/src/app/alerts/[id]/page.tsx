@@ -1,6 +1,8 @@
 import { AlertActions } from "@/components/AlertActions";
 import { getLocale, getTranslations } from "next-intl/server";
 import { Evidence } from "@/components/Evidence";
+import { PivotBlock } from "@/components/pivot/PivotBlock";
+import { pivotReads } from "@/lib/pivot";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -57,6 +59,7 @@ async function AlertDetailPage({
       </>
     );
   }
+  const pivotRead = await pivotReads.alert(id);
   const title = renderBackendMessage(
     { text: alert.title, code: alert.title_code, params: alert.title_params },
     locale,
@@ -124,6 +127,8 @@ async function AlertDetailPage({
       </div>
 
       <AlertActions alertId={alert.id} status={alert.status} />
+
+      {pivotRead && <PivotBlock pivot={pivotRead.pivot} failed={pivotRead.failed} />}
 
       <h3>{t("notifications")}</h3>
       {notifications.length === 0 ? (

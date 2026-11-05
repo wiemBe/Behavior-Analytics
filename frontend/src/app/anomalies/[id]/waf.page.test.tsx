@@ -28,6 +28,7 @@ function metrics(items = [wafBucket()]): PagedWafMetrics {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.spyOn(api, "anomalyPivot").mockRejectedValue(new ApiError(404, "no pivot"));
 });
 
 async function renderPage(id = "w-1") {
@@ -134,6 +135,27 @@ describe("a WAF subject: baseline cells", () => {
     vi.spyOn(api, "wafEndpointBaselines").mockRejectedValue(new ApiError(500, "boom"));
     const { container } = await renderPage();
     expect(container.querySelector("h1")).toHaveTextContent("GET /portal/login");
+    expect(screen.getByRole("img", { name: "waf chart" })).toBeInTheDocument();
+  });
+});
+
+describe("Investigate in QRadar", () => {
+  it("adds the pivot block to this family's investigation", async () => {
+    vi.spyOn(api, "anomaly").mockResolvedValue(wafDetail());
+    vi.spyOn(api, "wafEndpointMetrics").mockResolvedValue(metrics());
+    vi.spyOn(api, "anomalyPivot").mockResolvedValue({
+      kind: "anomaly",
+      aql: "SELECT 1 FROM events START 1 STOP 2",
+      console_url: "https://qr.lab.example/console/x",
+      aql_search_url: "https://qr.lab.example/console/x",
+      console_unavailable_reason: null,
+      time_range: { start: "2026-11-05T10:00:00Z", stop: "2026-11-05T10:30:00Z" },
+      notes: ["Entity filter omitted: example."],
+    });
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Investigate in QRadar" })).toBeInTheDocument();
+    expect(screen.getByLabelText("AQL query")).toHaveTextContent("SELECT 1 FROM events");
+    expect(screen.getByText("Entity filter omitted: example.")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "waf chart" })).toBeInTheDocument();
   });
 });

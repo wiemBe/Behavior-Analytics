@@ -5,5 +5,24 @@
   "pagination": "Pagination",
   "pageRange": "{from}–{to} of {total}",
   "previous": "Previous",
-  "next": "Next"
+  "next": "Next",
+  "pivot": {
+    "title": "Investigate in QRadar",
+    "intro": "This query is for you to run in the QRadar console. The product does not run it.",
+    "queryLabel": "AQL query",
+    "rangeLabel": "Time range (UTC)",
+    "rangeText": "{start} to {stop}",
+    "copyAql": "Copy AQL",
+    "aqlCopied": "AQL copied to clipboard",
+    "copyWindow": "Copy window",
+    "windowCopied": "Time range copied to clipboard",
+    "copyFailed": "The browser did not allow copying. Select the text and copy it by hand.",
+    "open": "Open in QRadar",
+    "openEvents": "Open events in Log Activity",
+    "newTab": "(opens in a new tab)",
+    "noConsole": "Open in QRadar is not shown: {reason} Copy the AQL and run it in the console.",
+    "notes": "Notes",
+    "failed": "The QRadar query could not be built. Reload the page to try again; the rest of this page is not affected.",
+    "rangeTo": "to"
+  }
 }

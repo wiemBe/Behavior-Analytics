@@ -30,6 +30,7 @@ const cells = (items = [ipsCell()]) => ({ items, total: items.length, limit: 200
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.spyOn(api, "anomalyPivot").mockRejectedValue(new ApiError(404, "no pivot"));
   vi.spyOn(api, "caller").mockResolvedValue({
     permissions: ["read:anomalies"],
     effective_permissions: ["read:anomalies"],
@@ -149,5 +150,27 @@ describe("failures", () => {
     } as unknown as Awaited<ReturnType<typeof api.caller>>);
     await renderPage();
     expect(screen.getByRole("link", { name: "lab-ips-01" })).toBeInTheDocument();
+  });
+});
+
+describe("Investigate in QRadar", () => {
+  it("adds the pivot block to this family's investigation", async () => {
+    vi.spyOn(api, "anomaly").mockResolvedValue(ipsDetail());
+    vi.spyOn(api, "ipsEntityMetrics").mockResolvedValue(paged([ipsEntityBucket()]));
+    vi.spyOn(api, "ipsEntityBaselines").mockResolvedValue(cells());
+    vi.spyOn(api, "anomalyPivot").mockResolvedValue({
+      kind: "anomaly",
+      aql: "SELECT 1 FROM events START 1 STOP 2",
+      console_url: "https://qr.lab.example/console/x",
+      aql_search_url: "https://qr.lab.example/console/x",
+      console_unavailable_reason: null,
+      time_range: { start: "2026-11-05T10:00:00Z", stop: "2026-11-05T10:30:00Z" },
+      notes: ["Entity filter omitted: example."],
+    });
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Investigate in QRadar" })).toBeInTheDocument();
+    expect(screen.getByLabelText("AQL query")).toHaveTextContent("SELECT 1 FROM events");
+    expect(screen.getByText("Entity filter omitted: example.")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "ips chart" })).toBeInTheDocument();
   });
 });
