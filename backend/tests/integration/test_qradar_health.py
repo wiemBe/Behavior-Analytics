@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import os
 import uuid
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.collectors import qradar_health_collector
 from app.collectors.qradar_health_collector import QRadarHealthCollector
@@ -301,6 +303,32 @@ class TestRun:
         assert counts[1] == counts[40], counts
 
 
+@asynccontextmanager
+async def inventory_table_missing(url: str):  # type: ignore[no-untyped-def]
+    """Make the inventory read fail at the database, not in Python (FIX-31).
+
+    `log_source` is renamed on its own connection for the duration of the block, so the
+    collector's `SELECT ... FROM log_source` is answered by PostgreSQL with
+    `relation "log_source" does not exist` -- a real statement error that aborts the
+    transaction it runs in. Patching `notification_source_consoles` to raise would not show
+    that: a Python exception leaves the transaction healthy.
+    """
+    engine = create_async_engine(url, future=True)
+    try:
+        async with engine.begin() as conn:
+            # ACCESS EXCLUSIVE: fail fast rather than wait on a lock the test's own session holds.
+            await conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+            await conn.execute(text("ALTER TABLE log_source RENAME TO log_source_away"))
+        try:
+            yield
+        finally:
+            async with engine.begin() as conn:
+                await conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+                await conn.execute(text("ALTER TABLE log_source_away RENAME TO log_source"))
+    finally:
+        await engine.dispose()
+
+
 @pytest.mark.usefixtures("pin_cadence")
 class TestNotificationSource:
     """HLT-8: an empty answer is "none" only when the console can report a notification."""
@@ -393,6 +421,35 @@ class TestNotificationSource:
         assert run_row.metrics_state == "OK"
         assert report.searches_sent == 2 and report.as_dict()["status"] == "failed"
 
+    async def test_a_database_error_in_the_inventory_read_still_writes_the_run(
+        self, db_session, db_schema
+    ) -> None:
+        """FIX-31: the caught read fails at PostgreSQL, so only its savepoint is lost.
+
+        Without the savepoint the run's transaction aborts and `_write` raises
+        `InFailedSQLTransactionError`: no run row, no window, nothing recorded.
+        """
+        inst = await make_instance(db_session)
+        provider = MockQRadarProvider(seed=1)
+        provider.health_notification_script = lambda _s: []
+
+        async with inventory_table_missing(db_schema):
+            report = await collector(db_session, provider).collect(inst, slot=SLOT)
+
+        run_row = await only_run(db_session)
+        assert (run_row.window_start, run_row.window_end) == (WINDOW, SLOT)
+        assert run_row.notifications_state == "NOT_COLLECTED"
+        assert run_row.notifications_reason_code == (
+            "qradar_health_detail.reason.notification_source_unreadable"
+        )
+        # The other part is untouched by the failure: measured and stored as usual.
+        assert run_row.metrics_state == "OK"
+        assert run_row.metrics_reason_code is None
+        assert await metric_rows(db_session), "the metric part is stored"
+        assert (await db_session.scalars(select(QRadarHealthNotificationBucket))).all() == []
+        assert report.notifications_state == "NOT_COLLECTED"
+        assert report.searches_sent == 2 and report.rest_sample_written is True
+
     async def test_rows_present_never_read_the_inventory(self, db_session) -> None:
         inst = await make_instance(db_session)
         await add_notification_source(db_session, inst, enabled=False)
@@ -418,6 +475,11 @@ class TestNotificationSource:
                 await collector(db_session, provider).collect(inst, slot=SLOT)
             inventory = [s for s in statements if "FROM log_source" in s]
             assert len(inventory) == 1, inventory
+            # FIX-31: the read runs in its own savepoint, so a failure contained it and the run
+            # still writes its row. The pair is the whole added cost, whatever the row count.
+            at = statements.index(inventory[0])
+            assert statements[at - 1].startswith("SAVEPOINT"), statements[at - 1]
+            assert statements[at + 1].startswith("RELEASE SAVEPOINT"), statements[at + 1]
             counts[sources] = len(statements)
         assert counts[1] == counts[40], counts
 
