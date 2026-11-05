@@ -196,6 +196,15 @@ _BODIES: dict[tuple[str, str], dict] = {
     # History backfill: the three writes check `admin:history_backfill` in the
     # handler, after body validation, so the guard needs a body that passes it.
     ("PUT", "/api/v1/admin/history-backfill/{instance_id}"): {"answer": "YES"},
+    # SOC-1a triage: both writes check `anomaly:triage` in the handler. The family
+    # is a plain path string validated after the guard, so the placeholder UUID is
+    # not a validation failure; the bodies must pass so the 403 can be reached.
+    ("PATCH", "/api/v1/anomalies/triage/{family}/{anomaly_id}"): {
+        "expected_version": 0,
+    },
+    ("POST", "/api/v1/anomalies/triage/{family}/{anomaly_id}/comments"): {
+        "text": "guard",
+    },
 }
 
 _ID = str(uuid.uuid4())

@@ -498,6 +498,60 @@ class IpsMeasurement(StrEnum):
     LOWER_BOUND = "LOWER_BOUND"
 
 
+class AnomalyFamily(StrEnum):
+    """The anomaly table an analyst triage row names.
+
+    One family per anomaly table, not per subject kind: the IPS family holds both an
+    entity incident and a source incident, and a property-watch incident is one row of
+    `pw_anomaly`. The values match the keys of `ActiveByFamily`, so a client can join
+    the two responses without a translation table. Kept separate from `SubjectKind`
+    (a response discriminator) and from every detector enum (Phase A rows and alert
+    fingerprints persist those) because this one is persisted in `anomaly_triage`.
+    """
+
+    LOG_SOURCE = "log_source"
+    WAF = "waf"
+    IPS = "ips"
+    PROPERTY_WATCH = "property_watch"
+
+
+class TriageStatus(StrEnum):
+    """The analyst's state for an anomaly, independent of the detector lifecycle.
+
+    NEW is also what an anomaly with no `anomaly_triage` row reads as, so it is never
+    written by the detector and never overwrites `AnomalyState`.
+    """
+
+    NEW = "NEW"
+    IN_PROGRESS = "IN_PROGRESS"
+    CLOSED = "CLOSED"
+
+
+class TriageDisposition(StrEnum):
+    """Why a triage item was closed. Nullable until the item is CLOSED."""
+
+    TRUE_POSITIVE = "TRUE_POSITIVE"
+    BENIGN_TRUE_POSITIVE = "BENIGN_TRUE_POSITIVE"
+    NOISE = "NOISE"
+    COLLECTION_PROBLEM = "COLLECTION_PROBLEM"
+    KNOWN_CHANGE = "KNOWN_CHANGE"
+
+
+class TriageEventKind(StrEnum):
+    """What one append-only triage activity row records."""
+
+    #: A status change, including closing and reopening.
+    STATUS = "STATUS"
+    #: The owner was assigned, changed or cleared.
+    OWNER = "OWNER"
+    #: The disposition was set, changed or cleared.
+    DISPOSITION = "DISPOSITION"
+    #: The disposition note changed without the disposition changing.
+    NOTE = "NOTE"
+    #: An analyst comment. Its text lives only on `anomaly_triage_event.comment`.
+    COMMENT = "COMMENT"
+
+
 class AnomalyState(StrEnum):
     """Explicit anomaly lifecycle.
 

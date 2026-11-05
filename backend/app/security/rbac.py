@@ -74,6 +74,11 @@ PERM_COVERAGE_WRITE = "coverage:write"
 # destination addresses, usernames where the DSM supplies them), so the
 # investigation surface is guarded exactly like offences are.
 PERM_ANOMALY_READ = "read:anomalies"
+# SOC-1a. Recording the analyst's triage state (owner, status, disposition, comments)
+# is a write, so `read:*` must not grant it: a viewer reads the state and cannot
+# rewrite the evidence of who worked an incident. Added to the roles that hold
+# `alert:ack`, because those are the roles that already act on an alert.
+PERM_ANOMALY_TRIAGE = "anomaly:triage"
 # Phase B.1. WAF collection operations: profile validation state, watermarks,
 # failures and admission counts. Administrative, so `read:*` does not grant it.
 PERM_WAF_ADMIN = "admin:waf"

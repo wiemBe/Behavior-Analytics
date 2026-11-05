@@ -35,6 +35,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.models.enums import AnomalyFamily
+from app.services.anomaly_triage_retention import delete_orphan_triage
 
 
 @dataclass
@@ -144,4 +146,9 @@ class WafRetention:
             else:
                 report.incomplete.append(table)
             report.deleted[table] = deleted
+        orphaned = await delete_orphan_triage(
+            self.session, AnomalyFamily.WAF, batch_size=batch
+        )
+        if orphaned:
+            report.deleted["anomaly_triage"] = orphaned
         return report

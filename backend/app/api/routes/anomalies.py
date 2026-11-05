@@ -16,7 +16,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.anomaly.capabilities import (
@@ -30,7 +30,9 @@ from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
 from app.history.origin import origin_of
 from app.history.state import HistoryFamily
+from app.i18n.refusal import permission_refusal
 from app.models.enums import (
+    AnomalyFamily,
     AnomalyState,
     AnomalyType,
     BucketCompleteness,
@@ -41,6 +43,8 @@ from app.models.enums import (
     PwAnomalyType,
     PwScopeKind,
     Severity,
+    TriageDisposition,
+    TriageStatus,
     WafAnomalyType,
     WafProfileValidationStatus,
 )
@@ -61,7 +65,9 @@ from app.providers.base import LogSourceTelemetry
 from app.repositories.anomaly import AnomalyRepository
 from app.repositories.anomaly_faults import AnomalyFaultRepository
 from app.repositories.anomaly_histogram import BUCKET_SECONDS, check_range, histogram
+from app.repositories.audit import record_audit
 from app.repositories.ips_behavior import IpsBehaviorRepository
+from app.repositories.triage import TriageRepository
 from app.schemas.anomaly import (
     ActiveByFamily,
     ActiveStateCounts,
@@ -122,9 +128,54 @@ from app.schemas.ips_behavior import (
     PagedIpsSources,
 )
 from app.schemas.messages import stored_message_parts, stored_reasons
+from app.schemas.triage import (
+    TriageCommentIn,
+    TriageEventOut,
+    TriageOut,
+    TriagePatchIn,
+    TriageSummaryOut,
+)
+from app.security.auth import get_principal
+from app.security.rbac import (
+    PERM_ANOMALY_TRIAGE,
+    PermissionDenied,
+    Principal,
+    require_permission,
+)
+from app.services.anomaly_triage import (
+    AnomalyTriageService,
+    TriageConflict,
+    TriageInvalid,
+    TriageNotFound,
+)
 
 router = APIRouter(prefix="/anomalies", tags=["anomalies"])
 behavior_router = APIRouter(prefix="/behavior", tags=["behavior"])
+
+PrincipalDep = Annotated[Principal, Depends(get_principal)]
+
+
+def _guard(principal: Principal, permission: str) -> None:
+    try:
+        require_permission(principal, permission)
+    except PermissionDenied as exc:
+        raise permission_refusal(exc) from exc
+
+
+def _family(value: str) -> AnomalyFamily:
+    """Parse the family after authorization, so a refused caller learns nothing.
+
+    The path parameter is a plain string rather than an enum on purpose: FastAPI
+    validates an enum before the handler's write guard runs, so a read-only caller
+    would get 422 for a bad family instead of 403 for the missing permission.
+    """
+    try:
+        return AnomalyFamily(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "unknown anomaly family: expected log_source, waf, ips or property_watch",
+        ) from exc
 
 
 def _validate_range(
@@ -185,6 +236,7 @@ def _active_only_range(
 async def list_anomalies(
     session: SessionDep,
     settings: SettingsDep,
+    principal: PrincipalDep,
     log_source_id: uuid.UUID | None = Query(default=None),
     instance_id: uuid.UUID | None = Query(default=None),
     anomaly_type: AnomalyType
@@ -199,6 +251,9 @@ async def list_anomalies(
     state: AnomalyState | None = Query(default=None),
     severity: Severity | None = Query(default=None),
     evidence_status: EvidenceStatus | None = Query(default=None),
+    triage_status: TriageStatus | None = Query(default=None),
+    owner: str | None = Query(default=None, max_length=255),
+    disposition: TriageDisposition | None = Query(default=None),
     active_only: bool = Query(default=False),
     since: datetime | None = Query(default=None),
     until: datetime | None = Query(default=None),
@@ -216,6 +271,10 @@ async def list_anomalies(
         start, end = _validate_range(since, until, settings.api_max_range_days)
 
     repo = AnomalyRepository(session)
+    # `owner=me` is resolved here, against the authenticated principal, not in SQL:
+    # the database has no notion of the caller. `none` stays a literal and asks for
+    # an unowned item, including one with no triage row at all.
+    owner_filter = principal.subject if owner == "me" else owner
     rows, total = await repo.list_unified(
         limit=min(limit, settings.api_max_page_size),
         offset=offset,
@@ -229,6 +288,9 @@ async def list_anomalies(
         state=state,
         severity=severity,
         evidence_status=evidence_status,
+        triage_status=triage_status,
+        triage_owner=owner_filter,
+        triage_disposition=disposition,
         active_only=active_only,
         since=start,
         until=end,
@@ -276,7 +338,7 @@ def _unified_item(row: dict) -> AnomalyListItem:
     fields = {
         k: v
         for k, v in row.items()
-        if not k.startswith(("endpoint_", "entity_", "pw_"))
+        if not k.startswith(("endpoint_", "entity_", "pw_", "triage_"))
         and k not in ("waf_endpoint_id", "ips_entity_id", "explanation_i18n")
     }
     stored = row.get("explanation_i18n")
@@ -289,6 +351,13 @@ def _unified_item(row: dict) -> AnomalyListItem:
         **fields,
         explanation_code=explanation_code,
         explanation_params=explanation_params,
+        # The join is left, so a missing triage row is a NULL trio: NEW and unowned.
+        triage=TriageSummaryOut(
+            status=row["triage_status"] or TriageStatus.NEW,
+            owner=row["triage_owner"],
+            disposition=row["triage_disposition"],
+            updated_at=row["triage_updated_at"],
+        ),
         waf_endpoint=waf_endpoint,
         ips_entity=ips_entity,
         pw_value=pw_value,
@@ -298,12 +367,21 @@ def _unified_item(row: dict) -> AnomalyListItem:
 async def _list_items(
     repo: AnomalyRepository, rows: list[LogSourceAnomaly]
 ) -> list[AnomalyListItem]:
-    """Anomaly rows with their source names resolved in a single query."""
+    """Anomaly rows with source names and triage resolved in bulk.
+
+    One name query and one triage query for the whole page, never one per row: these
+    lists (recently resolved, highest deviation) are small today but the shape must not
+    depend on that.
+    """
     names = await repo.source_names(rows)
+    triage = await TriageRepository(repo.session).summaries_for(
+        AnomalyFamily.LOG_SOURCE, [row.id for row in rows]
+    )
     items = []
     for row in rows:
         item = AnomalyListItem.model_validate(row)
         item.log_source_name = names.get(row.log_source_id)
+        item.triage = triage[row.id]
         items.append(item)
     return items
 
@@ -422,6 +500,124 @@ async def anomaly_histogram(
     )
 
 
+@router.get("/triage/{family}/{anomaly_id}", response_model=TriageOut)
+async def get_anomaly_triage(
+    family: str,
+    anomaly_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> TriageOut:
+    """The analyst state and one page of activity for one anomaly.
+
+    Reading it is covered by the router's `read:anomalies` guard, like the anomaly
+    itself. An anomaly with no triage row answers NEW, unowned, version 0.
+    """
+    resolved = _family(family)
+    try:
+        return await AnomalyTriageService(session).get(
+            resolved,
+            anomaly_id,
+            limit=min(limit, settings.api_max_page_size),
+            offset=offset,
+        )
+    except TriageNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+
+@router.patch("/triage/{family}/{anomaly_id}", response_model=TriageOut)
+async def patch_anomaly_triage(
+    family: str,
+    anomaly_id: uuid.UUID,
+    payload: TriagePatchIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> TriageOut:
+    """Change owner, status, disposition or its note.
+
+    A stale `expected_version` is 409; an invalid transition or a close without a
+    disposition is 422 and writes nothing.
+    """
+    _guard(principal, PERM_ANOMALY_TRIAGE)
+    resolved = _family(family)
+    try:
+        result, events = await AnomalyTriageService(session).update(
+            resolved, anomaly_id, payload, actor=principal.subject
+        )
+    except TriageNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except TriageConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except TriageInvalid as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    if events:
+        # Field names and from-to values only. A disposition note is analyst text and
+        # stays on the triage event row, never in the audit detail.
+        await record_audit(
+            session,
+            action="anomaly.triage.update",
+            actor=principal.subject,
+            object_type="anomaly_triage",
+            object_id=f"{resolved.value}:{anomaly_id}",
+            detail={
+                "family": resolved.value,
+                "version": result.version,
+                "changes": [
+                    {
+                        "field": event.kind.value,
+                        "from": event.from_value,
+                        "to": event.to_value,
+                    }
+                    for event in events
+                ],
+            },
+        )
+    return result
+
+
+@router.post(
+    "/triage/{family}/{anomaly_id}/comments",
+    response_model=TriageEventOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_anomaly_triage_comment(
+    family: str,
+    anomaly_id: uuid.UUID,
+    payload: TriageCommentIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> TriageEventOut:
+    """Append a comment to the activity log.
+
+    A comment creates the triage row when none exists, at status NEW and unowned: an
+    analyst may note something before they start working the item. It does not bump
+    `version`, because it changes no triage state and must not make a client's next
+    PATCH stale. The text is never logged and never reaches the audit detail.
+    """
+    _guard(principal, PERM_ANOMALY_TRIAGE)
+    resolved = _family(family)
+    try:
+        event = await AnomalyTriageService(session).comment(
+            resolved, anomaly_id, payload.text, actor=principal.subject
+        )
+    except TriageNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except TriageConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    await record_audit(
+        session,
+        action="anomaly.triage.comment",
+        actor=principal.subject,
+        object_type="anomaly_triage",
+        object_id=f"{resolved.value}:{anomaly_id}",
+        detail={
+            "family": resolved.value,
+        },
+    )
+    return event
+
+
 @router.get("/{anomaly_id}", response_model=AnomalyDetailOut)
 async def get_anomaly(anomaly_id: uuid.UUID, session: SessionDep) -> AnomalyDetailOut:
     repo = AnomalyRepository(session)
@@ -429,24 +625,32 @@ async def get_anomaly(anomaly_id: uuid.UUID, session: SessionDep) -> AnomalyDeta
     if anomaly is None:
         waf_anomaly = await repo.get_waf_detail(anomaly_id)
         if waf_anomaly is not None:
-            return await _waf_detail(repo, session, waf_anomaly)
-        ips = await repo.get_ips_detail(anomaly_id)
-        if ips is not None:
-            anomaly_row, entity, transitions = ips
-            return await _ips_detail(session, anomaly_row, entity, transitions)
-        pw = await repo.get_pw_detail(anomaly_id)
-        if pw is not None:
-            return _pw_detail(*pw)
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "anomaly not found")
+            detail = await _waf_detail(repo, session, waf_anomaly)
+            family = AnomalyFamily.WAF
+        else:
+            ips = await repo.get_ips_detail(anomaly_id)
+            if ips is not None:
+                anomaly_row, entity, transitions = ips
+                detail = await _ips_detail(session, anomaly_row, entity, transitions)
+                family = AnomalyFamily.IPS
+            else:
+                pw = await repo.get_pw_detail(anomaly_id)
+                if pw is None:
+                    raise HTTPException(status.HTTP_404_NOT_FOUND, "anomaly not found")
+                detail = _pw_detail(*pw)
+                family = AnomalyFamily.PROPERTY_WATCH
+    else:
+        detail = AnomalyDetailOut.model_validate(anomaly)
+        source = await session.get(LogSource, anomaly.log_source_id)
+        detail.log_source_name = source.name if source else None
+        detail.transitions = [
+            AnomalyTransitionOut.model_validate(t) for t in anomaly.transitions
+        ]
+        detail.explanation_package = _explanation_out(anomaly.explanation_package)
+        detail.detection = detection_detail(anomaly.details)
+        family = AnomalyFamily.LOG_SOURCE
 
-    detail = AnomalyDetailOut.model_validate(anomaly)
-    source = await session.get(LogSource, anomaly.log_source_id)
-    detail.log_source_name = source.name if source else None
-    detail.transitions = [
-        AnomalyTransitionOut.model_validate(t) for t in anomaly.transitions
-    ]
-    detail.explanation_package = _explanation_out(anomaly.explanation_package)
-    detail.detection = detection_detail(anomaly.details)
+    detail.triage = await TriageRepository(session).summary(family, anomaly_id)
     return detail
 
 

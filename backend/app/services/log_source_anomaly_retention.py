@@ -18,6 +18,10 @@ Children that exist only for the incident leave in the same delete, by
 and through the explanation ``anomaly_explanation_dimension`` and
 ``anomaly_explanation_contributor``. Those are not a skip.
 
+The analyst triage row has no foreign key (its key is polymorphic across the four
+anomaly tables), so the same run deletes the triage rows of the incidents it
+removed, in one bounded statement. A triage row for a live incident is untouched.
+
 The task is not gated by ``RETENTION_ENABLED``. ``skipped_reason`` stays unset.
 Deletes run in bounded batches, each committed on its own.
 """
@@ -33,7 +37,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.models.enums import AnomalyState
+from app.models.enums import AnomalyFamily, AnomalyState
+from app.services.anomaly_triage_retention import delete_orphan_triage
 
 TERMINAL_STATES = (
     AnomalyState.RESOLVED.value,
@@ -102,4 +107,9 @@ class LogSourceAnomalyRetention:
         else:
             report.incomplete.append(table)
         report.deleted[table] = deleted
+        orphaned = await delete_orphan_triage(
+            self.session, AnomalyFamily.LOG_SOURCE, batch_size=batch
+        )
+        if orphaned:
+            report.deleted["anomaly_triage"] = orphaned
         return report
