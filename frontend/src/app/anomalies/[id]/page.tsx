@@ -32,8 +32,10 @@ import { AnomalyTabs } from "@/components/behavior/AnomalyTabs";
 import { detectorSpec } from "@/components/ips/ipsDetectors";
 import { IpsInvestigation, type IpsSeriesData } from "@/components/ips/IpsInvestigation";
 import { PwInvestigation, type PwInvestigationData } from "@/components/propertywatch/PwInvestigation";
+import { PivotBlock } from "@/components/pivot/PivotBlock";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
+import { pivotReads } from "@/lib/pivot";
 import { WafInvestigation } from "@/components/waf/WafInvestigation";
 import {
   ApiError,
@@ -285,22 +287,36 @@ async function AnomalyDetailPage({
     );
   }
 
+  // The pivot is a separate read: a failure shows in its own block and never in the page.
+  const pivotRead = await pivotReads.anomaly(id);
+  const pivotBlock = pivotRead ? (
+    <PivotBlock pivot={pivotRead.pivot} failed={pivotRead.failed} />
+  ) : null;
+
   // A property-watch value is investigated against its own watch's series, in events per bucket.
   if (isPwDetail(loaded)) {
     const pwI18n = await getBehaviorI18n();
-    return <PwInvestigation anomaly={loaded} data={await pwData(loaded, pwI18n)} />;
+    return (
+      <>
+        <PwInvestigation anomaly={loaded} data={await pwData(loaded, pwI18n)} />
+        {pivotBlock}
+      </>
+    );
   }
   // A WAF endpoint is investigated against its own request buckets, in requests
   // rather than EPS, so it has its own view; the Phase A page below is unchanged.
   if (isWafDetail(loaded)) {
     const [buckets, baselines] = await Promise.all([wafBuckets(loaded), wafBaselines(loaded)]);
     return (
-      <WafInvestigation
-        anomaly={loaded}
-        buckets={buckets}
-        baselines={baselines}
-        i18n={await getBehaviorI18n()}
-      />
+      <>
+        <WafInvestigation
+          anomaly={loaded}
+          buckets={buckets}
+          baselines={baselines}
+          i18n={await getBehaviorI18n()}
+        />
+        {pivotBlock}
+      </>
     );
   }
   // An IPS entity or source is investigated against its own event, port or share
@@ -312,12 +328,15 @@ async function AnomalyDetailPage({
       canOpenIpsSource(),
     ]);
     return (
-      <IpsInvestigation
-        anomaly={loaded}
-        series={series}
-        baselines={baselines}
-        canOpenSource={canOpenSource}
-      />
+      <>
+        <IpsInvestigation
+          anomaly={loaded}
+          series={series}
+          baselines={baselines}
+          canOpenSource={canOpenSource}
+        />
+        {pivotBlock}
+      </>
     );
   }
   const anomaly: AnomalyDetail = loaded;
@@ -432,6 +451,9 @@ async function AnomalyDetailPage({
         error={pkg?.error ?? null}
         truncatedDimensions={truncated}
       />
+
+      {/* --- F2. the same window and source, for the QRadar console -------- */}
+      {pivotBlock}
 
       {/* --- G. everything else, behind tabs ------------------------------ */}
       <section id="evidence">

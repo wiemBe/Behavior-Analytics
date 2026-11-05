@@ -16,8 +16,10 @@ from app.api.deps import SessionDep
 from app.i18n.refusal import permission_refusal
 from app.models.alert import Alert, AlertNotification
 from app.models.enums import AlertStatus
+from app.pivot.service import PivotNotFound, alert_pivot
 from app.repositories.audit import record_audit
 from app.schemas.alert import AlertActionIn, AlertOut, AlertPage, NotificationOut
+from app.schemas.pivot import PivotOut
 from app.security.auth import get_principal
 from app.security.rbac import (
     PERM_ALERT_ACK,
@@ -86,6 +88,15 @@ async def get_alert(alert_id: uuid.UUID, session: SessionDep) -> AlertOut:
     if alert is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "alert not found")
     return AlertOut.model_validate(alert)
+
+
+@router.get("/{alert_id}/pivot", response_model=PivotOut)
+async def get_alert_pivot(alert_id: uuid.UUID, session: SessionDep) -> PivotOut:
+    """AQL text and a console link through the alert's anomaly. Never run by the product."""
+    try:
+        return await alert_pivot(session, alert_id)
+    except PivotNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
 
 @router.get("/{alert_id}/notifications", response_model=list[NotificationOut])

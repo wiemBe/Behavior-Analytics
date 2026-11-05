@@ -1,3 +1,4 @@
+import type { Pivot } from "@/lib/pivot";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -41,7 +42,10 @@ async function renderPage(id = "s-1") {
   return render(await LogSourceDetailPage({ params: Promise.resolve({ id }) }));
 }
 
-beforeEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.restoreAllMocks();
+  vi.spyOn(api, "logSourcePivot").mockRejectedValue(new ApiError(404, "no pivot"));
+});
 
 describe("log source detail states", () => {
   it("says the backend could not be reached on a non-auth failure", async () => {
@@ -168,5 +172,43 @@ describe("log source detail honesty", () => {
     await renderPage();
     const pill = screen.getByText(status ?? "unknown", { selector: ".pill" });
     for (const t of ["ok", "warn", "crit"]) expect(pill).not.toHaveClass(t);
+  });
+});
+
+const PIVOT_AQL = "SELECT 1 FROM events START 1 STOP 2";
+const PIVOT: Pivot = {
+  kind: "KIND",
+  aql: PIVOT_AQL,
+  console_url: "https://qr.lab.example/console/x",
+  aql_search_url: "https://qr.lab.example/console/x",
+  console_unavailable_reason: null,
+  time_range: { start: "2026-11-05T10:00:00Z", stop: "2026-11-05T10:30:00Z" },
+  notes: [],
+};
+
+describe("Investigate in QRadar", () => {
+  it("shows the block with the server's AQL and keeps the page", async () => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail());
+    vi.spyOn(api, "logSourcePivot").mockResolvedValue({ ...PIVOT, kind: "log_source" });
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Investigate in QRadar" })).toBeInTheDocument();
+    expect(screen.getByLabelText("AQL query")).toHaveTextContent(PIVOT_AQL);
+    expect(screen.getByRole("link", { name: /Open in QRadar/ })).toHaveAttribute("target", "_blank");
+  });
+
+  it("omits the block when the object has no pivot (404)", async () => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail());
+    vi.spyOn(api, "logSourcePivot").mockRejectedValue(new ApiError(404, "none"));
+    await renderPage();
+    expect(screen.queryByRole("heading", { name: "Investigate in QRadar" })).toBeNull();
+  });
+
+  it("says the pivot could not be built, without taking the page down", async () => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail());
+    vi.spyOn(api, "logSourcePivot").mockRejectedValue(new ApiError(500, "secret"));
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Investigate in QRadar" })).toBeInTheDocument();
+    expect(screen.getByText(/could not be built/)).toBeInTheDocument();
+    expect(screen.queryByText("secret")).toBeNull();
   });
 });

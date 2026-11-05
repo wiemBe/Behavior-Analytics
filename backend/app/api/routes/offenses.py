@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
 from app.models.instance import QRadarInstance
+from app.pivot.service import offense_pivot
 from app.repositories.offense import SORTABLE, OffenseFilters, OffenseRepository
 from app.schemas.offense import (
     AgingBucket,
@@ -33,6 +34,7 @@ from app.schemas.offense import (
     OffensePage,
     OffenseSummary,
 )
+from app.schemas.pivot import PivotOut
 
 router = APIRouter(prefix="/offenses", tags=["offenses"])
 
@@ -209,6 +211,22 @@ async def get_offense(
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "offense not found")
     return OffenseDetail.model_validate(row)
+
+
+@router.get("/{qradar_offense_id}/pivot", response_model=PivotOut)
+async def get_offense_pivot(
+    qradar_offense_id: int,
+    session: SessionDep,
+    instance_id: uuid.UUID | None = Query(default=None),
+) -> PivotOut:
+    """The console's offense page and the offense's events as AQL. Never run by the product."""
+    resolved = await _resolve_instance(session, instance_id)
+    if resolved is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "offense not found")
+    row = await OffenseRepository(session).get_latest(resolved, qradar_offense_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "offense not found")
+    return await offense_pivot(session, row)
 
 
 @router.get("/{qradar_offense_id}/history", response_model=list[OffenseHistoryEntry])

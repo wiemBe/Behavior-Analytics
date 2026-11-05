@@ -1,0 +1,60 @@
+/* "Investigate in QRadar": the query is wrapped, never scrolled sideways, so the whole
+   statement stays readable at 1024 px. Tokens only. */
+.pivot {
+  margin-top: var(--sp-6);
+  min-width: 0;
+}
+.pivot-aql {
+  margin: 0 0 var(--sp-3);
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: visible;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.pivot-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.pivot-range dt {
+  color: var(--text-3);
+}
+.pivot-range dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.pivot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+.pivot-status {
+  font-size: var(--fs-xs);
+}
+.pivot-why {
+  margin: var(--sp-3) 0 0;
+}
+.pivot-notes {
+  margin-top: var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.pivot-notes-title {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  font-weight: var(--fw-medium);
+}
+.pivot-notes ul {
+  margin: 0;
+  padding-left: var(--sp-5);
+}
+.pivot-notes li {
+  margin: 0 0 var(--sp-1);
+  max-width: 84ch;
+}

@@ -4,6 +4,8 @@ import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { plainCount } from "@/lib/fleetText";
 import type { FormatLocale } from "@/lib/format";
+import { PivotBlock } from "@/components/pivot/PivotBlock";
+import { pivotReads } from "@/lib/pivot";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, api, rateLimitedText, type LogSourceDetail } from "@/lib/api";
@@ -52,6 +54,8 @@ async function LogSourceDetailPage({
     );
   }
 
+  const pivotRead = await pivotReads.logSource(id);
+
   return (
     <>
       <PageHeader
@@ -96,6 +100,8 @@ async function LogSourceDetailPage({
           link: (chunks) => <Link href={`/behavior/sources/${d.id}`}>{chunks}</Link>,
         })}
       </p>
+
+      {pivotRead && <PivotBlock pivot={pivotRead.pivot} failed={pivotRead.failed} />}
     </>
   );
 }

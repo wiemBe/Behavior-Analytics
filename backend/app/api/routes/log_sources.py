@@ -20,6 +20,7 @@ from app.i18n.refusal import permission_refusal
 from app.models.enums import ClassificationReviewStatus
 from app.models.fleet import LogSourceClassification
 from app.models.log_source import LogSource
+from app.pivot.service import PivotNotFound, log_source_pivot
 from app.repositories.audit import record_audit
 from app.repositories.log_source import LogSourceRepository
 from app.schemas.fleet import ClassificationOverrideIn, FleetSourceOut, fleet_source_out
@@ -31,6 +32,7 @@ from app.schemas.log_source import (
     SyncResult,
     business_days_usable,
 )
+from app.schemas.pivot import PivotOut
 from app.security.auth import get_principal
 from app.security.rbac import (
     PERM_ADMIN,
@@ -116,6 +118,15 @@ async def get_log_source(log_source_id: uuid.UUID, session: SessionDep) -> LogSo
     detail = LogSourceDetail.model_validate(ls)
     detail.open_anomaly_count = counts.get(ls.id, 0)
     return detail
+
+
+@router.get("/{log_source_id}/pivot", response_model=PivotOut)
+async def get_log_source_pivot(log_source_id: uuid.UUID, session: SessionDep) -> PivotOut:
+    """The source's last hour of events as AQL plus a console link. Never run by the product."""
+    try:
+        return await log_source_pivot(session, log_source_id)
+    except PivotNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
 
 @router.get("/{log_source_id}/anomalies", response_model=list[AnomalySummary])
