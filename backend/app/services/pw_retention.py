@@ -34,7 +34,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.models.enums import AnomalyState
+from app.models.enums import AnomalyFamily, AnomalyState
+from app.services.anomaly_triage_retention import delete_orphan_triage
 
 
 @dataclass
@@ -200,4 +201,9 @@ class PwRetention:
                     )
                     or 0
                 )
+        orphaned = await delete_orphan_triage(
+            self.session, AnomalyFamily.PROPERTY_WATCH, batch_size=batch
+        )
+        if orphaned:
+            report.deleted["anomaly_triage"] = orphaned
         return report

@@ -17,6 +17,7 @@ from sqlalchemy import (
     Integer,
     Select,
     String,
+    and_,
     cast,
     exists,
     func,
@@ -34,12 +35,15 @@ from sqlalchemy.orm import defer, selectinload
 
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
+    AnomalyFamily,
     AnomalyState,
     AnomalyType,
     EvidenceStatus,
     IpsAnomalyType,
     PwAnomalyType,
     Severity,
+    TriageDisposition,
+    TriageStatus,
     WafAnomalyType,
 )
 from app.models.explanation import AnomalyExplanation
@@ -51,6 +55,7 @@ from app.models.log_source import (
     LogSourceMetric,
 )
 from app.models.property_watch import PropertyWatch, PwAnomaly, PwAnomalyTransition
+from app.models.triage import AnomalyTriage
 from app.models.waf import (
     WafAnomaly,
     WafDetectorState,
@@ -122,6 +127,7 @@ class AnomalyRepository:
 
     def _unified_phase_a(self, conditions: list[ColumnElement[bool]]) -> Select:
         a = LogSourceAnomaly
+        t = AnomalyTriage
         return (
             select(
                 a.id,
@@ -153,15 +159,24 @@ class AnomalyRepository:
                 cast(null(), String).label("observed_measurement"),
                 a.explanation,
                 a.explanation_i18n.label("explanation_i18n"),
+                t.status.label("triage_status"),
+                t.owner.label("triage_owner"),
+                t.disposition.label("triage_disposition"),
+                t.updated_at.label("triage_updated_at"),
             )
             .select_from(a)
             .outerjoin(LogSource, LogSource.id == a.log_source_id)
+            .outerjoin(
+                t,
+                and_(t.family == AnomalyFamily.LOG_SOURCE, t.anomaly_id == a.id),
+            )
             .where(*conditions)
         )
 
     def _unified_waf(self, conditions: list[ColumnElement[bool]]) -> Select:
         w = WafAnomaly
         e = WafEndpoint
+        t = AnomalyTriage
         host_available = or_(
             e.virtual_host.is_not(None),
             exists().where(
@@ -200,16 +215,25 @@ class AnomalyRepository:
                 w.observed_measurement.label("observed_measurement"),
                 w.explanation,
                 w.explanation_i18n.label("explanation_i18n"),
+                t.status.label("triage_status"),
+                t.owner.label("triage_owner"),
+                t.disposition.label("triage_disposition"),
+                t.updated_at.label("triage_updated_at"),
             )
             .select_from(w)
             .join(e, e.id == w.waf_endpoint_id)
             .outerjoin(LogSource, LogSource.id == e.log_source_id)
+            .outerjoin(
+                t,
+                and_(t.family == AnomalyFamily.WAF, t.anomaly_id == w.id),
+            )
             .where(*conditions)
         )
 
     def _unified_ips(self, conditions: list[ColumnElement[bool]]) -> Select:
         a = IpsAnomaly
         e = IpsEntity
+        t = AnomalyTriage
         # An entity incident carries its source on the entity row; a source
         # incident on the anomaly row. Exactly one is set, so the coalesce is
         # the subject's log source either way, joined into the branch once.
@@ -245,16 +269,25 @@ class AnomalyRepository:
                 a.observed_measurement.label("observed_measurement"),
                 a.explanation,
                 a.explanation_i18n.label("explanation_i18n"),
+                t.status.label("triage_status"),
+                t.owner.label("triage_owner"),
+                t.disposition.label("triage_disposition"),
+                t.updated_at.label("triage_updated_at"),
             )
             .select_from(a)
             .outerjoin(e, e.id == a.ips_entity_id)
             .outerjoin(LogSource, LogSource.id == source_id)
+            .outerjoin(
+                t,
+                and_(t.family == AnomalyFamily.IPS, t.anomaly_id == a.id),
+            )
             .where(*conditions)
         )
 
     def _unified_pw(self, conditions: list[ColumnElement[bool]]) -> Select:
         a = PwAnomaly
         w = PropertyWatch
+        t = AnomalyTriage
         return (
             select(
                 a.id,
@@ -286,10 +319,18 @@ class AnomalyRepository:
                 a.observed_measurement.label("observed_measurement"),
                 a.explanation,
                 a.explanation_i18n.label("explanation_i18n"),
+                t.status.label("triage_status"),
+                t.owner.label("triage_owner"),
+                t.disposition.label("triage_disposition"),
+                t.updated_at.label("triage_updated_at"),
             )
             .select_from(a)
             .join(w, w.id == a.watch_id)
             .outerjoin(LogSource, LogSource.id == w.log_source_id)
+            .outerjoin(
+                t,
+                and_(t.family == AnomalyFamily.PROPERTY_WATCH, t.anomaly_id == a.id),
+            )
             .where(*conditions)
         )
 
@@ -308,6 +349,9 @@ class AnomalyRepository:
         state: AnomalyState | None = None,
         severity: Severity | None = None,
         evidence_status: EvidenceStatus | None = None,
+        triage_status: TriageStatus | None = None,
+        triage_owner: str | None = None,
+        triage_disposition: TriageDisposition | None = None,
         active_only: bool = False,
         since: datetime | None = None,
         until: datetime | None = None,
@@ -339,6 +383,34 @@ class AnomalyRepository:
             phase_a = waf = ips = False
         active = [s.value for s in ACTIVE_ANOMALY_STATES]
 
+        def triage_filters() -> list[ColumnElement[bool]]:
+            """The analyst-state filters, applied inside every union branch.
+
+            The triage table is left-joined per branch, so a condition on it filters
+            before the union's limit and offset; a post-filter would return a short
+            page and a total that disagree with it. `NEW` and owner `none` include an
+            anomaly with no triage row, which is exactly what a missing row reads as.
+            """
+            out: list[ColumnElement[bool]] = []
+            if triage_status is not None:
+                if triage_status is TriageStatus.NEW:
+                    out.append(
+                        or_(
+                            AnomalyTriage.status == TriageStatus.NEW,
+                            AnomalyTriage.id.is_(None),
+                        )
+                    )
+                else:
+                    out.append(AnomalyTriage.status == triage_status)
+            if triage_owner is not None:
+                if triage_owner == "none":
+                    out.append(AnomalyTriage.owner.is_(None))
+                else:
+                    out.append(AnomalyTriage.owner == triage_owner)
+            if triage_disposition is not None:
+                out.append(AnomalyTriage.disposition == triage_disposition)
+            return out
+
         def common(model: Any) -> list[ColumnElement[bool]]:
             out: list[ColumnElement[bool]] = []
             if state is not None:
@@ -353,6 +425,7 @@ class AnomalyRepository:
                 out.append(model.detected_at >= since)
             if until is not None:
                 out.append(model.detected_at < until)
+            out.extend(triage_filters())
             return out
 
         branches: list[Select] = []

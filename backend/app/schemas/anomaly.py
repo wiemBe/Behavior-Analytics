@@ -39,6 +39,7 @@ from app.models.enums import (
     WafAnomalyType,
 )
 from app.schemas.messages import MessageParamValue, MessageValue, stored_message_parts
+from app.schemas.triage import TriageSummaryOut
 
 
 class SubjectKind(StrEnum):
@@ -313,6 +314,9 @@ class AnomalyListItem(BaseModel):
     #: Stable code and raw values of `explanation` for a non-English client. Null: no code.
     explanation_code: str | None = None
     explanation_params: dict[str, MessageParamValue] | None = None
+    #: The analyst-owned state, separate from the detector lifecycle in `state`.
+    #: Always present: an anomaly with no triage row reads as NEW and unowned.
+    triage: TriageSummaryOut = Field(default_factory=TriageSummaryOut)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
