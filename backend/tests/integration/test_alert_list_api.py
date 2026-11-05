@@ -175,4 +175,22 @@ async def test_alert_list_enforces_defaults_and_bounds(
 
     assert response.status_code == expected_status, response.text
     if not params:
-        assert response.json() == {"items": [], "total": 0, "limit": 100, "offset": 0}
+        # No filter is the previous answer plus the echoes SOC-7a adds: the same
+        # items, total, limit and offset, and an empty filter applied.
+        assert response.json() == {
+            "items": [],
+            "total": 0,
+            "limit": 100,
+            "offset": 0,
+            "filters_applied": {
+                "status": None,
+                "severity": [],
+                "log_source_id": [],
+                "family": None,
+                "q": None,
+                "since": None,
+                "until": None,
+            },
+            "sort": "created_at",
+            "order": "desc",
+        }

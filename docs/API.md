@@ -532,6 +532,111 @@ Acknowledge, resolve and manual-search actions are authorized by the backend. Th
 identifiers and ordinary display values, never credentials. Notification enqueueing is separate
 from delivery; the worker retries and dead-letters failures without delaying the HTTP response.
 
+### Alert list filters
+
+`GET /api/v1/alerts` takes optional, combinable filters (SOC-7a). With no filter it answers exactly
+as it did before: the same rows, total, limit and offset, in `opened_at DESC, id DESC` order.
+
+| Parameter | Meaning |
+|---|---|
+| `status` | `OPEN`, `ACKNOWLEDGED` or `RESOLVED` |
+| `severity` | Repeatable: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `INFO`. Rows are returned when the severity is any of the values sent |
+| `log_source_id` | Repeatable: a log-source UUID. See the scope note below |
+| `family` | One of `log_source`, `waf`, `ips`, `property_watch`, `catchall_sender`, `custom_rule`, `scheduled_search`, `qradar_instance` |
+| `q` | A case-insensitive substring of the alert title, at most 100 characters. `%`, `_` and `\` are literal characters, not wildcards |
+| `since`, `until` | The alert's creation time (`opened_at`): `since` inclusive, `until` exclusive. Without `since` the window is the day before `until`; without `until` it ends now; without either, no time filter is applied. A window wider than `API_MAX_RANGE_DAYS` (365 by default) is refused |
+| `sort` | `created_at` (the alert's `opened_at`), `severity` or `updated_at`. Default `created_at` |
+| `order` | `asc` or `desc`. Default `desc`. For `sort=severity`, `desc` lists the most severe first and `asc` lists `INFO` first |
+| `limit`, `offset` | The existing paging contract: 1–500, default 100, default offset 0 |
+
+`family` groups the eight alert producers that raise alerts: `log_source` (Phase A incidents and new
+inventory), `waf` (WAF endpoint incidents), `ips` (IPS source and entity incidents),
+`property_watch` (pinned-value incidents), and the alert-only families `catchall_sender`,
+`custom_rule`, `scheduled_search` and `qradar_instance`. The first four are the anomaly families,
+named exactly as `GET /api/v1/anomalies/summary` names them. It is not `AnomalyType`: that enum is
+persisted in Phase A rows and fingerprints and keeps its values. A specific detector or anomaly type
+(for example `VOLUME_DROP`) is not a column on `alert` and is not a list filter.
+
+`log_source_id` matches an alert whose subject belongs to that log source. A `log_source` or
+`ips_source` alert stores the log-source id directly; a WAF, IPS-entity, catch-all-sender or
+pinned-value alert stores its own subject's id, which is resolved to the log source. A
+custom-rule alert follows its rule's subject. An alert with no single log source — a type- or
+group-scoped property watch, a fleet-class custom rule, a scheduled search, the offense collection —
+is not matched by a source filter. The filter is therefore narrower than "every alert that mentions
+the source", and never wider: it never returns an alert from another source.
+
+Every response carries `filters_applied` with the filters the server applied: `status`, `severity`,
+`log_source_id`, `family`, `q` (the stripped search), `since` and `until` (the resolved window, or
+null when no window was applied). The page also echoes `sort` and `order`.
+
+```json
+{
+  "items": [],
+  "total": 0,
+  "limit": 100,
+  "offset": 0,
+  "filters_applied": {
+    "status": null,
+    "severity": [],
+    "log_source_id": [],
+    "family": null,
+    "q": null,
+    "since": null,
+    "until": null
+  },
+  "sort": "created_at",
+  "order": "desc"
+}
+```
+
+An unknown `status`, `severity`, `family`, `sort`, `order` or `log_source_id`, a `q` longer than
+100 characters or blank, and an inverted or over-wide time window answer `422`.
+
+`GET /api/v1/alerts/facets` takes the same filters (without paging and ordering) and returns the
+counts a filter bar draws its chips from:
+
+```json
+{
+  "severity": [
+    {"value": "CRITICAL", "count": 0},
+    {"value": "HIGH", "count": 2},
+    {"value": "MEDIUM", "count": 0},
+    {"value": "LOW", "count": 0},
+    {"value": "INFO", "count": 0}
+  ],
+  "family": [
+    {"value": "log_source", "count": 2},
+    {"value": "waf", "count": 0},
+    {"value": "ips", "count": 0},
+    {"value": "property_watch", "count": 0},
+    {"value": "catchall_sender", "count": 0},
+    {"value": "custom_rule", "count": 0},
+    {"value": "scheduled_search", "count": 0},
+    {"value": "qradar_instance", "count": 0}
+  ],
+  "status": [
+    {"value": "OPEN", "count": 1},
+    {"value": "ACKNOWLEDGED", "count": 1},
+    {"value": "RESOLVED", "count": 0}
+  ],
+  "total": 2,
+  "filters_applied": {
+    "status": null,
+    "severity": [],
+    "log_source_id": [],
+    "family": "log_source",
+    "q": null,
+    "since": null,
+    "until": null
+  }
+}
+```
+
+Every closed value is present in a stable order, even at zero: zero is a measured count under the
+same filters. The facets are counted with every filter applied — including the family filter itself —
+so each column adds up to `total`, and `total` equals the same filter's `GET /alerts` `total`. The
+counts cost one grouped statement, never one read per alert.
+
 ## QRadar access check
 
 The application is read-only against QRadar and does not know in advance which of the APIs it uses
