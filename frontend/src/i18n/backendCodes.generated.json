@@ -6830,6 +6830,58 @@
     "sample_english_params": {},
     "template": "A bucket in this window lost destination-IP entities, so the ranking is a lower bound."
   },
+  "noise.reason.empty_window": {
+    "params": {
+      "window": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "window": 28
+    },
+    "sample_english": "No source raised an anomaly in the last 28 days of stored data.",
+    "sample_english_params": {
+      "window": "28"
+    },
+    "template": "No source raised an anomaly in the last {window} days of stored data."
+  },
+  "noise.reason.no_reliable_baseline": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Not judged: no reliable baseline for this weekday and hour.",
+    "sample_english_params": {},
+    "template": "Not judged: no reliable baseline for this weekday and hour."
+  },
+  "noise.reason.not_monitored": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This source is not monitored, so no noise counts are collected.",
+    "sample_english_params": {},
+    "template": "This source is not monitored, so no noise counts are collected."
+  },
+  "noise.reason.partial_retention": {
+    "params": {
+      "covered": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "window": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "covered": 7,
+      "window": 28
+    },
+    "sample_english": "Counts cover 7 of 28 days: incident retention is shorter than the requested window.",
+    "sample_english_params": {
+      "covered": "7",
+      "window": "28"
+    },
+    "template": "Counts cover {covered} of {window} days: incident retention is shorter than the requested window."
+  },
   "propertywatch.action.change_pins": {
     "params": {},
     "sample": {},

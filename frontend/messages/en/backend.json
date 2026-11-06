@@ -644,6 +644,14 @@
       "truncated": "A bucket in this window lost destination-IP entities, so the ranking is a lower bound."
     }
   },
+  "noise": {
+    "reason": {
+      "empty_window": "No source raised an anomaly in the last {window} days of stored data.",
+      "no_reliable_baseline": "Not judged: no reliable baseline for this weekday and hour.",
+      "not_monitored": "This source is not monitored, so no noise counts are collected.",
+      "partial_retention": "Counts cover {covered} of {window} days: incident retention is shorter than the requested window."
+    }
+  },
   "propertywatch": {
     "action": {
       "change_pins": "change the scope, properties or pins",

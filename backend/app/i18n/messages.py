@@ -5365,6 +5365,26 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "A measured bucket in this window is a lower bound, so its destination-IP counts are "
         "lower bounds.",
     ),
+    # --- SOC-17a: why a noisy-source row or window is not a clean measurement ---
+    _fixed(
+        "noise.reason.not_monitored",
+        "This source is not monitored, so no noise counts are collected.",
+    ),
+    _fixed(
+        "noise.reason.no_reliable_baseline",
+        "Not judged: no reliable baseline for this weekday and hour.",
+    ),
+    _mixed(
+        "noise.reason.partial_retention",
+        "Counts cover {covered} of {window} days: incident retention is shorter than the "
+        "requested window.",
+        count={"covered": 7, "window": 28},
+    ),
+    _mixed(
+        "noise.reason.empty_window",
+        "No source raised an anomaly in the last {window} days of stored data.",
+        count={"window": 28},
+    ),
 )
 
 
