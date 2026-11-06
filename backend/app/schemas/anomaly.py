@@ -1227,3 +1227,131 @@ class AnomalyHistogramOut(BaseModel):
     total: int
     #: Every hour of the range, in order, including the hours with no anomaly.
     hours: list[AnomalyHistogramHourOut]
+
+
+# ------------------------------------------------------- traffic ranking (TOP-1)
+class TrafficWindow(StrEnum):
+    """The range choices of the traffic ranking.
+
+    `5m` is one stored bucket -- the newest complete one -- not the last five
+    minutes of the clock: collection runs on a cadence, so the newest bucket's
+    own UTC start and end are what the response reports.
+    """
+
+    FIVE_MINUTES = "5m"
+    ONE_HOUR = "1h"
+    ONE_DAY = "24h"
+    ONE_WEEK = "7d"
+    FOUR_WEEKS = "28d"
+
+
+class TrafficState(StrEnum):
+    """Whether the ranked rates rest on a whole, partly measured window."""
+
+    OK = "OK"
+    PARTIAL = "PARTIAL"
+    TRUNCATED = "TRUNCATED"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+    NOT_COLLECTED = "NOT_COLLECTED"
+
+
+class TrafficSortOrder(StrEnum):
+    DESC = "desc"
+    ASC = "asc"
+
+
+class WafTrafficSort(StrEnum):
+    RATE = "rate"
+    PEAK = "peak"
+    HOST = "host"
+    ENDPOINT = "endpoint"
+
+
+class IpsTrafficSort(StrEnum):
+    RATE = "rate"
+    PEAK = "peak"
+    IP = "ip"
+
+
+class TrafficItemOut(BaseModel):
+    """One ranked WAF endpoint or IPS destination IP.
+
+    `rate_per_second` divides by the measured seconds of the whole window, as
+    the contract defines it, so it is the same denominator for every item and
+    for `max_rate_per_second`. `peak_rate_per_second` is the largest single
+    bucket's count over that bucket's own width. An item that has no row in any
+    measured bucket is not listed at all; it is never a zero.
+    """
+
+    #: `waf_endpoint.id` or `ips_entity.id`, for the drill-down.
+    id: uuid.UUID
+    # WAF only.
+    virtual_host: str | None = None
+    http_method: str | None = None
+    normalized_endpoint: str | None = None
+    # IPS only.
+    destination_ip: str | None = None
+    display_name: str | None = None
+    # Both.
+    events: int
+    rate_per_second: float
+    peak_rate_per_second: float
+    peak_bucket_start: datetime
+    buckets_with_data: int
+    #: Buckets in the window whose stored completeness is PARTIAL for this
+    #: entity. Their counts are visible lower bounds.
+    partial_buckets: int
+    #: False means retired since. The entity is still listed while it has data
+    #: in the range.
+    active: bool
+    #: The entity's rate on the response's shared series grid, one value per
+    #: point. None is a step with no measured source bucket: a gap, never 0.
+    series: list[float | None] = Field(default_factory=list)
+
+
+class TrafficOut(BaseModel):
+    """A ranked traffic page and the measurement the ranking rests on.
+
+    Every aggregate is over the measured buckets only. A missing bucket is not
+    a zero: fewer measured than expected is PARTIAL, and no measured bucket at
+    all is INSUFFICIENT_DATA with no items.
+    """
+
+    window: TrafficWindow
+    #: The first bucket's start. None when no bucket defines a window.
+    range_start: datetime | None = None
+    #: The newest complete bucket's end. None when no bucket defines a window.
+    range_end: datetime | None = None
+    #: None when no bucket defines the window.
+    bucket_seconds: int | None = None
+    #: The number of whole buckets the window would hold.
+    buckets_expected: int
+    #: Source buckets in the window with a usable measurement for this family.
+    buckets_measured: int
+    state: TrafficState
+    #: Stable code of why the state is not OK; None when it is OK.
+    reason_code: str | None = None
+    #: Source events over the measured buckets; None when nothing was measured.
+    source_total_events: int | None = None
+    #: The part of `source_total_events` carried by the whole ranked set, not
+    #: only by this page.
+    attributed_events: int | None = None
+    #: WAF `untracked_requests` or IPS events outside admitted destination-IP
+    #: entities, over the measured buckets; None when that count is unknown.
+    unattributed_events: int | None = None
+    #: The largest item rate over the whole set, so every page draws bars on the
+    #: same scale. None when the set is empty.
+    max_rate_per_second: float | None = None
+    #: The series grid's first step. Equal to `range_start`; None with no window.
+    series_start: datetime | None = None
+    #: The grid's step width: a whole number of source buckets. None with no
+    #: window.
+    series_step_seconds: int | None = None
+    #: Points per item. 0 with no window.
+    series_points: int = 0
+    total: int
+    limit: int
+    offset: int
+    sort: str
+    order: TrafficSortOrder
+    items: list[TrafficItemOut] = Field(default_factory=list)

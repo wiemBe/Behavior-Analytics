@@ -226,6 +226,74 @@ Analyst reads live under `/behavior/ips`: sources, entities, metrics and seasona
 incidents also appear in `/anomalies`. An unmeasured bucket is `null`; source IP values are not
 served outside a bounded stored contributor list, and these routes do not expose that list.
 
+## Traffic ranking
+
+Two read-only routes rank the stored traffic of one source. They read aggregates only and return
+counts and rates, never a raw path, action value or address outside the entity's own key.
+
+| Method and path | Question |
+|---|---|
+| `GET /behavior/waf/sources/{log_source_id}/traffic` | Which of this WAF source's endpoints take the most events per second? |
+| `GET /behavior/ips/sources/{log_source_id}/traffic` | Which of this IPS source's destination IPs take the most events per second? |
+| `GET /behavior/waf/sources/{log_source_id}/traffic.csv` | The whole WAF ranking as one CSV file |
+| `GET /behavior/ips/sources/{log_source_id}/traffic.csv` | The whole IPS ranking as one CSV file |
+
+`window` is `5m`, `1h`, `24h`, `7d` or `28d` (default `1h`). Collection runs on a cadence, so
+`5m` is the newest **complete** stored bucket, not the last five minutes of the clock; the other
+windows end at that bucket's end and cover whole buckets. `sort` is `rate`, `peak`, `host` or
+`endpoint` for WAF and `rate`, `peak` or `ip` for IPS (default `rate`), with `order` `desc` or
+`asc` (default `desc` for counts, `asc` for text). `limit` is 1–1000 (default 10) and `offset` is
+at least 0. Anything else is 422. The sort runs over the whole set with the entity id as a stable
+tie-break, so a page is a slice of the whole list; `total` counts the whole set.
+
+Every number is over the measured buckets of the window only. `buckets_measured` and
+`buckets_expected` say how much of it was measured, and `state` is `OK`, `PARTIAL`, `TRUNCATED`,
+`INSUFFICIENT_DATA` or `NOT_COLLECTED`. `TRUNCATED` outranks `PARTIAL`, because a bucket that lost
+groups or entities makes even the measured rows lower bounds. A `reason_code` of the form
+`waf_traffic_detail.reason.*` or `ips_traffic_detail.reason.*` accompanies every state but `OK`;
+its English sentence is in the message registry and the generated frontend catalog.
+
+A missing bucket is never a zero. With no complete bucket, or with no measured bucket in the
+window, the response is `INSUFFICIENT_DATA` with no items and `null` measurements. An entity with
+no metric row in any measured bucket is not listed, and an entity retired since is still listed
+(`active: false`) while it has data in the range. A source without an enabled, validated profile
+is `NOT_COLLECTED` with a reason code and status 200; an id that is not a log source is 404.
+
+`rate_per_second` divides by the measured seconds of the window, not by its wall-clock width, and
+`peak_rate_per_second` is the largest single bucket's count over that bucket's own width.
+
+**New entities.** Because the contract uses one denominator for the whole window, an entity
+admitted part-way through it is diluted by the measured buckets before its first row: its
+`rate_per_second` is its events over the whole measured window, not an average since it appeared.
+
+`series_start`, `series_step_seconds` and `series_points` describe a shared trend grid, and each
+item carries `series`, one rate per point, with `null` where no source bucket in that step was
+measured. The step is a whole number of source buckets and the grid covers the window exactly: at
+300 s buckets it is 1 point of 300 s for `5m`, 12 of 300 s for `1h`, 48 of 1800 s for `24h`, and
+56 of 10 800 s / 43 200 s for `7d` / `28d`. The series is read for the returned page only, in one
+statement, so a page of 1 000 rows costs no more queries than a page of 1.
+
+### Traffic CSV export
+
+The two `traffic.csv` routes take the same `window`, `sort` and `order` and no `limit`/`offset`:
+the file is the whole sorted set. The response is `text/csv; charset=utf-8`, RFC 4180, UTF-8,
+`\r\n` line ends and one header row, as an attachment named
+`traffic-waf-<source>-<window>-<YYYYMMDDTHHMMZ>.csv` (IPS likewise; the stamp is `range_end`, or
+`no-range` when no bucket defined it).
+
+Columns, in order. WAF: `rank`, `host`, `method`, `path`, `avg_events_per_s`,
+`peak_events_per_s`, `peak_bucket_start_utc`, `events`, `buckets_with_data`, `partial_buckets`,
+`active`, `window`, `range_start_utc`, `range_end_utc`, `buckets_measured`, `buckets_expected`,
+`state`, `source`, `truncated`. IPS puts `destination_ip` and `display_name` in place of `host`,
+`method` and `path`. Numbers are plain, with `.` as the decimal point and rates to three decimals;
+times are ISO 8601 UTC with `Z`; a `null` is an empty cell, never `0`. A text cell that starts with
+`=`, `+`, `-`, `@`, a tab or a CR is prefixed with `'`, so a spreadsheet opens it as text.
+
+The export holds at most `API_MAX_EXPORT_ROWS` rows (default 10 000). Past it, the response is
+still 200 with the first rows in sort order, `X-Export-Truncated: true` and `truncated` set to
+`true` on every row: a cut export is never silent. In `INSUFFICIENT_DATA` or `NOT_COLLECTED` the
+body is the header row only, and `X-Export-State` always names the state the file was built from.
+
 ## Property-watch API
 
 All paths below are under `/property-watches`.

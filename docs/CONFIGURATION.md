@@ -536,6 +536,7 @@ have at least five minutes between fires.
 |---|---:|---|
 | `API_DEFAULT_PAGE_SIZE` | `50` | Accepted. List routes declare their own default and only cap with `API_MAX_PAGE_SIZE` |
 | `API_MAX_PAGE_SIZE` | `200` | Maximum list page size |
+| `API_MAX_EXPORT_ROWS` | `10000` | Rows one traffic CSV export may hold (`1` and up). Past it the export is cut in sort order and says so with `X-Export-Truncated`; it is never cut silently |
 | `API_MAX_RANGE_DAYS` | `365` | Maximum accepted history range |
 | `AUTH_PROVIDER` | `local` | `local`, `session` or `oidc`. Outside development a request needs the session cookie; `local` is the development principal and `oidc` is refused |
 | `OIDC_ISSUER` | empty | Accepted. No login flow reads it. `AUTH_PROVIDER=oidc` is refused outside development |

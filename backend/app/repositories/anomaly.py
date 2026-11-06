@@ -9,11 +9,12 @@ from __future__ import annotations
 import uuid
 from collections.abc import Collection, Iterable
 from datetime import datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy import (
     Boolean,
     ColumnElement,
+    Float,
     Integer,
     Select,
     String,
@@ -25,6 +26,7 @@ from sqlalchemy import (
     null,
     or_,
     select,
+    true,
     tuple_,
     union_all,
 )
@@ -38,6 +40,7 @@ from app.models.enums import (
     AnomalyFamily,
     AnomalyState,
     AnomalyType,
+    BucketCompleteness,
     EvidenceStatus,
     IpsAnomalyType,
     PwAnomalyType,
@@ -45,6 +48,7 @@ from app.models.enums import (
     TriageDisposition,
     TriageStatus,
     WafAnomalyType,
+    WafMeasurement,
 )
 from app.models.explanation import AnomalyExplanation
 from app.models.ips import IpsAnomaly, IpsAnomalyTransition, IpsEntity
@@ -75,6 +79,33 @@ _IPS_TYPES = frozenset(t.value for t in IpsAnomalyType)
 _PW_TYPES = frozenset(t.value for t in PwAnomalyType)
 
 SubjectKindFilter = SubjectKind | Collection[SubjectKind] | None
+
+#: The measurement states in which a WAF bucket's endpoint counts are usable.
+_WAF_MEASURED = (WafMeasurement.EXACT.value, WafMeasurement.LOWER_BOUND.value)
+
+
+class WafTrafficRow(NamedTuple):
+    """One ranked WAF endpoint in the traffic page."""
+
+    id: uuid.UUID
+    events: int
+    buckets_with_data: int
+    partial_buckets: int
+    peak_rate_per_second: float
+    peak_bucket_start: datetime
+    virtual_host: str | None
+    http_method: str
+    normalized_endpoint: str
+    active: bool
+
+
+class WafTrafficPage(NamedTuple):
+    """A page of ranked endpoints and the whole set's summary."""
+
+    items: list[WafTrafficRow]
+    total: int
+    max_events: int | None
+    attributed_events: int
 
 
 class AnomalyRepository:
@@ -1100,3 +1131,307 @@ class AnomalyRepository:
             .options(defer(b.observations), defer(b.exclusion_counts))
         )
         return list(rows.all()), int(total or 0)
+
+    # ------------------------------------------------------- WAF traffic (TOP-1)
+    async def waf_source_and_profile(
+        self, log_source_id: uuid.UUID
+    ) -> tuple[LogSource, WafSourceProfile | None] | None:
+        """The log source and its WAF profile, if it has one.
+
+        None only when the log source itself does not exist. An existing source
+        without a profile was never collected, which the route answers as
+        NOT_COLLECTED rather than as an unknown id.
+        """
+        row = (
+            await self.session.execute(
+                select(LogSource, WafSourceProfile)
+                .outerjoin(WafSourceProfile, WafSourceProfile.log_source_id == LogSource.id)
+                .where(LogSource.id == log_source_id)
+            )
+        ).first()
+        return (row[0], row[1]) if row is not None else None
+
+    async def waf_latest_complete_bucket(
+        self, log_source_id: uuid.UUID
+    ) -> tuple[datetime, int] | None:
+        """The newest bucket whose endpoint counts were a complete measurement.
+
+        A PARTIAL bucket is the newest *collected* bucket but not a complete
+        one, so it cannot anchor a "5m" window that claims to be whole.
+        """
+        b = WafSourceBucket
+        row = (
+            await self.session.execute(
+                select(b.bucket_start, b.bucket_seconds)
+                .where(
+                    b.log_source_id == log_source_id,
+                    b.completeness == BucketCompleteness.COMPLETE.value,
+                )
+                .order_by(b.bucket_start.desc())
+                .limit(1)
+            )
+        ).first()
+        return (row[0], int(row[1])) if row is not None else None
+
+    async def waf_traffic_bucket_stats(
+        self, log_source_id: uuid.UUID, *, since: datetime, until: datetime
+    ) -> tuple[int, int, bool, int | None, int | None]:
+        """(measured, partial, any truncated, source events, untracked requests).
+
+        Measured means the bucket states that its endpoint counts were taken;
+        only those buckets' rows are ranked. Source events and untracked
+        requests are summed over the same buckets, so a missing bucket can
+        neither shrink the total nor invent a zero. Truncation is checked on
+        every bucket of the range, measured or not, because it is what makes a
+        missing bucket's absence uninformative.
+        """
+        b = WafSourceBucket
+        measured = b.request_count_measurement.in_(_WAF_MEASURED)
+        row = (
+            await self.session.execute(
+                select(
+                    func.count().filter(measured).label("measured"),
+                    func.count()
+                    .filter(
+                        measured,
+                        b.completeness == BucketCompleteness.PARTIAL.value,
+                    )
+                    .label("partial"),
+                    func.coalesce(
+                        func.bool_or(or_(b.groups_truncated, b.admission_truncated)),
+                        False,
+                    ).label("truncated"),
+                    func.sum(b.total_events).filter(measured).label("source_events"),
+                    func.sum(b.untracked_requests).filter(measured).label("untracked"),
+                ).where(
+                    b.log_source_id == log_source_id,
+                    b.bucket_start >= since,
+                    b.bucket_start < until,
+                )
+            )
+        ).one()
+        return (
+            int(row.measured),
+            int(row.partial),
+            bool(row.truncated),
+            int(row.source_events) if row.source_events is not None else None,
+            int(row.untracked) if row.untracked is not None else None,
+        )
+
+    async def waf_traffic_page(
+        self,
+        log_source_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime,
+        sort: str,
+        descending: bool,
+        limit: int,
+        offset: int,
+    ) -> WafTrafficPage:
+        """One page of endpoints ranked over the whole measured set.
+
+        One statement: the per-endpoint aggregate, the peak bucket, the sort,
+        the page and the whole set's count/max/sum. The summary is LEFT JOINed
+        so an offset past the end still reports the true total, and no query is
+        issued per endpoint.
+        """
+        b = WafSourceBucket
+        measured_buckets = select(b.bucket_start).where(
+            b.log_source_id == log_source_id,
+            b.bucket_start >= since,
+            b.bucket_start < until,
+            b.request_count_measurement.in_(_WAF_MEASURED),
+        )
+        m = WafEndpointMetric
+        e = WafEndpoint
+        endpoints = select(WafEndpoint.id).where(
+            WafEndpoint.log_source_id == log_source_id
+        )
+        agg = (
+            select(
+                m.waf_endpoint_id.label("entity_id"),
+                func.sum(m.request_count).label("events"),
+                func.count().label("buckets_with_data"),
+                func.count()
+                .filter(m.completeness == BucketCompleteness.PARTIAL.value)
+                .label("partial_buckets"),
+            )
+            .where(
+                m.bucket_start.in_(measured_buckets),
+                m.waf_endpoint_id.in_(endpoints),
+            )
+            .group_by(m.waf_endpoint_id)
+            .subquery()
+        )
+        peak_rate = cast(m.request_count, Float) / m.bucket_seconds
+        peak = (
+            select(
+                m.waf_endpoint_id.label("entity_id"),
+                m.bucket_start.label("peak_bucket_start"),
+                peak_rate.label("peak_rate"),
+            )
+            .where(
+                m.bucket_start.in_(measured_buckets),
+                m.waf_endpoint_id.in_(endpoints),
+            )
+            .ext(distinct_on(m.waf_endpoint_id))
+            .order_by(m.waf_endpoint_id, peak_rate.desc(), m.bucket_start)
+            .subquery()
+        )
+        summary = (
+            select(
+                func.count().label("total"),
+                func.max(agg.c.events).label("max_events"),
+                func.coalesce(func.sum(agg.c.events), 0).label("attributed_events"),
+            )
+            .select_from(agg)
+            .subquery()
+        )
+        if sort == "host":
+            ordered: ColumnElement[Any] = (
+                e.virtual_host.desc().nulls_last()
+                if descending
+                else e.virtual_host.asc().nulls_last()
+            )
+        elif sort == "endpoint":
+            ordered = (
+                e.normalized_endpoint.desc() if descending else e.normalized_endpoint.asc()
+            )
+        elif sort == "peak":
+            ordered = peak.c.peak_rate.desc() if descending else peak.c.peak_rate.asc()
+        else:
+            ordered = agg.c.events.desc() if descending else agg.c.events.asc()
+        page = (
+            select(
+                agg.c.entity_id,
+                agg.c.events,
+                agg.c.buckets_with_data,
+                agg.c.partial_buckets,
+                peak.c.peak_rate,
+                peak.c.peak_bucket_start,
+                e.virtual_host,
+                e.http_method,
+                e.normalized_endpoint,
+                e.is_active,
+            )
+            .join(e, e.id == agg.c.entity_id)
+            .join(peak, peak.c.entity_id == agg.c.entity_id)
+            .order_by(ordered, e.id.asc())
+            .limit(limit)
+            .offset(offset)
+            .subquery()
+        )
+        statement = select(
+            summary.c.total,
+            summary.c.max_events,
+            summary.c.attributed_events,
+            page.c.entity_id,
+            page.c.events,
+            page.c.buckets_with_data,
+            page.c.partial_buckets,
+            page.c.peak_rate,
+            page.c.peak_bucket_start,
+            page.c.virtual_host,
+            page.c.http_method,
+            page.c.normalized_endpoint,
+            page.c.is_active,
+        ).select_from(summary.outerjoin(page, true()))
+        rows = (await self.session.execute(statement)).all()
+        items = [
+            WafTrafficRow(
+                id=row.entity_id,
+                events=int(row.events),
+                buckets_with_data=int(row.buckets_with_data),
+                partial_buckets=int(row.partial_buckets),
+                peak_rate_per_second=float(row.peak_rate),
+                peak_bucket_start=row.peak_bucket_start,
+                virtual_host=row.virtual_host,
+                http_method=row.http_method,
+                normalized_endpoint=row.normalized_endpoint,
+                active=bool(row.is_active),
+            )
+            for row in rows
+            if row.entity_id is not None
+        ]
+        summary_row = rows[0]
+        return WafTrafficPage(
+            items=items,
+            total=int(summary_row.total or 0),
+            max_events=(
+                int(summary_row.max_events) if summary_row.max_events is not None else None
+            ),
+            attributed_events=int(summary_row.attributed_events or 0),
+        )
+
+    async def waf_traffic_series(
+        self,
+        log_source_id: uuid.UUID,
+        *,
+        since: datetime,
+        until: datetime,
+        step_seconds: int,
+        entity_ids: Collection[uuid.UUID],
+    ) -> tuple[dict[int, int], dict[tuple[int, uuid.UUID], int]]:
+        """(measured buckets per step, events per entity and step), one statement.
+
+        Only the page's entities are read. A step's measured count comes from the
+        source buckets themselves, so a step without a measured bucket is absent
+        from the dict and the route draws it as a gap, never as zero. An entity
+        with no row in a measured step is absent from `events`, which the route
+        reads as zero events over that step's measured seconds -- the same rule
+        `rate_per_second` applies to the whole window.
+        """
+        if not entity_ids:
+            return {}, {}
+        b = WafSourceBucket
+        m = WafEndpointMetric
+        measured_buckets = select(b.bucket_start).where(
+            b.log_source_id == log_source_id,
+            b.bucket_start >= since,
+            b.bucket_start < until,
+            b.request_count_measurement.in_(_WAF_MEASURED),
+        )
+        step = func.floor(
+            func.extract("epoch", b.bucket_start - since) / step_seconds
+        ).cast(Integer)
+        steps = (
+            select(step.label("step"), func.count().label("measured"))
+            .where(
+                b.log_source_id == log_source_id,
+                b.bucket_start >= since,
+                b.bucket_start < until,
+                b.request_count_measurement.in_(_WAF_MEASURED),
+            )
+            .group_by(step)
+            .subquery()
+        )
+        entity_step = func.floor(
+            func.extract("epoch", m.bucket_start - since) / step_seconds
+        ).cast(Integer)
+        events = (
+            select(
+                m.waf_endpoint_id.label("entity_id"),
+                entity_step.label("step"),
+                func.sum(m.request_count).label("events"),
+            )
+            .where(
+                m.waf_endpoint_id.in_(entity_ids),
+                m.bucket_start.in_(measured_buckets),
+            )
+            .group_by(m.waf_endpoint_id, entity_step)
+            .subquery()
+        )
+        rows = (
+            await self.session.execute(
+                select(steps.c.step, steps.c.measured, events.c.entity_id, events.c.events)
+                .select_from(steps.outerjoin(events, events.c.step == steps.c.step))
+            )
+        ).all()
+        measured: dict[int, int] = {}
+        per_entity: dict[tuple[int, uuid.UUID], int] = {}
+        for row in rows:
+            measured[int(row.step)] = int(row.measured)
+            if row.entity_id is not None:
+                per_entity[(int(row.step), row.entity_id)] = int(row.events)
+        return measured, per_entity

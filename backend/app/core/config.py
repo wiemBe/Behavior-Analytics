@@ -513,6 +513,9 @@ class Settings(BaseSettings):
     # --- API guardrails -----------------------------------------------------
     api_default_page_size: int = Field(default=50, ge=1, le=500)
     api_max_page_size: int = Field(default=200, ge=1, le=1000)
+    #: Rows one CSV export may hold. Past it the export is cut at this many
+    #: rows in sort order and says so (`X-Export-Truncated`), never silently.
+    api_max_export_rows: int = Field(default=10_000, ge=1)
     # Widest date range any list/history endpoint will honour.
     api_max_range_days: int = Field(default=365, ge=1)
 

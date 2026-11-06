@@ -6788,6 +6788,48 @@
     },
     "template": "{kind} {name}"
   },
+  "ips_traffic_detail.reason.bucket_partial": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A measured bucket in this window is a lower bound, so its destination-IP counts are lower bounds.",
+    "sample_english_params": {},
+    "template": "A measured bucket in this window is a lower bound, so its destination-IP counts are lower bounds."
+  },
+  "ips_traffic_detail.reason.buckets_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Some buckets of this window were not collected, so the rates cover the measured buckets only.",
+    "sample_english_params": {},
+    "template": "Some buckets of this window were not collected, so the rates cover the measured buckets only."
+  },
+  "ips_traffic_detail.reason.no_complete_bucket": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No bucket has been stored for this IPS source, so no rate can be measured.",
+    "sample_english_params": {},
+    "template": "No bucket has been stored for this IPS source, so no rate can be measured."
+  },
+  "ips_traffic_detail.reason.no_usable_bucket": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No bucket in this window has a usable destination-IP measurement, so no rate can be measured.",
+    "sample_english_params": {},
+    "template": "No bucket in this window has a usable destination-IP measurement, so no rate can be measured."
+  },
+  "ips_traffic_detail.reason.not_collected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This IPS source has no enabled, validated profile, so no traffic was collected.",
+    "sample_english_params": {},
+    "template": "This IPS source has no enabled, validated profile, so no traffic was collected."
+  },
+  "ips_traffic_detail.reason.truncated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A bucket in this window lost destination-IP entities, so the ranking is a lower bound.",
+    "sample_english_params": {},
+    "template": "A bucket in this window lost destination-IP entities, so the ranking is a lower bound."
+  },
   "propertywatch.action.change_pins": {
     "params": {},
     "sample": {},
@@ -13631,5 +13673,47 @@
     "sample_english": "maintenance window",
     "sample_english_params": {},
     "template": "maintenance window"
+  },
+  "waf_traffic_detail.reason.bucket_partial": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A measured bucket in this window is partial, so its endpoint counts are lower bounds.",
+    "sample_english_params": {},
+    "template": "A measured bucket in this window is partial, so its endpoint counts are lower bounds."
+  },
+  "waf_traffic_detail.reason.buckets_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Some buckets of this window were not collected, so the rates cover the measured buckets only.",
+    "sample_english_params": {},
+    "template": "Some buckets of this window were not collected, so the rates cover the measured buckets only."
+  },
+  "waf_traffic_detail.reason.no_complete_bucket": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No complete bucket has been stored for this WAF source, so no rate can be measured.",
+    "sample_english_params": {},
+    "template": "No complete bucket has been stored for this WAF source, so no rate can be measured."
+  },
+  "waf_traffic_detail.reason.no_usable_bucket": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No bucket in this window has a usable endpoint measurement, so no rate can be measured.",
+    "sample_english_params": {},
+    "template": "No bucket in this window has a usable endpoint measurement, so no rate can be measured."
+  },
+  "waf_traffic_detail.reason.not_collected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This WAF source has no enabled, validated profile, so no traffic was collected.",
+    "sample_english_params": {},
+    "template": "This WAF source has no enabled, validated profile, so no traffic was collected."
+  },
+  "waf_traffic_detail.reason.truncated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "A bucket in this window lost endpoint groups or new endpoints, so the ranking is a lower bound.",
+    "sample_english_params": {},
+    "template": "A bucket in this window lost endpoint groups or new endpoints, so the ranking is a lower bound."
   }
 }

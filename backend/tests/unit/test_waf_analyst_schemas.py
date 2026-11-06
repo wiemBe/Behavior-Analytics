@@ -173,5 +173,5 @@ def test_every_waf_behavior_route_is_get_only() -> None:
         for p, ops in create_app().openapi()["paths"].items()
         if "/behavior/waf" in p
     }
-    assert len(paths) == 5, sorted(paths)
+    assert len(paths) == 7, sorted(paths)
     assert all(methods == {"get"} for methods in paths.values()), paths
