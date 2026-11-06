@@ -33,7 +33,7 @@ left out rather than guessed.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -43,6 +43,13 @@ from sqlalchemy import and_, cast, distinct, func, select, true
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.anomaly.thresholds import (
+    TUNING_KNOBS,
+    ThresholdOrigin,
+    ThresholdResolver,
+    Thresholds,
+)
+from app.core.config import Settings, get_settings
 from app.i18n.messages import MessageRef, render
 from app.models.alert import Alert
 from app.models.enums import (
@@ -217,6 +224,15 @@ class SourceSummary:
 
 
 @dataclass(frozen=True)
+class EffectiveThreshold:
+    """One tuning knob's resolved value and the layer that supplied it."""
+
+    knob: str
+    value: Any
+    source: ThresholdOrigin
+
+
+@dataclass(frozen=True)
 class CurrentKnobs:
     """The source's current detection settings, shown beside the replay in 17b."""
 
@@ -226,6 +242,12 @@ class CurrentKnobs:
     maintenance_until: datetime | None
     business_hours_only: bool
     expected_interval_seconds: int | None
+    #: The six tuning knobs as the engine resolves them for this source now.
+    effective_thresholds: tuple[EffectiveThreshold, ...]
+    #: LAB_MODE overrides criticality's hysteresis; the page says so (design §3.2).
+    lab_mode: bool
+    #: Whether the stored overrides carry a non-empty per-type block (design §3.2).
+    has_by_type: bool
 
 
 @dataclass(frozen=True)
@@ -316,6 +338,31 @@ def judgement_for(monitoring_enabled: bool, baseline_reliable: bool | None) -> J
     if baseline_reliable is True:
         return Judgement.JUDGED
     return Judgement.INSUFFICIENT_DATA
+
+
+def effective_thresholds(
+    resolved: Thresholds, origins: Mapping[str, ThresholdOrigin]
+) -> tuple[EffectiveThreshold, ...]:
+    """The six tuning knobs, each with the layer the resolver took it from.
+
+    ``origins`` comes from ``ThresholdResolver.resolve_traced``; this function
+    only projects it, so the page sees the resolver's answer rather than a
+    second implementation of the precedence rules.
+    """
+    return tuple(
+        EffectiveThreshold(
+            knob=knob,
+            value=getattr(resolved, knob),
+            source=origins.get(knob, ThresholdOrigin.DEFAULT),
+        )
+        for knob in TUNING_KNOBS
+    )
+
+
+def has_by_type(custom: Mapping[str, Any]) -> bool:
+    """Whether the stored overrides carry a non-empty ``by_type`` block."""
+    block = custom.get("by_type")
+    return isinstance(block, dict) and bool(block)
 
 
 def _reason_for(judgement: Judgement) -> Reason | None:
@@ -504,8 +551,15 @@ def order_rows(
 class NoiseReadModel:
     """The three grouped reads behind ``/noise/sources`` and its detail route."""
 
-    def __init__(self, session: AsyncSession, *, now: datetime | None = None) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        settings: Settings | None = None,
+        now: datetime | None = None,
+    ) -> None:
         self.session = session
+        self.settings = settings or get_settings()
         self.now = now or datetime.now(UTC)
 
     async def source_snapshots(
@@ -754,6 +808,11 @@ class NoiseReadModel:
         incidents = await self.incident_groups([log_source_id])
         alerts = await self.alert_groups([log_source_id])
         summary = summarise_source(snapshot, incidents, alerts)
+        # The resolver reads Settings only: no extra statement, so the detail
+        # route stays at three reads.
+        resolved = ThresholdResolver(self.settings).resolve_traced(
+            criticality=snapshot.criticality, custom=snapshot.custom_thresholds
+        )
         return SourceDetail(
             source=summary,
             detectors=summary.detectors,
@@ -764,6 +823,11 @@ class NoiseReadModel:
                 maintenance_until=snapshot.maintenance_until,
                 business_hours_only=snapshot.business_hours_only,
                 expected_interval_seconds=snapshot.expected_interval_seconds,
+                effective_thresholds=effective_thresholds(
+                    resolved.values, resolved.origins
+                ),
+                lab_mode=self.settings.lab_mode,
+                has_by_type=has_by_type(snapshot.custom_thresholds),
             ),
             coverage=coverage_for(DETAIL_WINDOW_DAYS, retention_days),
         )

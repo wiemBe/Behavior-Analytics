@@ -133,6 +133,9 @@
     },
     "suppression": {
       "maintenance": "maintenance window"
+    },
+    "tuning": {
+      "direction_disabled": "the direction was disabled by a tuning change"
     }
   },
   "ariel_load": {
@@ -645,6 +648,17 @@
     }
   },
   "noise": {
+    "preview": {
+      "direction_disabled": "Not replayed: the source''s direction setting disables this detector.",
+      "insufficient_coverage": "Only {covered} of {window} days are stored; a replay needs at least 7.",
+      "maintenance": "The source is in maintenance; today''s rule would not judge these buckets.",
+      "maintenance_history": "{count} buckets were recorded during a maintenance window; a past window cannot be reconstructed.",
+      "not_judged": "{count} of {total} buckets could not be judged, more than the 10% a count may rest on.",
+      "not_monitored": "The source is not monitored, so there is nothing to replay.",
+      "not_replayable": "Not replayed: {reason}",
+      "partial": "Counts cover {covered} of {window} days.",
+      "too_large": "The window has {count} buckets, more than the {limit} a replay accepts; choose 7 days."
+    },
     "reason": {
       "empty_window": "No source raised an anomaly in the last {window} days of stored data.",
       "no_reliable_baseline": "Not judged: no reliable baseline for this weekday and hour.",

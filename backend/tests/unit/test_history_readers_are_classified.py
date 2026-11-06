@@ -127,6 +127,14 @@ HISTORY_TABLES = (
             "app.cli.doctor.Doctor.check_anomaly_evaluation": Reader(
                 "R6 (not in the design table: evaluation lag)", ReaderKind.DISPLAY
             ),
+            # SOC-17b: the replay judges stored buckets only, so its window and its
+            # latest bucket width are LIVE-only like the engine's own reads.
+            "app.noise.backtest.NoiseBacktest._source": Reader(
+                "replay bucket width (SOC-17b)", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.noise.backtest.NoiseBacktest._metrics": Reader(
+                "replay window (SOC-17b)", ReaderKind.LIVE_ONLY, 1
+            ),
         },
     ),
     HistoryTable(

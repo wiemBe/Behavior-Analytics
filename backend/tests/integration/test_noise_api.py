@@ -34,6 +34,7 @@ from app.models.enums import (
     AnomalyState,
     AnomalyType,
     ClassificationReviewStatus,
+    Criticality,
     Severity,
     SourceClass,
     TriageDisposition,
@@ -582,6 +583,113 @@ async def test_detail_reports_both_windows_per_detector(
     assert body["replay"] is None
 
 
+async def test_detail_reports_the_effective_thresholds_and_their_source(
+    db_session, db_schema, clock
+) -> None:
+    """The tuning form pre-fills from the resolver, so the detail route says so.
+
+    Default and custom are represented here; criticality and LAB_MODE are the
+    two tests below. ``by_type`` must not move the top-level value (design §3.2).
+    """
+    instance = await _instance(db_session)
+    source = await _add_source(
+        db_session, instance, name="thresholds", qradar_id=20, now=clock
+    )
+    source.criticality = Criticality.LOW
+    source.custom_thresholds = {
+        "open_after": 4,
+        "direction": "spike",
+        "by_type": {"VOLUME_SPIKE": {"deviation_z": 9.0}},
+    }
+    await db_session.commit()
+
+    body = reader_client(
+        db_schema, settings=Settings(_env_file=None, debug=False)
+    ).get(f"/api/v1/noise/sources/{source.id}").json()
+
+    current = body["current"]
+    assert current["lab_mode"] is False
+    assert current["has_by_type"] is True
+    assert current["effective_thresholds"] == {
+        "deviation_z": {"value": 3.5, "source": "default"},
+        "spike_ratio": {"value": 2.0, "source": "default"},
+        "drop_ratio": {"value": 0.5, "source": "default"},
+        "min_absolute_delta_events": {"value": 100.0, "source": "default"},
+        "open_after": {"value": 4, "source": "custom"},
+        "direction": {"value": "spike", "source": "custom"},
+    }
+
+
+async def test_detail_names_criticality_when_it_supplies_open_after(
+    db_session, db_schema, clock
+) -> None:
+    instance = await _instance(db_session)
+    source = await _add_source(
+        db_session, instance, name="criticality", qradar_id=21, now=clock
+    )
+    source.criticality = Criticality.CRITICAL
+    await db_session.commit()
+
+    body = reader_client(
+        db_schema, settings=Settings(_env_file=None, debug=False)
+    ).get(f"/api/v1/noise/sources/{source.id}").json()
+
+    current = body["current"]
+    assert current["effective_thresholds"]["open_after"] == {
+        "value": 1,
+        "source": "criticality",
+    }
+    assert current["has_by_type"] is False
+    assert current["lab_mode"] is False
+
+
+async def test_detail_names_lab_mode_and_keeps_detection_knobs_production(
+    db_session, db_schema, clock
+) -> None:
+    instance = await _instance(db_session)
+    source = await _add_source(
+        db_session, instance, name="lab", qradar_id=22, now=clock
+    )
+    source.criticality = Criticality.LOW
+    await db_session.commit()
+
+    body = reader_client(
+        db_schema, settings=Settings(_env_file=None, debug=False, lab_mode=True)
+    ).get(f"/api/v1/noise/sources/{source.id}").json()
+
+    current = body["current"]
+    assert current["lab_mode"] is True
+    assert current["effective_thresholds"]["open_after"] == {
+        "value": 1,
+        "source": "lab_mode",
+    }
+    # LAB_MODE never lowers a detection threshold.
+    assert current["effective_thresholds"]["deviation_z"] == {
+        "value": 3.5,
+        "source": "default",
+    }
+
+
+async def test_detail_passes_a_malformed_stored_override_through(
+    db_session, db_schema, clock
+) -> None:
+    """A row that never passed validation is read, not refused (r0's rule)."""
+    instance = await _instance(db_session)
+    source = await _add_source(
+        db_session, instance, name="malformed", qradar_id=23, now=clock
+    )
+    source.custom_thresholds = {"deviation_z": None, "direction": "sideways"}
+    await db_session.commit()
+
+    response = reader_client(
+        db_schema, settings=Settings(_env_file=None, debug=False)
+    ).get(f"/api/v1/noise/sources/{source.id}")
+    assert response.status_code == 200, response.text
+    thresholds = response.json()["current"]["effective_thresholds"]
+    assert thresholds["deviation_z"] == {"value": None, "source": "custom"}
+    assert thresholds["direction"] == {"value": "sideways", "source": "custom"}
+
+
 # ------------------------------------------------------------------- response shape
 LIST_KEYS = {
     "window_days",
@@ -666,6 +774,21 @@ async def test_the_response_key_sets_are_stable(db_session, db_schema, clock) ->
         "maintenance_until",
         "business_hours_only",
         "expected_interval_seconds",
+        "effective_thresholds",
+        "lab_mode",
+        "has_by_type",
+    }
+    assert set(detail["current"]["effective_thresholds"]) == {
+        "deviation_z",
+        "spike_ratio",
+        "drop_ratio",
+        "min_absolute_delta_events",
+        "open_after",
+        "direction",
+    }
+    assert set(detail["current"]["effective_thresholds"]["open_after"]) == {
+        "value",
+        "source",
     }
 
 

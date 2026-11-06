@@ -18,8 +18,17 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import SessionDep, SettingsDep
+from app.noise.backtest import NoiseBacktest
 from app.noise.read_model import WINDOW_DAYS, NoiseOrder, NoiseReadModel
-from app.schemas.noise import NoiseListOut, NoiseSourceDetailOut, detail_out, list_out
+from app.schemas.noise import (
+    NoiseListOut,
+    NoisePreviewIn,
+    NoisePreviewOut,
+    NoiseSourceDetailOut,
+    detail_out,
+    list_out,
+    preview_out,
+)
 
 router = APIRouter(prefix="/noise", tags=["noise"])
 
@@ -65,10 +74,35 @@ async def get_noise_source(
     Unlike the list this includes a source that is not monitored, because its
     page must say ``NOT_COLLECTED`` and null counts rather than 404 or zero.
     """
-    detail = await NoiseReadModel(session).source_detail(
+    detail = await NoiseReadModel(session, settings=settings).source_detail(
         log_source_id,
         retention_days=settings.log_source_anomaly_retention_days,
     )
     if detail is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
     return detail_out(detail)
+
+
+@router.post("/sources/{log_source_id}/preview", response_model=NoisePreviewOut)
+async def preview_noise_source(
+    log_source_id: uuid.UUID,
+    payload: NoisePreviewIn,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> NoisePreviewOut:
+    """Replay 7 or 28 stored days under the current and proposed thresholds.
+
+    A POST only because the proposed values are a body, like the custom-rule
+    preview. Nothing here writes, audits or calls QRadar: it reads four
+    statements and folds them through the production detectors. The caller
+    needs the router's ``read:anomalies`` and no write permission.
+    """
+    proposed = payload.thresholds.model_dump(exclude_none=True, exclude_unset=True)
+    result = await NoiseBacktest(session, settings=settings).preview(
+        log_source_id,
+        proposed=proposed,
+        window_days=payload.window_days,
+    )
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
+    return preview_out(result)
