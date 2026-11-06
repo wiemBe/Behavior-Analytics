@@ -414,7 +414,9 @@ async def test_sort_and_order_change_the_page_without_changing_the_total(
     assert paged.json()["order"] == "desc"
 
 
-async def test_facets_equal_the_filtered_list_counts(db_session) -> None:
+async def test_facets_ignore_their_own_dimension_and_total_is_the_list_total(
+    db_session,
+) -> None:
     db_session.add_all(
         [
             _alert("a", severity=Severity.HIGH, status=AlertStatus.OPEN),
@@ -444,6 +446,7 @@ async def test_facets_equal_the_filtered_list_counts(db_session) -> None:
     expected_severity = Counter(item["severity"] for item in items)
     expected_status = Counter(item["status"] for item in items)
     body = facets.json()
+    # `total` still applies every filter, so it is the list's own total.
     assert body["total"] == listing.json()["total"] == len(items) == 2
     assert {
         row["value"]: row["count"] for row in body["severity"] if row["count"]
@@ -451,15 +454,19 @@ async def test_facets_equal_the_filtered_list_counts(db_session) -> None:
     assert {
         row["value"]: row["count"] for row in body["status"] if row["count"]
     } == dict(expected_status)
-    # The family filter is applied to every facet, including its own.
+    # The family facet is the one that ignores the family filter: every family is
+    # counted under the other filters (here there are none).
     assert {
         row["value"]: row["count"] for row in body["family"] if row["count"]
-    } == {"log_source": 2}
+    } == {"log_source": 2, "waf": 1, "ips": 1, "scheduled_search": 1}
     assert body["filters_applied"]["family"] == "log_source"
     # Every closed value is present even at zero, in a stable order.
     assert [row["value"] for row in body["severity"]] == [
         "CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO",
     ]
+    # No severity or status filter was sent, so those two facets exclude nothing and
+    # still cover exactly the list; a facet only parts from `total` when its own filter
+    # is set (the tests below pin that).
     assert sum(row["count"] for row in body["severity"]) == body["total"]
     assert sum(row["count"] for row in body["status"]) == body["total"]
 
@@ -491,6 +498,205 @@ async def test_the_statement_count_is_constant_for_one_and_for_two_hundred_alert
 
     assert len(small_list) == len(large_list)
     assert len(small_facets) == len(large_facets)
-    # The facets are one grouped statement; the list is a count and a page.
+    # The facets are one statement; the list is a count and a page.
     assert len(small_facets) == 1
     assert len(small_list) == 2
+
+
+def _counts(body: dict, facet: str) -> dict[str, int]:
+    """A facet's non-zero counts: the options an analyst can add to the view."""
+    return {row["value"]: row["count"] for row in body[facet] if row["count"]}
+
+
+async def _facets(client, params):  # type: ignore[no-untyped-def]
+    response = await client.get("/api/v1/alerts/facets", params=params)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def test_a_severity_filter_leaves_the_severity_facet_unfiltered(db_session) -> None:
+    db_session.add_all(
+        [
+            _alert("high open", severity=Severity.HIGH, status=AlertStatus.OPEN),
+            _alert("high ack", severity=Severity.HIGH, status=AlertStatus.ACKNOWLEDGED),
+            _alert("critical", severity=Severity.CRITICAL, source_type="waf_endpoint"),
+            _alert("medium", severity=Severity.MEDIUM, source_type="ips_entity"),
+        ]
+    )
+    await db_session.commit()
+
+    async with _client(db_session) as client:
+        body = await _facets(client, {"severity": "HIGH"})
+        listing = await client.get(
+            "/api/v1/alerts", params={"severity": "HIGH", "limit": 500}
+        )
+
+    assert listing.status_code == 200, listing.text
+    # The severity chips measure what choosing each one would leave, so a severity the
+    # filter excludes is not drawn as a false zero.
+    assert _counts(body, "severity") == {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 1}
+    # `total` is still the list's total under every filter.
+    assert body["total"] == listing.json()["total"] == 2
+    # The other two facets keep the severity filter.
+    assert _counts(body, "status") == {"OPEN": 1, "ACKNOWLEDGED": 1}
+    assert _counts(body, "family") == {"log_source": 2}
+
+
+async def test_two_selected_severities_leave_the_severity_facet_unfiltered(db_session) -> None:
+    db_session.add_all(
+        [
+            _alert("high", severity=Severity.HIGH),
+            _alert("low", severity=Severity.LOW, source_type="waf_endpoint"),
+            _alert("medium", severity=Severity.MEDIUM, source_type="ips_entity"),
+            _alert("info", severity=Severity.INFO, source_type="scheduled_search"),
+        ]
+    )
+    await db_session.commit()
+
+    async with _client(db_session) as client:
+        body = await _facets(
+            client, [("severity", "HIGH"), ("severity", "LOW")]
+        )
+        listing = await client.get(
+            "/api/v1/alerts",
+            params=[("severity", "HIGH"), ("severity", "LOW"), ("limit", 500)],
+        )
+
+    assert listing.status_code == 200, listing.text
+    assert _counts(body, "severity") == {
+        "HIGH": 1, "MEDIUM": 1, "LOW": 1, "INFO": 1,
+    }
+    assert body["total"] == listing.json()["total"] == 2
+    assert _counts(body, "family") == {"log_source": 1, "waf": 1}
+
+
+async def test_a_status_filter_leaves_the_status_facet_unfiltered(db_session) -> None:
+    db_session.add_all(
+        [
+            _alert("open high", severity=Severity.HIGH, status=AlertStatus.OPEN),
+            _alert("open medium", severity=Severity.MEDIUM, status=AlertStatus.OPEN),
+            _alert(
+                "ack critical", severity=Severity.CRITICAL,
+                status=AlertStatus.ACKNOWLEDGED, source_type="waf_endpoint",
+            ),
+            _alert(
+                "resolved low", severity=Severity.LOW,
+                status=AlertStatus.RESOLVED, source_type="ips_entity",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    async with _client(db_session) as client:
+        body = await _facets(client, {"status": "OPEN"})
+        listing = await client.get(
+            "/api/v1/alerts", params={"status": "OPEN", "limit": 500}
+        )
+
+    assert listing.status_code == 200, listing.text
+    # The status select offers every status with the count choosing it would return.
+    assert _counts(body, "status") == {"OPEN": 2, "ACKNOWLEDGED": 1, "RESOLVED": 1}
+    assert body["total"] == listing.json()["total"] == 2
+    # The severity facet honours the status filter: only OPEN alerts are counted.
+    assert _counts(body, "severity") == {"HIGH": 1, "MEDIUM": 1}
+
+
+async def test_family_and_severity_each_ignore_only_their_own_filter(db_session) -> None:
+    db_session.add_all(
+        [
+            _alert("high on a source", severity=Severity.HIGH),
+            _alert("low on a source", severity=Severity.LOW),
+            _alert("high waf", severity=Severity.HIGH, source_type="waf_endpoint"),
+            _alert("critical waf", severity=Severity.CRITICAL, source_type="waf_endpoint"),
+        ]
+    )
+    await db_session.commit()
+
+    async with _client(db_session) as client:
+        body = await _facets(client, {"family": "log_source", "severity": "HIGH"})
+        listing = await client.get(
+            "/api/v1/alerts",
+            params={"family": "log_source", "severity": "HIGH", "limit": 500},
+        )
+
+    assert listing.status_code == 200, listing.text
+    # The family facet ignores the family filter but keeps the severity one.
+    assert _counts(body, "family") == {"log_source": 1, "waf": 1}
+    # The severity facet ignores the severity filter but keeps the family one.
+    assert _counts(body, "severity") == {"HIGH": 1, "LOW": 1}
+    assert body["total"] == listing.json()["total"] == 1
+    assert _counts(body, "status") == {"OPEN": 1}
+
+
+async def test_the_other_filters_apply_to_every_facet_and_to_the_total(db_session) -> None:
+    instance = await make_instance(db_session)
+    source = await make_log_source(db_session, instance, qradar_id=910, name="edge-a")
+    other = await make_log_source(db_session, instance, qradar_id=911, name="edge-b")
+
+    db_session.add_all(
+        [
+            _alert("volume drop on edge", severity=Severity.HIGH, source_id=source.id,
+                   opened_at=BASE - timedelta(hours=1)),
+            _alert("volume spike on edge", severity=Severity.MEDIUM,
+                   status=AlertStatus.ACKNOWLEDGED,
+                   source_id=source.id, opened_at=BASE - timedelta(hours=2)),
+            _alert("volume drop on core", severity=Severity.CRITICAL, source_id=other.id,
+                   opened_at=BASE - timedelta(hours=1)),
+            _alert("waf ratio", severity=Severity.LOW, source_id=source.id,
+                   opened_at=BASE - timedelta(hours=1)),
+            _alert("volume drop old", severity=Severity.LOW, source_id=source.id,
+                   opened_at=BASE - timedelta(hours=3)),
+            # One HIGH alert outside each of the other filters, so a facet that ignored one
+            # of them would count a RESOLVED row and the assertions below would see it.
+            _alert("spike on edge", severity=Severity.HIGH, status=AlertStatus.RESOLVED,
+                   source_id=source.id, opened_at=BASE - timedelta(hours=1)),
+            _alert("volume drop ancient", severity=Severity.HIGH, status=AlertStatus.RESOLVED,
+                   source_id=source.id, opened_at=BASE - timedelta(hours=10)),
+            _alert("volume drop remote", severity=Severity.HIGH, status=AlertStatus.RESOLVED,
+                   source_id=other.id, opened_at=BASE - timedelta(hours=1)),
+        ]
+    )
+    await db_session.commit()
+    params = {
+        "log_source_id": str(source.id),
+        "q": "volume",
+        "since": (BASE - timedelta(hours=2)).isoformat(),
+        "until": BASE.isoformat(),
+        "severity": "HIGH",
+    }
+
+    async with _client(db_session) as client:
+        body = await _facets(client, params)
+        listing = await client.get(
+            "/api/v1/alerts", params={**params, "limit": 500}
+        )
+
+    assert listing.status_code == 200, listing.text
+    assert body["total"] == listing.json()["total"] == 1
+    # Every facet honours the source, the search and the window: the severity facet counts
+    # the two source-A "volume" rows inside it, and only the HIGH one reaches `total`.
+    assert _counts(body, "severity") == {"HIGH": 1, "MEDIUM": 1}
+    assert _counts(body, "status") == {"OPEN": 1}
+    assert _counts(body, "family") == {"log_source": 1}
+
+
+async def test_the_facets_stay_one_statement_with_every_filter_kind_applied(db_session) -> None:
+    db_session.add(_alert("only", severity=Severity.HIGH))
+    await db_session.commit()
+    params = {
+        "status": "OPEN",
+        "severity": "HIGH",
+        "family": "log_source",
+        "log_source_id": str(uuid.uuid4()),
+        "q": "only",
+        "since": (BASE - timedelta(hours=1)).isoformat(),
+        "until": (BASE + timedelta(hours=1)).isoformat(),
+    }
+
+    async with _client(db_session) as client:
+        # Warm the statement cache, then measure the real call.
+        await client.get("/api/v1/alerts/facets", params=params)
+        with _counting(db_session) as statements:
+            await client.get("/api/v1/alerts/facets", params=params)
+
+    assert len(statements) == 1
