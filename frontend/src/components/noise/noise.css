@@ -1,0 +1,69 @@
+/* Noisy sources: layout only. Colours and sizes come from the tokens. */
+
+.noise-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-6);
+  margin-bottom: var(--sp-5);
+}
+.noise-controls .muted {
+  margin-inline-end: var(--sp-1);
+}
+
+.noise-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.noise-facts p {
+  margin: 0;
+  line-height: var(--lh-prose);
+}
+
+.noise-source {
+  min-width: 20ch;
+}
+.noise-class {
+  white-space: nowrap;
+}
+.noise-unmonitored {
+  color: var(--text-2);
+}
+.noise-judged {
+  white-space: nowrap;
+}
+.noise-judged .cell-sub {
+  white-space: normal;
+  max-width: 22ch;
+}
+.noise-table .pill {
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+.noise-table th.noise-window-off {
+  color: var(--text-3);
+}
+/* A left-aligned column that follows a right-aligned figure needs air. */
+.noise-table td.num + td:not(.num),
+.noise-table th.num + th:not(.num) {
+  padding-inline-start: var(--sp-5);
+}
+.noise-footnote {
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+  max-width: 100ch;
+}
+.noise-quiet p {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.noise-quiet p:last-child {
+  margin-bottom: 0;
+}

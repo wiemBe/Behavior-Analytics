@@ -12,6 +12,7 @@ export const GUIDE_ROUTES = {
   "/anomalies/[id]": "anomaly-detail",
   "/behavior/sources": "source-behavior",
   "/behavior/sources/[id]": "source-behavior",
+  "/behavior/noise": "source-behavior",
   "/behavior/traffic": "waf-behavior",
   "/behavior/waf": "waf-behavior",
   "/behavior/waf/sources/[id]": "waf-behavior",

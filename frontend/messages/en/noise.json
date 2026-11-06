@@ -1,0 +1,89 @@
+{
+  "meta": "Noisy sources",
+  "boundary": {
+    "title": "Noisy sources",
+    "loading": "noisy sources",
+    "error": "Noisy sources"
+  },
+  "title": "Noisy sources",
+  "description": "Which log sources keep raising anomalies, and how much of that the closed triage items call noise. Times are UTC.",
+  "controls": {
+    "window": "Window",
+    "windowLabel": "Incident window",
+    "windowOption": "{days} days"
+  },
+  "facts": {
+    "collection": "Last evaluation: <time></time>.",
+    "noCollection": "No evaluation has been recorded yet.",
+    "summary": "{total, plural, one {# source} other {# sources}} raised at least one anomaly in the last {days} days. Ordered by {order}."
+  },
+  "orderNames": {
+    "incidents": "incidents",
+    "alerts": "alerts",
+    "noise_share": "noise share"
+  },
+  "partial": {
+    "title": "Partial coverage.",
+    "covered": "The counts cover {covered} of {window} days.",
+    "text": "Nothing is known about the rest, so these numbers are lower bounds, not totals."
+  },
+  "table": {
+    "label": "Noisy sources",
+    "caption": "Log sources ranked by anomalies raised, with alerts, the share closed as noise and the worst deviation",
+    "source": "Source",
+    "class": "Class",
+    "incidents7": "Incidents",
+    "incidents28": "Incidents",
+    "alerts": "Alerts",
+    "noise": "Noise",
+    "worst": "Worst deviation",
+    "judged": "Judged",
+    "unit7": "7 d",
+    "unit28": "28 d",
+    "unitWindow": "{days} d",
+    "unitClosed": "% of closed",
+    "unitRatio": "× expected",
+    "orderBy": "Order by {name}",
+    "notMonitored": "not monitored",
+    "notMonitoredHint": "This source is not monitored, so no counts are collected.",
+    "notMeasured": "not measured",
+    "judgedYes": "Judged",
+    "notJudged": "Not judged",
+    "notJudgedHint": "A low count here is not evidence of calm.",
+    "noClassification": "Unclassified",
+    "shareLine": "{noise} noise / {closed} closed",
+    "shortLine": "{noise} noise / {closed} closed",
+    "shortHint": "share needs {min}+ closed",
+    "noClosed": "none closed yet",
+    "alertsLink": "Alerts of {name}",
+    "z": "z {value}",
+    "detector": "mostly {name}",
+    "ratio": "{value}×",
+    "detailLink": "Details"
+  },
+  "footnote": "Noise and worst deviation always cover the last 28 days of stored data, whichever window is selected. Incidents and alerts follow the selected window.",
+  "quiet": {
+    "summary": "No incidents on {count, plural, one {# source} other {# sources}}",
+    "note": "last {days} days",
+    "judged": "{count, plural, one {# source is} other {# sources are}} judged and raised nothing in {days} days.",
+    "notJudged": "{count, plural, one {# source is} other {# sources are}} not judged: no reliable baseline for this weekday and hour. A quiet count there is not evidence of calm.",
+    "none": "Every monitored source raised at least one anomaly in the last {days} days."
+  },
+  "empty": {
+    "title": "No source raised an anomaly",
+    "fallback": "No source raised an anomaly in the last {days} days of stored data.",
+    "withCollection": "The last evaluation was <time></time>, so the collection is running and the window is quiet.",
+    "noCollection": "No evaluation has been recorded, so this may be a missing collection and not a quiet window."
+  },
+  "pastEnd": {
+    "title": "This page is past the end of the list",
+    "text": "{total, plural, one {# source} other {# sources}} raised anomalies; the list starts at row {offset}.",
+    "link": "Back to the first page"
+  },
+  "errors": {
+    "title": "The noisy-sources list could not be loaded",
+    "failed": "The counts are unknown, not zero. Reload the page; if it fails again, check that the API is reachable and ask an administrator.",
+    "forbidden": "You do not have permission to view noisy sources. Ask an administrator for the read:anomalies grant.",
+    "expired": "Your session has expired. Sign in again to see the list."
+  }
+}

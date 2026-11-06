@@ -38,6 +38,7 @@ import logSources from "./logSources.json";
 import login from "./login.json";
 import mailAdmin from "./mailAdmin.json";
 import meta from "./meta.json";
+import noise from "./noise.json";
 import offenses from "./offenses.json";
 import outage from "./outage.json";
 import password from "./password.json";
@@ -94,6 +95,7 @@ const messages = {
   login,
   mailAdmin,
   meta,
+  noise,
   offenses,
   outage,
   password,
