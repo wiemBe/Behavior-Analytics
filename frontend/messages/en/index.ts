@@ -49,6 +49,7 @@ import searches from "./searches.json";
 import shell from "./shell.json";
 import siemLoad from "./siemLoad.json";
 import states from "./states.json";
+import traffic from "./traffic.json";
 import trend from "./trend.json";
 import triage from "./triage.json";
 import ui from "./ui.json";
@@ -103,6 +104,7 @@ const messages = {
   shell,
   siemLoad,
   states,
+  traffic,
   trend,
   triage,
   ui,

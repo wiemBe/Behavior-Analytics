@@ -12,6 +12,7 @@
     "anomalies": "Anomalies",
     "sources": "Sources",
     "wafBehavior": "WAF behavior",
+    "traffic": "Traffic",
     "propertyWatches": "Property watches",
     "geography": "Geography",
     "fleet": "Fleet",

@@ -46,6 +46,8 @@ export const NAV: NavGroup[] = [
       // Under /behavior like Sources, so it too wins by longest match.
       { href: "/behavior/waf", label: "WAF behavior" },
       // Under /behavior like Sources and WAF, so it too wins by longest match.
+      { href: "/behavior/traffic", label: "Traffic" },
+      // Under /behavior like Sources and WAF, so it too wins by longest match.
       { href: "/behavior/watches", label: "Property watches" },
       // Where events come from: a different question from the behavior of a source, but the
       // same family of "what is the traffic doing", so it sits with Behavior.

@@ -1,0 +1,160 @@
+{
+  "meta": "Traffic by destination",
+  "boundary": {
+    "title": "Traffic by destination",
+    "loading": "traffic by destination",
+    "error": "Traffic by destination"
+  },
+  "title": "Traffic by destination",
+  "description": "Average events per second received by each WAF endpoint and IPS destination IP. Times are UTC.",
+  "views": {
+    "label": "Traffic view",
+    "waf": "WAF endpoints",
+    "ips": "IPS destination IPs"
+  },
+  "controls": {
+    "view": "View",
+    "source": "Source",
+    "sourceLabel": "Log source",
+    "window": "Window",
+    "windowLabel": "Window",
+    "pageSize": "Rows per page",
+    "all": "All",
+    "pageSizeLabel": "Rows per page"
+  },
+  "export": {
+    "label": "Export CSV",
+    "link": "Export CSV (all {total} {noun}, {window})",
+    "note": "Large exports are cut at the server's limit and marked in the file.",
+    "nounWaf": "endpoints",
+    "nounIps": "destination IPs",
+    "windows": {
+      "5m": "5 min",
+      "1h": "1 hour",
+      "24h": "24 hours",
+      "7d": "7 days",
+      "28d": "28 days"
+    },
+    "disabledLoading": "not available while the data is loading.",
+    "disabledError": "not available: the data could not be loaded.",
+    "disabledNotCollected": "not available: this source is not collected.",
+    "disabledInsufficient": "not available: no complete bucket in this window.",
+    "disabledEmpty": "not available: nothing to export in this window."
+  },
+  "windows": {
+    "5m": "5 min",
+    "1h": "1 hour",
+    "24h": "24 hours",
+    "7d": "7 days",
+    "28d": "28 days"
+  },
+  "span": {
+    "newest": "Newest complete bucket: <start></start> to <end></end>.",
+    "range": "<start></start> to <end></end>.",
+    "basis": "Average events/s over {width}-minute buckets, divided by measured time only.",
+    "measured": "{measured} of {expected} {expected, plural, one {bucket} other {buckets}} measured."
+  },
+  "share": {
+    "known": "{unattributed} of {total} events ({share}) are not attributed to a listed {noun}. A total built from these rows is a lower bound.",
+    "unknown": "The part of the source's events that no listed {noun} carries is not known for this window, so a total built from these rows is a lower bound.",
+    "nounWaf": "endpoint",
+    "nounIps": "destination IP"
+  },
+  "banner": {
+    "partialTitle": "Partial data.",
+    "partialMissingText": "Only {measured} of {expected} buckets in this window have a usable measurement. Rates divide by the measured time only; a missing bucket is not counted as zero.",
+    "partialIncompleteText": "Some measured buckets were incomplete, so figures for the entities marked partial may be low. A missing value is not counted as zero.",
+    "truncatedTitle": "Truncated.",
+    "truncatedText": "Collection stopped admitting entities in at least one bucket of this window, so some endpoints or addresses may be missing and the figures shown are lower bounds.",
+    "reason": "Reason: {sentence}"
+  },
+  "reasons": {
+    "unknown": "The backend gave a reason that this page does not describe."
+  },
+  "insufficient": {
+    "title": "No complete bucket in this window.",
+    "text": "Nothing can be ranked until the source has a complete stored bucket. This is not a statement that no traffic arrived."
+  },
+  "notCollected": {
+    "titleWaf": "This WAF source is not collected.",
+    "titleIps": "This IPS source is not collected.",
+    "textWaf": "It has no enabled, validated behavior profile, so no traffic was stored for it. Set it up in WAF sources administration.",
+    "textIps": "It has no enabled, validated behavior profile, so no traffic was stored for it. Set it up in IPS sources administration.",
+    "linkWaf": "WAF sources",
+    "linkIps": "IPS sources"
+  },
+  "noSource": {
+    "titleWaf": "No WAF source has a behavior profile.",
+    "titleIps": "No IPS source has a behavior profile.",
+    "textWaf": "Nothing is collected until a log source is mapped and validated. An empty list here does not mean there is no traffic.",
+    "textIps": "Nothing is collected until a log source is mapped and validated. An empty list here does not mean there is no traffic."
+  },
+  "empty": {
+    "titleWaf": "No endpoint has data in this window.",
+    "titleIps": "No destination IP has data in this window.",
+    "textWaf": "The source stored no request count for any tracked endpoint in these buckets. That is an absence of data, not zero requests. Try a longer window.",
+    "textIps": "The source stored no event count for any admitted destination IP in these buckets. That is an absence of data, not zero events. Try a longer window."
+  },
+  "cut": "Showing the first {shown} of {total} (sorted). Export CSV has the full list.",
+  "pastEnd": {
+    "title": "This page is past the end of the list.",
+    "text": "There are {total} {noun} in this window and the offset is {offset}.",
+    "link": "Go to the first page"
+  },
+  "errors": {
+    "title": "Traffic could not be shown.",
+    "forbidden": "You do not have permission to view traffic. It needs the anomaly:read permission.",
+    "expired": "Your session has expired. Sign in again to continue.",
+    "notFound": "This log source is not known. Choose another source above.",
+    "failed": "Traffic could not be loaded, so nothing is shown. The backend may be unreachable; check that it is running, then reload the page. Nothing was changed.",
+    "sourcesFailed": "The list of sources could not be loaded, so no source can be chosen. Reload the page; if it persists, check that the backend is running. Nothing was changed."
+  },
+  "summary": {
+    "waf": "{total} endpoints in this window, sorted by {sort}, {order}.",
+    "ips": "{total} destination IPs in this window, sorted by {sort}, {order}.",
+    "wafOne": "{total} endpoint in this window, sorted by {sort}, {order}.",
+    "ipsOne": "{total} destination IP in this window, sorted by {sort}, {order}."
+  },
+  "sortNames": {
+    "rate": "average rate",
+    "peak": "peak rate",
+    "host": "host",
+    "endpoint": "endpoint",
+    "ip": "destination IP"
+  },
+  "orderNames": {
+    "asc": "ascending",
+    "desc": "descending"
+  },
+  "table": {
+    "captionWaf": "WAF endpoints ranked by average events per second",
+    "captionIps": "IPS destination IPs ranked by average events per second",
+    "labelWaf": "WAF endpoints",
+    "labelIps": "IPS destination IPs",
+    "position": "#",
+    "positionHint": "Position in this sort",
+    "host": "Host",
+    "endpoint": "Method and path",
+    "ip": "Destination IP",
+    "rate": "Average (events/s)",
+    "trend": "Trend",
+    "trendScale": "scaled per row",
+    "trendOne": "one bucket, no trend",
+    "trendNone": "no measured data",
+    "trendLabel": "events/s from {start} to {end}, low {low}, high {high}, {gaps, plural, =0 {no gaps} one {1 gap} other {# gaps}}",
+    "peak": "Peak (events/s)",
+    "coverage": "data in {with} of {measured} buckets",
+    "coverageHint": "This row has data in fewer buckets than were measured; its rate divides by the measured time of the whole window.",
+    "notMeasured": "not measured",
+    "noHost": "no host",
+    "retired": "Retired",
+    "retiredHint": "No longer tracked; listed because it has data in this window.",
+    "partial": "{count, plural, one {1 partial bucket} other {# partial buckets}}"
+  },
+  "links": {
+    "wafRow": "Open the endpoints of this source",
+    "wafRowAria": "Endpoints of this source, for {name}",
+    "ipsRow": "Anomalies of this IP",
+    "ipsRowAria": "Anomalies for destination IP {name}"
+  }
+}
