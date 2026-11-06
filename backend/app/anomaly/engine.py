@@ -47,7 +47,7 @@ from app.anomaly.lifecycle import (
     next_state,
 )
 from app.anomaly.seasonal import in_maintenance
-from app.anomaly.thresholds import ThresholdResolver
+from app.anomaly.thresholds import ThresholdResolver, direction_excluded
 from app.core.config import Settings, get_settings
 from app.fleet.outage_policy import ResolvedOutage, resolve
 from app.history.origin import is_live_clause
@@ -138,6 +138,84 @@ def _is_worse(anomaly: LogSourceAnomaly, observed: float) -> bool:
     if anomaly.anomaly_type == AnomalyType.VOLUME_SPIKE:
         return observed > current
     return observed < current
+
+
+# ------------------------------------------------------- pure context builders
+# The replay (`app.noise.backtest`) must reconstruct the engine's per-bucket
+# context and verdict exactly, never a copy of them. These three helpers are the
+# extraction: the engine and the replay both call them, so a change in either
+# path cannot make the two disagree.
+def metric_point(metric: LogSourceMetric) -> MetricPoint:
+    """The detector-facing point of one stored metric row."""
+    return MetricPoint(
+        interval_start=metric.bucket_start,
+        interval_end=metric.bucket_start + timedelta(seconds=metric.bucket_seconds),
+        # Coerced, not passed through: String-typed enum columns come back
+        # from the database as plain str, and the detectors compare
+        # identity. Normalizing here keeps that logic pure and safe.
+        completeness=BucketCompleteness(metric.completeness),
+        event_count=metric.event_count,
+        average_eps=metric.average_eps,
+        peak_eps=metric.peak_eps,
+        last_event_at=metric.last_event_at,
+        event_delay_seconds=metric.event_delay_seconds,
+        unknown_event_count=metric.unknown_event_count,
+        stored_event_count=metric.stored_event_count,
+        parsed_username_ratio=metric.parsed_username_ratio,
+        parsed_source_ip_ratio=metric.parsed_source_ip_ratio,
+        distinct_qid_count=metric.distinct_qid_count,
+        distinct_username_count=metric.distinct_username_count,
+        distinct_source_ip_count=metric.distinct_source_ip_count,
+        collection_error_count=metric.collection_error_count,
+        payload_signature=metric.payload_signature,
+    )
+
+
+def baseline_cell(row: LogSourceBaseline) -> BaselineCell:
+    """The detector-facing cell of one stored baseline row."""
+    return BaselineCell(
+        median=row.median, mad=row.mad, p05=row.p05, p95=row.p95,
+        sample_count=row.sample_count, is_reliable=row.is_reliable,
+        completeness=row.completeness, baseline_version=row.baseline_version,
+    )
+
+
+def run_detectors(
+    ctx: DetectionContext, telemetry: frozenset[LogSourceTelemetry]
+) -> tuple[list[AnomalyEvidence], dict[str, str]]:
+    """Run the detectors this bucket can support, and report the ones it cannot.
+
+    Detectors are pure, so each runs and its verdict is then kept only if the
+    bucket measured every input it read. A dropped verdict never reaches
+    hysteresis, so its state neither advances nor changes. The direction knob
+    drops the excluded volume verdict for the same reason: the detector did not
+    run, so it writes nothing that bucket.
+    """
+    excluded = direction_excluded(ctx.thresholds.direction)
+    results: list[AnomalyEvidence] = []
+    unsupported: dict[str, str] = {}
+    for evidence in (d(ctx) for d in DETECTORS):
+        reason = excluded.get(evidence.anomaly_type)
+        if reason is None:
+            reason = unmet_requirement(evidence.anomaly_type, telemetry)
+        if reason is None:
+            results.append(evidence)
+        else:
+            unsupported[evidence.anomaly_type.value] = reason
+    no_events = next(
+        (e for e in results if e.anomaly_type == AnomalyType.NO_EVENTS), None
+    )
+    if no_events is not None and no_events.is_anomalous:
+        # Demote the redundant detectors to UNKNOWN so their hysteresis
+        # counters do not advance on a trivially-satisfied condition.
+        for e in results:
+            if e.anomaly_type in SUPPRESSED_BY_NO_EVENTS:
+                e.signal = DetectorSignal.UNKNOWN
+                # The text and the reference are replaced together: the demoted verdict
+                # must not keep the detector's own code beside a different sentence.
+                e.reason_message = MESSAGE_SUPPRESSED_BY_NO_EVENTS
+                e.reason = render(e.reason_message)
+    return results, unsupported
 
 
 class AnomalyEngine:
@@ -426,28 +504,7 @@ class AnomalyEngine:
             log_source.expected_interval_seconds or metric.bucket_seconds or 300
         )
 
-        point = MetricPoint(
-            interval_start=metric.bucket_start,
-            interval_end=metric.bucket_start + timedelta(seconds=metric.bucket_seconds),
-            # Coerced, not passed through: String-typed enum columns come back
-            # from the database as plain str, and the detectors compare
-            # identity. Normalizing here keeps that logic pure and safe.
-            completeness=BucketCompleteness(metric.completeness),
-            event_count=metric.event_count,
-            average_eps=metric.average_eps,
-            peak_eps=metric.peak_eps,
-            last_event_at=metric.last_event_at,
-            event_delay_seconds=metric.event_delay_seconds,
-            unknown_event_count=metric.unknown_event_count,
-            stored_event_count=metric.stored_event_count,
-            parsed_username_ratio=metric.parsed_username_ratio,
-            parsed_source_ip_ratio=metric.parsed_source_ip_ratio,
-            distinct_qid_count=metric.distinct_qid_count,
-            distinct_username_count=metric.distinct_username_count,
-            distinct_source_ip_count=metric.distinct_source_ip_count,
-            collection_error_count=metric.collection_error_count,
-            payload_signature=metric.payload_signature,
-        )
+        point = metric_point(metric)
         return DetectionContext(
             point=point,
             baselines=cells,
@@ -505,11 +562,7 @@ class AnomalyEngine:
         )
         cells: dict[str, BaselineCell] = {}
         for b in rows:
-            cells[b.metric_name] = BaselineCell(
-                median=b.median, mad=b.mad, p05=b.p05, p95=b.p95,
-                sample_count=b.sample_count, is_reliable=b.is_reliable,
-                completeness=b.completeness, baseline_version=b.baseline_version,
-            )
+            cells[b.metric_name] = baseline_cell(b)
         return cells
 
     async def _recent_signatures(
@@ -539,32 +592,9 @@ class AnomalyEngine:
         telemetry: frozenset[LogSourceTelemetry],
         report: EvaluationReport,
     ) -> list[AnomalyEvidence]:
-        """Run the detectors this bucket can support.
-
-        Detectors are pure, so each runs and its verdict is then kept only if
-        the bucket measured every input it read. A dropped verdict never
-        reaches hysteresis, so its state neither advances nor changes.
-        """
-        results: list[AnomalyEvidence] = []
-        for evidence in (d(ctx) for d in DETECTORS):
-            reason = unmet_requirement(evidence.anomaly_type, telemetry)
-            if reason is None:
-                results.append(evidence)
-            else:
-                report.unsupported[evidence.anomaly_type.value] = reason
-        no_events = next(
-            (e for e in results if e.anomaly_type == AnomalyType.NO_EVENTS), None
-        )
-        if no_events is not None and no_events.is_anomalous:
-            # Demote the redundant detectors to UNKNOWN so their hysteresis
-            # counters do not advance on a trivially-satisfied condition.
-            for e in results:
-                if e.anomaly_type in SUPPRESSED_BY_NO_EVENTS:
-                    e.signal = DetectorSignal.UNKNOWN
-                    # The text and the reference are replaced together: the demoted verdict
-                    # must not keep the detector's own code beside a different sentence.
-                    e.reason_message = MESSAGE_SUPPRESSED_BY_NO_EVENTS
-                    e.reason = render(e.reason_message)
+        """Run the detectors this bucket can support (see `run_detectors`)."""
+        results, unsupported = run_detectors(ctx, telemetry)
+        report.unsupported.update(unsupported)
         return results
 
     # ------------------------------------------------------------ hysteresis

@@ -13,11 +13,18 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from app.anomaly.thresholds import ThresholdOrigin
 from app.models.enums import AnomalyType, Criticality, SourceClass
+from app.noise.backtest import (
+    ReplayCounts,
+    ReplayReason,
+    ReplayResult,
+    ReplayState,
+)
 from app.noise.read_model import (
     Coverage,
     CoverageState,
@@ -28,6 +35,7 @@ from app.noise.read_model import (
     SourceDetail,
     SourceSummary,
 )
+from app.schemas.log_source import ThresholdConfig
 from app.schemas.messages import MessageParamValue
 
 
@@ -94,6 +102,35 @@ class NoiseSourceOut(BaseModel):
     evaluated_through: datetime | None = None
 
 
+class NoiseEffectiveThresholdOut(BaseModel):
+    """One resolved tuning knob and the layer that supplied it.
+
+    ``source`` is ``default``, ``criticality``, ``lab_mode`` or ``custom`` --
+    the same names the resolver reports internally. A stored override that never
+    passed validation is passed through as-is (reads are never rejected), so the
+    value is typed as ``Any`` rather than coerced into a number it is not.
+    """
+
+    value: Any
+    source: ThresholdOrigin
+
+
+class NoiseEffectiveThresholdsOut(BaseModel):
+    """The six tuning knobs as the engine resolves them for this source now.
+
+    The tuning form pre-fills from these values, never from a hard-coded
+    default: a form showing 3.5 z while a custom 4.5 is in force would misstate
+    what the engine does.
+    """
+
+    deviation_z: NoiseEffectiveThresholdOut
+    spike_ratio: NoiseEffectiveThresholdOut
+    drop_ratio: NoiseEffectiveThresholdOut
+    min_absolute_delta_events: NoiseEffectiveThresholdOut
+    open_after: NoiseEffectiveThresholdOut
+    direction: NoiseEffectiveThresholdOut
+
+
 class NoiseCurrentOut(BaseModel):
     """The source's current detection settings, shown beside the 17b replay."""
 
@@ -103,6 +140,14 @@ class NoiseCurrentOut(BaseModel):
     maintenance_until: datetime | None = None
     business_hours_only: bool
     expected_interval_seconds: int | None = None
+    effective_thresholds: NoiseEffectiveThresholdsOut
+    #: True when LAB_MODE overrides the criticality hysteresis; criticality then
+    #: has no detection effect (design §3.2).
+    lab_mode: bool
+    #: True when the stored overrides contain a non-empty ``by_type`` block. The
+    #: page says one sentence about it: detector thresholds there are inert,
+    #: only ``open_after``/``resolve_after`` move.
+    has_by_type: bool
 
 
 class NoiseSourceDetailOut(NoiseSourceOut):
@@ -132,6 +177,100 @@ class NoiseListOut(BaseModel):
     coverage: NoiseCoverageOut
     empty_reason: NoiseReasonOut | None = None
     items: list[NoiseSourceOut]
+
+
+# --- SOC-17b: the 28-day replay preview -------------------------------------
+class NoisePreviewIn(BaseModel):
+    """The tuning page's proposed knobs and the window it asked for.
+
+    The knobs are the same six the PATCH accepts, so a value that cannot be saved
+    cannot be previewed either. ``window_days`` is 7 or 28.
+    """
+
+    window_days: Literal[7, 28] = 28
+    thresholds: ThresholdConfig = ThresholdConfig()
+
+
+class NoisePreviewWindowOut(BaseModel):
+    """The requested window and the stored span it actually covers."""
+
+    days: int
+    first_bucket: datetime | None = None
+    last_bucket: datetime | None = None
+    covered_days: int
+
+
+class NoisePreviewBaselineOut(BaseModel):
+    """The baseline snapshot the replay judged against, and its lookback."""
+
+    computed_at: datetime | None = None
+    baseline_version: int | None = None
+    lookback_days: int
+
+
+class NoisePreviewDetectorOut(BaseModel):
+    """One detector's incident count in one replay run.
+
+    ``incidents`` is null exactly when ``excluded_by_direction`` is true: the
+    run's direction disabled the detector, so it never ran and there is no
+    measured zero to report. A detector that ran and found nothing stays ``0``.
+    """
+
+    anomaly_type: AnomalyType
+    incidents: int | None = None
+    excluded_by_direction: bool = False
+
+
+class NoisePreviewCountsOut(BaseModel):
+    """Incidents the replay would open: a total and its per-detector breakdown.
+
+    ``total_incidents`` sums only the detectors that ran. A detector the run's
+    direction excluded is listed with ``incidents: null`` and
+    ``excluded_by_direction: true`` and contributes nothing to the total; it is
+    "did not run", never a measured zero.
+    """
+
+    total_incidents: int
+    by_detector: list[NoisePreviewDetectorOut]
+
+
+class NoisePreviewRecordedOut(BaseModel):
+    """What the engine actually recorded in the same window."""
+
+    incidents: int
+    opened: int
+    suppressed: int
+
+
+class NoisePreviewNotReplayableOut(BaseModel):
+    anomaly_type: AnomalyType
+    reason: NoiseReasonOut
+
+
+class NoisePreviewOut(BaseModel):
+    """Current versus proposed replay, with every fail-closed marker.
+
+    ``current`` and ``proposed`` are null whenever ``available`` is false: a
+    count the window cannot support is absent, never zero (design §3.5).
+
+    Both runs use the same row rule: a detector the run's direction excluded is
+    ``incidents: null`` with ``excluded_by_direction: true``. ``current`` also
+    names such a detector in ``not_replayable`` (that list describes the current
+    rule), so a client may render the row once and ignore the duplicate reason.
+    """
+
+    state: ReplayState
+    available: bool
+    window: NoisePreviewWindowOut
+    baseline: NoisePreviewBaselineOut
+    current: NoisePreviewCountsOut | None = None
+    proposed: NoisePreviewCountsOut | None = None
+    recorded: NoisePreviewRecordedOut | None = None
+    not_replayable: list[NoisePreviewNotReplayableOut]
+    not_judged_buckets: int | None = None
+    maintenance_buckets: int | None = None
+    warnings: list[NoiseReasonOut]
+    reason: NoiseReasonOut | None = None
 
 
 def _reason_out(value: Any) -> NoiseReasonOut | None:
@@ -195,6 +334,21 @@ def source_out(value: SourceSummary) -> NoiseSourceOut:
     )
 
 
+def _effective_thresholds_out(value: SourceDetail) -> NoiseEffectiveThresholdsOut:
+    knobs = {
+        item.knob: NoiseEffectiveThresholdOut(value=item.value, source=item.source)
+        for item in value.current.effective_thresholds
+    }
+    return NoiseEffectiveThresholdsOut(
+        deviation_z=knobs["deviation_z"],
+        spike_ratio=knobs["spike_ratio"],
+        drop_ratio=knobs["drop_ratio"],
+        min_absolute_delta_events=knobs["min_absolute_delta_events"],
+        open_after=knobs["open_after"],
+        direction=knobs["direction"],
+    )
+
+
 def detail_out(value: SourceDetail) -> NoiseSourceDetailOut:
     source = source_out(value.source)
     return NoiseSourceDetailOut(
@@ -207,6 +361,9 @@ def detail_out(value: SourceDetail) -> NoiseSourceDetailOut:
             maintenance_until=value.current.maintenance_until,
             business_hours_only=value.current.business_hours_only,
             expected_interval_seconds=value.current.expected_interval_seconds,
+            effective_thresholds=_effective_thresholds_out(value),
+            lab_mode=value.current.lab_mode,
+            has_by_type=value.current.has_by_type,
         ),
         coverage=coverage_out(value.coverage),
         suppression=value.suppression,
@@ -228,4 +385,67 @@ def list_out(value: NoiseList) -> NoiseListOut:
         coverage=coverage_out(value.coverage),
         empty_reason=_reason_out(value.empty_reason),
         items=[source_out(item) for item in value.items],
+    )
+
+
+def _replay_reason_out(value: ReplayReason) -> NoiseReasonOut:
+    return NoiseReasonOut(code=value.code, params=value.params, text=value.text)
+
+
+def _preview_counts_out(value: ReplayCounts | None) -> NoisePreviewCountsOut | None:
+    if value is None:
+        return None
+    return NoisePreviewCountsOut(
+        total_incidents=value.total_incidents,
+        by_detector=[
+            NoisePreviewDetectorOut(
+                anomaly_type=item.anomaly_type,
+                incidents=item.incidents,
+                excluded_by_direction=item.excluded_by_direction,
+            )
+            for item in value.by_detector
+        ],
+    )
+
+
+def preview_out(value: ReplayResult) -> NoisePreviewOut:
+    recorded = value.recorded
+    return NoisePreviewOut(
+        state=value.state,
+        available=value.available,
+        window=NoisePreviewWindowOut(
+            days=value.window.days,
+            first_bucket=value.window.first_bucket,
+            last_bucket=value.window.last_bucket,
+            covered_days=value.window.covered_days,
+        ),
+        baseline=NoisePreviewBaselineOut(
+            computed_at=value.baseline.computed_at,
+            baseline_version=value.baseline.baseline_version,
+            lookback_days=value.baseline.lookback_days,
+        ),
+        current=_preview_counts_out(value.current),
+        proposed=_preview_counts_out(value.proposed),
+        recorded=(
+            None
+            if recorded is None
+            else NoisePreviewRecordedOut(
+                incidents=recorded.incidents,
+                opened=recorded.opened,
+                suppressed=recorded.suppressed,
+            )
+        ),
+        not_replayable=[
+            NoisePreviewNotReplayableOut(
+                anomaly_type=item.anomaly_type,
+                reason=_replay_reason_out(item.reason),
+            )
+            for item in value.not_replayable
+        ],
+        not_judged_buckets=value.not_judged_buckets,
+        maintenance_buckets=value.maintenance_buckets,
+        warnings=[_replay_reason_out(item) for item in value.warnings],
+        reason=(
+            None if value.reason is None else _replay_reason_out(value.reason)
+        ),
     )

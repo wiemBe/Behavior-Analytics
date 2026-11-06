@@ -1465,6 +1465,13 @@
     "sample_english_params": {},
     "template": "maintenance window"
   },
+  "anomaly.tuning.direction_disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the direction was disabled by a tuning change",
+    "sample_english_params": {},
+    "template": "the direction was disabled by a tuning change"
+  },
   "ariel_load.hours.invalid": {
     "params": {},
     "sample": {},
@@ -6829,6 +6836,146 @@
     "sample_english": "A bucket in this window lost destination-IP entities, so the ranking is a lower bound.",
     "sample_english_params": {},
     "template": "A bucket in this window lost destination-IP entities, so the ranking is a lower bound."
+  },
+  "noise.preview.direction_disabled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Not replayed: the source's direction setting disables this detector.",
+    "sample_english_params": {},
+    "template": "Not replayed: the source's direction setting disables this detector."
+  },
+  "noise.preview.insufficient_coverage": {
+    "params": {
+      "covered": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "window": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "covered": 3,
+      "window": 28
+    },
+    "sample_english": "Only 3 of 28 days are stored; a replay needs at least 7.",
+    "sample_english_params": {
+      "covered": "3",
+      "window": "28"
+    },
+    "template": "Only {covered} of {window} days are stored; a replay needs at least 7."
+  },
+  "noise.preview.maintenance": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The source is in maintenance; today's rule would not judge these buckets.",
+    "sample_english_params": {},
+    "template": "The source is in maintenance; today's rule would not judge these buckets."
+  },
+  "noise.preview.maintenance_history": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 8
+    },
+    "sample_english": "8 buckets were recorded during a maintenance window; a past window cannot be reconstructed.",
+    "sample_english_params": {
+      "count": "8"
+    },
+    "template": "{count} buckets were recorded during a maintenance window; a past window cannot be reconstructed."
+  },
+  "noise.preview.not_judged": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 12,
+      "total": 8064
+    },
+    "sample_english": "12 of 8064 buckets could not be judged, more than the 10% a count may rest on.",
+    "sample_english_params": {
+      "count": "12",
+      "total": "8064"
+    },
+    "template": "{count} of {total} buckets could not be judged, more than the 10% a count may rest on."
+  },
+  "noise.preview.not_monitored": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The source is not monitored, so there is nothing to replay.",
+    "sample_english_params": {},
+    "template": "The source is not monitored, so there is nothing to replay."
+  },
+  "noise.preview.not_replayable": {
+    "params": {
+      "reason": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "reason": "the bucket did not measure PARSE_RATIOS"
+    },
+    "sample_english": "Not replayed: the bucket did not measure PARSE_RATIOS",
+    "sample_english_params": {
+      "reason": "the bucket did not measure PARSE_RATIOS"
+    },
+    "template": "Not replayed: {reason}"
+  },
+  "noise.preview.partial": {
+    "params": {
+      "covered": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "window": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "covered": 21,
+      "window": 28
+    },
+    "sample_english": "Counts cover 21 of 28 days.",
+    "sample_english_params": {
+      "covered": "21",
+      "window": "28"
+    },
+    "template": "Counts cover {covered} of {window} days."
+  },
+  "noise.preview.too_large": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "limit": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 40320,
+      "limit": 50000
+    },
+    "sample_english": "The window has 40320 buckets, more than the 50000 a replay accepts; choose 7 days.",
+    "sample_english_params": {
+      "count": "40320",
+      "limit": "50000"
+    },
+    "template": "The window has {count} buckets, more than the {limit} a replay accepts; choose 7 days."
   },
   "noise.reason.empty_window": {
     "params": {
