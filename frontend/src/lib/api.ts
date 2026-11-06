@@ -1925,6 +1925,77 @@ export interface TrafficPage<Item> {
   items: Item[];
 }
 
+// --- Noisy sources (SOC-17a) -----------------------------------------------
+// Mirrors app/schemas/noise.py. A count that was not collected is `null`, never 0.
+// `noise_*` and `worst_*` always cover the 28 stored days, whatever `window` was asked.
+
+export type NoiseWindow = 7 | 28;
+export type NoiseOrder = "incidents" | "alerts" | "noise_share";
+
+export interface NoiseReason {
+  code: string;
+  params: Record<string, unknown>;
+  /** The backend's English sentence. */
+  text: string;
+}
+
+export interface NoiseCoverage {
+  state: "COMPLETE" | "PARTIAL";
+  window_days: number;
+  covered_days: number;
+  retention_days: number;
+  reason: NoiseReason | null;
+}
+
+export interface NoiseSourceRow {
+  log_source_id: string;
+  name: string;
+  instance_id: string;
+  instance_name: string | null;
+  criticality: string;
+  source_class: string | null;
+  monitoring_enabled: boolean;
+  judgement: "JUDGED" | "INSUFFICIENT_DATA" | "NOT_COLLECTED";
+  judged: boolean;
+  reason: NoiseReason | null;
+  incidents_7d: number | null;
+  incidents_28d: number | null;
+  opened_7d: number | null;
+  opened_28d: number | null;
+  alerts_7d: number | null;
+  alerts_28d: number | null;
+  noise_closed: number | null;
+  noise_closed_total: number | null;
+  noise_share: number | null;
+  worst_ratio: number | null;
+  worst_z: number | null;
+  top_detector: string | null;
+  evaluated_through: string | null;
+}
+
+export interface NoiseSourcesPage {
+  window_days: NoiseWindow;
+  order: NoiseOrder;
+  limit: number;
+  offset: number;
+  /** Sources that fired in the window: the rows of the list. */
+  total: number;
+  zero_fired: number;
+  zero_fired_judged: number;
+  zero_fired_insufficient_data: number;
+  last_collection: string | null;
+  coverage: NoiseCoverage;
+  empty_reason: NoiseReason | null;
+  items: NoiseSourceRow[];
+}
+
+export interface NoiseParams {
+  window?: NoiseWindow;
+  order?: NoiseOrder;
+  limit?: number;
+  offset?: number;
+}
+
 export interface TrafficParams {
   window?: TrafficWindow;
   sort?: string;
@@ -3070,6 +3141,9 @@ export const api = {
     id: string,
     params: { since?: string; until?: string; limit?: number; offset?: number } = {},
   ) => request<PagedWafMetrics>(`/behavior/waf/endpoints/${id}/metrics${qs({ ...params })}`),
+
+  noiseSources: (params: NoiseParams = {}) =>
+    request<NoiseSourcesPage>(`/noise/sources${qs({ ...params })}`),
 
   wafTraffic: (id: string, params: TrafficParams = {}) =>
     request<TrafficPage<WafTrafficItem>>(
