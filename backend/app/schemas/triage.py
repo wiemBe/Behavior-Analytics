@@ -100,6 +100,15 @@ class TriagePatchIn(BaseModel):
     )
     expected_version: int = Field(ge=0)
 
+    @field_validator("disposition")
+    @classmethod
+    def _stale_is_system_only(
+        cls, value: TriageDisposition | None
+    ) -> TriageDisposition | None:
+        if value is TriageDisposition.STALE:
+            raise ValueError("STALE is set only by the stale triage job")
+        return value
+
     @field_validator("owner")
     @classmethod
     def _clean_owner(cls, value: str | None) -> str | None:

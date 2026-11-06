@@ -174,6 +174,12 @@ reference heading for them.
 `destination_port`, `source_port`, `username`, `action`, `category`, `protocol`. A source is
 trimmed to the dimensions its DSM populates; the rest are recorded unavailable.
 
+## Anomaly triage
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `TRIAGE_STALE_CLOSE_DAYS` | `3` | Age at which the hourly `close_stale_triage` task closes a NEW anomaly that no analyst took, with disposition STALE and actor `system`. `0` disables the task; negative values are invalid. Both the anomaly's `detected_at` and any existing triage row's `updated_at` must be at least this old, so a recent reopen is not closed. The task handles at most 500 candidates per family per run and continues on the next run. It changes only triage and activity rows, never detector lifecycle or alerts |
+
 ## Source-volume baselines and incidents
 
 | Setting | Default | Meaning |

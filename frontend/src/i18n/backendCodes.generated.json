@@ -10873,6 +10873,29 @@
     },
     "template": "threshold {operator} {threshold} can never be reached: a run counts at most max_result_rows ({max_result_rows}) rows; raise max_result_rows above the threshold or lower the threshold"
   },
+  "triage.stale_auto_close": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 3
+    },
+    "sample_english": "No analyst took this anomaly within 3 days.",
+    "sample_english_params": {
+      "days": "3"
+    },
+    "template": "No analyst took this anomaly within {days} days."
+  },
+  "triage.stale_auto_close_one": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No analyst took this anomaly within 1 day.",
+    "sample_english_params": {},
+    "template": "No analyst took this anomaly within 1 day."
+  },
   "validation.field.insufficient_coverage": {
     "params": {
       "populated": {

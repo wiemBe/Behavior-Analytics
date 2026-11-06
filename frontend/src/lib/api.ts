@@ -1402,7 +1402,10 @@ export type TriageDisposition =
   | "BENIGN_TRUE_POSITIVE"
   | "NOISE"
   | "COLLECTION_PROBLEM"
-  | "KNOWN_CHANGE";
+  | "KNOWN_CHANGE"
+  | "STALE";
+/** STALE is system-only; an analyst PATCH can never select it. */
+export type AnalystTriageDisposition = Exclude<TriageDisposition, "STALE">;
 export type TriageFamily = "log_source" | "waf" | "ips" | "property_watch";
 export type TriageEventKind = "STATUS" | "OWNER" | "DISPOSITION" | "NOTE" | "COMMENT";
 
@@ -1442,7 +1445,7 @@ export interface Triage {
 export interface TriagePatch {
   owner?: string | null;
   status?: TriageStatus;
-  disposition?: TriageDisposition | null;
+  disposition?: AnalystTriageDisposition | null;
   disposition_note?: string | null;
   expected_version: number;
 }

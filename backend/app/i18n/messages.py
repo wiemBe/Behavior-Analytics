@@ -3173,6 +3173,17 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # Phase A engine side effects (`app/anomaly/engine.py`).
     _msg("anomaly.suppression.maintenance", "maintenance window"),
     _msg("anomaly.resolution.recovered", "condition recovered"),
+    # SOC-1c: the system actor's persisted stale-close note (D-55).
+    _msg(
+        "triage.stale_auto_close",
+        "No analyst took this anomaly within {days} days.",
+        {"days": _PLAIN},
+        {"days": 3},
+    ),
+    _msg(
+        "triage.stale_auto_close_one",
+        "No analyst took this anomaly within 1 day.",
+    ),
     # --- end MSG-5 ---
     # --- MSG-6: WAF anomaly sentences (Family 3) -- keep contiguous --------------------------
     # The scope decision (`app.waf.measurement`) and the detectors' own scope fallbacks.

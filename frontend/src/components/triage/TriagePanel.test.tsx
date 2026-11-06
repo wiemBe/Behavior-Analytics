@@ -87,6 +87,24 @@ describe("the state", () => {
     expect(screen.getByText(/Updated by k\.osei,/)).toHaveTextContent("2026-11-05 09:41:00 UTC");
   });
 
+  it("labels a system-closed stale item and shows the system actor", () => {
+    panel({
+      initial: triage({
+        status: "CLOSED",
+        disposition: "STALE",
+        disposition_note: "No analyst took this anomaly within 3 days.",
+        updated_by: "system",
+        updated_at: "2026-11-06T09:00:00Z",
+        version: 1,
+      }),
+    });
+    expect(screen.getByText("Auto-closed: stale")).toBeInTheDocument();
+    expect(screen.getByText("No analyst took this anomaly within 3 days.")).toBeInTheDocument();
+    expect(screen.getByText(/Updated by system,/)).toHaveTextContent("2026-11-06 09:00:00 UTC");
+    // A closed item offers only Reopen, as for any other closed item.
+    expect(screen.queryByRole("button", { name: "Close with a disposition" })).not.toBeInTheDocument();
+  });
+
   it("lists the activity newest first with each event in words", () => {
     panel({
       initial: triage({
@@ -193,6 +211,14 @@ describe("close with a disposition", () => {
       "Collection problem",
       "Known change",
     ]);
+  });
+
+  it("never offers the system-only stale disposition", async () => {
+    panel();
+    await openClose();
+    const select = screen.getByLabelText("Disposition (required)");
+    expect(within(select).queryByRole("option", { name: "Auto-closed: stale" })).toBeNull();
+    expect(select.querySelector('option[value="STALE"]')).toBeNull();
   });
 
   it("sends CLOSED, the disposition and the note", async () => {
