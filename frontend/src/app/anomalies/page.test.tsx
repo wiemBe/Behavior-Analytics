@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -189,6 +189,8 @@ describe("filters", () => {
     expect(screen.getByLabelText("Lifecycle state")).toBeInTheDocument();
     expect(screen.getByLabelText("Detector type")).toBeInTheDocument();
     expect(screen.getByLabelText("Severity")).toBeInTheDocument();
+    // SOC-7b: the raw time inputs sit behind the Custom chip; the chips are the default.
+    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
     expect(screen.getByLabelText("Start time (UTC)")).toBeInTheDocument();
     expect(screen.getByLabelText("End time (UTC)")).toBeInTheDocument();
     expect(screen.getByLabelText("Active only")).toBeInTheDocument();
@@ -213,6 +215,7 @@ describe("filters", () => {
 
   it("labels every control programmatically", async () => {
     await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
     for (const label of [
       "Lifecycle state",
       "Detector type",

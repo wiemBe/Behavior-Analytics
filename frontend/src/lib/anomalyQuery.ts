@@ -13,14 +13,13 @@ import { isWafType } from "@/components/waf/wafLabels";
 import type { SubjectKind } from "./api";
 import { ENGLISH_ANOMALIES } from "./anomaliesI18n";
 import type { BehaviorI18n } from "./behaviorI18n";
+import { MAX_RANGE_DAYS, parseRange, rangeQuery, type RangeState } from "./timeRange";
+
+export { MAX_RANGE_DAYS };
 
 export const PAGE_SIZE = 25;
 
 export type SearchParamValue = string | string[] | undefined;
-
-/** Mirrors the backend's `api_max_range_days` guard, applied before the call
- *  rather than after, so an over-wide range is corrected instead of 422ing. */
-export const MAX_RANGE_DAYS = 365;
 
 const DETECTOR_TYPES = new Set(["VOLUME_SPIKE", "VOLUME_DROP", "NO_EVENTS"]);
 const STATES = new Set([
@@ -56,7 +55,9 @@ export interface AnomalyQuery {
   /** ISO-8601, or "" when unset. Sent to the API. */
   since: string;
   until: string;
-  /** Set when a supplied range was corrected, so the page can say so. */
+  /** The time range as the URL asked for it: a relative chip or a Custom window (SOC-7b). */
+  range: RangeState;
+  /** Set when a supplied range was corrected or dropped, so the page can say so. */
   rangeNote: string | null;
 }
 
@@ -74,24 +75,10 @@ function uuid(value: SearchParamValue): string {
   return value && UUID_RE.test(value) ? value : "";
 }
 
-/**
- * `datetime-local` value → ISO instant, or "" if it is not a real timestamp.
- *
- * A value with no zone designator is read as UTC, which is the timezone the
- * filter's labels and every timestamp on these pages state. Left bare,
- * `Date.parse` would read it in the server's local zone.
- */
-function instant(value: SearchParamValue): string {
-  value = first(value);
-  if (!value) return "";
-  const zoned = /(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
-  const ms = Date.parse(zoned);
-  return Number.isNaN(ms) ? "" : new Date(ms).toISOString();
-}
-
 export function parseAnomalyQuery(
   params: Record<string, SearchParamValue>,
   i18n: BehaviorI18n = ENGLISH_ANOMALIES,
+  nowMs: number = Date.now(),
 ): AnomalyQuery {
   // Negative or non-numeric offsets become 0 rather than being forwarded; the
   // backend rejects them, but a rejected page is a worse answer than page one.
@@ -101,25 +88,10 @@ export function parseAnomalyQuery(
       ? Math.floor(parsedOffset)
       : 0;
 
-  let since = instant(params.since);
-  let until = instant(params.until);
-  let rangeNote: string | null = null;
-
-  // An inverted range is a mistake, not an attack, and swapping it is what the
-  // operator meant. Sending it through would only produce a 422.
-  if (since && until && Date.parse(since) > Date.parse(until)) {
-    [since, until] = [until, since];
-    rangeNote = i18n.t("anomalies.rangeNote.swapped");
-  }
-
-  if (since && until) {
-    const span = Date.parse(until) - Date.parse(since);
-    const max = MAX_RANGE_DAYS * 86400_000;
-    if (span > max) {
-      since = new Date(Date.parse(until) - max).toISOString();
-      rangeNote = i18n.t("anomalies.rangeNote.clamped", { days: MAX_RANGE_DAYS });
-    }
-  }
+  const range = parseRange(params, nowMs);
+  const rangeNote = range.issues.length
+    ? range.issues.map((issue) => i18n.t(`anomalies.rangeNote.${issue}`, { days: MAX_RANGE_DAYS })).join(" ")
+    : null;
 
   return {
     offset,
@@ -130,8 +102,9 @@ export function parseAnomalyQuery(
     state: pick(params.state, STATES),
     severity: pick(params.severity, SEVERITIES),
     evidence_status: pick(params.evidence_status, EVIDENCE),
-    since,
-    until,
+    since: range.since,
+    until: range.until,
+    range,
     rangeNote,
   };
 }
@@ -148,8 +121,7 @@ export function paginationParams(
     state: q.state || undefined,
     severity: q.severity || undefined,
     evidence_status: q.evidence_status || undefined,
-    since: q.since || undefined,
-    until: q.until || undefined,
+    ...rangeQuery(q.range),
   };
 }
 

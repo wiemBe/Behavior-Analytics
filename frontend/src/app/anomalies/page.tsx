@@ -46,6 +46,8 @@ import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { sourcesAsOf } from "@/lib/home/asOf";
 import { utcTimeText } from "@/components/ui/UtcTime";
 import { withRouteMessages } from "@/i18n/RouteMessages";
+import { CopyLink } from "@/components/listview/CopyLink";
+import { rangeWindow, stampText } from "@/lib/timeRange";
 
 import "./anomalies.css";
 
@@ -63,11 +65,12 @@ async function AnomaliesPage({
   searchParams: Promise<Record<string, SearchParamValue>>;
 }) {
   const raw = await searchParams;
+  const nowMs = Date.now();
   const t = await getTranslations("anomalies.list");
   const filterText = await getTranslations("anomalies.filters");
   const say = asTextTranslator(await getTranslations());
   const i18n = await getBehaviorI18n();
-  const q = parseAnomalyQuery(raw, i18n);
+  const q = parseAnomalyQuery(raw, i18n, nowMs);
   // The subject filters are parsed beside the Phase A query, not in it: a WAF
   // detector type is a valid `anomaly_type` here and would be dropped by the
   // Phase A allow-list.
@@ -147,7 +150,6 @@ async function AnomaliesPage({
   // An empty, unfiltered list only describes the window the page asked for (the API's last
   // 24 h). One bounded count of the active list, sent without `since` (the API then has no
   // lower bound: every active anomaly, whatever its age), says whether the fleet has older ones. If that read fails the sentence carries no number, never a zero.
-  const nowMs = Date.now();
   const windowTo = new Date(nowMs).toISOString();
   const windowFrom = new Date(nowMs - DEFAULT_WINDOW_MS).toISOString();
   let outsideActive: number | null = null;
@@ -162,6 +164,23 @@ async function AnomaliesPage({
   // Every cell of the observed column names its own unit (EPS, req / 5 min, events,
   // ports or %), so the heading carries none once a WAF or IPS row is on the page. A
   // page of log sources keeps the "(EPS)" its existing test pins.
+  // The page's view as a URL: the same keys the filters write, so a copied link reproduces it.
+  const viewParams: Record<string, string | undefined> = {
+    ...paginationParams(q),
+    anomaly_type: anomalyType || undefined,
+    subject_kind: subject.subject_kind || undefined,
+    ips_entity_id: subject.ips_entity_id || undefined,
+    property_watch_id: subject.property_watch_id || undefined,
+    triage_status: triage.triage_status || undefined,
+    owner: triage.owner || undefined,
+    disposition: triage.disposition || undefined,
+  };
+  const viewQuery = new URLSearchParams(
+    Object.entries(viewParams).filter((e): e is [string, string] => Boolean(e[1])),
+  );
+  if (q.offset > 0) viewQuery.set("offset", String(q.offset));
+  const viewHref = viewQuery.size ? `/anomalies?${viewQuery.toString()}` : "/anomalies";
+  const shownWindow = rangeWindow(q.range, nowMs);
   const hasWaf = items.some((a) => isWafRow(a) || isIpsRow(a) || isPwRow(a));
   // The source list reads the Phase A volume collection: it describes the data only when the
   // list is pinned to log sources. An unfiltered list also holds WAF, IPS and watch rows.
@@ -173,6 +192,7 @@ async function AnomaliesPage({
         guide={guideFor("/anomalies")}
         title={t("title")}
         description={t("description")}
+        actions={<CopyLink href={viewHref} />}
       />
 
       <AnomalyFilters
@@ -190,9 +210,15 @@ async function AnomaliesPage({
           triage_status: triage.triage_status,
           owner: triage.owner,
           disposition: triage.disposition,
-          since: q.since,
-          until: q.until,
+          range: q.range.chip,
+          since: q.range.chip ? "" : q.since,
+          until: q.range.chip ? "" : q.until,
         }}
+        window={shownWindow}
+        windowFallback={t("defaultWindow", {
+          from: stampText(windowFrom),
+          to: stampText(windowTo),
+        })}
         sources={sources}
         sourcesFailed={sourcesFailed}
       />
@@ -288,16 +314,7 @@ async function AnomaliesPage({
             limit={PAGE_SIZE}
             offset={q.offset}
             basePath="/anomalies"
-            params={{
-              ...paginationParams(q),
-              anomaly_type: anomalyType || undefined,
-              subject_kind: subject.subject_kind || undefined,
-              ips_entity_id: subject.ips_entity_id || undefined,
-              property_watch_id: subject.property_watch_id || undefined,
-              triage_status: triage.triage_status || undefined,
-              owner: triage.owner || undefined,
-              disposition: triage.disposition || undefined,
-            }}
+            params={viewParams}
           />
         </>
       )}

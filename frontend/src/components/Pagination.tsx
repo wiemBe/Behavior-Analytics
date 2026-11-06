@@ -11,11 +11,14 @@ import { formatCount, type FormatLocale } from "@/lib/format";
 function href(
   basePath: string,
   offset: number,
-  params: Record<string, string | undefined>,
+  params: Record<string, string | string[] | undefined>,
 ): string {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
-    if (v) qs.set(k, v);
+    // A repeated key (several severities) is written once per value, as the API reads it.
+    for (const item of Array.isArray(v) ? v : [v]) {
+      if (item) qs.append(k, item);
+    }
   }
   if (offset > 0) qs.set("offset", String(offset));
   const s = qs.toString();
@@ -33,7 +36,7 @@ export function Pagination({
   limit: number;
   offset: number;
   basePath: string;
-  params?: Record<string, string | undefined>;
+  params?: Record<string, string | string[] | undefined>;
 }) {
   const t = useTranslations("ui");
   const locale = (useLocale() === "tr" ? "tr" : "en") as FormatLocale;

@@ -3069,3 +3069,111 @@ td.cell-name.ips-source-cell {
   text-align: right;
   white-space: nowrap;
 }
+
+/* --- list views: relative range chips and facet counts (SOC-7b) --------------- */
+
+.range-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  min-width: 0;
+}
+.range-chip-list,
+.facet-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.range-chip,
+.facet {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.main a.range-chip,
+.main a.facet {
+  color: var(--text-2);
+}
+.range-chip:hover,
+.main a.range-chip:hover,
+.main a.facet:hover {
+  color: var(--text);
+  background: var(--surface-3);
+  text-decoration: none;
+}
+.range-chip:focus-visible,
+.facet:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+/* The active chip is told apart by weight and a stronger border, not by a hue. */
+.range-chip[aria-current="true"],
+.main a.range-chip[aria-current="true"],
+.main a.facet[aria-current="true"] {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--text-2);
+  font-weight: var(--fw-semibold);
+}
+.facet-count {
+  margin-left: var(--sp-2);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  font-weight: var(--fw-normal);
+}
+.range-custom {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  align-items: center;
+}
+.range-custom input {
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-sm);
+  min-height: var(--target-min);
+}
+.range-window {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+.copy-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.copy-link-note {
+  font-size: var(--fs-xs);
+}
+/* Inside a `.filters` form every button is a primary action; a range chip is not. */
+.filters button.range-chip {
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-1) var(--sp-2);
+  font-weight: var(--fw-normal);
+}
+.filters button.range-chip:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+.filters button.range-chip[aria-current="true"] {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--text-2);
+  font-weight: var(--fw-semibold);
+}

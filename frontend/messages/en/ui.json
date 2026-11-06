@@ -24,5 +24,34 @@
     "notes": "Notes",
     "failed": "The QRadar query could not be built. Reload the page to try again; the rest of this page is not affected.",
     "rangeTo": "to"
+  },
+  "range": {
+    "label": "Time range",
+    "chipsLabel": "Relative time range",
+    "chip": {
+      "1h": "1h",
+      "24h": "24h",
+      "7d": "7d",
+      "30d": "30d"
+    },
+    "chipFull": {
+      "1h": "Last hour",
+      "24h": "Last 24 hours",
+      "7d": "Last 7 days",
+      "30d": "Last 30 days"
+    },
+    "custom": "Custom",
+    "from": "Start time (UTC)",
+    "to": "End time (UTC)",
+    "window": "{from} to {to}",
+    "windowNow": "{from} to {to} (now)",
+    "windowUntil": "Up to {to}",
+    "windowLabel": "Time window shown"
+  },
+  "copyLink": {
+    "button": "Copy link",
+    "label": "Copy a link to this view",
+    "copied": "Link copied",
+    "failed": "The browser did not allow copying. Copy the address from the address bar instead."
   }
 }
