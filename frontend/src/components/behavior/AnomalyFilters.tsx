@@ -27,6 +27,8 @@ import { PW_TYPES, pwTypeLabel, isPwType } from "@/components/propertywatch/pwFo
 import { WAF_TYPES, anomalyTypeLabel } from "@/components/waf/wafLabels";
 import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
 import { DISPOSITIONS, TRIAGE_STATUSES } from "@/lib/triage";
+import { RangeChips } from "@/components/listview/RangeChips";
+import { RANGE_CHIPS, type RangeChip, type RangeWindow } from "@/lib/timeRange";
 
 
 const DETECTOR_TYPES = ["VOLUME_SPIKE", "VOLUME_DROP", "NO_EVENTS"];
@@ -63,6 +65,9 @@ export interface AnomalyFilterValues {
   state: string;
   severity: string;
   evidence_status: string;
+  /** A relative range chip (`1h`, `24h`, `7d`, `30d`), or "". Set instead of since/until. */
+  range?: string;
+  /** A Custom window's bounds; empty while a chip is active. */
   since: string;
   until: string;
   /** The analyst's triage (SOC-1): status, owner (`me`, `none` or a name) and disposition. */
@@ -122,6 +127,8 @@ export function chipLabel(
           : say("owner", { value: text });
     case "disposition":
       return say("disposition", { value: i18n.t(`triage.disposition.${text}`) });
+    case "range":
+      return say("range", { value: i18n.t(`anomalies.filters.chip.rangeValue.${text}`) });
     case "since":
       return say("since", { value: utcTimeText(text) });
     case "until":
@@ -156,12 +163,31 @@ export function toInputValue(iso: string): string {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso) ? iso.slice(0, 16) : "";
 }
 
+const FORM_ID = "anomaly-filters";
+
+/** The view with its time range replaced by a chip, or by none when that chip is already active. */
+function chipHref(values: AnomalyFilterValues, chip: RangeChip): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(values)) {
+    if (v && k !== "range" && k !== "since" && k !== "until") qs.set(k, String(v));
+  }
+  if (values.range !== chip) qs.set("range", chip);
+  const s = qs.toString();
+  return s ? `/anomalies?${s}` : "/anomalies";
+}
+
 export function AnomalyFilters({
   values,
   sources,
   sourcesFailed = false,
+  window: shown = null,
+  windowFallback = "",
 }: {
   values: AnomalyFilterValues;
+  /** The absolute window the list covers, or null when the request sets none. */
+  window?: RangeWindow | null;
+  /** What to print beside the chips when there is no window (the API's default). */
+  windowFallback?: string;
   sources: SourceBehavior[];
   /** The source read failed. The select is omitted; the anomaly list is unaffected. */
   sourcesFailed?: boolean;
@@ -171,7 +197,8 @@ export function AnomalyFilters({
   const i18n = useBehaviorI18n();
   const { label, severityPill } = useEnumLabels();
   const advancedActive = Boolean(
-    values.log_source_id ||
+    values.owner ||
+      values.log_source_id ||
       values.instance_id ||
       values.evidence_status ||
       values.disposition ||
@@ -199,7 +226,7 @@ export function AnomalyFilters({
           {t("sourcesFailed")}
         </p>
       )}
-      <form className="filters" method="get" action="/anomalies">
+      <form id={FORM_ID} className="filters anomaly-filter-bar" method="get" action="/anomalies">
         {/* Carried through a re-filter so the entity link does not silently widen. */}
         {values.ips_entity_id && (
           <input type="hidden" name="ips_entity_id" value={values.ips_entity_id} />
@@ -246,27 +273,6 @@ export function AnomalyFilters({
             </option>
           ))}
         </select>
-
-        <label className="sr-only" htmlFor="anomaly-owner">
-          {t("ownerLabel")}
-        </label>
-        <select id="anomaly-owner" name="owner_kind" defaultValue={ownerKind}>
-          <option value="">{t("ownerAny")}</option>
-          <option value="me">{t("ownerMe")}</option>
-          <option value="none">{t("ownerNone")}</option>
-          <option value="named">{t("ownerNamed")}</option>
-        </select>
-
-        <label className="filter-field filter-check" htmlFor="anomaly-active-only">
-          <input
-            id="anomaly-active-only"
-            type="checkbox"
-            name="active_only"
-            value="true"
-            defaultChecked={values.active_only}
-          />
-          {t("activeOnly")}
-        </label>
 
         <label className="sr-only" htmlFor="anomaly-detector">
           {t("detectorLabel")}
@@ -319,28 +325,33 @@ export function AnomalyFilters({
           ))}
         </select>
 
-        {/* The backend caps the range; these are datetime-local so an operator
-            cannot accidentally request an unbounded window. The label is
-            visible, because two bare date fields say neither which is which
-            nor which timezone they mean. */}
-        <label className="filter-field" htmlFor="anomaly-since">
-          {t("since")}
+        <label className="filter-field filter-check" htmlFor="anomaly-active-only">
           <input
-            id="anomaly-since"
-            type="datetime-local"
-            name="since"
-            defaultValue={toInputValue(values.since)}
+            id="anomaly-active-only"
+            type="checkbox"
+            name="active_only"
+            value="true"
+            defaultChecked={values.active_only}
           />
+          {t("activeOnly")}
         </label>
-        <label className="filter-field" htmlFor="anomaly-until">
-          {t("until")}
-          <input
-            id="anomaly-until"
-            type="datetime-local"
-            name="until"
-            defaultValue={toInputValue(values.until)}
-          />
-        </label>
+
+        {/* Relative chips and Custom (SOC-7b). The chips are links that keep the other filters;
+            the Custom inputs submit with this form. The backend caps the range. */}
+        <RangeChips
+          formId={FORM_ID}
+          chipHrefs={
+            Object.fromEntries(
+              RANGE_CHIPS.map(({ key }) => [key, chipHref(values, key)]),
+            ) as Record<RangeChip, string>
+          }
+          active={(values.range as RangeChip | undefined) ?? ""}
+          custom={Boolean(values.since || values.until)}
+          since={values.since}
+          until={values.until}
+          window={shown}
+          emptyText={windowFallback}
+        />
 
         <button type="submit">{t("submit")}</button>
 
@@ -352,6 +363,16 @@ export function AnomalyFilters({
           </summary>
           <div className="disclosure-body">
             <div className="filters filters-advanced">
+              <label className="sr-only" htmlFor="anomaly-owner">
+                {t("ownerLabel")}
+              </label>
+              <select id="anomaly-owner" name="owner_kind" defaultValue={ownerKind}>
+                <option value="">{t("ownerAny")}</option>
+                <option value="me">{t("ownerMe")}</option>
+                <option value="none">{t("ownerNone")}</option>
+                <option value="named">{t("ownerNamed")}</option>
+              </select>
+
               {sourcesFailed ? (
                 values.log_source_id ? (
                   <input type="hidden" name="log_source_id" value={values.log_source_id} />

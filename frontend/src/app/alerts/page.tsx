@@ -4,7 +4,7 @@ import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { api, sevTone, type Alert, type Page } from "@/lib/api";
+import { ApiError, api, sevTone, type AlertFacets, type AlertPage, type LogSourceSummary } from "@/lib/api";
 import { formatCount } from "@/lib/format";
 import { loadErrorMessage } from "@/lib/loadError";
 import { UtcTime } from "@/components/ui/UtcTime";
@@ -13,11 +13,25 @@ import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 import { alertTitleText } from "@/lib/alertTitle";
+import {
+  PAGE_SIZE,
+  alertFilterParams,
+  alertHref,
+  alertListParams,
+  alertPairs,
+  isAlertFiltered,
+  isStatusOnly,
+  parseAlertQuery,
+  sortPatch,
+  type AlertSortValue,
+  type AlertStatusValue,
+  type AlertQuery,
+} from "@/lib/alertQuery";
+import { rangeWindow } from "@/lib/timeRange";
+import { AlertFilters } from "@/components/alerts/AlertFilters";
+import { CopyLink } from "@/components/listview/CopyLink";
 
 import "./alerts.css";
-
-const PAGE_SIZE = 100;
-const ALERT_STATUSES = ["OPEN", "ACKNOWLEDGED", "RESOLVED"] as const;
 
 function statusTone(status: string): string {
   if (status === "OPEN") return "crit";
@@ -25,38 +39,81 @@ function statusTone(status: string): string {
   return "ok";
 }
 
-function alertStatus(value: string | undefined): string {
-  return ALERT_STATUSES.includes(value as (typeof ALERT_STATUSES)[number]) ? value! : "";
-}
-
 export async function generateMetadata() {
   const t = await getTranslations("alerts.meta");
   return { title: t("list") };
 }
 
+/** A sortable column header: a link, so it is keyboard-operable without script. */
+function SortHeader({
+  label,
+  column,
+  query,
+  title,
+}: {
+  label: string;
+  column: AlertSortValue;
+  query: AlertQuery;
+  title: string;
+}) {
+  const active = query.sort === column;
+  const aria = !active ? "none" : query.order === "asc" ? "ascending" : "descending";
+  const arrow = !active ? "" : query.order === "asc" ? " ↑" : " ↓";
+  return (
+    <th scope="col" aria-sort={aria}>
+      <Link href={alertHref(query, sortPatch(query, column))} className="sort-link" title={title}>
+        {label}
+        <span aria-hidden="true">{arrow}</span>
+      </Link>
+    </th>
+  );
+}
+
 async function AlertsPage({
   searchParams,
 }: {
-  searchParams: Promise<Record<string, string | undefined>>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const offset = Math.max(0, Number(params.offset ?? 0) || 0);
-  const status = alertStatus(params.status);
+  const nowMs = Date.now();
+  const query = parseAlertQuery(params, nowMs);
   const t = await getTranslations("alerts");
+  const l = await getTranslations("alerts.list");
   const say = asTextTranslator(await getTranslations());
   const locale = (await getLocale()) as Locale;
-  let page: Page<Alert> | null = null;
+
+  // The list, the counts and the log source names are three reads. Only the list decides
+  // whether the page has content: a failed count read or source read costs the counts or the
+  // picker and nothing else.
+  const [listed, counted, sourced] = await Promise.allSettled([
+    api.alerts(alertListParams(query)),
+    api.alertFacets(alertFilterParams(query)),
+    api.logSources(),
+  ]);
+  let page: AlertPage | null = null;
   let error: string | null = null;
-  try {
-    page = await api.alerts({
-      status: status || undefined,
-      limit: PAGE_SIZE,
-      offset,
-    });
-  } catch (err) {
-    error = loadErrorMessage(err, t("loadNoun"), "read:alerts", say);
+  if (listed.status === "fulfilled") {
+    page = listed.value;
+  } else if (listed.reason instanceof ApiError && listed.reason.status === 422) {
+    const reason = typeof listed.reason.detail === "string" ? listed.reason.detail.trim() : "";
+    error = reason ? l("rejected", { reason }) : l("rejectedNoReason");
+  } else {
+    error = loadErrorMessage(listed.reason, t("loadNoun"), "read:alerts", say);
   }
+  const facets: AlertFacets | null = counted.status === "fulfilled" ? counted.value : null;
+  const sourceRows: LogSourceSummary[] = sourced.status === "fulfilled" ? sourced.value : [];
+  const sources = sourceRows
+    .map((s) => ({ id: s.id, name: s.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   const alerts = page?.items ?? [];
+  const filtered = isAlertFiltered(query);
+  const shownWindow = rangeWindow(query.range, nowMs);
+  const canonical = alertHref(query, { offset: query.offset });
+  const pagination: Record<string, string | string[] | undefined> = {};
+  for (const [key, value] of alertPairs(query, false)) {
+    const have = pagination[key];
+    pagination[key] = have === undefined ? value : [...(Array.isArray(have) ? have : [have]), value];
+  }
 
   return (
     <>
@@ -64,21 +121,22 @@ async function AlertsPage({
         guide={guideFor("/alerts")}
         title={t("title")}
         description={t("description")}
+        actions={<CopyLink href={canonical} />}
       />
 
-      <form className="filters" method="get" action="/alerts">
-        <label className="sr-only" htmlFor="alert-status">
-          {t("filters.label")}
-        </label>
-        <select id="alert-status" name="status" defaultValue={status}>
-          <option value="">{t("filters.all")}</option>
-          <option value="OPEN">{t("filters.status.OPEN")}</option>
-          <option value="ACKNOWLEDGED">{t("filters.status.ACKNOWLEDGED")}</option>
-          <option value="RESOLVED">{t("filters.status.RESOLVED")}</option>
-        </select>
-        <button type="submit">{t("filters.filter")}</button>
-        {status && <Link href="/alerts">{t("filters.clear")}</Link>}
-      </form>
+      {query.ignored.length > 0 && (
+        <p className="banner warn alert-note" role="status">
+          {query.ignored.map((issue) => t(`ignored.${issue}`)).join(" ")}
+        </p>
+      )}
+
+      <AlertFilters
+        query={query}
+        sources={sources}
+        sourcesFailed={sourced.status === "rejected"}
+        facets={facets}
+        window={shownWindow}
+      />
 
       {error ? (
         <div className="notice" role="alert">
@@ -86,19 +144,21 @@ async function AlertsPage({
         </div>
       ) : alerts.length === 0 ? (
         <div className="notice">
-          {status === "OPEN"
-            ? t("empty.OPEN")
-            : status === "ACKNOWLEDGED"
-              ? t("empty.ACKNOWLEDGED")
-              : status === "RESOLVED"
-                ? t("empty.RESOLVED")
-                : t("empty.all")}
+          {!filtered ? (
+            t("empty.all")
+          ) : isStatusOnly(query) ? (
+            t(`empty.${query.status as AlertStatusValue}`)
+          ) : (
+            <>
+              {l("noMatch")} <Link href="/alerts">{l("clearFilters")}</Link>
+            </>
+          )}
         </div>
       ) : (
         <>
           {page && page.total > alerts.length && (
             <p className="subtitle">
-              {t("showing", {
+              {t(filtered && !isStatusOnly(query) ? "list.showingFiltered" : "showing", {
                 shown: formatCount(alerts.length, locale),
                 total: formatCount(page.total, locale),
               })}
@@ -108,13 +168,23 @@ async function AlertsPage({
             <table className="table-dense" aria-label={t("table.label")}>
               <thead>
                 <tr>
-                  <th>{t("table.title")}</th>
-                  <th>{t("table.anomaly")}</th>
-                  <th>{t("table.severity")}</th>
-                  <th>{t("table.status")}</th>
-                  <th className="num">{t("table.occurrences")}</th>
-                  <th>{t("table.firstSeen")}</th>
-                  <th>{t("table.lastSeen")}</th>
+                  <th scope="col">{t("table.title")}</th>
+                  <th scope="col">{t("table.anomaly")}</th>
+                  <SortHeader
+                    label={t("table.severity")}
+                    column="severity"
+                    query={query}
+                    title={l("sortBy", { column: t("table.severity") })}
+                  />
+                  <th scope="col">{t("table.status")}</th>
+                  <th scope="col" className="num">{t("table.occurrences")}</th>
+                  <SortHeader
+                    label={t("table.firstSeen")}
+                    column="created_at"
+                    query={query}
+                    title={l("sortBy", { column: t("table.firstSeen") })}
+                  />
+                  <th scope="col">{t("table.lastSeen")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -152,9 +222,9 @@ async function AlertsPage({
           <Pagination
             total={page?.total ?? 0}
             limit={PAGE_SIZE}
-            offset={offset}
+            offset={query.offset}
             basePath="/alerts"
-            params={{ status }}
+            params={pagination}
           />
         </>
       )}

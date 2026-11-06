@@ -53,7 +53,11 @@
   },
   "rangeNote": {
     "swapped": "The start and end times were inverted and have been swapped.",
-    "clamped": "The requested range exceeded {days} days and was clamped."
+    "clamped": "The requested range exceeded {days} days and was clamped.",
+    "unknownRange": "Ignored an unknown range value; the range chips are 1h, 24h, 7d and 30d.",
+    "badSince": "Ignored a start time that is not a valid UTC timestamp.",
+    "badUntil": "Ignored an end time that is not a valid UTC timestamp.",
+    "chipWins": "Ignored the start and end times because a range chip is set."
   },
   "subjectKind": {
     "LOG_SOURCE": "Log sources",
@@ -235,6 +239,8 @@
       "ownerMe": "Owner: me",
       "ownerNone": "Owner: unassigned",
       "disposition": "Disposition: {value}",
+      "range": "Range: {value}",
+      "rangeValue": { "1h": "last hour", "24h": "last 24 hours", "7d": "last 7 days", "30d": "last 30 days" },
       "since": "From: {value}",
       "until": "To: {value}",
       "sinceRich": "From: <value></value>",
@@ -325,6 +331,7 @@
     "loadingWhat": "anomalies"
   },
   "list": {
+    "defaultWindow": "Default window, last 24 hours: {from} to {to}",
     "metaTitle": "Anomalies",
     "title": "Anomalies",
     "description": "Open an anomaly to see what changed during its interval. Times are UTC.",

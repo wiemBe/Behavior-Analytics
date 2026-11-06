@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { AnomalyFilters, chipLabel, toInputValue } from "./AnomalyFilters";
@@ -31,6 +31,8 @@ describe("toInputValue", () => {
 describe("time filter fields", () => {
   it("labels both fields visibly and names the timezone", () => {
     render(<AnomalyFilters values={empty} sources={[]} />);
+    // SOC-7b: the two inputs are revealed by the Custom chip.
+    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
     expect(screen.getByLabelText("Start time (UTC)")).toHaveAttribute("type", "datetime-local");
     expect(screen.getByLabelText("End time (UTC)")).toHaveAttribute("type", "datetime-local");
     // Visible, not screen-reader-only.

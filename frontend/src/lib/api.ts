@@ -863,6 +863,58 @@ export interface Alert {
   source_anomaly_ids: string[];
 }
 
+/** The alert list's filters (SOC-7a). `severity` and `log_source_id` repeat. */
+export type AlertFilterParams = {
+  status?: string;
+  severity?: string[];
+  log_source_id?: string | string[];
+  family?: string;
+  q?: string;
+  since?: string;
+  until?: string;
+};
+
+export type AlertListParams = AlertFilterParams & {
+  sort?: string;
+  order?: string;
+  limit?: number;
+  offset?: number;
+};
+
+/** The filters the backend applied, echoed back by the list and the facets. */
+export interface AlertFiltersApplied {
+  status: string | null;
+  severity: string[];
+  log_source_id: string[];
+  family: string | null;
+  q: string | null;
+  since: string | null;
+  until: string | null;
+}
+
+export interface AlertPage {
+  items: Alert[];
+  total: number;
+  limit: number;
+  offset: number;
+  filters_applied?: AlertFiltersApplied;
+  sort?: string;
+  order?: string;
+}
+
+export interface AlertFacetValue {
+  value: string;
+  count: number;
+}
+
+export interface AlertFacets {
+  severity: AlertFacetValue[];
+  family: AlertFacetValue[];
+  status: AlertFacetValue[];
+  total: number;
+  filters_applied?: AlertFiltersApplied;
+}
+
 // One stored aggregate joined to the execution that produced it. `query_version`
 // is per point so the chart can mark where the AQL changed — results either side
 // of a query change are not comparable.
@@ -2833,16 +2885,11 @@ export const api = {
       body: JSON.stringify({ schedule_cron: scheduleCron }),
     }),
 
-  alerts: (
-    params: {
-      status?: string;
-      limit?: number;
-      offset?: number;
-      log_source_id?: string;
-      since?: string;
-    } = {},
-  ) =>
-    request<Page<Alert>>(`/alerts${qs(params)}`),
+  alerts: (params: AlertListParams = {}) =>
+    request<AlertPage>(`/alerts${qs(params)}`),
+  /** Counts per status, severity and family under the same filters as the list (SOC-7a). */
+  alertFacets: (params: AlertFilterParams = {}) =>
+    request<AlertFacets>(`/alerts/facets${qs(params)}`),
   alert: (id: string) => request<Alert>(`/alerts/${id}`),
   alertPivot: (id: string) => request<Pivot>(`/alerts/${id}/pivot`),
   alertNotifications: (id: string) => request<Notification[]>(`/alerts/${id}/notifications`),

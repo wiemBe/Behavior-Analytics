@@ -4,3 +4,28 @@ td.alert-title {
   min-width: 18ch;
   overflow-wrap: anywhere;
 }
+
+/* The filter bar: the search form, the status and severity counts, the range and the chips of
+   what is filtered, one gap apart. The form's own bottom margin is the list's, so it is dropped
+   here. */
+.alert-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-5);
+  min-width: 0;
+}
+.alert-filters .filters,
+.alert-filters .filter-chips,
+.alert-filters .banner {
+  margin: 0;
+}
+.alert-note {
+  margin: 0 0 var(--sp-5);
+}
+.facet-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-6);
+  align-items: center;
+}

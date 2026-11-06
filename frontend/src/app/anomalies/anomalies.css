@@ -49,3 +49,13 @@
     display: block;
   }
 }
+
+/* The filter bar holds two rows at 1280 and 1024 px: each select is as wide as the option it
+   shows, not as the longest option it could show. Where `field-sizing` is not supported the
+   selects keep their full width and the bar wraps onto more rows. */
+.anomaly-filter-bar select {
+  field-sizing: content;
+}
+.anomaly-filter-bar .range-chips {
+  flex: 0 1 auto;
+}
