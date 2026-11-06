@@ -88,6 +88,7 @@ export function WafInvestigation({
   baselines = null,
   i18n = ENGLISH_WAF,
   triage = null,
+  related = null,
 }: {
   anomaly: WafAnomalyDetail;
   /** Stored buckets around the incident, or null when they could not be loaded. */
@@ -98,6 +99,8 @@ export function WafInvestigation({
   i18n?: BehaviorI18n;
   /** The triage block (SOC-1b), shown under the state sentence. */
   triage?: ReactNode;
+  /** The Related activity section (SOC-3b), after the evidence and before the lifecycle. */
+  related?: ReactNode;
 }) {
   const t = useTranslations("waf.investigation");
   const bucketSeconds = buckets?.[0]?.bucket_seconds ?? null;
@@ -170,6 +173,8 @@ export function WafInvestigation({
         <h2 className="section-title">{t("against")}</h2>
         <WafDetectionBlock anomaly={anomaly} bucketSeconds={bucketSeconds} />
       </section>
+
+      {related}
 
       <section>
         <h2 className="section-title">{t("lifecycle")}</h2>

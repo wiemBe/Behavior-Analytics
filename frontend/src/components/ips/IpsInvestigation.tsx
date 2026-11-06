@@ -139,6 +139,7 @@ export function IpsInvestigation({
   baselines = null,
   canOpenSource = false,
   triage = null,
+  related = null,
 }: {
   anomaly: IpsAnomalyDetail;
   /** Stored buckets around the incident, or null when they could not be loaded. */
@@ -149,6 +150,8 @@ export function IpsInvestigation({
   canOpenSource?: boolean;
   /** The triage block (SOC-1b), shown under the state sentence. */
   triage?: ReactNode;
+  /** The Related activity section (SOC-3b), after the evidence and before the lifecycle. */
+  related?: ReactNode;
 }) {
   const t = useTranslations("ips");
   const i18n = useBehaviorI18n();
@@ -289,6 +292,8 @@ export function IpsInvestigation({
         <h2 className="section-title">{t("section.evidence")}</h2>
         <p className="subtitle">{t("section.evidenceBody")}</p>
       </section>
+
+      {related}
 
       <section>
         <h2 className="section-title">{t("section.lifecycle")}</h2>

@@ -1,0 +1,81 @@
+/* The Related activity section of an anomaly page. One section, three lists: offenses full width,
+   anomalies and rules side by side from 1100 px up, one column below so nothing needs a
+   page-level scroll at 1024. Each list scrolls inside its own container if it must. */
+
+.related {
+  min-width: 0;
+  margin-bottom: var(--sp-5);
+}
+.related-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-5);
+  margin-bottom: var(--sp-2);
+}
+.related-head .section-title {
+  margin-bottom: 0;
+  min-width: 0;
+}
+.related-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-5);
+}
+.related-side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-5);
+}
+@media (min-width: 1280px) {
+  .related-side {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+.related-block {
+  min-width: 0;
+}
+.main .related-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-base);
+}
+.related-count {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-normal);
+}
+.related-empty {
+  margin: 0;
+  max-width: 84ch;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+}
+.related-banner {
+  margin: 0 0 var(--sp-3);
+  max-width: 84ch;
+}
+.related-failed p {
+  margin: 0;
+}
+.related-table td,
+.related-table th {
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.related-table th {
+  font-size: var(--fs-xs);
+}
+.related-table td.related-desc {
+  min-width: 18ch;
+  max-width: 44ch;
+}
+/* A quiet status label starts at the column edge, like the text columns beside it. */
+.related-table .pill.pill-quiet {
+  padding-left: 0;
+}

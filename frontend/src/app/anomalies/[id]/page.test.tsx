@@ -474,7 +474,7 @@ describe("timeline", () => {
 
     expect(
       screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
-    ).toEqual(["Triage", "Timeline", "What changed", "Investigation detail"]);
+    ).toEqual(["Triage", "Timeline", "What changed", "Related activity", "Investigation detail"]);
 
     const h1 = screen.getByRole("heading", { level: 1 });
     const metrics = container.querySelector(".measure")!;

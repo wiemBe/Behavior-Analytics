@@ -59,12 +59,15 @@ export function PwInvestigation({
   data,
   i18n: providedI18n,
   triage = null,
+  related = null,
 }: {
   anomaly: PwAnomalyDetail;
   data: PwInvestigationData;
   i18n?: PwI18n;
   /** The triage block (SOC-1b), shown under the state sentence. */
   triage?: ReactNode;
+  /** The Related activity section (SOC-3b), after the series and evidence and before the lifecycle. */
+  related?: ReactNode;
 }) {
   const runtimeI18n = useBehaviorI18n();
   const i18n = providedI18n ?? runtimeI18n ?? ENGLISH_PW;
@@ -384,6 +387,8 @@ export function PwInvestigation({
           )}
         </section>
       )}
+
+      {related}
 
       <section aria-labelledby="pw-inc-life">
         <h2 id="pw-inc-life" className="section-title">
