@@ -28,9 +28,11 @@ import {
   formatDelta,
   formatDuration,
   formatMetric,
+  formatPercentDelta,
   formatRatio,
   stateTone,
 } from "@/lib/behavior";
+import { ageSeconds, changePercent, isNoEvents, silenceSeconds } from "@/lib/anomalyList";
 import { ARROW, evidenceWord, type BehaviorI18n } from "@/lib/behaviorI18n";
 import { formatCount } from "@/lib/format";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
@@ -63,18 +65,27 @@ import "@/components/ui/controls.css";
  * ellipsizes, never breaking at a hyphen; its full text is the `title`. The
  * separator the old single line carried is kept for assistive technology only.
  */
-function SubjectCell({ a }: { a: AnomalySummary }) {
+function SubjectCell({ a, nowMs }: { a: AnomalySummary; nowMs: number }) {
   const t = useTranslations("anomalies.rows");
   const ipsI18n = useBehaviorI18n();
   // A property-watch row has no source of its own: its watch names it.
   const source = a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? t("unnamed");
   // Below 1100 px the Started column folds under the subject.
+  const age = ageSeconds(a, nowMs);
   const started = (
-    <span className="cell-sub cell-fold fold-sm fold-started">
-      {t.rich("started", {
-        time: () => <UtcTime value={a.anomaly_start ?? a.detected_at} variant="compact" />,
-      })}
-    </span>
+    <>
+      <span className="cell-sub cell-fold fold-sm fold-started">
+        {t.rich("started", {
+          time: () => <UtcTime value={a.anomaly_start ?? a.detected_at} variant="compact" />,
+        })}
+      </span>
+      {/* The age folds with the start (up to 1280 px). */}
+      {age != null && (
+        <span className="cell-sub cell-fold fold-started-age">
+          {t("ageFold", { age: formatDuration(age, ipsI18n) })}
+        </span>
+      )}
+    </>
   );
   if (isPwRow(a) && a.pw_value) {
     // The value (attacker-controlled text: rendered as text, wrapping anywhere), then the watch
@@ -299,9 +310,49 @@ function typeText(a: AnomalySummary, i18n: BehaviorI18n): string {
   return rowTypeLabel(a, i18n);
 }
 
-export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
+/**
+ * The deviation cell: the multiplier with the percent change beside it. A NO_EVENTS row has no
+ * ratio, so it says how long nothing has arrived instead of a dash.
+ */
+function DeviationCell({ a, nowMs }: { a: AnomalySummary; nowMs: number }) {
+  const t = useTranslations("anomalies.rows");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
+  if (isNoEvents(a)) {
+    const seconds = silenceSeconds(a, nowMs);
+    return <>{seconds == null ? t("noEventsUnknown") : t("noEventsFor", { duration: formatDuration(seconds, i18n) })}</>;
+  }
+  const pct = changePercent(a);
+  return (
+    <>
+      {formatRatio(a.deviation_ratio, locale)}
+      {pct != null && <span className="muted"> {formatPercentDelta(pct, locale)}</span>}
+    </>
+  );
+}
+
+/** The analyst's triage status, as a quiet pill; a row without the block says it is not reported. */
+function TriageCell({ a }: { a: AnomalySummary }) {
+  const t = useTranslations("anomalies.rows");
+  const tt = useTranslations("triage");
+  if (!a.triage) return <span className="muted">{t("triageUnknown")}</span>;
+  const s = a.triage.status;
+  return (
+    <>
+      <span className={`pill pill-quiet ${s === "IN_PROGRESS" ? "info" : s === "NEW" ? "warn" : ""}`}>
+        {tt(`status.${s}` as never)}
+      </span>
+      {a.triage.disposition && (
+        <span className="cell-sub">{tt(`disposition.${a.triage.disposition}` as never)}</span>
+      )}
+    </>
+  );
+}
+
+export function AnomalyRows({ items, nowMs }: { items: AnomalySummary[]; nowMs: number }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const t = useTranslations("anomalies.rows");
+  const tt = useTranslations("triage");
   const i18n = useBehaviorI18n();
   const { locale } = i18n;
   const { statePill, severityPill } = useEnumLabels();
@@ -313,7 +364,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
         return (
           <Fragment key={a.id}>
             <tr>
-              <SubjectCell a={a} />
+              <SubjectCell a={a} nowMs={nowMs} />
               <td className="cell-detector">
                 {typeText(a, i18n)}
                 {/* Below 1100 px severity folds under the detector. */}
@@ -325,9 +376,18 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                 <span className={`pill pill-strong ${stateTone(a.state)}`}>
                   {statePill(a.state)}
                 </span>
+                {/* Up to 1280 px the Triage and Owner columns fold under the state. */}
+                <span className="cell-sub cell-fold fold-md">
+                  {a.triage
+                    ? t("triageFoldLine", {
+                        status: tt(`status.${a.triage.status}` as never),
+                        owner: a.triage.owner ?? t("unassigned"),
+                      })
+                    : t("triageUnknown")}
+                </span>
                 {/* Up to 1280 px the Evidence column folds under the state. */}
                 {!isWafRow(a) && !isIpsRow(a) && !isPwRow(a) && (
-                  <span className="cell-sub cell-fold fold-md">
+                  <span className="cell-sub cell-fold fold-md fold-ev">
                     {t("evidenceFold", { value: evidenceWord(i18n, a.evidence_status) })}
                   </span>
                 )}
@@ -335,10 +395,13 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
               <td className="num">
                 <ObservedCell a={a} />
                 <span className="cell-sub cell-fold fold-md fold-dev">
-                  {t("deviationFold", { value: formatRatio(a.deviation_ratio, locale) })}
+                  {!isNoEvents(a) && `${t("deviationLabel")} `}
+                  <DeviationCell a={a} nowMs={nowMs} />
                 </span>
               </td>
-              <td className="num col-md col-dev">{formatRatio(a.deviation_ratio, locale)}</td>
+              <td className="num col-md col-dev">
+                <DeviationCell a={a} nowMs={nowMs} />
+              </td>
               <td className="col-sm">
                 <span className={`pill pill-quiet ${sevTone(a.severity)}`}>
                   {severityPill(a.severity)}
@@ -346,9 +409,37 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
               </td>
               <td className="num col-sm col-started">
                 {<UtcTime value={a.anomaly_start ?? a.detected_at} variant="compact" />}
+                {/* Up to 1440 px the Age column folds under the start. */}
+                {ageSeconds(a, nowMs) != null && (
+                  <span className="cell-sub cell-fold fold-age">
+                    {t("ageFold", { age: formatDuration(ageSeconds(a, nowMs), i18n) })}
+                  </span>
+                )}
+              </td>
+              <td className="num col-sm col-started col-age">
+                {(() => {
+                  const age = ageSeconds(a, nowMs);
+                  return age == null ? (
+                    <span className="muted">—</span>
+                  ) : (
+                    formatDuration(age, i18n)
+                  );
+                })()}
+              </td>
+              <td className="col-md col-ev">
+                <EvidenceCell a={a} />
               </td>
               <td className="col-md">
-                <EvidenceCell a={a} />
+                <TriageCell a={a} />
+              </td>
+              <td className="col-md cell-owner">
+                {!a.triage ? (
+                  <span className="muted">{t("triageUnknown")}</span>
+                ) : a.triage.owner ? (
+                  <span title={a.triage.owner}>{a.triage.owner}</span>
+                ) : (
+                  <span className="muted">{t("unassigned")}</span>
+                )}
               </td>
               {/* One actions cell rather than two columns: at 1024 px the
                   extra column was pushing the detail link out of view. */}
@@ -378,7 +469,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
 
             {open && (
               <tr className="row-detail">
-                <td colSpan={9}>
+                <td colSpan={12}>
                   <dl className="dimension-meta">
                     {/* A ratio detector's delta is a share, not a count, and the
                         list does not carry its unit: the investigation page does. A

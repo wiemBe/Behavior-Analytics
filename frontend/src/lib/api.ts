@@ -1336,6 +1336,63 @@ export interface AnomalySummary {
   pw_value?: PwValueRef | null;
   // WAF and IPS: EXACT, or LOWER_BOUND when observed_value is "at least n".
   observed_measurement?: MeasurementKind | null;
+  // The analyst's triage (SOC-1a): always present on a current backend, a NEW unowned block for an
+  // anomaly nobody touched. Optional here only so an older response still types; a missing block is
+  // shown as unknown, never as "New".
+  triage?: TriageSummary;
+}
+
+// --- SOC-1: anomaly triage ----------------------------------------------------
+// Mirrors app/schemas/triage.py. The analyst's status is separate from the detector's `state`.
+export type TriageStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
+export type TriageDisposition =
+  | "TRUE_POSITIVE"
+  | "BENIGN_TRUE_POSITIVE"
+  | "NOISE"
+  | "COLLECTION_PROBLEM"
+  | "KNOWN_CHANGE";
+export type TriageFamily = "log_source" | "waf" | "ips" | "property_watch";
+export type TriageEventKind = "STATUS" | "OWNER" | "DISPOSITION" | "NOTE" | "COMMENT";
+
+export interface TriageSummary {
+  status: TriageStatus;
+  owner: string | null;
+  disposition: TriageDisposition | null;
+  updated_at: string | null;
+}
+
+export interface TriageEvent {
+  id: string;
+  kind: TriageEventKind;
+  actor: string;
+  created_at: string;
+  from_value: string | null;
+  to_value: string | null;
+  comment: string | null;
+  triage_version: number;
+}
+
+export interface Triage {
+  family: TriageFamily;
+  anomaly_id: string;
+  status: TriageStatus;
+  owner: string | null;
+  disposition: TriageDisposition | null;
+  disposition_note: string | null;
+  updated_by: string | null;
+  updated_at: string | null;
+  /** 0 when no triage row exists; a PATCH sends it back as `expected_version`. */
+  version: number;
+  events: { items: TriageEvent[]; total: number; limit: number; offset: number };
+}
+
+/** A PATCH: an absent field is unchanged, an explicit `null` clears owner, disposition or note. */
+export interface TriagePatch {
+  owner?: string | null;
+  status?: TriageStatus;
+  disposition?: TriageDisposition | null;
+  disposition_note?: string | null;
+  expected_version: number;
 }
 
 export interface Contributor {
@@ -1504,6 +1561,10 @@ export interface AnomalyListParams {
   ips_entity_id?: string;
   // A property watch's incidents (Phase G).
   property_watch_id?: string;
+  // Triage filters (SOC-1a). `owner` is `me`, `none` or a subject.
+  triage_status?: TriageStatus;
+  owner?: string;
+  disposition?: TriageDisposition;
   since?: string;
   until?: string;
 }
@@ -2698,7 +2759,15 @@ export const api = {
       body: JSON.stringify({ schedule_cron: scheduleCron }),
     }),
 
-  alerts: (params: { status?: string; limit?: number; offset?: number } = {}) =>
+  alerts: (
+    params: {
+      status?: string;
+      limit?: number;
+      offset?: number;
+      log_source_id?: string;
+      since?: string;
+    } = {},
+  ) =>
     request<Page<Alert>>(`/alerts${qs(params)}`),
   alert: (id: string) => request<Alert>(`/alerts/${id}`),
   alertPivot: (id: string) => request<Pivot>(`/alerts/${id}/pivot`),
@@ -2749,6 +2818,19 @@ export const api = {
       `/anomalies/${id}`,
     ),
   anomalyPivot: (id: string) => request<Pivot>(`/anomalies/${id}/pivot`),
+  // SOC-1: the analyst's triage of one anomaly and its activity. Writes need `anomaly:triage`.
+  triage: (family: TriageFamily, id: string, page: { limit?: number; offset?: number } = {}) =>
+    request<Triage>(`/anomalies/triage/${family}/${id}${qs({ ...page })}`),
+  patchTriage: (family: TriageFamily, id: string, patch: TriagePatch) =>
+    request<Triage>(`/anomalies/triage/${family}/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  commentTriage: (family: TriageFamily, id: string, text: string) =>
+    request<TriageEvent>(`/anomalies/triage/${family}/${id}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
   // The caller's identity and grants, for links the caller may not follow.
   caller: () => request<CallerInfo>("/me"),
   // --- Phase G: property watches. Read-only; the editor's writes are PW-8's. -------

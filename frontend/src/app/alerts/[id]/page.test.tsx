@@ -470,3 +470,30 @@ describe("Investigate in QRadar", () => {
     expect(screen.queryByText("secret")).toBeNull();
   });
 });
+
+describe("alert to anomaly links and the human title (SOC-1b)", () => {
+  it("links every source anomaly", async () => {
+    await renderPage();
+    const link = screen.getByRole("link", { name: "Open anomaly an-1" });
+    expect(link).toHaveAttribute("href", "/anomalies/an-1");
+    expect(screen.getByRole("link", { name: "Open anomaly an-2" })).toHaveAttribute("href", "/anomalies/an-2");
+  });
+
+  it("shows no link list for an alert with no source anomaly", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(alert({ source_anomaly_ids: [] }));
+    await renderPage();
+    expect(screen.queryByRole("link", { name: /Open anomaly/ })).not.toBeInTheDocument();
+  });
+
+  it("names the detector in the page title (QW3)", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(
+      alert({
+        title: "VOLUME_DROP on Edge firewall",
+        title_code: "alert.anomaly.title",
+        title_params: { anomaly_type: "VOLUME_DROP", log_source: "Edge firewall" },
+      }),
+    );
+    await renderPage();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Volume drop on Edge firewall");
+  });
+});

@@ -26,6 +26,7 @@ import { IPS_TYPES, isIpsType, ipsTypeLabel } from "@/components/ips/ipsLabels";
 import { PW_TYPES, pwTypeLabel, isPwType } from "@/components/propertywatch/pwFormat";
 import { WAF_TYPES, anomalyTypeLabel } from "@/components/waf/wafLabels";
 import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
+import { DISPOSITIONS, TRIAGE_STATUSES } from "@/lib/triage";
 
 
 const DETECTOR_TYPES = ["VOLUME_SPIKE", "VOLUME_DROP", "NO_EVENTS"];
@@ -64,6 +65,10 @@ export interface AnomalyFilterValues {
   evidence_status: string;
   since: string;
   until: string;
+  /** The analyst's triage (SOC-1): status, owner (`me`, `none` or a name) and disposition. */
+  triage_status?: string;
+  owner?: string;
+  disposition?: string;
 }
 
 /** The detector's name in a chip: the IPS, property-watch and WAF names stay as their helpers write them. */
@@ -107,6 +112,16 @@ export function chipLabel(
       return say("severity", { value: wordOrValue(i18n, "enums.severityPill", text) });
     case "evidence_status":
       return say("evidence", { value: evidenceCode(i18n, text) });
+    case "triage_status":
+      return say("triageStatus", { value: i18n.t(`triage.status.${text}`) });
+    case "owner":
+      return text === "me"
+        ? say("ownerMe")
+        : text === "none"
+          ? say("ownerNone")
+          : say("owner", { value: text });
+    case "disposition":
+      return say("disposition", { value: i18n.t(`triage.disposition.${text}`) });
     case "since":
       return say("since", { value: utcTimeText(text) });
     case "until":
@@ -152,11 +167,21 @@ export function AnomalyFilters({
   sourcesFailed?: boolean;
 }) {
   const t = useTranslations("anomalies.filters");
+  const tt = useTranslations("triage");
   const i18n = useBehaviorI18n();
   const { label, severityPill } = useEnumLabels();
   const advancedActive = Boolean(
-    values.log_source_id || values.instance_id || values.evidence_status,
+    values.log_source_id ||
+      values.instance_id ||
+      values.evidence_status ||
+      values.disposition ||
+      (values.owner && values.owner !== "me" && values.owner !== "none"),
   );
+  const ownerKind = !values.owner
+    ? ""
+    : values.owner === "me" || values.owner === "none"
+      ? values.owner
+      : "named";
   const activeChips = (
     Object.entries(values) as Array<[
       keyof AnomalyFilterValues,
@@ -208,6 +233,28 @@ export function AnomalyFilters({
               {label("anomalyState", s)}
             </option>
           ))}
+        </select>
+
+        <label className="sr-only" htmlFor="anomaly-triage">
+          {t("triageStatusLabel")}
+        </label>
+        <select id="anomaly-triage" name="triage_status" defaultValue={values.triage_status ?? ""}>
+          <option value="">{t("allTriage")}</option>
+          {TRIAGE_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {tt(`status.${s}`)}
+            </option>
+          ))}
+        </select>
+
+        <label className="sr-only" htmlFor="anomaly-owner">
+          {t("ownerLabel")}
+        </label>
+        <select id="anomaly-owner" name="owner_kind" defaultValue={ownerKind}>
+          <option value="">{t("ownerAny")}</option>
+          <option value="me">{t("ownerMe")}</option>
+          <option value="none">{t("ownerNone")}</option>
+          <option value="named">{t("ownerNamed")}</option>
         </select>
 
         <label className="filter-field filter-check" htmlFor="anomaly-active-only">
@@ -328,6 +375,34 @@ export function AnomalyFilters({
                   </select>
                 </>
               )}
+
+              <label className="sr-only" htmlFor="anomaly-owner-name">
+                {t("ownerNameLabel")}
+              </label>
+              <input
+                id="anomaly-owner-name"
+                type="search"
+                name="owner_name"
+                defaultValue={ownerKind === "named" ? values.owner : ""}
+                placeholder={t("ownerNamePlaceholder")}
+                maxLength={255}
+              />
+
+              <label className="sr-only" htmlFor="anomaly-disposition">
+                {t("dispositionLabel")}
+              </label>
+              <select
+                id="anomaly-disposition"
+                name="disposition"
+                defaultValue={values.disposition ?? ""}
+              >
+                <option value="">{t("allDispositions")}</option>
+                {DISPOSITIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {tt(`disposition.${d}`)}
+                  </option>
+                ))}
+              </select>
 
               <label className="sr-only" htmlFor="anomaly-instance">
                 {t("instanceLabel")}

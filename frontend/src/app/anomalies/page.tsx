@@ -41,6 +41,7 @@ import {
   subjectKindsForApi,
   type SearchParamValue,
 } from "@/lib/anomalyQuery";
+import { parseTriageQuery } from "@/lib/triage";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { sourcesAsOf } from "@/lib/home/asOf";
 import { utcTimeText } from "@/components/ui/UtcTime";
@@ -71,6 +72,7 @@ async function AnomaliesPage({
   // detector type is a valid `anomaly_type` here and would be dropped by the
   // Phase A allow-list.
   const subject = parseSubjectQuery(raw);
+  const triage = parseTriageQuery(raw);
   const anomalyType =
     q.anomaly_type ||
     subject.waf_anomaly_type ||
@@ -99,6 +101,9 @@ async function AnomaliesPage({
         state: q.state || undefined,
         severity: q.severity || undefined,
         evidence_status: q.evidence_status || undefined,
+        triage_status: triage.triage_status || undefined,
+        owner: triage.owner || undefined,
+        disposition: triage.disposition || undefined,
         since: q.since || undefined,
         until: q.until || undefined,
       }),
@@ -131,6 +136,9 @@ async function AnomaliesPage({
       q.state ||
       q.severity ||
       q.evidence_status ||
+      triage.triage_status ||
+      triage.owner ||
+      triage.disposition ||
       q.since ||
       q.until,
   );
@@ -179,6 +187,9 @@ async function AnomaliesPage({
           state: q.state,
           severity: q.severity,
           evidence_status: q.evidence_status,
+          triage_status: triage.triage_status,
+          owner: triage.owner,
+          disposition: triage.disposition,
           since: q.since,
           until: q.until,
         }}
@@ -195,7 +206,9 @@ async function AnomaliesPage({
       ) : items.length === 0 ? (
         <div className="notice">
           {filtered ? (
-            t("noMatch")
+            <>
+              {t("noMatch")} <Link href="/anomalies">{t("clearFilters")}</Link>
+            </>
           ) : (
             <>
               {t("noneWindow", {
@@ -249,15 +262,24 @@ async function AnomaliesPage({
                   <th scope="col" className="num col-sm col-started">
                     {t("started")}
                   </th>
-                  <th scope="col" className="col-md">
+                  <th scope="col" className="num col-sm col-started col-age">
+                    {t("age")}
+                  </th>
+                  <th scope="col" className="col-md col-ev">
                     {t("evidence")}
+                  </th>
+                  <th scope="col" className="col-md">
+                    {t("triage")}
+                  </th>
+                  <th scope="col" className="col-md">
+                    {t("owner")}
                   </th>
                   <th scope="col">
                     <span className="sr-only">{t("actions")}</span>
                   </th>
                 </tr>
               </thead>
-              <AnomalyRows items={items} />
+              <AnomalyRows items={items} nowMs={nowMs} />
             </table>
           </TableScroll>
 
@@ -272,6 +294,9 @@ async function AnomaliesPage({
               subject_kind: subject.subject_kind || undefined,
               ips_entity_id: subject.ips_entity_id || undefined,
               property_watch_id: subject.property_watch_id || undefined,
+              triage_status: triage.triage_status || undefined,
+              owner: triage.owner || undefined,
+              disposition: triage.disposition || undefined,
             }}
           />
         </>

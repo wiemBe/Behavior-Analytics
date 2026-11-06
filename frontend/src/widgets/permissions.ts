@@ -15,6 +15,8 @@ export const KNOWN_PERMISSIONS = [
   "rule:write",
   "coverage:write",
   "read:anomalies",
+  // SOC-1: changing an anomaly's triage (owner, status, disposition, comments).
+  "anomaly:triage",
   "admin:waf",
   "admin:ips",
   "read:log_sources",

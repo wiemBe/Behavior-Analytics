@@ -10,6 +10,7 @@
 // kept, and the page says so instead of linking.
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
 import { PropertyWatchSeriesChart } from "@/components/propertywatch/PropertyWatchSeriesChart";
@@ -57,10 +58,13 @@ export function PwInvestigation({
   anomaly,
   data,
   i18n: providedI18n,
+  triage = null,
 }: {
   anomaly: PwAnomalyDetail;
   data: PwInvestigationData;
   i18n?: PwI18n;
+  /** The triage block (SOC-1b), shown under the state sentence. */
+  triage?: ReactNode;
 }) {
   const runtimeI18n = useBehaviorI18n();
   const i18n = providedI18n ?? runtimeI18n ?? ENGLISH_PW;
@@ -158,6 +162,8 @@ export function PwInvestigation({
       )}
       {reason && <p className="incident-summary">{reason}</p>}
       <p className="subtitle">{stateMeaningIn(anomaly.state, i18n)}</p>
+
+      {triage}
 
       <section aria-labelledby="pw-inc-what">
         <h2 id="pw-inc-what" className="section-title">

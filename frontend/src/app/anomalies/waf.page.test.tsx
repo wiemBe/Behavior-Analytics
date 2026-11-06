@@ -263,7 +263,7 @@ describe("the narrow-width folds", () => {
     const cells = within(row).getAllByRole("cell");
     // Columns stay; CSS hides them at ≤ 1280 px and shows the folded copy.
     expect(cells[4].className).toContain("col-md");
-    expect(cells[7].className).toContain("col-md");
+    expect(cells[8].className).toContain("col-md");
     const evidenceFold = within(cells[2]).getByText("Evidence: Partial");
     expect(evidenceFold.className).toContain("fold-md");
     const deviationFold = within(cells[3]).getByText("Deviation 3.05x");

@@ -79,9 +79,10 @@ async function renderPage(
 }
 
 describe("default columns", () => {
-  it("shows nine triage columns rather than eleven", () => {
+  it("shows twelve columns, the secondary ones folding under a neighbour", () => {
     // At 1024 px the eleven-column table pushed Started, Duration, Evidence and
-    // the detail link past the viewport.
+    // the detail link past the viewport. SOC-1b added Age, Triage and Owner; each folds
+    // under a neighbour before it can push the detail link out of reach.
     return renderPage().then(() => {
       const headers = screen
         .getAllByRole("columnheader")
@@ -94,7 +95,10 @@ describe("default columns", () => {
         "Deviation",
         "Severity",
         "Started",
+        "Age",
         "Evidence",
+        "Triage",
+        "Owner",
         "Actions",
       ]);
     });

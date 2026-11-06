@@ -189,7 +189,7 @@ describe("alert list contents", () => {
     })).toBeInTheDocument();
   });
 
-  it("keeps each engine's English title exactly as stored", async () => {
+  it("names the detector in an engine's English title (QW3)", async () => {
     vi.spyOn(api, "alerts").mockResolvedValue(page([alert({
       title: "WAF_REQUEST_RATE_SPIKE on edge-waf: POST /login/{id}",
       title_code: "alert.waf.title",
@@ -202,7 +202,7 @@ describe("alert list contents", () => {
     })]));
     await renderPage();
     expect(screen.getByRole("link", {
-      name: "WAF_REQUEST_RATE_SPIKE on edge-waf: POST /login/{id}",
+      name: "Request-rate spike on edge-waf: POST /login/{id}",
     })).toBeInTheDocument();
   });
 
@@ -336,5 +336,30 @@ describe("alert list paging and filters", () => {
       offset: 0,
     });
     expect(screen.getByRole("combobox", { name: "Alert status" })).toHaveValue("");
+  });
+});
+
+describe("alert to anomaly links (QW4)", () => {
+  it("links each alert to the anomaly it was raised from", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert({ source_anomaly_ids: ["an-7"] })]));
+    await renderPage();
+    const link = screen.getByRole("link", { name: /Open the anomaly behind Event volume spike on Core Firewall/ });
+    expect(link).toHaveAttribute("href", "/anomalies/an-7");
+    expect(link).toHaveTextContent("Anomaly");
+  });
+
+  it("says how many more there are and links the first", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert({ source_anomaly_ids: ["an-1", "an-2", "an-3"] })]));
+    await renderPage();
+    const link = screen.getByRole("link", { name: /Open the anomaly behind/ });
+    expect(link).toHaveAttribute("href", "/anomalies/an-1");
+    expect(link).toHaveTextContent("Anomaly (+2 more)");
+  });
+
+  it("shows a dash, not a dead link, for an alert with no source anomaly", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert({ source_anomaly_ids: [] })]));
+    await renderPage();
+    expect(screen.queryByRole("link", { name: /Open the anomaly behind/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Anomaly" })).toBeInTheDocument();
   });
 });

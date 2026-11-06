@@ -12,7 +12,7 @@ import { enumLabel } from "@/i18n/enumLabels";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
 import { withRouteMessages } from "@/i18n/RouteMessages";
-import { renderBackendMessage } from "@/i18n/backendMessage";
+import { alertTitleText } from "@/lib/alertTitle";
 
 import "./alerts.css";
 
@@ -109,6 +109,7 @@ async function AlertsPage({
               <thead>
                 <tr>
                   <th>{t("table.title")}</th>
+                  <th>{t("table.anomaly")}</th>
                   <th>{t("table.severity")}</th>
                   <th>{t("table.status")}</th>
                   <th className="num">{t("table.occurrences")}</th>
@@ -121,12 +122,22 @@ async function AlertsPage({
                   <tr key={a.id}>
                     <td className="alert-title">
                       <Link href={`/alerts/${a.id}`}>
-                        {renderBackendMessage(
-                          { text: a.title, code: a.title_code, params: a.title_params },
-                          locale,
-                          say,
-                        )}
+                        {alertTitleText(a, locale, say)}
                       </Link>
+                    </td>
+                    <td className="alert-anomaly">
+                      {a.source_anomaly_ids.length === 0 ? (
+                        <span className="muted">—</span>
+                      ) : (
+                        <Link
+                          href={`/anomalies/${a.source_anomaly_ids[0]}`}
+                          aria-label={t("anomalyLinkLabel", { title: alertTitleText(a, locale, say) })}
+                        >
+                          {a.source_anomaly_ids.length > 1
+                            ? t("anomalyLinkMore", { count: a.source_anomaly_ids.length - 1 })
+                            : t("anomalyLink")}
+                        </Link>
+                      )}
                     </td>
                     <td><span className={`pill ${sevTone(a.severity)}`}>{enumLabel(say, "severityPill", a.severity)}</span></td>
                     <td><span className={`pill ${statusTone(a.status)}`}>{enumLabel(say, "alertStatusPill", a.status)}</span></td>

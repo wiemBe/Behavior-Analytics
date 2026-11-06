@@ -22,7 +22,30 @@
   .anomaly-list .col-started {
     display: none;
   }
-  .anomaly-list .cell-sub.cell-fold.fold-started {
+  .anomaly-list .cell-sub.cell-fold.fold-started,
+  .anomaly-list .cell-sub.cell-fold.fold-started-age {
+    display: block;
+  }
+}
+
+/* The Age column needs more room than 1440 px leaves beside Started: up to there it folds under
+   the start time. */
+@media (max-width: 1440px) {
+  .anomaly-list .col-age {
+    display: none;
+  }
+  .anomaly-list .cell-sub.cell-fold.fold-age {
+    display: block;
+  }
+}
+
+/* The triage columns take the room Evidence had at 1440 px: it folds under the state one step
+   earlier than the shared breakpoint. */
+@media (max-width: 1440px) {
+  .anomaly-list .col-ev {
+    display: none;
+  }
+  .anomaly-list .cell-sub.cell-fold.fold-ev {
     display: block;
   }
 }

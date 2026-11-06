@@ -6,11 +6,12 @@ import anomalies from "../../messages/en/anomalies.json";
 import behavior from "../../messages/en/behavior.json";
 import enums from "../../messages/en/enums.json";
 import format from "../../messages/en/format.json";
+import triage from "../../messages/en/triage.json";
 import units from "../../messages/en/units.json";
 import { createTextTranslator } from "@/i18n/textTranslator";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 
 export const ENGLISH_ANOMALIES: BehaviorI18n = {
-  t: createTextTranslator("en", { anomalies, behavior, enums, format, units }),
+  t: createTextTranslator("en", { anomalies, behavior, enums, format, triage, units }),
   locale: "en",
 };

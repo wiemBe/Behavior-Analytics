@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AlertActions } from "@/components/AlertActions";
 import { getLocale, getTranslations } from "next-intl/server";
 import { Evidence } from "@/components/Evidence";
@@ -15,6 +16,7 @@ import { asTextTranslator } from "@/i18n/textTranslator";
 import type { Locale } from "@/i18n/locale";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 import { renderBackendMessage } from "@/i18n/backendMessage";
+import { alertTitleText } from "@/lib/alertTitle";
 
 
 import "./alert-detail.css";
@@ -60,11 +62,7 @@ async function AlertDetailPage({
     );
   }
   const pivotRead = await pivotReads.alert(id);
-  const title = renderBackendMessage(
-    { text: alert.title, code: alert.title_code, params: alert.title_params },
-    locale,
-    say,
-  );
+  const title = alertTitleText(alert, locale, say);
   const description = alert.description
     ? renderBackendMessage(
         {
@@ -124,6 +122,20 @@ async function AlertDetailPage({
         <p>{t("resolvedByLabel")} {alert.resolved_by ?? "—"}</p>
         <p>{t("resolutionLabel")} {resolution ?? "—"}</p>
         <p>{t("sourceAnomalies", { count: formatCount(alert.source_anomaly_ids.length, locale) })}</p>
+        {alert.source_anomaly_ids.length > 0 && (
+          <ul className="alert-anomaly-links">
+            {alert.source_anomaly_ids.map((anomalyId) => (
+              <li key={anomalyId}>
+                <Link
+                  href={`/anomalies/${anomalyId}`}
+                  aria-label={t("sourceAnomalyLabel", { id: anomalyId })}
+                >
+                  {t("sourceAnomalyLink", { id: anomalyId.slice(0, 8) })}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <AlertActions alertId={alert.id} status={alert.status} />
