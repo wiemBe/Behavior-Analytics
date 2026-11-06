@@ -63,6 +63,11 @@ _READONLY_MAY_MUTATE: set[tuple[str, str]] = {
     ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/auth/logout"),
     ("POST", "/api/v1/custom-rules/preview"),
+    # SOC-17b tuning preview: POST only because the proposed knobs are a body. It reads
+    # stored buckets and writes nothing, and the router's `read:anomalies` is the whole
+    # guard; `log_source:write` is not required. Same exact-exception shape as the
+    # custom-rule preview above.
+    ("POST", "/api/v1/noise/sources/{log_source_id}/preview"),
     ("PUT", "/api/v1/me/preferences"),
     ("POST", "/api/v1/me/guide-seen"),
 }

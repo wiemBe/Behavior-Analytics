@@ -12,10 +12,100 @@ from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+)
 
 from app.models.enums import AnomalyType, Criticality, Severity
 from app.schemas.messages import MessageParamValue
+
+#: The direction knob's legal values (design §3.1). A stored value outside this set keeps
+#: today's behaviour (both directions) because reads are never rejected.
+ThresholdDirection = Literal["both", "spike", "drop"]
+
+
+class ThresholdKnobs(BaseModel):
+    """The six tuning knobs of design §3.1, and the legacy `Thresholds` keys.
+
+    Every field is optional so a PATCH may carry a subset, and the model is frozen and
+    forbids unknown keys: a typo that today is silently ignored is refused, and a value
+    like ``spike_ratio: 0.4`` that today would become an alert storm is refused too.
+    The legacy keys stay accepted with type checks only; their bounds are not in the UI
+    and this task adds none.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    # --- the six knobs the tuning page writes -------------------------------
+    deviation_z: float | None = Field(default=None, ge=0.5, le=20.0)
+    spike_ratio: float | None = Field(default=None, ge=1.01, le=100.0)
+    drop_ratio: float | None = Field(default=None, ge=0.01, le=0.99)
+    min_absolute_delta_events: float | None = Field(default=None, ge=0.0, le=1_000_000.0)
+    open_after: int | None = Field(default=None, ge=1, le=10)
+    direction: ThresholdDirection | None = None
+
+    # --- every other `Thresholds` field stays legal, with its own type ------
+    min_bucket_events: float | None = None
+    silence_grace_buckets: int | None = None
+    min_parsed_ratio: float | None = None
+    max_unknown_ratio: float | None = None
+    delay_interval_multiple: float | None = None
+    cardinality_drop_fraction: float | None = None
+    collection_error_threshold: int | None = None
+    repeated_payload_intervals: int | None = None
+    resolve_after: int | None = None
+
+
+class ThresholdConfig(ThresholdKnobs):
+    """A stored ``custom_thresholds`` map: the knobs plus their ``by_type`` overrides.
+
+    ``by_type`` is validated against the same keys and bounds, and its anomaly-type names
+    must be real ``AnomalyType`` values. This validates new writes only: an existing row
+    that never passed this model is still read exactly as before.
+    """
+
+    by_type: dict[str, ThresholdKnobs] | None = None
+
+    @field_validator("by_type")
+    @classmethod
+    def _known_types(cls, value: dict[str, ThresholdKnobs] | None) -> dict[
+        str, ThresholdKnobs
+    ] | None:
+        if value is None:
+            return None
+        unknown = sorted(set(value) - {kind.value for kind in AnomalyType})
+        if unknown:
+            raise ValueError(f"unknown anomaly type: {', '.join(unknown)}")
+        return value
+
+
+def thresholds_error(exc: ValidationError) -> str:
+    """One readable sentence from a ``ThresholdConfig`` refusal, for the 422 detail."""
+    first = exc.errors()[0]
+    location = ".".join(str(part) for part in first.get("loc", ()))
+    message = str(first.get("msg", "invalid threshold"))
+    return f"custom_thresholds.{location}: {message}" if location else message
+
+
+class PreviewBlock(BaseModel):
+    """The preview a tuning PATCH showed, recorded in the audit detail (design §3.6).
+
+    Audit only: the route never applies it. It is validated so a malformed block is
+    refused like any other body, but it changes nothing that is saved.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    at: datetime
+    window: int = Field(ge=1, le=365)
+    current: int | None = Field(default=None, ge=0)
+    proposed: int | None = Field(default=None, ge=0)
+    state: Literal["COMPLETE", "PARTIAL", "INSUFFICIENT_DATA", "TOO_LARGE"]
 
 
 class LogSourceSummary(BaseModel):
@@ -68,6 +158,24 @@ class LogSourceUpdate(BaseModel):
     business_days: list[int] | None = None
     timezone_name: str | None = Field(default=None, max_length=64)
     custom_thresholds: dict | None = None
+    #: Audit-only preview a tuning PATCH showed; never applied (design §3.6).
+    preview: PreviewBlock | None = None
+
+    @field_validator("custom_thresholds")
+    @classmethod
+    def _thresholds(cls, value: dict | None) -> dict | None:
+        """Refuse unknown keys and out-of-bounds values on new writes.
+
+        The original dict is returned unchanged, so this validation does not rewrite what
+        is stored (an int stays an int, and a subset stays a subset).
+        """
+        if value is None:
+            return None
+        try:
+            ThresholdConfig.model_validate(value)
+        except ValidationError as exc:
+            raise ValueError(thresholds_error(exc)) from exc
+        return value
 
     @field_validator("timezone_name")
     @classmethod

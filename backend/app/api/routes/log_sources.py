@@ -8,18 +8,31 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import NotificationDispatcher
-from app.alerts.fingerprint import inventory_fingerprint
+from app.alerts.fingerprint import anomaly_fingerprint, inventory_fingerprint
 from app.alerts.routing import default_policy
 from app.alerts.service import AlertResolution, AlertService
+from app.anomaly.thresholds import ThresholdResolver, direction_excluded
 from app.api.deps import ProviderDep, SessionDep
 from app.fleet.service import reclassify_instance
-from app.i18n.messages import MessageRef
+from app.i18n.messages import MessageRef, render
 from app.i18n.refusal import permission_refusal
-from app.models.enums import ClassificationReviewStatus
+from app.models.enums import (
+    ACTIVE_ANOMALY_STATES,
+    AnomalyState,
+    AnomalyType,
+    ClassificationReviewStatus,
+    Criticality,
+)
 from app.models.fleet import LogSourceClassification
-from app.models.log_source import LogSource
+from app.models.log_source import (
+    AnomalyStateTransition,
+    LogSource,
+    LogSourceAnomaly,
+    LogSourceDetectorState,
+)
 from app.pivot.service import PivotNotFound, log_source_pivot
 from app.repositories.audit import record_audit
 from app.repositories.log_source import LogSourceRepository
@@ -97,6 +110,109 @@ def _to_summary(ls: LogSource, anomaly_counts: dict[uuid.UUID, int]) -> LogSourc
     return s
 
 
+#: The recorded reason of a tuning closure (design §3.1, D-54).
+MESSAGE_DIRECTION_DISABLED = MessageRef("anomaly.tuning.direction_disabled")
+
+
+def _effective_direction(criticality: Criticality, custom: object) -> str:
+    """The direction the engine will use for this source, via the same resolver.
+
+    A malformed stored value is not rejected on read; the resolver returns it and
+    ``direction_excluded`` treats anything but the two known values as ``both``.
+    """
+    return ThresholdResolver().resolve(
+        criticality=criticality,
+        custom=custom if isinstance(custom, dict) else None,
+    ).direction
+
+
+async def _close_disabled_incidents(
+    session: AsyncSession,
+    ls: LogSource,
+    anomaly_types: set[AnomalyType],
+    *,
+    actor: str,
+    now: datetime,
+) -> list[dict[str, object]]:
+    """Resolve the source's live incidents of a newly disabled direction.
+
+    A skipped detector can never resolve its own open incident, so the tuning
+    change that disabled it closes them here: state RESOLVED, one recorded
+    transition per incident with the operator as actor, the detector's state row
+    returned to NORMAL, and the condition's alert resolved. Same transaction as
+    the PATCH; the returned blocks go into its audit detail.
+    """
+    if not anomaly_types:
+        return []
+    alerts = AlertService(session, clock=lambda: now)
+    closed: list[dict[str, object]] = []
+    for anomaly_type in sorted(anomaly_types, key=lambda kind: kind.value):
+        incidents = list(
+            (
+                await session.scalars(
+                    select(LogSourceAnomaly).where(
+                        LogSourceAnomaly.log_source_id == ls.id,
+                        LogSourceAnomaly.anomaly_type == anomaly_type,
+                        LogSourceAnomaly.state.in_(
+                            [state.value for state in ACTIVE_ANOMALY_STATES]
+                        ),
+                    )
+                )
+            ).all()
+        )
+        for incident in incidents:
+            previous = AnomalyState(incident.state)
+            incident.state = AnomalyState.RESOLVED
+            incident.resolved_at = now
+            session.add(
+                AnomalyStateTransition(
+                    anomaly_id=incident.id,
+                    from_state=previous,
+                    to_state=AnomalyState.RESOLVED,
+                    occurred_at=now,
+                    # An operator action has no driving bucket.
+                    bucket_start=None,
+                    reason=render(MESSAGE_DIRECTION_DISABLED),
+                    reason_i18n=MESSAGE_DIRECTION_DISABLED.to_wire(),
+                    actor=actor,
+                    observed_value=incident.observed_value,
+                    expected_value=incident.expected_value,
+                )
+            )
+        detector_state = await session.scalar(
+            select(LogSourceDetectorState).where(
+                LogSourceDetectorState.log_source_id == ls.id,
+                LogSourceDetectorState.anomaly_type == anomaly_type,
+            )
+        )
+        if detector_state is not None:
+            detector_state.state = AnomalyState.NORMAL
+            detector_state.is_open = False
+            detector_state.open_anomaly_id = None
+            detector_state.active_anomaly_id = None
+            detector_state.consecutive_anomalous = 0
+            detector_state.consecutive_healthy = 0
+        result = await alerts.resolve_by_fingerprint(
+            anomaly_fingerprint(ls.id, anomaly_type.value),
+            actor=actor,
+            reason_message=MESSAGE_DIRECTION_DISABLED,
+        )
+        if result is not None and result.transition is not None:
+            await NotificationDispatcher(
+                session, notifiers={}, policy=default_policy()
+            ).enqueue(result.alert, result.transition)
+        closed.append(
+            {
+                "anomaly_type": anomaly_type.value,
+                # A count, not the ids: the audit redactor masks UUID-shaped values, and a
+                # masked list would look like a record while saying nothing.
+                "incidents": len(incidents),
+                "alert_resolved": result is not None and result.transition is not None,
+            }
+        )
+    return closed
+
+
 @router.get("", response_model=list[LogSourceSummary])
 async def list_log_sources(
     session: SessionDep,
@@ -156,14 +272,32 @@ async def update_log_source(
 
     changes: dict[str, dict[str, object]] = {}
     updates: dict[str, object] = payload.model_dump(exclude_unset=True)
+    # Audit-only: a preview never changes what is saved.
+    updates.pop("preview", None)
     _reject_unusable_business_days(ls, updates)
+    old_custom = ls.custom_thresholds or {}
+    new_custom = updates.get("custom_thresholds", old_custom)
+    old_direction = _effective_direction(ls.criticality, old_custom)
+    new_direction = _effective_direction(ls.criticality, new_custom)
+    newly_excluded = set(direction_excluded(new_direction)) - set(
+        direction_excluded(old_direction)
+    )
     for field, value in updates.items():
         changes[field] = {"from": _jsonable(getattr(ls, field, None)), "to": _jsonable(value)}
         setattr(ls, field, value)
     await session.flush()
+    now = datetime.now(UTC)
+    closed = await _close_disabled_incidents(
+        session, ls, newly_excluded, actor=principal.subject, now=now
+    )
+    audit_detail: dict[str, object] = {"changes": changes}
+    if payload.preview is not None:
+        audit_detail["preview"] = payload.preview.model_dump(mode="json")
+    if closed:
+        audit_detail["closed_incidents"] = closed
     await record_audit(
         session, action="log_source.update", actor=principal.subject,
-        object_type="log_source", object_id=str(log_source_id), detail={"changes": changes},
+        object_type="log_source", object_id=str(log_source_id), detail=audit_detail,
     )
 
     counts = await repo.open_anomaly_counts()

@@ -5431,6 +5431,54 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "No source raised an anomaly in the last {window} days of stored data.",
         count={"window": 28},
     ),
+    # --- SOC-17b: a tuning change's recorded reason and the 28-day replay ---
+    _fixed(
+        "anomaly.tuning.direction_disabled",
+        "the direction was disabled by a tuning change",
+    ),
+    _fixed(
+        "noise.preview.not_monitored",
+        "The source is not monitored, so there is nothing to replay.",
+    ),
+    _mixed(
+        "noise.preview.insufficient_coverage",
+        "Only {covered} of {window} days are stored; a replay needs at least 7.",
+        count={"covered": 3, "window": 28},
+    ),
+    _mixed(
+        "noise.preview.not_judged",
+        "{count} of {total} buckets could not be judged, more than the 10% a count may rest on.",
+        count={"count": 12, "total": 8064},
+    ),
+    _fixed(
+        "noise.preview.maintenance",
+        "The source is in maintenance; today's rule would not judge these buckets.",
+    ),
+    _mixed(
+        "noise.preview.too_large",
+        "The window has {count} buckets, more than the {limit} a replay accepts; choose 7 days.",
+        count={"count": 40320, "limit": 50000},
+    ),
+    _fixed(
+        "noise.preview.direction_disabled",
+        "Not replayed: the source's direction setting disables this detector.",
+    ),
+    _text(
+        "noise.preview.not_replayable",
+        "Not replayed: {reason}",
+        reason="the bucket did not measure PARSE_RATIOS",
+    ),
+    _mixed(
+        "noise.preview.partial",
+        "Counts cover {covered} of {window} days.",
+        count={"covered": 21, "window": 28},
+    ),
+    _mixed(
+        "noise.preview.maintenance_history",
+        "{count} buckets were recorded during a maintenance window; a past window cannot be "
+        "reconstructed.",
+        count={"count": 8},
+    ),
 )
 
 
