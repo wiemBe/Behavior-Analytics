@@ -9523,6 +9523,55 @@
     "sample_english_params": {},
     "template": "The search returned more rows than the cap allows, so some rows are missing."
   },
+  "related_activity.reason.items_truncated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "More rows match this window than are shown; the list holds the first 20 and the total is the full count.",
+    "sample_english_params": {},
+    "template": "More rows match this window than are shown; the list holds the first 20 and the total is the full count."
+  },
+  "related_activity.reason.no_log_source": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This anomaly has no log source, so related activity cannot be resolved.",
+    "sample_english_params": {},
+    "template": "This anomaly has no log source, so related activity cannot be resolved."
+  },
+  "related_activity.reason.offense_not_collected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar offense collection has not run for this console, so no offense in this window was collected.",
+    "sample_english_params": {},
+    "template": "QRadar offense collection has not run for this console, so no offense in this window was collected."
+  },
+  "related_activity.reason.offense_stale": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar offense collection is stale, so the offenses in this window may be incomplete.",
+    "sample_english_params": {},
+    "template": "QRadar offense collection is stale, so the offenses in this window may be incomplete."
+  },
+  "related_activity.reason.rules_not_collected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Offenses were not collected for this window, so the rules that fired cannot be resolved.",
+    "sample_english_params": {},
+    "template": "Offenses were not collected for this window, so the rules that fired cannot be resolved."
+  },
+  "related_activity.reason.rules_partial": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Rule-match collection did not measure this window for every rule; a missing measurement is null, never zero.",
+    "sample_english_params": {},
+    "template": "Rule-match collection did not measure this window for every rule; a missing measurement is null, never zero."
+  },
+  "related_activity.reason.rules_stale": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Offense collection is stale, so the rules that fired in this window may be incomplete.",
+    "sample_english_params": {},
+    "template": "Offense collection is stale, so the rules that fired in this window may be incomplete."
+  },
   "rule_health.age_unknown": {
     "params": {},
     "sample": {},
