@@ -87,6 +87,31 @@ PHASE_A_ENDPOINTS = [
     "/api/v1/behavior/detectors",
 ]
 
+# The one exception to the read-only rule below the `/anomalies` and `/behavior`
+# prefixes. SOC-1a / D-40 (FEAT-1) added analyst triage writes: they persist the
+# application's own `anomaly_triage*` tables and never touch QRadar. Every other
+# operation on these paths must stay GET.
+TRIAGE_WRITES = {
+    ("/api/v1/anomalies/triage/{family}/{anomaly_id}", "patch"),
+    ("/api/v1/anomalies/triage/{family}/{anomaly_id}/comments", "post"),
+}
+
+
+def _walk_routes(routes):  # type: ignore[no-untyped-def]
+    """Flatten the app's route tree.
+
+    FastAPI includes routers lazily: `app.routes` holds one `_IncludedRouter`
+    placeholder per include, with no `path` and no `methods`, so iterating it
+    directly matches nothing. The same walker guards every route in
+    `tests/unit/test_route_auth_guard.py`.
+    """
+    for route in routes:
+        if hasattr(route, "effective_candidates"):
+            yield from _walk_routes(route.effective_candidates())
+            yield from _walk_routes(route.effective_low_priority_routes())
+        else:
+            yield route
+
 
 def client_for(principal: Principal) -> TestClient:
     url = os.environ["TEST_DATABASE_URL"]
@@ -724,13 +749,29 @@ class TestNoSecretsLeak:
             assert f'"{forbidden}"' not in body
 
     def test_no_mutation_verbs_are_exposed(self, db_schema) -> None:
-        """QRadar integration is read-only by design, not by omission."""
+        """QRadar integration is read-only by design, not by omission.
+
+        Analyst triage is the single exception, and it is exact: only the two
+        `TRIAGE_WRITES` pairs may appear. They write the application's own triage
+        tables, so they do not weaken the guarantee against QRadar.
+        """
         app = create_app()
-        for route in app.routes:
-            methods = getattr(route, "methods", set()) or set()
-            path = getattr(route, "path", "")
-            if "/anomalies" in path or "/behavior" in path:
-                assert methods <= {"GET", "HEAD", "OPTIONS"}, path
+        matched = 0
+        for route in _walk_routes(app.routes):
+            path = getattr(route, "path", "") or ""
+            if "/anomalies" not in path and "/behavior" not in path:
+                continue
+            matched += 1
+            methods = (getattr(route, "methods", None) or set()) - {"HEAD", "OPTIONS"}
+            for method in methods:
+                assert method == "GET" or (path, method.lower()) in TRIAGE_WRITES, (
+                    path,
+                    method,
+                )
+        # The loop above is only a guard while it actually sees the routes; the
+        # lazy include tree that hid them once must not do so silently again.
+        assert matched >= 20, "the route walk matched too few anomaly/behavior paths"
+
         # The Phase D analyst routes (T-085) join the same guarantee. Asserted
         # against the OpenAPI schema, which flattens every included router:
         # each new path must exist and expose GET only, rather than passing the
@@ -746,6 +787,41 @@ class TestNoSecretsLeak:
             "/api/v1/behavior/ips/sources/{log_source_id}/traffic",
             "/api/v1/behavior/ips/sources/{log_source_id}/traffic.csv",
         }
+        # Neither direction may drift: a listed pair whose route was renamed is
+        # a dead exception, and a write that is not listed breaks read-only.
+        for path, method in sorted(TRIAGE_WRITES):
+            assert method in spec.get(path, {}), (
+                f"stale triage allow-list entry: {method.upper()} {path}"
+            )
+        observed_writes: set[tuple[str, str]] = set()
         for path, operations in spec.items():
-            if "/anomalies" in path or "/behavior" in path:
-                assert set(operations) <= {"get"}, path
+            if "/anomalies" not in path and "/behavior" not in path:
+                continue
+            for method in operations:
+                if method != "get":
+                    observed_writes.add((path, method))
+        assert observed_writes == TRIAGE_WRITES, observed_writes
+
+    def test_each_triage_write_requires_the_triage_permission(self, db_schema) -> None:
+        """The allow-list is only safe because `anomaly:triage` gates both writes.
+
+        `read:*` may read an anomaly but must not change its triage; the refusal
+        arrives before existence is revealed, as with every other write.
+        """
+        client = client_for(READER)
+        probe = uuid.uuid4()
+        bodies = {
+            "patch": {"owner": "analyst", "expected_version": 0},
+            "post": {"text": "probe"},
+        }
+        for path, method in sorted(TRIAGE_WRITES):
+            url = path.replace("{family}", "log_source").replace(
+                "{anomaly_id}", str(probe)
+            )
+            response = client.request(method.upper(), url, json=bodies[method])
+            assert response.status_code == 403, (
+                method,
+                path,
+                response.status_code,
+                response.text,
+            )
