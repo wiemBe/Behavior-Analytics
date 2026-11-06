@@ -152,6 +152,21 @@ HISTORY_TABLES = (
             "app.repositories.anomaly.AnomalyRepository.waf_metrics_page": Reader(
                 "investigation", ReaderKind.DISPLAY
             ),
+            # TOP-1a: the traffic ranking's window anchor, measurement and page.
+            # History buckets are real measurements, so like the investigation reads
+            # above these display every origin.
+            "app.repositories.anomaly.AnomalyRepository.waf_latest_complete_bucket": Reader(
+                "TOP-1 traffic window anchor", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_traffic_bucket_stats": Reader(
+                "TOP-1 traffic measurement", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_traffic_page": Reader(
+                "TOP-1 traffic ranking", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_traffic_series": Reader(
+                "TOP-1 traffic series", ReaderKind.DISPLAY
+            ),
             "app.services.waf_pipeline.WafSourcePipeline._evaluate": Reader(
                 "pending evaluation", ReaderKind.LIVE_ONLY, 1
             ),
@@ -255,6 +270,12 @@ HISTORY_TABLES = (
             "app.repositories.anomaly.AnomalyRepository.waf_metrics_page": Reader(
                 "investigation", ReaderKind.DISPLAY
             ),
+            "app.repositories.anomaly.AnomalyRepository.waf_traffic_page": Reader(
+                "TOP-1 traffic ranking", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_traffic_series": Reader(
+                "TOP-1 traffic series", ReaderKind.DISPLAY
+            ),
             "app.services.waf_retention.<module>": Reader("retention", ReaderKind.DELETE),
             "app.waf.baseline.WafBaselineBuilder._rows": Reader(
                 "baseline", ReaderKind.EVIDENCE
@@ -304,6 +325,15 @@ HISTORY_TABLES = (
             "app.repositories.ips_behavior.IpsBehaviorRepository.source_metrics_page": Reader(
                 "source series", ReaderKind.DISPLAY
             ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.ips_traffic_bucket_stats": Reader(
+                "TOP-1 traffic measurement", ReaderKind.DISPLAY
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.ips_traffic_page": Reader(
+                "TOP-1 traffic ranking", ReaderKind.DISPLAY
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.ips_traffic_series": Reader(
+                "TOP-1 traffic series", ReaderKind.DISPLAY
+            ),
             "app.services.ips_pipeline.IpsInstancePipeline.run": Reader(
                 "training eligibility", ReaderKind.EVIDENCE
             ),
@@ -337,6 +367,12 @@ HISTORY_TABLES = (
             ),
             "app.repositories.ips_behavior.IpsBehaviorRepository.entity_metrics_page": Reader(
                 "entity series", ReaderKind.DISPLAY
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.ips_traffic_page": Reader(
+                "TOP-1 traffic ranking", ReaderKind.DISPLAY
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.ips_traffic_series": Reader(
+                "TOP-1 traffic series", ReaderKind.DISPLAY
             ),
             "app.services.ips_retention.<module>": Reader("retention", ReaderKind.DELETE),
         },

@@ -240,5 +240,5 @@ def test_every_ips_behavior_route_is_get_only() -> None:
         for p, ops in create_app().openapi()["paths"].items()
         if "/behavior/ips" in p
     }
-    assert len(paths) == 6, sorted(paths)
+    assert len(paths) == 8, sorted(paths)
     assert all(methods == {"get"} for methods in paths.values()), paths

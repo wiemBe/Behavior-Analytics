@@ -743,6 +743,8 @@ class TestNoSecretsLeak:
             "/api/v1/behavior/ips/sources/{log_source_id}/baselines",
             "/api/v1/behavior/ips/entities/{entity_id}/metrics",
             "/api/v1/behavior/ips/entities/{entity_id}/baselines",
+            "/api/v1/behavior/ips/sources/{log_source_id}/traffic",
+            "/api/v1/behavior/ips/sources/{log_source_id}/traffic.csv",
         }
         for path, operations in spec.items():
             if "/anomalies" in path or "/behavior" in path:

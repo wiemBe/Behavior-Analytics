@@ -634,6 +634,16 @@
       "named": "{kind} {name}"
     }
   },
+  "ips_traffic_detail": {
+    "reason": {
+      "bucket_partial": "A measured bucket in this window is a lower bound, so its destination-IP counts are lower bounds.",
+      "buckets_missing": "Some buckets of this window were not collected, so the rates cover the measured buckets only.",
+      "no_complete_bucket": "No bucket has been stored for this IPS source, so no rate can be measured.",
+      "no_usable_bucket": "No bucket in this window has a usable destination-IP measurement, so no rate can be measured.",
+      "not_collected": "This IPS source has no enabled, validated profile, so no traffic was collected.",
+      "truncated": "A bucket in this window lost destination-IP entities, so the ranking is a lower bound."
+    }
+  },
   "propertywatch": {
     "action": {
       "change_pins": "change the scope, properties or pins",
@@ -1155,6 +1165,16 @@
     },
     "suppression": {
       "maintenance_window": "maintenance window"
+    }
+  },
+  "waf_traffic_detail": {
+    "reason": {
+      "bucket_partial": "A measured bucket in this window is partial, so its endpoint counts are lower bounds.",
+      "buckets_missing": "Some buckets of this window were not collected, so the rates cover the measured buckets only.",
+      "no_complete_bucket": "No complete bucket has been stored for this WAF source, so no rate can be measured.",
+      "no_usable_bucket": "No bucket in this window has a usable endpoint measurement, so no rate can be measured.",
+      "not_collected": "This WAF source has no enabled, validated profile, so no traffic was collected.",
+      "truncated": "A bucket in this window lost endpoint groups or new endpoints, so the ranking is a lower bound."
     }
   }
 }

@@ -12,11 +12,13 @@ auditable rather than something the UI must take on faith.
 
 from __future__ import annotations
 
+import re
 import uuid
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, NamedTuple
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.anomaly.capabilities import (
@@ -58,10 +60,10 @@ from app.models.property_watch import PropertyWatch, PwAnomaly, PwAnomalyTransit
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
 from app.property_watch.facts import split_tuple_key
 from app.providers.base import LogSourceTelemetry
-from app.repositories.anomaly import AnomalyRepository
+from app.repositories.anomaly import AnomalyRepository, WafTrafficRow
 from app.repositories.anomaly_faults import AnomalyFaultRepository
 from app.repositories.anomaly_histogram import BUCKET_SECONDS, check_range, histogram
-from app.repositories.ips_behavior import IpsBehaviorRepository
+from app.repositories.ips_behavior import IpsBehaviorRepository, IpsTrafficRow
 from app.schemas.anomaly import (
     ActiveByFamily,
     ActiveStateCounts,
@@ -78,6 +80,7 @@ from app.schemas.anomaly import (
     ExplanationOut,
     InputRequirementOut,
     IpsEntityRefOut,
+    IpsTrafficSort,
     MetricBucketOut,
     PagedAnomalies,
     PagedWafBaselines,
@@ -89,6 +92,11 @@ from app.schemas.anomaly import (
     SourceBehaviorOut,
     SourceEvaluationOut,
     SubjectKind,
+    TrafficItemOut,
+    TrafficOut,
+    TrafficSortOrder,
+    TrafficState,
+    TrafficWindow,
     WafAdmissionOverflowOut,
     WafBaselineAdequacyOut,
     WafBaselineCellOut,
@@ -98,6 +106,7 @@ from app.schemas.anomaly import (
     WafMetricBucketOut,
     WafSourceBehaviorOut,
     WafSourceDetailOut,
+    WafTrafficSort,
     WafValidationFieldOut,
     WafValidationReportOut,
     detection_detail,
@@ -1326,6 +1335,704 @@ async def waf_endpoint_baselines(
     )
 
 
+# ------------------------------------------------------- traffic ranking (TOP-1)
+#: Windows in seconds. `5m` is deliberately absent: it is exactly the newest
+#: complete stored bucket, whose own width the response reports.
+_WINDOW_SECONDS: dict[TrafficWindow, int] = {
+    TrafficWindow.ONE_HOUR: 3600,
+    TrafficWindow.ONE_DAY: 86400,
+    TrafficWindow.ONE_WEEK: 7 * 86400,
+    TrafficWindow.FOUR_WEEKS: 28 * 86400,
+}
+
+#: Sorts over text default to ascending; count sorts default to descending.
+_TEXT_SORTS = frozenset({"host", "endpoint", "ip"})
+
+
+def _traffic_bounds(
+    window: TrafficWindow, newest_start: datetime, bucket_seconds: int
+) -> tuple[datetime, datetime, int]:
+    """The window's `[start, end)` and how many whole buckets it should hold.
+
+    `5m` is exactly the newest complete bucket. Every other window reaches back
+    from that bucket's end over whole buckets, so `range_start` is the first
+    bucket's start and `buckets_expected` is exact rather than rounded.
+    """
+    expected = (
+        1
+        if window is TrafficWindow.FIVE_MINUTES
+        else max(1, _WINDOW_SECONDS[window] // bucket_seconds)
+    )
+    end = newest_start + timedelta(seconds=bucket_seconds)
+    return end - timedelta(seconds=expected * bucket_seconds), end, expected
+
+
+def _traffic_order(sort: str, order: TrafficSortOrder | None) -> TrafficSortOrder:
+    """The resolved order: explicit, else descending for counts and ascending
+    for text."""
+    if order is not None:
+        return order
+    return TrafficSortOrder.ASC if sort in _TEXT_SORTS else TrafficSortOrder.DESC
+
+
+def _traffic_reason(family: str, code: str) -> str:
+    """A stable reason code in the `*_detail.reason.*` namespace."""
+    return f"{family}_traffic_detail.reason.{code}"
+
+
+def _traffic_verdict(
+    family: str,
+    *,
+    not_collected: bool,
+    has_window: bool,
+    buckets_measured: int,
+    buckets_expected: int,
+    partial_buckets: int,
+    truncated: bool,
+) -> tuple[TrafficState, str | None]:
+    """The state and its coded reason, in precedence order.
+
+    Not collected wins: no bucket was written under a current profile, so no
+    rate would be meaningful. No measured bucket is INSUFFICIENT_DATA even when
+    a window exists. Truncation outranks a merely incomplete window because it
+    makes the measured rows themselves lower bounds.
+    """
+    if not_collected:
+        return TrafficState.NOT_COLLECTED, _traffic_reason(family, "not_collected")
+    if buckets_measured == 0:
+        code = "no_usable_bucket" if has_window else "no_complete_bucket"
+        return TrafficState.INSUFFICIENT_DATA, _traffic_reason(family, code)
+    if truncated:
+        return TrafficState.TRUNCATED, _traffic_reason(family, "truncated")
+    if buckets_measured < buckets_expected:
+        return TrafficState.PARTIAL, _traffic_reason(family, "buckets_missing")
+    if partial_buckets:
+        return TrafficState.PARTIAL, _traffic_reason(family, "bucket_partial")
+    return TrafficState.OK, None
+
+
+def _not_collected_waf(profile: WafSourceProfile | None) -> bool:
+    """No profile, or one that collection would not run under.
+
+    The contract's rule is an enabled, validated profile: a version that was
+    never validated, a status other than VALID, or a mapping changed since its
+    last validation all fail closed as NOT_COLLECTED.
+    """
+    return (
+        profile is None
+        or not profile.enabled
+        or str(profile.validation_status) != WafProfileValidationStatus.VALID.value
+        or profile.validated_profile_version != profile.profile_version
+    )
+
+
+def _not_collected_ips(profile: IpsSourceProfile | None) -> bool:
+    return (
+        profile is None
+        or not profile.enabled
+        or str(profile.validation_status) != IpsProfileValidationStatus.VALID.value
+        or profile.validated_profile_version != profile.profile_version
+    )
+
+
+def _empty_traffic(
+    window: TrafficWindow,
+    *,
+    sort: str,
+    order: TrafficSortOrder,
+    limit: int,
+    offset: int,
+    state: TrafficState,
+    reason: str | None,
+    span: _TrafficSpan | None = None,
+) -> TrafficOut:
+    """A response with no items: every measurement is None, never zero.
+
+    A span exists when an anchor bucket defined the window; then the range and
+    the (item-less) series grid are reported, so the client can say which range
+    it looked at. With no span, every window field is None and there are no
+    points.
+    """
+    points, step = (
+        _series_shape(window, span.bucket_seconds, span.buckets_expected)
+        if span is not None
+        else (0, None)
+    )
+    return TrafficOut(
+        window=window,
+        range_start=None if span is None else span.start,
+        range_end=None if span is None else span.end,
+        bucket_seconds=None if span is None else span.bucket_seconds,
+        buckets_expected=0 if span is None else span.buckets_expected,
+        buckets_measured=0 if span is None else span.buckets_measured,
+        state=state,
+        reason_code=reason,
+        series_start=None if span is None else span.start,
+        series_step_seconds=step,
+        series_points=points,
+        total=0,
+        limit=limit,
+        offset=offset,
+        sort=sort,
+        order=order,
+    )
+
+
+class _TrafficSpan(NamedTuple):
+    """A window that an anchor bucket defined, with what was measured in it."""
+
+    start: datetime
+    end: datetime
+    bucket_seconds: int
+    buckets_expected: int
+    buckets_measured: int
+    source_total: int | None
+    unattributed: int | None
+
+
+class _TrafficReading(NamedTuple):
+    """The verdict on a source's window, before any ranked row is read.
+
+    `span` is None when no anchor bucket exists (NOT_COLLECTED or no complete
+    bucket); it is present even when nothing inside it was measured, so the
+    client can name the range it looked at.
+    """
+
+    state: TrafficState
+    reason: str | None
+    span: _TrafficSpan | None
+
+
+#: Points per window on the series grid (contract Amendment 1).
+_SERIES_POINTS: dict[TrafficWindow, int] = {
+    TrafficWindow.FIVE_MINUTES: 1,
+    TrafficWindow.ONE_HOUR: 12,
+    TrafficWindow.ONE_DAY: 48,
+    TrafficWindow.ONE_WEEK: 56,
+    TrafficWindow.FOUR_WEEKS: 56,
+}
+
+
+def _series_shape(
+    window: TrafficWindow, bucket_seconds: int, buckets_expected: int
+) -> tuple[int, int]:
+    """The shared series grid: (points, step in seconds).
+
+    The grid covers the window exactly and its step is a whole number of source
+    buckets, so a point is always "this step's events over the measured buckets
+    in this step". For the 300 s buckets of the contract's table this is exactly
+    that table -- 1 / 12 / 48 / 56 / 56 points at 300 / 300 / 1800 / 10800 /
+    43200 s -- while a source with wider buckets gets a coarser, whole-bucket
+    grid instead of steps narrower than its own measurement.
+    """
+    if buckets_expected <= 0:
+        return 0, bucket_seconds
+    per_step = max(1, -(-buckets_expected // _SERIES_POINTS[window]))
+    return -(-buckets_expected // per_step), per_step * bucket_seconds
+
+
+def _series_values(
+    points: int,
+    measured: dict[int, int],
+    events: dict[tuple[int, uuid.UUID], int],
+    entity_id: uuid.UUID,
+    bucket_seconds: int,
+) -> list[float | None]:
+    """One entity's series: a rate per step, None where no bucket was measured.
+
+    A measured step without a row for this entity is zero events over the step's
+    measured seconds, the same zero rule `rate_per_second` applies to the whole
+    window. An unmeasured step is a gap, never 0 (rule 8).
+    """
+    values: list[float | None] = []
+    for step in range(points):
+        buckets = measured.get(step, 0)
+        values.append(
+            None
+            if buckets == 0
+            else events.get((step, entity_id), 0) / (buckets * bucket_seconds)
+        )
+    return values
+
+
+async def _waf_traffic_reading(
+    repo: AnomalyRepository,
+    log_source_id: uuid.UUID,
+    profile: WafSourceProfile | None,
+    window: TrafficWindow,
+) -> _TrafficReading:
+    """The WAF window's anchor, measurement and verdict, or why there is none."""
+    if _not_collected_waf(profile):
+        state, reason = _traffic_verdict(
+            "waf",
+            not_collected=True,
+            has_window=False,
+            buckets_measured=0,
+            buckets_expected=0,
+            partial_buckets=0,
+            truncated=False,
+        )
+        return _TrafficReading(state, reason, None)
+    newest = await repo.waf_latest_complete_bucket(log_source_id)
+    if newest is None:
+        state, reason = _traffic_verdict(
+            "waf",
+            not_collected=False,
+            has_window=False,
+            buckets_measured=0,
+            buckets_expected=0,
+            partial_buckets=0,
+            truncated=False,
+        )
+        return _TrafficReading(state, reason, None)
+    start, end, expected = _traffic_bounds(window, newest[0], newest[1])
+    measured, partial, truncated, source_total, unattributed = (
+        await repo.waf_traffic_bucket_stats(log_source_id, since=start, until=end)
+    )
+    state, reason = _traffic_verdict(
+        "waf",
+        not_collected=False,
+        has_window=True,
+        buckets_measured=measured,
+        buckets_expected=expected,
+        partial_buckets=partial,
+        truncated=truncated,
+    )
+    span = _TrafficSpan(start, end, newest[1], expected, measured, source_total, unattributed)
+    return _TrafficReading(state, reason, span)
+
+
+async def _ips_traffic_reading(
+    repo: IpsBehaviorRepository,
+    log_source_id: uuid.UUID,
+    profile: IpsSourceProfile | None,
+    window: TrafficWindow,
+    *,
+    min_coverage: float,
+) -> _TrafficReading:
+    """The IPS window's anchor, measurement and verdict, or why there is none."""
+    if _not_collected_ips(profile):
+        state, reason = _traffic_verdict(
+            "ips",
+            not_collected=True,
+            has_window=False,
+            buckets_measured=0,
+            buckets_expected=0,
+            partial_buckets=0,
+            truncated=False,
+        )
+        return _TrafficReading(state, reason, None)
+    latest = (await repo.latest_buckets([log_source_id])).get(log_source_id)
+    if latest is None:
+        state, reason = _traffic_verdict(
+            "ips",
+            not_collected=False,
+            has_window=False,
+            buckets_measured=0,
+            buckets_expected=0,
+            partial_buckets=0,
+            truncated=False,
+        )
+        return _TrafficReading(state, reason, None)
+    start, end, expected = _traffic_bounds(window, latest.bucket_start, latest.bucket_seconds)
+    measured, partial, truncated, source_total, unattributed = (
+        await repo.ips_traffic_bucket_stats(
+            log_source_id, since=start, until=end, min_coverage=min_coverage
+        )
+    )
+    state, reason = _traffic_verdict(
+        "ips",
+        not_collected=False,
+        has_window=True,
+        buckets_measured=measured,
+        buckets_expected=expected,
+        partial_buckets=partial,
+        truncated=truncated,
+    )
+    span = _TrafficSpan(
+        start, end, latest.bucket_seconds, expected, measured, source_total, unattributed
+    )
+    return _TrafficReading(state, reason, span)
+
+
+# --------------------------------------------------- traffic CSV (Amendment 2)
+#: The column order the contract fixes. Both families share the tail; only the
+#: entity columns differ.
+_EXPORT_WAF_HEAD = ("rank", "host", "method", "path")
+_EXPORT_IPS_HEAD = ("rank", "destination_ip", "display_name")
+_EXPORT_TAIL = (
+    "avg_events_per_s",
+    "peak_events_per_s",
+    "peak_bucket_start_utc",
+    "events",
+    "buckets_with_data",
+    "partial_buckets",
+    "active",
+    "window",
+    "range_start_utc",
+    "range_end_utc",
+    "buckets_measured",
+    "buckets_expected",
+    "state",
+    "source",
+    "truncated",
+)
+
+#: A text cell opening with one of these is run as a formula by a spreadsheet.
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_field(value: object) -> str:
+    """One RFC 4180 field built from a cell value.
+
+    None is an empty cell, never 0 (rule 8). A text cell that opens with `=`,
+    `+`, `-`, `@`, a tab or a CR is prefixed with `'`, so a spreadsheet opens it
+    as text instead of evaluating it. A field holding a comma, a quote or a line
+    break is quoted and its own quotes doubled. Rates are plain with three
+    decimals and `.` as the decimal point.
+    """
+    if value is None:
+        text = ""
+    elif isinstance(value, bool):
+        text = "true" if value else "false"
+    elif isinstance(value, float):
+        text = f"{value:.3f}"
+    elif isinstance(value, str):
+        text = "'" + value if value.startswith(_FORMULA_PREFIXES) else value
+    else:
+        text = str(value)
+    if any(ch in text for ch in ',"\r\n'):
+        return '"' + text.replace('"', '""') + '"'
+    return text
+
+
+def _csv_row(cells: Iterable[object]) -> str:
+    """One RFC 4180 record, CRLF-terminated."""
+    return ",".join(_csv_field(cell) for cell in cells) + "\r\n"
+
+
+def _csv_time(value: datetime | None) -> str | None:
+    """An ISO 8601 UTC stamp with `Z`; None stays an empty cell."""
+    return None if value is None else value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _csv_filename(
+    family: str, source_name: str, window: TrafficWindow, end: datetime | None
+) -> str:
+    """The attachment filename; `no-range` when no bucket defined the range."""
+    slug = re.sub(r"[^a-z0-9]+", "-", source_name.lower()).strip("-") or "source"
+    stamp = "no-range" if end is None else end.astimezone(UTC).strftime("%Y%m%dT%H%MZ")
+    return f"traffic-{family}-{slug}-{window.value}-{stamp}.csv"
+
+
+def _export_header(family: str) -> str:
+    head = _EXPORT_WAF_HEAD if family == "waf" else _EXPORT_IPS_HEAD
+    return _csv_row((*head, *_EXPORT_TAIL))
+
+
+def _export_context(
+    *,
+    window: TrafficWindow,
+    span: _TrafficSpan | None,
+    state: TrafficState,
+    source_name: str,
+) -> tuple[object, ...]:
+    """The context columns repeated on every row, so a sorted sheet keeps them."""
+    return (
+        window.value,
+        _csv_time(None if span is None else span.start),
+        _csv_time(None if span is None else span.end),
+        None if span is None else span.buckets_measured,
+        None if span is None else span.buckets_expected,
+        state.value,
+        source_name,
+    )
+
+
+def _waf_export_body(
+    items: Sequence[WafTrafficRow],
+    *,
+    window: TrafficWindow,
+    span: _TrafficSpan | None,
+    state: TrafficState,
+    source_name: str,
+    measured_seconds: int,
+    truncated: bool,
+) -> str:
+    """The whole WAF export: a header row, then one row per ranked endpoint.
+
+    `measured_seconds` is the whole window's measured time, the same denominator
+    as the JSON route's `rate_per_second`, so the export and the page agree.
+    """
+    context = _export_context(window=window, span=span, state=state, source_name=source_name)
+    rows = [_export_header("waf")]
+    for rank, item in enumerate(items, start=1):
+        rows.append(
+            _csv_row(
+                (
+                    rank,
+                    item.virtual_host,
+                    item.http_method,
+                    item.normalized_endpoint,
+                    item.events / measured_seconds,
+                    item.peak_rate_per_second,
+                    _csv_time(item.peak_bucket_start),
+                    item.events,
+                    item.buckets_with_data,
+                    item.partial_buckets,
+                    item.active,
+                    *context,
+                    truncated,
+                )
+            )
+        )
+    return "".join(rows)
+
+
+def _ips_export_body(
+    items: Sequence[IpsTrafficRow],
+    *,
+    window: TrafficWindow,
+    span: _TrafficSpan | None,
+    state: TrafficState,
+    source_name: str,
+    measured_seconds: int,
+    truncated: bool,
+) -> str:
+    """The whole IPS export: a header row, then one row per destination IP."""
+    context = _export_context(window=window, span=span, state=state, source_name=source_name)
+    rows = [_export_header("ips")]
+    for rank, item in enumerate(items, start=1):
+        rows.append(
+            _csv_row(
+                (
+                    rank,
+                    item.destination_ip,
+                    item.display_name,
+                    item.events / measured_seconds,
+                    item.peak_rate_per_second,
+                    _csv_time(item.peak_bucket_start),
+                    item.events,
+                    item.buckets_with_data,
+                    item.partial_buckets,
+                    item.active,
+                    *context,
+                    truncated,
+                )
+            )
+        )
+    return "".join(rows)
+
+
+def _csv_response(
+    body: str,
+    *,
+    family: str,
+    source_name: str,
+    window: TrafficWindow,
+    span: _TrafficSpan | None,
+    state: TrafficState,
+    truncated: bool,
+) -> Response:
+    """A CSV attachment, naming the range, the state and any truncation."""
+    headers = {
+        "Content-Disposition": (
+            'attachment; filename="'
+            + _csv_filename(
+                family, source_name, window, None if span is None else span.end
+            )
+            + '"'
+        ),
+        "X-Export-State": state.value,
+    }
+    if truncated:
+        headers["X-Export-Truncated"] = "true"
+    return Response(
+        content=body, media_type="text/csv; charset=utf-8", headers=headers
+    )
+
+
+
+@behavior_router.get(
+    "/waf/sources/{log_source_id}/traffic", response_model=TrafficOut
+)
+async def waf_source_traffic(
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    window: TrafficWindow = Query(default=TrafficWindow.ONE_HOUR),
+    sort: WafTrafficSort = Query(default=WafTrafficSort.RATE),
+    order: TrafficSortOrder | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+) -> TrafficOut:
+    """WAF endpoints ranked by average events per second in the window.
+
+    Every endpoint with a metric row in a measured bucket is ranked; one with no
+    row in any measured bucket is not listed, never shown as zero. The rate
+    divides by the measured seconds of the window (contract), so the same
+    denominator scales every item and the bar maximum. A PARTIAL state says the
+    window is incomplete or a measured bucket is a lower bound; TRUNCATED says
+    a bucket lost endpoints, so the attribution is a lower bound too.
+
+    Each item also carries its rate on the shared series grid, read for this
+    page's endpoints in one extra statement whatever the page size. A step with
+    no measured bucket is `null` in the series, never 0.
+    """
+    repo = AnomalyRepository(session)
+    found = await repo.waf_source_and_profile(log_source_id)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "WAF source not found")
+    _source, profile = found
+    resolved = _traffic_order(sort.value, order)
+    reading = await _waf_traffic_reading(repo, log_source_id, profile, window)
+    if reading.span is None or reading.span.buckets_measured == 0:
+        return _empty_traffic(
+            window,
+            sort=sort.value,
+            order=resolved,
+            limit=limit,
+            offset=offset,
+            state=reading.state,
+            reason=reading.reason,
+            span=reading.span,
+        )
+    span = reading.span
+    page = await repo.waf_traffic_page(
+        log_source_id,
+        since=span.start,
+        until=span.end,
+        sort=sort.value,
+        descending=resolved is TrafficSortOrder.DESC,
+        limit=limit,
+        offset=offset,
+    )
+    measured_seconds = span.buckets_measured * span.bucket_seconds
+    points, step = _series_shape(window, span.bucket_seconds, span.buckets_expected)
+    measured_steps, per_entity = await repo.waf_traffic_series(
+        log_source_id,
+        since=span.start,
+        until=span.end,
+        step_seconds=step,
+        entity_ids=[row.id for row in page.items],
+    )
+    return TrafficOut(
+        window=window,
+        range_start=span.start,
+        range_end=span.end,
+        bucket_seconds=span.bucket_seconds,
+        buckets_expected=span.buckets_expected,
+        buckets_measured=span.buckets_measured,
+        state=reading.state,
+        reason_code=reading.reason,
+        source_total_events=span.source_total,
+        attributed_events=page.attributed_events,
+        unattributed_events=span.unattributed,
+        max_rate_per_second=(
+            None if page.max_events is None else page.max_events / measured_seconds
+        ),
+        series_start=span.start,
+        series_step_seconds=step,
+        series_points=points,
+        total=page.total,
+        limit=limit,
+        offset=offset,
+        sort=sort.value,
+        order=resolved,
+        items=[
+            TrafficItemOut(
+                id=row.id,
+                virtual_host=row.virtual_host,
+                http_method=row.http_method,
+                normalized_endpoint=row.normalized_endpoint,
+                events=row.events,
+                rate_per_second=row.events / measured_seconds,
+                peak_rate_per_second=row.peak_rate_per_second,
+                peak_bucket_start=row.peak_bucket_start,
+                buckets_with_data=row.buckets_with_data,
+                partial_buckets=row.partial_buckets,
+                active=row.active,
+                series=_series_values(
+                    points, measured_steps, per_entity, row.id, span.bucket_seconds
+                ),
+            )
+            for row in page.items
+        ],
+    )
+
+
+@behavior_router.get(
+    "/waf/sources/{log_source_id}/traffic.csv",
+    response_class=Response,
+    responses={
+        200: {
+            "description": (
+                "The whole ranked set as RFC 4180 CSV. The header row is always "
+                "present; X-Export-State names the state, and X-Export-Truncated "
+                "says the export was cut at API_MAX_EXPORT_ROWS."
+            ),
+            "content": {"text/csv": {"schema": {"type": "string"}}},
+        }
+    },
+)
+async def waf_source_traffic_csv(
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    window: TrafficWindow = Query(default=TrafficWindow.ONE_HOUR),
+    sort: WafTrafficSort = Query(default=WafTrafficSort.RATE),
+    order: TrafficSortOrder | None = Query(default=None),
+) -> Response:
+    """The whole WAF ranking in sort order as CSV, not just the page.
+
+    Rows stop at `api_max_export_rows`, in sort order, and the response then
+    carries `X-Export-Truncated: true` and a `truncated` column of `true`: a cut
+    export is never silent. With no measured window the body is the header row
+    only and `X-Export-State` names why.
+    """
+    repo = AnomalyRepository(session)
+    found = await repo.waf_source_and_profile(log_source_id)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "WAF source not found")
+    source, profile = found
+    resolved = _traffic_order(sort.value, order)
+    reading = await _waf_traffic_reading(repo, log_source_id, profile, window)
+    rows: list[WafTrafficRow] = []
+    truncated = False
+    if reading.span is not None and reading.span.buckets_measured:
+        page = await repo.waf_traffic_page(
+            log_source_id,
+            since=reading.span.start,
+            until=reading.span.end,
+            sort=sort.value,
+            descending=resolved is TrafficSortOrder.DESC,
+            limit=settings.api_max_export_rows,
+            offset=0,
+        )
+        rows = page.items
+        truncated = page.total > len(rows)
+    return _csv_response(
+        _waf_export_body(
+            rows,
+            window=window,
+            span=reading.span,
+            state=reading.state,
+            source_name=source.name,
+            measured_seconds=(
+                reading.span.buckets_measured * reading.span.bucket_seconds
+                if reading.span is not None
+                else 0
+            ),
+            truncated=truncated,
+        ),
+        family="waf",
+        source_name=source.name,
+        window=window,
+        span=reading.span,
+        state=reading.state,
+        truncated=truncated,
+    )
+
+
 # ------------------------------------------------------------- IPS behavior
 #: (dimension, its column prefix on `ips_source_bucket`, whether a coverage was
 #: measured for it). Port fan-out counts ports, not events, so it has no ratio.
@@ -1704,4 +2411,188 @@ async def ips_source_baselines(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@behavior_router.get(
+    "/ips/sources/{log_source_id}/traffic", response_model=TrafficOut
+)
+async def ips_source_traffic(
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    window: TrafficWindow = Query(default=TrafficWindow.ONE_HOUR),
+    sort: IpsTrafficSort = Query(default=IpsTrafficSort.RATE),
+    order: TrafficSortOrder | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+) -> TrafficOut:
+    """IPS destination IPs ranked by average events per second in the window.
+
+    Covers `DESTINATION_IP` only, as the contract scopes it. A destination IP
+    with no metric row in any measured bucket is not listed, never shown as
+    zero. The rate divides by the measured seconds of the window, and
+    `unattributed_events` is the stored count of events outside admitted
+    destination-IP entities over the same buckets.
+
+    Each item also carries its rate on the shared series grid, read for this
+    page's entities in one extra statement whatever the page size. A step with
+    no measured bucket is `null` in the series, never 0.
+    """
+    repo = IpsBehaviorRepository(session)
+    found = await repo.source_and_profile(log_source_id)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "IPS source not found")
+    _source, profile = found
+    resolved = _traffic_order(sort.value, order)
+    reading = await _ips_traffic_reading(
+        repo, log_source_id, profile, window, min_coverage=settings.ips_min_coverage
+    )
+    if reading.span is None or reading.span.buckets_measured == 0:
+        return _empty_traffic(
+            window,
+            sort=sort.value,
+            order=resolved,
+            limit=limit,
+            offset=offset,
+            state=reading.state,
+            reason=reading.reason,
+            span=reading.span,
+        )
+    span = reading.span
+    page = await repo.ips_traffic_page(
+        log_source_id,
+        since=span.start,
+        until=span.end,
+        min_coverage=settings.ips_min_coverage,
+        sort=sort.value,
+        descending=resolved is TrafficSortOrder.DESC,
+        limit=limit,
+        offset=offset,
+    )
+    measured_seconds = span.buckets_measured * span.bucket_seconds
+    points, step = _series_shape(window, span.bucket_seconds, span.buckets_expected)
+    measured_steps, per_entity = await repo.ips_traffic_series(
+        log_source_id,
+        since=span.start,
+        until=span.end,
+        step_seconds=step,
+        entity_ids=[row.id for row in page.items],
+    )
+    return TrafficOut(
+        window=window,
+        range_start=span.start,
+        range_end=span.end,
+        bucket_seconds=span.bucket_seconds,
+        buckets_expected=span.buckets_expected,
+        buckets_measured=span.buckets_measured,
+        state=reading.state,
+        reason_code=reading.reason,
+        source_total_events=span.source_total,
+        attributed_events=page.attributed_events,
+        unattributed_events=span.unattributed,
+        max_rate_per_second=(
+            None if page.max_events is None else page.max_events / measured_seconds
+        ),
+        series_start=span.start,
+        series_step_seconds=step,
+        series_points=points,
+        total=page.total,
+        limit=limit,
+        offset=offset,
+        sort=sort.value,
+        order=resolved,
+        items=[
+            TrafficItemOut(
+                id=row.id,
+                destination_ip=row.destination_ip,
+                display_name=row.display_name,
+                events=row.events,
+                rate_per_second=row.events / measured_seconds,
+                peak_rate_per_second=row.peak_rate_per_second,
+                peak_bucket_start=row.peak_bucket_start,
+                buckets_with_data=row.buckets_with_data,
+                partial_buckets=row.partial_buckets,
+                active=row.active,
+                series=_series_values(
+                    points, measured_steps, per_entity, row.id, span.bucket_seconds
+                ),
+            )
+            for row in page.items
+        ],
+    )
+
+
+@behavior_router.get(
+    "/ips/sources/{log_source_id}/traffic.csv",
+    response_class=Response,
+    responses={
+        200: {
+            "description": (
+                "The whole ranked set as RFC 4180 CSV. The header row is always "
+                "present; X-Export-State names the state, and X-Export-Truncated "
+                "says the export was cut at API_MAX_EXPORT_ROWS."
+            ),
+            "content": {"text/csv": {"schema": {"type": "string"}}},
+        }
+    },
+)
+async def ips_source_traffic_csv(
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    window: TrafficWindow = Query(default=TrafficWindow.ONE_HOUR),
+    sort: IpsTrafficSort = Query(default=IpsTrafficSort.RATE),
+    order: TrafficSortOrder | None = Query(default=None),
+) -> Response:
+    """The whole destination-IP ranking in sort order as CSV, not just the page.
+
+    Same rule as the WAF export: rows stop at `api_max_export_rows` and say so,
+    and a window with nothing measured returns the header row only with
+    `X-Export-State` naming why.
+    """
+    repo = IpsBehaviorRepository(session)
+    found = await repo.source_and_profile(log_source_id)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "IPS source not found")
+    source, profile = found
+    resolved = _traffic_order(sort.value, order)
+    reading = await _ips_traffic_reading(
+        repo, log_source_id, profile, window, min_coverage=settings.ips_min_coverage
+    )
+    rows: list[IpsTrafficRow] = []
+    truncated = False
+    if reading.span is not None and reading.span.buckets_measured:
+        page = await repo.ips_traffic_page(
+            log_source_id,
+            since=reading.span.start,
+            until=reading.span.end,
+            min_coverage=settings.ips_min_coverage,
+            sort=sort.value,
+            descending=resolved is TrafficSortOrder.DESC,
+            limit=settings.api_max_export_rows,
+            offset=0,
+        )
+        rows = page.items
+        truncated = page.total > len(rows)
+    return _csv_response(
+        _ips_export_body(
+            rows,
+            window=window,
+            span=reading.span,
+            state=reading.state,
+            source_name=source.name,
+            measured_seconds=(
+                reading.span.buckets_measured * reading.span.bucket_seconds
+                if reading.span is not None
+                else 0
+            ),
+            truncated=truncated,
+        ),
+        family="ips",
+        source_name=source.name,
+        window=window,
+        span=reading.span,
+        state=reading.state,
+        truncated=truncated,
     )

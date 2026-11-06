@@ -5311,6 +5311,60 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "UNRESOLVED counts events whose country property was empty.",
     ),
     # --- end MSG-8a ---------------------------------------------------------------------------
+    # --- TOP-1a: why a traffic ranking is not OK (English only, D-41) ------------------------
+    _fixed(
+        "waf_traffic_detail.reason.not_collected",
+        "This WAF source has no enabled, validated profile, so no traffic was collected.",
+    ),
+    _fixed(
+        "waf_traffic_detail.reason.no_complete_bucket",
+        "No complete bucket has been stored for this WAF source, so no rate can be measured.",
+    ),
+    _fixed(
+        "waf_traffic_detail.reason.no_usable_bucket",
+        "No bucket in this window has a usable endpoint measurement, so no rate can be measured.",
+    ),
+    _fixed(
+        "waf_traffic_detail.reason.truncated",
+        "A bucket in this window lost endpoint groups or new endpoints, so the ranking is a "
+        "lower bound.",
+    ),
+    _fixed(
+        "waf_traffic_detail.reason.buckets_missing",
+        "Some buckets of this window were not collected, so the rates cover the measured "
+        "buckets only.",
+    ),
+    _fixed(
+        "waf_traffic_detail.reason.bucket_partial",
+        "A measured bucket in this window is partial, so its endpoint counts are lower bounds.",
+    ),
+    _fixed(
+        "ips_traffic_detail.reason.not_collected",
+        "This IPS source has no enabled, validated profile, so no traffic was collected.",
+    ),
+    _fixed(
+        "ips_traffic_detail.reason.no_complete_bucket",
+        "No bucket has been stored for this IPS source, so no rate can be measured.",
+    ),
+    _fixed(
+        "ips_traffic_detail.reason.no_usable_bucket",
+        "No bucket in this window has a usable destination-IP measurement, so no rate can be "
+        "measured.",
+    ),
+    _fixed(
+        "ips_traffic_detail.reason.truncated",
+        "A bucket in this window lost destination-IP entities, so the ranking is a lower bound.",
+    ),
+    _fixed(
+        "ips_traffic_detail.reason.buckets_missing",
+        "Some buckets of this window were not collected, so the rates cover the measured "
+        "buckets only.",
+    ),
+    _fixed(
+        "ips_traffic_detail.reason.bucket_partial",
+        "A measured bucket in this window is a lower bound, so its destination-IP counts are "
+        "lower bounds.",
+    ),
 )
 
 
