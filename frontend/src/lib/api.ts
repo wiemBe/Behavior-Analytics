@@ -1752,6 +1752,70 @@ export interface PagedWafEndpoints {
   offset: number;
 }
 
+// --- Traffic by destination (TOP-1) ------------------------------------------
+// Mirrors docs/tasks/TOP-1.contract.md. A null figure is unmeasured, never 0.
+
+export type TrafficWindow = "5m" | "1h" | "24h" | "7d" | "28d";
+export type TrafficState = "OK" | "PARTIAL" | "TRUNCATED" | "INSUFFICIENT_DATA" | "NOT_COLLECTED";
+
+export interface TrafficItemBase {
+  id: string;
+  events: number | null;
+  rate_per_second: number | null;
+  peak_rate_per_second: number | null;
+  peak_bucket_start: string | null;
+  buckets_with_data: number;
+  partial_buckets: number;
+  /** false = retired since; still listed because it has data in range. */
+  active: boolean;
+  /** Average events/s per step on the page's shared grid; null is a gap, never 0. */
+  series: (number | null)[];
+}
+
+export interface WafTrafficItem extends TrafficItemBase {
+  virtual_host: string | null;
+  http_method: string | null;
+  normalized_endpoint: string | null;
+}
+
+export interface IpsTrafficItem extends TrafficItemBase {
+  destination_ip: string;
+  display_name: string | null;
+}
+
+export interface TrafficPage<Item> {
+  window: TrafficWindow;
+  range_start: string | null;
+  range_end: string | null;
+  /** null when no bucket defines a window (NOT_COLLECTED, no complete bucket). */
+  bucket_seconds: number | null;
+  buckets_expected: number;
+  buckets_measured: number;
+  state: TrafficState;
+  reason_code: string | null;
+  source_total_events: number | null;
+  attributed_events: number | null;
+  unattributed_events: number | null;
+  max_rate_per_second: number | null;
+  series_start: string | null;
+  series_step_seconds: number | null;
+  series_points: number;
+  total: number;
+  limit: number;
+  offset: number;
+  sort: string;
+  order: "asc" | "desc";
+  items: Item[];
+}
+
+export interface TrafficParams {
+  window?: TrafficWindow;
+  sort?: string;
+  order?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
 // --- Phase D types: IPS behavior ---------------------------------------------
 // These mirror app/schemas/anomaly.py and app/schemas/ips_behavior.py (T-085).
 // A missing measurement is `null`, never 0. The API serves no contributor list
@@ -2615,6 +2679,16 @@ function qs(params: Record<string, QueryValue | QueryValue[] | undefined>): stri
   return parts.length ? `?${parts.join("&")}` : "";
 }
 
+/** The CSV export of one source's traffic: the whole sorted set, not a page. A plain link for the
+ * browser, which sends the session cookie to the API as it does for the page's own reads. */
+export function trafficCsvUrl(
+  view: "waf" | "ips",
+  id: string,
+  params: { window: string; sort: string; order: string },
+): string {
+  return `${PUBLIC_BASE}/behavior/${view}/sources/${encodeURIComponent(id)}/traffic.csv${qs({ ...params })}`;
+}
+
 export const api = {
   logSources: () => request<LogSourceSummary[]>("/log-sources"),
   logSource: (id: string) => request<LogSourceDetail>(`/log-sources/${id}`),
@@ -2859,6 +2933,15 @@ export const api = {
     id: string,
     params: { since?: string; until?: string; limit?: number; offset?: number } = {},
   ) => request<PagedWafMetrics>(`/behavior/waf/endpoints/${id}/metrics${qs({ ...params })}`),
+
+  wafTraffic: (id: string, params: TrafficParams = {}) =>
+    request<TrafficPage<WafTrafficItem>>(
+      `/behavior/waf/sources/${encodeURIComponent(id)}/traffic${qs({ ...params })}`,
+    ),
+  ipsTraffic: (id: string, params: TrafficParams = {}) =>
+    request<TrafficPage<IpsTrafficItem>>(
+      `/behavior/ips/sources/${encodeURIComponent(id)}/traffic${qs({ ...params })}`,
+    ),
 
   wafEndpointBaselines: (
     id: string,

@@ -93,6 +93,7 @@ function itemLabel(href: string, fallback: string, t: NavTranslator): string {
     case "/anomalies": return t("anomalies");
     case "/behavior/sources": return t("sources");
     case "/behavior/waf": return t("wafBehavior");
+    case "/behavior/traffic": return t("traffic");
     case "/behavior/watches": return t("propertyWatches");
     case "/geography": return t("geography");
     case "/fleet": return t("fleet");

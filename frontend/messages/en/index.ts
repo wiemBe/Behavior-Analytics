@@ -49,6 +49,7 @@ import searches from "./searches.json";
 import shell from "./shell.json";
 import siemLoad from "./siemLoad.json";
 import states from "./states.json";
+import traffic from "./traffic.json";
 import trend from "./trend.json";
 import ui from "./ui.json";
 import units from "./units.json";
@@ -102,6 +103,7 @@ const messages = {
   shell,
   siemLoad,
   states,
+  traffic,
   trend,
   ui,
   units,

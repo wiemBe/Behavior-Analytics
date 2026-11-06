@@ -1,0 +1,96 @@
+/* Traffic by destination: layout only. Colours and sizes come from the tokens. */
+
+.traffic-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-6);
+  margin-bottom: var(--sp-5);
+}
+.traffic-group .muted {
+  margin-inline-end: var(--sp-1);
+}
+
+.traffic-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.traffic-facts p {
+  margin: 0;
+  line-height: var(--lh-prose);
+}
+.traffic-summary {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+/* The trend: a small line per row, scaled to the row's own lowest and highest point. */
+.traffic-trend-cell {
+  min-width: 14ch;
+}
+.traffic-spark {
+  display: block;
+  width: 100%;
+  min-width: 8ch;
+  max-width: 22ch;
+  height: calc(var(--bar-h) * 3);
+}
+.traffic-spark-line {
+  fill: none;
+  stroke: var(--bar-fill);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.traffic-spark-dot {
+  fill: var(--bar-fill);
+}
+.traffic-spark-peak {
+  fill: var(--text-2);
+}
+
+.traffic-pos {
+  width: 4ch;
+  color: var(--text-3);
+}
+/* A host name stays on one line; only one longer than this breaks, and then after a dot
+   (the `<wbr>` the table puts there), never inside a label. */
+.traffic-host {
+  min-width: 22ch;
+}
+.traffic-path {
+  min-width: 12ch;
+  max-width: 40ch;
+}
+.traffic-method {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.traffic-ip {
+  font-variant-numeric: tabular-nums;
+}
+.traffic-retired td {
+  color: var(--text-2);
+}
+.traffic-table .pill {
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+/* A left-aligned column that follows a right-aligned figure needs air. */
+.traffic-table td.num + td:not(.num),
+.traffic-table th.num + th:not(.num) {
+  padding-inline-start: var(--sp-5);
+}
+
+.traffic-export {
+  font-size: var(--fs-xs);
+}
+.traffic-export-off > span:first-child {
+  color: var(--text-3);
+}
