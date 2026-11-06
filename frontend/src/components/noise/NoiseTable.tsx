@@ -27,7 +27,7 @@ import type { NoiseOrder } from "@/lib/api";
 import "@/components/ui/controls.css";
 import "./noise.css";
 
-function Missing() {
+export function Missing() {
   const t = useTranslations("noise.table");
   return (
     <span className="muted" title={t("notMeasured")}>
@@ -36,7 +36,7 @@ function Missing() {
   );
 }
 
-function Count({ value, locale }: { value: number | null; locale: FormatLocale }) {
+export function Count({ value, locale }: { value: number | null; locale: FormatLocale }) {
   return value === null ? <Missing /> : <>{formatCount(value, locale)}</>;
 }
 
@@ -79,20 +79,20 @@ function SortHeader({
   );
 }
 
-function SourceCell({ row }: { row: NoiseSourceRow }) {
+function SourceCell({ row, query }: { row: NoiseSourceRow; query: NoiseQuery }) {
   const t = useTranslations("noise.table");
   const { label } = useEnumLabels();
-  // 17b: noiseDetailHref returns the tuning page once /behavior/noise/[id] exists.
-  const detail = noiseDetailHref(row);
+  const detail = noiseDetailHref(row, query);
   return (
     <td className="cell-name noise-source">
       <Link href={sourceHref(row)}>{row.name}</Link>
-      {detail && (
-        <>
-          {" "}
-          <Link href={detail}>{t("detailLink")}</Link>
-        </>
-      )}
+      <Link
+        href={detail}
+        className="noise-tune-link"
+        aria-label={t("detailLinkLabel", { name: row.name })}
+      >
+        {t("detailLink")}
+      </Link>
       <span className="cell-sub">
         {[
           row.instance_name,
@@ -106,7 +106,13 @@ function SourceCell({ row }: { row: NoiseSourceRow }) {
   );
 }
 
-function NoiseCell({ row, locale }: { row: NoiseSourceRow; locale: FormatLocale }) {
+export function NoiseCell({
+  row,
+  locale,
+}: {
+  row: Pick<NoiseSourceRow, "noise_closed" | "noise_closed_total" | "noise_share">;
+  locale: FormatLocale;
+}) {
   const t = useTranslations("noise.table");
   const { noise_closed: noise, noise_closed_total: closed, noise_share: share } = row;
   if (noise === null || closed === null) return <Missing />;
@@ -131,7 +137,12 @@ function NoiseCell({ row, locale }: { row: NoiseSourceRow; locale: FormatLocale 
   );
 }
 
-function WorstCell({ row, locale }: { row: NoiseSourceRow; locale: FormatLocale }) {
+export function WorstCell({
+  row,
+}: {
+  row: Pick<NoiseSourceRow, "worst_ratio" | "worst_z">;
+  locale?: FormatLocale;
+}) {
   const t = useTranslations("noise.table");
   if (row.worst_ratio === null) return <Missing />;
   const ratio = new Intl.NumberFormat("en-US", {
@@ -240,7 +251,7 @@ export function NoiseTable({ query, data }: { query: NoiseQuery; data: NoiseSour
             const alerts = days === 7 ? row.alerts_7d : row.alerts_28d;
             return (
               <tr key={row.log_source_id}>
-                <SourceCell row={row} />
+                <SourceCell row={row} query={query} />
                 <td className="noise-class">
                   {row.source_class ? (
                     label("sourceClass", row.source_class)

@@ -241,11 +241,15 @@ describe("Noisy sources: the ranked table", () => {
     expect(screen.getByRole("columnheader", { name: /Alerts\s*7 d/ })).toBeInTheDocument();
   });
 
-  it("does not link a row to the 17b detail route, which does not exist yet", async () => {
+  it("links every row to its tuning page", async () => {
     setup(page(MIXED));
     await renderPage();
     const hrefs = Array.from(document.querySelectorAll("a")).map((a) => a.getAttribute("href"));
-    expect(hrefs.some((h) => h?.startsWith("/behavior/noise/"))).toBe(false);
+    expect(hrefs).toContain(`/behavior/noise/${A}`);
+    expect(screen.getByRole("link", { name: "Tune fw-edge-01" })).toHaveAttribute(
+      "href",
+      `/behavior/noise/${A}`,
+    );
   });
 
   it("states the last evaluation in UTC and avoids 'live'", async () => {
