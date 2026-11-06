@@ -2,6 +2,7 @@
 // read from the URL, and the sentences of the activity log.
 
 import type {
+  AnalystTriageDisposition,
   AnomalySummary,
   SubjectKind,
   TriageDisposition,
@@ -19,6 +20,15 @@ export const ACTIVITY_PAGE = 50;
 
 export const TRIAGE_STATUSES: readonly TriageStatus[] = ["NEW", "IN_PROGRESS", "CLOSED"];
 export const DISPOSITIONS: readonly TriageDisposition[] = [
+  "TRUE_POSITIVE",
+  "BENIGN_TRUE_POSITIVE",
+  "NOISE",
+  "COLLECTION_PROBLEM",
+  "KNOWN_CHANGE",
+  "STALE",
+];
+/** The close form is analyst-only: the stale job, never an analyst, sets STALE. */
+export const CLOSE_DISPOSITIONS: readonly AnalystTriageDisposition[] = [
   "TRUE_POSITIVE",
   "BENIGN_TRUE_POSITIVE",
   "NOISE",

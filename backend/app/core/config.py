@@ -554,6 +554,9 @@ class Settings(BaseSettings):
     #: up on it and moves to the next. Expressed in evaluation ticks, not
     #: seconds; at the 60 s tick and 300 s buckets, 3 is under one bucket.
     anomaly_max_bucket_attempts: int = Field(default=3, ge=1, le=20)
+    #: Days after which an untouched NEW anomaly is closed as STALE. Zero disables
+    #: the hourly triage-only job; detector lifecycle and alerts are not changed.
+    triage_stale_close_days: int = Field(default=3, ge=0)
     #: Closed fault rows (resolved or given up) older than this are deleted. An
     #: open fault is the source's current state and is never pruned.
     anomaly_fault_retention_days: int = Field(default=30, ge=1, le=3650)

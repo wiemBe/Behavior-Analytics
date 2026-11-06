@@ -68,6 +68,11 @@ celery_app.conf.beat_schedule = {
         "task": "evaluate_anomalies",
         "schedule": float(ANOMALY_EVALUATION_CADENCE_SECONDS),
     },
+    "close-stale-triage": {
+        # Triage only: detector lifecycle and alert rows are deliberately untouched.
+        "task": "close_stale_triage",
+        "schedule": 3600.0,
+    },
     "apply-anomaly-fault-retention": {
         # Daily, like the other retention tasks. Closed fault rows only: an open
         # fault is the source's current state, and a given-up row is the only

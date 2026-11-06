@@ -82,6 +82,7 @@ from app.services.search_executor import SearchExecutor
 from app.services.search_result_retention import SearchResultRetention
 from app.services.search_scheduler import SearchScheduler
 from app.services.snapshot_retention import SnapshotRetention
+from app.services.stale_triage import StaleTriageCloser
 from app.services.timescale import apply_policies
 from app.services.waf_pipeline import PIPELINE_LOCK, eligible_profile_ids, run_waf_source
 from app.services.waf_profiles import WafProfileService
@@ -1554,6 +1555,19 @@ async def apply_log_source_anomaly_retention() -> dict:
         return (await LogSourceAnomalyRetention(session).run()).as_dict()
 
 
+async def close_stale_triage() -> dict:
+    """Close old NEW triage in bounded bulk batches; never change an anomaly or alert."""
+    settings = get_settings()
+    if settings.triage_stale_close_days == 0:
+        return {"status": "disabled", "days": 0, "closed": 0, "families": {}}
+    maker = get_sessionmaker()
+    async with maker() as session:
+        report = await StaleTriageCloser(
+            session, days=settings.triage_stale_close_days
+        ).run()
+        return report.as_dict()
+
+
 async def apply_ariel_search_run_retention() -> dict:
     """Delete Ariel load rows older than the retention window.
 
@@ -1977,6 +1991,11 @@ def reap_abandoned_ariel_searches_task() -> dict:
 @celery_app.task(name="apply_log_source_anomaly_retention")
 def apply_log_source_anomaly_retention_task() -> dict:
     return _run(apply_log_source_anomaly_retention())
+
+
+@celery_app.task(name="close_stale_triage")
+def close_stale_triage_task() -> dict:
+    return _run(close_stale_triage())
 
 
 @celery_app.task(name="dispatch_ips_collection")

@@ -535,6 +535,8 @@ class TriageDisposition(StrEnum):
     NOISE = "NOISE"
     COLLECTION_PROBLEM = "COLLECTION_PROBLEM"
     KNOWN_CHANGE = "KNOWN_CHANGE"
+    #: System-only: nobody took a NEW item within the configured stale window.
+    STALE = "STALE"
 
 
 class TriageEventKind(StrEnum):

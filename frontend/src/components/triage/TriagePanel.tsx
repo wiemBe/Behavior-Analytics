@@ -17,9 +17,15 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { UtcTime } from "@/components/ui/UtcTime";
 import { ApiError, actionErrorMessage, api } from "@/lib/api";
-import type { Triage, TriageDisposition, TriageFamily, TriagePatch } from "@/lib/api";
+import type {
+  AnalystTriageDisposition,
+  Triage,
+  TriageFamily,
+  TriagePatch,
+} from "@/lib/api";
 import {
   ACTIVITY_PAGE,
+  CLOSE_DISPOSITIONS,
   COMMENT_MAX,
   DISPOSITIONS,
   NOTE_MAX,
@@ -64,7 +70,7 @@ export function TriagePanel({ family, anomalyId, initial, access, me, alert }: T
   const [busy, setBusy] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>(null);
   const [ownerDraft, setOwnerDraft] = useState("");
-  const [dispositionDraft, setDispositionDraft] = useState<TriageDisposition | "">("");
+  const [dispositionDraft, setDispositionDraft] = useState<AnalystTriageDisposition | "">("");
   const [noteDraft, setNoteDraft] = useState("");
   const [commentDraft, setCommentDraft] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -463,12 +469,12 @@ export function TriagePanel({ family, anomalyId, initial, access, me, alert }: T
                 aria-required="true"
                 aria-invalid={formError === t("panel.closeNeedsDisposition")}
                 onChange={(e) => {
-                  setDispositionDraft(e.target.value as TriageDisposition | "");
+                  setDispositionDraft(e.target.value as AnalystTriageDisposition | "");
                   setFormError(null);
                 }}
               >
                 <option value="">{t("panel.closeChoose")}</option>
-                {DISPOSITIONS.map((d) => (
+                {CLOSE_DISPOSITIONS.map((d) => (
                   <option key={d} value={d}>
                     {word.disposition(d)}
                   </option>

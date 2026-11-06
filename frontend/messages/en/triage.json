@@ -5,7 +5,8 @@
     "BENIGN_TRUE_POSITIVE": "Benign true positive",
     "NOISE": "Noise",
     "COLLECTION_PROBLEM": "Collection problem",
-    "KNOWN_CHANGE": "Known change"
+    "KNOWN_CHANGE": "Known change",
+    "STALE": "Auto-closed: stale"
   },
   "panel": {
     "heading": "Triage",

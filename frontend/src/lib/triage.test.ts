@@ -90,3 +90,12 @@ describe("eventSentence", () => {
     expect(eventSentence(ev({ kind: "NOTE" }), words, say)).toBe("events.noteCleared|");
   });
 });
+
+describe("the stale disposition (D-55)", () => {
+  it("is a known disposition for reading and filtering but never a close choice", async () => {
+    const { CLOSE_DISPOSITIONS, DISPOSITIONS } = await import("./triage");
+    expect(DISPOSITIONS).toContain("STALE");
+    expect(CLOSE_DISPOSITIONS as readonly string[]).not.toContain("STALE");
+    expect(CLOSE_DISPOSITIONS).toHaveLength(DISPOSITIONS.length - 1);
+  });
+});
