@@ -1621,6 +1621,83 @@ export interface AnomalyListParams {
   until?: string;
 }
 
+// --- SOC-3: related activity of an anomaly -------------------------------------
+// Mirrors app/schemas/related_activity.py. Each section carries its own state; a non-OK state
+// always has a reason code, an OK one never does, and `items` holds at most 20 rows of `total`.
+export type RelatedPad = "30m" | "1h" | "2h" | "6h";
+export type RelatedFamily = TriageFamily;
+export type RelatedSectionState =
+  | "OK"
+  | "NOT_COLLECTED"
+  | "STALE"
+  | "PARTIAL"
+  | "TRUNCATED"
+  | "NOT_APPLICABLE";
+export type RuleMeasurement = "EXACT" | "LOWER_BOUND" | "NOT_COLLECTED";
+
+export interface RelatedAnchor {
+  family: RelatedFamily;
+  anomaly_id: string;
+  log_source_id: string | null;
+  qradar_log_source_id: number | null;
+  log_source_name: string | null;
+  window_start: string;
+  window_end: string;
+  pad: RelatedPad;
+}
+
+export interface RelatedSection<T> {
+  state: RelatedSectionState;
+  reason_code: string | null;
+  total: number;
+  items: T[];
+}
+
+export interface RelatedOffense {
+  qradar_offense_id: number;
+  description: string | null;
+  status: string | null;
+  magnitude: number | null;
+  severity: number | null;
+  start_time: string | null;
+  last_updated_time: string | null;
+  close_time: string | null;
+  offense_type_name: string | null;
+  rule_count: number;
+  captured_at: string;
+}
+
+export interface RelatedAnomaly {
+  family: RelatedFamily | "custom_rule";
+  id: string;
+  type: string;
+  lifecycle_state: AnomalyState;
+  severity: string | null;
+  start: string;
+  end: string;
+  triage_status: TriageStatus;
+}
+
+export interface RelatedRule {
+  id: string | null;
+  qradar_id: number;
+  name: string | null;
+  type: string | null;
+  related_offenses: number;
+  /** `null` is "not measured", never zero. */
+  matched_events: number | null;
+  measurement: RuleMeasurement;
+}
+
+export interface RelatedActivity {
+  state: "OK" | "NOT_APPLICABLE";
+  reason_code: string | null;
+  anchor: RelatedAnchor;
+  offenses: RelatedSection<RelatedOffense>;
+  anomalies: RelatedSection<RelatedAnomaly>;
+  rules: RelatedSection<RelatedRule>;
+}
+
 // --- Phase B types: WAF endpoint behavior ----------------------------------
 // These mirror app/schemas/anomaly.py (T-057). A missing measurement is `null`,
 // never 0: narrowing one of these to `number` would let it render as a zero.
@@ -2939,6 +3016,9 @@ export const api = {
       `/anomalies/${id}`,
     ),
   anomalyPivot: (id: string) => request<Pivot>(`/anomalies/${id}/pivot`),
+  // SOC-3: what else happened on the anomaly's source around it (offenses, anomalies, rules).
+  relatedActivity: (family: RelatedFamily, id: string, pad?: RelatedPad) =>
+    request<RelatedActivity>(`/anomalies/related/${family}/${id}${qs({ pad })}`),
   // SOC-1: the analyst's triage of one anomaly and its activity. Writes need `anomaly:triage`.
   triage: (family: TriageFamily, id: string, page: { limit?: number; offset?: number } = {}) =>
     request<Triage>(`/anomalies/triage/${family}/${id}${qs({ ...page })}`),

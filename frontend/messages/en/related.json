@@ -1,0 +1,93 @@
+{
+  "heading": "Related activity",
+  "headingWindow": "Related activity, {window} (±{pad})",
+  "headingNoWindow": "Related activity (±{pad})",
+  "source": "Log source {source}. Offense times and magnitudes are QRadar's, as last collected.",
+  "sourceUnnamed": "Log source {id}. Offense times and magnitudes are QRadar's, as last collected.",
+  "padLabel": "Window padding",
+  "padPrefix": "Pad",
+  "pad": { "30m": "30 min", "1h": "1 h", "2h": "2 h", "6h": "6 h" },
+  "loading": "Reading the offenses, anomalies and rules for this window.",
+  "count": "{total}",
+  "countOf": "{shown} of {total}",
+  "notApplicable": "This anomaly has no single log source, so its related activity cannot be resolved. Nothing is shown for the offenses, other anomalies or rules.",
+  "read": {
+    "error": "The related activity could not be loaded. The rest of this page is unaffected. Reload the page to try again; if it fails again, the anomalies API is not answering.",
+    "notFound": "The related activity of this anomaly was not found. Reload the page; if it persists, the anomaly may have been removed by retention.",
+    "forbidden": "Related activity needs the read:anomalies permission, which your account does not have. Ask an administrator to grant it."
+  },
+  "unknownState": "This page does not recognise the state {state} for this list, so the list is not shown.",
+  "offenses": {
+    "heading": "Offenses on this source",
+    "caption": "Offenses on this source in this window",
+    "empty": "No offense on this source in this window. Only offenses collected by this platform are listed, so none that ended before offense collection started can appear.",
+    "NOT_COLLECTED": "Offense collection has not run for this console, so no offense could be listed. An empty list here would not mean there was none. Ask an administrator to set up offense collection; the Offenses page shows what has been collected.",
+    "STALE": "Offense collection is behind, so offenses in this window may be missing or out of date.",
+    "staleAge": "The newest snapshot listed was captured {age} ({time}).",
+    "staleNoAge": "No snapshot is listed, so the age of the collection cannot be stated.",
+    "PARTIAL": "Some offense data in this window is missing, so this list may be incomplete.",
+    "TRUNCATED": "More offenses match this window than are shown. The list holds the first {shown} of {total}.",
+    "NOT_APPLICABLE": "This anomaly has no log source, so offenses cannot be matched.",
+    "col": {
+      "offense": "Offense",
+      "description": "Description",
+      "magnitude": "Magnitude (0–10)",
+      "status": "Status",
+      "started": "Started (UTC)",
+      "updated": "Last update (UTC)"
+    },
+    "noDescription": "No description",
+    "open": "Open offense {id}"
+  },
+  "anomalies": {
+    "heading": "Other anomalies on this source",
+    "caption": "Other anomalies on this source in this window",
+    "empty": "No other anomaly on this source in this window.",
+    "NOT_COLLECTED": "Anomalies for this source could not be listed, so an empty list would not mean there was none.",
+    "STALE": "The anomaly list may be out of date.",
+    "PARTIAL": "Some anomalies in this window may be missing from this list.",
+    "TRUNCATED": "More anomalies match this window than are shown. The list holds the first {shown} of {total}.",
+    "NOT_APPLICABLE": "This anomaly has no log source, so other anomalies cannot be matched.",
+    "col": {
+      "anomaly": "Anomaly",
+      "state": "Detector state",
+      "triage": "Triage",
+      "started": "Started (UTC)"
+    },
+    "family": {
+      "log_source": "Log source",
+      "waf": "WAF",
+      "ips": "IPS",
+      "property_watch": "Property watch",
+      "custom_rule": "Custom rule"
+    },
+    "customRuleType": "Custom rule breach",
+    "noTriage": "Not triaged",
+    "triageNotAvailable": "Not available"
+  },
+  "rules": {
+    "heading": "Rules from those offenses",
+    "caption": "QRadar rules named by the offenses in this window",
+    "empty": "The offenses in this window name no rule.",
+    "NOT_COLLECTED": "Rules come from offenses, and offenses were not collected, so the rules that fired cannot be resolved.",
+    "STALE": "Offense collection is behind, so the rules that fired in this window may be incomplete.",
+    "PARTIAL": "Matched events were not measured for every rule in this window. Those rules say \"Not measured\"; that is not zero.",
+    "TRUNCATED": "More rules are named than are shown. The list holds the first {shown} of {total}.",
+    "NOT_APPLICABLE": "This anomaly has no log source, so rules cannot be resolved.",
+    "col": {
+      "rule": "Rule",
+      "offenses": "Offenses",
+      "events": "Matched events"
+    },
+    "notInCatalog": "Rule not in the catalog (QRadar id {id})",
+    "qradarId": "QRadar id {id}",
+    "notMeasured": "Not measured",
+    "measurement": {
+      "EXACT": "Exact",
+      "LOWER_BOUND": "Lower bound",
+      "NOT_COLLECTED": "Not collected"
+    },
+    "lowerBoundTitle": "At least this many events matched; the true count may be higher.",
+    "notMeasuredTitle": "No measurement covers this rule in this window."
+  }
+}

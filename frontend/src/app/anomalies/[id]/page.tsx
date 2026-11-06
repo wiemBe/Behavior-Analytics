@@ -32,6 +32,7 @@ import { AnomalyTabs } from "@/components/behavior/AnomalyTabs";
 import { detectorSpec } from "@/components/ips/ipsDetectors";
 import { IpsInvestigation, type IpsSeriesData } from "@/components/ips/IpsInvestigation";
 import { PwInvestigation, type PwInvestigationData } from "@/components/propertywatch/PwInvestigation";
+import { relatedNode } from "@/components/related/relatedNode";
 import { triageNode } from "@/components/triage/triageNode";
 import { PivotBlock } from "@/components/pivot/PivotBlock";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -61,6 +62,7 @@ import { getBehaviorI18n, getEnumLabels } from "@/lib/behaviorI18n.server";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { summarizeAnomaly, summarizeTimeline } from "@/lib/summarize";
 import { buildSeries } from "@/lib/timeseries";
+import { parsePad } from "@/lib/related";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "./incident.css";
@@ -248,10 +250,13 @@ async function pwData(anomaly: PwAnomalyDetail, i18n: BehaviorI18n): Promise<PwI
 
 async function AnomalyDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ pad?: string | string[] }>;
 }) {
   const { id } = await params;
+  const pad = parsePad((await searchParams)?.pad);
   const t = await getTranslations("anomalies.detail");
 
   let loaded: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail | null = null;
@@ -291,6 +296,7 @@ async function AnomalyDetailPage({
   // The pivot is a separate read: a failure shows in its own block and never in the page.
   const pivotRead = await pivotReads.anomaly(id);
   const triageBlock = await triageNode(loaded);
+  const relatedBlock = await relatedNode(loaded, pad);
   const pivotBlock = pivotRead ? (
     <PivotBlock pivot={pivotRead.pivot} failed={pivotRead.failed} />
   ) : null;
@@ -300,7 +306,12 @@ async function AnomalyDetailPage({
     const pwI18n = await getBehaviorI18n();
     return (
       <>
-        <PwInvestigation anomaly={loaded} data={await pwData(loaded, pwI18n)} triage={triageBlock} />
+        <PwInvestigation
+          anomaly={loaded}
+          data={await pwData(loaded, pwI18n)}
+          triage={triageBlock}
+          related={relatedBlock}
+        />
         {pivotBlock}
       </>
     );
@@ -317,6 +328,7 @@ async function AnomalyDetailPage({
           baselines={baselines}
           i18n={await getBehaviorI18n()}
           triage={triageBlock}
+          related={relatedBlock}
         />
         {pivotBlock}
       </>
@@ -338,6 +350,7 @@ async function AnomalyDetailPage({
           baselines={baselines}
           canOpenSource={canOpenSource}
           triage={triageBlock}
+          related={relatedBlock}
         />
         {pivotBlock}
       </>
@@ -458,6 +471,9 @@ async function AnomalyDetailPage({
         error={pkg?.error ?? null}
         truncatedDimensions={truncated}
       />
+
+      {/* --- F1. what else happened on this source around it (SOC-3) ------ */}
+      {relatedBlock}
 
       {/* --- F2. the same window and source, for the QRadar console -------- */}
       {pivotBlock}
