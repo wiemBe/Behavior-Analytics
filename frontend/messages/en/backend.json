@@ -133,9 +133,6 @@
     },
     "suppression": {
       "maintenance": "maintenance window"
-    },
-    "tuning": {
-      "direction_disabled": "the direction was disabled by a tuning change"
     }
   },
   "ariel_load": {
@@ -664,6 +661,9 @@
       "no_reliable_baseline": "Not judged: no reliable baseline for this weekday and hour.",
       "not_monitored": "This source is not monitored, so no noise counts are collected.",
       "partial_retention": "Counts cover {covered} of {window} days: incident retention is shorter than the requested window."
+    },
+    "tuning": {
+      "direction_disabled": "the direction was disabled by a tuning change"
     }
   },
   "propertywatch": {
