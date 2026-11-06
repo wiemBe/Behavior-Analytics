@@ -210,9 +210,11 @@ async def alert_facets(
     """Counts per severity, family and status for the filter chips.
 
     Declared before `/{alert_id}`: a route after it would parse "facets" as an
-    id and answer every facet call with a uuid parse error. The counts describe
-    exactly the population the list returns for the same filters (paging and
-    ordering do not apply to a count), in one grouped statement.
+    id and answer every facet call with a uuid parse error. Each facet is
+    counted with all of the request's filters except its own, so a chip shows
+    what choosing it would leave; `total` applies every filter and is the same
+    total `GET /alerts` reports for this query. Paging and ordering do not
+    apply to a count, and the whole answer is one statement.
     """
     filters = _filters(
         status_filter=status_filter,
@@ -224,7 +226,7 @@ async def alert_facets(
         until=until,
         max_days=settings.api_max_range_days,
     )
-    severity_counts, family_counts, status_counts = await facet_counts(session, filters)
+    severity_counts, family_counts, status_counts, total = await facet_counts(session, filters)
     return AlertFacetsOut(
         severity=[
             AlertFacetValue(value=value.value, count=severity_counts.get(value.value, 0))
@@ -238,7 +240,7 @@ async def alert_facets(
             AlertFacetValue(value=value.value, count=status_counts.get(value.value, 0))
             for value in AlertStatus
         ],
-        total=sum(status_counts.values()),
+        total=total,
         filters_applied=_applied(filters),
     )
 

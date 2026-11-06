@@ -83,10 +83,16 @@ class AlertFacetValue(BaseModel):
 
 
 class AlertFacetsOut(BaseModel):
-    """The filtered counts a filter bar draws its chips from.
+    """The counts a filter bar draws its chips from.
+
+    Each facet is counted with every filter of the request except its own, so a
+    chip shows what choosing that value would leave rather than what already
+    passes the filter it would replace. `total` is the exception: it applies
+    every filter and equals the list's `total` for the same query, so a facet's
+    counts add up to it only when that facet's own filter is unset.
 
     Every closed value is present, in a stable order, even when its count is
-    zero: zero is a measured count under the same filters, and a missing value
+    zero: zero is a measured count under the other filters, and a missing value
     would make the client guess.
     """
 

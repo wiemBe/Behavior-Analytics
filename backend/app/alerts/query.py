@@ -1,10 +1,11 @@
 """The alert list's filter vocabulary and the SQL each filter means (SOC-7a).
 
-The list and its facets are built from the same clauses, so a facet count is,
-by construction, the count of the rows the list would show for the same
-filters. Every clause is a predicate on one alert row -- the log-source clause
-is a set of `IN (SELECT ...)` lookups into the family tables -- so the
-statement count stays the same whatever the number of alerts.
+The list and its facets are built from the same clauses. A facet count uses every
+clause except the facet's own, so each chip measures what choosing it would leave;
+the facets' `total` uses all of them and is the list's total. Every clause is a
+predicate on one alert row -- the log-source clause is a set of `IN (SELECT ...)`
+lookups into the family tables -- so the statement count stays the same whatever
+the number of alerts.
 
 `family` names the four anomaly families exactly as `GET /anomalies/summary`
 names them (`log_source`, `waf`, `ips`, `property_watch`), and the four other
@@ -19,7 +20,7 @@ over the producers the application opens alerts with.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -136,7 +137,11 @@ def normalise_q(value: str | None) -> str | None:
 
 @dataclass(frozen=True)
 class AlertFilters:
-    """One request's filters, already validated, applied identically to every read."""
+    """One request's filters, already validated.
+
+    The list and the facets' `total` read these clauses unchanged; a facet count
+    reads a copy with only its own filter dropped (`facet_counts`).
+    """
 
     status: AlertStatus | None = None
     severities: tuple[Severity, ...] = ()
@@ -250,39 +255,57 @@ def _log_source_clause(log_source_ids: tuple[uuid.UUID, ...]) -> ColumnElement[b
 
 async def facet_counts(
     session: AsyncSession, filters: AlertFilters
-) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
-    """Counts per severity, family and status over the filtered population.
+) -> tuple[dict[str, int], dict[str, int], dict[str, int], int]:
+    """Counts per severity, family and status, plus the list's own total.
 
-    One grouped statement for all three facets, never a read per alert. Every
-    facet is counted with the same filters as the list, including the family
-    filter itself, so each column adds up to the same total a `HEAD` of the
-    list would report.
+    Standard faceted search: each facet is counted with every filter except its
+    own, so a chip answers "how many alerts would this value add or leave"
+    rather than "how many already pass the filter this chip would replace". On
+    `?severity=HIGH` the MEDIUM chip therefore counts the MEDIUM alerts the
+    other filters leave, where counting with the severity filter too would draw
+    a false zero. `family` and `status` follow the same rule.
+
+    `total` is the exception: it applies every filter, so it is exactly what
+    `GET /alerts` reports for the same query. A facet's counts add up to it only
+    when that facet's own filter is unset.
+
+    All four figures are one `union_all` statement, never a read per alert or
+    per facet, so the statement count does not grow with the population.
     """
     clauses = filters.clauses()
 
-    def facet(name: str, key: Any) -> Any:
+    def facet(name: str, key: Any, without_own: AlertFilters) -> Any:
         return (
             select(
                 literal_column(f"'{name}'").label("facet"),
                 key.label("key"),
                 func.count().label("count"),
             )
-            .where(*clauses)
+            .where(*without_own.clauses())
             .group_by(key)
         )
 
     rows = await session.execute(
         union_all(
-            facet("severity", Alert.severity),
-            facet("family", FAMILY_EXPRESSION),
-            facet("status", Alert.status),
+            facet("severity", Alert.severity, replace(filters, severities=())),
+            facet("family", FAMILY_EXPRESSION, replace(filters, family=None)),
+            facet("status", Alert.status, replace(filters, status=None)),
+            # The fourth branch is not grouped: one row carries the list's total.
+            select(
+                literal_column("'total'").label("facet"),
+                literal_column("'all'").label("key"),
+                func.count().label("count"),
+            ).where(*clauses),
         )
     )
     severity: dict[str, int] = {}
     family: dict[str, int] = {}
     status: dict[str, int] = {}
+    total = 0
     target = {"severity": severity, "family": family, "status": status}
     for name, key, count in rows.all():
-        if key is not None:
+        if str(name) == "total":
+            total = int(count)
+        elif key is not None:
             target[str(name)][str(key)] = int(count)
-    return severity, family, status
+    return severity, family, status, total

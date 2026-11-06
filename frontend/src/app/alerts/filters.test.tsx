@@ -183,6 +183,50 @@ describe("facet counts", () => {
     expect(within(severity).getByRole("link", { name: "HIGH: 0 alerts" })).toHaveTextContent("0");
   });
 
+  it("offers the counts a second severity would add while one is selected", async () => {
+    counts.mockResolvedValue(
+      facets({
+        // The server counts each facet with every filter except its own, so the other
+        // severities keep the counts they have under the remaining filters.
+        total: 4,
+        severity: [
+          { value: "CRITICAL", count: 2 },
+          { value: "HIGH", count: 4 },
+          { value: "MEDIUM", count: 7 },
+          { value: "LOW", count: 1 },
+          { value: "INFO", count: 0 },
+        ],
+      }),
+    );
+    await renderAt({ severity: "HIGH" });
+
+    const severity = screen.getByRole("group", { name: "Severity" });
+    expect(within(severity).getByRole("link", { name: "CRITICAL: 2 alerts" })).toHaveTextContent("2");
+    expect(within(severity).getByRole("link", { name: "MEDIUM: 7 alerts" })).toHaveTextContent("7");
+    expect(within(severity).getByRole("link", { name: "LOW: 1 alert" })).toHaveTextContent("1");
+  });
+
+  it("counts All statuses as every status, not as the status-filtered total", async () => {
+    counts.mockResolvedValue(
+      facets({
+        // `total` is the list's total under status=OPEN; the status facet is counted with
+        // the status filter dropped, so its sum (6 + 3 + 0) is what choosing All returns.
+        total: 4,
+        status: [
+          { value: "OPEN", count: 6 },
+          { value: "ACKNOWLEDGED", count: 3 },
+          { value: "RESOLVED", count: 0 },
+        ],
+      }),
+    );
+    await renderAt({ status: "OPEN" });
+
+    const status = screen.getByLabelText("Alert status") as HTMLSelectElement;
+    expect(within(status).getByRole("option", { name: "All statuses (9)" })).toBeInTheDocument();
+    expect(within(status).queryByRole("option", { name: "All statuses (4)" })).toBeNull();
+    expect(within(status).getByRole("option", { name: "Open (6)" })).toBeInTheDocument();
+  });
+
   it("labels the family control as a kind of alert and the chip says so", async () => {
     await renderAt({ family: "log_source" });
     expect(screen.getByRole("link", { name: "Remove filter Kind: Log-source anomalies" })).toBeInTheDocument();

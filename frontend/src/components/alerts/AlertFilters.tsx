@@ -2,9 +2,10 @@
 
 // The alert list's filter bar (SOC-7b).
 //
-// Status and severity are links with the count of alerts under the current filters beside each
-// value, so a click is a navigation: the URL is the state, Back and Forward walk the filter
-// history, and a link opened in a new tab shows the same view. The search, the family, the log
+// Status and severity are links with the count of alerts the other filters leave beside each
+// value (the facet's own filter is excluded server-side), so a click is a navigation: the URL is
+// the state, Back and Forward walk the filter history, and a link opened in a new tab shows the
+// same view. The search, the family, the log
 // source picker and the Custom range live in one form; a change of family or source applies at
 // once and carries whatever is typed in the search and the Custom inputs with it.
 //
@@ -45,6 +46,16 @@ export interface SourceOption {
 function countOf(list: AlertFacetValue[] | undefined, value: string): number | null {
   const hit = list?.find((entry) => entry.value === value);
   return hit ? hit.count : null;
+}
+
+/**
+ * The count of a whole facet. Each facet is counted with every filter except its own, so
+ * the status facet's sum is exactly what choosing "All statuses" would return — which is
+ * the list's `total` only while no status filter is set.
+ */
+function facetSum(list: AlertFacetValue[] | undefined): number | null {
+  if (!list || list.length === 0) return null;
+  return list.reduce((sum, entry) => sum + entry.count, 0);
 }
 
 export function AlertFilters({
@@ -104,6 +115,9 @@ export function AlertFilters({
     return n === null ? null : n;
   };
   const countText = (n: number | null) => (n === null ? null : formatCount(n, locale));
+  // "All statuses" means every status under the other filters, so its count is the status
+  // facet's sum, not `facets.total` (which already applies the status filter, if any).
+  const allStatuses = facets ? facetSum(facets.status) : null;
 
   const filtered = isAlertFiltered(query);
   const sourceName = (id: string) => sources.find((s) => s.id === id)?.name;
@@ -181,7 +195,9 @@ export function AlertFilters({
           }
         >
           <option value="">
-            {facets ? `${t("filters.all")} (${formatCount(facets.total, locale)})` : t("filters.all")}
+            {allStatuses === null
+              ? t("filters.all")
+              : `${t("filters.all")} (${formatCount(allStatuses, locale)})`}
           </option>
           {ALERT_STATUSES.map((status) => {
             const n = countText(count(facets?.status, status));

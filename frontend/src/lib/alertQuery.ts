@@ -185,7 +185,8 @@ export function isStatusOnly(query: AlertQuery): boolean {
   );
 }
 
-/** The same filters for the list and the facets, so the counts add up to the list's total. */
+/** The same filters for the list and the facets. Each facet drops its own filter server-side;
+ *  `total` applies them all, so it equals the list's total. */
 export function alertFilterParams(query: AlertQuery): AlertFilterParams {
   return {
     status: query.status || undefined,
