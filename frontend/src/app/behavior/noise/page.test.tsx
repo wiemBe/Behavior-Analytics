@@ -179,8 +179,39 @@ describe("Noisy sources: the ranked table", () => {
     await renderPage();
     const r = rowOf("dns-core");
     expect(r).toHaveTextContent("Not judged");
-    expect(r).toHaveTextContent("no reliable baseline for this weekday and hour");
+    expect(r).toHaveTextContent("No reliable baseline for this weekday and hour");
     expect(rowOf("fw-edge-01")).not.toHaveTextContent("Not judged");
+  });
+
+  it("prints 'Not judged' once in the cell and strips the reason's own prefix", async () => {
+    setup(page(MIXED));
+    await renderPage();
+    const cell = rowOf("dns-core").querySelector("td.noise-judged") as HTMLElement;
+    expect(cell.textContent?.match(/Not judged/g)).toHaveLength(1);
+    expect(cell).toHaveTextContent("No reliable baseline for this weekday and hour.");
+  });
+
+  it("shows a reason without the prefix unchanged", async () => {
+    setup(
+      page([
+        row({
+          judged: false,
+          judgement: "INSUFFICIENT_DATA",
+          reason: { code: "x", params: {}, text: "Baseline is still warming up." },
+        }),
+      ]),
+    );
+    await renderPage();
+    const cell = rowOf("fw-edge-01").querySelector("td.noise-judged") as HTMLElement;
+    expect(cell).toHaveTextContent("Baseline is still warming up.");
+    expect(cell.textContent?.match(/Not judged/g)).toHaveLength(1);
+  });
+
+  it("shows the hint when a not-judged row has no reason", async () => {
+    setup(page([row({ judged: false, judgement: "INSUFFICIENT_DATA", reason: null })]));
+    await renderPage();
+    const cell = rowOf("fw-edge-01").querySelector("td.noise-judged") as HTMLElement;
+    expect(cell).toHaveTextContent("A low count here is not evidence of calm.");
   });
 
   it("says 'not monitored' for an unmonitored source and never renders a 0", async () => {
