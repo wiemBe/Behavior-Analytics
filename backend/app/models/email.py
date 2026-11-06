@@ -28,7 +28,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 #: Every ``alert.source_type`` that may carry its own template or scope a
-#: recipient. Kept beside the tables because the admin API validates against it.
+#: recipient, plus ``digest`` (SOC-17c): the daily digest is a mail type with its
+#: own template, not an alert producer. Keeping it here lets the admin API
+#: administer the digest template with the others; the recipient ``alert_types``
+#: filter never selects it, because the digest is site-wide rather than
+#: family-scoped. Kept beside the tables because the admin API validates against it.
 EMAIL_ALERT_TYPES: tuple[str, ...] = (
     "log_source",
     "waf_endpoint",
@@ -38,6 +42,15 @@ EMAIL_ALERT_TYPES: tuple[str, ...] = (
     "catchall_sender",
     "qradar_instance",
     "scheduled_search",
+    "digest",
+)
+
+#: The values a recipient's ``alert_types`` filter may name. ``digest`` is a
+#: mail template key, not a family-scoped alert producer: a recipient filter
+#: never selects it, because the digest is site-wide. Kept beside
+#: ``EMAIL_ALERT_TYPES`` so the admin API can refuse it with the same 422 shape.
+EMAIL_RECIPIENT_ALERT_TYPES: tuple[str, ...] = tuple(
+    name for name in EMAIL_ALERT_TYPES if name != "digest"
 )
 
 _ALERT_TYPES_SQL = ", ".join(f"'{name}'" for name in EMAIL_ALERT_TYPES)

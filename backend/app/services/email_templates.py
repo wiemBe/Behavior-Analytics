@@ -42,6 +42,7 @@ ALERT_TYPE_LABELS: dict[str, str] = {
     "catchall_sender": "Catch-all sender",
     "qradar_instance": "QRadar instance",
     "scheduled_search": "Scheduled search",
+    "digest": "Daily digest",
 }
 
 
@@ -226,6 +227,28 @@ class RenderedEmail:
 
 def shipped_template() -> ResolvedTemplate:
     return ResolvedTemplate(SHIPPED_SUBJECT, SHIPPED_HTML, SHIPPED_TEXT)
+
+
+# --- the shipped digest template (SOC-17c) -----------------------------------
+#
+# The digest is one mail for a whole day, not one alert: it has its own frame and
+# never falls back to the alert default above. The digest service appends its
+# grouped table after this preamble.
+SHIPPED_DIGEST_SUBJECT = "Daily digest: {{ instance.name }}"
+SHIPPED_DIGEST_HTML = (
+    "<p>Anomalies on {{ instance.name }} recorded in the previous 24 hours whose "
+    "alert policy is DIGEST.</p>"
+)
+SHIPPED_DIGEST_TEXT = (
+    "Anomalies on {{ instance.name }} recorded in the previous 24 hours whose "
+    "alert policy is DIGEST.\n"
+)
+
+
+def shipped_digest_template() -> ResolvedTemplate:
+    return ResolvedTemplate(
+        SHIPPED_DIGEST_SUBJECT, SHIPPED_DIGEST_HTML, SHIPPED_DIGEST_TEXT
+    )
 
 
 def find_placeholders(*texts: str) -> set[str]:

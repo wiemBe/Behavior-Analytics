@@ -17,12 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import AlertEnqueuer
 from app.alerts.fingerprint import pw_anomaly_fingerprint
+from app.alerts.policy import AlertPolicyGate
 from app.alerts.service import AlertInput, AlertResolution, AlertService
 from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.lifecycle import LifecycleInput, advance_counters, next_state
 from app.core.config import Settings, get_settings
 from app.i18n.messages import MessageRef, render
 from app.models.enums import (
+    AlertPolicyMode,
+    AnomalyFamily,
     AnomalyState,
     EvidenceStatus,
     PwAnomalyType,
@@ -240,6 +243,10 @@ class PwAnomalyEngine:
         self._enqueuer = enqueuer
         self.repo = PropertyWatchRepository(session)
         self.alerts = AlertService(session, clock=self._clock)
+        # SOC-17c: loaded once per run, memoised per (watch, detector).
+        self._alert_policy = AlertPolicyGate(
+            session, default=AlertPolicyMode(self.settings.alert_policy_default)
+        )
 
     @property
     def _alerting(self) -> bool:
@@ -1139,9 +1146,31 @@ class PwAnomalyEngine:
         alert a savepoint, an insert and a release (the ruled exception of design D.10).
         """
         scopes: dict[uuid.UUID, str] = {}
-        if any(isinstance(item, _AlertOpenOrUpdate) for item in actions):
+        # SOC-17c layer 2: filter the open actions before the rounds, so a
+        # RECORD_ONLY/DIGEST open never becomes an alert or a notification. The
+        # resolve actions are kept: an alert that already exists must resolve.
+        opens = [item for item in actions if isinstance(item, _AlertOpenOrUpdate)]
+        allowed: set[int] = set()
+        for item in opens:
+            if (
+                await self._alert_policy.mode(
+                    instance_id=instance.id,
+                    family=AnomalyFamily.PROPERTY_WATCH,
+                    source_id=item.watch.id,
+                    source_class=None,
+                    detector=item.detector,
+                )
+                is AlertPolicyMode.ALERT
+            ):
+                allowed.add(id(item))
+        actions = [
+            item
+            for item in actions
+            if not isinstance(item, _AlertOpenOrUpdate) or id(item) in allowed
+        ]
+        if allowed:
             scopes = await self._scope_labels(
-                {item.watch.id for item in actions if isinstance(item, _AlertOpenOrUpdate)}
+                {item.watch.id for item in opens if id(item) in allowed}
             )
         for opens, resolves in self._rounds(instance.id, actions):
             inputs = [

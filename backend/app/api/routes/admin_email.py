@@ -27,7 +27,12 @@ from app.core.config import Settings, get_settings
 from app.core.rate_limit import limiter
 from app.i18n.messages import MessageRef, render
 from app.i18n.refusal import CodedHTTPException
-from app.models.email import EMAIL_ALERT_TYPES, EmailRecipient, EmailTemplate
+from app.models.email import (
+    EMAIL_ALERT_TYPES,
+    EMAIL_RECIPIENT_ALERT_TYPES,
+    EmailRecipient,
+    EmailTemplate,
+)
 from app.repositories import email as repo
 from app.repositories.audit import record_audit
 from app.schemas.email import (
@@ -199,8 +204,11 @@ async def list_templates(session: SessionDep) -> TemplateListOut:
     rows = {row.alert_type: row for row in await repo.list_templates(session)}
     return TemplateListOut(
         templates=_summaries(rows),
+        # The recipient editor's scope list. ``digest`` is a template key only:
+        # a recipient filter never selects the site-wide daily digest.
         alert_types=[
-            AlertTypeOut(key=k, label=tpl.ALERT_TYPE_LABELS[k]) for k in EMAIL_ALERT_TYPES
+            AlertTypeOut(key=k, label=tpl.ALERT_TYPE_LABELS[k])
+            for k in EMAIL_RECIPIENT_ALERT_TYPES
         ],
     )
 
@@ -216,6 +224,39 @@ def _template_out(
     """
     own_active = own if own is not None and own.enabled else None
     default_active = default if default is not None and default.enabled else None
+    if alert_type == "digest":
+        # The digest has its own shipped body and never falls back to the alert
+        # default: showing that template here would let an operator save an alert
+        # body as the digest's content.
+        digest_source: Literal["own", "shipped"]
+        if own_active is not None:
+            digest_subject, digest_html, digest_text = (
+                own_active.subject,
+                own_active.html_body,
+                own_active.text_body or "",
+            )
+            digest_source = "own"
+        else:
+            shipped_digest = tpl.shipped_digest_template()
+            digest_subject, digest_html, digest_text = (
+                shipped_digest.subject,
+                shipped_digest.html,
+                shipped_digest.text,
+            )
+            digest_source = "shipped"
+        return TemplateOut(
+            key=alert_type,
+            alert_type=alert_type,
+            label=_label(alert_type),
+            customised=own is not None,
+            enabled=own.enabled if own is not None else False,
+            effective_source=digest_source,
+            subject=digest_subject,
+            html_body=digest_html,
+            text_body=digest_text,
+            updated_at=own.updated_at if own is not None else None,
+            updated_by=own.updated_by if own is not None else None,
+        )
     source: Literal["own", "default", "shipped"]
     if own_active is not None:
         source = "own"
@@ -395,7 +436,9 @@ def _checked_recipient(payload: RecipientIn) -> tuple[str, list[str] | None]:
         )
     types: list[str] | None = None
     if payload.alert_types is not None:
-        unknown = [t for t in payload.alert_types if t not in EMAIL_ALERT_TYPES]
+        unknown = [
+            t for t in payload.alert_types if t not in EMAIL_RECIPIENT_ALERT_TYPES
+        ]
         if unknown:
             raise CodedHTTPException(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,

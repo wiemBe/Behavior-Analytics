@@ -60,10 +60,26 @@ def test_the_template_list_covers_the_default_and_every_type(db_schema) -> None:
     body = Client(ADMIN).get(f"{BASE}/templates").json()
     assert [t["key"] for t in body["templates"]] == [
         "default", "log_source", "waf_endpoint", "ips_entity", "custom_rule", "pw_value",
-        "catchall_sender", "qradar_instance", "scheduled_search",
+        "catchall_sender", "qradar_instance", "scheduled_search", "digest",
     ]
     assert all(t["customised"] is False for t in body["templates"])
-    assert [t["key"] for t in body["alert_types"]] == [t["key"] for t in body["templates"]][1:]
+    assert [t["key"] for t in body["alert_types"]] == [t["key"] for t in body["templates"]][1:-1]
+
+
+def test_digest_is_a_template_key_not_a_recipient_scope(db_schema) -> None:
+    """The digest is administered as a template, never offered as a recipient filter."""
+    body = Client(ADMIN).get(f"{BASE}/templates").json()
+    assert "digest" in [t["key"] for t in body["templates"]]
+    assert "digest" not in [t["key"] for t in body["alert_types"]]
+    refused = Client(ADMIN).post(
+        f"{BASE}/recipients",
+        json={"address": "a@example.org", "alert_types": ["digest"]},
+    )
+    assert refused.status_code == 422
+    assert refused.json()["detail_codes"] == [
+        {"code": "email.recipient.alert_type_unknown", "params": {"name": "digest"}}
+    ]
+    assert _rows(EmailRecipient) == []
 
 
 def test_a_type_without_a_row_shows_the_shipped_default_and_says_so(db_schema) -> None:
@@ -245,3 +261,47 @@ def test_every_write_leaves_exactly_one_audit_row_per_action(db_schema) -> None:
 
 def test_a_random_uuid_for_a_recipient_is_a_404_not_a_500(db_schema) -> None:
     assert Client(ADMIN).delete(f"{BASE}/recipients/{uuid.uuid4()}").status_code == 404
+
+
+def test_the_digest_template_key_never_falls_back_to_the_alert_default(db_schema) -> None:
+    """SOC-17c: the digest owns a body of its own, even in the admin view."""
+    admin = Client(ADMIN)
+    admin.request(
+        "PUT", f"{BASE}/templates/default", json={**TEMPLATE, "subject": "ALERT DEFAULT"}
+    )
+
+    body = admin.get(f"{BASE}/templates/digest").json()
+    assert body["effective_source"] == "shipped"
+    assert body["subject"] == tpl.SHIPPED_DIGEST_SUBJECT
+    assert body["html_body"] == tpl.SHIPPED_DIGEST_HTML
+    assert body["text_body"] == tpl.SHIPPED_DIGEST_TEXT
+
+    own = admin.request(
+        "PUT",
+        f"{BASE}/templates/digest",
+        json={
+            "subject": "Digest {{ instance.name }}",
+            "html_body": "<p>own digest</p>",
+            "text_body": "own digest",
+            "enabled": True,
+        },
+    )
+    assert own.status_code == 200
+    body = admin.get(f"{BASE}/templates/digest").json()
+    assert body["effective_source"] == "own"
+    assert body["subject"] == "Digest {{ instance.name }}"
+
+    # A disabled digest row falls back to the shipped digest, never the alert default.
+    admin.request(
+        "PUT",
+        f"{BASE}/templates/digest",
+        json={
+            "subject": "Disabled digest",
+            "html_body": "<p>x</p>",
+            "text_body": None,
+            "enabled": False,
+        },
+    )
+    body = admin.get(f"{BASE}/templates/digest").json()
+    assert body["effective_source"] == "shipped"
+    assert body["subject"] == tpl.SHIPPED_DIGEST_SUBJECT

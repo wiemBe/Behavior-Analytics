@@ -20,6 +20,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.alerts.dispatcher import AlertEnqueuer
 from app.alerts.fingerprint import ips_anomaly_fingerprint
+from app.alerts.policy import AlertPolicyGate
 from app.alerts.service import AlertInput, AlertResolution, AlertService
 from app.anomaly.capabilities import IPS_DETECTORS
 from app.anomaly.evidence import AnomalyEvidence
@@ -42,6 +43,8 @@ from app.ips.inputs import (
     observe_entity,
 )
 from app.models.enums import (
+    AlertPolicyMode,
+    AnomalyFamily,
     AnomalyState,
     EvidenceStatus,
     IpsAnomalyType,
@@ -196,6 +199,10 @@ class IpsAnomalyEngine:
         self.alerts = AlertService(session, clock=self._clock)
         self._enqueuer = enqueuer
         self.history_end: datetime | None = None
+        # SOC-17c: loaded once per run, memoised per (source, detector).
+        self._alert_policy = AlertPolicyGate(
+            session, default=AlertPolicyMode(self.settings.alert_policy_default)
+        )
 
     def _thresholds(self) -> IpsThresholds:
         settings = self.settings
@@ -871,6 +878,20 @@ class IpsAnomalyEngine:
             ).one_or_none()
             if row is not None:
                 instance_name, source_class = row
+            # SOC-17c layer 2: the incident is already recorded; only the alert
+            # and its notification are stopped. Resolution is never filtered.
+            opens = [
+                item
+                for item in opens
+                if await self._alert_policy.mode(
+                    instance_id=source.instance_id,
+                    family=AnomalyFamily.IPS,
+                    source_id=source.id,
+                    source_class=source_class,
+                    detector=item.detector_type.value,
+                )
+                is AlertPolicyMode.ALERT
+            ]
         open_inputs = [
             self._alert_input(source, instance_name, item, source_class) for item in opens
         ]

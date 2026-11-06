@@ -205,6 +205,7 @@ trimmed to the dimensions its DSM populates; the rest are recorded unavailable.
 | `LOG_SOURCE_ANOMALY_RETENTION_MAX_BATCHES` | `20` | Batches per run. `1`–`1000` |
 | `LOG_SOURCE_ANOMALY_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule. Minimum `3600` |
 | `OUTAGE_ALERT_DEFAULT` | `ALERT` | Default source-silence policy when no override applies |
+| `ALERT_POLICY_DEFAULT` | `ALERT` | What an anomaly does when no `alert_policy` row applies: `ALERT`, `RECORD_ONLY` or `DIGEST`. `ALERT` keeps the pre-SOC-17c behaviour, so an upgrade with no rows changes nothing |
 
 ## WAF behavior
 
@@ -620,6 +621,7 @@ read them there.
 | `SMTP_USE_TLS` | `true` | Legacy switch, kept so an existing site sends as before: `true` means `starttls`, `false` means `none`. Ignored when `SMTP_SECURITY` is set |
 | `SMTP_CA_FILE` | unset | Path of a CA bundle (PEM) that signed the relay's certificate, for a relay with a private CA. Unset uses the system trust store. The file must be readable inside the backend and worker containers |
 | `SITE_NAME` | `QRadar Behavior Analytics` | The site's name, available to e-mail templates as `{{ site.name }}` |
+| `DIGEST_HOUR_UTC` | `7` | UTC hour (`0`–`23`) after which each instance's daily digest may run. The beat ticks every 300 s; the task gates the hour and records one `alert_digest_run` row per instance and date, so a repeat is a no-op |
 | `RATE_LIMIT_EMAIL_TEST` | `5/minute` | Limit on the admin "send a test message" action, which spends a real delivery |
 | `RATE_LIMIT_ACCESS_CHECK` | `2/minute` | Limit on the admin "check QRadar access now" action, which sends about a dozen reads and one search to each console |
 

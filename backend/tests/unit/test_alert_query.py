@@ -79,10 +79,16 @@ def test_the_family_map_covers_exactly_the_alert_producers_the_app_sends() -> No
     When a producer is added to one list and not the other, a family filter
     would silently drop its alerts. Pinning the two lists together makes that a
     failing test instead.
+
+    ``digest`` (SOC-17c) belongs to the allowlist as a mail template key, not as
+    an alert producer: it has no ``alert.source_type`` and no family, so it is
+    excluded here rather than mapped to a made-up family.
     """
-    assert {alert_family(source_type) for source_type in EMAIL_ALERT_TYPES} == set(
-        AlertFamily
-    )
+    assert {
+        alert_family(source_type)
+        for source_type in EMAIL_ALERT_TYPES
+        if source_type != "digest"
+    } == set(AlertFamily)
 
 
 def test_no_filter_and_the_default_order_keep_the_previous_query() -> None:
