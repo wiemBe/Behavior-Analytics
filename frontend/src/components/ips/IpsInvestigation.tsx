@@ -9,6 +9,7 @@
 // rendering an empty table.
 
 import { useTranslations } from "next-intl";
+import type { ReactNode } from "react";
 
 import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
 import type {
@@ -137,6 +138,7 @@ export function IpsInvestigation({
   series,
   baselines = null,
   canOpenSource = false,
+  triage = null,
 }: {
   anomaly: IpsAnomalyDetail;
   /** Stored buckets around the incident, or null when they could not be loaded. */
@@ -145,6 +147,8 @@ export function IpsInvestigation({
   baselines?: IpsBaselineCell[] | null;
   /** Whether the caller may read the IPS source's administration page. */
   canOpenSource?: boolean;
+  /** The triage block (SOC-1b), shown under the state sentence. */
+  triage?: ReactNode;
 }) {
   const t = useTranslations("ips");
   const i18n = useBehaviorI18n();
@@ -180,6 +184,8 @@ export function IpsInvestigation({
       <p className="incident-summary">{summary.text}</p>
       {summary.caveat && <p className="subtitle">{summary.caveat}</p>}
       <p className="subtitle">{ipsStateMeaning(anomaly.state, subject, i18n)}</p>
+
+      {triage}
 
       <IpsIncidentMetrics anomaly={anomaly} bucketSeconds={bucketSeconds} />
 

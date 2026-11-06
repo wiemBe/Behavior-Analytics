@@ -1,0 +1,172 @@
+/* The triage block on an anomaly page. A card with two columns (state and controls, then the
+   activity) from 1100 px up; one column below, so nothing needs a page-level scroll at 1024. */
+
+.triage {
+  margin: 0 0 var(--sp-5);
+  min-width: 0;
+}
+.triage .section-title {
+  margin-top: 0;
+}
+.triage-lead {
+  margin-bottom: var(--sp-4);
+}
+.triage-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-5) var(--sp-6);
+}
+@media (min-width: 1100px) {
+  .triage-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  }
+  .triage-activity {
+    border-left: 1px solid var(--border);
+    padding-left: var(--sp-6);
+  }
+}
+.triage-state,
+.triage-activity {
+  min-width: 0;
+}
+.triage-facts {
+  margin-bottom: var(--sp-3);
+}
+.triage-owner {
+  overflow-wrap: anywhere;
+}
+.triage-note {
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--border-strong);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.triage-note-label {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.triage-updated,
+.triage-alert {
+  margin-bottom: var(--sp-2);
+}
+.triage-readonly {
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+}
+.triage-actions {
+  margin-top: var(--sp-3);
+}
+.triage-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.triage-form label {
+  color: var(--text-2);
+}
+.triage-form .field {
+  min-width: 0;
+  width: 100%;
+  flex: 0 0 auto;
+}
+.triage-form textarea.field {
+  resize: vertical;
+}
+.triage-form .field-hint {
+  margin: 0;
+}
+.triage-count {
+  font-variant-numeric: tabular-nums;
+}
+.triage-result {
+  margin: var(--sp-3) 0 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.triage-problem {
+  margin: 0 0 var(--sp-3);
+  color: var(--crit-text);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+.triage-conflict {
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--warn-border);
+  background: var(--warn-bg);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+}
+.triage-conflict p {
+  margin: 0 0 var(--sp-2);
+  overflow-wrap: anywhere;
+}
+.triage-subheading {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+}
+.triage-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.triage-event {
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  min-width: 0;
+}
+.triage-event:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.triage-event-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-3);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.triage-actor {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.triage-event-line {
+  margin: 2px 0 0;
+  color: var(--text);
+}
+.triage-event-text {
+  margin: 2px 0 0;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.triage-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.triage-comment {
+  margin-top: var(--sp-4);
+}

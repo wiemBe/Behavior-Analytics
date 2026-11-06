@@ -60,7 +60,7 @@ describe("list column folding", () => {
     const folded = row.querySelectorAll(".fold-started, .fold-dev");
     expect(folded).toHaveLength(2);
     expect(row.querySelector(".fold-started")?.textContent).toBe("Started 07-20 10:00 UTC");
-    expect(row.querySelector(".fold-dev")?.textContent).toBe("Deviation 3.00x");
+    expect(row.querySelector(".fold-dev")?.textContent).toBe("Deviation 3.00x +200.0\u00A0%");
     expect(cells.some((c) => c.className.includes("col-started"))).toBe(true);
     expect(cells.some((c) => c.className.includes("col-dev"))).toBe(true);
   });

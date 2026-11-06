@@ -9,6 +9,8 @@
 // The page passes its `BehaviorI18n` down: the summary, the state words and the
 // chart's prose are built by the helpers in the interface language.
 
+import type { ReactNode } from "react";
+
 import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
 import type { WafAnomalyDetail, WafBaselineCell, WafMetricBucket } from "@/lib/api";
 import { stateMeaningIn } from "@/lib/behavior";
@@ -85,6 +87,7 @@ export function WafInvestigation({
   buckets,
   baselines = null,
   i18n = ENGLISH_WAF,
+  triage = null,
 }: {
   anomaly: WafAnomalyDetail;
   /** Stored buckets around the incident, or null when they could not be loaded. */
@@ -93,6 +96,8 @@ export function WafInvestigation({
   baselines?: WafBaselineCell[] | null;
   /** The interface language of the summary, the state words and the chart's prose. */
   i18n?: BehaviorI18n;
+  /** The triage block (SOC-1b), shown under the state sentence. */
+  triage?: ReactNode;
 }) {
   const t = useTranslations("waf.investigation");
   const bucketSeconds = buckets?.[0]?.bucket_seconds ?? null;
@@ -128,6 +133,8 @@ export function WafInvestigation({
       <p className="incident-summary">{summary.text}</p>
       {summary.caveat && <p className="subtitle">{summary.caveat}</p>}
       <p className="subtitle">{stateMeaningIn(anomaly.state, i18n)}</p>
+
+      {triage}
 
       <WafIncidentMetrics anomaly={anomaly} bucketSeconds={bucketSeconds} />
 

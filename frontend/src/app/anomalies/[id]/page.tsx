@@ -32,6 +32,7 @@ import { AnomalyTabs } from "@/components/behavior/AnomalyTabs";
 import { detectorSpec } from "@/components/ips/ipsDetectors";
 import { IpsInvestigation, type IpsSeriesData } from "@/components/ips/IpsInvestigation";
 import { PwInvestigation, type PwInvestigationData } from "@/components/propertywatch/PwInvestigation";
+import { triageNode } from "@/components/triage/triageNode";
 import { PivotBlock } from "@/components/pivot/PivotBlock";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
@@ -289,6 +290,7 @@ async function AnomalyDetailPage({
 
   // The pivot is a separate read: a failure shows in its own block and never in the page.
   const pivotRead = await pivotReads.anomaly(id);
+  const triageBlock = await triageNode(loaded);
   const pivotBlock = pivotRead ? (
     <PivotBlock pivot={pivotRead.pivot} failed={pivotRead.failed} />
   ) : null;
@@ -298,7 +300,7 @@ async function AnomalyDetailPage({
     const pwI18n = await getBehaviorI18n();
     return (
       <>
-        <PwInvestigation anomaly={loaded} data={await pwData(loaded, pwI18n)} />
+        <PwInvestigation anomaly={loaded} data={await pwData(loaded, pwI18n)} triage={triageBlock} />
         {pivotBlock}
       </>
     );
@@ -314,6 +316,7 @@ async function AnomalyDetailPage({
           buckets={buckets}
           baselines={baselines}
           i18n={await getBehaviorI18n()}
+          triage={triageBlock}
         />
         {pivotBlock}
       </>
@@ -334,6 +337,7 @@ async function AnomalyDetailPage({
           series={series}
           baselines={baselines}
           canOpenSource={canOpenSource}
+          triage={triageBlock}
         />
         {pivotBlock}
       </>
@@ -400,6 +404,9 @@ async function AnomalyDetailPage({
       <p className="incident-summary">{summary.text}</p>
       {summary.caveat && <p className="subtitle">{summary.caveat}</p>}
       <p className="subtitle">{stateMeaningIn(anomaly.state, i18n)}</p>
+
+      {/* --- B2. the analyst's triage: who has this and what was decided --- */}
+      {triageBlock}
 
       {/* --- C. the four primary metrics, as one comparison --------------- */}
       <IncidentMetrics anomaly={anomaly} confidenceLimited={degenerate} />
