@@ -111,7 +111,7 @@ def _to_summary(ls: LogSource, anomaly_counts: dict[uuid.UUID, int]) -> LogSourc
 
 
 #: The recorded reason of a tuning closure (design §3.1, D-54).
-MESSAGE_DIRECTION_DISABLED = MessageRef("anomaly.tuning.direction_disabled")
+MESSAGE_DIRECTION_DISABLED = MessageRef("noise.tuning.direction_disabled")
 
 
 def _effective_direction(criticality: Criticality, custom: object) -> str:

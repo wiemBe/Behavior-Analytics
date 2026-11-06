@@ -5433,7 +5433,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     # --- SOC-17b: a tuning change's recorded reason and the 28-day replay ---
     _fixed(
-        "anomaly.tuning.direction_disabled",
+        "noise.tuning.direction_disabled",
         "the direction was disabled by a tuning change",
     ),
     _fixed(

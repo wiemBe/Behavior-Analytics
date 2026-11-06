@@ -306,7 +306,7 @@ async def test_disabling_a_direction_closes_its_incident_and_alert(db_session, d
     assert untouched is not None and AnomalyState(untouched.state) is AnomalyState.OPEN
     assert alert is not None and alert.status == AlertStatus.RESOLVED
     assert alert.resolution_reason_i18n is not None
-    assert alert.resolution_reason_i18n["code"] == "anomaly.tuning.direction_disabled"
+    assert alert.resolution_reason_i18n["code"] == "noise.tuning.direction_disabled"
 
     transitions = list(
         (
@@ -323,7 +323,7 @@ async def test_disabling_a_direction_closes_its_incident_and_alert(db_session, d
     assert AnomalyState(transition.to_state) is AnomalyState.RESOLVED
     assert transition.actor == "writer"
     assert transition.reason_i18n is not None
-    assert transition.reason_i18n["code"] == "anomaly.tuning.direction_disabled"
+    assert transition.reason_i18n["code"] == "noise.tuning.direction_disabled"
 
     state = await db_session.scalar(
         select(LogSourceDetectorState).where(
