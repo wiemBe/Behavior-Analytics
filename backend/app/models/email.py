@@ -45,6 +45,14 @@ EMAIL_ALERT_TYPES: tuple[str, ...] = (
     "digest",
 )
 
+#: The values a recipient's ``alert_types`` filter may name. ``digest`` is a
+#: mail template key, not a family-scoped alert producer: a recipient filter
+#: never selects it, because the digest is site-wide. Kept beside
+#: ``EMAIL_ALERT_TYPES`` so the admin API can refuse it with the same 422 shape.
+EMAIL_RECIPIENT_ALERT_TYPES: tuple[str, ...] = tuple(
+    name for name in EMAIL_ALERT_TYPES if name != "digest"
+)
+
 _ALERT_TYPES_SQL = ", ".join(f"'{name}'" for name in EMAIL_ALERT_TYPES)
 
 

@@ -27,7 +27,12 @@ from app.core.config import Settings, get_settings
 from app.core.rate_limit import limiter
 from app.i18n.messages import MessageRef, render
 from app.i18n.refusal import CodedHTTPException
-from app.models.email import EMAIL_ALERT_TYPES, EmailRecipient, EmailTemplate
+from app.models.email import (
+    EMAIL_ALERT_TYPES,
+    EMAIL_RECIPIENT_ALERT_TYPES,
+    EmailRecipient,
+    EmailTemplate,
+)
 from app.repositories import email as repo
 from app.repositories.audit import record_audit
 from app.schemas.email import (
@@ -199,8 +204,11 @@ async def list_templates(session: SessionDep) -> TemplateListOut:
     rows = {row.alert_type: row for row in await repo.list_templates(session)}
     return TemplateListOut(
         templates=_summaries(rows),
+        # The recipient editor's scope list. ``digest`` is a template key only:
+        # a recipient filter never selects the site-wide daily digest.
         alert_types=[
-            AlertTypeOut(key=k, label=tpl.ALERT_TYPE_LABELS[k]) for k in EMAIL_ALERT_TYPES
+            AlertTypeOut(key=k, label=tpl.ALERT_TYPE_LABELS[k])
+            for k in EMAIL_RECIPIENT_ALERT_TYPES
         ],
     )
 
@@ -428,7 +436,9 @@ def _checked_recipient(payload: RecipientIn) -> tuple[str, list[str] | None]:
         )
     types: list[str] | None = None
     if payload.alert_types is not None:
-        unknown = [t for t in payload.alert_types if t not in EMAIL_ALERT_TYPES]
+        unknown = [
+            t for t in payload.alert_types if t not in EMAIL_RECIPIENT_ALERT_TYPES
+        ]
         if unknown:
             raise CodedHTTPException(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,

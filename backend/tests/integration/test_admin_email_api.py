@@ -63,7 +63,23 @@ def test_the_template_list_covers_the_default_and_every_type(db_schema) -> None:
         "catchall_sender", "qradar_instance", "scheduled_search", "digest",
     ]
     assert all(t["customised"] is False for t in body["templates"])
-    assert [t["key"] for t in body["alert_types"]] == [t["key"] for t in body["templates"]][1:]
+    assert [t["key"] for t in body["alert_types"]] == [t["key"] for t in body["templates"]][1:-1]
+
+
+def test_digest_is_a_template_key_not_a_recipient_scope(db_schema) -> None:
+    """The digest is administered as a template, never offered as a recipient filter."""
+    body = Client(ADMIN).get(f"{BASE}/templates").json()
+    assert "digest" in [t["key"] for t in body["templates"]]
+    assert "digest" not in [t["key"] for t in body["alert_types"]]
+    refused = Client(ADMIN).post(
+        f"{BASE}/recipients",
+        json={"address": "a@example.org", "alert_types": ["digest"]},
+    )
+    assert refused.status_code == 422
+    assert refused.json()["detail_codes"] == [
+        {"code": "email.recipient.alert_type_unknown", "params": {"name": "digest"}}
+    ]
+    assert _rows(EmailRecipient) == []
 
 
 def test_a_type_without_a_row_shows_the_shipped_default_and_says_so(db_schema) -> None:

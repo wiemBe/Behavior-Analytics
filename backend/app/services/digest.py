@@ -11,14 +11,24 @@ ratio, and the first and last abnormal bucket in UTC, with a link to the filtere
 anomaly list. A source name is the only free text that leaves the database; no
 raw event value, address or AQL appears in the mail.
 
-Cost is nine statements per instance run, whatever the fleet and the number of
-incidents: one policy read, one outage-policy read, four grouped incident reads,
-one recipient read, one template read and one run insert. The source class comes
-with the incident reads (an outer join), so it costs no statement of its own.
+Cost is twelve statements per instance run, whatever the fleet and the number of
+incidents: the per-instance advisory lock (take and release), one idempotency
+check under that lock, one policy read, one outage-policy read, four grouped
+incident reads, one recipient read, one template read and one run insert. The
+source class comes with the incident reads (an outer join), so it costs no
+statement of its own.
 
 The run is recorded in ``alert_digest_run``. Its unique ``(instance_id,
 digest_date)`` is the idempotency key: a second beat tick on the same day sends
-nothing and writes nothing.
+nothing and writes nothing. Two ticks that overlap cannot both send: each
+instance's "no row today -> build -> send -> insert" unit runs under the
+collector advisory lock, and the row is committed before the lock is released,
+so a second tick either skips at the lock or re-checks after it and finds the
+row.
+
+The window is fixed to the digest date: for date ``D`` it is
+``[D-1 at DIGEST_HOUR_UTC, D at DIGEST_HOUR_UTC)`` in UTC, whatever time the
+tick actually runs. A late worker neither shifts nor gaps it.
 
 E-mail is optional and never faked: no configured relay records
 ``NOT_CONFIGURED``, an empty recipient union records ``NO_RECIPIENTS``, no
@@ -33,7 +43,7 @@ import asyncio
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from html import escape
 from typing import Any
 from urllib.parse import urlencode
@@ -75,10 +85,15 @@ from app.services.email_delivery import (
     deliver as smtp_deliver,
 )
 from app.services.email_templates import render_template, shipped_digest_template
+from app.services.locks import CollectorAdvisoryLock
 
 #: The template key the digest owns. It never falls back to the default alert
 #: template: an alert body would be sent with digest content.
 DIGEST_TEMPLATE_TYPE = "digest"
+
+#: The collector name of the per-instance digest lock. It keeps the digest from
+#: contending with any collector's lock on the same instance.
+DIGEST_LOCK_NAME = "alert_digest"
 
 #: Rows listed before the "and N more sources" line (design §4.6).
 DIGEST_TOP_ROWS = 50
@@ -329,6 +344,7 @@ class DigestService:
                 )
                 .where(
                     LogSource.instance_id == instance.id,
+                    LogSourceAnomaly.suppressed.is_(False),
                     LogSourceAnomaly.detected_at >= start,
                     LogSourceAnomaly.detected_at < end,
                 )
@@ -367,6 +383,7 @@ class DigestService:
                 )
                 .where(
                     LogSource.instance_id == instance.id,
+                    WafAnomaly.suppressed.is_(False),
                     WafAnomaly.detected_at >= start,
                     WafAnomaly.detected_at < end,
                 )
@@ -404,6 +421,7 @@ class DigestService:
                 )
                 .where(
                     LogSource.instance_id == instance.id,
+                    IpsAnomaly.suppressed.is_(False),
                     IpsAnomaly.detected_at >= start,
                     IpsAnomaly.detected_at < end,
                 )
@@ -436,6 +454,7 @@ class DigestService:
                 .join(PropertyWatch, PropertyWatch.id == PwAnomaly.watch_id)
                 .where(
                     PropertyWatch.instance_id == instance.id,
+                    PwAnomaly.suppressed.is_(False),
                     PwAnomaly.detected_at >= start,
                     PwAnomaly.detected_at < end,
                 )
@@ -537,107 +556,140 @@ class DigestService:
 
     async def run_for_instance(
         self, instance: QRadarInstance
-    ) -> DigestRunResult:
-        """Build, send and record one instance's digest.
+    ) -> DigestRunResult | None:
+        """Build, send and record one instance's digest, at most once per date.
 
-        Exactly nine statements: one policy read, one outage-policy read, four
-        grouped incident reads, one recipient read, one template read and the
-        run insert. Nothing here loops over a source or an incident.
+        Returns ``None`` when another tick holds this instance's lock or when
+        today's row already exists. The "no row today -> build -> send -> insert"
+        unit runs under the collector advisory lock, and the row is committed
+        before the lock is released, so two overlapping ticks send one mail.
+
+        Twelve statements per run: the lock (take and release), one idempotency
+        check, one policy read, one outage-policy read, four grouped incident
+        reads, one recipient read, one template read and the run insert. Nothing
+        here loops over a source or an incident.
         """
         now = self._clock()
         if now.tzinfo is None:
             now = now.replace(tzinfo=UTC)
         now = now.astimezone(UTC)
-        start = now - timedelta(hours=24)
+        digest_date = now.date()
+        # The window is anchored to the digest date, not to the tick: a late
+        # worker must neither shift nor gap it.
+        end = datetime.combine(
+            digest_date, time(hour=self.settings.digest_hour_utc), tzinfo=UTC
+        )
+        start = end - timedelta(days=1)
 
-        policy_rows = list((await self.session.scalars(select(AlertPolicy))).all())
-        outage_rows = list(
-            (await self.session.scalars(select(OutageAlertPolicy))).all()
-        )
-        items = await self._items(
-            instance,
-            start=start,
-            end=now,
-            policy_rows=policy_rows,
-            outage_rows=outage_rows,
-        )
-        recipients = await recipient_addresses(self.session)
-        template_rows = list(
-            (
-                await self.session.scalars(
-                    select(EmailTemplate).where(
-                        EmailTemplate.alert_type == DIGEST_TEMPLATE_TYPE
+        async with CollectorAdvisoryLock(
+            self.session, self.settings, instance.id, DIGEST_LOCK_NAME
+        ) as acquired:
+            if not acquired:
+                return None
+            # The fleet-level check in `run_due_digests` is only a fast path; the
+            # lock winner must look again, because the previous holder may have
+            # committed between that read and this one.
+            already = await self.session.scalar(
+                select(AlertDigestRun.id).where(
+                    AlertDigestRun.instance_id == instance.id,
+                    AlertDigestRun.digest_date == digest_date,
+                )
+            )
+            if already is not None:
+                return None
+
+            policy_rows = list((await self.session.scalars(select(AlertPolicy))).all())
+            outage_rows = list(
+                (await self.session.scalars(select(OutageAlertPolicy))).all()
+            )
+            items = await self._items(
+                instance,
+                start=start,
+                end=end,
+                policy_rows=policy_rows,
+                outage_rows=outage_rows,
+            )
+            recipients = await recipient_addresses(self.session)
+            template_rows = list(
+                (
+                    await self.session.scalars(
+                        select(EmailTemplate).where(
+                            EmailTemplate.alert_type == DIGEST_TEMPLATE_TYPE
+                        )
                     )
+                ).all()
+            )
+
+            shown = items[:DIGEST_TOP_ROWS]
+            extra_sources = len(
+                {item.source_id for item in items[DIGEST_TOP_ROWS:]}
+            )
+            template = _choose_template(template_rows)
+            rendered = render_template(
+                template,
+                {
+                    "instance.name": instance.name,
+                    "site.name": self.settings.site_name,
+                    "alert.type": "Daily digest",
+                },
+            )
+            parts = MailParts(
+                subject=rendered.subject,
+                html=rendered.html
+                + _items_table(shown, extra_sources, self.settings.public_origin),
+                text=rendered.text
+                + ("\n\n" if rendered.text else "")
+                + _items_text(shown, extra_sources, self.settings.public_origin),
+            )
+
+            state = AlertDigestState.SUCCESS
+            error_code: str | None = None
+            sent_at: datetime | None = None
+            if not self.settings.smtp_configured:
+                state = AlertDigestState.NOT_CONFIGURED
+            elif not recipients:
+                state = AlertDigestState.NO_RECIPIENTS
+            elif not items:
+                state = AlertDigestState.EMPTY
+            else:
+                sent_at = now
+                try:
+                    message = build_message(self.settings, ", ".join(recipients), parts)
+                    await asyncio.to_thread(self._deliver, self.settings, message)
+                except Exception as exc:  # a code is the only safe record
+                    state = AlertDigestState.FAILED
+                    error_code = (
+                        exc.code
+                        if isinstance(exc, EmailDeliveryError)
+                        else classify(exc).code
+                    )
+
+            self.session.add(
+                AlertDigestRun(
+                    instance_id=instance.id,
+                    digest_date=digest_date,
+                    state=state.value,
+                    item_count=len(items),
+                    recipient_count=len(recipients),
+                    error_code=error_code,
+                    sent_at=sent_at,
                 )
-            ).all()
-        )
-
-        shown = items[:DIGEST_TOP_ROWS]
-        extra_sources = len(
-            {item.source_id for item in items[DIGEST_TOP_ROWS:]}
-        )
-        template = _choose_template(template_rows)
-        rendered = render_template(
-            template,
-            {
-                "instance.name": instance.name,
-                "site.name": self.settings.site_name,
-                "alert.type": "Daily digest",
-            },
-        )
-        parts = MailParts(
-            subject=rendered.subject,
-            html=rendered.html + _items_table(shown, extra_sources, self.settings.public_origin),
-            text=rendered.text
-            + ("\n\n" if rendered.text else "")
-            + _items_text(shown, extra_sources, self.settings.public_origin),
-        )
-
-        state = AlertDigestState.SUCCESS
-        error_code: str | None = None
-        sent_at: datetime | None = None
-        if not self.settings.smtp_configured:
-            state = AlertDigestState.NOT_CONFIGURED
-        elif not recipients:
-            state = AlertDigestState.NO_RECIPIENTS
-        elif not items:
-            state = AlertDigestState.EMPTY
-        else:
-            sent_at = now
-            try:
-                message = build_message(self.settings, ", ".join(recipients), parts)
-                await asyncio.to_thread(self._deliver, self.settings, message)
-            except Exception as exc:  # a code is the only safe record
-                state = AlertDigestState.FAILED
-                error_code = (
-                    exc.code
-                    if isinstance(exc, EmailDeliveryError)
-                    else classify(exc).code
-                )
-
-        self.session.add(
-            AlertDigestRun(
+            )
+            await self.session.flush()
+            # Commit while the lock is held: the next tick must see this row
+            # before it can take the lock, or it would send a second mail.
+            await self.session.commit()
+            return DigestRunResult(
                 instance_id=instance.id,
-                digest_date=now.date(),
-                state=state.value,
+                digest_date=digest_date,
+                state=state,
                 item_count=len(items),
                 recipient_count=len(recipients),
                 error_code=error_code,
                 sent_at=sent_at,
+                items=tuple(items),
+                extra_sources=extra_sources,
             )
-        )
-        await self.session.flush()
-        return DigestRunResult(
-            instance_id=instance.id,
-            digest_date=now.date(),
-            state=state,
-            item_count=len(items),
-            recipient_count=len(recipients),
-            error_code=error_code,
-            sent_at=sent_at,
-            items=tuple(items),
-            extra_sources=extra_sources,
-        )
 
 
 async def run_due_digests(
@@ -650,8 +702,9 @@ async def run_due_digests(
     """Run today's digest for every instance that is due and has no run row.
 
     Two statements for the fleet (the already-run instance ids and the instance
-    list) plus nine per instance actually run. Before ``DIGEST_HOUR_UTC`` it
-    returns without touching the database.
+    list) plus twelve per instance actually run. Before ``DIGEST_HOUR_UTC`` it
+    returns without touching the database. The fleet check is a fast path only;
+    each instance re-checks under its own advisory lock.
     """
     settings = settings or get_settings()
     moment = (now or datetime.now(UTC)).astimezone(UTC)
@@ -679,5 +732,7 @@ async def run_due_digests(
     for instance in instances:
         if instance.id in already:
             continue
-        results.append(await service.run_for_instance(instance))
+        result = await service.run_for_instance(instance)
+        if result is not None:
+            results.append(result)
     return results

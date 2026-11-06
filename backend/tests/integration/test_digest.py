@@ -8,11 +8,14 @@ unique (instance, date) makes a second beat tick a no-op. DB-gated.
 
 from __future__ import annotations
 
+import asyncio
+import threading
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
 from app.models.alert_policy import AlertDigestRun, AlertPolicy
@@ -355,6 +358,102 @@ async def test_only_the_final_digest_mode_is_listed(db_session, monkeypatch) -> 
     }
 
 
+async def test_the_window_is_fixed_to_the_digest_hour_not_the_tick(
+    db_session, monkeypatch
+) -> None:
+    """A 09:30 tick covers exactly D-1 07:00 to D 07:00, and the edges are half-open."""
+    monkeypatch.setenv("NOTIFY_EMAIL_RECIPIENTS", "ops@example.org")
+    instance = await make_instance(db_session)
+    edges = {
+        "before-start": datetime(2026, 11, 5, 6, 59, tzinfo=UTC),
+        "at-start": datetime(2026, 11, 5, 7, 0, tzinfo=UTC),
+        "before-end": datetime(2026, 11, 6, 6, 59, tzinfo=UTC),
+        "at-end": datetime(2026, 11, 6, 7, 0, tzinfo=UTC),
+    }
+    for index, (name, at) in enumerate(edges.items()):
+        source = await make_log_source(
+            db_session, instance, qradar_id=index + 1, name=name
+        )
+        await _phase_a(db_session, instance, source, at=at)
+    await _policy(
+        db_session,
+        instance,
+        family=AnomalyFamily.LOG_SOURCE,
+        source_id=uuid.uuid4(),
+        detector="VOLUME_SPIKE",
+        mode=AlertPolicyMode.DIGEST,
+        scope=AlertPolicyScope.CLASS,
+        value="UNCLASSIFIED",
+    )
+
+    capture = Capture()
+    [result] = await run_due_digests(
+        db_session,
+        now=datetime(2026, 11, 6, 9, 30, tzinfo=UTC),
+        settings=_settings(digest_hour_utc=7),
+        deliver=capture,
+    )
+    assert result.digest_date == date(2026, 11, 6)
+    assert {item.source_name for item in result.items} == {"at-start", "before-end"}
+
+
+async def test_maintenance_suppressed_incidents_are_not_listed(
+    db_session, monkeypatch
+) -> None:
+    """A suppressed incident would not have alerted, so it must not be digested."""
+    monkeypatch.setenv("NOTIFY_EMAIL_RECIPIENTS", "ops@example.org")
+    instance = await make_instance(db_session)
+    muted = await make_log_source(db_session, instance, qradar_id=1, name="muted")
+    mixed = await make_log_source(db_session, instance, qradar_id=2, name="mixed")
+    await _phase_a(
+        db_session, instance, muted, at=datetime(2026, 11, 5, 8, 0, tzinfo=UTC)
+    )
+    await _phase_a(
+        db_session,
+        instance,
+        mixed,
+        count=2,
+        at=datetime(2026, 11, 5, 9, 0, tzinfo=UTC),
+    )
+    muted_rows = list(
+        (
+            await db_session.scalars(
+                select(LogSourceAnomaly).where(
+                    LogSourceAnomaly.log_source_id == muted.id
+                )
+            )
+        ).all()
+    )
+    muted_rows[0].suppressed = True
+    mixed_rows = list(
+        (
+            await db_session.scalars(
+                select(LogSourceAnomaly)
+                .where(LogSourceAnomaly.log_source_id == mixed.id)
+                .order_by(LogSourceAnomaly.detected_at)
+            )
+        ).all()
+    )
+    mixed_rows[0].suppressed = True
+    await db_session.flush()
+    await _policy(
+        db_session,
+        instance,
+        family=AnomalyFamily.LOG_SOURCE,
+        source_id=uuid.uuid4(),
+        detector="VOLUME_SPIKE",
+        mode=AlertPolicyMode.DIGEST,
+        scope=AlertPolicyScope.CLASS,
+        value="UNCLASSIFIED",
+    )
+
+    capture = Capture()
+    [result] = await run_due_digests(
+        db_session, now=NOW, settings=_settings(), deliver=capture
+    )
+    assert {item.source_name: item.count for item in result.items} == {"mixed": 1}
+
+
 async def test_a_family_switch_off_keeps_its_incidents_out(db_session, monkeypatch) -> None:
     monkeypatch.setenv("NOTIFY_EMAIL_RECIPIENTS", "ops@example.org")
     instance = await make_instance(db_session)
@@ -543,6 +642,63 @@ async def test_a_second_tick_on_the_same_day_sends_nothing(db_session, monkeypat
     ) == 1
 
 
+async def test_two_overlapping_ticks_send_one_digest(db_schema, monkeypatch) -> None:
+    """Two concurrent ticks: the lock holder sends once, the other sends nothing."""
+    monkeypatch.setenv("NOTIFY_EMAIL_RECIPIENTS", "ops@example.org")
+    engine = create_async_engine(db_schema, future=True)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with maker() as setup:
+            instance = await make_instance(setup)
+            source = await make_log_source(setup, instance, qradar_id=1, name="src")
+            await _phase_a(
+                setup, instance, source, at=datetime(2026, 11, 5, 8, 0, tzinfo=UTC)
+            )
+            await _policy(
+                setup,
+                instance,
+                family=AnomalyFamily.LOG_SOURCE,
+                source_id=source.id,
+                detector="VOLUME_SPIKE",
+                mode=AlertPolicyMode.DIGEST,
+            )
+            await setup.commit()
+
+        loop = asyncio.get_running_loop()
+        entered = asyncio.Event()
+        release = threading.Event()
+        messages: list[object] = []
+
+        def blocking_deliver(_settings: Settings, message: object) -> None:
+            messages.append(message)
+            loop.call_soon_threadsafe(entered.set)
+            release.wait(10)
+
+        async def tick(deliver) -> list:  # type: ignore[no-untyped-def]
+            async with maker() as session:
+                return await run_due_digests(
+                    session, now=NOW, settings=_settings(), deliver=deliver
+                )
+
+        first = asyncio.create_task(tick(blocking_deliver))
+        await asyncio.wait_for(entered.wait(), 10)
+        # The first tick is inside delivery and holds the instance's lock.
+        second = await asyncio.wait_for(tick(Capture()), 10)
+        assert second == []
+        release.set()
+        first_results = await asyncio.wait_for(first, 10)
+        assert len(first_results) == 1
+        assert len(messages) == 1
+
+        async with maker() as session:
+            assert (
+                await session.scalar(select(func.count()).select_from(AlertDigestRun))
+                == 1
+            )
+    finally:
+        await engine.dispose()
+
+
 async def test_not_due_before_the_hour(db_session, monkeypatch) -> None:
     monkeypatch.setenv("NOTIFY_EMAIL_RECIPIENTS", "ops@example.org")
     await make_instance(db_session)
@@ -568,7 +724,7 @@ async def test_not_due_before_the_hour(db_session, monkeypatch) -> None:
 
 
 # -------------------------------------------------------------------- cost
-async def test_one_instance_run_costs_nine_statements_at_two_fleet_sizes(
+async def test_one_instance_run_costs_twelve_statements_at_two_fleet_sizes(
     db_session, monkeypatch
 ) -> None:
     monkeypatch.setenv("NOTIFY_EMAIL_RECIPIENTS", "")
@@ -595,7 +751,7 @@ async def test_one_instance_run_costs_nine_statements_at_two_fleet_sizes(
             await service.run_for_instance(instance)
         return len(statements)
 
-    assert await statements_for(1) == await statements_for(4) == 9
+    assert await statements_for(1) == await statements_for(4) == 12
 
 
 # ------------------------------------------------------- recipient union
