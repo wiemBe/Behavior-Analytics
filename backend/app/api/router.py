@@ -8,6 +8,7 @@ from app.api.deps import get_principal, requires
 from app.api.routes import (
     admin_email,
     admin_qradar_access,
+    alert_policy,
     alerts,
     anomalies,
     ariel_load,
@@ -174,6 +175,11 @@ api_router.include_router(
 # `admin:outage` guards every method, reads included; `read:*` does not satisfy it.
 api_router.include_router(
     outage_policy.router, dependencies=[Depends(requires(PERM_OUTAGE_ADMIN))]
+)
+# SOC-17c alert policy and digest status. The list is a read of the alerts
+# surface (`read:alerts`); every write handler adds `admin:outage` itself.
+api_router.include_router(
+    alert_policy.router, dependencies=[Depends(requires(PERM_ALERT_READ))]
 )
 # UI redesign (UR.5.5) saved dashboards: read-guarded; every write handler checks
 # `dashboard:write` itself, and ownership and `admin:dashboards` where they apply.

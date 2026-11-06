@@ -43,6 +43,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.alerts.dispatcher import AlertEnqueuer
 from app.alerts.fingerprint import waf_anomaly_fingerprint
+from app.alerts.policy import AlertPolicyGate
 from app.alerts.service import AlertInput, AlertResolution, AlertService
 from app.anomaly.capabilities import WAF_DETECTORS, waf_input_scope, waf_verdict_scope
 from app.anomaly.evidence import AnomalyEvidence
@@ -57,6 +58,8 @@ from app.core.config import Settings, get_settings
 from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
+    AlertPolicyMode,
+    AnomalyFamily,
     AnomalyState,
     DetectorSignal,
     EvidenceStatus,
@@ -222,6 +225,10 @@ class WafAnomalyEngine:
         self.alerts = AlertService(session, clock=self._clock)
         self._enqueuer = enqueuer
         self.history_end = history_end
+        # SOC-17c: loaded once per source run, memoised per detector.
+        self._alert_policy = AlertPolicyGate(
+            session, default=AlertPolicyMode(self.settings.alert_policy_default)
+        )
 
     def _thresholds(self) -> WafThresholds:
         s = self.settings
@@ -1025,6 +1032,21 @@ class WafAnomalyEngine:
             ).one_or_none()
             if row is not None:
                 instance_name, source_class = row
+            # SOC-17c layer 2: a RECORD_ONLY or DIGEST row stops the alert but
+            # never the incident (it was recorded before the action was built)
+            # and never a resolution (the resolve actions below are untouched).
+            opens = [
+                item
+                for item in opens
+                if await self._alert_policy.mode(
+                    instance_id=log_source.instance_id,
+                    family=AnomalyFamily.WAF,
+                    source_id=log_source.id,
+                    source_class=source_class,
+                    detector=item.detector_type.value,
+                )
+                is AlertPolicyMode.ALERT
+            ]
 
         open_inputs = [
             self._alert_input(log_source, instance_name, item, source_class)

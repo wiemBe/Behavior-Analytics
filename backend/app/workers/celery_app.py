@@ -106,6 +106,12 @@ celery_app.conf.beat_schedule = {
         "task": "run_due_searches",
         "schedule": 60.0,
     },
+    "run-alert-digest": {
+        # SOC-17c. Ticks every five minutes; the task itself gates the configured
+        # UTC hour and the unique (instance, date) row makes a repeat a no-op.
+        "task": "run_alert_digest",
+        "schedule": 300.0,
+    },
     "rebuild-baselines": {
         # Daily; baselining is expensive and does not need to be frequent.
         "task": "rebuild_baselines",

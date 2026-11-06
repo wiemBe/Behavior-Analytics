@@ -216,6 +216,39 @@ def _template_out(
     """
     own_active = own if own is not None and own.enabled else None
     default_active = default if default is not None and default.enabled else None
+    if alert_type == "digest":
+        # The digest has its own shipped body and never falls back to the alert
+        # default: showing that template here would let an operator save an alert
+        # body as the digest's content.
+        digest_source: Literal["own", "shipped"]
+        if own_active is not None:
+            digest_subject, digest_html, digest_text = (
+                own_active.subject,
+                own_active.html_body,
+                own_active.text_body or "",
+            )
+            digest_source = "own"
+        else:
+            shipped_digest = tpl.shipped_digest_template()
+            digest_subject, digest_html, digest_text = (
+                shipped_digest.subject,
+                shipped_digest.html,
+                shipped_digest.text,
+            )
+            digest_source = "shipped"
+        return TemplateOut(
+            key=alert_type,
+            alert_type=alert_type,
+            label=_label(alert_type),
+            customised=own is not None,
+            enabled=own.enabled if own is not None else False,
+            effective_source=digest_source,
+            subject=digest_subject,
+            html_body=digest_html,
+            text_body=digest_text,
+            updated_at=own.updated_at if own is not None else None,
+            updated_by=own.updated_by if own is not None else None,
+        )
     source: Literal["own", "default", "shipped"]
     if own_active is not None:
         source = "own"

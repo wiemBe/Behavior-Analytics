@@ -123,6 +123,14 @@ _BODIES: dict[tuple[str, str], dict] = {
     # supply a valid body so a body-first failure cannot mask a missing guard.
     ("PUT", "/api/v1/outage-policy/classes/{source_class}"): {"mode": "ALERT"},
     ("PUT", "/api/v1/outage-policy/sources/{log_source_id}"): {"mode": "ALERT"},
+    # SOC-17c. The list is read-guarded; the write handler checks `admin:outage`.
+    ("PUT", "/api/v1/alert-policy"): {
+        "scope_kind": "CLASS",
+        "scope_value": "FIREWALL",
+        "family": "log_source",
+        "detector_type": None,
+        "mode": "RECORD_ONLY",
+    },
     # UI redesign dashboards: writes check `dashboard:write` in the handler, after validation.
     ("POST", "/api/v1/dashboards"): {
         "name": "g", "layout": {"v": 1, "range": "24h", "widgets": []},

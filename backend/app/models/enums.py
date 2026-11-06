@@ -89,6 +89,47 @@ class OutagePolicyMode(StrEnum):
     RECORD_ONLY = "RECORD_ONLY"
 
 
+class AlertPolicyScope(StrEnum):
+    """What an ``alert_policy`` row applies to.
+
+    ``CLASS`` names a :class:`SourceClass`; ``SOURCE`` names one source (a
+    ``log_source`` for Phase A, WAF and IPS, a ``property_watch`` for property
+    watch). The two never collide even when their values are equal.
+    """
+
+    CLASS = "CLASS"
+    SOURCE = "SOURCE"
+
+
+class AlertPolicyMode(StrEnum):
+    """What an anomaly of one source (or class) and detector does.
+
+    ``ALERT`` opens and refreshes the alert exactly as before; ``RECORD_ONLY``
+    records the incident only; ``DIGEST`` records the incident and lists it in
+    the daily digest. ``ALERT`` is the configured default, so an upgrade with no
+    rows behaves exactly as it did (SOC-17c, design §4).
+    """
+
+    ALERT = "ALERT"
+    RECORD_ONLY = "RECORD_ONLY"
+    DIGEST = "DIGEST"
+
+
+class AlertDigestState(StrEnum):
+    """The outcome of one instance's daily digest run.
+
+    ``FAILED`` carries an ``email_delivery.ERROR_CODES`` value and never the
+    relay's reply text. ``NOT_CONFIGURED`` and ``NO_RECIPIENTS`` make the
+    absence visible instead of silent.
+    """
+
+    SUCCESS = "SUCCESS"
+    EMPTY = "EMPTY"
+    NOT_CONFIGURED = "NOT_CONFIGURED"
+    NO_RECIPIENTS = "NO_RECIPIENTS"
+    FAILED = "FAILED"
+
+
 class Severity(StrEnum):
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"

@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.fingerprint import anomaly_fingerprint
+from app.alerts.policy import AlertPolicyGate
 from app.alerts.service import AlertInput, AlertService
 from app.anomaly.business_hours import is_expected_active
 from app.anomaly.capabilities import bucket_telemetry, unmet_requirement
@@ -53,6 +54,8 @@ from app.history.origin import is_live_clause
 from app.i18n.messages import MessageRef, render
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
+    AlertPolicyMode,
+    AnomalyFamily,
     AnomalyState,
     AnomalyType,
     BucketCompleteness,
@@ -160,6 +163,12 @@ class AnomalyEngine:
         # memoised, so a refresh every bucket still costs one load (rule 9).
         self._policy_rows: list[OutageAlertPolicy] | None = None
         self._outage_cache: dict[uuid.UUID, ResolvedOutage] = {}
+        # SOC-17c: the alert policy table, loaded once per engine run and
+        # memoised per (source, detector). With no rows the default is ALERT, so
+        # this changes nothing; the gate is only reached on an alert transition.
+        self._alert_policy = AlertPolicyGate(
+            session, default=AlertPolicyMode(self.settings.alert_policy_default)
+        )
         # The class map outage resolution reads, loaded in one statement the
         # first time a CLASS policy row needs a source's class and reused for
         # the rest of the run. Distinct from `_source_class_cache`, which the
@@ -788,6 +797,14 @@ class AnomalyEngine:
             and (await self._outage(log_source)).mode is OutagePolicyMode.RECORD_ONLY
         ):
             return
+        # Layer 2 of the two-layer verdict (design §4.4). A RECORD_ONLY or
+        # DIGEST policy stops the alert and its notification; the incident, its
+        # OPEN state and its transitions were already recorded above.
+        if (
+            await self._alert_mode(log_source, evidence.anomaly_type.value)
+            is not AlertPolicyMode.ALERT
+        ):
+            return
         result = await self.alerts.open_or_update(
             self._alert_input(
                 log_source,
@@ -937,6 +954,26 @@ class AnomalyEngine:
             self._outage_cache[log_source.id] = cached
         return cached
 
+    async def _alert_mode(
+        self, log_source: LogSource, detector: str
+    ) -> AlertPolicyMode:
+        """The SOC-17c verdict for one source and detector, memoised per run.
+
+        A CLASS row makes the verdict depend on the source's class. The class map
+        loads once for the fleet, never once per source (rule 9); with no CLASS
+        row at all it is never read, and the default answers.
+        """
+        source_class: str | None = None
+        if await self._alert_policy.has_class_rows():
+            source_class = (await self._classes()).get(log_source.id)
+        return await self._alert_policy.mode(
+            instance_id=log_source.instance_id,
+            family=AnomalyFamily.LOG_SOURCE,
+            source_id=log_source.id,
+            source_class=source_class,
+            detector=detector,
+        )
+
     def _alert_input(
         self,
         log_source: LogSource,
@@ -990,6 +1027,11 @@ class AnomalyEngine:
         if (
             evidence.anomaly_type == AnomalyType.NO_EVENTS
             and (await self._outage(log_source)).mode is OutagePolicyMode.RECORD_ONLY
+        ):
+            return
+        if (
+            await self._alert_mode(log_source, evidence.anomaly_type.value)
+            is not AlertPolicyMode.ALERT
         ):
             return
         await self.alerts.open_or_update(

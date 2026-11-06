@@ -27,7 +27,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.patterns import PROPERTY_NAME_PATTERN
-from app.models.enums import OutagePolicyMode
+from app.models.enums import AlertPolicyMode, OutagePolicyMode
 
 #: A mount point: an absolute path of letters, digits and `_ . / -`. Compared, never put in AQL.
 _MOUNT_PATTERN = re.compile(r"/[A-Za-z0-9_./-]{0,127}")
@@ -583,6 +583,15 @@ class Settings(BaseSettings):
     #: ALERT keeps Phase A's behaviour, so an upgrade alerts exactly as before
     #: and operators opt sources or classes into RECORD_ONLY (decision D-9).
     outage_alert_default: OutagePolicyMode = OutagePolicyMode.ALERT
+
+    # --- SOC-17c: alert policy and the daily digest --------------------------
+    #: What an anomaly does when no ``alert_policy`` row applies. ALERT keeps
+    #: today's behaviour, so an upgrade with no rows changes nothing.
+    alert_policy_default: AlertPolicyMode = AlertPolicyMode.ALERT
+    #: UTC hour after which each instance's daily digest may run. The beat ticks
+    #: every 300 s and the task gates the hour itself, so a missed hour is caught
+    #: up rather than skipped.
+    digest_hour_utc: int = Field(default=7, ge=0, le=23)
 
     # --- Phase A explanation evidence ---------------------------------------
     explanation_enabled: bool = True

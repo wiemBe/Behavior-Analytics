@@ -46,7 +46,7 @@ from app.core.database import dispose_engine, get_sessionmaker
 from app.custom_rules.engine import CustomRuleEngine
 from app.custom_rules.retention import CustomRuleRetention
 from app.i18n.messages import MessageRef, render
-from app.models.enums import EvidenceStatus, Severity
+from app.models.enums import AlertDigestState, EvidenceStatus, Severity
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
 from app.models.log_source import LogSource, LogSourceAnomaly
@@ -60,6 +60,7 @@ from app.services.ariel_permit import ArielPermitBudget
 from app.services.ariel_search_retention import ArielSearchRunRetention
 from app.services.catchall_retention import CatchallRetention
 from app.services.detection_coverage import DetectionCoverageEvaluator
+from app.services.digest import run_due_digests
 from app.services.geo_retention import GeoRetention
 from app.services.ips_anomaly_retention import IpsAnomalyRetention
 from app.services.ips_pipeline import IpsInstancePipeline, ips_pipeline_lock_key
@@ -1063,6 +1064,26 @@ async def rebuild_baselines() -> dict:
         return {"sources": len(sources), "cells": cells}
 
 
+# --------------------------------------------------------------- daily digest
+async def run_alert_digest() -> dict:
+    """Send each instance's daily digest once, after ``DIGEST_HOUR_UTC``.
+
+    Due work is gated here rather than by a crontab, like ``run_due_searches``:
+    the task can be run at will in the lab, and a tick before the hour does
+    nothing. Idempotency is the unique ``(instance_id, digest_date)`` row.
+    """
+    settings = get_settings()
+    maker = get_sessionmaker()
+    async with maker() as session:
+        results = await run_due_digests(session, settings=settings)
+        await session.commit()
+        return {
+            "runs": len(results),
+            "sent": sum(1 for result in results if result.state is AlertDigestState.SUCCESS),
+            "states": sorted({result.state.value for result in results}),
+        }
+
+
 # ------------------------------------------------------------ scheduled search
 # The scheduler has no QRadar instance; a fixed id gives `collector_lock_key` a stable key.
 SEARCH_SCHEDULER_LOCK_ID = uuid.UUID(int=0)
@@ -1070,7 +1091,6 @@ SEARCH_SCHEDULER_LOCK_ID = uuid.UUID(int=0)
 
 async def run_due_searches() -> dict:
     """Execute every stored search whose cron schedule has come due.
-
     Threshold and failure alerts raised by a run are enqueued here (delivery is
     the dispatch_notifications task's job), so a breach detected by a scheduled
     search reaches the same notification pipeline as an anomaly.
@@ -1911,6 +1931,11 @@ def rebuild_baselines_task() -> dict:
 @celery_app.task(name="run_due_searches")
 def run_due_searches_task() -> dict:
     return _run(run_due_searches())
+
+
+@celery_app.task(name="run_alert_digest")
+def run_alert_digest_task() -> dict:
+    return _run(run_alert_digest())
 
 
 @celery_app.task(name="dispatch_notifications")
