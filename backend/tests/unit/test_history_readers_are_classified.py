@@ -216,6 +216,13 @@ HISTORY_TABLES = (
                 "R6 (rule statistics)", ReaderKind.DISPLAY
             ),
             "app.services.rule_match_retention.<module>": Reader("R7", ReaderKind.DELETE),
+            # SOC-3a: the related-activity panel shows what the stored windows proved
+            # about each rule in the anomaly's window. It reads both origins and is a
+            # display of stored evidence, not a detector input.
+            (
+                "app.repositories.related_activity."
+                "RelatedActivityRepository.rule_match_windows"
+            ): Reader("related activity section", ReaderKind.DISPLAY),
         },
     ),
     HistoryTable(
