@@ -2073,6 +2073,124 @@ export interface NoiseParams {
   offset?: number;
 }
 
+// --- Noise tuning (SOC-17b) -------------------------------------------------
+// Mirrors the detail and preview shapes of app/schemas/noise.py. A preview count that did not run
+// (direction) is `null` with `excluded_by_direction`; an unavailable preview has no counts at all.
+
+export type NoiseKnob =
+  | "deviation_z"
+  | "spike_ratio"
+  | "drop_ratio"
+  | "min_absolute_delta_events"
+  | "open_after"
+  | "direction";
+export type NoiseDirection = "both" | "spike" | "drop";
+export type NoiseKnobOrigin = "default" | "criticality" | "lab_mode" | "custom";
+
+export interface NoiseEffectiveThreshold {
+  /** Passed through as the resolver returns it: a stored row that never validated may hold anything. */
+  value: unknown;
+  source: NoiseKnobOrigin;
+}
+
+export interface NoiseDetectorRow {
+  anomaly_type: string;
+  incidents_7d: number | null;
+  incidents_28d: number | null;
+  opened_7d: number | null;
+  opened_28d: number | null;
+  alerts_7d: number | null;
+  alerts_28d: number | null;
+  noise_closed: number | null;
+  noise_closed_total: number | null;
+  noise_share: number | null;
+  worst_ratio: number | null;
+  worst_z: number | null;
+}
+
+export interface NoiseCurrent {
+  criticality: string;
+  custom_thresholds: Record<string, unknown>;
+  maintenance_mode: boolean;
+  maintenance_until: string | null;
+  business_hours_only: boolean;
+  expected_interval_seconds: number | null;
+  effective_thresholds: Record<NoiseKnob, NoiseEffectiveThreshold>;
+  lab_mode: boolean;
+  has_by_type: boolean;
+}
+
+export interface NoiseSourceDetail extends NoiseSourceRow {
+  detectors: NoiseDetectorRow[];
+  current: NoiseCurrent;
+  coverage: NoiseCoverage;
+  suppression: Record<string, unknown> | null;
+  replay: Record<string, unknown> | null;
+}
+
+/** The knobs a tuning PATCH or preview carries. Every key is optional. */
+export interface NoiseThresholds {
+  deviation_z?: number;
+  spike_ratio?: number;
+  drop_ratio?: number;
+  min_absolute_delta_events?: number;
+  open_after?: number;
+  direction?: NoiseDirection;
+}
+
+export type NoisePreviewState = "COMPLETE" | "PARTIAL" | "INSUFFICIENT_DATA" | "TOO_LARGE";
+
+export interface NoisePreviewDetector {
+  anomaly_type: string;
+  incidents: number | null;
+  excluded_by_direction: boolean;
+}
+
+export interface NoisePreviewCounts {
+  total_incidents: number;
+  by_detector: NoisePreviewDetector[];
+}
+
+export interface NoisePreview {
+  state: NoisePreviewState;
+  available: boolean;
+  window: {
+    days: number;
+    first_bucket: string | null;
+    last_bucket: string | null;
+    covered_days: number;
+  };
+  baseline: {
+    computed_at: string | null;
+    baseline_version: number | null;
+    lookback_days: number;
+  };
+  current: NoisePreviewCounts | null;
+  proposed: NoisePreviewCounts | null;
+  recorded: { incidents: number; opened: number; suppressed: number } | null;
+  not_replayable: { anomaly_type: string; reason: NoiseReason }[];
+  not_judged_buckets: number | null;
+  maintenance_buckets: number | null;
+  warnings: NoiseReason[];
+  reason: NoiseReason | null;
+}
+
+/** The preview block a tuning PATCH records in the audit (audit only, never applied). */
+export interface NoisePreviewAudit {
+  at: string;
+  /** The window in days. */
+  window: number;
+  current: number | null;
+  proposed: number | null;
+  state: NoisePreviewState;
+}
+
+export interface NoiseTuningPatch {
+  custom_thresholds: Record<string, unknown>;
+  criticality?: string;
+  preview: NoisePreviewAudit;
+}
+
 export interface TrafficParams {
   window?: TrafficWindow;
   sort?: string;
@@ -3224,6 +3342,18 @@ export const api = {
 
   noiseSources: (params: NoiseParams = {}) =>
     request<NoiseSourcesPage>(`/noise/sources${qs({ ...params })}`),
+  noiseSource: (id: string) =>
+    request<NoiseSourceDetail>(`/noise/sources/${encodeURIComponent(id)}`),
+  noisePreview: (id: string, body: { window_days: NoiseWindow; thresholds: NoiseThresholds }) =>
+    request<NoisePreview>(`/noise/sources/${encodeURIComponent(id)}/preview`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  tuneLogSource: (id: string, body: NoiseTuningPatch) =>
+    request<LogSourceDetail>(`/log-sources/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 
   wafTraffic: (id: string, params: TrafficParams = {}) =>
     request<TrafficPage<WafTrafficItem>>(
