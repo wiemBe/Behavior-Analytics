@@ -26,7 +26,7 @@ capability or `admin:*`.
 | `/rules` | `read:rules` | `rule:write` |
 | `/coverage` | `read:coverage` | `coverage:write` |
 | `/providers` | `read:providers` | none |
-| `/anomalies`, `/behavior` | `read:anomalies` | none |
+| `/anomalies`, `/behavior`, `/noise` | `read:anomalies` | none |
 | `/waf` | `admin:waf` | same administrative capability |
 | `/ips` | `admin:ips` | same administrative capability |
 | `/fleet`, `/classification-rules`, `/fleet/catchall` | `read:fleet` | `admin:classification` or `log_source:write`, depending on action |
@@ -189,6 +189,51 @@ Reason codes are English sentences in the backend message catalog:
 | `related_activity.reason.rules_stale` | Offense collection is stale, so the rules that fired in this window may be incomplete. |
 | `related_activity.reason.rules_partial` | Rule-match collection did not measure this window for every rule; a missing measurement is null, never zero. |
 | `related_activity.reason.items_truncated` | More rows match this window than are shown; the list holds the first 20 and the total is the full count. |
+
+## Noisy sources
+
+Two read-only routes answer which Phase A log sources keep firing and how much of that is noise.
+They write nothing, scan only stored aggregates, and use three statements whatever the fleet size.
+
+| Method and path | Question |
+|---|---|
+| `GET /noise/sources` | Which monitored sources fired in the window, ranked, and how much of that was closed as noise? |
+| `GET /noise/sources/{log_source_id}` | What are one source's per-detector counts, current settings and coverage? |
+
+The list takes `window` (`7` or `28`, default `28`), `order` (`incidents`, `alerts` or
+`noise_share`; default `incidents`), `limit` (1–200, default 50) and `offset` (at least 0).
+Anything else is 422. `window` selects the incident and alert counts the ranking and the fired/
+quiet split use; every row still carries both windows. `order=noise_share` puts rows whose share
+is null last. Ties fall back to the other real count, then name and id, so a page is a stable slice
+of the whole list; `total` counts the fired sources and the quiet ones are counted, never listed.
+
+Each row carries `incidents_7d`/`28d` (detected incidents), `opened_7d`/`28d` (incidents that
+reached OPEN), `alerts_7d`/`28d` (alert rows linked through `source_anomaly_ids`; inventory alerts
+carry none and are not counted), `noise_closed` out of `noise_closed_total` (closed triage items
+with a disposition), `noise_share`, `worst_ratio`, `worst_z`, `top_detector` and `judged`.
+`noise_share` is null, not zero, while fewer than five items are closed with a disposition; the
+row then shows the two counts instead of a percentage. An unclosed item is not a negative
+judgement and is excluded from the denominator.
+
+The honesty states are explicit and a number never stands in for a missing measurement:
+
+| State | Meaning |
+|---|---|
+| `NOT_COLLECTED` | `monitoring_enabled=false`; every count is `null`, never `0`. The detail route returns it; the list is the monitored fleet only. |
+| `INSUFFICIENT_DATA` | no reliable baseline cell for the current weekday and hour. Counts are the real recorded counts, but a zero is not evidence of calm. |
+| `PARTIAL` | the configured `log_source_anomaly_retention_days` is shorter than the requested window; `covered_days` names the covered span. |
+| `COMPLETE` | the stored window covers the requested one. |
+
+Every state but `COMPLETE` carries `reason` (an object with `code`, for example
+`noise.reason.no_reliable_baseline`, plus `params` and the English `text`). An empty window carries
+`empty_reason` and the last evaluation watermark in `last_collection`, so "nothing fired" is
+distinguishable from "nothing was collected".
+
+The detail response adds `detectors` (the same counts per `anomaly_type` for both windows),
+`current` (criticality, `custom_thresholds`, maintenance and business-hours settings), and the
+same `coverage` block. `suppression` and `replay` are null in this slice; the suppression table
+and the 28-day replay arrive with later steps, and null says so rather than inventing an empty
+object.
 
 ## Log-source fleet summary
 

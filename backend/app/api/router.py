@@ -24,6 +24,7 @@ from app.api.routes import (
     ips,
     log_sources,
     me,
+    noise,
     offenses,
     outage_policy,
     overview,
@@ -130,6 +131,13 @@ api_router.include_router(
 )
 api_router.include_router(
     anomalies.behavior_router, dependencies=[Depends(requires(PERM_ANOMALY_READ))]
+)
+# --- SOC-17a: the noisy-sources list ---
+# It reads the same Phase A incidents and alerts as the behavior surface, so it
+# takes the same read permission; a caller who may read contributor evidence may
+# read its counts.
+api_router.include_router(
+    noise.router, dependencies=[Depends(requires(PERM_ANOMALY_READ))]
 )
 # --- Phase B.1 ---
 # WAF collection operations. Administrative rather than analytical, so it needs
