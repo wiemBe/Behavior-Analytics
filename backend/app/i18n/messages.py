@@ -5310,6 +5310,41 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "geo.note.unresolved_property",
         "UNRESOLVED counts events whose country property was empty.",
     ),
+    # --- SOC-3a: related activity section reasons --------------------------------------------
+    _fixed(
+        "related_activity.reason.no_log_source",
+        "This anomaly has no log source, so related activity cannot be resolved.",
+    ),
+    _fixed(
+        "related_activity.reason.offense_not_collected",
+        "QRadar offense collection has not run for this console, so no offense in this "
+        "window was collected.",
+    ),
+    _fixed(
+        "related_activity.reason.offense_stale",
+        "QRadar offense collection is stale, so the offenses in this window may be "
+        "incomplete.",
+    ),
+    _fixed(
+        "related_activity.reason.rules_not_collected",
+        "Offenses were not collected for this window, so the rules that fired cannot be "
+        "resolved.",
+    ),
+    _fixed(
+        "related_activity.reason.rules_stale",
+        "Offense collection is stale, so the rules that fired in this window may be "
+        "incomplete.",
+    ),
+    _fixed(
+        "related_activity.reason.rules_partial",
+        "Rule-match collection did not measure this window for every rule; a missing "
+        "measurement is null, never zero.",
+    ),
+    _fixed(
+        "related_activity.reason.items_truncated",
+        "More rows match this window than are shown; the list holds the first 20 and the "
+        "total is the full count.",
+    ),
     # --- end MSG-8a ---------------------------------------------------------------------------
     # --- TOP-1a: why a traffic ranking is not OK (English only, D-41) ------------------------
     _fixed(

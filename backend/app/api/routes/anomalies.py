@@ -139,6 +139,7 @@ from app.schemas.ips_behavior import (
 )
 from app.schemas.messages import stored_message_parts, stored_reasons
 from app.schemas.pivot import PivotOut
+from app.schemas.related_activity import RelatedActivityOut, RelatedPad
 from app.schemas.triage import (
     TriageCommentIn,
     TriageEventOut,
@@ -158,6 +159,10 @@ from app.services.anomaly_triage import (
     TriageConflict,
     TriageInvalid,
     TriageNotFound,
+)
+from app.services.related_activity import (
+    RelatedActivityNotFound,
+    RelatedActivityService,
 )
 
 router = APIRouter(prefix="/anomalies", tags=["anomalies"])
@@ -627,6 +632,30 @@ async def add_anomaly_triage_comment(
         },
     )
     return event
+
+
+@router.get("/related/{family}/{anomaly_id}", response_model=RelatedActivityOut)
+async def get_related_activity(
+    family: str,
+    anomaly_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    pad: RelatedPad = Query(default=RelatedPad.TWO_HOURS),
+) -> RelatedActivityOut:
+    """Offenses, other anomalies and rules on the anchor's source around its window.
+
+    Reading is covered by the router's `read:anomalies` guard. Each section carries its
+    own state, so an uncollected offense feed is never an empty clean list. The window
+    is the anomaly's own stored interval padded on both sides; an open anomaly ends at
+    its newest evaluated bucket's end, never at the wall clock.
+    """
+    resolved = _family(family)
+    try:
+        return await RelatedActivityService(session, settings).read(
+            resolved, anomaly_id, pad
+        )
+    except RelatedActivityNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
 
 @router.get("/{anomaly_id}", response_model=AnomalyDetailOut)

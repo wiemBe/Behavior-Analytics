@@ -121,6 +121,75 @@ Evidence states are explicit: `NOT_REQUESTED`, `PENDING`, `COMPLETE`, `PARTIAL`,
 Null means unmeasured. A measured zero remains `0`. Partial or missing chart buckets are gaps and
 are not connected across an outage. Expected ranges are returned and drawn as bands.
 
+### Related activity for an anomaly
+
+`GET /anomalies/related/{family}/{anomaly_id}` answers "what else happened on this source at
+this time": the QRadar offenses, the other anomalies of every family, and the rules they name.
+It reads stored data only and never asks QRadar.
+
+| Parameter | Values | Meaning |
+|---|---|---|
+| `family` | `log_source`, `waf`, `ips`, `property_watch` | The anomaly table `anomaly_id` names. Any other value is `422`. |
+| `anomaly_id` | UUID | An unknown id in that family is `404`. |
+| `pad` | `30m`, `1h`, `2h` (default), `6h` | Padding added on both sides of the anomaly's own interval. |
+
+The route requires `read:anomalies`, like the rest of `/anomalies`. Its anchor is the anomaly's
+log source: an internal id, its QRadar id and its name. An IPS incident whose subject is an entity
+and a WAF incident whose subject is an endpoint both anchor on the source behind that subject. A
+property watch scoped to a source type or a group has no single source; that read answers
+`state = NOT_APPLICABLE` with a reason code and empty sections.
+
+The window is `[anomaly start - pad, anomaly end + pad]` from the anomaly's stored interval. An
+incident that is still open ends at the end of its newest evaluated bucket, not at the wall clock,
+so the same incident does not grow a new window on every request.
+
+The response has the `anchor` and three sections. Each section carries its own `state`, a
+`reason_code` when the state is not `OK`, the full `total`, and at most 20 `items`:
+
+| Section state | Meaning |
+|---|---|
+| `OK` | The input was collected (or the local table is current) and is complete. An empty `items` is then a measured "none". |
+| `NOT_COLLECTED` | The input for this window was never collected. It is never an empty `OK` list. |
+| `STALE` | The input exists but is older than its collection cadence allows. |
+| `PARTIAL` | Some input was collected and some was not; per-item fields say which. |
+| `TRUNCATED` | More rows matched than are shown; `total` is the full count. |
+| `NOT_APPLICABLE` | The anchor has no log source. |
+
+**`offenses`** — each offense's newest snapshot, where `log_source_ids` contains the anchor's
+QRadar source id and the offense span (`start_time` … `close_time`, or `last_updated_time` while
+open) overlaps the window. Ordered by magnitude descending, then start descending, then id. Each
+item carries `qradar_offense_id`, `description`, `status`, `magnitude`, `severity`, `start_time`,
+`last_updated_time`, `close_time`, `offense_type_name`, `rule_count` and `captured_at`. The state is
+`NOT_COLLECTED` when the offense collector has never run for the console, and `STALE` when its last
+run is older than `OFFENSE_STALE_AFTER_SECONDS` or its last run is failing. The freshness signal is
+the `collection_watermark` row for the `offense_snapshot` collector.
+
+**`anomalies`** — other anomalies of every family on the same log source whose own interval
+overlaps the window, excluding the anchor. Custom-rule breaches are included as `custom_rule` items
+when their rule is tied to a log source. Ordered by start descending, then family, then id. Each
+item carries `family`, `id`, `type`, `lifecycle_state`, `severity`, `start`, `end` and the analyst
+`triage_status` (`NEW` when no triage row exists).
+
+**`rules`** — the union of `rule_ids` over *all* matching offenses, not only the 20 shown. Each
+item carries the catalog `id`, `qradar_id`, `name`, `type`, how many matching offenses name it, and
+`matched_events` with its `measurement`. A rule id QRadar named but the catalog lacks is listed with
+a null `id`, `name` and `type` and is still counted. `matched_events` is `null` with
+`measurement = NOT_COLLECTED` when no measured rule-match window covers it (and for a rule type an
+event search cannot measure); it is never a zero for "not measured". Ordered by offense count
+descending, then matched events descending with nulls last, then QRadar id.
+
+Reason codes are English sentences in the backend message catalog:
+
+| Reason code | English sentence |
+|---|---|
+| `related_activity.reason.no_log_source` | This anomaly has no log source, so related activity cannot be resolved. |
+| `related_activity.reason.offense_not_collected` | QRadar offense collection has not run for this console, so no offense in this window was collected. |
+| `related_activity.reason.offense_stale` | QRadar offense collection is stale, so the offenses in this window may be incomplete. |
+| `related_activity.reason.rules_not_collected` | Offenses were not collected for this window, so the rules that fired cannot be resolved. |
+| `related_activity.reason.rules_stale` | Offense collection is stale, so the rules that fired in this window may be incomplete. |
+| `related_activity.reason.rules_partial` | Rule-match collection did not measure this window for every rule; a missing measurement is null, never zero. |
+| `related_activity.reason.items_truncated` | More rows match this window than are shown; the list holds the first 20 and the total is the full count. |
+
 ## Log-source fleet summary
 
 `GET /fleet/summary` returns one class summary for each non-internal source class. Its `buckets`
