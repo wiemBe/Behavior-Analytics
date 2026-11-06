@@ -103,7 +103,7 @@
   },
   "errors": {
     "title": "Traffic could not be shown.",
-    "forbidden": "You do not have permission to view traffic. It needs the anomaly:read permission.",
+    "forbidden": "You do not have permission to view traffic. Ask an administrator for the read:anomalies grant.",
     "expired": "Your session has expired. Sign in again to continue.",
     "notFound": "This log source is not known. Choose another source above.",
     "failed": "Traffic could not be loaded, so nothing is shown. The backend may be unreachable; check that it is running, then reload the page. Nothing was changed.",

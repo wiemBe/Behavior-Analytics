@@ -507,7 +507,7 @@ describe("Traffic by destination: honesty states", () => {
     setup(new ApiError(403, "forbidden"));
     await renderPage();
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("anomaly:read");
+    expect(alert).toHaveTextContent("read:anomalies");
   });
 
   it("a failed read says what failed and what to do", async () => {

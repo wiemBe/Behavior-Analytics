@@ -155,6 +155,16 @@ function WorstCell({ row, locale }: { row: NoiseSourceRow; locale: FormatLocale 
   );
 }
 
+// The backend's not-judged reason opens with the pill's own label ("Not judged: ..."), which
+// is needed where the text stands alone. Under the pill it would print the label twice.
+export function stripJudgedPrefix(text: string, label: string): string {
+  const prefix = `${label}:`;
+  if (!text.startsWith(prefix)) return text;
+  const rest = text.slice(prefix.length).trim();
+  if (rest === "") return text;
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}
+
 function JudgedCell({ row }: { row: NoiseSourceRow }) {
   const t = useTranslations("noise.table");
   if (isJudged(row)) {
@@ -167,7 +177,9 @@ function JudgedCell({ row }: { row: NoiseSourceRow }) {
   return (
     <td className="noise-judged">
       <span className="pill pill-quiet warn">{t("notJudged")}</span>
-      <span className="cell-sub">{row.reason?.text ?? t("notJudgedHint")}</span>
+      <span className="cell-sub">
+        {row.reason ? stripJudgedPrefix(row.reason.text, t("notJudged")) : t("notJudgedHint")}
+      </span>
     </td>
   );
 }
