@@ -20,6 +20,10 @@
       "name": "Outage alerts",
       "description": "Which silent sources raise an alert, and which are only recorded"
     },
+    "alertPolicy": {
+      "name": "Alert policy",
+      "description": "Which sources and classes page a human, which are only recorded, and which go into the daily digest"
+    },
     "waf": {
       "name": "WAF sources",
       "description": "Which QRadar properties each WAF source is read from"

@@ -30,6 +30,7 @@
     "searchCadence": "Search cadence",
     "classificationRules": "Classification rules",
     "outageAlerts": "Outage alerts",
+    "alertPolicy": "Alert policy",
     "wafSources": "WAF sources",
     "ipsSources": "IPS sources",
     "historyBackfill": "History backfill",

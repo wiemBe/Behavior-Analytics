@@ -21,6 +21,7 @@ const SECTIONS: readonly Section[] = [
   { key: "searchCadence", href: "/admin/search-cadence" },
   { key: "classification", href: "/admin/classification-rules" },
   { key: "outage", href: "/admin/outage-policy" },
+  { key: "alertPolicy", href: "/admin/alert-policy" },
   { key: "waf", href: "/admin/waf-sources" },
   { key: "ips", href: "/admin/ips-sources" },
   { key: "history", href: "/admin/history-backfill", permission: "read:history_backfill" },

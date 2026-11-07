@@ -6,6 +6,7 @@
 //     and ONE new import account from "./account.json";
 import account from "./account.json";
 import admin from "./admin.json";
+import alertPolicy from "./alertPolicy.json";
 import alerts from "./alerts.json";
 import anomalies from "./anomalies.json";
 import auth from "./auth.json";
@@ -63,6 +64,7 @@ import widgets from "./widgets.json";
 const messages = {
   account,
   admin,
+  alertPolicy,
   alerts,
   anomalies,
   auth,

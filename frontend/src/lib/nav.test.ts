@@ -47,6 +47,7 @@ describe("NAV", () => {
       { href: "/admin/search-cadence", label: "Search cadence" },
       { href: "/admin/classification-rules", label: "Classification rules" },
       { href: "/admin/outage-policy", label: "Outage alerts" },
+      { href: "/admin/alert-policy", label: "Alert policy" },
       { href: "/admin/waf-sources", label: "WAF sources" },
       { href: "/admin/ips-sources", label: "IPS sources" },
       { href: "/admin/history-backfill", label: "History backfill", permission: "read:history_backfill" },

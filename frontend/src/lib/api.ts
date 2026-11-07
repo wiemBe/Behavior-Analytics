@@ -3916,6 +3916,75 @@ export const outagePolicyApi = {
     fleetRequest<OutageFleetSummary>(`/fleet/summary${qs({ window })}`),
 };
 
+// --- alert policy (SOC-17c) -------------------------------------------------
+// Mirrors backend/app/schemas/alert_policy.py. What pages a human, per source or class and
+// detector. `detector_type: null` is every detector of the family. A digest `last_run` of null is
+// "no digest has run yet", never a count of zero.
+
+export type AlertPolicyMode = "ALERT" | "RECORD_ONLY" | "DIGEST";
+export type AlertPolicyScope = "SOURCE" | "CLASS";
+export type AlertPolicyFamily = "log_source" | "waf" | "ips" | "property_watch";
+
+export interface AlertPolicyRow {
+  id: string;
+  // Null is a global row ("all consoles"); a value scopes the row to one QRadar instance.
+  instance_id: string | null;
+  scope_kind: AlertPolicyScope;
+  // A source or watch id for SOURCE, a SourceClass for CLASS.
+  scope_value: string;
+  family: AlertPolicyFamily;
+  detector_type: string | null;
+  mode: AlertPolicyMode;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  instance_name: string | null;
+  // Null for a CLASS row and for a source or watch that no longer exists.
+  source_name: string | null;
+  source_class: SourceClass | null;
+}
+
+export interface AlertPolicyUpsert {
+  instance_id: string | null;
+  scope_kind: AlertPolicyScope;
+  scope_value: string;
+  family: AlertPolicyFamily;
+  detector_type: string | null;
+  mode: AlertPolicyMode;
+}
+
+export type DigestRunState = "SUCCESS" | "EMPTY" | "NOT_CONFIGURED" | "NO_RECIPIENTS" | "FAILED";
+
+export interface DigestRun {
+  instance_id: string;
+  instance_name: string | null;
+  digest_date: string;
+  state: DigestRunState;
+  item_count: number;
+  recipient_count: number;
+  // A code from the e-mail delivery set (`connection_refused`, ...), never the relay's text.
+  error_code: string | null;
+  sent_at: string | null;
+  created_at: string;
+}
+
+export interface DigestStatus {
+  digest_hour_utc: number;
+  email_configured: boolean;
+  recipient_count: number;
+  last_run: DigestRun | null;
+  instances: { instance_id: string; instance_name: string | null; last_run: DigestRun | null }[];
+}
+
+export const alertPolicyApi = {
+  list: () => fleetRequest<AlertPolicyRow[]>("/alert-policy"),
+  digest: () => fleetRequest<DigestStatus>("/alert-policy/digest"),
+  put: (body: AlertPolicyUpsert) =>
+    fleetRequest<AlertPolicyRow>("/alert-policy", { method: "PUT", body: JSON.stringify(body) }),
+  remove: (id: string) =>
+    fleetRequest<void>(`/alert-policy/${encodeURIComponent(id)}`, { method: "DELETE" }),
+};
+
 // --- rule statistics (T-062) -----------------------------------------------
 // Mirrors backend/app/schemas/rule_statistics.py. A section the platform could
 // not measure is null with a reason beside it, never an empty list.
