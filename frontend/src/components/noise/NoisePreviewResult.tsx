@@ -110,15 +110,18 @@ function Comparison({ preview }: { preview: NoisePreview }) {
 export function NoisePreviewResult({
   preview,
   stale,
+  storedCriticality,
   onUseSevenDays,
 }: {
   preview: NoisePreview;
+  storedCriticality?: string;
   stale: boolean;
   onUseSevenDays?: () => void;
 }) {
   const t = useTranslations("noise.result");
   const locale: FormatLocale = useLocale() === "tr" ? "tr" : "en";
   const { label } = useEnumLabels();
+  const eff = preview.effective;
   const days = preview.window.days;
   const covered = preview.window.covered_days;
   const counted = preview.state === "COMPLETE" || preview.state === "PARTIAL";
@@ -193,6 +196,17 @@ export function NoisePreviewResult({
             </p>
           )}
         </div>
+      )}
+      {counted && eff && eff.lab_mode && storedCriticality !== undefined && eff.criticality !== storedCriticality && (
+        <p className="noise-result-line">{t("criticalityLab")}</p>
+      )}
+      {counted && eff && !eff.lab_mode && storedCriticality !== undefined && eff.criticality !== storedCriticality && (
+        <p className="noise-result-line">
+          {t("criticalityReplayed", {
+            used: label("severity", eff.criticality),
+            stored: label("severity", storedCriticality),
+          })}
+        </p>
       )}
       {counted && <Comparison preview={preview} />}
       {counted && <p className="noise-footnote">{t("explain")}</p>}

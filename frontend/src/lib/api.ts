@@ -2173,6 +2173,14 @@ export interface NoisePreview {
   maintenance_buckets: number | null;
   warnings: NoiseReason[];
   reason: NoiseReason | null;
+  /** What the proposed fold used. Absent from a backend older than FIX-37: then say nothing. */
+  effective?: NoisePreviewEffective;
+}
+
+/** The criticality the proposed fold used, and whether LAB_MODE makes criticality irrelevant. */
+export interface NoisePreviewEffective {
+  criticality: string;
+  lab_mode: boolean;
 }
 
 /** The preview block a tuning PATCH records in the audit (audit only, never applied). */
@@ -3344,7 +3352,10 @@ export const api = {
     request<NoiseSourcesPage>(`/noise/sources${qs({ ...params })}`),
   noiseSource: (id: string) =>
     request<NoiseSourceDetail>(`/noise/sources/${encodeURIComponent(id)}`),
-  noisePreview: (id: string, body: { window_days: NoiseWindow; thresholds: NoiseThresholds }) =>
+  noisePreview: (
+    id: string,
+    body: { window_days: NoiseWindow; thresholds: NoiseThresholds; criticality?: string },
+  ) =>
     request<NoisePreview>(`/noise/sources/${encodeURIComponent(id)}/preview`, {
       method: "POST",
       body: JSON.stringify(body),

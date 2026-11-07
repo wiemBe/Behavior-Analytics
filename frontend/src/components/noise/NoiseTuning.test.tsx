@@ -150,10 +150,71 @@ describe("the tuning form", () => {
     expect(screen.queryByText(/closes this source's open incidents/)).toBeNull();
   });
 
-  it("says a criticality change is not replayed", () => {
+  it("no longer claims a criticality change is not replayed", () => {
     renderTuning();
     fireEvent.change(screen.getByRole("combobox", { name: "Criticality" }), { target: { value: "LOW" } });
-    expect(screen.getByText(/a criticality change is not replayed/)).toBeInTheDocument();
+    expect(screen.queryByText(/not replayed/)).toBeNull();
+  });
+});
+
+describe("the preview and criticality", () => {
+  const choose = (v: string) =>
+    fireEvent.change(screen.getByRole("combobox", { name: "Criticality" }), { target: { value: v } });
+
+  it("omits criticality when it equals the stored value", async () => {
+    renderTuning();
+    const spy = vi.spyOn(api, "noisePreview").mockResolvedValue(preview());
+    fireEvent.change(input(/^Deviation$/), { target: { value: "4.5" } });
+    fireEvent.click(previewButton());
+    await screen.findByRole("heading", { name: "Replay result" });
+    expect(spy.mock.calls[0][1]).not.toHaveProperty("criticality");
+  });
+
+  it("sends criticality when it changed and states what the replay used", async () => {
+    renderTuning();
+    const spy = vi.spyOn(api, "noisePreview").mockResolvedValue(
+      preview({ effective: { criticality: "LOW", lab_mode: false } }),
+    );
+    choose("LOW");
+    fireEvent.click(previewButton());
+    await screen.findByRole("heading", { name: "Replay result" });
+    expect(spy.mock.calls[0][1]).toMatchObject({ criticality: "LOW" });
+    expect(screen.getByText(/^Replayed with criticality Low \(stored: High\)\.$/)).toBeInTheDocument();
+    expect(saveButton()).toBeEnabled();
+  });
+
+  it("does not claim an effect under LAB_MODE", async () => {
+    renderTuning({ lab_mode: true });
+    vi.spyOn(api, "noisePreview").mockResolvedValue(
+      preview({ effective: { criticality: "LOW", lab_mode: true } }),
+    );
+    choose("LOW");
+    fireEvent.click(previewButton());
+    await screen.findByRole("heading", { name: "Replay result" });
+    expect(screen.queryByText(/Replayed with criticality/)).toBeNull();
+    expect(screen.getByText(/counts do not depend on the criticality change/)).toBeInTheDocument();
+  });
+
+  it("says nothing about criticality when the answer has no effective block", async () => {
+    renderTuning();
+    vi.spyOn(api, "noisePreview").mockResolvedValue(preview());
+    choose("LOW");
+    fireEvent.click(previewButton());
+    await screen.findByRole("heading", { name: "Replay result" });
+    expect(screen.queryByText(/Replayed with criticality/)).toBeNull();
+    expect(screen.queryByText(/do not depend on the criticality/)).toBeNull();
+  });
+
+  it("keeps Save off until a preview of exactly these values exists", async () => {
+    renderTuning();
+    await runPreview(preview({ effective: { criticality: "HIGH", lab_mode: false } }));
+    expect(saveButton()).toBeDisabled();
+    choose("LOW");
+    expect(saveButton()).toBeDisabled();
+    await runPreview(preview({ effective: { criticality: "LOW", lab_mode: false } }));
+    expect(saveButton()).toBeEnabled();
+    choose("MEDIUM");
+    expect(saveButton()).toBeDisabled();
   });
 });
 

@@ -14,6 +14,7 @@ The tests pin three contracts:
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from contextlib import contextmanager
@@ -27,15 +28,24 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.anomaly.engine import AnomalyEngine
+from app.anomaly.thresholds import ThresholdResolver
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
 from app.custom_rules.preview import latest_closed_bucket
 from app.main import create_app
-from app.models.enums import AnomalyState, AnomalyType, BucketCompleteness, Severity
+from app.models.enums import (
+    AnomalyState,
+    AnomalyType,
+    BucketCompleteness,
+    Criticality,
+    OutagePolicyMode,
+    Severity,
+)
 from app.models.identity import AuditLog
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource, LogSourceAnomaly, LogSourceBaseline
-from app.noise.backtest import NoiseBacktest, ReplayState
+from app.noise.backtest import NoiseBacktest, ReplayState, _thresholds
+from app.schemas.noise import preview_out
 from app.security.auth import get_principal
 from app.security.rbac import Principal
 from tests.integration.factories import add_metric
@@ -185,14 +195,16 @@ async def _fill(
     spike_at: int | None = None,
     drop_at: int | None = None,
     start: datetime = START,
+    spike_length: int = 3,
+    drop_length: int = 3,
 ) -> list:
     """Baseline-volume buckets, with one short spike and/or drop episode."""
     metrics = []
     for index in range(count):
         eps = 50.0
-        if spike_at is not None and spike_at <= index < spike_at + 3:
+        if spike_at is not None and spike_at <= index < spike_at + spike_length:
             eps = 150.0
-        if drop_at is not None and drop_at <= index < drop_at + 3:
+        if drop_at is not None and drop_at <= index < drop_at + drop_length:
             eps = 5.0
         metrics.append(await _metric(session, source, start + timedelta(hours=index), eps=eps))
     return metrics
@@ -214,14 +226,19 @@ async def _replay(
     window_days: int = DAYS,
     proposed: dict | None = None,
     now: datetime | None = None,
+    criticality: Criticality | None = None,
+    settings: Settings | None = None,
 ):
     backtest = NoiseBacktest(
         session,
-        settings=_settings(),
+        settings=settings or _settings(),
         now=now or START + timedelta(days=window_days),
     )
     return await backtest.preview(
-        source.id, proposed=proposed or {}, window_days=window_days
+        source.id,
+        proposed=proposed or {},
+        window_days=window_days,
+        criticality=criticality,
     )
 
 
@@ -585,15 +602,26 @@ async def test_the_preview_costs_four_statements_at_two_fleet_sizes(
 
 
 # ---------------------------------------------------------------------------- route
-async def _seed_for_api(db_session, now: datetime | None = None) -> LogSource:
+async def _seed_for_api(
+    db_session,
+    now: datetime | None = None,
+    *,
+    spike_length: int = 3,
+) -> LogSource:
     instance = await _instance(db_session)
     source = await _source(db_session, instance)
     await _reliable_cells(db_session, source)
     anchor = now or START
     start = latest_closed_bucket(anchor, BUCKET) - timedelta(hours=BUCKETS - 1)
-    await _fill(db_session, source, start=start, spike_at=20)
+    await _fill(
+        db_session, source, start=start, spike_at=20, spike_length=spike_length
+    )
     await db_session.commit()
     return source
+
+
+def _wire_counts(block: dict[str, Any]) -> dict[str, int | None]:
+    return {item["anomaly_type"]: item["incidents"] for item in block["by_detector"]}
 
 
 def _stable_now() -> datetime:
@@ -717,7 +745,10 @@ class TestRoute:
             "maintenance_buckets",
             "warnings",
             "reason",
+            "effective",
         }
+        assert set(body["effective"]) == {"criticality", "lab_mode"}
+        assert body["effective"] == {"criticality": "MEDIUM", "lab_mode": False}
         assert set(body["window"]) == {
             "days",
             "first_bucket",
@@ -740,3 +771,259 @@ class TestRoute:
         assert body["available"] is True
         after = await db_session.scalar(select(func.count()).select_from(AuditLog))
         assert after == before == 0
+
+
+# Canonical JSON of preview_out() on the existing spike-and-drop fixture, captured
+# before a preview body could carry criticality. `effective` is the one field added
+# since; an omitted criticality must leave every other byte as it was.
+_TODAY_OMITTED = (
+    '{"available":true,"baseline":{"baseline_version":3,"computed_at":"2026-08-03T00:00:'
+    '00Z","lookback_days":28},"current":{"by_detector":[{"anomaly_type":"NO_EVENTS","exclu'
+    'ded_by_direction":false,"incidents":0},{"anomaly_type":"VOLUME_DROP","excluded_by_dir'
+    'ection":false,"incidents":1},{"anomaly_type":"VOLUME_SPIKE","excluded_by_direction":f'
+    'alse,"incidents":1}],"total_incidents":2},"maintenance_buckets":0,"not_judged_buckets'
+    '":0,"not_replayable":[{"anomaly_type":"PARSING_DEGRADATION","reason":{"code":"noise.p'
+    'review.not_replayable","params":{"reason":"bucket did not measure PARSE_RATIOS"},"te'
+    'xt":"Not replayed: bucket did not measure PARSE_RATIOS"}},{"anomaly_type":"UNKNOWN_E'
+    'VENT_SPIKE","reason":{"code":"noise.preview.not_replayable","params":{"reason":"bucke'
+    't did not measure UNKNOWN_EVENT_COUNT"},"text":"Not replayed: bucket did not measure '
+    'UNKNOWN_EVENT_COUNT"}},{"anomaly_type":"TIMESTAMP_DELAY","reason":{"code":"noise.prev'
+    'iew.not_replayable","params":{"reason":"bucket did not measure INGESTION_DELAY"},"tex'
+    't":"Not replayed: bucket did not measure INGESTION_DELAY"}},{"anomaly_type":"CARDINAL'
+    'ITY_DROP","reason":{"code":"noise.preview.not_replayable","params":{"reason":"no dist'
+    'inct_source_ip_count baseline is built"},"text":"Not replayed: no distinct_source_ip_'
+    'count baseline is built"}},{"anomaly_type":"COLLECTION_ERROR","reason":{"code":"noise'
+    '.preview.not_replayable","params":{"reason":"bucket did not measure COLLECTION_ERRORS'
+    '"},"text":"Not replayed: bucket did not measure COLLECTION_ERRORS"}},{"anomaly_type":'
+    '"REPEATED_PAYLOAD","reason":{"code":"noise.preview.not_replayable","params":{"reason"'
+    ':"bucket did not measure PAYLOAD_SIGNATURE"},"text":"Not replayed: bucket did not mea'
+    'sure PAYLOAD_SIGNATURE"}}],"proposed":{"by_detector":[{"anomaly_type":"NO_EVENTS","ex'
+    'cluded_by_direction":false,"incidents":0},{"anomaly_type":"VOLUME_DROP","excluded_by_'
+    'direction":false,"incidents":1},{"anomaly_type":"VOLUME_SPIKE","excluded_by_direction'
+    '":false,"incidents":1}],"total_incidents":2},"reason":null,"recorded":{"incidents":0,'
+    '"opened":0,"suppressed":0},"state":"COMPLETE","warnings":[],"window":{"covered_days":'
+    '7,"days":7,"first_bucket":"2026-08-03T01:00:00Z","last_bucket":"2026-08-09T23:00:00Z"'
+    "}}"
+)
+
+
+def _canonical(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+async def test_omitted_criticality_matches_todays_response_on_the_existing_fixture(
+    db_session,
+) -> None:
+    """No criticality: the existing spike-and-drop fixture's response is unchanged."""
+    instance = await _instance(db_session)
+    source = await _source(db_session, instance)
+    await _reliable_cells(db_session, source)
+    await _fill(db_session, source, spike_at=20, drop_at=100)
+
+    result = await _replay(db_session, source)
+    assert result is not None
+    payload = preview_out(result).model_dump(mode="json")
+    effective = payload.pop("effective")
+    assert effective == {"criticality": "MEDIUM", "lab_mode": False}
+    assert _canonical(payload) == _TODAY_OMITTED
+
+
+async def test_omitted_explicit_and_null_criticality_are_byte_identical(
+    db_session, db_schema
+) -> None:
+    """The route's existing fixture: omitting the field is the stored value."""
+    source = await _seed_for_api(db_session, _stable_now())
+    client = reader_client(db_schema)
+    url = f"/api/v1/noise/sources/{source.id}/preview"
+    omitted = client.post(url, json={"window_days": 7})
+    explicit = client.post(url, json={"window_days": 7, "criticality": "MEDIUM"})
+    blank = client.post(url, json={"window_days": 7, "criticality": None})
+    assert omitted.status_code == 200, omitted.text
+    assert omitted.content == explicit.content == blank.content
+    body = omitted.json()
+    assert body["effective"] == {"criticality": "MEDIUM", "lab_mode": False}
+    assert _wire_counts(body["current"])["VOLUME_SPIKE"] == 1
+
+
+async def test_proposed_criticality_reaches_both_resolver_calls(db_session) -> None:
+    """LOW moves open_after and resolve_after on the top-level set and per type."""
+    instance = await _instance(db_session)
+    source = await _source(db_session, instance, criticality=Criticality.MEDIUM)
+    settings = _settings()
+    resolver = ThresholdResolver(settings)
+    default = OutagePolicyMode(settings.outage_alert_default)
+
+    top, by_type = _thresholds(
+        resolver, source, {}, [], None, default, criticality=Criticality.LOW
+    )
+    assert top.open_after == 3
+    assert top.resolve_after == 4
+    assert by_type[AnomalyType.VOLUME_SPIKE].open_after == 3
+    assert by_type[AnomalyType.VOLUME_SPIKE].resolve_after == 4
+    assert by_type[AnomalyType.NO_EVENTS].open_after == 3
+
+    stored_top, stored_by = _thresholds(resolver, source, {}, [], None, default)
+    assert stored_top.open_after == 2
+    assert stored_top.resolve_after == 3
+    assert stored_by[AnomalyType.VOLUME_SPIKE].open_after == 2
+
+    lab = ThresholdResolver(_settings(lab_mode=True))
+    lab_top, lab_by = _thresholds(
+        lab, source, {}, [], None, default, criticality=Criticality.LOW
+    )
+    stored_lab, _stored_lab_by = _thresholds(lab, source, {}, [], None, default)
+    assert lab_top.open_after == stored_lab.open_after == 1
+    assert lab_top.resolve_after == stored_lab.resolve_after == 2
+    assert lab_by[AnomalyType.VOLUME_SPIKE].open_after == 1
+    await db_session.refresh(source)
+    assert source.criticality == Criticality.MEDIUM
+
+
+async def test_a_proposed_criticality_matches_storing_it(
+    db_session, db_schema
+) -> None:
+    """One anomalous bucket opens for CRITICAL (open_after 1) and not for MEDIUM.
+
+    The proposed counts must equal a second preview of the same fixture after the
+    column itself is CRITICAL. Dropping the proposed value makes that equality fail.
+    """
+    source = await _seed_for_api(db_session, _stable_now(), spike_length=1)
+    await db_session.refresh(source)
+    assert source.criticality == Criticality.MEDIUM
+    stored_thresholds = dict(source.custom_thresholds or {})
+    audits = await db_session.scalar(select(func.count()).select_from(AuditLog))
+    anomalies = await db_session.scalar(
+        select(func.count()).select_from(LogSourceAnomaly)
+    )
+
+    client = reader_client(db_schema)
+    url = f"/api/v1/noise/sources/{source.id}/preview"
+    response = client.post(url, json={"window_days": 7, "criticality": "CRITICAL"})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["effective"] == {"criticality": "CRITICAL", "lab_mode": False}
+    assert _wire_counts(body["current"])["VOLUME_SPIKE"] == 0
+    assert _wire_counts(body["proposed"])["VOLUME_SPIKE"] == 1
+    assert body["current"]["total_incidents"] == 0
+    assert body["proposed"]["total_incidents"] == 1
+
+    await db_session.refresh(source)
+    assert source.criticality == Criticality.MEDIUM
+    assert dict(source.custom_thresholds or {}) == stored_thresholds
+    assert await db_session.scalar(select(func.count()).select_from(AuditLog)) == audits
+    assert (
+        await db_session.scalar(select(func.count()).select_from(LogSourceAnomaly))
+        == anomalies
+    )
+
+    source.criticality = Criticality.CRITICAL
+    await db_session.commit()
+    stored = client.post(url, json={"window_days": 7})
+    assert stored.status_code == 200, stored.text
+    stored_body = stored.json()
+    assert stored_body["effective"]["criticality"] == "CRITICAL"
+    assert stored_body["current"]["by_detector"] == body["proposed"]["by_detector"]
+    assert stored_body["current"]["total_incidents"] == body["proposed"]["total_incidents"]
+    assert stored_body["proposed"]["by_detector"] == body["proposed"]["by_detector"]
+
+
+async def test_lab_mode_ignores_a_proposed_criticality_and_says_so(
+    db_session, db_schema
+) -> None:
+    """Two anomalous buckets: LOW would not open, MEDIUM would, LAB_MODE opens both.
+
+    A proposed LOW must count the same as the stored MEDIUM, and the same as LOW
+    actually stored, with the existing lab_mode flag set.
+    """
+    source = await _seed_for_api(db_session, _stable_now(), spike_length=2)
+    client = reader_client(
+        db_schema, settings=Settings(_env_file=None, debug=False, lab_mode=True)
+    )
+    url = f"/api/v1/noise/sources/{source.id}/preview"
+    response = client.post(url, json={"window_days": 7, "criticality": "LOW"})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["effective"] == {"criticality": "LOW", "lab_mode": True}
+    assert _wire_counts(body["current"]) == _wire_counts(body["proposed"])
+    assert _wire_counts(body["proposed"])["VOLUME_SPIKE"] == 1
+
+    source.criticality = Criticality.LOW
+    await db_session.commit()
+    stored = client.post(url, json={"window_days": 7})
+    assert stored.status_code == 200, stored.text
+    stored_body = stored.json()
+    assert stored_body["effective"] == {"criticality": "LOW", "lab_mode": True}
+    assert stored_body["current"]["by_detector"] == body["proposed"]["by_detector"]
+    assert stored_body["current"]["total_incidents"] == body["proposed"]["total_incidents"]
+
+
+async def test_unknown_criticality_is_422_and_writes_nothing(
+    db_session, db_schema
+) -> None:
+    source = await _seed_for_api(db_session, _stable_now())
+    await db_session.refresh(source)
+    criticality = source.criticality
+    thresholds = dict(source.custom_thresholds or {})
+    audits = await db_session.scalar(select(func.count()).select_from(AuditLog))
+    anomalies = await db_session.scalar(
+        select(func.count()).select_from(LogSourceAnomaly)
+    )
+    client = reader_client(db_schema)
+    url = f"/api/v1/noise/sources/{source.id}/preview"
+
+    for value in ("URGENT", "critical", 1, ""):
+        response = client.post(url, json={"window_days": 7, "criticality": value})
+        assert response.status_code == 422, response.text
+        detail = response.json()["detail"]
+        assert isinstance(detail, list) and detail
+        assert detail[0]["loc"] == ["body", "criticality"]
+        assert "state" not in response.json()
+
+    missing = client.post(
+        f"/api/v1/noise/sources/{uuid.uuid4()}/preview",
+        json={"criticality": "URGENT"},
+    )
+    assert missing.status_code == 422
+    assert missing.json()["detail"][0]["loc"] == ["body", "criticality"]
+
+    await db_session.refresh(source)
+    assert source.criticality == criticality
+    assert dict(source.custom_thresholds or {}) == thresholds
+    assert await db_session.scalar(select(func.count()).select_from(AuditLog)) == audits
+    assert (
+        await db_session.scalar(select(func.count()).select_from(LogSourceAnomaly))
+        == anomalies
+    )
+
+
+async def test_a_refused_window_still_names_the_proposed_criticality(db_session) -> None:
+    instance = await _instance(db_session)
+    source = await _source(db_session, instance)
+    await _reliable_cells(db_session, source)
+    await _fill(db_session, source, count=5 * 24)
+
+    result = await _replay(
+        db_session,
+        source,
+        window_days=7,
+        now=START + timedelta(days=5),
+        criticality=Criticality.LOW,
+    )
+    assert result is not None
+    assert result.state is ReplayState.INSUFFICIENT_DATA
+    assert result.current is None and result.proposed is None
+    assert result.effective_criticality is Criticality.LOW
+    assert result.lab_mode is False
+
+
+async def test_a_proposed_criticality_still_costs_four_statements(db_session) -> None:
+    instance = await _instance(db_session)
+    source = await _source(db_session, instance)
+    await _reliable_cells(db_session, source)
+    await _fill(db_session, source, spike_at=20)
+    assert await _replay(db_session, source, criticality=Criticality.LOW) is not None
+
+    with _recorded_statements(db_session) as statements:
+        result = await _replay(db_session, source, criticality=Criticality.CRITICAL)
+    assert result is not None and result.state is ReplayState.COMPLETE
+    assert len(statements) == PREVIEW_STATEMENTS, statements
