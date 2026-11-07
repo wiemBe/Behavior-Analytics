@@ -87,14 +87,21 @@ PHASE_A_ENDPOINTS = [
     "/api/v1/behavior/detectors",
 ]
 
-# The one exception to the read-only rule below the `/anomalies` and `/behavior`
+# The exceptions to the read-only rule below the `/anomalies` and `/behavior`
 # prefixes. SOC-1a / D-40 (FEAT-1) added analyst triage writes: they persist the
-# application's own `anomaly_triage*` tables and never touch QRadar. Every other
-# operation on these paths must stay GET.
+# application's own `anomaly_triage*` tables and never touch QRadar.
+# SOC-17d adds one more application-table write: quieting an anomaly persists
+# `alert_suppression` only, gated by `alert:suppress`, and never calls QRadar.
+# Every other operation on these paths must stay GET. An unnamed write fails
+# the inventory below.
 TRIAGE_WRITES = {
     ("/api/v1/anomalies/triage/{family}/{anomaly_id}", "patch"),
     ("/api/v1/anomalies/triage/{family}/{anomaly_id}/comments", "post"),
 }
+SUPPRESSION_WRITES = {
+    ("/api/v1/anomalies/{family}/{anomaly_id}/suppress", "post"),
+}
+ANOMALY_SURFACE_WRITES = TRIAGE_WRITES | SUPPRESSION_WRITES
 
 
 def _walk_routes(routes):  # type: ignore[no-untyped-def]
@@ -751,9 +758,9 @@ class TestNoSecretsLeak:
     def test_no_mutation_verbs_are_exposed(self, db_schema) -> None:
         """QRadar integration is read-only by design, not by omission.
 
-        Analyst triage is the single exception, and it is exact: only the two
-        `TRIAGE_WRITES` pairs may appear. They write the application's own triage
-        tables, so they do not weaken the guarantee against QRadar.
+        The named exceptions are exact: the two `TRIAGE_WRITES` pairs and the
+        one SOC-17d suppress write. Each persists an application table and
+        does not call QRadar, so the guarantee against QRadar stays intact.
         """
         app = create_app()
         matched = 0
@@ -764,7 +771,7 @@ class TestNoSecretsLeak:
             matched += 1
             methods = (getattr(route, "methods", None) or set()) - {"HEAD", "OPTIONS"}
             for method in methods:
-                assert method == "GET" or (path, method.lower()) in TRIAGE_WRITES, (
+                assert method == "GET" or (path, method.lower()) in ANOMALY_SURFACE_WRITES, (
                     path,
                     method,
                 )
@@ -789,9 +796,9 @@ class TestNoSecretsLeak:
         }
         # Neither direction may drift: a listed pair whose route was renamed is
         # a dead exception, and a write that is not listed breaks read-only.
-        for path, method in sorted(TRIAGE_WRITES):
+        for path, method in sorted(ANOMALY_SURFACE_WRITES):
             assert method in spec.get(path, {}), (
-                f"stale triage allow-list entry: {method.upper()} {path}"
+                f"stale anomaly-surface allow-list entry: {method.upper()} {path}"
             )
         observed_writes: set[tuple[str, str]] = set()
         for path, operations in spec.items():
@@ -800,7 +807,7 @@ class TestNoSecretsLeak:
             for method in operations:
                 if method != "get":
                     observed_writes.add((path, method))
-        assert observed_writes == TRIAGE_WRITES, observed_writes
+        assert observed_writes == ANOMALY_SURFACE_WRITES, observed_writes
 
     def test_each_triage_write_requires_the_triage_permission(self, db_schema) -> None:
         """The allow-list is only safe because `anomaly:triage` gates both writes.
@@ -825,3 +832,11 @@ class TestNoSecretsLeak:
                 response.status_code,
                 response.text,
             )
+        # SOC-17d: a reader holds `read:*` and still cannot quiet an anomaly.
+        # A valid body reaches the `alert:suppress` check rather than a 422.
+        suppress = "/api/v1/anomalies/{family}/{anomaly_id}/suppress"
+        url = suppress.replace("{family}", "log_source").replace(
+            "{anomaly_id}", str(probe)
+        )
+        response = client.post(url, json={"days": 1, "reason": "guard"})
+        assert response.status_code == 403, response.text

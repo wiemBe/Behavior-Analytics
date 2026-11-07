@@ -22,6 +22,7 @@ from app.alerts.dispatcher import AlertEnqueuer
 from app.alerts.fingerprint import ips_anomaly_fingerprint
 from app.alerts.policy import AlertPolicyGate
 from app.alerts.service import AlertInput, AlertResolution, AlertService
+from app.alerts.suppression import SuppressionGate, record_hit
 from app.anomaly.capabilities import IPS_DETECTORS
 from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.lifecycle import LifecycleDecision, LifecycleInput, advance_counters, next_state
@@ -46,6 +47,7 @@ from app.models.enums import (
     AlertPolicyMode,
     AnomalyFamily,
     AnomalyState,
+    Criticality,
     EvidenceStatus,
     IpsAnomalyType,
     IpsDimension,
@@ -203,6 +205,9 @@ class IpsAnomalyEngine:
         self._alert_policy = AlertPolicyGate(
             session, default=AlertPolicyMode(self.settings.alert_policy_default)
         )
+        # SOC-17d: the open suppression rows, loaded once per run. The subject
+        # of an IPS suppression is the log source for both kinds (design §5.2).
+        self._suppression = SuppressionGate(session)
 
     def _thresholds(self) -> IpsThresholds:
         settings = self.settings
@@ -892,6 +897,35 @@ class IpsAnomalyEngine:
                 )
                 is AlertPolicyMode.ALERT
             ]
+            # SOC-17d layer 3: a time-boxed suppression stops the alert after
+            # the policy said ALERT (design §5.3). One hit row per incident
+            # records what was held back; a break-through opens the alert as
+            # today and leaves the suppression in force.
+            allowed: list[_AlertOpenOrUpdate] = []
+            for item in opens:
+                suppression, breakthrough = await self._suppression.stops(
+                    family=AnomalyFamily.IPS,
+                    subject_id=source.id,
+                    detector=item.detector_type.value,
+                    at=self._clock(),
+                    evidence=item.evidence,
+                    criticality=Criticality(source.criticality),
+                    settings=self.settings,
+                )
+                if suppression is not None and not breakthrough:
+                    if item.anomaly_id is not None:
+                        await record_hit(
+                            self.session,
+                            suppression,
+                            family=AnomalyFamily.IPS,
+                            anomaly_id=item.anomaly_id,
+                            detector=item.detector_type.value,
+                            bucket_start=item.evidence.interval_start,
+                            at=self._clock(),
+                        )
+                    continue
+                allowed.append(item)
+            opens = allowed
         open_inputs = [
             self._alert_input(source, instance_name, item, source_class) for item in opens
         ]

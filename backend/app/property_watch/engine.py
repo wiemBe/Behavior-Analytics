@@ -19,6 +19,7 @@ from app.alerts.dispatcher import AlertEnqueuer
 from app.alerts.fingerprint import pw_anomaly_fingerprint
 from app.alerts.policy import AlertPolicyGate
 from app.alerts.service import AlertInput, AlertResolution, AlertService
+from app.alerts.suppression import SuppressionGate, record_hit
 from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.lifecycle import LifecycleInput, advance_counters, next_state
 from app.core.config import Settings, get_settings
@@ -247,6 +248,9 @@ class PwAnomalyEngine:
         self._alert_policy = AlertPolicyGate(
             session, default=AlertPolicyMode(self.settings.alert_policy_default)
         )
+        # SOC-17d: the open suppression rows, loaded once per run. The subject
+        # of a property-watch suppression is the watch id (design §5.2).
+        self._suppression = SuppressionGate(session)
 
     @property
     def _alerting(self) -> bool:
@@ -1160,9 +1164,34 @@ class PwAnomalyEngine:
                     source_class=None,
                     detector=item.detector,
                 )
-                is AlertPolicyMode.ALERT
+                is not AlertPolicyMode.ALERT
             ):
-                allowed.add(id(item))
+                continue
+            # SOC-17d layer 3: a time-boxed suppression stops the alert after
+            # the policy said ALERT (design §5.3). One hit row per incident
+            # records what was held back; a break-through opens the alert as
+            # today and leaves the suppression in force.
+            suppression, breakthrough = await self._suppression.stops(
+                family=AnomalyFamily.PROPERTY_WATCH,
+                subject_id=item.watch.id,
+                detector=item.detector,
+                at=self._clock(),
+                evidence=item.evidence,
+                criticality=None,
+                settings=self.settings,
+            )
+            if suppression is not None and not breakthrough:
+                await record_hit(
+                    self.session,
+                    suppression,
+                    family=AnomalyFamily.PROPERTY_WATCH,
+                    anomaly_id=item.incident_id,
+                    detector=item.detector,
+                    bucket_start=item.bucket.bucket_start,
+                    at=self._clock(),
+                )
+                continue
+            allowed.add(id(item))
         actions = [
             item
             for item in actions

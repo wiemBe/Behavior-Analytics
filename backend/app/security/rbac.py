@@ -79,6 +79,11 @@ PERM_ANOMALY_READ = "read:anomalies"
 # rewrite the evidence of who worked an incident. Added to the roles that hold
 # `alert:ack`, because those are the roles that already act on an alert.
 PERM_ANOMALY_TRIAGE = "anomaly:triage"
+# SOC-17d. A time-boxed suppression decides what pages a human for a while, so it is a
+# write exactly like triage: `read:*` does not grant it. A viewer reads the quiet-periods
+# list and cannot silence a condition; analyst and admin can, because those are the roles
+# that otherwise act on the alert being suppressed.
+PERM_ALERT_SUPPRESS = "alert:suppress"
 # Phase B.1. WAF collection operations: profile validation state, watermarks,
 # failures and admission counts. Administrative, so `read:*` does not grant it.
 PERM_WAF_ADMIN = "admin:waf"

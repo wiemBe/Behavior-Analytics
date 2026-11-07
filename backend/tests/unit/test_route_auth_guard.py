@@ -218,6 +218,17 @@ _BODIES: dict[tuple[str, str], dict] = {
     ("POST", "/api/v1/anomalies/triage/{family}/{anomaly_id}/comments"): {
         "text": "guard",
     },
+    # SOC-17d. Both suppress writes check `alert:suppress` in the handler, after
+    # body validation. A missing duration or reason is a 422 and would hide a
+    # missing guard. The end route takes no body.
+    ("POST", "/api/v1/alerts/{alert_id}/suppress"): {
+        "days": 1,
+        "reason": "guard",
+    },
+    ("POST", "/api/v1/anomalies/{family}/{anomaly_id}/suppress"): {
+        "days": 1,
+        "reason": "guard",
+    },
 }
 
 _ID = str(uuid.uuid4())
