@@ -5,8 +5,9 @@ one router-level permission: that would make the page all or nothing. Each sourc
 own read permission and reports `FORBIDDEN`, naming it, when the caller lacks it.
 
 The comparison instant for "new" is the `since` input (an ISO UTC timestamp). Nothing is
-stored or advanced here: a GET with a side effect is forbidden, so moving the marker is a
-separate write.
+stored or advanced by the GET: a GET with a side effect is forbidden, so moving the caller's
+own marker is the separate `POST /queue/seen`, which needs no permission beyond a principal
+(it touches only the caller's row, like `PUT /me/preferences`).
 """
 
 from __future__ import annotations
@@ -19,8 +20,9 @@ from fastapi import APIRouter, HTTPException, Query, status
 from app.api.deps import SessionDep, SettingsDep
 from app.api.routes.anomalies import PrincipalDep
 from app.models.enums import AnomalyFamily, Severity
-from app.schemas.queue import QueueKind, QueueOut, QueueScope
+from app.schemas.queue import MarkerOut, MarkerSeenIn, QueueKind, QueueOut, QueueScope
 from app.services.queue import MAX_DEPTH, build_queue
+from app.services.queue_marker import advance
 
 router = APIRouter(prefix="/queue", tags=["queue"])
 
@@ -79,4 +81,25 @@ async def get_queue(
         limit=effective_limit,
         offset=offset,
         now=now,
+    )
+
+
+@router.post("/seen", response_model=MarkerOut)
+async def post_seen(body: MarkerSeenIn, session: SessionDep, principal: PrincipalDep) -> MarkerOut:
+    """Move the caller's marker to the `as_of` of the queue response they just loaded.
+
+    Compare-and-set on `expected`; a mismatch or a failed source is a 409 that leaves the
+    marker where it was. An `as_of` older than the stored marker is a no-op 200.
+    """
+    result = await advance(
+        session,
+        principal.subject,
+        as_of=body.as_of,
+        expected=body.expected,
+        all_sources_ok=body.all_sources_ok,
+    )
+    return MarkerOut(
+        marked_at=result.state.marked_at,
+        previous_marked_at=result.state.previous_marked_at,
+        advanced=result.advanced,
     )

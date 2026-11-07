@@ -893,6 +893,13 @@
       "truncated": "The search returned more rows than the cap allows, so some rows are missing."
     }
   },
+  "queue": {
+    "marker": {
+      "changed": "the marker moved since you read it: reload the queue to see the current one",
+      "future": "as_of must not be in the future",
+      "source_failed": "the marker was not moved because a source of the queue failed to load"
+    }
+  },
   "related_activity": {
     "reason": {
       "items_truncated": "More rows match this window than are shown; the list holds the first 20 and the total is the full count.",

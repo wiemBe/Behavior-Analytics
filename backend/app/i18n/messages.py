@@ -865,6 +865,16 @@ REGISTRY: tuple[MessageSpec, ...] = (
         permission="dashboard:share",
     ),
     _fixed("dashboard.changed_since_opened", "this dashboard changed since you opened it"),
+    # Triage queue marker (SOC-4a).
+    _fixed(
+        "queue.marker.changed",
+        "the marker moved since you read it: reload the queue to see the current one",
+    ),
+    _fixed(
+        "queue.marker.source_failed",
+        "the marker was not moved because a source of the queue failed to load",
+    ),
+    _fixed("queue.marker.future", "as_of must not be in the future"),
     # Property watches and custom rules.
     _text(
         "propertywatch.name_exists",

@@ -70,6 +70,10 @@ _READONLY_MAY_MUTATE: set[tuple[str, str]] = {
     ("POST", "/api/v1/noise/sources/{log_source_id}/preview"),
     ("PUT", "/api/v1/me/preferences"),
     ("POST", "/api/v1/me/guide-seen"),
+    # SOC-4a: the caller's own "last visit" marker, like the preferences above. It writes one
+    # row keyed by the caller's subject and nothing else; the GET it follows needs only a
+    # principal as well.
+    ("POST", "/api/v1/queue/seen"),
 }
 
 # Minimal valid bodies. A handler-level permission check runs after body

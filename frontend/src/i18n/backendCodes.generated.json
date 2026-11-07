@@ -9722,6 +9722,27 @@
     "sample_english_params": {},
     "template": "The search returned more rows than the cap allows, so some rows are missing."
   },
+  "queue.marker.changed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the marker moved since you read it: reload the queue to see the current one",
+    "sample_english_params": {},
+    "template": "the marker moved since you read it: reload the queue to see the current one"
+  },
+  "queue.marker.future": {
+    "params": {},
+    "sample": {},
+    "sample_english": "as_of must not be in the future",
+    "sample_english_params": {},
+    "template": "as_of must not be in the future"
+  },
+  "queue.marker.source_failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the marker was not moved because a source of the queue failed to load",
+    "sample_english_params": {},
+    "template": "the marker was not moved because a source of the queue failed to load"
+  },
   "related_activity.reason.items_truncated": {
     "params": {},
     "sample": {},

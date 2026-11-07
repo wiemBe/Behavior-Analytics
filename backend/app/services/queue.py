@@ -69,6 +69,7 @@ from app.security.rbac import (
     PERM_OFFENSE_READ,
     Principal,
 )
+from app.services.queue_marker import get_marker
 from app.services.related_activity import offense_collection_state
 
 logger = logging.getLogger(__name__)
@@ -740,9 +741,19 @@ async def build_queue(
 ) -> QueueOut:
     """The queue page and one status per requested source. Writes nothing."""
     as_of = now or datetime.now(UTC)
-    compare_from = since if since is not None else as_of - DEFAULT_WINDOW
     depth = offset + limit
     wanted_kinds = [k for k in _KIND_ORDER if k in set(kinds)] if kinds else list(_KIND_ORDER)
+    # The stored marker is read only when some source is readable: with every kind forbidden
+    # nothing is compared, so the page runs no statement at all.
+    stored: datetime | None = None
+    if any(principal.has(KIND_PERMISSION[k]) for k in wanted_kinds):
+        stored = await get_marker(session, principal.subject)
+    if since is not None:
+        compare_from, compare_kind = since, CompareKind.OVERRIDE
+    elif stored is not None:
+        compare_from, compare_kind = stored, CompareKind.STORED
+    else:
+        compare_from, compare_kind = as_of - DEFAULT_WINDOW, CompareKind.DEFAULT_WINDOW
     family_filter = list(dict.fromkeys(families)) or None
     severity_filter = list(dict.fromkeys(severities)) or None
     subject = principal.subject
@@ -877,7 +888,8 @@ async def build_queue(
         as_of=as_of,
         marker=QueueMarker(
             compare_from=compare_from,
-            kind=CompareKind.OVERRIDE if since is not None else CompareKind.DEFAULT_WINDOW,
+            kind=compare_kind,
+            marked_at=stored,
         ),
         sources=statuses,
         total=sum(s.count or 0 for s in counted),

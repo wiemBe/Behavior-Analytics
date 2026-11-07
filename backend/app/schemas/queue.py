@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.models.enums import (
     AlertStatus,
@@ -56,6 +56,8 @@ class CompareKind(StrEnum):
     DEFAULT_WINDOW = "DEFAULT_WINDOW"
     #: The caller named the comparison instant.
     OVERRIDE = "OVERRIDE"
+    #: The caller's stored marker (SOC-4a), used when no `since` was sent.
+    STORED = "STORED"
 
 
 class QueueTriageOut(BaseModel):
@@ -120,6 +122,9 @@ class QueueMarker(BaseModel):
     #: Rows after this instant are NEW; rows changed after it, by someone else, are UPDATED.
     compare_from: datetime
     kind: CompareKind
+    #: The caller's stored marker whatever `kind` is; the `expected` of the next advance.
+    #: Null when none is stored (or no source is readable by the caller).
+    marked_at: datetime | None = None
 
 
 class QueueFiltersApplied(BaseModel):
@@ -142,3 +147,22 @@ class QueueOut(BaseModel):
     offset: int
     filters_applied: QueueFiltersApplied
     items: list[QueueRow]
+
+
+class MarkerSeenIn(BaseModel):
+    """Advance the caller's marker to the `as_of` the queue response carried."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    as_of: datetime
+    #: The `marker.marked_at` the client last read; null when it read none.
+    expected: datetime | None
+    #: False when any source of that response failed to load: the marker then stays.
+    all_sources_ok: bool
+
+
+class MarkerOut(BaseModel):
+    marked_at: datetime
+    previous_marked_at: datetime | None
+    #: False when the request was a forward-only no-op (`as_of` not after the stored marker).
+    advanced: bool

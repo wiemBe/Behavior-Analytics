@@ -74,6 +74,7 @@ from app.models.qradar_health import (
     QRadarHealthRestSample,
     QRadarHealthRun,
 )
+from app.models.queue_marker import UserQueueMarker
 from app.models.rule import (
     AnalyticsRule,
     DetectionCoverage,
@@ -221,6 +222,7 @@ __all__ = [
     "TechniqueMapping",
     "User",
     "UserDashboardPref",
+    "UserQueueMarker",
     "WafAnomaly",
     "WafAnomalyTransition",
     "WafDetectorState",
