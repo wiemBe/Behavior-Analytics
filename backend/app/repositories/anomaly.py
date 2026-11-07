@@ -19,6 +19,7 @@ from sqlalchemy import (
     Select,
     String,
     and_,
+    case,
     cast,
     exists,
     func,
@@ -535,6 +536,128 @@ class AnomalyRepository:
             .offset(offset)
         )
         return [dict(r._mapping) for r in rows.all()], int(total or 0)
+
+    async def list_queue(
+        self,
+        *,
+        limit: int,
+        subject: str,
+        scope: str,
+        compare_from: datetime,
+        families: Collection[AnomalyFamily] | None = None,
+        severities: Collection[Severity] | None = None,
+        new_only: bool = False,
+    ) -> tuple[list[dict], int, int]:
+        """The anomalies waiting on an analyst (SOC-4b): one statement, top `limit` rows.
+
+        Returns `(rows, total, new_count)`. `total` and `new_count` are window counts over
+        the whole filtered set, so the page cut costs no second statement.
+
+        Waiting means: triage NEW (no row counts as NEW) or IN_PROGRESS, detector state OPEN,
+        RECOVERING or RESOLVED (CANDIDATE was never promoted to an incident), and not
+        suppressed. The conditions sit inside the union branches, as in `list_unified`.
+
+        Ordered severity descending, then oldest first, then id; the caller merges these rows
+        with the other sources' and cuts the page, so it asks for `offset + limit` rows here.
+
+        `change` is NEW when the incident became real after `compare_from`, UPDATED when the
+        detector resolved it after `compare_from` or someone other than `subject` changed its
+        triage after it. A change by `subject` never flags the row.
+        """
+        wanted = set(families) if families is not None else None
+        waiting_states = [
+            AnomalyState.OPEN.value,
+            AnomalyState.RECOVERING.value,
+            AnomalyState.RESOLVED.value,
+        ]
+        severity_values = [s.value for s in severities] if severities is not None else None
+
+        def common(model: Any) -> list[ColumnElement[bool]]:
+            out: list[ColumnElement[bool]] = [
+                model.state.in_(waiting_states),
+                model.suppressed.is_(False),
+                or_(
+                    AnomalyTriage.id.is_(None),
+                    AnomalyTriage.status.in_(
+                        [TriageStatus.NEW.value, TriageStatus.IN_PROGRESS.value]
+                    ),
+                ),
+            ]
+            if severity_values is not None:
+                out.append(model.severity.in_(severity_values))
+            if scope == "mine":
+                out.append(AnomalyTriage.owner == subject)
+            elif scope == "unassigned":
+                out.append(AnomalyTriage.owner.is_(None))
+            return out
+
+        branches: list[Select] = []
+        if wanted is None or AnomalyFamily.LOG_SOURCE in wanted:
+            branches.append(self._unified_phase_a(common(LogSourceAnomaly)))
+        if wanted is None or AnomalyFamily.WAF in wanted:
+            branches.append(self._unified_waf(common(WafAnomaly)))
+        if wanted is None or AnomalyFamily.IPS in wanted:
+            branches.append(self._unified_ips(common(IpsAnomaly)))
+        if wanted is None or AnomalyFamily.PROPERTY_WATCH in wanted:
+            branches.append(self._unified_pw(common(PwAnomaly)))
+        if not branches:
+            return [], 0, 0
+
+        union = (branches[0] if len(branches) == 1 else union_all(*branches)).subquery()
+        # The triage row again, outside the union, for the two columns the branches do not
+        # carry (`version`, `updated_by`). The family is derived from the subject kind.
+        family_of = case(
+            (union.c.subject_kind == SubjectKind.LOG_SOURCE.value, AnomalyFamily.LOG_SOURCE.value),
+            (union.c.subject_kind == SubjectKind.WAF_ENDPOINT.value, AnomalyFamily.WAF.value),
+            (
+                union.c.subject_kind.in_(
+                    [SubjectKind.IPS_ENTITY.value, SubjectKind.IPS_SOURCE.value]
+                ),
+                AnomalyFamily.IPS.value,
+            ),
+            else_=AnomalyFamily.PROPERTY_WATCH.value,
+        )
+        triage = AnomalyTriage.__table__.alias("queue_triage")
+        waiting_since = func.coalesce(union.c.opened_at, union.c.detected_at)
+        is_new = waiting_since > compare_from
+        is_updated = or_(
+            union.c.resolved_at > compare_from,
+            and_(triage.c.updated_at > compare_from, triage.c.updated_by != subject),
+        )
+        change = case(
+            (is_new, "NEW"),
+            (is_updated, "UPDATED"),
+            else_=null(),
+        )
+        severity_rank = case(
+            {"CRITICAL": 5, "HIGH": 4, "MEDIUM": 3, "LOW": 2, "INFO": 1},
+            value=union.c.severity,
+            else_=0,
+        )
+        stmt = (
+            select(
+                union,
+                triage.c.version.label("triage_version"),
+                waiting_since.label("waiting_since"),
+                change.label("change"),
+                severity_rank.label("severity_rank"),
+                func.count().over().label("queue_total"),
+                func.count().filter(change.is_not(None)).over().label("queue_new"),
+            )
+            .select_from(union)
+            .outerjoin(
+                triage,
+                and_(triage.c.anomaly_id == union.c.id, triage.c.family == family_of),
+            )
+            .order_by(severity_rank.desc(), waiting_since.asc(), union.c.id.asc())
+            .limit(limit)
+        )
+        if new_only:
+            stmt = stmt.where(change.is_not(None))
+        rows = [dict(r._mapping) for r in (await self.session.execute(stmt)).all()]
+        if not rows:
+            return [], 0, 0
+        return rows, int(rows[0]["queue_total"]), int(rows[0]["queue_new"])
 
     async def get_detail(self, anomaly_id: uuid.UUID) -> LogSourceAnomaly | None:
         """One anomaly with its lifecycle history and evidence package.

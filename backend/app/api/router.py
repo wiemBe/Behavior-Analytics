@@ -32,6 +32,7 @@ from app.api.routes import (
     property_watches,
     providers,
     qradar_health_detail,
+    queue,
     rules,
     search_cadence,
     searches,
@@ -85,6 +86,9 @@ api_router.include_router(users.router, dependencies=[Depends(requires(PERM_USER
 # /me returns only the caller's own identity and grants; it requires
 # authentication but no additional permission.
 api_router.include_router(me.router, dependencies=[Depends(get_principal)])
+# /queue needs authentication and no router-level permission: each of its five sources checks
+# its own read permission and reports FORBIDDEN, naming it, so the page is never all or nothing.
+api_router.include_router(queue.router, dependencies=[Depends(get_principal)])
 # Guarded at the router, like everything below. /health is the only open surface:
 # container probes carry no credentials. Handlers that mutate state keep their own
 # write-permission checks on top of the router's read requirement.
