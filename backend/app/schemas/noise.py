@@ -184,11 +184,14 @@ class NoisePreviewIn(BaseModel):
     """The tuning page's proposed knobs and the window it asked for.
 
     The knobs are the same six the PATCH accepts, so a value that cannot be saved
-    cannot be previewed either. ``window_days`` is 7 or 28.
+    cannot be previewed either. ``window_days`` is 7 or 28. ``criticality`` None
+    keeps the stored value, so a client that omits it previews what it does today.
+    A value is resolved for the proposed fold and is never written.
     """
 
     window_days: Literal[7, 28] = 28
     thresholds: ThresholdConfig = ThresholdConfig()
+    criticality: Criticality | None = None
 
 
 class NoisePreviewWindowOut(BaseModel):
@@ -247,6 +250,21 @@ class NoisePreviewNotReplayableOut(BaseModel):
     reason: NoiseReasonOut
 
 
+class NoisePreviewEffectiveOut(BaseModel):
+    """The criticality the proposed replay resolved, and whether it could matter.
+
+    ``lab_mode`` is the same flag as ``NoiseCurrentOut.lab_mode``: when it is
+    true, LAB_MODE overrides the criticality hysteresis and criticality has no
+    detection effect (design §1.3, §3.2). ``criticality`` is the value both
+    resolver calls used for the proposed fold — the body's value when it sent
+    one, otherwise the stored one. Present even when the counts are null, so a
+    fail-closed preview still says which criticality it would have used.
+    """
+
+    criticality: Criticality
+    lab_mode: bool
+
+
 class NoisePreviewOut(BaseModel):
     """Current versus proposed replay, with every fail-closed marker.
 
@@ -271,6 +289,7 @@ class NoisePreviewOut(BaseModel):
     maintenance_buckets: int | None = None
     warnings: list[NoiseReasonOut]
     reason: NoiseReasonOut | None = None
+    effective: NoisePreviewEffectiveOut
 
 
 def _reason_out(value: Any) -> NoiseReasonOut | None:
@@ -447,5 +466,9 @@ def preview_out(value: ReplayResult) -> NoisePreviewOut:
         warnings=[_replay_reason_out(item) for item in value.warnings],
         reason=(
             None if value.reason is None else _replay_reason_out(value.reason)
+        ),
+        effective=NoisePreviewEffectiveOut(
+            criticality=value.effective_criticality,
+            lab_mode=value.lab_mode,
         ),
     )

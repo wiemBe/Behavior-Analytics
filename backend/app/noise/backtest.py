@@ -60,6 +60,7 @@ from app.models.enums import (
     AnomalyState,
     AnomalyType,
     BucketCompleteness,
+    Criticality,
     OutagePolicyMode,
 )
 from app.models.fleet import LogSourceClassification
@@ -199,6 +200,12 @@ class ReplayResult:
     maintenance_buckets: int | None
     warnings: tuple[ReplayReason, ...]
     reason: ReplayReason | None
+    #: Criticality both resolver calls used for the proposed fold. When the
+    #: caller omitted one, this is the source's stored value. Never written.
+    effective_criticality: Criticality
+    #: Same flag as ``NoiseCurrentOut.lab_mode``: LAB_MODE overrides the
+    #: criticality hysteresis, so criticality has no detection effect (§3.2).
+    lab_mode: bool
 
 
 @dataclass(frozen=True)
@@ -370,14 +377,24 @@ class NoiseBacktest:
         *,
         proposed: Mapping[str, Any] | None = None,
         window_days: int = DEFAULT_WINDOW_DAYS,
+        criticality: Criticality | None = None,
     ) -> ReplayResult | None:
-        """One source, one window, current versus proposed. ``None`` when unknown."""
+        """One source, one window, current versus proposed. ``None`` when unknown.
+
+        ``criticality`` None resolves the proposed fold with the stored value,
+        which is what a body that omits the field does. A value is passed to
+        both resolver calls of that fold and is never written.
+        """
         if window_days not in WINDOW_DAYS:
             raise ValueError("window_days must be 7 or 28")
         source_row = await self._source(log_source_id)
         if source_row is None:
             return None
         source, policies, source_class, latest_width = source_row
+        # The proposed fold's criticality, decided once. The current fold keeps
+        # the stored column. LAB_MODE makes the two folds agree either way.
+        effective_criticality = source.criticality if criticality is None else criticality
+        lab_mode = self.settings.lab_mode
         interval = int(
             source.expected_interval_seconds or latest_width or 300
         )
@@ -408,6 +425,8 @@ class NoiseBacktest:
                 maintenance_buckets=None,
                 warnings=(),
                 reason=reason(REASON_TOO_LARGE, count=estimated, limit=MAX_BUCKETS),
+                effective_criticality=effective_criticality,
+                lab_mode=lab_mode,
             )
 
         grid = bucket_grid(self.now, window_days * 24, interval)
@@ -484,6 +503,8 @@ class NoiseBacktest:
                 maintenance_buckets=maintenance_buckets,
                 warnings=warnings,
                 reason=insufficient,
+                effective_criticality=effective_criticality,
+                lab_mode=lab_mode,
             )
 
         state = (
@@ -494,13 +515,18 @@ class NoiseBacktest:
         current_custom = dict(source.custom_thresholds or {})
         combined = _merge_custom(current_custom, proposed or {})
         resolver = ThresholdResolver(self.settings)
+        # The engine resolves twice per run: once without a type for the
+        # detectors, once per type for open_after/resolve_after. The current
+        # run keeps the stored criticality. The proposed run uses the body's
+        # value in both of those calls when one was given.
+        outage_default = OutagePolicyMode(self.settings.outage_alert_default)
         current_thresholds, current_by_type = _thresholds(
             resolver,
             source,
             current_custom,
             policies,
             source_class,
-            OutagePolicyMode(self.settings.outage_alert_default),
+            outage_default,
         )
         proposed_thresholds, proposed_by_type = _thresholds(
             resolver,
@@ -508,7 +534,8 @@ class NoiseBacktest:
             combined,
             policies,
             source_class,
-            OutagePolicyMode(self.settings.outage_alert_default),
+            outage_default,
+            criticality=criticality,
         )
         current_counts, judged, skipped = fold_buckets(
             present, thresholds=current_thresholds, by_type=current_by_type
@@ -540,6 +567,8 @@ class NoiseBacktest:
                 if state is ReplayState.PARTIAL and covered_days < window_days
                 else None
             ),
+            effective_criticality=effective_criticality,
+            lab_mode=lab_mode,
         )
 
     def _insufficient(
@@ -730,13 +759,15 @@ def _thresholds(
     policies: Sequence[OutageAlertPolicy],
     source_class: str | None,
     default_mode: OutagePolicyMode,
+    criticality: Criticality | None = None,
 ) -> tuple[Thresholds, dict[AnomalyType, Thresholds]]:
     """The top-level thresholds (with the outage grace) and the per-type hysteresis.
 
     This is the resolver call the engine makes twice: once without a type for the
     detectors, once per type for `open_after`/`resolve_after` (design §1.3). The
     outage policy's grace override is scoped to the top-level set exactly as the
-    engine scopes it.
+    engine scopes it. ``criticality`` None keeps the stored column; a value is
+    used in both calls and is not written back onto the source.
     """
     outage = resolve_outage(
         policies,
@@ -745,14 +776,15 @@ def _thresholds(
         instance_id=source.instance_id,
         default=default_mode,
     )
-    thresholds = resolver.resolve(criticality=source.criticality, custom=dict(custom))
+    resolved = source.criticality if criticality is None else criticality
+    thresholds = resolver.resolve(criticality=resolved, custom=dict(custom))
     if outage.silence_grace_buckets is not None:
         thresholds = replace(
             thresholds, silence_grace_buckets=outage.silence_grace_buckets
         )
     by_type = {
         kind: resolver.resolve(
-            criticality=source.criticality, custom=dict(custom), anomaly_type=kind
+            criticality=resolved, custom=dict(custom), anomaly_type=kind
         )
         for kind in AnomalyType
     }

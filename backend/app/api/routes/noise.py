@@ -95,13 +95,15 @@ async def preview_noise_source(
     A POST only because the proposed values are a body, like the custom-rule
     preview. Nothing here writes, audits or calls QRadar: it reads four
     statements and folds them through the production detectors. The caller
-    needs the router's ``read:anomalies`` and no write permission.
+    needs the router's ``read:anomalies`` and no write permission. A proposed
+    ``criticality`` is resolved for that fold and is not stored.
     """
     proposed = payload.thresholds.model_dump(exclude_none=True, exclude_unset=True)
     result = await NoiseBacktest(session, settings=settings).preview(
         log_source_id,
         proposed=proposed,
         window_days=payload.window_days,
+        criticality=payload.criticality,
     )
     if result is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
