@@ -16,6 +16,9 @@
 // module that builds it.
 
 export const BOUNDARY_KEYS = [
+  "alertPolicy.boundary.error",
+  "alertPolicy.boundary.loading",
+  "alertPolicy.boundary.title",
   "alerts.boundary.detailTitle",
   "alerts.boundary.detailWhatError",
   "alerts.boundary.listWhatError",
@@ -285,6 +288,7 @@ export const SHELL_NAMESPACES = [
 export const ROUTE_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
   "/account": ["account", "backend"],
   "/account/password": ["backend"],
+  "/admin/alert-policy": ["alertPolicy", "backend", "enums", "mailAdmin"],
   "/admin/classification-rules": ["backend", "classification", "enums", "fleet"],
   "/admin/directory": ["backend", "directory"],
   "/admin/history-backfill": ["backend", "enums", "waf"],

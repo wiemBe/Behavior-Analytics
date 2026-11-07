@@ -28,6 +28,12 @@ const SECTIONS = [
     description: "Which silent sources raise an alert, and which are only recorded",
   },
   {
+    name: "Alert policy",
+    href: "/admin/alert-policy",
+    description:
+      "Which sources and classes page a human, which are only recorded, and which go into the daily digest",
+  },
+  {
     name: "WAF sources",
     href: "/admin/waf-sources",
     description: "Which QRadar properties each WAF source is read from",
@@ -90,10 +96,10 @@ describe("administration hub", () => {
     ).toBeInTheDocument();
   });
 
-  it("lists exactly five sections while the session is unknown, in order, each a link", () => {
+  it("lists exactly six sections while the session is unknown, in order, each a link", () => {
     render(<AdminPage />);
     const links = within(adminSections()).getAllByRole("link");
-    expect(links).toHaveLength(5);
+    expect(links).toHaveLength(6);
     expect(links.map((a) => a.textContent)).toEqual(SECTIONS.map((s) => s.name));
   });
 
@@ -106,7 +112,7 @@ describe("administration hub", () => {
   it("gives each section its one-line description", () => {
     render(<AdminPage />);
     const items = within(adminSections()).getAllByRole("listitem");
-    expect(items).toHaveLength(5);
+    expect(items).toHaveLength(6);
     SECTIONS.forEach((section, i) => {
       expect(within(items[i]).getByText(section.description)).toBeInTheDocument();
     });

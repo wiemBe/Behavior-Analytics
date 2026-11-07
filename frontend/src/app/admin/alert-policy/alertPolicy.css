@@ -1,0 +1,101 @@
+/* Alert policy: layout only. Colours and sizes come from the tokens. */
+
+.policy-modes {
+  margin-bottom: var(--sp-5);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+}
+.policy-modes .policy-modes-title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--text-3);
+}
+.policy-modes dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-8);
+  margin: 0 0 var(--sp-2);
+}
+.policy-modes dl > div {
+  min-width: 0;
+}
+.policy-modes dt {
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.policy-modes dd {
+  margin: 0;
+}
+.policy-modes p {
+  max-width: var(--admin-form-max);
+  margin: 0;
+}
+
+.policy-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+}
+.policy-add {
+  margin-bottom: var(--sp-4);
+  min-width: 0;
+}
+.policy-fixed,
+.policy-target {
+  margin: 0;
+  padding-top: var(--sp-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.policy-table th.cell-source {
+  min-width: 20ch;
+}
+/* The note belongs to the row above it: no rule between them. */
+.policy-table tr:has(+ .policy-note-row) > th,
+.policy-table tr:has(+ .policy-note-row) > td {
+  border-bottom-color: transparent;
+}
+.policy-note-row td {
+  padding-top: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+
+.digest {
+  display: grid;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-5);
+  min-width: 0;
+}
+.digest-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-8);
+  margin: 0;
+}
+.digest-facts dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.digest-facts dd {
+  margin: var(--sp-1) 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.digest-say {
+  max-width: 80ch;
+}
+.digest-say p {
+  margin: 0 0 var(--sp-2);
+  line-height: var(--lh-prose);
+}
+
+/* A select shows the whole option text, up to a readable measure. */
+.rule-form .field.policy-select {
+  width: min(100%, 40ch);
+}

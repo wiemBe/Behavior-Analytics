@@ -112,6 +112,7 @@ function itemLabel(href: string, fallback: string, t: NavTranslator): string {
     case "/admin/search-cadence": return t("searchCadence");
     case "/admin/classification-rules": return t("classificationRules");
     case "/admin/outage-policy": return t("outageAlerts");
+    case "/admin/alert-policy": return t("alertPolicy");
     case "/admin/waf-sources": return t("wafSources");
     case "/admin/ips-sources": return t("ipsSources");
     case "/admin/history-backfill": return t("historyBackfill");

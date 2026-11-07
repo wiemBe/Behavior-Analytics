@@ -47,6 +47,7 @@ export const GUIDE_ROUTES = {
   "/admin/ips-sources": "ips-source-setup",
   "/admin/ips-sources/[logSourceId]": "ips-source-setup",
   "/admin/outage-policy": "outage-policy",
+  "/admin/alert-policy": "outage-policy",
   "/admin/classification-rules": "classification-rules",
   "/admin/search-cadence": "search-cadence",
   "/admin/history-backfill": "history-backfill",

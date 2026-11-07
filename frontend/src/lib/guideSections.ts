@@ -299,7 +299,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
   {
     id: "outage-policy",
     group: "adminTasks",
-    routes: ["/admin/outage-policy"],
+    routes: ["/admin/outage-policy", "/admin/alert-policy"],
     audience: "admin",
     permissions: ["admin:outage"],
     related: ["fleet", "find-a-quiet-source", "work-an-alert"],
