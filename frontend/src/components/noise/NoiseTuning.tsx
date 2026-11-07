@@ -120,6 +120,7 @@ export function NoiseTuning({
       const preview = await api.noisePreview(logSourceId, {
         window_days: f.window,
         thresholds: changedKnobs(f, current),
+        ...(f.criticality !== current.criticality ? { criticality: f.criticality } : {}),
       });
       if (ticket === request.current) {
         setShown({ key: forKey, preview, at: new Date().toISOString() });
@@ -386,7 +387,6 @@ export function NoiseTuning({
           {current.lab_mode && <li>{t("labMode")}</li>}
           {current.has_by_type && <li>{t("byType")}</li>}
           {closesIncidents(form, current) && <li>{t("narrowing")}</li>}
-          {criticalityMoved && !current.lab_mode && <li>{t("criticalityNotReplayed")}</li>}
         </ul>
 
         <div className="noise-actions">
@@ -457,6 +457,7 @@ export function NoiseTuning({
       {shown && (
         <NoisePreviewResult
           preview={shown.preview}
+          storedCriticality={current.criticality}
           stale={!fresh}
           onUseSevenDays={() => {
             edit({ window: 7 });
