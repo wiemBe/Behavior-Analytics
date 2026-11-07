@@ -35,6 +35,7 @@ from app.models.enums import (
     AnomalyType,
     IpsAnomalyType,
     PwAnomalyType,
+    RuleAnomalyType,
     WafAnomalyType,
     WafBreakdown,
     WafMeasurement,
@@ -42,6 +43,7 @@ from app.models.enums import (
 from app.property_watch.inputs import PW_VALUE_EVENTS_METRIC, PwInput, PwObservation
 from app.property_watch.inputs import input_measurement as pw_input_measurement
 from app.providers.base import LogSourceTelemetry as T
+from app.rules.matches import MatchEvidence
 from app.waf.baseline import (
     BLOCK_RATIO_METRIC,
     CLIENT_ERROR_RATIO_METRIC,
@@ -65,6 +67,7 @@ class BehaviorDomain(StrEnum):
     IPS_ENTITY = "IPS_ENTITY"
     IPS_SOURCE = "IPS_SOURCE"
     PW_VALUE = "PW_VALUE"
+    RULE = "RULE"
 
 
 class DetectorStatus(StrEnum):
@@ -792,6 +795,53 @@ def pw_input_scope(
     return narrowest(decisions)
 
 
+_RULE_TASK = "collect_rule_matches"
+
+
+def _rule(detector_type: RuleAnomalyType) -> DetectorSpec:
+    # `inputs` stays empty: the one input is `matched_events`, and the single `measurement`
+    # requirement is what `rule_verdict_scope` applies to it. EXACT for both detectors:
+    # silence is an absence claim (only a COMPLETE window of an EVENT rule proves a zero),
+    # and a storm judges only a count that exists, never a lower bound.
+    return DetectorSpec(
+        domain=BehaviorDomain.RULE,
+        detector_type=detector_type.value,
+        telemetry=frozenset(),
+        baseline_metrics=frozenset(),
+        scheduled_task=_RULE_TASK,
+        enabling_setting="rule_match_collection_enabled",
+        measurement=_EXACT,
+    )
+
+
+#: SOC-6 design §5.2. Not yet part of `all_detectors()`: listing them there changes the
+#: `/behavior/detectors` response and the status matrix, which the engine and read-API
+#: slices (SOC-6c, SOC-6d) own.
+RULE_DETECTORS: dict[RuleAnomalyType, DetectorSpec] = {
+    RuleAnomalyType.RULE_SILENCE: _rule(RuleAnomalyType.RULE_SILENCE),
+    RuleAnomalyType.RULE_STORM: _rule(RuleAnomalyType.RULE_STORM),
+}
+
+_RULE_MEASUREMENT: dict[MatchEvidence, WafMeasurement | None] = {
+    MatchEvidence.EXACT: WafMeasurement.EXACT,
+    MatchEvidence.LOWER_BOUND: WafMeasurement.LOWER_BOUND,
+    MatchEvidence.NOT_MEASURED: None,
+}
+
+
+def rule_verdict_scope(
+    detector_type: RuleAnomalyType, evidence: MatchEvidence | None
+) -> ScopeDecision:
+    """What a rule detector may conclude from the evidence its rule type gives.
+
+    The scope comes from the declared requirement alone. An unknown evidence value is
+    "not stated", which grants nothing.
+    """
+    spec = RULE_DETECTORS[detector_type]
+    measurement = None if evidence is None else _RULE_MEASUREMENT[evidence]
+    return verdict_scope(spec.measurement or WafMeasurementRequirement.EXACT, measurement)
+
+
 def bucket_telemetry(
     collection_source: str | None, query_provenance: Mapping[str, Any] | None
 ) -> frozenset[T]:
@@ -848,6 +898,18 @@ def detector_status(spec: DetectorSpec, settings: Any | None = None) -> Detector
         return DetectorStatus.OPERATIONAL
     if spec.domain in (BehaviorDomain.IPS_ENTITY, BehaviorDomain.IPS_SOURCE):
         if not spec.implemented or not spec.baseline_metrics <= IPS_BASELINE_METRICS:
+            return DetectorStatus.UNSUPPORTED
+        if not spec.scheduled_task:
+            return DetectorStatus.NOT_SCHEDULED
+        if (
+            settings is not None
+            and spec.enabling_setting is not None
+            and not getattr(settings, spec.enabling_setting)
+        ):
+            return DetectorStatus.NOT_ENABLED
+        return DetectorStatus.OPERATIONAL
+    if spec.domain is BehaviorDomain.RULE:
+        if not spec.implemented:
             return DetectorStatus.UNSUPPORTED
         if not spec.scheduled_task:
             return DetectorStatus.NOT_SCHEDULED

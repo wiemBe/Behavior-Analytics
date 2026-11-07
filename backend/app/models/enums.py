@@ -279,6 +279,20 @@ class PwAnomalyType(StrEnum):
     PW_NEW_COMBINATION = "PW_NEW_COMBINATION"
 
 
+class RuleAnomalyType(StrEnum):
+    """Rule silence and storm detector taxonomy (SOC-6 design §5.1).
+
+    A Python enum only in this slice: no table, no SQL enum, no migration (SOC-6a owns
+    those). Separate from `AnomalyType` for the same reason as the other families: that
+    enum is persisted on Phase A rows and in alert fingerprints.
+    """
+
+    #: An enabled EVENT rule with a stable 7-day match rate has N proven-zero windows in a row.
+    RULE_SILENCE = "RULE_SILENCE"
+    #: A rule's matched events in one window are above its usual count for that weekday and slot.
+    RULE_STORM = "RULE_STORM"
+
+
 class PwScopeKind(StrEnum):
     """What a property watch is scoped to: exactly one of a source, a type or a group."""
 
