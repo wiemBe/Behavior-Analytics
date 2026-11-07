@@ -35,6 +35,7 @@ from app.api.routes import (
     rules,
     search_cadence,
     searches,
+    suppressions,
     users,
     version,
     waf,
@@ -180,6 +181,12 @@ api_router.include_router(
 # surface (`read:alerts`); every write handler adds `admin:outage` itself.
 api_router.include_router(
     alert_policy.router, dependencies=[Depends(requires(PERM_ALERT_READ))]
+)
+# SOC-17d suppressions. The quiet-periods list is a read of the alerts surface
+# (`read:alerts`); every write handler adds `alert:suppress` itself, and the two
+# anomaly-scoped handlers also check the anomaly surface's read permission.
+api_router.include_router(
+    suppressions.router, dependencies=[Depends(requires(PERM_ALERT_READ))]
 )
 # UI redesign (UR.5.5) saved dashboards: read-guarded; every write handler checks
 # `dashboard:write` itself, and ownership and `admin:dashboards` where they apply.

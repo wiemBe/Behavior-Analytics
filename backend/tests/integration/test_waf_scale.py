@@ -606,7 +606,13 @@ class TestStatementCounts:
 
         open_cost = paging_open - shadow_open
         resolve_cost = paging_resolve - shadow_resolve
-        assert 0 < open_cost <= 8, (shadow_open, paging_open)
+        # Measured 10 (shadow 7, paging 17). The two statements past the
+        # pre-17c cost of 8 are one SELECT of alert_policy (SOC-17c's per-run
+        # policy load) and one SELECT of alert_suppression (SOC-17d's per-run
+        # suppression load). Neither is per endpoint: the constant-cost tests
+        # above keep the same count at 40 and 800 endpoints. Resolution is not
+        # gated, so its bound is unchanged.
+        assert 0 < open_cost <= 10, (shadow_open, paging_open)
         assert 0 < resolve_cost <= 6, (shadow_resolve, paging_resolve)
 
     async def test_training_scales_with_chunks_not_endpoints(self, db_session) -> None:

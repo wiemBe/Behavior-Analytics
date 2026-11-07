@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.alerts.fingerprint import anomaly_fingerprint
 from app.alerts.policy import AlertPolicyGate
 from app.alerts.service import AlertInput, AlertService
+from app.alerts.suppression import SuppressionGate, record_hit
 from app.anomaly.business_hours import is_expected_active
 from app.anomaly.capabilities import bucket_telemetry, unmet_requirement
 from app.anomaly.detectors import (
@@ -59,6 +60,7 @@ from app.models.enums import (
     AnomalyState,
     AnomalyType,
     BucketCompleteness,
+    Criticality,
     DetectorSignal,
     EvidenceStatus,
     OutagePolicyMode,
@@ -247,6 +249,10 @@ class AnomalyEngine:
         self._alert_policy = AlertPolicyGate(
             session, default=AlertPolicyMode(self.settings.alert_policy_default)
         )
+        # SOC-17d: the open suppression rows, loaded once per engine run. With
+        # no rows the gate returns None after that one load, so this changes
+        # nothing; `suppressed` and AnomalyState.SUPPRESSED stay maintenance's.
+        self._suppression = SuppressionGate(session)
         # The class map outage resolution reads, loaded in one statement the
         # first time a CLASS policy row needs a source's class and reused for
         # the rest of the run. Distinct from `_source_class_cache`, which the
@@ -835,6 +841,30 @@ class AnomalyEngine:
             is not AlertPolicyMode.ALERT
         ):
             return
+        # SOC-17d layer 3: a time-boxed suppression stops the alert only after
+        # the policy said ALERT (design §5.3). The incident above is untouched;
+        # one hit row records what was held back. A break-through opens the
+        # alert as today and leaves the suppression in force.
+        suppression, breakthrough = await self._suppression.stops(
+            family=AnomalyFamily.LOG_SOURCE,
+            subject_id=log_source.id,
+            detector=evidence.anomaly_type.value,
+            at=self._clock(),
+            evidence=evidence,
+            criticality=Criticality(log_source.criticality),
+            settings=self.settings,
+        )
+        if suppression is not None and not breakthrough:
+            await record_hit(
+                self.session,
+                suppression,
+                family=AnomalyFamily.LOG_SOURCE,
+                anomaly_id=anomaly.id,
+                detector=evidence.anomaly_type.value,
+                bucket_start=metric.bucket_start,
+                at=self._clock(),
+            )
+            return
         result = await self.alerts.open_or_update(
             self._alert_input(
                 log_source,
@@ -1063,6 +1093,31 @@ class AnomalyEngine:
             await self._alert_mode(log_source, evidence.anomaly_type.value)
             is not AlertPolicyMode.ALERT
         ):
+            return
+        # SOC-17d layer 3, on the refresh path too: the suppression holds the
+        # paging back while the incident stays recorded, and the first bucket
+        # after `ends_at` re-enters this method and opens the alert normally
+        # (design §5.3).
+        suppression, breakthrough = await self._suppression.stops(
+            family=AnomalyFamily.LOG_SOURCE,
+            subject_id=log_source.id,
+            detector=evidence.anomaly_type.value,
+            at=self._clock(),
+            evidence=evidence,
+            criticality=Criticality(log_source.criticality),
+            settings=self.settings,
+        )
+        if suppression is not None and not breakthrough:
+            if state.open_anomaly_id is not None:
+                await record_hit(
+                    self.session,
+                    suppression,
+                    family=AnomalyFamily.LOG_SOURCE,
+                    anomaly_id=state.open_anomaly_id,
+                    detector=evidence.anomaly_type.value,
+                    bucket_start=evidence.interval_start,
+                    at=self._clock(),
+                )
             return
         await self.alerts.open_or_update(
             self._alert_input(

@@ -130,6 +130,22 @@ class AlertDigestState(StrEnum):
     FAILED = "FAILED"
 
 
+class SuppressionKind(StrEnum):
+    """Why a time-boxed suppression exists (SOC-17d, design §5).
+
+    ``ANALYST`` is an operator's "don't alert this again" over one condition.
+    ``KNOWN_CHANGE`` plans a change: it carries a ticket reference and, unlike a
+    maintenance window, never excludes a bucket from any baseline — the change
+    *should* move the baseline to the new normal. ``MAINTENANCE`` is not a row:
+    it is the read-only kind the quiet-periods list gives an active
+    ``log_source`` maintenance window (design §5.6), which keeps its baseline
+    exclusion.
+    """
+
+    ANALYST = "ANALYST"
+    KNOWN_CHANGE = "KNOWN_CHANGE"
+
+
 class Severity(StrEnum):
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"

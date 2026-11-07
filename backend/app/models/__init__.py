@@ -6,6 +6,7 @@ autogenerate and the test fixtures both rely on. Keep this list complete.
 
 from app.models.alert import Alert, AlertNotification
 from app.models.alert_policy import AlertDigestRun, AlertPolicy
+from app.models.alert_suppression import AlertSuppression, AlertSuppressionHit
 from app.models.ariel_search import ArielSearchRun
 from app.models.base import Base
 from app.models.catchall import CatchallBucket, CatchallSender
@@ -137,6 +138,8 @@ __all__ = [
     "AlertDigestRun",
     "AlertNotification",
     "AlertPolicy",
+    "AlertSuppression",
+    "AlertSuppressionHit",
     "AnalyticsRule",
     "AnomalyEvaluationFault",
     "AnomalyEvaluationWatermark",
