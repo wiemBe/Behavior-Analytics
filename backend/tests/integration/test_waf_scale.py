@@ -606,8 +606,93 @@ class TestStatementCounts:
 
         open_cost = paging_open - shadow_open
         resolve_cost = paging_resolve - shadow_resolve
-        assert 0 < open_cost <= 8, (shadow_open, paging_open)
+        # Nine: SOC-17c loads alert_policy once per alerting run (design §4.5).
+        assert 0 < open_cost <= 9, (shadow_open, paging_open)
         assert 0 < resolve_cost <= 6, (shadow_resolve, paging_resolve)
+
+    async def test_the_open_cost_is_constant_in_endpoints(self, db_session) -> None:
+        """One new alert at 1 and at 40 endpoints costs the same.
+
+        Only a new alert adds statements to the open path: its insert and its
+        notification, each inside its own savepoint (the IPS twin pins that
+        linearity). The SOC-17c ``alert_policy`` load is one read per run, so it
+        must not move between 1 and 40 evaluated endpoints (AGENTS.md rule 9).
+        """
+        base = settings_for_scale().model_copy(
+            update={"anomaly_open_after_intervals": 1, "anomaly_resolve_after_intervals": 1}
+        )
+        alerting = base.model_copy(update={"waf_alerting_enabled": True})
+        route = RoutingPolicy(
+            rules=[
+                RoutingRule(
+                    channel=NotificationChannel.SLACK,
+                    target="scale-test",
+                    alert_types=frozenset({"waf_anomaly"}),
+                )
+            ]
+        )
+        dispatcher = NotificationDispatcher(db_session, {}, route, settings=alerting)
+        open_at = T0 + STEP * 10
+
+        async def open_once(
+            seeded_source, configured, *, enqueuer=None
+        ) -> tuple[int, int]:  # type: ignore[no-untyped-def]
+            _profile_id, source_id, _provider = seeded_source
+            endpoint_ids = list(
+                (
+                    await db_session.scalars(
+                        select(WafEndpoint.id).where(WafEndpoint.log_source_id == source_id)
+                    )
+                ).all()
+            )
+            await add_full_bucket(
+                db_session, source_id, open_at, endpoint_ids, request_count=40
+            )
+            # Exactly one endpoint spikes, so both sizes open exactly one alert and
+            # the only difference between them is how many endpoints were judged.
+            await db_session.execute(
+                update(WafEndpointMetric)
+                .where(
+                    WafEndpointMetric.waf_endpoint_id == endpoint_ids[0],
+                    WafEndpointMetric.bucket_start == open_at,
+                )
+                .values(request_count=500)
+            )
+            await db_session.flush()
+            source = await db_session.get(LogSource, source_id)
+            bucket = await db_session.get(WafSourceBucket, (source_id, open_at))
+            with counting(db_session) as statements:
+                await WafAnomalyEngine(
+                    db_session, settings=configured, enqueuer=enqueuer
+                ).evaluate_bucket(source, bucket)
+            alerts = int(
+                await db_session.scalar(
+                    select(func.count()).select_from(Alert).where(
+                        Alert.source_id.in_(endpoint_ids)
+                    )
+                )
+                or 0
+            )
+            return alerts, len(statements)
+
+        costs: dict[int, tuple[int, int]] = {}
+        for size in (1, 40):
+            # One instance per size: the stub provider knows only sources 312 and 313,
+            # and a source's qradar id is unique within its instance.
+            instance = await make_instance(db_session)
+            shadow = await seeded(db_session, instance, 312, size, base)
+            paging = await seeded(db_session, instance, 313, size, alerting)
+            shadow_alerts, shadow_open = await open_once(shadow, base)
+            paging_alerts, paging_open = await open_once(
+                paging, alerting, enqueuer=dispatcher
+            )
+            assert shadow_alerts == 0
+            assert paging_alerts == 1
+            costs[size] = (shadow_open, paging_open)
+
+        # Thirty-nine more endpoints, the same statements, shadow and paging.
+        assert costs[1] == costs[40], costs
+        print(f"one-new-alert open statements at 1 and 40 endpoints: {costs}")
 
     async def test_training_scales_with_chunks_not_endpoints(self, db_session) -> None:
         settings = cfg(waf_baseline_rebuild_chunk_size=25, baseline_min_samples=1)
