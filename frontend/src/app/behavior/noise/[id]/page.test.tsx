@@ -26,6 +26,8 @@ async function renderPage(search: Record<string, string | undefined> = {}) {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  // The model section reads its own route after mount; these tests are about the page above it.
+  vi.spyOn(api, "noiseModel").mockReturnValue(new Promise(() => {}));
 });
 
 describe("Tune a noisy source: identity and counts", () => {
@@ -43,7 +45,7 @@ describe("Tune a noisy source: identity and counts", () => {
     setup(detail());
     await renderPage();
     const headings = screen.getAllByRole("heading").map((h) => h.textContent);
-    expect(headings).toEqual(["fw-edge-01", "What this source raised", "Replay and tune"]);
+    expect(headings).toEqual(["fw-edge-01", "What this source raised", "Replay and tune", "Low-volume model"]);
     expect(screen.getByRole("form", { name: "Detection values" })).toBeInTheDocument();
   });
 

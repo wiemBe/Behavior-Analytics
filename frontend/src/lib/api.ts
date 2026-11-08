@@ -2199,6 +2199,78 @@ export interface NoiseTuningPatch {
   preview: NoisePreviewAudit;
 }
 
+// --- SOC-17e: the shadow low-volume count model ---------------------------------
+
+export type NoiseModelState = "OK" | "INSUFFICIENT_DATA" | "NOT_JUDGED" | "PARTIAL";
+
+export interface NoiseModelShrinkage {
+  n: number;
+  k: number;
+  raw_median: number | null;
+  pooled_median: number | null;
+  /** The weight on the cell's own median, in [0, 1]. */
+  weight: number;
+  estimate: number | null;
+}
+
+/** A proposal only: nothing is written back to the cell. */
+export interface NoiseModelLevelShift {
+  recent_median: number;
+  cell_median: number;
+  p05: number;
+  p95: number;
+  recent_samples: number;
+  cell_samples: number;
+  started_at: string;
+}
+
+export interface NoiseModelCell {
+  metric: string;
+  /** ISO weekday, 1 = Monday. */
+  weekday: number;
+  /** UTC hour, 0 to 23. */
+  hour: number;
+  state: NoiseModelState;
+  reason: NoiseReason | null;
+  sample_count: number;
+  observation_count: number;
+  reliable: boolean;
+  mean: number | null;
+  variance: number | null;
+  dispersion: number | null;
+  model: "poisson" | "negative_binomial" | null;
+  nb_r: number | null;
+  nb_p: number | null;
+  buckets_scored: number | null;
+  upper_tail_below: number | null;
+  lower_tail_below: number | null;
+  shrinkage: NoiseModelShrinkage;
+  level_shift: NoiseModelLevelShift | null;
+}
+
+export interface NoiseModelCalibration {
+  anomaly_type: string;
+  replayed_flags: number | null;
+  noise_flags: number | null;
+  excluded_by_direction: boolean;
+  reason: NoiseReason | null;
+}
+
+export interface NoiseModel {
+  log_source_id: string;
+  state: NoiseModelState;
+  reason: NoiseReason | null;
+  window_days: number;
+  covered_days: number;
+  first_bucket: string | null;
+  last_bucket: string | null;
+  p_threshold: number;
+  shrinkage_k: number;
+  cells: NoiseModelCell[];
+  calibration: NoiseModelCalibration[];
+  calibration_reason: NoiseReason | null;
+}
+
 export interface TrafficParams {
   window?: TrafficWindow;
   sort?: string;
@@ -3352,6 +3424,8 @@ export const api = {
     request<NoiseSourcesPage>(`/noise/sources${qs({ ...params })}`),
   noiseSource: (id: string) =>
     request<NoiseSourceDetail>(`/noise/sources/${encodeURIComponent(id)}`),
+  noiseModel: (id: string) =>
+    request<NoiseModel>(`/noise/sources/${encodeURIComponent(id)}/model`),
   noisePreview: (
     id: string,
     body: { window_days: NoiseWindow; thresholds: NoiseThresholds; criticality?: string },

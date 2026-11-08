@@ -276,3 +276,196 @@
   margin-inline-start: var(--sp-4);
   font-size: var(--fs-xs);
 }
+
+/* --- Low-volume model (SOC-17e-ui) ------------------------------------------------------------ */
+
+.noise-model-shadow {
+  margin: 0 0 var(--sp-5);
+}
+.noise-model-state {
+  margin: 0;
+  font-size: var(--fs-base);
+  color: var(--text);
+  line-height: var(--lh-prose);
+}
+.noise-model-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22ch, 1fr));
+  gap: var(--sp-3) var(--sp-6);
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.noise-model-facts > div {
+  min-width: 0;
+}
+.noise-model-facts dt {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  margin-bottom: var(--sp-1);
+}
+.noise-model-facts dd {
+  margin: 0;
+  color: var(--text);
+  line-height: var(--lh-base);
+}
+.noise-model-facts dd.num {
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.noise-model-facts .cell-sub {
+  display: block;
+  color: var(--text-2);
+}
+.noise-model-shifts ul {
+  margin: 0;
+  padding-inline-start: var(--sp-6);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+}
+.noise-model-block h3,
+.noise-model-shifts h3,
+.noise-model-detail h3 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+}
+.noise-model-detail {
+  border-top: 1px solid var(--border);
+  padding-top: var(--sp-4);
+}
+.noise-model-detail.empty {
+  font-size: var(--fs-sm);
+}
+.noise-model-detail.empty p {
+  margin: 0;
+}
+
+/* The weekday x hour grid: one button per stored cell. The number in a cell is the count of buckets
+   below p; its shade steps through the sequential map tokens. A cell without a tail count carries
+   no number and no shade of the scale. */
+.noise-heat {
+  border-collapse: separate;
+  border-spacing: 2px;
+  width: 100%;
+  table-layout: fixed;
+  font-size: var(--fs-xs);
+}
+.noise-heat th {
+  font-weight: var(--fw-normal);
+  color: var(--text-2);
+  text-align: center;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.noise-heat th[scope="row"] {
+  width: 4ch;
+  text-align: left;
+  padding-inline-end: var(--sp-2);
+  white-space: nowrap;
+}
+.noise-heat-corner {
+  width: 4ch;
+}
+.noise-heat td {
+  padding: 0;
+  border: none;
+  height: 1.9rem;
+}
+.noise-heat-cell {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 1.9rem;
+  padding: 0;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  cursor: pointer;
+  background: var(--map-0);
+}
+.noise-heat-cell.bin-1 {
+  background: var(--map-1);
+}
+.noise-heat-cell.bin-2 {
+  background: var(--map-2);
+}
+.noise-heat-cell.bin-3 {
+  background: var(--map-3);
+  color: var(--on-accent);
+}
+.noise-heat-cell.insufficient {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-3);
+}
+.noise-heat-cell.not-judged {
+  background: var(--surface-3);
+  border: 1px dotted var(--text-3);
+  color: var(--text-3);
+}
+.noise-heat-cell.shift {
+  border: 2px solid var(--warn);
+}
+.noise-heat-cell.on {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.noise-heat-cell:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.noise-heat-gap {
+  display: block;
+  height: 100%;
+}
+.noise-heat-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-6);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.noise-heat-swatch {
+  display: inline-block;
+  width: 1rem;
+  height: 0.75rem;
+  vertical-align: middle;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: var(--map-0);
+}
+.noise-heat-swatch.bin-1 {
+  background: var(--map-1);
+}
+.noise-heat-swatch.bin-2 {
+  background: var(--map-2);
+}
+.noise-heat-swatch.bin-3 {
+  background: var(--map-3);
+}
+.noise-heat-swatch.insufficient {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+}
+.noise-heat-swatch.not-judged {
+  background: var(--surface-3);
+  border: 1px dotted var(--text-3);
+}
+.noise-heat-swatch.shift {
+  border: 2px solid var(--warn);
+}
+.noise-model-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.noise-heat-note {
+  margin: 0 0 var(--sp-2);
+}
