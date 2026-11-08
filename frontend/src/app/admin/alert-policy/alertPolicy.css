@@ -99,3 +99,14 @@
 .rule-form .field.policy-select {
   width: min(100%, 40ch);
 }
+
+/* Quiet periods (SOC-17d) */
+.quiet-lead {
+  max-width: 90ch;
+  margin: 0 0 var(--sp-3);
+}
+.quiet-table td.quiet-reason-cell {
+  min-width: 16ch;
+  max-width: 28ch;
+  overflow-wrap: anywhere;
+}

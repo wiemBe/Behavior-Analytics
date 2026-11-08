@@ -27,7 +27,13 @@ function mount(rows = MIXED, value: SessionValue = ADMIN, d = digest()) {
   vi.spyOn(alertPolicyApi, "digest").mockResolvedValue(d);
   return render(
     <StaticSession value={value}>
-      <AlertPolicyManager initialRows={rows} initialDigest={d} digestNote={null} />
+      <AlertPolicyManager
+        initialRows={rows}
+        initialDigest={d}
+        digestNote={null}
+        initialQuiet={[]}
+        quietFailure={null}
+      />
     </StaticSession>,
   );
 }

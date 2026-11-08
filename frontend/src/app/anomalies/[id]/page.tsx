@@ -33,10 +33,12 @@ import { detectorSpec } from "@/components/ips/ipsDetectors";
 import { IpsInvestigation, type IpsSeriesData } from "@/components/ips/IpsInvestigation";
 import { PwInvestigation, type PwInvestigationData } from "@/components/propertywatch/PwInvestigation";
 import { relatedNode } from "@/components/related/relatedNode";
+import { SuppressionBlock } from "@/components/alerts/SuppressionBlock";
 import { triageNode } from "@/components/triage/triageNode";
 import { PivotBlock } from "@/components/pivot/PivotBlock";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
+import { anomalyTarget } from "@/lib/suppressTarget";
 import { pivotReads } from "@/lib/pivot";
 import { WafInvestigation } from "@/components/waf/WafInvestigation";
 import {
@@ -295,7 +297,13 @@ async function AnomalyDetailPage({
 
   // The pivot is a separate read: a failure shows in its own block and never in the page.
   const pivotRead = await pivotReads.anomaly(id);
-  const triageBlock = await triageNode(loaded);
+  const quietTarget = anomalyTarget(loaded);
+  const triageBlock = (
+    <>
+      {await triageNode(loaded)}
+      {quietTarget && <SuppressionBlock target={quietTarget} />}
+    </>
+  );
   const relatedBlock = await relatedNode(loaded, pad);
   const pivotBlock = pivotRead ? (
     <PivotBlock pivot={pivotRead.pivot} failed={pivotRead.failed} />

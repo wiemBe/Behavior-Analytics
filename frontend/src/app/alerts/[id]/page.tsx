@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { AlertActions } from "@/components/AlertActions";
+import { SuppressionBlock } from "@/components/alerts/SuppressionBlock";
+import { alertTarget } from "@/lib/suppression";
 import { getLocale, getTranslations } from "next-intl/server";
 import { Evidence } from "@/components/Evidence";
 import { PivotBlock } from "@/components/pivot/PivotBlock";
@@ -62,6 +64,7 @@ async function AlertDetailPage({
     );
   }
   const pivotRead = await pivotReads.alert(id);
+  const quietTarget = alertTarget(alert);
   const title = alertTitleText(alert, locale, say);
   const description = alert.description
     ? renderBackendMessage(
@@ -139,6 +142,8 @@ async function AlertDetailPage({
       </div>
 
       <AlertActions alertId={alert.id} status={alert.status} />
+
+      {quietTarget && <SuppressionBlock target={quietTarget} />}
 
       {pivotRead && <PivotBlock pivot={pivotRead.pivot} failed={pivotRead.failed} />}
 

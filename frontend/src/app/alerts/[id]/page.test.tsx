@@ -2,11 +2,11 @@ import type { Pivot } from "@/lib/pivot";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AlertDetailPage from "./page";
-import { ApiError, api, type Alert, type Notification } from "@/lib/api";
+import { ApiError, api, suppressionApi, type Alert, type Notification } from "@/lib/api";
 import { setTestLocale } from "../../../../vitest.setup";
 
 // States this route renders, from `page.tsx`:
@@ -495,5 +495,28 @@ describe("alert to anomaly links and the human title (SOC-1b)", () => {
     );
     await renderPage();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Volume drop on Edge firewall");
+  });
+});
+
+describe("the quiet-period block (SOC-17d-ui)", () => {
+  it("reads the banner for the first source anomaly of an anomaly alert", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(alert({ source_type: "waf_endpoint" }));
+    const read = vi.spyOn(suppressionApi, "forAnomaly").mockRejectedValue(new ApiError(500, "x"));
+    await renderPage();
+    await waitFor(() => expect(read).toHaveBeenCalledWith("waf", "an-1"));
+  });
+
+  it("carries no block for an alert that has no detector condition", async () => {
+    const read = vi.spyOn(suppressionApi, "forAnomaly");
+    await renderPage();
+    expect(read).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Don't alert this again/)).toBeNull();
+  });
+
+  it("carries no block for an anomaly alert with no anomaly to read the condition from", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(alert({ source_type: "log_source", source_anomaly_ids: [] }));
+    const read = vi.spyOn(suppressionApi, "forAnomaly");
+    await renderPage();
+    expect(read).not.toHaveBeenCalled();
   });
 });

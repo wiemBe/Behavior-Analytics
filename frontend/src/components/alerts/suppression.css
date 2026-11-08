@@ -1,0 +1,99 @@
+/* Quiet periods on the alert and anomaly pages. Layout only: colours and sizes come from tokens. */
+
+.quiet-block {
+  display: grid;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-5);
+  min-width: 0;
+}
+.quiet-loading,
+.quiet-readonly {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.quiet-banner {
+  min-width: 0;
+}
+.quiet-body {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+  flex: 1;
+}
+.quiet-body > p {
+  margin: 0;
+}
+.quiet-headline {
+  overflow-wrap: anywhere;
+}
+.quiet-recorded {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.quiet-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-8);
+  margin: 0;
+}
+.quiet-facts > div {
+  min-width: 0;
+}
+.quiet-facts dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.quiet-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.quiet-facts .quiet-reason {
+  flex-basis: 100%;
+  max-width: 90ch;
+}
+.quiet-note {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.quiet-sub {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--text-3);
+}
+.quiet-breakthrough ul {
+  margin: 0;
+  padding-left: var(--sp-5);
+  display: grid;
+  gap: var(--sp-1);
+}
+.quiet-breakthrough li {
+  overflow-wrap: anywhere;
+}
+.quiet-confirm {
+  max-width: 72ch;
+}
+.quiet-form {
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  min-width: 0;
+}
+.quiet-count {
+  font-variant-numeric: tabular-nums;
+}
+.quiet-form textarea.field {
+  resize: vertical;
+}
+.quiet-action {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.quiet-action .change-status {
+  margin: 0;
+}
+.quiet-mismatch {
+  max-width: 72ch;
+}
