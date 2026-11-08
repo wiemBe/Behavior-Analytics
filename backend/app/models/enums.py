@@ -298,9 +298,10 @@ class PwAnomalyType(StrEnum):
 class RuleAnomalyType(StrEnum):
     """Rule silence and storm detector taxonomy (SOC-6 design §5.1).
 
-    A Python enum only in this slice: no table, no SQL enum, no migration (SOC-6a owns
-    those). Separate from `AnomalyType` for the same reason as the other families: that
-    enum is persisted on Phase A rows and in alert fingerprints.
+    A Python enum, persisted in `rule_anomaly.detector_type` and `rule_detector_state`
+    as a string validated by the API, never by a SQL enum (AGENTS.md rule 6). Separate
+    from `AnomalyType` for the same reason as the other families: that enum is
+    persisted on Phase A rows and in alert fingerprints.
     """
 
     #: An enabled EVENT rule with a stable 7-day match rate has N proven-zero windows in a row.
@@ -573,17 +574,19 @@ class AnomalyFamily(StrEnum):
     """The anomaly table an analyst triage row names.
 
     One family per anomaly table, not per subject kind: the IPS family holds both an
-    entity incident and a source incident, and a property-watch incident is one row of
-    `pw_anomaly`. The values match the keys of `ActiveByFamily`, so a client can join
-    the two responses without a translation table. Kept separate from `SubjectKind`
-    (a response discriminator) and from every detector enum (Phase A rows and alert
-    fingerprints persist those) because this one is persisted in `anomaly_triage`.
+    entity incident and a source incident, a property-watch incident is one row of
+    `pw_anomaly`, and a rule incident is one row of `rule_anomaly`. The values match
+    the keys of `ActiveByFamily`, so a client can join the two responses without a
+    translation table. Kept separate from `SubjectKind` (a response discriminator) and
+    from every detector enum (Phase A rows and alert fingerprints persist those)
+    because this one is persisted in `anomaly_triage`.
     """
 
     LOG_SOURCE = "log_source"
     WAF = "waf"
     IPS = "ips"
     PROPERTY_WATCH = "property_watch"
+    RULE = "rule"
 
 
 class TriageStatus(StrEnum):

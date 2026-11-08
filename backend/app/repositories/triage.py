@@ -21,6 +21,7 @@ from app.models.enums import AnomalyFamily
 from app.models.ips import IpsAnomaly
 from app.models.log_source import LogSourceAnomaly
 from app.models.property_watch import PwAnomaly
+from app.models.rule_anomaly import RuleAnomaly
 from app.models.triage import AnomalyTriage, AnomalyTriageEvent
 from app.models.waf import WafAnomaly
 from app.schemas.triage import TriageSummaryOut
@@ -31,6 +32,7 @@ FAMILY_MODELS: dict[AnomalyFamily, Any] = {
     AnomalyFamily.WAF: WafAnomaly,
     AnomalyFamily.IPS: IpsAnomaly,
     AnomalyFamily.PROPERTY_WATCH: PwAnomaly,
+    AnomalyFamily.RULE: RuleAnomaly,
 }
 
 

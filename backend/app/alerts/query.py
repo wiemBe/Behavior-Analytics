@@ -40,8 +40,8 @@ from app.models.waf import WafEndpoint
 class AlertFamily(StrEnum):
     """The closed set of families that open alerts.
 
-    The first four are the anomaly families (`log_source`, `waf`, `ips`,
-    `property_watch`); the rest are producers that raise alerts but are not part
+    The first five are the anomaly families (`log_source`, `waf`, `ips`,
+    `property_watch`, `rule`); the rest are producers that raise alerts but are not part
     of the anomaly lifecycle. Every member is named after what the alert is
     about, never after a specific detector type.
     """
@@ -50,6 +50,7 @@ class AlertFamily(StrEnum):
     WAF = "waf"
     IPS = "ips"
     PROPERTY_WATCH = "property_watch"
+    RULE = "rule"
     CATCHALL_SENDER = "catchall_sender"
     CUSTOM_RULE = "custom_rule"
     SCHEDULED_SEARCH = "scheduled_search"
@@ -65,6 +66,7 @@ FAMILY_BY_SOURCE_TYPE: dict[str, AlertFamily] = {
     "ips_entity": AlertFamily.IPS,
     "ips_source": AlertFamily.IPS,
     "pw_value": AlertFamily.PROPERTY_WATCH,
+    "analytics_rule": AlertFamily.RULE,
     "catchall_sender": AlertFamily.CATCHALL_SENDER,
     "custom_rule": AlertFamily.CUSTOM_RULE,
     "scheduled_search": AlertFamily.SCHEDULED_SEARCH,

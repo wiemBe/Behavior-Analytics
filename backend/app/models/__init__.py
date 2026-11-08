@@ -88,6 +88,11 @@ from app.models.rule import (
     RuleStateTransition,
     TechniqueMapping,
 )
+from app.models.rule_anomaly import (
+    RuleAnomaly,
+    RuleAnomalyTransition,
+    RuleDetectorState,
+)
 from app.models.search import (
     ScheduledSearch,
     SearchExecution,
@@ -207,8 +212,11 @@ __all__ = [
     "QRadarHealthRun",
     "QRadarInstance",
     "Role",
+    "RuleAnomaly",
+    "RuleAnomalyTransition",
     "RuleCapacitySample",
     "RuleDependency",
+    "RuleDetectorState",
     "RuleHealthSnapshot",
     "RuleMatchMetric",
     "RuleMatchWindow",

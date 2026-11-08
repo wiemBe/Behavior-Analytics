@@ -314,6 +314,8 @@ Field names and blocked/allowed values belong to each source's versioned profile
 | `IPS_ANOMALY_RETENTION_BATCH_SIZE` | `5000` | Incident rows deleted per batch |
 | `IPS_ANOMALY_RETENTION_MAX_BATCHES` | `20` | Batches per incident run |
 | `IPS_ANOMALY_RETENTION_INTERVAL_SECONDS` | `86400` | Incident retention schedule |
+| `RULE_ANOMALY_RETENTION_DAYS` | `365` | Closed rule-match incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). `1`–`3650`. Task `apply_rule_anomaly_retention`; not gated by `RETENTION_ENABLED` or by a collection switch. A `rule_detector_state` pointer or any alert naming the incident in `source_anomaly_ids` keeps it, whatever the alert status |
+| `RULE_ANOMALY_RETENTION_INTERVAL_SECONDS` | `86400` | Incident retention schedule. Batches use `IPS_ANOMALY_RETENTION_BATCH_SIZE` and `IPS_ANOMALY_RETENTION_MAX_BATCHES` |
 | `IPS_SPIKE_RATIO` | `2.0` | Entity spike minimum multiple |
 | `IPS_MIN_ABSOLUTE_DELTA_EVENTS` | `50` | Minimum absolute rise for an entity spike |
 | `IPS_MIN_BUCKET_EVENTS` | `20` | Minimum bucket population for an entity spike |
