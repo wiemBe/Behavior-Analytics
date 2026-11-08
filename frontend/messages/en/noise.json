@@ -262,5 +262,138 @@
     },
     "baseline": "Baseline version {version}, computed <time></time>.",
     "partialNote": "They describe that span only, not the whole window."
+  },
+  "model": {
+    "title": "Low-volume model",
+    "shadow": "A shadow view. No detector uses it and it opens no alert. It shows what a count model would see in the stored baseline cells.",
+    "loading": "Reading the stored baseline cells and replaying the window.",
+    "state": {
+      "label": "Model state",
+      "OK": "Scored",
+      "INSUFFICIENT_DATA": "Insufficient data",
+      "NOT_JUDGED": "Not judged",
+      "PARTIAL": "Partial"
+    },
+    "noReason": "The model has no sentence for this state.",
+    "facts": {
+      "window": "Window",
+      "windowValue": "{covered} of {window} days covered",
+      "span": "First to last bucket",
+    "to": "to",
+      "p": "Tail threshold",
+      "pValue": "p = {p}: a bucket counts when its count is at least this unlikely under the fitted model",
+      "k": "Shrinkage",
+      "kValue": "A thin cell's median is pulled toward the source's pooled median with k = {k}; the weight on the cell is n / (n + {k})"
+    },
+    "partial": "Partial window.",
+    "partialText": "{covered} of {window} days are stored. Tail counts use only the buckets that exist; a missing bucket is a gap, not a zero.",
+    "disabled": {
+      "title": "The low-volume model preview is switched off",
+      "text": "The setting LOW_VOLUME_MODEL_PREVIEW_ENABLED is false on this deployment, so this view is not computed. Nothing else on this page depends on it."
+    },
+    "unknown": {
+      "title": "The model could not be read",
+      "text": "The server does not know this log source. Go back to the noisy sources and open it again."
+    },
+    "forbidden": {
+      "title": "The model needs permission",
+      "text": "Reading the low-volume model requires the read:anomalies permission."
+    },
+    "expired": {
+      "title": "The session has expired",
+      "text": "Sign in again to read the low-volume model."
+    },
+    "failed": {
+      "title": "The model could not be loaded",
+      "text": "The count-model view is unknown, not empty. Retry; if it fails again, the backend log names the cause."
+    },
+    "retry": "Retry",
+    "shifts": {
+      "title": "{count, plural, one {# cell proposes a new normal} other {# cells propose a new normal}}",
+      "intro": "Proposals only. Nothing is written back to a baseline.",
+      "none": "No cell proposes a new normal: no last-7-day median left its own 5th to 95th percentile range with at least 8 samples on both sides.",
+      "item": "{metric}, {weekday} {hour} UTC",
+      "change": "{recent} now against {cell} stored"
+    },
+    "metric": {
+      "event_count": "Event count",
+      "average_eps": "Average rate",
+      "unit": {
+        "event_count": "events per bucket",
+        "average_eps": "events per second"
+      }
+    },
+    "weekday": {
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat",
+      "7": "Sun"
+    },
+    "grid": {
+      "caption": "{metric}: stored baseline cell for each weekday and UTC hour. The number in a cell is how many buckets of the last 28 days fell below p on either tail.",
+      "weekdayHead": "Weekday, with the hour in UTC",
+      "cornerUtc": "UTC",
+      "unitLine": "Each cell: buckets in the last 28 days below p, by weekday and UTC hour. The metric itself is measured in {unit}.",
+      "hoursHead": "UTC hour",
+      "cellLabel": "{metric}, {weekday} {hour} UTC: {state}",
+      "withTails": "{total} buckets below p",
+      "noTails": "no tail count",
+      "empty": "The response holds no cells for this metric."
+    },
+    "legend": {
+      "title": "Legend",
+      "bin0": "0 buckets below p",
+      "bin1": "1 to 2",
+      "bin2": "3 to 9",
+      "bin3": "10 or more",
+      "insufficient": "Insufficient data: no tail count",
+      "notJudged": "Not judged: no tail count",
+      "shift": "Proposes a new normal"
+    },
+    "detail": {
+      "title": "Selected cell",
+      "none": "Select a cell to read its numbers.",
+      "heading": "{metric}, {weekday} {hour} UTC",
+      "state": "State",
+      "family": "Fit",
+      "poisson": "Poisson",
+      "negative_binomial": "Negative binomial",
+      "notFit": "not fitted",
+      "samples": "Samples",
+      "samplesValue": "{count} stored observations",
+      "mean": "Mean",
+      "dispersion": "Dispersion",
+      "dispersionNote": "variance / mean",
+      "rawMedian": "Raw median",
+      "estimate": "Shrunk estimate",
+      "estimateWeight": "weight {weight} on this cell, n = {n}, k = {k}, pooled median {pooled}",
+      "tails": "Buckets below p",
+      "upper": "{count} above the mean (upper tail)",
+      "lower": "{count} below the mean (lower tail)",
+      "scored": "of {count} buckets scored in 28 days",
+      "levelShift": "Level shift",
+      "shiftText": "The last 7 days' median is {recent}; the stored cell median is {cell} (5th to 95th percentile {p05} to {p95}). Recent samples {recentSamples}, stored samples {cellSamples}. Started at the bucket of",
+      "shiftNote": "Proposal only. Nothing is written.",
+      "noShift": "none",
+      "reason": "Why no tail count",
+      "unmeasured": "not measured"
+    },
+    "calibration": {
+      "title": "Calibration against closed noise",
+      "intro": "Of the buckets the current detectors flagged when the last 28 days were replayed, how many fall on incidents operators already closed as NOISE. This is evidence for a later model, not a verdict.",
+      "caption": "Replayed flags per detector and how many fell on incidents closed as noise",
+      "detector": "Detector",
+      "flags": "Replayed flags",
+      "flagsUnit": "buckets",
+      "noiseFlags": "On noise incidents",
+      "noiseFlagsUnit": "buckets",
+      "note": "Note",
+      "excluded": "Not run: the source's direction setting excludes this detector.",
+      "refused": "Not calibrated.",
+      "none": "The response holds no calibration rows."
+    }
   }
 }

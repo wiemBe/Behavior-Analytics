@@ -9,6 +9,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { NoiseModelView } from "@/components/noise/NoiseModelView";
 import { NoiseDetectorCounts } from "@/components/noise/NoiseDetectorCounts";
 import { stripJudgedPrefix } from "@/components/noise/NoiseTable";
 import { NoiseTuning } from "@/components/noise/NoiseTuning";
@@ -170,6 +171,8 @@ async function NoiseDetailPageView({
         </h2>
         <NoiseTuning logSourceId={detail.log_source_id} initial={detail.current} />
       </section>
+
+      {!off && <NoiseModelView logSourceId={detail.log_source_id} />}
     </>
   );
 }
