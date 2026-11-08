@@ -206,6 +206,7 @@ trimmed to the dimensions its DSM populates; the rest are recorded unavailable.
 | `LOG_SOURCE_ANOMALY_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule. Minimum `3600` |
 | `OUTAGE_ALERT_DEFAULT` | `ALERT` | Default source-silence policy when no override applies |
 | `ALERT_POLICY_DEFAULT` | `ALERT` | What an anomaly does when no `alert_policy` row applies: `ALERT`, `RECORD_ONLY` or `DIGEST`. `ALERT` keeps the pre-SOC-17c behaviour, so an upgrade with no rows changes nothing |
+| `LOW_VOLUME_MODEL_PREVIEW_ENABLED` | `true` | SOC-17e. Read-only count-model view at GET `/api/v1/noise/sources/{id}/model`. Default on; it writes nothing and opens no alert. `false` answers 404 |
 
 ## WAF behavior
 

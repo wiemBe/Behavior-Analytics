@@ -593,6 +593,13 @@ class Settings(BaseSettings):
     #: up rather than skipped.
     digest_hour_utc: int = Field(default=7, ge=0, le=23)
 
+    # --- SOC-17e: shadow count-model view -----------------------------------
+    #: Read-only count model, shrinkage and level-shift proposal. Default on.
+    #: Writes nothing and opens no alert. False hides
+    #: GET /noise/sources/{id}/model with 404, same shape as a disabled
+    #: history-backfill console.
+    low_volume_model_preview_enabled: bool = True
+
     # --- Phase A explanation evidence ---------------------------------------
     explanation_enabled: bool = True
     #: Values retained per dimension. Bounds both the Ariel result and the
