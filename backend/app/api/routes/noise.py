@@ -1,13 +1,14 @@
-"""Noisy-sources list API (SOC-17a, design §2.2).
+"""Noisy-sources list API (SOC-17a, design §2.2) and the shadow count model (SOC-17e).
 
-Two read-only routes, mounted with the other behaviour reads under
-``read:anomalies``. The list answers "which sources keep firing, and how much of
-it is noise" in three statements; the detail route answers the same for one
-source and adds its per-detector breakdown and current settings.
+Read-only routes, mounted with the other behaviour reads under ``read:anomalies``.
+The list answers "which sources keep firing, and how much of it is noise" in
+three statements; the detail route answers the same for one source and adds its
+per-detector breakdown and current settings. The model route describes one
+source's stored cells and writes nothing.
 
-Nothing here writes, and neither route accepts a source filter, an AQL string or
-a detector name from the client: the only inputs are a window, an order and a
-page, so no caller can turn this read into an ad-hoc query surface.
+Nothing here writes, and no route accepts a source filter, an AQL string or a
+detector name from the client: the only inputs are a window, an order, a page
+or a source id, so no caller can turn this read into an ad-hoc query surface.
 """
 
 from __future__ import annotations
@@ -19,14 +20,17 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import SessionDep, SettingsDep
 from app.noise.backtest import NoiseBacktest
+from app.noise.models import LowVolumeModel
 from app.noise.read_model import WINDOW_DAYS, NoiseOrder, NoiseReadModel
 from app.schemas.noise import (
     NoiseListOut,
+    NoiseModelOut,
     NoisePreviewIn,
     NoisePreviewOut,
     NoiseSourceDetailOut,
     detail_out,
     list_out,
+    model_out,
     preview_out,
 )
 
@@ -108,3 +112,27 @@ async def preview_noise_source(
     if result is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
     return preview_out(result)
+
+
+@router.get("/sources/{log_source_id}/model", response_model=NoiseModelOut)
+async def get_noise_source_model(
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> NoiseModelOut:
+    """The shadow count model, shrinkage and level-shift proposal for one source.
+
+    Read-only. A disabled preview is a 404, the same shape as a disabled
+    history-backfill console (``history_backfill.py`` lines 8-9): the detail
+    names the feature and nothing else, and it is distinct from an unknown
+    source. The loader writes nothing and opens no alert.
+    """
+    if not settings.low_volume_model_preview_enabled:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "low-volume model preview is not enabled",
+        )
+    view = await LowVolumeModel(session, settings=settings).load(log_source_id)
+    if view is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
+    return model_out(view)

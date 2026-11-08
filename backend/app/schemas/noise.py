@@ -25,6 +25,14 @@ from app.noise.backtest import (
     ReplayResult,
     ReplayState,
 )
+from app.noise.models import (
+    CalibrationRow,
+    CellModel,
+    LevelShift,
+    ModelState,
+    ModelView,
+    Shrinkage,
+)
 from app.noise.read_model import (
     Coverage,
     CoverageState,
@@ -471,4 +479,162 @@ def preview_out(value: ReplayResult) -> NoisePreviewOut:
             criticality=value.effective_criticality,
             lab_mode=value.lab_mode,
         ),
+    )
+
+
+def _num(value: float | None) -> float | None:
+    """Six decimal places, so the wire form of a ratio does not drift."""
+    if value is None:
+        return None
+    return round(float(value), 6)
+
+
+class NoiseShrinkageOut(BaseModel):
+    """Display-only shrunk median. ``weight`` is the weight on the cell."""
+
+    n: int
+    k: int
+    raw_median: float | None = None
+    pooled_median: float | None = None
+    weight: float
+    estimate: float | None = None
+
+
+class NoiseLevelShiftOut(BaseModel):
+    """A proposal. Nothing here was written back to the cell."""
+
+    recent_median: float
+    cell_median: float
+    p05: float
+    p95: float
+    recent_samples: int
+    cell_samples: int
+    started_at: datetime
+
+
+class NoiseModelCellOut(BaseModel):
+    """One baseline cell. Tail counts are null when the model was not scored."""
+
+    metric: str
+    weekday: int
+    hour: int
+    state: ModelState
+    reason: NoiseReasonOut | None = None
+    sample_count: int
+    observation_count: int
+    reliable: bool
+    mean: float | None = None
+    variance: float | None = None
+    dispersion: float | None = None
+    model: Literal["poisson", "negative_binomial"] | None = None
+    nb_r: float | None = None
+    nb_p: float | None = None
+    buckets_scored: int | None = None
+    upper_tail_below: int | None = None
+    lower_tail_below: int | None = None
+    shrinkage: NoiseShrinkageOut
+    level_shift: NoiseLevelShiftOut | None = None
+
+
+class NoiseModelCalibrationOut(BaseModel):
+    """Replayed flags against closed NOISE incidents. A null count was not measured."""
+
+    anomaly_type: AnomalyType
+    replayed_flags: int | None = None
+    noise_flags: int | None = None
+    excluded_by_direction: bool = False
+    reason: NoiseReasonOut | None = None
+
+
+class NoiseModelOut(BaseModel):
+    """The shadow count-model view. It writes nothing and opens no alert."""
+
+    log_source_id: uuid.UUID
+    state: ModelState
+    reason: NoiseReasonOut | None = None
+    window_days: int
+    covered_days: int
+    first_bucket: datetime | None = None
+    last_bucket: datetime | None = None
+    p_threshold: float
+    shrinkage_k: int
+    cells: list[NoiseModelCellOut]
+    calibration: list[NoiseModelCalibrationOut]
+    calibration_reason: NoiseReasonOut | None = None
+
+
+def _shrinkage_out(value: Shrinkage) -> NoiseShrinkageOut:
+    return NoiseShrinkageOut(
+        n=value.n,
+        k=value.k,
+        raw_median=_num(value.raw_median),
+        pooled_median=_num(value.pooled_median),
+        weight=_num(value.weight) or 0.0,
+        estimate=_num(value.estimate),
+    )
+
+
+def _level_shift_out(value: LevelShift | None) -> NoiseLevelShiftOut | None:
+    if value is None:
+        return None
+    return NoiseLevelShiftOut(
+        recent_median=_num(value.recent_median) or 0.0,
+        cell_median=_num(value.cell_median) or 0.0,
+        p05=_num(value.p05) or 0.0,
+        p95=_num(value.p95) or 0.0,
+        recent_samples=value.recent_samples,
+        cell_samples=value.cell_samples,
+        started_at=value.started_at,
+    )
+
+
+def _cell_out(value: CellModel) -> NoiseModelCellOut:
+    model = value.model if value.model in ("poisson", "negative_binomial") else None
+    return NoiseModelCellOut(
+        metric=value.metric,
+        weekday=value.weekday,
+        hour=value.hour,
+        state=value.state,
+        reason=_reason_out(value.reason),
+        sample_count=value.sample_count,
+        observation_count=value.observation_count,
+        reliable=value.reliable,
+        mean=_num(value.mean),
+        variance=_num(value.variance),
+        dispersion=_num(value.dispersion),
+        model=model,
+        nb_r=_num(value.nb_r),
+        nb_p=_num(value.nb_p),
+        buckets_scored=value.buckets_scored,
+        upper_tail_below=value.upper_tail_below,
+        lower_tail_below=value.lower_tail_below,
+        shrinkage=_shrinkage_out(value.shrinkage),
+        level_shift=_level_shift_out(value.level_shift),
+    )
+
+
+def _calibration_out(value: CalibrationRow) -> NoiseModelCalibrationOut:
+    return NoiseModelCalibrationOut(
+        anomaly_type=value.anomaly_type,
+        replayed_flags=value.replayed_flags,
+        noise_flags=value.noise_flags,
+        excluded_by_direction=value.excluded_by_direction,
+        reason=_reason_out(value.reason),
+    )
+
+
+def model_out(value: ModelView) -> NoiseModelOut:
+    return NoiseModelOut(
+        log_source_id=value.log_source_id,
+        state=value.state,
+        reason=_reason_out(value.reason),
+        window_days=value.window_days,
+        covered_days=value.covered_days,
+        first_bucket=value.first_bucket,
+        last_bucket=value.last_bucket,
+        p_threshold=_num(value.p_threshold) or 0.0,
+        shrinkage_k=value.shrinkage_k,
+        cells=[_cell_out(item) for item in value.cells],
+        calibration=[_calibration_out(item) for item in value.calibration],
+        calibration_reason=_reason_out(value.calibration_reason),
     )

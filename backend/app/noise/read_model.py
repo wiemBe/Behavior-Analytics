@@ -166,6 +166,20 @@ class IncidentGroup:
 
 
 @dataclass(frozen=True)
+class NoiseIncidentSpan:
+    """One closed NOISE incident, as the interval a replayed flag can fall in.
+
+    ``started_at`` is the anomaly start, or ``detected_at`` when that is unset.
+    ``ended_at`` is the anomaly end, else resolution, else ``detected_at``. The
+    end is never earlier than the start.
+    """
+
+    anomaly_type: AnomalyType
+    started_at: datetime
+    ended_at: datetime
+
+
+@dataclass(frozen=True)
 class AlertGroup:
     """One (source, detector) row of statement 3."""
 
@@ -831,3 +845,64 @@ class NoiseReadModel:
             ),
             coverage=coverage_for(DETAIL_WINDOW_DAYS, retention_days),
         )
+
+    async def noise_incident_spans(
+        self,
+        log_source_id: uuid.UUID,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> list[NoiseIncidentSpan]:
+        """Closed NOISE incidents of this source whose spans meet the window.
+
+        One statement. The three triage predicates are the ones ``incident_groups``
+        builds (``closed``, ``has_disposition``, ``noise``): family ``log_source``,
+        status CLOSED, disposition NOISE. The window intersection is the one
+        ``NoiseBacktest._anomalies`` uses. This method is not part of the list's
+        three reads; the detail route does not call it.
+        """
+        closed = AnomalyTriage.status == TriageStatus.CLOSED.value
+        has_disposition = AnomalyTriage.disposition.is_not(None)
+        noise = AnomalyTriage.disposition == TriageDisposition.NOISE.value
+        statement = (
+            select(
+                LogSourceAnomaly.anomaly_type,
+                LogSourceAnomaly.anomaly_start,
+                LogSourceAnomaly.detected_at,
+                LogSourceAnomaly.anomaly_end,
+                LogSourceAnomaly.resolved_at,
+            )
+            .select_from(LogSourceAnomaly)
+            .join(
+                AnomalyTriage,
+                and_(
+                    AnomalyTriage.family == AnomalyFamily.LOG_SOURCE.value,
+                    AnomalyTriage.anomaly_id == LogSourceAnomaly.id,
+                ),
+            )
+            .where(
+                LogSourceAnomaly.log_source_id == log_source_id,
+                LogSourceAnomaly.detected_at < window_end,
+                (
+                    LogSourceAnomaly.resolved_at.is_(None)
+                    | (LogSourceAnomaly.resolved_at >= window_start)
+                ),
+                closed,
+                has_disposition,
+                noise,
+            )
+        )
+        rows = (await self.session.execute(statement)).all()
+        spans: list[NoiseIncidentSpan] = []
+        for row in rows:
+            started = row.anomaly_start or row.detected_at
+            ended = row.anomaly_end or row.resolved_at or row.detected_at
+            if ended < started:
+                ended = started
+            spans.append(
+                NoiseIncidentSpan(
+                    anomaly_type=AnomalyType(row.anomaly_type),
+                    started_at=started,
+                    ended_at=ended,
+                )
+            )
+        return spans

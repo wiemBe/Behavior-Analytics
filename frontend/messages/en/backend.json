@@ -645,6 +645,21 @@
     }
   },
   "noise": {
+    "model": {
+      "buckets_not_judged": "{count} of {total} buckets could not be judged, more than the 10% a count may rest on.",
+      "dispersion": "The dispersion is {dispersion}, above 4, so this is not a count process this view can score.",
+      "insufficient_coverage": "Only {covered} of {window} days are stored, fewer than 7, so no tail probability is reported.",
+      "mean_zero": "The mean is 0, so there is no variance information and no tail probability.",
+      "nb_parameters": "The negative binomial parameters are not defined for this dispersion, so no tail probability is reported.",
+      "no_baseline": "Not judged: this source has no baseline cell.",
+      "no_variance": "There are not enough finite observations to estimate a variance, so no tail probability is reported.",
+      "not_counts": "The stored observations are not non-negative integer counts, so no tail probability is reported.",
+      "not_judged": "Not judged: no reliable baseline cell.",
+      "not_monitored": "This source is not monitored, so it is not judged.",
+      "partial": "Some buckets in the {window}-day window are missing, so the tail counts use only the buckets that are present ({covered} days covered).",
+      "too_few_samples": "Only {count} observations are stored; a count model needs at least {minimum}.",
+      "unreliable": "This cell is still learning, so no count model is fit."
+    },
     "preview": {
       "direction_disabled": "Not replayed: the source''s direction setting disables this detector.",
       "insufficient_coverage": "Only {covered} of {window} days are stored; a replay needs at least 7.",

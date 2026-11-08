@@ -312,6 +312,51 @@ def fold_buckets(
     return counts, judged, skipped
 
 
+@dataclass(frozen=True)
+class ReplayTrace:
+    """Per-bucket anomalous signals from the same detector call as ``fold_buckets``.
+
+    ``flags`` lists bucket starts whose evidence was anomalous. A flag is not an
+    OPEN transition: hysteresis is not applied. A detector that did not run is
+    absent from ``flags`` and ``judged`` and named in ``skipped``.
+    """
+
+    flags: Mapping[AnomalyType, tuple[datetime, ...]]
+    judged: Mapping[AnomalyType, int]
+    skipped: Mapping[AnomalyType, str]
+
+
+def replay_trace(
+    buckets: Sequence[BucketInput],
+    *,
+    thresholds: Thresholds,
+) -> ReplayTrace:
+    """Anomalous buckets from the ``run_detectors`` call ``fold_buckets`` makes.
+
+    The context and the detector call match ``fold_buckets`` exactly. This
+    helper does not advance lifecycle counters, so it cannot drift into a
+    second definition of an incident. ``fold_buckets`` itself is unchanged.
+    """
+    flags: dict[AnomalyType, list[datetime]] = {}
+    judged: dict[AnomalyType, int] = {}
+    skipped: dict[AnomalyType, str] = {}
+    for bucket in buckets:
+        ctx = detection_context(bucket, thresholds)
+        evidences, unsupported = run_detectors(ctx, bucket.telemetry)
+        for kind, why in unsupported.items():
+            skipped.setdefault(AnomalyType(kind), why)
+        for evidence in evidences:
+            kind = evidence.anomaly_type
+            judged[kind] = judged.get(kind, 0) + 1
+            if evidence.is_anomalous:
+                flags.setdefault(kind, []).append(bucket.start)
+    return ReplayTrace(
+        flags={kind: tuple(times) for kind, times in flags.items()},
+        judged=judged,
+        skipped=skipped,
+    )
+
+
 def _as_counts(
     counts: Mapping[AnomalyType, int],
     judged: Mapping[AnomalyType, int],

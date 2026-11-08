@@ -5479,6 +5479,70 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "reconstructed.",
         count={"count": 8},
     ),
+    # --- SOC-17e: the shadow count model. Display only; never a verdict. ---
+    _fixed(
+        "noise.model.not_monitored",
+        "This source is not monitored, so it is not judged.",
+    ),
+    _fixed(
+        "noise.model.no_baseline",
+        "Not judged: this source has no baseline cell.",
+    ),
+    _fixed(
+        "noise.model.not_judged",
+        "Not judged: no reliable baseline cell.",
+    ),
+    _mixed(
+        "noise.model.buckets_not_judged",
+        "{count} of {total} buckets could not be judged, more than the 10% a count may rest on.",
+        count={"count": 12, "total": 8064},
+    ),
+    _mixed(
+        "noise.model.too_few_samples",
+        "Only {count} observations are stored; a count model needs at least {minimum}.",
+        count={"count": 3, "minimum": 8},
+    ),
+    _fixed(
+        "noise.model.unreliable",
+        "This cell is still learning, so no count model is fit.",
+    ),
+    _fixed(
+        "noise.model.mean_zero",
+        "The mean is 0, so there is no variance information and no tail probability.",
+    ),
+    _fixed(
+        "noise.model.no_variance",
+        "There are not enough finite observations to estimate a variance, so no tail "
+        "probability is reported.",
+    ),
+    _fixed(
+        "noise.model.not_counts",
+        "The stored observations are not non-negative integer counts, so no tail probability "
+        "is reported.",
+    ),
+    _mixed(
+        "noise.model.dispersion",
+        "The dispersion is {dispersion}, above 4, so this is not a count process this view "
+        "can score.",
+        dispersion=(_TRIMMED, 5.2),
+    ),
+    _fixed(
+        "noise.model.nb_parameters",
+        "The negative binomial parameters are not defined for this dispersion, so no tail "
+        "probability is reported.",
+    ),
+    _mixed(
+        "noise.model.partial",
+        "Some buckets in the {window}-day window are missing, so the tail counts use only "
+        "the buckets that are present ({covered} days covered).",
+        count={"covered": 14, "window": 28},
+    ),
+    _mixed(
+        "noise.model.insufficient_coverage",
+        "Only {covered} of {window} days are stored, fewer than 7, so no tail probability "
+        "is reported.",
+        count={"covered": 3, "window": 28},
+    ),
 )
 
 

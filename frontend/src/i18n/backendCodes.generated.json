@@ -6830,6 +6830,167 @@
     "sample_english_params": {},
     "template": "A bucket in this window lost destination-IP entities, so the ranking is a lower bound."
   },
+  "noise.model.buckets_not_judged": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "total": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 12,
+      "total": 8064
+    },
+    "sample_english": "12 of 8064 buckets could not be judged, more than the 10% a count may rest on.",
+    "sample_english_params": {
+      "count": "12",
+      "total": "8064"
+    },
+    "template": "{count} of {total} buckets could not be judged, more than the 10% a count may rest on."
+  },
+  "noise.model.dispersion": {
+    "params": {
+      "dispersion": {
+        "kind": "number",
+        "precision": 3,
+        "style": "trimmed"
+      }
+    },
+    "sample": {
+      "dispersion": 5.2
+    },
+    "sample_english": "The dispersion is 5.2, above 4, so this is not a count process this view can score.",
+    "sample_english_params": {
+      "dispersion": "5.2"
+    },
+    "template": "The dispersion is {dispersion}, above 4, so this is not a count process this view can score."
+  },
+  "noise.model.insufficient_coverage": {
+    "params": {
+      "covered": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "window": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "covered": 3,
+      "window": 28
+    },
+    "sample_english": "Only 3 of 28 days are stored, fewer than 7, so no tail probability is reported.",
+    "sample_english_params": {
+      "covered": "3",
+      "window": "28"
+    },
+    "template": "Only {covered} of {window} days are stored, fewer than 7, so no tail probability is reported."
+  },
+  "noise.model.mean_zero": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The mean is 0, so there is no variance information and no tail probability.",
+    "sample_english_params": {},
+    "template": "The mean is 0, so there is no variance information and no tail probability."
+  },
+  "noise.model.nb_parameters": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The negative binomial parameters are not defined for this dispersion, so no tail probability is reported.",
+    "sample_english_params": {},
+    "template": "The negative binomial parameters are not defined for this dispersion, so no tail probability is reported."
+  },
+  "noise.model.no_baseline": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Not judged: this source has no baseline cell.",
+    "sample_english_params": {},
+    "template": "Not judged: this source has no baseline cell."
+  },
+  "noise.model.no_variance": {
+    "params": {},
+    "sample": {},
+    "sample_english": "There are not enough finite observations to estimate a variance, so no tail probability is reported.",
+    "sample_english_params": {},
+    "template": "There are not enough finite observations to estimate a variance, so no tail probability is reported."
+  },
+  "noise.model.not_counts": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The stored observations are not non-negative integer counts, so no tail probability is reported.",
+    "sample_english_params": {},
+    "template": "The stored observations are not non-negative integer counts, so no tail probability is reported."
+  },
+  "noise.model.not_judged": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Not judged: no reliable baseline cell.",
+    "sample_english_params": {},
+    "template": "Not judged: no reliable baseline cell."
+  },
+  "noise.model.not_monitored": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This source is not monitored, so it is not judged.",
+    "sample_english_params": {},
+    "template": "This source is not monitored, so it is not judged."
+  },
+  "noise.model.partial": {
+    "params": {
+      "covered": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "window": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "covered": 14,
+      "window": 28
+    },
+    "sample_english": "Some buckets in the 28-day window are missing, so the tail counts use only the buckets that are present (14 days covered).",
+    "sample_english_params": {
+      "covered": "14",
+      "window": "28"
+    },
+    "template": "Some buckets in the {window}-day window are missing, so the tail counts use only the buckets that are present ({covered} days covered)."
+  },
+  "noise.model.too_few_samples": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 3,
+      "minimum": 8
+    },
+    "sample_english": "Only 3 observations are stored; a count model needs at least 8.",
+    "sample_english_params": {
+      "count": "3",
+      "minimum": "8"
+    },
+    "template": "Only {count} observations are stored; a count model needs at least {minimum}."
+  },
+  "noise.model.unreliable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This cell is still learning, so no count model is fit.",
+    "sample_english_params": {},
+    "template": "This cell is still learning, so no count model is fit."
+  },
   "noise.preview.direction_disabled": {
     "params": {},
     "sample": {},
