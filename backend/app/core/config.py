@@ -335,6 +335,11 @@ class Settings(BaseSettings):
     ips_anomaly_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
     ips_anomaly_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     ips_anomaly_retention_interval_seconds: int = Field(default=86400, ge=3600)
+    #: Closed rule-match incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). The same
+    #: IPS shape: not gated by RETENTION_ENABLED, and the batch size and cap are
+    #: the IPS incident ones so one task shape serves both deleters.
+    rule_anomaly_retention_days: int = Field(default=365, ge=1, le=3650)
+    rule_anomaly_retention_interval_seconds: int = Field(default=86400, ge=3600)
     #: Days of version-compatible IPS buckets considered by a baseline rebuild.
     ips_baseline_lookback_days: int = Field(default=28, ge=1)
     #: IPS subjects loaded and upserted together during a bounded baseline rebuild.

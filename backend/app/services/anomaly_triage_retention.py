@@ -50,6 +50,13 @@ DELETE_SQL: dict[AnomalyFamily, str] = {
         "AND NOT EXISTS (SELECT 1 FROM pw_anomaly a WHERE a.id = t.anomaly_id) "
         "LIMIT :batch)"
     ),
+    AnomalyFamily.RULE: (
+        "DELETE FROM anomaly_triage WHERE id IN ("
+        "SELECT t.id FROM anomaly_triage t "
+        "WHERE t.family = 'rule' "
+        "AND NOT EXISTS (SELECT 1 FROM rule_anomaly a WHERE a.id = t.anomaly_id) "
+        "LIMIT :batch)"
+    ),
 }
 
 

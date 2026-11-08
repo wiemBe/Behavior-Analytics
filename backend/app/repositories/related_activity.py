@@ -239,6 +239,10 @@ class RelatedActivityRepository:
             return await self._waf_anomalies(source_id, anchor_id, window_start, window_end)
         if family is AnomalyFamily.IPS:
             return await self._ips_anomalies(source_id, anchor_id, window_start, window_end)
+        if family is AnomalyFamily.RULE:
+            # A rule incident has no log-source subject, so it is not part of a
+            # source's related activity. The fall-through below is property watch.
+            return []
         return await self._pw_anomalies(source_id, anchor_id, window_start, window_end)
 
     async def _log_source_anomalies(

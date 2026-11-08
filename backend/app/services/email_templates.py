@@ -42,6 +42,7 @@ ALERT_TYPE_LABELS: dict[str, str] = {
     "catchall_sender": "Catch-all sender",
     "qradar_instance": "QRadar instance",
     "scheduled_search": "Scheduled search",
+    "analytics_rule": "Analytics rule",
     "digest": "Daily digest",
 }
 

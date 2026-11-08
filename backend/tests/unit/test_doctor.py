@@ -340,7 +340,9 @@ async def test_batch_retention_lists_every_deleter_and_queries_nothing(
         assert deleter.task not in result.message
         for item in deleter.tables:
             assert item.table in result.message
-    assert _day_group(result.message, 365) == "ips_anomaly, log_source_anomaly"
+    assert _day_group(result.message, 365) == (
+        "ips_anomaly, log_source_anomaly, rule_anomaly"
+    )
     rendered_text = render_text([result])
     rendered_json = render_json([result])
     assert json.loads(rendered_json)[0]["message"] == result.message

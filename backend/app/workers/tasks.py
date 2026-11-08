@@ -77,6 +77,7 @@ from app.services.qradar_access import (
     finish_run,
 )
 from app.services.qradar_health_retention import QRadarHealthRetention
+from app.services.rule_anomaly_retention import RuleAnomalyRetention
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.rule_match_retention import RuleMatchRetention
 from app.services.search_executor import SearchExecutor
@@ -1721,6 +1722,17 @@ async def apply_ips_anomaly_retention() -> dict:
         return (await IpsAnomalyRetention(session).run()).as_dict()
 
 
+async def apply_rule_anomaly_retention() -> dict:
+    """Delete closed rule-match incidents past the retention window.
+
+    Not the rule-match metric task: a lookback skip there must not freeze incident
+    aging. Open incidents are never pruned, whatever their age.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await RuleAnomalyRetention(session).run()).as_dict()
+
+
 # ------------------------------------------------------- property watches (G.6)
 async def dispatch_property_watch_collection(instance_name: str | None = None) -> dict:
     """Run one property-watch plan per instance after claiming its cadence slot.
@@ -2036,6 +2048,11 @@ def apply_ips_retention_task() -> dict:
 @celery_app.task(name="apply_ips_anomaly_retention")
 def apply_ips_anomaly_retention_task() -> dict:
     return _run(apply_ips_anomaly_retention())
+
+
+@celery_app.task(name="apply_rule_anomaly_retention")
+def apply_rule_anomaly_retention_task() -> dict:
+    return _run(apply_rule_anomaly_retention())
 
 
 @celery_app.task(name="dispatch_property_watch_collection")

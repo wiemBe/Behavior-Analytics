@@ -253,6 +253,12 @@ celery_app.conf.beat_schedule = {
         "task": "apply_ips_anomaly_retention",
         "schedule": float(settings.ips_anomaly_retention_interval_seconds),
     },
+    "apply-rule-anomaly-retention": {
+        # Closed rule-match incidents. Separate from apply_rule_match_retention so a
+        # lookback skip on the metric task cannot freeze the 365-day incident delete.
+        "task": "apply_rule_anomaly_retention",
+        "schedule": float(settings.rule_anomaly_retention_interval_seconds),
+    },
     # --- Phase G -------------------------------------------------------------
     "dispatch-property-watch-collection": {
         # Claims PROPERTY_WATCH before it builds a provider, so a losing or early
