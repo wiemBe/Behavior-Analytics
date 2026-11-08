@@ -5389,3 +5389,91 @@ export const homeReads = {
     fetch: (signal) => request<GeoCountries>(geoCountriesPath(window, direction), { signal }),
   }),
 };
+
+// --- the triage queue (SOC-4) -------------------------------------------------
+// Mirrors backend/app/schemas/queue.py. A source that did not load has `count: null`, never 0.
+export type QueueSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
+export type QueueKind = "anomaly" | "alert" | "offense" | "source_review" | "catchall_sender";
+export type QueueScope = "mine" | "unassigned" | "all";
+export type QueueFamily = "log_source" | "waf" | "ips" | "property_watch";
+export type QueueSourceState = "OK" | "FORBIDDEN" | "FAILED" | "NOT_COLLECTED" | "STALE" | "PARTIAL";
+export type QueueCompareKind = "DEFAULT_WINDOW" | "OVERRIDE" | "STORED";
+
+export interface QueueSource {
+  kind: QueueKind;
+  state: QueueSourceState;
+  count: number | null;
+  new_count: number | null;
+  permission: string | null;
+  as_of: string | null;
+  reason_code: string | null;
+}
+
+export interface QueueItem {
+  kind: QueueKind;
+  family: QueueFamily | null;
+  id: string;
+  title: string;
+  title_code: string | null;
+  title_params: Record<string, unknown> | null;
+  subject: string | null;
+  detector: string | null;
+  severity: QueueSeverity | null;
+  magnitude: number | null;
+  occurrence_count: number | null;
+  state: string;
+  triage: { status: string; version: number } | null;
+  owner: string | null;
+  owner_kind: "app" | "qradar" | null;
+  waiting_since: string;
+  age_seconds: number;
+  new_since_last_visit: boolean;
+  change: "NEW" | "UPDATED" | null;
+  alert: { id: string; status: string } | null;
+  link: string;
+}
+
+export interface QueueMarkerState {
+  compare_from: string;
+  kind: QueueCompareKind;
+  /** The caller's stored marker whatever `kind` is; null when none is stored. */
+  marked_at: string | null;
+}
+
+export interface QueuePage {
+  as_of: string;
+  marker: QueueMarkerState;
+  sources: QueueSource[];
+  total: number;
+  total_exact: boolean;
+  limit: number;
+  offset: number;
+  filters_applied: {
+    scope: QueueScope;
+    kind: QueueKind[];
+    family: QueueFamily[];
+    severity: QueueSeverity[];
+    new_only: boolean;
+    since: string | null;
+  };
+  items: QueueItem[];
+}
+
+export interface QueueSeenIn {
+  as_of: string;
+  expected: string | null;
+  all_sources_ok: boolean;
+}
+
+export interface QueueSeenOut {
+  marked_at: string;
+  previous_marked_at: string | null;
+  advanced: boolean;
+}
+
+export const queueApi = {
+  /** `query` is the already-encoded query string (without the `?`). */
+  list: (query: string) => request<QueuePage>(`/queue${query ? `?${query}` : ""}`),
+  seen: (body: QueueSeenIn) =>
+    request<QueueSeenOut>("/queue/seen", { method: "POST", body: JSON.stringify(body) }),
+};

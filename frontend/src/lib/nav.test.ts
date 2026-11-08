@@ -11,6 +11,7 @@ describe("NAV", () => {
   it("groups the six behavioral destinations first among the labeled groups", () => {
     expect(NAV[1].label).toBe("Behavior");
     expect(NAV[1].items.map((i) => i.label)).toEqual([
+      "Queue",
       "Overview",
       "Anomalies",
       "Sources",

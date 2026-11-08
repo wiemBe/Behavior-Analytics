@@ -1,0 +1,212 @@
+/* The queue: layout only. Colours, sizes and spacing come from the tokens. */
+
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+.queue > * {
+  margin: 0;
+}
+
+.queue-marker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-5);
+  min-width: 0;
+}
+.queue-marker-line {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  min-width: 0;
+}
+.queue-compare {
+  gap: var(--sp-2) var(--sp-3);
+}
+.queue-back {
+  font-size: var(--fs-sm);
+}
+.queue-marker-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+}
+.queue-marker-note.warn {
+  color: var(--warn-text);
+}
+.queue-marker-note.crit {
+  color: var(--crit-text);
+}
+
+/* --- the sources: a status list, one line each --- */
+.queue-sources {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: var(--sp-3) 0;
+  min-width: 0;
+}
+.main .queue-sources-title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0;
+  line-height: var(--lh-base);
+  color: var(--text-3);
+}
+.queue-source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.queue-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+  min-width: 0;
+}
+.queue-source-name {
+  min-width: 15ch;
+  font-weight: var(--fw-semibold);
+}
+.queue-source-count {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.queue-source-detail {
+  color: var(--text-2);
+  flex: 1 1 24ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.queue-source-warn .queue-source-detail {
+  color: var(--warn-text);
+}
+.queue-source-crit .queue-source-detail {
+  color: var(--crit-text);
+}
+.queue-sources-asof {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+}
+
+/* --- scope tabs and filters --- */
+.queue-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.queue-scopes {
+  display: flex;
+  gap: var(--sp-1);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.queue-scope,
+.main a.queue-scope {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 2px solid transparent;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+.queue-scope:hover,
+.main a.queue-scope:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+.queue-scope-on,
+.main a.queue-scope-on {
+  color: var(--text);
+  border-bottom-color: var(--info);
+}
+.queue-scope-count {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.queue-facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-6);
+  align-items: center;
+}
+.queue-facet-name {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  margin-right: var(--sp-1);
+  align-self: center;
+}
+.queue-facets .facet-group {
+  align-items: center;
+}
+
+/* --- the table --- */
+.queue-range {
+  margin: 0;
+}
+.queue-table td.queue-title {
+  min-width: 14ch;
+  overflow-wrap: break-word;
+}
+.queue-table td.queue-kind {
+  min-width: 8ch;
+}
+.queue-table td.queue-owner {
+  min-width: 8ch;
+}
+.queue-table td.queue-waiting {
+  white-space: nowrap;
+}
+.queue-age {
+  display: block;
+}
+.queue-sub {
+  display: block;
+  font-size: var(--fs-xs);
+}
+.queue-change {
+  white-space: nowrap;
+}
+.queue-change-label {
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+/* A New row is marked by a text label and a rule on its left edge, never by a hue alone; an
+   Updated row has the same rule, thinner in tone. */
+.queue-table tr.queue-row-new > td:first-child {
+  box-shadow: none;
+  border-left: 3px solid var(--text);
+}
+.queue-table tr.queue-row-updated > td:first-child {
+  border-left: 3px solid var(--text-3);
+}
+.queue-alert-chip {
+  white-space: nowrap;
+}
+
+/* At 1024 px the table must still show its last column: one step smaller type. */
+@media (max-width: 1100px) {
+  .queue-table {
+    font-size: var(--fs-sm);
+  }
+  .queue-table td.queue-owner,
+  .queue-table td.queue-kind {
+    min-width: 0;
+  }
+}
