@@ -31,12 +31,15 @@ export function Pagination({
   offset,
   basePath,
   params = {},
+  rangeText,
 }: {
   total: number;
   limit: number;
   offset: number;
   basePath: string;
   params?: Record<string, string | string[] | undefined>;
+  /** Replaces the "1–50 of N" text, for a total that is only a lower bound. */
+  rangeText?: string;
 }) {
   const t = useTranslations("ui");
   const locale = (useLocale() === "tr" ? "tr" : "en") as FormatLocale;
@@ -48,11 +51,12 @@ export function Pagination({
   return (
     <nav className="pagination" aria-label={t("pagination")}>
       <span className="muted">
-        {t("pageRange", {
-          from: formatCount(from, locale),
-          to: formatCount(to, locale),
-          total: formatCount(total, locale),
-        })}
+        {rangeText ??
+          t("pageRange", {
+            from: formatCount(from, locale),
+            to: formatCount(to, locale),
+            total: formatCount(total, locale),
+          })}
       </span>
       <span className="pagination-links">
         {hasPrev ? (

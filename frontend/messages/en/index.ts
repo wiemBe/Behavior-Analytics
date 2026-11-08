@@ -46,6 +46,7 @@ import password from "./password.json";
 import propertyWatch from "./propertyWatch.json";
 import pwchart from "./pwchart.json";
 import qradarAccess from "./qradarAccess.json";
+import queue from "./queue.json";
 import related from "./related.json";
 import rules from "./rules.json";
 import searches from "./searches.json";
@@ -105,6 +106,7 @@ const messages = {
   propertyWatch,
   pwchart,
   qradarAccess,
+  queue,
   related,
   rules,
   searches,

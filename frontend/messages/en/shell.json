@@ -9,6 +9,7 @@
     "administration": "Administration",
     "dashboard": "Dashboard",
     "overview": "Overview",
+    "queue": "Queue",
     "anomalies": "Anomalies",
     "sources": "Sources",
     "wafBehavior": "WAF behavior",
