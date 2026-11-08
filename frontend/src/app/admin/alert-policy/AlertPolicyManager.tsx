@@ -10,12 +10,19 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { useSession } from "@/components/auth/session";
-import { alertPolicyApi, type AlertPolicyRow, type DigestStatus } from "@/lib/api";
+import {
+  alertPolicyApi,
+  type AlertPolicyRow,
+  type DigestStatus,
+  type Suppression,
+} from "@/lib/api";
+import type { ReadFailure } from "@/lib/suppression";
 import { holds, sortRows } from "@/lib/alertPolicy";
 
 import { DigestConsoles, DigestPanel } from "./DigestPanel";
 import { PolicyEditor } from "./PolicyEditor";
 import { PolicyTable, type Open } from "./PolicyTable";
+import { QuietPeriods } from "./QuietPeriods";
 
 import "@/components/ui/controls.css";
 import "./alertPolicy.css";
@@ -26,11 +33,16 @@ export function AlertPolicyManager({
   initialRows,
   initialDigest,
   digestNote,
+  initialQuiet,
+  quietFailure,
 }: {
   initialRows: AlertPolicyRow[];
   initialDigest: DigestStatus | null;
   /** Why the digest status is missing, when it is. */
   digestNote: string | null;
+  /** The active quiet periods, or null when they could not be read (then `quietFailure` says why). */
+  initialQuiet: Suppression[] | null;
+  quietFailure: ReadFailure | null;
 }) {
   const t = useTranslations("alertPolicy");
   const session = useSession();
@@ -165,6 +177,8 @@ export function AlertPolicyManager({
           />
         )}
       </section>
+
+      <QuietPeriods initial={initialQuiet} failure={quietFailure} />
 
       <DigestConsoles digest={digest} />
     </>

@@ -7,6 +7,8 @@ export const KNOWN_PERMISSIONS = [
   "search:write",
   "alert:ack",
   "alert:resolve",
+  // SOC-17d: quieting a condition for 1, 7 or 30 days, and ending a quiet period.
+  "alert:suppress",
   "admin:*",
   "read:offenses",
   "read:rules",

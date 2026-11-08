@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StaticSession, type SessionValue } from "@/components/auth/session";
-import { ApiError, alertPolicyApi, type CallerInfo } from "@/lib/api";
+import { ApiError, alertPolicyApi, suppressionApi, type CallerInfo } from "@/lib/api";
 import { NAV, activeNavHref } from "@/lib/nav";
 
 import AlertPolicyError from "./error";
@@ -29,6 +29,7 @@ beforeEach(() => vi.restoreAllMocks());
 async function page(rows = MIXED, d = digest()) {
   vi.spyOn(alertPolicyApi, "list").mockResolvedValue(rows);
   vi.spyOn(alertPolicyApi, "digest").mockResolvedValue(d);
+  vi.spyOn(suppressionApi, "list").mockResolvedValue([]);
   return render(<StaticSession value={ADMIN}>{await AlertPolicyPage()}</StaticSession>);
 }
 
@@ -38,7 +39,7 @@ describe("alert policy page", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Alert policy");
     const h2 = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(h2).toEqual(["Daily digest", "Policies"]);
+    expect(h2).toEqual(["Daily digest", "Policies", "Quiet periods"]);
     expect(await generateMetadata()).toEqual({ title: "Alert policy" });
   });
 
@@ -48,9 +49,10 @@ describe("alert policy page", () => {
     expect(screen.getByText("Daily at 07:00 UTC")).toBeInTheDocument();
   });
 
-  it("builds no active-quiet-periods section (that is SOC-17d)", async () => {
+  it("builds the quiet-periods section below the policies (SOC-17d)", async () => {
     await page();
-    expect(document.body.textContent).not.toMatch(/quiet period|maintenance window|suppress/i);
+    const h2 = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(h2.indexOf("Quiet periods")).toBeGreaterThan(h2.indexOf("Policies"));
   });
 
   it("never uses live or real-time wording", async () => {
@@ -94,6 +96,7 @@ describe("alert policy page", () => {
   it("a digest that cannot be read does not hide the policy table, and says why", async () => {
     vi.spyOn(alertPolicyApi, "list").mockResolvedValue(MIXED);
     vi.spyOn(alertPolicyApi, "digest").mockRejectedValue(new ApiError(500, "x"));
+    vi.spyOn(suppressionApi, "list").mockResolvedValue([]);
     render(<StaticSession value={ADMIN}>{await AlertPolicyPage()}</StaticSession>);
     expect(screen.getByText("edge-waf")).toBeInTheDocument();
     const alert = screen.getByRole("alert");
@@ -104,6 +107,7 @@ describe("alert policy page", () => {
   it("a forbidden digest names read:alerts", async () => {
     vi.spyOn(alertPolicyApi, "list").mockResolvedValue(MIXED);
     vi.spyOn(alertPolicyApi, "digest").mockRejectedValue(new ApiError(403, "x"));
+    vi.spyOn(suppressionApi, "list").mockResolvedValue([]);
     render(<StaticSession value={ADMIN}>{await AlertPolicyPage()}</StaticSession>);
     expect(screen.getByRole("alert")).toHaveTextContent("read:alerts");
   });

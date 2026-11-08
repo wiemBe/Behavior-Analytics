@@ -3996,6 +3996,84 @@ export const alertPolicyApi = {
     fleetRequest<void>(`/alert-policy/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
 
+// --- suppression: quiet periods (SOC-17d) ---------------------------------
+// Mirrors backend/app/schemas/suppression.py. A MAINTENANCE row is synthetic: read-only, no id,
+// no start, and no hit count (null is "not counted", never zero).
+export type SuppressionKind = "ANALYST" | "KNOWN_CHANGE" | "MAINTENANCE";
+export type SuppressionFamily = AlertPolicyFamily;
+
+export interface Suppression {
+  id: string | null;
+  family: SuppressionFamily;
+  subject_id: string;
+  /** Null means every detector of the subject. */
+  detector_type: string | null;
+  kind: SuppressionKind;
+  reason: string | null;
+  owner: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  ended_at: string | null;
+  ended_by: string | null;
+  reference: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  subject_name: string | null;
+  read_only: boolean;
+  hit_count: number | null;
+}
+
+export interface BreakthroughAlert {
+  id: string;
+  title: string;
+  severity: string;
+  opened_at: string;
+  occurrence_count: number;
+}
+
+/** The banner payload of one anomaly. `suppression` is null when nothing is active. */
+export interface SuppressionFor {
+  family: SuppressionFamily;
+  anomaly_id: string;
+  detector_type: string;
+  suppression: Suppression | null;
+  hit_count: number;
+  breakthrough_alerts: BreakthroughAlert[];
+}
+
+/** The days the backend accepts; anything else is a 422. */
+export type SuppressionDays = 1 | 7 | 30;
+
+export interface SuppressRequest {
+  days: SuppressionDays;
+  reason: string;
+  owner?: string;
+  whole_source?: boolean;
+  kind?: "ANALYST" | "KNOWN_CHANGE";
+  reference?: string;
+}
+
+export const suppressionApi = {
+  list: (active = true) => request<Suppression[]>(`/suppressions?active=${active}`),
+  forAnomaly: (family: SuppressionFamily, anomalyId: string) =>
+    request<SuppressionFor>(
+      `/suppressions/for/${encodeURIComponent(family)}/${encodeURIComponent(anomalyId)}`,
+    ),
+  fromAlert: (alertId: string, body: SuppressRequest) =>
+    request<Suppression>(`/alerts/${encodeURIComponent(alertId)}/suppress`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  fromAnomaly: (family: SuppressionFamily, anomalyId: string, body: SuppressRequest) =>
+    request<Suppression>(
+      `/anomalies/${encodeURIComponent(family)}/${encodeURIComponent(anomalyId)}/suppress`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  end: (id: string) =>
+    request<Suppression>(`/suppressions/${encodeURIComponent(id)}/end`, { method: "POST" }),
+};
+
 // --- rule statistics (T-062) -----------------------------------------------
 // Mirrors backend/app/schemas/rule_statistics.py. A section the platform could
 // not measure is null with a reason beside it, never an empty list.

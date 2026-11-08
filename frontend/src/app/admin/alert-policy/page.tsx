@@ -9,9 +9,12 @@ import {
   ApiError,
   alertPolicyApi,
   rateLimitedText,
+  suppressionApi,
   type AlertPolicyRow,
   type DigestStatus,
+  type Suppression,
 } from "@/lib/api";
+import { readFailure, type ReadFailure } from "@/lib/suppression";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 import { asTextTranslator } from "@/i18n/textTranslator";
 
@@ -30,7 +33,19 @@ async function AlertPolicyPage() {
   let digestNote: string | null = null;
   let failure: string | null = null;
 
-  const [policy, status] = await Promise.allSettled([alertPolicyApi.list(), alertPolicyApi.digest()]);
+  let quiet: Suppression[] | null = null;
+  let quietFailure: ReadFailure | null = null;
+
+  const [policy, status, quietRead] = await Promise.allSettled([
+    alertPolicyApi.list(),
+    alertPolicyApi.digest(),
+    suppressionApi.list(true),
+  ]);
+  if (quietRead.status === "fulfilled") {
+    quiet = quietRead.value;
+  } else {
+    quietFailure = readFailure(quietRead.reason, say, "read:alerts");
+  }
   if (policy.status === "fulfilled") {
     rows = policy.value;
   } else {
@@ -73,7 +88,13 @@ async function AlertPolicyPage() {
           <p>{failure}</p>
         </div>
       ) : (
-        <AlertPolicyManager initialRows={rows} initialDigest={digest} digestNote={digestNote} />
+        <AlertPolicyManager
+          initialRows={rows}
+          initialDigest={digest}
+          digestNote={digestNote}
+          initialQuiet={quiet}
+          quietFailure={quietFailure}
+        />
       )}
     </>
   );
