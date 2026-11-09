@@ -540,6 +540,8 @@ describe("Traffic by destination: honesty states", () => {
     expect(wafCall).not.toHaveBeenCalled();
     expect(screen.getByText("No WAF source has a behavior profile.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "WAF sources" })).toHaveAttribute("href", "/admin/waf-sources");
+    expect(document.body.textContent).toContain("Export CSV — nothing to export");
+    expect(document.body.textContent).not.toContain("could not be loaded");
   });
 });
 
