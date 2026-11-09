@@ -258,6 +258,14 @@ HISTORY_TABLES = (
             "app.rules.engine.RuleMatchEngine._load_cells": Reader(
                 "SOC-6c storm cell", ReaderKind.EVIDENCE
             ),
+            # SOC-6d2: read_rule runs the same two loaders for one rule, and the
+            # section it builds runs the same detectors, so both stay EVIDENCE.
+            "app.rules.engine.RuleMatchEngine._load_instance_windows": Reader(
+                "SOC-6d2 series", ReaderKind.EVIDENCE
+            ),
+            "app.rules.engine.RuleMatchEngine._load_rule_cells": Reader(
+                "SOC-6d2 storm cell", ReaderKind.EVIDENCE
+            ),
         },
     ),
     HistoryTable(
