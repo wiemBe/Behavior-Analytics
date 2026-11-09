@@ -1148,6 +1148,36 @@ class TestRuleFamily:
         assert source_of(body, "anomaly")["count"] == 1
         assert source_of(body, "anomaly")["new_count"] == 1
 
+    def test_the_title_of_a_rule_incident_with_no_explanation_is_the_label_not_the_enum(
+        self, db_schema
+    ) -> None:  # type: ignore[no-untyped-def]
+        async def seed(session):  # type: ignore[no-untyped-def]
+            inst, _ = await _base(session)
+            tracked = rule(inst.id, 501, name="Brute force")
+            quiet = rule(inst.id, 502, name="Rare admin command")
+            said = rule(inst.id, 503, name="Explained")
+            session.add_all([tracked, quiet, said])
+            await session.flush()
+            rows = [
+                rule_incident(tracked, opened_at=AFTER, detected_at=AFTER),
+                rule_incident(
+                    quiet, opened_at=AFTER, detected_at=AFTER,
+                    detector_type=RuleAnomalyType.RULE_SILENCE,
+                ),
+                rule_incident(said, opened_at=AFTER, detected_at=AFTER, explanation="Own words."),
+            ]
+            session.add_all(rows)
+            await session.flush()
+            return [str(r.id) for r in rows]
+
+        storm, silence, explained = run(seed)
+        items = {r["id"]: r for r in get(Client(READER), kind="anomaly").json()["items"]}
+
+        assert items[storm]["title"] == "Rule storm on Brute force"
+        assert items[silence]["title"] == "Rule silence on Rare admin command"
+        assert items[explained]["title"] == "Own words."
+        assert items[storm]["detector"] == "RULE_STORM"
+
     def test_family_rule_lists_only_the_rule_incident(self, db_schema) -> None:  # type: ignore[no-untyped-def]
         async def seed(session):  # type: ignore[no-untyped-def]
             inst, source = await _base(session)

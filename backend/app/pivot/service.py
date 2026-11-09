@@ -19,6 +19,7 @@ from app.models.ips import IpsAnomaly, IpsEntity, IpsSourceProfile
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.offense import OffenseSnapshot
 from app.models.property_watch import PropertyWatch, PwAnomaly
+from app.models.rule_anomaly import RuleAnomaly
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
 from app.pivot import aql as q
 from app.property_watch.facts import split_tuple_key
@@ -115,6 +116,9 @@ async def anomaly_pivot(
     pw = await session.get(PwAnomaly, anomaly_id)
     if pw is not None:
         return await _pw(session, pw, now)
+    if await session.get(RuleAnomaly, anomaly_id) is not None:
+        # A rule match is counted per rule, not searched as events on one source.
+        raise PivotNotFound("a rule-match incident has no AQL pivot")
     raise PivotNotFound("anomaly not found")
 
 

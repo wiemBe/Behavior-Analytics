@@ -46,6 +46,7 @@ from app.models.monitoring import CollectionWatermark
 from app.models.offense import OffenseSnapshot
 from app.repositories.anomaly import AnomalyRepository
 from app.repositories.offense import OffenseRepository
+from app.rules.anomalies import DETECTOR_LABELS
 from app.schemas.messages import stored_message_parts
 from app.schemas.queue import (
     CompareKind,
@@ -227,6 +228,8 @@ def _anomaly_entry(row: dict[str, Any], as_of: datetime) -> _Entry:
     waiting = _aware(row["waiting_since"])
     change = _change(row["change"])
     detector = str(row["anomaly_type"])
+    # A rule incident's detector is named in English, never by its enum value.
+    name = DETECTOR_LABELS.get(detector, detector) if family is AnomalyFamily.RULE else detector
     return _Entry(
         key=_sort_key(row["severity_rank"], waiting, QueueKind.ANOMALY, str(row["id"])),
         anomaly_id=str(row["id"]),
@@ -234,7 +237,7 @@ def _anomaly_entry(row: dict[str, Any], as_of: datetime) -> _Entry:
             kind=QueueKind.ANOMALY,
             family=family,
             id=str(row["id"]),
-            title=row["explanation"] or (f"{detector} on {subject}" if subject else detector),
+            title=row["explanation"] or (f"{name} on {subject}" if subject else name),
             title_code=code,
             title_params=params,
             subject=subject,

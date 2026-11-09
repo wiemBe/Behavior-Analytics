@@ -9,10 +9,11 @@ services against PostgreSQL.
 from __future__ import annotations
 
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from app.models.enums import (
     AnomalyFamily,
@@ -23,7 +24,7 @@ from app.models.enums import (
 )
 from app.models.property_watch import PropertyWatch, PwAnomaly
 from app.models.rule import AnalyticsRule
-from app.models.rule_anomaly import RuleAnomaly
+from app.models.rule_anomaly import RuleAnomaly, RuleAnomalyTransition
 from app.models.triage import AnomalyTriage
 from app.repositories.anomaly import AnomalyRepository
 from app.services.anomaly_triage_retention import delete_orphan_triage
@@ -337,3 +338,259 @@ class TestTriageForRules:
             (t.family, t.anomaly_id) for t in await db_session.scalars(select(AnomalyTriage))
         }
         assert left == {("rule", live.id), ("waf", live.id)}
+
+
+@contextmanager
+def counting(session):  # type: ignore[no-untyped-def]
+    statements: list[str] = []
+    engine = session.bind.sync_engine
+
+    def record(conn, cursor, statement, *args):  # type: ignore[no-untyped-def]
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        yield statements
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+
+def truncated(flag: object) -> dict:
+    return {"extra": {"truncated_window": flag}}
+
+
+class TestRuleDetail:
+    """SOC-6d3: `GET /anomalies/{id}` answers a rule-match incident."""
+
+    @pytest.mark.asyncio
+    async def test_detail_carries_the_rule_ref_evidence_and_triage(self, db_session) -> None:
+        _inst, _source, rule, _block = await world(db_session)
+        row = incident(
+            rule, detected_at=ago(2), opened_at=ago(2), anomaly_start=ago(3),
+            consecutive_buckets=3, deviation_ratio=10.0, explanation="Storm on Brute force",
+            evidence_status="NOT_REQUESTED",
+        )
+        db_session.add(row)
+        await db_session.flush()
+        db_session.add_all(
+            [
+                RuleAnomalyTransition(
+                    rule_anomaly_id=row.id, from_state=None, to_state=AnomalyState.OPEN,
+                    occurred_at=ago(2), reason="opened", observed_value=900.0,
+                ),
+                RuleAnomalyTransition(
+                    rule_anomaly_id=row.id, from_state=AnomalyState.OPEN,
+                    to_state=AnomalyState.RECOVERING, occurred_at=ago(1), reason="calm",
+                ),
+                AnomalyTriage(
+                    family="rule", anomaly_id=row.id, status="IN_PROGRESS",
+                    owner="me@example.com", updated_by="me@example.com", version=2,
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        resp = client_for(READER).get(f"/api/v1/anomalies/{row.id}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["id"] == str(row.id)
+        assert body["subject_kind"] == "RULE"
+        assert body["log_source_id"] is None and body["log_source_name"] is None
+        assert body["rule"] == {
+            "rule_id": str(rule.id), "name": "Brute force", "qradar_id": 501,
+            "is_building_block": False,
+        }
+        assert body["anomaly_type"] == "RULE_STORM"
+        assert body["state"] == "OPEN" and body["severity"] == "HIGH"
+        assert body["observed_value"] == 900.0 and body["expected_value"] == 90.0
+        assert body["deviation_ratio"] == 10.0 and body["consecutive_buckets"] == 3
+        assert body["explanation"] == "Storm on Brute force"
+        assert body["evidence_status"] == "NOT_REQUESTED"
+        assert body["observed_measurement"] == "EXACT"
+        assert body["detection"] is None and body["explanation_package"] is None
+        assert [t["to_state"] for t in body["transitions"]] == ["OPEN", "RECOVERING"]
+        assert body["triage"]["status"] == "IN_PROGRESS"
+        assert body["triage"]["owner"] == "me@example.com"
+
+    @pytest.mark.asyncio
+    async def test_an_untriaged_rule_incident_reads_as_new(self, db_session) -> None:
+        _inst, _source, _rule, block = await world(db_session)
+        row = incident(block, detector="RULE_SILENCE")
+        db_session.add(row)
+        await db_session.commit()
+
+        body = client_for(READER).get(f"/api/v1/anomalies/{row.id}").json()
+
+        assert body["triage"]["status"] == "NEW" and body["triage"]["owner"] is None
+        assert body["rule"]["is_building_block"] is True
+        assert body["anomaly_type"] == "RULE_SILENCE"
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_id_is_still_404(self, db_session) -> None:
+        await world(db_session)
+        await db_session.commit()
+
+        resp = client_for(READER).get(f"/api/v1/anomalies/{uuid.uuid4()}")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "anomaly not found"
+
+    @pytest.mark.asyncio
+    async def test_a_nobody_is_refused_not_told_it_exists(self, db_session) -> None:
+        _inst, _source, rule, _block = await world(db_session)
+        row = incident(rule)
+        db_session.add(row)
+        await db_session.commit()
+
+        assert client_for(NOBODY).get(f"/api/v1/anomalies/{row.id}").status_code == 403
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("details", "expected"),
+        [
+            (truncated(True), "LOWER_BOUND"),
+            (truncated(False), "EXACT"),
+            ({}, "EXACT"),
+            ({"extra": None}, "EXACT"),
+            ({"extra": "x"}, "EXACT"),
+            (truncated("true"), "EXACT"),
+        ],
+    )
+    async def test_only_a_stored_true_flag_makes_the_count_a_lower_bound(
+        self, db_session, details, expected
+    ) -> None:
+        _inst, _source, rule, _block = await world(db_session)
+        row = incident(rule, details=details)
+        db_session.add(row)
+        await db_session.commit()
+        client = client_for(READER)
+
+        detail = client.get(f"/api/v1/anomalies/{row.id}").json()
+        listed = client.get("/api/v1/anomalies", params={"subject_kind": "RULE"}).json()
+
+        assert detail["observed_measurement"] == expected
+        assert listed["items"][0]["observed_measurement"] == expected
+
+    @pytest.mark.asyncio
+    async def test_the_list_marks_the_truncated_storm_and_not_its_neighbour(
+        self, db_session
+    ) -> None:
+        _inst, _source, rule, block = await world(db_session)
+        cut = incident(rule, detected_at=ago(1), details=truncated(True), observed_value=10000.0)
+        whole = incident(block, detected_at=ago(2), details=truncated(False))
+        db_session.add_all([cut, whole])
+        await db_session.commit()
+
+        items = (
+            client_for(READER).get("/api/v1/anomalies", params={"subject_kind": "RULE"}).json()
+        )["items"]
+
+        assert {i["id"]: i["observed_measurement"] for i in items} == {
+            str(cut.id): "LOWER_BOUND",
+            str(whole.id): "EXACT",
+        }
+
+    @pytest.mark.asyncio
+    async def test_the_list_statement_count_does_not_depend_on_the_rule_rows(
+        self, db_session
+    ) -> None:
+        _inst, source, rule, block = await world(db_session)
+        db_session.add(phase_a(source.id, ago(2)))
+        await db_session.commit()
+        repo = AnomalyRepository(db_session)
+
+        with counting(db_session) as none:
+            await repo.list_unified(limit=50, offset=0, since=ago(24), until=ago(0))
+        db_session.add_all(
+            [incident(rule, details=truncated(True)), incident(block, details=truncated(False))]
+        )
+        await db_session.commit()
+        with counting(db_session) as some:
+            rows, _total = await repo.list_unified(
+                limit=50, offset=0, since=ago(24), until=ago(0)
+            )
+
+        assert len(rows) == 3
+        assert len(none) == len(some) == 2
+
+    @pytest.mark.asyncio
+    async def test_the_detail_costs_two_statements_and_the_route_adds_the_triage(
+        self, db_session
+    ) -> None:
+        _inst, _source, rule, _block = await world(db_session)
+        row = incident(rule)
+        db_session.add(row)
+        await db_session.commit()
+        repo = AnomalyRepository(db_session)
+
+        with counting(db_session) as statements:
+            found = await repo.get_rule_detail(row.id)
+
+        assert found is not None and len(statements) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_phase_a_incident_is_not_read_as_a_rule_one(self, db_session) -> None:
+        _inst, source, _rule, _block = await world(db_session)
+        row = phase_a(source.id, ago(2))
+        db_session.add(row)
+        await db_session.commit()
+
+        assert await AnomalyRepository(db_session).get_rule_detail(row.id) is None
+        assert client_for(READER).get(f"/api/v1/anomalies/{row.id}").json()["subject_kind"] == (
+            "LOG_SOURCE"
+        )
+
+
+class TestRuleSubRoutes:
+    """What the detail page's other reads answer for a rule incident."""
+
+    @pytest.mark.asyncio
+    async def test_triage_reads_and_writes_under_the_rule_family(self, db_session) -> None:
+        _inst, _source, rule, _block = await world(db_session)
+        row = incident(rule)
+        db_session.add(row)
+        await db_session.commit()
+        client = client_for(READER)
+
+        read = client.get(f"/api/v1/anomalies/triage/rule/{row.id}")
+
+        assert read.status_code == 200
+        assert read.json()["status"] == "NEW"
+        # A rule id under another family is not found, never a 500.
+        assert client.get(f"/api/v1/anomalies/triage/waf/{row.id}").status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_the_pivot_says_a_rule_incident_has_none(self, db_session) -> None:
+        _inst, _source, rule, _block = await world(db_session)
+        row = incident(rule)
+        db_session.add(row)
+        await db_session.commit()
+        client = client_for(READER)
+
+        resp = client.get(f"/api/v1/anomalies/{row.id}/pivot")
+        unknown = client.get(f"/api/v1/anomalies/{uuid.uuid4()}/pivot")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "a rule-match incident has no AQL pivot"
+        assert unknown.status_code == 404
+        assert unknown.json()["detail"] == "anomaly not found"
+
+    @pytest.mark.asyncio
+    async def test_related_activity_says_it_does_not_apply_to_a_rule_incident(
+        self, db_session
+    ) -> None:
+        _inst, _source, rule, _block = await world(db_session)
+        row = incident(rule)
+        db_session.add(row)
+        await db_session.commit()
+        client = client_for(READER)
+
+        resp = client.get(f"/api/v1/anomalies/related/rule/{row.id}")
+        unknown = client.get(f"/api/v1/anomalies/related/rule/{uuid.uuid4()}")
+        wrong_family = client.get(f"/api/v1/anomalies/related/property_watch/{row.id}")
+
+        assert resp.status_code == 404
+        assert "does not apply to a rule-match incident" in resp.json()["detail"]
+        assert unknown.status_code == 404 and unknown.json()["detail"] == "anomaly not found"
+        assert wrong_family.status_code == 404
