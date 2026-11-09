@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.core.config import Settings
+from app.i18n.messages import render
 from app.models.enums import SearchCadence
 from app.models.search_cadence import SearchCadenceSetting
 from app.services.search_cadence import SearchCadenceService, family_enabled, slot_start
@@ -94,6 +95,111 @@ def test_next_dispatch_same_grid_advances_by_one_cadence() -> None:
         updated_at=now,
     )
     assert service.next_dispatch_at(row, now) == datetime(2026, 10, 12, 13, 2, tzinfo=UTC)
+
+
+def test_a_failed_run_waits_for_the_next_five_minute_slot() -> None:
+    # A failed run keeps the slot it claimed (19:20 here), so the family is not
+    # retried early: the next run is the next slot, 19:25, plus the settle margin.
+    settings = Settings(search_cadence_settle_seconds=120)
+    service = SearchCadenceService(None, settings)  # type: ignore[arg-type]
+    now = datetime(2026, 11, 4, 19, 26, tzinfo=UTC)
+    row = SearchCadenceSetting(
+        family="CATCHALL_SENDERS",
+        cadence_seconds=SearchCadence.FIVE_MINUTES,
+        last_slot_start=datetime(2026, 11, 4, 19, 20, tzinfo=UTC),
+        last_run_at=datetime(2026, 11, 4, 19, 24, tzinfo=UTC),
+        last_run_outcome="failed",
+        updated_at=now,
+    )
+    assert service.next_dispatch_at(row, now) == datetime(2026, 11, 4, 19, 27, tzinfo=UTC)
+
+
+def test_a_failed_run_at_one_hour_reproduces_the_ops_30_33_34_35_gap() -> None:
+    # OPS-30/33/34/35 read "last run 12:20 Failed, next run 13:02". That is a
+    # run at 12:20 claiming the 12:00 slot of a one-hour cadence (floor of
+    # 12:20 - 120 s), plus one cadence and the 120 s settle margin. It cannot be
+    # a five-minute cadence: the next slot after 12:20 would be 12:27.
+    settings = Settings(search_cadence_settle_seconds=120)
+    service = SearchCadenceService(None, settings)  # type: ignore[arg-type]
+    now = datetime(2026, 11, 4, 12, 37, tzinfo=UTC)
+    row = SearchCadenceSetting(
+        family="CATCHALL_SENDERS",
+        cadence_seconds=SearchCadence.ONE_HOUR,
+        last_slot_start=datetime(2026, 11, 4, 12, 0, tzinfo=UTC),
+        last_run_at=datetime(2026, 11, 4, 12, 20, tzinfo=UTC),
+        last_run_outcome="failed",
+        updated_at=now,
+    )
+    assert service.next_dispatch_at(row, now) == datetime(2026, 11, 4, 13, 2, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        datetime(2026, 11, 4, 19, 2, tzinfo=UTC),
+        datetime(2026, 11, 4, 19, 24, tzinfo=UTC),
+        datetime(2026, 11, 4, 19, 48, tzinfo=UTC),
+        datetime(2026, 11, 4, 20, 4, tzinfo=UTC),
+    ],
+)
+@pytest.mark.parametrize("claimed_age_seconds", [0, 300, 3600, 86_400])
+def test_a_five_minute_cadence_never_shows_more_than_one_slot_and_settle_ahead(
+    now: datetime, claimed_age_seconds: int
+) -> None:
+    # The read model advances from max(next slot after the last claimed slot,
+    # the current settled slot), so for an enabled five-minute family the cell
+    # can never be more than one cadence plus the settle margin in the future,
+    # whatever the last run left behind. A 38-minute figure therefore cannot
+    # belong to a 5-min row.
+    settings = Settings(search_cadence_settle_seconds=120)
+    service = SearchCadenceService(None, settings)  # type: ignore[arg-type]
+    claimed = slot_start(
+        now - timedelta(seconds=claimed_age_seconds),
+        int(SearchCadence.FIVE_MINUTES),
+        0,
+    )
+    row = SearchCadenceSetting(
+        family="CATCHALL_SENDERS",
+        cadence_seconds=SearchCadence.FIVE_MINUTES,
+        last_slot_start=claimed,
+        updated_at=now,
+    )
+    assert service.next_dispatch_at(row, now) <= now + timedelta(
+        seconds=int(SearchCadence.FIVE_MINUTES) + settings.search_cadence_settle_seconds
+    )
+
+
+def test_next_dispatch_message_is_set_only_while_the_last_run_failed() -> None:
+    settings = Settings(search_cadence_settle_seconds=120)
+    service = SearchCadenceService(None, settings)  # type: ignore[arg-type]
+    now = datetime(2026, 11, 4, 19, 48, tzinfo=UTC)
+    row = SearchCadenceSetting(
+        family="CATCHALL_SENDERS",
+        cadence_seconds=SearchCadence.ONE_HOUR,
+        last_slot_start=datetime(2026, 11, 4, 19, 0, tzinfo=UTC),
+        last_run_at=datetime(2026, 11, 4, 19, 24, tzinfo=UTC),
+        last_run_outcome="failed",
+        updated_at=now,
+    )
+    next_at = service.next_dispatch_at(row, now)
+    assert next_at == datetime(2026, 11, 4, 20, 2, tzinfo=UTC)
+    message = service.next_dispatch_message(row, next_at)
+    assert message is not None
+    assert message.code == "search_cadence.next_dispatch.after_failed_run"
+    assert message.params == {
+        "at": datetime(2026, 11, 4, 19, 24, tzinfo=UTC),
+        "cadence": 3600,
+        "next": datetime(2026, 11, 4, 20, 2, tzinfo=UTC),
+    }
+    assert render(message) == (
+        "The run at 2026-11-04 19:24:00 UTC failed; the family runs again at its "
+        "next 1 h slot, 2026-11-04 20:02:00 UTC, and is not retried before it."
+    )
+
+    row.last_run_outcome = "ok"
+    assert service.next_dispatch_message(row, next_at) is None
+    row.last_run_outcome = None
+    assert service.next_dispatch_message(row, next_at) is None
 
 
 @pytest.mark.parametrize("old_cadence", list(SearchCadence))
