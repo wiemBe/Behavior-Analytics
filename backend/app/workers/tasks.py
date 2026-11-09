@@ -56,6 +56,7 @@ from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider, build_provider_for_instance
 from app.repositories.offense import OffenseRepository
 from app.rules.engine import RuleMatchEngine
+from app.rules.engine_tick import RuleEngineTick
 from app.services.anomaly_fault_retention import AnomalyFaultRetention
 from app.services.ariel_permit import ArielPermitBudget
 from app.services.ariel_search_retention import ArielSearchRunRetention
@@ -493,16 +494,23 @@ async def collect_rule_matches(instance_name: str | None = None) -> dict:
         session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
     ) -> dict:
         assert provider is not None
-        # The engine shares this transaction. A failure rolls the windows back
-        # with the judgement, so the next tick's written_since filter still
-        # sees them. Swallowing the error would commit windows this run would
-        # never rejudge.
+        # The windows commit even when the engine raises: the engine runs in a
+        # savepoint that rolls back alone (SOC-6i), so a bug in it never makes
+        # the next tick re-run the same Ariel searches. A persisted judged-through
+        # marker makes the next successful engine run judge what this one missed.
         started = datetime.now(UTC)
-        report = await RuleMatchCollector(session, provider).collect(instance)
-        await RuleMatchEngine(session, settings=settings).evaluate(
-            instance, written_since=started
+        instance_id, instance_name = instance.id, instance.name
+        tick = RuleEngineTick(
+            session, RuleMatchEngine(session, settings=settings), settings
         )
-        return {
+        baseline = await tick.baseline(instance_id, started)
+        report = await RuleMatchCollector(session, provider).collect(instance)
+        engine_error = None
+        if not report.skipped_locked:
+            # A locked tick wrote nothing: the lock holder's windows are not
+            # committed yet, so judging (and marking) now could skip them.
+            engine_error = await tick.judge(instance, instance_name, baseline)
+        outcome = {
             "status": (
                 "skipped_locked"
                 if report.skipped_locked
@@ -521,6 +529,9 @@ async def collect_rule_matches(instance_name: str | None = None) -> dict:
             "duration_ms": report.duration_ms,
             "error": report.error,
         }
+        if engine_error is not None:
+            outcome["engine_error_class"] = engine_error
+        return outcome
 
     result = await _for_each_instance(run, instance_name)
     results = result.get("results", [])

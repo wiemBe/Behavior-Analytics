@@ -150,6 +150,7 @@ _WATERMARK_NAMES = frozenset(
         "rule_inventory",
         "rule_metric",
         "rule_match",
+        "rule_match_evaluation",
         "log_source_metric",
         "log_source_inventory",
         "geo_countries",
@@ -367,7 +368,7 @@ def _watermark_family(collector: str) -> SearchFamily | None:
         return SearchFamily.WAF_COLLECTION
     if collector.startswith("ips_"):
         return SearchFamily.IPS_COLLECTION
-    if collector == "rule_match":
+    if collector == "rule_match" or collector.startswith("rule_match_"):
         return SearchFamily.RULE_MATCH
     if collector == "catchall_senders":
         return SearchFamily.CATCHALL_SENDERS
