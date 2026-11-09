@@ -687,6 +687,8 @@ class AnomalyRepository:
             branches.append(self._unified_ips(common(IpsAnomaly)))
         if wanted is None or AnomalyFamily.PROPERTY_WATCH in wanted:
             branches.append(self._unified_pw(common(PwAnomaly)))
+        if wanted is None or AnomalyFamily.RULE in wanted:
+            branches.append(self._unified_rule(common(RuleAnomaly)))
         if not branches:
             return [], 0, 0
 
@@ -702,6 +704,7 @@ class AnomalyRepository:
                 ),
                 AnomalyFamily.IPS.value,
             ),
+            (union.c.subject_kind == SubjectKind.RULE.value, AnomalyFamily.RULE.value),
             else_=AnomalyFamily.PROPERTY_WATCH.value,
         )
         triage = AnomalyTriage.__table__.alias("queue_triage")

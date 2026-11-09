@@ -21,11 +21,14 @@ from app.models.enums import (
     EvidenceStatus,
     IpsAnomalyType,
     IpsDimension,
+    RuleAnomalyType,
     Severity,
     WafAnomalyType,
 )
 from app.models.ips import IpsAnomaly, IpsEntity
 from app.models.log_source import LogSourceAnomaly
+from app.models.rule import AnalyticsRule
+from app.models.rule_anomaly import RuleAnomaly
 from app.models.waf import WafAnomaly, WafEndpoint
 from app.security.rbac import Principal
 from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
@@ -51,7 +54,9 @@ NOBODY = Principal(subject="nobody", permissions=frozenset())
 H0 = datetime(2026, 10, 13, 8, 0, tzinfo=UTC)
 
 
-ALL_FAMILIES = ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE", "PW_VALUE"]
+ALL_FAMILIES = [
+    "LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE", "PW_VALUE", "RULE"
+]
 
 
 def at(hours: float, minutes: int = 0, seconds: int = 0) -> datetime:
@@ -121,6 +126,37 @@ async def world(s):  # type: ignore[no-untyped-def]
         waf(ep.id, at(3, minutes=5), severity=Severity.MEDIUM),
     ])
     return dict(inst=inst.id, fw=fw.id, ws=ws.id, ep=ep.id)
+
+
+def rule(instance_id, qradar_id: int, **kw) -> AnalyticsRule:  # type: ignore[no-untyped-def]
+    defaults = dict(
+        instance_id=instance_id, qradar_id=qradar_id, name=f"rule-{qradar_id}",
+        rule_type="EVENT", enabled=True, origin="USER", is_building_block=False,
+    )
+    defaults.update(kw)
+    return AnalyticsRule(**defaults)
+
+
+def rule_incident(rule_row, when: datetime, **kw) -> RuleAnomaly:  # type: ignore[no-untyped-def]
+    defaults = dict(
+        rule_id=rule_row.id, qradar_id=rule_row.qradar_id,
+        is_building_block=rule_row.is_building_block,
+        detector_type=RuleAnomalyType.RULE_STORM,
+        fingerprint=f"rule-{uuid.uuid4().hex[:12]}",
+        severity=Severity.MEDIUM, state=AnomalyState.OPEN, detected_at=when, details={},
+    )
+    defaults.update(kw)
+    return RuleAnomaly(**defaults)
+
+
+async def rule_world(s):  # type: ignore[no-untyped-def]
+    """The two-family world plus one rule incident in hour 2."""
+    ids = await world(s)
+    tracked = rule(ids["inst"], 501, name="Brute force")
+    s.add(tracked)
+    await s.flush()
+    s.add(rule_incident(tracked, at(2, minutes=40), severity=Severity.HIGH))
+    return {**ids, "rule": tracked.id}
 
 
 def histogram(
@@ -610,3 +646,48 @@ def test_ips_one_statement_at_two_data_sizes(db_schema) -> None:  # type: ignore
     assert listed["total"] == 61  # 11 original + 50 new
     assert body["total"] == listed["total"]
     assert client.statements == small == 1
+
+
+# ------------------------------------------------------------------- rule tests
+def test_rule_subject_kind_counts_the_incident_in_its_hour(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """`subject_kind=RULE` has a branch of its own: one incident in hour 2, and
+    every other hour is a measured zero, not the "no branch" all-zero answer."""
+    run(rule_world)
+    client = Client(READER)
+    params = {**rng(5), "subject_kind": "RULE"}
+    listed = client.get("/api/v1/anomalies", params={**params, "limit": 200}).json()
+    body = histogram(client, params)
+    assert listed["total"] == body["total"] == 1
+    assert body["families"] == ["RULE"]
+    by_start = {hour["start"]: hour for hour in body["hours"]}
+    assert by_start[_iso(at(2))]["counts"] == {"HIGH": 1}
+    assert by_start[_iso(at(2))]["total"] == 1
+    assert by_start[_iso(at(0))] == {"start": _iso(at(0)), "counts": {}, "total": 0}
+
+
+def test_rule_total_equals_the_list_and_adds_up_with_the_other_families(
+    db_schema,
+) -> None:  # type: ignore[no-untyped-def]
+    """The unfiltered histogram gained the rule rows: its total still equals the
+    list's, and a rule severity adds to Phase A's in a shared hour."""
+    run(rule_world)
+    client = Client(READER)
+    listed = client.get("/api/v1/anomalies", params={**rng(5), "limit": 200}).json()
+    body = histogram(client, rng(5))
+    assert listed["total"] == body["total"] == 7
+    assert body["families"] == ALL_FAMILIES
+    assert sum(hour["total"] for hour in body["hours"]) == listed["total"]
+    by_start = {hour["start"]: hour for hour in body["hours"]}
+    # Hour 2: Phase A LOW + rule HIGH, from two branches that must add up.
+    assert by_start[_iso(at(2))]["counts"] == {"LOW": 1, "HIGH": 1}
+    assert by_start[_iso(at(2))]["total"] == 2
+
+
+def test_the_rule_branch_keeps_the_histogram_at_one_statement(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """The rule branch joins the same union: unfiltered and rule-only are one statement."""
+    run(rule_world)
+    client = Client(READER)
+    assert histogram(client, rng(5))["total"] == 7
+    assert client.statements == 1
+    assert histogram(client, {**rng(5), "subject_kind": "RULE"})["total"] == 1
+    assert client.statements == 1

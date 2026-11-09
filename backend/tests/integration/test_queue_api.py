@@ -22,6 +22,7 @@ from app.models.catchall import CatchallSender
 from app.models.enums import (
     AlertStatus,
     AnomalyState,
+    RuleAnomalyType,
     Severity,
     TriageDisposition,
     TriageStatus,
@@ -32,6 +33,8 @@ from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
 from app.models.offense import OffenseSnapshot
 from app.models.property_watch import PropertyWatch
+from app.models.rule import AnalyticsRule
+from app.models.rule_anomaly import RuleAnomaly
 from app.models.triage import AnomalyTriage
 from app.models.waf import WafEndpoint
 from app.security.rbac import Principal
@@ -128,6 +131,36 @@ def watermark(instance_id, *, last_run_at=None, failures: int = 0) -> Collection
         last_run_at=last_run_at,
         consecutive_failures=failures,
     )
+
+
+def rule(instance_id, qradar_id: int, **kw) -> AnalyticsRule:  # type: ignore[no-untyped-def]
+    values = dict(
+        instance_id=instance_id,
+        qradar_id=qradar_id,
+        name=f"rule-{qradar_id}",
+        rule_type="EVENT",
+        enabled=True,
+        origin="USER",
+        is_building_block=False,
+    )
+    values.update(kw)
+    return AnalyticsRule(**values)
+
+
+def rule_incident(rule_row, **kw) -> RuleAnomaly:  # type: ignore[no-untyped-def]
+    values = dict(
+        rule_id=rule_row.id,
+        qradar_id=rule_row.qradar_id,
+        is_building_block=rule_row.is_building_block,
+        detector_type=RuleAnomalyType.RULE_STORM,
+        fingerprint=f"rule-{uuid.uuid4().hex}",
+        severity=Severity.HIGH,
+        state=AnomalyState.OPEN,
+        detected_at=AFTER,
+        details={},
+    )
+    values.update(kw)
+    return RuleAnomaly(**values)
 
 
 async def _base(session):  # type: ignore[no-untyped-def]
@@ -1089,3 +1122,121 @@ def test_a_get_writes_nothing_and_audits_nothing(db_schema) -> None:  # type: ig
         assert get(client, **params).status_code == 200
     # Fault paths roll back their savepoint; they must not leave anything behind either.
     assert run(counts) == before
+
+
+# -------------------------------------------------------------------- rule family
+class TestRuleFamily:
+    def test_an_open_rule_incident_with_no_triage_row_is_listed(self, db_schema) -> None:  # type: ignore[no-untyped-def]
+        async def seed(session):  # type: ignore[no-untyped-def]
+            inst, _ = await _base(session)
+            tracked = rule(inst.id, 501, name="Brute force")
+            session.add(tracked)
+            await session.flush()
+            kept = rule_incident(tracked, opened_at=AFTER, detected_at=AFTER)
+            session.add(kept)
+            await session.flush()
+            return str(kept.id)
+
+        kept = run(seed)
+        body = get(Client(READER), kind="anomaly").json()
+        row = next(r for r in body["items"] if r["id"] == kept)
+        assert row["family"] == "rule"
+        assert row["subject"] == "Brute force"
+        assert row["detector"] == "RULE_STORM"
+        assert row["link"] == f"/anomalies/{kept}"
+        assert row["triage"] == {"status": "NEW", "version": 0}
+        assert source_of(body, "anomaly")["count"] == 1
+        assert source_of(body, "anomaly")["new_count"] == 1
+
+    def test_family_rule_lists_only_the_rule_incident(self, db_schema) -> None:  # type: ignore[no-untyped-def]
+        async def seed(session):  # type: ignore[no-untyped-def]
+            inst, source = await _base(session)
+            tracked = rule(inst.id, 501, name="Brute force")
+            session.add(tracked)
+            await session.flush()
+            kept = rule_incident(tracked, opened_at=AFTER, detected_at=AFTER)
+            session.add_all([kept, phase_a(source.id, opened_at=AFTER), alert()])
+            await session.flush()
+            return str(kept.id)
+
+        kept = run(seed)
+        body = get(Client(READER), family="rule").json()
+        assert [s["kind"] for s in body["sources"]] == ["anomaly"]
+        assert ids_of(body) == [kept]
+        assert body["items"][0]["family"] == "rule"
+        assert body["total"] == 1
+
+    def test_a_suppressed_or_triage_closed_rule_incident_is_not_listed(self, db_schema) -> None:  # type: ignore[no-untyped-def]
+        async def seed(session):  # type: ignore[no-untyped-def]
+            inst, _ = await _base(session)
+            tracked = rule(inst.id, 501, name="Brute force")
+            session.add(tracked)
+            await session.flush()
+            suppressed = rule_incident(tracked, opened_at=AFTER, suppressed=True)
+            closed = rule_incident(
+                tracked, opened_at=AFTER, detector_type=RuleAnomalyType.RULE_SILENCE
+            )
+            session.add_all([suppressed, closed])
+            await session.flush()
+            session.add(
+                triage(
+                    "rule",
+                    closed.id,
+                    status=TriageStatus.CLOSED,
+                    disposition=TriageDisposition.NOISE,
+                )
+            )
+            return str(suppressed.id), str(closed.id)
+
+        hidden = set(run(seed))
+        body = get(Client(READER), kind="anomaly").json()
+        assert not (hidden & set(ids_of(body)))
+        assert source_of(body, "anomaly")["count"] == 0
+
+    def test_the_rule_rows_keep_the_total_and_new_windows(self, db_schema) -> None:  # type: ignore[no-untyped-def]
+        async def seed(session):  # type: ignore[no-untyped-def]
+            inst, _ = await _base(session)
+            tracked = rule(inst.id, 501, name="Brute force")
+            session.add(tracked)
+            await session.flush()
+            fresh = rule_incident(tracked, opened_at=AFTER, detected_at=AFTER)
+            old = rule_incident(
+                tracked,
+                opened_at=BEFORE,
+                detected_at=BEFORE,
+                detector_type=RuleAnomalyType.RULE_SILENCE,
+            )
+            session.add_all([fresh, old])
+            await session.flush()
+            return str(fresh.id), str(old.id)
+
+        fresh, old = run(seed)
+        body = get(Client(READER), kind="anomaly", since=SINCE).json()
+        assert set(ids_of(body)) == {fresh, old}
+        assert source_of(body, "anomaly")["count"] == 2
+        assert source_of(body, "anomaly")["new_count"] == 1
+        new_only = get(Client(READER), kind="anomaly", since=SINCE, new_only="true").json()
+        assert ids_of(new_only) == [fresh]
+        assert source_of(new_only, "anomaly")["count"] == 1
+        assert source_of(new_only, "anomaly")["new_count"] == 1
+
+    def test_the_rule_rows_triage_row_is_found_by_its_family(self, db_schema) -> None:  # type: ignore[no-untyped-def]
+        """The queue rejoins the triage row by the family of the subject kind. A rule
+        incident's row must be found, not read as a missing (NEW, version 0) one."""
+        async def seed(session):  # type: ignore[no-untyped-def]
+            inst, _ = await _base(session)
+            tracked = rule(inst.id, 501, name="Brute force")
+            session.add(tracked)
+            await session.flush()
+            kept = rule_incident(tracked, opened_at=BEFORE, detected_at=BEFORE)
+            session.add(kept)
+            await session.flush()
+            session.add(
+                triage("rule", kept.id, status=TriageStatus.IN_PROGRESS, version=4)
+            )
+            return str(kept.id)
+
+        kept = run(seed)
+        body = get(Client(READER), kind="anomaly").json()
+        row = next(r for r in body["items"] if r["id"] == kept)
+        assert row["triage"] == {"status": "IN_PROGRESS", "version": 4}
