@@ -3177,3 +3177,45 @@ td.cell-name.ips-source-cell {
   border-color: var(--text-2);
   font-weight: var(--fw-semibold);
 }
+
+/* --- one-key list triage (SOC-15a) -----------------------------------------
+   The row `j` / `k` mark: the hover fill and a bar in the focus token on the row's first cell, so
+   it reads without colour and is not mistaken for a status. (An outline or an inset ring is not
+   used: the pinned actions cell of the anomaly list paints over the end of one.) */
+.list-keys {
+  margin: 0 0 var(--sp-2);
+}
+.list-keys-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.list-keys-label {
+  color: var(--text-3);
+}
+.list-keys kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 var(--sp-1);
+  text-align: center;
+  font-family: var(--font-mono);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+}
+tr[data-kbd-row] > td {
+  background: var(--surface-3);
+}
+tr[data-kbd-row] > td:first-child {
+  box-shadow: inset 3px 0 0 var(--focus);
+}
+/* The pinned actions cell fills like the rest of its row; its scroll rule yields to the mark. */
+.sticky-actions tbody tr[data-kbd-row] td.row-actions {
+  background: var(--surface-3);
+  animation: none;
+}

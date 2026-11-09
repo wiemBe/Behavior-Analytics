@@ -30,6 +30,7 @@ import {
 import { rangeWindow } from "@/lib/timeRange";
 import { AlertFilters } from "@/components/alerts/AlertFilters";
 import { CopyLink } from "@/components/listview/CopyLink";
+import { ListKeyboard } from "@/components/listview/ListKeyboard";
 
 import "./alerts.css";
 
@@ -164,8 +165,9 @@ async function AlertsPage({
               })}
             </p>
           )}
+          <ListKeyboard table="table.alerts-list" open="td.alert-title a" />
           <TableScroll label={t("table.label")}>
-            <table className="table-dense" aria-label={t("table.label")}>
+            <table className="table-dense alerts-list" aria-label={t("table.label")}>
               <thead>
                 <tr>
                   <th scope="col">{t("table.title")}</th>

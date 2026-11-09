@@ -48,6 +48,7 @@ import { sourcesAsOf } from "@/lib/home/asOf";
 import { utcTimeText } from "@/components/ui/UtcTime";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 import { CopyLink } from "@/components/listview/CopyLink";
+import { ListKeyboard } from "@/components/listview/ListKeyboard";
 import { rangeWindow, stampText } from "@/lib/timeRange";
 
 import "./anomalies.css";
@@ -268,6 +269,7 @@ async function AnomaliesPage({
         </div>
       ) : (
         <>
+          <ListKeyboard table="table.anomaly-list" open="td.row-actions a" />
           <TableScroll label={t("label")}>
             <table className="sticky-actions anomaly-list">
               <caption className="sr-only">
