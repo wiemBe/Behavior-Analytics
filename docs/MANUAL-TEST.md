@@ -15,35 +15,41 @@ The results are written to `docs/MANUAL-TEST-RESULTS.md`. This guide is divided 
 
 **Contents**
 
-1. [0.1.14](#0114)
+1. [0.1.15](#0115)
 
 ---
 
-## 0.1.14
+## 0.1.15
 
-This section upgrades a 0.1.13 site to 0.1.14 and tests the upgraded site. A 0.1.12 site upgrades to 0.1.13 first; that path is in `docs/releases/0.1.13.md` and is not described here. 0.1.14 has no migration: the migration head is `0054` before the upgrade and `0054` after it (`migration_head` in `/api/v1/version`). The production IPS sources are Cisco Firepower/FTD and Palo Alto Threat.
+This section upgrades a 0.1.14 site to 0.1.15 and tests the upgraded site. A 0.1.13 site upgrades to 0.1.14 first; that path is in `docs/releases/0.1.14.md` and is not described here. 0.1.15 adds six migrations: the migration head is `0054` before the upgrade and `0060` after it (`migration_head` in `/api/v1/version`). The production IPS sources are Cisco Firepower/FTD and Palo Alto Threat.
 
 ### What this release changes
 
-- **An active anomaly is listed and counted whatever its age (ANOM-1).** `GET /anomalies?active_only=true` without `since` has no lower bound: it lists every active anomaly up to `until`, whatever its age, so the Dashboard's “Recent anomalies”, the search box and the WAF and IPS widgets show every active anomaly and the “Active anomalies, now” card (MT-63) agrees with them (MT-69, MT-78, MT-79, MT-80). An explicit `since`/`until` is still bounded by the `API_MAX_RANGE_DAYS` ceiling.
-- **The `/anomalies` empty state's count and link cover every active anomaly (UX-6).** The count reads the active list with no start time, and the link opens `/anomalies?active_only=true`; the link text is “Show every active anomaly” (MT-80).
-- **The `/` tab title reads “Dashboard · Behavior Analytics” (UX-6).** It read only “Dashboard” (MT-24).
-- **`/admin/siem-load` no longer prints an empty “Reason:” line (UX-6).** A part with no reason shows its “Not read” pill alone (MT-130, MT-133).
-- **An empty notification answer is “none” only when the console has an enabled `System Notification` log source (HLT-8).** Without one the notification part of the QRadar health window is “Not collected” with its reason sentence, never “no notifications” (MT-133).
-- **`qradar-dash` refuses a state path that holds a control character (CI-8).** A damaged `.qradar-dash/state.json` now gets the refusal the guard was meant to give; no check of its own.
-- **The cadence and Ariel permit documents name every family (DOC-9).** `docs/CONFIGURATION.md` lists every family's seeded cadence and switch; `docs/ARIEL-PERMIT.md` names the `QRADAR_HEALTH` and `doctor --aql` searches and the real permit bound; no check of its own.
-- **One new check, MT-143, and the core stays 38 checks.** MT-143 checks that a request right after sign-in is accepted (FIX-23) and is not core. MT-80's link text was corrected; the guide also corrected MT-09's `doctor` texts after a console boot, MT-10's measured times, and MT-11's rule to read the Cadence cell, not the Bucket cell. The other checks the changes touch already describe the behaviour.
-- **No migration; head `0054`.** `upgrade` prints the decision pair twice, both with `0054`, and no `Running upgrade` line (section 2).
-- **A 0.1.13 site upgrades directly.** `min_from` is `0.1.13` (`docs/releases/0.1.14.md`). A 0.1.12 site upgrades to 0.1.13 first; that path is in `docs/releases/0.1.13.md`.
+- **Six migrations; head `0060` (SOC-1a, SOC-1c, SOC-17c, SOC-17d, SOC-4a, SOC-6a).** `upgrade` prints the decision pair twice, `0054` before the stop and `0060` after the new stack is up, and six `Running upgrade` lines between them (`0054 -> 0055` to `0059 -> 0060`), in the output of the command itself (section 2, MT-06 to MT-08).
+- **A 0.1.14 site upgrades directly.** `min_from` is `0.1.14` (`docs/releases/0.1.15.md`). A 0.1.13 site upgrades to 0.1.14 first; that path is in `docs/releases/0.1.14.md`.
+- **The defaults keep 0.1.14's behaviour (MT-144).** No policy row, no quiet period, a digest that sends nothing, `collect_rule_matches` disabled.
+- **Existing roles do not gain `anomaly:triage` or `alert:suppress` (MT-145).** An administrator holds both through `admin:*`.
+- **Triage on every anomaly family (SOC-1a, SOC-1b).** The block on the anomaly detail (MT-146); the Triage, Owner and Age columns and the triage, owner and disposition filters of `/anomalies` (MT-147).
+- **A NEW anomaly nobody took is closed as stale after three days (SOC-1c).** “Auto-closed: stale” (MT-148).
+- **Related activity on the anomaly detail (SOC-3a, SOC-3b)** (MT-149) **and Investigate in QRadar (SOC-2)** (MT-150).
+- **Noisy sources (SOC-17a), tuning preview with a criticality replay (SOC-17b), the low-volume model (SOC-17e)** (MT-151 to MT-153).
+- **Traffic by destination (TOP-1)** (MT-154) **and Queue (SOC-4)** (MT-155).
+- **Alert filters, facet counts and a link that reproduces the view (SOC-7, FIX-33)** (MT-156).
+- **Don't alert this again (SOC-17d)** (MT-157) **and `/admin/alert-policy` (SOC-17c)** (MT-158).
+- **Rule silence and storm incidents (SOC-6a, SOC-6c) and the daily rule-incident retention.** Off with the defaults; MT-144 checks the switch. No check turns the family on.
+- **The top bar's “Data to” carries its date on another UTC day (UX-7)** (MT-22).
+- **The navigation has four new items:** “Queue”, “Noisy sources”, “Traffic” and “Alert policy” (MT-22).
+- **Corrected in this guide after the 0.1.15 lab run (REL-15e).** MT-06 and MT-07 read the six migration lines from the upgrade's own output (the `migrate` container of `docker compose logs` only shows its two start-up lines afterwards). MT-11 reads the cadence as 5 minutes, not 8. MT-22 lists the new navigation. MT-80 and MT-87 list the new columns. MT-122 and MT-123 describe the rollback to 0.1.14 as it behaved.
+- **Fifteen new checks, MT-144 to MT-158; the core is 40 checks.** MT-144 and MT-145 are core; the other thirteen are not. MT-146, MT-155 and MT-157 write to the site's own tables and are `lab only`; MT-150 has one `lab only` part; MT-152 previews and saves nothing.
 - **Before you start:** nothing in `.env` needs an edit for this release. The alert e-mail and `QRADAR_HEALTH` steps of 0.1.11 (`SMTP_HOST`; the custom properties `Metric ID`, `Element` and `Value`) are described in `docs/releases/0.1.11.md`; MT-138 to MT-142 and MT-133 need them.
 
 ### How to use this guide
 
-- **In production only the core is run.** The 38 checks that carry `[core]` in their heading are the production path; the full list is for the lab run (MT-1b) and in production is done only if the operator has the time. The only core checks that write (writes) are the ones the preconditions and the upgrade need (backup, support bundle, upgrade); there is no `lab only` check in the core (none of the `lab only` headings carries `[core]`). The `lab only` checks are not listed here: each one says so in its heading, so search this guide for `lab only`.
+- **In production only the core is run.** The 40 checks that carry `[core]` in their heading are the production path; the full list is for the lab run (MT-1b) and in production is done only if the operator has the time. The only core checks that write (writes) are the ones the preconditions and the upgrade need (backup, support bundle, upgrade); there is no `lab only` check in the core (none of the `lab only` headings carries `[core]`). The `lab only` checks are not listed here: each one says so in its heading, so search this guide for `lab only`.
 - The order of the checks is the order of the sections. Each check has the fields **Precondition**, **Action**, **Expected** and **Record**. Write the result on the results page as `Pass`, `Fail` or `Not run`; write a Note for `Fail` and `Not run`.
 - **(writes)**: the check changes the application's state (it writes a file, an account, a record). Each one has a **Cleanup** step.
 - **lab only**: the check changes the state that the analysts see or leaves a trace that cannot be deleted; in production it is written `Not run`, with the reason given in the check. The orchestrator runs the same guide to the letter on a lab VM (MT-1b).
-- **QRadar search**: the check sends an Ariel search to QRadar and spends console capacity. Three checks in this test are like that and all three are `lab only`.
+- **QRadar search**: the check sends an Ariel search to QRadar and spends console capacity. Three checks in this test are like that and all three are `lab only`; the fourth case is part 2 of MT-150, where the tester runs the shown query in the console's own page (the product does not).
 - **console administrator step**: the check is done by the administrator of the QRadar console.
 - `Not run`: the check could not be done (for example the site has no data of that kind). "No data" is not a Fail; write the reason in the Note field.
 - A raw message key (a string of the form `namespace.key`) or Turkish text anywhere in the interface is a Fail of the check where it was seen (section 4).
@@ -64,9 +70,9 @@ For the data of a collection to appear on a page, the cadence and the settle mar
 | New sentence rows (property watch reason, custom rule reason, rule health reason, history backfill reason) | After the next run of the collection that writes the row | The stored previous text |
 | A new transition, a new anomaly, a new alert | When an event happens; there is no waiting | The older rows |
 
-**Core (production path):** 38 checks, about **2 hours** of active work (an estimate, not measured) and about 10 minutes of the console administrator (MT-120); the cadence wait is separate. **Production order:** the core checks are done in section order. MT-126, although its number is high, is done right after MT-11; MT-128 is also done after MT-11, once a `GEO_COLLECTION` cadence has passed. The cadence wait (18 minutes at most) is filled with read-only checks that need no new data, such as MT-12 to MT-22; the data-dependent checks (MT-24 and after) are done when the wait is over.
+**Core (production path):** 40 checks, about **2 hours 10 minutes** of active work (an estimate, not measured) and about 10 minutes of the console administrator (MT-120); the cadence wait is separate. **Production order:** the core checks are done in section order. MT-126, although its number is high, is done right after MT-11; MT-128 is also done after MT-11, once a `GEO_COLLECTION` cadence has passed. The cadence wait (18 minutes at most) is filled with read-only checks that need no new data, such as MT-12 to MT-22; the data-dependent checks (MT-24 and after) are done when the wait is over.
 
-Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes, and MT-133 to MT-135 about 25 more (MT-135 only where an HA pair exists), MT-136 about 5 more, MT-137 to MT-142 about 35 more (MT-141 and MT-142 only in the lab), and MT-143 about 5 more.
+Full list: about **5.5 hours** of active work (an estimate, not measured), not counting the waits. By section: Preconditions 20 min, Upgrade 20 min (the outage is inside the window), Sign-in 20 min, Language 45 min, Dashboard 40 min, Anomalies 30 min, Alerts 10 min, Custom rules 15 min, Searches 15 min, History backfill 10 min, Rules/coverage/fleet 35 min, Administration 25 min, Guide 10 min, Read-only against QRadar 15 min (the console administrator is separate), Rollback criteria 5 min; MT-129 to MT-132 add about 20 minutes, and MT-133 to MT-135 about 25 more (MT-135 only where an HA pair exists), MT-136 about 5 more, MT-137 to MT-142 about 35 more (MT-141 and MT-142 only in the lab), and MT-143 about 5 more, and MT-144 to MT-158 about 1 hour 30 minutes more (an estimate: the lab-only MT-146, MT-155, MT-157 and part 2 of MT-150 about 35 of them).
 Fill the first cadence wait (18 minutes at most with the default cadences) with the Sign-in and Language sections. It can also be done in two half days; between the upgrade and the Dashboard and anomaly checks a wait is needed.
 
 
@@ -89,8 +95,8 @@ curl -s http://127.0.0.1:8000/api/v1/health/ready
 
 **Expected:**
 
-- `status`: `Installed version: 0.1.13`; `API ready: HTTP 200 (http://127.0.0.1:8000/api/v1/health/ready)`; every service in the `docker compose ps` table is running and healthy; the `Last upgrade:` line is present; exit code 0.
-- `/api/v1/version`: `"version":"0.1.13"` and `"migration_head":"0054"`.
+- `status`: `Installed version: 0.1.14`; `API ready: HTTP 200 (http://127.0.0.1:8000/api/v1/health/ready)`; every service in the `docker compose ps` table is running and healthy; the `Last upgrade:` line is present; exit code 0.
+- `/api/v1/version`: `"version":"0.1.14"` and `"migration_head":"0054"`.
 - `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0054"`.
 
 **Record:** The `Installed version` line, the `Last upgrade:` line, and the `git_sha` and `migration_head` values.
@@ -143,7 +149,7 @@ cat "$BACKUP/MANIFEST"
 
 - The command exits with 0. For TimescaleDB it may print `circular foreign-key constraints` warnings; this is expected, and what decides is the exit code and that the backup exists.
 - The directory holds `database.dump`, `env.bak`, `secrets.tar`, `state.json` and `MANIFEST`, and `install.answers` when `.secrets/install.answers` exists as a regular file with mode `0600` or `0400` (the copy keeps that mode); the directory mode is `0700` and the other file modes are `0600`. The support bundle (MT-04) is a different archive and is not in this directory.
-- `MANIFEST` has `VERSION=0.1.13`, `ALEMBIC_VERSION=0054`, `STATE_JSON=included` and a `DATABASE_SIZE_BYTES=<number>` line.
+- `MANIFEST` has `VERSION=0.1.14`, `ALEMBIC_VERSION=0054`, `STATE_JSON=included` and a `DATABASE_SIZE_BYTES=<number>` line.
 
 **Record:** The name of the backup directory (only the `qradar-dash-<utc>-manual` part), and the `VERSION` and `ALEMBIC_VERSION` lines. The contents of `env.bak` and `secrets.tar` are written nowhere.
 
@@ -192,13 +198,13 @@ tar -tzf "$BUNDLE" | head -40
 
 **Record:** The start and end of the window (UTC), the name of the path, and the person or role who was told.
 
-### 2. Upgrade 0.1.13 → 0.1.14
+### 2. Upgrade 0.1.14 → 0.1.15
 
-A fresh browser has no `ba_locale` cookie, and the sign-in page shows the `h1` “Sign in” (the browser tab reads “Sign in · Behavior Analytics”) and the version line `API version 0.1.13`. The interface is English only (D-41); a `ba_locale` cookie, whatever its value, does not change it.
+A fresh browser has no `ba_locale` cookie, and the sign-in page shows the `h1` “Sign in” (the browser tab reads “Sign in · Behavior Analytics”) and the version line `API version 0.1.14`. The interface is English only (D-41); a `ba_locale` cookie, whatever its value, does not change it.
 
-There are two ways to upgrade the site from 0.1.13 to 0.1.14; choose one. The target version works the same way as the "Upgrade" and "Offline bundle" sections of `docs/OPERATIONS.md`. The upgrade takes its own verified `pre-upgrade` backup; the backup is also restore-tested. 0.1.14 adds no migration: the migration head is `0054` before the upgrade and `0054` after it, and the newest file in `backend/alembic/versions/` is `0054_ariel_caller_access_check.py`. The migrate step still runs (`alembic upgrade head`) and finds nothing to do, so it prints no `Running upgrade` line. No migration is run downward on a site.
+There are two ways to upgrade the site from 0.1.14 to 0.1.15; choose one. The target version works the same way as the "Upgrade" and "Offline bundle" sections of `docs/OPERATIONS.md`. The upgrade takes its own verified `pre-upgrade` backup; the backup is also restore-tested. 0.1.15 adds six migrations: the migration head is `0054` before the upgrade and `0060` after it, and the newest file in `backend/alembic/versions/` is `0060_rule_anomaly.py` (`0055_anomaly_triage`, `0056_stale_triage_disposition`, `0057_alert_policy_digest`, `0058_alert_suppression`, `0059_user_queue_marker`, `0060_rule_anomaly`). The migrate step runs them once (`alembic upgrade head`), in order, and prints one `Running upgrade` line for each. They are additive and nothing is backfilled. No migration is run downward on a site.
 
-**Outage.** The backend, worker and beat are down from the start of `pg_dump` until `/api/v1/health/ready` returns 200; `frontend` and `proxy` are stopped too. On a small database the upgrade outage was measured at about 15-25 s (22.9 s in the last run, measured on 0.1.11 with seven migrations; this release runs none); the budget for a database under 5 GiB is 10 minutes. Pulling the images is outside this window. These are not promises. The upgrade empties Redis (`FLUSHALL`); queued tasks are lost and are set up again at the next beat tick, and the important data is in PostgreSQL. Nothing is written to QRadar.
+**Outage.** The backend, worker and beat are down from the start of `pg_dump` until `/api/v1/health/ready` returns 200; `frontend` and `proxy` are stopped too. On a small database the upgrade outage was measured at about 15-25 s with migrations (22.3 s in the 0.1.14 → 0.1.15 run of REL-15e, offline, six migrations on the lab VM; 22.9 s in the 0.1.10 → 0.1.11 run with seven migrations); the budget for a database under 5 GiB is 10 minutes. Pulling the images is outside this window. These are not promises. The upgrade empties Redis (`FLUSHALL`); queued tasks are lost and are set up again at the next beat tick, and the important data is in PostgreSQL. Nothing is written to QRadar.
 
 #### MT-06 — Upgrade, online path (writes) [core]
 
@@ -209,23 +215,29 @@ There are two ways to upgrade the site from 0.1.13 to 0.1.14; choose one. The ta
 
 ```bash
 git fetch --tags
-git checkout v0.1.14
-./qradar-dash upgrade 0.1.14
+git checkout v0.1.15
+./qradar-dash upgrade 0.1.15
 ```
 
 - Write the start and end time in the Note field with `date -u`.
 
 **Expected:**
 
-- The command exits with 0 and the last line is `Upgrade complete: 0.1.13 -> 0.1.14.`.
-- No migration runs: Alembic prints no `Running upgrade` line, and a `Running upgrade` line here is a Fail (write it in the Note field). The migrate container exits with 0. Alembic's own start-up lines are expected before it exits. They carry Alembic's prefix, exactly as measured on the lab (OPS-33), in the output of `docker compose logs --no-color --no-log-prefix migrate` (the upgrade command prints the same two lines in its own output):
+- The command exits with 0 and the last line is `Upgrade complete: 0.1.14 -> 0.1.15.`.
+- Six migrations run, once, in order. The command prints them in **its own output** (the `migrate-run` container the upgrade starts), between the two `PASS` pairs. Alembic's two start-up lines come first, then one `Running upgrade` line for each revision. They carry Alembic's prefix and the revision's own description, exactly as measured on the lab VM (REL-15e):
 
 ```
 INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
 INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0054 -> 0055, Analyst triage state and activity log (SOC-1a).
+INFO  [alembic.runtime.migration] Running upgrade 0055 -> 0056, D-55: the system-only STALE triage disposition.
+INFO  [alembic.runtime.migration] Running upgrade 0056 -> 0057, SOC-17c: the alert policy and the daily digest's run record.
+INFO  [alembic.runtime.migration] Running upgrade 0057 -> 0058, SOC-17d: time-boxed alert suppression and its per-incident hit record.
+INFO  [alembic.runtime.migration] Running upgrade 0058 -> 0059, SOC-4a: the per-user "last visit" marker for the triage queue.
+INFO  [alembic.runtime.migration] Running upgrade 0059 -> 0060, SOC-6a: rule silence and storm incidents, the `rule` family and its e-mail type.
 ```
 
-A different start-up line is written in the Note field, not a Fail.
+The six revision pairs `0054 -> 0055` to `0059 -> 0060` must all be present, in this order. A missing pair, a pair out of order, or an Alembic error is a Fail (write the first error line in the Note field). The text after the comma is the migration's description and can differ in a later build; the pair is what decides. Do not look for these lines in `docker compose logs migrate` after the upgrade: that container is started again at the end, finds nothing left to do and shows only the two start-up lines (REL-15e, finding D2). The migrate container exits with 0. A different start-up line is written in the Note field, not a Fail.
 - In the pre-check (before the writers stop) these three lines are printed; the head is that of the **installed** version, which is `0054`:
 
 ```
@@ -234,41 +246,41 @@ PASS  migration_head database and image are at 0054
 Full report: ./qradar-dash doctor
 ```
 
-- After the new stack has started, the second pair is printed; the head is that of the **target** version and is also `0054`:
+- After the new stack has started, the second pair is printed; the head is that of the **target** version, `0060`:
 
 ```
 PASS  db_connect     database accepted SELECT 1
-PASS  migration_head database and image are at 0054
+PASS  migration_head database and image are at 0060
 Full report: ./qradar-dash doctor
 ```
 
-- Both pairs are printed and both say `0054`. A single pair is printed only if the target is already installed: `Version 0.1.14 is already installed and healthy; nothing changed.` That is not the output of a first upgrade.
+- Both pairs are printed: the first says `0054`, the second `0060`. A single pair is printed only if the target is already installed: `Version 0.1.15 is already installed and healthy; nothing changed.` That is not the output of a first upgrade.
 - The number of spaces in the `PASS` lines can change with the release; the text is the same.
-- If the `.env` of 0.1.13 has no `FRONTEND_EDGE_IP` and `FORWARDED_ALLOW_IPS` is a non-empty list that is not `*` and does not contain the frontend address, these two lines are printed as well. Do not write the addresses on the page; write only that the lines appeared:
+- If the `.env` of 0.1.14 has no `FRONTEND_EDGE_IP` and `FORWARDED_ALLOW_IPS` is a non-empty list that is not `*` and does not contain the frontend address, these two lines are printed as well. Do not write the addresses on the page; write only that the lines appeared:
   - `Frontend address <address> added to .env (FRONTEND_EDGE_IP).`
   - `FORWARDED_ALLOW_IPS now also trusts the frontend (<address>): <list>`
 - If `FRONTEND_EDGE_IP` is already in `.env` and the list does not contain the frontend address, only `FORWARDED_ALLOW_IPS now also trusts the frontend (<address>): <list>` is printed; that is also correct.
 - If the keys are already correct (the list already contains the frontend address), these lines are not printed; that is also correct.
-- If the output is `upgrade refused: …`, no container has been stopped; read the reason (for example `this checkout is version <x>, not 0.1.14` means `git checkout v0.1.14` was forgotten; `upgrade refused: 0.1.14 requires at least 0.1.13; nothing was changed` means the site is older than 0.1.13 (the minimum comes from `min_from` in the checkout's own `docs/releases/0.1.14.md`, read before any `.env` edit, bundle load or pull), and `.env` and the images are unchanged) and fix it. If there are two lines of the same name, `upgrade refused: .env has more than one FRONTEND_EDGE_IP line; nothing was changed` (or `FORWARDED_ALLOW_IPS`) is printed; delete the extra line and do not write `*`.
-- If the exit is non-zero and the last line is `upgrade to 0.1.14 failed and was rolled back to 0.1.13; the broken database was kept`, the automatic rollback has run: go to section 15 (OPS-R44).
+- If the output is `upgrade refused: …`, no container has been stopped; read the reason (for example `this checkout is version <x>, not 0.1.15` means `git checkout v0.1.15` was forgotten; `upgrade refused: 0.1.15 requires at least 0.1.14; nothing was changed` means the site is older than 0.1.14 (the minimum comes from `min_from` in the checkout's own `docs/releases/0.1.15.md`, read before any `.env` edit, bundle load or pull), and `.env` and the images are unchanged) and fix it. If there are two lines of the same name, `upgrade refused: .env has more than one FRONTEND_EDGE_IP line; nothing was changed` (or `FORWARDED_ALLOW_IPS`) is printed; delete the extra line and do not write `*`.
+- If the exit is non-zero and the last line is `upgrade to 0.1.15 failed and was rolled back to 0.1.14; the broken database was kept`, the automatic rollback has run: go to section 15 (OPS-R44).
 
-**Record:** The exit code, the start and end time (UTC), the two `migration_head` lines, the last line, and which of the address lines appeared (not the addresses themselves). If it is Fail, the first error line.
+**Record:** The exit code, the start and end time (UTC), the two `migration_head` lines (`0054`, then `0060`), whether the six `Running upgrade` lines were present, the last line, and which of the address lines appeared (not the addresses themselves). If it is Fail, the first error line.
 
 **Cleanup:** The rollback is the `rollback` command in section 15. There is no other cleanup.
 
 #### MT-07 — Upgrade, offline bundle path (writes) [core]
 
-**Precondition:** The bundle is prepared on a connected machine from the same tag: `git fetch --tags && git checkout v0.1.14 && ./qradar-dash bundle --output <bundle directory>`. `--output DIR` is the directory the bundle is written to; if it is not given, the file is written to the current directory. The file name is `qradar-dash-0.1.14-bundle.tar`. A file at the same path is not overwritten. The bundle is carried to the site. If you chose the online path, this check is `Not run`.
+**Precondition:** The bundle is prepared on a connected machine from the same tag: `git fetch --tags && git checkout v0.1.15 && ./qradar-dash bundle --output <bundle directory>`. `--output DIR` is the directory the bundle is written to; if it is not given, the file is written to the current directory. The file name is `qradar-dash-0.1.15-bundle.tar`. A file at the same path is not overwritten. The bundle is carried to the site. If you chose the online path, this check is `Not run`.
 
 **Action:**
 
 - Compare the checksum on both machines, then unpack the bundle in the install directory and upgrade:
 
 ```bash
-sha256sum /path/qradar-dash-0.1.14-bundle.tar
+sha256sum /path/qradar-dash-0.1.15-bundle.tar
 cd <install directory>
-tar -xf /path/qradar-dash-0.1.14-bundle.tar --exclude=images.tar
-./qradar-dash upgrade 0.1.14 --offline /path/qradar-dash-0.1.14-bundle.tar
+tar -xf /path/qradar-dash-0.1.15-bundle.tar --exclude=images.tar
+./qradar-dash upgrade 0.1.15 --offline /path/qradar-dash-0.1.15-bundle.tar
 ```
 
 
@@ -276,10 +288,10 @@ tar -xf /path/qradar-dash-0.1.14-bundle.tar --exclude=images.tar
 
 - The two checksums are the same.
 - The bundle is verified and loaded; the line `bundle images loaded and checked against MANIFEST` appears in the output. No container is stopped before the images are loaded and checked.
-- The rest is as in the online path: two `PASS` pairs (both `0054`), no `Running upgrade` line, and the last line `Upgrade complete: 0.1.13 -> 0.1.14.`, exit code 0.
+- The rest is as in the online path: two `PASS` pairs (`0054`, then `0060`), the six `Running upgrade` lines of MT-06 in the command's own output, and the last line `Upgrade complete: 0.1.14 -> 0.1.15.`, exit code 0.
 - If an image is missing, `upgrade refused: target images are unavailable: image <image> is not loaded on this host; no container was stopped; pass the bundle: …` is printed and nothing stops.
 
-**Record:** Both checksums, the exit code, the start and end time (UTC), the two `migration_head` lines.
+**Record:** Both checksums, the exit code, the start and end time (UTC), the two `migration_head` lines, whether the six `Running upgrade` lines were present.
 
 **Cleanup:** The `rollback` in section 15.
 
@@ -304,9 +316,9 @@ stat -c '%a %n' "$BACKUP/install.answers"
 
 **Expected:**
 
-- `status`: `Installed version: 0.1.14`; `Last upgrade: success, 0.1.13 -> 0.1.14 at <utc>`; `Last upgrade backup: <path> (age <age>)`; `API ready: HTTP 200 (…)`; exit code 0; every service healthy.
-- `/api/v1/version`: `"version":"0.1.14"` and `"migration_head":"0054"`.
-- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0054"`.
+- `status`: `Installed version: 0.1.15`; `Last upgrade: success, 0.1.14 -> 0.1.15 at <utc>`; `Last upgrade backup: <path> (age <age>)`; `API ready: HTTP 200 (…)`; exit code 0; every service healthy.
+- `/api/v1/version`: `"version":"0.1.15"` and `"migration_head":"0060"`.
+- `/api/v1/health/ready`: `"status":"ready"`, `"database":"ok"`, `"revision":"0060"`.
 - The backup has `install.answers`. `stat` prints the mode `600` (`0600`). If the live file was `0400` before the upgrade, the mode is `400`. The file is missing only if the live file is missing, if it is a symbolic link, or if its mode is neither of these two; on an ordinary install the file exists and its absence is Fail.
 
 **Record:** The version and `migration_head` values of the three outputs; the `Last upgrade:` line; the name of the backup directory and the digits of the `install.answers` mode. The contents of the file are not written.
@@ -353,7 +365,7 @@ awk -F= '
 
 **Expected:**
 
-- There is no `FAIL`, with one exception: a `watermarks` `FAIL` (and the `errors_recent` count that goes with it) for a collector whose failure was recorded before the upgrade, by the rule in MT-02. The hourly `log_source_inventory` and `rule_inventory` on a changed console are one case of it; the families that were not run while the site was down (for example `catchall_senders`, `rule_match`, `geo_countries_source`) are another. Write the collector names in the Note field; the wait belongs to MT-11. `db_connect` PASS; `migration_head` PASS and `database and image are at 0054`; `version_match` PASS and `frontend and backend report 0.1.14`; `containers` PASS.
+- There is no `FAIL`, with one exception: a `watermarks` `FAIL` (and the `errors_recent` count that goes with it) for a collector whose failure was recorded before the upgrade, by the rule in MT-02. The hourly `log_source_inventory` and `rule_inventory` on a changed console are one case of it; the families that were not run while the site was down (for example `catchall_senders`, `rule_match`, `geo_countries_source`) are another. Write the collector names in the Note field; the wait belongs to MT-11. `db_connect` PASS; `migration_head` PASS and `database and image are at 0060`; `version_match` PASS and `frontend and backend report 0.1.15`; `containers` PASS.
 - `forwarded_allow_ips` is PASS and the text is `FORWARDED_ALLOW_IPS trusts the frontend (<address>)`. The address is the same as `FRONTEND_EDGE_IP`; do not write the address on the page. This line has no runbook. awk prints `two addresses, the frontend is in the list; addresses not printed`. On a site behind an outer proxy, the list is the operator's old list with the frontend address added once; more than two addresses is correct, and awk prints the address count.
 - If the line is missing, if awk says empty or star, or if doctor says FAIL (`FORWARDED_ALLOW_IPS is empty; every analyst shares one rate-limit key` or `FORWARDED_ALLOW_IPS is *; every analyst shares one rate-limit key`), this is Fail. The runbook is OPS-R21. Do not write `*`. If the list does not contain the frontend address, it is a WARN: `FORWARDED_ALLOW_IPS does not trust the frontend (<address>); pages drawn by the server share one rate-limit key`, runbook OPS-R21. This is also Fail.
 - Because beat and worker have just started, `celery_workers` or `celery_beat` can give a temporary FAIL in the first minute; wait a minute and repeat the command. If the FAIL stays on the second run, it is Fail.
@@ -362,7 +374,7 @@ awk -F= '
 - A stalled offense watermark is a separate WARN: `{n} watermark(s) stalled at the page ceiling: offense_snapshot`. The runbook is OPS-R66. If there is lag as well, the two sentences are joined with a semicolon and the runbook is still OPS-R66. This WARN is not a Fail. A provider error stays FAIL, the runbook is OPS-R30, and the same text can be appended to the end of the FAIL sentence. A clean run clears the stall (MT-11).
 - `backup_age` can stay WARN for the same reason as before the upgrade: no backup, the age cannot be read, older than 26 hours, or the backup timer is not installed or is off (a fresh backup also gives a WARN when there is no timer or it is off). This is not a fault of the upgrade. The line is in the doctor table of `docs/OPERATIONS.md`; it has no OPS-R id.
 
-- The report has these lines, which 0.1.11 added (they are present before this upgrade too): `email` (SKIP `not configured (SMTP_HOST is empty); alerts are not mailed` until `SMTP_HOST` is set), `qradar_access`, `qradar_disk` and `qradar_pipeline` (MT-133, MT-134). On a 0.1.13 site the `QRADAR_HEALTH` family has already run, so `qradar_disk` and `qradar_pipeline` read the stored windows; `not collected since <time> UTC` (a window older than the family's cadence allows) clears after its next run (15 minutes by default, MT-11), and `not collected yet` appears only where the family never ran (family off, or a console added since). The report also has `geo_country_source` and `qradar_health`. A WARN on either is not a Fail: write its text in the Note field (a lab CE console always gives a WARN on `qradar_health` because its license is over-allocated). When the console does not answer, `qradar_health` is `SKIP` and `qradar_auth` is the line to read: a `SKIP` is neither a `WARN` nor a `FAIL` and does not raise the exit code. Its texts, from the code: `the console did not answer; see qradar_auth` when the console's own reachability probe failed (`backend/app/cli/doctor.py:1659-1662`); `nothing could be read from QRadar: managed hosts (<state>), EPS (<state>), license (<state>); see qradar_auth` when the probe answered but none of the three figures could be read, each state being `NOT_COLLECTED`, `FAILED`, `STALE` or `PARTIAL` as stored (`:1728-1733`); `QRadar health could not be read (<exception class>)` when the read itself raised (`:1653-1658`); `the registered console could not be read (<exception class>)` when the console row could not be loaded (`:1633-1640`); and `no enabled QRadar instance is registered; see qradar_auth` when there is no enabled console at all (`:1641-1644`). In the first minutes after the QRadar console boots, its Ariel and health services are not ready yet while `qradar_auth` can already be `PASS`, and several lines can read this way (observed in OPS-32 and OPS-33; not every line appears every time, so this is not one exact set): `qradar_access` `WARN` with `<instance>: no answer from ariel_search_list (error), ariel_searches (error)`, runbook OPS-R71 (`backend/app/cli/doctor.py:1591-1595`; the names in the list are the entries that did not answer, each with its status); `qradar_disk` and `qradar_pipeline` `WARN` with `<instance>: not collected since <date> <time> UTC (the newest window is older than the cadence allows)`, or `<instance>: not collected yet` before the family's first window (`backend/app/cli/doctor_qradar_health.py:40-58`; OPS-33 read `not collected since 2026-11-04 11:05 UTC` six minutes after the boot); both print `SKIP` with `no enabled QRadar instance is registered; see qradar_auth` when there is no enabled console (`:60`, `:104`). They are expected there, not a Fail. Run `doctor` again after 10 to 15 minutes (OPS-33: `qradar_access` was `PASS` once the console answered, and `qradar_disk` was `PASS` after the next health window); a `SKIP` or `WARN` of these lines that stays after that, with `qradar_auth` PASS, is written in the Note field. A FAIL on `geo_country_source` is a Fail (MT-129 says what it means), with one exception: when the console does not answer, `geo_country_source` prints `FAIL did not answer within 10 s` with the runbook OPS-R30 (`backend/app/cli/doctor.py:1882-1894`; `CHECK_TIMEOUT_SECONDS = 10.0` at `:68`), because the check reads the console's property list and the console is not there. With no enabled console at all it prints `FAIL property; no enabled QRadar instance is registered` instead (`:1818-1824`). That line is the same finding as `qradar_tls` and `qradar_auth` (both `FAIL`, runbook OPS-R4 and OPS-R1) and is not a product failure; it clears on the first `doctor` after the console answers again. Read `qradar_auth` first: when it is `PASS` and `geo_country_source` still says `did not answer`, the property list is the part that is slow, and that is a Fail to report (MT-129). A `watermarks` FAIL with “The country property … does not exist on this console” is the same finding seen from the collector; fix the setting (MT-129) and run `doctor` again.
+- The report has these lines, which 0.1.11 added (they are present before this upgrade too): `email` (SKIP `not configured (SMTP_HOST is empty); alerts are not mailed` until `SMTP_HOST` is set), `qradar_access`, `qradar_disk` and `qradar_pipeline` (MT-133, MT-134). On a 0.1.14 site the `QRADAR_HEALTH` family has already run, so `qradar_disk` and `qradar_pipeline` read the stored windows; `not collected since <time> UTC` (a window older than the family's cadence allows) clears after its next run (15 minutes by default, MT-11), and `not collected yet` appears only where the family never ran (family off, or a console added since). The report also has `geo_country_source` and `qradar_health`. A WARN on either is not a Fail: write its text in the Note field (a lab CE console always gives a WARN on `qradar_health` because its license is over-allocated). When the console does not answer, `qradar_health` is `SKIP` and `qradar_auth` is the line to read: a `SKIP` is neither a `WARN` nor a `FAIL` and does not raise the exit code. Its texts, from the code: `the console did not answer; see qradar_auth` when the console's own reachability probe failed (`backend/app/cli/doctor.py:1659-1662`); `nothing could be read from QRadar: managed hosts (<state>), EPS (<state>), license (<state>); see qradar_auth` when the probe answered but none of the three figures could be read, each state being `NOT_COLLECTED`, `FAILED`, `STALE` or `PARTIAL` as stored (`:1728-1733`); `QRadar health could not be read (<exception class>)` when the read itself raised (`:1653-1658`); `the registered console could not be read (<exception class>)` when the console row could not be loaded (`:1633-1640`); and `no enabled QRadar instance is registered; see qradar_auth` when there is no enabled console at all (`:1641-1644`). In the first minutes after the QRadar console boots, its Ariel and health services are not ready yet while `qradar_auth` can already be `PASS`, and several lines can read this way (observed in OPS-32 and OPS-33; not every line appears every time, so this is not one exact set): `qradar_access` `WARN` with `<instance>: no answer from ariel_search_list (error), ariel_searches (error)`, runbook OPS-R71 (`backend/app/cli/doctor.py:1591-1595`; the names in the list are the entries that did not answer, each with its status); `qradar_disk` and `qradar_pipeline` `WARN` with `<instance>: not collected since <date> <time> UTC (the newest window is older than the cadence allows)`, or `<instance>: not collected yet` before the family's first window (`backend/app/cli/doctor_qradar_health.py:40-58`; OPS-33 read `not collected since 2026-11-04 11:05 UTC` six minutes after the boot); both print `SKIP` with `no enabled QRadar instance is registered; see qradar_auth` when there is no enabled console (`:60`, `:104`). They are expected there, not a Fail. Run `doctor` again after 10 to 15 minutes (OPS-33: `qradar_access` was `PASS` once the console answered, and `qradar_disk` was `PASS` after the next health window); a `SKIP` or `WARN` of these lines that stays after that, with `qradar_auth` PASS, is written in the Note field. A FAIL on `geo_country_source` is a Fail (MT-129 says what it means), with one exception: when the console does not answer, `geo_country_source` prints `FAIL did not answer within 10 s` with the runbook OPS-R30 (`backend/app/cli/doctor.py:1882-1894`; `CHECK_TIMEOUT_SECONDS = 10.0` at `:68`), because the check reads the console's property list and the console is not there. With no enabled console at all it prints `FAIL property; no enabled QRadar instance is registered` instead (`:1818-1824`). That line is the same finding as `qradar_tls` and `qradar_auth` (both `FAIL`, runbook OPS-R4 and OPS-R1) and is not a product failure; it clears on the first `doctor` after the console answers again. Read `qradar_auth` first: when it is `PASS` and `geo_country_source` still says `did not answer`, the property list is the part that is slow, and that is a Fail to report (MT-129). A `watermarks` FAIL with “The country property … does not exist on this console” is the same finding seen from the collector; fix the setting (MT-129) and run `doctor` again.
 
 **Record:** The exit code; the ids of the WARN and FAIL lines; the text of the `migration_head`, `version_match` and `forwarded_allow_ips` lines (without the address); the line awk printed.
 
@@ -394,8 +406,8 @@ echo "exit: $?"
 
 **Expected:**
 
-- The upgrade finishes in about a minute to two minutes on a small database (47 to 118 s wall in the measured runs, depending on the path and on whether the images are pulled). The upgrade outage was 15 to 39 s in the measured runs. The measured 0.1.10 → 0.1.11 times: online, which pulls the images from the registry inside the command, 99 s wall and 25.9 s of outage; offline from the bundle, which loads the images from it inside the command, 80 s wall and 20.3 s of outage; and with the images already on the machine, 47 s wall and 21.3 s of outage. The first 0.1.11 run (0.1.10 → 0.1.11, online, seven migrations, the lab VM) took 71 s wall and 22.9 s of outage. The measured 0.1.11 → 0.1.12 times: online from the registry, with no migration, 118 s wall and 39.0 s of outage (the pull runs inside the command, which is why its outage is at the top of the band); offline with the images already on the machine, 47 s wall and 21.3 s of outage. The 0.1.13 and 0.1.14 upgrades run no migration; write your own figures in the Note field. These are not promises: the outage window is shorter than the wall time because the image step is outside it. An outage of more than 10 minutes is written in the Note field (on a large database the time of the dump is added; this is not a promise).
-- The sign-in page shows the `h1` “Sign in” (the browser tab reads “Sign in · Behavior Analytics”) and under it `API version 0.1.14`. The page is English whatever the `ba_locale` cookie holds.
+- The upgrade finishes in about a minute to two minutes on a small database (47 to 118 s wall in the measured runs, depending on the path and on whether the images are pulled). The upgrade outage was 15 to 39 s in the measured runs. The measured 0.1.10 → 0.1.11 times: online, which pulls the images from the registry inside the command, 99 s wall and 25.9 s of outage; offline from the bundle, which loads the images from it inside the command, 80 s wall and 20.3 s of outage; and with the images already on the machine, 47 s wall and 21.3 s of outage. The first 0.1.11 run (0.1.10 → 0.1.11, online, seven migrations, the lab VM) took 71 s wall and 22.9 s of outage. The measured 0.1.11 → 0.1.12 times: online from the registry, with no migration, 118 s wall and 39.0 s of outage (the pull runs inside the command, which is why its outage is at the top of the band); offline with the images already on the machine, 47 s wall and 21.3 s of outage. The 0.1.13 → 0.1.14 upgrade ran no migration: online from the registry, 101 s wall and 34.7 s of outage (REL-15e). The 0.1.14 → 0.1.15 upgrade runs six: offline from the loaded images, 49 s wall and 22.3 s of outage (REL-15e). Write your own figures in the Note field. These are not promises: the outage window is shorter than the wall time because the image step is outside it. An outage of more than 10 minutes is written in the Note field (on a large database the time of the dump is added; this is not a promise).
+- The sign-in page shows the `h1` “Sign in” (the browser tab reads “Sign in · Behavior Analytics”) and under it `API version 0.1.15`. The page is English whatever the `ba_locale` cookie holds.
 
 **Record:** The upgrade duration (minutes), the estimate of the outage duration, and the version line on the sign-in page.
 
@@ -403,7 +415,7 @@ echo "exit: $?"
 
 **Precondition:** You know the end time of the upgrade. You have signed in with the administrator account (section 3).
 
-**When to look:** After the upgrade, for each family that is on, its own cadence on the page + 3 minutes (the "Timing and total duration" table above); the “Next run (UTC)” column gives the slot, and the run is seen up to one beat tick (1 minute) later. Default cadences: 8 min for Log source volume, Anomaly explanations, Catch-all senders and Geography (on by default) and for Rule matches and Property watches (off by default); 18 min for WAF collection and IPS collection (off by default). A family set to a longer cadence is read at that cadence + 3 minutes, so the longest cadence on the page decides when the check can be closed.
+**When to look:** After the upgrade, for each family that is on, its own cadence on the page + 3 minutes (the "Timing and total duration" table above); the “Next run (UTC)” column gives the slot, and the run is seen up to one beat tick (1 minute) later. The seeded cadences are 5 minutes for Log source volume, Anomaly explanations, Catch-all senders and Geography (on by default) and for Rule matches and Property watches (off by default), and 15 minutes for QRadar health (on by default), WAF collection and IPS collection (off by default) (`docs/CONFIGURATION.md`, “Search cadence and bucket collection”; migrations `0028` and `0050`). The first run is therefore seen up to 8 minutes after a slot for the 5-minute families and up to 18 minutes for the 15-minute ones; the “Cadence” cell reads `5 min` or `15 min`, not 8 or 18. A family set to a longer cadence is read at that cadence + 3 minutes, so the longest cadence on the page decides when the check can be closed.
 
 **Action:**
 
@@ -427,6 +439,55 @@ echo "exit: $?"
 - Data-dependent checks done before this check (Dashboard, anomalies) can show “stale” or “not collected” until this wait is over; this is the correct state.
 
 **Record:** The longest cadence, the last run time (UTC) of each family, the `doctor` exit code and the WARN/FAIL ids.
+
+#### MT-144 — The defaults keep 0.1.14's behaviour [core]
+
+**Precondition:** The upgrade is complete (MT-08) and the first cadence has passed (MT-11). Signed in with the administrator account. `$SESSION` is the cookie `qd_session=<value>` of that signed-in window (developer tools, Application, Cookies); it is a secret and is written nowhere.
+
+**Action:**
+
+- Read the policy list, the digest status and the `.env` lines this release adds (all optional), then the worker's log and the switch line of `doctor`:
+
+```bash
+curl -s --cookie "$SESSION" https://<host>/api/v1/alert-policy
+curl -s --cookie "$SESSION" https://<host>/api/v1/alert-policy/digest
+grep -E '^(ALERT_POLICY_DEFAULT|DIGEST_HOUR_UTC|TRIAGE_STALE_CLOSE_DAYS|RULE_MATCH_COLLECTION_ENABLED|RULE_ALERTING_ENABLED|LOW_VOLUME_MODEL_PREVIEW_ENABLED)=' .env || echo "none set: the defaults apply"
+./qradar-dash logs --since=5m celery-worker | grep collect_rule_matches
+./qradar-dash doctor | grep families_off
+```
+
+- Open Administration → “Alert policy” (`/admin/alert-policy`).
+
+**Expected:**
+
+- The policy list is `[]`: no `alert_policy` row exists, so no source is recorded only or digested. `/admin/alert-policy` says “Every source alerts as before (default ALERT).” and “No policy row exists, so no source or class is recorded only or digested.”; its “Quiet periods” section says “Nothing is quiet. Every condition alerts by its policy.” (`frontend/messages/en/alertPolicy.json`, `empty`; `suppression.json`, `quiet.empty`). No quiet period exists until an analyst makes one (MT-157).
+- The digest answer on a site with no e-mail relay is `"digest_hour_utc":7`, `"email_configured":false`, `"recipient_count":0` (REL-15e). The page shows “Daily at 07:00 UTC” under “Due” and “0 addresses” under “Recipients now”. The digest sends nothing: “Last run” is absent (“No digest has run yet. The first is due at 07:00 UTC.”), “Not e-mailed” (the task writes one record a day, state `NOT_CONFIGURED`, with no e-mail sent) or, on a site that has a relay and no digest incident, “Nothing to send”. “Delivered” or “Delivery failed” is a Fail: with no policy row no source can be in digest mode. A site that already e-mails alerts (MT-138) shows its own relay state and recipient count; the policy list is still `[]`.
+- `.env` has none of the lines, or only values the site set on purpose (write them in the Note field). The defaults are `ALERT_POLICY_DEFAULT=ALERT`, `DIGEST_HOUR_UTC=7`, `TRIAGE_STALE_CLOSE_DAYS=3`, `RULE_MATCH_COLLECTION_ENABLED=false`, `RULE_ALERTING_ENABLED=false` and `LOW_VOLUME_MODEL_PREVIEW_ENABLED=true` (`backend/app/core/config.py`).
+- The worker log has one line a minute of the form `Task collect_rule_matches[…] succeeded in … s: {'status': 'disabled'}` (`backend/app/workers/tasks.py:477-478`; the beat entry ticks every minute, `celery_app.py:165`). `doctor` shows `RULE_MATCH_COLLECTION_ENABLED=off` in the `families_off` line. A site that turned the family on on purpose reads `RULE_MATCH_COLLECTION_ENABLED=on`, and a `collect_rule_matches` line with another status is then correct: write it in the Note field. Even then, `RULE_ALERTING_ENABLED` unset means rule incidents are recorded and open no alert.
+
+**Record:** The policy list answer, the digest answer (without any address), the `.env` lines found, the `collect_rule_matches` status and the `families_off` switch for rule matches.
+
+#### MT-145 — Role permissions after the upgrade [core]
+
+**Precondition:** The upgrade is complete (MT-08). Signed in with an account that has `admin:*`. The upgrade adds no permission to an existing role row: `anomaly:triage` and `alert:suppress` are on the seeded `admin`, `analyst` and `detection_engineer` rows only on a site that was seeded at 0.1.15 (`backend/app/services/seed.py`). The upgrade does not call `ensure_default_roles`.
+
+**Action:**
+
+```bash
+curl -s --cookie "$SESSION" https://<host>/api/v1/users/roles
+curl -s --cookie "$SESSION" https://<host>/api/v1/me
+```
+
+- If the site has an existing `analyst` or `viewer` account, sign in with it (do not create one here; MT-16 is the lab check for that), open an anomaly (`/anomalies/<id>`) and an alert (`/alerts/<id>`), and read the Triage block and the quiet-period button. Sign out.
+
+**Expected:**
+
+- In the roles answer, neither `anomaly:triage` nor `alert:suppress` is in the `permissions` list of `analyst`, `detection_engineer`, `viewer` or `admin` on an upgraded site (REL-15e: `admin` held `admin:*, search:execute, … admin:classification`; `viewer` only `read:*`). If either string is present, `python -m app.cli.users create-admin` or `python -m app.services.seed` has refreshed the roles since the upgrade (it adds missing strings to the four seeded rows): write it in the Note field. That is not a Fail.
+- `GET /api/v1/me` for the administrator lists both `anomaly:triage` and `alert:suppress` in `effective_permissions`: `admin:*` expands to every permission (`backend/app/api/routes/me.py:25-38`). So the administrator can triage and quiet a condition at once.
+- The analyst and viewer accounts see the Triage block read-only with “You can read this triage but not change it. Changing it needs the anomaly:triage permission.” (`frontend/messages/en/triage.json`, `panel.readOnly`) and, on the alert, “Quieting a condition needs the alert:suppress permission.” (`suppression.json`, `button.noPermission`). The viewer, who holds only `read:*`, reads the triage and the quiet periods and cannot change either. With no such account the part is `Not run`.
+- There is no screen that edits a role's permission list. The administrator who wants an analyst to triage grants it with the site's own role procedure; this check does not.
+
+**Record:** Whether each role row lacks the two strings, whether `effective_permissions` of the administrator lists both, and the read-only sentence seen by the analyst or viewer.
 
 #### MT-126 — The rate limit does not cut the page in production [core]
 
@@ -560,7 +621,7 @@ Open `https://<host>/` in the browser. The interface is English only (D-41); the
 **Expected:**
 
 - The menu has the line “Signed in as {name}”, the line “Source: {source}” (`LOCAL` or `LDAP`), the line “Roles: {roles}”, the link “Account settings” and the button “Sign out”. A local account also has a “Change password” link.
-- The version line in the menu is `API version 0.1.14`.
+- The version line in the menu is `API version 0.1.15`.
 
 **Record:** The API version in the menu.
 
@@ -743,8 +804,8 @@ The check was the language switch on `/account` (“Interface language”) and h
 
 **Expected:**
 
-- The navigation groups are “Behavior”, “Fleet”, “Detection”, “Operations” and “Administration”; “Dashboard” and “Guide” stand alone. The items, in order (from `frontend/src/lib/nav.ts:28-101`; the words are `frontend/messages/en/shell.json`, `nav`): “Dashboard” (alone, at the top); Behavior: “Overview”, “Anomalies”, “Sources”, “WAF behavior”, “Property watches”, “Geography”; Fleet: “Fleet”, “Fleet sources”, “Catch-all senders”; Detection: “Offenses”, “Alerts”, “Rules”, “Rule statistics”, “Custom rules”, “Coverage”; Operations: “Log Sources”, “Searches”; Administration: “Administration overview”, “Search cadence”, “Classification rules”, “Outage alerts”, “WAF sources”, “IPS sources”, “History backfill”, “SIEM load”, “QRadar access”, “Alert e-mail”, “Users”, “Directory”; and “Guide” (alone). “Administration overview” is the first item of the Administration group and opens `/admin`. Six Administration items are shown only to a role that holds the permission: “History backfill” (`read:history_backfill`), “SIEM load” (`admin:*`), “QRadar access” (`admin:*`), “Alert e-mail” (`admin:notifications`), “Users” (`admin:users`) and “Directory” (`admin:auth`). The other Administration items need no permission here.
-- The top bar: “Open alerts: {count}” (the number of open alerts), “Refresh” (“Off”, “1 min”, “5 min”), “Connection status: {status}” (the status reads “Checking” while a signal has not answered yet, with no colour, and then “Connected”, “Degraded”, “Problem” or “Unknown”; it does not stay on “Unknown” for a signal that is only loading); the search box “Search sources, rules, anomalies”. `/config-changes` is not in the navigation; it opens by address.
+- The navigation groups are “Behavior”, “Fleet”, “Detection”, “Operations” and “Administration”; “Dashboard” and “Guide” stand alone. The items, in order (from `frontend/src/lib/nav.ts:28-108`; the words are `frontend/messages/en/shell.json`, `nav`): “Dashboard” (alone, at the top); Behavior: “Queue”, “Overview”, “Anomalies”, “Sources”, “Noisy sources”, “WAF behavior”, “Traffic”, “Property watches”, “Geography”; Fleet: “Fleet”, “Fleet sources”, “Catch-all senders”; Detection: “Offenses”, “Alerts”, “Rules”, “Rule statistics”, “Custom rules”, “Coverage”; Operations: “Log Sources”, “Searches”; Administration: “Administration overview”, “Search cadence”, “Classification rules”, “Outage alerts”, “Alert policy”, “WAF sources”, “IPS sources”, “History backfill”, “SIEM load”, “QRadar access”, “Alert e-mail”, “Users”, “Directory”; and “Guide” (alone). “Administration overview” is the first item of the Administration group and opens `/admin`. Six Administration items are shown only to a role that holds the permission: “History backfill” (`read:history_backfill`), “SIEM load” (`admin:*`), “QRadar access” (`admin:*`), “Alert e-mail” (`admin:notifications`), “Users” (`admin:users`) and “Directory” (`admin:auth`). The other Administration items need no permission here: “Alert policy” opens for any account that can read alerts, and changing a policy needs `admin:outage` (MT-158). “Queue” is the first item of the Behavior group and “Noisy sources” and “Traffic” stand beside “Sources” and “WAF behavior”.
+- The top bar: “Open alerts: {count}” (the number of open alerts), “Refresh” (“Off”, “1 min”, “5 min”), “Connection status: {status}” (the status reads “Checking” while a signal has not answered yet, with no colour, and then “Connected”, “Degraded”, “Problem” or “Unknown”; it does not stay on “Unknown” for a signal that is only loading); the search box “Search sources, rules, anomalies”. Beside “Refresh” the top bar shows “Refreshed ‹time›”, the browser's clock, and “Data to ‹time›” (`frontend/messages/en/shell.json`, `refresh`): the data instant is a clock time (`14:02:11 UTC`) when it is on the current UTC day and carries its date (`2026-11-03 21:05:00 UTC`) when it is on another one (UX-7; `frontend/src/components/shell/AutoRefresh.tsx:147-154`). `/config-changes` is not in the navigation; it opens by address.
 
 **Record:** The name of any item that is missing or wrong.
 
@@ -1586,7 +1647,7 @@ The anomaly list gathers four families in one place: log source volume, WAF endp
 
 **Expected:**
 
-- The `h1` is “Anomalies”. The columns are “Subject”, “Detector”, “State”, “Observed → Expected”, “Deviation”, “Severity”, “Started”, “Evidence”.
+- The `h1` is “Anomalies”. The columns are “Subject”, “Detector”, “State”, “Observed → Expected”, “Deviation”, “Severity”, “Started”, “Age”, “Evidence”, “Triage”, “Owner” (`frontend/src/app/anomalies/page.tsx:274-307`); the three new ones are checked in MT-147. On a narrow window the Triage and Owner columns fold into the row as “Triage: ‹status›, ‹owner›” and “Started ‹age› ago”.
 - The subject kind options are “Log sources”, “WAF endpoints”, “IPS entities”, “IPS sources”, “IPS entities and sources”, “Property watch values”. The “IPS entities and sources” option lists IPS entities and IPS sources together.
 - After filtering, the active filter chips (“Filtered by”) appear; if nothing matches: “No anomalies match these filters. This is a filtered view, not a statement about the fleet.” With no filter and no anomaly in the window the page asked for, the sentence is “No anomalies were detected in the window this page asked for: the last 24 h, ‹from› to ‹to›. Set the Start time (UTC) filter to look further back.” (both times are UTC), followed, when active anomalies exist before that window, by “{n} active anomalies were detected before this window.” (“1 active anomaly was …” for one) with the link beside it (the English catalog labels it “Show every active anomaly”), and then by “Sources without an adequate baseline are not being judged — check the behavioral overview for how many.” If the count of older anomalies could not be read, the sentence has no number (never a zero). The number counts **every** active anomaly older than the window the page asked for, in all four families and whatever its age, not only those of the last year; follow the link: the active list opens with the “Active only” chip and no start time, its pagination total is that number, and paging to the end reaches the site's oldest active anomaly even when it is more than a year old. “Active only” without a start time lists every active anomaly, whatever its age, not only those of the last 24 hours. Times are UTC; the state words are the codes (`OPEN`, …).
 
@@ -1689,6 +1750,212 @@ The anomaly list gathers four families in one place: log source volume, WAF endp
 
 **Record:** What you saw for (1)-(4); `Not run` for the one you could not see.
 
+#### MT-146 — Triage block on the anomaly detail (writes) lab only
+
+**Precondition:** **lab only**: the check changes the triage of a real anomaly and the interface cannot return it to “New”. Signed in with an account that holds `anomaly:triage` (the administrator does, through `admin:*`; MT-145). The site has an anomaly of any of the four families (log source, WAF, IPS, property watch). If none exists, `Not run`. Note the anomaly's `State` on the list before you start.
+
+**Action:**
+
+- Open the anomaly (`/anomalies/<id>`) and find the block headed “Triage”. Read it. Press “Take it”.
+- Write a comment in “Add a comment (up to 2000 characters)” and press “Add comment”.
+- Press “Close with a disposition”. Press “Close triage” with no disposition chosen. Choose “Noise”, write the note “MT-146” and press “Close triage”.
+- Press “Reopen”.
+- On an anomaly of the “Custom rule breach” type (if the site has one), read the block.
+
+**Expected:**
+
+- The block explains itself: “The analyst's decision on this anomaly. It is separate from the detector's state, which triage never changes.” An anomaly nobody has touched reads “Triage status” “New”, “Owner” “Unassigned” and “Nobody has acted on this anomaly yet.” (`frontend/messages/en/triage.json`, `panel`).
+- “Take it” sets “Triage status” to “In progress” and “Owner” to the signed-in account; “Updated by ‹account›, ‹time›” is in UTC; the activity list (“Activity”, newest first) holds “Owner set to ‹account›” and “Status changed from New to In progress”. The comment gives “Comment added.” and a “Comment” row.
+- The close dialog (“Close this triage”) offers “True positive”, “Benign true positive”, “Noise”, “Collection problem” and “Known change” under “Disposition (required)”, and not “Auto-closed: stale” (which only the system sets, MT-148). Pressing “Close triage” with nothing chosen shows “Choose a disposition before closing.” and saves nothing. After the close the block reads “Closed”, “Disposition” “Noise” and “Closing note” “MT-146”, and the button is “Reopen”. Reopen gives “In progress” and the closed history stays in the activity list.
+- The detector's `State` of the anomaly (MT-81 to MT-85) is the one noted before; an alert the anomaly has is not changed. Two labels, two things.
+- A custom-rule breach says “Triage is not available for this kind of anomaly. It covers log-source, WAF, IPS and property-watch anomalies.”
+- If another account changed the same triage between your read and your save, the block names who did, turns the controls off and offers “Load their version” (HTTP 409). This is not forced here; if it appears, write it in the Note field.
+
+**Record:** The anomaly's family, the status shown after each step and the sentence of the empty close.
+
+**Cleanup:** The interface cannot return a triage to “New”. End the check with the anomaly closed as “Noise” with the note “MT-146”: the neutral end state. In the lab the rollback rehearsal (MT-123) removes the row.
+
+#### MT-147 — Anomaly list: Triage, Owner and Age, and the filters
+
+**Precondition:** The upgrade is complete (MT-08); the site has at least one anomaly in the list. Sign in with an account that holds `read:anomalies`.
+
+**Action:**
+
+- Open `/anomalies`. Read the columns and a row. Read the triage filters (some sit under “More filters”).
+- Choose “Triage status” “In progress” and press “Filter”; then “Owner” “Owned by me”; then “Unassigned”; then a “Disposition”. Read the chips (“Filtered by”). Remove one chip and use “Clear all”.
+- Send an invalid status:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' --cookie "$SESSION" "https://<host>/api/v1/anomalies?triage_status=BOGUS"
+```
+
+**Expected:**
+
+- The columns include “Age”, “Triage” and “Owner” after “Started” and “Evidence” (`frontend/src/app/anomalies/page.tsx:274-307`). A row with no triage record reads “New” and the owner “Unassigned”, never a blank cell. A row whose triage was not reported reads “not reported”. On a narrow window the same facts fold into “Triage: New, Unassigned” and “Started ‹age› ago” (`frontend/messages/en/anomalies.json`, `rows`).
+- “Age” counts whole minutes from the start (for example “5 d 14 h ago”) beside the UTC start time and does not tick until the page is loaded again.
+- The filters are “Triage status” (“All triage statuses”, “New”, “In progress”, “Closed”), “Owner” (“Any owner”, “Owned by me”, “Unassigned”, “Named owner” with “Owner name”) and “Disposition” (“Any disposition” and the dispositions of MT-146, plus “Auto-closed: stale”). Each choice becomes a chip (“Triage: In progress”, “Owner: me”, “Owner: unassigned”, “Disposition: ‹name›”) and stays in the address (`triage_status`, `owner`, `disposition`). A filter that matches nothing says “No anomalies match these filters. This is a filtered view, not a statement about the fleet.”
+- The invalid status answers `422` with “Input should be 'NEW', 'IN_PROGRESS' or 'CLOSED'” in the body (REL-15e).
+
+**Record:** The columns seen, one row's Triage and Owner cells, and which filters gave a result.
+
+#### MT-148 — A NEW anomaly nobody took is closed as stale (SOC-1c)
+
+**Precondition:** The beat of the new stack has run for more than one hour (the job runs hourly, first one hour after beat starts). The site had, at the upgrade, anomalies detected at least `TRIAGE_STALE_CLOSE_DAYS` (3) days earlier that nobody triaged. If it had none, `Not run`. A site that set `TRIAGE_STALE_CLOSE_DAYS=0` turned the job off: write it and `Not run`.
+
+**Action:**
+
+```bash
+docker compose exec -T backend python -c "from app.workers.celery_app import celery_app; print(celery_app.conf.beat_schedule['close-stale-triage'])"
+./qradar-dash logs --since=70m celery-worker | grep close_stale_triage
+grep -E '^TRIAGE_STALE_CLOSE_DAYS=' .env || echo "not set: the default (3) applies"
+```
+
+- Open `/anomalies`, choose “Disposition” “Auto-closed: stale”, press “Filter”. Open one anomaly from it and read the Triage block and the detector `State`.
+
+**Expected:**
+
+- The schedule prints `'task': 'close_stale_triage'` and `'schedule': 3600.0` (`backend/app/workers/celery_app.py:71-75`).
+- The worker log has `Task close_stale_triage[…] succeeded in … s: {'status': 'ok', 'days': 3, 'closed': ‹n›, 'families': {'log_source': ‹a›, 'waf': ‹b›, 'ips': ‹c›, 'property_watch': ‹d›, 'rule': ‹e›}}` (`backend/app/workers/tasks.py:1588-1598`; REL-15e saw `'closed': 40`). One run closes at most 500 candidates per family; a larger backlog continues on the next hour. A site with the job off prints `{'status': 'disabled', …}`.
+- The filtered list shows the chip “Disposition: Auto-closed: stale” and rows reading “Triage: Closed, Unassigned”. The Triage block of one of them reads “Closed”, “Disposition” “Auto-closed: stale”, “Closing note” “No analyst took this anomaly within 3 days.” (`backend/app/i18n/messages.py:3186-3196`) and “Updated by system”.
+- The detector `State` is unchanged by the job (an anomaly that was `OPEN` is still `OPEN`, a `RESOLVED` one still `RESOLVED`) and the alert of the anomaly is not changed (REL-15e: no state transition, no anomaly or alert row touched by the run). An anomaly detected less than three days ago and still “New” is not closed.
+- The close dialog of MT-146 does not offer the stale disposition; “Reopen” on a stale item works as for any closed item (do not press it here).
+
+**Record:** The `closed` count and the families of the log line, the number of rows in the filtered list, and one stale row's Triage block.
+
+#### MT-149 — Related activity on the anomaly detail
+
+**Precondition:** The site has a log-source anomaly (`/anomalies/<id>`); offenses are collected if the offense list should be non-empty. Sign in with an account that holds `read:anomalies`.
+
+**Action:**
+
+- Open the anomaly and find “Related activity”. Read the heading, the three lists and the pad control. Choose each pad (“30 min”, “1 h”, “2 h”, “6 h”) and read the address.
+- Open a property-watch anomaly that has no single log source, if the site has one.
+
+**Expected:**
+
+- The heading reads “Related activity, ‹from›-‹to› UTC (±2 h)”: the anomaly's window plus the pad. The line under it reads “Log source ‹name›. Offense times and magnitudes are QRadar's, as last collected.” The pad control (“Pad”) offers “30 min”, “1 h”, “2 h” (the default) and “6 h”; the choice stays in the address as `pad` and the window in the heading changes with it (`frontend/messages/en/related.json`; REL-15e saw “Related activity, 18:00-22:05 UTC (±2 h)”).
+- Three lists, each with its own state: “Offenses on this source” (columns “Offense”, “Description”, “Magnitude (0–10)”, “Status”, “Started (UTC)”, “Last update (UTC)”; each offense opens the offense page of this product), “Other anomalies on this source” (columns “Anomaly”, “Detector state”, “Triage”, “Started (UTC)”: the anomaly you are on is not in it, and the detector state and the triage status are two columns) and “Rules from those offenses” (columns “Rule”, “Offenses”, “Matched events”).
+- Nothing found reads as an absence, not as a zero: “No offense on this source in this window. Only offenses collected by this platform are listed, so none that ended before offense collection started can appear.”, “No other anomaly on this source in this window.”, “The offenses in this window name no rule.” When offenses were never collected: “Offense collection has not run for this console, so no offense could be listed. An empty list here would not mean there was none. …”. A late collection says “Offense collection is behind, so offenses in this window may be missing or out of date.” followed by the age of the newest snapshot.
+- A rule that is not in the rule catalog reads “Rule not in the catalog (QRadar id ‹n›)”. A matched-event count that was not measured reads “Not measured”, never `0`; a measured zero is `0`; a lower bound reads “≥ ‹n›” with the title “At least this many events matched; the true count may be higher.”
+- Each list shows at most 20 rows and the total when there are more (“20 of 34”). The page reads stored rows only; it sends nothing to QRadar.
+- A property watch with no single log source says “This anomaly has no single log source, so its related activity cannot be resolved. Nothing is shown for the offenses, other anomalies or rules.” A read the account may not make says “Related activity needs the read:anomalies permission, which your account does not have. Ask an administrator to grant it.” If the site has no offenses, every list that has no data is `Not run` for the rows part; the state sentences are still read.
+
+**Record:** The window and pad shown, the state or count of each list, and one offense or rule row (without customer data).
+
+#### MT-150 — Investigate in QRadar (SOC-2)
+
+**Precondition:** The site has an anomaly, an alert, an offense and a log source. Part 2 is **lab only** and **QRadar search**: it makes the tester run the shown query in the console's own page, under the tester's console login, and the product does not run it. Part 1 sends nothing.
+
+**Action:**
+
+- Part 1: open an anomaly (`/anomalies/<id>`), an alert (`/alerts/<id>`), an offense (`/offenses/<id>`) and a log source (`/log-sources/<id>`). On each find the block “Investigate in QRadar”. Press “Copy AQL” and “Copy window” (paste into a text editor and read).
+- Part 1: read the address of “Open in QRadar” (hover or copy the link) without opening it.
+- Part 2 (lab only): press “Open in QRadar”. It opens a new tab on the console. Sign in with your own console account.
+
+**Expected:**
+
+- Part 1: the block says “This query is for you to run in the QRadar console. The product does not run it.”, shows the AQL in a code block, “Time range (UTC)” with the start and the stop (UTC), and the buttons “Copy AQL”, “Copy window” and, when the console host is usable, “Open in QRadar” (`frontend/messages/en/ui.json`, `pivot`). “AQL copied to clipboard” and “Time range copied to clipboard” confirm the copies.
+- The link opens in a new tab (`target="_blank"`, `rel="noopener noreferrer"`) and carries no token or secret. Its address has the form `https://<console>/console/do/ariel/arielSearch?appName=EventViewer&pageId=EventList&dispatch=performSearch&value(searchMode)=AQL&value(timeRangeType)=aqlTime&value(aql)=<url-encoded AQL>` (`backend/app/pivot/aql.py`; REL-15e read it on a lab console).
+- When the stored console host is missing, empty, invalid or carries credentials there is no “Open in QRadar” and the block says “Open in QRadar is not shown: ‹reason› Copy the AQL and run it in the console.” A value the query builder will not put into AQL (a quote, a backslash, a control character) is left out and named under “Notes”, not escaped.
+- Part 2: the console accepts the path. REL-15e saw the console redirect to its login page (`/console/logon.jsp?loadback=…`); whether, after the sign-in, the console shows Log Activity with the shown AQL filled in was **not** verified there (no console login). Write what you see: Log Activity with the query filled in is Pass; a console page that does not take the query is a Fail of the link form, not of the copied AQL, and the copy still works.
+
+**Record:** The four pages that had the block, the address form of the link (without the AQL), and for Part 2 what the console showed after the sign-in.
+
+#### MT-151 — Noisy sources
+
+**Precondition:** Signed in with an account that holds `read:anomalies`. Anomalies have been stored for a while; on a young site the sentences about partial coverage are expected.
+
+**Action:**
+
+- Open Behavior → “Noisy sources” (`/behavior/noise`). Read the heading, the table and the footer. Choose the 7-day and the 28-day “Incident window”. Follow “Tune” on one row and use the browser's back; follow an “Alerts of ‹source›” link.
+
+**Expected:**
+
+- The `h1` is “Noisy sources”; the description is “Which log sources keep raising anomalies, and how much of that the closed triage items call noise. Times are UTC.” (`frontend/messages/en/noise.json`). The facts line reads “‹n› sources raised at least one anomaly in the last ‹days› days. Ordered by incidents.” and “Last evaluation: ‹time›.” (“No evaluation has been recorded yet.” when none).
+- The columns are “Source”, “Class”, “Incidents”, “Alerts”, “Noise”, “Worst deviation” and “Judged”. The noise cell is `‹noise› noise / ‹closed› closed` only when at least five incidents of that source were closed with a disposition; before that it reads “none closed yet” or “share needs 5+ closed”. A count the platform did not measure reads “not measured”, never `0`. The worst deviation is in “× expected”.
+- A source that is not judged says “Not judged” with “A low count here is not evidence of calm.”; it is not shown as quiet. The footer “No incidents on ‹n› sources” is collapsed, not hidden. Under the table: “Noise and worst deviation always cover the last 28 days of stored data, whichever window is selected. Incidents and alerts follow the selected window.”
+- A window with fewer stored days says “Partial coverage. The counts cover ‹n› of ‹window› days.” and that the numbers are lower bounds. An empty list says “No source raised an anomaly” with the sentence about the last evaluation.
+- “Tune” opens `/behavior/noise/<id>` (MT-152). “Alerts of ‹source›” opens `/alerts` filtered to that source. Without `read:anomalies` the page says “You do not have permission to view noisy sources. Ask an administrator for the read:anomalies grant.”
+
+**Record:** The facts line, the number of rows, and one row's incident, alert and noise cells.
+
+#### MT-152 — Tuning preview, without saving
+
+**Precondition:** A monitored log source from MT-151. An account with `read:anomalies`; the account may or may not hold `log_source:write`. **Do not press “Save”.** If it is pressed, the saved change is listed under “Saved. Changed: …”; set the same values back with the form and write it in the Note field.
+
+**Action:**
+
+- Open `/behavior/noise/<id>`. Read the counts table (“What this source raised”) and the form (“Detection values”).
+- Choose “Preview 28 days” (the button names the chosen window). Read “Replay result”.
+- Change “Criticality” and preview again; then change one value and read the page before previewing.
+
+**Expected:**
+
+- The counts table lists the detectors with “Incidents”, “Alerts”, “Noise” and “Worst deviation” for 7 and 28 days; a source with no incident says “No detector has raised an incident for this source in the stored 28 days.” The form has six values with their units — “Deviation” (z), “Spike ratio” (× expected), “Drop ratio” (× expected), “Minimum change” (events / bucket), “Open after” (buckets) and “Direction” (“Both: spikes and drops”, “Spikes only”, “Drops only”) — and “Criticality”; each value is marked “default”, “from criticality ‹value›”, “LAB_MODE” or “custom”. An edited value reads “edited, now ‹now›, was ‹was›”.
+- The result reads “Replay of ‹n› days of stored buckets, from ‹first› to ‹last›; ‹covered› of ‹n› days are stored.” and a table “Replay comparison” with “Current values” (M · incidents), “Proposed values” (N · incidents) and “Change” (N − M) per detector and “All detectors”. A detector the direction does not run says “not run (direction)”, never `0`. “M and N count the incidents a replay would open from a clean start, using the stored buckets and today's baseline. They are not a forecast, and they are not what was recorded.” The recorded history is a separate line (“Recorded in the same window: ‹n› incidents, ‹x› opened, ‹y› suppressed. This is the recorded history, not a replay count.”).
+- A changed criticality is replayed: “Replayed with criticality ‹used› (stored: ‹stored›).” Under LAB_MODE the page says instead “LAB_MODE: criticality changes no detection threshold, so the counts do not depend on the criticality change.”
+- After an edit the result is dimmed: “Values changed. Preview again before saving; the numbers below belong to the earlier values.” and “Save” is off with “Run a preview for these values to enable Save.” An account without `log_source:write` can preview and reads “You can preview but not save: saving needs the log_source:write permission. Ask an administrator for it.”
+- A source with fewer than 7 stored days gets no count: “No replay for this window” — “Only ‹covered› of ‹window› days are stored; a replay needs at least 7.” and “No count is shown, because a count here would be a guess.” That is the correct branch, not a Fail; the counts part is then `Not run`. A source that is not monitored says “This source is not monitored, so no counts are collected and a replay has nothing to read.”
+
+**Record:** The source, the window, the M, N and Change of “All detectors” (or the insufficient-data sentence), and whether Save stayed unused.
+
+#### MT-153 — Low-volume model (shadow view)
+
+**Precondition:** The page of MT-152. `LOW_VOLUME_MODEL_PREVIEW_ENABLED` is `true` by default. Read-only.
+
+**Action:**
+
+- Scroll to “Low-volume model” on `/behavior/noise/<id>`. Read the state, the facts, both grids, a cell's detail, the proposals and the calibration table.
+
+**Expected:**
+
+- The section opens with “A shadow view. No detector uses it and it opens no alert. It shows what a count model would see in the stored baseline cells.” The model state is one of “Scored”, “Insufficient data”, “Not judged” and “Partial”, with its sentence (`frontend/messages/en/noise.json`, `model`).
+- The facts give “Window” (“‹covered› of ‹window› days covered”), “Tail threshold” (“p = 0.001: a bucket counts when its count is at least this unlikely under the fitted model”) and “Shrinkage” (“k = 8”: a thin cell's median is pulled toward the source's pooled median).
+- Two grids, “Event count” (events per bucket) and “Average rate” (events per second), by weekday and UTC hour; a cell holds the number of buckets of the last 28 days that fell below p, with a legend (“0 buckets below p”, “1 to 2”, “3 to 9”, “10 or more”). A cell without a tail count is drawn as a dash with “Insufficient data: no tail count” or “Not judged: no tail count”, never as `0`. A selected cell shows its fit (“Poisson” or “Negative binomial”), “Samples”, “Mean”, “Dispersion”, “Raw median”, “Shrunk estimate” and its tails.
+- “‹n› cells propose a new normal” lists proposals, each “‹metric›, ‹weekday› ‹hour› UTC”, with “Proposals only. Nothing is written back to a baseline.”; none reads “No cell proposes a new normal: …”.
+- “Calibration against closed noise” counts per detector the replayed flags and those on incidents closed as `NOISE`. A refused replay shows dashes and “Not calibrated.” with the reason, never `0`.
+- A young site (REL-15e: 2 of 28 days stored) reaches only the insufficient branch: the state “Insufficient data” with “Only ‹n› of 28 days are stored, fewer than 7, so no tail probability is reported.” (`backend/app/i18n/messages.py:5552`) and grids of dashes. That is correct; the scored branch is then `Not run`. A deployment with the setting off says “The low-volume model preview is switched off”.
+
+**Record:** The model state, the covered days, and whether the scored or the insufficient-data branch was seen.
+
+#### MT-154 — Traffic by destination
+
+**Precondition:** Signed in with `read:anomalies`. WAF and IPS collection are off in the code defaults (MT-11); on a site that has not set them up, only the empty branch can be seen and the rows part is `Not run`.
+
+**Action:**
+
+- Open Behavior → “Traffic” (`/behavior/traffic`). Read the heading and the switch “WAF endpoints” / “IPS destination IPs”. Choose each window (“5 min”, “1 hour”, “24 hours”, “7 days”, “28 days”), a sort and the order, and the source when there is more than one. Follow a row's link. Press “Export CSV”.
+
+**Expected:**
+
+- The `h1` is “Traffic by destination”; the description is “Average events per second received by each WAF endpoint and IPS destination IP. Times are UTC.” (`frontend/messages/en/traffic.json`). The view, the window, the sort, the order, the page size and the source stay in the address (`view`, `window`, `sort`, `order`, `limit`, `source`).
+- A line states the span (“Newest complete bucket: ‹start› to ‹end›.” for the 5-minute window) and the unit: “Average events/s over ‹n›-minute buckets, divided by measured time only.” The table has the position, the host and “Method and path” (WAF) or “Destination IP” (IPS), “Average (events/s)”, “Trend” and “Peak (events/s)”. A trend is a line without a marker on every point; one bucket says “one bucket, no trend”; a rate that was not measured is “not measured”, never `0`. A row no longer tracked says “Retired”.
+- A partial or truncated window says so (“Partial data.”, “Truncated.”) and events that no listed row carries are stated: “‹n› of ‹m› events (‹x›) are not attributed to a listed endpoint. A total built from these rows is a lower bound.”
+- A WAF row opens `/behavior/waf/sources/<id>` (“Open the endpoints of this source”); an IPS row opens the anomaly list for that address (“Anomalies of this IP”). “Export CSV (all ‹n› endpoints, ‹window›)” downloads the same window and sort without the page, with the note “Large exports are cut at the server's limit and marked in the file.” A cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return is not written as a formula.
+- A site with no profile says “No WAF source has a behavior profile.” (IPS: “No IPS source has a behavior profile.”) with “Nothing is collected until a log source is mapped and validated. An empty list here does not mean there is no traffic.” and the link “WAF sources” (“IPS sources”). A source with a profile that is not collected says “This WAF source is not collected.”, one with no complete bucket “No complete bucket in this window.”, one with no data “No endpoint has data in this window.”; none of these is a zero. In the no-profile state the “Export CSV” line is shown as not available; the reason it prints there (“the data could not be loaded”) is REL-15e's product finding P1 and is not scored. Without `read:anomalies`: “You do not have permission to view traffic. Ask an administrator for the read:anomalies grant.”
+
+**Record:** The view and window, the state seen (rows, no profile, not collected, no data) and one row's average and peak.
+
+#### MT-155 — Queue and the "last visit" marker (writes) lab only
+
+**Precondition:** **lab only** from the second step: opening `/queue` without a chosen comparison moves the signed-in account's marker (its "last visit") and the interface cannot move it back. The first step writes nothing and can be done anywhere; in production write the rest `Not run`. An account with `read:anomalies` and `read:alerts`.
+
+**Action:**
+
+- Open `/queue?compare=24h`. Read the line under the heading.
+- Open Behavior → “Queue” (`/queue`). Read the line, the strip “Sources” and the table. Choose “8 h”, “24 h” and “7 d”, “Back to last visit”, the scopes “Mine”, “Unassigned” and “All”, a “Kind”, a “Family”, a “Severity” and “New or updated only”. Open the page again, unfiltered.
+
+**Expected:**
+
+- With a chosen comparison the line reads “Showing what changed since ‹time› (compared with 24 h ago)” and “Your marker was not moved while a comparison time is chosen.” (`frontend/messages/en/queue.json`, `marker`).
+- The first unfiltered visit reads “Showing what changed since ‹time› (last 24 h — first visit)” (later visits: “(your last visit)”) and then “Your marker moved to ‹time›. The New and Updated labels still compare with the visit before.” A filtered, narrowed or paged view says “Your marker was not moved because this view is narrowed by a scope, filter or page. Open the unfiltered first page to move it.”
+- The strip names five kinds with their state: “Anomalies”, “Alerts”, “Offenses”, “Source reviews” and “Catch-all senders”, each “‹n› waiting” and “‹n› new or updated”. A source that failed says “failed to load. Its rows are missing and the total below is a lower bound.”, a hidden one “not shown. Needs the ‹permission› permission.”, a never-collected one “not collected. …”, a stale one “stale. Last collected ‹age› ago (‹time›). …”; a failed source makes the totals “at least ‹n›” and the marker is kept.
+- The table has the columns “Change”, “Severity”, “Kind”, “Title”, “State”, “Owner” and “Waiting since (UTC)”. A row says “New” or “Updated” in words, or neither; an anomaly row with an alert carries the chip “Alert: ‹status›”. Order is severity, then the longest wait. The scope (default “All”), the kind, the family, the severity and “New or updated only” stay in the address. More than 1000 rows say “The queue holds more than 1000 rows. Narrow it with a filter.” An empty queue says “Nothing is waiting. Every source you may read loaded at ‹time›.” and never an empty table without a sentence.
+
+**Record:** The comparison line of each visit, the five source counts, and the state of any source that was not “loaded”.
+
+**Cleanup:** None in the interface: the marker is the account's own and only moves forward. In the lab the rollback rehearsal (MT-123) removes it with the other rows written after the upgrade.
+
 ### 7. Alerts
 
 In the interface this page is called **Alerts**, the route is `/alerts`. Lifecycle: open → acknowledged → resolved; a resolved alert cannot be reopened.
@@ -1701,7 +1968,7 @@ In the interface this page is called **Alerts**, the route is `/alerts`. Lifecyc
 
 **Expected:**
 
-- The `h1` is “Alerts”; the columns are “Title”, “Severity”, “Status”, “Occurrences”, “First seen”, “Last seen”. The status filter: “Open”, “Acknowledged”, “Resolved”.
+- The `h1` is “Alerts”; the columns are “Title”, “Anomaly”, “Severity”, “Status”, “Occurrences”, “First seen”, “Last seen” (`frontend/src/app/alerts/page.tsx:169-189`). The status filter: “Open”, “Acknowledged”, “Resolved”. The other filters, the counts beside them and the link are MT-156.
 - If there is no alert: “No alerts have been raised.” The count line: “Showing {shown} of {total} alerts.”
 - The titles of the catalog alerts are English sentences (MSG-7): search threshold and search failure, custom rule, offense collection freshness, new log source, new catch-all sender. Offense collection freshness reads “Offense collection is stale for {instance}”. The alerts the engine writes are English sentences too (MSG-7b): log source volume “{anomaly_type} on {log_source}” (for example “Volume drop”, “No events”), IPS “{detector} on {log_source}” and the destination port, destination IP or signature forms, property watch “{detector} on {watch}: {value}”, WAF “{detector} on {log_source}: {method} {endpoint}”. The same limits as MT-38.
 
@@ -1737,6 +2004,55 @@ In the interface this page is called **Alerts**, the route is `/alerts`. Lifecyc
 **Record:** The result of the two steps.
 
 **Cleanup:** It cannot be undone (resolution). In the lab choose the alert for the test; there is no delete afterwards. MT-1b does this on the lab VM.
+
+#### MT-156 — Alert filters, facet counts and a link that reproduces the view
+
+**Precondition:** The site has alerts of more than one status or severity. An account with `read:alerts` (and `read:anomalies` for the anomaly list). Read-only.
+
+**Action:**
+
+- Open `/alerts`. Read the counts beside the status, severity and kind controls. Choose one severity (for example “HIGH”) and read all the counts again. Choose a kind, add a log source (“Add a log source…”), type a word in “Search alert titles” and press “Apply”. Choose a range chip (“1h”, “24h”, “7d”, “30d”) and “Custom” with a start and an end. Press “Copy link”, open the copied address in a new tab.
+- Open `/alerts?severity=BOGUS` and `/alerts?range=2y`. Open `/anomalies` and choose each range chip.
+- Read the facet counts from the API:
+
+```bash
+curl -s --cookie "$SESSION" "https://<host>/api/v1/alerts/facets?severity=HIGH&status=OPEN"
+```
+
+**Expected:**
+
+- The controls are “Alert status”, “Severity”, “Kind” (“All kinds”, “Log-source anomalies”, “WAF anomalies”, “IPS anomalies”, “Property-watch anomalies”, “Catch-all senders”, “Custom rules”, “Scheduled searches”, “QRadar instance”), “Log source” and the title search (up to 100 characters); there is no per-detector filter (`frontend/messages/en/alerts.json`, `list`). Each choice becomes a chip under “Filtered by” (“Status: …”, “Severity: …”, “Kind: …”, “Log source: ‹name›”, “Title contains: …”) with “Clear all”.
+- Counts come from `GET /api/v1/alerts/facets` and each count ignores that control's own filter: with “HIGH” chosen the other severities still show how many alerts they have under the rest of the filters (the API answer has the other severities' counts under `status=OPEN`). A zero is a measured zero (“0”); “All statuses (‹n›)” is the sum of the status counts, not the filtered list total. If the count read failed, the page says “Counts are unavailable: the count read failed. The alert list below is complete; reload the page to try the counts again.” and draws no zero.
+- The list columns are those of MT-87 (with “Anomaly”), a title reads “‹Detector label› on ‹source›” (for example “Volume spike on ‹source›”), and a filtered list says “Showing ‹n› of ‹m› matching alerts.” An empty result says “No alert matches these filters.” with “Clear filters”.
+- The range chips (`1h`, `24h`, `7d`, `30d`) stay relative in the address (`range=24h`); “Custom” writes absolute UTC `since` and `until`; the window is printed in UTC beside the chips (“‹from› to ‹to› (now)”). With no chip and no custom range, the alert list says “All time: no start or end time is set.”; `/anomalies` says “Default window, last 24 hours: ‹from› to ‹to›” (`anomalies.json`, `list.defaultWindow`).
+- “Copy link” answers “Link copied”; the copied address opens the same filters, range and sort (`frontend/messages/en/ui.json`, `copyLink`).
+- An unknown value is dropped and named: “Ignored an unknown severity value.” and “Ignored an unknown range value; the range chips are 1h, 24h, 7d and 30d.” (the address keys are `status`, `severity`, `family`, `log_source_id`, `q`, `sort`, `order`, `range`, `since`, `until`; `frontend/src/lib/alertQuery.ts:101-127`).
+
+**Record:** The status, severity and kind counts before and after choosing a severity, and the address that “Copy link” gave (without any host).
+
+#### MT-157 — Don't alert this again (writes) lab only
+
+**Precondition:** **lab only**: the check holds an alert condition back and writes a row (history stays in the table after it ends). Signed in with an account that holds `alert:suppress` (the administrator does, MT-145). An alert or anomaly of a log source, WAF, IPS or property watch exists. Choose a condition on a lab source; choose **1 day**, never 7 or 30.
+
+**Action:**
+
+- Open the alert (`/alerts/<id>`) or the anomaly (`/anomalies/<id>`). Press “Don't alert this again”.
+- Leave “Reason” empty and press “Quiet this condition”. Then write the reason “MT-157”, keep 1 day, read “Before you save”, and press “Quiet this condition”.
+- Read the banner “Quiet period”. Open Administration → “Alert policy” and read “Quiet periods”.
+- Press “End now” in the banner (or “End” in the table), read the question, press “Keep it quiet”, then press “End now” again and “End quiet period”.
+- If the site has an account that does not hold `alert:suppress`, open the same page with it.
+
+**Expected:**
+
+- The form (“Don't alert this again”) offers “Quiet for” 1, 7 or 30 days — “Only 1, 7 or 30 days. To keep a condition silent for good, set a record-only policy on the alert policy page.” —, “Reason” (3 to 1000 characters), “Owner” (the signed-in account), “Quiet the whole source (every detector)” (for a log source, WAF or IPS condition, not for a property watch) and “This is a planned change” with “Change or ticket reference”. An empty reason shows “Enter a reason of at least 3 characters.” and nothing is saved. “Before you save” reads “Alerts for ‹detector› on ‹source› are held back for 1 day. Incidents are still recorded.” (`frontend/messages/en/suppression.json`, `form`). The page never sends a detector: the server derives the condition.
+- After saving, the banner reads “Quiet until ‹time› UTC by ‹owner› (1 day).” with “No incidents recorded yet while quiet.” (a count once incidents were recorded), the “Scope”, the “Reason”, the “Kind” (“Analyst”; “Planned change” with its reference), and “Alerts opened during the quiet period” with “No alert broke through the quiet period.” Incidents are still recorded; only the alert and its notification are held back. A finished incident cannot be counted, so the count can stay at none on the lab (REL-15e); a break-through (a ratio of at least 10 times normal for a volume spike, and the rules in the release notes) cannot be made on purpose, and that part is `Not run`.
+- `/admin/alert-policy` lists it under “Quiet periods” with “Subject”, “Detector”, “Kind”, “Owner”, “Reason”, “Ends (UTC)”, “Incidents recorded” and “End”.
+- “End now” asks “End this quiet period now?” with “End quiet period” and “Keep it quiet”. “Keep it quiet” changes nothing. After the end: “The quiet period was ended. Alerts for this condition follow the alert policy again.” and the table says “Nothing is quiet. Every condition alerts by its policy.” (or lists the other periods that are active).
+- An account without `alert:suppress` sees no form, only “Quieting a condition needs the alert:suppress permission.”, and the Quiet periods table reads “Ending a quiet period needs the alert:suppress permission.”
+
+**Record:** The condition's family and detector, the banner text, and the sentence after the end.
+
+**Cleanup:** “End now” (above) ends the quiet period at once. The ended row stays in the history until the retention rules remove it; in the lab the rollback rehearsal (MT-123) removes it.
 
 ### 8. Custom rules
 
@@ -2179,6 +2495,26 @@ In this section the pages are first only **viewed**. Every change is a **(writes
 
 **Record:** That the page opened.
 
+#### MT-158 — Alert policy page (view only)
+
+**Precondition:** Signed in with an account that holds `read:alerts`. The page can write (add, edit, remove a policy row, with `admin:outage`); this check does not, because a policy row changes which alerts the site raises.
+
+**Action:**
+
+- Open Administration → “Alert policy” (`/admin/alert-policy`). Read the page from top to bottom.
+- If the site has an account without `admin:outage`, open the page with it.
+
+**Expected:**
+
+- The `h1` is “Alert policy”; the description is “Which sources and classes page a human, which are only recorded, and which go into the daily digest.” (`frontend/messages/en/alertPolicy.json`). The Administration overview (MT-117) has a matching “Alert policy” entry.
+- “Daily digest” comes first: “Due” (“Daily at ‹hour› UTC”), “Recipients now” (“‹n› addresses”), “Last run” with its state and sentence. The states are “Delivered” (“The digest listed ‹n› sources and went to ‹m› recipients.”), “Nothing to send”, “Not e-mailed” (“‹n› sources have digest incidents that are not e-mailed; e-mail is not configured.” or “… no recipient is set to receive alert e-mail.”) and “Delivery failed”; the last two carry a link to where it is fixed. A table per console appears only with more than one console.
+- “What a mode does” explains “Alert” (raises an alert, as before), “Record only” (records the incident and raises no alert) and “Digest” (records the incident and lists it in the daily e-mail), then “A source or class with no row is ALERT. A family whose alerting switch is off raises nothing, whatever its policy.” and “The most specific row applies: a source over its class, one console over all consoles, one detector over all detectors.”
+- “Policies” is a table with “Governs”, “Family”, “Detector”, “Mode”, “Last changed (UTC)” and “Actions”; without rows it says “Every source alerts as before (default ALERT).” The three mode labels share one neutral style. A row for a `NO_EVENTS` silence carries the note that a record-only outage policy wins (“Outage alerts” link).
+- With `admin:outage` the page offers “Add policy” and, per row, “Edit” and “Remove”; without it the table is read-only and says “Changing a policy needs the admin:outage permission. This table is read-only for your account.” A viewer without `read:alerts` reads “You need the read:alerts permission to see the alert policy. Ask an administrator to grant it.”
+- “Quiet periods” follows the policies (MT-157): every active quiet period and every active maintenance window, or “Nothing is quiet. Every condition alerts by its policy.”
+
+**Record:** The digest state and recipient count, the number of policy rows and the number of quiet periods.
+
 #### MT-130 — SIEM load page, command and `qradar_health` (ARL-1, ARL-2, ARL-3)
 
 **Precondition:** Upgrade complete (MT-08) and one cadence has passed (MT-11), so the platform has sent searches. Signed in with an account that has `admin:*`. This check sends only GET requests to QRadar (`/system/about`, the managed hosts, the deployment hosts, the license pool and the list of search ids); no search is run for it.
@@ -2543,7 +2879,7 @@ The place of the QRadar console's audit log is not documented in this repository
 - The upgrade seems successful but `doctor` after the upgrade gives a `FAIL` and the related OPS-R entry in `docs/OPERATIONS.md` does not clear it (especially `db_connect`, `migration_head`, `encryption`, `secrets_files`, `watermarks`). On a changed console, the `watermarks` FAIL until the hourly `log_source_inventory` and `rule_inventory` are retried is not this item (MT-11). On a console that has no offenses, the `watermarks` WARN for `offense_snapshot` is not a FAIL.
 - Sign-in is broken: the administrator and existing users cannot get in, and `/api/v1/health/ready` is not 200.
 - After the first cadence + 3 min, no family in `/admin/search-cadence` is running and `doctor` gives `celery_beat` or `celery_workers` FAIL.
-- The data that 0.1.13 showed is gone: anomalies, alerts, rules, log sources or offenses are empty or missing (and the reason is not a "not collected" honesty state). On a changed console, source pages looking empty until the two hourly inventories are retried is not this item (MT-11).
+- The data that 0.1.14 showed is gone: anomalies, alerts, rules, log sources or offenses are empty or missing (and the reason is not a "not collected" honesty state). On a changed console, source pages looking empty until the two hourly inventories are retried is not this item (MT-11).
 
 **Note and continue:**
 
@@ -2579,10 +2915,10 @@ The place of the QRadar console's audit log is not documented in this repository
 ```
 
 - The command writes `Rollback replaces the live database with <path>; data written since is kept only in the broken copy.` and waits for `Type rollback to continue: `; type `rollback`.
-- When it is finished, return the checkout to the running version. The script on disk is still 0.1.14 before the checkout; `install` is not run before it. Then verify:
+- When it is finished, return the checkout to the running version. The script on disk is still 0.1.15 before the checkout; `install` is not run before it. Then verify:
 
 ```bash
-git checkout v0.1.13
+git checkout v0.1.14
 ./qradar-dash status
 curl -s http://127.0.0.1:8000/api/v1/version
 ./qradar-dash doctor
@@ -2602,11 +2938,11 @@ echo "install exit: $?"
 
 **Expected:**
 
-- The line `Rollback complete.`; exit code 0; `PASS  migration_head database and image are at 0054` (once). The rollback restores the pre-upgrade backup and runs no downgrade, so the database is the one the backup holds; its head is `0054`, the same as after the upgrade, because 0.1.14 has no migration.
-- This backup holds `install.answers`. The rollback puts the file back and writes no line for it. The `Removed answer key` line is not expected. That line appears for an old backup that has no copy: `Removed answer key <name> (unknown to 0.1.13).` This upgrade's own backup is not that case.
+- The line `Rollback complete.`; exit code 0; `PASS  migration_head database and image are at 0054` (once). The rollback restores the pre-upgrade backup and runs no downgrade, so the database is the one the backup holds; its head is `0054`, the head the site had **before** the upgrade, not the `0060` it had after it: the six 0.1.15 tables are gone with the data written since (REL-15e). The command also prints `Previous database kept as qradar_obs_broken_<utc>.` and the `DROP DATABASE` command for later; do not run it yet.
+- This backup holds `install.answers`. The rollback puts the file back and writes no line for it. The `Removed answer key` line is not expected. That line appears for an old backup that has no copy: `Removed answer key <name> (unknown to 0.1.14).` This upgrade's own backup is not that case.
 - `cmp` prints nothing and exits with 0. `stat` prints `600`; `400` if the backup was `400`.
-- `status`: `Installed version: 0.1.13`, `Last upgrade: rolled_back, …`; `/api/v1/version`: `"version":"0.1.13"` and `"migration_head":"0054"`. Sign-in works. `doctor`: no `FAIL` when the console answers; on an unreachable console `qradar_tls` and `qradar_auth` and the `watermarks` / `errors_recent` lines that follow them are FAIL (the `install` item below explains this).
-- `install` exits with 0 when the console answers. The summary ends with the `Install time` line, followed by a line made of `=` signs. There is no separate “Install complete” line. There is no `unknown key` in the output. The summary line `QRadar connection  FAILED` is the install where the console did not answer and the exit was 1. The rollback check is Pass on that exit too: if the summary was reached (the `Install time` line and then the `=` line were written), if the output has no `unknown key` and no `install refused`, and if the `qradar_tls` and `qradar_auth` lines of `doctor` show the same console access fault. On an unreachable console both lines are FAIL; the `runbook:` value at the end of the line carries the runbook of console access (`runbook: OPS-R4` for `qradar_tls`, `runbook: OPS-R1` for `qradar_auth`). An exit of 1 that ends with the line `API readiness  NOT READY`, or while the general origin check failed (`public URL <address> failed`), is Fail. If the checkout was forgotten the script refuses: `install refused: this site runs 0.1.13 and this checkout is 0.1.14; use ./qradar-dash upgrade 0.1.14 to change versions, or check out v0.1.13 to re-run install (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container changes version on this refusal; run `git checkout v0.1.13` first.
+- `status`: `Installed version: 0.1.14`, `Last upgrade: rolled_back, 0.1.14 -> 0.1.15 at <utc>` (the pair names the upgrade that was undone); `/api/v1/version`: `"version":"0.1.14"` and `"migration_head":"0054"`. Sign-in works. `doctor`: no `FAIL` when the console answers; on an unreachable console `qradar_tls` and `qradar_auth` and the `watermarks` / `errors_recent` lines that follow them are FAIL (the `install` item below explains this).
+- `install` exits with 0 when the console answers. The summary ends with the `Install time` line, followed by a line made of `=` signs. There is no separate “Install complete” line. There is no `unknown key` in the output. The summary line `QRadar connection  FAILED` is the install where the console did not answer and the exit was 1. The rollback check is Pass on that exit too: if the summary was reached (the `Install time` line and then the `=` line were written), if the output has no `unknown key` and no `install refused`, and if the `qradar_tls` and `qradar_auth` lines of `doctor` show the same console access fault. On an unreachable console both lines are FAIL; the `runbook:` value at the end of the line carries the runbook of console access (`runbook: OPS-R4` for `qradar_tls`, `runbook: OPS-R1` for `qradar_auth`). An exit of 1 that ends with the line `API readiness  NOT READY`, or while the general origin check failed (`public URL <address> failed`), is Fail. If the checkout was forgotten the script refuses: `install refused: this site runs 0.1.14 and this checkout is 0.1.15; use ./qradar-dash upgrade 0.1.15 to change versions, or check out v0.1.14 to re-run install (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container changes version on this refusal; run `git checkout v0.1.14` first.
 - `install` exits with 2 and writes `[FAIL] the answers are refused; nothing was written:`, followed by one line per refused answer in the form `<KEY>: <reason>` (for example `QRADAR_TOKEN_FILE: file not readable: <path>`), when the answers file names a file that is not there or not readable (the QRadar token, the CA certificate, the TLS certificate and key, or the registry token) or holds any other value the script refuses. The script has checked the answers before it touched anything: no file, container or setting was changed, the rollback that came before it stands, and this is not a fault of the rollback. Put the named file back at the path the answers file gives (the answers file holds paths, never the secret itself, and the rollback does not unpack `secrets.tar`), or correct that line in `.secrets/install.answers` (mode `0600`), and run the `install` command again. Write the refused lines (the key and the reason, no secret) in the Note field; the `install` exit and the `QRadar connection` result in the Record field are then `2` and `not reached`, and the install item is `Not run` until the repeat has exited with 0 or 1 as above.
 - The script writes the name of the broken database copy (`qradar_obs_broken_<utc>`) and the exact command to delete it later; do not rush to **delete** it.
 - If the rollback fails its own health check, the writers stop and `Rollback failed; the writers and the UI are stopped. Verified backup: <path>` is written (OPS-R45); repeat `./qradar-dash rollback` or use `./qradar-dash restore <path>`.
@@ -2621,21 +2957,21 @@ echo "install exit: $?"
 
 **Action:**
 
-- On the lab VM, after the upgrade, run the rollback steps of MT-122. The checkout is `v0.1.13` in this step and `./qradar-dash install --non-interactive .secrets/install.answers` exits with 0 if the console answers (the condition is in the `install` item of MT-122). MT-16…19 must not have been done yet. Then upgrade again:
+- On the lab VM, after the upgrade, run the rollback steps of MT-122. The checkout is `v0.1.14` in this step and `./qradar-dash install --non-interactive .secrets/install.answers` exits with 0 if the console answers (the condition is in the `install` item of MT-122). MT-16…19 must not have been done yet. Then upgrade again:
 
 ```bash
 git fetch --tags
-git checkout v0.1.14
-./qradar-dash upgrade 0.1.14
+git checkout v0.1.15
+./qradar-dash upgrade 0.1.15
 ```
 
 - MT-16, MT-17, MT-18 and MT-19 are done after this re-upgrade.
 
 **Expected:**
 
-- After the rollback the head is `0054`, the head of the restored backup. The second upgrade prints two `PASS` pairs, both `0054`, and no `Running upgrade` line. The last line is `Upgrade complete: 0.1.13 -> 0.1.14.`. The `Last upgrade:` line shows the latest operation.
-- When the checkout is not `v0.1.14`, `upgrade 0.1.14` is refused: `upgrade refused: this checkout is version 0.1.13, not 0.1.14; run git fetch --tags && git checkout v0.1.14 first (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container stops.
-- The rollback removes the accounts created after the upgrade.
+- After the rollback the head is `0054`, the head of the restored backup. The second upgrade prints two `PASS` pairs, `0054` and then `0060`, and the six `Running upgrade` lines of MT-06 between them: the restored database has none of the six migrations, so they run again. The last line is `Upgrade complete: 0.1.14 -> 0.1.15.`. The `Last upgrade:` line shows the latest operation.
+- When the checkout is not `v0.1.15`, `upgrade 0.1.15` is refused: `upgrade refused: this checkout is version 0.1.14, not 0.1.15; run git fetch --tags && git checkout v0.1.15 first (see docs/OPERATIONS.md, …)` (the message ends with the name of the upgrade section of `docs/OPERATIONS.md`). No container stops.
+- The rollback removes the accounts created after the upgrade, and with them everything the lab checks MT-146, MT-155 and MT-157 wrote (triage rows, the queue marker, quiet periods). Do those after the re-upgrade, or expect them to be gone.
 
 **Record:** The two results.
 
