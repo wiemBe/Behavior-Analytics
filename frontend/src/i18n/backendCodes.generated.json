@@ -9812,6 +9812,13 @@
     "sample_english_params": {},
     "template": "No window was collected for this console in this range."
   },
+  "qradar_health_detail.reason.notification_rows_unreadable": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar returned notification rows, but none had a parseable host and a QID name, so no notification could be read. Check that each notification log-source name carries its hostname after ' :: ' and that its events carry a QID name.",
+    "sample_english_params": {},
+    "template": "QRadar returned notification rows, but none had a parseable host and a QID name, so no notification could be read. Check that each notification log-source name carries its hostname after ' :: ' and that its events carry a QID name."
+  },
   "qradar_health_detail.reason.notification_source_missing": {
     "params": {},
     "sample": {},

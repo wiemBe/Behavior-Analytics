@@ -81,6 +81,18 @@ def metric_row(host: str, metric: str, element: str | None, value: float | None)
     }
 
 
+def notification_row(
+    qid_name: str | None, events: int, *, source: str = "System Notification-2 :: qradarce2"
+) -> dict:
+    return {
+        "source": source,
+        "qid_name": qid_name,
+        "severity": 4,
+        "events": events,
+        "last_seen": int(NOW.timestamp() * 1000),
+    }
+
+
 async def metric_rows(session) -> list[QRadarHealthMetricBucket]:  # type: ignore[no-untyped-def]
     found = await session.scalars(
         select(QRadarHealthMetricBucket)
@@ -461,6 +473,49 @@ class TestNotificationSource:
         assert report.notifications_state == "OK"
         assert [s for s in statements if "FROM log_source" in s] == []
 
+    async def test_rows_the_fold_cannot_read_are_not_collected(self, db_session) -> None:
+        """FIX-41: rows came back, but none could be read, so it is not "nothing happened"."""
+        inst = await make_instance(db_session)
+        provider = MockQRadarProvider(seed=1)
+        provider.health_notification_script = lambda _s: [
+            notification_row("Warning Message", 4, source="System Notification-2"),
+            notification_row(None, 3),
+        ]
+
+        report = await collector(db_session, provider).collect(inst, slot=SLOT)
+
+        run_row = await only_run(db_session)
+        assert run_row.notifications_state == "NOT_COLLECTED"
+        assert run_row.notifications_reason_code == (
+            "qradar_health_detail.reason.notification_rows_unreadable"
+        )
+        # The rows were returned and are still counted, though none was stored.
+        assert run_row.dropped_events == 7
+        assert run_row.metrics_state == "OK"
+        assert (await db_session.scalars(select(QRadarHealthNotificationBucket))).all() == []
+        assert report.notifications_state == "NOT_COLLECTED"
+        assert report.as_dict()["status"] == "failed"
+
+    async def test_one_readable_group_beside_dropped_rows_is_still_ok(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        provider = MockQRadarProvider(seed=1)
+        provider.health_notification_script = lambda _s: [
+            notification_row("Warning Message", 4),
+            notification_row("Unreadable Host", 2, source="System Notification-3"),
+        ]
+
+        report = await collector(db_session, provider).collect(inst, slot=SLOT)
+
+        run_row = await only_run(db_session)
+        assert run_row.notifications_state == "OK"
+        assert run_row.notifications_reason_code is None
+        assert run_row.dropped_events == 2
+        notices = (await db_session.scalars(select(QRadarHealthNotificationBucket))).all()
+        assert [(n.kind, n.qid_name, n.events) for n in notices] == [
+            ("GROUP", "Warning Message", 4)
+        ]
+        assert report.as_dict()["status"] == "ok"
+
     async def test_the_inventory_read_is_one_statement_whatever_the_log_sources(
         self, db_session
     ) -> None:
@@ -667,6 +722,37 @@ class TestLatestApi:
             "reason": (
                 "The console has no enabled System Notification log source, so an empty "
                 "notification answer does not show that nothing happened."
+            ),
+        }
+        assert console["notification_list"] is None and console["metrics"]["state"] == "OK"
+        # The roll-up counts measured windows only, so this window adds nothing to it.
+        [rolled] = Client(ADMIN).get(URL + "/latest?notifications_hours=24").json()["consoles"]
+        assert rolled["notification_list"] is None
+
+    def test_a_window_with_unreadable_notification_rows_shows_the_new_reason(
+        self, db_schema
+    ) -> None:
+        """FIX-41: rows came back, but none could be read: not "nothing happened"."""
+        inst = run(make_instance)
+        run(
+            seed_run(
+                inst.id,
+                end=fresh_end(),
+                notifications="NOT_COLLECTED",
+                notifications_reason=(
+                    "qradar_health_detail.reason.notification_rows_unreadable"
+                ),
+            )
+        )
+        [console] = Client(ADMIN).get(URL + "/latest").json()["consoles"]
+        assert console["notifications"] == {
+            "state": "NOT_COLLECTED",
+            "reason_code": "qradar_health_detail.reason.notification_rows_unreadable",
+            "reason": (
+                "QRadar returned notification rows, but none had a parseable host and a QID "
+                "name, so no notification could be read. Check that each notification "
+                "log-source name carries its hostname after ' :: ' and that its events carry "
+                "a QID name."
             ),
         }
         assert console["notification_list"] is None and console["metrics"]["state"] == "OK"
