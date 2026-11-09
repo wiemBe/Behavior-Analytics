@@ -71,7 +71,7 @@ BENCHMARK_UNIT = render(_BENCHMARK_UNIT)
 SILENT_EXCLUDED_REASON = render(_SILENT_EXCLUDED)
 
 
-def _window_message(coverage: MatchCoverage) -> MessageRef | None:
+def window_message(coverage: MatchCoverage) -> MessageRef | None:
     if coverage.state is CoverageState.COMPLETE:
         return None
     if coverage.state is CoverageState.NONE:
@@ -90,16 +90,23 @@ def _window_message(coverage: MatchCoverage) -> MessageRef | None:
     )
 
 
-def _text(message: MessageRef | None) -> str | None:
+def message_text(message: MessageRef | None) -> str | None:
     return None if message is None else render(message)
 
 
-def _wire(message: MessageRef | None) -> tuple[str | None, dict[str, MessageParamValue] | None]:
+def message_wire(
+    message: MessageRef | None,
+) -> tuple[str | None, dict[str, MessageParamValue] | None]:
     """The (code, params) pair a schema carries beside a sentence; (None, None) for none."""
     if message is None:
         return None, None
     wire = message.to_wire()
     return message.code, cast("dict[str, MessageParamValue]", wire["params"])
+
+
+# The private spellings that `tests/unit/test_msg2_messages.py` imports; same objects.
+_window_message = window_message
+_wire = message_wire
 
 
 class RuleStatisticsService:
@@ -118,9 +125,9 @@ class RuleStatisticsService:
         span_start = floor_to_window(settled_until - timedelta(days=days), ws)
 
         counts = await self._counts(instance_id)
-        coverage, history_windows = await self._coverage(instance_id, span_start, now)
-        window_message = _window_message(coverage)
-        window_code, window_params = _wire(window_message)
+        coverage, history_windows = await self.coverage(instance_id, span_start, now)
+        reason_message = window_message(coverage)
+        window_code, window_params = message_wire(reason_message)
         window = StatisticsWindow(
             days=days,
             span_start=span_start,
@@ -135,14 +142,14 @@ class RuleStatisticsService:
             missing_windows=coverage.missing,
             measured_seconds=coverage.complete * ws,
             complete=coverage.state is CoverageState.COMPLETE,
-            reason=_text(window_message),
+            reason=message_text(reason_message),
             reason_code=window_code,
             reason_params=window_params,
         )
 
         silent: SilentSection | None = None
         silent_reason = window.reason
-        silent_message = window_message
+        silent_message = reason_message
         if window.complete:
             silent = await self._silent(instance_id, span_start, settled_until, counts)
             silent_reason = None
@@ -150,7 +157,7 @@ class RuleStatisticsService:
 
         top_by_matches = top_by_events = None
         top_reason = window.reason
-        top_message = window_message
+        top_message = reason_message
         if coverage.complete > 0:
             top_by_matches = await self._top(
                 instance_id, span_start, settled_until, top, window.measured_seconds,
@@ -164,8 +171,8 @@ class RuleStatisticsService:
             top_message = _NO_COMPLETE_WINDOW
             top_reason = render(top_message)
 
-        silent_code, silent_params = _wire(silent_message)
-        top_code, top_params = _wire(top_message)
+        silent_code, silent_params = message_wire(silent_message)
+        top_code, top_params = message_wire(top_message)
         return RuleStatistics(
             instance_id=instance_id,
             counts=counts,
@@ -221,7 +228,7 @@ class RuleStatisticsService:
         return out
 
     # -------------------------------------------------------------- coverage
-    async def _coverage(
+    async def coverage(
         self, instance_id: uuid.UUID, span_start: datetime, now: datetime
     ) -> tuple[MatchCoverage, int]:
         """The span's coverage, and how many of its COMPLETE windows came from history.
@@ -316,7 +323,7 @@ class RuleStatisticsService:
             if row.enabled and match_evidence(row.rule_type) is not MatchEvidence.EXACT:
                 excluded[row.rule_type] += row.count
                 evidence[row.rule_type] = match_evidence(row.rule_type)
-        excluded_code, excluded_params = _wire(_SILENT_EXCLUDED)
+        excluded_code, excluded_params = message_wire(_SILENT_EXCLUDED)
         return SilentSection(
             items=[
                 SilentRule(
@@ -414,8 +421,8 @@ class RuleStatisticsService:
                 ~func.coalesce(has_benchmark, False),
             )
         )
-        label_code, label_params = _wire(_BENCHMARK_LABEL)
-        unit_code, unit_params = _wire(_BENCHMARK_UNIT)
+        label_code, label_params = message_wire(_BENCHMARK_LABEL)
+        unit_code, unit_params = message_wire(_BENCHMARK_UNIT)
         return CostSection(
             label=BENCHMARK_LABEL,
             label_code=label_code,

@@ -65,9 +65,9 @@ from app.security.rbac import (
 from app.security.sanitizer import sanitize_mapping, sanitize_text
 from app.services.rule_statistics import (
     RuleStatisticsService,
-    _text,
-    _window_message,
-    _wire,
+    message_text,
+    message_wire,
+    window_message,
 )
 
 router = APIRouter(prefix="/rules", tags=["rules"])
@@ -291,14 +291,14 @@ async def rule_match_anomalies(
         now - timedelta(seconds=settings.rule_match_settle_lag_seconds), width
     )
     span_start = floor_to_window(span_end - timedelta(days=days), width)
-    coverage, _history = await RuleStatisticsService(session, settings)._coverage(
+    coverage, _history = await RuleStatisticsService(session, settings).coverage(
         resolved, span_start, now
     )
     if coverage.state is CoverageState.NONE:
         return not_collected
 
-    message = _window_message(coverage)
-    code, params = _wire(message)
+    message = window_message(coverage)
+    code, params = message_wire(message)
     complete = coverage.state is CoverageState.COMPLETE
     span = MatchAnomalySpan(
         days=days,
@@ -312,7 +312,7 @@ async def rule_match_anomalies(
         missing_windows=coverage.missing,
         complete=complete,
         window_status=coverage.state.value,
-        reason=_text(message),
+        reason=message_text(message),
         reason_code=code,
         reason_params=params,
     )
@@ -707,8 +707,8 @@ def _wired(
 ) -> tuple[str | None, str | None, dict[str, MessageParamValue] | None]:
     if message is None:
         return None, None, None
-    code, params = _wire(message)
-    return _text(message), code, params or None
+    code, params = message_wire(message)
+    return message_text(message), code, params or None
 
 
 def _not_collected(read: RuleSectionRead, code: str) -> RuleMatchSection:

@@ -232,7 +232,7 @@ HISTORY_TABLES = (
             "app.services.rule_health.RuleHealthEvaluator._match_coverage": Reader(
                 "R2 (rule health)", ReaderKind.EVIDENCE
             ),
-            "app.services.rule_statistics.RuleStatisticsService._coverage": Reader(
+            "app.services.rule_statistics.RuleStatisticsService.coverage": Reader(
                 "R6 (rule statistics)", ReaderKind.DISPLAY
             ),
             "app.services.rule_statistics.RuleStatisticsService._top": Reader(
