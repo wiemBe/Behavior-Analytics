@@ -168,6 +168,7 @@ _FIXED2 = ParamSpec(ParamKind.NUMBER, style="fixed", precision=2)
 _REPR = ParamSpec(ParamKind.NUMBER, style="repr")
 _TEXT = ParamSpec(ParamKind.TEXT)
 _ISO = ParamSpec(ParamKind.TIMESTAMP, style="iso")
+_MINUTE = ParamSpec(ParamKind.TIMESTAMP, style="minute")
 _PERCENT = ParamSpec(ParamKind.PERCENT)
 # Up to three decimals, trailing zeros dropped (`300`, `299.5`): the cron-floor gap (MSG-8b).
 _TRIMMED = ParamSpec(ParamKind.NUMBER, style="trimmed", precision=3)
@@ -5558,6 +5559,191 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "Only {covered} of {window} days are stored, fewer than 7, so no tail probability "
         "is reported.",
         count={"covered": 3, "window": 28},
+    ),
+    # --- SOC-6d2: the rule-detail "Match anomalies" section (design §7.3). ---
+    # The detector sentences in app/rules/anomalies.py stay uncoded f-strings (SOC-6c).
+    # These codes are the section's own sentences. The route picks one from the
+    # detector's skip code; it does not re-decide the guard.
+    _fixed("rule.match_anomaly.collection_off", "Rule-match collection is off."),
+    _fixed("rule.match_anomaly.no_window", "No match window has been recorded."),
+    _text(
+        "rule.match_anomaly.not_event",
+        "Match collection does not prove a zero for this rule type ({evidence}).",
+        evidence="LOWER_BOUND",
+    ),
+    MessageSpec(
+        code="rule.match_anomaly.disabled",
+        template=(
+            "Disabled in the inventory sync at {synced_at}. Match anomalies are not opened."
+        ),
+        params={"synced_at": ParamSpec(ParamKind.TIMESTAMP, style="minute")},
+        sample={"synced_at": _PW_AT},
+    ),
+    _fixed(
+        "rule.match_anomaly.disabled_no_sync",
+        "Disabled in the inventory sync. Match anomalies are not opened.",
+    ),
+    _fixed(
+        "rule.match_anomaly.monitoring_off",
+        "Match anomalies are off for this rule (health_monitoring_enabled). "
+        "The health status does not read that flag.",
+    ),
+    MessageSpec(
+        code="rule.match_anomaly.modified",
+        template=(
+            "QRadar reports this rule modified at {modified_at}. "
+            "Match anomalies are not judged across that time."
+        ),
+        params={"modified_at": ParamSpec(ParamKind.TIMESTAMP, style="minute")},
+        sample={"modified_at": _PW_AT},
+    ),
+    _fixed(
+        "rule.match_anomaly.truncated",
+        "The latest window hit the row cap. Silence is not judged. "
+        "A storm is judged only when this rule has a row.",
+    ),
+    _mixed(
+        "rule.match_anomaly.span_incomplete",
+        "The {days}-day span is not fully measured ({missing} missing, {truncated} truncated, "
+        "{failed} failed, {wrong_width} of another width, of {expected} windows). "
+        "The judged window runs from {window_start} to {window_end}.",
+        count={
+            "days": 7,
+            "missing": 1,
+            "truncated": 0,
+            "failed": 0,
+            "wrong_width": 0,
+            "expected": 168,
+        },
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    _mixed(
+        "rule.match_anomaly.rule_too_new",
+        "The inventory has not held this rule for {days} days. "
+        "The judged window runs from {window_start} to {window_end}.",
+        count={"days": 7},
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    MessageSpec(
+        code="rule.match_anomaly.stale_inventory",
+        template=(
+            "The inventory sync at {synced_at} is older than the window ending {window_end}."
+        ),
+        params={
+            "synced_at": ParamSpec(ParamKind.TIMESTAMP, style="minute"),
+            "window_end": ParamSpec(ParamKind.TIMESTAMP, style="minute"),
+        },
+        sample={"synced_at": _PW_AT, "window_end": _PW_AT},
+    ),
+    MessageSpec(
+        code="rule.match_anomaly.stale_inventory_unknown",
+        template=(
+            "No inventory sync is recorded, so the window ending {window_end} cannot be judged."
+        ),
+        params={"window_end": ParamSpec(ParamKind.TIMESTAMP, style="minute")},
+        sample={"window_end": _PW_AT},
+    ),
+    _mixed(
+        "rule.match_anomaly.presence_below",
+        "The rule matched in {presence} of windows over {days} days, below {minimum}. "
+        "The judged window runs from {window_start} to {window_end}.",
+        count={"days": 7},
+        presence=(_PERCENT, 0.6),
+        minimum=(_PERCENT, 0.8),
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    _mixed(
+        "rule.match_anomaly.median_below",
+        "The median is {median} matched events per window, below the minimum of {minimum}. "
+        "The judged window runs from {window_start} to {window_end}.",
+        median=(ParamSpec(ParamKind.NUMBER), 0.0),
+        minimum=(ParamSpec(ParamKind.NUMBER), 1.0),
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    _mixed(
+        "rule.match_anomaly.cell_learning",
+        "The storm cell for this weekday and slot is still learning: {samples} sample(s) "
+        "over {weeks} week(s); {minimum_samples} samples over {minimum_weeks} weeks are "
+        "needed. The judged window runs from {window_start} to {window_end}.",
+        count={"samples": 2, "weeks": 2, "minimum_samples": 8, "minimum_weeks": 4},
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    _mixed(
+        "rule.match_anomaly.cell_missing",
+        "No baseline cell is stored for this weekday and slot. "
+        "The judged window runs from {window_start} to {window_end}.",
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    _mixed(
+        "rule.match_anomaly.state_transition",
+        "This rule was enabled or disabled inside the baseline or the streak. "
+        "The judged window runs from {window_start} to {window_end}.",
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    _text(
+        "rule.match_anomaly.dependency_disabled",
+        "Not judged: a stored building-block dependency of this rule is disabled "
+        "(QRadar ids {ids}).",
+        ids="12, 15",
+    ),
+    _text(
+        "rule.match_anomaly.dependency_unobserved",
+        "No verdict: a stored dependency of this rule is not in the inventory "
+        "(QRadar ids {ids}).",
+        ids="12",
+    ),
+    _mixed(
+        "rule.match_anomaly.window_missing",
+        "No collection record exists for the window from {window_start} to {window_end}.",
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    _mixed(
+        "rule.match_anomaly.window_failed",
+        "Collection of the window from {window_start} to {window_end} failed or was skipped.",
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    _mixed(
+        "rule.match_anomaly.window_wrong_width",
+        "The window from {window_start} to {window_end} was collected at another width "
+        "than the current {width} s.",
+        count={"width": 3600},
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    _mixed(
+        "rule.match_anomaly.not_settled",
+        "The window from {window_start} to {window_end} has not settled yet.",
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    _mixed(
+        "rule.match_anomaly.width_does_not_tile",
+        "A window of {width} s does not tile a UTC day, so there is no weekday and slot "
+        "to compare against. The judged window runs from {window_start} to {window_end}.",
+        count={"width": 1000},
+        window_start=(_MINUTE, _PW_AT),
+        window_end=(_MINUTE, _PW_AT),
+    ),
+    MessageSpec(
+        code="rule.match_anomaly.judged",
+        template="Judged through {judged_through}.",
+        params={"judged_through": ParamSpec(ParamKind.TIMESTAMP, style="minute")},
+        sample={"judged_through": _PW_AT},
+    ),
+    MessageSpec(
+        code="rule.match_anomaly.judged_clear",
+        template="Judged through {judged_through}. No open match anomaly.",
+        params={"judged_through": ParamSpec(ParamKind.TIMESTAMP, style="minute")},
+        sample={"judged_through": _PW_AT},
     ),
 )
 

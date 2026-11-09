@@ -927,6 +927,36 @@
       "rules_stale": "Offense collection is stale, so the rules that fired in this window may be incomplete."
     }
   },
+  "rule": {
+    "match_anomaly": {
+      "cell_learning": "The storm cell for this weekday and slot is still learning: {samples} sample(s) over {weeks} week(s); {minimum_samples} samples over {minimum_weeks} weeks are needed. The judged window runs from {window_start} to {window_end}.",
+      "cell_missing": "No baseline cell is stored for this weekday and slot. The judged window runs from {window_start} to {window_end}.",
+      "collection_off": "Rule-match collection is off.",
+      "dependency_disabled": "Not judged: a stored building-block dependency of this rule is disabled (QRadar ids {ids}).",
+      "dependency_unobserved": "No verdict: a stored dependency of this rule is not in the inventory (QRadar ids {ids}).",
+      "disabled": "Disabled in the inventory sync at {synced_at}. Match anomalies are not opened.",
+      "disabled_no_sync": "Disabled in the inventory sync. Match anomalies are not opened.",
+      "judged": "Judged through {judged_through}.",
+      "judged_clear": "Judged through {judged_through}. No open match anomaly.",
+      "median_below": "The median is {median} matched events per window, below the minimum of {minimum}. The judged window runs from {window_start} to {window_end}.",
+      "modified": "QRadar reports this rule modified at {modified_at}. Match anomalies are not judged across that time.",
+      "monitoring_off": "Match anomalies are off for this rule (health_monitoring_enabled). The health status does not read that flag.",
+      "no_window": "No match window has been recorded.",
+      "not_event": "Match collection does not prove a zero for this rule type ({evidence}).",
+      "not_settled": "The window from {window_start} to {window_end} has not settled yet.",
+      "presence_below": "The rule matched in {presence} of windows over {days} days, below {minimum}. The judged window runs from {window_start} to {window_end}.",
+      "rule_too_new": "The inventory has not held this rule for {days} days. The judged window runs from {window_start} to {window_end}.",
+      "span_incomplete": "The {days}-day span is not fully measured ({missing} missing, {truncated} truncated, {failed} failed, {wrong_width} of another width, of {expected} windows). The judged window runs from {window_start} to {window_end}.",
+      "stale_inventory": "The inventory sync at {synced_at} is older than the window ending {window_end}.",
+      "stale_inventory_unknown": "No inventory sync is recorded, so the window ending {window_end} cannot be judged.",
+      "state_transition": "This rule was enabled or disabled inside the baseline or the streak. The judged window runs from {window_start} to {window_end}.",
+      "truncated": "The latest window hit the row cap. Silence is not judged. A storm is judged only when this rule has a row.",
+      "width_does_not_tile": "A window of {width} s does not tile a UTC day, so there is no weekday and slot to compare against. The judged window runs from {window_start} to {window_end}.",
+      "window_failed": "Collection of the window from {window_start} to {window_end} failed or was skipped.",
+      "window_missing": "No collection record exists for the window from {window_start} to {window_end}.",
+      "window_wrong_width": "The window from {window_start} to {window_end} was collected at another width than the current {width} s."
+    }
+  },
   "rule_health": {
     "age_unknown": "The rule''s age is unknown, so inactivity cannot be assessed.",
     "dependency": {
