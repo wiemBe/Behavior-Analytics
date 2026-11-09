@@ -45,6 +45,9 @@ class MetricPoint:
     distinct_source_ip_count: int
     collection_error_count: int
     payload_signature: str | None
+    # The collector's bucket-wide fact (D-62): the aggregate named no monitored source. The row
+    # is PARTIAL and says so in its provenance; see `MetricCollector._zero_filled_rows`.
+    fleet_empty: bool = False
 
 
 @dataclass
@@ -124,6 +127,32 @@ def detect_no_events(ctx: DetectionContext) -> AnomalyEvidence:
                        reason_message=_ref("within_range"))
 
     # --- the bucket is empty; decide whether that is a finding --------------
+    # The aggregate named no monitored source at all (D-62). The same gates a silent source
+    # passes below decide whether this source *expects* traffic; one that does is reported
+    # once for the instance by the engine, never as its own silence.
+    if p.fleet_empty:
+        if not ctx.is_expected_active:
+            return healthy(at, interval_start=p.interval_start, interval_end=p.interval_end,
+                           observed=0.0, expected=expected,
+                           reason_message=_ref("no_events_not_expected"))
+        if cell is not None and cell.is_reliable and cell.median <= 0:
+            return healthy(at, interval_start=p.interval_start, interval_end=p.interval_end,
+                           observed=0.0, expected=0.0,
+                           reason_message=_ref("no_events_normally_inactive"))
+        if cell is None or not cell.is_reliable:
+            return insufficient(
+                at, interval_start=p.interval_start, interval_end=p.interval_end,
+                reason_message=_ref("no_events_no_baseline"),
+                sample_count=cell.sample_count if cell else 0,
+            )
+        ev = insufficient(
+            at, interval_start=p.interval_start, interval_end=p.interval_end,
+            reason_message=MessageRef("alert.fleet_empty.detector_reason"),
+            sample_count=cell.sample_count,
+        )
+        ev.extra = {"fleet_empty": True}
+        return ev
+
     # A bucket we did not fully observe is not evidence of silence. Reporting
     # NO_EVENTS on a failed collection would make every collector outage look
     # like a simultaneous outage of every monitored source.

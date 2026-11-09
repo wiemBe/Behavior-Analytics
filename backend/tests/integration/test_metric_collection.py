@@ -20,7 +20,7 @@ from app.collectors.metric_collector import (
     floor_to_interval,
 )
 from app.core.config import Settings
-from app.models.enums import SearchFamily
+from app.models.enums import BucketCompleteness, SearchFamily
 from app.models.log_source import LogSource, LogSourceMetric
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderError
@@ -656,22 +656,62 @@ class TestZeroFill:
     ) -> None:
         instance = await _seed_inventory(db_session)
         now = datetime(2026, 7, 15, 10, 3, tzinfo=UTC)
+        first = (
+            await db_session.scalars(select(LogSource).order_by(LogSource.qradar_id))
+        ).first()
+        assert first is not None
+        start = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
 
-        # QRadar reports nothing at all for this window: every monitored source
-        # was silent.
-        await self._collect_with(db_session, instance, [], now)
+        # One monitored source reported events for this window; the others were
+        # silent and QRadar omitted them from the aggregate.
+        await self._collect_with(
+            db_session, instance,
+            [
+                LogSourceMetricSample(
+                    qradar_id=first.qradar_id, bucket_start=start, bucket_seconds=300,
+                    event_count=7,
+                )
+            ],
+            now,
+        )
 
         rows = list(
             (await db_session.scalars(select(LogSourceMetric))).all()
         )
         assert rows, "a silent interval must still leave evidence it was observed"
+        silent = [r for r in rows if r.log_source_id != first.id]
+        assert silent
+        for row in silent:
+            assert row.event_count == 0
+            assert row.average_eps == 0.0
+            # COMPLETE because the query succeeded and returned no events for this
+            # source -- an observation of silence, not an unobserved window.
+            assert row.is_complete
+            assert row.query_provenance.get("zero_filled") is True
+            assert "fleet_empty" not in row.query_provenance
+        reporting = next(r for r in rows if r.log_source_id == first.id)
+        assert reporting.event_count == 7
+
+    async def test_an_empty_aggregate_for_the_whole_fleet_is_partial_not_silence(
+        self, db_session
+    ) -> None:
+        instance = await _seed_inventory(db_session)
+        now = datetime(2026, 7, 15, 10, 3, tzinfo=UTC)
+
+        # D-62: QRadar answered with no source at all (a warming console does
+        # this). A fleet-wide empty answer is not an observation of silence, so
+        # the zeros are PARTIAL and say why; the engine reports it once.
+        await self._collect_with(db_session, instance, [], now)
+
+        rows = list((await db_session.scalars(select(LogSourceMetric))).all())
+        assert rows
         for row in rows:
             assert row.event_count == 0
             assert row.average_eps == 0.0
-            # COMPLETE because the query succeeded and returned no events -- an
-            # observation of silence, not an unobserved window.
-            assert row.is_complete
+            assert not row.is_complete
+            assert row.completeness == BucketCompleteness.PARTIAL
             assert row.query_provenance.get("zero_filled") is True
+            assert row.query_provenance["fleet_empty"] is True
 
     async def test_zero_rows_are_upserted_not_duplicated(self, db_session) -> None:
         instance = await _seed_inventory(db_session)

@@ -25,6 +25,12 @@
       },
       "recovered": "condition recovered"
     },
+    "fleet_empty": {
+      "description": "No log source sent events in {bucket}; QRadar may be starting or its pipeline may have stopped.",
+      "detector_reason": "no monitored log source sent events in this bucket; reported once for the whole QRadar instance, not as silence of this source",
+      "recovered": "Log sources are sending events again.",
+      "title": "No log source sent events in {bucket}"
+    },
     "inventory": {
       "catchall_sender": {
         "description": "A device that is not a configured log source is sending to a catch-all log source and requires SOC review.",

@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.alerts.fingerprint import anomaly_fingerprint
+from app.alerts.fingerprint import anomaly_fingerprint, fleet_empty_fingerprint
 from app.alerts.policy import AlertPolicyGate
 from app.alerts.service import AlertInput, AlertService
 from app.alerts.suppression import SuppressionGate, record_hit
@@ -53,9 +53,11 @@ from app.core.config import Settings, get_settings
 from app.fleet.outage_policy import ResolvedOutage, resolve
 from app.history.origin import is_live_clause
 from app.i18n.messages import MessageRef, render
+from app.models.alert import Alert
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     AlertPolicyMode,
+    AlertStatus,
     AnomalyFamily,
     AnomalyState,
     AnomalyType,
@@ -65,6 +67,7 @@ from app.models.enums import (
     EvidenceStatus,
     OutagePolicyMode,
     OutagePolicyScope,
+    Severity,
 )
 from app.models.fleet import LogSourceClassification
 from app.models.log_source import (
@@ -170,6 +173,21 @@ def metric_point(metric: LogSourceMetric) -> MetricPoint:
         distinct_source_ip_count=metric.distinct_source_ip_count,
         collection_error_count=metric.collection_error_count,
         payload_signature=metric.payload_signature,
+        fleet_empty=fleet_empty_bucket(metric),
+    )
+
+
+def fleet_empty_bucket(metric: LogSourceMetric) -> bool:
+    """Whether the collector found no monitored source in this bucket (D-62).
+
+    Only a PARTIAL row carrying the provenance flag counts: the flag alone, on a COMPLETE
+    row, is not how the collector writes it, so a stray key cannot silence a source.
+    """
+    provenance = metric.query_provenance
+    return (
+        BucketCompleteness(metric.completeness) is BucketCompleteness.PARTIAL
+        and isinstance(provenance, dict)
+        and provenance.get("fleet_empty") is True
     )
 
 
@@ -207,7 +225,7 @@ def run_detectors(
     no_events = next(
         (e for e in results if e.anomaly_type == AnomalyType.NO_EVENTS), None
     )
-    if no_events is not None and no_events.is_anomalous:
+    if (no_events is not None and no_events.is_anomalous) or ctx.point.fleet_empty:
         # Demote the redundant detectors to UNKNOWN so their hysteresis
         # counters do not advance on a trivially-satisfied condition.
         for e in results:
@@ -263,6 +281,10 @@ class AnomalyEngine:
         # needs its fault cleared without a query per bucket.
         self._faults = AnomalyFaultRepository(session)
         self._open_faults: set[uuid.UUID] | None = None
+        # D-62: the open fleet-empty alert per QRadar instance, loaded once per engine run
+        # (one statement whatever the fleet size, rule 9). It also remembers the newest bucket
+        # judged, so N sources judging one empty bucket count it once.
+        self._fleet_alerts: dict[uuid.UUID, Alert] | None = None
 
     async def evaluate_latest(self, log_source: LogSource) -> EvaluationReport:
         """Test-only: no collector calls this; tests pin that it reads live rows."""
@@ -483,8 +505,112 @@ class AnomalyEngine:
                 report.anomalous.append(evidence.anomaly_type.value)
             await self._apply_hysteresis(log_source, metric, evidence, in_maintenance, report)
 
+        await self._fleet_step(log_source, metric, ctx, evidences, in_maintenance)
         await self.session.flush()
         return report
+
+    # ----------------------------------------------------------- fleet empty
+    async def _open_fleet_alerts(self) -> dict[uuid.UUID, Alert]:
+        """Open fleet-empty alerts by instance id, loaded once per engine run."""
+        if self._fleet_alerts is None:
+            rows = await self.session.scalars(
+                select(Alert).where(
+                    Alert.source_type == "qradar_instance",
+                    Alert.fingerprint.like("fleet_empty:%"),
+                    Alert.status != AlertStatus.RESOLVED,
+                )
+            )
+            self._fleet_alerts = {
+                alert.source_id: alert for alert in rows if alert.source_id is not None
+            }
+        return self._fleet_alerts
+
+    @staticmethod
+    def _fleet_alert_bucket(alert: Alert) -> datetime | None:
+        """The newest bucket the alert has judged, from its evidence."""
+        raw = alert.evidence_snapshot.get("bucket_start")
+        if not isinstance(raw, str):
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+    async def _fleet_step(
+        self,
+        log_source: LogSource,
+        metric: LogSourceMetric,
+        ctx: DetectionContext,
+        evidences: list[AnomalyEvidence],
+        in_maintenance: bool,
+    ) -> None:
+        """Open, refresh or resolve the instance's fleet-empty alert (D-62).
+
+        A bucket the collector flagged opens or refreshes it when this source expects
+        traffic (the detector says so; a source in maintenance never counts). A complete,
+        unflagged bucket newer than the alert's last one resolves it. Each runs once per
+        (instance, bucket), whatever the number of sources judging that bucket.
+        """
+        instance_id = log_source.instance_id
+        bucket = metric.bucket_start
+        if ctx.point.fleet_empty:
+            expects = not in_maintenance and any(
+                e.anomaly_type == AnomalyType.NO_EVENTS and e.extra.get("fleet_empty") is True
+                for e in evidences
+            )
+            if not expects:
+                return
+            open_alerts = await self._open_fleet_alerts()
+            existing = open_alerts.get(instance_id)
+            if existing is not None:
+                judged = self._fleet_alert_bucket(existing)
+                if judged is not None and bucket <= judged:
+                    return
+            title = MessageRef("alert.fleet_empty.title", {"bucket": bucket.isoformat()})
+            description = MessageRef(
+                "alert.fleet_empty.description", {"bucket": bucket.isoformat()}
+            )
+            result = await self.alerts.open_or_update(
+                AlertInput(
+                    fingerprint=fleet_empty_fingerprint(instance_id),
+                    title=render(title),
+                    title_message=title,
+                    description=render(description),
+                    description_message=description,
+                    severity=Severity.HIGH,
+                    source_type="qradar_instance",
+                    source_id=instance_id,
+                    evidence={
+                        "bucket_start": bucket.isoformat(),
+                        "bucket_end": (
+                            bucket + timedelta(seconds=metric.bucket_seconds)
+                        ).isoformat(),
+                    },
+                )
+            )
+            open_alerts[instance_id] = result.alert
+            if self._enqueuer is not None and result.transition is not None:
+                await self._enqueuer.enqueue(result.alert, result.transition)
+            return
+
+        if metric.completeness != BucketCompleteness.COMPLETE:
+            return
+        open_alerts = await self._open_fleet_alerts()
+        existing = open_alerts.get(instance_id)
+        if existing is None:
+            return
+        judged = self._fleet_alert_bucket(existing)
+        if judged is not None and bucket <= judged:
+            return
+        resolved = await self.alerts.resolve_by_fingerprint(
+            fleet_empty_fingerprint(instance_id),
+            actor="system:anomaly-engine",
+            reason_message=MessageRef("alert.fleet_empty.recovered"),
+        )
+        open_alerts.pop(instance_id, None)
+        if self._enqueuer is not None and resolved is not None and resolved.transition:
+            await self._enqueuer.enqueue(resolved.alert, resolved.transition)
 
     # ------------------------------------------------------------- context
     async def _build_context(

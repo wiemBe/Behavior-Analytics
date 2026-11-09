@@ -59,6 +59,21 @@ def anomaly_fingerprint(log_source_id: str | uuid.UUID, anomaly_type: str) -> st
     )
 
 
+def fleet_empty_fingerprint(instance_id: str | uuid.UUID) -> str:
+    """Identity of "no monitored log source sent events" on one QRadar instance (D-62).
+
+    There is no bucket in it: the alert stays open and refreshes while the condition holds,
+    and resolves when a later bucket carries events. ``condition`` is its own family, so it
+    cannot deduplicate into a per-source NO_EVENTS alert.
+    """
+    return compute_fingerprint(
+        source_type="qradar_instance",
+        source_id=instance_id,
+        condition="fleet_empty",
+        subtype="NO_EVENTS",
+    )
+
+
 def inventory_fingerprint(
     instance_id: str | uuid.UUID, qradar_log_source_id: int
 ) -> str:
