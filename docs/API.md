@@ -659,6 +659,9 @@ the windows are then the last ones collected, returned with their own times, not
   the notification part `NOT_COLLECTED` with `notification_source_missing` (or
   `notification_source_unreadable` when that inventory could not be read), so a search that found
   nothing on a console that could not send anything is never reported as "no notifications".
+  A search that returned rows without hitting its row cap is `OK` when the fold kept at
+  least one group from them and `NOT_COLLECTED` with `notification_rows_unreadable` when it
+  kept none, so returned rows that folded to nothing are never reported as "no notifications".
   With the query parameter `notifications_hours` (1 to 168; anything else is `422`) the list is
   instead the roll-up of every stored window of that many hours whose notification search was
   measured (`OK` or `PARTIAL`): the groups are summed per host and QID name (`events` summed,
