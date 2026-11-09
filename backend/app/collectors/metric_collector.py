@@ -183,6 +183,18 @@ def floor_to_interval(dt: datetime, interval_seconds: int) -> datetime:
     return datetime.fromtimestamp(floored, tz=UTC)
 
 
+def _error_text(exc: Exception) -> str:
+    """A bounded, class-named description for the watermark's `last_error`.
+
+    The row is read by doctor and the collection API, not by a user who needs a
+    traceback. The class is always present, and the message is truncated so one
+    upstream response cannot bloat the row.
+    """
+    message = str(exc).strip()
+    text = f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+    return text[:512]
+
+
 class MetricCollector:
     def __init__(
         self,
@@ -226,9 +238,22 @@ class MetricCollector:
                 watermark, current_boundary, interval, max_intervals=max_intervals
             )
 
-            completed, searches_sent, splits, search_partial = (
-                await self._collect_bucketed_window(intervals, interval)
-            )
+            try:
+                completed, searches_sent, splits, search_partial = (
+                    await self._collect_bucketed_window(intervals, interval)
+                )
+            except ProviderError as exc:
+                # Record the failure against the watermark and leave it
+                # unadvanced, so the next run retries the same span. Without
+                # this the row kept the counters of its last success, so
+                # doctor could not tell a failing collector from a late one.
+                # The exception still surfaces: the worker logs it and the
+                # task reports the failed run.
+                watermark.consecutive_failures += 1
+                watermark.last_run_at = now
+                watermark.last_error = _error_text(exc)
+                await self.session.flush()
+                raise
 
             total_samples = 0
             buckets_collected = 0

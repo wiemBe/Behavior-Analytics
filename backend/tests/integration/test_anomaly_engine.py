@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 
 from app.alerts.fingerprint import anomaly_fingerprint
 from app.anomaly.engine import AnomalyEngine
+from app.anomaly.evidence import healthy
 from app.core.config import Settings
 from app.models.alert import Alert
 from app.models.enums import AlertStatus, AnomalyState, AnomalyType, Criticality
@@ -349,6 +350,149 @@ async def test_two_contiguous_post_gap_empties_open_no_events(db_session) -> Non
     assert await engine._preceding_empty_buckets(ls.id, judged) == 1
     alert = await _open_alert(db_session, ls, AnomalyType.NO_EVENTS)
     assert alert is not None and alert.status == AlertStatus.OPEN
+
+async def _quiet_source(session, *, name: str):
+    """A CRITICAL source with a reliable event_count baseline and no events yet."""
+    inst = await make_instance(session)
+    ls = await make_log_source(session, inst, criticality=Criticality.CRITICAL, name=name)
+    start = utc(h=10)
+    session.add(
+        LogSourceBaseline(
+            log_source_id=ls.id,
+            metric_name="event_count",
+            weekday=start.isoweekday(),
+            hour=start.hour,
+            median=15_000.0,
+            mad=500.0,
+            p05=14_000.0,
+            p95=16_000.0,
+            sample_count=30,
+            is_reliable=True,
+            baseline_version=1,
+            observations=[15_000.0],
+        )
+    )
+    await session.flush()
+    await _seed_evaluation_watermark(session, ls, start - timedelta(minutes=5))
+    return ls, start
+
+
+async def _add_empty_bucket(session, ls, at, *, last_event_at=None):
+    return await add_metric(
+        session,
+        ls,
+        at,
+        average_eps=0.0,
+        event_count=0,
+        stored_event_count=0,
+        last_event_at=last_event_at,
+        event_delay_seconds=None,
+        collection_source="mock",
+        query_provenance={"zero_filled": True},
+    )
+
+
+async def test_no_events_alert_says_what_was_observed_and_a_refresh_keeps_it(
+    db_session,
+) -> None:
+    """FIX-45b F1: the title names the source, and the description the observation."""
+    ls, start = await _quiet_source(db_session, name="Edge firewall")
+    last_event = start - timedelta(minutes=2)
+    # Bucket 0 is inside the one-bucket grace; bucket 1 opens the incident.
+    for index in range(2):
+        await _add_empty_bucket(
+            db_session, ls, start + timedelta(minutes=5 * index), last_event_at=last_event
+        )
+    engine = AnomalyEngine(db_session, settings=_settings())
+
+    report = await engine.evaluate_pending(ls)
+
+    assert AnomalyType.NO_EVENTS.value in report.opened
+    alert = await _open_alert(db_session, ls, AnomalyType.NO_EVENTS)
+    assert alert is not None
+    assert alert.title == "No events received from Edge firewall"
+    assert alert.title_i18n == {
+        "code": "alert.anomaly.no_events.title",
+        "params": {"log_source": "Edge firewall"},
+    }
+    assert alert.description == (
+        "QRadar returned no events for 2 complete bucket(s) where the baseline expects "
+        "about 15000 events; the last event was at 2026-07-15 09:58:00 UTC."
+    )
+    assert alert.description_i18n == {
+        "code": "alert.anomaly.no_events.description_last_event",
+        "params": {
+            "streak": 2,
+            "expected": 15_000.0,
+            "last_event_at": last_event.isoformat(),
+        },
+    }
+
+    # A refresh re-asserts the same observation: the new title must survive it,
+    # and the description must count the new bucket.
+    alert.title_i18n = None
+    await _add_empty_bucket(
+        db_session, ls, start + timedelta(minutes=10), last_event_at=last_event
+    )
+    await engine.evaluate_pending(ls)
+    await db_session.refresh(alert)
+    assert alert.occurrence_count == 2
+    assert alert.title == "No events received from Edge firewall"
+    assert alert.title_i18n == {
+        "code": "alert.anomaly.no_events.title",
+        "params": {"log_source": "Edge firewall"},
+    }
+    assert alert.description_i18n is not None
+    assert alert.description_i18n["code"] == "alert.anomaly.no_events.description_last_event"
+    assert alert.description_i18n["params"]["streak"] == 3
+
+
+async def test_no_events_alert_omits_the_last_event_time_when_the_bucket_has_none(
+    db_session,
+) -> None:
+    ls, start = await _quiet_source(db_session, name="Quiet collector")
+    for index in range(2):
+        await _add_empty_bucket(
+            db_session, ls, start + timedelta(minutes=5 * index), last_event_at=None
+        )
+
+    await AnomalyEngine(db_session, settings=_settings()).evaluate_pending(ls)
+
+    alert = await _open_alert(db_session, ls, AnomalyType.NO_EVENTS)
+    assert alert is not None
+    assert alert.title == "No events received from Quiet collector"
+    assert alert.description == (
+        "QRadar returned no events for 2 complete bucket(s) where the baseline expects "
+        "about 15000 events."
+    )
+    assert alert.description_i18n == {
+        "code": "alert.anomaly.no_events.description",
+        "params": {"streak": 2, "expected": 15_000.0},
+    }
+
+
+async def test_no_events_alert_without_a_streak_keeps_the_detector_sentence(
+    db_session,
+) -> None:
+    """The defensive branch: NO_EVENTS evidence with no streak still names the source."""
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst, name="Bare evidence")
+    start = utc(h=10)
+    evidence = healthy(
+        AnomalyType.NO_EVENTS,
+        interval_start=start,
+        interval_end=start + timedelta(minutes=5),
+        observed=0.0,
+        expected=15_000.0,
+        reason="detector sentence",
+    )
+    alert_input = AnomalyEngine(db_session, settings=_settings())._alert_input(
+        ls, evidence, None
+    )
+
+    assert alert_input.title == "No events received from Bare evidence"
+    assert alert_input.description == "detector sentence"
+    assert alert_input.description_message is None
 
 
 async def test_evaluate_pending_first_run_only_judges_latest_and_seeds_watermark(
