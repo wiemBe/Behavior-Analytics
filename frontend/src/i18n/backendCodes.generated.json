@@ -6,6 +6,72 @@
     "sample_english_params": {},
     "template": "This account already records the maximum number of guide sections."
   },
+  "alert.anomaly.no_events.description": {
+    "params": {
+      "expected": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "streak": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "expected": 15000.0,
+      "streak": 3
+    },
+    "sample_english": "QRadar returned no events for 3 complete bucket(s) where the baseline expects about 15000 events.",
+    "sample_english_params": {
+      "expected": "15000",
+      "streak": "3"
+    },
+    "template": "QRadar returned no events for {streak} complete bucket(s) where the baseline expects about {expected} events."
+  },
+  "alert.anomaly.no_events.description_last_event": {
+    "params": {
+      "expected": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "last_event_at": {
+        "kind": "timestamp"
+      },
+      "streak": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "expected": 15000.0,
+      "last_event_at": "2026-10-17T12:00:00+00:00",
+      "streak": 3
+    },
+    "sample_english": "QRadar returned no events for 3 complete bucket(s) where the baseline expects about 15000 events; the last event was at 2026-10-17 12:00:00 UTC.",
+    "sample_english_params": {
+      "expected": "15000",
+      "last_event_at": "2026-10-17 12:00:00 UTC",
+      "streak": "3"
+    },
+    "template": "QRadar returned no events for {streak} complete bucket(s) where the baseline expects about {expected} events; the last event was at {last_event_at}."
+  },
+  "alert.anomaly.no_events.title": {
+    "params": {
+      "log_source": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "log_source": "Edge firewall"
+    },
+    "sample_english": "No events received from Edge firewall",
+    "sample_english_params": {
+      "log_source": "Edge firewall"
+    },
+    "template": "No events received from {log_source}"
+  },
   "alert.anomaly.title": {
     "params": {
       "anomaly_type": {

@@ -2676,6 +2676,33 @@ REGISTRY: tuple[MessageSpec, ...] = (
         },
         {"anomaly_type": "NO_EVENTS", "log_source": "Edge firewall"},
     ),
+    # FIX-45b F1: NO_EVENTS says what was observed. It can only fire on a COMPLETE
+    # bucket, so the sentence may state that the read succeeded and the source sent
+    # nothing. The time is omitted when the bucket carried no last-event timestamp.
+    _msg(
+        "alert.anomaly.no_events.title",
+        "No events received from {log_source}",
+        {"log_source": _TEXT},
+        {"log_source": "Edge firewall"},
+    ),
+    _msg(
+        "alert.anomaly.no_events.description",
+        "QRadar returned no events for {streak} complete bucket(s) where the baseline "
+        "expects about {expected} events.",
+        {"streak": _PLAIN, "expected": _FIXED0},
+        {"streak": 3, "expected": 15000.0},
+    ),
+    _msg(
+        "alert.anomaly.no_events.description_last_event",
+        "QRadar returned no events for {streak} complete bucket(s) where the baseline "
+        "expects about {expected} events; the last event was at {last_event_at}.",
+        {
+            "streak": _PLAIN,
+            "expected": _FIXED0,
+            "last_event_at": ParamSpec(ParamKind.TIMESTAMP),
+        },
+        {"streak": 3, "expected": 15000.0, "last_event_at": _PW_AT},
+    ),
     _msg(
         "alert.waf.title",
         "{detector} on {log_source}: {method} {endpoint}",

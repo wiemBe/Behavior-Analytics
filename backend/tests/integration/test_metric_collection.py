@@ -11,7 +11,9 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from sqlalchemy import create_engine, delete, event, func, insert, select, text
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.cli.doctor import Doctor, Status
 from app.collectors.metric_collector import (
     COLLECTOR_NAME,
     MetricCollector,
@@ -143,6 +145,61 @@ async def test_ariel_permit_refusal_fails_phase_a_closed(db_session) -> None:
     assert await db_session.scalar(select(func.count()).select_from(LogSourceMetric)) == 0
     await db_session.refresh(watermark)
     assert watermark.watermark_at == prior_watermark
+
+
+async def test_a_provider_failure_is_recorded_on_the_watermark_and_a_success_clears_it(
+    db_session,
+) -> None:
+    """FIX-45b F5: a failed run leaves the failure on the row doctor reads."""
+    instance = await _seed_inventory(db_session)
+    now = datetime(2026, 7, 15, 10, 3, tzinfo=UTC)
+
+    class FailingProvider(MockQRadarProvider):
+        failing = True
+
+        async def get_log_source_metrics(self, window_start, window_end):  # type: ignore[no-untyped-def]
+            if self.failing:
+                raise ProviderError("QRadar Ariel metric search failed: 503")
+            return await super().get_log_source_metrics(window_start, window_end)
+
+    provider = FailingProvider(seed=1337)
+    with pytest.raises(ProviderError, match="503"):
+        await MetricCollector(
+            db_session, provider, settings=_settings(), clock=lambda: now
+        ).collect(instance)
+
+    # A failed first run writes no bucket and leaves the watermark unadvanced.
+    assert await db_session.scalar(select(func.count()).select_from(LogSourceMetric)) == 0
+    watermark = await db_session.scalar(select(CollectionWatermark))
+    assert watermark is not None
+    assert watermark.watermark_at is None
+    assert watermark.consecutive_failures == 1
+    assert watermark.last_error == "ProviderError: QRadar Ariel metric search failed: 503"
+    assert watermark.last_run_at == now
+
+    # Doctor reads that row as a failure, not as ordinary lateness.
+    await db_session.commit()
+    maker = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    result = await Doctor(
+        settings=_settings(), sessionmaker=maker, now=lambda: now
+    ).check_watermarks()
+    assert result.status is Status.FAIL
+    assert result.runbook == "OPS-R30"
+    assert result.message == "1 watermark(s) failed: log_source_metric"
+
+    # A later success clears both fields.
+    provider.failing = False
+    report = await MetricCollector(
+        db_session,
+        provider,
+        settings=_settings(),
+        clock=lambda: now + timedelta(minutes=5),
+    ).collect(instance)
+    assert report.buckets_collected == 1
+    await db_session.refresh(watermark)
+    assert watermark.consecutive_failures == 0
+    assert watermark.last_error is None
+    assert watermark.watermark_at is not None
 
 
 async def test_tick_writes_more_metrics_than_one_statement_can_bind(db_session) -> None:

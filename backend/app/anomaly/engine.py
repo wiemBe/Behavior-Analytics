@@ -1049,10 +1049,25 @@ class AnomalyEngine:
         # Added only when known, and never part of the fingerprint.
         if source_class is not None:
             context["source_class"] = str(source_class)
-        title_message = MessageRef(
-            "alert.anomaly.title",
-            {"anomaly_type": evidence.anomaly_type.value, "log_source": log_source.name},
-        )
+        description = evidence.reason
+        description_message = evidence.reason_message
+        if evidence.anomaly_type is AnomalyType.NO_EVENTS:
+            # NO_EVENTS only fires on a COMPLETE bucket, so the alert can say the
+            # read succeeded and the source sent nothing. The generic enum title
+            # cannot: an analyst reads it as the detector name, not as an
+            # observation. Every other anomaly type keeps the generic title.
+            title_message = MessageRef(
+                "alert.anomaly.no_events.title", {"log_source": log_source.name}
+            )
+            specific = self._no_events_description(evidence)
+            if specific is not None:
+                description = render(specific)
+                description_message = specific
+        else:
+            title_message = MessageRef(
+                "alert.anomaly.title",
+                {"anomaly_type": evidence.anomaly_type.value, "log_source": log_source.name},
+            )
         return AlertInput(
             fingerprint=anomaly_fingerprint(log_source.id, evidence.anomaly_type.value),
             title=render(title_message),
@@ -1060,11 +1075,35 @@ class AnomalyEngine:
             severity=evidence.severity,
             source_type="log_source",
             source_id=log_source.id,
-            description=evidence.reason,
-            description_message=evidence.reason_message,
+            description=description,
+            description_message=description_message,
             evidence=evidence.to_dict(),
             source_anomaly_ids=[str(anomaly_id)] if anomaly_id is not None else [],
             context=context,
+        )
+
+    def _no_events_description(self, evidence: AnomalyEvidence) -> MessageRef | None:
+        """The NO_EVENTS alert sentence: the streak, and the last event when known.
+
+        The detector's own sentence counts empty buckets; the alert adds that the
+        buckets were complete observations, and, when the bucket carried one, the
+        last event time. A detector evidence without the streak (or without the
+        baseline expectation) leaves the generic reason in place rather than
+        inventing a number.
+        """
+        streak = evidence.extra.get("empty_buckets")
+        expected = evidence.expected_value
+        if not isinstance(streak, int) or isinstance(streak, bool) or expected is None:
+            return None
+        last_event_at = evidence.extra.get("last_event_at")
+        if isinstance(last_event_at, str) and last_event_at:
+            return MessageRef(
+                "alert.anomaly.no_events.description_last_event",
+                {"streak": streak, "expected": expected, "last_event_at": last_event_at},
+            )
+        return MessageRef(
+            "alert.anomaly.no_events.description",
+            {"streak": streak, "expected": expected},
         )
 
     async def _refresh(

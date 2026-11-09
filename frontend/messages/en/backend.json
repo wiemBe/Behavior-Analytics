@@ -6,6 +6,11 @@
   },
   "alert": {
     "anomaly": {
+      "no_events": {
+        "description": "QRadar returned no events for {streak} complete bucket(s) where the baseline expects about {expected} events.",
+        "description_last_event": "QRadar returned no events for {streak} complete bucket(s) where the baseline expects about {expected} events; the last event was at {last_event_at}.",
+        "title": "No events received from {log_source}"
+      },
       "title": "{anomaly_type} on {log_source}"
     },
     "custom_rule": {
