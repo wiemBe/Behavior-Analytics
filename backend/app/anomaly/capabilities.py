@@ -151,8 +151,8 @@ class DetectorSpec:
     #: WAF only: the setting that must be true before those breakdowns are
     #: collected. None when the detector needs no opt-in telemetry.
     enabling_setting: str | None = None
-    #: What must be configured, beyond the setting, before it can reach a
-    #: verdict on a source. Informational; not a limitation of the code.
+    #: What must be configured, beyond the setting, before it reaches a verdict
+    #: or opens an alert. Informational; not a limitation of the code.
     activation: str | None = None
     #: False for a named detector with no implementation.
     implemented: bool = True
@@ -810,13 +810,15 @@ def _rule(detector_type: RuleAnomalyType) -> DetectorSpec:
         baseline_metrics=frozenset(),
         scheduled_task=_RULE_TASK,
         enabling_setting="rule_match_collection_enabled",
+        activation=(
+            "alerts and notifications are opened only when RULE_ALERTING_ENABLED=true; "
+            "incidents are recorded either way"
+        ),
         measurement=_EXACT,
     )
 
 
-#: SOC-6 design §5.2. Not yet part of `all_detectors()`: listing them there changes the
-#: `/behavior/detectors` response and the status matrix, which the engine and read-API
-#: slices (SOC-6c, SOC-6d) own.
+#: SOC-6 design §5.2.
 RULE_DETECTORS: dict[RuleAnomalyType, DetectorSpec] = {
     RuleAnomalyType.RULE_SILENCE: _rule(RuleAnomalyType.RULE_SILENCE),
     RuleAnomalyType.RULE_STORM: _rule(RuleAnomalyType.RULE_STORM),
@@ -949,4 +951,5 @@ def all_detectors() -> list[DetectorSpec]:
         *WAF_DETECTORS.values(),
         *IPS_DETECTORS.values(),
         *PW_DETECTORS.values(),
+        *RULE_DETECTORS.values(),
     ]

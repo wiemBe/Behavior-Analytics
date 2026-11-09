@@ -20,6 +20,7 @@ from app.anomaly.capabilities import (
     IPS_DETECTORS,
     LOG_SOURCE_DETECTORS,
     PW_DETECTORS,
+    RULE_DETECTORS,
     SYNTHETIC_TELEMETRY,
     WAF_BASELINE_METRICS,
     WAF_DETECTORS,
@@ -46,6 +47,7 @@ from app.models.enums import (
     DetectorSignal,
     IpsAnomalyType,
     PwAnomalyType,
+    RuleAnomalyType,
     WafAnomalyType,
     WafMeasurement,
 )
@@ -86,6 +88,8 @@ EXPECTED_STATUS = {
     "PW_VALUE_DISAPPEARED": DetectorStatus.OPERATIONAL,
     "PW_NEW_VALUE": DetectorStatus.OPERATIONAL,
     "PW_NEW_COMBINATION": DetectorStatus.OPERATIONAL,
+    "RULE_SILENCE": DetectorStatus.OPERATIONAL,
+    "RULE_STORM": DetectorStatus.OPERATIONAL,
 }
 
 
@@ -104,6 +108,28 @@ def test_every_named_detector_has_a_spec() -> None:
     assert set(WAF_DETECTORS) == set(WafAnomalyType)
     assert set(IPS_DETECTORS) == set(IpsAnomalyType)
     assert set(PW_DETECTORS) == set(PwAnomalyType)
+    assert set(RULE_DETECTORS) == set(RuleAnomalyType)
+
+
+def test_all_detectors_lists_every_family() -> None:
+    """The published registry is the union of every family, rule detectors included."""
+    listed = [spec.detector_type for spec in all_detectors()]
+    assert set(listed) == (
+        {t.value for t in AnomalyType}
+        | {t.value for t in WafAnomalyType}
+        | {t.value for t in IpsAnomalyType}
+        | {t.value for t in PwAnomalyType}
+        | {t.value for t in RuleAnomalyType}
+    )
+    assert len(listed) == 30
+
+
+def test_rule_detectors_name_the_alerting_switch_beyond_the_enabling_setting() -> None:
+    """Incidents need collection; alerts need the second switch (D-60)."""
+    for spec in RULE_DETECTORS.values():
+        assert spec.enabling_setting == "rule_match_collection_enabled"
+        assert spec.activation is not None
+        assert "RULE_ALERTING_ENABLED=true" in spec.activation
 
 
 def test_every_ips_detector_is_implemented_scheduled_and_gated() -> None:

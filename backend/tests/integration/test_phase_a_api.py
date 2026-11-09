@@ -29,6 +29,7 @@ from app.models.enums import (
     EvidenceStatus,
     IpsAnomalyType,
     PwAnomalyType,
+    RuleAnomalyType,
     Severity,
     WafAnomalyType,
 )
@@ -649,16 +650,19 @@ class TestDetectorCapabilities:
     def test_every_named_detector_is_published_with_its_status(self, db_schema) -> None:
         """Under the test app's default settings: the two WAF detectors without an
         enabling setting run, the four opt-in ones are NOT_ENABLED. IPS detectors are
-        NOT_ENABLED while fleet collection is off, and the five PW detectors are
+        NOT_ENABLED while fleet collection is off, the five PW detectors are
         NOT_ENABLED while pw_collection_enabled is false (the family kill switch,
-        their enabling setting)."""
+        their enabling setting), and the two rule detectors are NOT_ENABLED while
+        rule_match_collection_enabled is false."""
         body = client_for(READER).get("/api/v1/behavior/detectors").json()
         status = {d["detector_type"]: d["status"] for d in body}
+        assert len(body) == 30
         assert set(status) == (
             {t.value for t in AnomalyType}
             | {t.value for t in WafAnomalyType}
             | {t.value for t in IpsAnomalyType}
             | {t.value for t in PwAnomalyType}
+            | {t.value for t in RuleAnomalyType}
         )
         assert {t for t, s in status.items() if s == "OPERATIONAL"} == {
             "NO_EVENTS",
@@ -672,7 +676,9 @@ class TestDetectorCapabilities:
             "WAF_ERROR_RATIO_SPIKE",
             "WAF_CLIENT_ERROR_RATIO_SPIKE",
             "WAF_CLIENT_CONCENTRATION_SPIKE",
-        } | {t.value for t in IpsAnomalyType} | {t.value for t in PwAnomalyType}
+        } | {t.value for t in IpsAnomalyType} | {t.value for t in PwAnomalyType} | {
+            t.value for t in RuleAnomalyType
+        }
         assert status["WAF_CLIENT_ENDPOINT_FANOUT_SPIKE"] == "UNSUPPORTED"
         assert status["CARDINALITY_DROP"] == "UNSUPPORTED"
         assert status["TIMESTAMP_DELAY"] == "SYNTHETIC_ONLY"
@@ -680,6 +686,29 @@ class TestDetectorCapabilities:
         # pw_collection_enabled=False (the default) is each PW detector's enabling
         # setting; implemented, scheduled, so only it holds OPERATIONAL back.
         assert all(status[t.value] == "NOT_ENABLED" for t in PwAnomalyType)
+
+    def test_rule_detectors_follow_their_two_switches(self, db_schema) -> None:
+        """Off: NOT_ENABLED naming collection, with alerting in the activation text.
+        On: OPERATIONAL. The route invents no rule logic of its own."""
+        client = client_for(READER)
+        off = {d["detector_type"]: d for d in client.get("/api/v1/behavior/detectors").json()}
+        for t in RuleAnomalyType:
+            block = off[t.value]
+            assert block["status"] == "NOT_ENABLED", t
+            assert block["enabling_setting"] == "rule_match_collection_enabled"
+            assert "RULE_MATCH_COLLECTION_ENABLED=true" in block["limitation"]
+            assert "RULE_ALERTING_ENABLED=true" in block["activation"]
+            assert block["scheduled_task"] == "collect_rule_matches"
+            assert block["measurement_requirement"] == "EXACT"
+            assert block["input_requirements"] == []
+
+        client.app.dependency_overrides[get_settings] = lambda: Settings(
+            _env_file=None, rule_match_collection_enabled=True
+        )
+        on = {d["detector_type"]: d for d in client.get("/api/v1/behavior/detectors").json()}
+        for t in RuleAnomalyType:
+            assert on[t.value]["status"] == "OPERATIONAL", t
+            assert on[t.value]["limitation"] is None
 
     def test_enabled_settings_make_every_b2_detector_operational(self, db_schema) -> None:
         client = client_for(READER)
