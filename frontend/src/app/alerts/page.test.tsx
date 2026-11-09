@@ -220,12 +220,14 @@ describe("alert list contents", () => {
     vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
     await renderPage();
     expect(screen.getByText(/Lifecycle OPEN → ACKNOWLEDGED → RESOLVED\./)).toBeInTheDocument();
+    expect(screen.getByText(/raise its repeat count rather than creating duplicates/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("occurrence count");
     const table = screen.getByRole("table");
     for (const header of [
       "Title",
       "Severity",
       "Status",
-      "Occurrences",
+      "Repeats while open",
       "First seen",
       "Last seen",
     ]) {
@@ -239,6 +241,24 @@ describe("alert list contents", () => {
     expect(within(row).getByText("HIGH")).toHaveClass("crit");
     expect(within(row).getByText("OPEN")).toHaveClass("crit");
     expect(row).toHaveTextContent("4");
+  });
+
+  it("names the counter as repeats of one open alert, not as a number of alerts", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
+    await renderPage();
+    const table = screen.getByRole("table");
+    expect(within(table).getByRole("columnheader", { name: "Repeats while open" })).toHaveClass("num");
+    expect(within(table).queryByRole("columnheader", { name: "Occurrences" })).toBeNull();
+  });
+
+  it("shows a resolved row's counter under that header, one row for the count", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert({ status: "RESOLVED", occurrence_count: 54 })]));
+    await renderPage();
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    const row = within(table).getAllByRole("row")[1];
+    expect(within(row).getByText("RESOLVED")).toBeInTheDocument();
+    expect(within(row).getByText("54")).toHaveClass("num");
   });
 
   it("groups a large occurrence count", async () => {

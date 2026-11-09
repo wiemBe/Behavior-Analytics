@@ -64,6 +64,10 @@ async function AlertDetailPage({
     );
   }
   const pivotRead = await pivotReads.alert(id);
+  // The bucket the detector judged, from the evidence; `last_seen_at` is the evaluation clock and
+  // is never a stand-in for it.
+  const rawEnd = alert.evidence_snapshot?.interval_end;
+  const bucketEnd = typeof rawEnd === "string" && !Number.isNaN(Date.parse(rawEnd)) ? rawEnd : null;
   const quietTarget = alertTarget(alert);
   const title = alertTitleText(alert, locale, say);
   const description = alert.description
@@ -100,7 +104,9 @@ async function AlertDetailPage({
               {enumLabel(say, "severityPill", alert.severity)}
             </span>{" "}
             <span className="pill">{enumLabel(say, "alertStatusPill", alert.status)}</span> ·{" "}
-            {t("seen", { count: formatCount(alert.occurrence_count, locale) })} ·{" "}
+            {alert.occurrence_count === 1
+              ? t("seenOnce")
+              : t("seen", { count: formatCount(alert.occurrence_count, locale) })} ·{" "}
             {t("fingerprint")} <code>{alert.fingerprint}</code>
           </>
         }
@@ -121,6 +127,17 @@ async function AlertDetailPage({
       <div className="card alert-lifecycle">
         <div className="k">{t("lifecycle")}</div>
         <p>{t("openedLabel")} {<UtcTime value={alert.opened_at} />}</p>
+        <p>
+          {t("bucketLabel")}{" "}
+          {bucketEnd ? (
+            <UtcTime value={bucketEnd} />
+          ) : (
+            <>
+              <span className="muted">—</span> <span className="muted">{t("bucketMissing")}</span>
+            </>
+          )}
+        </p>
+        <p>{t("evaluatedLabel")} {<UtcTime value={alert.last_seen_at} />}</p>
         <p>{t("acknowledgedByLabel")} {alert.acknowledged_by ?? "—"}</p>
         <p>{t("resolvedByLabel")} {alert.resolved_by ?? "—"}</p>
         <p>{t("resolutionLabel")} {resolution ?? "—"}</p>

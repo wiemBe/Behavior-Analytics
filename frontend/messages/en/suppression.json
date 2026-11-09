@@ -89,7 +89,7 @@
     "breakthroughHelp": "These conditions got past the quiet period.",
     "breakthroughNone": "No alert broke through the quiet period.",
     "breakthroughOpened": "opened",
-    "breakthroughSeen": "{count, plural, one {seen # time} other {seen # times}}",
+    "breakthroughSeen": "{count, plural, one {not repeated} other {repeated # times while open}}",
     "end": "End now",
     "endTitle": "End this quiet period now?",
     "endLines": "Alerts for {scope} resume from the next detection. Incidents recorded while quiet stay recorded.",
