@@ -1,4 +1,4 @@
-"""Lifecycle and locking for the log-source metric collection health alert."""
+"""Lifecycle, not-judged states and locking for the log-source metric collection health alert."""
 
 from __future__ import annotations
 
@@ -7,17 +7,18 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.collectors.metric_collector import COLLECTOR_NAME
 from app.core.config import get_settings
 from app.models.alert import Alert, AlertNotification
 from app.models.enums import AlertStatus, AlertTransition, Severity
+from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
 from app.services.locks import CollectorAdvisoryLock
 from app.workers import tasks
-from tests.integration.factories import make_instance
+from tests.integration.factories import make_instance, make_log_source
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -43,20 +44,48 @@ async def task_maker(db_schema: str, monkeypatch: pytest.MonkeyPatch):
         await engine.dispose()
 
 
-async def _instance(maker, *, name: str | None = None):  # type: ignore[no-untyped-def]
+def _threshold_seconds() -> int:
+    return tasks._log_source_stale_threshold_seconds(
+        get_settings().collection_interval_seconds
+    )
+
+
+async def _instance(
+    maker,
+    *,
+    name: str | None = None,
+    monitored: bool = True,
+    registered_at: datetime | None = None,
+):  # type: ignore[no-untyped-def]
     async with maker() as session:
         instance = await make_instance(session)
         if name is not None:
             instance.name = name
+        if registered_at is not None:
+            instance.created_at = registered_at
+        if monitored:
+            await make_log_source(session, instance)
         await session.commit()
         return instance
+
+
+async def _monitor(maker, instance_id: uuid.UUID, *, enabled: bool) -> None:  # type: ignore[no-untyped-def]
+    async with maker() as session:
+        sources = (
+            await session.scalars(
+                select(LogSource).where(LogSource.instance_id == instance_id)
+            )
+        ).all()
+        for source in sources:
+            source.monitoring_enabled = enabled
+        await session.commit()
 
 
 async def _watermark(
     maker,
     instance_id: uuid.UUID,
     *,
-    last_run_at: datetime,
+    last_run_at: datetime | None = None,
     consecutive_failures: int = 0,
     watermark_at: datetime | None = None,
     lag_seconds: int | None = None,
@@ -94,7 +123,13 @@ async def _notifications(maker) -> list[AlertNotification]:  # type: ignore[no-u
 
 
 async def test_missing_watermark_opens_high_alert_with_complete_evidence(task_maker) -> None:
-    instance = await _instance(task_maker, name="Lab console")
+    # Setup only: a console registered longer ago than the stale threshold, so its
+    # missing watermark is judged rather than inside the first-run grace window.
+    instance = await _instance(
+        task_maker,
+        name="Lab console",
+        registered_at=datetime.now(UTC) - timedelta(seconds=_threshold_seconds() + 60),
+    )
 
     result = await tasks.detect_stale_log_source_collection(instance.name)
 
@@ -174,7 +209,11 @@ async def test_refresh_deduplicates_and_success_resolves_with_transition_notific
     task_maker, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("NOTIFY_GENERIC_WEBHOOK_URL", "https://notify.invalid/collector")
-    instance = await _instance(task_maker)
+    # Setup only: past the first-run grace window, so the missing watermark is judged.
+    instance = await _instance(
+        task_maker,
+        registered_at=datetime.now(UTC) - timedelta(seconds=_threshold_seconds() + 60),
+    )
 
     await tasks.detect_stale_log_source_collection(instance.name)
     await tasks.detect_stale_log_source_collection(instance.name)
@@ -207,8 +246,10 @@ async def test_refresh_deduplicates_and_success_resolves_with_transition_notific
 
 
 async def test_two_instances_have_independent_fingerprints(task_maker) -> None:
-    first = await _instance(task_maker)
-    second = await _instance(task_maker)
+    # Setup only: past the first-run grace window, so both missing watermarks are judged.
+    registered_at = datetime.now(UTC) - timedelta(seconds=_threshold_seconds() + 60)
+    first = await _instance(task_maker, registered_at=registered_at)
+    second = await _instance(task_maker, registered_at=registered_at)
 
     await tasks.detect_stale_log_source_collection()
 
@@ -230,3 +271,126 @@ async def test_held_detection_lock_skips_without_writing(task_maker) -> None:
 
     assert result["results"][0]["status"] == "skipped_locked"
     assert await _alerts(task_maker) == []
+
+
+async def test_new_console_without_watermark_is_not_judged(task_maker) -> None:
+    instance = await _instance(task_maker)
+
+    result = await tasks.detect_stale_log_source_collection(instance.name)
+
+    outcome = result["results"][0]
+    assert outcome["stale"] is False
+    assert outcome["judged"] is False
+    assert outcome["reason"] == "awaiting_first_run"
+    assert await _alerts(task_maker) == []
+    assert await _notifications(task_maker) == []
+
+
+async def test_console_past_the_threshold_without_watermark_is_stale(task_maker) -> None:
+    instance = await _instance(
+        task_maker,
+        registered_at=datetime.now(UTC) - timedelta(seconds=_threshold_seconds() + 60),
+    )
+
+    result = await tasks.detect_stale_log_source_collection(instance.name)
+
+    outcome = result["results"][0]
+    assert outcome["stale"] is True
+    assert outcome["judged"] is True
+    assert len(await _alerts(task_maker)) == 1
+
+
+@pytest.mark.parametrize("inventory", ["empty", "all_unmonitored"])
+async def test_console_without_monitored_source_is_not_judged(
+    task_maker, inventory: str
+) -> None:
+    if inventory == "empty":
+        instance = await _instance(task_maker, monitored=False)
+    else:
+        # The console is fresh and has no watermark, so both guards apply: the
+        # no-source verdict is the one the operator needs, not the first-run grace.
+        instance = await _instance(task_maker)
+        await _monitor(task_maker, instance.id, enabled=False)
+
+    result = await tasks.detect_stale_log_source_collection(instance.name)
+
+    outcome = result["results"][0]
+    assert outcome["stale"] is False
+    assert outcome["judged"] is False
+    assert outcome["reason"] == "no_monitored_sources"
+    assert await _alerts(task_maker) == []
+    assert await _notifications(task_maker) == []
+
+
+async def test_open_alert_resolves_when_the_last_monitored_source_is_switched_off(
+    task_maker,
+) -> None:
+    instance = await _instance(
+        task_maker,
+        registered_at=datetime.now(UTC) - timedelta(seconds=_threshold_seconds() + 60),
+    )
+    await tasks.detect_stale_log_source_collection(instance.name)
+    assert (await _alerts(task_maker))[0].status == AlertStatus.OPEN
+
+    await _monitor(task_maker, instance.id, enabled=False)
+    result = await tasks.detect_stale_log_source_collection(instance.name)
+
+    outcome = result["results"][0]
+    assert outcome["judged"] is False
+    assert outcome["reason"] == "no_monitored_sources"
+    alerts = await _alerts(task_maker)
+    assert len(alerts) == 1
+    assert alerts[0].status == AlertStatus.RESOLVED
+    assert alerts[0].resolved_by == "system:log-source-collection-monitor"
+
+
+async def test_failing_collector_inside_the_grace_period_is_stale(task_maker) -> None:
+    instance = await _instance(task_maker)
+    await _watermark(
+        task_maker,
+        instance.id,
+        consecutive_failures=1,
+        last_error="QRadar search failed (sanitised)",
+    )
+
+    result = await tasks.detect_stale_log_source_collection(instance.name)
+
+    outcome = result["results"][0]
+    assert outcome["stale"] is True
+    assert outcome["judged"] is True
+    assert outcome["consecutive_failures"] == 1
+    assert len(await _alerts(task_maker)) == 1
+
+
+async def test_statement_count_is_constant_for_one_and_twenty_monitored_sources(
+    db_schema: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = create_async_engine(db_schema, future=True)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(tasks, "get_sessionmaker", lambda: maker)
+    old = datetime.now(UTC) - timedelta(seconds=_threshold_seconds() + 60)
+    single = await _instance(maker, registered_at=old)
+    many = await _instance(maker, registered_at=old)
+    async with maker() as session:
+        for index in range(19):
+            await make_log_source(session, many, qradar_id=2001 + index)
+        await session.commit()
+
+    statements: list[str] = []
+
+    def record(*args: object) -> None:
+        statements.append(str(args[2]))
+
+    event.listen(engine.sync_engine, "before_cursor_execute", record)
+    try:
+        await tasks.detect_stale_log_source_collection(single.name)
+        single_count = len(statements)
+        statements.clear()
+        await tasks.detect_stale_log_source_collection(many.name)
+        many_count = len(statements)
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", record)
+        await engine.dispose()
+
+    assert single_count == many_count
+    assert single_count > 0
