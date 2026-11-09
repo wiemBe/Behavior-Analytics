@@ -94,8 +94,18 @@ describe("an active quiet period", () => {
     const link = await screen.findByRole("link", { name: "Volume spike on edge-01" });
     expect(link).toHaveAttribute("href", `/alerts/${BREAK.id}`);
     expect(screen.getByText("HIGH")).toBeInTheDocument();
-    expect(document.body.textContent).toContain("seen 3 times");
+    expect(document.body.textContent).toContain("repeated 3 times while open");
     expect(document.body.textContent).toContain("2026-11-07 10:00:00 UTC");
+  });
+
+  it("reads a broken-through alert with a count of 1 as not repeated", async () => {
+    vi.spyOn(suppressionApi, "forAnomaly").mockResolvedValue(
+      forAnomaly({ breakthrough_alerts: [{ ...BREAK, occurrence_count: 1 }] }),
+    );
+    mount();
+    await screen.findByRole("link", { name: "Volume spike on edge-01" });
+    expect(document.body.textContent).toContain("not repeated");
+    expect(document.body.textContent).not.toMatch(/seen \d/);
   });
 
   it("says no alert broke through when none did", async () => {

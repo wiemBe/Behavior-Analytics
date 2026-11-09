@@ -98,7 +98,7 @@
           "p": "SUPPRESSED is used for a maintenance window or an operator suppression. The anomaly is recorded but never notified. Only one incident is active per source and detector; a recurrence after RESOLVED opens a new incident."
         },
         {
-          "p": "CANDIDATE, OPEN and RECOVERING are the active states. An alert is the notification record for an active anomaly. Repeated detections update the open alert and increase its occurrence count rather than creating duplicates. The alert lifecycle is OPEN → ACKNOWLEDGED → RESOLVED. A record-only outage policy still records a NO_EVENTS anomaly; it only stops that anomaly from raising an alert."
+          "p": "CANDIDATE, OPEN and RECOVERING are the active states. An alert is the notification record for an active anomaly. Repeated detections update the open alert and raise its repeat count rather than creating duplicates. The alert lifecycle is OPEN → ACKNOWLEDGED → RESOLVED. A record-only outage policy still records a NO_EVENTS anomaly; it only stops that anomaly from raising an alert."
         }
       ]
     },
@@ -385,7 +385,7 @@
       "answers": "Which alerts are open, and what has been done about them?",
       "body": [
         {
-          "p": "The lifecycle is OPEN → ACKNOWLEDGED → RESOLVED. Repeated detections update the open alert and increase its **Occurrences** rather than creating duplicates. **Alert status** filters **All statuses**, **Open**, **Acknowledged** and **Resolved**. The table shows **Title**, **Severity**, **Status**, **Occurrences**, **First seen** and **Last seen**."
+          "p": "The lifecycle is OPEN → ACKNOWLEDGED → RESOLVED. Repeated detections update the open alert and add to its **Repeats while open** count rather than creating duplicates. **Alert status** filters **All statuses**, **Open**, **Acknowledged** and **Resolved**. The table shows **Title**, **Severity**, **Status**, **Repeats while open**, **First seen** and **Last seen**."
         },
         {
           "p": "The detail page carries **Evidence**, **Lifecycle**, **Source anomalies** and **Notification Delivery History**. **Operator Actions** offers **Acknowledge**, which moves an OPEN alert to ACKNOWLEDGED and records who and when, and **Resolve**, with an optional **Resolution reason**. The confirmation says **Resolve this alert? A resolved alert cannot be reopened.** A resolved alert offers no further action."
@@ -574,11 +574,11 @@
       "answers": "What does this alert say, and what do I change when I work it?",
       "body": [
         {
-          "p": "An alert is the notification record for a condition the platform watches: a log-source anomaly, a WAF, IPS or property-watch incident, a custom-rule breach, a new log source or catch-all sender, or a stored search that crossed its threshold. Repeated detections update the open alert and increase its **Occurrences**; they do not create duplicates. The status moves from **Open** to **Acknowledged** to **Resolved**."
+          "p": "An alert is the notification record for a condition the platform watches: a log-source anomaly, a WAF, IPS or property-watch incident, a custom-rule breach, a new log source or catch-all sender, or a stored search that crossed its threshold. Repeated detections update the open alert and add to its **Repeats while open** count; they do not create duplicates. The status moves from **Open** to **Acknowledged** to **Resolved**."
         }
       ],
       "steps": [
-        "Open **Alerts** and set **Alert status** to **Open**, **Acknowledged**, **Resolved** or **All statuses**, then choose **Filter**. The table shows **Title**, **Severity**, **Status**, **Occurrences**, **First seen** and **Last seen**.",
+        "Open **Alerts** and set **Alert status** to **Open**, **Acknowledged**, **Resolved** or **All statuses**, then choose **Filter**. The table shows **Title**, **Severity**, **Status**, **Repeats while open**, **First seen** and **Last seen**.",
         "Open the row. **Alert Detail** carries **Evidence**, **Lifecycle**, **Source anomalies** and **Notification Delivery History**.",
         "Read **Source anomalies** and investigate what it names (see `investigate-anomaly`). The alert is the notification; the anomaly holds the measurements.",
         "Read **Notification Delivery History** when someone says they were not told. Each row shows PENDING, SENT, FAILED, DEAD_LETTER or SUPPRESSED, with its channel, attempts and next attempt.",

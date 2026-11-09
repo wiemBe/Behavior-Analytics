@@ -224,7 +224,7 @@ describe("alert detail contents", () => {
     expect(screen.getByRole("heading", { name: "Event volume spike on Core Firewall", level: 1 })).toBeInTheDocument();
     expect(screen.getByText("HIGH")).toHaveClass("crit");
     expect(screen.getByText("OPEN")).toBeInTheDocument();
-    expect(screen.getByText(/seen 4×/)).toBeInTheDocument();
+    expect(screen.getByText(/repeated 4× while open/)).toBeInTheDocument();
     expect(screen.getByText("vol:227:1789").tagName).toBe("CODE");
   });
 
@@ -232,7 +232,22 @@ describe("alert detail contents", () => {
     vi.spyOn(api, "alert").mockResolvedValue(alert({ occurrence_count: 1200 }));
     vi.spyOn(api, "alertNotifications").mockResolvedValue([]);
     await renderPage();
-    expect(screen.getByText(/seen 1,200×/)).toBeInTheDocument();
+    expect(screen.getByText(/repeated 1,200× while open/)).toBeInTheDocument();
+  });
+
+  it("reads a count of 1 as not repeated and never uses the old counter words", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(alert({ occurrence_count: 1 }));
+    await renderPage();
+    expect(screen.getByText(/not repeated/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/repeated 1×/);
+    expect(document.body.textContent).not.toMatch(/seen \d|occurrence/i);
+  });
+
+  it("labels the lifecycle times without a duplicated UTC", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(alert({ last_seen_at: "2026-10-15T08:30:00Z" }));
+    await renderPage();
+    expect(document.body.textContent).not.toContain("bucket (UTC)");
+    expect(document.body.textContent).not.toContain("evaluated (UTC)");
   });
 
   it("omits a repeated evidence reason and keeps a different one, in English and Turkish", async () => {
@@ -301,6 +316,38 @@ describe("alert detail contents", () => {
     expect(lifecycle).toHaveTextContent("Resolved by: —");
     expect(lifecycle).toHaveTextContent("Resolution: —");
     expect(lifecycle).toHaveTextContent("Source anomalies: 2");
+  });
+
+  it("shows the anomaly bucket time and the evaluation time as two different instants", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(
+      alert({
+        last_seen_at: "2026-10-15T08:30:00Z",
+        evidence_snapshot: { observed_value: 5.98, interval_end: "2026-10-14T03:15:00Z" },
+      }),
+    );
+    await renderPage();
+    const lifecycle = screen.getByText("Lifecycle", { selector: ".k" }).closest(".card") as HTMLElement;
+    expect(lifecycle).toHaveTextContent("Last anomaly bucket: 2026-10-14 03:15:00 UTC");
+    expect(lifecycle).toHaveTextContent("Last evaluated: 2026-10-15 08:30:00 UTC");
+  });
+
+  it("draws a missing interval_end as a dash with its reason, never as the evaluation time", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(
+      alert({ last_seen_at: "2026-10-15T08:30:00Z", evidence_snapshot: { observed_value: 5.98 } }),
+    );
+    await renderPage();
+    const lifecycle = screen.getByText("Lifecycle", { selector: ".k" }).closest(".card") as HTMLElement;
+    const bucket = within(lifecycle).getByText(/Last anomaly bucket:/).closest("p") as HTMLElement;
+    expect(bucket).toHaveTextContent("— not recorded in this alert's evidence");
+    expect(bucket).not.toHaveTextContent("08:30");
+    expect(lifecycle).toHaveTextContent("Last evaluated: 2026-10-15 08:30:00 UTC");
+  });
+
+  it("treats an unparsable interval_end as missing", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(alert({ evidence_snapshot: { interval_end: "not a time" } }));
+    await renderPage();
+    const lifecycle = screen.getByText("Lifecycle", { selector: ".k" }).closest(".card") as HTMLElement;
+    expect(lifecycle).toHaveTextContent("— not recorded in this alert's evidence");
   });
 
   it("offers acknowledge and resolve while an alert is open", async () => {
