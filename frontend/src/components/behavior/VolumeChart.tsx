@@ -12,6 +12,8 @@
 //   * `connectNulls` is false, so an uncollected interval stays a visible gap
 //     rather than a straight line asserting interpolatable traffic.
 //   * Unobserved intervals are shaded so a gap cannot be mistaken for silence.
+//   * An EMA overlay (display only, computed here from the observed line) stops
+//     at a null and starts its warm-up again after it; it is never bridged.
 //
 // Drawing rules: the observed series is a plain line with no marker on every
 // point (only a lone measured bucket between gaps is marked, because a line
@@ -35,7 +37,8 @@ import { useEffect, useMemo, useRef } from "react";
 import { TURKISH_ECHARTS_LOCALE } from "@/components/home/chartLocale";
 import type { MetricBucket } from "@/lib/api";
 import { fixed, grouped } from "@/lib/figureText";
-import { readChartPalette } from "@/lib/chartPalette";
+import { readChartPalette, type ChartPalette } from "@/lib/chartPalette";
+import { bucketSecondsOf, ema, spanText, type EmaPeriod } from "@/lib/ema";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import {
   buildSeries,
@@ -46,6 +49,7 @@ import {
 import { utcTimeHtml } from "@/components/ui/UtcTime";
 
 
+import { EmaToggles, useEmaPeriods } from "./EmaToggles";
 import { HistoryKey, HistoryText } from "./HistoryKey";
 import {
   historyIntervals,
@@ -110,6 +114,13 @@ export function mergeIntervals(
   return out;
 }
 
+const EMA_COLOUR: Record<EmaPeriod, keyof ChartPalette> = {
+  3: "ema3",
+  5: "ema5",
+  10: "ema10",
+  20: "ema20",
+};
+
 export function VolumeChart({
   buckets,
   expected,
@@ -142,6 +153,15 @@ export function VolumeChart({
   // Buckets read from QRadar's past: shaded in the neutral span and named in text.
   const history = useMemo(() => historyIntervals(buckets), [buckets]);
   const origins = useMemo(() => originByTime(buckets), [buckets]);
+
+  // The overlay: which averages are on, and their values over the observed line
+  // (whose nulls are the unobserved buckets), aligned with `points`.
+  const [emaOn, toggleEma] = useEmaPeriods();
+  const bucketSeconds = useMemo(() => bucketSecondsOf(buckets), [buckets]);
+  const emaLines = useMemo(() => {
+    const observedLine = points.map((p) => p.observed);
+    return emaOn.map((period) => ({ period, values: ema(observedLine, period) }));
+  }, [points, emaOn]);
 
   // Built from the tokens, so it can only run in the browser. Everything that
   // needs a colour lives in here.
@@ -233,6 +253,10 @@ export function VolumeChart({
               observed,
               reported,
               expected != null ? t("tooltip.expected", { value: eps(expected) }) : "",
+              ...emaLines.flatMap((line) => {
+                const v = line.values[first?.dataIndex ?? -1];
+                return v == null ? [] : [t("tooltip.ema", { period: line.period, value: eps(v) })];
+              }),
               band,
               t("tooltip.collection", { meaning: kindMeaning(p.kind, i18n) }),
               inAnomaly
@@ -267,6 +291,19 @@ export function VolumeChart({
               : text,
         },
         series: [
+          // The moving averages sit under the observed line (z 3): one thin
+          // solid line each, no markers, a gap wherever the observation stops.
+          ...emaLines.map((line) => ({
+            type: "line" as const,
+            name: `EMA ${line.period}`,
+            data: points.map((p, i) => [p.t, line.values[i]] as [number, number | null]),
+            connectNulls: false,
+            showSymbol: false,
+            silent: true,
+            lineStyle: { color: c[EMA_COLOUR[line.period]], width: 1 },
+            itemStyle: { color: c[EMA_COLOUR[line.period]] },
+            z: 2,
+          })),
           {
             type: "line",
             name: "Observed EPS",
@@ -354,7 +391,7 @@ export function VolumeChart({
         ],
       };
     };
-  }, [points, unobserved, expected, expectedLow, expectedHigh, hasBand, anomalies, transitions, history, origins, t, i18n, locale]);
+  }, [points, unobserved, expected, expectedLow, expectedHigh, hasBand, anomalies, transitions, history, origins, emaLines, t, i18n, locale]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -387,6 +424,7 @@ export function VolumeChart({
 
   return (
     <>
+      <EmaToggles enabled={emaOn} onToggle={toggleEma} />
       <div
         ref={containerRef}
         className="chart"
@@ -396,6 +434,11 @@ export function VolumeChart({
       {/* The chart's content as prose. A canvas is opaque to a screen reader,
           so without this the series, the band and the gaps are unreachable. */}
       {textSummary && <p className="sr-only">{textSummary}</p>}
+      {emaOn.length > 0 && (
+        <p className="sr-only">
+          {t("ema.summary", { periods: emaOn.map((p) => spanText(p, null)).join(", ") })}
+        </p>
+      )}
       <HistoryText rows={buckets} />
       {/* A key for the marks that were actually drawn, and nothing else. */}
       <ul className="chart-legend" aria-label={t("key.title")}>
@@ -415,6 +458,18 @@ export function VolumeChart({
             {t("key.range")}
           </li>
         )}
+        {emaLines.map((line) => (
+          <li key={`ema-${line.period}`}>
+            <span
+              className={`chart-key chart-key-ema chart-key-ema-${line.period}`}
+              aria-hidden="true"
+            />
+            {t("ema.key", { period: line.period, span: spanText(line.period, bucketSeconds) })}
+            {!line.values.some((v) => v != null) && (
+              <span> — {t("ema.notEnough")}</span>
+            )}
+          </li>
+        ))}
         {unobserved.length > 0 && (
           <li>
             <span className="chart-key chart-key-gap" aria-hidden="true" />
@@ -436,6 +491,7 @@ export function VolumeChart({
         {history.length > 0 && <HistoryKey />}
       </ul>
       <p className="subtitle chart-note">{t("note")}</p>
+      {emaOn.length > 0 && <p className="subtitle chart-note">{t("ema.note")}</p>}
     </>
   );
 }
