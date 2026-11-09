@@ -45,6 +45,7 @@ from app.models.enums import (
     EvidenceStatus,
     IpsAnomalyType,
     PwAnomalyType,
+    RuleAnomalyType,
     Severity,
     TriageDisposition,
     TriageStatus,
@@ -60,6 +61,8 @@ from app.models.log_source import (
     LogSourceMetric,
 )
 from app.models.property_watch import PropertyWatch, PwAnomaly, PwAnomalyTransition
+from app.models.rule import AnalyticsRule
+from app.models.rule_anomaly import RuleAnomaly
 from app.models.triage import AnomalyTriage
 from app.models.waf import (
     WafAnomaly,
@@ -75,6 +78,7 @@ from app.waf.baseline import WAF_BASELINE_METRIC
 from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 
 _PHASE_A_TYPES = frozenset(t.value for t in AnomalyType)
+_RULE_TYPES = frozenset(t.value for t in RuleAnomalyType)
 _WAF_TYPES = frozenset(t.value for t in WafAnomalyType)
 _IPS_TYPES = frozenset(t.value for t in IpsAnomalyType)
 _PW_TYPES = frozenset(t.value for t in PwAnomalyType)
@@ -107,6 +111,16 @@ class WafTrafficPage(NamedTuple):
     total: int
     max_events: int | None
     attributed_events: int
+
+
+def _null_rule_columns() -> list[ColumnElement[Any]]:
+    """The rule-subject columns of a union branch whose subject is not a rule (SOC-6d1)."""
+    return [
+        cast(null(), PgUUID(as_uuid=True)).label("rule_id"),
+        cast(null(), String).label("rule_name"),
+        cast(null(), Integer).label("rule_qradar_id"),
+        cast(null(), Boolean).label("rule_is_building_block"),
+    ]
 
 
 class AnomalyRepository:
@@ -183,6 +197,7 @@ class AnomalyRepository:
                 cast(null(), JSONB).label("pw_properties"),
                 cast(null(), String).label("pw_value_key"),
                 cast(null(), PgUUID(as_uuid=True)).label("pw_value_id"),
+                *_null_rule_columns(),
                 a.anomaly_type.label("anomaly_type"),
                 a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
                 a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
@@ -239,6 +254,7 @@ class AnomalyRepository:
                 cast(null(), JSONB).label("pw_properties"),
                 cast(null(), String).label("pw_value_key"),
                 cast(null(), PgUUID(as_uuid=True)).label("pw_value_id"),
+                *_null_rule_columns(),
                 w.detector_type.label("anomaly_type"),
                 w.state, w.severity, w.observed_value, w.expected_value, w.deviation_ratio,
                 w.robust_z, w.absolute_delta, w.consecutive_buckets, w.confidence,
@@ -293,6 +309,7 @@ class AnomalyRepository:
                 cast(null(), JSONB).label("pw_properties"),
                 cast(null(), String).label("pw_value_key"),
                 cast(null(), PgUUID(as_uuid=True)).label("pw_value_id"),
+                *_null_rule_columns(),
                 a.detector_type.label("anomaly_type"),
                 a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
                 a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
@@ -343,6 +360,7 @@ class AnomalyRepository:
                 w.properties.label("pw_properties"),
                 a.value_key.label("pw_value_key"),
                 a.pw_value_id.label("pw_value_id"),
+                *_null_rule_columns(),
                 a.detector_type.label("anomaly_type"),
                 a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
                 a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
@@ -363,6 +381,56 @@ class AnomalyRepository:
                 t,
                 and_(t.family == AnomalyFamily.PROPERTY_WATCH, t.anomaly_id == a.id),
             )
+            .where(*conditions)
+        )
+
+    def _unified_rule(self, conditions: list[ColumnElement[bool]]) -> Select:
+        a = RuleAnomaly
+        r = AnalyticsRule
+        t = AnomalyTriage
+        return (
+            select(
+                a.id,
+                cast(literal_column("'RULE'"), String).label("subject_kind"),
+                cast(null(), PgUUID(as_uuid=True)).label("log_source_id"),
+                cast(null(), String).label("log_source_name"),
+                cast(null(), PgUUID(as_uuid=True)).label("waf_endpoint_id"),
+                cast(null(), String).label("endpoint_normalized"),
+                cast(null(), String).label("endpoint_method"),
+                cast(null(), String).label("endpoint_virtual_host"),
+                cast(null(), Boolean).label("endpoint_virtual_host_available"),
+                cast(null(), Integer).label("endpoint_normalizer_version"),
+                cast(null(), PgUUID(as_uuid=True)).label("ips_entity_id"),
+                cast(null(), String).label("entity_dimension"),
+                cast(null(), String).label("entity_value_key"),
+                cast(null(), String).label("entity_display_name"),
+                cast(null(), PgUUID(as_uuid=True)).label("pw_watch_id"),
+                cast(null(), String).label("pw_watch_name"),
+                cast(null(), Integer).label("pw_watch_version"),
+                cast(null(), String).label("pw_scope_kind"),
+                cast(null(), JSONB).label("pw_properties"),
+                cast(null(), String).label("pw_value_key"),
+                cast(null(), PgUUID(as_uuid=True)).label("pw_value_id"),
+                a.rule_id.label("rule_id"),
+                r.name.label("rule_name"),
+                a.qradar_id.label("rule_qradar_id"),
+                a.is_building_block.label("rule_is_building_block"),
+                a.detector_type.label("anomaly_type"),
+                a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
+                a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
+                a.detected_at, a.opened_at, a.anomaly_start, a.anomaly_end, a.resolved_at,
+                a.evidence_status, a.suppressed,
+                cast(null(), String).label("observed_measurement"),
+                a.explanation,
+                a.explanation_i18n.label("explanation_i18n"),
+                t.status.label("triage_status"),
+                t.owner.label("triage_owner"),
+                t.disposition.label("triage_disposition"),
+                t.updated_at.label("triage_updated_at"),
+            )
+            .select_from(a)
+            .join(r, r.id == a.rule_id)
+            .outerjoin(t, and_(t.family == AnomalyFamily.RULE, t.anomaly_id == a.id))
             .where(*conditions)
         )
 
@@ -388,7 +456,7 @@ class AnomalyRepository:
         since: datetime | None = None,
         until: datetime | None = None,
     ) -> tuple[list[dict], int]:
-        """Phase A, WAF, IPS and property-watch anomalies in one ordering: two statements.
+        """Phase A, WAF, IPS, property-watch and rule anomalies in one ordering: two statements.
 
         One `UNION ALL` of the applicable families, counted once and paged once.
         Source names and subject identity (endpoint or IPS entity) are joined
@@ -413,6 +481,18 @@ class AnomalyRepository:
             pw = pw and anomaly_type in _PW_TYPES
         if pw_watch_id is not None:
             phase_a = waf = ips = False
+        # The rule family (SOC-6): a rule has no log source, endpoint, entity or watch, so a
+        # filter naming one of those excludes it, as it excludes the other families.
+        rule = kinds is None or SubjectKind.RULE in kinds
+        if (
+            waf_endpoint_id is not None
+            or ips_entity_id is not None
+            or pw_watch_id is not None
+            or log_source_id is not None
+        ):
+            rule = False
+        if anomaly_type is not None:
+            rule = rule and anomaly_type in _RULE_TYPES
         active = [s.value for s in ACTIVE_ANOMALY_STATES]
 
         def triage_filters() -> list[ColumnElement[bool]]:
@@ -524,6 +604,13 @@ class AnomalyRepository:
             if anomaly_type is not None:
                 conditions.append(PwAnomaly.detector_type == anomaly_type)
             branches.append(self._unified_pw(conditions))
+        if rule:
+            conditions = common(RuleAnomaly)
+            if instance_id is not None:
+                conditions.append(AnalyticsRule.instance_id == instance_id)
+            if anomaly_type is not None:
+                conditions.append(RuleAnomaly.detector_type == anomaly_type)
+            branches.append(self._unified_rule(conditions))
         if not branches:
             return [], 0
 
@@ -721,14 +808,14 @@ class AnomalyRepository:
     async def active_family_counts(
         self, *, since: datetime | None, until: datetime
     ) -> dict[tuple[str, str], int]:
-        """Active anomalies keyed by (family, state): one statement over the four families.
+        """Active anomalies keyed by (family, state): one statement over the five families.
 
         The population is `list_unified(active_only=True)` for the same window --
         the same states, the same `detected_at` bounds and the same joins -- so the
         counts add up to that list's `total`. Without a `since` there is no lower
         bound, as on that list: an active incident older than the range ceiling is
-        still active. The family key is `log_source`, `waf`, `ips` or
-        `property_watch`.
+        still active. The family key is `log_source`, `waf`, `ips`,
+        `property_watch` or `rule`.
         """
         active = [s.value for s in ACTIVE_ANOMALY_STATES]
 
@@ -759,6 +846,7 @@ class AnomalyRepository:
                 PwAnomaly,
                 (PropertyWatch, PropertyWatch.id == PwAnomaly.watch_id),
             ),
+            branch("rule", RuleAnomaly, (AnalyticsRule, AnalyticsRule.id == RuleAnomaly.rule_id)),
         ).subquery()
         rows = await self.session.execute(select(union.c.family, union.c.state, union.c.n))
         return {(str(f), str(s)): int(n) for f, s, n in rows.all()}

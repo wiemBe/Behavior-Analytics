@@ -44,6 +44,7 @@ from app.models.enums import (
     IpsProfileValidationStatus,
     PwAnomalyType,
     PwScopeKind,
+    RuleAnomalyType,
     Severity,
     TriageDisposition,
     TriageStatus,
@@ -95,6 +96,7 @@ from app.schemas.anomaly import (
     PagedWafMetrics,
     PagedWafSources,
     PwValueRefOut,
+    RuleRefOut,
     SkippedBucketOut,
     SourceBehaviorOut,
     SourceEvaluationOut,
@@ -190,7 +192,7 @@ def _family(value: str) -> AnomalyFamily:
     except ValueError as exc:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "unknown anomaly family: expected log_source, waf, ips or property_watch",
+            "unknown anomaly family: expected log_source, waf, ips, property_watch or rule",
         ) from exc
 
 
@@ -259,6 +261,7 @@ async def list_anomalies(
     | WafAnomalyType
     | IpsAnomalyType
     | PwAnomalyType
+    | RuleAnomalyType
     | None = Query(default=None),
     subject_kind: Annotated[list[SubjectKind] | None, Query()] = None,
     waf_endpoint_id: uuid.UUID | None = Query(default=None),
@@ -351,10 +354,18 @@ def _unified_item(row: dict) -> AnomalyListItem:
             components=split_tuple_key(row["pw_value_key"]),
             value_id=row["pw_value_id"],
         )
+    rule = None
+    if row["rule_id"] is not None:
+        rule = RuleRefOut(
+            rule_id=row["rule_id"],
+            name=row["rule_name"],
+            qradar_id=row["rule_qradar_id"],
+            is_building_block=bool(row["rule_is_building_block"]),
+        )
     fields = {
         k: v
         for k, v in row.items()
-        if not k.startswith(("endpoint_", "entity_", "pw_", "triage_"))
+        if not k.startswith(("endpoint_", "entity_", "pw_", "triage_", "rule_"))
         and k not in ("waf_endpoint_id", "ips_entity_id", "explanation_i18n")
     }
     stored = row.get("explanation_i18n")
@@ -377,6 +388,7 @@ def _unified_item(row: dict) -> AnomalyListItem:
         waf_endpoint=waf_endpoint,
         ips_entity=ips_entity,
         pw_value=pw_value,
+        rule=rule,
     )
 
 
@@ -474,6 +486,7 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
             waf=family("waf"),
             ips=family("ips"),
             property_watch=family("property_watch"),
+            rule=family("rule"),
         ),
     )
 

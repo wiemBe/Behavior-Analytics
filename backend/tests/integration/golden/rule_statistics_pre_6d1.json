@@ -1,0 +1,156 @@
+{
+  "costliest_by_benchmark": {
+    "items": [
+      {
+        "average_capacity": 2.0,
+        "is_building_block": false,
+        "name": "loud",
+        "qradar_id": 2,
+        "rule_id": "rule-2",
+        "rule_type": "EVENT"
+      },
+      {
+        "average_capacity": 4.0,
+        "is_building_block": false,
+        "name": "quiet",
+        "qradar_id": 1,
+        "rule_id": "rule-1",
+        "rule_type": "EVENT"
+      }
+    ],
+    "label": "QRadar capacity benchmark: how fast the rule could be evaluated. Lower is costlier to evaluate. This is not a firing rate.",
+    "label_code": "rule_statistics.cost.label",
+    "label_params": {},
+    "no_benchmark_count": 1,
+    "unit": "millions of events per second (QRadar's unit)",
+    "unit_code": "rule_statistics.cost.unit",
+    "unit_params": {}
+  },
+  "counts": [
+    {
+      "count": 1,
+      "enabled": true,
+      "is_building_block": false,
+      "origin": "USER",
+      "rule_type": "COMMON"
+    },
+    {
+      "count": 2,
+      "enabled": true,
+      "is_building_block": false,
+      "origin": "USER",
+      "rule_type": "EVENT"
+    },
+    {
+      "count": 1,
+      "enabled": false,
+      "is_building_block": true,
+      "origin": "SYSTEM",
+      "rule_type": "EVENT"
+    }
+  ],
+  "instance_id": "instance",
+  "silent": {
+    "excluded": [
+      {
+        "count": 1,
+        "evidence": "LOWER_BOUND",
+        "rule_type": "COMMON"
+      }
+    ],
+    "excluded_count": 1,
+    "excluded_reason": "Only EVENT rules and EVENT building blocks are judged: an event search sees every one of their matches. COMMON rules also match on flows, which are not searched, so their silence is unknown. FLOW and OFFENSE rules are not searched at all.",
+    "excluded_reason_code": "rule_statistics.silent.excluded",
+    "excluded_reason_params": {},
+    "items": [
+      {
+        "first_seen_at": null,
+        "is_building_block": false,
+        "last_fired_at": null,
+        "name": "quiet",
+        "origin": "USER",
+        "qradar_id": 1,
+        "rule_id": "rule-1",
+        "rule_type": "EVENT"
+      }
+    ],
+    "items_truncated": false,
+    "total": 1
+  },
+  "silent_reason": null,
+  "silent_reason_code": null,
+  "silent_reason_params": null,
+  "top_by_events": [
+    {
+      "enabled": true,
+      "is_building_block": false,
+      "lower_bound": false,
+      "match_rate_per_second": 0.08449074074074074,
+      "match_records": 5,
+      "matched_events": 7300,
+      "name": "loud",
+      "qradar_id": 2,
+      "rule_id": "rule-2",
+      "rule_type": "EVENT"
+    },
+    {
+      "enabled": true,
+      "is_building_block": false,
+      "lower_bound": true,
+      "match_rate_per_second": 0.00010416666666666667,
+      "match_records": 1,
+      "matched_events": 9,
+      "name": "steady",
+      "qradar_id": 3,
+      "rule_id": "rule-3",
+      "rule_type": "COMMON"
+    }
+  ],
+  "top_by_matches": [
+    {
+      "enabled": true,
+      "is_building_block": false,
+      "lower_bound": false,
+      "match_rate_per_second": 0.08449074074074074,
+      "match_records": 5,
+      "matched_events": 7300,
+      "name": "loud",
+      "qradar_id": 2,
+      "rule_id": "rule-2",
+      "rule_type": "EVENT"
+    },
+    {
+      "enabled": true,
+      "is_building_block": false,
+      "lower_bound": true,
+      "match_rate_per_second": 0.00010416666666666667,
+      "match_records": 1,
+      "matched_events": 9,
+      "name": "steady",
+      "qradar_id": 3,
+      "rule_id": "rule-3",
+      "rule_type": "COMMON"
+    }
+  ],
+  "top_reason": null,
+  "top_reason_code": null,
+  "top_reason_params": null,
+  "window": {
+    "complete": true,
+    "complete_windows": 24,
+    "days": 1,
+    "expected_windows": 24,
+    "failed_windows": 0,
+    "history_windows": 0,
+    "measured_seconds": 86400,
+    "missing_windows": 0,
+    "reason": null,
+    "reason_code": null,
+    "reason_params": null,
+    "span_end": "2026-10-12T12:00:00Z",
+    "span_seconds": 86400,
+    "span_start": "2026-10-11T12:00:00Z",
+    "truncated_windows": 0,
+    "window_seconds": 3600
+  }
+}

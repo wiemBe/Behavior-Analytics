@@ -120,7 +120,8 @@ def test_the_phase_a_fields_keep_their_meaning(db_schema) -> None:  # type: igno
 def test_an_empty_database_measures_zero_in_every_family(db_schema) -> None:  # type: ignore[no-untyped-def]
     fam = Client(READER).get(SUMMARY).json()["active_by_family"]
     zero = {"open": 0, "candidate": 0, "recovering": 0, "total": 0}
-    assert fam == {"log_source": zero, "waf": zero, "ips": zero, "property_watch": zero}
+    assert fam == {"log_source": zero, "waf": zero, "ips": zero,
+                   "property_watch": zero, "rule": zero}
 
 
 def test_an_active_anomaly_older_than_the_ceiling_is_counted(db_schema) -> None:  # type: ignore[no-untyped-def]
@@ -176,6 +177,7 @@ def test_every_family_counts_an_old_active_anomaly_at_any_age(db_schema) -> None
         "waf": 1,
         "ips": 1,
         "property_watch": 1,
+        "rule": 0,
     }
     listed = client.get(
         "/api/v1/anomalies", params={"active_only": "true", "limit": 200}
