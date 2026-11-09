@@ -209,6 +209,56 @@ class TestNotificationsPart:
             "qradar_health_detail.reason.notification_source_unreadable"
         )
 
+    async def test_rows_the_fold_cannot_read_are_not_collected_never_ok(self) -> None:
+        """FIX-41: rows came back, but none could be read, so it is not "nothing happened"."""
+        provider = MockQRadarProvider(seed=1)
+        provider.health_notification_script = lambda _s: [
+            {"source": "System Notification-2", "qid_name": "Warning Message",
+             "severity": 4, "events": 4, "last_seen": None},
+            {"source": "System Notification-3 :: qradarce2", "qid_name": None,
+             "severity": 4, "events": 3, "last_seen": None},
+        ]
+        outcome, folded = await collector(provider)._collect_notifications(START, END, report())
+        assert outcome.state == "NOT_COLLECTED" and not outcome.measured
+        assert folded is not None and folded.entries == () and folded.remainder_groups == 0
+        assert folded.dropped_events == 7
+        assert outcome.reason is not None
+        assert outcome.reason.code == (
+            "qradar_health_detail.reason.notification_rows_unreadable"
+        )
+        assert render(outcome.reason) == (
+            "QRadar returned notification rows, but none had a parseable host and a QID "
+            "name, so no notification could be read. Check that each notification log-source "
+            "name carries its hostname after ' :: ' and that its events carry a QID name."
+        )
+
+    async def test_a_truncated_answer_with_nothing_readable_is_still_partial(self) -> None:
+        """The truncation check comes first: a cut answer is PARTIAL, never the new reason."""
+        provider = MockQRadarProvider(seed=1)
+        provider.health_force_truncated = lambda s: s.kind == "notifications"
+        provider.health_notification_script = lambda _s: [
+            {"source": "System Notification-2", "qid_name": "Warning Message",
+             "severity": 4, "events": 4, "last_seen": None},
+        ]
+        outcome, folded = await collector(provider)._collect_notifications(START, END, report())
+        assert outcome.state == "PARTIAL" and outcome.measured
+        assert folded is not None and folded.dropped_events == 4
+        assert outcome.reason is not None
+        assert outcome.reason.code == "qradar_health_detail.reason.truncated"
+
+    async def test_one_readable_group_beside_dropped_rows_is_still_ok(self) -> None:
+        provider = MockQRadarProvider(seed=1)
+        provider.health_notification_script = lambda _s: [
+            {"source": "System Notification-2 :: qradarce2", "qid_name": "Warning Message",
+             "severity": 4, "events": 4, "last_seen": None},
+            {"source": "System Notification-3", "qid_name": "Unreadable Host",
+             "severity": 4, "events": 2, "last_seen": None},
+        ]
+        outcome, folded = await collector(provider)._collect_notifications(START, END, report())
+        assert outcome.state == "OK" and outcome.reason is None
+        assert folded is not None and folded.dropped_events == 2
+        assert [entry.qid_name for entry in folded.entries] == ["Warning Message"]
+
 
 class TestRunShape:
     def test_the_window_is_the_last_whole_cadence_before_the_slot(self) -> None:

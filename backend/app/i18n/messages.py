@@ -637,6 +637,12 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "The stored log-source inventory could not be read, so an empty notification "
         "answer was not taken as none.",
     ),
+    _fixed(
+        "qradar_health_detail.reason.notification_rows_unreadable",
+        "QRadar returned notification rows, but none had a parseable host and a QID name, "
+        "so no notification could be read. Check that each notification log-source name "
+        "carries its hostname after ' :: ' and that its events carry a QID name.",
+    ),
     _fixed("qradar_health_detail.hours.invalid", "hours must be 24 or 168"),
     _fixed(
         "qradar_health_detail.reason.no_sample",

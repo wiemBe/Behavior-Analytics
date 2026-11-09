@@ -368,6 +368,10 @@ class QRadarHealthCollector:
 
         A caller that passes none proves nothing about the console: an empty answer is then
         NOT_COLLECTED as unreadable, never OK (rule 8). The collector itself always passes one.
+
+        Rows that fold to no group at all (none carried a parseable host and a QID name) were
+        returned but not read, so that part is NOT_COLLECTED too, never "nothing happened". The
+        fold is kept either way, so the run row still records the events it dropped.
         """
         report.searches_sent += 1
         try:
@@ -391,6 +395,15 @@ class QRadarHealthCollector:
             )
             if absent is not None:
                 return PartOutcome("NOT_COLLECTED", absent), folded
+        if result.rows and not folded.entries and folded.remainder_groups == 0:
+            # Rows came back, but the fold could keep none of them: what QRadar returned could
+            # not be read, which is not the same as nothing having happened (rule 8).
+            return (
+                PartOutcome(
+                    "NOT_COLLECTED", MessageRef(_REASON + "notification_rows_unreadable")
+                ),
+                folded,
+            )
         return PartOutcome("OK"), folded
 
     # ----------------------------------------------------------------- writes
