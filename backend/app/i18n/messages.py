@@ -2703,6 +2703,30 @@ REGISTRY: tuple[MessageSpec, ...] = (
         },
         {"streak": 3, "expected": 15000.0, "last_event_at": _PW_AT},
     ),
+    # FIX-45c (D-62): one alert per QRadar instance when no monitored source sent events in a
+    # bucket. Outside `anomaly.*` on purpose: those codes must exist in the frozen Turkish catalog.
+    _msg(
+        "alert.fleet_empty.title",
+        "No log source sent events in {bucket}",
+        {"bucket": _MINUTE},
+        {"bucket": _PW_AT},
+    ),
+    _msg(
+        "alert.fleet_empty.description",
+        "No log source sent events in {bucket}; QRadar may be starting or its pipeline may "
+        "have stopped.",
+        {"bucket": _MINUTE},
+        {"bucket": _PW_AT},
+    ),
+    _fixed(
+        "alert.fleet_empty.recovered",
+        "Log sources are sending events again.",
+    ),
+    _fixed(
+        "alert.fleet_empty.detector_reason",
+        "no monitored log source sent events in this bucket; reported once for the whole "
+        "QRadar instance, not as silence of this source",
+    ),
     _msg(
         "alert.waf.title",
         "{detector} on {log_source}: {method} {endpoint}",

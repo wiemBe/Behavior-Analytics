@@ -103,6 +103,10 @@ COLLECTOR_NAME = "log_source_metric"
 HISTORY_FAMILY = HistoryFamily.PHASE_A
 HISTORY_SCOPE_KEY = ""  # Phase A has one console-wide scope
 
+#: A bucket is "fleet empty" (D-62) only when at least this many monitored sources are missing
+#: from it. One source is not a fleet: its silence stays its own NO_EVENTS.
+FLEET_EMPTY_MIN_SOURCES = 2
+
 logger = logging.getLogger(__name__)
 
 
@@ -636,11 +640,26 @@ class MetricCollector:
         # a zero that a provider actively reported.
         zero_provenance = {**provenance, "zero_filled": True}
 
+        # D-62: the aggregate named no monitored source at all. That is one fact about the
+        # bucket, not N facts about N sources, and a warming console answers exactly so. The
+        # zeros are still written (the bucket was read) but as PARTIAL with the reason, so no
+        # detector reads them as the silence of a source; the engine reports the bucket once.
+        fleet_empty = (
+            not any(id_map.get(q) in monitored for q in reported)
+            and sum(1 for _, ls_id in missing if ls_id in monitored)
+            >= FLEET_EMPTY_MIN_SOURCES
+        )
+        if fleet_empty:
+            zero_provenance = {**zero_provenance, "fleet_empty": True}
+        zero_completeness = (
+            BucketCompleteness.PARTIAL if fleet_empty else BucketCompleteness.COMPLETE
+        )
+
         return [
             {
                 "log_source_id": ls_id,
                 "bucket_start": start,
-                "completeness": BucketCompleteness.COMPLETE,
+                "completeness": zero_completeness,
                 "collection_source": self._collection_source,
                 "query_provenance": zero_provenance,
                 "collection_duration_ms": duration_ms,

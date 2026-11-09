@@ -308,6 +308,52 @@
     "sample_english_params": {},
     "template": "condition recovered"
   },
+  "alert.fleet_empty.description": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "No log source sent events in 2026-10-17 12:00 UTC; QRadar may be starting or its pipeline may have stopped.",
+    "sample_english_params": {
+      "bucket": "2026-10-17 12:00 UTC"
+    },
+    "template": "No log source sent events in {bucket}; QRadar may be starting or its pipeline may have stopped."
+  },
+  "alert.fleet_empty.detector_reason": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no monitored log source sent events in this bucket; reported once for the whole QRadar instance, not as silence of this source",
+    "sample_english_params": {},
+    "template": "no monitored log source sent events in this bucket; reported once for the whole QRadar instance, not as silence of this source"
+  },
+  "alert.fleet_empty.recovered": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Log sources are sending events again.",
+    "sample_english_params": {},
+    "template": "Log sources are sending events again."
+  },
+  "alert.fleet_empty.title": {
+    "params": {
+      "bucket": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "bucket": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "No log source sent events in 2026-10-17 12:00 UTC",
+    "sample_english_params": {
+      "bucket": "2026-10-17 12:00 UTC"
+    },
+    "template": "No log source sent events in {bucket}"
+  },
   "alert.inventory.catchall_sender.description": {
     "params": {},
     "sample": {},
