@@ -534,6 +534,8 @@ class AnomalyEngine:
         Only complete buckets count towards the streak. A gap we failed to
         collect is not evidence that the source was silent, and letting it
         extend the streak would make a collector outage graduate into NO_EVENTS.
+        The walk is therefore gap-aware: each row must end exactly where the
+        bucket after it starts, or the streak stops there.
         """
         rows = list(
             (
@@ -550,10 +552,14 @@ class AnomalyEngine:
             ).all()
         )
         streak = 0
+        expected_next = metric.bucket_start
         for row in rows:
+            if row.bucket_start + timedelta(seconds=row.bucket_seconds) != expected_next:
+                break
             if not row.is_complete or row.event_count > 0:
                 break
             streak += 1
+            expected_next = row.bucket_start
         return streak
 
     async def _baseline_cells(
