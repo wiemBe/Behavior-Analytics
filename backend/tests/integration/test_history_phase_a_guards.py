@@ -107,7 +107,13 @@ async def test_the_first_run_takes_the_latest_live_row_even_when_history_is_newe
 
 
 async def test_a_history_zero_never_extends_a_no_events_streak(db_session) -> None:
-    """§B.4.1 "Streaks": the count of preceding empty buckets is live rows only."""
+    """§B.4.1 "Streaks": the count of preceding empty buckets is live rows only.
+
+    The history zeros fill the time between the live 10:00 zero and the judged
+    10:15 bucket, so the live walk stops at the gap and the streak is 0. That is
+    the stricter form of the same rule: a history zero never extends a live
+    streak, whether it is the row itself or the bucket that would bridge it.
+    """
     source = await _source(db_session)
     zero = dict(event_count=0, average_eps=0.0, peak_eps=0.0, stored_event_count=0)
     await add_metric(db_session, source, utc(h=10, mi=0), **zero)
@@ -119,7 +125,22 @@ async def test_a_history_zero_never_extends_a_no_events_streak(db_session) -> No
         source.id, judged
     )
 
-    assert streak == 1  # the live 10:00 zero only; the two history zeros do not count
+    assert streak == 0  # the history zeros do not count, and the live 10:00 zero is not adjacent
+
+
+async def test_contiguous_live_zeros_extend_a_no_events_streak(db_session) -> None:
+    """§B.4.1 "Streaks": adjacent complete live zeros do count, newest to oldest."""
+    source = await _source(db_session)
+    zero = dict(event_count=0, average_eps=0.0, peak_eps=0.0, stored_event_count=0)
+    await add_metric(db_session, source, utc(h=10, mi=0), **zero)
+    await add_metric(db_session, source, utc(h=10, mi=5), **zero)
+    judged = await add_metric(db_session, source, utc(h=10, mi=10), **zero)
+
+    streak = await AnomalyEngine(db_session, settings=_settings())._preceding_empty_buckets(
+        source.id, judged
+    )
+
+    assert streak == 2
 
 
 # --------------------------------------------------------------------------- F.1

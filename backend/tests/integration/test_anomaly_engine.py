@@ -39,6 +39,25 @@ async def _reliable_eps_baseline(session, ls, *, weekday=2, hour=10, median=50.0
     await session.flush()
 
 
+async def _reliable_event_count_baseline(session, ls, *, weekday=2, hour=10, median=15_000.0):
+    """NO_EVENTS reads the event_count cell; a reliable one is required to fire."""
+    session.add(
+        LogSourceBaseline(
+            log_source_id=ls.id, metric_name="event_count", weekday=weekday, hour=hour,
+            median=median, mad=500.0, p05=median * 0.9, p95=median * 1.1,
+            sample_count=30, is_reliable=True, baseline_version=1, observations=[median],
+        )
+    )
+    await session.flush()
+
+
+async def _empty_bucket(session, ls, bucket):
+    return await add_metric(
+        session, ls, bucket, average_eps=0.0, event_count=0, stored_event_count=0,
+        last_event_at=None, event_delay_seconds=None,
+    )
+
+
 async def _feed(engine, ls, session, *, start, count, eps, sig_prefix="s", step_min=5):
     """Feed `count` consecutive intervals and evaluate each."""
     reports = []
@@ -270,6 +289,66 @@ async def test_evaluate_pending_preserves_no_events_on_zero_filled_buckets(
     report = await AnomalyEngine(db_session, settings=_settings()).evaluate_pending(ls)
 
     assert AnomalyType.NO_EVENTS.value in report.opened
+
+
+async def test_contiguous_live_zeros_build_a_streak_and_open_no_events(db_session) -> None:
+    """Three adjacent complete live zeros: streak 2 before the third, and it opens."""
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst, criticality=Criticality.CRITICAL)
+    start = utc(h=10)
+    await _reliable_event_count_baseline(
+        db_session, ls, weekday=start.isoweekday(), hour=start.hour
+    )
+    engine = AnomalyEngine(db_session, settings=_settings())
+    rows = []
+    for index in range(3):
+        row = await _empty_bucket(db_session, ls, start + timedelta(minutes=5 * index))
+        rows.append(row)
+        await engine.evaluate_interval(ls, row)
+
+    assert await engine._preceding_empty_buckets(ls.id, rows[-1]) == 2
+    alert = await _open_alert(db_session, ls, AnomalyType.NO_EVENTS)
+    assert alert is not None and alert.status == AlertStatus.OPEN
+
+
+async def test_a_collection_gap_resets_the_silence_streak(db_session) -> None:
+    """A live zero at 10:00 does not reach a judged 10:15 bucket across missing buckets."""
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst, criticality=Criticality.CRITICAL)
+    start = utc(h=10)
+    await _reliable_event_count_baseline(
+        db_session, ls, weekday=start.isoweekday(), hour=start.hour
+    )
+    engine = AnomalyEngine(db_session, settings=_settings())
+    first = await _empty_bucket(db_session, ls, start)
+    await engine.evaluate_interval(ls, first)
+    judged = await _empty_bucket(db_session, ls, start + timedelta(minutes=15))
+    report = await engine.evaluate_interval(ls, judged)
+
+    assert await engine._preceding_empty_buckets(ls.id, judged) == 0
+    assert AnomalyType.NO_EVENTS.value not in report.opened
+    assert await _open_alert(db_session, ls, AnomalyType.NO_EVENTS) is None
+
+
+async def test_two_contiguous_post_gap_empties_open_no_events(db_session) -> None:
+    """After the gap, two adjacent empties are a real streak and open."""
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst, criticality=Criticality.CRITICAL)
+    start = utc(h=10)
+    await _reliable_event_count_baseline(
+        db_session, ls, weekday=start.isoweekday(), hour=start.hour
+    )
+    engine = AnomalyEngine(db_session, settings=_settings())
+    first = await _empty_bucket(db_session, ls, start)
+    await engine.evaluate_interval(ls, first)
+    after_gap = await _empty_bucket(db_session, ls, start + timedelta(minutes=15))
+    await engine.evaluate_interval(ls, after_gap)
+    judged = await _empty_bucket(db_session, ls, start + timedelta(minutes=20))
+    await engine.evaluate_interval(ls, judged)
+
+    assert await engine._preceding_empty_buckets(ls.id, judged) == 1
+    alert = await _open_alert(db_session, ls, AnomalyType.NO_EVENTS)
+    assert alert is not None and alert.status == AlertStatus.OPEN
 
 
 async def test_evaluate_pending_first_run_only_judges_latest_and_seeds_watermark(
