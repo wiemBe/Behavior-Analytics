@@ -1,6 +1,6 @@
 # QRadar-Dash manual test results page
 
-This page is the results page for the **0.1.14** section of the guide `docs/MANUAL-TEST.md`. It can be printed or a copy can be filled in. The result cells are left empty: write `Pass`, `Fail` or `Not run`; write a Note for `Fail` and `Not run`. **Do not write** passwords, tokens, `.env` values or customer data.
+This page is the results page for the **0.1.15** section of the guide `docs/MANUAL-TEST.md`. It can be printed or a copy can be filled in. The result cells are left empty: write `Pass`, `Fail` or `Not run`; write a Note for `Fail` and `Not run`. **Do not write** passwords, tokens, `.env` values or customer data.
 
 | Field | Value |
 |---|---|
@@ -12,14 +12,14 @@ This page is the results page for the **0.1.14** section of the guide `docs/MANU
 | Start (UTC) | |
 | End (UTC) | |
 | Upgrade path (online / offline bundle) | |
-| Migration head after (`0054`) | |
+| Migration head after (`0060`) | |
 | Rollback done (no / yes, time) | |
 
-**Core (production path)**, 38 checks: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-136, MT-10, MT-11, MT-126, MT-12, MT-13, MT-14, MT-15, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-128, MT-95, MT-119, MT-120, MT-121, MT-125. In production only the rows whose `Core` column says "yes" are filled in; the others are for the lab run. MT-126, although its number is high, is done right after MT-11. MT-128 is also done after a `GEO_COLLECTION` cadence has passed.
+**Core (production path)**, 40 checks: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-136, MT-10, MT-11, MT-144, MT-145, MT-126, MT-12, MT-13, MT-14, MT-15, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-128, MT-95, MT-119, MT-120, MT-121, MT-125. In production only the rows whose `Core` column says "yes" are filled in; the others are for the lab run. MT-126, although its number is high, is done right after MT-11. MT-128 is also done after a `GEO_COLLECTION` cadence has passed.
 
-Since 0.1.10 the interface is English only (D-41). The checks of section 4 that tested the Turkish interface or the language switch were removed (MT-20, MT-58, MT-59, MT-124: the result cell says `Removed`; nothing to run) or rewritten as English checks with the same ids. A raw message key or Turkish text anywhere is a Fail of the check where it was seen. One check is new in 0.1.14: MT-143, "A request right after sign-in is accepted" (FIX-23), and it is not core, so the core stays 38. The checks MT-137 to MT-142 came in 0.1.12.
+Since 0.1.10 the interface is English only (D-41). The checks of section 4 that tested the Turkish interface or the language switch were removed (MT-20, MT-58, MT-59, MT-124: the result cell says `Removed`; nothing to run) or rewritten as English checks with the same ids. A raw message key or Turkish text anywhere is a Fail of the check where it was seen. Fifteen checks are new in 0.1.15, MT-144 to MT-158. MT-144 (the defaults keep 0.1.14's behaviour) and MT-145 (role permissions after the upgrade) are core, so the core is 40; the other thirteen are not core. MT-146, MT-155 and MT-157 are `lab only` (they write to the site's own tables), and MT-150 has one `lab only` part. MT-143 came in 0.1.14 and the checks MT-137 to MT-142 in 0.1.12.
 
-Version before: `0.1.13`, migration head `0054`. Version after: `0.1.14`, migration head `0054`.
+Version before: `0.1.14`, migration head `0054`. Version after: `0.1.15`, migration head `0060`.
 
 
 ## 1. Preconditions
@@ -32,7 +32,7 @@ Version before: `0.1.13`, migration head `0054`. Version after: `0.1.14`, migrat
 | MT-04 | yes | Where the logs and the support bundle are — (writes) | | |
 | MT-05 | yes | The window and the people to inform | | |
 
-## 2. Upgrade 0.1.13 → 0.1.14
+## 2. Upgrade 0.1.14 → 0.1.15
 
 | Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
@@ -43,6 +43,8 @@ Version before: `0.1.13`, migration head `0054`. Version after: `0.1.14`, migrat
 | MT-136 | yes | `doctor --aql`: every family's query is accepted by the console | | |
 | MT-10 | yes | Outage duration and the interface's return | | |
 | MT-11 | yes | Collection runs again after the first cadence | | |
+| MT-144 | yes | The defaults keep 0.1.14's behaviour | | |
+| MT-145 | yes | Role permissions after the upgrade | | |
 | MT-126 | yes | The rate limit does not cut the page in production | | |
 | MT-127 |  | The lowered limit gives 429 and the retry sentence — (writes) lab only | | |
 
@@ -144,6 +146,16 @@ Version before: `0.1.13`, migration head `0054`. Version after: `0.1.14`, migrat
 | MT-84 |  | IPS anomaly detail | | |
 | MT-85 |  | Property watch anomaly detail | | |
 | MT-86 |  | Honesty states are visible and are not turned into zero | | |
+| MT-146 |  | Triage block on the anomaly detail — (writes) lab only | | |
+| MT-147 |  | Anomaly list: Triage, Owner and Age, and the filters | | |
+| MT-148 |  | A NEW anomaly nobody took is closed as stale (SOC-1c) | | |
+| MT-149 |  | Related activity on the anomaly detail | | |
+| MT-150 |  | Investigate in QRadar (SOC-2) — part 2 lab only QRadar search | | |
+| MT-151 |  | Noisy sources | | |
+| MT-152 |  | Tuning preview, without saving | | |
+| MT-153 |  | Low-volume model (shadow view) | | |
+| MT-154 |  | Traffic by destination | | |
+| MT-155 |  | Queue and the "last visit" marker — (writes) lab only | | |
 
 ## 7. Alerts
 
@@ -152,6 +164,8 @@ Version before: `0.1.13`, migration head `0054`. Version after: `0.1.14`, migrat
 | MT-87 |  | Alert list | | |
 | MT-88 |  | Alert detail: Description and resolution reason | | |
 | MT-89 |  | Acknowledging and resolving an alert — (writes) lab only | | |
+| MT-156 |  | Alert filters, facet counts and a link that reproduces the view | | |
+| MT-157 |  | Don't alert this again — (writes) lab only | | |
 
 ## 8. Custom rules
 
@@ -205,6 +219,7 @@ Version before: `0.1.13`, migration head `0054`. Version after: `0.1.14`, migrat
 | MT-115 |  | Changing the search cadence — (writes) lab only | | |
 | MT-116 |  | Outage policy and classification rules (view only) | | |
 | MT-117 |  | Administration home page | | |
+| MT-158 |  | Alert policy page (view only) | | |
 | MT-130 |  | SIEM load page, command and `qradar_health` (ARL-1, ARL-2, ARL-3) | | |
 | MT-133 |  | QRadar's health in detail on the SIEM load page and `doctor` (HLT-1 to HLT-3) | | |
 | MT-134 |  | The access check: which QRadar APIs the token can reach (ACC-1, ACC-2) | | |
