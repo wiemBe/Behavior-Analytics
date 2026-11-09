@@ -197,6 +197,7 @@ class AnomalyExplanationContributor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "explanation_id", "dimension", "value", name="uq_explanation_contributor"
         ),
         Index("ix_explanation_contributor_rank", "explanation_id", "dimension", "rank"),
+        Index("ix_explanation_contributor_dimension_value", "dimension", "value"),
         # Contribution share is a fraction of a single window's change; values
         # outside [-1, 1] mean the arithmetic is wrong, not that the anomaly is
         # extreme, so reject them at the boundary.

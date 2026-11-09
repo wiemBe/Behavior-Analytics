@@ -14,6 +14,7 @@ from app.models.config_change import ConfigurationChange, ConfigurationSnapshot
 from app.models.custom_rule import CustomRule, CustomRuleBreach, CustomRuleWatermark
 from app.models.dashboard import Dashboard, UserDashboardPref
 from app.models.email import EMAIL_ALERT_TYPES, EmailRecipient, EmailTemplate
+from app.models.entity import EntityMention
 from app.models.explanation import (
     EXPLANATION_SCHEMA_VERSION,
     AnomalyExplanation,
@@ -173,6 +174,7 @@ __all__ = [
     "DetectionCoverageSnapshot",
     "EmailRecipient",
     "EmailTemplate",
+    "EntityMention",
     "GeoCountryBucket",
     "HistoryBackfillDecision",
     "HistoryBackfillScope",
