@@ -2505,6 +2505,20 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "alert.offense_collection.recovered",
         "Offense collection freshness recovered.",
     ),
+    _text(
+        "alert.log_source_collection.stale.title",
+        "Log source volume collection is stale for {instance}",
+        instance="Lab console",
+    ),
+    _fixed(
+        "alert.log_source_collection.stale.description",
+        "The last read failed or did not run, so the platform cannot confirm whether sources "
+        "are silent. NO_EVENTS alerts are not raised for the missing intervals.",
+    ),
+    _fixed(
+        "alert.log_source_collection.recovered",
+        "Log source volume collection freshness recovered.",
+    ),
     _text("alert.inventory.log_source.title", "New log source: {name}", name="Edge firewall"),
     _fixed(
         "alert.inventory.log_source.description",

@@ -35,7 +35,7 @@ from app.collectors.explanation_collector import (
 from app.collectors.geo_collector import GeoCollector
 from app.collectors.ips_collector import IpsCollector
 from app.collectors.log_source_collector import LogSourceCollector
-from app.collectors.metric_collector import MetricCollector
+from app.collectors.metric_collector import COLLECTOR_NAME, MetricCollector
 from app.collectors.offense_collector import OffenseCollector
 from app.collectors.qradar_health_collector import QRadarHealthCollector
 from app.collectors.rule_collector import RuleCollector
@@ -848,6 +848,122 @@ async def detect_stale_offense_collection(instance_name: str | None = None) -> d
                     fingerprint,
                     actor="system:offense-collection-monitor",
                     reason_message=MessageRef("alert.offense_collection.recovered"),
+                )
+                if resolved is not None and resolved.transition is not None:
+                    transition = resolved.transition
+                    await dispatcher.enqueue(resolved.alert, resolved.transition)
+
+            return {
+                "status": "ok",
+                "stale": stale,
+                "age_seconds": age_seconds,
+                "consecutive_failures": failures,
+                "transition": str(transition) if transition is not None else None,
+                "duration_ms": int((time.perf_counter() - started) * 1000),
+            }
+
+    return await _for_each_instance(run, instance_name, needs_provider=False)
+
+
+def _log_source_stale_threshold_seconds(collection_interval_seconds: int) -> int:
+    """Return the minimum collector-health window or three collection buckets."""
+    return max(900, 3 * collection_interval_seconds)
+
+
+async def detect_stale_log_source_collection(instance_name: str | None = None) -> dict:
+    """Open/resolve one deduplicated alert per stale log-source metric collector."""
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, _: QRadarProvider | None
+    ) -> dict:
+        settings = get_settings()
+        threshold_seconds = _log_source_stale_threshold_seconds(
+            settings.collection_interval_seconds
+        )
+        started = time.perf_counter()
+        async with CollectorAdvisoryLock(
+            session, settings, instance.id, "log_source_stale_detection"
+        ) as acquired:
+            if not acquired:
+                return {"status": "skipped_locked", "duration_ms": 0}
+
+            now = datetime.now(UTC)
+            watermark = await session.scalar(
+                select(CollectionWatermark).where(
+                    CollectionWatermark.instance_id == instance.id,
+                    CollectionWatermark.collector == COLLECTOR_NAME,
+                )
+            )
+            last_run = watermark.last_run_at if watermark is not None else None
+            if last_run is not None and last_run.tzinfo is None:
+                last_run = last_run.replace(tzinfo=UTC)
+            age_seconds = (
+                int((now - last_run).total_seconds()) if last_run is not None else None
+            )
+            failures = watermark.consecutive_failures if watermark is not None else 0
+            stale = (
+                last_run is None
+                or age_seconds is None
+                or age_seconds > threshold_seconds
+                or failures > 0
+            )
+
+            fingerprint = compute_fingerprint(
+                source_type="qradar_instance",
+                source_id=instance.id,
+                condition="log_source_collection_stale",
+            )
+            alerts = AlertService(session)
+            dispatcher = NotificationDispatcher(
+                session, notifiers={}, policy=default_policy()
+            )
+            transition = None
+            if stale:
+                title_message = MessageRef(
+                    "alert.log_source_collection.stale.title",
+                    {"instance": instance.name},
+                )
+                description_message = MessageRef(
+                    "alert.log_source_collection.stale.description"
+                )
+                watermark_at = watermark.watermark_at if watermark is not None else None
+                if watermark_at is not None and watermark_at.tzinfo is None:
+                    watermark_at = watermark_at.replace(tzinfo=UTC)
+                result = await alerts.open_or_update(
+                    AlertInput(
+                        fingerprint=fingerprint,
+                        title=render(title_message),
+                        title_message=title_message,
+                        description=render(description_message),
+                        description_message=description_message,
+                        severity=Severity.HIGH,
+                        source_type="qradar_instance",
+                        source_id=instance.id,
+                        evidence={
+                            "last_run_at": last_run.isoformat() if last_run else None,
+                            "age_seconds": age_seconds,
+                            "threshold_seconds": threshold_seconds,
+                            "consecutive_failures": failures,
+                            "watermark_at": (
+                                watermark_at.isoformat() if watermark_at else None
+                            ),
+                            "lag_seconds": (
+                                watermark.lag_seconds if watermark is not None else None
+                            ),
+                            "last_error": (
+                                watermark.last_error if watermark is not None else None
+                            ),
+                        },
+                    )
+                )
+                transition = result.transition
+                if transition is not None:
+                    await dispatcher.enqueue(result.alert, transition)
+            else:
+                resolved = await alerts.resolve_by_fingerprint(
+                    fingerprint,
+                    actor="system:log-source-collection-monitor",
+                    reason_message=MessageRef("alert.log_source_collection.recovered"),
                 )
                 if resolved is not None and resolved.transition is not None:
                     transition = resolved.transition
@@ -1942,6 +2058,11 @@ def collect_rule_metrics_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="detect_stale_offense_collection")
 def detect_stale_offense_collection_task(instance_name: str | None = None) -> dict:
     return _run(detect_stale_offense_collection(instance_name))
+
+
+@celery_app.task(name="detect_stale_log_source_collection")
+def detect_stale_log_source_collection_task(instance_name: str | None = None) -> dict:
+    return _run(detect_stale_log_source_collection(instance_name))
 
 
 @celery_app.task(name="calculate_offense_aggregates")

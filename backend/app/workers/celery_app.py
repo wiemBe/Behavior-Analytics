@@ -147,6 +147,10 @@ celery_app.conf.beat_schedule = {
         "task": "detect_stale_offense_collection",
         "schedule": float(settings.offense_stale_check_interval_seconds),
     },
+    "detect-stale-log-source-collection": {
+        "task": "detect_stale_log_source_collection",
+        "schedule": float(settings.offense_stale_check_interval_seconds),
+    },
     "calculate-offense-aggregates": {
         "task": "calculate_offense_aggregates",
         "schedule": float(settings.offense_aggregate_interval_seconds),

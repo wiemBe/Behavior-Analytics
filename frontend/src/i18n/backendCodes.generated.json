@@ -480,6 +480,35 @@
     },
     "template": "{detector} on {log_source}"
   },
+  "alert.log_source_collection.recovered": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Log source volume collection freshness recovered.",
+    "sample_english_params": {},
+    "template": "Log source volume collection freshness recovered."
+  },
+  "alert.log_source_collection.stale.description": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The last read failed or did not run, so the platform cannot confirm whether sources are silent. NO_EVENTS alerts are not raised for the missing intervals.",
+    "sample_english_params": {},
+    "template": "The last read failed or did not run, so the platform cannot confirm whether sources are silent. NO_EVENTS alerts are not raised for the missing intervals."
+  },
+  "alert.log_source_collection.stale.title": {
+    "params": {
+      "instance": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "instance": "Lab console"
+    },
+    "sample_english": "Log source volume collection is stale for Lab console",
+    "sample_english_params": {
+      "instance": "Lab console"
+    },
+    "template": "Log source volume collection is stale for {instance}"
+  },
   "alert.offense_collection.recovered": {
     "params": {},
     "sample": {},
