@@ -20,6 +20,7 @@ import { AnomalyRows } from "@/components/behavior/AnomalyRows";
 import { Pagination } from "@/components/Pagination";
 import { isIpsRow } from "@/components/ips/ipsLabels";
 import { isPwRow } from "@/components/propertywatch/pwFormat";
+import { isRuleRow } from "@/components/rules/ruleMatchFormat";
 import { isWafRow } from "@/components/waf/wafLabels";
 import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -80,7 +81,8 @@ async function AnomaliesPage({
     q.anomaly_type ||
     subject.waf_anomaly_type ||
     subject.ips_anomaly_type ||
-    subject.pw_anomaly_type;
+    subject.pw_anomaly_type ||
+    subject.rule_anomaly_type;
 
   let page: Page<AnomalySummary> | null = null;
   let sources: SourceBehavior[] = [];
@@ -181,7 +183,7 @@ async function AnomaliesPage({
   if (q.offset > 0) viewQuery.set("offset", String(q.offset));
   const viewHref = viewQuery.size ? `/anomalies?${viewQuery.toString()}` : "/anomalies";
   const shownWindow = rangeWindow(q.range, nowMs);
-  const hasWaf = items.some((a) => isWafRow(a) || isIpsRow(a) || isPwRow(a));
+  const hasWaf = items.some((a) => isWafRow(a) || isIpsRow(a) || isPwRow(a) || isRuleRow(a));
   // The source list reads the Phase A volume collection: it describes the data only when the
   // list is pinned to log sources. An unfiltered list also holds WAF, IPS and watch rows.
   const dataTo = subject.subject_kind === "LOG_SOURCE" ? sourcesAsOf(sources, null) : null;

@@ -1386,6 +1386,8 @@ export interface AnomalySummary {
   // PW_VALUE only (Phase G): the watch and the tracked value. `log_source_id` is null for a
   // type- or group-scoped watch.
   pw_value?: PwValueRef | null;
+  // RULE only (SOC-6): the rule the incident is about.
+  rule?: RuleRef | null;
   // WAF and IPS: EXACT, or LOWER_BOUND when observed_value is "at least n".
   observed_measurement?: MeasurementKind | null;
   // The analyst's triage (SOC-1a): always present on a current backend, a NEW unowned block for an
@@ -1406,7 +1408,7 @@ export type TriageDisposition =
   | "STALE";
 /** STALE is system-only; an analyst PATCH can never select it. */
 export type AnalystTriageDisposition = Exclude<TriageDisposition, "STALE">;
-export type TriageFamily = "log_source" | "waf" | "ips" | "property_watch";
+export type TriageFamily = "log_source" | "waf" | "ips" | "property_watch" | "rule";
 export type TriageEventKind = "STATUS" | "OWNER" | "DISPOSITION" | "NOTE" | "COMMENT";
 
 export interface TriageSummary {
@@ -1575,6 +1577,18 @@ export interface ActiveStateCounts {
 
 export type AnomalyFamily = "log_source" | "waf" | "ips" | "property_watch";
 
+/** Families of `active_by_family`: the four above plus the rule-match family (SOC-6d1). */
+export type ActiveFamily = AnomalyFamily | "rule";
+
+/** `RuleRefOut`: name is the rule's current name; id and building-block flag are what the
+ *  incident saw when it opened. */
+export interface RuleRef {
+  rule_id: string;
+  name: string;
+  qradar_id: number;
+  is_building_block: boolean;
+}
+
 export interface BehaviorSummary {
   open_anomalies: number;
   spikes: number;
@@ -1598,7 +1612,7 @@ export interface BehaviorSummary {
   highest_deviation: AnomalySummary[];
   // Active anomalies of every family (the active list's window). A family that is absent
   // was not read; it is never a zero. The Phase A fields above count log sources only.
-  active_by_family?: Partial<Record<AnomalyFamily, ActiveStateCounts>> | null;
+  active_by_family?: Partial<Record<ActiveFamily, ActiveStateCounts>> | null;
 }
 
 export interface AnomalyListParams {
@@ -1710,7 +1724,9 @@ export type SubjectKind =
   | "WAF_ENDPOINT"
   | "IPS_ENTITY"
   | "IPS_SOURCE"
-  | "PW_VALUE";
+  | "PW_VALUE"
+  // An analytics rule or building block (SOC-6): its row is a rule-match incident.
+  | "RULE";
 
 /** EXACT, or LOWER_BOUND when the count is "at least n". */
 export type MeasurementKind = "EXACT" | "LOWER_BOUND";
@@ -3284,7 +3300,7 @@ export const api = {
   anomalies: (params: AnomalyListParams = {}) =>
     request<Page<AnomalySummary>>(`/anomalies${qs({ ...params })}`),
   anomaly: (id: string) =>
-    request<AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail>(
+    request<AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail | RuleAnomalyDetail>(
       `/anomalies/${id}`,
     ),
   anomalyPivot: (id: string) => request<Pivot>(`/anomalies/${id}/pivot`),
@@ -4267,6 +4283,136 @@ export interface CapacitySample {
 export const ruleStatisticsApi = {
   statistics: (days: number) => request<RuleStatistics>(`/rules/statistics${qs({ days })}`),
   capacityHistory: (id: string) => request<CapacitySample[]>(`/rules/${id}/capacity-history`),
+};
+
+// --- SOC-6e: rule-match anomalies -------------------------------------------------
+// Mirror backend/app/schemas/rule_anomaly.py. A null figure is "not measured", never 0.
+
+export type RuleAnomalyTypeName = "RULE_SILENCE" | "RULE_STORM";
+
+export type MatchAnomalyBlockState = "NOT_COLLECTED" | "INSUFFICIENT_DATA" | "OK";
+export type MatchAnomalyRowState = "OK" | "TRUNCATED";
+
+export interface MatchAnomalySpan {
+  days: number;
+  span_start: string;
+  span_end: string;
+  window_seconds: number;
+  expected_windows: number;
+  complete_windows: number;
+  truncated_windows: number;
+  failed_windows: number;
+  missing_windows: number;
+  complete: boolean;
+  window_status: string;
+  reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
+}
+
+export interface MatchAnomalyRow {
+  anomaly_id: string;
+  rule_id: string;
+  name: string;
+  qradar_id: number;
+  is_building_block: boolean;
+  detector: RuleAnomalyTypeName;
+  observed: number | null;
+  expected: number | null;
+  state: AnomalyState;
+  started: string;
+  row_state: MatchAnomalyRowState;
+  window_status: string;
+}
+
+export interface RuleMatchAnomalies {
+  instance_id: string;
+  state: MatchAnomalyBlockState;
+  span: MatchAnomalySpan | null;
+  items: MatchAnomalyRow[] | null;
+  total: number | null;
+  items_truncated: boolean;
+  reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
+}
+
+export type RuleMatchSectionState =
+  | "NOT_COLLECTED"
+  | "NOT_EVENT"
+  | "DISABLED"
+  | "MONITORING_OFF"
+  | "MODIFIED"
+  | "TRUNCATED"
+  | "INSUFFICIENT_DATA"
+  | "OK";
+
+export interface RuleMatchSectionCounts {
+  expected_windows: number | null;
+  complete_windows: number | null;
+  missing_windows: number | null;
+  truncated_windows: number | null;
+  failed_windows: number | null;
+  wrong_width_windows: number | null;
+  presence: number | null;
+  presence_minimum: number | null;
+  sample_count: number | null;
+  visits: number | null;
+  minimum_samples: number | null;
+  minimum_visits: number | null;
+  baseline_days: number | null;
+  median: number | null;
+  median_minimum: number | null;
+}
+
+export interface RuleMatchSectionIncident {
+  anomaly_id: string;
+  detector: RuleAnomalyTypeName;
+  observed: number | null;
+  expected: number | null;
+  baseline_low: number | null;
+  baseline_high: number | null;
+  consecutive_buckets: number | null;
+  ratio: number | null;
+  started: string;
+  ended: string | null;
+  state: AnomalyState;
+}
+
+export interface RuleMatchSection {
+  rule_id: string;
+  state: RuleMatchSectionState;
+  reason: string | null;
+  reason_code?: string | null;
+  reason_params?: Record<string, unknown> | null;
+  match_evidence: string | null;
+  inventory_synced_at: string | null;
+  modified_at: string | null;
+  judged_through: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  counts: Partial<RuleMatchSectionCounts> | null;
+  incidents: RuleMatchSectionIncident[];
+}
+
+/** A rule-match incident as `GET /anomalies/{id}` is read for the investigation page. */
+export interface RuleAnomalyDetail
+  extends Omit<AnomalyDetail, "detection" | "subject_kind" | "rule"> {
+  subject_kind: "RULE";
+  rule: RuleRef;
+  detection: null;
+}
+
+export function isRuleDetail(
+  a: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail | RuleAnomalyDetail,
+): a is RuleAnomalyDetail {
+  return a.subject_kind === "RULE";
+}
+
+export const ruleMatchApi = {
+  anomalies: (days: number) =>
+    request<RuleMatchAnomalies>(`/rules/match-anomalies${qs({ days })}`),
+  section: (ruleId: string) => request<RuleMatchSection>(`/rules/${ruleId}/match-anomalies`),
 };
 
 // --- IPS source administration (docs/FIELD-MAPPING.md §FM.9, T-049's /ips API) ---
@@ -5547,7 +5693,7 @@ export const homeReads = {
 export type QueueSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
 export type QueueKind = "anomaly" | "alert" | "offense" | "source_review" | "catchall_sender";
 export type QueueScope = "mine" | "unassigned" | "all";
-export type QueueFamily = "log_source" | "waf" | "ips" | "property_watch";
+export type QueueFamily = "log_source" | "waf" | "ips" | "property_watch" | "rule";
 export type QueueSourceState = "OK" | "FORBIDDEN" | "FAILED" | "NOT_COLLECTED" | "STALE" | "PARTIAL";
 export type QueueCompareKind = "DEFAULT_WINDOW" | "OVERRIDE" | "STORED";
 

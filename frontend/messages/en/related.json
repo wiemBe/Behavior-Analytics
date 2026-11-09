@@ -59,6 +59,7 @@
       "waf": "WAF",
       "ips": "IPS",
       "property_watch": "Property watch",
+      "rule": "Rule match",
       "custom_rule": "Custom rule"
     },
     "customRuleType": "Custom rule breach",

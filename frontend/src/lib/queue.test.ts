@@ -43,6 +43,13 @@ describe("parseQueueQuery", () => {
     expect(q.ignored).toEqual([]);
   });
 
+  it("keeps family=rule and sends it to the API (SOC-6e)", () => {
+    const q = parseQueueQuery({ family: "rule" });
+    expect(q.families).toEqual(["rule"]);
+    expect(q.ignored).toEqual([]);
+    expect(queueHref(q)).toBe("/queue?family=rule");
+  });
+
   it("round-trips every filter through the address", () => {
     const q = parseQueueQuery({
       scope: "mine",

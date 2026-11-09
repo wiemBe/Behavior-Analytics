@@ -44,21 +44,22 @@ describe("anomaliesCard", () => {
           waf: activeCounts(0, 0, 1),
           ips: activeCounts(2),
           property_watch: activeCounts(0, 3),
+          rule: activeCounts(0, 0, 2),
         },
       }),
       page([]),
     );
-    expect(r.open).toBe(8);
+    expect(r.open).toBe(10);
     expect(r.lowerBound).toBe(false);
     const families = (r.logSources ?? 0) + r.families.reduce((sum, f) => sum + (f.count ?? 0), 0);
-    expect(families).toBe(8);
+    expect(families).toBe(10);
     expect(r.byDetector.reduce((sum, item) => sum + item.count, 0)).toBe(r.logSources);
     expect(r.byLifecycle.map((t) => [t.key, t.count])).toEqual([
       ["open", 3],
       ["candidates", 4],
-      ["recovering", 1],
+      ["recovering", 3],
     ]);
-    expect(r.byLifecycle.reduce((sum, item) => sum + item.count, 0)).toBe(8);
+    expect(r.byLifecycle.reduce((sum, item) => sum + item.count, 0)).toBe(10);
   });
 
   it("leaves an unread family out of the total as a floor and keeps it null, not 0", () => {
@@ -68,11 +69,12 @@ describe("anomaliesCard", () => {
     );
     expect(r.open).toBe(3);
     expect(r.lowerBound).toBe(true);
-    expect(r.unread).toEqual(["ips", "property_watch"]);
+    expect(r.unread).toEqual(["ips", "property_watch", "rule"]);
     expect(r.families.map((f) => [f.key, f.count])).toEqual([
       ["waf", 1],
       ["ips", null],
       ["property_watch", null],
+      ["rule", null],
     ]);
   });
 
@@ -81,7 +83,7 @@ describe("anomaliesCard", () => {
     expect(r.open).toBeNull();
     expect(r.logSources).toBeNull();
     expect(r.byDetector).toEqual([]);
-    expect(r.unread).toHaveLength(4);
+    expect(r.unread).toHaveLength(5);
   });
 
   it("drops the detector split when the detector counts exceed the family's windowed count", () => {

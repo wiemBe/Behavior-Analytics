@@ -113,7 +113,7 @@
     "link": "Anomalies",
     "linkLabel": "View active anomalies",
     "what": "anomalies",
-    "description": "Anomalies in an active state (candidate, open or recovering) across log sources, WAF endpoints, IPS and property watches. Log sources without a baseline are not judged and are not counted.",
+    "description": "Anomalies in an active state (candidate, open or recovering) across log sources, WAF endpoints, IPS, property watches and rule matches. Log sources without a baseline are not judged and are not counted.",
     "unit": "active anomalies",
     "lifecycle": "Lifecycle",
     "short": {
@@ -134,7 +134,8 @@
       "log_source": "log sources",
       "waf": "WAF",
       "ips": "IPS",
-      "property_watch": "property watches"
+      "property_watch": "property watches",
+      "rule": "rule matches"
     },
     "familyNotRead": "{family} not read",
     "notRead": "not read",
@@ -152,7 +153,8 @@
       "log_source": "{count, plural, one {# log source} other {# log sources}}",
       "waf": "{count, plural, one {# WAF} other {# WAF}}",
       "ips": "{count, plural, one {# IPS} other {# IPS}}",
-      "property_watch": "{count, plural, one {# property watch} other {# property watches}}"
+      "property_watch": "{count, plural, one {# property watch} other {# property watches}}",
+      "rule": "{count, plural, one {# rule match} other {# rule matches}}"
     }
   },
   "eps": {

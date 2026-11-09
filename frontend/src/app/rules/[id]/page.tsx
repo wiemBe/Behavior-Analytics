@@ -3,11 +3,14 @@ import {
   type CapacitySample,
   type RuleDetail,
   type RuleHealthSnapshot,
+  type RuleMatchSection,
+  ruleMatchApi,
   ruleStatisticsApi,
 } from "@/lib/api";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { CapacityHistory } from "@/components/rules/CapacityHistory";
+import { RuleMatchSectionView } from "@/components/rules/RuleMatchSection";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -44,14 +47,18 @@ async function RuleDetailPage({
   let rule: RuleDetail | null = null;
   let history: RuleHealthSnapshot[] | null = [];
   let capacityHistory: CapacitySample[] | null = [];
+  // The match-anomaly section has its own read and its own error: null is "could not be loaded",
+  // and the health card above is rendered whatever this answers.
+  let matchSection: RuleMatchSection | null = null;
   let missing = false;
   let error = false;
 
   try {
-    [rule, history, capacityHistory] = await Promise.all([
+    [rule, history, capacityHistory, matchSection] = await Promise.all([
       api.rule(id),
       api.ruleHealthHistory(id).catch(() => null),
       ruleStatisticsApi.capacityHistory(id).catch(() => null),
+      ruleMatchApi.section(id).catch(() => null),
     ]);
   } catch (e) {
     if (e && typeof e === "object" && "status" in e && e.status === 404) missing = true;
@@ -180,6 +187,8 @@ async function RuleDetailPage({
           )}
         </div>
       </div>
+
+      <RuleMatchSectionView section={matchSection} failed={matchSection === null} />
 
       <h3>{t("metadata")}</h3>
       <TableScroll label={t("metadataLabel")}>

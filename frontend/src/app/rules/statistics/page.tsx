@@ -5,6 +5,7 @@ import { CostliestRules } from "@/components/rules/CostliestRules";
 import { MeasurementWindow } from "@/components/rules/MeasurementWindow";
 import { MostMatched } from "@/components/rules/MostMatched";
 import { RuleComposition } from "@/components/rules/RuleComposition";
+import { RuleMatchBlock } from "@/components/rules/RuleMatchBlock";
 import { SilentRules } from "@/components/rules/SilentRules";
 import {
   DAY_CHOICES,
@@ -18,7 +19,13 @@ import {
 } from "@/components/rules/ruleStatistics";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
-import { ApiError, ruleStatisticsApi, type RuleStatistics } from "@/lib/api";
+import {
+  ApiError,
+  ruleMatchApi,
+  ruleStatisticsApi,
+  type RuleMatchAnomalies,
+  type RuleStatistics,
+} from "@/lib/api";
 import type { Locale } from "@/i18n/locale";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
@@ -41,6 +48,12 @@ async function RuleStatisticsPage({
   let noInstance = false;
   let error = false;
 
+  // The match-anomaly block reads its own endpoint: it is started beside the statistics call and
+  // its failure is its own (null), never the page-level error below.
+  const matchRead: Promise<RuleMatchAnomalies | null> = Promise.resolve()
+    .then(() => ruleMatchApi.anomalies(days))
+    .catch(() => null);
+
   try {
     statistics = await ruleStatisticsApi.statistics(days);
   } catch (err) {
@@ -48,6 +61,7 @@ async function RuleStatisticsPage({
     error = !noInstance;
   }
 
+  const matchAnomalies = await matchRead;
   const presentOrigins = statistics ? originsPresent(statistics.counts) : [];
   const query: StatsQuery = {
     days,
@@ -115,6 +129,7 @@ async function RuleStatisticsPage({
             reasonCode={statistics.silent_reason_code}
             reasonParams={statistics.silent_reason_params}
           />
+          <RuleMatchBlock data={matchAnomalies} failed={matchAnomalies === null} />
           <CostliestRules cost={statistics.costliest_by_benchmark} />
         </>
       )}

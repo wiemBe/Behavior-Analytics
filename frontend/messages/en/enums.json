@@ -83,6 +83,10 @@
     "IPS_PORT_FANOUT_SPIKE": "Port fan-out spike",
     "IPS_BLOCK_RATIO_SHIFT": "Block-ratio shift"
   },
+  "ruleAnomalyType": {
+    "RULE_SILENCE": "Rule silence",
+    "RULE_STORM": "Rule storm"
+  },
   "propertyWatchAnomalyType": {
     "PW_VALUE_SPIKE": "Value spike",
     "PW_VALUE_DROP": "Value drop",

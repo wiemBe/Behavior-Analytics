@@ -1,0 +1,99 @@
+/* Rule-match anomalies: the /rules/statistics block and the /rules/{id} section (SOC-6e).
+   Layout only. Colours, spacing and type come from tokens.css. */
+
+.match-table {
+  table-layout: fixed;
+}
+.match-table th,
+.match-table td {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.match-table th[scope="row"] {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  border-bottom-color: var(--border);
+}
+.match-table .match-col-rule {
+  width: 28%;
+}
+.match-table .match-col-fig {
+  width: 13%;
+}
+.match-table .match-col-state {
+  width: 13%;
+}
+.match-table .match-col-time {
+  width: 13%;
+}
+.match-table .match-col-act {
+  width: 8%;
+}
+.match-table .cell-rule a {
+  overflow-wrap: anywhere;
+}
+.match-table td.num {
+  white-space: normal;
+}
+.match-cut {
+  margin: var(--sp-3) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.match-coverage {
+  margin: var(--sp-2) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The section on the rule page: status line, then the facts, then the incidents. */
+.match-section {
+  margin-top: var(--sp-5);
+}
+.match-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-3);
+  margin: 0 0 var(--sp-2);
+}
+.match-status .pill {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.match-status-text {
+  flex: 1 1 24ch;
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.match-facts {
+  margin: var(--sp-3) 0 var(--sp-4);
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-4);
+  font-size: var(--fs-sm);
+}
+.match-facts dt {
+  color: var(--text-2);
+}
+.match-facts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.match-incidents h4 {
+  margin: var(--sp-4) 0 var(--sp-2);
+}
+.match-incidents table td.num,
+.match-incidents table th.num {
+  white-space: normal;
+}
+
+/* The rule-match investigation page. */
+.rule-evidence {
+  margin-top: var(--sp-4);
+}

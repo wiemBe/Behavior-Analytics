@@ -110,6 +110,7 @@
     "family_waf": "WAF",
     "family_ips": "IPS",
     "family_property_watch": "Property watch",
+    "family_rule": "Rule match",
     "chip": {
       "kind": "Kind: {value}",
       "family": "Family: {value}",

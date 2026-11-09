@@ -65,6 +65,7 @@ describe("KpiAnomalies", () => {
           waf: activeCounts(0, 0, 2),
           ips: activeCounts(1),
           property_watch: activeCounts(3),
+          rule: activeCounts(0),
         },
       }),
     );
@@ -84,7 +85,8 @@ describe("KpiAnomalies", () => {
     expect(parts(/Also:/)).toEqual([
       "2\u00a0WAF \u00b7",
       "1\u00a0IPS \u00b7",
-      "3\u00a0property watches",
+      "3\u00a0property watches \u00b7",
+      "0\u00a0rule matches",
     ]);
     expect(parts(/Lifecycle:/)).toEqual([
       "6\u00a0open \u00b7",
@@ -110,6 +112,7 @@ describe("KpiAnomalies", () => {
           waf: activeCounts(n),
           ips: activeCounts(n),
           property_watch: activeCounts(n),
+          rule: activeCounts(0),
         },
       }),
     );
@@ -149,6 +152,42 @@ describe("KpiAnomalies", () => {
     expect(screen.getByText(/At least this many/)).toBeInTheDocument();
   });
 
+  it("counts the rule-match family in the total and names it in the breakdown", () => {
+    mocks.states[SUMMARY] = ok(
+      summary({
+        monitored_sources: 1,
+        active_by_family: {
+          log_source: activeCounts(1),
+          waf: activeCounts(0),
+          ips: activeCounts(0),
+          property_watch: activeCounts(0),
+          rule: activeCounts(2, 1),
+        },
+      }),
+    );
+    render(<KpiAnomalies />);
+    expect(screen.getByText("4", { selector: ".kpi-value" })).toBeInTheDocument();
+    expect(screen.getByText(/Also:/).closest("p")).toHaveTextContent("3 rule matches");
+    expect(screen.queryByText(/At least this many/)).toBeNull();
+  });
+
+  it("names the rule family as not read when its count is absent, and marks the total a floor", () => {
+    mocks.states[SUMMARY] = ok(
+      summary({
+        monitored_sources: 1,
+        active_by_family: {
+          log_source: activeCounts(1),
+          waf: activeCounts(0),
+          ips: activeCounts(0),
+          property_watch: activeCounts(0),
+        },
+      }),
+    );
+    render(<KpiAnomalies />);
+    expect(screen.getByText("\u2265 1", { selector: ".kpi-value" })).toBeInTheDocument();
+    expect(screen.getByText(/Also:/).closest("p")).toHaveTextContent("rule matches not read");
+  });
+
   it("draws no total when no family was read", () => {
     mocks.states[SUMMARY] = ok(summary({ monitored_sources: 1, active_by_family: null }));
     render(<KpiAnomalies />);
@@ -165,6 +204,7 @@ describe("KpiAnomalies", () => {
           waf: activeCounts(1),
           ips: activeCounts(0),
           property_watch: activeCounts(0),
+          rule: activeCounts(0),
         },
       }),
     );

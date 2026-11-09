@@ -154,6 +154,7 @@ describe("the IPS filters", () => {
       "IPS_SOURCE",
       "IPS",
       "PW_VALUE",
+      "RULE",
     ]);
   });
 
