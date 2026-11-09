@@ -8,6 +8,7 @@
 
 import { isIpsType } from "@/components/ips/ipsLabels";
 import { isPwType } from "@/components/propertywatch/pwFormat";
+import { isRuleType } from "@/components/rules/ruleMatchFormat";
 import { isWafType } from "@/components/waf/wafLabels";
 
 import type { SubjectKind } from "./api";
@@ -140,6 +141,7 @@ export const SUBJECT_KINDS: Array<{ value: SubjectFilterKind; label: string }> =
   { value: "IPS_SOURCE", label: "IPS sources" },
   { value: "IPS", label: "IPS entities and sources" },
   { value: "PW_VALUE", label: "Property watch values" },
+  { value: "RULE", label: "Rule" },
 ];
 
 export interface SubjectQuery {
@@ -151,6 +153,8 @@ export interface SubjectQuery {
   ips_anomaly_type: string;
   /** A property-watch detector type, or "". */
   pw_anomaly_type: string;
+  /** A rule-match detector type, or "". */
+  rule_anomaly_type: string;
   /** An IPS entity id (a link from an entity view), or "" when absent or not a UUID. */
   ips_entity_id: string;
   /** One property watch (a link from its page), or "" when absent or not a UUID. */
@@ -166,6 +170,7 @@ export function parseSubjectQuery(params: Record<string, SearchParamValue>): Sub
     waf_anomaly_type: type && isWafType(type) ? type : "",
     ips_anomaly_type: type && isIpsType(type) ? type : "",
     pw_anomaly_type: type && isPwType(type) ? type : "",
+    rule_anomaly_type: type && isRuleType(type) ? type : "",
     ips_entity_id: uuid(params.ips_entity_id),
     property_watch_id: uuid(params.property_watch_id),
   };

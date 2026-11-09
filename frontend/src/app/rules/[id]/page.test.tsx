@@ -6,6 +6,7 @@ import { CAPACITY_UNIT } from "@/components/rules/CapacityHistory";
 import {
   ApiError,
   api,
+  ruleMatchApi,
   ruleStatisticsApi,
   type CapacitySample,
   type RuleDetail,
@@ -72,6 +73,20 @@ beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(api, "rule").mockResolvedValue(rule());
   vi.spyOn(api, "ruleHealthHistory").mockResolvedValue([]);
+  // The match-anomaly section has its own read; these tests are about the rest of the page.
+  vi.spyOn(ruleMatchApi, "section").mockResolvedValue({
+    rule_id: "11111111-1111-1111-1111-111111111111",
+    state: "OK",
+    reason: "Judged through 2026-10-13 09:00 UTC. No open match anomaly.",
+    match_evidence: null,
+    inventory_synced_at: null,
+    modified_at: null,
+    judged_through: "2026-10-13T09:00:00Z",
+    window_start: null,
+    window_end: null,
+    counts: null,
+    incidents: [],
+  });
 });
 
 describe("rule capacity history", () => {

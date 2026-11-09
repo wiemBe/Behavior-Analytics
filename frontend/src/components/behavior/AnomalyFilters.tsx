@@ -24,6 +24,7 @@ import { CLOSE_MARK, evidenceCode, wordOrValue, type BehaviorI18n } from "@/lib/
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { IPS_TYPES, isIpsType, ipsTypeLabel } from "@/components/ips/ipsLabels";
 import { PW_TYPES, pwTypeLabel, isPwType } from "@/components/propertywatch/pwFormat";
+import { RULE_TYPES, isRuleType, ruleTypeLabel } from "@/components/rules/ruleMatchFormat";
 import { WAF_TYPES, anomalyTypeLabel } from "@/components/waf/wafLabels";
 import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
 import { DISPOSITIONS, TRIAGE_STATUSES } from "@/lib/triage";
@@ -80,6 +81,7 @@ export interface AnomalyFilterValues {
 function detectorName(text: string, i18n: BehaviorI18n): string {
   if (isIpsType(text)) return ipsTypeLabel(text, i18n);
   if (isPwType(text)) return pwTypeLabel(text, i18n);
+  if (isRuleType(text)) return ruleTypeLabel(text, i18n);
   if (DETECTOR_TYPES.includes(text)) return detectorLabel(text, i18n);
   return anomalyTypeLabel(text, i18n);
 }
@@ -308,6 +310,13 @@ export function AnomalyFilters({
             {PW_TYPES.map((type) => (
               <option key={type} value={type}>
                 {pwTypeLabel(type, i18n)}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label={t("groupRule")}>
+            {RULE_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {ruleTypeLabel(type, i18n)}
               </option>
             ))}
           </optgroup>

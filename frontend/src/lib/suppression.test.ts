@@ -68,6 +68,10 @@ describe("which alerts and anomalies have a condition to quiet", () => {
     expect(anomalyTarget({ id: "n", subject_kind: "NEW_KIND" as never })).toBeNull();
   });
 
+  it("offers no quiet period for a rule-match incident: the alert policy has no rule family", () => {
+    expect(anomalyTarget({ id: "r", subject_kind: "RULE" })).toBeNull();
+  });
+
   it("allows the whole source for the three source-anchored families only", () => {
     expect(allowsWholeSource("log_source")).toBe(true);
     expect(allowsWholeSource("waf")).toBe(true);

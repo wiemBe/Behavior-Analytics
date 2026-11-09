@@ -40,6 +40,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { anomalyTarget } from "@/lib/suppressTarget";
 import { pivotReads } from "@/lib/pivot";
+import { RuleInvestigation, type RuleBand } from "@/components/rules/RuleInvestigation";
 import { WafInvestigation } from "@/components/waf/WafInvestigation";
 import {
   ApiError,
@@ -47,12 +48,15 @@ import {
   api,
   isIpsDetail,
   isPwDetail,
+  isRuleDetail,
   isWafDetail,
+  ruleMatchApi,
   type AnomalyDetail,
   type IpsAnomalyDetail,
   type IpsBaselineCell,
   type MetricBucket,
   type PwAnomalyDetail,
+  type RuleAnomalyDetail,
   type PwValueSeries,
   type WafAnomalyDetail,
   type WafBaselineCell,
@@ -261,7 +265,13 @@ async function AnomalyDetailPage({
   const pad = parsePad((await searchParams)?.pad);
   const t = await getTranslations("anomalies.detail");
 
-  let loaded: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail | null = null;
+  let loaded:
+    | AnomalyDetail
+    | WafAnomalyDetail
+    | IpsAnomalyDetail
+    | PwAnomalyDetail
+    | RuleAnomalyDetail
+    | null = null;
   let status = 0;
   let limited: string | null = null;
   const say = asTextTranslator(await getTranslations());
@@ -293,6 +303,22 @@ async function AnomalyDetailPage({
         </div>
       </>
     );
+  }
+
+  // A rule-match incident is judged against its rule's own windows. Its expected range comes from
+  // the rule's match-anomaly section; the source-based pivot and related-activity blocks do not
+  // apply to it. Triage does: the rule family has its own triage row, read on its own.
+  if (isRuleDetail(loaded)) {
+    const wanted = loaded.id;
+    let band: RuleBand = { kind: "not-loaded" };
+    try {
+      const section = await ruleMatchApi.section(loaded.rule.rule_id);
+      const found = section.incidents.find((i) => i.anomaly_id === wanted);
+      band = found ? { kind: "incident", incident: found } : { kind: "not-listed" };
+    } catch {
+      band = { kind: "not-loaded" };
+    }
+    return <RuleInvestigation anomaly={loaded} band={band} triage={await triageNode(loaded)} />;
   }
 
   // The pivot is a separate read: a failure shows in its own block and never in the page.

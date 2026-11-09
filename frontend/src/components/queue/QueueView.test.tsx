@@ -386,3 +386,34 @@ describe("the address is the view", () => {
     expect(mocks.list.mock.calls[1][0]).toContain("kind=offense");
   });
 });
+
+describe("a rule-match incident in the queue (SOC-6e)", () => {
+  const ruleItem = () =>
+    item({
+      id: "rule-1",
+      family: "rule",
+      title: "RULE_STORM on Multiple login failures",
+      subject: "Multiple login failures",
+      detector: "RULE_STORM",
+      link: "/anomalies/rule-1",
+      alert: null,
+    });
+
+  it("offers the Rule match family filter and keeps it in the address", async () => {
+    await open(page({ items: [ruleItem()] }), { family: "rule" });
+    const chip = screen.getByRole("link", { name: "Rule match" });
+    expect(chip).toHaveAttribute("aria-current", "true");
+    expect(mocks.list.mock.calls[0][0]).toContain("family=rule");
+  });
+
+  it("labels the row's family and links the title to the anomaly", async () => {
+    await open(page({ items: [ruleItem()] }));
+    const row = screen.getByRole("link", { name: /Multiple login failures/ }).closest("tr")!;
+    expect(row).toHaveTextContent("Rule match");
+    expect(screen.getByRole("link", { name: /Multiple login failures/ })).toHaveAttribute(
+      "href",
+      "/anomalies/rule-1",
+    );
+  });
+});
+

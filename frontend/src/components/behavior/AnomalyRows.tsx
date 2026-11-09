@@ -42,6 +42,7 @@ import { formatFigure } from "@/components/ips/ipsFormat";
 import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
 import { isPwRow, pwTypeLabel } from "@/components/propertywatch/pwFormat";
 import { valueText } from "@/components/propertywatch/WatchValuesTable";
+import { formatMatches, isRuleRow, ruleTypeLabel } from "@/components/rules/ruleMatchFormat";
 import { formatRequests, listUnit, sinceUnit } from "@/components/waf/wafFormat";
 import { formatPercent } from "@/lib/format";
 import {
@@ -87,6 +88,21 @@ function SubjectCell({ a, nowMs }: { a: AnomalySummary; nowMs: number }) {
       )}
     </>
   );
+  if (isRuleRow(a) && a.rule) {
+    // The rule's name links to the rule; its QRadar id and the building-block marker sit beneath.
+    return (
+      <td className="cell-name cell-subject">
+        <Link className="subject-source" href={`/rules/${a.rule.rule_id}`} title={a.rule.name}>
+          {a.rule.name}
+        </Link>
+        <span className="cell-sub subject-host">
+          {t("qradarId", { id: a.rule.qradar_id })}
+          {a.rule.is_building_block ? ` · ${t("buildingBlock")}` : ""}
+        </span>
+        {started}
+      </td>
+    );
+  }
   if (isPwRow(a) && a.pw_value) {
     // The value (attacker-controlled text: rendered as text, wrapping anywhere), then the watch
     // that tracks it. A watch scoped to a type or a group has no single source to name.
@@ -172,6 +188,24 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
   const units = useTranslations("units");
   const i18n = useBehaviorI18n();
   const { locale } = i18n;
+  if (isRuleRow(a)) {
+    // Matched events per collection window. A null count is the dash, never 0; a silence's
+    // observed 0 is a measurement and stays "0".
+    return (
+      <>
+        <span className="ips-figures">
+          {a.observed_measurement === "LOWER_BOUND" && a.observed_value != null ? "≥ " : ""}
+          {formatMatches(a.observed_value, locale)}
+          <span className="muted"> {ARROW} </span>
+          {formatMatches(a.expected_value, locale)}
+        </span>
+        <span className="cell-sub ips-unit">{t("matchesPerWindow")}</span>
+        {a.observed_measurement === "LOWER_BOUND" && (
+          <span className="cell-sub">{t("matchesTruncated")}</span>
+        )}
+      </>
+    );
+  }
   if (isPwRow(a)) {
     // Volume detectors count events per 5-minute bucket. The figure of a new-value detector has
     // no unit this list knows, so it shows none rather than a number under a guessed one.
@@ -278,9 +312,9 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
 function EvidenceCell({ a }: { a: AnomalySummary }) {
   const t = useTranslations("anomalies.rows");
   const i18n = useBehaviorI18n();
-  if (isWafRow(a) || isIpsRow(a) || isPwRow(a)) {
+  if (isWafRow(a) || isIpsRow(a) || isPwRow(a) || isRuleRow(a)) {
     const meaning = t("evidenceNotApplicable", {
-      family: isPwRow(a) ? "pw" : isIpsRow(a) ? "ips" : "waf",
+      family: isRuleRow(a) ? "rule" : isPwRow(a) ? "pw" : isIpsRow(a) ? "ips" : "waf",
     });
     return (
       <span className="muted" title={meaning}>
@@ -304,6 +338,7 @@ function ipsDeltaHidden(a: AnomalySummary): boolean {
 
 /** The detector's name in a row: Phase A in the interface language; the other families' own labels. */
 function typeText(a: AnomalySummary, i18n: BehaviorI18n): string {
+  if (isRuleRow(a)) return ruleTypeLabel(a.anomaly_type, i18n);
   if (isPwRow(a)) return pwTypeLabel(a.anomaly_type, i18n);
   if (isWafRow(a)) return anomalyTypeLabel(a.anomaly_type, i18n);
   if (!isIpsRow(a)) return detectorLabel(a.anomaly_type, i18n);
@@ -386,7 +421,7 @@ export function AnomalyRows({ items, nowMs }: { items: AnomalySummary[]; nowMs: 
                     : t("triageUnknown")}
                 </span>
                 {/* Up to 1280 px the Evidence column folds under the state. */}
-                {!isWafRow(a) && !isIpsRow(a) && !isPwRow(a) && (
+                {!isWafRow(a) && !isIpsRow(a) && !isPwRow(a) && !isRuleRow(a) && (
                   <span className="cell-sub cell-fold fold-md fold-ev">
                     {t("evidenceFold", { value: evidenceWord(i18n, a.evidence_status) })}
                   </span>
@@ -453,11 +488,13 @@ export function AnomalyRows({ items, nowMs }: { items: AnomalySummary[]; nowMs: 
                     aria-label={t(open ? "hideDetail" : "showDetail", {
                       type: typeText(a, i18n).toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-US"),
                       subject:
-                        isPwRow(a) && a.pw_value
-                          ? `${valueText(a.pw_value)} · ${a.pw_value.watch_name}`
-                          : isIpsRow(a)
-                            ? `${ipsSubjectText(a, i18n)} · ${a.log_source_name ?? a.log_source_id}`
-                            : subjectText(a, i18n),
+                        isRuleRow(a) && a.rule
+                          ? `${a.rule.name} · ${t("qradarId", { id: a.rule.qradar_id })}`
+                          : isPwRow(a) && a.pw_value
+                            ? `${valueText(a.pw_value)} · ${a.pw_value.watch_name}`
+                            : isIpsRow(a)
+                              ? `${ipsSubjectText(a, i18n)} · ${a.log_source_name ?? a.log_source_id}`
+                              : subjectText(a, i18n),
                     })}
                     onClick={() => setExpanded(open ? null : a.id)}
                   >

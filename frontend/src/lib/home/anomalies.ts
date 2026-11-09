@@ -1,13 +1,13 @@
 // KPI card 4 (UR.4.2): active anomalies of every family.
 //
-// The total is the sum of the four families' active counts (log sources, WAF, IPS, property
-// watches), as `GET /anomalies/summary` measured them in the active list's window. The card
+// The total is the sum of the five families' active counts (log sources, WAF, IPS, property
+// watches, rule matches), as `GET /anomalies/summary` measured them in the active list's window. The card
 // shows two partitions of it: by family (log sources split by detector, then the other three
 // as their own parts) and by lifecycle state. A family whose count is absent was not read: it is
 // named as such, never drawn as 0, and the total becomes a lower bound. Severity is retained
 // for the chart model and is a lower bound when the active list is capped.
 
-import type { AnomalyFamily, AnomalySummary, BehaviorSummary, Page } from "@/lib/api";
+import type { ActiveFamily, AnomalySummary, BehaviorSummary, Page } from "@/lib/api";
 
 import { truncated, type Qualifier } from "./qualifiers";
 
@@ -19,9 +19,9 @@ export interface TypeCount {
   count: number;
 }
 
-/** One of the three families the card names beside the log sources. */
+/** One of the families the card names beside the log sources. */
 export interface FamilyCount {
-  key: Exclude<AnomalyFamily, "log_source">;
+  key: Exclude<ActiveFamily, "log_source">;
   /** Null when the count could not be read: not a zero. */
   count: number | null;
 }
@@ -31,7 +31,7 @@ export interface SeverityCount {
   count: number;
 }
 
-export const FAMILY_ORDER: AnomalyFamily[] = ["log_source", "waf", "ips", "property_watch"];
+export const FAMILY_ORDER: ActiveFamily[] = ["log_source", "waf", "ips", "property_watch", "rule"];
 
 export interface AnomaliesCard {
   /** All-family active count over the families read; null when none was read. */
@@ -39,7 +39,7 @@ export interface AnomaliesCard {
   /** True when a family was not read, so `open` is a floor. */
   lowerBound: boolean;
   /** The families whose counts were not read. */
-  unread: AnomalyFamily[];
+  unread: ActiveFamily[];
   /** Log-source active anomalies; null when not read. */
   logSources: number | null;
   /**
@@ -47,7 +47,7 @@ export interface AnomaliesCard {
    * Empty when the family was not read or the detector counts disagree with it.
    */
   byDetector: TypeCount[];
-  /** WAF, IPS and property watches, each its own part of the total. */
+  /** WAF, IPS, property watches and rule matches, each its own part of the total. */
   families: FamilyCount[];
   /** Active anomalies by lifecycle state, over the families read. */
   byLifecycle: TypeCount[];
@@ -109,6 +109,7 @@ export function anomaliesCard(
       { key: "waf", count: by.waf?.total ?? null },
       { key: "ips", count: by.ips?.total ?? null },
       { key: "property_watch", count: by.property_watch?.total ?? null },
+      { key: "rule", count: by.rule?.total ?? null },
     ],
     byLifecycle: [
       { key: "open", label: "Open", count: read.reduce((sum, c) => sum + c.open, 0) },

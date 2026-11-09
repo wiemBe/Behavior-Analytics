@@ -121,6 +121,7 @@ export function summary(over: Partial<BehaviorSummary> = {}): BehaviorSummary {
       waf: activeCounts(0),
       ips: activeCounts(0),
       property_watch: activeCounts(0),
+      rule: activeCounts(0),
     },
     ...over,
   };

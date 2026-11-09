@@ -36,12 +36,13 @@ export const CLOSE_DISPOSITIONS: readonly AnalystTriageDisposition[] = [
   "KNOWN_CHANGE",
 ];
 
-const FAMILY_OF: Record<SubjectKind, "log_source" | "waf" | "ips" | "property_watch"> = {
+const FAMILY_OF: Record<SubjectKind, "log_source" | "waf" | "ips" | "property_watch" | "rule"> = {
   LOG_SOURCE: "log_source",
   WAF_ENDPOINT: "waf",
   IPS_ENTITY: "ips",
   IPS_SOURCE: "ips",
   PW_VALUE: "property_watch",
+  RULE: "rule",
 };
 
 /**
