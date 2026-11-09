@@ -70,6 +70,7 @@ from app.models.instance import QRadarInstance
 from app.models.rule import AnalyticsRule
 from app.models.rule_anomaly import RuleAnomaly, RuleDetectorState
 from app.rules.anomalies import (
+    DETECTOR_LABELS,
     RuleCell,
     RuleSubject,
     RuleThresholds,
@@ -85,10 +86,7 @@ ACTOR = "rule-engine"
 _SOURCE_TYPE = "analytics_rule"
 _DETECTORS = (RuleAnomalyType.RULE_SILENCE.value, RuleAnomalyType.RULE_STORM.value)
 _DAY_SECONDS = 86_400
-_TITLES = {
-    RuleAnomalyType.RULE_SILENCE.value: "Rule silence",
-    RuleAnomalyType.RULE_STORM.value: "Rule storm",
-}
+_TITLES = DETECTOR_LABELS
 # Typed binds so an all-NULL array (a fresh state's anomaly ids, a silence
 # row's unused z-score) still has a Postgres type. asyncpg cannot infer one
 # from a list of None, and a later CAST cannot recover a parameter it rejected.

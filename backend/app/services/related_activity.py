@@ -25,6 +25,7 @@ from app.models.ips import IpsAnomaly, IpsEntity
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.property_watch import PropertyWatch, PwAnomaly
 from app.models.rule import RuleMatchWindowStatus
+from app.models.rule_anomaly import RuleAnomaly
 from app.models.waf import WafAnomaly, WafEndpoint
 from app.repositories.related_activity import RelatedActivityRepository
 from app.rules.matches import MatchEvidence, match_evidence
@@ -309,6 +310,14 @@ class RelatedActivityService:
                 anomaly_end=ips_anomaly.anomaly_end,
             )
             return Anchor(family, anomaly_id, source, start, end)
+
+        if family is AnomalyFamily.RULE:
+            # A rule has no log source to anchor offenses, anomalies or rules on.
+            if await self.session.get(RuleAnomaly, anomaly_id) is None:
+                raise RelatedActivityNotFound("anomaly not found")
+            raise RelatedActivityNotFound(
+                "related activity does not apply to a rule-match incident: it has no log source"
+            )
 
         pw_anomaly = await self.session.get(PwAnomaly, anomaly_id)
         if pw_anomaly is None:

@@ -62,7 +62,7 @@ from app.models.log_source import (
 )
 from app.models.property_watch import PropertyWatch, PwAnomaly, PwAnomalyTransition
 from app.models.rule import AnalyticsRule
-from app.models.rule_anomaly import RuleAnomaly
+from app.models.rule_anomaly import RuleAnomaly, RuleAnomalyTransition
 from app.models.triage import AnomalyTriage
 from app.models.waf import (
     WafAnomaly,
@@ -79,11 +79,29 @@ from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 
 _PHASE_A_TYPES = frozenset(t.value for t in AnomalyType)
 _RULE_TYPES = frozenset(t.value for t in RuleAnomalyType)
+
 _WAF_TYPES = frozenset(t.value for t in WafAnomalyType)
 _IPS_TYPES = frozenset(t.value for t in IpsAnomalyType)
 _PW_TYPES = frozenset(t.value for t in PwAnomalyType)
 
 SubjectKindFilter = SubjectKind | Collection[SubjectKind] | None
+
+
+def _rule_measurement(a: type[RuleAnomaly]) -> ColumnElement[str]:
+    """`LOWER_BOUND` when the incident's stored evidence says its window was truncated.
+
+    The flag is `details.extra.truncated_window`, written by the rule engine for a storm
+    judged on a partial count: the count can only understate the truth. Any other value, or
+    no flag, reads as the exact count the other families report.
+    """
+    flag = a.details["extra"]["truncated_window"]
+    # A JSON boolean true only: the string "true" is not the engine's flag.
+    truncated = and_(func.jsonb_typeof(flag) == "boolean", flag.astext == "true")
+    return case(
+        (truncated, WafMeasurement.LOWER_BOUND.value),
+        else_=WafMeasurement.EXACT.value,
+    )
+
 
 #: The measurement states in which a WAF bucket's endpoint counts are usable.
 _WAF_MEASURED = (WafMeasurement.EXACT.value, WafMeasurement.LOWER_BOUND.value)
@@ -420,7 +438,7 @@ class AnomalyRepository:
                 a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
                 a.detected_at, a.opened_at, a.anomaly_start, a.anomaly_end, a.resolved_at,
                 a.evidence_status, a.suppressed,
-                cast(null(), String).label("observed_measurement"),
+                _rule_measurement(a).label("observed_measurement"),
                 a.explanation,
                 a.explanation_i18n.label("explanation_i18n"),
                 t.status.label("triage_status"),
@@ -1094,6 +1112,36 @@ class AnomalyRepository:
             ).all()
         )
         return row[0], row[1], row[2], transitions
+
+    async def get_rule_detail(
+        self, anomaly_id: uuid.UUID
+    ) -> tuple[RuleAnomaly, AnalyticsRule, str, list[RuleAnomalyTransition]] | None:
+        """One rule-match incident, its rule and its lifecycle: two statements.
+
+        The incident goes with its rule (cascade), so the join is inner. The third item is
+        the incident's observed-count claim, from the same expression the list uses. The
+        rule models declare no relationships, so the transitions, oldest first, are read in
+        their own statement.
+        """
+        row = (
+            await self.session.execute(
+                select(RuleAnomaly, AnalyticsRule, _rule_measurement(RuleAnomaly))
+                .join(AnalyticsRule, AnalyticsRule.id == RuleAnomaly.rule_id)
+                .where(RuleAnomaly.id == anomaly_id)
+            )
+        ).first()
+        if row is None:
+            return None
+        transitions = list(
+            (
+                await self.session.scalars(
+                    select(RuleAnomalyTransition)
+                    .where(RuleAnomalyTransition.rule_anomaly_id == anomaly_id)
+                    .order_by(RuleAnomalyTransition.occurred_at, RuleAnomalyTransition.created_at)
+                )
+            ).all()
+        )
+        return row[0], row[1], str(row[2]), transitions
 
     async def virtual_host_available(self, log_source_id: uuid.UUID) -> bool:
         """Whether the source's profile maps a virtual host property."""

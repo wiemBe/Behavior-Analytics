@@ -62,6 +62,8 @@ from app.models.ips import (
 from app.models.log_source import LogSource, LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
 from app.models.monitoring import AnomalyEvaluationFault
 from app.models.property_watch import PropertyWatch, PwAnomaly, PwAnomalyTransition
+from app.models.rule import AnalyticsRule
+from app.models.rule_anomaly import RuleAnomaly, RuleAnomalyTransition
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
 from app.pivot.service import PivotNotFound, anomaly_pivot
 from app.property_watch.facts import split_tuple_key
@@ -688,10 +690,15 @@ async def get_anomaly(anomaly_id: uuid.UUID, session: SessionDep) -> AnomalyDeta
                 family = AnomalyFamily.IPS
             else:
                 pw = await repo.get_pw_detail(anomaly_id)
-                if pw is None:
-                    raise HTTPException(status.HTTP_404_NOT_FOUND, "anomaly not found")
-                detail = _pw_detail(*pw)
-                family = AnomalyFamily.PROPERTY_WATCH
+                if pw is not None:
+                    detail = _pw_detail(*pw)
+                    family = AnomalyFamily.PROPERTY_WATCH
+                else:
+                    rule = await repo.get_rule_detail(anomaly_id)
+                    if rule is None:
+                        raise HTTPException(status.HTTP_404_NOT_FOUND, "anomaly not found")
+                    detail = _rule_detail(*rule)
+                    family = AnomalyFamily.RULE
     else:
         detail = AnomalyDetailOut.model_validate(anomaly)
         source = await session.get(LogSource, anomaly.log_source_id)
@@ -894,6 +901,62 @@ def _pw_detail(
         transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
         explanation_package=None,
         detection=pw_detection_detail(anomaly.details),
+    )
+
+
+def _rule_detail(
+    anomaly: RuleAnomaly,
+    rule: AnalyticsRule,
+    measurement: str,
+    transitions: list[RuleAnomalyTransition],
+) -> AnomalyDetailOut:
+    """A rule-match incident as the shared detail shape.
+
+    A rule has no log source, so `log_source_id` is None. `explanation_package` and
+    `detection` are None: a rule incident has no evidence package, and the schema has no
+    rule projection of its stored evidence; the expected range comes from the rule's own
+    match-anomaly section. `observed_measurement` is LOWER_BOUND for a truncated window.
+    """
+    return AnomalyDetailOut(
+        id=anomaly.id,
+        subject_kind=SubjectKind.RULE,
+        log_source_id=None,
+        log_source_name=None,
+        rule=RuleRefOut(
+            rule_id=rule.id,
+            name=rule.name,
+            qradar_id=anomaly.qradar_id,
+            is_building_block=anomaly.is_building_block,
+        ),
+        anomaly_type=RuleAnomalyType(anomaly.detector_type),
+        state=anomaly.state,
+        severity=anomaly.severity,
+        observed_value=anomaly.observed_value,
+        expected_value=anomaly.expected_value,
+        deviation_ratio=anomaly.deviation_ratio,
+        robust_z=anomaly.robust_z,
+        absolute_delta=anomaly.absolute_delta,
+        consecutive_buckets=anomaly.consecutive_buckets,
+        confidence=anomaly.confidence,
+        detected_at=anomaly.detected_at,
+        opened_at=anomaly.opened_at,
+        anomaly_start=anomaly.anomaly_start,
+        anomaly_end=anomaly.anomaly_end,
+        resolved_at=anomaly.resolved_at,
+        evidence_status=anomaly.evidence_status,
+        suppressed=anomaly.suppressed,
+        suppression_reason=anomaly.suppression_reason,
+        suppression_reason_code=anomaly.suppression_reason_code,
+        suppression_reason_params=anomaly.suppression_reason_params,
+        observed_measurement=measurement,
+        explanation=anomaly.explanation,
+        explanation_code=anomaly.explanation_code,
+        explanation_params=anomaly.explanation_params,
+        baseline_version=None,
+        policy_version=anomaly.policy_version,
+        transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
+        explanation_package=None,
+        detection=None,
     )
 
 

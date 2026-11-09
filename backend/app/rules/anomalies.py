@@ -73,6 +73,11 @@ SILENCE_MIN_MEDIAN = 1.0
 #: Storm: samples and distinct ISO weeks a cell needs (design §4.1: 8 and 4).
 STORM_MIN_SAMPLES = 8
 STORM_MIN_VISITS = 4
+#: The English name of each detector, for a title that has no stored explanation to use.
+DETECTOR_LABELS: dict[str, str] = {
+    RuleAnomalyType.RULE_SILENCE.value: "Rule silence",
+    RuleAnomalyType.RULE_STORM.value: "Rule storm",
+}
 #: Storm floors, the property-watch event floors (design §4.2: 20 events, 2.0x, 50 delta).
 STORM_MIN_WINDOW_EVENTS = 20
 STORM_RATIO = 2.0
