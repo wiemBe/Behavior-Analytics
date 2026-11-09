@@ -116,7 +116,7 @@ async function TrafficPageView({
         query={query}
         sourceId={sourceId}
         sources={sources}
-        basis={data ? { kind: "data", page: data } : { kind: "error" }}
+        basis={data ? { kind: "data", page: data } : error ? { kind: "error" } : { kind: "none" }}
       />
       {error ? (
         <div className="notice" role="alert">

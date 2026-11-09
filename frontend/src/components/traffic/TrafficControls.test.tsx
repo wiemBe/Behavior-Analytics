@@ -58,6 +58,14 @@ describe("Export CSV", () => {
     expect(screen.getByText(/while the data is loading/)).toBeInTheDocument();
   });
 
+  it("with no behavior profile says there is nothing to export and never claims a load failure", () => {
+    view({}, { kind: "none" }, "");
+    expect(screen.queryByRole("link", { name: /Export CSV/ })).toBeNull();
+    expect(document.body.textContent).toContain("Export CSV — nothing to export: no source has a behavior profile yet.");
+    expect(document.body.textContent).not.toContain("could not be loaded");
+    expect(screen.getByText("Export CSV").parentElement).toHaveAttribute("aria-disabled", "true");
+  });
+
   it("is not a link after an error", () => {
     view({}, { kind: "error" });
     expect(screen.queryByRole("link", { name: /Export CSV/ })).toBeNull();

@@ -61,6 +61,8 @@ function Option({
 export type ExportBasis =
   | { kind: "loading" }
   | { kind: "error" }
+  /** No source has a behavior profile: nothing failed, there is nothing to read. */
+  | { kind: "none" }
   | { kind: "data"; page: Pick<TrafficPage<unknown>, "state" | "total"> };
 
 /** The export: a link when there is a set to export, else a span that says why there is none. */
@@ -76,7 +78,8 @@ function ExportCsv({
   const t = useTranslations("traffic.export");
   const locale: FormatLocale = useLocale() === "tr" ? "tr" : "en";
   let why: string | null = null;
-  if (!sourceId || basis.kind === "error") why = t("disabledError");
+  if (basis.kind === "error") why = t("disabledError");
+  else if (basis.kind === "none" || !sourceId) why = t("disabledNoSource");
   else if (basis.kind === "loading") why = t("disabledLoading");
   else if (basis.page.state === "NOT_COLLECTED") why = t("disabledNotCollected");
   else if (basis.page.state === "INSUFFICIENT_DATA") why = t("disabledInsufficient");

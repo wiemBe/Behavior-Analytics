@@ -37,6 +37,7 @@
     },
     "disabledLoading": "not available while the data is loading.",
     "disabledError": "not available: the data could not be loaded.",
+    "disabledNoSource": "nothing to export: no source has a behavior profile yet.",
     "disabledNotCollected": "not available: this source is not collected.",
     "disabledInsufficient": "not available: no complete bucket in this window.",
     "disabledEmpty": "not available: nothing to export in this window."
