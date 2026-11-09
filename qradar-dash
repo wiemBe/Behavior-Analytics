@@ -12,7 +12,7 @@
 #   ./qradar-dash restore <backup-directory> [--non-interactive --yes]
 #   ./qradar-dash support-bundle
 #   ./qradar-dash upgrade <version> [--offline [BUNDLE]]
-#   ./qradar-dash bundle [--version X.Y.Z] [--output DIR]
+#   ./qradar-dash bundle [--version X.Y.Z] [--output DIR] [--local-images]
 #   ./qradar-dash rollback [--non-interactive --yes]
 #   ./qradar-dash repair-state
 #
@@ -78,6 +78,9 @@ upgrade options
 bundle options
   --version X.Y.Z   Assert the release to bundle (it must equal this checkout's VERSION).
   --output DIR      Directory for qradar-dash-<version>-bundle.tar (default: the current directory).
+  --local-images    Do not pull the five product images; use the ones built from this checkout
+                    (docs/tasks/REL-LOCAL.design.md step 8). Refuses when the checkout is not a
+                    clean git work tree or an image's version/revision label does not match.
 
 rollback options
   --non-interactive Refuse unless --yes is also present.
@@ -923,6 +926,16 @@ bundle_image_refs() { # bundle_image_refs PREFIX VERSION -> the image references
   printf '%s\n' "$ref"
 }
 
+# bundle_image_label REF LABEL -> the label's value; empty when the image has no such label.
+# A local release image must carry org.opencontainers.image.version and .revision.
+bundle_image_label() {
+  local value
+  value=$(docker image inspect --format "{{index .Config.Labels \"$2\"}}" "$1" 2>/dev/null) \
+    || value=""
+  case "$value" in "<no value>" | "<nil>") value="" ;; esac
+  printf '%s\n' "$value"
+}
+
 user_path() { # user_path PATH -> absolute, a relative PATH being relative to where the operator ran the script
   case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$ORIG_PWD" "$1" ;; esac
 }
@@ -942,12 +955,15 @@ bundle_cleanup() {
 
 cmd_bundle() {
   local version="" out="" checkout prefix source ref id bytes target name member
+  local local_images=no images_source=registry revision="" worktree="" label expected actual
+  local index product_count service
   while [ $# -gt 0 ]; do
     case "$1" in
       --version) [ $# -ge 2 ] || { fail "--version needs a release such as 0.2.0"; return 2; }; version=$2; shift ;;
       --output) [ $# -ge 2 ] || { fail "--output needs a directory"; return 2; }; out=$2; shift ;;
+      --local-images) local_images=yes ;;
       -h | --help) usage; return 0 ;;
-      *) fail "unknown bundle option: $1; usage: ./qradar-dash bundle [--version X.Y.Z] [--output DIR]"; return 2 ;;
+      *) fail "unknown bundle option: $1; usage: ./qradar-dash bundle [--version X.Y.Z] [--output DIR] [--local-images]"; return 2 ;;
     esac
     shift
   done
@@ -990,10 +1006,50 @@ cmd_bundle() {
   [ "${#refs[@]}" -eq $((${#BUNDLE_SERVICES[@]} + 2)) ] \
     || die "could not work out the image references; run ./qradar-dash bundle again"
 
+  # With --local-images the five product images come from the local engine built from this
+  # checkout (docs/tasks/REL-LOCAL.design.md step 8), so the bundle can be made with no
+  # registry. A bundle leaving here must hold the code those images were built from, hence
+  # the work-tree, clean-tree and OCI label checks before anything is written.
+  if [ "$local_images" = yes ]; then
+    images_source=local
+    worktree=$(git rev-parse --is-inside-work-tree 2>/dev/null) || worktree=""
+    [ "$worktree" = true ] \
+      || die "bundle refused: this is not a git work tree (or git is not on PATH), so nothing proves which commit the images were built from; nothing was written; run ./qradar-dash bundle --local-images from the release checkout"
+    revision=$(git rev-parse HEAD 2>/dev/null) || revision=""
+    [ -n "$revision" ] \
+      || die "bundle refused: cannot read this checkout's HEAD commit, so nothing proves which code the images hold; nothing was written; run ./qradar-dash bundle --local-images from the release checkout"
+    [ -z "$(git status --porcelain --untracked-files=no 2>/dev/null)" ] \
+      || die "bundle refused: the checkout has uncommitted changes to tracked files, so the bundle would not hold the code the images were built from; nothing was written; commit the changes and run ./qradar-dash bundle --local-images again"
+    for service in "${BUNDLE_SERVICES[@]}"; do
+      ref="$prefix/$service:$version"
+      id=$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null) || id=""
+      [ -n "$id" ] \
+        || die "bundle refused: $ref is not in the local Docker engine and --local-images does not pull; build it as docs/tasks/REL-LOCAL.design.md step 8 describes, then run ./qradar-dash bundle --local-images again; nothing was written"
+      for label in org.opencontainers.image.version org.opencontainers.image.revision; do
+        if [ "$label" = org.opencontainers.image.version ]; then expected=$version; else expected=$revision; fi
+        actual=$(bundle_image_label "$ref" "$label")
+        [ "$actual" = "$expected" ] \
+          || die "bundle refused: $ref carries $label '${actual:-missing}' but the checkout says '$expected'; nothing was written; build the images as docs/tasks/REL-LOCAL.design.md step 8 describes and run ./qradar-dash bundle --local-images again"
+      done
+    done
+  fi
+
   BUNDLE_DONE=no
   trap bundle_cleanup EXIT
   install_signal_traps
+  # Product images come first (their count is the BUNDLE_SERVICES length); the two digest
+  # pins follow. With --local-images a product image is never pulled, and a third-party pin
+  # already present under that exact digest reference is reused as it is.
+  product_count=${#BUNDLE_SERVICES[@]}
+  index=0
   for ref in "${refs[@]}"; do
+    index=$((index + 1))
+    if [ "$local_images" = yes ]; then
+      if [ "$index" -le "$product_count" ] || docker image inspect "$ref" >/dev/null 2>&1; then
+        say "Using $ref from the local Docker engine"
+        continue
+      fi
+    fi
     say "Pulling $ref"
     docker pull "$ref" >/dev/null \
       || die "could not pull $ref; a private registry needs docker login ghcr.io with a read:packages token; then run ./qradar-dash bundle again"
@@ -1008,6 +1064,7 @@ cmd_bundle() {
     printf '# qradar-dash offline bundle manifest; ./qradar-dash checks every image line after docker load\n'
     printf 'version %s\n' "$version"
     printf 'image_prefix %s\n' "$prefix"
+    printf 'images_source %s\n' "$images_source"
     printf 'image_store %s\n' "$(docker_image_store)"
     for ref in "${refs[@]}"; do
       id=$(docker image inspect --format '{{.Id}}' "$ref") && [ -n "$id" ] \
