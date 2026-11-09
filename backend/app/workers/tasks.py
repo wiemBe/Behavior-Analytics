@@ -948,9 +948,28 @@ async def evaluate_detection_coverage(instance_name: str | None = None) -> dict:
 
 
 # ------------------------------------------------------------------ anomalies
+# The engine has no QRadar instance; a fixed id gives `collector_lock_key` a stable key.
+ANOMALY_EVALUATION_LOCK_ID = uuid.UUID(int=0)
+
+
 async def evaluate_anomalies() -> dict:
+    """Evaluate pending anomaly buckets, one run at a time across the process."""
+    settings = get_settings()
     maker = get_sessionmaker()
-    async with maker() as session:
+    # The engine's per-bucket idempotency reads the watermark and the detector
+    # state without a row lock, so two overlapping runs could evaluate the same
+    # bucket and move an alert's repeat counter twice. The lock is held on a
+    # connection of its own: this session commits per source, and a lock taken
+    # on it would follow its connection back to the pool.
+    async with maker() as session, CollectorAdvisoryLock(
+        session, settings, ANOMALY_EVALUATION_LOCK_ID, "anomaly_evaluation"
+    ) as acquired:
+        if not acquired:
+            logger.info(
+                "anomaly evaluation skipped: a run is already in progress",
+                extra={"lock": "anomaly_evaluation"},
+            )
+            return {"status": "skipped_locked"}
         policy = default_policy()
         # Enqueue-only dispatcher: notifiers not needed to create rows.
         enqueuer = NotificationDispatcher(session, notifiers={}, policy=policy)
