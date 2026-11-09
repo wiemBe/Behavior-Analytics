@@ -12502,6 +12502,34 @@
     },
     "template": "threshold {operator} {threshold} can never be reached: a run counts at most max_result_rows ({max_result_rows}) rows; raise max_result_rows above the threshold or lower the threshold"
   },
+  "search_cadence.next_dispatch.after_failed_run": {
+    "params": {
+      "at": {
+        "kind": "timestamp"
+      },
+      "cadence": {
+        "kind": "duration"
+      },
+      "next": {
+        "kind": "timestamp"
+      }
+    },
+    "sample": {
+      "at": "2026-11-04T19:24:00+00:00",
+      "cadence": {
+        "kind": "duration",
+        "seconds": 300
+      },
+      "next": "2026-11-04T19:27:00+00:00"
+    },
+    "sample_english": "The run at 2026-11-04 19:24:00 UTC failed; the family runs again at its next 5 min slot, 2026-11-04 19:27:00 UTC, and is not retried before it.",
+    "sample_english_params": {
+      "at": "2026-11-04 19:24:00 UTC",
+      "cadence": "5 min",
+      "next": "2026-11-04 19:27:00 UTC"
+    },
+    "template": "The run at {at} failed; the family runs again at its next {cadence} slot, {next}, and is not retried before it."
+  },
   "triage.stale_auto_close": {
     "params": {
       "days": {

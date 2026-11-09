@@ -1111,6 +1111,11 @@
       "unreachable": "threshold {operator} {threshold} can never be reached: a run counts at most max_result_rows ({max_result_rows}) rows; raise max_result_rows above the threshold or lower the threshold"
     }
   },
+  "search_cadence": {
+    "next_dispatch": {
+      "after_failed_run": "The run at {at} failed; the family runs again at its next {cadence} slot, {next}, and is not retried before it."
+    }
+  },
   "triage": {
     "stale_auto_close": "No analyst took this anomaly within {days} days.",
     "stale_auto_close_one": "No analyst took this anomaly within 1 day."

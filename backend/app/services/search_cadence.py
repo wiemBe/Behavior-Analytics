@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.i18n.messages import MessageRef
 from app.models.enums import SearchCadence, SearchFamily, default_search_cadence
 from app.models.search_cadence import SearchCadenceSetting
 from app.repositories.audit import record_audit
@@ -203,6 +204,26 @@ class SearchCadenceService:
             )
             next_slot = max(first_after_claimed, current)
         return next_slot + timedelta(seconds=self.settings.search_cadence_settle_seconds)
+
+    def next_dispatch_message(
+        self, row: SearchCadenceSetting, next_dispatch_at: datetime
+    ) -> MessageRef | None:
+        """Why a failed run is not retried before the next slot.
+
+        A failed run keeps the slot it claimed, so the family runs again at the
+        next slot of its own cadence and not at once. Without that sentence a
+        row reads as if a short cadence had skipped a long gap.
+        """
+        if row.last_run_outcome != "failed" or row.last_run_at is None:
+            return None
+        return MessageRef(
+            "search_cadence.next_dispatch.after_failed_run",
+            {
+                "at": row.last_run_at,
+                "cadence": row.cadence_seconds,
+                "next": next_dispatch_at,
+            },
+        )
 
     def _missing_default(self, family: SearchFamily) -> SearchCadenceSetting:
         logger.warning(

@@ -93,6 +93,42 @@ async def test_readonly_can_get_but_cannot_put_and_last_run_is_null(
     assert denied.status_code == 403
 
 
+async def test_a_failed_last_run_says_why_the_next_run_waits(db_session, db_schema) -> None:
+    await _seed(db_session)
+    failed = await db_session.get(
+        SearchCadenceSetting, SearchFamily.CATCHALL_SENDERS.value
+    )
+    assert failed is not None
+    failed.last_slot_start = datetime(2026, 11, 4, 19, 0, tzinfo=UTC)
+    failed.last_run_at = datetime(2026, 11, 4, 19, 24, tzinfo=UTC)
+    failed.last_run_outcome = "failed"
+    await db_session.commit()
+
+    client = _client(
+        db_schema,
+        Principal(subject="viewer", permissions=frozenset({"read:*"})),
+    )
+    response = client.get("/api/v1/admin/search-cadence")
+    assert response.status_code == 200, response.text
+    by_family = {item["family"]: item for item in response.json()}
+    row = by_family[SearchFamily.CATCHALL_SENDERS.value]
+    assert row["last_run"]["outcome"] == "failed"
+    assert row["next_dispatch_reason_code"] == (
+        "search_cadence.next_dispatch.after_failed_run"
+    )
+    assert row["next_dispatch_reason"] is not None
+    assert "2026-11-04 19:24:00 UTC" in row["next_dispatch_reason"]
+    # The cadence the scheduler claims slots at is 1 h here (`_seed`), not the
+    # 5-minute bucket the page shows beside it.
+    assert row["cadence_seconds"] == 3600
+    assert row["next_dispatch_reason_params"]["cadence"] == {
+        "kind": "duration",
+        "seconds": 3600,
+    }
+    # A row whose last run did not fail carries no reason.
+    assert by_family[SearchFamily.PHASE_A_VOLUME.value]["next_dispatch_reason"] is None
+
+
 async def test_admin_validation_not_found_update_and_audit(db_session, db_schema) -> None:
     await _seed(db_session)
     client = _client(

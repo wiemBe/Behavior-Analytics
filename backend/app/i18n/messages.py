@@ -4582,6 +4582,24 @@ REGISTRY: tuple[MessageSpec, ...] = (
         {"reasons": [MessageRef("search.aql.empty", {})]},
     ),
     # --- end MSG-8b ---
+    # --- FIX-44: why a failed search-cadence run waits for its next slot (English only, D-45) ---
+    # A failed run keeps the slot it claimed: the family runs again at the next slot of its own
+    # cadence, not at once. The row carries this only while its last run failed.
+    _msg(
+        "search_cadence.next_dispatch.after_failed_run",
+        "The run at {at} failed; the family runs again at its next {cadence} slot, {next}, "
+        "and is not retried before it.",
+        {
+            "at": ParamSpec(ParamKind.TIMESTAMP),
+            "cadence": ParamSpec(ParamKind.DURATION),
+            "next": ParamSpec(ParamKind.TIMESTAMP),
+        },
+        {
+            "at": datetime(2026, 11, 4, 19, 24, tzinfo=UTC),
+            "cadence": 300,
+            "next": datetime(2026, 11, 4, 19, 27, tzinfo=UTC),
+        },
+    ),
     # --- MSG-8c: a history step yielded while waiting for an Ariel permit -------------------
     _msg(
         "history.deferred.no_permit",

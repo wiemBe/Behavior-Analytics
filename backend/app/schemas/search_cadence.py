@@ -7,6 +7,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.models.enums import SearchCadence, SearchFamily
+from app.schemas.messages import MessageParamValue
 
 
 class SearchCadenceUpdate(BaseModel):
@@ -35,6 +36,11 @@ class SearchCadenceOut(CadenceOut):
     allowed_cadences_seconds: list[int]
     last_slot_start: datetime | None
     next_dispatch_at: datetime
+    # Set only while the last run failed: the next run is the next slot of the
+    # same cadence, not a retry at once. `next_dispatch_reason_code` is stable.
+    next_dispatch_reason: str | None = None
+    next_dispatch_reason_code: str | None = None
+    next_dispatch_reason_params: dict[str, MessageParamValue] | None = None
     updated_at: datetime
     updated_by: str | None
     last_run: SearchCadenceLastRunOut | None

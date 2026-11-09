@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.deps import SessionDep, SettingsDep, requires
 from app.api.request_meta import client_ip
+from app.i18n.messages import render
 from app.models.enums import SearchCadence, SearchFamily
 from app.models.search_cadence import SearchCadenceSetting
 from app.schemas.search_cadence import (
@@ -43,6 +44,9 @@ def _as_out(
             buckets_collected=row.last_run_buckets,
             split_count=row.last_run_splits,
         )
+    next_dispatch_at = service.next_dispatch_at(row, now)
+    reason_message = service.next_dispatch_message(row, next_dispatch_at)
+    reason_wire = reason_message.to_wire() if reason_message is not None else None
     return SearchCadenceOut(
         family=family,
         enabled=family_enabled(family, settings),
@@ -51,7 +55,14 @@ def _as_out(
         bucket_seconds=bucket_seconds(family, settings),
         settle_seconds=settings.search_cadence_settle_seconds,
         last_slot_start=row.last_slot_start,
-        next_dispatch_at=service.next_dispatch_at(row, now),
+        next_dispatch_at=next_dispatch_at,
+        next_dispatch_reason=(
+            render(reason_message) if reason_message is not None else None
+        ),
+        next_dispatch_reason_code=reason_wire["code"] if reason_wire is not None else None,
+        next_dispatch_reason_params=(
+            reason_wire["params"] if reason_wire is not None else None
+        ),
         updated_at=row.updated_at,
         updated_by=row.updated_by,
         last_run=last_run,
