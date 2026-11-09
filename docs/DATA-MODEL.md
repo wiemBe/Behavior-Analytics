@@ -3,7 +3,7 @@
 Behavior Analytics stores inventory, aggregates, baselines, incidents and operational state in
 PostgreSQL. Time-series tables use TimescaleDB. It does not persist raw QRadar events.
 
-At this revision the SQLAlchemy metadata contains 78 tables. Fifteen are TimescaleDB hypertables:
+At this revision the SQLAlchemy metadata contains 100 tables. Fifteen are TimescaleDB hypertables:
 
 - `log_source_metric`
 - `search_result_metric`
@@ -23,6 +23,12 @@ At this revision the SQLAlchemy metadata contains 78 tables. Fifteen are Timesca
 
 The authoritative model registry is `backend/app/models/__init__.py`; additive Alembic migrations
 materialize and evolve the schema.
+
+`entity_mention` is the regular-table lookup index for the entity timeline. It stores typed,
+normalized IP, host and user values that bounded aggregate or incident rows already named; it does
+not store raw events. Its parent reference is textual because mentions can point to several table
+families, while its instance foreign key cascades when a console is removed. Values longer than 255
+characters are not recorded and are never truncated into a different entity.
 
 ## Measurement comes before verdict
 
