@@ -3049,8 +3049,11 @@ set_env_version() { # set_env_version VERSION
 release_notes_fields() { # release_notes_fields TEXT -> version<TAB>min_from
   local text=$1 front version min_from count
   [ "$(printf '%s\n' "$text" | sed -n '1p')" = "---" ] || return 1
+  # awk reads to the end instead of exiting at the closing `---`: an early exit would
+  # close the pipe while printf is still writing a large release-note body, and under
+  # `pipefail` printf's SIGPIPE (141) would refuse the upgrade.
   front=$(printf '%s\n' "$text" \
-    | awk 'NR == 1 {next} /^---[[:space:]]*$/ {found=1; exit} {print}
+    | awk 'NR == 1 {next} found {next} /^---[[:space:]]*$/ {found=1; next} {print}
         END {if (!found) exit 1}') || return 1
   count=$(printf '%s\n' "$front" | grep -c '^version:[[:space:]]*' || true)
   [ "$count" -eq 1 ] || return 1
