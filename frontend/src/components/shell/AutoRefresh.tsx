@@ -32,6 +32,27 @@ import {
 
 export type RefreshChoice = "off" | "1" | "5";
 
+/** The browser's remembered choice (SOC-15a). Per browser, so a localStorage that is missing,
+ *  blocked or holding anything else leaves the default, Off. */
+export const REFRESH_STORAGE_KEY = "qradar-dash.refresh";
+
+function storedChoice(): RefreshChoice {
+  try {
+    const v = window.localStorage.getItem(REFRESH_STORAGE_KEY);
+    return v === "1" || v === "5" ? v : "off";
+  } catch {
+    return "off";
+  }
+}
+
+function storeChoice(choice: RefreshChoice) {
+  try {
+    window.localStorage.setItem(REFRESH_STORAGE_KEY, choice);
+  } catch {
+    // The choice then lasts for this page view only.
+  }
+}
+
 const PERIOD_MS: Record<Exclude<RefreshChoice, "off">, number> = {
   "1": 60_000,
   "5": 300_000,
@@ -127,6 +148,8 @@ export function AutoRefresh({ onRefresh }: { onRefresh?: () => void }) {
 
   useEffect(() => {
     setLast(new Date());
+    // After mount, never during render: the server render and hydration both say Off.
+    setChoice(storedChoice());
     setVisible(!document.hidden);
     const onVisibility = () => setVisible(!document.hidden);
     document.addEventListener("visibilitychange", onVisibility);
@@ -162,7 +185,11 @@ export function AutoRefresh({ onRefresh }: { onRefresh?: () => void }) {
         id={selectId}
         className="topbar-select"
         value={choice}
-        onChange={(e) => setChoice(e.target.value as RefreshChoice)}
+        onChange={(e) => {
+          const next = e.target.value as RefreshChoice;
+          setChoice(next);
+          storeChoice(next);
+        }}
       >
         <option value="off">{t("off")}</option>
         <option value="1">{t("oneMinute")}</option>

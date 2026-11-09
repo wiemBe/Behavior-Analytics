@@ -53,5 +53,15 @@
     "label": "Copy a link to this view",
     "copied": "Link copied",
     "failed": "The browser did not allow copying. Copy the address from the address bar instead."
+  },
+  "listKeys": {
+    "label": "Keys",
+    "next": "next row",
+    "previous": "previous row",
+    "open": "open",
+    "clear": "clear",
+    "position": "Row {n} of {total}: {label}",
+    "last": "Row {n} of {total} is the last on this page. Use the page links below the table for more.",
+    "cleared": "Row mark cleared"
   }
 }
