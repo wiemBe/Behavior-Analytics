@@ -18,7 +18,7 @@
     "caption": "Search families with their cadence, bucket width, worst-case delay, last run, next run and searches sent in the last run. Times are UTC.",
     "family": "Family",
     "cadence": "Cadence",
-    "bucket": "Bucket",
+    "bucket": "Bucket width",
     "noBuckets": "— = no buckets",
     "worstCase": "Worst-case detection delay",
     "formula": "cadence + bucket + settle",
@@ -30,6 +30,7 @@
     "notRun": "Not run since upgrade",
     "noRunYet": "No run yet",
     "nextRunOff": "This family is off, so it has no next run.",
+    "notRetried": "Not retried after the failed run.",
     "nextRunNone": "This family has not run, and no future run is scheduled.",
     "notCounted": "not counted",
     "notCountedTitle": "This family does not count its searches yet",
@@ -38,7 +39,7 @@
     "forbidden": "Your role cannot change search cadence (permission admin:search_cadence).",
     "notesLabel": "How to read the table",
     "noteCadence": "Cadence changes when a family searches, not its bucket width.",
-    "noteExplanation": "A dash in Bucket means the family has no buckets.",
+    "noteExplanation": "Bucket width is the span of one stored bucket, not how often the family searches; a dash means the family has no buckets.",
     "noteMissing": "“Not run since upgrade” and “Not counted” are missing measurements, not zero."
   },
   "delay": {

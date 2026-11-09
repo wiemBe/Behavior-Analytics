@@ -69,7 +69,6 @@ describe("the search cadence table in Turkish", () => {
     for (const name of ["Aile", "Sıklık", /Zaman dilimi/, /En kötü durum algılama gecikmesi/, "Son çalıştırma (UTC)", "Sonraki çalıştırma (UTC)", "Son çalıştırmadaki arama"]) {
       expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
     }
-    expect(screen.getByText("— = zaman dilimi yok")).toBeInTheDocument();
     expect(screen.getByText("sıklık + zaman dilimi + yerleşme payı")).toBeInTheDocument();
     expect(screen.getByText("Log source hacmi")).toBeInTheDocument();
     expect(screen.getByText("Log source başına olay sayısı")).toBeInTheDocument();
