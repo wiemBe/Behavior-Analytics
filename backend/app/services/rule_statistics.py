@@ -64,7 +64,7 @@ SILENT_ITEM_CAP = 500
 _BENCHMARK_LABEL = MessageRef("rule_statistics.cost.label")
 _BENCHMARK_UNIT = MessageRef("rule_statistics.cost.unit")
 _SILENT_EXCLUDED = MessageRef("rule_statistics.silent.excluded")
-_NO_COMPLETE_WINDOW = MessageRef("rule_statistics.top.no_complete_window")
+NO_COMPLETE_WINDOW_MESSAGE = MessageRef("rule_statistics.top.no_complete_window")
 
 BENCHMARK_LABEL = render(_BENCHMARK_LABEL)
 BENCHMARK_UNIT = render(_BENCHMARK_UNIT)
@@ -102,11 +102,6 @@ def message_wire(
         return None, None
     wire = message.to_wire()
     return message.code, cast("dict[str, MessageParamValue]", wire["params"])
-
-
-# The private spellings that `tests/unit/test_msg2_messages.py` imports; same objects.
-_window_message = window_message
-_wire = message_wire
 
 
 class RuleStatisticsService:
@@ -168,7 +163,7 @@ class RuleStatisticsService:
                 by_events=True,
             )
         elif top_reason is None:  # pragma: no cover - complete implies a window
-            top_message = _NO_COMPLETE_WINDOW
+            top_message = NO_COMPLETE_WINDOW_MESSAGE
             top_reason = render(top_message)
 
         silent_code, silent_params = message_wire(silent_message)
