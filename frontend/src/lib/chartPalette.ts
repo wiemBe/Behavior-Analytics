@@ -17,6 +17,12 @@ export const CHART_TOKENS = {
   gap: "--chart-gap",
   anomaly: "--chart-anomaly",
   marker: "--chart-marker",
+  // The EMA overlay lines, one categorical token per period (never a status hue).
+  // `--chart-cat-1` is left out: it is the observed line's own colour.
+  ema3: "--chart-cat-2",
+  ema5: "--chart-cat-3",
+  ema10: "--chart-cat-4",
+  ema20: "--chart-cat-5",
   // Status hues, for marks that ARE those statuses: a failed run, a breached
   // threshold, a query-version change.
   crit: "--crit",

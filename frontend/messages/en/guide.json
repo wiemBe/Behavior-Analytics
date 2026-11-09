@@ -240,6 +240,9 @@
           "p": "The detail page repeats **Observed EPS**, **Expected EPS**, **Deviation** and **Last event**, then draws **Observed volume** against the expected band. **Data quality** holds **Baseline quality** and **Collection health**: **Latest collected interval**, **Collection lag**, **Intervals in window** and **QRadar log source status**. **Anomalies** lists the active incidents and the recently closed ones. **Technical detail** holds the seasonal baseline cells and the metric buckets. **Inventory detail** opens the log source."
         },
         {
+          "p": "The **EMA 3**, **EMA 5**, **EMA 10** and **EMA 20** buttons above the chart overlay exponential moving averages of the observed line. The periods are counted in buckets, and the legend gives each one's span in time. Several can be on at once; all are off until you switch them on, and the browser remembers your choice. An average is drawn in your browser from the observed series for display only. It takes no part in detection, and it stops at a bucket that was not fully observed rather than bridging the gap."
+        },
+        {
           "p": "The header states **Monitoring disabled** or **Maintenance mode** when either applies. A source with no baseline is not judged, and its page says so."
         }
       ],

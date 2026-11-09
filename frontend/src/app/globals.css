@@ -1812,6 +1812,31 @@ pre {
 .chart-note {
   margin: var(--sp-2) 0 0;
 }
+/* The EMA overlay lines: thin and solid, one categorical token per period. */
+.chart-key-ema {
+  /* Two pixels so the hue reads at 16 px; the line itself is drawn at 1. */
+  border-top: 2px solid var(--chart-cat-2);
+}
+.chart-key-ema-3 {
+  border-top-color: var(--chart-cat-2);
+}
+.chart-key-ema-5 {
+  border-top-color: var(--chart-cat-3);
+}
+.chart-key-ema-10 {
+  border-top-color: var(--chart-cat-4);
+}
+.chart-key-ema-20 {
+  border-top-color: var(--chart-cat-5);
+}
+.chart-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
 
 /* --- utilities -------------------------------------------------------------- */
 
@@ -3120,6 +3145,7 @@ td.cell-name.ips-source-cell {
 }
 /* The active chip is told apart by weight and a stronger border, not by a hue. */
 .range-chip[aria-current="true"],
+.range-chip[aria-pressed="true"],
 .main a.range-chip[aria-current="true"],
 .main a.facet[aria-current="true"] {
   color: var(--text);

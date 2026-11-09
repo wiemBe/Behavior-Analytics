@@ -352,7 +352,8 @@
       "expected": "Expected: {value} EPS",
       "collection": "Collection: {meaning}",
       "anomalous": "Anomalous interval: {label}",
-      "anomalyFallback": "anomaly"
+      "anomalyFallback": "anomaly",
+      "ema": "EMA {period}: {value} EPS"
     },
     "axis": {
       "time": "Time (UTC)",
@@ -368,7 +369,16 @@
       "anomaly": "Anomalous interval",
       "transition": "Lifecycle transition"
     },
-    "note": "Gaps in the observed line are intervals that were not fully collected. They are not zero traffic."
+    "note": "Gaps in the observed line are intervals that were not fully collected. They are not zero traffic.",
+    "ema": {
+      "group": "Exponential moving averages, periods in buckets",
+      "label": "EMA",
+      "toggle": "EMA {period}",
+      "key": "EMA {period} · {span}",
+      "notEnough": "not enough consecutive buckets",
+      "note": "EMA lines are drawn in your browser from the observed series. They do not take part in detection; a line stops at a bucket that was not fully observed.",
+      "summary": "Moving-average overlays on: {periods}. Each stops at a bucket that was not fully observed."
+    }
   },
   "scoreStatus": {
     "OK": "OK",
