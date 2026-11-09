@@ -871,7 +871,16 @@ def _log_source_stale_threshold_seconds(collection_interval_seconds: int) -> int
 
 
 async def detect_stale_log_source_collection(instance_name: str | None = None) -> dict:
-    """Open/resolve one deduplicated alert per stale log-source metric collector."""
+    """Open/resolve one deduplicated alert per stale log-source metric collector.
+
+    Two states are not judged, so the alert never claims a health verdict the data
+    cannot support. A console with no monitored source has nothing its collection
+    could protect: the alert is resolved if one was open, and the run reports
+    `no_monitored_sources`. A console registered less than the stale threshold ago
+    that has neither a successful nor a failed run yet is still in its first-run
+    window: the run reports `awaiting_first_run` and opens nothing. A failing
+    collector is stale at once, grace or not.
+    """
 
     async def run(
         session: AsyncSession, instance: QRadarInstance, _: QRadarProvider | None
@@ -887,7 +896,43 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
             if not acquired:
                 return {"status": "skipped_locked", "duration_ms": 0}
 
+            fingerprint = compute_fingerprint(
+                source_type="qradar_instance",
+                source_id=instance.id,
+                condition="log_source_collection_stale",
+            )
+            alerts = AlertService(session)
+            dispatcher = NotificationDispatcher(
+                session, notifiers={}, policy=default_policy()
+            )
             now = datetime.now(UTC)
+
+            # One statement, never a count per source: the alert asks only whether
+            # there is anything whose silence this collection could confirm.
+            monitored_source_id = await session.scalar(
+                select(LogSource.id)
+                .where(
+                    LogSource.instance_id == instance.id,
+                    LogSource.monitoring_enabled.is_(True),
+                )
+                .limit(1)
+            )
+            if monitored_source_id is None:
+                resolved = await alerts.resolve_by_fingerprint(
+                    fingerprint,
+                    actor="system:log-source-collection-monitor",
+                    reason_message=MessageRef("alert.log_source_collection.recovered"),
+                )
+                if resolved is not None and resolved.transition is not None:
+                    await dispatcher.enqueue(resolved.alert, resolved.transition)
+                return {
+                    "status": "ok",
+                    "stale": False,
+                    "judged": False,
+                    "reason": "no_monitored_sources",
+                    "duration_ms": int((time.perf_counter() - started) * 1000),
+                }
+
             watermark = await session.scalar(
                 select(CollectionWatermark).where(
                     CollectionWatermark.instance_id == instance.id,
@@ -901,6 +946,23 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
                 int((now - last_run).total_seconds()) if last_run is not None else None
             )
             failures = watermark.consecutive_failures if watermark is not None else 0
+            registered_at = instance.created_at
+            if registered_at.tzinfo is None:
+                registered_at = registered_at.replace(tzinfo=UTC)
+            awaiting_first_run = (
+                last_run is None
+                and failures == 0
+                and (now - registered_at).total_seconds() < threshold_seconds
+            )
+            if awaiting_first_run:
+                return {
+                    "status": "ok",
+                    "stale": False,
+                    "judged": False,
+                    "reason": "awaiting_first_run",
+                    "duration_ms": int((time.perf_counter() - started) * 1000),
+                }
+
             stale = (
                 last_run is None
                 or age_seconds is None
@@ -908,15 +970,6 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
                 or failures > 0
             )
 
-            fingerprint = compute_fingerprint(
-                source_type="qradar_instance",
-                source_id=instance.id,
-                condition="log_source_collection_stale",
-            )
-            alerts = AlertService(session)
-            dispatcher = NotificationDispatcher(
-                session, notifiers={}, policy=default_policy()
-            )
             transition = None
             if stale:
                 title_message = MessageRef(
@@ -972,6 +1025,7 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
             return {
                 "status": "ok",
                 "stale": stale,
+                "judged": True,
                 "age_seconds": age_seconds,
                 "consecutive_failures": failures,
                 "transition": str(transition) if transition is not None else None,
