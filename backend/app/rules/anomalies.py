@@ -2,8 +2,9 @@
 
 No session, no clock, no I/O. The engine (a later slice) loads the window rows, the metric
 rows and the inventory facts, builds the frozen contexts below, and gets back an
-`AnomalyEvidence` in the shape every other family returns. Message codes are not registered
-yet: the sentences are uncoded English (the registry belongs to a later slice).
+`AnomalyEvidence` in the shape every other family returns. Every sentence carries a
+`rule.detector.*` reference from `app.i18n.messages`, rendered to the same English the
+uncoded sentence printed before the catalog (SOC-6g).
 
 What a verdict may rest on comes from the declared requirement in
 `app.anomaly.capabilities.RULE_DETECTORS`, applied by `rule_verdict_scope` to the evidence
@@ -38,12 +39,28 @@ from app.anomaly import statistics as rstats
 from app.anomaly.capabilities import rule_verdict_scope
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient
 from app.anomaly.seasonal import CellSummary, summarize_cell
+from app.i18n.messages import MessageRef, render
 from app.models.enums import DetectorSignal, RobustScoreStatus, RuleAnomalyType, Severity
 from app.models.rule import RuleMatchWindowStatus
 from app.rules.matches import floor_to_window, match_evidence
 from app.waf.measurement import WafVerdictScope
 
 EVIDENCE_VERSION = 1
+
+#: A sentence as a detector holds it: a registry reference, or uncoded English. Every sentence
+#: this module writes is coded; the plain form stays for a shared sentence with no code.
+Reason = MessageRef | str
+
+
+def _ref(name: str, **params: object) -> MessageRef:
+    return MessageRef(f"rule.detector.{name}", params)
+
+
+def _split(reason: Reason) -> tuple[str, MessageRef | None]:
+    if isinstance(reason, MessageRef):
+        return render(reason), reason
+    return reason, None
+
 
 #: Silence: consecutive proven-zero windows before the incident opens (D-60: 3).
 SILENCE_WINDOWS = 3
@@ -156,7 +173,7 @@ def _by_start(windows: Sequence[WindowFact]) -> dict[datetime, WindowFact]:
 
 def _skip(
     detector: RuleAnomalyType,
-    reason: str,
+    reason: Reason,
     *,
     start: datetime,
     end: datetime,
@@ -170,7 +187,10 @@ def _skip(
     disabled, monitoring off, dependency): the engine may resolve an open incident for
     `disabled` and `dependency_disabled`; every other skip holds it.
     """
-    ev = insufficient(detector, interval_start=start, interval_end=end, reason=reason)
+    text, message = _split(reason)
+    ev = insufficient(
+        detector, interval_start=start, interval_end=end, reason=text, reason_message=message
+    )
     ev.extra = {"skip": code, "applicable": applicable, "evidence_version": EVIDENCE_VERSION}
     ev.extra.update(extra)
     return ev
@@ -190,8 +210,7 @@ def _subject_gate(
     if decision.scope is not WafVerdictScope.FULL:
         return _skip(
             detector,
-            f"Not judged: this rule's type ({subject.rule_type or 'unknown'}) does not give "
-            "exact match counts, so a window cannot prove how many times it matched.",
+            _ref("not_exact", rule_type=subject.rule_type or "unknown"),
             start=start,
             end=end,
             code="not_exact",
@@ -199,10 +218,18 @@ def _subject_gate(
             match_evidence=evidence.value,
         )
     if not subject.enabled:
-        at = f" at {_utc(inventory_watermark):%Y-%m-%d %H:%M} UTC" if inventory_watermark else ""
+        if inventory_watermark is None:
+            return _skip(
+                detector,
+                _ref("disabled_no_sync"),
+                start=start,
+                end=end,
+                code="disabled",
+                applicable=False,
+            )
         return _skip(
             detector,
-            f"Not judged: the inventory sync{at} shows this rule disabled.",
+            _ref("disabled_with_sync", synced_at=_utc(inventory_watermark)),
             start=start,
             end=end,
             code="disabled",
@@ -211,7 +238,7 @@ def _subject_gate(
     if not subject.health_monitoring_enabled:
         return _skip(
             detector,
-            "Not judged: health monitoring is switched off for this rule.",
+            _ref("monitoring_off"),
             start=start,
             end=end,
             code="monitoring_off",
@@ -220,8 +247,7 @@ def _subject_gate(
     if subject.disabled_dependencies:
         return _skip(
             detector,
-            "Not judged: a stored building-block dependency of this rule is disabled "
-            f"(QRadar ids {', '.join(str(i) for i in subject.disabled_dependencies)}).",
+            _ref("dependency_disabled", ids=list(subject.disabled_dependencies)),
             start=start,
             end=end,
             code="dependency_disabled",
@@ -230,8 +256,7 @@ def _subject_gate(
     if subject.unobserved_dependencies:
         return _skip(
             detector,
-            "No verdict: a stored dependency of this rule is not in the inventory "
-            f"(QRadar ids {', '.join(str(i) for i in subject.unobserved_dependencies)}).",
+            _ref("dependency_unobserved", ids=list(subject.unobserved_dependencies)),
             start=start,
             end=end,
             code="dependency_unobserved",
@@ -239,8 +264,7 @@ def _subject_gate(
     if inventory_watermark is None or _utc(inventory_watermark) < end:
         return _skip(
             detector,
-            "No verdict: the inventory was last synced before this window ended, so the "
-            "enabled flag may be from an earlier sync.",
+            _ref("stale_inventory"),
             start=start,
             end=end,
             code="stale_inventory",
@@ -259,20 +283,19 @@ def _window_gate(
 ) -> AnomalyEvidence[RuleAnomalyType] | None:
     """Refuse a judged window that is not settled or not usable at all."""
     if end > _utc(settled_until):
-        return _skip(detector, "No verdict: this window has not settled yet.", start=start,
-                     end=end, code="not_settled")
+        return _skip(detector, _ref("not_settled"), start=start, end=end, code="not_settled")
     kind = _kind(fact, width)
     if kind is _Kind.MISSING:
-        text = "no collection record exists for this window"
+        reason: MessageRef = _ref("window_missing")
     elif kind is _Kind.WRONG_WIDTH:
-        text = f"it was collected at another window width than the current {width} s"
+        reason = _ref("window_wrong_width", width=width)
     elif kind is _Kind.FAILED:
-        text = "its collection failed or was skipped"
+        reason = _ref("window_failed")
     else:
         return None
     return _skip(
         detector,
-        f"No verdict: {text}.",
+        reason,
         start=start,
         end=end,
         code=f"window_{kind.value.lower()}",
@@ -375,20 +398,23 @@ def detect_silence(ctx: SilenceContext) -> AnomalyEvidence[RuleAnomalyType]:
     if kind is _Kind.TRUNCATED:
         # Silence never reads a TRUNCATED window: a rule cut off cannot be told from a
         # rule that matched zero.
-        return _skip(det, "No verdict: this window was truncated, so an absent rule is not a "
-                     "measured zero.", start=start, end=end, code="window_truncated")
+        return _skip(det, _ref("silence_truncated"), start=start, end=end,
+                     code="window_truncated")
     if kind in (_Kind.COUNT, _Kind.PARTIAL_COUNT):
         assert fact is not None and fact.matched_events is not None
         if kind is _Kind.PARTIAL_COUNT:
             # A row in a TRUNCATED window proves firing, but the window is not whole.
-            return _skip(det, "No verdict: this window was truncated.", start=start, end=end,
+            return _skip(det, _ref("silence_truncated_with_row"), start=start, end=end,
                          code="window_truncated")
+        count = fact.matched_events
+        text, message = _split(_ref("matched_count", count=count))
         return healthy(
             det,
             interval_start=start,
             interval_end=end,
-            observed=float(fact.matched_events),
-            reason=f"The rule matched {fact.matched_events} events in this window.",
+            observed=float(count),
+            reason=text,
+            reason_message=message,
         )
 
     # A proven zero. Count the run of proven zeros that ends here, up to the open threshold.
@@ -434,6 +460,18 @@ def detect_silence(ctx: SilenceContext) -> AnomalyEvidence[RuleAnomalyType]:
     presence = (sum(1 for v in values if v > 0) / len(values)) if tally.is_complete else None
     facts["median"] = median
     facts["nonzero_fraction"] = presence
+    if median is not None and presence is not None:
+        reason_ref = _ref(
+            "silence_proven_zero",
+            windows=run,
+            width=width,
+            days=th.silence_baseline_days,
+            median=median,
+            presence=presence * 100,
+        )
+    else:
+        reason_ref = _ref("silence_proven_zero_open", windows=run, width=width)
+    text, message = _split(reason_ref)
     return AnomalyEvidence(
         anomaly_type=det,
         signal=DetectorSignal.ANOMALOUS,
@@ -448,16 +486,9 @@ def detect_silence(ctx: SilenceContext) -> AnomalyEvidence[RuleAnomalyType]:
         interval_start=streak_start,
         interval_end=end,
         confidence=round(presence, 3) if presence is not None else 0.5,
-        reason=(
-            f"Proven zero matches in {run} consecutive window(s) of {width} s"
-            + (
-                f"; the preceding {th.silence_baseline_days} days had a median of "
-                f"{median:g} matched events per window, matching in {presence:.0%} of windows."
-                if median is not None and presence is not None
-                else "; the incident is open and its stability is not re-tested."
-            )
-        ),
+        reason=text,
         extra=facts,
+        reason_message=message,
     )
 
 
@@ -476,37 +507,40 @@ def _stability_gate(
     kw: dict[str, Any] = {"start": streak_start, "end": end}
     held = [t for t in (subject.qradar_created_at, subject.first_seen_at) if t is not None]
     if not held or all(_utc(t) > span_start for t in held):
-        return _skip(det, "No verdict: the inventory has not held this rule for "
-                     f"{th.silence_baseline_days} days.", code="rule_too_new", **kw)
+        return _skip(det, _ref("rule_too_new", days=th.silence_baseline_days),
+                     code="rule_too_new", **kw)
     if any(span_start <= _utc(t) <= end for t in subject.transitions):
-        return _skip(det, "No verdict: this rule was enabled or disabled inside the baseline or "
-                     "the streak (the platform noticed the flip at the recorded sync time).",
-                     code="state_transition", **kw)
+        return _skip(det, _ref("state_transition"), code="state_transition", **kw)
     modified = subject.qradar_modified_at
     if modified is not None and _utc(modified) >= span_start:
         return _skip(
             det,
-            f"QRadar reports this rule modified at {_utc(modified):%Y-%m-%d %H:%M} UTC. "
-            "Match anomalies are not judged across that time.",
+            _ref("modified", modified_at=_utc(modified)),
             code="modified", modified_at=_utc(modified).isoformat(), **kw,
         )
     if not tally.is_complete:
         return _skip(
             det,
-            f"No verdict: the {th.silence_baseline_days} days before the streak are not fully "
-            f"measured ({tally.missing} missing, {tally.truncated} truncated, {tally.failed} "
-            f"failed, {tally.wrong_width} of another width, of {tally.expected} windows).",
+            _ref(
+                "baseline_incomplete",
+                days=th.silence_baseline_days,
+                missing=tally.missing,
+                truncated=tally.truncated,
+                failed=tally.failed,
+                wrong_width=tally.wrong_width,
+                expected=tally.expected,
+            ),
             code="baseline_incomplete", baseline_tally=tally.__dict__, **kw,
         )
     median = rstats.median(values)
     if median < th.silence_min_median:
-        return _skip(det, f"No verdict: the median is {median:g} matched events per window, "
-                     f"below the minimum of {th.silence_min_median:g}; not a stable match rate.",
+        return _skip(det, _ref("median_below_floor", median=median,
+                               minimum=th.silence_min_median),
                      code="median_below_floor", median=median, **kw)
     presence = sum(1 for v in values if v > 0) / len(values)
     if presence < th.silence_min_presence:
-        return _skip(det, f"No verdict: the rule matched in {presence:.0%} of windows, below "
-                     f"{th.silence_min_presence:.0%}; not a stable match rate.",
+        return _skip(det, _ref("presence_below_gate", presence=presence * 100,
+                               minimum=th.silence_min_presence * 100),
                      code="presence_below_gate", nonzero_fraction=presence, **kw)
     facts["median"] = median
     return None
@@ -598,8 +632,7 @@ def detect_storm(ctx: StormContext) -> AnomalyEvidence[RuleAnomalyType]:
         return refused
     key = slot_of(start, width)
     if key is None:
-        return _skip(det, f"No verdict: a window of {width} s does not tile a UTC day, so there "
-                     "is no weekday and slot to compare against.", start=start, end=end,
+        return _skip(det, _ref("width_does_not_tile", width=width), start=start, end=end,
                      code="width_does_not_tile")
     refused = _window_gate(
         det, ctx.window, width, start=start, end=end, settled_until=ctx.settled_until
@@ -609,22 +642,22 @@ def detect_storm(ctx: StormContext) -> AnomalyEvidence[RuleAnomalyType]:
     fact = ctx.window
     kind = _kind(fact, width)
     if kind is _Kind.TRUNCATED:
-        return _skip(det, "No verdict: this window was truncated and holds no row for this rule, "
-                     "so its count is neither zero nor small.", start=start, end=end,
+        return _skip(det, _ref("storm_truncated"), start=start, end=end,
                      code="window_truncated")
     observed = float(fact.matched_events or 0) if fact is not None else 0.0
     if kind is _Kind.ZERO:
+        text, message = _split(_ref("storm_zero"))
         return healthy(
             det,
             interval_start=start,
             interval_end=end,
             observed=0.0,
-            reason="The rule had a measured zero in this window; a zero is not a storm.",
+            reason=text,
+            reason_message=message,
         )
     cell = ctx.cell
     if cell is None or cell.summary is None or (cell.weekday, cell.slot) != key:
-        return _skip(det, "No verdict: there is no baseline cell for this weekday and slot.",
-                     start=start, end=end, code="cell_missing",
+        return _skip(det, _ref("cell_missing"), start=start, end=end, code="cell_missing",
                      weekday=key[0], slot=key[1])
     summary = cell.summary
     base: dict[str, Any] = {
@@ -645,9 +678,8 @@ def detect_storm(ctx: StormContext) -> AnomalyEvidence[RuleAnomalyType]:
     if not cell.is_reliable:
         ev = _skip(
             det,
-            f"Still learning: this weekday and slot has {summary.sample_count} sample(s) over "
-            f"{cell.visits} week(s); {th.storm_min_samples} samples over {th.storm_min_visits} "
-            "weeks are needed.",
+            _ref("cell_thin", samples=summary.sample_count, weeks=cell.visits,
+                 min_samples=th.storm_min_samples, min_weeks=th.storm_min_visits),
             start=start, end=end, code="cell_thin", **base,
         )
         ev.sample_count = summary.sample_count
@@ -656,26 +688,24 @@ def detect_storm(ctx: StormContext) -> AnomalyEvidence[RuleAnomalyType]:
     expected = summary.median
     delta = observed - expected
 
-    def calm(reason: str, **more: Any) -> AnomalyEvidence[RuleAnomalyType]:
+    def calm(reason: Reason, **more: Any) -> AnomalyEvidence[RuleAnomalyType]:
+        text, message = _split(reason)
         ev = healthy(det, interval_start=start, interval_end=end, observed=observed,
-                     expected=expected, reason=reason)
+                     expected=expected, reason=text, reason_message=message)
         ev.sample_count = summary.sample_count
         ev.extra = {**base, **more}
         return ev
 
     if observed < th.storm_min_window_events:
         return calm(
-            f"{observed:g} matched events is below the "
-            f"{th.storm_min_window_events:g}-event floor for a storm."
+            _ref("below_event_floor", observed=observed, minimum=th.storm_min_window_events)
         )
     ratio = rstats.ratio(observed, expected)
     if ratio is not None and ratio < th.storm_ratio:
-        return calm(f"{ratio:.2f}x the usual count is below the {th.storm_ratio:g}x line.",
-                    ratio=ratio)
+        return calm(_ref("ratio_below", ratio=ratio, threshold=th.storm_ratio), ratio=ratio)
     if delta < th.storm_min_absolute_delta:
         return calm(
-            f"A rise of {delta:g} events is below the "
-            f"{th.storm_min_absolute_delta:g}-event line.",
+            _ref("rise_below_delta", delta=delta, minimum=th.storm_min_absolute_delta),
             ratio=ratio,
         )
     score, status = rstats.robust_z_with_status(
@@ -683,16 +713,15 @@ def detect_storm(ctx: StormContext) -> AnomalyEvidence[RuleAnomalyType]:
     )
     if status is RobustScoreStatus.OK:
         if score < th.deviation_z:
-            return calm(f"Robust z {score:.2f} is below the threshold {th.deviation_z:g}.",
+            return calm(_ref("z_below", score=score, threshold=th.deviation_z),
                         ratio=ratio, robust_z=round(score, 3))
-        basis = f"robust z {score:.2f} against a threshold of {th.deviation_z:g}"
+        basis = _ref("basis_z", score=score, threshold=th.deviation_z)
         magnitude = score
     else:
         upper = max(summary.p95, expected)
         if observed <= upper:
-            return calm(f"The count is within the usual 95th percentile ({upper:g}) and the "
-                        "spread is too small for a z-score.", ratio=ratio)
-        basis = f"above the usual 95th percentile of {upper:g} (spread too small for a z-score)"
+            return calm(_ref("mad_within_p95", bound=upper), ratio=ratio)
+        basis = _ref("basis_above_p95", bound=upper)
         magnitude = th.deviation_z
     extra = {
         **base,
@@ -704,15 +733,17 @@ def detect_storm(ctx: StormContext) -> AnomalyEvidence[RuleAnomalyType]:
     }
     if ratio is not None:
         extra["ratio"] = ratio
-        reason = (
-            f"{observed:g} matched events against a usual {expected:g} for this weekday and "
-            f"slot ({ratio:.1f}x, +{delta:g}); {basis}."
+        reason_ref = _ref(
+            "storm_fired",
+            observed=observed,
+            expected=expected,
+            ratio=ratio,
+            delta=delta,
+            basis=basis,
         )
     else:
-        reason = (
-            f"{observed:g} matched events where the usual count for this weekday and slot is 0; "
-            f"{basis}."
-        )
+        reason_ref = _ref("storm_fired_zero_median", observed=observed, basis=basis)
+    text, message = _split(reason_ref)
     return AnomalyEvidence(
         anomaly_type=det,
         signal=DetectorSignal.ANOMALOUS,
@@ -729,6 +760,7 @@ def detect_storm(ctx: StormContext) -> AnomalyEvidence[RuleAnomalyType]:
         interval_start=start,
         interval_end=end,
         confidence=min(1.0, summary.sample_count / (2 * th.storm_min_samples)),
-        reason=reason,
+        reason=text,
         extra=extra,
+        reason_message=message,
     )

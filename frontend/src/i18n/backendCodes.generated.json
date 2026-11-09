@@ -9960,6 +9960,640 @@
     "sample_english_params": {},
     "template": "Offense collection is stale, so the rules that fired in this window may be incomplete."
   },
+  "rule.detector.baseline_incomplete": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "failed": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "missing": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "truncated": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "wrong_width": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 7,
+      "expected": 168,
+      "failed": 0,
+      "missing": 1,
+      "truncated": 0,
+      "wrong_width": 0
+    },
+    "sample_english": "No verdict: the 7 days before the streak are not fully measured (1 missing, 0 truncated, 0 failed, 0 of another width, of 168 windows).",
+    "sample_english_params": {
+      "days": "7",
+      "expected": "168",
+      "failed": "0",
+      "missing": "1",
+      "truncated": "0",
+      "wrong_width": "0"
+    },
+    "template": "No verdict: the {days} days before the streak are not fully measured ({missing} missing, {truncated} truncated, {failed} failed, {wrong_width} of another width, of {expected} windows)."
+  },
+  "rule.detector.basis_above_p95": {
+    "params": {
+      "bound": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "bound": 230.0
+    },
+    "sample_english": "above the usual 95th percentile of 230 (spread too small for a z-score)",
+    "sample_english_params": {
+      "bound": "230"
+    },
+    "template": "above the usual 95th percentile of {bound} (spread too small for a z-score)"
+  },
+  "rule.detector.basis_z": {
+    "params": {
+      "score": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "score": 6.2,
+      "threshold": 3.5
+    },
+    "sample_english": "robust z 6.20 against a threshold of 3.5",
+    "sample_english_params": {
+      "score": "6.20",
+      "threshold": "3.5"
+    },
+    "template": "robust z {score} against a threshold of {threshold}"
+  },
+  "rule.detector.below_event_floor": {
+    "params": {
+      "minimum": {
+        "kind": "number"
+      },
+      "observed": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "minimum": 20.0,
+      "observed": 19.0
+    },
+    "sample_english": "19 matched events is below the 20-event floor for a storm.",
+    "sample_english_params": {
+      "minimum": "20",
+      "observed": "19"
+    },
+    "template": "{observed} matched events is below the {minimum}-event floor for a storm."
+  },
+  "rule.detector.cell_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No verdict: there is no baseline cell for this weekday and slot.",
+    "sample_english_params": {},
+    "template": "No verdict: there is no baseline cell for this weekday and slot."
+  },
+  "rule.detector.cell_thin": {
+    "params": {
+      "min_samples": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "min_weeks": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "samples": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "weeks": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "min_samples": 8,
+      "min_weeks": 4,
+      "samples": 7,
+      "weeks": 7
+    },
+    "sample_english": "Still learning: this weekday and slot has 7 sample(s) over 7 week(s); 8 samples over 4 weeks are needed.",
+    "sample_english_params": {
+      "min_samples": "8",
+      "min_weeks": "4",
+      "samples": "7",
+      "weeks": "7"
+    },
+    "template": "Still learning: this weekday and slot has {samples} sample(s) over {weeks} week(s); {min_samples} samples over {min_weeks} weeks are needed."
+  },
+  "rule.detector.dependency_disabled": {
+    "params": {
+      "ids": {
+        "kind": "list"
+      }
+    },
+    "sample": {
+      "ids": {
+        "items": [
+          9,
+          10
+        ],
+        "kind": "list"
+      }
+    },
+    "sample_english": "Not judged: a stored building-block dependency of this rule is disabled (QRadar ids 9, 10).",
+    "sample_english_params": {
+      "ids": "9, 10"
+    },
+    "template": "Not judged: a stored building-block dependency of this rule is disabled (QRadar ids {ids})."
+  },
+  "rule.detector.dependency_unobserved": {
+    "params": {
+      "ids": {
+        "kind": "list"
+      }
+    },
+    "sample": {
+      "ids": {
+        "items": [
+          9
+        ],
+        "kind": "list"
+      }
+    },
+    "sample_english": "No verdict: a stored dependency of this rule is not in the inventory (QRadar ids 9).",
+    "sample_english_params": {
+      "ids": "9"
+    },
+    "template": "No verdict: a stored dependency of this rule is not in the inventory (QRadar ids {ids})."
+  },
+  "rule.detector.disabled_no_sync": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Not judged: the inventory sync shows this rule disabled.",
+    "sample_english_params": {},
+    "template": "Not judged: the inventory sync shows this rule disabled."
+  },
+  "rule.detector.disabled_with_sync": {
+    "params": {
+      "synced_at": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "synced_at": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "Not judged: the inventory sync at 2026-10-17 12:00 UTC shows this rule disabled.",
+    "sample_english_params": {
+      "synced_at": "2026-10-17 12:00 UTC"
+    },
+    "template": "Not judged: the inventory sync at {synced_at} shows this rule disabled."
+  },
+  "rule.detector.mad_within_p95": {
+    "params": {
+      "bound": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "bound": 100.0
+    },
+    "sample_english": "The count is within the usual 95th percentile (100) and the spread is too small for a z-score.",
+    "sample_english_params": {
+      "bound": "100"
+    },
+    "template": "The count is within the usual 95th percentile ({bound}) and the spread is too small for a z-score."
+  },
+  "rule.detector.matched_count": {
+    "params": {
+      "count": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "count": 4
+    },
+    "sample_english": "The rule matched 4 events in this window.",
+    "sample_english_params": {
+      "count": "4"
+    },
+    "template": "The rule matched {count} events in this window."
+  },
+  "rule.detector.median_below_floor": {
+    "params": {
+      "median": {
+        "kind": "number"
+      },
+      "minimum": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "median": 0.5,
+      "minimum": 1.0
+    },
+    "sample_english": "No verdict: the median is 0.5 matched events per window, below the minimum of 1; not a stable match rate.",
+    "sample_english_params": {
+      "median": "0.5",
+      "minimum": "1"
+    },
+    "template": "No verdict: the median is {median} matched events per window, below the minimum of {minimum}; not a stable match rate."
+  },
+  "rule.detector.modified": {
+    "params": {
+      "modified_at": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "modified_at": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "QRadar reports this rule modified at 2026-10-17 12:00 UTC. Match anomalies are not judged across that time.",
+    "sample_english_params": {
+      "modified_at": "2026-10-17 12:00 UTC"
+    },
+    "template": "QRadar reports this rule modified at {modified_at}. Match anomalies are not judged across that time."
+  },
+  "rule.detector.monitoring_off": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Not judged: health monitoring is switched off for this rule.",
+    "sample_english_params": {},
+    "template": "Not judged: health monitoring is switched off for this rule."
+  },
+  "rule.detector.not_exact": {
+    "params": {
+      "rule_type": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "rule_type": "COMMON"
+    },
+    "sample_english": "Not judged: this rule's type (COMMON) does not give exact match counts, so a window cannot prove how many times it matched.",
+    "sample_english_params": {
+      "rule_type": "COMMON"
+    },
+    "template": "Not judged: this rule's type ({rule_type}) does not give exact match counts, so a window cannot prove how many times it matched."
+  },
+  "rule.detector.not_settled": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No verdict: this window has not settled yet.",
+    "sample_english_params": {},
+    "template": "No verdict: this window has not settled yet."
+  },
+  "rule.detector.presence_below_gate": {
+    "params": {
+      "minimum": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "presence": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "minimum": 80.0,
+      "presence": 60.0
+    },
+    "sample_english": "No verdict: the rule matched in 60% of windows, below 80%; not a stable match rate.",
+    "sample_english_params": {
+      "minimum": "80",
+      "presence": "60"
+    },
+    "template": "No verdict: the rule matched in {presence}% of windows, below {minimum}%; not a stable match rate."
+  },
+  "rule.detector.ratio_below": {
+    "params": {
+      "ratio": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "ratio": 1.5,
+      "threshold": 2.0
+    },
+    "sample_english": "1.50x the usual count is below the 2x line.",
+    "sample_english_params": {
+      "ratio": "1.50",
+      "threshold": "2"
+    },
+    "template": "{ratio}x the usual count is below the {threshold}x line."
+  },
+  "rule.detector.rise_below_delta": {
+    "params": {
+      "delta": {
+        "kind": "number"
+      },
+      "minimum": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "delta": 30.0,
+      "minimum": 50.0
+    },
+    "sample_english": "A rise of 30 events is below the 50-event line.",
+    "sample_english_params": {
+      "delta": "30",
+      "minimum": "50"
+    },
+    "template": "A rise of {delta} events is below the {minimum}-event line."
+  },
+  "rule.detector.rule_too_new": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 7
+    },
+    "sample_english": "No verdict: the inventory has not held this rule for 7 days.",
+    "sample_english_params": {
+      "days": "7"
+    },
+    "template": "No verdict: the inventory has not held this rule for {days} days."
+  },
+  "rule.detector.silence_proven_zero": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "median": {
+        "kind": "number"
+      },
+      "presence": {
+        "kind": "number",
+        "precision": 0,
+        "style": "fixed"
+      },
+      "width": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "windows": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 7,
+      "median": 5.0,
+      "presence": 80.0,
+      "width": 3600,
+      "windows": 3
+    },
+    "sample_english": "Proven zero matches in 3 consecutive window(s) of 3600 s; the preceding 7 days had a median of 5 matched events per window, matching in 80% of windows.",
+    "sample_english_params": {
+      "days": "7",
+      "median": "5",
+      "presence": "80",
+      "width": "3600",
+      "windows": "3"
+    },
+    "template": "Proven zero matches in {windows} consecutive window(s) of {width} s; the preceding {days} days had a median of {median} matched events per window, matching in {presence}% of windows."
+  },
+  "rule.detector.silence_proven_zero_open": {
+    "params": {
+      "width": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "windows": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "width": 3600,
+      "windows": 3
+    },
+    "sample_english": "Proven zero matches in 3 consecutive window(s) of 3600 s; the incident is open and its stability is not re-tested.",
+    "sample_english_params": {
+      "width": "3600",
+      "windows": "3"
+    },
+    "template": "Proven zero matches in {windows} consecutive window(s) of {width} s; the incident is open and its stability is not re-tested."
+  },
+  "rule.detector.silence_truncated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No verdict: this window was truncated, so an absent rule is not a measured zero.",
+    "sample_english_params": {},
+    "template": "No verdict: this window was truncated, so an absent rule is not a measured zero."
+  },
+  "rule.detector.silence_truncated_with_row": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No verdict: this window was truncated.",
+    "sample_english_params": {},
+    "template": "No verdict: this window was truncated."
+  },
+  "rule.detector.stale_inventory": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No verdict: the inventory was last synced before this window ended, so the enabled flag may be from an earlier sync.",
+    "sample_english_params": {},
+    "template": "No verdict: the inventory was last synced before this window ended, so the enabled flag may be from an earlier sync."
+  },
+  "rule.detector.state_transition": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No verdict: this rule was enabled or disabled inside the baseline or the streak (the platform noticed the flip at the recorded sync time).",
+    "sample_english_params": {},
+    "template": "No verdict: this rule was enabled or disabled inside the baseline or the streak (the platform noticed the flip at the recorded sync time)."
+  },
+  "rule.detector.storm_fired": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "rule.detector.basis_z",
+          "rule.detector.basis_above_p95"
+        ]
+      },
+      "delta": {
+        "kind": "number"
+      },
+      "expected": {
+        "kind": "number"
+      },
+      "observed": {
+        "kind": "number"
+      },
+      "ratio": {
+        "kind": "number",
+        "precision": 1,
+        "style": "fixed"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "rule.detector.basis_z",
+        "params": {
+          "score": 6.2,
+          "threshold": 3.5
+        }
+      },
+      "delta": 300.0,
+      "expected": 100.0,
+      "observed": 400.0,
+      "ratio": 4.0
+    },
+    "sample_english": "400 matched events against a usual 100 for this weekday and slot (4.0x, +300); robust z 6.20 against a threshold of 3.5.",
+    "sample_english_params": {
+      "basis": "robust z 6.20 against a threshold of 3.5",
+      "delta": "300",
+      "expected": "100",
+      "observed": "400",
+      "ratio": "4.0"
+    },
+    "template": "{observed} matched events against a usual {expected} for this weekday and slot ({ratio}x, +{delta}); {basis}."
+  },
+  "rule.detector.storm_fired_zero_median": {
+    "params": {
+      "basis": {
+        "kind": "ref",
+        "ref_codes": [
+          "rule.detector.basis_z",
+          "rule.detector.basis_above_p95"
+        ]
+      },
+      "observed": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "basis": {
+        "code": "rule.detector.basis_above_p95",
+        "params": {
+          "bound": 4.0
+        }
+      },
+      "observed": 80.0
+    },
+    "sample_english": "80 matched events where the usual count for this weekday and slot is 0; above the usual 95th percentile of 4 (spread too small for a z-score).",
+    "sample_english_params": {
+      "basis": "above the usual 95th percentile of 4 (spread too small for a z-score)",
+      "observed": "80"
+    },
+    "template": "{observed} matched events where the usual count for this weekday and slot is 0; {basis}."
+  },
+  "rule.detector.storm_truncated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No verdict: this window was truncated and holds no row for this rule, so its count is neither zero nor small.",
+    "sample_english_params": {},
+    "template": "No verdict: this window was truncated and holds no row for this rule, so its count is neither zero nor small."
+  },
+  "rule.detector.storm_zero": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The rule had a measured zero in this window; a zero is not a storm.",
+    "sample_english_params": {},
+    "template": "The rule had a measured zero in this window; a zero is not a storm."
+  },
+  "rule.detector.width_does_not_tile": {
+    "params": {
+      "width": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "width": 7000
+    },
+    "sample_english": "No verdict: a window of 7000 s does not tile a UTC day, so there is no weekday and slot to compare against.",
+    "sample_english_params": {
+      "width": "7000"
+    },
+    "template": "No verdict: a window of {width} s does not tile a UTC day, so there is no weekday and slot to compare against."
+  },
+  "rule.detector.window_failed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No verdict: its collection failed or was skipped.",
+    "sample_english_params": {},
+    "template": "No verdict: its collection failed or was skipped."
+  },
+  "rule.detector.window_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No verdict: no collection record exists for this window.",
+    "sample_english_params": {},
+    "template": "No verdict: no collection record exists for this window."
+  },
+  "rule.detector.window_wrong_width": {
+    "params": {
+      "width": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "width": 3600
+    },
+    "sample_english": "No verdict: it was collected at another window width than the current 3600 s.",
+    "sample_english_params": {
+      "width": "3600"
+    },
+    "template": "No verdict: it was collected at another window width than the current {width} s."
+  },
+  "rule.detector.z_below": {
+    "params": {
+      "score": {
+        "kind": "number",
+        "precision": 2,
+        "style": "fixed"
+      },
+      "threshold": {
+        "kind": "number"
+      }
+    },
+    "sample": {
+      "score": 1.23,
+      "threshold": 3.5
+    },
+    "sample_english": "Robust z 1.23 is below the threshold 3.5.",
+    "sample_english_params": {
+      "score": "1.23",
+      "threshold": "3.5"
+    },
+    "template": "Robust z {score} is below the threshold {threshold}."
+  },
   "rule.match_anomaly.cell_learning": {
     "params": {
       "minimum_samples": {

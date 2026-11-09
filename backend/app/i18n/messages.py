@@ -460,6 +460,11 @@ _ESTIMATE_REASONS = (
 )
 _SOURCE_WORDS = ("history.words.source_one", "history.words.source_many")
 
+# Shorthands of the SOC-6g rule-detector block. A general number prints as `:g`, the spelling
+# the rule detectors' f-strings used. The bases a storm's firing sentence ends with.
+_NUM = ParamSpec(ParamKind.NUMBER)
+_RULE_BASES = ("rule.detector.basis_z", "rule.detector.basis_above_p95")
+
 
 def _msg(
     code: str,
@@ -5560,10 +5565,258 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "is reported.",
         count={"covered": 3, "window": 28},
     ),
+    # --- SOC-6g: the rule detectors' own sentences (app/rules/anomalies.py, design §3-§4). ---
+    # The English is byte-identical to the f-strings SOC-6c left uncoded. A percent stays a
+    # fixed-point number with a literal "%" because the shared percent spelling inserts U+00A0
+    # and would change these sentences.
+    _text(
+        "rule.detector.not_exact",
+        "Not judged: this rule's type ({rule_type}) does not give exact match counts, so a "
+        "window cannot prove how many times it matched.",
+        rule_type="COMMON",
+    ),
+    _mixed(
+        "rule.detector.disabled_with_sync",
+        "Not judged: the inventory sync at {synced_at} shows this rule disabled.",
+        synced_at=(_MINUTE, _PW_AT),
+    ),
+    _fixed(
+        "rule.detector.disabled_no_sync",
+        "Not judged: the inventory sync shows this rule disabled.",
+    ),
+    _fixed(
+        "rule.detector.monitoring_off",
+        "Not judged: health monitoring is switched off for this rule.",
+    ),
+    MessageSpec(
+        code="rule.detector.dependency_disabled",
+        template=(
+            "Not judged: a stored building-block dependency of this rule is disabled "
+            "(QRadar ids {ids})."
+        ),
+        params={"ids": ParamSpec(ParamKind.LIST)},
+        sample={"ids": [9, 10]},
+    ),
+    MessageSpec(
+        code="rule.detector.dependency_unobserved",
+        template=(
+            "No verdict: a stored dependency of this rule is not in the inventory "
+            "(QRadar ids {ids})."
+        ),
+        params={"ids": ParamSpec(ParamKind.LIST)},
+        sample={"ids": [9]},
+    ),
+    _fixed(
+        "rule.detector.stale_inventory",
+        "No verdict: the inventory was last synced before this window ended, so the "
+        "enabled flag may be from an earlier sync.",
+    ),
+    _fixed("rule.detector.not_settled", "No verdict: this window has not settled yet."),
+    _fixed(
+        "rule.detector.window_missing",
+        "No verdict: no collection record exists for this window.",
+    ),
+    _mixed(
+        "rule.detector.window_wrong_width",
+        "No verdict: it was collected at another window width than the current {width} s.",
+        count={"width": 3600},
+    ),
+    _fixed("rule.detector.window_failed", "No verdict: its collection failed or was skipped."),
+    _fixed(
+        "rule.detector.silence_truncated",
+        "No verdict: this window was truncated, so an absent rule is not a measured zero.",
+    ),
+    _fixed("rule.detector.silence_truncated_with_row", "No verdict: this window was truncated."),
+    _mixed(
+        "rule.detector.matched_count",
+        "The rule matched {count} events in this window.",
+        count={"count": 4},
+    ),
+    MessageSpec(
+        code="rule.detector.silence_proven_zero",
+        template=(
+            "Proven zero matches in {windows} consecutive window(s) of {width} s; the preceding "
+            "{days} days had a median of {median} matched events per window, matching in "
+            "{presence}% of windows."
+        ),
+        params={
+            "windows": _PLAIN,
+            "width": _PLAIN,
+            "days": _PLAIN,
+            "median": _NUM,
+            "presence": _FIXED0,
+        },
+        sample={"windows": 3, "width": 3600, "days": 7, "median": 5.0, "presence": 80.0},
+    ),
+    MessageSpec(
+        code="rule.detector.silence_proven_zero_open",
+        template=(
+            "Proven zero matches in {windows} consecutive window(s) of {width} s; the incident "
+            "is open and its stability is not re-tested."
+        ),
+        params={"windows": _PLAIN, "width": _PLAIN},
+        sample={"windows": 3, "width": 3600},
+    ),
+    _mixed(
+        "rule.detector.rule_too_new",
+        "No verdict: the inventory has not held this rule for {days} days.",
+        count={"days": 7},
+    ),
+    _fixed(
+        "rule.detector.state_transition",
+        "No verdict: this rule was enabled or disabled inside the baseline or the streak "
+        "(the platform noticed the flip at the recorded sync time).",
+    ),
+    _mixed(
+        "rule.detector.modified",
+        "QRadar reports this rule modified at {modified_at}. Match anomalies are not judged "
+        "across that time.",
+        modified_at=(_MINUTE, _PW_AT),
+    ),
+    _mixed(
+        "rule.detector.baseline_incomplete",
+        "No verdict: the {days} days before the streak are not fully measured "
+        "({missing} missing, {truncated} truncated, {failed} failed, {wrong_width} of another "
+        "width, of {expected} windows).",
+        count={
+            "days": 7,
+            "missing": 1,
+            "truncated": 0,
+            "failed": 0,
+            "wrong_width": 0,
+            "expected": 168,
+        },
+    ),
+    MessageSpec(
+        code="rule.detector.median_below_floor",
+        template=(
+            "No verdict: the median is {median} matched events per window, below the minimum "
+            "of {minimum}; not a stable match rate."
+        ),
+        params={"median": _NUM, "minimum": _NUM},
+        sample={"median": 0.5, "minimum": 1.0},
+    ),
+    MessageSpec(
+        code="rule.detector.presence_below_gate",
+        template=(
+            "No verdict: the rule matched in {presence}% of windows, below {minimum}%; "
+            "not a stable match rate."
+        ),
+        params={"presence": _FIXED0, "minimum": _FIXED0},
+        sample={"presence": 60.0, "minimum": 80.0},
+    ),
+    _mixed(
+        "rule.detector.width_does_not_tile",
+        "No verdict: a window of {width} s does not tile a UTC day, so there is no weekday "
+        "and slot to compare against.",
+        count={"width": 7000},
+    ),
+    _fixed(
+        "rule.detector.storm_truncated",
+        "No verdict: this window was truncated and holds no row for this rule, so its count "
+        "is neither zero nor small.",
+    ),
+    _fixed(
+        "rule.detector.storm_zero",
+        "The rule had a measured zero in this window; a zero is not a storm.",
+    ),
+    _fixed(
+        "rule.detector.cell_missing",
+        "No verdict: there is no baseline cell for this weekday and slot.",
+    ),
+    _mixed(
+        "rule.detector.cell_thin",
+        "Still learning: this weekday and slot has {samples} sample(s) over {weeks} week(s); "
+        "{min_samples} samples over {min_weeks} weeks are needed.",
+        count={"samples": 7, "weeks": 7, "min_samples": 8, "min_weeks": 4},
+    ),
+    MessageSpec(
+        code="rule.detector.below_event_floor",
+        template="{observed} matched events is below the {minimum}-event floor for a storm.",
+        params={"observed": _NUM, "minimum": _NUM},
+        sample={"observed": 19.0, "minimum": 20.0},
+    ),
+    MessageSpec(
+        code="rule.detector.ratio_below",
+        template="{ratio}x the usual count is below the {threshold}x line.",
+        params={"ratio": _FIXED2, "threshold": _NUM},
+        sample={"ratio": 1.5, "threshold": 2.0},
+    ),
+    MessageSpec(
+        code="rule.detector.rise_below_delta",
+        template="A rise of {delta} events is below the {minimum}-event line.",
+        params={"delta": _NUM, "minimum": _NUM},
+        sample={"delta": 30.0, "minimum": 50.0},
+    ),
+    MessageSpec(
+        code="rule.detector.z_below",
+        template="Robust z {score} is below the threshold {threshold}.",
+        params={"score": _FIXED2, "threshold": _NUM},
+        sample={"score": 1.23, "threshold": 3.5},
+    ),
+    MessageSpec(
+        code="rule.detector.mad_within_p95",
+        template=(
+            "The count is within the usual 95th percentile ({bound}) and the spread is too "
+            "small for a z-score."
+        ),
+        params={"bound": _NUM},
+        sample={"bound": 100.0},
+    ),
+    MessageSpec(
+        code="rule.detector.basis_z",
+        template="robust z {score} against a threshold of {threshold}",
+        params={"score": _FIXED2, "threshold": _NUM},
+        sample={"score": 6.2, "threshold": 3.5},
+    ),
+    MessageSpec(
+        code="rule.detector.basis_above_p95",
+        template=(
+            "above the usual 95th percentile of {bound} (spread too small for a z-score)"
+        ),
+        params={"bound": _NUM},
+        sample={"bound": 230.0},
+    ),
+    MessageSpec(
+        code="rule.detector.storm_fired",
+        template=(
+            "{observed} matched events against a usual {expected} for this weekday and slot "
+            "({ratio}x, +{delta}); {basis}."
+        ),
+        params={
+            "observed": _NUM,
+            "expected": _NUM,
+            "ratio": _FIXED1,
+            "delta": _NUM,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_RULE_BASES),
+        },
+        sample={
+            "observed": 400.0,
+            "expected": 100.0,
+            "ratio": 4.0,
+            "delta": 300.0,
+            "basis": MessageRef("rule.detector.basis_z", {"score": 6.2, "threshold": 3.5}),
+        },
+    ),
+    MessageSpec(
+        code="rule.detector.storm_fired_zero_median",
+        template=(
+            "{observed} matched events where the usual count for this weekday and slot is 0; "
+            "{basis}."
+        ),
+        params={
+            "observed": _NUM,
+            "basis": ParamSpec(ParamKind.REF, ref_codes=_RULE_BASES),
+        },
+        sample={
+            "observed": 80.0,
+            "basis": MessageRef("rule.detector.basis_above_p95", {"bound": 4.0}),
+        },
+    ),
     # --- SOC-6d2: the rule-detail "Match anomalies" section (design §7.3). ---
-    # The detector sentences in app/rules/anomalies.py stay uncoded f-strings (SOC-6c).
-    # These codes are the section's own sentences. The route picks one from the
-    # detector's skip code; it does not re-decide the guard.
+    # These codes are the section's own sentences. The route picks one from the detector's
+    # skip code; it does not re-decide the guard. The detector's own sentence is
+    # `rule.detector.*` and travels as the evidence reference (SOC-6g).
     _fixed("rule.match_anomaly.collection_off", "Rule-match collection is off."),
     _fixed("rule.match_anomaly.no_window", "No match window has been recorded."),
     _text(

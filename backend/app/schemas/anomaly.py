@@ -692,9 +692,9 @@ class BehaviorSummaryOut(BaseModel):
     resolved_last_24h: int = 0
     recently_resolved: list[AnomalyListItem] = Field(default_factory=list)
     highest_deviation: list[AnomalyListItem] = Field(default_factory=list)
-    #: Active anomalies of all four families: the same population as
-    #: `GET /anomalies?active_only=true` without `since`, every active incident up to now
-    #: whatever its age. The Phase A fields above keep their own meaning.
+    #: Active anomalies of every family (log source, WAF, IPS, property watch, rule): the same
+    #: population as `GET /anomalies?active_only=true` without `since`, every active incident up
+    #: to now whatever its age. The Phase A fields above keep their own meaning.
     active_by_family: ActiveByFamily | None = None
 
 
@@ -1238,10 +1238,10 @@ class AnomalyHistogramOut(BaseModel):
     bucket_seconds: int
     #: The anomaly families the totals cover, so a client knows what was counted.
     #: Ordering: with no `subject_kind`, the list is
-    #: ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE", "PW_VALUE"]; with
+    #: ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE", "PW_VALUE", "RULE"]; with
     #: `subject_kind=IPS_ENTITY` it is ["IPS_ENTITY"]; with
     #: `subject_kind=IPS_SOURCE` it is ["IPS_SOURCE"]; with `subject_kind=LOG_SOURCE`,
-    #: `WAF_ENDPOINT` or `PW_VALUE` it is the single corresponding family.
+    #: `WAF_ENDPOINT`, `PW_VALUE` or `RULE` it is the single corresponding family.
     families: list[str]
     total: int
     #: Every hour of the range, in order, including the hours with no anomaly.
