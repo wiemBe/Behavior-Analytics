@@ -410,6 +410,20 @@ yardımcı imajın başvurusu kendi dosyasından okunur, betikte elle yazılı d
 defteri için önce `docker login ghcr.io` (`read:packages` token) çalıştırılır; çekme hatası imajı
 adıyla söyler.
 
+When no registry holds the images (a release without a push), build the five product images on the
+release host as `docs/tasks/REL-LOCAL.design.md` step 8 describes, then bundle them without pulling:
+
+```bash
+./qradar-dash bundle --local-images
+```
+
+The five `<prefix>/<service>:<version>` images must already be in the local Docker engine, carry
+`org.opencontainers.image.version` equal to `VERSION` and `org.opencontainers.image.revision`
+equal to `git rev-parse HEAD`, and the checkout must be a git work tree with no uncommitted changes
+to tracked files; otherwise the command refuses and writes nothing. The redis and secrets-helper
+digest pins are still pulled unless that exact reference is already local. MANIFEST records
+`images_source local` (or `registry` without the flag).
+
 `qradar-dash-<sürüm>-bundle.tar` şunları içerir:
 
 | Üye | Anlamı |

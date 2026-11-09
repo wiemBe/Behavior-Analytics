@@ -48,7 +48,7 @@ pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="bash is re
 PRODUCER_TOOLS = [
     "bash", "sh", "cat", "stat", "grep", "sed", "awk", "head", "tail", "sort", "tr", "dirname",
     "readlink", "uname", "mkdir", "rm", "date", "ls", "id", "env", "mktemp", "install", "tar",
-    "cp", "mv", "find", "sha256sum", "wc", "chmod",
+    "cp", "mv", "find", "sha256sum", "wc", "chmod", "git",
 ]
 
 # Runs before the base stub's own cases. Active only when $HOME/imgstate exists.
@@ -103,7 +103,19 @@ if [ -d "$S" ]; then
         val=$(lookup "$subject")
         if [ -n "$val" ]; then
           logit "$@"
-          [ "$3" != --format ] || printf '%s\n' "$val"
+          if [ "$3" = --format ]; then
+            if [[ $4 == *"Config.Labels"* ]]; then
+              # A label the image does not carry prints nothing, as a real inspect would
+              # print an empty or "<no value>" string.
+              label=$(printf '%s\n' "$4" | sed -n 's/.*Labels "\([^"]*\)".*/\1/p')
+              if [ -f "$S/labels.db" ]; then
+                awk -v r="$subject" -v l="$label" '$1 == r && $2 == l { print $3; exit }' \
+                  "$S/labels.db"
+              fi
+            else
+              printf '%s\n' "$val"
+            fi
+          fi
           exit 0
         fi
         if [[ $subject != sha256:* ]]; then logit "$@"; exit 1; fi
@@ -157,6 +169,7 @@ class Producer:
 
     def __init__(self, tmp_path: Path, *, version: str, prefix: str | None = None) -> None:
         self.version = version
+        self.prefix = prefix or DEFAULT_PREFIX
         self.root = tmp_path / f"producer-{version}"
         self.root.mkdir()
         self.home = tmp_path / f"producer-home-{version}"
@@ -185,6 +198,44 @@ class Producer:
 
     def flag(self, name: str, content: str = "") -> None:
         (self.home / "imgstate" / name).write_text(content)
+
+    def git_init(self) -> str:
+        """Make ROOT a git work tree with everything committed; returns the HEAD commit."""
+        git = shutil.which("git")
+        assert git, "git is required for --local-images"
+        who = ["-c", "user.name=Rel 15g", "-c", "user.email=rel15g@example.invalid"]
+
+        def run(*args: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(  # noqa: S603
+                [git, "-C", str(self.root), *args],
+                capture_output=True, text=True, check=True, timeout=60,
+            )
+
+        run("init", "-q")
+        run("add", "-A")
+        run(*who, "commit", "-q", "-m", "release checkout")
+        return run("rev-parse", "HEAD").stdout.strip()
+
+    def local_image(
+        self, ref: str, *, version: str | None = None, revision: str | None = None
+    ) -> None:
+        """Put REF in the stub's image store, carrying the OCI labels it is given."""
+        state = self.home / "imgstate"
+        digest = "sha256:" + hashlib.sha256(ref.encode()).hexdigest()
+        with (state / "local.db").open("a") as db:
+            db.write(f"{ref} {digest}\n{digest} {digest}\n")
+        with (state / "labels.db").open("a") as db:
+            if version is not None:
+                db.write(f"{ref} org.opencontainers.image.version {version}\n")
+            if revision is not None:
+                db.write(f"{ref} org.opencontainers.image.revision {revision}\n")
+
+    def local_images(
+        self, *, version: str | None = None, revision: str | None = None
+    ) -> None:
+        """Seed every product image as a local engine would hold it after a build."""
+        for ref in product_refs(self.prefix, self.version):
+            self.local_image(ref, version=version, revision=revision)
 
     def docker_calls(self) -> list[str]:
         log = self.home / "imgstate" / "argv.log"
@@ -232,12 +283,17 @@ def helper_reference() -> str:
     return match.group(1)
 
 
-def bundle_refs(prefix: str, version: str) -> list[str]:
-    """The references the bundle pulls and saves: five services, redis, the helper."""
+def product_refs(prefix: str, version: str) -> list[str]:
+    """The five version-tagged product images; the two digest pins are not these."""
     return [
         f"{prefix}/{name}:{version}"
         for name in ("postgres", "backend", "frontend", "proxy", "qradar-mcp")
-    ] + [redis_reference(), helper_reference()]
+    ]
+
+
+def bundle_refs(prefix: str, version: str) -> list[str]:
+    """The references the bundle pulls and saves: five services, redis, the helper."""
+    return [*product_refs(prefix, version), redis_reference(), helper_reference()]
 
 
 def plain_name(reference: str) -> str:
@@ -328,6 +384,7 @@ def test_bundle_has_exactly_the_designed_members_and_correct_sums(producer: Prod
     manifest = files["MANIFEST"].decode().splitlines()
     assert "version 0.1.0" in manifest
     assert f"image_prefix {DEFAULT_PREFIX}" in manifest
+    assert "images_source registry" in manifest
     images = [line.split() for line in manifest if line.startswith("image ")]
     assert [i[1] for i in images] == bundle_refs(DEFAULT_PREFIX, "0.1.0")
     assert all(re.fullmatch(r"sha256:[0-9a-f]{64}", i[2]) for i in images)
@@ -496,6 +553,196 @@ def test_bundle_without_a_pinned_helper_digest_is_refused(producer: Producer) ->
     assert result.returncode == 1
     assert "no SECRETS_HELPER_IMAGE pinned by digest" in result.stderr
     assert list(producer.out.iterdir()) == []
+
+
+# ---------------------------------------------- bundle --local-images (release without a registry)
+
+
+@pytest.fixture
+def local_producer(producer: Producer) -> Producer:
+    """A release checkout in git, with the five product images built locally from HEAD."""
+    revision = producer.git_init()
+    producer.local_images(version=producer.version, revision=revision)
+    return producer
+
+
+def local_bundle(producer: Producer) -> subprocess.CompletedProcess[str]:
+    return producer.run("bundle", "--local-images", "--output", str(producer.out))
+
+
+def local_bundle_path(producer: Producer) -> Path:
+    result = local_bundle(producer)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return producer.out / f"qradar-dash-{producer.version}-bundle.tar"
+
+
+def pull_lines(producer: Producer) -> list[str]:
+    return [call for call in producer.docker_calls() if call.startswith("pull ")]
+
+
+def test_local_images_never_pulls_a_product_and_records_images_source_local(
+    local_producer: Producer,
+) -> None:
+    # Only tracked files must be clean: an untracked scratch file is not part of the code.
+    (local_producer.root / "scratch-notes.txt").write_text("untracked\n")
+    result = local_bundle(local_producer)
+    assert result.returncode == 0, result.stdout + result.stderr
+    bundle = local_producer.out / f"qradar-dash-{local_producer.version}-bundle.tar"
+
+    refs = bundle_refs(DEFAULT_PREFIX, "0.1.0")
+    assert pull_lines(local_producer) == [f"pull {redis_reference()}",
+                                          f"pull {helper_reference()}"]
+    for ref in product_refs(DEFAULT_PREFIX, "0.1.0"):
+        assert f"Using {ref} from the local Docker engine" in result.stdout, ref
+    saves = [c for c in local_producer.docker_calls() if c.startswith("save ")]
+    assert len(saves) == 1 and saves[0].endswith(" ".join(refs))
+    manifest = manifest_text(bundle)
+    assert "\nimages_source local\n" in manifest
+    images = [line.split() for line in manifest.splitlines() if line.startswith("image ")]
+    assert [line[1] for line in images] == refs
+
+
+def test_local_images_refuses_a_product_image_missing_from_the_local_engine(
+    producer: Producer,
+) -> None:
+    revision = producer.git_init()
+    missing = product_refs(DEFAULT_PREFIX, "0.1.0")[2]
+    for ref in product_refs(DEFAULT_PREFIX, "0.1.0"):
+        if ref != missing:
+            producer.local_image(ref, version="0.1.0", revision=revision)
+
+    result = local_bundle(producer)
+
+    assert result.returncode == 1
+    assert f"{missing} is not in the local Docker engine" in result.stderr
+    assert "docs/tasks/REL-LOCAL.design.md step 8" in result.stderr
+    assert "nothing was written" in result.stderr
+    assert list(producer.out.iterdir()) == []
+    assert pull_lines(producer) == []
+
+
+def test_local_images_refuses_a_wrong_version_label(producer: Producer) -> None:
+    revision = producer.git_init()
+    producer.local_images(version="0.9.9", revision=revision)
+
+    result = local_bundle(producer)
+
+    assert result.returncode == 1
+    assert product_refs(DEFAULT_PREFIX, "0.1.0")[0] in result.stderr
+    assert "org.opencontainers.image.version" in result.stderr
+    assert "'0.9.9'" in result.stderr and "'0.1.0'" in result.stderr
+    assert "nothing was written" in result.stderr
+    assert list(producer.out.iterdir()) == []
+
+
+def test_local_images_refuses_a_wrong_revision_label(producer: Producer) -> None:
+    revision = producer.git_init()
+    producer.local_images(version="0.1.0", revision="0" * 40)
+
+    result = local_bundle(producer)
+
+    assert result.returncode == 1
+    assert product_refs(DEFAULT_PREFIX, "0.1.0")[0] in result.stderr
+    assert "org.opencontainers.image.revision" in result.stderr
+    assert "'0000000000000000000000000000000000000000'" in result.stderr
+    assert f"'{revision}'" in result.stderr
+    assert "nothing was written" in result.stderr
+    assert list(producer.out.iterdir()) == []
+
+
+def test_local_images_refuses_a_dirty_tracked_tree(local_producer: Producer) -> None:
+    compose = local_producer.root / "docker-compose.yml"
+    compose.write_text(compose.read_text() + "\n# edited after the images were built\n")
+
+    result = local_bundle(local_producer)
+
+    assert result.returncode == 1
+    assert "uncommitted changes to tracked files" in result.stderr
+    assert "nothing was written" in result.stderr
+    assert list(local_producer.out.iterdir()) == []
+    assert local_producer.docker_calls() == []
+
+
+def test_local_images_refuses_outside_a_git_work_tree(producer: Producer) -> None:
+    producer.local_images(version="0.1.0", revision="0" * 40)
+
+    result = local_bundle(producer)
+
+    assert result.returncode == 1
+    assert "not a git work tree" in result.stderr
+    assert "nothing was written" in result.stderr
+    assert list(producer.out.iterdir()) == []
+    assert producer.docker_calls() == []
+
+
+def test_local_images_reuses_a_third_party_pin_present_locally_and_pulls_a_missing_one(
+    local_producer: Producer,
+) -> None:
+    local_producer.local_image(redis_reference())  # present under that exact digest
+
+    local_bundle_path(local_producer)
+
+    # redis is reused; the helper is not local and is public, so it is pulled
+    assert pull_lines(local_producer) == [f"pull {helper_reference()}"]
+
+
+def test_local_images_without_the_flag_pulls_and_records_registry(producer: Producer) -> None:
+    bundle = producer.make()
+
+    assert pull_lines(producer) == [f"pull {ref}" for ref in bundle_refs(DEFAULT_PREFIX,
+                                                                       "0.1.0")]
+    assert "\nimages_source registry\n" in manifest_text(bundle)
+
+
+def test_bundle_help_and_unknown_option_name_local_images(producer: Producer) -> None:
+    helped = producer.run("bundle", "--help")
+    assert helped.returncode == 0
+    assert "--local-images" in helped.stdout
+
+    bad = producer.run("bundle", "--local-images=yes")
+    assert bad.returncode == 2
+    assert "--local-images" in bad.stderr
+
+
+def test_the_offline_reader_accepts_a_manifest_without_the_images_source_line(
+    consumer: Install, producer: Producer
+) -> None:
+    bundle = with_manifest(
+        producer.make(),
+        lambda text: "".join(
+            line for line in text.splitlines(keepends=True)
+            if not line.startswith("images_source")
+        ),
+    )
+
+    result = offline_install(consumer, bundle)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "bundle images loaded and checked against MANIFEST" in result.stdout
+
+
+def test_the_offline_reader_ignores_an_unknown_manifest_line(
+    consumer: Install, producer: Producer
+) -> None:
+    bundle = with_manifest(producer.make(), lambda text: text + "future_key value\n")
+
+    result = offline_install(consumer, bundle)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "bundle images loaded and checked against MANIFEST" in result.stdout
+
+
+def test_a_local_images_bundle_installs_offline(
+    consumer: Install, local_producer: Producer
+) -> None:
+    bundle = local_bundle_path(local_producer)
+    assert "images_source local" in manifest_text(bundle)
+
+    result = offline_install(consumer, bundle)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "bundle images loaded and checked against MANIFEST" in result.stdout
+    assert (consumer.root / ".qradar-dash" / "state.json").is_file()
 
 
 # ---------------------------------------------------------------- install --offline
