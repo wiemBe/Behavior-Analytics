@@ -29,7 +29,18 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, bindparam, select, text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    bindparam,
+    func,
+    or_,
+    select,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -216,6 +227,28 @@ class _Batch:
     open_by: dict[tuple[uuid.UUID, str], _Incident] = field(default_factory=dict)
     transitions: list[_Transition] = field(default_factory=list)
     alerts: list[_AlertOpen | _AlertResolve] = field(default_factory=list)
+
+
+@dataclass
+class RuleSectionRead:
+    """One rule, judged the way the engine would judge its newest window.
+
+    Built by ``RuleMatchEngine.read_rule``. The batch path does not use it.
+    ``judged_through`` is the end of the newest settled window, or None when
+    nothing has settled. ``silence`` and ``storm`` are None when no window
+    has been recorded.
+    """
+
+    rule_id: uuid.UUID
+    subject: RuleSubject
+    thresholds: RuleThresholds
+    watermark: datetime | None
+    any_window: bool
+    judged_start: datetime | None
+    judged_through: datetime | None
+    silence: AnomalyEvidence[RuleAnomalyType] | None
+    storm: AnomalyEvidence[RuleAnomalyType] | None
+    incidents: tuple[RuleAnomaly, ...]
 
 
 def _aware(value: datetime) -> datetime:
@@ -1422,6 +1455,478 @@ class RuleMatchEngine:
             for result in [*opened, *resolved]:
                 if result is not None and result.transition is not None:
                     await self._enqueuer.enqueue(result.alert, result.transition)
+
+    async def read_rule(self, rule_id: uuid.UUID) -> RuleSectionRead | None:
+        """The stored series of one rule, and the verdict each detector returns.
+
+        Same pure functions as ``_evidence``, on a series loaded for this rule
+        alone. The batch statements in ``evaluate`` are not used and are not
+        changed. A missing rule is None. No window means no verdict: the caller
+        says collection has not recorded one.
+        """
+        loaded = await self._load_one_rule(rule_id)
+        if loaded is None:
+            return None
+        rule, instance_id = loaded
+        thresholds = self._thresholds()
+        windows = await self._load_instance_windows(instance_id)
+        incidents = await self._load_rule_incidents(rule_id)
+        if not windows:
+            return RuleSectionRead(
+                rule_id=rule.id,
+                subject=rule.subject,
+                thresholds=thresholds,
+                watermark=None,
+                any_window=False,
+                judged_start=None,
+                judged_through=None,
+                silence=None,
+                storm=None,
+                incidents=incidents,
+            )
+        now = _aware(self._clock())
+        width = self.settings.rule_match_window_seconds
+        step = timedelta(seconds=width)
+        settled_until = now - timedelta(seconds=self.settings.rule_match_settle_lag_seconds)
+        judged_start, judged_through = _newest_window(windows, step, settled_until)
+        assert judged_start is not None
+        margin = timedelta(seconds=width * thresholds.silence_windows)
+        lookback_start = judged_start - timedelta(days=self.settings.rule_storm_lookback_days)
+        span_start = judged_start - timedelta(days=thresholds.silence_baseline_days) - margin
+        load_from = min(lookback_start, span_start)
+        judged_end = judged_start + step
+        transitions = await self._load_rule_transitions(rule.id, load_from, judged_end)
+        rule = _with_transitions(rule, transitions)
+        watermark = await self._load_watermark(instance_id)
+        metrics = await self._load_rule_metrics(rule.id, load_from, judged_start)
+        in_span = [
+            window
+            for window in windows
+            if load_from <= window.start <= judged_start
+        ]
+        series = _series_for(rule.id, in_span, metrics)
+        cells = await self._load_rule_cells(
+            instance_id,
+            rule.id,
+            lookback_start,
+            judged_start,
+            judged_end,
+            width,
+            thresholds,
+        )
+        silence_row = _open_for(incidents, RuleAnomalyType.RULE_SILENCE.value)
+        storm_row = _open_for(incidents, RuleAnomalyType.RULE_STORM.value)
+        silence = self._evidence(
+            rule,
+            RuleAnomalyType.RULE_SILENCE.value,
+            judged_start,
+            series,
+            cells,
+            watermark,
+            thresholds,
+            width,
+            settled_until,
+            incident_open=silence_row is not None,
+            streak=None if silence_row is None else _optional_dt(silence_row.anomaly_start),
+        )
+        storm = self._evidence(
+            rule,
+            RuleAnomalyType.RULE_STORM.value,
+            judged_start,
+            series,
+            cells,
+            watermark,
+            thresholds,
+            width,
+            settled_until,
+            incident_open=storm_row is not None,
+            streak=None if storm_row is None else _optional_dt(storm_row.anomaly_start),
+        )
+        return RuleSectionRead(
+            rule_id=rule.id,
+            subject=rule.subject,
+            thresholds=thresholds,
+            watermark=watermark,
+            any_window=True,
+            judged_start=judged_start,
+            judged_through=judged_through,
+            silence=silence,
+            storm=storm,
+            incidents=incidents,
+        )
+
+    async def _load_one_rule(
+        self, rule_id: uuid.UUID
+    ) -> tuple[_RuleRow, uuid.UUID] | None:
+        """The batch rule select, restricted to one id. The batch text is untouched."""
+        rows = (
+            await self.session.execute(
+                text(
+                    """
+                    -- rule-section rule
+                    SELECT
+                        r.instance_id,
+                        r.id, r.name, r.qradar_id, r.rule_type, r.enabled,
+                        r.is_building_block, r.health_monitoring_enabled,
+                        r.first_seen_at, r.qradar_created_at, r.qradar_modified_at,
+                        COALESCE(dep.disabled_ids, ARRAY[]::integer[]) AS disabled_ids,
+                        COALESCE(dep.unobserved_ids, ARRAY[]::integer[]) AS unobserved_ids,
+                        COALESCE(dep.dependency_count, 0) AS dependency_count
+                    FROM analytics_rule r
+                    LEFT JOIN LATERAL (
+                        SELECT
+                            array_agg(x.qid) FILTER (WHERE x.disabled) AS disabled_ids,
+                            array_agg(x.qid) FILTER (WHERE x.unobserved) AS unobserved_ids,
+                            count(*) AS dependency_count
+                        FROM (
+                            SELECT
+                                CASE
+                                    WHEN d.target_ref ~ '^[0-9]+$'
+                                    THEN CAST(d.target_ref AS integer)
+                                    ELSE -1
+                                END AS qid,
+                                (tgt.id IS NOT NULL AND tgt.enabled IS FALSE) AS disabled,
+                                (tgt.id IS NULL) AS unobserved
+                            FROM rule_dependency d
+                            LEFT JOIN analytics_rule tgt
+                              ON tgt.instance_id = r.instance_id
+                             AND tgt.qradar_id = CASE
+                                    WHEN d.target_ref ~ '^[0-9]+$'
+                                    THEN CAST(d.target_ref AS integer)
+                                    ELSE NULL
+                                 END
+                            WHERE d.rule_id = r.id
+                              AND d.source = 'EXPLICIT'
+                              AND d.kind = 'BUILDING_BLOCK'
+                        ) x
+                    ) dep ON true
+                    WHERE r.id = :rule_id
+                    """
+                ),
+                {"rule_id": rule_id},
+            )
+        ).mappings()
+        row = rows.first()
+        if row is None:
+            return None
+        return (
+            _RuleRow(
+                id=_uuid(row["id"]),
+                name=str(row["name"]),
+                subject=RuleSubject(
+                    qradar_id=int(row["qradar_id"]),
+                    rule_type=row["rule_type"] if row["rule_type"] is not None else None,
+                    enabled=bool(row["enabled"]),
+                    is_building_block=bool(row["is_building_block"]),
+                    health_monitoring_enabled=bool(row["health_monitoring_enabled"]),
+                    first_seen_at=_optional_dt(row["first_seen_at"]),
+                    qradar_created_at=_optional_dt(row["qradar_created_at"]),
+                    qradar_modified_at=_optional_dt(row["qradar_modified_at"]),
+                    disabled_dependencies=_ints(row["disabled_ids"]),
+                    unobserved_dependencies=_ints(row["unobserved_ids"]),
+                    dependency_count=int(row["dependency_count"] or 0),
+                ),
+            ),
+            _uuid(row["instance_id"]),
+        )
+
+    async def _load_instance_windows(self, instance_id: uuid.UUID) -> list[_WindowRow]:
+        """Every recorded window for the instance. One select, however many rows."""
+        rows = await self.session.execute(
+            text(
+                """
+                -- rule-section windows
+                SELECT window_start, window_seconds, status, origin, unknown_ids
+                FROM rule_match_window
+                WHERE instance_id = :instance_id
+                ORDER BY window_start
+                """
+            ),
+            {"instance_id": instance_id},
+        )
+        return [
+            _WindowRow(
+                start=_aware(row[0]),
+                window_seconds=int(row[1]),
+                status=str(row[2]),
+                origin=str(row[3]),
+                unknown_ids=int(row[4]),
+            )
+            for row in rows
+        ]
+
+    async def _load_rule_transitions(
+        self, rule_id: uuid.UUID, load_from: datetime, newest_end: datetime
+    ) -> tuple[datetime, ...]:
+        rows = await self.session.execute(
+            text(
+                """
+                -- rule-section transitions
+                SELECT observed_at
+                FROM rule_state_transition
+                WHERE rule_id = :rule_id
+                  AND observed_at >= :load_from
+                  AND observed_at <= :newest_end
+                """
+            ),
+            {"rule_id": rule_id, "load_from": load_from, "newest_end": newest_end},
+        )
+        return tuple(_aware(row[0]) for row in rows if row[0] is not None)
+
+    async def _load_rule_metrics(
+        self, rule_id: uuid.UUID, load_from: datetime, newest: datetime
+    ) -> dict[tuple[uuid.UUID, datetime], int]:
+        """This rule's metric rows. A missing row stays missing, as in the batch load."""
+        rows = await self.session.execute(
+            text(
+                """
+                -- rule-section metrics
+                SELECT bucket_start, matched_events
+                FROM rule_match_metric
+                WHERE rule_id = :rule_id
+                  AND bucket_start >= :load_from
+                  AND bucket_start <= :newest
+                """
+            ),
+            {"rule_id": rule_id, "load_from": load_from, "newest": newest},
+        )
+        return {
+            (rule_id, _aware(bucket)): int(matched)
+            for bucket, matched in rows
+            if matched is not None
+        }
+
+    async def _load_rule_cells(
+        self,
+        instance_id: uuid.UUID,
+        rule_id: uuid.UUID,
+        lookback_start: datetime,
+        newest: datetime,
+        newest_end: datetime,
+        width: int,
+        thresholds: RuleThresholds,
+    ) -> dict[tuple[uuid.UUID, int, int], RuleCell]:
+        """The batch storm summary, for this rule only.
+
+        Skipped when the width does not tile a day, the same condition as
+        ``_load_cells``, so a storm on that width is ``width_does_not_tile``
+        before it would read a cell. The batch statement is not this one.
+        """
+        if width <= 0 or _DAY_SECONDS % width != 0:
+            return {}
+        rows = (
+            await self.session.execute(
+                _statement(
+                    """
+                    -- rule-section storm
+                    WITH storm_rules AS (
+                        SELECT r.id AS rule_id
+                        FROM analytics_rule r
+                        WHERE r.id = :rule_id
+                          AND EXISTS (
+                              SELECT 1
+                              FROM rule_match_metric m
+                              WHERE m.rule_id = r.id
+                                AND m.bucket_start = ANY(CAST(:starts AS timestamptz[]))
+                          )
+                    ),
+                    samples AS (
+                        SELECT
+                            sr.rule_id,
+                            CAST(COALESCE(metric.matched_events, 0) AS double precision)
+                                AS value,
+                            CAST(
+                                EXTRACT(ISODOW FROM w.window_start AT TIME ZONE 'UTC')
+                                AS integer
+                            ) AS weekday,
+                            CAST(FLOOR(
+                                (
+                                    CAST(EXTRACT(HOUR FROM w.window_start
+                                        AT TIME ZONE 'UTC') AS integer) * 3600
+                                    + CAST(EXTRACT(MINUTE FROM w.window_start
+                                        AT TIME ZONE 'UTC') AS integer) * 60
+                                    + CAST(FLOOR(EXTRACT(SECOND FROM w.window_start
+                                        AT TIME ZONE 'UTC')) AS integer)
+                                ) / :width
+                            ) AS integer) AS slot,
+                            (
+                                CAST(EXTRACT(ISOYEAR FROM w.window_start
+                                    AT TIME ZONE 'UTC') AS integer) * 100
+                                + CAST(EXTRACT(WEEK FROM w.window_start
+                                    AT TIME ZONE 'UTC') AS integer)
+                            ) AS week_key,
+                            (w.origin = 'HISTORY') AS is_history
+                        FROM storm_rules sr
+                        JOIN rule_match_window w
+                          ON w.instance_id = :instance_id
+                         AND w.status = 'COMPLETE'
+                         AND w.window_seconds = :width
+                         AND w.window_start >= :lookback_start
+                         AND w.window_start <= :newest
+                         AND w.window_start <> ALL(CAST(:starts AS timestamptz[]))
+                        LEFT JOIN rule_match_metric metric
+                          ON metric.rule_id = sr.rule_id
+                         AND metric.bucket_start = w.window_start
+                        WHERE NOT EXISTS (
+                            SELECT 1
+                            FROM rule_anomaly incident
+                            WHERE incident.rule_id = sr.rule_id
+                              AND incident.detector_type = 'RULE_STORM'
+                              AND w.window_start >= LEAST(
+                                    incident.detected_at,
+                                    COALESCE(incident.anomaly_start, incident.detected_at)
+                                  )
+                              AND w.window_start <= COALESCE(
+                                    incident.resolved_at,
+                                    incident.anomaly_end,
+                                    :newest_end
+                                  )
+                        )
+                    ),
+                    medians AS (
+                        SELECT
+                            rule_id, weekday, slot,
+                            percentile_cont(0.5) WITHIN GROUP (ORDER BY value) AS median,
+                            percentile_cont(0.05) WITHIN GROUP (ORDER BY value) AS p05,
+                            percentile_cont(0.95) WITHIN GROUP (ORDER BY value) AS p95,
+                            count(*) AS sample_count,
+                            count(DISTINCT week_key) AS visits,
+                            count(*) FILTER (WHERE is_history) AS history_samples
+                        FROM samples
+                        GROUP BY rule_id, weekday, slot
+                    ),
+                    devs AS (
+                        SELECT
+                            samples.rule_id, samples.weekday, samples.slot,
+                            abs(samples.value - medians.median) AS dev
+                        FROM samples
+                        JOIN medians USING (rule_id, weekday, slot)
+                    )
+                    SELECT
+                        medians.rule_id, medians.weekday, medians.slot,
+                        medians.median, medians.p05, medians.p95,
+                        medians.sample_count, medians.visits, medians.history_samples,
+                        percentile_cont(0.5) WITHIN GROUP (ORDER BY devs.dev) AS mad
+                    FROM medians
+                    JOIN devs USING (rule_id, weekday, slot)
+                    GROUP BY
+                        medians.rule_id, medians.weekday, medians.slot,
+                        medians.median, medians.p05, medians.p95,
+                        medians.sample_count, medians.visits, medians.history_samples
+                    """,
+                    starts=_TIMESTAMPS,
+                ),
+                {
+                    "instance_id": instance_id,
+                    "rule_id": rule_id,
+                    "starts": [newest],
+                    "width": width,
+                    "lookback_start": lookback_start,
+                    "newest": newest,
+                    "newest_end": newest_end,
+                },
+            )
+        ).mappings()
+        cells: dict[tuple[uuid.UUID, int, int], RuleCell] = {}
+        for row in rows:
+            sample_count = int(row["sample_count"])
+            visits = int(row["visits"])
+            summary = CellSummary(
+                median=float(row["median"]),
+                mad=float(row["mad"] or 0.0),
+                p05=float(row["p05"]),
+                p95=float(row["p95"]),
+                sample_count=sample_count,
+                is_reliable=sample_count >= thresholds.storm_min_samples,
+                observations=[],
+            )
+            weekday = int(row["weekday"])
+            slot = int(row["slot"])
+            cells[(_uuid(row["rule_id"]), weekday, slot)] = RuleCell(
+                weekday=weekday,
+                slot=slot,
+                summary=summary,
+                visits=visits,
+                is_reliable=summary.is_reliable and visits >= thresholds.storm_min_visits,
+                history_samples=int(row["history_samples"] or 0),
+            )
+        return cells
+
+    async def _load_rule_incidents(self, rule_id: uuid.UUID) -> tuple[RuleAnomaly, ...]:
+        """Open incidents, and the single most recent closed one. One select."""
+        latest_closed = (
+            select(RuleAnomaly.id)
+            .where(
+                RuleAnomaly.rule_id == rule_id,
+                RuleAnomaly.state == AnomalyState.RESOLVED.value,
+            )
+            .order_by(
+                func.coalesce(RuleAnomaly.resolved_at, RuleAnomaly.detected_at).desc(),
+                RuleAnomaly.id.desc(),
+            )
+            .limit(1)
+            .scalar_subquery()
+        )
+        rows = (
+            await self.session.scalars(
+                select(RuleAnomaly).where(
+                    RuleAnomaly.rule_id == rule_id,
+                    or_(
+                        RuleAnomaly.state.in_(
+                            [AnomalyState.OPEN.value, AnomalyState.RECOVERING.value]
+                        ),
+                        RuleAnomaly.id == latest_closed,
+                    ),
+                )
+            )
+        ).all()
+        opens = [
+            row
+            for row in rows
+            if _anomaly_state(row) in (AnomalyState.OPEN.value, AnomalyState.RECOVERING.value)
+        ]
+        closed = [row for row in rows if _anomaly_state(row) == AnomalyState.RESOLVED.value]
+        opens.sort(key=lambda row: _aware(row.detected_at), reverse=True)
+        closed.sort(
+            key=lambda row: _aware(row.resolved_at or row.detected_at), reverse=True
+        )
+        return (*opens, *closed[:1])
+
+
+def _anomaly_state(row: RuleAnomaly) -> str:
+    state = row.state
+    if isinstance(state, AnomalyState):
+        return state.value
+    return str(state)
+
+
+def _open_for(incidents: Sequence[RuleAnomaly], detector: str) -> RuleAnomaly | None:
+    """The live (open or recovering) incident for one detector, if the engine would hold it."""
+    for row in incidents:
+        kind = row.detector_type
+        name = kind.value if isinstance(kind, RuleAnomalyType) else str(kind)
+        if name == detector and _anomaly_state(row) in (
+            AnomalyState.OPEN.value,
+            AnomalyState.RECOVERING.value,
+        ):
+            return row
+    return None
+
+
+def _newest_window(
+    windows: Sequence[_WindowRow], step: timedelta, settled_until: datetime
+) -> tuple[datetime, datetime | None]:
+    """(start to judge, end of that window if it has settled).
+
+    The judged start is the newest settled window, or the newest recorded one
+    when nothing has settled yet. ``judged_through`` stays None in that case.
+    """
+    settled = [window for window in windows if window.start + step <= _aware(settled_until)]
+    if settled:
+        chosen = max(settled, key=lambda window: window.start)
+        return chosen.start, chosen.start + step
+    chosen = max(windows, key=lambda window: window.start)
+    return chosen.start, None
 
 
 def _with_transitions(rule: _RuleRow, transitions: tuple[datetime, ...]) -> _RuleRow:

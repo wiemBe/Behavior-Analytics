@@ -9960,6 +9960,564 @@
     "sample_english_params": {},
     "template": "Offense collection is stale, so the rules that fired in this window may be incomplete."
   },
+  "rule.match_anomaly.cell_learning": {
+    "params": {
+      "minimum_samples": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "minimum_weeks": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "samples": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "weeks": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "minimum_samples": 8,
+      "minimum_weeks": 4,
+      "samples": 2,
+      "weeks": 2,
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "The storm cell for this weekday and slot is still learning: 2 sample(s) over 2 week(s); 8 samples over 4 weeks are needed. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english_params": {
+      "minimum_samples": "8",
+      "minimum_weeks": "4",
+      "samples": "2",
+      "weeks": "2",
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC"
+    },
+    "template": "The storm cell for this weekday and slot is still learning: {samples} sample(s) over {weeks} week(s); {minimum_samples} samples over {minimum_weeks} weeks are needed. The judged window runs from {window_start} to {window_end}."
+  },
+  "rule.match_anomaly.cell_missing": {
+    "params": {
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "No baseline cell is stored for this weekday and slot. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english_params": {
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC"
+    },
+    "template": "No baseline cell is stored for this weekday and slot. The judged window runs from {window_start} to {window_end}."
+  },
+  "rule.match_anomaly.collection_off": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Rule-match collection is off.",
+    "sample_english_params": {},
+    "template": "Rule-match collection is off."
+  },
+  "rule.match_anomaly.dependency_disabled": {
+    "params": {
+      "ids": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "ids": "12, 15"
+    },
+    "sample_english": "Not judged: a stored building-block dependency of this rule is disabled (QRadar ids 12, 15).",
+    "sample_english_params": {
+      "ids": "12, 15"
+    },
+    "template": "Not judged: a stored building-block dependency of this rule is disabled (QRadar ids {ids})."
+  },
+  "rule.match_anomaly.dependency_unobserved": {
+    "params": {
+      "ids": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "ids": "12"
+    },
+    "sample_english": "No verdict: a stored dependency of this rule is not in the inventory (QRadar ids 12).",
+    "sample_english_params": {
+      "ids": "12"
+    },
+    "template": "No verdict: a stored dependency of this rule is not in the inventory (QRadar ids {ids})."
+  },
+  "rule.match_anomaly.disabled": {
+    "params": {
+      "synced_at": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "synced_at": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "Disabled in the inventory sync at 2026-10-17 12:00 UTC. Match anomalies are not opened.",
+    "sample_english_params": {
+      "synced_at": "2026-10-17 12:00 UTC"
+    },
+    "template": "Disabled in the inventory sync at {synced_at}. Match anomalies are not opened."
+  },
+  "rule.match_anomaly.disabled_no_sync": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Disabled in the inventory sync. Match anomalies are not opened.",
+    "sample_english_params": {},
+    "template": "Disabled in the inventory sync. Match anomalies are not opened."
+  },
+  "rule.match_anomaly.judged": {
+    "params": {
+      "judged_through": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "judged_through": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "Judged through 2026-10-17 12:00 UTC.",
+    "sample_english_params": {
+      "judged_through": "2026-10-17 12:00 UTC"
+    },
+    "template": "Judged through {judged_through}."
+  },
+  "rule.match_anomaly.judged_clear": {
+    "params": {
+      "judged_through": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "judged_through": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "Judged through 2026-10-17 12:00 UTC. No open match anomaly.",
+    "sample_english_params": {
+      "judged_through": "2026-10-17 12:00 UTC"
+    },
+    "template": "Judged through {judged_through}. No open match anomaly."
+  },
+  "rule.match_anomaly.median_below": {
+    "params": {
+      "median": {
+        "kind": "number"
+      },
+      "minimum": {
+        "kind": "number"
+      },
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "median": 0.0,
+      "minimum": 1.0,
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "The median is 0 matched events per window, below the minimum of 1. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english_params": {
+      "median": "0",
+      "minimum": "1",
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC"
+    },
+    "template": "The median is {median} matched events per window, below the minimum of {minimum}. The judged window runs from {window_start} to {window_end}."
+  },
+  "rule.match_anomaly.modified": {
+    "params": {
+      "modified_at": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "modified_at": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "QRadar reports this rule modified at 2026-10-17 12:00 UTC. Match anomalies are not judged across that time.",
+    "sample_english_params": {
+      "modified_at": "2026-10-17 12:00 UTC"
+    },
+    "template": "QRadar reports this rule modified at {modified_at}. Match anomalies are not judged across that time."
+  },
+  "rule.match_anomaly.monitoring_off": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Match anomalies are off for this rule (health_monitoring_enabled). The health status does not read that flag.",
+    "sample_english_params": {},
+    "template": "Match anomalies are off for this rule (health_monitoring_enabled). The health status does not read that flag."
+  },
+  "rule.match_anomaly.no_window": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No match window has been recorded.",
+    "sample_english_params": {},
+    "template": "No match window has been recorded."
+  },
+  "rule.match_anomaly.not_event": {
+    "params": {
+      "evidence": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "evidence": "LOWER_BOUND"
+    },
+    "sample_english": "Match collection does not prove a zero for this rule type (LOWER_BOUND).",
+    "sample_english_params": {
+      "evidence": "LOWER_BOUND"
+    },
+    "template": "Match collection does not prove a zero for this rule type ({evidence})."
+  },
+  "rule.match_anomaly.not_settled": {
+    "params": {
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "The window from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC has not settled yet.",
+    "sample_english_params": {
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC"
+    },
+    "template": "The window from {window_start} to {window_end} has not settled yet."
+  },
+  "rule.match_anomaly.presence_below": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "minimum": {
+        "kind": "percent"
+      },
+      "presence": {
+        "kind": "percent"
+      },
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "days": 7,
+      "minimum": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.8
+      },
+      "presence": {
+        "kind": "percent",
+        "precision": 0,
+        "ratio": 0.6
+      },
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "The rule matched in 60 % of windows over 7 days, below 80 %. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english_params": {
+      "days": "7",
+      "minimum": "80 %",
+      "presence": "60 %",
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC"
+    },
+    "template": "The rule matched in {presence} of windows over {days} days, below {minimum}. The judged window runs from {window_start} to {window_end}."
+  },
+  "rule.match_anomaly.rule_too_new": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "days": 7,
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "The inventory has not held this rule for 7 days. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english_params": {
+      "days": "7",
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC"
+    },
+    "template": "The inventory has not held this rule for {days} days. The judged window runs from {window_start} to {window_end}."
+  },
+  "rule.match_anomaly.span_incomplete": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "expected": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "failed": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "missing": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "truncated": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "wrong_width": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 7,
+      "expected": 168,
+      "failed": 0,
+      "missing": 1,
+      "truncated": 0,
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00",
+      "wrong_width": 0
+    },
+    "sample_english": "The 7-day span is not fully measured (1 missing, 0 truncated, 0 failed, 0 of another width, of 168 windows). The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english_params": {
+      "days": "7",
+      "expected": "168",
+      "failed": "0",
+      "missing": "1",
+      "truncated": "0",
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC",
+      "wrong_width": "0"
+    },
+    "template": "The {days}-day span is not fully measured ({missing} missing, {truncated} truncated, {failed} failed, {wrong_width} of another width, of {expected} windows). The judged window runs from {window_start} to {window_end}."
+  },
+  "rule.match_anomaly.stale_inventory": {
+    "params": {
+      "synced_at": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "synced_at": "2026-10-17T12:00:00+00:00",
+      "window_end": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "The inventory sync at 2026-10-17 12:00 UTC is older than the window ending 2026-10-17 12:00 UTC.",
+    "sample_english_params": {
+      "synced_at": "2026-10-17 12:00 UTC",
+      "window_end": "2026-10-17 12:00 UTC"
+    },
+    "template": "The inventory sync at {synced_at} is older than the window ending {window_end}."
+  },
+  "rule.match_anomaly.stale_inventory_unknown": {
+    "params": {
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "window_end": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "No inventory sync is recorded, so the window ending 2026-10-17 12:00 UTC cannot be judged.",
+    "sample_english_params": {
+      "window_end": "2026-10-17 12:00 UTC"
+    },
+    "template": "No inventory sync is recorded, so the window ending {window_end} cannot be judged."
+  },
+  "rule.match_anomaly.state_transition": {
+    "params": {
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "This rule was enabled or disabled inside the baseline or the streak. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english_params": {
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC"
+    },
+    "template": "This rule was enabled or disabled inside the baseline or the streak. The judged window runs from {window_start} to {window_end}."
+  },
+  "rule.match_anomaly.truncated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The latest window hit the row cap. Silence is not judged. A storm is judged only when this rule has a row.",
+    "sample_english_params": {},
+    "template": "The latest window hit the row cap. Silence is not judged. A storm is judged only when this rule has a row."
+  },
+  "rule.match_anomaly.width_does_not_tile": {
+    "params": {
+      "width": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "width": 1000,
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "A window of 1000 s does not tile a UTC day, so there is no weekday and slot to compare against. The judged window runs from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english_params": {
+      "width": "1000",
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC"
+    },
+    "template": "A window of {width} s does not tile a UTC day, so there is no weekday and slot to compare against. The judged window runs from {window_start} to {window_end}."
+  },
+  "rule.match_anomaly.window_failed": {
+    "params": {
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "Collection of the window from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC failed or was skipped.",
+    "sample_english_params": {
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC"
+    },
+    "template": "Collection of the window from {window_start} to {window_end} failed or was skipped."
+  },
+  "rule.match_anomaly.window_missing": {
+    "params": {
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "No collection record exists for the window from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC.",
+    "sample_english_params": {
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC"
+    },
+    "template": "No collection record exists for the window from {window_start} to {window_end}."
+  },
+  "rule.match_anomaly.window_wrong_width": {
+    "params": {
+      "width": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "window_end": {
+        "kind": "timestamp",
+        "style": "minute"
+      },
+      "window_start": {
+        "kind": "timestamp",
+        "style": "minute"
+      }
+    },
+    "sample": {
+      "width": 3600,
+      "window_end": "2026-10-17T12:00:00+00:00",
+      "window_start": "2026-10-17T12:00:00+00:00"
+    },
+    "sample_english": "The window from 2026-10-17 12:00 UTC to 2026-10-17 12:00 UTC was collected at another width than the current 3600 s.",
+    "sample_english_params": {
+      "width": "3600",
+      "window_end": "2026-10-17 12:00 UTC",
+      "window_start": "2026-10-17 12:00 UTC"
+    },
+    "template": "The window from {window_start} to {window_end} was collected at another width than the current {width} s."
+  },
   "rule_health.age_unknown": {
     "params": {},
     "sample": {},

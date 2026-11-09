@@ -96,3 +96,91 @@ class RuleMatchAnomalies(BaseModel):
     reason: str | None = None
     reason_code: str | None = None
     reason_params: dict[str, MessageParamValue] | None = None
+
+
+class RuleMatchSectionState(StrEnum):
+    """The one answer `/rules/{id}` gives for "is this match rate being judged?"
+
+    Precedence is the design §7.3 order the route applies to the detector skips:
+    collection, then type, disabled, monitoring, modified, truncated, then a
+    specific insufficient reason, then OK. `incidents` is not a state.
+    """
+
+    NOT_COLLECTED = "NOT_COLLECTED"
+    NOT_EVENT = "NOT_EVENT"
+    DISABLED = "DISABLED"
+    MONITORING_OFF = "MONITORING_OFF"
+    MODIFIED = "MODIFIED"
+    TRUNCATED = "TRUNCATED"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+    OK = "OK"
+
+
+class RuleMatchSectionCounts(BaseModel):
+    """Tallies an `INSUFFICIENT_DATA` reason names.
+
+    Window, sample and week counts only. A match rate is not here: a gap is not
+    reported as zero events per window.
+    """
+
+    expected_windows: int | None = None
+    complete_windows: int | None = None
+    missing_windows: int | None = None
+    truncated_windows: int | None = None
+    failed_windows: int | None = None
+    wrong_width_windows: int | None = None
+    #: Share of baseline windows that matched, when the presence gate refused.
+    presence: float | None = None
+    presence_minimum: float | None = None
+    sample_count: int | None = None
+    visits: int | None = None
+    minimum_samples: int | None = None
+    minimum_visits: int | None = None
+    baseline_days: int | None = None
+    #: Median matched events, when the median floor refused. Not a rate for a gap.
+    median: float | None = None
+    median_minimum: float | None = None
+
+
+class RuleMatchSectionIncident(_Sanitized):
+    """One open incident, or the most recent closed one, for this rule."""
+
+    anomaly_id: uuid.UUID
+    detector: RuleAnomalyType
+    observed: float | None = None
+    expected: float | None = None
+    baseline_low: float | None = None
+    baseline_high: float | None = None
+    #: Silence streak (`consecutive_buckets`). Null when the row stored none.
+    consecutive_buckets: int | None = None
+    #: Storm ratio, or the silence ratio to the baseline when one was stored.
+    ratio: float | None = None
+    started: datetime
+    ended: datetime | None = None
+    state: AnomalyState
+
+
+class RuleMatchSection(BaseModel):
+    """`GET /rules/{id}/match-anomalies` (design §7.3).
+
+    One state, plus the open incidents and the newest closed one whatever that
+    state is. `judged_through` is the end of the newest settled window, null
+    when no window has settled.
+    """
+
+    rule_id: uuid.UUID
+    state: RuleMatchSectionState
+    reason: str | None = None
+    reason_code: str | None = None
+    reason_params: dict[str, MessageParamValue] | None = None
+    #: `LOWER_BOUND` or `NOT_MEASURED` when the state is `NOT_EVENT`.
+    match_evidence: str | None = None
+    #: Inventory watermark, when the state is `DISABLED` or the sync is the reason.
+    inventory_synced_at: datetime | None = None
+    #: QRadar's modification time, when the state is `MODIFIED`.
+    modified_at: datetime | None = None
+    judged_through: datetime | None = None
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    counts: RuleMatchSectionCounts | None = None
+    incidents: list[RuleMatchSectionIncident]

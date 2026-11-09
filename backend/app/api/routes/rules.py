@@ -19,8 +19,11 @@ from pydantic import ValidationError
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.anomaly.capabilities import RULE_DETECTORS, DetectorStatus, detector_status
+from app.anomaly.evidence import AnomalyEvidence
 from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
+from app.i18n.messages import MessageRef
 from app.i18n.refusal import permission_refusal
 from app.models.enums import AnomalyState, RuleAnomalyType, RuleHealthStatus
 from app.models.instance import QRadarInstance
@@ -28,6 +31,7 @@ from app.models.rule import AnalyticsRule, RuleCapacitySample, RuleHealthSnapsho
 from app.models.rule_anomaly import RuleAnomaly
 from app.repositories.audit import record_audit
 from app.repositories.rule import SORTABLE, HealthReason, RuleFilters, RuleRepository
+from app.rules.engine import RuleMatchEngine, RuleSectionRead
 from app.rules.matches import CoverageState, floor_to_window
 from app.schemas.messages import MessageParamValue, MessageValue
 from app.schemas.rule import (
@@ -45,6 +49,10 @@ from app.schemas.rule_anomaly import (
     MatchAnomalyRowState,
     MatchAnomalySpan,
     RuleMatchAnomalies,
+    RuleMatchSection,
+    RuleMatchSectionCounts,
+    RuleMatchSectionIncident,
+    RuleMatchSectionState,
 )
 from app.schemas.rule_statistics import CapacitySampleOut, RuleStatistics
 from app.security.auth import get_principal
@@ -410,6 +418,399 @@ async def get_rule(rule_id: uuid.UUID, session: SessionDep) -> RuleDetail:
     if rule is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "rule not found")
     return await _detail(RuleRepository(session), rule)
+
+
+# First match among the skips one detector call can actually return. `modified`
+# is only reached after the window gate, so a truncated latest window stays
+# TRUNCATED. A stale inventory sync is refused before that gate, so it stays
+# INSUFFICIENT_DATA rather than TRUNCATED. Both are the engine's own verdict.
+_SECTION_FIRST: tuple[tuple[str, RuleMatchSectionState], ...] = (
+    ("not_exact", RuleMatchSectionState.NOT_EVENT),
+    ("disabled", RuleMatchSectionState.DISABLED),
+    ("monitoring_off", RuleMatchSectionState.MONITORING_OFF),
+    ("modified", RuleMatchSectionState.MODIFIED),
+    ("window_truncated", RuleMatchSectionState.TRUNCATED),
+)
+# Silence calls a positive count healthy. Storm can still refuse that window.
+_STORM_ONLY_SKIPS = frozenset({"cell_thin", "cell_missing", "width_does_not_tile"})
+_LIVE_INCIDENTS = frozenset({AnomalyState.OPEN, AnomalyState.RECOVERING})
+
+
+def _collection_on(settings: Settings) -> bool:
+    """Both rule detectors operational. One that is not fails the section closed."""
+    return all(
+        detector_status(spec, settings) is DetectorStatus.OPERATIONAL
+        for spec in RULE_DETECTORS.values()
+    )
+
+
+def _skip_code(evidence: AnomalyEvidence[RuleAnomalyType] | None) -> str | None:
+    if evidence is None or not isinstance(evidence.extra, dict):
+        return None
+    code = evidence.extra.get("skip")
+    return code if isinstance(code, str) else None
+
+
+def _as_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def _as_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _parsed_time(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(UTC)
+
+
+def _anomaly_state(value: object) -> AnomalyState:
+    if isinstance(value, AnomalyState):
+        return value
+    return AnomalyState(str(value))
+
+
+def _detector(value: object) -> RuleAnomalyType:
+    if isinstance(value, RuleAnomalyType):
+        return value
+    return RuleAnomalyType(str(value))
+
+
+def _incident_ratio(row: RuleAnomaly) -> float | None:
+    if row.deviation_ratio is not None:
+        return float(row.deviation_ratio)
+    details = row.details if isinstance(row.details, dict) else {}
+    extra = details.get("extra")
+    if not isinstance(extra, dict):
+        return None
+    for key in ("deviation_ratio", "ratio", "ratio_to_baseline"):
+        number = _as_float(extra.get(key))
+        if number is not None:
+            return number
+    return None
+
+
+def _section_incident(row: RuleAnomaly) -> RuleMatchSectionIncident:
+    details = row.details if isinstance(row.details, dict) else {}
+    state = _anomaly_state(row.state)
+    ended = None
+    if state not in _LIVE_INCIDENTS:
+        ended = row.resolved_at or row.anomaly_end
+    return RuleMatchSectionIncident(
+        anomaly_id=row.id,
+        detector=_detector(row.detector_type),
+        observed=row.observed_value,
+        expected=row.expected_value,
+        baseline_low=_as_float(details.get("baseline_low")),
+        baseline_high=_as_float(details.get("baseline_high")),
+        consecutive_buckets=row.consecutive_buckets,
+        ratio=_incident_ratio(row),
+        started=row.anomaly_start or row.detected_at,
+        ended=ended,
+        state=state,
+    )
+
+
+def _has_open(read: RuleSectionRead) -> bool:
+    return any(_anomaly_state(row.state) in _LIVE_INCIDENTS for row in read.incidents)
+
+
+def _choose(
+    silence: AnomalyEvidence[RuleAnomalyType],
+    storm: AnomalyEvidence[RuleAnomalyType],
+) -> tuple[RuleMatchSectionState, AnomalyEvidence[RuleAnomalyType] | None]:
+    for code, state in _SECTION_FIRST:
+        if _skip_code(silence) == code:
+            return state, silence
+        if _skip_code(storm) == code:
+            return state, storm
+    storm_skip = _skip_code(storm)
+    storm_only = storm_skip in _STORM_ONLY_SKIPS and not silence.insufficient_data
+    if storm.insufficient_data and storm_only:
+        return RuleMatchSectionState.INSUFFICIENT_DATA, storm
+    if silence.insufficient_data:
+        return RuleMatchSectionState.INSUFFICIENT_DATA, silence
+    if storm.insufficient_data:
+        return RuleMatchSectionState.INSUFFICIENT_DATA, storm
+    return RuleMatchSectionState.OK, None
+
+
+def _window_params(evidence: AnomalyEvidence[RuleAnomalyType]) -> dict[str, datetime]:
+    return {"window_start": evidence.interval_start, "window_end": evidence.interval_end}
+
+
+def _tally_params(evidence: AnomalyEvidence[RuleAnomalyType]) -> dict[str, int] | None:
+    extra = evidence.extra if isinstance(evidence.extra, dict) else {}
+    tally = extra.get("baseline_tally")
+    if not isinstance(tally, dict):
+        return None
+    keys = ("expected", "complete", "missing", "truncated", "failed", "wrong_width")
+    numbers: dict[str, int] = {}
+    for key in keys:
+        number = _as_int(tally.get(key))
+        if number is None:
+            return None
+        numbers[key] = number
+    return numbers
+
+
+def _explain(
+    skip: str | None,
+    evidence: AnomalyEvidence[RuleAnomalyType],
+    read: RuleSectionRead,
+    width: int,
+) -> tuple[MessageRef | None, RuleMatchSectionCounts | None]:
+    """The catalog sentence for this detector skip, plus the counts that sentence names."""
+    extra = evidence.extra if isinstance(evidence.extra, dict) else {}
+    thresholds = read.thresholds
+    windows = _window_params(evidence)
+    days = thresholds.silence_baseline_days
+    if skip == "not_exact":
+        word = extra.get("match_evidence")
+        if not isinstance(word, str):
+            return None, None
+        return MessageRef("rule.match_anomaly.not_event", {"evidence": word}), None
+    if skip == "disabled":
+        if read.watermark is None:
+            return MessageRef("rule.match_anomaly.disabled_no_sync"), None
+        return MessageRef("rule.match_anomaly.disabled", {"synced_at": read.watermark}), None
+    if skip == "monitoring_off":
+        return MessageRef("rule.match_anomaly.monitoring_off"), None
+    if skip == "modified":
+        modified = _parsed_time(extra.get("modified_at"))
+        if modified is None:
+            return None, None
+        return MessageRef("rule.match_anomaly.modified", {"modified_at": modified}), None
+    if skip == "window_truncated":
+        return MessageRef("rule.match_anomaly.truncated"), None
+    if skip == "baseline_incomplete":
+        tally = _tally_params(evidence)
+        if tally is None:
+            return None, None
+        counts = RuleMatchSectionCounts(
+            expected_windows=tally["expected"],
+            complete_windows=tally["complete"],
+            missing_windows=tally["missing"],
+            truncated_windows=tally["truncated"],
+            failed_windows=tally["failed"],
+            wrong_width_windows=tally["wrong_width"],
+            baseline_days=days,
+        )
+        named = {key: value for key, value in tally.items() if key != "complete"}
+        return MessageRef(
+            "rule.match_anomaly.span_incomplete",
+            {"days": days, **named, **windows},
+        ), counts
+    if skip == "rule_too_new":
+        return (
+            MessageRef("rule.match_anomaly.rule_too_new", {"days": days, **windows}),
+            RuleMatchSectionCounts(baseline_days=days),
+        )
+    if skip == "stale_inventory":
+        end = evidence.interval_end
+        if read.watermark is None:
+            return (
+                MessageRef("rule.match_anomaly.stale_inventory_unknown", {"window_end": end}),
+                None,
+            )
+        return MessageRef(
+            "rule.match_anomaly.stale_inventory",
+            {"synced_at": read.watermark, "window_end": end},
+        ), None
+    if skip == "presence_below_gate":
+        presence = _as_float(extra.get("nonzero_fraction"))
+        if presence is None:
+            return None, None
+        minimum = thresholds.silence_min_presence
+        return MessageRef(
+            "rule.match_anomaly.presence_below",
+            {"presence": presence, "minimum": minimum, "days": days, **windows},
+        ), RuleMatchSectionCounts(
+            presence=presence,
+            presence_minimum=minimum,
+            baseline_days=days,
+        )
+    if skip == "median_below_floor":
+        median = _as_float(extra.get("median"))
+        if median is None:
+            return None, None
+        minimum = thresholds.silence_min_median
+        return MessageRef(
+            "rule.match_anomaly.median_below",
+            {"median": median, "minimum": minimum, **windows},
+        ), RuleMatchSectionCounts(median=median, median_minimum=minimum)
+    if skip == "cell_thin":
+        visits = _as_int(extra.get("visits"))
+        if visits is None:
+            return None, None
+        samples = evidence.sample_count
+        minimum_samples = thresholds.storm_min_samples
+        minimum_weeks = thresholds.storm_min_visits
+        return MessageRef(
+            "rule.match_anomaly.cell_learning",
+            {
+                "samples": samples,
+                "weeks": visits,
+                "minimum_samples": minimum_samples,
+                "minimum_weeks": minimum_weeks,
+                **windows,
+            },
+        ), RuleMatchSectionCounts(
+            sample_count=samples,
+            visits=visits,
+            minimum_samples=minimum_samples,
+            minimum_visits=minimum_weeks,
+        )
+    if skip == "cell_missing":
+        return MessageRef("rule.match_anomaly.cell_missing", windows), None
+    if skip == "state_transition":
+        return MessageRef("rule.match_anomaly.state_transition", windows), None
+    if skip == "dependency_disabled":
+        ids = ", ".join(str(item) for item in read.subject.disabled_dependencies)
+        return MessageRef("rule.match_anomaly.dependency_disabled", {"ids": ids}), None
+    if skip == "dependency_unobserved":
+        ids = ", ".join(str(item) for item in read.subject.unobserved_dependencies)
+        return MessageRef("rule.match_anomaly.dependency_unobserved", {"ids": ids}), None
+    if skip == "window_missing":
+        return MessageRef("rule.match_anomaly.window_missing", windows), None
+    if skip == "window_failed":
+        return MessageRef("rule.match_anomaly.window_failed", windows), None
+    if skip == "window_wrong_width":
+        return MessageRef(
+            "rule.match_anomaly.window_wrong_width", {"width": width, **windows}
+        ), None
+    if skip == "not_settled":
+        return MessageRef("rule.match_anomaly.not_settled", windows), None
+    if skip == "width_does_not_tile":
+        return MessageRef(
+            "rule.match_anomaly.width_does_not_tile", {"width": width, **windows}
+        ), None
+    return None, None
+
+
+def _wired(
+    message: MessageRef | None,
+) -> tuple[str | None, str | None, dict[str, MessageParamValue] | None]:
+    if message is None:
+        return None, None, None
+    code, params = _wire(message)
+    return _text(message), code, params or None
+
+
+def _not_collected(read: RuleSectionRead, code: str) -> RuleMatchSection:
+    reason, reason_code, params = _wired(MessageRef(code))
+    return RuleMatchSection(
+        rule_id=read.rule_id,
+        state=RuleMatchSectionState.NOT_COLLECTED,
+        reason=reason,
+        reason_code=reason_code,
+        reason_params=params,
+        judged_through=read.judged_through,
+        incidents=[_section_incident(row) for row in read.incidents],
+    )
+
+
+def _match_section(read: RuleSectionRead, settings: Settings) -> RuleMatchSection:
+    if not _collection_on(settings):
+        return _not_collected(read, "rule.match_anomaly.collection_off")
+    if not read.any_window:
+        return _not_collected(read, "rule.match_anomaly.no_window")
+    silence, storm = read.silence, read.storm
+    if silence is None or storm is None:
+        return RuleMatchSection(
+            rule_id=read.rule_id,
+            state=RuleMatchSectionState.INSUFFICIENT_DATA,
+            judged_through=read.judged_through,
+            incidents=[_section_incident(row) for row in read.incidents],
+        )
+    state, evidence = _choose(silence, storm)
+    message: MessageRef | None
+    counts: RuleMatchSectionCounts | None = None
+    if state is RuleMatchSectionState.OK:
+        if read.judged_through is None:
+            message = None
+        else:
+            code = (
+                "rule.match_anomaly.judged"
+                if _has_open(read)
+                else "rule.match_anomaly.judged_clear"
+            )
+            message = MessageRef(code, {"judged_through": read.judged_through})
+        evidence = None
+    elif evidence is None:
+        message = None
+    else:
+        message, counts = _explain(
+            _skip_code(evidence), evidence, read, settings.rule_match_window_seconds
+        )
+    if message is None and evidence is not None:
+        reason = sanitize_text(evidence.reason)
+        reason_code = _skip_code(evidence)
+        params = None
+    else:
+        reason, reason_code, params = _wired(message)
+    match_evidence = None
+    synced_at = None
+    modified_at = None
+    if evidence is not None and isinstance(evidence.extra, dict):
+        if state is RuleMatchSectionState.NOT_EVENT:
+            word = evidence.extra.get("match_evidence")
+            match_evidence = word if isinstance(word, str) else None
+        if state is RuleMatchSectionState.MODIFIED:
+            modified_at = _parsed_time(evidence.extra.get("modified_at"))
+    if state is RuleMatchSectionState.DISABLED or (
+        evidence is not None and _skip_code(evidence) == "stale_inventory"
+    ):
+        synced_at = read.watermark
+    window_start = evidence.interval_start if evidence is not None else read.judged_start
+    window_end = evidence.interval_end if evidence is not None else read.judged_through
+    through = read.judged_through
+    return RuleMatchSection(
+        rule_id=read.rule_id,
+        state=state,
+        reason=reason,
+        reason_code=reason_code,
+        reason_params=params,
+        match_evidence=match_evidence,
+        inventory_synced_at=synced_at,
+        modified_at=modified_at,
+        judged_through=through,
+        window_start=window_start,
+        window_end=window_end,
+        counts=counts if state is RuleMatchSectionState.INSUFFICIENT_DATA else None,
+        incidents=[_section_incident(row) for row in read.incidents],
+    )
+
+
+@router.get("/{rule_id}/match-anomalies", response_model=RuleMatchSection)
+async def rule_match_section(
+    rule_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> RuleMatchSection:
+    """Whether this rule's match rate is being judged, and any open change (design §7.3).
+
+    The state is the first detector skip that applies. Incidents are listed either
+    way: an open silence is held when the latest window cannot be judged.
+    """
+    read = await RuleMatchEngine(session, settings=settings).read_rule(rule_id)
+    if read is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "rule not found")
+    return _match_section(read, settings)
 
 
 @router.get("/{rule_id}/health-history", response_model=list[RuleHealthSnapshotOut])
