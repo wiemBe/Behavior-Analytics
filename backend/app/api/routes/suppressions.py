@@ -118,7 +118,7 @@ def _family(value: str) -> AnomalyFamily:
         return AnomalyFamily(value)
     except ValueError as exc:
         raise _unprocessable(
-            "unknown anomaly family: expected log_source, waf, ips or property_watch"
+            "unknown anomaly family: expected log_source, waf, ips, property_watch or rule"
         ) from exc
 
 

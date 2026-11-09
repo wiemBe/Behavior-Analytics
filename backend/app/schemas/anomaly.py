@@ -35,6 +35,7 @@ from app.models.enums import (
     PwAnomalyType,
     PwScopeKind,
     RobustScoreStatus,
+    RuleAnomalyType,
     Severity,
     WafAnomalyType,
 )
@@ -57,6 +58,8 @@ class SubjectKind(StrEnum):
     #: A tracked value of a property watch (Phase G). Its row is `pw_anomaly`; the value text
     #: is shown to every caller who can read the list (design §G.7.2, D-22).
     PW_VALUE = "PW_VALUE"
+    #: An analytics rule or building block (SOC-6). Its row is `rule_anomaly`.
+    RULE = "RULE"
 
 
 class WafEndpointRefOut(BaseModel):
@@ -106,6 +109,19 @@ class PwValueRefOut(BaseModel):
     #: The tracked value's id, for the watch page's `?value=` selection. None once retention
     #: deleted the value row: the incident outlives it, so the link then has no target.
     value_id: uuid.UUID | None = None
+
+
+class RuleRefOut(BaseModel):
+    """The analytics rule an anomaly is about: name, QRadar id and the building-block marker.
+
+    `qradar_id` and `is_building_block` are what the incident saw when it opened; `name` is the
+    rule's current name.
+    """
+
+    rule_id: uuid.UUID
+    name: str
+    qradar_id: int
+    is_building_block: bool
 
 
 class MetricBucketOut(BaseModel):
@@ -287,8 +303,10 @@ class AnomalyListItem(BaseModel):
     ips_entity: IpsEntityRefOut | None = None
     #: Set for a PW_VALUE subject, otherwise None.
     pw_value: PwValueRefOut | None = None
-    #: A Phase A type, or for a WAF, IPS or property-watch subject the row's detector type.
-    anomaly_type: AnomalyType | WafAnomalyType | IpsAnomalyType | PwAnomalyType
+    #: Set for a RULE subject, otherwise None.
+    rule: RuleRefOut | None = None
+    #: A Phase A type, or for another subject the row's detector type.
+    anomaly_type: AnomalyType | WafAnomalyType | IpsAnomalyType | PwAnomalyType | RuleAnomalyType
     state: AnomalyState
     severity: Severity
     observed_value: float | None = None
@@ -642,6 +660,7 @@ class ActiveByFamily(BaseModel):
     waf: ActiveStateCounts
     ips: ActiveStateCounts
     property_watch: ActiveStateCounts
+    rule: ActiveStateCounts
 
 
 class BehaviorSummaryOut(BaseModel):

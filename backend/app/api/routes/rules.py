@@ -16,17 +16,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
 from app.i18n.refusal import permission_refusal
-from app.models.enums import RuleHealthStatus
+from app.models.enums import AnomalyState, RuleAnomalyType, RuleHealthStatus
 from app.models.instance import QRadarInstance
 from app.models.rule import AnalyticsRule, RuleCapacitySample, RuleHealthSnapshot
+from app.models.rule_anomaly import RuleAnomaly
 from app.repositories.audit import record_audit
 from app.repositories.rule import SORTABLE, HealthReason, RuleFilters, RuleRepository
+from app.rules.matches import CoverageState, floor_to_window
 from app.schemas.messages import MessageParamValue, MessageValue
 from app.schemas.rule import (
     RuleDetail,
@@ -37,6 +39,13 @@ from app.schemas.rule import (
     RuleSummary,
     RuleUpdate,
 )
+from app.schemas.rule_anomaly import (
+    MatchAnomalyBlockState,
+    MatchAnomalyRow,
+    MatchAnomalyRowState,
+    MatchAnomalySpan,
+    RuleMatchAnomalies,
+)
 from app.schemas.rule_statistics import CapacitySampleOut, RuleStatistics
 from app.security.auth import get_principal
 from app.security.rbac import (
@@ -46,7 +55,12 @@ from app.security.rbac import (
     require_permission,
 )
 from app.security.sanitizer import sanitize_mapping, sanitize_text
-from app.services.rule_statistics import RuleStatisticsService
+from app.services.rule_statistics import (
+    RuleStatisticsService,
+    _text,
+    _window_message,
+    _wire,
+)
 
 router = APIRouter(prefix="/rules", tags=["rules"])
 
@@ -224,6 +238,125 @@ async def rule_statistics(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no instance registered")
     return await RuleStatisticsService(session, settings).compute(
         resolved, days=days, top=top
+    )
+
+
+#: The incident states a rule-match block lists. A CANDIDATE was never promoted to an incident.
+_LISTED_STATES = (AnomalyState.OPEN, AnomalyState.RECOVERING, AnomalyState.RESOLVED)
+
+
+def _row_state(details: object) -> MatchAnomalyRowState:
+    """TRUNCATED when the engine stored that the observed window was truncated."""
+    extra = details.get("extra") if isinstance(details, dict) else None
+    if isinstance(extra, dict) and extra.get("truncated_window") is True:
+        return MatchAnomalyRowState.TRUNCATED
+    return MatchAnomalyRowState.OK
+
+
+@router.get("/match-anomalies", response_model=RuleMatchAnomalies)
+async def rule_match_anomalies(
+    session: SessionDep,
+    settings: SettingsDep,
+    instance_id: uuid.UUID | None = Query(default=None),
+    days: int = Query(default=7, ge=1, le=30),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> RuleMatchAnomalies:
+    """Rule silence and storm incidents over the statistics span (design §7.1).
+
+    Declared before `/{rule_id}`. A fixed number of statements however many rules or
+    incidents exist: the coverage read `/rules/statistics` uses, then one joined select.
+    Collection off or never run is NOT_COLLECTED (no list); an incomplete span is
+    INSUFFICIENT_DATA (no silence rows, storms marked); only a complete span lists as OK.
+    """
+    resolved = await _resolve_instance(session, instance_id)
+    if resolved is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no instance registered")
+    not_collected = RuleMatchAnomalies(
+        instance_id=resolved, state=MatchAnomalyBlockState.NOT_COLLECTED
+    )
+    if not settings.rule_match_collection_enabled:
+        return not_collected
+
+    now = datetime.now(UTC)
+    width = settings.rule_match_window_seconds
+    span_end = floor_to_window(
+        now - timedelta(seconds=settings.rule_match_settle_lag_seconds), width
+    )
+    span_start = floor_to_window(span_end - timedelta(days=days), width)
+    coverage, _history = await RuleStatisticsService(session, settings)._coverage(
+        resolved, span_start, now
+    )
+    if coverage.state is CoverageState.NONE:
+        return not_collected
+
+    message = _window_message(coverage)
+    code, params = _wire(message)
+    complete = coverage.state is CoverageState.COMPLETE
+    span = MatchAnomalySpan(
+        days=days,
+        span_start=span_start,
+        span_end=span_end,
+        window_seconds=width,
+        expected_windows=coverage.expected,
+        complete_windows=coverage.complete,
+        truncated_windows=coverage.truncated,
+        failed_windows=coverage.failed,
+        missing_windows=coverage.missing,
+        complete=complete,
+        window_status=coverage.state.value,
+        reason=_text(message),
+        reason_code=code,
+        reason_params=params,
+    )
+    conditions = [
+        AnalyticsRule.instance_id == resolved,
+        RuleAnomaly.state.in_([s.value for s in _LISTED_STATES]),
+        # An incident still open stays in view whatever its age; a resolved one must have
+        # been detected inside the span.
+        or_(
+            RuleAnomaly.detected_at >= span_start,
+            RuleAnomaly.state != AnomalyState.RESOLVED.value,
+        ),
+    ]
+    if not complete:
+        # Over a gappy span an absent count proves nothing, so no silence is listed.
+        conditions.append(RuleAnomaly.detector_type != RuleAnomalyType.RULE_SILENCE.value)
+    rows = (
+        await session.execute(
+            select(RuleAnomaly, AnalyticsRule.name, func.count().over())
+            .join(AnalyticsRule, AnalyticsRule.id == RuleAnomaly.rule_id)
+            .where(*conditions)
+            .order_by(RuleAnomaly.detected_at.desc(), RuleAnomaly.id.desc())
+            .limit(min(limit, settings.api_max_page_size))
+        )
+    ).all()
+    total = int(rows[0][2]) if rows else 0
+    return RuleMatchAnomalies(
+        instance_id=resolved,
+        state=MatchAnomalyBlockState.OK if complete else MatchAnomalyBlockState.INSUFFICIENT_DATA,
+        span=span,
+        items=[
+            MatchAnomalyRow(
+                anomaly_id=incident.id,
+                rule_id=incident.rule_id,
+                name=name,
+                qradar_id=incident.qradar_id,
+                is_building_block=incident.is_building_block,
+                detector=RuleAnomalyType(incident.detector_type),
+                observed=incident.observed_value,
+                expected=incident.expected_value,
+                state=AnomalyState(incident.state),
+                started=incident.anomaly_start or incident.detected_at,
+                row_state=_row_state(incident.details),
+                window_status=coverage.state.value,
+            )
+            for incident, name, _total in rows
+        ],
+        total=total,
+        items_truncated=total > len(rows),
+        reason=span.reason,
+        reason_code=span.reason_code,
+        reason_params=span.reason_params,
     )
 
 
