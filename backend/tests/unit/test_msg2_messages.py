@@ -14,7 +14,11 @@ from app.models.enums import CoverageStatus, RuleHealthStatus
 from app.rules.matches import SKIPPED_REASON, CoverageState, MatchCoverage
 from app.services import rule_statistics
 from app.services.detection_coverage import DetectionCoverageEvaluator
-from app.services.rule_statistics import _NO_COMPLETE_WINDOW, _window_message, _wire
+from app.services.rule_statistics import (
+    NO_COMPLETE_WINDOW_MESSAGE,
+    message_wire,
+    window_message,
+)
 from tests.unit.test_detection_coverage import evaluate, make_rule, pair, settings
 
 
@@ -191,7 +195,7 @@ def test_evidence_reasons_equal_the_legacy_sentences() -> None:
 def test_window_reason_equals_the_legacy_sentence(
     coverage: MatchCoverage, expected: str | None
 ) -> None:
-    message = _window_message(coverage)
+    message = window_message(coverage)
     assert (None if message is None else render(message)) == expected
     assert (message is None) == (expected is None)
 
@@ -207,13 +211,13 @@ def test_statistics_constants_keep_their_legacy_text() -> None:
         "Lower is costlier to evaluate. This is not a firing rate."
     )
     assert rule_statistics.BENCHMARK_UNIT == "millions of events per second (QRadar's unit)"
-    assert render(_NO_COMPLETE_WINDOW) == "No complete window to measure."
+    assert render(NO_COMPLETE_WINDOW_MESSAGE) == "No complete window to measure."
 
 
 def test_wire_pair_is_none_for_no_message_and_raw_counts_otherwise() -> None:
-    assert _wire(None) == (None, None)
-    message = _window_message(MatchCoverage(CoverageState.INCOMPLETE, 24, 23, 0, 0, 1))
-    assert _wire(message) == (
+    assert message_wire(None) == (None, None)
+    message = window_message(MatchCoverage(CoverageState.INCOMPLETE, 24, 23, 0, 0, 1))
+    assert message_wire(message) == (
         "rule_statistics.window.incomplete",
         {"complete": 23, "expected": 24, "missing": 1, "truncated": 0, "failed": 0},
     )
