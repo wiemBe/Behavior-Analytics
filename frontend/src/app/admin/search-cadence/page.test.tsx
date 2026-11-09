@@ -25,7 +25,7 @@ describe("search cadence page", () => {
     render(await SearchCadencePage());
     expect(screen.getByText("Times are UTC.")).toBeInTheDocument();
     expect(screen.getByText("Cadence changes when a family searches, not its bucket width.")).toBeInTheDocument();
-    expect(screen.getByText("A dash in Bucket means the family has no buckets.")).toBeInTheDocument();
+    expect(screen.getByText("Bucket width is the span of one stored bucket, not how often the family searches; a dash means the family has no buckets.")).toBeInTheDocument();
     expect(
       screen.getByText("“Not run since upgrade” and “Not counted” are missing measurements, not zero."),
     ).toBeInTheDocument();

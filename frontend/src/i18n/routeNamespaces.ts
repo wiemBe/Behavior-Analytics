@@ -298,7 +298,7 @@ export const ROUTE_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
   "/admin/ips-sources": ["backend", "enums", "fieldMapping", "ips", "waf"],
   "/admin/outage-policy": ["backend", "classification", "enums", "fleet", "outage"],
   "/admin": ["admin", "users"],
-  "/admin/search-cadence": [],
+  "/admin/search-cadence": ["backend", "enums", "waf"],
   "/admin/siem-load": ["siemLoad"],
   "/admin/email": ["backend", "enums", "mailAdmin"],
   "/admin/qradar-access": ["qradarAccess"],

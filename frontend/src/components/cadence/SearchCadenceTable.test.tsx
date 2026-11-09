@@ -78,11 +78,59 @@ describe("rows", () => {
     );
     const row = rowOf("Anomaly explanations");
     expect(within(row).getByText("evidence up to 1 h 2 min")).toBeInTheDocument();
-    // No bucket reads as a dash, and the header says what that means.
+    // No bucket reads as a dash, and the footnote says what that means.
     expect(within(row).getByTitle("This family has no buckets")).toHaveTextContent("—");
-    expect(screen.getByRole("columnheader", { name: /^bucket/i })).toHaveTextContent(
-      /no buckets/i,
+    expect(screen.getByText(/a dash means the family has no buckets/i)).toBeInTheDocument();
+  });
+
+  it("labels the header Bucket width and explains it in the footnote", () => {
+    render(<SearchCadenceTable items={[item()]} />);
+    expect(screen.getByRole("columnheader", { name: "Bucket width" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Bucket width is the span of one stored bucket, not how often the family searches; a dash means the family has no buckets.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  const failedRow = (code: string | null) =>
+    item({
+      family: "CATCHALL_SENDERS",
+      cadence_seconds: 3600,
+      next_dispatch_at: "2026-11-04T20:02:00Z",
+      last_run: {
+        at: "2026-11-04T19:24:00Z",
+        outcome: "failed",
+        searches_sent: 1,
+        buckets_collected: 0,
+        split_count: 0,
+      },
+      next_dispatch_reason: "The run at 2026-11-04 19:24:00 UTC failed; backend sentence.",
+      next_dispatch_reason_code: code,
+      next_dispatch_reason_params: {},
+    });
+
+  it("shows a short line for the failed-run code, not the long sentence", () => {
+    render(
+      <SearchCadenceTable
+        items={[failedRow("search_cadence.next_dispatch.after_failed_run")]}
+      />,
     );
+    const row = within(screen.getAllByRole("row")[1]);
+    expect(row.getByText("Not retried after the failed run.")).toBeInTheDocument();
+    expect(row.queryByText(/backend sentence/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to the backend sentence for an unknown code", () => {
+    render(<SearchCadenceTable items={[failedRow("search_cadence.next_dispatch.other")]} />);
+    const row = within(screen.getAllByRole("row")[1]);
+    expect(row.getByText(/backend sentence/)).toBeInTheDocument();
+    expect(row.queryByText("Not retried after the failed run.")).not.toBeInTheDocument();
+  });
+
+  it("shows no reason for a row that did not fail", () => {
+    render(<SearchCadenceTable items={[item()]} />);
+    expect(screen.queryByText(/Not retried after the failed run/)).not.toBeInTheDocument();
   });
 
   it("shows times in UTC with the zone", () => {

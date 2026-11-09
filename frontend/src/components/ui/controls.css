@@ -64,6 +64,14 @@ td.cell-family .cell-sub {
   min-width: 0;
 }
 
+/* Why a failed family's next run is far off: a sentence under the time, kept
+   to a readable measure and left-aligned inside the right-aligned cell. */
+.cadence-reason {
+  max-width: 34ch;
+  margin-left: auto;
+  text-align: left;
+}
+
 /* What a column header means, when the header alone would be ambiguous. */
 .table-notes {
   list-style: none;

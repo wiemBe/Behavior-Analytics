@@ -13,6 +13,7 @@ import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, type SearchCadenceItem } from "@/lib/api";
 import { plainCount } from "@/lib/figureText";
+import { useBackendMessage } from "@/i18n/backendMessage";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import {
   cadenceLabel,
@@ -49,6 +50,7 @@ function Outcome({ value }: { value: string }) {
 function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
   const t = useTranslations("cadence.table");
   const i18n = useBehaviorI18n();
+  const backendMessage = useBackendMessage();
   const [item, setItem] = useState(initial);
   const [pending, setPending] = useState<number | null>(null);
   const [outcome, setOutcome] = useState<ChangeOutcome>({ kind: "idle" });
@@ -89,6 +91,17 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
 
   const hasStatus = outcome.kind !== "idle";
   const nextRun = nextRunCell(item, new Date());
+  // Only a failed last run carries a reason; the sentence names both UTC times.
+  // The neighbouring cells already show both times, so the known code gets a short line.
+  const reason = item.next_dispatch_reason
+    ? item.next_dispatch_reason_code === "search_cadence.next_dispatch.after_failed_run"
+      ? t("notRetried")
+      : backendMessage({
+        text: item.next_dispatch_reason,
+        code: item.next_dispatch_reason_code,
+        params: item.next_dispatch_reason_params,
+      })
+    : null;
 
   return (
     <>
@@ -143,6 +156,7 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
               —
             </span>
           )}
+          {reason && <span className="cell-sub cadence-reason">{reason}</span>}
         </td>
         <td className="num">
           {lastRun === null ? (
@@ -180,7 +194,6 @@ export function SearchCadenceTable({ items }: { items: SearchCadenceItem[] }) {
               <th scope="col">{t("cadence")}</th>
               <th scope="col" className="num">
                 {t("bucket")}
-                <span className="cell-sub">{t("noBuckets")}</span>
               </th>
               <th scope="col" className="num">
                 {t("worstCase")}

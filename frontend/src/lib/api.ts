@@ -646,6 +646,10 @@ export interface SearchCadenceItem {
   enabled: boolean;
   // Null when the family has not run since the upgrade.
   last_run: SearchCadenceLastRun | null;
+  // Set only while the last run failed: why the next run is as far away as it is.
+  next_dispatch_reason?: string | null;
+  next_dispatch_reason_code?: string | null;
+  next_dispatch_reason_params?: Record<string, unknown> | null;
 }
 
 export interface SearchVersion {
