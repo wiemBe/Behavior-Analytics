@@ -7,8 +7,8 @@ complete count is what makes an empty hour a measured zero rather than "none
 seen on this page".
 
 T-085 (the IPS analyst read API) is merged; this module includes the IPS branch
-alongside Phase A and WAF, and the property-watch branch (PW-5c). A new family is one more
-branch here, nothing else.
+alongside Phase A and WAF, the property-watch branch (PW-5c) and the rule branch (SOC-6).
+A new family is one more branch here, nothing else.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.ips import IpsAnomaly
 from app.models.log_source import LogSourceAnomaly
 from app.models.property_watch import PwAnomaly
+from app.models.rule_anomaly import RuleAnomaly
 from app.models.waf import WafAnomaly
 from app.repositories.anomaly import AnomalyRepository, SubjectKindFilter
 from app.schemas.anomaly import SubjectKind
@@ -186,6 +187,27 @@ def _pw_branch(since: datetime, until: datetime) -> Select:
     )
 
 
+def _rule_branch(since: datetime, until: datetime) -> Select:
+    """Rule incidents grouped by hour and severity.
+
+    No join: the list's rule branch joins the analytics rule only to name it, and
+    `rule_anomaly.rule_id` is a non-null cascading foreign key, so every incident has
+    its rule.
+    """
+    a = RuleAnomaly
+    hour = _hour_of(a.detected_at)
+    return (
+        select(
+            hour.label("hour"),
+            cast(literal_column("'RULE'"), String).label("family"),
+            a.severity.label("severity"),
+            func.count().label("anomalies"),
+        )
+        .where(a.detected_at >= since, a.detected_at < until)
+        .group_by(hour, a.severity)
+    )
+
+
 def fill_hours(
     span: list[datetime], counts: dict[datetime, dict[str, int]]
 ) -> list[HourCounts]:
@@ -242,6 +264,9 @@ async def histogram(
     if kinds is None or SubjectKind.PW_VALUE in kinds:
         branches.append(_pw_branch(since, until))
         families.append(SubjectKind.PW_VALUE.value)
+    if kinds is None or SubjectKind.RULE in kinds:
+        branches.append(_rule_branch(since, until))
+        families.append(SubjectKind.RULE.value)
     span = hour_span(since, until)
     if not branches:
         # Reachable only if a future SubjectKind is added without a branch here.

@@ -1,6 +1,6 @@
 """The triage queue read model (SOC-4b, design `SOC-4.design.md` §2.4 and §3).
 
-One list of unfinished work from five sources: anomalies (four families), alerts that are not
+One list of unfinished work from five sources: anomalies (five families), alerts that are not
 an anomaly's alert, open offenses, sources awaiting classification review, and catch-all
 senders awaiting review. Membership is state-based; "new since" is a flag laid over the rows
 and never adds or removes one.
@@ -115,6 +115,7 @@ _FAMILY_BY_SUBJECT = {
     "IPS_ENTITY": AnomalyFamily.IPS,
     "IPS_SOURCE": AnomalyFamily.IPS,
     "PW_VALUE": AnomalyFamily.PROPERTY_WATCH,
+    "RULE": AnomalyFamily.RULE,
 }
 
 
@@ -209,6 +210,8 @@ def _subject_label(row: dict[str, Any]) -> str | None:
         return row["entity_display_name"] or row["entity_value_key"]
     if kind == "PW_VALUE":
         return f"{row['pw_watch_name']}: {row['pw_value_key']}"
+    if kind == "RULE":
+        return row["rule_name"]
     return row["log_source_name"]
 
 
