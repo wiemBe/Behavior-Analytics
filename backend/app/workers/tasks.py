@@ -55,6 +55,7 @@ from app.models.waf import WafSourceProfile
 from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider, build_provider_for_instance
 from app.repositories.offense import OffenseRepository
+from app.rules.engine import RuleMatchEngine
 from app.services.anomaly_fault_retention import AnomalyFaultRetention
 from app.services.ariel_permit import ArielPermitBudget
 from app.services.ariel_search_retention import ArielSearchRunRetention
@@ -492,7 +493,15 @@ async def collect_rule_matches(instance_name: str | None = None) -> dict:
         session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
     ) -> dict:
         assert provider is not None
+        # The engine shares this transaction. A failure rolls the windows back
+        # with the judgement, so the next tick's written_since filter still
+        # sees them. Swallowing the error would commit windows this run would
+        # never rejudge.
+        started = datetime.now(UTC)
         report = await RuleMatchCollector(session, provider).collect(instance)
+        await RuleMatchEngine(session, settings=settings).evaluate(
+            instance, written_since=started
+        )
         return {
             "status": (
                 "skipped_locked"

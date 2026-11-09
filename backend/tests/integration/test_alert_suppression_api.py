@@ -18,6 +18,8 @@ from app.models.alert import Alert
 from app.models.alert_suppression import AlertSuppression, AlertSuppressionHit
 from app.models.enums import AnomalyState, AnomalyType, Severity
 from app.models.log_source import LogSourceAnomaly
+from app.models.rule import AnalyticsRule
+from app.models.rule_anomaly import RuleAnomaly
 from app.security.rbac import Principal
 from tests.integration.factories import make_instance, make_log_source
 from tests.integration.test_fleet_api import (
@@ -515,3 +517,55 @@ def test_condition_read_returns_hits_and_window_alerts_then_an_honest_null(
         "hit_count": 0,
         "breakthrough_alerts": [],
     }
+
+
+def test_a_rule_has_no_whole_source_scope(db_schema) -> None:
+    """SOC-6f: whole_source on a rule anomaly or an analytics_rule alert is 422.
+
+    The refusal is the rule sentence. Property watch keeps its own sentence.
+    """
+
+    async def setup(session):  # type: ignore[no-untyped-def]
+        instance = await make_instance(session)
+        rule = AnalyticsRule(
+            instance_id=instance.id,
+            qradar_id=61,
+            name="scoped-rule",
+            rule_type="EVENT",
+            enabled=True,
+        )
+        session.add(rule)
+        await session.flush()
+        anomaly = RuleAnomaly(
+            rule_id=rule.id,
+            qradar_id=rule.qradar_id,
+            detector_type="RULE_SILENCE",
+            fingerprint="rule_anomaly:test",
+            severity=Severity.MEDIUM.value,
+            state=AnomalyState.OPEN.value,
+            detected_at=NOW,
+        )
+        session.add(anomaly)
+        await session.flush()
+        alert = _alert(
+            source_id=rule.id,
+            anomaly_id=anomaly.id,
+            source_type="analytics_rule",
+            title="Rule silence: scoped-rule",
+        )
+        session.add(alert)
+        await session.flush()
+        return str(anomaly.id), str(alert.id)
+
+    anomaly_id, alert_id = run(setup)
+    client = Client(ANALYST)
+    body = _body(whole_source=True)
+    anomaly_response = client.post(
+        f"{BASE}/anomalies/rule/{anomaly_id}/suppress", json=body
+    )
+    assert anomaly_response.status_code == 422, anomaly_response.text
+    assert "a rule has no whole-source scope" in anomaly_response.text
+    alert_response = client.post(f"{BASE}/alerts/{alert_id}/suppress", json=body)
+    assert alert_response.status_code == 422, alert_response.text
+    assert "a rule has no whole-source scope" in alert_response.text
+    assert client.get(f"{BASE}/suppressions?active=false").json() == []

@@ -141,6 +141,16 @@ reference heading for them.
 | `RULE_METRIC_LOOKBACK_DAYS` | `30` | How far rule-metric collection looks back |
 | `RULE_METRIC_MAX_OFFENSES` | `10000` | Offense rows considered for rule metrics |
 | `RULE_MATCH_COLLECTION_ENABLED` | `false` | Measured rule-match collection switch |
+| `RULE_ALERTING_ENABLED` | `false` | Record rule silence and storm incidents, but open no alert until an operator turns the family on. One switch covers both detectors. Robust z uses `ANOMALY_DEVIATION_THRESHOLD`; the MAD floor uses `BASELINE_MAD_FLOOR_RATIO` |
+| `RULE_SILENCE_WINDOWS` | `3` | Consecutive proven-zero windows before a silence incident opens. This is the open threshold |
+| `RULE_SILENCE_MIN_MEDIAN` | `1` | Minimum median matched events per window in the 7-day silence baseline |
+| `RULE_SILENCE_MIN_PRESENCE` | `0.8` | Minimum fraction of those windows that matched |
+| `RULE_STORM_MIN_SAMPLES` | `8` | Samples a weekday-and-slot cell needs |
+| `RULE_STORM_MIN_VISITS` | `4` | Distinct ISO weeks those samples must span |
+| `RULE_STORM_MIN_WINDOW_EVENTS` | `20` | Minimum matched events in the window before it can be a storm |
+| `RULE_STORM_RATIO` | `2` | Minimum multiple of the cell median. Skipped when the median is 0 |
+| `RULE_STORM_MIN_ABSOLUTE_DELTA` | `50` | Minimum rise above the median |
+| `RULE_STORM_LOOKBACK_DAYS` | `84` | History the storm cell reads. Inside the default 90-day match retention; not checked against it |
 | `RULE_MATCH_SETTLE_LAG_SECONDS` | `300` | A window is collected only after it has been closed this long |
 | `RULE_MATCH_MAX_WINDOWS_PER_RUN` | `6` | Windows per run when the cadence is no longer than the window |
 | `RULE_MATCH_MAX_WINDOW_ATTEMPTS` | `3` | Failures before a window stays `FAILED` and the watermark moves on |

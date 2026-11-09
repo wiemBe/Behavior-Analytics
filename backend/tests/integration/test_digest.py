@@ -34,6 +34,8 @@ from app.models.ips import IpsAnomaly
 from app.models.log_source import LogSourceAnomaly
 from app.models.outage import OutageAlertPolicy
 from app.models.property_watch import PropertyWatch, PwAnomaly
+from app.models.rule import AnalyticsRule
+from app.models.rule_anomaly import RuleAnomaly
 from app.models.waf import WafAnomaly, WafEndpoint
 from app.services.digest import DigestService, run_due_digests
 from app.services.email_delivery import EmailDeliveryError
@@ -751,7 +753,9 @@ async def test_one_instance_run_costs_twelve_statements_at_two_fleet_sizes(
             await service.run_for_instance(instance)
         return len(statements)
 
-    assert await statements_for(1) == await statements_for(4) == 12
+    # The thirteenth statement is the rule-family grouped read (SOC-6c, design
+    # §5.7). It runs at every fleet size, including while rule alerting is off.
+    assert await statements_for(1) == await statements_for(4) == 13
 
 
 # ------------------------------------------------------- recipient union
@@ -854,3 +858,69 @@ async def test_the_digest_task_and_its_beat_entry_are_registered() -> None:
     assert "run_alert_digest" in celery_app.tasks
     entry = celery_app.conf.beat_schedule["run-alert-digest"]
     assert entry["task"] == "run_alert_digest" and entry["schedule"] == 300.0
+
+
+async def _rule_digest_incident(session, instance, name: str) -> AnalyticsRule:
+    """One open silence inside the digest window, listed only under a DIGEST policy."""
+    rule = AnalyticsRule(
+        instance_id=instance.id,
+        qradar_id=60,
+        name=name,
+        rule_type="EVENT",
+        enabled=True,
+    )
+    session.add(rule)
+    await session.flush()
+    session.add(
+        RuleAnomaly(
+            rule_id=rule.id,
+            qradar_id=rule.qradar_id,
+            detector_type="RULE_SILENCE",
+            fingerprint=f"rule_anomaly:{rule.id.hex}",
+            severity=Severity.MEDIUM.value,
+            state="OPEN",
+            detected_at=datetime(2026, 11, 5, 12, 0, tzinfo=UTC),
+            anomaly_start=datetime(2026, 11, 5, 9, 0, tzinfo=UTC),
+            anomaly_end=datetime(2026, 11, 5, 12, 0, tzinfo=UTC),
+            deviation_ratio=0.0,
+        )
+    )
+    await _policy(
+        session,
+        instance,
+        family=AnomalyFamily.RULE,
+        source_id=rule.id,
+        detector="RULE_SILENCE",
+        mode=AlertPolicyMode.DIGEST,
+    )
+    return rule
+
+
+async def test_rule_rows_are_dropped_unless_the_family_switch_is_on(db_session) -> None:
+    """The grouped read runs either way. The row is listed only when the switch is on."""
+    await _recipient(db_session, "soc@example.org")
+    quiet = await make_instance(db_session)
+    paging = await make_instance(db_session)
+    await _rule_digest_incident(db_session, quiet, "quiet-rule")
+    listed = await _rule_digest_incident(db_session, paging, "paging-rule")
+
+    off = await DigestService(
+        db_session, settings=_settings(), clock=lambda: NOW, deliver=lambda *_: None
+    ).run_for_instance(quiet)
+    assert off is not None and off.item_count == 0
+    assert all(item.family is not AnomalyFamily.RULE for item in off.items)
+
+    on = await DigestService(
+        db_session,
+        settings=_settings(rule_alerting_enabled=True),
+        clock=lambda: NOW,
+        deliver=lambda *_: None,
+    ).run_for_instance(paging)
+    assert on is not None and on.item_count == 1
+    item = on.items[0]
+    assert item.family is AnomalyFamily.RULE
+    assert item.detector == "RULE_SILENCE"
+    assert item.source_name == "paging-rule"
+    assert item.source_class is None
+    link = item.link("https://soc.example")
+    assert "subject_kind=RULE" in link and f"rule_id={listed.id}" in link

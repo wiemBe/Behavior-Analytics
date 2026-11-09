@@ -438,6 +438,28 @@ class Settings(BaseSettings):
     # Measured rule matches (Phase E.1a): one Ariel `creEventList` search per
     # window. Off by default -- the cost on a busy console is unmeasured.
     rule_match_collection_enabled: bool = False
+    # Incidents are recorded either way. Alerts stay off until an operator turns
+    # the family on: collection itself is off because the Ariel cost on a busy
+    # console is unmeasured, and a false silence page is a trust failure while
+    # the first production series is still unseen. One switch covers silence and
+    # storm (design §5.5, D-60). Robust z uses anomaly_deviation_threshold;
+    # the MAD floor uses baseline_mad_floor_ratio.
+    rule_alerting_enabled: bool = False
+    # N consecutive proven-zero windows before a silence incident opens. This is
+    # the lifecycle open threshold, not a second counter stacked on
+    # anomaly_open_after_intervals (design §3.2).
+    rule_silence_windows: int = Field(default=3, ge=1, le=168)
+    rule_silence_min_median: float = Field(default=1.0, ge=0.0)
+    rule_silence_min_presence: float = Field(default=0.8, ge=0.0, le=1.0)
+    rule_storm_min_samples: int = Field(default=8, ge=1)
+    rule_storm_min_visits: int = Field(default=4, ge=1)
+    rule_storm_min_window_events: float = Field(default=20.0, ge=0.0)
+    rule_storm_ratio: float = Field(default=2.0, ge=0.0)
+    rule_storm_min_absolute_delta: float = Field(default=50.0, ge=0.0)
+    # Inside the default 90-day match retention so a cell can hold eight weekly
+    # visits. Not checked against retention: a longer lookback only finds fewer
+    # rows, and refusing it would break Settings() at the retention minimum.
+    rule_storm_lookback_days: int = Field(default=84, ge=1, le=3650)
     #: Deprecated by `search_cadence`; the beat no longer reads this setting.
     rule_match_collection_interval_seconds: int = Field(default=900, ge=60)
     rule_match_window_seconds: int = Field(default=3600, ge=60, le=86_400)

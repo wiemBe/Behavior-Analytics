@@ -41,6 +41,7 @@ from app.models.enums import (
     Criticality,
     IpsAnomalyType,
     PwAnomalyType,
+    RuleAnomalyType,
     WafAnomalyType,
 )
 
@@ -248,6 +249,9 @@ def _concentration_rule(evidence: Evidence, criticality: Criticality | None,
 #                        `:153`, `:155`
 #   PW spike/drop        extra["ratio"]                       `app/property_watch/
 #                        detectors.py:411`, `:519`
+#   Rule storm           extra["ratio"]                       `app/rules/anomalies.py`
+#                        (a null ratio, including a zero median, is not evidence)
+#   Rule silence         none                                 never (design §4.3)
 BREAKTHROUGH_RULES: dict[AnomalyFamily, dict[str, _Rule]] = {
     AnomalyFamily.LOG_SOURCE: {
         AnomalyType.VOLUME_SPIKE.value: _volume_spike,
@@ -290,6 +294,14 @@ BREAKTHROUGH_RULES: dict[AnomalyFamily, dict[str, _Rule]] = {
         PwAnomalyType.PW_NEW_VALUE.value: _never,
         PwAnomalyType.PW_NEW_COMBINATION.value: _never,
     },
+    AnomalyFamily.RULE: {
+        # Ten times the usual hour. A null ratio (zero median) does not break
+        # through: D-54 requires positive evidence of a magnitude.
+        RuleAnomalyType.RULE_STORM.value: _spike_rule,
+        # A proven zero has no further extreme. The suppression holds for the
+        # whole window (D-60).
+        RuleAnomalyType.RULE_SILENCE.value: _never,
+    },
 }
 
 
@@ -326,6 +338,8 @@ def breaks_through(
     PW           ``PW_VALUE_DROP``               ratio <= 0.1
     PW           ``PW_VALUE_DISAPPEARED``        always (a value vanishing is the extreme)
     PW           new value, new combination      never (novelty)
+    Rule         ``RULE_STORM``                  ratio >= 10; a null ratio never
+    Rule         ``RULE_SILENCE``                never (a muted silence stays muted)
     ============ ================================= =====================
 
     A detector with no magnitude in its evidence is "never", never "always":

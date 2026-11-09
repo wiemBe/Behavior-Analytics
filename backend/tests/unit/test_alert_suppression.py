@@ -20,6 +20,7 @@ from app.models.enums import (
     Criticality,
     IpsAnomalyType,
     PwAnomalyType,
+    RuleAnomalyType,
     WafAnomalyType,
 )
 
@@ -30,6 +31,7 @@ FAMILY_ENUMS = {
     AnomalyFamily.WAF: WafAnomalyType,
     AnomalyFamily.IPS: IpsAnomalyType,
     AnomalyFamily.PROPERTY_WATCH: PwAnomalyType,
+    AnomalyFamily.RULE: RuleAnomalyType,
 }
 
 
@@ -120,6 +122,22 @@ def test_every_detector_of_every_family_has_an_explicit_breakthrough_rule() -> N
     assert set(BREAKTHROUGH_RULES) == set(FAMILY_ENUMS)
     for family, enum in FAMILY_ENUMS.items():
         assert set(BREAKTHROUGH_RULES[family]) == {item.value for item in enum}
+
+
+def test_rule_storm_breaks_through_at_ten_and_silence_never_does() -> None:
+    """D-60 / design §4.3: 10x breaks through, 9.9x and a null ratio do not.
+
+    Silence is an explicit never, not a missing key: a missing enum member
+    fails ``test_every_detector_of_every_family_has_an_explicit_breakthrough_rule``.
+    """
+    storm = RuleAnomalyType.RULE_STORM
+    silence = RuleAnomalyType.RULE_SILENCE
+    assert _breaks(AnomalyFamily.RULE, storm, {"ratio": 10})
+    assert not _breaks(AnomalyFamily.RULE, storm, {"ratio": 9.9})
+    assert not _breaks(AnomalyFamily.RULE, storm, {"ratio": None})
+    assert not _breaks(AnomalyFamily.RULE, storm, {})
+    assert not _breaks(AnomalyFamily.RULE, silence, {"ratio": 100})
+    assert not _breaks(AnomalyFamily.RULE, silence, {"ratio_to_baseline": 0})
 
 
 def test_unknown_detectors_and_missing_or_non_numeric_magnitudes_never_break_through() -> None:

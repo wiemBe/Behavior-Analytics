@@ -41,11 +41,14 @@ from app.models.enums import (
     AnomalyType,
     IpsAnomalyType,
     PwAnomalyType,
+    RuleAnomalyType,
     WafAnomalyType,
 )
 from app.models.ips import IpsAnomaly, IpsEntity
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.property_watch import PropertyWatch, PwAnomaly, PwValue
+from app.models.rule import AnalyticsRule
+from app.models.rule_anomaly import RuleAnomaly
 from app.models.waf import WafAnomaly, WafEndpoint
 from app.repositories.audit import record_audit
 from app.schemas.suppression import (
@@ -78,6 +81,7 @@ _DETECTORS: dict[AnomalyFamily, tuple[str, ...]] = {
     AnomalyFamily.WAF: tuple(item.value for item in WafAnomalyType),
     AnomalyFamily.IPS: tuple(item.value for item in IpsAnomalyType),
     AnomalyFamily.PROPERTY_WATCH: tuple(item.value for item in PwAnomalyType),
+    AnomalyFamily.RULE: tuple(item.value for item in RuleAnomalyType),
 }
 
 #: The `alert.source_type` values of the four anomaly producers, by family
@@ -89,6 +93,7 @@ _ALERT_FAMILY: dict[str, AnomalyFamily] = {
     "ips_entity": AnomalyFamily.IPS,
     "ips_source": AnomalyFamily.IPS,
     "pw_value": AnomalyFamily.PROPERTY_WATCH,
+    "analytics_rule": AnomalyFamily.RULE,
 }
 
 
@@ -171,6 +176,11 @@ async def _condition_from_anomaly(
             if entity is not None and entity.log_source_id is not None:
                 return entity.log_source_id, str(ips.detector_type)
         raise _gone("the anomaly names no log source")
+    if family is AnomalyFamily.RULE:
+        rule = await session.get(RuleAnomaly, anomaly_id)
+        if rule is None:
+            raise _gone("anomaly not found")
+        return rule.rule_id, str(rule.detector_type)
     pw = await session.get(PwAnomaly, anomaly_id)
     if pw is None:
         raise _gone("anomaly not found")
@@ -195,6 +205,8 @@ async def _condition_from_alert(
     if whole_source:
         if family is AnomalyFamily.PROPERTY_WATCH:
             raise _unprocessable("property watch has no whole-source scope")
+        if family is AnomalyFamily.RULE:
+            raise _unprocessable("a rule has no whole-source scope")
         if alert.source_type == "log_source":
             if alert.source_id is None:
                 raise _gone("the alert names no log source")
@@ -350,6 +362,9 @@ async def _subject_name(
     if family == AnomalyFamily.PROPERTY_WATCH.value:
         watch = await session.get(PropertyWatch, subject_id)
         return watch.name if watch is not None else None
+    if family == AnomalyFamily.RULE.value:
+        rule = await session.get(AnalyticsRule, subject_id)
+        return rule.name if rule is not None else None
     source = await session.get(LogSource, subject_id)
     return source.name if source is not None else None
 
@@ -375,6 +390,8 @@ async def suppress_from_anomaly(
     subject_id, detector = await _condition_from_anomaly(session, resolved, anomaly_id)
     wide: str | None = detector
     if payload.whole_source:
+        if resolved is AnomalyFamily.RULE:
+            raise _unprocessable("a rule has no whole-source scope")
         if resolved not in SOURCE_ANCHORED:
             raise _unprocessable("property watch has no whole-source scope")
         wide = None

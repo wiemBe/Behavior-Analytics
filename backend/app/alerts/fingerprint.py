@@ -181,6 +181,30 @@ def search_threshold_fingerprint(search_id: str | uuid.UUID) -> str:
     )
 
 
+def rule_anomaly_fingerprint(
+    instance_id: str | uuid.UUID,
+    rule_id: str | uuid.UUID,
+    detector_type: str,
+) -> str:
+    """Identity of one rule silence or storm on one analytics rule (design §5.5).
+
+    The natural key is ``(instance, analytics_rule.id)``. The rule name is not
+    part of it: a rename must keep the same alert. There is no value text to
+    hash. ``source_type`` is ``analytics_rule`` and ``condition`` is
+    ``rule_anomaly``, so this cannot collide with ``custom_rule_breach``.
+    """
+    natural_key = json.dumps(
+        [str(instance_id), str(rule_id)],
+        separators=(",", ":"),
+    )
+    return compute_fingerprint(
+        source_type="analytics_rule",
+        source_id=natural_key,
+        condition="rule_anomaly",
+        subtype=detector_type,
+    )
+
+
 def custom_rule_breach_fingerprint(rule_id: str | uuid.UUID) -> str:
     """Identity of one custom rule's threshold condition (design §F.6).
 

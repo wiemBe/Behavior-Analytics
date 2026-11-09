@@ -11,12 +11,13 @@ ratio, and the first and last abnormal bucket in UTC, with a link to the filtere
 anomaly list. A source name is the only free text that leaves the database; no
 raw event value, address or AQL appears in the mail.
 
-Cost is twelve statements per instance run, whatever the fleet and the number of
+Cost is thirteen statements per instance run, whatever the fleet and the number of
 incidents: the per-instance advisory lock (take and release), one idempotency
-check under that lock, one policy read, one outage-policy read, four grouped
-incident reads, one recipient read, one template read and one run insert. The
-source class comes with the incident reads (an outer join), so it costs no
-statement of its own.
+check under that lock, one policy read, one outage-policy read, five grouped
+incident reads (Phase A, WAF, IPS, property watch, and rule), one recipient read,
+one template read and one run insert. The source class comes with the incident
+reads (an outer join), so it costs no statement of its own. The rule read runs
+even while ``rule_alerting_enabled`` is false; that switch only drops the rows.
 
 The run is recorded in ``alert_digest_run``. Its unique ``(instance_id,
 digest_date)`` is the idempotency key: a second beat tick on the same day sends
@@ -73,6 +74,8 @@ from app.models.ips import IpsAnomaly
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.outage import OutageAlertPolicy
 from app.models.property_watch import PropertyWatch, PwAnomaly
+from app.models.rule import AnalyticsRule
+from app.models.rule_anomaly import RuleAnomaly
 from app.models.waf import WafAnomaly, WafEndpoint
 from app.services.email_delivery import (
     EmailDeliveryError,
@@ -143,6 +146,9 @@ class DigestItem:
             params["subject_kind"] = "WAF_ENDPOINT"
         elif self.family is AnomalyFamily.IPS:
             params["subject_kind"] = "IPS"
+        elif self.family is AnomalyFamily.RULE:
+            params["subject_kind"] = "RULE"
+            params["rule_id"] = str(self.source_id)
         else:
             params["subject_kind"] = "PW_VALUE"
             params["property_watch_id"] = str(self.source_id)
@@ -166,8 +172,9 @@ class DigestRunResult:
 def _family_alerting(settings: Settings, family: AnomalyFamily) -> bool:
     """The family switch is the outer gate; a policy can only reduce paging.
 
-    Phase A has no family switch. WAF, IPS and property watch are opt-in, so a
-    digest row on a family that is still in shadow mode must list nothing.
+    Phase A has no family switch. WAF, IPS, property watch and rule are opt-in,
+    so a digest row on a family that is still in shadow mode must list nothing.
+    A new family must not fall through to Phase A's ``return True``.
     """
     if family is AnomalyFamily.WAF:
         return bool(settings.waf_alerting_enabled)
@@ -175,6 +182,8 @@ def _family_alerting(settings: Settings, family: AnomalyFamily) -> bool:
         return bool(settings.ips_alerting_enabled)
     if family is AnomalyFamily.PROPERTY_WATCH:
         return bool(settings.pw_alerting_enabled)
+    if family is AnomalyFamily.RULE:
+        return bool(settings.rule_alerting_enabled)
     return True
 
 
@@ -310,7 +319,7 @@ class DigestService:
         policy_rows: Sequence[AlertPolicy],
         outage_rows: Sequence[OutageAlertPolicy],
     ) -> list[DigestItem]:
-        """Run the four grouped reads and keep only final-DIGEST groups."""
+        """Run the five grouped reads and keep only final-DIGEST groups."""
         classification = func.coalesce(
             LogSourceClassification.source_class, SourceClass.UNCLASSIFIED.value
         )
@@ -466,6 +475,40 @@ class DigestService:
             )
         ).all()
 
+        # Runs on every digest, including while rule_alerting_enabled is false.
+        # Skipping it would make the pinned statement count depend on a default.
+        rule = (
+            await self.session.execute(
+                select(
+                    AnalyticsRule.id,
+                    AnalyticsRule.name,
+                    RuleAnomaly.detector_type,
+                    func.count(RuleAnomaly.id),
+                    func.max(_severity_rank(RuleAnomaly.severity)),
+                    func.max(RuleAnomaly.deviation_ratio),
+                    func.min(
+                        func.coalesce(RuleAnomaly.anomaly_start, RuleAnomaly.detected_at)
+                    ),
+                    func.max(
+                        func.coalesce(RuleAnomaly.anomaly_end, RuleAnomaly.detected_at)
+                    ),
+                )
+                .select_from(RuleAnomaly)
+                .join(AnalyticsRule, AnalyticsRule.id == RuleAnomaly.rule_id)
+                .where(
+                    AnalyticsRule.instance_id == instance.id,
+                    RuleAnomaly.suppressed.is_(False),
+                    RuleAnomaly.detected_at >= start,
+                    RuleAnomaly.detected_at < end,
+                )
+                .group_by(
+                    AnalyticsRule.id,
+                    AnalyticsRule.name,
+                    RuleAnomaly.detector_type,
+                )
+            )
+        ).all()
+
         candidates: list[DigestItem] = []
         for family, rows in (
             (AnomalyFamily.LOG_SOURCE, phase_a),
@@ -524,6 +567,31 @@ class DigestService:
                         last_bucket=last_bucket,
                     )
                 )
+        if _family_alerting(self.settings, AnomalyFamily.RULE):
+            for (
+                source_id,
+                source_name,
+                detector,
+                count,
+                severity_rank,
+                worst_ratio,
+                first_bucket,
+                last_bucket,
+            ) in rule:
+                candidates.append(
+                    DigestItem(
+                        family=AnomalyFamily.RULE,
+                        source_id=source_id,
+                        source_name=source_name,
+                        source_class=None,
+                        detector=str(detector),
+                        count=int(count),
+                        severity=_RANK_TO_SEVERITY[int(severity_rank)],
+                        worst_ratio=float(worst_ratio) if worst_ratio is not None else None,
+                        first_bucket=first_bucket,
+                        last_bucket=last_bucket,
+                    )
+                )
 
         items: list[DigestItem] = []
         for item in candidates:
@@ -564,10 +632,10 @@ class DigestService:
         unit runs under the collector advisory lock, and the row is committed
         before the lock is released, so two overlapping ticks send one mail.
 
-        Twelve statements per run: the lock (take and release), one idempotency
-        check, one policy read, one outage-policy read, four grouped incident
-        reads, one recipient read, one template read and the run insert. Nothing
-        here loops over a source or an incident.
+        Thirteen statements per run: the lock (take and release), one idempotency
+        check, one policy read, one outage-policy read, five grouped incident
+        reads (the fifth is the rule family), one recipient read, one template
+        read and the run insert. Nothing here loops over a source or an incident.
         """
         now = self._clock()
         if now.tzinfo is None:
@@ -702,7 +770,7 @@ async def run_due_digests(
     """Run today's digest for every instance that is due and has no run row.
 
     Two statements for the fleet (the already-run instance ids and the instance
-    list) plus twelve per instance actually run. Before ``DIGEST_HOUR_UTC`` it
+    list) plus thirteen per instance actually run. Before ``DIGEST_HOUR_UTC`` it
     returns without touching the database. The fleet check is a fast path only;
     each instance re-checks under its own advisory lock.
     """

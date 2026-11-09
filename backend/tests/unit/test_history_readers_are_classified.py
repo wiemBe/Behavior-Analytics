@@ -246,6 +246,18 @@ HISTORY_TABLES = (
                 "app.repositories.related_activity."
                 "RelatedActivityRepository.rule_match_windows"
             ): Reader("related activity section", ReaderKind.DISPLAY),
+            # SOC-6c: silence and storm read the stored series, HISTORY included.
+            # The cell carries history_samples into the explanation (design §4),
+            # so these are evidence reads, not live-only.
+            "app.rules.engine.RuleMatchEngine._probe": Reader(
+                "SOC-6c written-since probe", ReaderKind.EVIDENCE
+            ),
+            "app.rules.engine.RuleMatchEngine._load_windows": Reader(
+                "SOC-6c series", ReaderKind.EVIDENCE
+            ),
+            "app.rules.engine.RuleMatchEngine._load_cells": Reader(
+                "SOC-6c storm cell", ReaderKind.EVIDENCE
+            ),
         },
     ),
     HistoryTable(
