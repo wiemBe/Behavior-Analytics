@@ -214,6 +214,28 @@ export function buildIpsSourceSeries(
 }
 
 /**
+ * The source's total events per bucket. A source-bucket row exists only when TOTALS was complete,
+ * so its `total_events` is a measured count, never a floor; the per-dimension measurements do not
+ * qualify it. A bucket with no row is a gap, as in every other series.
+ */
+export function buildIpsTotalsSeries(buckets: IpsSourceMetricBucket[]): IpsPoint[] {
+  return build(
+    buckets,
+    (b) => ({
+      value: b.total_events,
+      lowerBound: false,
+      kind: "COMPLETE",
+      reported: b.total_events,
+      measurement: "EXACT",
+      numerator: null,
+      denominator: null,
+    }),
+    (b) => b.in_maintenance === true,
+    () => false,
+  );
+}
+
+/**
  * Intervals to mark behind the line: never-stored intervals, buckets whose value
  * was not measured, buckets measured only as a floor, and maintenance buckets.
  * A bucket can be several at once; each reason is its own interval so the key can

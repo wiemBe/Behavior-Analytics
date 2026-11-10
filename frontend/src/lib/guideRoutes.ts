@@ -17,6 +17,8 @@ export const GUIDE_ROUTES = {
   "/behavior/traffic": "waf-behavior",
   "/behavior/waf": "waf-behavior",
   "/behavior/waf/sources/[id]": "waf-behavior",
+  "/behavior/ips": "ips-behavior",
+  "/behavior/ips/sources/[id]": "ips-behavior",
   "/behavior/watches": "property-watches",
   "/behavior/watches/[id]": "property-watches",
   "/behavior/watches/new": "property-watch-setup",

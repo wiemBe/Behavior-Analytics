@@ -44,3 +44,67 @@ td.num .ips-unit {
   overflow-wrap: break-word;
   min-width: 0;
 }
+
+/* IPS behavior pages (IPS-UI-1). Layout only; every value is a token. */
+.ips-lead {
+  margin: 0;
+  max-width: 90ch;
+  font-size: var(--fs-md);
+  line-height: var(--lh-prose);
+}
+/* A row of controls (range, series, dimension filter) that belong to one question. */
+.ips-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-6);
+}
+.ips-controls .subtitle {
+  margin: 0;
+}
+.ips-sources td.cell-name {
+  min-width: 12ch;
+}
+/* One entity dimension per line: the figure stays whole, its notes wrap beneath it. */
+.ips-pressure {
+  white-space: nowrap;
+  display: block;
+}
+.ips-measurement {
+  white-space: normal;
+}
+.ips-entities td.cell-name {
+  min-width: 22ch;
+  max-width: 44ch;
+}
+.ips-entity {
+  overflow-wrap: anywhere;
+}
+/* A left-aligned column that follows a right-aligned figure needs air, or the two read as one. */
+.ips-sources td.num + td:not(.num),
+.ips-sources th.num + th:not(.num),
+.ips-entities td.num + td:not(.num),
+.ips-entities th.num + th:not(.num) {
+  padding-inline-start: var(--sp-3);
+}
+/* A status word is plain text at its column's edge, whether or not the markup wraps it in a pill. */
+.ips-sources .pill,
+.ips-entities .pill {
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+.ips-section {
+  margin-top: var(--sp-7);
+}
+.ips-actions td.num,
+.ips-actions th.num {
+  white-space: nowrap;
+}
+.ips-entities td.num,
+.ips-entities td.num .cell-sub {
+  white-space: nowrap;
+}
+.ips-actions {
+  max-width: 56ch;
+}
