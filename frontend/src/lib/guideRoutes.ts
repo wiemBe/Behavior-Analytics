@@ -10,6 +10,7 @@ export const GUIDE_ROUTES = {
   "/behavior": "behavior",
   "/anomalies": "anomalies",
   "/anomalies/[id]": "anomaly-detail",
+  "/entities": "entity-timeline",
   "/behavior/sources": "source-behavior",
   "/behavior/sources/[id]": "source-behavior",
   "/behavior/noise": "source-behavior",

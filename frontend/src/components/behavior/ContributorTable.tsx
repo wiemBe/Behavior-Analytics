@@ -14,6 +14,7 @@
 // the dimension was examined and found clean — the exact inversion of the
 // truth.
 
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Fragment, useState } from "react";
 
@@ -34,6 +35,7 @@ import {
 import { ARROW, availabilityCode } from "@/lib/behaviorI18n";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { useBackendMessage } from "@/i18n/backendMessage";
+import { evidenceEntityHref } from "@/lib/entities";
 
 export function ContributorTable({ dimension }: { dimension: ExplanationDimension }) {
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -157,6 +159,16 @@ export function ContributorTable({ dimension }: { dimension: ExplanationDimensio
                   const key = `${c.dimension}:${c.value}`;
                   const open = expanded === key;
                   const name = c.label ?? c.value;
+                  // An address or a username opens its stored timeline (SOC-16c). Decided by the
+                  // dimension's name; any other dimension's value stays plain text.
+                  const entityHref = evidenceEntityHref(c.dimension, c.value);
+                  const valueText = entityHref ? (
+                    <Link href={entityHref} aria-label={t("entityLink", { value: c.value })}>
+                      {c.value}
+                    </Link>
+                  ) : (
+                    c.value
+                  );
                   return (
                     <Fragment key={key}>
                       <tr>
@@ -165,10 +177,10 @@ export function ContributorTable({ dimension }: { dimension: ExplanationDimensio
                               as markup. */}
                           {c.label ? (
                             <>
-                              {c.label} <span className="muted">({c.value})</span>
+                              {c.label} <span className="muted">({valueText})</span>
                             </>
                           ) : (
-                            c.value
+                            valueText
                           )}{" "}
                           {c.is_new && <span className="pill pill-quiet warn">{t("new")}</span>}
                           {c.is_disappeared && (

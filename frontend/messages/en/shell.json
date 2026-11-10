@@ -119,6 +119,9 @@
     "groupFailed": "{name} could not be searched: the request failed. Try again.",
     "noMatch": "No match.",
     "forbiddenGroups": "{names} not searched: your role cannot read them",
-    "shortcut": "Ctrl K"
+    "shortcut": "Ctrl K",
+    "entities": "Entities",
+    "entityRow": "Entity timeline for “{query}”",
+    "entitySub": "Stored mentions of this IP, host or user"
   }
 }

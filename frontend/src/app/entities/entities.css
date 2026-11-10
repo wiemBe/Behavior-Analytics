@@ -1,0 +1,11 @@
+/* The entity timeline: layout only. Colours, sizes and spacing come from the tokens. */
+
+.entities {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+.entities > * {
+  margin: 0;
+}

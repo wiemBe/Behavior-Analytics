@@ -11,6 +11,9 @@ import Link from "next/link";
 //   Active anomalies  GET /anomalies?active_only=true&limit=200, read once per
 //                     session and filtered here (the API has no text search over
 //                     anomalies, so the group says "first 200")
+//   Entities          no read: one row that opens the entity timeline for the typed text
+//                     (SOC-16c). The bar does not classify it; the page and its API do. The row
+//                     is always the last group and shows for any non-empty query.
 //
 // These are reads of the application database; no QRadar search is issued, and
 // there are no actions, only links.
@@ -38,6 +41,7 @@ import {
   type Page,
 } from "@/lib/api";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
+import { entityHref } from "@/lib/entities";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 /**
@@ -248,10 +252,27 @@ export function TopSearch() {
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
 
-  const flat = useMemo(
+  // The Entities row needs no read, so it is there as soon as something is typed. It comes after
+  // every searched group, so it never moves their results.
+  const entityHit = useMemo<Hit | null>(
     () =>
-      (groups ?? []).flatMap((g) => (g.status === "ok" ? g.hits : [])),
-    [groups],
+      trimmed.length === 0
+        ? null
+        : {
+            id: "entity",
+            href: entityHref({ value: trimmed }),
+            title: t("entityRow", { query: trimmed }),
+            sub: t("entitySub"),
+          },
+    [trimmed, t],
+  );
+
+  const flat = useMemo(
+    () => [
+      ...(groups ?? []).flatMap((g) => (g.status === "ok" ? g.hits : [])),
+      ...(entityHit ? [entityHit] : []),
+    ],
+    [groups, entityHit],
   );
 
   const go = useCallback(
@@ -366,6 +387,28 @@ export function TopSearch() {
                     ))}
                 </div>
               ))}
+            {entityHit && (
+              <div role="group" aria-labelledby={`${uid}-g-entities`}>
+                <div className="topsearch-group" id={`${uid}-g-entities`}>
+                  {t("entities")}
+                </div>
+                <Link
+                  id={optionId(entityHit)}
+                  href={entityHit.href}
+                  role="option"
+                  aria-selected={flat[active]?.id === entityHit.id}
+                  className={`topsearch-option plain${flat[active]?.id === entityHit.id ? " is-active" : ""}`}
+                  onClick={(e) => {
+                    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+                    e.preventDefault();
+                    go(entityHit.href);
+                  }}
+                >
+                  <span className="topsearch-title">{entityHit.title}</span>
+                  {entityHit.sub && <span className="topsearch-sub">{entityHit.sub}</span>}
+                </Link>
+              </div>
+            )}
           </div>
           {forbidden.length > 0 && (
             <p className="topsearch-footer">

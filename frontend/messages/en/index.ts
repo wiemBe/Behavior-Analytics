@@ -23,6 +23,7 @@ import customRules from "./customRules.json";
 import dashboard from "./dashboard.json";
 import dashboardBoundary from "./dashboardBoundary.json";
 import directory from "./directory.json";
+import entities from "./entities.json";
 import enums from "./enums.json";
 import errors from "./errors.json";
 import evidence from "./evidence.json";
@@ -83,6 +84,7 @@ const messages = {
   dashboard,
   dashboardBoundary,
   directory,
+  entities,
   enums,
   errors,
   evidence,

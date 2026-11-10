@@ -143,6 +143,7 @@ describe("result groups", () => {
       "/rules/r1",
       "/offenses/4001",
       "/anomalies/a1",
+      "/entities?value=firewall",
     ]);
   });
 

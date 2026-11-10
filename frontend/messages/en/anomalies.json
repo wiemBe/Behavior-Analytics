@@ -145,6 +145,7 @@
     "deltaEvents": "Delta (events)",
     "contribution": "Contribution",
     "rowDetail": "Row detail",
+    "entityLink": "Open the stored timeline for {value}",
     "new": "new",
     "disappeared": "disappeared",
     "hideDetail": "Hide detail for {name}",

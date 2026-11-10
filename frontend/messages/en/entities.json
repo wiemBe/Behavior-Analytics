@@ -1,0 +1,125 @@
+{
+  "title": "Entity timeline",
+  "meta": "Entity timeline",
+  "titleEntity": "{kind} {value}",
+  "description": "What this platform has already stored about one IP address, host or user: incident records and bounded top-contributor lists. It is not a search of raw events and not a QRadar search.",
+  "boundary": {
+    "title": "Entity timeline",
+    "loading": "the entity timeline",
+    "error": "The entity timeline"
+  },
+  "loadNoun": "the entity timeline",
+  "kind": {
+    "IP": "IP",
+    "HOST": "Host",
+    "USER": "User"
+  },
+  "form": {
+    "label": "Entity search",
+    "value": "Value",
+    "valueHint": "An IP address, a host name or a user name.",
+    "kind": "What it is",
+    "kindIp": "IP address",
+    "kindHost": "Host",
+    "kindUser": "User",
+    "submit": "Show timeline",
+    "tooLong": "The value is longer than {max} characters, so no search was made. Shorten it and try again.",
+    "chooseKind": "Choose what “{value}” is, then show the timeline again."
+  },
+  "range": {
+    "label": "Time range (UTC)",
+    "title": "Window",
+    "options": {
+      "1h": "1 hour",
+      "24h": "24 hours",
+      "7d": "7 days"
+    },
+    "window": "<from></from> to <to></to>"
+  },
+  "refused": {
+    "title": "The backend refused this search.",
+    "generic": "The value, kind or window could not be accepted as typed.",
+    "newest": "Open the newest page"
+  },
+  "page": {
+    "PARTIAL": "Some lanes below are bounded, stale, switched off or not collected. An empty result in them does not prove the entity was absent.",
+    "NOT_COLLECTED": "No lane measured this entity in this window, so nothing below is a finding about it.",
+    "TRUNCATED": "This list is one page. More stored mentions match this window than are shown, newest first.",
+    "OTHER": "This result is not complete."
+  },
+  "state": {
+    "OK": "Measured",
+    "NONE": "None stored",
+    "NOT_COLLECTED": "Not collected",
+    "FORBIDDEN": "Forbidden",
+    "PARTIAL": "Partial",
+    "STALE": "Stale",
+    "TRUNCATED": "Truncated",
+    "NOT_APPLICABLE": "Not applicable"
+  },
+  "lanes": {
+    "heading": "What was checked",
+    "label": "Entity timeline lanes",
+    "lane": "Lane",
+    "status": "Status",
+    "inWindow": "Stored mentions",
+    "onPage": "On this page",
+    "note": "Note",
+    "name": {
+      "EXPLANATION": "Behavior anomaly contributors",
+      "WAF_TOP": "WAF top clients",
+      "IPS_TOP": "IPS source contributors",
+      "IPS_ENTITY": "IPS destination entities",
+      "OFFENSE": "QRadar offenses",
+      "LOG_SOURCE": "Log sources"
+    },
+    "noneProven": "Collection covered this window and the entity was not found.",
+    "notCounted": "Not counted on a paged list.",
+    "noReason": "No reason was recorded.",
+    "forbidden": "Not shown: this lane requires {permission}.",
+    "forbiddenUnknown": "Not shown: your role may not read this lane.",
+    "pagedNote": "This list is a page, so the counts above are for this page only.",
+    "notMeasured": "Not measured"
+  },
+  "items": {
+    "heading": "Stored mentions",
+    "label": "Stored mentions of the entity, newest first",
+    "time": "Time (UTC)",
+    "lane": "Lane",
+    "role": "Role",
+    "what": "Record",
+    "severity": "Severity",
+    "severityTitle": "Named severity, or a QRadar offense severity from 0 to 10",
+    "basis": "Basis",
+    "numericSeverity": "QRadar severity {value} of 10",
+    "until": "until <time></time>",
+    "age": "{age} ago"
+  },
+  "role": {
+    "SOURCE_IP": "Source address",
+    "DESTINATION_IP": "Destination address",
+    "HOST": "Host",
+    "USER": "Username",
+    "unknown": "Other role"
+  },
+  "basis": {
+    "EXACT": "Exact",
+    "TOP_N": "Top contributor",
+    "ADMITTED": "Admitted entity",
+    "unknown": "Not exact",
+    "TOP_N_TITLE": "From a bounded top list: values below the cut were not stored.",
+    "ADMITTED_TITLE": "Tracked because it was admitted; other values were not stored.",
+    "unknownTitle": "The measurement is not exact."
+  },
+  "empty": {
+    "none": "No stored mention of {value} in this window.",
+    "caution": "That is not a finding that it was absent. Read the status of each lane below: a lane that was not collected, or that stores only top contributors, cannot show absence."
+  },
+  "dangling": "{count, plural, one {# stored record} other {# stored records}} could no longer be opened and {count, plural, one {is} other {are}} not listed.",
+  "paging": {
+    "label": "Entity timeline pages",
+    "shown": "Showing {count, plural, one {# mention} other {# mentions}}, newest first.",
+    "older": "Older mentions",
+    "newest": "Back to the newest"
+  }
+}
