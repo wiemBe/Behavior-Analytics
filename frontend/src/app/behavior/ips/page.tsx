@@ -10,7 +10,7 @@ import { getTranslations } from "next-intl/server";
 
 import { Pagination } from "@/components/Pagination";
 import { IpsSourcesTable } from "@/components/ips/IpsSourcesTable";
-import { isJudged } from "@/components/ips/ipsSourceHealth";
+import { hasActiveAnomalies, isJudged } from "@/components/ips/ipsSourceHealth";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 import { asTextTranslator } from "@/i18n/textTranslator";
@@ -58,6 +58,8 @@ async function IpsBehaviorPage({
 
   const items = page?.items ?? [];
   const judged = items.filter(isJudged).length;
+  // Only a judged source can carry a count (the server sends null otherwise), page rows only.
+  const withActive = items.filter((s) => isJudged(s) && hasActiveAnomalies(s)).length;
   // The judged count is taken over the rows on this page, so it is only a share of the whole
   // list when the list fits on one page.
   const total = page?.total ?? items.length;
@@ -96,6 +98,16 @@ async function IpsBehaviorPage({
               pages: paginated ? "page" : "one",
               num: (chunks) => <strong className="num">{chunks}</strong>,
             })}
+            {withActive > 0 && (
+              <>
+                {" "}
+                {t.rich("leadActive", {
+                  active: count(withActive),
+                  plural: withActive,
+                  num: (chunks) => <strong className="num">{chunks}</strong>,
+                })}
+              </>
+            )}
           </p>
 
           <div className="ips-sources">

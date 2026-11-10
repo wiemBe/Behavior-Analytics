@@ -94,6 +94,35 @@ describe("IPS behavior: source states", () => {
     expect(screen.queryByText("VALID")).toBeNull();
   });
 
+  it("extends the lead with the number of judged sources that have active anomalies", async () => {
+    const { container } = await renderPage([
+      ipsSource({ log_source_id: "a", log_source_name: "a", active_anomaly_count: 2, worst_active_severity: "HIGH" }),
+      ipsSource({ log_source_id: "b", log_source_name: "b", active_anomaly_count: 1, worst_active_severity: "LOW" }),
+      ipsSource({ log_source_id: "c", log_source_name: "c", active_anomaly_count: 0 }),
+      ipsSource({ log_source_id: "d", log_source_name: "d", active_anomaly_count: null, validation_current: false }),
+    ]);
+    const lead = container.querySelector(".ips-lead") as HTMLElement;
+    expect(lead).toHaveTextContent("3 of 4 sources are collected and judged");
+    expect(lead).toHaveTextContent("2 judged sources have active anomalies.");
+  });
+
+  it("says nothing about active anomalies in the lead when no judged source has one", async () => {
+    const { container } = await renderPage([
+      ipsSource({ active_anomaly_count: 0 }),
+      ipsSource({ log_source_id: "n", log_source_name: "n", active_anomaly_count: null, validation_current: false }),
+    ]);
+    expect(container.querySelector(".ips-lead")).not.toHaveTextContent("active anomalies");
+  });
+
+  it("lists the source with the worst active anomalies right after the sources that are not judged", async () => {
+    await renderPage([
+      ipsSource({ log_source_id: "q", log_source_name: "a-quiet", active_anomaly_count: 0 }),
+      ipsSource({ log_source_id: "h", log_source_name: "z-busy", active_anomaly_count: 2, worst_active_severity: "HIGH" }),
+    ]);
+    const names = screen.getAllByRole("link", { name: /a-quiet|z-busy/ }).map((a) => a.textContent);
+    expect(names).toEqual(["z-busy", "a-quiet"]);
+  });
+
   it("does not count a disabled source as judged", async () => {
     await renderPage([ipsSource({ enabled: false })]);
     expect(screen.getByText("0 of 1")).toBeInTheDocument();

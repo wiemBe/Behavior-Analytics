@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { admission, ipsSource, latestBucket, pressure } from "./behaviorFixtures";
 import {
+  activeAnomaliesHref,
   admissionNotMeasured,
   atCeiling,
   groupByMeasurement,
+  hasActiveAnomalies,
   ipsValidationView,
   isJudged,
   isOverflowing,
@@ -112,5 +114,62 @@ describe("groupByMeasurement", () => {
     const groups = groupByMeasurement(latestBucket().dimensions.map((d, i) => (i === 3 ? { ...d, measurement: "LOWER_BOUND" } : d)));
     expect(groups.map((g) => g.measurement)).toEqual(["EXACT", "LOWER_BOUND"]);
     expect(groups[1].dimensions).toEqual(["SOURCE_IP"]);
+  });
+});
+
+describe("sortByAttention with active anomalies", () => {
+  const named = (name: string, over: Parameters<typeof ipsSource>[0] = {}) =>
+    ipsSource({ log_source_id: name, log_source_name: name, ...over });
+  const order = (items: ReturnType<typeof ipsSource>[]) =>
+    sortByAttention(items).map((s) => s.log_source_name);
+
+  it("ranks a judged source with active anomalies above a judged one without", () => {
+    expect(
+      order([named("a-quiet"), named("b-busy", { active_anomaly_count: 1, worst_active_severity: "LOW" })]),
+    ).toEqual(["b-busy", "a-quiet"]);
+  });
+
+  it("orders those by worst severity, then count, then name", () => {
+    expect(
+      order([
+        named("d", { active_anomaly_count: 9, worst_active_severity: "MEDIUM" }),
+        named("c", { active_anomaly_count: 1, worst_active_severity: "CRITICAL" }),
+        named("b", { active_anomaly_count: 5, worst_active_severity: "HIGH" }),
+        named("a", { active_anomaly_count: 2, worst_active_severity: "HIGH" }),
+        named("e", { active_anomaly_count: 2, worst_active_severity: "HIGH" }),
+      ]),
+    ).toEqual(["c", "b", "a", "e", "d"]);
+  });
+
+  it("keeps a source that is not judged above every judged source, whatever their anomalies", () => {
+    expect(
+      order([
+        named("busy", { active_anomaly_count: 50, worst_active_severity: "CRITICAL" }),
+        named("not-judged", { active_anomaly_count: null, validation_current: false }),
+      ]),
+    ).toEqual(["not-judged", "busy"]);
+  });
+
+  it("puts a judged source with anomalies above a judged one that only overflows", () => {
+    const overflowing = named("overflowing", {
+      latest_bucket: latestBucket({ admission: [admission("SIGNATURE", { rejected_over_quota: 3 })] }),
+    });
+    expect(
+      order([overflowing, named("busy", { active_anomaly_count: 1, worst_active_severity: "INFO" })]),
+    ).toEqual(["busy", "overflowing"]);
+  });
+});
+
+describe("active anomaly helpers", () => {
+  it("counts null as not-having, never as an anomaly", () => {
+    expect(hasActiveAnomalies(ipsSource({ active_anomaly_count: null }))).toBe(false);
+    expect(hasActiveAnomalies(ipsSource({ active_anomaly_count: 0 }))).toBe(false);
+    expect(hasActiveAnomalies(ipsSource({ active_anomaly_count: 2 }))).toBe(true);
+  });
+
+  it("links to the active IPS anomalies of one source", () => {
+    expect(activeAnomaliesHref("abc")).toBe(
+      "/anomalies?subject_kind=IPS&log_source_id=abc&active_only=true",
+    );
   });
 });

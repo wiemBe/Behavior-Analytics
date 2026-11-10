@@ -21,7 +21,7 @@ import {
   type IpsSourceQuery,
 } from "@/components/ips/IpsSourceControls";
 import { IpsSeriesChart } from "@/components/ips/IpsSeriesChart";
-import { findIpsSource } from "@/components/ips/findIpsSource";
+import { ActiveAnomaliesLine } from "@/components/ips/IpsActiveAnomalies";
 import { ipsSeriesCounts } from "@/components/ips/ipsSeries";
 import { ipsValidationView, isJudged } from "@/components/ips/ipsSourceHealth";
 import {
@@ -35,6 +35,7 @@ import {
 import { TableScroll } from "@/components/ui/TableScroll";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { renderBackendMessage } from "@/i18n/backendMessage";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import {
@@ -47,6 +48,7 @@ import {
   type PagedIpsSourceMetrics,
 } from "@/lib/api";
 import { formatCount } from "@/lib/behavior";
+import { refusalSentences } from "@/lib/refusal";
 import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { formatPercent } from "@/lib/format";
 import { guideFor } from "@/lib/guideRoutes";
@@ -60,6 +62,9 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const PAGE_SIZE = 50;
+
+/** A server sentence is written without a final stop; the link after it needs one. */
+const sentenceEnd = (text: string) => (/[.!?]$/.test(text) ? text : `${text}.`);
 // The metrics route caps a page at 5000 buckets; a range that needs more says so.
 const METRICS_LIMIT = 5000;
 
@@ -87,6 +92,7 @@ async function IpsSourcePage({
   const t = await getTranslations("ips.bsource");
   const i18n = await getBehaviorI18n();
   const { locale } = i18n;
+  const say = asTextTranslator(await getTranslations());
   const { id } = await params;
   const raw = await searchParams;
   const range = parseIpsRange(raw.range);
@@ -102,26 +108,32 @@ async function IpsSourcePage({
   const until = new Date();
   const since = new Date(until.getTime() - range.hours * 3600_000);
 
-  const notFound = (
-    <Problem
-      pageTitle={t("title")}
-      title={t("notFoundTitle")}
-      text={
-        <>
-          {t("notFoundText")} <Link href="/behavior/ips">{t("openBehavior")}</Link>
-        </>
-      }
-    />
-  );
+  // The server's coded 404 (`ips.source.not_found`) leads. It is sent for an unknown id, for a
+  // source without an enabled IPS profile and for another console's source, so the page's own
+  // sentence says those cases and the next step instead of claiming the source does not exist.
+  const notFound = (err: ApiError) => {
+    const sentence = refusalSentences(err)[0];
+    return (
+      <Problem
+        pageTitle={t("title")}
+        title={sentence ? sentenceEnd(renderBackendMessage(sentence, locale, say)) : t("notFoundTitle")}
+        text={
+          <>
+            {t("notFoundText")} <Link href="/behavior/ips">{t("openBehavior")}</Link>
+          </>
+        }
+      />
+    );
+  };
 
-  let source: IpsSourceBehavior | null;
+  let source: IpsSourceBehavior;
   let entities: PagedIpsEntities;
   let metrics: PagedIpsSourceMetrics | null;
   let cells: IpsBaselineCell[] | null = null;
   let baselinesFailed = false;
   try {
     [source, entities, metrics] = await Promise.all([
-      findIpsSource(id),
+      api.ipsBehaviorSource(id),
       api.ipsBehaviorEntities(id, { dimension: query.dimension, limit: PAGE_SIZE, offset }),
       // The chart is a section of the page: its failure is said there, not for the whole page.
       api
@@ -150,7 +162,7 @@ async function IpsSourcePage({
       );
     }
     if (err instanceof ApiError && err.status === 404) {
-      return notFound;
+      return notFound(err);
     }
     if (err instanceof ApiError && err.status === 403) {
       return <Problem pageTitle={t("title")} title={t("forbiddenTitle")} text={t("forbiddenText")} />;
@@ -160,7 +172,6 @@ async function IpsSourcePage({
     }
     return <Problem pageTitle={t("title")} title={t("failedTitle")} text={t("failedText")} />;
   }
-  if (!source) return notFound;
 
   const v = ipsValidationView(source, i18n);
   const judged = isJudged(source);
@@ -230,6 +241,8 @@ async function IpsSourcePage({
           </>
         }
       />
+
+      <ActiveAnomaliesLine s={source} />
 
       {!judged && <p className="banner warn">{t("notCollectedBanner")}</p>}
 

@@ -77,6 +77,8 @@ export function ipsSource(over: Partial<IpsSourceBehavior> = {}): IpsSourceBehav
     validated_profile_version: 3,
     validated_at: "2026-10-10T08:00:00Z",
     validation_current: true,
+    active_anomaly_count: 0,
+    worst_active_severity: null,
     latest_bucket: latestBucket(),
     entities: [
       pressure("DESTINATION_PORT", 40, 52),

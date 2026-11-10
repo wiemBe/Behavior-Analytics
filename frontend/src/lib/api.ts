@@ -3041,6 +3041,14 @@ export interface IpsSourceBehavior {
   validated_profile_version: number | null;
   validated_at: string | null;
   validation_current: boolean;
+  /**
+   * Active incidents of this source and its entities. `null` = the source is not judged (profile
+   * not enabled, or not VALID for its current version) or anomalies are not visible; `0` = judged,
+   * none active.
+   */
+  active_anomaly_count: number | null;
+  /** The highest severity among the active incidents; null when there are none or `null` above. */
+  worst_active_severity: string | null;
   latest_bucket: IpsLatestBucket | null;
   entities: IpsEntityPressure[];
 }
@@ -3556,6 +3564,8 @@ export const api = {
   ) => request<PagedIpsBaselines>(`/behavior/ips/sources/${id}/baselines${qs({ ...params })}`),
   ipsBehaviorSources: (params: { limit?: number; offset?: number } = {}) =>
     request<PagedIpsSources>(`/behavior/ips/sources${qs({ ...params })}`),
+  ipsBehaviorSource: (id: string) =>
+    request<IpsSourceBehavior>(`/behavior/ips/sources/${id}`),
   ipsBehaviorEntities: (
     id: string,
     params: { dimension?: IpsDimensionName; limit?: number; offset?: number } = {},

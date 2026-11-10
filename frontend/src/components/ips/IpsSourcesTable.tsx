@@ -15,6 +15,7 @@ import { NOT_MEASURED, formatCount } from "@/lib/behavior";
 import { wordOrValue } from "@/lib/behaviorI18n";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
+import { ActiveAnomaliesCell } from "./IpsActiveAnomalies";
 import {
   admissionNotMeasured,
   dimensionAtCeiling,
@@ -171,6 +172,10 @@ export function IpsSourcesTable({ sources }: { sources: IpsSourceBehavior[] }) {
             <tr>
               <th scope="col">{t("table.source")}</th>
               <th scope="col">{t("table.validation")}</th>
+              <th scope="col" className="num">
+                {t("table.active")}
+                <span className="cell-sub">{t("table.activeSub")}</span>
+              </th>
               <th scope="col">
                 {t("table.latest")}
                 <span className="cell-sub">{t("table.latestSub")}</span>
@@ -210,6 +215,9 @@ export function IpsSourcesTable({ sources }: { sources: IpsSourceBehavior[] }) {
                     {s.enabled && !s.validation_current && (
                       <span className="cell-sub">{t("notCollected")}</span>
                     )}
+                  </td>
+                  <td className="num ips-active">
+                    <ActiveAnomaliesCell s={s} />
                   </td>
                   <td>
                     <LatestCell s={s} />
