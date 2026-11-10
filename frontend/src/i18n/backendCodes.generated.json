@@ -2847,6 +2847,164 @@
     "sample_english_params": {},
     "template": "The secure connection to the relay failed. Check SMTP_SECURITY, the port and the relay's certificate (SMTP_CA_FILE)."
   },
+  "entity_timeline.input.cursor_invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "cursor is invalid or has been modified",
+    "sample_english_params": {},
+    "template": "cursor is invalid or has been modified"
+  },
+  "entity_timeline.input.instance_missing": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no QRadar console is configured",
+    "sample_english_params": {},
+    "template": "no QRadar console is configured"
+  },
+  "entity_timeline.input.kind_invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "kind must be ip, host or user",
+    "sample_english_params": {},
+    "template": "kind must be ip, host or user"
+  },
+  "entity_timeline.input.kind_required": {
+    "params": {},
+    "sample": {},
+    "sample_english": "kind is required when value is not an IP address",
+    "sample_english_params": {},
+    "template": "kind is required when value is not an IP address"
+  },
+  "entity_timeline.input.limit": {
+    "params": {
+      "maximum": {
+        "kind": "count",
+        "style": "plain"
+      },
+      "minimum": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "maximum": 200,
+      "minimum": 1
+    },
+    "sample_english": "limit must be between 1 and 200",
+    "sample_english_params": {
+      "maximum": "200",
+      "minimum": "1"
+    },
+    "template": "limit must be between {minimum} and {maximum}"
+  },
+  "entity_timeline.input.value_invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "value is not valid for the selected entity kind",
+    "sample_english_params": {},
+    "template": "value is not valid for the selected entity kind"
+  },
+  "entity_timeline.input.window_max": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 7
+    },
+    "sample_english": "the entity timeline window must not exceed 7 days",
+    "sample_english_params": {
+      "days": "7"
+    },
+    "template": "the entity timeline window must not exceed {days} days"
+  },
+  "entity_timeline.input.window_order": {
+    "params": {},
+    "sample": {},
+    "sample_english": "start must be earlier than end",
+    "sample_english_params": {},
+    "template": "start must be earlier than end"
+  },
+  "entity_timeline.reason.family_off": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This collection family is switched off.",
+    "sample_english_params": {},
+    "template": "This collection family is switched off."
+  },
+  "entity_timeline.reason.index_incomplete": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Matching inventory exists but its timeline mention is missing.",
+    "sample_english_params": {},
+    "template": "Matching inventory exists but its timeline mention is missing."
+  },
+  "entity_timeline.reason.no_coverage": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No usable collection bucket covers this lane in the selected window.",
+    "sample_english_params": {},
+    "template": "No usable collection bucket covers this lane in the selected window."
+  },
+  "entity_timeline.reason.not_among_stored_top": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This bounded lane cannot prove that the entity was absent from its full input.",
+    "sample_english_params": {},
+    "template": "This bounded lane cannot prove that the entity was absent from its full input."
+  },
+  "entity_timeline.reason.not_collected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No timeline lane measured this entity in the selected window.",
+    "sample_english_params": {},
+    "template": "No timeline lane measured this entity in the selected window."
+  },
+  "entity_timeline.reason.offense_not_collected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar offense collection has not run for this console.",
+    "sample_english_params": {},
+    "template": "QRadar offense collection has not run for this console."
+  },
+  "entity_timeline.reason.offense_stale": {
+    "params": {},
+    "sample": {},
+    "sample_english": "QRadar offense collection is stale, so this lane may be incomplete.",
+    "sample_english_params": {},
+    "template": "QRadar offense collection is stale, so this lane may be incomplete."
+  },
+  "entity_timeline.reason.page_truncated": {
+    "params": {},
+    "sample": {},
+    "sample_english": "More stored mentions match this window than are shown. Continue with the next cursor.",
+    "sample_english_params": {},
+    "template": "More stored mentions match this window than are shown. Continue with the next cursor."
+  },
+  "entity_timeline.reason.partial": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Some timeline lanes are bounded, stale, unavailable, or not collected.",
+    "sample_english_params": {},
+    "template": "Some timeline lanes are bounded, stale, unavailable, or not collected."
+  },
+  "entity_timeline.reason.permission": {
+    "params": {
+      "permission": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "permission": "read:offenses"
+    },
+    "sample_english": "This lane requires read:offenses.",
+    "sample_english_params": {
+      "permission": "read:offenses"
+    },
+    "template": "This lane requires {permission}."
+  },
   "explanation.dimension.unpopulated": {
     "params": {},
     "sample": {},

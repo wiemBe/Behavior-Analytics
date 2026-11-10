@@ -18,6 +18,7 @@ from app.api.routes import (
     coverage,
     custom_rules,
     dashboards,
+    entities,
     fleet,
     geo,
     health,
@@ -137,6 +138,12 @@ api_router.include_router(
 )
 api_router.include_router(
     anomalies.behavior_router, dependencies=[Depends(requires(PERM_ANOMALY_READ))]
+)
+# SOC-16: the entity timeline exposes the same bounded contributor evidence as
+# the anomaly investigation surface. Individual offense and fleet lanes apply
+# their own grants inside the service and report an honest forbidden reason.
+api_router.include_router(
+    entities.router, dependencies=[Depends(requires(PERM_ANOMALY_READ))]
 )
 # --- SOC-17a: the noisy-sources list ---
 # It reads the same Phase A incidents and alerts as the behavior surface, so it
