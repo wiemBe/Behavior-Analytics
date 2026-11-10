@@ -815,6 +815,7 @@ class TestNoSecretsLeak:
         spec = app.openapi()["paths"]
         assert {p for p in spec if "/behavior/ips" in p} == {
             "/api/v1/behavior/ips/sources",
+            "/api/v1/behavior/ips/sources/{log_source_id}",
             "/api/v1/behavior/ips/sources/{log_source_id}/entities",
             "/api/v1/behavior/ips/sources/{log_source_id}/metrics",
             "/api/v1/behavior/ips/sources/{log_source_id}/baselines",

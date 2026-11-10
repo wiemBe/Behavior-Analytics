@@ -14,13 +14,13 @@ from collections.abc import Collection
 from datetime import datetime
 from typing import NamedTuple
 
-from sqlalchemy import BigInteger, Float, cast, func, or_, select, true
+from sqlalchemy import BigInteger, Float, case, cast, func, or_, select, true
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from app.ips.inputs import IPS_ENTITY_EVENTS_METRIC
-from app.models.enums import ACTIVE_ANOMALY_STATES, IpsDimension
+from app.models.enums import ACTIVE_ANOMALY_STATES, IpsDimension, Severity
 from app.models.ips import (
     IpsAnomaly,
     IpsDetectorState,
@@ -38,6 +38,15 @@ _ENTITY_SUBJECT = "IPS_ENTITY"
 
 #: The destination-IP measurement states whose entity counts are usable.
 _DESTINATION_IP_MEASURED = ("EXACT", "LOWER_BOUND")
+
+_SEVERITY_RANK = {
+    Severity.CRITICAL.value: 5,
+    Severity.HIGH.value: 4,
+    Severity.MEDIUM.value: 3,
+    Severity.LOW.value: 2,
+    Severity.INFO.value: 1,
+}
+_SEVERITY_BY_RANK = {rank: Severity(value) for value, rank in _SEVERITY_RANK.items()}
 
 
 class IpsTrafficRow(NamedTuple):
@@ -69,18 +78,33 @@ class IpsBehaviorRepository:
 
     # ---------------------------------------------------------- IPS sources
     async def sources_page(
-        self, *, limit: int, offset: int
+        self,
+        *,
+        limit: int,
+        offset: int,
+        log_source_id: uuid.UUID | None = None,
     ) -> tuple[list[tuple[IpsSourceProfile, LogSource]], int]:
         # Only sources whose profile is enabled: a disabled one is not being
         # monitored, so it has no current state to report.
-        enabled = IpsSourceProfile.enabled.is_(True)
+        conditions = [
+            IpsSourceProfile.enabled.is_(True),
+            # A profile is scoped to the console that owns its log source. The
+            # database FKs are individually valid, so keep a malformed
+            # cross-console pair out of both the list and the single read.
+            IpsSourceProfile.instance_id == LogSource.instance_id,
+        ]
+        if log_source_id is not None:
+            conditions.append(IpsSourceProfile.log_source_id == log_source_id)
         total = await self.session.scalar(
-            select(func.count()).select_from(IpsSourceProfile).where(enabled)
+            select(func.count())
+            .select_from(IpsSourceProfile)
+            .join(LogSource, LogSource.id == IpsSourceProfile.log_source_id)
+            .where(*conditions)
         )
         rows = await self.session.execute(
             select(IpsSourceProfile, LogSource)
             .join(LogSource, LogSource.id == IpsSourceProfile.log_source_id)
-            .where(enabled)
+            .where(*conditions)
             .order_by(LogSource.name, IpsSourceProfile.id)
             .limit(limit)
             .offset(offset)
@@ -163,6 +187,36 @@ class IpsBehaviorRepository:
         for sid, dimension, active, total in rows.all():
             out.setdefault(sid, {})[str(dimension)] = (int(active), int(total))
         return out
+
+    async def source_active_anomalies(
+        self, log_source_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[int, Severity]]:
+        """Active source- and entity-level incidents, grouped by source.
+
+        One statement covers the whole page. Entity incidents resolve their
+        source through ``ips_entity``; source incidents already carry it.
+        Sources with no active incident are absent so a judged caller can turn
+        absence into the measured count zero.
+        """
+        if not log_source_ids:
+            return {}
+        source_id = func.coalesce(IpsAnomaly.log_source_id, IpsEntity.log_source_id)
+        severity_rank = case(_SEVERITY_RANK, value=IpsAnomaly.severity, else_=0)
+        rows = await self.session.execute(
+            select(source_id, func.count(), func.max(severity_rank))
+            .select_from(IpsAnomaly)
+            .outerjoin(IpsEntity, IpsEntity.id == IpsAnomaly.ips_entity_id)
+            .where(
+                source_id.in_(log_source_ids),
+                IpsAnomaly.state.in_([state.value for state in ACTIVE_ANOMALY_STATES]),
+            )
+            .group_by(source_id)
+        )
+        return {
+            source: (int(count), _SEVERITY_BY_RANK[int(rank)])
+            for source, count, rank in rows.all()
+            if source is not None and int(rank) in _SEVERITY_BY_RANK
+        }
 
     # --------------------------------------------------------- IPS entities
     async def entities_page(

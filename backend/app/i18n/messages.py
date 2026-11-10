@@ -4041,6 +4041,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # --- end MSG-6 ---------------------------------------------------------------------------
     # --- MSG-6b: IPS anomaly sentences (Family 5) -- keep contiguous -------------------------
     # The dimension nouns a spike names and a guard refuses on.
+    _fixed("ips.source.not_found", "IPS source not found"),
     _msg("ips.label.destination_port", "destination port"),
     _msg("ips.label.destination_ip", "destination IP"),
     _msg("ips.label.signature", "signature"),

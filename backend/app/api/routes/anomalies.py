@@ -32,7 +32,8 @@ from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
 from app.history.origin import origin_of
 from app.history.state import HistoryFamily
-from app.i18n.refusal import permission_refusal
+from app.i18n.messages import MessageRef
+from app.i18n.refusal import CodedHTTPException, permission_refusal
 from app.models.enums import (
     AnomalyFamily,
     AnomalyState,
@@ -153,6 +154,7 @@ from app.schemas.triage import (
 )
 from app.security.auth import get_principal
 from app.security.rbac import (
+    PERM_ANOMALY_READ,
     PERM_ANOMALY_TRIAGE,
     PermissionDenied,
     Principal,
@@ -2429,8 +2431,16 @@ def _ips_source_row(
     source: LogSource,
     bucket: IpsSourceBucket | None,
     counts: dict[str, tuple[int, int]],
+    anomaly_summary: tuple[int, Severity] | None,
+    may_read_anomalies: bool,
     settings: Settings,
 ) -> IpsSourceBehaviorOut:
+    judged = _ips_profile_is_judged(profile)
+    active_anomaly_count, worst_active_severity = _ips_active_anomaly_fields(
+        judged=judged,
+        may_read_anomalies=may_read_anomalies,
+        anomaly_summary=anomaly_summary,
+    )
     return IpsSourceBehaviorOut(
         log_source_id=source.id,
         log_source_name=source.name,
@@ -2442,6 +2452,8 @@ def _ips_source_row(
         validated_at=profile.validated_at,
         validation_current=profile.validated_profile_version == profile.profile_version
         and str(profile.validation_status) == IpsProfileValidationStatus.VALID.value,
+        active_anomaly_count=active_anomaly_count,
+        worst_active_severity=worst_active_severity,
         latest_bucket=(
             IpsLatestBucketOut(
                 bucket_start=bucket.bucket_start,
@@ -2468,10 +2480,68 @@ def _ips_source_row(
     )
 
 
+def _ips_profile_is_judged(profile: IpsSourceProfile) -> bool:
+    """Whether collection and evaluation may use this exact profile version."""
+    return (
+        profile.enabled
+        and profile.validated_profile_version == profile.profile_version
+        and str(profile.validation_status) == IpsProfileValidationStatus.VALID.value
+    )
+
+
+def _ips_active_anomaly_fields(
+    *,
+    judged: bool,
+    may_read_anomalies: bool,
+    anomaly_summary: tuple[int, Severity] | None,
+) -> tuple[int | None, Severity | None]:
+    """Fail closed unless both the source and caller may see a verdict."""
+    count = (
+        (anomaly_summary[0] if anomaly_summary is not None else 0)
+        if may_read_anomalies and judged
+        else None
+    )
+    severity = (
+        anomaly_summary[1]
+        if count not in (None, 0) and anomaly_summary is not None
+        else None
+    )
+    return count, severity
+
+
+async def _ips_source_rows(
+    repo: IpsBehaviorRepository,
+    pairs: list[tuple[IpsSourceProfile, LogSource]],
+    settings: Settings,
+    *,
+    may_read_anomalies: bool,
+) -> list[IpsSourceBehaviorOut]:
+    """Build list and single-source rows through the same bulk-read path."""
+    source_ids = [source.id for _, source in pairs]
+    latest = await repo.latest_buckets(source_ids)
+    counts = await repo.entity_counts(source_ids)
+    active = (
+        await repo.source_active_anomalies(source_ids) if may_read_anomalies else {}
+    )
+    return [
+        _ips_source_row(
+            profile,
+            source,
+            latest.get(source.id),
+            counts.get(source.id, {}),
+            active.get(source.id),
+            may_read_anomalies,
+            settings,
+        )
+        for profile, source in pairs
+    ]
+
+
 @behavior_router.get("/ips/sources", response_model=PagedIpsSources)
 async def list_ips_sources(
     session: SessionDep,
     settings: SettingsDep,
+    principal: PrincipalDep,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> PagedIpsSources:
@@ -2484,17 +2554,42 @@ async def list_ips_sources(
     limit = min(limit, settings.api_max_page_size)
     repo = IpsBehaviorRepository(session)
     pairs, total = await repo.sources_page(limit=limit, offset=offset)
-    latest = await repo.latest_buckets([ls.id for _, ls in pairs])
-    counts = await repo.entity_counts([ls.id for _, ls in pairs])
     return PagedIpsSources(
-        items=[
-            _ips_source_row(p, ls, latest.get(ls.id), counts.get(ls.id, {}), settings)
-            for p, ls in pairs
-        ],
+        items=await _ips_source_rows(
+            repo,
+            pairs,
+            settings,
+            may_read_anomalies=principal.has(PERM_ANOMALY_READ),
+        ),
         total=total,
         limit=limit,
         offset=offset,
     )
+
+
+@behavior_router.get("/ips/sources/{log_source_id}", response_model=IpsSourceBehaviorOut)
+async def get_ips_source(
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    principal: PrincipalDep,
+) -> IpsSourceBehaviorOut:
+    """One enabled IPS source, projected by the list's exact bulk-read path."""
+    repo = IpsBehaviorRepository(session)
+    pairs, _total = await repo.sources_page(
+        limit=1, offset=0, log_source_id=log_source_id
+    )
+    if not pairs:
+        raise CodedHTTPException(
+            status.HTTP_404_NOT_FOUND, MessageRef("ips.source.not_found")
+        )
+    rows = await _ips_source_rows(
+        repo,
+        pairs,
+        settings,
+        may_read_anomalies=principal.has(PERM_ANOMALY_READ),
+    )
+    return rows[0]
 
 
 @behavior_router.get(

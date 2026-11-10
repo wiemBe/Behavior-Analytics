@@ -6736,6 +6736,13 @@
     },
     "template": "{role}: {reason}"
   },
+  "ips.source.not_found": {
+    "params": {},
+    "sample": {},
+    "sample_english": "IPS source not found",
+    "sample_english_params": {},
+    "template": "IPS source not found"
+  },
   "ips.spike.below_min": {
     "params": {
       "minimum": {
