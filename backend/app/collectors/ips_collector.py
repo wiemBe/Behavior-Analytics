@@ -1838,7 +1838,7 @@ class IpsCollector:
         Only values already persisted become mentions: the bounded SOURCE_IP and PORT_FANOUT
         lists of each bucket row (parent `ips_source_bucket`, `ref_id=str(log_source_id)`) and
         the destination IPs of the admitted entities that got a metric row (parent
-        `ips_entity_metric`, `ref_id=str(ips_entity_id)`); both with `occurred_at` =
+        `ips_entity`, `ref_id=str(ips_entity_id)`); both with `occurred_at` =
         `bucket_start`, which completes the hypertable primary key. Statements per run: one
         DELETE of the mentions of the buckets being replaced (both sources, no read of the
         stored buckets), one INSERT, plus the savepoint pair. A failure rolls back to the
@@ -1876,7 +1876,7 @@ class IpsCollector:
                     value_norm=value,
                     role="DESTINATION_IP",
                     source="IPS_ENTITY",
-                    ref_table="ips_entity_metric",
+                    ref_table="ips_entity",
                     ref_id=str(entity_id),
                     occurred_at=bucket_start,
                 )
@@ -1900,7 +1900,7 @@ class IpsCollector:
                             ),
                             and_(
                                 EntityMention.source == "IPS_ENTITY",
-                                EntityMention.ref_table == "ips_entity_metric",
+                                EntityMention.ref_table == "ips_entity",
                                 exists().where(
                                     sql_cast(IpsEntity.id, String) == EntityMention.ref_id,
                                     tuple_(IpsEntity.log_source_id, EntityMention.occurred_at).in_(

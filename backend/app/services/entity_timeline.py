@@ -30,6 +30,7 @@ from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.history.origin import is_live_clause
 from app.i18n.messages import MessageRef
 from app.models.entity import EntityMention
 from app.models.enums import (
@@ -589,7 +590,10 @@ class EntityTimelineService:
             explanation_collected = literal(False)
             explanation_proves = literal(False)
 
+        # Mentions are written by live collection only (no backfill), so only a live
+        # bucket may count as coverage; a history-origin bucket must never prove absence.
         waf_window = (
+            is_live_clause(WafSourceBucket),
             WafSourceBucket.bucket_start < end,
             WafSourceBucket.bucket_start + WafSourceBucket.bucket_seconds * _SECOND > start,
         )
@@ -616,6 +620,7 @@ class EntityTimelineService:
             .join(WafEndpoint, WafEndpoint.id == WafEndpointMetric.waf_endpoint_id)
             .where(
                 WafEndpoint.instance_id == instance_id,
+                is_live_clause(WafEndpointMetric),
                 WafEndpointMetric.bucket_start < end,
                 WafEndpointMetric.bucket_start
                 + WafEndpointMetric.bucket_seconds * _SECOND
@@ -630,6 +635,7 @@ class EntityTimelineService:
         )
 
         ips_window = (
+            is_live_clause(IpsSourceBucket),
             IpsSourceBucket.bucket_start < end,
             IpsSourceBucket.bucket_start + IpsSourceBucket.bucket_seconds * _SECOND > start,
         )

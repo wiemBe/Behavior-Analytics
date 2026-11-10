@@ -632,3 +632,36 @@ def test_route_requires_authentication_and_read_anomalies(db_schema) -> None:
     app.dependency_overrides[get_session] = no_session
     unauthenticated = TestClient(app, raise_server_exceptions=False).get(_url(instance_id))
     assert unauthenticated.status_code == 401
+
+
+def _bucket_origin_lanes(origin: str) -> dict[str, dict[str, Any]]:
+    async def seed(session):  # type: ignore[no-untyped-def]
+        instance = await make_instance(session)
+        source = await make_log_source(
+            session, instance, qradar_id=302, name="origin-source", identifier="other"
+        )
+        waf, ips = _waf_bucket(source.id), _ips_bucket(source.id)
+        waf.origin = ips.origin = origin
+        session.add_all([waf, ips])
+        return instance.id
+
+    instance_id = run(seed)
+    client = TimelineClient(
+        READER,
+        settings_update={"waf_collection_enabled": True, "ips_collection_enabled": True},
+    )
+    response = client.get(_url(instance_id))
+    assert response.status_code == 200, response.text
+    return {lane["source"]: lane for lane in response.json()["lanes"]}
+
+
+def test_backfilled_buckets_do_not_prove_absence_for_the_waf_and_ips_lanes(db_schema) -> None:
+    # Mentions are written by live collection only, so a window covered by history-origin
+    # buckets alone has no mentions and must not report a measured zero.
+    live = _bucket_origin_lanes("LIVE")
+    assert live["WAF_TOP"]["state"] == "OK" and live["WAF_TOP"]["total"] == 0
+
+    history = _bucket_origin_lanes("HISTORY")
+    for source in ("WAF_TOP", "IPS_TOP", "IPS_ENTITY"):
+        assert history[source]["state"] == "NOT_COLLECTED", (source, history[source])
+        assert history[source].get("total") is None
