@@ -477,6 +477,83 @@ def _msg(
 
 
 REGISTRY: tuple[MessageSpec, ...] = (
+    # SOC-16 entity timeline request validation. These refusals are English-only
+    # under D-45; the generated English artifact is refreshed with this block.
+    _fixed(
+        "entity_timeline.input.cursor_invalid",
+        "cursor is invalid or has been modified",
+    ),
+    _mixed(
+        "entity_timeline.input.limit",
+        "limit must be between {minimum} and {maximum}",
+        count={"minimum": 1, "maximum": 200},
+    ),
+    _fixed(
+        "entity_timeline.input.window_order",
+        "start must be earlier than end",
+    ),
+    _mixed(
+        "entity_timeline.input.window_max",
+        "the entity timeline window must not exceed {days} days",
+        count={"days": 7},
+    ),
+    _fixed(
+        "entity_timeline.input.kind_required",
+        "kind is required when value is not an IP address",
+    ),
+    _fixed(
+        "entity_timeline.input.kind_invalid",
+        "kind must be ip, host or user",
+    ),
+    _fixed(
+        "entity_timeline.input.value_invalid",
+        "value is not valid for the selected entity kind",
+    ),
+    _fixed(
+        "entity_timeline.input.instance_missing",
+        "no QRadar console is configured",
+    ),
+    _fixed(
+        "entity_timeline.reason.page_truncated",
+        "More stored mentions match this window than are shown. Continue with the next cursor.",
+    ),
+    _fixed(
+        "entity_timeline.reason.partial",
+        "Some timeline lanes are bounded, stale, unavailable, or not collected.",
+    ),
+    _fixed(
+        "entity_timeline.reason.not_collected",
+        "No timeline lane measured this entity in the selected window.",
+    ),
+    _fixed(
+        "entity_timeline.reason.family_off",
+        "This collection family is switched off.",
+    ),
+    _fixed(
+        "entity_timeline.reason.no_coverage",
+        "No usable collection bucket covers this lane in the selected window.",
+    ),
+    _fixed(
+        "entity_timeline.reason.not_among_stored_top",
+        "This bounded lane cannot prove that the entity was absent from its full input.",
+    ),
+    _fixed(
+        "entity_timeline.reason.offense_not_collected",
+        "QRadar offense collection has not run for this console.",
+    ),
+    _fixed(
+        "entity_timeline.reason.offense_stale",
+        "QRadar offense collection is stale, so this lane may be incomplete.",
+    ),
+    _text(
+        "entity_timeline.reason.permission",
+        "This lane requires {permission}.",
+        permission="read:offenses",
+    ),
+    _fixed(
+        "entity_timeline.reason.index_incomplete",
+        "Matching inventory exists but its timeline mention is missing.",
+    ),
     _fixed(
         "explanation.dimension.unpopulated",
         "field is not populated for this log source",

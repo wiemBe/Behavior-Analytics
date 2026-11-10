@@ -346,6 +346,30 @@
       "tls_failed": "The secure connection to the relay failed. Check SMTP_SECURITY, the port and the relay''s certificate (SMTP_CA_FILE)."
     }
   },
+  "entity_timeline": {
+    "input": {
+      "cursor_invalid": "cursor is invalid or has been modified",
+      "instance_missing": "no QRadar console is configured",
+      "kind_invalid": "kind must be ip, host or user",
+      "kind_required": "kind is required when value is not an IP address",
+      "limit": "limit must be between {minimum} and {maximum}",
+      "value_invalid": "value is not valid for the selected entity kind",
+      "window_max": "the entity timeline window must not exceed {days} days",
+      "window_order": "start must be earlier than end"
+    },
+    "reason": {
+      "family_off": "This collection family is switched off.",
+      "index_incomplete": "Matching inventory exists but its timeline mention is missing.",
+      "no_coverage": "No usable collection bucket covers this lane in the selected window.",
+      "not_among_stored_top": "This bounded lane cannot prove that the entity was absent from its full input.",
+      "not_collected": "No timeline lane measured this entity in the selected window.",
+      "offense_not_collected": "QRadar offense collection has not run for this console.",
+      "offense_stale": "QRadar offense collection is stale, so this lane may be incomplete.",
+      "page_truncated": "More stored mentions match this window than are shown. Continue with the next cursor.",
+      "partial": "Some timeline lanes are bounded, stale, unavailable, or not collected.",
+      "permission": "This lane requires {permission}."
+    }
+  },
   "explanation": {
     "dimension": {
       "unpopulated": "field is not populated for this log source"
