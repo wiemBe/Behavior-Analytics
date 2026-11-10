@@ -81,6 +81,22 @@ describe("WidgetFrame data time", () => {
     expect(screen.queryByText(/Stale/)).not.toBeInTheDocument();
   });
 
+  it("can omit a fresh time without disabling stale detection", () => {
+    const view = frame(answer(), {
+      at: ago(240),
+      family: "PHASE_A_VOLUME",
+      showFresh: false,
+    });
+    expect(screen.queryByText(/Data to/)).not.toBeInTheDocument();
+    view.unmount();
+    frame(answer(), {
+      at: ago(601),
+      family: "PHASE_A_VOLUME",
+      showFresh: false,
+    });
+    expect(screen.getByText(/Stale:/)).toBeInTheDocument();
+  });
+
   it("stays ok at twice the family's cadence and turns stale just past it", () => {
     const view = frame(answer(), { at: ago(600), family: "PHASE_A_VOLUME" });
     expect(screen.queryByText(/Stale/)).not.toBeInTheDocument();

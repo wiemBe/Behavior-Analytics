@@ -10,7 +10,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTestLocale } from "../../../vitest.setup";
 
-import { answer, insufficient, notCollected } from "@/components/geo/fixtures";
+import {
+  answer,
+  insufficient,
+  notCollected,
+  partialLowerBound,
+} from "@/components/geo/fixtures";
 import { failed, forbidden, loading, ok } from "@/components/home/testkit";
 import { WidgetRuntimeContext, type WidgetRuntime } from "@/widgets/runtime";
 
@@ -128,6 +133,42 @@ describe("the answer", () => {
     expect(rows()).toHaveLength(18);
   });
 
+  it("keeps measurement detail but not the long explanation when expanded", () => {
+    res.state = ok(answer());
+    render(inRuntime(<GeographyMap />));
+    expect(screen.getByText("Buckets measured")).toBeInTheDocument();
+    expect(screen.getByText("Unresolved")).toBeInTheDocument();
+    expect(screen.getByText("Over the country cap")).toBeInTheDocument();
+    expect(screen.getByText("Unparseable")).toBeInTheDocument();
+    expect(screen.getByText("From the GeoIP lookup of the address")).toBeInTheDocument();
+    expect(screen.queryByText("What the remainders mean")).toBeNull();
+  });
+
+  it("removes the seven detailed lines from a complete fresh normal widget", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-02T12:00:00Z"));
+    res.state = ok(answer({ latest_bucket_end: "2026-11-02T11:00:00Z" }));
+    render(<GeographyMap />);
+    expect(screen.queryByText("Buckets measured")).toBeNull();
+    expect(screen.queryByText("Unresolved")).toBeNull();
+    expect(screen.queryByText("Over the country cap")).toBeNull();
+    expect(screen.queryByText("Unparseable")).toBeNull();
+    expect(screen.queryByText("What the remainders mean")).toBeNull();
+    expect(screen.queryByText(/^Collected (from|with)/)).toBeNull();
+    expect(screen.queryByText(/^Data to/)).toBeNull();
+    expect(link()).toBeInTheDocument();
+  });
+
+  it("keeps partial and lower-bound honesty in the compact widget", () => {
+    res.state = ok(partialLowerBound());
+    render(<GeographyMap />);
+    expect(screen.getByText("Partial")).toBeInTheDocument();
+    expect(screen.getByText("At least")).toBeInTheDocument();
+    expect(within(rows()[0]).getAllByRole("cell")[1]).toHaveTextContent("≥ 1,240,000");
+    expect(screen.queryByText("Buckets measured")).toBeNull();
+    expect(link()).toBeInTheDocument();
+  });
+
   it("says NOT_COLLECTED in the body, with no map and no empty table", () => {
     res.state = ok(notCollected());
     render(<GeographyMap />);
@@ -205,11 +246,11 @@ describe("the age of the data", () => {
     vi.setSystemTime(NOW);
   };
 
-  it("shows where the data reaches, and no stale note, when the newest bucket is recent", () => {
+  it("omits the fresh data time but still shows no stale note when the newest bucket is recent", () => {
     withClock();
     res.state = ok(answer({ latest_bucket_end: at(1) }));
     render(<GeographyMap />);
-    expect(screen.getByText(/Data to/)).toHaveTextContent("Data to 11:00:00 UTC");
+    expect(screen.queryByText(/Data to/)).toBeNull();
     expect(screen.queryByText(/Stale:/)).toBeNull();
   });
 
@@ -278,23 +319,32 @@ describe("the age of the data", () => {
 describe("the empty states fill the frame (GEO-6)", () => {
   const hollowBody = () => document.querySelector(".tw-body > .geo-hollow");
 
-  it("NOT_COLLECTED: the sentence and the coverage sit in one centred block, with the link", () => {
+  it("NOT_COLLECTED: the explanation is centred without a false zero, with the link", () => {
     res.state = ok(notCollected());
     render(<GeographyMap />);
     const block = hollowBody();
     expect(block).not.toBeNull();
     expect(within(block as HTMLElement).getByText("Not collected.")).toBeInTheDocument();
-    expect(within(block as HTMLElement).getByText("Buckets measured")).toBeInTheDocument();
+    expect(
+      within(block as HTMLElement).getByText(/Nothing has been collected for source addresses/),
+    ).toBeInTheDocument();
+    expect(block?.querySelector("strong")?.nextElementSibling).toHaveProperty("tagName", "BR");
+    expect(block?.querySelector(".geo-hollow-body")).toHaveClass("geo-plot-state");
+    expect(within(block as HTMLElement).queryByText("Buckets measured")).toBeNull();
+    expect(within(block as HTMLElement).queryByText(/0 of/)).toBeNull();
     expect(link()).toHaveAttribute("href", "/geography?window=24h&direction=SOURCE");
   });
 
-  it("INSUFFICIENT_DATA: the sentence and its facts are in the centred block", () => {
+  it("INSUFFICIENT_DATA: the reason is centred without secondary figures", () => {
     res.state = ok(insufficient());
     render(<GeographyMap />);
     const block = hollowBody() as HTMLElement;
     expect(block).not.toBeNull();
     expect(within(block).getByText("Insufficient data.")).toBeInTheDocument();
-    expect(within(block).getByText("Unresolved")).toBeInTheDocument();
+    expect(within(block).getByText(/no address resolved to a country/)).toBeInTheDocument();
+    expect(block.querySelector("strong")?.nextElementSibling).toHaveProperty("tagName", "BR");
+    expect(block.querySelector(".geo-main")).toHaveClass("geo-plot-state");
+    expect(within(block).queryByText("Unresolved")).toBeNull();
     expect(screen.queryByRole("table")).toBeNull();
     expect(link()).toBeInTheDocument();
   });
