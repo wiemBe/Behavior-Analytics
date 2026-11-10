@@ -272,6 +272,29 @@
         }
       ]
     },
+    "ips-behavior": {
+      "title": "IPS behavior",
+      "answers": "Which IPS sources are collected and judged, what is one of them doing against its normal, and which of its entities are tracked?",
+      "body": [
+        {
+          "p": "The list covers IPS sources with **Validation**, **Latest bucket**, **Active entities** and **Admission overflow**. A source is collected and judged only when its profile is enabled and valid for its current version; the others produce no verdicts, and the first line counts how many of the listed sources are judged. Sources that need attention are listed first. The list takes no time range: the latest bucket is the newest one collected, so a source that stopped being collected stays visible. **Profile settings** opens the source in IPS sources administration."
+        },
+        {
+          "p": "Under **Latest bucket**, the search dimensions give the measurement of each search in that bucket. **Exact** means the search returned everything it was asked for. **Lower bound** means the search hit its cap, so its figures are at least the plotted value. **Not collected**, **Failed** and **Rejected** mean the search produced no figure; a missing figure is never drawn as zero. A source with no bucket says **Not collected yet**."
+        },
+        {
+          "p": "**Active entities** counts the tracked destination ports, destinations and signatures against the ceiling, which is the configured limit ips_max_active_entities_per_source_dimension. **Admission overflow** appears when entities were refused over the quota or admission was truncated in the latest bucket; entities below the admission threshold are low-volume noise and do not count."
+        },
+        {
+          "p": "The source page draws one series of the source against its expected range: total events, the top source IP share, port fan-out or the blocked share, over **24 hours** or **7 days**. The band is drawn only for buckets whose weekday and hour have a reliable baseline cell; total events has no baseline. An interval with no stored bucket is a gap, not zero. **Action mix** appears only when the profile maps an action. The **Entities** table lists tracked entities with **Baseline cells**, **Tracking** and **State**; an entity no detector has evaluated says **Not evaluated**, and one with active anomalies links to the Anomalies list for that entity."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No IPS source has a behavior profile.**; **Not collected yet**; **Not collected**; **Not evaluated**; **No entity is tracked for this source.**; the forbidden notice."
+        }
+      ]
+    },
     "property-watches": {
       "title": "Property watches",
       "answers": "Which watched property values are being counted, and which watches need attention?",

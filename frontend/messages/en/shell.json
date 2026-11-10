@@ -13,6 +13,7 @@
     "anomalies": "Anomalies",
     "sources": "Sources",
     "wafBehavior": "WAF behavior",
+    "ipsBehavior": "IPS behavior",
     "traffic": "Traffic",
     "noisySources": "Noisy sources",
     "propertyWatches": "Property watches",

@@ -14,6 +14,7 @@
     "anomaly-detail": "Anomaly investigation",
     "source-behavior": "Sources",
     "waf-behavior": "WAF behavior",
+    "ips-behavior": "IPS behavior",
     "property-watches": "Property watches",
     "geography": "Geography",
     "fleet": "Fleet",
