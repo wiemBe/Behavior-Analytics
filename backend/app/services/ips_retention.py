@@ -34,6 +34,22 @@ _STATEMENTS = (
         "SELECT ips_entity_id, bucket_start FROM ips_entity_metric "
         "WHERE bucket_start < :cutoff LIMIT :batch)",
     ),
+    # The mentions go by `source` and the same age, not by parent id: a chunk-dropped
+    # hypertable row has no stable id to enumerate at constant cost.
+    (
+        "entity_mention_ips_entity",
+        "DELETE FROM entity_mention WHERE (instance_id, kind, value_norm, source, ref_table, "
+        "ref_id, occurred_at) IN (SELECT instance_id, kind, value_norm, source, ref_table, "
+        "ref_id, occurred_at FROM entity_mention "
+        "WHERE source = 'IPS_ENTITY' AND occurred_at < :cutoff LIMIT :batch)",
+    ),
+    (
+        "entity_mention_ips_top",
+        "DELETE FROM entity_mention WHERE (instance_id, kind, value_norm, source, ref_table, "
+        "ref_id, occurred_at) IN (SELECT instance_id, kind, value_norm, source, ref_table, "
+        "ref_id, occurred_at FROM entity_mention "
+        "WHERE source = 'IPS_TOP' AND occurred_at < :cutoff LIMIT :batch)",
+    ),
     (
         "ips_source_bucket",
         "DELETE FROM ips_source_bucket WHERE (log_source_id, bucket_start) IN ("

@@ -2,6 +2,8 @@
 
 Each kind of data has its own rule, because they age differently:
 
+  * `entity_mention` rows of source WAF_TOP -- the entity-timeline index of the metrics'
+    stored client lists, deleted by the same age as the metrics.
   * `waf_endpoint_metric`, `waf_source_bucket` -- rows whose bucket started more
     than `WAF_METRIC_RETENTION_DAYS` ago. That setting must exceed the baseline
     lookback, so no rebuild ever loses a sample it relies on.
@@ -61,6 +63,16 @@ _STATEMENTS: tuple[tuple[str, str, str], ...] = (
         "DELETE FROM waf_endpoint_metric WHERE (waf_endpoint_id, bucket_start) IN ("
         "SELECT waf_endpoint_id, bucket_start FROM waf_endpoint_metric "
         "WHERE bucket_start < :cutoff LIMIT :batch)",
+    ),
+    # A chunk-dropped hypertable row has no stable id to enumerate at constant cost, so the
+    # mentions of the metrics above go by `source` and the same age, not by parent id.
+    (
+        "entity_mention_waf_top",
+        "metric_cutoff",
+        "DELETE FROM entity_mention WHERE (instance_id, kind, value_norm, source, ref_table, "
+        "ref_id, occurred_at) IN (SELECT instance_id, kind, value_norm, source, ref_table, "
+        "ref_id, occurred_at FROM entity_mention "
+        "WHERE source = 'WAF_TOP' AND occurred_at < :cutoff LIMIT :batch)",
     ),
     (
         "waf_source_bucket",

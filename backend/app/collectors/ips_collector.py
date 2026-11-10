@@ -24,7 +24,20 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import Table, delete, exists, func, select, text, tuple_, update
+from sqlalchemy import (
+    String,
+    Table,
+    and_,
+    delete,
+    exists,
+    func,
+    or_,
+    select,
+    text,
+    tuple_,
+    update,
+)
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
@@ -95,6 +108,7 @@ from app.ips.fold import (
 )
 from app.ips.keyed_search import IpsCellOutcome, IpsSearchBudget, run_dimension
 from app.ips.profile import IpsFieldMapping, IpsProfileError
+from app.models.entity import EntityMention
 from app.models.enums import (
     IpsCellState,
     IpsDimension,
@@ -122,6 +136,7 @@ from app.services.ariel_permit import (
     ariel_history_deferred_reason,
 )
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
+from app.services.entity_mentions import EntityMentionRow, normalize_entity, record_mentions
 from app.services.ips_pipeline import ips_pipeline_lock_key
 from app.services.locks import collector_lock_key, session_lock_engine
 from app.services.search_cadence import SearchCadenceService
@@ -1615,6 +1630,7 @@ class IpsCollector:
         metric_rows: list[dict[str, object]] = []
         bucket_rows: list[dict[str, object]] = []
         collected_pairs: list[tuple[uuid.UUID, datetime]] = []
+        destination_rows: list[tuple[datetime, uuid.UUID, str]] = []
         watermark_values = list(skipped_rows)
 
         for item in sources:
@@ -1662,6 +1678,7 @@ class IpsCollector:
                 )
                 if not isinstance(totals, IpsTotalsFact):
                     break
+                bucket_destinations: list[tuple[uuid.UUID, str]] = []
                 bucket_values, new_metrics = self._bucket_values(
                     instance,
                     item,
@@ -1674,6 +1691,10 @@ class IpsCollector:
                     entity_upserts,
                     now,
                     report,
+                    bucket_destinations,
+                )
+                destination_rows.extend(
+                    (cursor, entity_id, value) for entity_id, value in bucket_destinations
                 )
                 bucket_rows.append(bucket_values)
                 metric_rows.extend(new_metrics)
@@ -1718,6 +1739,7 @@ class IpsCollector:
             )
 
         if collected_pairs:
+            await self._record_mentions(instance, bucket_rows, destination_rows, collected_pairs)
             condition = tuple_(IpsEntity.log_source_id, IpsEntityMetric.bucket_start).in_(
                 collected_pairs
             )
@@ -1804,6 +1826,103 @@ class IpsCollector:
             )
             report.entities_retired = len(retired.all())
 
+    async def _record_mentions(
+        self,
+        instance: QRadarInstance,
+        bucket_rows: list[dict[str, object]],
+        destination_rows: list[tuple[datetime, uuid.UUID, str]],
+        collected_pairs: list[tuple[uuid.UUID, datetime]],
+    ) -> None:
+        """Index the contributors this run stores as entity mentions, replacing re-collected ones.
+
+        Only values already persisted become mentions: the bounded SOURCE_IP and PORT_FANOUT
+        lists of each bucket row (parent `ips_source_bucket`, `ref_id=str(log_source_id)`) and
+        the destination IPs of the admitted entities that got a metric row (parent
+        `ips_entity_metric`, `ref_id=str(ips_entity_id)`); both with `occurred_at` =
+        `bucket_start`, which completes the hypertable primary key. Statements per run: one
+        DELETE of the mentions of the buckets being replaced (both sources, no read of the
+        stored buckets), one INSERT, plus the savepoint pair. A failure rolls back to the
+        savepoint and is logged by class name: mentions are a derived index and never cost
+        the run's metric rows.
+        """
+        mentions: list[EntityMentionRow] = []
+        for row in bucket_rows:
+            contributors = cast(dict[str, list[dict[str, Any]]], row["contributors"])
+            for dimension in (IpsDimension.SOURCE_IP, IpsDimension.PORT_FANOUT):
+                for contributor in contributors.get(dimension.value, ()):
+                    value = normalize_entity("IP", str(contributor.get("source_ip") or ""))
+                    if value is None:
+                        continue
+                    mentions.append(
+                        EntityMentionRow(
+                            instance_id=instance.id,
+                            kind="IP",
+                            value_norm=value,
+                            role="SOURCE_IP",
+                            source="IPS_TOP",
+                            ref_table="ips_source_bucket",
+                            ref_id=str(row["log_source_id"]),
+                            occurred_at=cast(datetime, row["bucket_start"]),
+                        )
+                    )
+        for bucket_start, entity_id, raw in destination_rows:
+            value = normalize_entity("IP", raw)
+            if value is None:
+                continue
+            mentions.append(
+                EntityMentionRow(
+                    instance_id=instance.id,
+                    kind="IP",
+                    value_norm=value,
+                    role="DESTINATION_IP",
+                    source="IPS_ENTITY",
+                    ref_table="ips_entity_metric",
+                    ref_id=str(entity_id),
+                    occurred_at=bucket_start,
+                )
+            )
+        try:
+            async with self.session.begin_nested():
+                # One DELETE for both mention sources: the buckets this run replaces keep
+                # no mention of the previous list. It reads no stored bucket, so a fresh
+                # bucket costs the same statement (constant per run, never per source).
+                await self.session.execute(
+                    delete(EntityMention)
+                    .where(
+                        EntityMention.instance_id == instance.id,
+                        or_(
+                            and_(
+                                EntityMention.source == "IPS_TOP",
+                                EntityMention.ref_table == "ips_source_bucket",
+                                tuple_(EntityMention.ref_id, EntityMention.occurred_at).in_(
+                                    [(str(sid), start) for sid, start in collected_pairs]
+                                ),
+                            ),
+                            and_(
+                                EntityMention.source == "IPS_ENTITY",
+                                EntityMention.ref_table == "ips_entity_metric",
+                                exists().where(
+                                    sql_cast(IpsEntity.id, String) == EntityMention.ref_id,
+                                    tuple_(IpsEntity.log_source_id, EntityMention.occurred_at).in_(
+                                        collected_pairs
+                                    ),
+                                ),
+                            ),
+                        ),
+                    )
+                    .execution_options(synchronize_session=False)
+                )
+                await record_mentions(self.session, mentions)
+        except Exception as exc:
+            logger.warning(
+                "IPS entity mentions were not recorded",
+                extra={
+                    "instance_id": str(instance.id),
+                    "buckets": len(collected_pairs),
+                    "error_class": type(exc).__name__,
+                },
+            )
+
     def _bucket_values(
         self,
         instance: QRadarInstance,
@@ -1817,6 +1936,7 @@ class IpsCollector:
         entity_upserts: dict[tuple[uuid.UUID, str, str], dict[str, object]],
         now: datetime,
         report: IpsCollectionReport,
+        destination_ips: list[tuple[uuid.UUID, str]],
     ) -> tuple[dict[str, object], list[dict[str, object]]]:
         source = item.log_source
         measurements: dict[IpsDimension, str] = {}
@@ -1906,6 +2026,8 @@ class IpsCollector:
                 metrics.append(
                     self._metric_values(entity_id, bucket_start, bucket_seconds, entity_fact.events)
                 )
+                if dimension is IpsDimension.DESTINATION_IP:
+                    destination_ips.append((entity_id, entity_fact.value_key))
             for candidate in decision.admitted:
                 entity_fact = candidate.fact
                 key = (source.id, dimension.value, entity_fact.value_key)
@@ -1940,6 +2062,8 @@ class IpsCollector:
                 metrics.append(
                     self._metric_values(entity_id, bucket_start, bucket_seconds, entity_fact.events)
                 )
+                if dimension is IpsDimension.DESTINATION_IP:
+                    destination_ips.append((entity_id, entity_fact.value_key))
 
         def coverage_values(dimension: IpsDimension) -> tuple[float | None, bool | None]:
             fact = facts.get(dimension)
