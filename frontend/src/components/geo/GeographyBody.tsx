@@ -1,8 +1,9 @@
 "use client";
 
 // What the Geography widget and the Geography page both show for one `GET /geo/countries` answer:
-// the map, its legend, the country table, and under them the facts that say how far to trust it.
-// One component, so the two can never disagree about a state.
+// the map, its legend and the country table. The page keeps the full measurement facts; the
+// widget uses the component's compact or expanded density so it can disclose less without
+// disagreeing about any state.
 //
 // The states, each a sentence and never an empty map:
 //   NOT_COLLECTED     nothing was measured for this direction and range: no map, no zero
@@ -32,15 +33,20 @@ const ARIA_COUNTRIES = 3;
 /** The undrawn countries named in the note; the rest are counted. */
 const UNDRAWN_NAMES = 6;
 
+export type GeographyDensity = "full" | "compact" | "expanded";
+
 export function GeographyBody({
   data,
   locale,
   limit,
+  density = "full",
 }: {
   data: GeoCountries;
   locale: FormatLocale;
   /** How many table rows; null lists every country the answer holds. */
   limit: number | null;
+  /** The page is full by default; widgets choose compact or expanded disclosure. */
+  density?: GeographyDensity;
 }) {
   const t = useTranslations("geo");
   const states = useTranslations("states");
@@ -48,6 +54,7 @@ export function GeographyBody({
   const world = useWorld(drawsMap);
   const directionName = t(`directionName.${data.direction}`);
   const atLeast = data.measurement === "LOWER_BOUND";
+  const showsFacts = density !== "compact";
 
   const classes = useMemo(() => scaleClasses(data.countries.map((c) => c.events)), [data]);
   const rows = useMemo(() => rowsOf(data, locale), [data, locale]);
@@ -55,12 +62,17 @@ export function GeographyBody({
   if (data.status === "NOT_COLLECTED") {
     return (
       <div className="geo-hollow">
-        <div className="geo-hollow-body">
+        <div
+          className={
+            density === "compact" ? "geo-hollow-body geo-plot-state" : "geo-hollow-body"
+          }
+        >
           <p className="tw-state">
-            <strong>{t("state.notCollectedLead")}</strong>{" "}
+            <strong>{t("state.notCollectedLead")}</strong>
+            {density === "compact" ? <br /> : " "}
             {t("state.notCollected", { direction: directionName })}
           </p>
-          <Coverage data={data} locale={locale} />
+          {showsFacts ? <Coverage data={data} locale={locale} /> : null}
         </div>
       </div>
     );
@@ -118,16 +130,24 @@ export function GeographyBody({
             />
           </div>
         ) : (
-          <div className="geo-main">
+          <div className={density === "compact" ? "geo-main geo-plot-state" : "geo-main"}>
             <p className="tw-state">
-              <strong>{t("state.insufficientLead")}</strong>{" "}
+              <strong>{t("state.insufficientLead")}</strong>
+              {density === "compact" ? <br /> : " "}
               {t("state.insufficient", { direction: directionName })}
             </p>
           </div>
         )}
-        <div className="geo-facts">
-          <Facts data={data} locale={locale} atLeast={atLeast} />
-        </div>
+        {showsFacts ? (
+          <div className="geo-facts">
+            <Facts
+              data={data}
+              locale={locale}
+              atLeast={atLeast}
+              explainRemainders={density === "full"}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -288,10 +308,12 @@ function Facts({
   data,
   locale,
   atLeast,
+  explainRemainders,
 }: {
   data: GeoCountries;
   locale: FormatLocale;
   atLeast: boolean;
+  explainRemainders: boolean;
 }) {
   const t = useTranslations("geo.facts");
   const figure = (n: number) =>
@@ -316,7 +338,7 @@ function Facts({
           </>
         ) : null}
       </dl>
-      {remainders ? (
+      {remainders && explainRemainders ? (
         <Disclosure summary={t("explainSummary")}>
           <p>{note}</p>
           <p>{t("overCapNote")}</p>

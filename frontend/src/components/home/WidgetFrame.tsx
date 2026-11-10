@@ -121,6 +121,8 @@ export interface DataTo {
   /** ISO instant; null when the response has none (no bucket stored yet). */
   at: string | null;
   family: SearchFamily;
+  /** False keeps stale detection but omits the ordinary fresh-data footer. */
+  showFresh?: boolean;
 }
 
 export interface WidgetFrameProps<T> {
@@ -417,7 +419,7 @@ type Shown<T> =
       receivedAt: string;
       refreshFailed: { httpStatus: number | null; retryAfter?: number | null } | null;
       /** Where the data reaches and how old that is; null when the widget does not say. */
-      dataTo: { at: string; ageSeconds: number } | null;
+      dataTo: { at: string; ageSeconds: number; showFresh: boolean } | null;
     }
   | {
       kind: "stale";
@@ -500,7 +502,14 @@ function withDataTime<T>(
       refreshFailed: shown.refreshFailed,
     };
   }
-  return { ...shown, dataTo: { at: dataTo.at, ageSeconds: verdict.ageSeconds ?? 0 } };
+  return {
+    ...shown,
+    dataTo: {
+      at: dataTo.at,
+      ageSeconds: verdict.ageSeconds ?? 0,
+      showFresh: dataTo.showFresh !== false,
+    },
+  };
 }
 
 export function WidgetFrame<T>({
@@ -579,7 +588,7 @@ export function WidgetFrame<T>({
           })}
           {shown.kind === "stale" ? (
             <StaleNote asOf={shown.receivedAt} ageSeconds={shown.ageSeconds} variant={variant} />
-          ) : shown.dataTo ? (
+          ) : shown.dataTo?.showFresh ? (
             <DataToNote at={shown.dataTo.at} ageSeconds={shown.dataTo.ageSeconds} variant={variant} />
           ) : null}
           <RefreshNote

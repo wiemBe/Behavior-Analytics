@@ -66,7 +66,7 @@ export function GeographyMap({
         ariaLabel: t("widget.linkAria"),
       }}
       state={state}
-      dataTo={{ at: asOf, family: "GEO_COLLECTION" }}
+      dataTo={{ at: asOf, family: "GEO_COLLECTION", showFresh: expanded }}
       what={t("widget.what")}
       permission="read:geo"
     >
@@ -75,7 +75,12 @@ export function GeographyMap({
           {config?.direction !== undefined && known === null ? (
             <p className="tw-note warn">{t("widget.unsupportedDirection")}</p>
           ) : null}
-          <GeographyBody data={data} locale={locale} limit={expanded ? null : GEO_WIDGET_ROWS} />
+          <GeographyBody
+            data={data}
+            locale={locale}
+            limit={expanded ? null : GEO_WIDGET_ROWS}
+            density={expanded ? "expanded" : "compact"}
+          />
         </>
       )}
     </WidgetFrame>
