@@ -690,7 +690,10 @@ class TestAdmissionAndScale:
             ).collect(instance)
         # Two versus twenty sources and ten versus four hundred entities: the
         # same fixed load/write/lock shape, with no query per source or entity.
-        assert len(statements) == 12
+        # 16 = the 12 of the collection plus the four of the entity-mention writer
+        # (SAVEPOINT, one DELETE of the replaced buckets' mentions, the entity_mention INSERT,
+        # RELEASE).
+        assert len(statements) == 16
 
 
 def _outcome(

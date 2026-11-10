@@ -73,6 +73,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -80,7 +81,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import Table, delete, func, select, text, update
+from sqlalchemy import String, Table, delete, exists, func, select, text, update
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -119,6 +121,7 @@ from app.history.waf import (
     waf_planner_settings,
 )
 from app.i18n.messages import MessageRef, render
+from app.models.entity import EntityMention
 from app.models.enums import (
     BucketCompleteness,
     SearchFamily,
@@ -138,6 +141,7 @@ from app.providers.dto import (
 )
 from app.services.ariel_permit import ArielPermitUnavailable, ariel_background_priority
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
+from app.services.entity_mentions import EntityMentionRow, normalize_entity, record_mentions
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.services.waf_ariel_budget import WafArielBudget
@@ -159,6 +163,8 @@ from app.waf.normalize import (
 )
 from app.waf.profile import BreakdownPlan, WafFieldMapping
 from app.waf.semantics import breakdown_semantics, request_count_semantics
+
+logger = logging.getLogger("app.collectors.waf_endpoint_collector")
 
 COLLECTOR_NAME = "waf_endpoint_metric"
 
@@ -962,7 +968,7 @@ class WafEndpointCollector:
         # Re-collecting a bucket replaces its rows. Merging would leave a row
         # for an endpoint the fresh result no longer mentions -- a stale count
         # that the fresh bucket record would then vouch for.
-        await self.session.execute(
+        replaced = await self.session.execute(
             delete(WafEndpointMetric)
             .where(
                 WafEndpointMetric.bucket_start == start,
@@ -972,6 +978,7 @@ class WafEndpointCollector:
             )
             .execution_options(synchronize_session=False)
         )
+        recollected = bool(getattr(replaced, "rowcount", 0))
         rows: list[dict] = [
             {
                 "waf_endpoint_id": endpoint.id,
@@ -1006,6 +1013,9 @@ class WafEndpointCollector:
             )
             await self.session.execute(stmt, rows)
             report.rows_written += len(rows)
+        await self._record_client_mentions(
+            log_source, start, rows, replace_existing=recollected
+        )
 
         bucket_row = {
             "log_source_id": log_source.id,
@@ -1099,6 +1109,72 @@ class WafEndpointCollector:
             },
         )
         await self.session.execute(stmt_bucket)
+
+    async def _record_client_mentions(
+        self,
+        log_source: LogSource,
+        start: datetime,
+        rows: list[dict],
+        *,
+        replace_existing: bool,
+    ) -> None:
+        """Index the stored `top_clients` of one bucket as entity mentions.
+
+        Only the addresses already persisted in the bounded list become mentions. The
+        parent key is the metric's primary key: `ref_table='waf_endpoint_metric'`,
+        `ref_id=str(waf_endpoint_id)`, `occurred_at=bucket_start`. Statements per bucket:
+        one INSERT, plus one DELETE when the bucket replaced rows of an earlier collection
+        (no scan for a fresh bucket), plus the savepoint pair. A failure rolls back to the
+        savepoint and is logged by class name: mentions are a derived index, so they never
+        cost the bucket's metric rows.
+        """
+        mentions: list[EntityMentionRow] = []
+        for row in rows:
+            for client in cast(list[dict[str, Any]], row.get("top_clients") or ()):
+                value = normalize_entity("IP", str(client.get("source_ip") or ""))
+                if value is None:
+                    continue
+                mentions.append(
+                    EntityMentionRow(
+                        instance_id=log_source.instance_id,
+                        kind="IP",
+                        value_norm=value,
+                        role="SOURCE_IP",
+                        source="WAF_TOP",
+                        ref_table="waf_endpoint_metric",
+                        ref_id=str(row["waf_endpoint_id"]),
+                        occurred_at=start,
+                    )
+                )
+        if not mentions and not replace_existing:
+            return
+        try:
+            async with self.session.begin_nested():
+                if replace_existing:
+                    await self.session.execute(
+                        delete(EntityMention)
+                        .where(
+                            EntityMention.instance_id == log_source.instance_id,
+                            EntityMention.source == "WAF_TOP",
+                            EntityMention.ref_table == "waf_endpoint_metric",
+                            EntityMention.occurred_at == start,
+                            exists().where(
+                                sql_cast(WafEndpoint.id, String) == EntityMention.ref_id,
+                                WafEndpoint.log_source_id == log_source.id,
+                            ),
+                        )
+                        .execution_options(synchronize_session=False)
+                    )
+                await record_mentions(self.session, mentions)
+        except Exception as exc:
+            logger.warning(
+                "WAF entity mentions were not recorded",
+                extra={
+                    "log_source_id": str(log_source.id),
+                    "bucket_start": start.isoformat(),
+                    "error_class": type(exc).__name__,
+                },
+            )
 
     async def persist_history_volume(
         self,
