@@ -24,7 +24,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import String, delete, select
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.anomaly.explanation import (
@@ -33,6 +34,7 @@ from app.anomaly.explanation import (
     compare_all,
 )
 from app.core.config import Settings, get_settings
+from app.models.entity import EntityMention
 from app.models.enums import DimensionAvailability, EvidenceStatus
 from app.models.explanation import (
     EXPLANATION_SCHEMA_VERSION,
@@ -43,6 +45,14 @@ from app.models.explanation import (
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.providers.base import ProviderError, QRadarProvider
 from app.providers.dto import DimensionAggregate
+from app.services.entity_mentions import (
+    EntityKind,
+    EntityMentionRow,
+    EntityRole,
+    normalize_entity,
+    record_mentions,
+    user_match_forms,
+)
 
 logger = logging.getLogger("app.collectors.explanation")
 
@@ -51,6 +61,14 @@ COMPARISON_STRATEGY = "recent_normal_window"
 #: Advisory-lock name, so two workers cannot run investigation queries against
 #: the same instance concurrently.
 EXPLANATION_COLLECTOR = "anomaly_explanation"
+
+#: The contributor dimensions the entity timeline indexes, with the kind and role of each.
+#: Any other dimension records nothing: a value is never classified by its shape.
+MENTION_DIMENSIONS: dict[str, tuple[EntityKind, EntityRole]] = {
+    "source_ip": ("IP", "SOURCE_IP"),
+    "destination_ip": ("IP", "DESTINATION_IP"),
+    "username": ("USER", "USER"),
+}
 
 
 @dataclass
@@ -138,10 +156,13 @@ class ExplanationCollector:
         package.query_provenance = _provenance(anomaly_aggs, baseline_aggs, windows)
 
         contributors = 0
+        contributor_rows: list[AnomalyExplanationContributor] = []
         for comparison in comparisons:
             self.session.add(_dimension_row(package, comparison))
             for contributor in comparison.contributors:
-                self.session.add(_contributor_row(package, contributor))
+                row = _contributor_row(package, contributor)
+                self.session.add(row)
+                contributor_rows.append(row)
                 contributors += 1
 
         status = _package_status(comparisons)
@@ -153,6 +174,7 @@ class ExplanationCollector:
         )
         anomaly.evidence_status = status
         await self.session.flush()
+        await self._record_mentions(log_source, package, contributor_rows)
 
         logger.info(
             "explanation collected",
@@ -203,6 +225,86 @@ class ExplanationCollector:
         )
 
     # ---------------------------------------------------------- persistence
+    async def _record_mentions(
+        self,
+        log_source: LogSource,
+        package: AnomalyExplanation,
+        contributors: list[AnomalyExplanationContributor],
+    ) -> None:
+        """Index the stored contributors of the named dimensions as entity mentions.
+
+        Only values already persisted in the bounded contributor lists become mentions, and
+        only for `source_ip`, `destination_ip` and `username`. The parent key is the
+        contributor row: `ref_table='anomaly_explanation_contributor'`,
+        `ref_id=str(contributor.id)`; `occurred_at` is the package's anomaly window start
+        (the window the read side's coverage check overlaps) and `occurred_end` its end.
+        Statements per package: one INSERT plus the savepoint pair, none when no stored
+        contributor qualifies. A failure rolls back to the savepoint and is logged by class
+        name: mentions are a derived index and never cost the package.
+        """
+        mentions: list[EntityMentionRow] = []
+        for contributor in contributors:
+            target = MENTION_DIMENSIONS.get(contributor.dimension)
+            if target is None:
+                continue
+            kind, role = target
+            # A username is indexed once, under its bare account: every query spelling
+            # (`alice`, `CORP\alice`, `alice@corp`) binds that form. When no bare form
+            # can be derived the normalised value itself is the one row.
+            if kind == "USER":
+                values: tuple[str | None, ...] = user_match_forms(contributor.value)[-1:]
+            else:
+                values = (normalize_entity(kind, contributor.value),)
+            for value in values:
+                if value is None:
+                    continue
+                mentions.append(
+                    EntityMentionRow(
+                        instance_id=log_source.instance_id,
+                        kind=kind,
+                        value_norm=value,
+                        role=role,
+                        source="EXPLANATION",
+                        ref_table="anomaly_explanation_contributor",
+                        ref_id=str(contributor.id),
+                        occurred_at=package.anomaly_window_start,
+                        occurred_end=package.anomaly_window_end,
+                    )
+                )
+        if not mentions:
+            return
+        try:
+            async with self.session.begin_nested():
+                await record_mentions(self.session, mentions)
+        except Exception as exc:
+            logger.warning(
+                "explanation entity mentions were not recorded",
+                extra={"anomaly": str(package.anomaly_id), "error_class": type(exc).__name__},
+            )
+
+    async def _drop_mentions(self, explanation_id: object) -> None:
+        """Remove the mentions of a package's contributors before the package is replaced."""
+        try:
+            async with self.session.begin_nested():
+                await self.session.execute(
+                    delete(EntityMention)
+                    .where(
+                        EntityMention.source == "EXPLANATION",
+                        EntityMention.ref_table == "anomaly_explanation_contributor",
+                        EntityMention.ref_id.in_(
+                            select(sql_cast(AnomalyExplanationContributor.id, String)).where(
+                                AnomalyExplanationContributor.explanation_id == explanation_id
+                            )
+                        ),
+                    )
+                    .execution_options(synchronize_session=False)
+                )
+        except Exception as exc:
+            logger.warning(
+                "stale explanation entity mentions were not removed",
+                extra={"explanation": str(explanation_id), "error_class": type(exc).__name__},
+            )
+
     async def _replace_package(
         self, anomaly: LogSourceAnomaly, windows: _Windows
     ) -> AnomalyExplanation:
@@ -218,6 +320,7 @@ class ExplanationCollector:
             )
         )
         if existing is not None:
+            await self._drop_mentions(existing.id)
             await self.session.execute(
                 delete(AnomalyExplanationContributor).where(
                     AnomalyExplanationContributor.explanation_id == existing.id

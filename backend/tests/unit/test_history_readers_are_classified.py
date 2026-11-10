@@ -201,6 +201,13 @@ HISTORY_TABLES = (
             "app.waf.engine.WafAnomalyEngine._load_novelty_traffic": Reader(
                 "novelty evidence", ReaderKind.EVIDENCE
             ),
+            # SOC-16b/16a3: coverage for the entity timeline's "proves absence". Mentions are
+            # written by live collection only (no backfill), so a history bucket must not count.
+            "app.services.entity_timeline.EntityTimelineService._coverage": Reader(
+                "entity timeline coverage: mentions exist for live buckets only",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
             "app.waf.engine.WafAnomalyEngine._load_novelty": Reader(
                 "novelty history", ReaderKind.EVIDENCE
             ),
@@ -321,6 +328,16 @@ HISTORY_TABLES = (
             "app.waf.engine.WafAnomalyEngine._load_novelty_traffic": Reader(
                 "novelty evidence", ReaderKind.EVIDENCE
             ),
+            "app.services.entity_timeline.EntityTimelineService._coverage": Reader(
+                "entity timeline coverage: mentions exist for live buckets only",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
+            # The mention names this exact (endpoint, bucket); show it whatever its origin.
+            (
+                "app.services.entity_timeline.EntityTimelineService."
+                "_hydrate_waf_endpoint_metric"
+            ): Reader("entity timeline item for a stored mention", ReaderKind.DISPLAY),
         },
     ),
     HistoryTable(
@@ -376,6 +393,16 @@ HISTORY_TABLES = (
                 "pending evaluation", ReaderKind.LIVE_ONLY, 1
             ),
             "app.services.ips_retention.<module>": Reader("retention", ReaderKind.DELETE),
+            "app.services.entity_timeline.EntityTimelineService._coverage": Reader(
+                "entity timeline coverage: mentions exist for live buckets only",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
+            # The mention names this exact (source, bucket); show it whatever its origin.
+            (
+                "app.services.entity_timeline.EntityTimelineService."
+                "_hydrate_ips_source_bucket"
+            ): Reader("entity timeline item for a stored mention", ReaderKind.DISPLAY),
         },
     ),
     HistoryTable(

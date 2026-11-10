@@ -422,5 +422,7 @@ async def test_sync_statement_count_is_constant_at_50_and_1000_sources(db_sessio
         counts[size] = len(statements)
 
     # SQLAlchemy's insertmanyvalues page is 1,000 bind rows; the larger source
-    # flush crosses that page once. No statement is issued per source.
-    assert counts == {50: 9, 1000: 10}
+    # flush crosses that page once. No statement is issued per source. The entity-mention
+    # writer adds SAVEPOINT, DELETE, INSERT(s) and RELEASE; 1,000 sources are 3,000 rows, so
+    # three 1,000-row INSERT chunks (SOC-16a3).
+    assert counts == {50: 13, 1000: 15}

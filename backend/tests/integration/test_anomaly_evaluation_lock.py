@@ -34,6 +34,7 @@ _LOCK_HELD = """
     SELECT count(*) FROM pg_locks
     WHERE locktype = 'advisory' AND objsubid = 2
       AND classid = :ns AND objid = :key
+      AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
 """
 _NORMAL = {"sources": 1, "opened": 0, "resolved": 0, "failed": 0, "given_up": 0}
 
@@ -172,3 +173,46 @@ async def test_the_search_scheduler_lock_does_not_skip_the_evaluation(env) -> No
         assert await tasks.evaluate_anomalies() == _NORMAL
     assert len(evaluation.calls) == 1
     assert await _lock_held(maker, _EVALUATION_KEY) == 0
+
+
+async def test_a_lock_held_in_another_database_is_not_counted(env) -> None:
+    """`pg_locks` is cluster-wide: the held-lock query must count this database only."""
+    import os
+
+    from sqlalchemy.engine import make_url
+
+    _engine, maker, _evaluation = env
+    namespace = get_settings().collection_advisory_lock_namespace
+    url = make_url(os.environ["TEST_DATABASE_URL"])
+    other = None
+    for name in ("postgres", "template1"):
+        if name == url.database:
+            continue
+        candidate = create_async_engine(url.set(database=name))
+        try:
+            async with candidate.connect():
+                other = candidate
+                break
+        except Exception:
+            await candidate.dispose()
+    if other is None:
+        pytest.skip("no second database reachable on the test server")
+    unscoped = _LOCK_HELD.split("      AND database")[0]
+    try:
+        async with other.connect() as foreign:
+            await foreign.execute(
+                text("SELECT pg_advisory_lock(:ns, :key)"),
+                {"ns": namespace, "key": _EVALUATION_KEY},
+            )
+            try:
+                async with maker() as session:
+                    params = {"ns": namespace, "key": _EVALUATION_KEY}
+                    assert await session.scalar(text(unscoped), params) == 1
+                assert await _lock_held(maker, _EVALUATION_KEY) == 0
+            finally:
+                await foreign.execute(
+                    text("SELECT pg_advisory_unlock(:ns, :key)"),
+                    {"ns": namespace, "key": _EVALUATION_KEY},
+                )
+    finally:
+        await other.dispose()

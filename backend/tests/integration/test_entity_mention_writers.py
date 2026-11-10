@@ -256,7 +256,7 @@ async def expected_ips(session) -> set[tuple[str, str, str, str, str, datetime]]
         )
     ).all()
     for entity_id, value, start in rows:
-        expected.add((value, "DESTINATION_IP", "IPS_ENTITY", "ips_entity_metric",
+        expected.add((value, "DESTINATION_IP", "IPS_ENTITY", "ips_entity",
                       str(entity_id), start))
     return expected
 
@@ -375,7 +375,7 @@ async def test_ips_recollection_is_idempotent_and_replaces_a_changed_list(db_ses
         [
             EntityMentionRow(
                 instance_id=instance.id, kind="IP", value_norm="203.0.113.251",
-                role="DESTINATION_IP", source="IPS_ENTITY", ref_table="ips_entity_metric",
+                role="DESTINATION_IP", source="IPS_ENTITY", ref_table="ips_entity",
                 ref_id=entity[4], occurred_at=entity[5],
             )
         ],
@@ -452,7 +452,7 @@ async def seed_mentions(session, instance, source: str, ref_table: str, when: da
     [
         ("WAF_TOP", "waf_endpoint_metric", "waf"),
         ("IPS_TOP", "ips_source_bucket", "ips"),
-        ("IPS_ENTITY", "ips_entity_metric", "ips"),
+        ("IPS_ENTITY", "ips_entity", "ips"),
     ],
 )
 async def test_retention_removes_aged_mentions_and_nothing_newer(

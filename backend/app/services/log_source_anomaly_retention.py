@@ -18,6 +18,12 @@ Children that exist only for the incident leave in the same delete, by
 and through the explanation ``anomaly_explanation_dimension`` and
 ``anomaly_explanation_contributor``. Those are not a skip.
 
+The entity-timeline mentions of the explanation contributors (`entity_mention`, source
+EXPLANATION) have no foreign key either: their parent key is the contributor id as text. The
+same run deletes the mentions whose contributor no longer exists, in bounded batches, only
+among mentions older than the cutoff (an incident that left was terminal before it), so a
+contributor of a live or kept incident never loses its mention.
+
 The analyst triage row has no foreign key (its key is polymorphic across the four
 anomaly tables), so the same run deletes the triage rows of the incidents it
 removed, in one bounded statement. A triage row for a live incident is untouched.
@@ -58,6 +64,18 @@ DELETE_SQL = (
     "AND NOT EXISTS (SELECT 1 FROM alert al "
     "WHERE jsonb_exists(al.source_anomaly_ids, a.id::text)) "
     "LIMIT :batch)"
+)
+
+
+#: Mentions of contributors that no longer exist. `c.id = m.ref_id::uuid` keeps the probe on the
+#: contributor primary key; every EXPLANATION mention's `ref_id` is a contributor uuid.
+MENTION_DELETE_SQL = (
+    "DELETE FROM entity_mention WHERE (instance_id, kind, value_norm, source, ref_table, "
+    "ref_id, occurred_at) IN (SELECT m.instance_id, m.kind, m.value_norm, m.source, "
+    "m.ref_table, m.ref_id, m.occurred_at FROM entity_mention m "
+    "WHERE m.source = 'EXPLANATION' AND m.occurred_at < :cutoff "
+    "AND NOT EXISTS (SELECT 1 FROM anomaly_explanation_contributor c "
+    "WHERE c.id = m.ref_id::uuid) LIMIT :batch)"
 )
 
 
@@ -107,6 +125,20 @@ class LogSourceAnomalyRetention:
         else:
             report.incomplete.append(table)
         report.deleted[table] = deleted
+        mentions = 0
+        for _ in range(self.settings.log_source_anomaly_retention_max_batches):
+            result = await self.session.execute(
+                text(MENTION_DELETE_SQL).bindparams(cutoff=cutoff, batch=batch)
+            )
+            await self.session.commit()
+            count = int(getattr(result, "rowcount", 0) or 0)
+            mentions += count
+            if count < batch:
+                break
+        else:
+            report.incomplete.append("entity_mention_explanation")
+        if mentions:
+            report.deleted["entity_mention_explanation"] = mentions
         orphaned = await delete_orphan_triage(
             self.session, AnomalyFamily.LOG_SOURCE, batch_size=batch
         )

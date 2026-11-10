@@ -7,12 +7,13 @@ operator's classification with each poll would make the platform unusable.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import cast
 
-from sqlalchemy import Table
+from sqlalchemy import Table, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +22,7 @@ from app.alerts.service import AlertInput, AlertService
 from app.core.config import Settings, get_settings
 from app.fleet.service import classify_sources
 from app.i18n.messages import MessageRef, render
+from app.models.entity import EntityMention
 from app.models.enums import ClassificationReviewStatus, InstanceStatus, Severity
 from app.models.fleet import LogSourceGroup, LogSourceType
 from app.models.instance import QRadarInstance
@@ -29,7 +31,15 @@ from app.providers.base import ProviderError, QRadarProvider
 from app.repositories.log_source import LogSourceRepository
 from app.schemas.log_source import SyncResult
 from app.security.sanitizer import sanitize_text
+from app.services.entity_mentions import (
+    EntityMentionRow,
+    classify_entity,
+    normalize_entity,
+    record_mentions,
+)
 from app.services.waf_pipeline import sanitized_error
+
+logger = logging.getLogger("app.services.inventory_sync")
 
 
 class InventorySyncService:
@@ -191,6 +201,11 @@ class InventorySyncService:
             existing.is_internal = dto.internal
 
         await self.session.flush()
+        await self._record_mentions(
+            instance,
+            [existing_by_qradar_id[q] for q in dict.fromkeys(d.qradar_id for d in dtos)],
+            observed_at=now,
+        )
         sources = list(existing_by_qradar_id.values())
         applied = await classify_sources(
             self.session,
@@ -253,6 +268,64 @@ class InventorySyncService:
             updated=updated,
             instance_version=info.version,
         )
+
+    async def _record_mentions(
+        self,
+        instance: QRadarInstance,
+        seen: list[LogSource],
+        *,
+        observed_at: datetime,
+    ) -> None:
+        """Index the name and identifier of every log source this pass saw as entity mentions.
+
+        A log source is an identity, not an event. The parent key is the source row:
+        `ref_table='log_source'`, `ref_id=str(log_source.id)`; `occurred_at` is this pass's
+        observation time, so the mention says "in the inventory as of the last sync", which is
+        what the timeline's inventory check assumes. Each pass replaces the console's earlier
+        LOG_SOURCE mentions, so a re-sync never accumulates them, a renamed source drops its
+        old name and a source the console no longer lists drops out. `name` and `identifier`
+        are HOST (role HOST); an `identifier` that parses as an address is also an IP. Statements
+        per pass: one DELETE, one INSERT per 1,000 rows (the helper's chunk) and the savepoint
+        pair. A failure rolls back to the savepoint and is logged by class name: mentions are a
+        derived index and never cost the inventory.
+        """
+        mentions: list[EntityMentionRow] = []
+        for source in seen:
+            candidates = [("HOST", source.name), ("HOST", source.identifier)]
+            if source.identifier and classify_entity(source.identifier) == "IP":
+                candidates.append(("IP", source.identifier))
+            for kind, raw in candidates:
+                value = normalize_entity(kind, raw) if raw else None
+                if value is None:
+                    continue
+                mentions.append(
+                    EntityMentionRow(
+                        instance_id=instance.id,
+                        kind="IP" if kind == "IP" else "HOST",
+                        value_norm=value,
+                        role="HOST",
+                        source="LOG_SOURCE",
+                        ref_table="log_source",
+                        ref_id=str(source.id),
+                        occurred_at=observed_at,
+                    )
+                )
+        try:
+            async with self.session.begin_nested():
+                await self.session.execute(
+                    delete(EntityMention)
+                    .where(
+                        EntityMention.instance_id == instance.id,
+                        EntityMention.source == "LOG_SOURCE",
+                    )
+                    .execution_options(synchronize_session=False)
+                )
+                await record_mentions(self.session, mentions)
+        except Exception as exc:
+            logger.warning(
+                "log source entity mentions were not recorded",
+                extra={"instance_id": str(instance.id), "error_class": type(exc).__name__},
+            )
 
     async def ensure_default_instance(self) -> QRadarInstance:
         """Return the first stored instance, creating one when the table is empty.
