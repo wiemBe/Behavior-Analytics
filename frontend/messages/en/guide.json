@@ -893,6 +893,29 @@
       ],
       "permission": "`admin:*`"
     },
+    "entity-timeline": {
+      "title": "Entity timeline",
+      "answers": "What has this platform already stored about this IP address, host or user in this window?",
+      "body": [
+        {
+          "p": "The page reads what the platform stored itself: incident records and the bounded top-contributor lists kept with them. It does not read raw events, and it sends no search to QRadar. Open it from a linked address or user name in the investigation evidence, or from the **Entities** row of the top search, which sends the typed text as it is. The page, not the browser, decides whether a bare value is an IP address; for a host name or a user name, choose the kind."
+        },
+        {
+          "p": "The window is the last **1 hour**, **24 hours** (the default) or **7 days**, ending now. Seven days is the longest the page accepts; a longer window is refused, not shortened. The list is newest first with times in UTC, one row per stored mention. **Lane** says which collector stored it: behavior anomaly contributors, WAF top clients, IPS source contributors, IPS destination entities, QRadar offenses or log sources. **Role** says what the entity was in that record, and **Basis** marks a mention that came from a bounded top list or an admitted entity rather than an exact measurement."
+        },
+        {
+          "p": "The **What was checked** table gives each lane's status. **Measured** is a lane that was collected, with its count of stored mentions. **None stored** is a lane that was collected in full and proved the entity absent. **Not collected** says why the lane has no answer. **Forbidden** names the permission your role lacks for that lane, and the lane's records are not shown. **Partial** and **Stale** mean the lane may be incomplete."
+        },
+        {
+          "p": "An empty result is not proof of absence. The top-contributor lanes keep only the leading values of each bucket, so an entity below the cut is not stored and cannot be found. Only a lane marked **None stored** proved absence. A long answer is shown one page at a time: **Older mentions** continues the list, and the counts then describe the page you are on."
+        }
+      ],
+      "states": [
+        {
+          "p": "**No stored mention of the value in this window.** with the lane table; the backend's refusal of an unknown kind, a window above seven days or a changed cursor, with the form kept; a count of stored records that could no longer be opened and are not listed."
+        }
+      ]
+    },
     "qradar-access": {
       "title": "QRadar access",
       "answers": "Which QRadar APIs can this site's token not reach, what does that switch off here, and what should I ask the QRadar administrator for?",

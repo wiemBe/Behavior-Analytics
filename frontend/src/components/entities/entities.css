@@ -1,0 +1,133 @@
+/* The entity timeline's parts: layout only. Colours, sizes and spacing come from the tokens. */
+
+/* --- the search form --- */
+.entity-form {
+  align-items: flex-end;
+  gap: var(--sp-3) var(--sp-5);
+  margin: 0;
+}
+.entity-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  flex: 1 1 28ch;
+  min-width: 0;
+  max-width: 48ch;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.entity-field-label {
+  font-weight: var(--fw-medium);
+  color: var(--text-2);
+}
+.entity-field input {
+  width: 100%;
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+.entity-field-hint {
+  color: var(--text-3);
+}
+.entity-kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.entity-kind legend {
+  padding: 0;
+  margin-bottom: var(--sp-1);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--text-2);
+}
+.entity-kind-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--target-min);
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.entity-form button {
+  align-self: flex-end;
+}
+
+/* --- the window --- */
+.entity-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-5);
+  min-width: 0;
+}
+.entity-window {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- the lanes: a status list, one row each --- */
+.entity-lanes {
+  min-width: 0;
+}
+.entity-lanes .section-title {
+  margin: 0 0 var(--sp-2);
+}
+/* The lane name is a row header, so it carries the row's rules like a cell: the last row's rule
+   is dropped with the cells' and the hover reaches it. */
+.entity-lane-table th.entity-lane-name {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+.entity-lane-table tbody tr:last-child th.entity-lane-name {
+  border-bottom: none;
+}
+.entity-lane-table tbody tr:hover th.entity-lane-name {
+  background: var(--surface-3);
+}
+.entity-lane-table td.entity-lane-note {
+  min-width: 24ch;
+  color: var(--text-2);
+  overflow-wrap: break-word;
+}
+.entity-paged-note {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+}
+
+/* --- the merged list --- */
+.entity-items {
+  min-width: 0;
+}
+.entity-items .section-title {
+  margin: 0 0 var(--sp-2);
+}
+.entity-table td.entity-time {
+  white-space: nowrap;
+}
+.entity-table td.entity-role {
+  white-space: nowrap;
+}
+.entity-age {
+  display: block;
+}
+.entity-table td.entity-title {
+  min-width: 18ch;
+  overflow-wrap: anywhere;
+}
+.entity-dangling {
+  font-size: var(--fs-sm);
+}
+
+@media (max-width: 1100px) {
+  .entity-table {
+    font-size: var(--fs-sm);
+  }
+}

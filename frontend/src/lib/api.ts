@@ -1656,6 +1656,64 @@ export type RelatedSectionState =
   | "NOT_APPLICABLE";
 export type RuleMeasurement = "EXACT" | "LOWER_BOUND" | "NOT_COLLECTED";
 
+// --- SOC-16: the stored entity timeline ----------------------------------------
+// Mirrors app/schemas/entity_timeline.py. A lane's `total` is null when it was not measured and 0
+// only when absence was proven. A lane the caller may not read arrives as NOT_COLLECTED with
+// `permission` set: the wire has no FORBIDDEN state.
+export type EntityTimelineKind = "IP" | "HOST" | "USER";
+export type EntityTimelineLane =
+  | "EXPLANATION"
+  | "WAF_TOP"
+  | "IPS_TOP"
+  | "IPS_ENTITY"
+  | "OFFENSE"
+  | "LOG_SOURCE";
+
+export interface EntityTimelineLaneOut {
+  source: EntityTimelineLane;
+  state: RelatedSectionState;
+  reason_code: string | null;
+  total: number | null;
+  permission: string | null;
+}
+
+export interface EntityTimelineItem {
+  occurred_at: string;
+  occurred_end: string | null;
+  source: EntityTimelineLane;
+  role: string;
+  title: string;
+  title_code: string | null;
+  title_params: Record<string, string | number | boolean | null> | null;
+  /** An application route for the owning page; used as given when it is a same-origin path. */
+  href: string;
+  /** A Phase A named severity, or a QRadar offense's native number; never mapped onto each other. */
+  severity: QueueSeverity | number | null;
+  measurement: string | null;
+}
+
+export interface EntityTimeline {
+  entity: { kind: EntityTimelineKind; value: string; value_norm: string };
+  window: { start: string; end: string };
+  state: RelatedSectionState;
+  reason_code: string | null;
+  lanes: EntityTimelineLaneOut[];
+  items: EntityTimelineItem[];
+  /** Stored mentions whose parent row no longer exists; they were dropped from `items`. */
+  dangling: number;
+  truncated: boolean;
+  next_cursor: string | null;
+}
+
+export interface EntityTimelineParams {
+  value: string;
+  kind?: "ip" | "host" | "user";
+  start?: string;
+  end?: string;
+  limit?: number;
+  cursor?: string;
+}
+
 export interface RelatedAnchor {
   family: RelatedFamily;
   anomaly_id: string;
@@ -3311,6 +3369,9 @@ export const api = {
   // SOC-3: what else happened on the anomaly's source around it (offenses, anomalies, rules).
   relatedActivity: (family: RelatedFamily, id: string, pad?: RelatedPad) =>
     request<RelatedActivity>(`/anomalies/related/${family}/${id}${qs({ pad })}`),
+  // SOC-16: what the platform has already stored about one IP, host or user. Database only.
+  entityTimeline: (params: EntityTimelineParams) =>
+    request<EntityTimeline>(`/entities/timeline${qs({ ...params })}`),
   // SOC-1: the analyst's triage of one anomaly and its activity. Writes need `anomaly:triage`.
   triage: (family: TriageFamily, id: string, page: { limit?: number; offset?: number } = {}) =>
     request<Triage>(`/anomalies/triage/${family}/${id}${qs({ ...page })}`),

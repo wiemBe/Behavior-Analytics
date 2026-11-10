@@ -337,6 +337,14 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
     related: ["search-cadence", "history-backfill", "honesty-states", "times-and-cadence"],
   },
   {
+    id: "entity-timeline",
+    group: "pages",
+    routes: ["/entities"],
+    audience: "analyst",
+    permissions: ["read:anomalies"],
+    related: ["honesty-states", "anomaly-detail", "offenses", "times-and-cadence"],
+  },
+  {
     id: "qradar-access",
     group: "adminTasks",
     routes: ["/admin/qradar-access"],

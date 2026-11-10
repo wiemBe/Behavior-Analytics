@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ENABLED_LOCALES, type Locale } from "@/i18n/locale";
 import { FROZEN_TR_KEYS } from "@/i18n/trFrozen";
-import { GUIDE_SECTIONS } from "@/lib/guideSections";
+import { GUIDE_GROUPS, GUIDE_SECTIONS } from "@/lib/guideSections";
 import tr from "../../../messages/tr";
 import { enableTurkish, setTestLocale } from "../../../vitest.setup";
 import GuidePage from "./page";
@@ -166,7 +166,11 @@ describe("the frozen-Turkish rule for the guide pages (D-41)", () => {
     enableTurkish();
     expect(renderedIn("tr")).toContain("siem-load");
     await expect(section("siem-load")).rejects.toThrow("guide: no section siem-load");
-    await expect(GuidePage()).rejects.toThrow("guide: no section siem-load");
+    // The index walks the groups in order, so the first section it fails on is the first added one.
+    const firstAdded = GUIDE_GROUPS.flatMap((g) => GUIDE_SECTIONS.filter((s) => s.group === g))
+      .map((s) => s.id)
+      .find((id) => !FROZEN_SECTIONS.has(id));
+    await expect(GuidePage()).rejects.toThrow(`guide: no section ${firstAdded}`);
   });
 
   it("renders every frozen section in Turkish (a deleted one would throw)", async () => {
