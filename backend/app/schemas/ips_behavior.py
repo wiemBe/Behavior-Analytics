@@ -22,7 +22,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.history.origin import HistoryOrigin
-from app.models.enums import AnomalyState, IpsDimension
+from app.models.enums import AnomalyState, IpsDimension, Severity
 
 
 class IpsDimensionCoverageOut(BaseModel):
@@ -99,6 +99,11 @@ class IpsSourceBehaviorOut(BaseModel):
     validated_profile_version: int | None = None
     validated_at: datetime | None = None
     validation_current: bool
+    #: None when the caller cannot read anomalies or this profile is not judged.
+    #: Zero means it is judged and has no active source- or entity-level incident.
+    active_anomaly_count: int | None = None
+    #: Highest severity among those active incidents; None with a null or zero count.
+    worst_active_severity: Severity | None = None
     #: None before the first bucket is collected.
     latest_bucket: IpsLatestBucketOut | None = None
     #: One entry per entity dimension, ceiling included.

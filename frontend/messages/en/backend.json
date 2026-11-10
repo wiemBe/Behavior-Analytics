@@ -658,6 +658,9 @@
     "scope": {
       "role": "{role}: {reason}"
     },
+    "source": {
+      "not_found": "IPS source not found"
+    },
     "spike": {
       "below_min": "{observed} {unit}/bucket is below the {minimum} minimum for a defensible verdict",
       "delta_below_min": "increase of {delta} {unit}/bucket is below the {minimum} minimum absolute delta",

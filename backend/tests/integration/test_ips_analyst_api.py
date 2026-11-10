@@ -29,6 +29,7 @@ from app.models.enums import (
     WafMeasurement,
     WafProfileValidationStatus,
 )
+from app.models.instance import QRadarInstance
 from app.models.ips import (
     IpsAnomaly,
     IpsAnomalyTransition,
@@ -755,7 +756,7 @@ def test_detail_fallback_still_reaches_phase_a_and_waf(db_schema) -> None:
 SOURCE_KEYS = {
     "log_source_id", "log_source_name", "product_label", "enabled", "profile_version",
     "validation_status", "validated_profile_version", "validated_at", "validation_current",
-    "latest_bucket", "entities",
+    "active_anomaly_count", "worst_active_severity", "latest_bucket", "entities",
 }
 
 
@@ -771,6 +772,10 @@ def test_ips_sources_report_profile_latest_bucket_and_pressure(db_schema) -> Non
     assert set(one) == SOURCE_KEYS
     assert one["enabled"] is True and one["validation_current"] is True
     assert one["validation_status"] == "VALID"
+    # Active means the shared ACTIVE_ANOMALY_STATES set: the entity OPEN and
+    # CANDIDATE rows plus the source OPEN row count; the RESOLVED row does not.
+    assert one["active_anomaly_count"] == 3
+    assert one["worst_active_severity"] == "HIGH"
     last = one["latest_bucket"]
     assert last["bucket_start"] == _iso(w["b_new"])
     assert last["total_events"] == 5000 and last["in_maintenance"] is False
@@ -801,6 +806,8 @@ def test_ips_sources_report_profile_latest_bucket_and_pressure(db_schema) -> Non
     # A profile that never collected: unmeasured is null and zero counts are
     # counts of nothing, not measurements of nothing.
     assert quiet["latest_bucket"] is None
+    assert quiet["active_anomaly_count"] == 0
+    assert quiet["worst_active_severity"] is None
     assert all(e["active"] == 0 and e["total"] == 0 for e in quiet["entities"])
     assert CONTRIBUTOR_IP not in resp.text and "queries" not in resp.text
 
@@ -818,6 +825,72 @@ def test_a_disabled_profile_is_not_listed_among_the_sources(db_schema) -> None:
     body = Client(READER).get("/api/v1/behavior/ips/sources").json()
     assert body["total"] == 1
     assert [i["log_source_name"] for i in body["items"]] == ["ips-1"]
+
+
+def test_ips_single_source_is_the_whole_list_item(db_schema) -> None:
+    w = world()
+    client = Client(READER)
+    listed = client.get("/api/v1/behavior/ips/sources?limit=200").json()["items"]
+    expected = next(item for item in listed if item["log_source_id"] == str(w["isrc"]))
+    response = client.get(f"/api/v1/behavior/ips/sources/{w['isrc']}")
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+def test_ips_single_source_uses_one_coded_404_across_hidden_cases(db_schema) -> None:
+    async def setup(s):  # type: ignore[no-untyped-def]
+        w = await ips_world(s)
+        # The profile and source each exist, but belong to different consoles.
+        # It must be absent just like an unknown id or an unprofiled source.
+        s.add(ips_profile(w["inst"], w["fw"]))
+        return w
+
+    w = run(setup)
+    client = Client(READER)
+    bodies = []
+    for source_id in (MISSING, w["bare"], w["fw"]):
+        response = client.get(f"/api/v1/behavior/ips/sources/{source_id}")
+        assert response.status_code == 404
+        bodies.append(response.json())
+    assert bodies == [
+        {
+            "detail": "IPS source not found",
+            "detail_code": "ips.source.not_found",
+            "detail_params": {},
+        }
+    ] * 3
+    listed = client.get("/api/v1/behavior/ips/sources?limit=200").json()
+    assert listed["total"] == 2
+    assert str(w["fw"]) not in {item["log_source_id"] for item in listed["items"]}
+
+
+def test_ips_source_anomalies_are_null_when_the_profile_is_not_judged(db_schema) -> None:
+    async def setup(s):  # type: ignore[no-untyped-def]
+        w = await ips_world(s)
+        profile = await s.scalar(
+            select(IpsSourceProfile).where(IpsSourceProfile.log_source_id == w["quiet"])
+        )
+        profile.validation_status = IpsProfileValidationStatus.INVALID
+        profile.validated_profile_version = None
+        s.add(
+            ips_incident(
+                "IPS_SOURCE",
+                1,
+                IpsAnomalyType.IPS_PORT_FANOUT_SPIKE,
+                log_source_id=w["quiet"],
+                severity=Severity.CRITICAL,
+            )
+        )
+        return w
+
+    w = run(setup)
+    client = Client(READER)
+    listed = client.get("/api/v1/behavior/ips/sources?limit=200").json()["items"]
+    quiet = next(item for item in listed if item["log_source_id"] == str(w["quiet"]))
+    assert quiet["validation_current"] is False
+    assert quiet["active_anomaly_count"] is None
+    assert quiet["worst_active_severity"] is None
+    assert client.get(f"/api/v1/behavior/ips/sources/{w['quiet']}").json() == quiet
 
 
 def test_ips_entities_inventory(db_schema) -> None:
@@ -1009,6 +1082,7 @@ NEW_ROUTES = [
     "/api/v1/behavior/ips/sources/{src}/baselines",
     "/api/v1/behavior/ips/entities/{ent}/metrics",
     "/api/v1/behavior/ips/entities/{ent}/baselines",
+    "/api/v1/behavior/ips/sources/{src}",
 ]
 
 
@@ -1069,12 +1143,13 @@ def test_limit_is_clamped_to_the_page_size_ceiling(db_schema) -> None:
 
 
 def test_ips_behavior_statement_counts_do_not_grow_with_the_data(db_schema) -> None:
-    """Every behavior route costs a fixed number of statements: pinned at 3 and
-    40 entities, so a per-row query cannot hide behind "still constant"."""
+    """Every route stays fixed across two fleet, entity and page sizes."""
     w = world()
     client = Client(READER)
     urls = {
-        "sources": "/api/v1/behavior/ips/sources",
+        "sources": "/api/v1/behavior/ips/sources?limit=200",
+        "sources_one": "/api/v1/behavior/ips/sources?limit=1",
+        "source": f"/api/v1/behavior/ips/sources/{w['isrc']}",
         "entities": f"/api/v1/behavior/ips/sources/{w['isrc']}/entities",
         "entity_metrics": f"/api/v1/behavior/ips/entities/{w['port']}/metrics",
         "entity_baselines": f"/api/v1/behavior/ips/entities/{w['port']}/baselines",
@@ -1105,6 +1180,12 @@ def test_ips_behavior_statement_counts_do_not_grow_with_the_data(db_schema) -> N
     async def grow(s):  # type: ignore[no-untyped-def]
         port = await s.get(IpsEntity, w["port"])
         inst_id, src_id = port.instance_id, port.log_source_id
+        instance = await s.get(QRadarInstance, inst_id)
+        for i in range(36):
+            extra_source = await make_log_source(
+                s, instance, qradar_id=100 + i, name=f"ips-extra-{i:02d}"
+            )
+            s.add(ips_profile(inst_id, extra_source.id))
         # To 40 entities on the source, plus rows behind every other route.
         s.add_all([
             entity(inst_id, src_id, IpsDimension.DESTINATION_IP, f"10.10.40.{i}")
@@ -1131,8 +1212,10 @@ def test_ips_behavior_statement_counts_do_not_grow_with_the_data(db_schema) -> N
         counts[name] = (before[name], client.statements)
     for name, (small, large) in counts.items():
         assert small == large, (name, small, large)
-    # Pinned: a new per-row query cannot hide behind "still constant".
+    # Pinned: sources add one grouped anomaly statement to the four existing
+    # statements. A per-source query cannot hide behind "still constant".
     assert {n: c[0] for n, c in counts.items()} == {
-        "sources": 4, "entities": 6, "entity_metrics": 3, "entity_baselines": 3,
+        "sources": 5, "sources_one": 5, "source": 5,
+        "entities": 6, "entity_metrics": 3, "entity_baselines": 3,
         "source_metrics": 3, "source_baselines": 3,
     }

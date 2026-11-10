@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import uuid
 
+from app.api.routes.anomalies import _ips_active_anomaly_fields, _ips_profile_is_judged
 from app.main import create_app
-from app.models.enums import IpsAnomalyType
+from app.models.enums import IpsAnomalyType, IpsProfileValidationStatus, Severity
+from app.models.ips import IpsSourceProfile
 from app.repositories.anomaly import AnomalyRepository
 from app.schemas.anomaly import (
     AnomalyListItem,
@@ -240,5 +242,46 @@ def test_every_ips_behavior_route_is_get_only() -> None:
         for p, ops in create_app().openapi()["paths"].items()
         if "/behavior/ips" in p
     }
-    assert len(paths) == 8, sorted(paths)
+    assert len(paths) == 9, sorted(paths)
     assert all(methods == {"get"} for methods in paths.values()), paths
+
+
+def test_ips_source_anomaly_fields_fail_closed_and_keep_measured_zero() -> None:
+    assert _ips_active_anomaly_fields(
+        judged=True, may_read_anomalies=True, anomaly_summary=None
+    ) == (0, None)
+    assert _ips_active_anomaly_fields(
+        judged=True,
+        may_read_anomalies=True,
+        anomaly_summary=(2, Severity.HIGH),
+    ) == (2, Severity.HIGH)
+    assert _ips_active_anomaly_fields(
+        judged=False,
+        may_read_anomalies=True,
+        anomaly_summary=(2, Severity.HIGH),
+    ) == (None, None)
+    assert _ips_active_anomaly_fields(
+        judged=True,
+        may_read_anomalies=False,
+        anomaly_summary=(2, Severity.HIGH),
+    ) == (None, None)
+
+
+def test_ips_profile_is_judged_only_when_current_enabled_and_valid() -> None:
+    profile = IpsSourceProfile(
+        instance_id=uuid.uuid4(),
+        log_source_id=uuid.uuid4(),
+        enabled=True,
+        profile_version=3,
+        validation_status=IpsProfileValidationStatus.VALID,
+        validated_profile_version=3,
+    )
+    assert _ips_profile_is_judged(profile) is True
+    profile.enabled = False
+    assert _ips_profile_is_judged(profile) is False
+    profile.enabled = True
+    profile.validated_profile_version = 2
+    assert _ips_profile_is_judged(profile) is False
+    profile.validated_profile_version = 3
+    profile.validation_status = IpsProfileValidationStatus.INCONCLUSIVE
+    assert _ips_profile_is_judged(profile) is False
