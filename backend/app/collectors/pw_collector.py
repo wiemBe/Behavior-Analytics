@@ -1633,18 +1633,19 @@ class PwCollector:
                         "bucket_seconds": interval,
                     }
                 )
-                if not reading:
-                    writes.mentions.extend(
-                        pw_value_mentions(
-                            watch.instance_id,
-                            cast(list[dict[str, str]], watch.properties),
-                            pw_value_id=values[key].id,
-                            value_key=values[key].value_key,
-                            truncated=values[key].truncated,
-                            bucket_start=admitted.fact.bucket_start,
-                            bucket_seconds=interval,
-                        )
+                # A history reading stores the same value rows as live, so it indexes
+                # them too. `mention_pairs` stays live-only: that list is what is deleted.
+                writes.mentions.extend(
+                    pw_value_mentions(
+                        watch.instance_id,
+                        cast(list[dict[str, str]], watch.properties),
+                        pw_value_id=values[key].id,
+                        value_key=values[key].value_key,
+                        truncated=values[key].truncated,
+                        bucket_start=admitted.fact.bucket_start,
+                        bucket_seconds=interval,
                     )
+                )
         for value in values.values():
             if value.dirty:
                 writes.values.append(_value_row(watch.id, version, value))
@@ -1741,25 +1742,35 @@ class PwCollector:
         report.metric_rows_written = len(writes.metrics)
 
     async def _record_mentions(self, instance_id: uuid.UUID, writes: _Writes) -> None:
-        """Replace all live bucket mentions staged by this instance run."""
+        """Record the mentions staged by this instance run.
+
+        Live buckets are replaced: one DELETE of the pairs this run collected, then
+        one INSERT. A history reading has no pairs, so its mentions are insert-only
+        and a live row of the same parent is left untouched. One INSERT either way,
+        inside the savepoint the live writer already uses. When this run collected
+        live pairs the statements are the ones that run has always emitted.
+        """
         pairs = list(dict.fromkeys(writes.mention_pairs))
-        if not pairs:
+        if not pairs and not writes.mentions:
             return
         try:
             async with self.session.begin_nested():
-                await self.session.execute(
-                    delete(EntityMention)
-                    .where(
-                        EntityMention.instance_id == instance_id,
-                        EntityMention.source == "PW_VALUE",
-                        EntityMention.ref_table == "pw_value_metric",
-                        exists().where(
-                            sql_cast(PwValue.id, String) == EntityMention.ref_id,
-                            tuple_(PwValue.watch_id, EntityMention.occurred_at).in_(pairs),
-                        ),
+                if pairs:
+                    await self.session.execute(
+                        delete(EntityMention)
+                        .where(
+                            EntityMention.instance_id == instance_id,
+                            EntityMention.source == "PW_VALUE",
+                            EntityMention.ref_table == "pw_value_metric",
+                            exists().where(
+                                sql_cast(PwValue.id, String) == EntityMention.ref_id,
+                                tuple_(PwValue.watch_id, EntityMention.occurred_at).in_(
+                                    pairs
+                                ),
+                            ),
+                        )
+                        .execution_options(synchronize_session=False)
                     )
-                    .execution_options(synchronize_session=False)
-                )
                 await record_mentions(
                     self.session, writes.mentions, single_statement=True
                 )
