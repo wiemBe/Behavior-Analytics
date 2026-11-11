@@ -63,6 +63,11 @@ HISTORY_TABLES = (
             "app.services.property_watches.value_series": Reader("R6", ReaderKind.DISPLAY),
             "app.services.property_watches.watch_buckets": Reader("R6", ReaderKind.DISPLAY),
             "app.services.property_watches.watch_aql": Reader("R6", ReaderKind.DISPLAY),
+            "app.services.entity_timeline.EntityTimelineService._coverage": Reader(
+                "entity timeline coverage: mentions exist for live buckets only",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
             # PW-13d: counts every stored bucket of the current version, history included,
             # to refuse a history request that would prepend (§H.5.5).
             "app.services.property_watches.history_change_reasons": Reader(
@@ -288,6 +293,15 @@ HISTORY_TABLES = (
                 "R6", ReaderKind.DISPLAY
             ),
             "app.services.catchall_retention.<module>": Reader("R7", ReaderKind.DELETE),
+            "app.services.entity_timeline.EntityTimelineService._coverage": Reader(
+                "entity timeline coverage: mentions exist for live buckets only",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
+            (
+                "app.services.entity_timeline.EntityTimelineService."
+                "_hydrate_catchall_bucket"
+            ): Reader("entity timeline item for a stored mention", ReaderKind.DISPLAY),
             # HB-8r1: the estimate's senders per bucket, over the live buckets only. A
             # history bucket is evidence, not a live measurement of today's senders.
             "app.services.history_backfill.HistoryBackfillService._counts": Reader(

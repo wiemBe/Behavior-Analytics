@@ -1667,7 +1667,9 @@ export type EntityTimelineLane =
   | "IPS_TOP"
   | "IPS_ENTITY"
   | "OFFENSE"
-  | "LOG_SOURCE";
+  | "LOG_SOURCE"
+  | "CATCHALL"
+  | "PW_VALUE";
 
 export interface EntityTimelineLaneOut {
   source: EntityTimelineLane;

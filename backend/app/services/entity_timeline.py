@@ -32,10 +32,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.history.origin import is_live_clause
 from app.i18n.messages import MessageRef
+from app.models.catchall import CatchallBucket
 from app.models.entity import EntityMention
 from app.models.enums import (
     DimensionAvailability,
     EvidenceStatus,
+    PwBucketMeasurement,
+    PwPinnedMeasurement,
     Severity,
     WafTelemetryStatus,
 )
@@ -47,6 +50,7 @@ from app.models.explanation import (
 from app.models.ips import IpsEntity, IpsSourceBucket
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.offense import OffenseSnapshot
+from app.models.property_watch import PropertyWatch, PwBucket, PwValue, PwValueMetric
 from app.models.waf import WafEndpoint, WafEndpointMetric, WafSourceBucket
 from app.repositories.related_activity import RelatedActivityRepository
 from app.schemas.entity_timeline import (
@@ -60,7 +64,12 @@ from app.schemas.entity_timeline import (
 )
 from app.schemas.messages import stored_message
 from app.schemas.related_activity import RelatedSectionState
-from app.security.rbac import PERM_FLEET_READ, PERM_OFFENSE_READ, Principal
+from app.security.rbac import (
+    PERM_FLEET_READ,
+    PERM_OFFENSE_READ,
+    PERM_PROPERTY_WATCH_READ,
+    Principal,
+)
 from app.security.sanitizer import sanitize_text
 from app.services.entity_mentions import classify_entity, normalize_entity, user_match_forms
 from app.services.related_activity import offense_collection_state
@@ -89,6 +98,8 @@ _SUPPORTED_REF_TABLES = {
     "ips_entity": EntityTimelineLane.IPS_ENTITY,
     "offense_snapshot": EntityTimelineLane.OFFENSE,
     "log_source": EntityTimelineLane.LOG_SOURCE,
+    "catchall_bucket": EntityTimelineLane.CATCHALL,
+    "pw_value_metric": EntityTimelineLane.PW_VALUE,
 }
 _LANES = tuple(EntityTimelineLane)
 
@@ -135,6 +146,10 @@ class Coverage:
     ips_entity_collected: bool
     ips_entity_complete: bool
     log_source_match: bool
+    catchall_collected: bool
+    catchall_proves_absence: bool
+    pw_collected: bool
+    pw_proves_absence: bool
 
 
 @dataclass(frozen=True)
@@ -362,6 +377,7 @@ class EntityTimelineService:
         position = self.cursor_codec.decode(cursor) if cursor is not None else None
         offense_allowed = self.principal.has(PERM_OFFENSE_READ)
         fleet_allowed = self.principal.has(PERM_FLEET_READ)
+        property_watch_allowed = self.principal.has(PERM_PROPERTY_WATCH_READ)
         allowed_sources = [
             EntityTimelineLane.EXPLANATION.value,
             EntityTimelineLane.WAF_TOP.value,
@@ -372,6 +388,9 @@ class EntityTimelineService:
             allowed_sources.append(EntityTimelineLane.OFFENSE.value)
         if fleet_allowed:
             allowed_sources.append(EntityTimelineLane.LOG_SOURCE.value)
+            allowed_sources.append(EntityTimelineLane.CATCHALL.value)
+        if property_watch_allowed:
+            allowed_sources.append(EntityTimelineLane.PW_VALUE.value)
 
         forms = user_match_forms(value) if kind is EntityTimelineKind.USER else (value_norm,)
         mentions = await self._mentions(
@@ -411,6 +430,8 @@ class EntityTimelineService:
             start=start,
             end=end,
             include_log_source=fleet_allowed,
+            include_catchall=fleet_allowed,
+            include_property_watch=property_watch_allowed,
         )
 
         presentations = await self._hydrate(instance_id, page_mentions)
@@ -451,6 +472,7 @@ class EntityTimelineService:
             coverage=coverage,
             offense_allowed=offense_allowed,
             fleet_allowed=fleet_allowed,
+            property_watch_allowed=property_watch_allowed,
             offense_freshness=offense_freshness,
             truncated=truncated,
         )
@@ -529,6 +551,8 @@ class EntityTimelineService:
         start: datetime,
         end: datetime,
         include_log_source: bool,
+        include_catchall: bool,
+        include_property_watch: bool,
     ) -> Coverage:
         candidate_dimensions = {
             EntityTimelineKind.IP: ("source_ip", "destination_ip"),
@@ -696,6 +720,87 @@ class EntityTimelineService:
                 )
             )
 
+        catchall_collected: Any = literal(False)
+        catchall_proves: Any = literal(False)
+        if include_catchall and kind in (EntityTimelineKind.IP, EntityTimelineKind.HOST):
+            catchall_window = (
+                is_live_clause(CatchallBucket),
+                CatchallBucket.bucket_start < end,
+                CatchallBucket.bucket_start
+                + CatchallBucket.bucket_seconds * _SECOND
+                > start,
+            )
+            catchall_buckets = (
+                select(CatchallBucket.catchall_log_source_id)
+                .join(
+                    LogSource,
+                    LogSource.id == CatchallBucket.catchall_log_source_id,
+                )
+                .where(LogSource.instance_id == instance_id, *catchall_window)
+            )
+            catchall_collected = exists(catchall_buckets)
+            catchall_bad = exists(
+                catchall_buckets.where(
+                    or_(
+                        CatchallBucket.measurement != "EXACT",
+                        CatchallBucket.distinct_senders_lower_bound.is_(True),
+                        CatchallBucket.untracked_senders > 0,
+                        CatchallBucket.distinct_senders
+                        > func.jsonb_array_length(CatchallBucket.top_senders),
+                    )
+                )
+            )
+            catchall_proves = and_(catchall_collected, ~catchall_bad)
+
+        pw_collected: Any = literal(False)
+        pw_proves: Any = literal(False)
+        property_names = {
+            EntityTimelineKind.IP: ("sourceip", "destinationip"),
+            EntityTimelineKind.USER: ("username",),
+            EntityTimelineKind.HOST: (),
+        }[kind]
+        if include_property_watch and property_names:
+            property_name = func.lower(
+                func.btrim(PropertyWatch.properties[0]["name"].as_string())
+            )
+            pw_window = (
+                PropertyWatch.instance_id == instance_id,
+                PropertyWatch.enabled.is_(True),
+                func.jsonb_array_length(PropertyWatch.properties) == 1,
+                property_name.in_(property_names),
+                PwBucket.watch_version == PropertyWatch.watch_version,
+                is_live_clause(PwBucket),
+                PwBucket.bucket_start < end,
+                PwBucket.bucket_start + PwBucket.bucket_seconds * _SECOND > start,
+            )
+            pw_buckets = (
+                select(PwBucket.watch_id)
+                .join(PropertyWatch, PropertyWatch.id == PwBucket.watch_id)
+                .where(*pw_window)
+            )
+            pw_collected = exists(
+                pw_buckets.where(
+                    PwBucket.values_measurement != PwBucketMeasurement.NOT_COLLECTED.value
+                )
+            )
+            pw_bad = exists(
+                pw_buckets.where(
+                    or_(
+                        PwBucket.values_measurement != PwBucketMeasurement.EXACT.value,
+                        PwBucket.admission_truncated.is_(True),
+                        PwBucket.untracked_events.is_(None),
+                        PwBucket.untracked_events > 0,
+                        PwBucket.pinned_measurement.not_in(
+                            (
+                                PwPinnedMeasurement.EXACT.value,
+                                PwPinnedMeasurement.NOT_REQUESTED.value,
+                            )
+                        ),
+                    )
+                )
+            )
+            pw_proves = and_(pw_collected, ~pw_bad)
+
         row = (
             await self.session.execute(
                 select(
@@ -714,6 +819,10 @@ class EntityTimelineService:
                         "ips_entity_complete"
                     ),
                     log_match.label("log_match"),
+                    catchall_collected.label("catchall_collected"),
+                    catchall_proves.label("catchall_proves"),
+                    pw_collected.label("pw_collected"),
+                    pw_proves.label("pw_proves"),
                 )
             )
         ).one()
@@ -919,6 +1028,66 @@ class EntityTimelineService:
         }
         return _presentations_for_mentions(mentions, by_id)
 
+    async def _hydrate_catchall_bucket(
+        self, instance_id: uuid.UUID, mentions: Sequence[EntityMention]
+    ) -> dict[tuple[str, str, datetime], ParentPresentation]:
+        pairs = _uuid_time_pairs(mentions)
+        rows = (
+            await self.session.execute(
+                select(CatchallBucket, LogSource)
+                .join(
+                    LogSource,
+                    LogSource.id == CatchallBucket.catchall_log_source_id,
+                )
+                .where(
+                    LogSource.instance_id == instance_id,
+                    tuple_(
+                        CatchallBucket.catchall_log_source_id,
+                        CatchallBucket.bucket_start,
+                    ).in_(pairs)
+                    if pairs
+                    else false(),
+                )
+            )
+        ).all()
+        by_pair = {
+            (str(source.id), bucket.bucket_start): ParentPresentation(
+                title=f"Catch-all sender on {sanitize_text(source.name) or 'unnamed source'}",
+                href="/fleet/catchall",
+                measurement=str(bucket.measurement),
+            )
+            for bucket, source in rows
+        }
+        return _presentations_for_pairs(mentions, by_pair)
+
+    async def _hydrate_pw_value_metric(
+        self, instance_id: uuid.UUID, mentions: Sequence[EntityMention]
+    ) -> dict[tuple[str, str, datetime], ParentPresentation]:
+        pairs = _uuid_time_pairs(mentions)
+        rows = (
+            await self.session.execute(
+                select(PwValueMetric, PwValue, PropertyWatch)
+                .join(PwValue, PwValue.id == PwValueMetric.pw_value_id)
+                .join(PropertyWatch, PropertyWatch.id == PwValue.watch_id)
+                .where(
+                    PropertyWatch.instance_id == instance_id,
+                    tuple_(PwValueMetric.pw_value_id, PwValueMetric.bucket_start).in_(pairs)
+                    if pairs
+                    else false(),
+                )
+            )
+        ).all()
+        by_pair: dict[tuple[str, datetime], ParentPresentation] = {}
+        for metric, value, watch in rows:
+            watch_name = sanitize_text(watch.name) or "unnamed property watch"
+            value_name = sanitize_text(value.value_key) or "stored value"
+            by_pair[(str(value.id), metric.bucket_start)] = ParentPresentation(
+                title=f"Property watch value {value_name} in {watch_name}",
+                href=f"/behavior/watches/{watch.id}",
+                measurement="PINNED" if value.pinned else "ADMITTED",
+            )
+        return _presentations_for_pairs(mentions, by_pair)
+
     def _lanes(
         self,
         *,
@@ -928,6 +1097,7 @@ class EntityTimelineService:
         coverage: Coverage,
         offense_allowed: bool,
         fleet_allowed: bool,
+        property_watch_allowed: bool,
         offense_freshness: RelatedSectionState,
         truncated: bool,
     ) -> list[EntityTimelineLaneOut]:
@@ -1004,6 +1174,34 @@ class EntityTimelineService:
                     count_is_total=not truncated,
                     incomplete_reason=REASON_INDEX_INCOMPLETE,
                     dangling_count=dangling_counts.get(EntityTimelineLane.LOG_SOURCE, 0),
+                )
+            ),
+            decide_lane(
+                LaneEvidence(
+                    EntityTimelineLane.CATCHALL,
+                    counts.get(EntityTimelineLane.CATCHALL, 0),
+                    permitted=fleet_allowed,
+                    permission=PERM_FLEET_READ,
+                    enabled=self.settings.catchall_collection_enabled,
+                    collected=coverage.catchall_collected,
+                    complete=coverage.catchall_proves_absence,
+                    proves_absence=coverage.catchall_proves_absence,
+                    count_is_total=not truncated,
+                    dangling_count=dangling_counts.get(EntityTimelineLane.CATCHALL, 0),
+                )
+            ),
+            decide_lane(
+                LaneEvidence(
+                    EntityTimelineLane.PW_VALUE,
+                    counts.get(EntityTimelineLane.PW_VALUE, 0),
+                    permitted=property_watch_allowed,
+                    permission=PERM_PROPERTY_WATCH_READ,
+                    enabled=self.settings.pw_collection_enabled,
+                    collected=coverage.pw_collected,
+                    complete=coverage.pw_proves_absence,
+                    proves_absence=coverage.pw_proves_absence,
+                    count_is_total=not truncated,
+                    dangling_count=dangling_counts.get(EntityTimelineLane.PW_VALUE, 0),
                 )
             ),
         ]

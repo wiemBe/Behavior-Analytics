@@ -14,6 +14,7 @@ from sqlalchemy import event
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.main import create_app
+from app.models.catchall import CatchallBucket
 from app.models.entity import EntityMention
 from app.models.enums import (
     AnomalyState,
@@ -31,6 +32,7 @@ from app.models.ips import IpsEntity, IpsSourceBucket
 from app.models.log_source import LogSourceAnomaly
 from app.models.monitoring import CollectionWatermark
 from app.models.offense import OffenseSnapshot
+from app.models.property_watch import PropertyWatch, PwBucket
 from app.models.waf import WafSourceBucket
 from app.security.rbac import Principal
 from tests.integration.factories import make_instance, make_log_source
@@ -460,9 +462,67 @@ def test_every_first_slice_lane_can_report_ok_from_stored_evidence(db_schema) ->
         session.add_all(
             [_waf_bucket(source.id), _ips_bucket(source.id), entity, _watermark(instance.id)]
         )
+        watch = PropertyWatch(
+            instance_id=instance.id,
+            name="timeline-coverage",
+            scope_kind="LOG_SOURCE",
+            log_source_id=source.id,
+            properties=[{"kind": "CUSTOM_PROPERTY", "name": "sourceip"}],
+            pinned_values=[],
+            detectors=[],
+            severity="MEDIUM",
+            watch_version=1,
+            enabled=True,
+        )
+        session.add(watch)
         await session.flush()
         session.add_all(
             [
+                CatchallBucket(
+                    catchall_log_source_id=source.id,
+                    bucket_start=T0,
+                    bucket_seconds=300,
+                    origin="LIVE",
+                    events=0,
+                    records=0,
+                    distinct_senders=0,
+                    distinct_senders_lower_bound=False,
+                    measurement="EXACT",
+                    top_senders=[],
+                    admitted=0,
+                    below_admission_threshold=0,
+                    rejected_over_quota=0,
+                    untracked_senders=0,
+                    untracked_events=0,
+                    query_provenance={},
+                    collected_at=T0 + timedelta(minutes=5),
+                ),
+                PwBucket(
+                    watch_id=watch.id,
+                    bucket_start=T0,
+                    bucket_seconds=300,
+                    watch_version=1,
+                    origin="LIVE",
+                    total_events=0,
+                    parsed_events=0,
+                    unparsed_events=0,
+                    untracked_events=0,
+                    values_measurement="EXACT",
+                    pinned_measurement="NOT_REQUESTED",
+                    totals_complete=True,
+                    observed_values=0,
+                    tracked_values_observed=0,
+                    admitted_values=0,
+                    below_admission_threshold=0,
+                    rejected_over_quota=0,
+                    admission_truncated=False,
+                    scope_member_count=1,
+                    scope_fingerprint="timeline",
+                    scope_changed=False,
+                    in_maintenance=False,
+                    query_provenance={},
+                    collected_at=T0 + timedelta(minutes=5),
+                ),
                 _mention(
                     instance.id,
                     source="IPS_TOP",
@@ -485,7 +545,11 @@ def test_every_first_slice_lane_can_report_ok_from_stored_evidence(db_schema) ->
     instance_id = run(seed)
     client = TimelineClient(
         READER,
-        settings_update={"waf_collection_enabled": True, "ips_collection_enabled": True},
+        settings_update={
+            "waf_collection_enabled": True,
+            "ips_collection_enabled": True,
+            "pw_collection_enabled": True,
+        },
     )
     response = client.get(_url(instance_id))
     assert response.status_code == 200, response.text
@@ -497,6 +561,8 @@ def test_every_first_slice_lane_can_report_ok_from_stored_evidence(db_schema) ->
         "IPS_ENTITY",
         "OFFENSE",
         "LOG_SOURCE",
+        "CATCHALL",
+        "PW_VALUE",
     }
     assert {lane["state"] for lane in lanes.values()} == {"OK"}
     assert response.json()["state"] == "OK"

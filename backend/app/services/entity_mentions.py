@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -92,7 +93,10 @@ def _mention_key(row: EntityMentionRow) -> tuple[object, ...]:
 
 
 async def record_mentions(
-    session: AsyncSession, mentions: Iterable[EntityMentionRow]
+    session: AsyncSession,
+    mentions: Iterable[EntityMentionRow],
+    *,
+    single_statement: bool = False,
 ) -> None:
     """Insert normalized mentions in fixed-size chunks without committing.
 
@@ -107,6 +111,54 @@ async def record_mentions(
         unique.setdefault(_mention_key(mention), mention)
 
     rows = list(unique.values())
+    if single_statement and rows:
+        payload = json.dumps(
+            [
+                {
+                    "instance_id": str(row.instance_id),
+                    "kind": row.kind,
+                    "value_norm": row.value_norm,
+                    "role": row.role,
+                    "source": row.source,
+                    "ref_table": row.ref_table,
+                    "ref_id": row.ref_id,
+                    "occurred_at": row.occurred_at.isoformat(),
+                    "occurred_end": (
+                        row.occurred_end.isoformat() if row.occurred_end is not None else None
+                    ),
+                }
+                for row in rows
+            ]
+        )
+        await session.execute(
+            text(
+                """
+                INSERT INTO entity_mention (
+                    instance_id, kind, value_norm, role, source, ref_table, ref_id,
+                    occurred_at, occurred_end
+                )
+                SELECT
+                    incoming.instance_id, incoming.kind, incoming.value_norm, incoming.role,
+                    incoming.source, incoming.ref_table, incoming.ref_id, incoming.occurred_at,
+                    incoming.occurred_end
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS incoming(
+                    instance_id uuid,
+                    kind text,
+                    value_norm text,
+                    role text,
+                    source text,
+                    ref_table text,
+                    ref_id text,
+                    occurred_at timestamptz,
+                    occurred_end timestamptz
+                )
+                ON CONFLICT ON CONSTRAINT pk_entity_mention DO NOTHING
+                """
+            ),
+            {"rows": payload},
+        )
+        return
+
     for offset in range(0, len(rows), MENTION_INSERT_CHUNK_SIZE):
         chunk = rows[offset : offset + MENTION_INSERT_CHUNK_SIZE]
         statement = (

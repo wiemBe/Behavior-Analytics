@@ -31,6 +31,8 @@ class EntityTimelineLane(StrEnum):
     IPS_ENTITY = "IPS_ENTITY"
     OFFENSE = "OFFENSE"
     LOG_SOURCE = "LOG_SOURCE"
+    CATCHALL = "CATCHALL"
+    PW_VALUE = "PW_VALUE"
 
 
 class EntityOut(BaseModel):
