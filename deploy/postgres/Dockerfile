@@ -13,6 +13,16 @@ FROM timescale/timescaledb:2.17.2-pg16@sha256:4e459e217f00cbb09920c34d245501e634
 
 COPY init/ /docker-entrypoint-initdb.d/
 
+# TimescaleDB's telemetry reporter is a scheduler job that contacts an external
+# endpoint and, while it checks the installed extension version, holds catalog
+# locks a schema drop cannot wait behind (FIX-47). A server-level `-c` flag,
+# not an init script: it covers every database, including one created later,
+# and an existing volume, which never re-runs /docker-entrypoint-initdb.d. The
+# image's CMD is part of the container, so an upgrade that pulls this image and
+# recreates the container gets it too. `postgres` stays the first argument, so
+# the entrypoint still initialises an empty data directory.
+CMD ["postgres", "-c", "timescaledb.telemetry_level=off"]
+
 # Build-time identity, declared after the COPY so a new version or SHA does not
 # invalidate the cached layer.
 ARG APP_VERSION
