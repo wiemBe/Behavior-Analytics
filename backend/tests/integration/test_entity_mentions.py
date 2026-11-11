@@ -13,7 +13,7 @@ from sqlalchemy import event, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 
-from app.models.entity import EntityMention
+from app.models.entity import EntityMention, EntityMentionBackfill
 from app.models.instance import QRadarInstance
 from app.services.entity_mentions import (
     MAX_ENTITY_VALUE_LENGTH,
@@ -223,3 +223,89 @@ async def test_deleting_instance_cascades_mentions(
     await db_session.flush()
 
     assert await _count(db_session) == 0
+
+
+async def test_backfill_defaults(
+    db_session, instance: QRadarInstance
+) -> None:  # type: ignore[no-untyped-def]
+    row = EntityMentionBackfill(instance_id=instance.id, source="WAF_TOP")
+    db_session.add(row)
+    await db_session.flush()
+
+    assert row.status == "PENDING"
+    assert row.rows_written == 0
+    assert row.updated_at is not None
+
+
+@pytest.mark.parametrize(
+    ("column", "unknown", "constraint_name"),
+    (
+        ("source", "UNKNOWN", "ck_entity_mention_backfill_source_known"),
+        ("status", "UNKNOWN", "ck_entity_mention_backfill_status_known"),
+    ),
+)
+async def test_backfill_text_checks_reject_unknown_values(
+    db_session, instance: QRadarInstance, column: str, unknown: str, constraint_name: str
+) -> None:  # type: ignore[no-untyped-def]
+    values = {
+        "instance_id": instance.id,
+        "source": "WAF_TOP",
+        "status": "PENDING",
+        "rows_written": 0,
+        column: unknown,
+    }
+
+    with pytest.raises(IntegrityError, match=constraint_name) as exc_info:
+        async with db_session.begin_nested():
+            await db_session.execute(pg_insert(EntityMentionBackfill).values(values))
+    assert constraint_name in str(exc_info.value)
+
+
+async def test_backfill_rejects_negative_rows_written(
+    db_session, instance: QRadarInstance
+) -> None:  # type: ignore[no-untyped-def]
+    constraint_name = "ck_entity_mention_backfill_rows_written_non_negative"
+    with pytest.raises(IntegrityError, match=constraint_name) as exc_info:
+        async with db_session.begin_nested():
+            await db_session.execute(
+                pg_insert(EntityMentionBackfill).values(
+                    instance_id=instance.id,
+                    source="WAF_TOP",
+                    status="PENDING",
+                    rows_written=-1,
+                )
+            )
+    assert constraint_name in str(exc_info.value)
+
+
+async def test_backfill_instance_source_pair_is_unique(
+    db_session, instance: QRadarInstance
+) -> None:  # type: ignore[no-untyped-def]
+    db_session.add(EntityMentionBackfill(instance_id=instance.id, source="WAF_TOP"))
+    await db_session.flush()
+
+    constraint_name = "pk_entity_mention_backfill"
+    with pytest.raises(IntegrityError, match=constraint_name) as exc_info:
+        async with db_session.begin_nested():
+            await db_session.execute(
+                pg_insert(EntityMentionBackfill).values(
+                    instance_id=instance.id,
+                    source="WAF_TOP",
+                    status="PENDING",
+                    rows_written=0,
+                )
+            )
+    assert constraint_name in str(exc_info.value)
+
+
+async def test_deleting_instance_cascades_backfill_rows(
+    db_session, instance: QRadarInstance
+) -> None:  # type: ignore[no-untyped-def]
+    db_session.add(EntityMentionBackfill(instance_id=instance.id, source="WAF_TOP"))
+    await db_session.flush()
+
+    await db_session.delete(instance)
+    await db_session.flush()
+
+    count = await db_session.scalar(select(func.count()).select_from(EntityMentionBackfill))
+    assert count == 0
