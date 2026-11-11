@@ -979,6 +979,14 @@
       "rules_stale": "Offense collection is stale, so the rules that fired in this window may be incomplete."
     }
   },
+  "reports": {
+    "param_unknown": "unknown query parameter {name}",
+    "period_unknown": "period must be one of last_7d, last_30d, calendar_week, calendar_month",
+    "range_too_long": "the period must not be longer than {max} days",
+    "start_in_future": "start must not be in the future",
+    "start_not_boundary": "start must be Monday 00:00 UTC for calendar_week, or the 1st of a month 00:00 UTC for calendar_month",
+    "start_required": "start is required for the period {period}"
+  },
   "rule": {
     "detector": {
       "baseline_incomplete": "No verdict: the {days} days before the streak are not fully measured ({missing} missing, {truncated} truncated, {failed} failed, {wrong_width} of another width, of {expected} windows).",
