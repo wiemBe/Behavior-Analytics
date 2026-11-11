@@ -33,6 +33,7 @@ import format from "./format.json";
 import geo from "./geo.json";
 import guide from "./guide.json";
 import guideLinks from "./guideLinks.json";
+import handover from "./handover.json";
 import history from "./history.json";
 import home from "./home.json";
 import ips from "./ips.json";
@@ -94,6 +95,7 @@ const messages = {
   geo,
   guide,
   guideLinks,
+  handover,
   history,
   home,
   ips,

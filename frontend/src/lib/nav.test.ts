@@ -12,6 +12,7 @@ describe("NAV", () => {
     expect(NAV[1].label).toBe("Behavior");
     expect(NAV[1].items.map((i) => i.label)).toEqual([
       "Queue",
+      "Handover",
       "Overview",
       "Anomalies",
       "Sources",

@@ -309,6 +309,18 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     loader: () => import("@/components/catalog/OutagePolicy").then((m) => m.OutagePolicy),
   }),
   live({
+    type: "table.handover",
+    title: "Latest handover",
+    description:
+      "The newest shift handover: who wrote it, when, the note and how many rows it watches.",
+    category: "Table",
+    requires: ["read:anomalies"],
+    sources: ["/handover/latest"],
+    size: { w: 6, h: 9, minW: 4, minH: 7 },
+    drillDown: "/handover",
+    loader: () => import("@/components/catalog/HandoverWidget").then((m) => m.HandoverWidget),
+  }),
+  live({
     type: "waf.sources",
     title: "WAF sources",
     description: "Profile verdict, endpoint coverage and active endpoints against the ceiling.",

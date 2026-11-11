@@ -44,6 +44,7 @@ describe("widget registry", () => {
       "table.catchall_senders",
       "table.fleet_classes",
       "table.outage_policy",
+      "table.handover",
       "waf.sources",
       "table.recent_waf_anomalies",
       "waf.endpoint_traffic",

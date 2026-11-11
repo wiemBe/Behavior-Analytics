@@ -39,6 +39,8 @@ export const NAV: NavGroup[] = [
     items: [
       // The work queue: what is new since the last visit and what waits. First in the group.
       { href: "/queue", label: "Queue" },
+      // What the last shift left: a written record, frozen when it was saved.
+      { href: "/handover", label: "Handover" },
       { href: "/behavior", label: "Overview" },
       { href: "/anomalies", label: "Anomalies" },
       // Listed after /behavior, and resolved by longest match rather than by

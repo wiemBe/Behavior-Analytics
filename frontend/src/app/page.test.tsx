@@ -171,6 +171,8 @@ function stateFor(key: string): ResourceState<unknown> {
   if (key.startsWith("/anomalies?since=")) return okay(empty || insufficient ? page([]) : oneAnomaly);
   // GEO-4: the map widget of the template. A fresh install has collected no country counts.
   if (key.startsWith("/geo/countries")) return okay(empty ? notCollected() : answer());
+  // SOC-14b: the Latest handover widget of the template. No record has been written here.
+  if (key === "/handover/latest") return okay({ handover: null });
   throw new Error(`Unhandled Home read in test: ${key}`);
 }
 
@@ -217,10 +219,11 @@ describe("Dashboard page", () => {
       "Log source healthlatest state",
       "Recent anomaliesactive now",
       "Recent offensesopen, by last update",
+      "Latest handover",
       "Geographysource addresses · 24 h",
     ]);
     expect(screen.getAllByRole("article")).toHaveLength(4);
-    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(12);
+    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(13);
     // The end of the last measured step (12:05 + 5 min), not the series' window_end (14:00), which
     // is the request's own "now".
     expect(mocks.reportAge).toHaveBeenCalledWith("2026-10-14T12:10:00.000Z");
@@ -258,7 +261,7 @@ describe("Dashboard page", () => {
     const { container } = render(<HomePage />);
     await widgetsLoaded(container);
     const alerts = screen.getAllByRole("alert");
-    expect(alerts).toHaveLength(12);
+    expect(alerts).toHaveLength(13);
     for (const alert of alerts) {
       expect(alert).toHaveTextContent(/Refresh|next refresh/);
       expect(alert).toHaveTextContent(/backend is reachable/);

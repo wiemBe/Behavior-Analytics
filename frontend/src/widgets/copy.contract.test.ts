@@ -8,6 +8,15 @@ import { WIDGETS } from "./registry";
 import { SEARCH_METRIC_OPTIONS, SEARCH_OPTIONS } from "./searchResultOptions";
 import { TEMPLATES } from "./templates";
 import { createLocaleTranslator } from "@/i18n/testTranslator";
+import { FROZEN_TR_KEYS } from "@/i18n/trFrozen";
+
+// D-45: Turkish is frozen at the checkpoint, so a widget added to the registry afterwards has no
+// Turkish twin (the same limit `guide.contract.test.ts` applies to guide sections). The Turkish
+// checks cover the entries the frozen catalog holds; every English check covers all of them.
+const FROZEN_TYPES = new Set(
+  FROZEN_TR_KEYS.filter((key) => key.startsWith("widgets.registry.")).map((key) => key.split(".")[2]),
+);
+const frozenInTurkish = (type: string) => FROZEN_TYPES.has(messageKey(type));
 
 const say = (locale: "en" | "tr") => {
   const root = createLocaleTranslator(locale);
@@ -27,7 +36,7 @@ describe("the registry's words", () => {
         if (locale === "en") {
           expect(title).toBe(def.title);
           expect(description).toBe(def.description);
-        } else {
+        } else if (frozenInTurkish(def.type)) {
           // A Turkish entry that fell back to the English source would be a missing message.
           expect(tr.widgets.registry[messageKey(def.type) as keyof typeof tr.widgets.registry]).toBeDefined();
         }
@@ -37,7 +46,9 @@ describe("the registry's words", () => {
 
   it("has no message for a type the registry does not hold", () => {
     expect(Object.keys(en.widgets.registry).sort()).toEqual(WIDGETS.map((w) => messageKey(w.type)).sort());
-    expect(Object.keys(tr.widgets.registry).sort()).toEqual(WIDGETS.map((w) => messageKey(w.type)).sort());
+    expect(Object.keys(tr.widgets.registry).sort()).toEqual(
+      WIDGETS.filter((w) => frozenInTurkish(w.type)).map((w) => messageKey(w.type)).sort(),
+    );
   });
 
   it("words a blocked widget's reason in both languages", () => {
@@ -57,9 +68,10 @@ describe("the registry's words", () => {
     for (const def of WIDGETS) {
       for (const [key, field] of Object.entries(def.config)) {
         for (const locale of ["en", "tr"] as const) {
-          const entry = (locale === "en" ? en : tr).widgets.registry[messageKey(def.type) as keyof typeof en.widgets.registry] as {
-            fields?: Record<string, string>;
-          };
+          if (locale === "tr" && !frozenInTurkish(def.type)) continue;
+          const entry = (locale === "en" ? en : tr).widgets.registry[
+            messageKey(def.type) as keyof typeof tr.widgets.registry
+          ] as { fields?: Record<string, string> };
           expect(entry.fields?.[key], `${locale} ${def.type}.${key}`).toBeTruthy();
           if (locale === "en") expect(entry.fields?.[key]).toBe((field as { label: string }).label);
         }
