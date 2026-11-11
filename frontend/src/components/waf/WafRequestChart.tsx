@@ -31,6 +31,8 @@ import { CanvasRenderer } from "echarts/renderers";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef } from "react";
 
+import { EmaLegendItems, EmaNote, EmaSummary } from "@/components/behavior/EmaLegend";
+import { EmaToggles, useEmaPeriods } from "@/components/behavior/EmaToggles";
 import { HistoryKey, HistoryText } from "@/components/behavior/HistoryKey";
 import {
   historyIntervals,
@@ -44,6 +46,8 @@ import { TURKISH_ECHARTS_LOCALE } from "@/components/home/chartLocale";
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { WafMetricBucket } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
+import { bucketSecondsOf } from "@/lib/ema";
+import { emaColours, emaLinesOf, emaSeries, emaTooltipRows } from "@/lib/emaSeries";
 import { fixed, grouped } from "@/lib/figureText";
 import { unitGap } from "@/i18n/measures";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
@@ -137,6 +141,7 @@ export function WafRequestChart({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const t = useTranslations("waf.chart");
+  const tEma = useTranslations("behavior.chart");
   const i18n = useBehaviorI18n();
   const { locale } = i18n;
 
@@ -151,6 +156,16 @@ export function WafRequestChart({
   const history = useMemo(() => historyIntervals(buckets), [buckets]);
   const origins = useMemo(() => originByTime(buckets), [buckets]);
   const scale = ratio ? 100 : 1;
+  // The overlay (display only) follows the primary line, the one plotted on the requests panel:
+  // the request count, or the proportion when the chart plots one. A lower-bound bucket is not an
+  // exact figure, so it ends the line like an unobserved one. The dashboard tile has no control.
+  const [emaChoice, toggleEma] = useEmaPeriods();
+  const emaOn = useMemo(() => (compact ? [] : emaChoice), [compact, emaChoice]);
+  const emaLines = useMemo(
+    () => emaLinesOf(points.map((p) => (p.lowerBound ? null : p.observed)), emaOn),
+    [points, emaOn],
+  );
+  const bucketSeconds = useMemo(() => bucketSecondsOf(buckets), [buckets]);
   const seasonal = baseline != null;
   const lookup = useMemo(
     () =>
@@ -306,6 +321,9 @@ export function WafRequestChart({
               atDetection,
               band,
               coverage,
+              ...emaTooltipRows(emaLines, first!.dataIndex!, (period, v) =>
+                tEma("tooltip.emaValue", { period, value: `${fmt(v)}${suffix}` }),
+              ),
               t("collectionLine", { meaning: kindMeaning(p.kind, i18n) }),
               originText(origins.get(p.t), { say: i18n.t, locale }),
             ]
@@ -378,6 +396,14 @@ export function WafRequestChart({
               ]),
         ],
         series: [
+          // Under the observed line (z 3): thin, solid, no markers, a gap where it stops.
+          ...emaSeries(
+            emaLines,
+            points.map((p) => p.t),
+            emaColours(c),
+            scale,
+            { xAxisIndex: 0, yAxisIndex: 0 },
+          ),
           {
             type: "line",
             name: "Requests",
@@ -510,6 +536,8 @@ export function WafRequestChart({
     i18n,
     locale,
     ratioName,
+    emaLines,
+    tEma,
     t,
     unit,
   ]);
@@ -545,6 +573,7 @@ export function WafRequestChart({
 
   return (
     <>
+      {!compact && <EmaToggles enabled={emaOn} onToggle={toggleEma} />}
       <div
         ref={containerRef}
         className={compact ? "hc-chart cw-tall" : "chart chart-waf"}
@@ -552,6 +581,7 @@ export function WafRequestChart({
         aria-label={ariaLabel ?? t("ariaDefault")}
       />
       {textSummary && <p className="sr-only">{textSummary}</p>}
+      <EmaSummary periods={emaOn} of={ratio ? (ratioName as string) : t("keyRequests")} />
       <HistoryText rows={buckets} />
       <ul className="chart-legend" aria-label={t("keyTitle")}>
         <li>
@@ -570,6 +600,11 @@ export function WafRequestChart({
             {bandLabel}
           </li>
         )}
+        <EmaLegendItems
+          lines={emaLines}
+          bucketSeconds={bucketSeconds}
+          of={ratio ? (ratioName as string) : t("keyRequests")}
+        />
         {hasCoverage && !compact && (
           <li>
             <span className="chart-key chart-key-coverage" aria-hidden="true" />
@@ -601,6 +636,7 @@ export function WafRequestChart({
         {hasLowerBound && ` ${t("noteLower").trimStart()}`}
         {seasonal && ` ${t("noteSeasonal").trimStart()}`}
       </p>
+      <EmaNote periods={emaOn} />
     </>
   );
 }

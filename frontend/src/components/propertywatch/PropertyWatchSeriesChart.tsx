@@ -21,12 +21,16 @@ import {
 } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef } from "react";
 
+import { EmaLegendItems, EmaNote, EmaSummary } from "@/components/behavior/EmaLegend";
+import { EmaToggles, useEmaPeriods } from "@/components/behavior/EmaToggles";
 import { TURKISH_ECHARTS_LOCALE } from "@/components/home/chartLocale";
 
 import type { PwBucket, PwValueSeries } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
+import { emaColours, emaLinesOf } from "@/lib/emaSeries";
 
 import "./propertywatch.css";
 import {
@@ -63,6 +67,7 @@ export function readPwPalette(root: Element = document.documentElement): PwPalet
     history: style.getPropertyValue("--neutral-bg").trim(),
     marker: base.marker,
     expected: base.expected,
+    ema: emaColours(base),
     tooltipBg: base.tooltipBg,
     tooltipBorder: base.tooltipBorder,
     tooltipText: base.tooltipText,
@@ -124,6 +129,34 @@ export function PropertyWatchSeriesChart({
     [coverage, model.slots],
   );
   const unit = pwUnit(x, bucketSeconds);
+  const tEma = useTranslations("behavior.chart");
+  // The overlay (display only) is drawn for one value at a time, like the expected band: with
+  // several values plotted their colours would collide with the average lines, and an average of
+  // a small value among large ones cannot be read. The stored choice is the viewer's and is kept
+  // whatever is plotted. A lower-bound bucket is not an exact count, so it ends the line like a
+  // gap. The widget body has no control.
+  const [emaChoice, toggleEma] = useEmaPeriods();
+  const single = model.lines.length === 1;
+  const emaOn = useMemo(
+    () => (compact || !single ? [] : emaChoice),
+    [compact, single, emaChoice],
+  );
+  const first = model.lines[0];
+  const emaLines = useMemo(
+    () =>
+      emaLinesOf(
+        first ? first.points.map((p) => (p.kind === "LOWER_BOUND" ? null : p.value)) : [],
+        first ? emaOn : [],
+      ),
+    [first, emaOn],
+  );
+  const emaOption = useMemo(
+    () => ({
+      lines: emaLines,
+      row: (a: { period: number; value: string; line: string }) => tEma("tooltip.emaOf", a),
+    }),
+    [emaLines, tEma],
+  );
   const showCoverage = coverageModel !== null && !compact;
 
   useEffect(() => {
@@ -147,6 +180,7 @@ export function PropertyWatchSeriesChart({
         detectionBand,
         coverage: coverageModel,
         compact,
+        ema: emaOption,
         reduceMotion,
         i18n: x,
       }),
@@ -157,7 +191,7 @@ export function PropertyWatchSeriesChart({
       observer.disconnect();
       chart.dispose();
     };
-  }, [model, coverageModel, incidents, detectionBand, compact, showCoverage, x]);
+  }, [model, coverageModel, incidents, detectionBand, compact, showCoverage, emaOption, x]);
 
   if (model.lines.length === 0 && !showCoverage) {
     return (
@@ -186,6 +220,12 @@ export function PropertyWatchSeriesChart({
 
   return (
     <div className="pw-chart">
+      {!compact && model.lines.length > 0 && (
+        <>
+          <EmaToggles enabled={emaChoice} onToggle={toggleEma} />
+          {!single && <p className="subtitle chart-note">{tEma("ema.oneValue")}</p>}
+        </>
+      )}
       {model.lines.length === 0 && (
         <p className="notice" role="status">
           {emptyText}
@@ -204,6 +244,7 @@ export function PropertyWatchSeriesChart({
         aria-label={ariaLabel}
       />
       <p className="sr-only">{summary}</p>
+      {first && <EmaSummary periods={emaOn} of={first.label} />}
       <ul className="chart-legend" aria-label={t("pwchart.chart.keyLabel")}>
         {model.lines.map((line, i) => (
           <li key={line.valueId}>
@@ -213,6 +254,9 @@ export function PropertyWatchSeriesChart({
             {line.pinned && <span className="muted">{t("pwchart.chart.pinned")}</span>}
           </li>
         ))}
+        {first && (
+          <EmaLegendItems lines={emaLines} bucketSeconds={bucketSeconds} of={first.label} />
+        )}
         {model.hasBand && (
           <li>
             <span className="chart-key chart-key-band" aria-hidden="true" />
@@ -280,6 +324,7 @@ export function PropertyWatchSeriesChart({
           t("pwchart.chart.dropped", { count: model.dropped, max: PW_MAX_SERIES })}
         {showCoverage && t("pwchart.chart.coveragePanel")}
       </p>
+      {!compact && <EmaNote periods={emaOn} />}
     </div>
   );
 }

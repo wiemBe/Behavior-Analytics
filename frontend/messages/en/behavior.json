@@ -353,7 +353,9 @@
       "collection": "Collection: {meaning}",
       "anomalous": "Anomalous interval: {label}",
       "anomalyFallback": "anomaly",
-      "ema": "EMA {period}: {value} EPS"
+      "ema": "EMA {period}: {value} EPS",
+      "emaValue": "EMA {period}: {value}",
+      "emaOf": "EMA {period} of {line}: {value}"
     },
     "axis": {
       "time": "Time (UTC)",
@@ -375,9 +377,12 @@
       "label": "EMA",
       "toggle": "EMA {period}",
       "key": "EMA {period} · {span}",
+      "keyOf": "EMA {period} · {span} of {line}",
+      "oneValue": "EMA lines are drawn for one value at a time: select a single value.",
       "notEnough": "not enough consecutive buckets",
       "note": "EMA lines are drawn in your browser from the observed series. They do not take part in detection; a line stops at a bucket that was not fully observed.",
-      "summary": "Moving-average overlays on: {periods}. Each stops at a bucket that was not fully observed."
+      "summary": "Moving-average overlays on: {periods}. Each stops at a bucket that was not fully observed.",
+      "summaryOf": "Moving-average overlays of {line} on: {periods}. Each stops at a bucket that was not fully observed."
     }
   },
   "scoreStatus": {

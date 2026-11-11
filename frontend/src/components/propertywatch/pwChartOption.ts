@@ -19,6 +19,7 @@ import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { PwBucket } from "@/lib/api";
 import { utcTimeHtml } from "@/components/ui/UtcTime";
 import { formatCount } from "@/lib/format";
+import { emaSeries, emaTooltipRows, type EmaColours, type EmaLine } from "@/lib/emaSeries";
 
 import { isolated, type PlotModel, type PlotPoint, type Span } from "./pwSeries";
 import { ENGLISH_PW, pwDecimal, pwEvents, pwKind, pwPercent, pwUnit, type PwI18n } from "./pwText";
@@ -37,6 +38,8 @@ export interface PwPalette {
   history: string;
   marker: string;
   expected: string;
+  /** The EMA overlay lines, one token per period. */
+  ema?: EmaColours;
   tooltipBg: string;
   tooltipBorder: string;
   tooltipText: string;
@@ -51,6 +54,15 @@ export const PW_CATEGORY_TOKENS = [
   "--chart-cat-4",
   "--chart-cat-5",
 ] as const;
+
+/**
+ * The EMA overlay (display only) of the first plotted value: its lines aligned with `model.slots`,
+ * and the tooltip row, whose `line` is already HTML-encoded.
+ */
+export interface PwEma {
+  lines: EmaLine[];
+  row: (a: { period: number; value: string; line: string }) => string;
+}
 
 /** One bucket's coverage, as the second panel plots it. */
 export interface CoveragePoint {
@@ -128,7 +140,7 @@ function pointLine(name: string, p: PlotPoint, unit: string, x: PwI18n): string 
 export function pwTooltip(
   model: PlotModel,
   index: number,
-  opts: { unit: string; coverage?: CoverageModel | null; i18n?: PwI18n },
+  opts: { unit: string; coverage?: CoverageModel | null; i18n?: PwI18n; ema?: PwEma | null },
 ): string {
   const x = opts.i18n ?? ENGLISH_PW;
   const t = model.slots[index];
@@ -138,6 +150,14 @@ export function pwTooltip(
     const p = line.points[index];
     if (!p) continue;
     lines.push(pointLine(line.label, p, opts.unit, x));
+  }
+  if (opts.ema && model.lines.length > 0) {
+    const named = enc(model.lines[0].label);
+    lines.push(
+      ...emaTooltipRows(opts.ema.lines, index, (period, v) =>
+        opts.ema!.row({ period, value: `${pwDecimal(x, v)} ${opts.unit}`, line: named }),
+      ),
+    );
   }
   const single = model.lines.length === 1 ? model.lines[0].points[index] : null;
   if (single) {
@@ -212,6 +232,8 @@ export interface PwOptionInput {
   detectionBand?: DetectionBand | null;
   coverage?: CoverageModel | null;
   compact?: boolean;
+  /** The EMA overlay of the first plotted value; omitted: none is drawn. */
+  ema?: PwEma | null;
   reduceMotion?: boolean;
   /** The interface language; without it the chart is in English (the watch pages). */
   i18n?: PwI18n;
@@ -293,6 +315,12 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
           }
         : undefined,
   }));
+
+  // Under the observed lines (z 3): thin, solid, no markers, a gap where the value stops.
+  const emaLines =
+    input.ema && c.ema && model.lines.length > 0
+      ? emaSeries(input.ema.lines, model.slots, c.ema, 1, { xAxisIndex: 0, yAxisIndex: 0 })
+      : [];
 
   const bandSeries =
     band && single
@@ -394,6 +422,7 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
           unit,
           coverage: showCoverage ? coverage : null,
           i18n: x,
+          ema: emaLines.length > 0 ? input.ema : null,
         });
       },
     },
@@ -464,6 +493,6 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
           ]
         : []),
     ],
-    series: [...lineSeries, ...bandSeries, ...coverageSeries],
+    series: [...emaLines, ...lineSeries, ...bandSeries, ...coverageSeries],
   };
 }
