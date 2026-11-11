@@ -2983,9 +2983,9 @@
   "entity_timeline.reason.index_incomplete": {
     "params": {},
     "sample": {},
-    "sample_english": "Matching inventory exists but its timeline mention is missing.",
+    "sample_english": "This lane's index is not complete, so absence cannot be proven here: older records are still being indexed, or a stored record could not be indexed or opened.",
     "sample_english_params": {},
-    "template": "Matching inventory exists but its timeline mention is missing."
+    "template": "This lane's index is not complete, so absence cannot be proven here: older records are still being indexed, or a stored record could not be indexed or opened."
   },
   "entity_timeline.reason.no_coverage": {
     "params": {},

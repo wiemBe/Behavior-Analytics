@@ -359,7 +359,7 @@
     },
     "reason": {
       "family_off": "This collection family is switched off.",
-      "index_incomplete": "Matching inventory exists but its timeline mention is missing.",
+      "index_incomplete": "This lane''s index is not complete, so absence cannot be proven here: older records are still being indexed, or a stored record could not be indexed or opened.",
       "no_coverage": "No usable collection bucket covers this lane in the selected window.",
       "not_among_stored_top": "This bounded lane cannot prove that the entity was absent from its full input.",
       "not_collected": "No timeline lane measured this entity in the selected window.",

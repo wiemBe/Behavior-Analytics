@@ -552,7 +552,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _fixed(
         "entity_timeline.reason.index_incomplete",
-        "Matching inventory exists but its timeline mention is missing.",
+        "This lane's index is not complete, so absence cannot be proven here: older records "
+        "are still being indexed, or a stored record could not be indexed or opened.",
     ),
     _fixed(
         "explanation.dimension.unpopulated",
