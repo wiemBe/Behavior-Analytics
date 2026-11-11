@@ -271,6 +271,23 @@ describe("the lane table", () => {
     return within(table).getByRole("row", { name: new RegExp(name) });
   }
 
+  it("labels the catch-all sender and property-watch value lanes", async () => {
+    read.mockResolvedValue(
+      timeline({
+        lanes: [
+          ...lanes(),
+          lane("CATCHALL", { state: "PARTIAL", reason_code: "entity_timeline.reason.not_among_stored_top" }),
+          lane("PW_VALUE", { state: "OK", total: 1 }),
+        ],
+      }),
+    );
+
+    await renderPage({ value: "192.0.2.44" });
+
+    expect(laneRow("Catch-all senders")).toHaveTextContent("Partial");
+    expect(laneRow("Property watch values")).toHaveTextContent("1");
+  });
+
   it("draws a forbidden lane as forbidden, naming the permission, not as not collected", async () => {
     read.mockResolvedValue(
       timeline({

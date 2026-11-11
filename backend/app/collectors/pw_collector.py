@@ -30,7 +30,8 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import func, select
+from sqlalchemy import String, delete, exists, func, select, tuple_
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -53,6 +54,7 @@ from app.history.planner import (
 from app.history.progress_codec import ProgressCodecError, decode_progress, encode_progress
 from app.history.state import HistoryFamily, HistoryTrigger
 from app.i18n.messages import MessageRef, render
+from app.models.entity import EntityMention
 from app.models.enums import (
     PwBucketMeasurement,
     PwHistoryState,
@@ -120,6 +122,15 @@ from app.services.ariel_permit import (
     ariel_history_deferred_reason,
 )
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
+from app.services.entity_mentions import (
+    EntityKind,
+    EntityMentionRow,
+    EntityRole,
+    classify_entity,
+    normalize_entity,
+    record_mentions,
+    user_match_forms,
+)
 from app.services.search_cadence import SearchCadenceService
 
 logger = logging.getLogger("app.collectors.pw_collector")
@@ -222,6 +233,8 @@ class _Writes:
     buckets: list[dict[str, Any]] = field(default_factory=list)
     metrics: list[dict[str, Any]] = field(default_factory=list)
     watches: list[dict[str, Any]] = field(default_factory=list)
+    mentions: list[EntityMentionRow] = field(default_factory=list)
+    mention_pairs: list[tuple[uuid.UUID, datetime]] = field(default_factory=list)
 
 
 @dataclass
@@ -436,6 +449,49 @@ def _value_row(watch_id: uuid.UUID, version: int, value: TrackedValue) -> dict[s
         "active": value.active,
         "retired_at": value.retired_at,
     }
+
+
+def _pw_mention_row(
+    instance_id: uuid.UUID,
+    properties: Sequence[dict[str, str]],
+    value: TrackedValue,
+    *,
+    bucket_start: datetime,
+    bucket_seconds: int,
+) -> EntityMentionRow | None:
+    """Classify one stored value only when its single property name is exact."""
+    if len(properties) != 1 or value.truncated:
+        return None
+    name = str(properties[0].get("name") or "").strip().lower()
+    property_kinds: dict[str, tuple[EntityKind, EntityRole]] = {
+        "username": ("USER", "USER"),
+        "sourceip": ("IP", "SOURCE_IP"),
+        "destinationip": ("IP", "DESTINATION_IP"),
+    }
+    classified = property_kinds.get(name)
+    if classified is None:
+        return None
+    kind, role = classified
+    if kind == "IP" and classify_entity(value.value_key) != "IP":
+        return None
+    if kind == "USER":
+        forms = user_match_forms(value.value_key)
+        normalized = forms[-1] if forms else None
+    else:
+        normalized = normalize_entity(kind, value.value_key)
+    if normalized is None:
+        return None
+    return EntityMentionRow(
+        instance_id=instance_id,
+        kind=kind,
+        value_norm=normalized,
+        role=role,
+        source="PW_VALUE",
+        ref_table="pw_value_metric",
+        ref_id=str(value.id),
+        occurred_at=bucket_start,
+        occurred_end=bucket_start + timedelta(seconds=bucket_seconds),
+    )
 
 
 def _provenance(outcome: PwBucketOutcome, chunks: int) -> dict[str, object] | None:
@@ -1491,6 +1547,7 @@ class PwCollector:
                         collected_at=now,
                     )
                 )
+                writes.mention_pairs.append((watch.id, grouped[held].bucket_start))
                 if count == 0:
                     # Nothing newer than the last evaluated bucket exists: the watch must not
                     # keep reading OK. A later collected bucket clears this (STALE is one of
@@ -1581,6 +1638,8 @@ class PwCollector:
                     origin=origin,
                 )
             )
+            if not reading:
+                writes.mention_pairs.append((watch.id, admitted.fact.bucket_start))
             if reading:
                 # After every bucket, as bucket-by-bucket live collection would: the
                 # ceiling and the tracking windows never see a chunk-wide reference (§H.7.3).
@@ -1603,6 +1662,16 @@ class PwCollector:
                         "bucket_seconds": interval,
                     }
                 )
+                if not reading:
+                    mention = _pw_mention_row(
+                        watch.instance_id,
+                        cast(list[dict[str, str]], watch.properties),
+                        values[key],
+                        bucket_start=admitted.fact.bucket_start,
+                        bucket_seconds=interval,
+                    )
+                    if mention is not None:
+                        writes.mentions.append(mention)
         for value in values.values():
             if value.dirty:
                 writes.values.append(_value_row(watch.id, version, value))
@@ -1689,6 +1758,7 @@ class PwCollector:
         await self.repo.write_buckets(writes.buckets)
         await self.repo.write_metrics(writes.metrics)
         await self.repo.update_watches(writes.watches)
+        await self._record_mentions(report.instance_id, writes)
         report.values_written = len(writes.values)
         report.buckets_written = sum(
             1
@@ -1696,3 +1766,36 @@ class PwCollector:
             if row["values_measurement"] != PwBucketMeasurement.NOT_COLLECTED.value
         )
         report.metric_rows_written = len(writes.metrics)
+
+    async def _record_mentions(self, instance_id: uuid.UUID, writes: _Writes) -> None:
+        """Replace all live bucket mentions staged by this instance run."""
+        pairs = list(dict.fromkeys(writes.mention_pairs))
+        if not pairs:
+            return
+        try:
+            async with self.session.begin_nested():
+                await self.session.execute(
+                    delete(EntityMention)
+                    .where(
+                        EntityMention.instance_id == instance_id,
+                        EntityMention.source == "PW_VALUE",
+                        EntityMention.ref_table == "pw_value_metric",
+                        exists().where(
+                            sql_cast(PwValue.id, String) == EntityMention.ref_id,
+                            tuple_(PwValue.watch_id, EntityMention.occurred_at).in_(pairs),
+                        ),
+                    )
+                    .execution_options(synchronize_session=False)
+                )
+                await record_mentions(
+                    self.session, writes.mentions, single_statement=True
+                )
+        except Exception as exc:
+            logger.warning(
+                "property-watch entity mentions were not recorded",
+                extra={
+                    "instance_id": str(instance_id),
+                    "buckets": len(pairs),
+                    "error_class": type(exc).__name__,
+                },
+            )

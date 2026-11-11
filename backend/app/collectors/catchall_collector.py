@@ -36,7 +36,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import func, literal_column, select, text, update
+from sqlalchemy import delete, func, literal_column, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -98,6 +98,7 @@ from app.history.state import HistoryState, HistoryTrigger, next_state
 from app.i18n.messages import MessageRef, render
 from app.ips.keyed_search import IpsSearchBudget
 from app.models.catchall import CatchallBucket, CatchallSender
+from app.models.entity import EntityMention
 from app.models.enums import (
     FIRST_RUN_LOOKBACK_BUCKETS,
     CatchallMeasurement,
@@ -120,6 +121,12 @@ from app.services.ariel_permit import (
     ariel_history_deferred_reason,
 )
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
+from app.services.entity_mentions import (
+    EntityMentionRow,
+    classify_entity,
+    normalize_entity,
+    record_mentions,
+)
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.waf.admission import AdmissionPolicy
@@ -243,6 +250,36 @@ class _RunState:
     ledgers: dict[uuid.UUID, SenderLedger] = field(default_factory=dict)
     touches: dict[tuple[uuid.UUID, str], _SenderTouch] = field(default_factory=dict)
     buckets: list[dict] = field(default_factory=list)
+
+
+def _catchall_mention_rows(
+    instance_id: uuid.UUID, buckets: Sequence[Mapping[str, Any]]
+) -> list[EntityMentionRow]:
+    """Mentions of only the bounded sender values persisted in live bucket rows."""
+    mentions: list[EntityMentionRow] = []
+    for bucket in buckets:
+        occurred_at = cast(datetime, bucket["bucket_start"])
+        occurred_end = occurred_at + timedelta(seconds=cast(int, bucket["bucket_seconds"]))
+        for sender in cast(Sequence[Mapping[str, Any]], bucket.get("top_senders") or ()):
+            raw = str(sender.get("identifier") or "")
+            kind = classify_entity(raw) or "HOST"
+            value = normalize_entity(kind, raw)
+            if value is None:
+                continue
+            mentions.append(
+                EntityMentionRow(
+                    instance_id=instance_id,
+                    kind=kind,
+                    value_norm=value,
+                    role="SOURCE_IP" if kind == "IP" else "HOST",
+                    source="CATCHALL",
+                    ref_table="catchall_bucket",
+                    ref_id=str(bucket["catchall_log_source_id"]),
+                    occurred_at=occurred_at,
+                    occurred_end=occurred_end,
+                )
+            )
+    return mentions
 
 
 def floor_to_bucket(moment: datetime, bucket_seconds: int) -> datetime:
@@ -500,6 +537,7 @@ class CatchallCollector:
             self._fold_bucket(outcome, by_qradar, state, policy, bucket_seconds, now, report)
 
         created = await self._write(instance, state, known, bucket_seconds, now, report)
+        await self._record_mentions(instance.id, state.buckets)
         if settings.catchall_new_sender_alerts_enabled and created:
             report.alerts_raised = await self._raise_alerts(instance, sources, created, now)
         await self._refresh_events_24h(instance.id, now)
@@ -650,6 +688,43 @@ class CatchallCollector:
                     if review_status == CatchallReviewStatus.NEW.value:
                         created.append((sender_id, source_id, identifier))
         return created
+
+    async def _record_mentions(
+        self, instance_id: uuid.UUID, buckets: Sequence[Mapping[str, Any]]
+    ) -> None:
+        """Replace this run's live bucket mentions in one bounded bulk write."""
+        if not buckets:
+            return
+        pairs = [
+            (str(bucket["catchall_log_source_id"]), cast(datetime, bucket["bucket_start"]))
+            for bucket in buckets
+        ]
+        try:
+            async with self.session.begin_nested():
+                await self.session.execute(
+                    delete(EntityMention)
+                    .where(
+                        EntityMention.instance_id == instance_id,
+                        EntityMention.source == "CATCHALL",
+                        EntityMention.ref_table == "catchall_bucket",
+                        tuple_(EntityMention.ref_id, EntityMention.occurred_at).in_(pairs),
+                    )
+                    .execution_options(synchronize_session=False)
+                )
+                await record_mentions(
+                    self.session,
+                    _catchall_mention_rows(instance_id, buckets),
+                    single_statement=True,
+                )
+        except Exception as exc:
+            logger.warning(
+                "catch-all entity mentions were not recorded",
+                extra={
+                    "instance_id": str(instance_id),
+                    "buckets": len(buckets),
+                    "error_class": type(exc).__name__,
+                },
+            )
 
     async def _raise_alerts(
         self,

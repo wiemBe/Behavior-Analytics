@@ -71,7 +71,9 @@
       "IPS_TOP": "IPS source contributors",
       "IPS_ENTITY": "IPS destination entities",
       "OFFENSE": "QRadar offenses",
-      "LOG_SOURCE": "Log sources"
+      "LOG_SOURCE": "Log sources",
+      "CATCHALL": "Catch-all senders",
+      "PW_VALUE": "Property watch values"
     },
     "noneProven": "Collection covered this window and the entity was not found.",
     "notCounted": "Not counted on a paged list.",

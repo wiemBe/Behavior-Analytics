@@ -67,6 +67,22 @@ class CatchallRetention:
         report = CatchallRetentionReport()
         cutoff = self._clock() - timedelta(days=self.settings.catchall_retention_days)
         batch = self.settings.catchall_retention_batch_size
+        for _ in range(self.settings.catchall_retention_max_batches):
+            result = await self.session.execute(
+                text(
+                    "DELETE FROM entity_mention WHERE ctid IN ("
+                    "SELECT ctid FROM entity_mention "
+                    "WHERE source = 'CATCHALL' AND ref_table = :ref_table "
+                    "AND occurred_at < :cutoff LIMIT :batch)"
+                ).bindparams(
+                    ref_table="catchall_bucket", cutoff=cutoff, batch=batch
+                )
+            )
+            await self.session.commit()
+            if int(getattr(result, "rowcount", 0) or 0) < batch:
+                break
+        else:
+            report.incomplete.append("entity_mention_catchall")
         for table, statement in _STATEMENTS:
             deleted = 0
             for _ in range(self.settings.catchall_retention_max_batches):

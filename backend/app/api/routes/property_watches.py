@@ -37,7 +37,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import String, delete, exists, func, select
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +50,7 @@ from app.core.rate_limit import limiter
 from app.custom_rules.alerts import alerting_mode
 from app.i18n.messages import MessageRef, render
 from app.i18n.refusal import CodedHTTPException, permission_refusal
+from app.models.entity import EntityMention
 from app.models.enums import (
     PwAnomalyType,
     PwHistoryState,
@@ -60,7 +62,7 @@ from app.models.enums import (
 from app.models.fleet import LogSourceGroup, LogSourceType
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
-from app.models.property_watch import PropertyWatch
+from app.models.property_watch import PropertyWatch, PwValue
 from app.property_watch.engine import PwAnomalyEngine
 from app.property_watch.reference import PW_MAX_PROPERTIES, PW_NORMALIZED_FIELD_ALLOWLIST
 from app.providers.base import QRadarProvider
@@ -1038,6 +1040,19 @@ async def delete_watch(
     )
     snapshot = svc.watch_snapshot(watch)
     key = str(watch.id)
+    await session.execute(
+        delete(EntityMention)
+        .where(
+            EntityMention.instance_id == watch.instance_id,
+            EntityMention.source == "PW_VALUE",
+            EntityMention.ref_table == "pw_value_metric",
+            exists().where(
+                sql_cast(PwValue.id, String) == EntityMention.ref_id,
+                PwValue.watch_id == watch.id,
+            ),
+        )
+        .execution_options(synchronize_session=False)
+    )
     await session.delete(watch)
     await _flush_refusing(session, watch.id, svc.ACTION_DELETE)
     await record_audit(
