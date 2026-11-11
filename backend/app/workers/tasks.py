@@ -884,11 +884,11 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
 
     Two states are not judged, so the alert never claims a health verdict the data
     cannot support. A console with no monitored source has nothing its collection
-    could protect: the alert is resolved if one was open, and the run reports
-    `no_monitored_sources`. A console registered less than the stale threshold ago
-    that has neither a successful nor a failed run yet is still in its first-run
-    window: the run reports `awaiting_first_run` and opens nothing. A failing
-    collector is stale at once, grace or not.
+    could protect: the alert is resolved if one was open, with a not-judged reason rather
+    than a recovery, and the run reports `no_monitored_sources`. A console registered
+    less than the stale threshold ago that has neither a successful nor a failed run yet
+    is still in its first-run window: the run reports `awaiting_first_run` and opens
+    nothing. A failing collector is stale at once, grace or not.
     """
 
     async def run(
@@ -927,10 +927,14 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
                 .limit(1)
             )
             if monitored_source_id is None:
+                # Nothing is monitored, so freshness was not measured again: closing the
+                # alert must not read as a recovery (rule 8).
                 resolved = await alerts.resolve_by_fingerprint(
                     fingerprint,
                     actor="system:log-source-collection-monitor",
-                    reason_message=MessageRef("alert.log_source_collection.recovered"),
+                    reason_message=MessageRef(
+                        "alert.log_source_collection.not_judged_no_monitored_sources"
+                    ),
                 )
                 if resolved is not None and resolved.transition is not None:
                     await dispatcher.enqueue(resolved.alert, resolved.transition)

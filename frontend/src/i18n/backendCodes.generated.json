@@ -526,6 +526,13 @@
     },
     "template": "{detector} on {log_source}"
   },
+  "alert.log_source_collection.not_judged_no_monitored_sources": {
+    "params": {},
+    "sample": {},
+    "sample_english": "Closed without a verdict: no log source of this console is monitored, so collection freshness is not judged.",
+    "sample_english_params": {},
+    "template": "Closed without a verdict: no log source of this console is monitored, so collection freshness is not judged."
+  },
   "alert.log_source_collection.recovered": {
     "params": {},
     "sample": {},

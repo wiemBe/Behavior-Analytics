@@ -2610,6 +2610,11 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "alert.log_source_collection.recovered",
         "Log source volume collection freshness recovered.",
     ),
+    _fixed(
+        "alert.log_source_collection.not_judged_no_monitored_sources",
+        "Closed without a verdict: no log source of this console is monitored, so collection "
+        "freshness is not judged.",
+    ),
     _text("alert.inventory.log_source.title", "New log source: {name}", name="Edge firewall"),
     _fixed(
         "alert.inventory.log_source.description",
