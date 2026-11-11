@@ -155,6 +155,9 @@
         },
         {
           "p": "**Dashboards** opens your saved dashboards, the shared ones and the templates. **Manage** holds rename, duplicate, share, default and delete."
+        },
+        {
+          "p": "In the expanded **Fleet EPS** widget, the **EMA 3**, **EMA 5**, **EMA 10** and **EMA 20** buttons overlay exponential moving averages of the observed fleet EPS line, with the same choice the other charts remember. The tile does not draw them. An average is for display only, and it stops at a step that was not fully collected rather than bridging the gap."
         }
       ],
       "states": [

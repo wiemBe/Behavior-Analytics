@@ -22,6 +22,11 @@ import { CanvasRenderer } from "echarts/renderers";
 import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
+import { EmaLegendItems, EmaNote, EmaSummary } from "@/components/behavior/EmaLegend";
+import { EmaToggles, useEmaPeriods } from "@/components/behavior/EmaToggles";
+import type { EmaPeriod } from "@/lib/ema";
+import { emaLinesOf, type EmaLine } from "@/lib/emaSeries";
+
 import { useApiResource } from "@/hooks/useApiResource";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { useMeasures } from "@/i18n/measures";
@@ -52,6 +57,8 @@ echarts.use([
   CanvasRenderer,
 ]);
 
+const NO_PERIODS: ReadonlyArray<EmaPeriod> = [];
+
 function Chart({ series, model }: { series: FleetEpsSeries; model: EpsChartModel }) {
   const t = useTranslations("home.eps");
   const say = asTextTranslator(useTranslations());
@@ -60,13 +67,25 @@ function Chart({ series, model }: { series: FleetEpsSeries; model: EpsChartModel
   const expanded = useExpanded();
   // The tile is too small to hold the words clear of the line; the key, tooltip and text say it.
   const history = useMemo(() => epsHistory(series, expanded), [series, expanded]);
+  // The averages are offered in the expanded view only; the tile has no room for the control,
+  // so whatever is stored, it draws none (the same rule as the other widget tiles).
+  const [emaStored, toggleEma] = useEmaPeriods();
+  const emaOn = expanded ? emaStored : NO_PERIODS;
+  const emaLines = useMemo(
+    () =>
+      emaLinesOf(
+        model.steps.map((s) => s.eps),
+        emaOn,
+      ),
+    [model, emaOn],
+  );
   const i18n = useMemo(() => ({ t: say, locale: measures.locale }), [say, measures.locale]);
   const option = useMemo(
     () =>
       model.measured > 0
-        ? (p: HomePalette) => buildEpsOption(model, p, undefined, history, i18n)
+        ? (p: HomePalette) => buildEpsOption(model, p, undefined, history, i18n, emaLines)
         : null,
-    [model, history, i18n],
+    [model, history, i18n, emaLines],
   );
   const ref = useEChart(option);
   const windowLabel = copy.range(series.window);
@@ -95,16 +114,27 @@ function Chart({ series, model }: { series: FleetEpsSeries; model: EpsChartModel
     (model.measured < model.total ? ` ${t("summaryGaps")}` : "");
   return (
     <>
+      {expanded && <EmaToggles enabled={emaStored} onToggle={toggleEma} />}
       <div ref={ref} className="hc-chart" role="img" aria-label={label} />
       <p className="sr-only">
         {[summary, epsHistorySummary(history, say)].filter(Boolean).join(" ")}
       </p>
-      <Key model={model} history={history} />
+      <EmaSummary periods={emaOn} />
+      <Key model={model} history={history} ema={emaLines} />
+      <EmaNote periods={emaOn} />
     </>
   );
 }
 
-function Key({ model, history }: { model: EpsChartModel; history: EpsHistory }) {
+function Key({
+  model,
+  history,
+  ema,
+}: {
+  model: EpsChartModel;
+  history: EpsHistory;
+  ema: ReadonlyArray<EmaLine>;
+}) {
   const t = useTranslations("home.eps");
   const chart = useTranslations("home.chart");
   const historyT = useTranslations("home.history");
@@ -121,6 +151,7 @@ function Key({ model, history }: { model: EpsChartModel; history: EpsHistory }) 
           {chart("expectedName")}
         </li>
       )}
+      <EmaLegendItems lines={ema} bucketSeconds={model.stepSeconds} />
       {model.gaps.length > 0 && (
         <li title={t("notMeasuredMeaning")}>
           <span className="chart-key chart-key-gap" aria-hidden="true" />
