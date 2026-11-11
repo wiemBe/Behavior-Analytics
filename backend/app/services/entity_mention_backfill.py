@@ -53,6 +53,20 @@ that a live writer replaces afterwards: the old list would survive. Per source:
   (`EXPLANATION_COLLECTOR`, offense `COLLECTOR_NAME`) from its SELECT to its commit. If the
   lock is held the source does no batch in this run, stays RUNNING with its cursor, and the
   report marks it `busy` (not FAILED).
+* CATCHALL: locked too, with the catch-all collector's lock (`catchall_collector.COLLECTOR_NAME`).
+  Unlike WAF/IPS it can replace a bucket that is already committed: it writes every measured
+  bucket of its window, but `_advance_watermark` (`catchall_collector.py:783-800`) holds the
+  watermark at the first unmeasured bucket, so measured buckets after that gap sit beyond the
+  watermark and the next run (`_buckets_to_collect`, `:426-450`) collects them again and
+  replaces their mentions (`_record_mentions`, `:659-690`). History writes are insert-only
+  (`_write_history_buckets`, `:1239+`).
+* PW_VALUE: locked with the property-watch pipeline's lock (`pw_pipeline.COLLECTOR_NAME`).
+  Live collection stops at the first incomplete bucket (`pw_collector.py` ~1490-1530), so a
+  committed value metric is at or before the watch's watermark. But the live DELETE in
+  `_record_mentions` (`pw_collector.py:1748-1790`) removes the mentions of every value of the
+  watch at a collected `(watch, bucket_start)`, whatever its `watch_version`, so a watch whose
+  version was bumped (history restart, `:770-800`) can have old-version rows replaced; the
+  lock removes that race rather than relying on the version argument.
 """
 
 from __future__ import annotations
@@ -70,25 +84,31 @@ from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.collectors.catchall_collector import COLLECTOR_NAME as CATCHALL_COLLECTOR
 from app.collectors.explanation_collector import EXPLANATION_COLLECTOR
 from app.collectors.offense_collector import COLLECTOR_NAME as OFFENSE_COLLECTOR
 from app.core.config import Settings, get_settings
+from app.models.catchall import CatchallBucket
 from app.models.entity import EntityMention, EntityMentionBackfill
 from app.models.explanation import AnomalyExplanation, AnomalyExplanationContributor
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsEntity, IpsEntityMetric, IpsSourceBucket
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.offense import OffenseSnapshot
+from app.models.property_watch import PropertyWatch, PwValue, PwValueMetric
 from app.models.waf import WafEndpoint, WafEndpointMetric
 from app.services.entity_mention_folds import (
+    catchall_mentions,
     explanation_mentions,
     ips_entity_mentions,
     ips_top_mentions,
     offense_mentions,
+    pw_value_mentions,
     waf_top_mentions,
 )
 from app.services.entity_mentions import MAX_ENTITY_VALUE_LENGTH, EntityMentionRow
 from app.services.locks import CollectorAdvisoryLock
+from app.services.pw_pipeline import COLLECTOR_NAME as PW_COLLECTOR
 
 logger = logging.getLogger(__name__)
 
@@ -96,12 +116,25 @@ LOCK_NAME = "entity_mention_backfill"
 #: One lock for the whole run, so the key does not belong to any console.
 LOCK_INSTANCE_ID = uuid.UUID(int=0)
 #: Sources this service backfills, in processing order.
-BACKFILL_SOURCES = ("EXPLANATION", "WAF_TOP", "IPS_TOP", "IPS_ENTITY", "OFFENSE")
+BACKFILL_SOURCES = (
+    "EXPLANATION",
+    "WAF_TOP",
+    "IPS_TOP",
+    "IPS_ENTITY",
+    "OFFENSE",
+    "CATCHALL",
+    "PW_VALUE",
+)
 #: Sources that need no backfill: their row is created COMPLETE with no rows written.
 NO_BACKFILL_SOURCES = ("LOG_SOURCE",)
 #: Sources whose live writer replaces a parent's mentions at any time (delete + insert of a
 #: whole package / of every mention of an offense); their batches share that collector's lock.
-_COLLECTOR_LOCKS = {"EXPLANATION": EXPLANATION_COLLECTOR, "OFFENSE": OFFENSE_COLLECTOR}
+_COLLECTOR_LOCKS = {
+    "EXPLANATION": EXPLANATION_COLLECTOR,
+    "OFFENSE": OFFENSE_COLLECTOR,
+    "CATCHALL": CATCHALL_COLLECTOR,
+    "PW_VALUE": PW_COLLECTOR,
+}
 _EXPLANATION_DIMENSIONS = ("source_ip", "destination_ip", "username")
 #: Fixed text of `last_error`; the class name is the only variable part.
 FAILED_TEXT = "batch failed and was rolled back; it is retried on the next run"
@@ -464,6 +497,10 @@ class EntityMentionBackfillService:
             return await self._ips_entity(instance_id, until, after, limit)
         if source == "OFFENSE":
             return await self._offense(instance_id, until, after, limit)
+        if source == "CATCHALL":
+            return await self._catchall(instance_id, until, after, limit)
+        if source == "PW_VALUE":
+            return await self._pw_value(instance_id, until, after, limit)
         raise ValueError(f"no backfill for source {source}")
 
     async def _explanation(
@@ -633,6 +670,98 @@ class EntityMentionBackfillService:
                 )
             )
         last = [str(rows[-1].qradar_offense_id)] if rows else None
+        return _Batch(len(rows), mentions, last)
+
+    async def _catchall(
+        self, instance_id: uuid.UUID, until: datetime, after: list[str] | None, limit: int
+    ) -> _Batch:
+        bucket = CatchallBucket
+        query = (
+            select(
+                bucket.catchall_log_source_id,
+                bucket.bucket_start,
+                bucket.bucket_seconds,
+                bucket.top_senders,
+            )
+            .join(LogSource, LogSource.id == bucket.catchall_log_source_id)
+            .where(
+                LogSource.instance_id == instance_id,
+                bucket.bucket_start < until,
+                # An empty stored list folds to nothing; do not page through it.
+                func.jsonb_array_length(bucket.top_senders) > 0,
+            )
+            .order_by(bucket.catchall_log_source_id, bucket.bucket_start)
+            .limit(limit)
+        )
+        if after is not None:
+            query = query.where(
+                tuple_(bucket.catchall_log_source_id, bucket.bucket_start)
+                > tuple_(uuid.UUID(after[0]), _ts(after[1]))
+            )
+        rows = (await self.session.execute(query)).all()
+        mentions = catchall_mentions(
+            instance_id,
+            [
+                {
+                    "catchall_log_source_id": source_id,
+                    "bucket_start": start,
+                    "bucket_seconds": seconds,
+                    "top_senders": senders,
+                }
+                for source_id, start, seconds, senders in rows
+            ],
+        )
+        last = [str(rows[-1][0]), rows[-1][1].isoformat()] if rows else None
+        return _Batch(len(rows), mentions, last)
+
+    async def _pw_value(
+        self, instance_id: uuid.UUID, until: datetime, after: list[str] | None, limit: int
+    ) -> _Batch:
+        metric = PwValueMetric
+        name = func.lower(func.btrim(PropertyWatch.properties[0]["name"].as_string()))
+        query = (
+            select(
+                metric.pw_value_id,
+                metric.bucket_start,
+                metric.bucket_seconds,
+                PwValue.value_key,
+                PwValue.truncated,
+                PropertyWatch.properties,
+            )
+            .join(PwValue, PwValue.id == metric.pw_value_id)
+            .join(PropertyWatch, PropertyWatch.id == PwValue.watch_id)
+            .where(
+                PropertyWatch.instance_id == instance_id,
+                # Single-property watches of a classifiable property, untruncated values:
+                # the rest folds to nothing, so it is not paged through.
+                func.jsonb_array_length(PropertyWatch.properties) == 1,
+                name.in_(("username", "sourceip", "destinationip")),
+                PwValue.truncated.is_(False),
+                metric.bucket_start < until,
+            )
+            .order_by(metric.pw_value_id, metric.bucket_start)
+            .limit(limit)
+        )
+        if after is not None:
+            query = query.where(
+                tuple_(metric.pw_value_id, metric.bucket_start)
+                > tuple_(uuid.UUID(after[0]), _ts(after[1]))
+            )
+        rows = (await self.session.execute(query)).all()
+        mentions: list[EntityMentionRow] = []
+        for value_id, bucket_start, seconds, value_key, truncated, properties in rows:
+            mentions.extend(
+                pw_value_mentions(
+                    instance_id,
+                    properties,
+                    pw_value_id=value_id,
+                    value_key=value_key,
+                    truncated=truncated,
+                    bucket_start=bucket_start,
+                    bucket_seconds=seconds,
+                )
+            )
+        last = [str(rows[-1][0]), rows[-1][1].isoformat()] if rows else None
         return _Batch(len(rows), mentions, last)
 
 

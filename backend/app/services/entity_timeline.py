@@ -31,7 +31,6 @@ from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.history.origin import is_live_clause
 from app.i18n.messages import MessageRef
 from app.models.catchall import CatchallBucket
 from app.models.entity import EntityMention, EntityMentionBackfill
@@ -769,7 +768,6 @@ class EntityTimelineService:
         catchall_proves: Any = literal(False)
         if include_catchall and kind in (EntityTimelineKind.IP, EntityTimelineKind.HOST):
             catchall_window = (
-                is_live_clause(CatchallBucket),
                 CatchallBucket.bucket_start < end,
                 CatchallBucket.bucket_start
                 + CatchallBucket.bucket_seconds * _SECOND
@@ -814,7 +812,6 @@ class EntityTimelineService:
                 func.jsonb_array_length(PropertyWatch.properties) == 1,
                 property_name.in_(property_names),
                 PwBucket.watch_version == PropertyWatch.watch_version,
-                is_live_clause(PwBucket),
                 PwBucket.bucket_start < end,
                 PwBucket.bucket_start + PwBucket.bucket_seconds * _SECOND > start,
             )

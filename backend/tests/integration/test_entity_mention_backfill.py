@@ -649,16 +649,16 @@ async def test_statements_per_batch_are_constant(db_session) -> None:
     assert kinds == ["SELECT", "INSERT", "UPDATE"]
 
 
-async def test_log_source_is_complete_and_catchall_pw_get_no_row(db_session) -> None:
+async def test_log_source_is_complete_and_every_source_gets_a_row(db_session) -> None:
     instance = await make_instance(db_session)
     await db_session.commit()
     await service(db_session).run()
     rows = await states(db_session, instance.id)
-    assert set(rows) == {"LOG_SOURCE", *SOURCES}
+    # SOC-16f7: CATCHALL and PW_VALUE now have rows (they had none in SOC-16f4).
+    assert set(rows) == {"LOG_SOURCE", *SOURCES, "CATCHALL", "PW_VALUE"}
     log_source = rows["LOG_SOURCE"]
     assert (log_source.status, log_source.rows_written) == ("COMPLETE", 0)
     assert log_source.completed_at == NOW
-    assert not {"CATCHALL", "PW_VALUE"} & set(rows)
     # No parents: every other source completes with nothing written.
     assert {r.rows_written for r in rows.values()} == {0}
 
@@ -920,11 +920,11 @@ def test_cli_unknown_instance_exits_2_and_changes_nothing(operator, capsys) -> N
 def test_cli_run_then_status_exit_0(operator, capsys) -> None:  # type: ignore[no-untyped-def]
     assert cli.main(["run", "--instance", NAME]) == 0
     out = capsys.readouterr().out
-    for source in ("LOG_SOURCE", *SOURCES):
+    for source in ("LOG_SOURCE", *SOURCES, "CATCHALL", "PW_VALUE"):
         assert f"{NAME} {source} COMPLETE" in out
     assert cli.main(["status", "--instance", NAME]) == 0
     status = capsys.readouterr().out.splitlines()
-    assert len(status) == 6 and all("COMPLETE" in line for line in status)
+    assert len(status) == 8 and all("COMPLETE" in line for line in status)
     assert all("rows_written=0" in line and "completed=" in line for line in status)
     assert cli.main(["run", "--max-batches", "1"]) == 0  # nothing left to do
     assert "batches=0" in capsys.readouterr().out

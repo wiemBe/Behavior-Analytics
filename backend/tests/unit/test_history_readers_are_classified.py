@@ -64,9 +64,8 @@ HISTORY_TABLES = (
             "app.services.property_watches.watch_buckets": Reader("R6", ReaderKind.DISPLAY),
             "app.services.property_watches.watch_aql": Reader("R6", ReaderKind.DISPLAY),
             "app.services.entity_timeline.EntityTimelineService._coverage": Reader(
-                "entity timeline coverage: mentions exist for live buckets only",
-                ReaderKind.LIVE_ONLY,
-                1,
+                "mentions exist for stored buckets of both origins once backfill is complete",
+                ReaderKind.DISPLAY,
             ),
             # PW-13d: counts every stored bucket of the current version, history included,
             # to refuse a history request that would prepend (§H.5.5).
@@ -292,10 +291,15 @@ HISTORY_TABLES = (
                 "R6", ReaderKind.DISPLAY
             ),
             "app.services.catchall_retention.<module>": Reader("R7", ReaderKind.DELETE),
+            (
+                "app.services.entity_mention_backfill.EntityMentionBackfillService._catchall"
+            ): Reader(
+                "the mention backfill indexes stored buckets of both origins",
+                ReaderKind.DISPLAY,
+            ),
             "app.services.entity_timeline.EntityTimelineService._coverage": Reader(
-                "entity timeline coverage: mentions exist for live buckets only",
-                ReaderKind.LIVE_ONLY,
-                1,
+                "mentions exist for stored buckets of both origins once backfill is complete",
+                ReaderKind.DISPLAY,
             ),
             (
                 "app.services.entity_timeline.EntityTimelineService."
