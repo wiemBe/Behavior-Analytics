@@ -220,14 +220,14 @@ describe("alert list contents", () => {
     vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
     await renderPage();
     expect(screen.getByText(/Lifecycle OPEN → ACKNOWLEDGED → RESOLVED\./)).toBeInTheDocument();
-    expect(screen.getByText(/raise its repeat count rather than creating duplicates/)).toBeInTheDocument();
+    expect(screen.getByText(/count as one more detection rather than creating duplicates/)).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("occurrence count");
     const table = screen.getByRole("table");
     for (const header of [
       "Title",
       "Severity",
       "Status",
-      "Repeats while open",
+      "Detections while open",
       "First seen",
       "Last seen",
     ]) {
@@ -243,12 +243,20 @@ describe("alert list contents", () => {
     expect(row).toHaveTextContent("4");
   });
 
-  it("names the counter as repeats of one open alert, not as a number of alerts", async () => {
+  it("names the counter as detections of one open alert, not as a number of alerts", async () => {
     vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
     await renderPage();
     const table = screen.getByRole("table");
-    expect(within(table).getByRole("columnheader", { name: "Repeats while open" })).toHaveClass("num");
+    expect(within(table).getByRole("columnheader", { name: "Detections while open" })).toHaveClass("num");
     expect(within(table).queryByRole("columnheader", { name: "Occurrences" })).toBeNull();
+  });
+
+  it("heads the counter 'Detections while open', not 'Repeats while open'", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert({ occurrence_count: 1 })]));
+    await renderPage();
+    const table = screen.getByRole("table");
+    expect(within(table).getByRole("columnheader", { name: "Detections while open" })).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /Repeats/ })).toBeNull();
   });
 
   it("shows a resolved row's counter under that header, one row for the count", async () => {

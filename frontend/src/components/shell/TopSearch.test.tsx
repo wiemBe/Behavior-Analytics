@@ -215,6 +215,43 @@ describe("empty and error", () => {
     );
   });
 
+  it("draws no group heading above nothing when nothing matches anywhere", async () => {
+    api.searchSources.mockImplementation(() => page([]));
+    api.searchRules.mockImplementation(() => page([]));
+    api.searchOffenses.mockImplementation(() => page([]));
+    api.activeAnomalies.mockImplementation(() => page([]));
+    render(<TopSearch />);
+    await type("zzz");
+    // The Entities row is not a searched group and stays.
+    const groups = screen.getAllByRole("group");
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toHaveAccessibleName("Entities");
+    for (const name of ["Sources", "Rules", "Offenses", "Active anomalies (first 200)"]) {
+      expect(screen.queryByRole("group", { name })).toBeNull();
+    }
+    expect(screen.getByRole("status")).toHaveTextContent("match");
+  });
+
+  it("keeps the heading and the failure note of a failed group when the rest are empty", async () => {
+    api.searchRules.mockRejectedValue(new ApiError(500, "boom"));
+    api.searchSources.mockImplementation(() => page([]));
+    api.searchOffenses.mockImplementation(() => page([]));
+    api.activeAnomalies.mockImplementation(() => page([]));
+    render(<TopSearch />);
+    await type("zzz");
+    const rules = screen.getByRole("group", { name: "Rules" });
+    expect(within(rules).getByText(/Rules could not be searched/)).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Sources" })).toBeNull();
+  });
+
+  it("keeps heading and note for an empty group when another group has hits", async () => {
+    api.searchRules.mockImplementation(() => page([]));
+    render(<TopSearch />);
+    await type("firewall");
+    const group = screen.getByRole("group", { name: "Rules" });
+    expect(within(group).getByText("No match.")).toBeInTheDocument();
+  });
+
   it("says a failed group failed, apart from a group with no match", async () => {
     api.searchRules.mockRejectedValue(new ApiError(500, "boom"));
     api.searchSources.mockImplementation(() => page([]));

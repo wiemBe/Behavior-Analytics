@@ -15,6 +15,7 @@ import {
   contributorDisplayValue,
   selectHeadlineContributors,
 } from "@/lib/contributors";
+import { evidenceEntityHref } from "@/lib/entities";
 import { formatCount, formatDelta, formatShare } from "@/lib/behavior";
 import { ARROW } from "@/lib/behaviorI18n";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
@@ -31,6 +32,7 @@ export function TopContributors({
   onViewAllHref?: string;
 }) {
   const t = useTranslations("anomalies.top");
+  const tc = useTranslations("anomalies.contributors");
   const i18n = useBehaviorI18n();
   const { locale } = i18n;
   const picks = selectHeadlineContributors(packaged, 3, i18n);
@@ -59,10 +61,21 @@ export function TopContributors({
       <ul className="contributor-cards">
         {picks.map((pick) => {
           const c = pick.contributor;
+          // Same rule as the contributor table: an address or a username opens its stored
+          // timeline, decided by the dimension's name; any other value stays plain text.
+          const entityHref = evidenceEntityHref(c.dimension, c.value);
           return (
             <li key={`${pick.dimension}:${c.value}`} className="card contributor-card">
               <div className="k">{pick.dimensionLabel}</div>
-              <p className="contributor-value">{contributorDisplayValue(c)}</p>
+              <p className="contributor-value">
+                {entityHref ? (
+                  <Link href={entityHref} aria-label={tc("entityLink", { value: c.value })}>
+                    {contributorDisplayValue(c)}
+                  </Link>
+                ) : (
+                  contributorDisplayValue(c)
+                )}
+              </p>
               <p className="contributor-change num">
                 {formatCount(c.baseline_count, locale)} {ARROW} {formatCount(c.anomaly_count, locale)}
               </p>

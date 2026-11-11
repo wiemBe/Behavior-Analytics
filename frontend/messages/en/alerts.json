@@ -1,7 +1,7 @@
 {
   "meta": { "list": "Alerts", "detail": "Alert detail" },
   "title": "Alerts",
-  "description": "Lifecycle OPEN → ACKNOWLEDGED → RESOLVED. Repeated detections update the open alert and raise its repeat count rather than creating duplicates. Times are UTC.",
+  "description": "Lifecycle OPEN → ACKNOWLEDGED → RESOLVED. Repeated detections update the open alert and count as one more detection rather than creating duplicates. Times are UTC.",
   "loadNoun": "alerts",
   "filters": { "label": "Alert status", "all": "All statuses", "filter": "Filter", "clear": "Clear", "status": { "OPEN": "Open", "ACKNOWLEDGED": "Acknowledged", "RESOLVED": "Resolved" } },
   "empty": { "all": "No alerts have been raised.", "OPEN": "No open alerts.", "ACKNOWLEDGED": "No acknowledged alerts.", "RESOLVED": "No resolved alerts." },
@@ -9,7 +9,7 @@
   "anomalyLink": "Anomaly",
   "anomalyLinkMore": "Anomaly (+{count} more)",
   "anomalyLinkLabel": "Open the anomaly behind {title}",
-  "table": { "label": "Alerts", "title": "Title", "anomaly": "Anomaly", "severity": "Severity", "status": "Status", "occurrences": "Repeats while open", "firstSeen": "First seen", "lastSeen": "Last seen" },
+  "table": { "label": "Alerts", "title": "Title", "anomaly": "Anomaly", "severity": "Severity", "status": "Status", "occurrences": "Detections while open", "firstSeen": "First seen", "lastSeen": "Last seen" },
   "boundary": { "listWhat": "alerts", "listWhatError": "Alerts", "detailTitle": "Alert Detail", "detailWhat": "this alert", "detailWhatError": "This alert" },
   "detail": {
     "title": "Alert Detail",

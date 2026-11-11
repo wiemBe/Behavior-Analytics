@@ -384,6 +384,26 @@ function TriageCell({ a }: { a: AnomalySummary }) {
   );
 }
 
+/**
+ * An owner subject with break opportunities after "@", "." "-" and "_", so a long address wraps
+ * at a natural point first. `<wbr>` adds no character: the text content stays the subject and a
+ * copy gives the address. A single segment longer than the column still breaks anywhere
+ * (`td.cell-owner`).
+ */
+function OwnerText({ value }: { value: string }) {
+  const parts = value.match(/[^@._-]*[@._-]?/g)?.filter((p) => p !== "") ?? [value];
+  return (
+    <>
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 && <wbr />}
+          {part}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 export function AnomalyRows({ items, nowMs }: { items: AnomalySummary[]; nowMs: number }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const t = useTranslations("anomalies.rows");
@@ -471,7 +491,9 @@ export function AnomalyRows({ items, nowMs }: { items: AnomalySummary[]; nowMs: 
                 {!a.triage ? (
                   <span className="muted">{t("triageUnknown")}</span>
                 ) : a.triage.owner ? (
-                  <span title={a.triage.owner}>{a.triage.owner}</span>
+                  <span title={a.triage.owner}>
+                    <OwnerText value={a.triage.owner} />
+                  </span>
                 ) : (
                   <span className="muted">{t("unassigned")}</span>
                 )}
