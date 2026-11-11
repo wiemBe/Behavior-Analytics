@@ -46,6 +46,8 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 | `CELERY_BROKER_URL` | `redis://redis:6379/1` | Celery broker |
 | `CELERY_RESULT_BACKEND` | `redis://redis:6379/2` | Celery result backend |
 
+`deploy/postgres/Dockerfile` starts PostgreSQL with `-c timescaledb.telemetry_level=off`, a server-wide setting: TimescaleDB telemetry is off; the database contacts nothing outside.
+
 ## Ariel guardrails
 
 | Setting | Default | Meaning |

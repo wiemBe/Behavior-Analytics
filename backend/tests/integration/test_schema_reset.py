@@ -1,7 +1,8 @@
-"""Guard tests for `reset_public_schema` (docs/tasks/T-083b.md).
+"""Guard tests for `reset_public_schema` (docs/tasks/T-083b.md, docs/tasks/FIX-47.md).
 
 The deadlock the helper avoids is intermittent, so these pin the guard directly: other
-sessions on the test database are terminated, sessions on any other database are not.
+sessions on the test database are terminated, sessions on any other database are not,
+and the database-level telemetry setting keeps the reporter's own later session away.
 """
 
 from __future__ import annotations
@@ -87,6 +88,40 @@ def test_reset_terminates_sessions_on_this_database_only() -> None:
                     )
                 ).scalar_one()
                 == 0
+            )
+    finally:
+        engine.dispose()
+
+
+def test_reset_turns_timescaledb_telemetry_off_for_new_sessions() -> None:
+    """The database setting, not a terminated session, keeps the reporter away (FIX-47)."""
+    sync_url = _sync_url()
+    engine = create_engine(sync_url, future=True)
+    try:
+        with engine.begin() as conn:
+            current = conn.execute(
+                text("SELECT current_setting('timescaledb.telemetry_level', true)")
+            ).scalar_one()
+            if current is None:
+                pytest.skip("the database does not preload the timescaledb extension")
+            # Start from the default: an earlier run leaves the setting in place,
+            # and the guard below must prove the reset writes it again.
+            database = conn.execute(text("SELECT current_database()")).scalar_one()
+            quoted = conn.dialect.identifier_preparer.quote(database)
+            conn.execute(
+                text(f"ALTER DATABASE {quoted} RESET timescaledb.telemetry_level")
+            )
+    finally:
+        engine.dispose()
+
+    reset_public_schema(sync_url)
+
+    # A session opened after the reset, as the reporter's own next session is.
+    engine = create_engine(sync_url, future=True)
+    try:
+        with engine.connect() as conn:
+            assert (
+                conn.execute(text("SHOW timescaledb.telemetry_level")).scalar_one() == "off"
             )
     finally:
         engine.dispose()

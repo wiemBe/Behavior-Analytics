@@ -12,6 +12,10 @@ name: qradar-observability-test
 services:
   test-db:
     image: timescale/timescaledb:2.17.2-pg16
+    # The telemetry reporter deadlocks with the migration fixtures' schema drop
+    # (FIX-47). Set at server level, as the entrypoint expects: `postgres` stays
+    # the first argument, so the image's initdb still runs on the tmpfs volume.
+    command: ["postgres", "-c", "timescaledb.telemetry_level=off"]
     environment:
       POSTGRES_USER: test
       POSTGRES_PASSWORD: test
