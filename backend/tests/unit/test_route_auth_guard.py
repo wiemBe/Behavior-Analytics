@@ -80,6 +80,7 @@ _READONLY_MAY_MUTATE: set[tuple[str, str]] = {
 # validation, so a mutating route with a required body needs one here to reach
 # its 403. A new mutating route without an entry fails with a 422 and a message.
 _BODIES: dict[tuple[str, str], dict] = {
+    ("POST", "/api/v1/handover"): {"note": "guard", "watch": []},
     ("POST", "/api/v1/searches"): {
         "name": "guard",
         "aql_query": "SELECT sourceip FROM events LAST 1 HOURS",

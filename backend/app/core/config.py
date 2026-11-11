@@ -813,6 +813,11 @@ class Settings(BaseSettings):
     geo_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     geo_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
+    # --- SOC-14a: immutable shift handover log -------------------------------
+    handover_retention_days: int = Field(default=90, ge=1)
+    handover_retention_batch_size: int = Field(default=500, ge=1, le=10_000)
+    handover_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+
     # --- D-42: QRadar health in detail (disk, system, pipeline, notifications) ---
     #: Kill switch. Two aggregating Ariel searches per console per cadence tick (the
     #: Health Metrics log source and the System Notification log source), and at most one

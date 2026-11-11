@@ -211,6 +211,10 @@ BATCH_DELETERS: tuple[BatchDeleter, ...] = (
         (BatchTable("geo_country_bucket", "geo_retention_days"),),
     ),
     BatchDeleter(
+        "apply_handover_retention",
+        (BatchTable("shift_handover", "handover_retention_days"),),
+    ),
+    BatchDeleter(
         "apply_qradar_health_retention",
         (
             BatchTable("qradar_health_run", "qradar_health_retention_days"),

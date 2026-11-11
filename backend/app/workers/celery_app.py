@@ -223,6 +223,11 @@ celery_app.conf.beat_schedule = {
         "task": "apply_geo_retention",
         "schedule": float(settings.geo_retention_interval_seconds),
     },
+    # --- SOC-14a -------------------------------------------------------------
+    "apply-handover-retention": {
+        "task": "apply_handover_retention",
+        "schedule": 86400.0,
+    },
     # --- D-42 ----------------------------------------------------------------
     "collect-qradar-health": {
         # Two read-only aggregating Ariel searches per console per cadence tick (the

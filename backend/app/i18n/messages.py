@@ -477,6 +477,19 @@ def _msg(
 
 
 REGISTRY: tuple[MessageSpec, ...] = (
+    # SOC-14a handover authoring and immutable-record lookup.
+    _fixed("handover.note_required", "note is required"),
+    _mixed(
+        "handover.note_too_long",
+        "note must be at most {max} characters",
+        count={"max": 4000},
+    ),
+    _mixed(
+        "handover.watch_too_many",
+        "watch must contain at most {max} items",
+        count={"max": 20},
+    ),
+    _fixed("handover.not_found", "handover was not found"),
     # SOC-16 entity timeline request validation. These refusals are English-only
     # under D-45; the generated English artifact is refreshed with this block.
     _fixed(

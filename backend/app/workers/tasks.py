@@ -65,6 +65,7 @@ from app.services.detection_coverage import DetectionCoverageEvaluator
 from app.services.digest import run_due_digests
 from app.services.entity_mention_backfill import EntityMentionBackfillService
 from app.services.geo_retention import GeoRetention
+from app.services.handover_retention import HandoverRetention
 from app.services.ips_anomaly_retention import IpsAnomalyRetention
 from app.services.ips_pipeline import IpsInstancePipeline, ips_pipeline_lock_key
 from app.services.ips_profiles import IpsProfileService
@@ -768,6 +769,13 @@ async def apply_geo_retention() -> dict:
     maker = get_sessionmaker()
     async with maker() as session:
         report = await GeoRetention(session).run()
+        return report.as_dict()
+
+
+async def apply_handover_retention() -> dict:
+    maker = get_sessionmaker()
+    async with maker() as session:
+        report = await HandoverRetention(session).run()
         return report.as_dict()
 
 
@@ -2217,6 +2225,11 @@ def collect_geo_countries_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="apply_geo_retention")
 def apply_geo_retention_task() -> dict:
     return _run(apply_geo_retention())
+
+
+@celery_app.task(name="apply_handover_retention")
+def apply_handover_retention_task() -> dict:
+    return _run(apply_handover_retention())
 
 
 @celery_app.task(name="collect_qradar_health")

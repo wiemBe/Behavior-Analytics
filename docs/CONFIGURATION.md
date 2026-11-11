@@ -376,6 +376,17 @@ groups by the configured country property, and a direction with no property is n
 `lookup` mode still resolves the country inside the QRadar query with `GEO::LOOKUP`. A
 non-empty property name must match the property-name allowlist or settings refuse to load.
 
+## Shift handover
+
+The shared handover log stores immutable notes and frozen aggregate queue snapshots. It never
+writes to QRadar and retains no raw event data.
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `HANDOVER_RETENTION_DAYS` | `90` | Days to retain handover records |
+| `HANDOVER_RETENTION_BATCH_SIZE` | `500` | Records deleted per batch |
+| `HANDOVER_RETENTION_MAX_BATCHES` | `20` | Batches per daily retention run |
+
 
 ## QRadar health in detail
 

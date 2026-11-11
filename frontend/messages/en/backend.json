@@ -385,6 +385,12 @@
       "unreadable": "The custom-property list could not be read on this console, so no country search was sent."
     }
   },
+  "handover": {
+    "not_found": "handover was not found",
+    "note_required": "note is required",
+    "note_too_long": "note must be at most {max} characters",
+    "watch_too_many": "watch must contain at most {max} items"
+  },
   "history": {
     "assumption": {
       "budget_ips": "{per_tick} history searches shared per tick",
