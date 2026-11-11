@@ -737,6 +737,7 @@ async def build_queue(
     limit: int,
     offset: int,
     now: datetime | None = None,
+    read_marker: bool = True,
 ) -> QueueOut:
     """The queue page and one status per requested source. Writes nothing."""
     as_of = now or datetime.now(UTC)
@@ -745,7 +746,7 @@ async def build_queue(
     # The stored marker is read only when some source is readable: with every kind forbidden
     # nothing is compared, so the page runs no statement at all.
     stored: datetime | None = None
-    if any(principal.has(KIND_PERMISSION[k]) for k in wanted_kinds):
+    if read_marker and any(principal.has(KIND_PERMISSION[k]) for k in wanted_kinds):
         stored = await get_marker(session, principal.subject)
     if since is not None:
         compare_from, compare_kind = since, CompareKind.OVERRIDE

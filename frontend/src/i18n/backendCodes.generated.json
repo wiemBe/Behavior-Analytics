@@ -3099,6 +3099,52 @@
     "sample_english_params": {},
     "template": "The custom-property list could not be read on this console, so no country search was sent."
   },
+  "handover.not_found": {
+    "params": {},
+    "sample": {},
+    "sample_english": "handover was not found",
+    "sample_english_params": {},
+    "template": "handover was not found"
+  },
+  "handover.note_required": {
+    "params": {},
+    "sample": {},
+    "sample_english": "note is required",
+    "sample_english_params": {},
+    "template": "note is required"
+  },
+  "handover.note_too_long": {
+    "params": {
+      "max": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "max": 4000
+    },
+    "sample_english": "note must be at most 4000 characters",
+    "sample_english_params": {
+      "max": "4000"
+    },
+    "template": "note must be at most {max} characters"
+  },
+  "handover.watch_too_many": {
+    "params": {
+      "max": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "max": 20
+    },
+    "sample_english": "watch must contain at most 20 items",
+    "sample_english_params": {
+      "max": "20"
+    },
+    "template": "watch must contain at most {max} items"
+  },
   "history.assumption.budget_ips": {
     "params": {
       "per_tick": {
