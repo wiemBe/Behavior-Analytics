@@ -60,6 +60,8 @@ from app.fleet.outage_policy import resolve as resolve_outage
 from app.models.alert_policy import AlertDigestRun, AlertPolicy
 from app.models.email import EmailRecipient, EmailTemplate
 from app.models.enums import (
+    SEVERITY_BY_RANK,
+    SEVERITY_RANK,
     AlertDigestState,
     AlertPolicyMode,
     AnomalyFamily,
@@ -101,24 +103,15 @@ DIGEST_LOCK_NAME = "alert_digest"
 #: Rows listed before the "and N more sources" line (design §4.6).
 DIGEST_TOP_ROWS = 50
 
-_RANK_TO_SEVERITY = {
-    4: Severity.CRITICAL,
-    3: Severity.HIGH,
-    2: Severity.MEDIUM,
-    1: Severity.LOW,
-    0: Severity.INFO,
-}
+#: A rank read back as its severity (DEBT-8). Rank 0 is "no severity at all",
+#: which is an unknown stored value and not a `Severity` member; it stays at the
+#: bottom and prints as INFO, as it did when the case spelled the ranks out.
+_RANK_TO_SEVERITY: dict[int, Severity] = {**SEVERITY_BY_RANK, 0: Severity.INFO}
 
 
 def _severity_rank(column: Any) -> Any:
     """A numeric rank so ``max()`` yields the highest severity, not the last string."""
-    return case(
-        (column == Severity.CRITICAL.value, 4),
-        (column == Severity.HIGH.value, 3),
-        (column == Severity.MEDIUM.value, 2),
-        (column == Severity.LOW.value, 1),
-        else_=0,
-    )
+    return case(SEVERITY_RANK, value=column, else_=0)
 
 
 @dataclass(frozen=True)

@@ -20,7 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from app.ips.inputs import IPS_ENTITY_EVENTS_METRIC
-from app.models.enums import ACTIVE_ANOMALY_STATES, IpsDimension, Severity
+from app.models.enums import (
+    ACTIVE_ANOMALY_STATES,
+    SEVERITY_BY_RANK,
+    SEVERITY_RANK,
+    IpsDimension,
+    Severity,
+)
 from app.models.ips import (
     IpsAnomaly,
     IpsDetectorState,
@@ -38,15 +44,6 @@ _ENTITY_SUBJECT = "IPS_ENTITY"
 
 #: The destination-IP measurement states whose entity counts are usable.
 _DESTINATION_IP_MEASURED = ("EXACT", "LOWER_BOUND")
-
-_SEVERITY_RANK = {
-    Severity.CRITICAL.value: 5,
-    Severity.HIGH.value: 4,
-    Severity.MEDIUM.value: 3,
-    Severity.LOW.value: 2,
-    Severity.INFO.value: 1,
-}
-_SEVERITY_BY_RANK = {rank: Severity(value) for value, rank in _SEVERITY_RANK.items()}
 
 
 class IpsTrafficRow(NamedTuple):
@@ -201,7 +198,7 @@ class IpsBehaviorRepository:
         if not log_source_ids:
             return {}
         source_id = func.coalesce(IpsAnomaly.log_source_id, IpsEntity.log_source_id)
-        severity_rank = case(_SEVERITY_RANK, value=IpsAnomaly.severity, else_=0)
+        severity_rank = case(SEVERITY_RANK, value=IpsAnomaly.severity, else_=0)
         rows = await self.session.execute(
             select(source_id, func.count(), func.max(severity_rank))
             .select_from(IpsAnomaly)
@@ -213,9 +210,9 @@ class IpsBehaviorRepository:
             .group_by(source_id)
         )
         return {
-            source: (int(count), _SEVERITY_BY_RANK[int(rank)])
+            source: (int(count), SEVERITY_BY_RANK[int(rank)])
             for source, count, rank in rows.all()
-            if source is not None and int(rank) in _SEVERITY_BY_RANK
+            if source is not None and int(rank) in SEVERITY_BY_RANK
         }
 
     # --------------------------------------------------------- IPS entities
