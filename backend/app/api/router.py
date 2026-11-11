@@ -35,6 +35,7 @@ from app.api.routes import (
     providers,
     qradar_health_detail,
     queue,
+    reports,
     rules,
     search_cadence,
     searches,
@@ -91,6 +92,9 @@ api_router.include_router(me.router, dependencies=[Depends(get_principal)])
 # /queue needs authentication and no router-level permission: each of its five sources checks
 # its own read permission and reports FORBIDDEN, naming it, so the page is never all or nothing.
 api_router.include_router(queue.router, dependencies=[Depends(get_principal)])
+# /reports is principal-only for the same reason: each block checks its own read permission
+# (read:alerts, read:anomalies) and reports FORBIDDEN, naming it.
+api_router.include_router(reports.router, dependencies=[Depends(get_principal)])
 # The shared handover log is principal-only. Its preview and create handlers add
 # `anomaly:triage`; each frozen source applies its own read permission.
 api_router.include_router(handover.router, dependencies=[Depends(get_principal)])

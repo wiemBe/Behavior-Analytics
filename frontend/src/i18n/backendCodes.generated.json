@@ -10319,6 +10319,73 @@
     "sample_english_params": {},
     "template": "Offense collection is stale, so the rules that fired in this window may be incomplete."
   },
+  "reports.param_unknown": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "since"
+    },
+    "sample_english": "unknown query parameter since",
+    "sample_english_params": {
+      "name": "since"
+    },
+    "template": "unknown query parameter {name}"
+  },
+  "reports.period_unknown": {
+    "params": {},
+    "sample": {},
+    "sample_english": "period must be one of last_7d, last_30d, calendar_week, calendar_month",
+    "sample_english_params": {},
+    "template": "period must be one of last_7d, last_30d, calendar_week, calendar_month"
+  },
+  "reports.range_too_long": {
+    "params": {
+      "max": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "max": 31
+    },
+    "sample_english": "the period must not be longer than 31 days",
+    "sample_english_params": {
+      "max": "31"
+    },
+    "template": "the period must not be longer than {max} days"
+  },
+  "reports.start_in_future": {
+    "params": {},
+    "sample": {},
+    "sample_english": "start must not be in the future",
+    "sample_english_params": {},
+    "template": "start must not be in the future"
+  },
+  "reports.start_not_boundary": {
+    "params": {},
+    "sample": {},
+    "sample_english": "start must be Monday 00:00 UTC for calendar_week, or the 1st of a month 00:00 UTC for calendar_month",
+    "sample_english_params": {},
+    "template": "start must be Monday 00:00 UTC for calendar_week, or the 1st of a month 00:00 UTC for calendar_month"
+  },
+  "reports.start_required": {
+    "params": {
+      "period": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "period": "calendar_week"
+    },
+    "sample_english": "start is required for the period calendar_week",
+    "sample_english_params": {
+      "period": "calendar_week"
+    },
+    "template": "start is required for the period {period}"
+  },
   "rule.detector.baseline_incomplete": {
     "params": {
       "days": {

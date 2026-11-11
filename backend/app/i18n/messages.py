@@ -477,6 +477,28 @@ def _msg(
 
 
 REGISTRY: tuple[MessageSpec, ...] = (
+    # SOC-8b report summary period validation (English only, D-45).
+    _fixed(
+        "reports.period_unknown",
+        "period must be one of last_7d, last_30d, calendar_week, calendar_month",
+    ),
+    _text(
+        "reports.start_required",
+        "start is required for the period {period}",
+        period="calendar_week",
+    ),
+    _fixed(
+        "reports.start_not_boundary",
+        "start must be Monday 00:00 UTC for calendar_week, or the 1st of a month 00:00 UTC "
+        "for calendar_month",
+    ),
+    _mixed(
+        "reports.range_too_long",
+        "the period must not be longer than {max} days",
+        count={"max": 31},
+    ),
+    _fixed("reports.start_in_future", "start must not be in the future"),
+    _text("reports.param_unknown", "unknown query parameter {name}", name="since"),
     # SOC-14a handover authoring and immutable-record lookup.
     _fixed("handover.note_required", "note is required"),
     _mixed(
