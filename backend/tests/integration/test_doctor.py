@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from alembic import command
 from app.cli.doctor import Doctor, Status
 from app.core.config import Settings
+from app.models.entity import EntityMentionBackfill
 from app.models.enums import SearchFamily
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource, LogSourceMetric
@@ -541,3 +542,151 @@ async def test_ariel_permits_warns_when_real_advisory_locks_saturate_the_pool() 
     finally:
         await holder.dispose()
         await engine.dispose()
+
+
+# ---------------------------------------------- entity-mention backfill check
+# `entity_mention_backfill` is our own table (SOC-16f4); the check reads it once and never
+# calls QRadar. A source that is not COMPLETE cannot prove absence on the entity timeline.
+
+async def _backfill_state(maker, now, *rows):
+    """One console with the given (source, status, rows_written) backfill rows."""
+    instance = QRadarInstance(
+        id=uuid.uuid4(),
+        name="console-a",
+        console_host="https://fixture.invalid",
+        provider_kind="mock",
+    )
+    async with maker() as session:
+        session.add(instance)
+        await session.flush()
+        session.add_all(
+            [
+                EntityMentionBackfill(
+                    instance_id=instance.id,
+                    source=source,
+                    status=status,
+                    rows_written=written,
+                    last_error=last_error,
+                    updated_at=now,
+                )
+                for source, status, written, last_error in rows
+            ]
+        )
+        await session.commit()
+
+
+async def test_entity_mentions_check_reads_real_state_rows() -> None:
+    database_url = _database_url()
+    _migrate(database_url)
+    engine = create_async_engine(database_url)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    now = datetime(2026, 11, 11, 12, tzinfo=UTC)
+    try:
+        await _backfill_state(
+            maker,
+            now,
+            (
+                "EXPLANATION",
+                "FAILED",
+                12,
+                "RuntimeError: batch failed and was rolled back; it is retried on the next run",
+            ),
+            ("WAF_TOP", "PENDING", 3, None),
+            ("LOG_SOURCE", "COMPLETE", 0, None),
+        )
+        # A second console, so a join that multiplied the rows would change the counts below.
+        async with maker() as session:
+            other = QRadarInstance(
+                id=uuid.uuid4(),
+                name="console-b",
+                console_host="https://fixture.invalid",
+                provider_kind="mock",
+            )
+            session.add(other)
+            await session.flush()
+            session.add(
+                EntityMentionBackfill(
+                    instance_id=other.id,
+                    source="LOG_SOURCE",
+                    status="COMPLETE",
+                    rows_written=0,
+                    updated_at=now,
+                )
+            )
+            await session.commit()
+        doctor = Doctor(settings=_settings(database_url), sessionmaker=maker, now=lambda: now)
+        result = await doctor.check_entity_mentions()
+        assert result.status is Status.WARN
+        assert result.runbook == "OPS-R73"
+        assert "console-a/EXPLANATION (RuntimeError:" in result.message
+        assert (
+            "entity timeline index incomplete for 1 source(s): "
+            "console-a/WAF_TOP (PENDING, 3 row(s) written)" in result.message
+        )
+        assert "console-a/LOG_SOURCE" not in result.message
+        assert "console-b/LOG_SOURCE" not in result.message
+
+        async with maker() as session:
+            await session.execute(update(EntityMentionBackfill).values(status="COMPLETE"))
+            await session.commit()
+        passed = await doctor.check_entity_mentions()
+        assert passed.status is Status.PASS
+        assert passed.runbook is None
+        assert passed.message == "4 source(s) indexed, 15 row(s) written"
+    finally:
+        await engine.dispose()
+
+
+async def test_entity_mentions_check_judges_only_enabled_consoles() -> None:
+    database_url = _database_url()
+    _migrate(database_url)
+    engine = create_async_engine(database_url)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    now = datetime(2026, 11, 11, 12, tzinfo=UTC)
+    try:
+        await _backfill_state(maker, now, ("EXPLANATION", "RUNNING", 1, None))
+        async with maker() as session:
+            await session.execute(update(QRadarInstance).values(enabled=False))
+            await session.commit()
+        doctor = Doctor(settings=_settings(database_url), sessionmaker=maker, now=lambda: now)
+        result = await doctor.check_entity_mentions()
+        # A disabled console is not backfilled: its stale row is not an incomplete index.
+        assert result.status is Status.WARN
+        assert "has not run yet" in result.message
+        assert "console-a" not in result.message
+    finally:
+        await engine.dispose()
+
+
+async def test_entity_mentions_appears_in_doctor_json(monkeypatch) -> None:
+    """The operator's path: `doctor --json` carries the line under `entity_mentions`."""
+    import json
+    from unittest.mock import AsyncMock
+
+    from app.cli import doctor as doctor_module
+    from app.cli.doctor import CheckResult, render_json
+
+    database_url = _database_url()
+    _migrate(database_url)
+    engine = create_async_engine(database_url)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    now = datetime(2026, 11, 11, 12, tzinfo=UTC)
+    try:
+        await _backfill_state(maker, now, ("IPS_ENTITY", "RUNNING", 8, None))
+        doctor = Doctor(settings=_settings(database_url), sessionmaker=maker, now=lambda: now)
+        for check_id, _runbook in doctor_module._CHECK_RUNBOOKS:
+            if check_id == "entity_mentions":
+                continue
+            monkeypatch.setattr(
+                doctor,
+                f"check_{check_id}",
+                AsyncMock(return_value=CheckResult(check_id, Status.PASS, "healthy")),
+            )
+        payload = json.loads(render_json(await doctor.run()))
+    finally:
+        await engine.dispose()
+    line = next(item for item in payload if item["id"] == "entity_mentions")
+    assert line["status"] == "WARN"
+    assert line["runbook"] == "OPS-R73"
+    assert "console-a/IPS_ENTITY (RUNNING, 8 row(s) written)" in line["message"]
+    assert "allow" not in line

@@ -22,7 +22,7 @@ Dört kural her bölümde geçerlidir:
 7. [Geçmiş okuma](#geçmiş-okuma)
 8. [Kapsam eşlemeleri](#kapsam-eşlemeleri)
 9. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R72; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R73; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -1110,6 +1110,7 @@ bağlanmaz.
 | `qradar_health` | How QRadar itself is doing, from one fresh read of the first enabled console (GET only, short timeout per read). Managed hosts are counted with the HA pair rule (an HA pair is one host, and the standby of a healthy pair is expected, never a problem). WARN when a single host is not `ACTIVE` or reports no status, when an HA pair is degraded (the standby is not available, so no failover is possible), failed over (the secondary is `ACTIVE`, the primary is not) or in a state that cannot be classified, when the average EPS is over 90 % of the EPS allocation, or when the license pool is over-allocated (EPS or FPM). FAIL when an HA pair has no `ACTIVE` member. Each line names the host. SKIP when the console does not answer (`qradar_auth` reports that) or when none of managed hosts, EPS and license could be read. A figure that was not read is named in the line (`not read: ...`) and is never counted as healthy. The line also prints how many Ariel search ids QRadar holds (all users, finished and active alike); there is no threshold on that number. | OPS-R67 |
 | `qradar_disk` | Disk use of QRadar's hosts, from the latest stored run of the `QRADAR_HEALTH` family (not a live read). The fullest allowlisted mount of each host (`QRADAR_HEALTH_DISK_MOUNTS`) is judged: WARN at `QRADAR_HEALTH_DISK_WARN_PERCENT` (default 85 %), FAIL at `QRADAR_HEALTH_DISK_FAIL_PERCENT` (default 95 %), naming the host, the mount, the share and the free space. A missing, failed, partial or stale run is a WARN that says `not collected since <UTC time>` (or `not collected yet`); a host that reported no allowlisted mount is named as unread. It is never a PASS. SKIP when `QRADAR_HEALTH_COLLECTION_ENABLED` is off or no console is registered. | OPS-R69 |
 | `qradar_pipeline` | QRadar's event pipeline, from the same stored run. WARN when a host spilled events to disk because it is over its EPS allocation (`throttle spill` above zero) or when its rule-engine queue is above `QRADAR_HEALTH_CRE_QUEUE_WARN` (default 10,000 events), naming the host. A figure that was not read, and a missing, failed, partial or stale run, are WARNs with the same `not collected since ...` wording, never a PASS. SKIP when the family is off or no console is registered. | OPS-R70 |
+| `entity_mentions` | Where the entity timeline index stands, from `entity_mention_backfill` (one SELECT over our own table; no QRadar call). WARN naming each console/source that is `PENDING` or `RUNNING`, with the rows written so far and `not advancing since <UTC time>` when a `RUNNING` row's `updated_at` is older than three `ENTITY_MENTION_BACKFILL_INTERVAL_SECONDS`; each `FAILED` row with its `last_error`; and the `python -m app.cli.entity_mentions run` command. PASS `<n> source(s) indexed, <n> row(s) written` when every row is `COMPLETE`. WARN `the entity-mention backfill has not run yet` when no row exists and the feature is on; PASS `entity-mention backfill is switched off (ENTITY_MENTION_BACKFILL_ENABLED=false)` when it is off. It never FAILs: an incomplete index is degraded state, not a fault. | OPS-R73 |
 | `qradar_access` | Which QRadar APIs the token can reach, from the latest stored access check (our own table; no call to QRadar). PASS when every API of every REST console answered. FAIL when one answered 401: the token itself is not accepted. WARN naming each refused (403) or missing (404) API with what it feeds, any API that did not answer, a console with no result yet (`not checked yet`) and a result older than twice `QRADAR_ACCESS_CHECK_INTERVAL_SECONDS`. SKIP when no enabled REST console is registered. | OPS-R71 |
 | `aql_<family>` (`aql_log_source_volume`, `aql_rule_match`, `aql_history`, `aql_waf_collection`, `aql_ips_collection`, `aql_property_watch`, `aql_catchall_senders`, `aql_geo_collection`, `aql_qradar_health`) | Only with `./qradar-dash doctor --aql` (plain `doctor` sends no search). Sends each collection family's real query once to every enabled REST console and says whether QRadar accepts it. PASS: the search completed (a truncated result is still a PASS and says `truncated`); the line carries the row count and the time, never a value. FAIL: QRadar refused the search request (HTTP 400, 404, 409, 422 or another 4xx) or the token (401/403), a custom property the query needs is absent from the console (`geo_collection`, `qradar_health`), or the query cannot be built from the configuration; the line prints the HTTP status, the family's query version (a family without one says "this family's query has no version number") and the property names from our settings (printed whole, however long), and never QRadar's reply. WARN: a timeout (`DOCTOR_AQL_TIMEOUT_SECONDS`), an unavailable console, rate limiting (HTTP 429), a 5xx, a search QRadar created and then errored, or no free Ariel permit; this proves nothing about the query. SKIP: the family is switched off, nothing is configured for it (no enabled WAF profile, IPS profile or property watch, an empty geo property), the console uses MCP (AQL runs only on the REST provider), or no console is registered. A family that needs a configured entity uses the first enabled one by QRadar log source id (property watch: by watch id) and the line names it. The window is the latest complete 5-minute bucket and the row cap is the smallest the method allows (1 row). A family sends one search for each distinct provider method its collector calls per cycle, so every property a family queries is tried: WAF the volume search and each breakdown the profile collects (action, response code, client IP), IPS each planned dimension, QRADAR_HEALTH its metrics and notifications searches. Every step is tried even if an earlier one failed; the line names the step that failed and the property names that step uses. One family and one console at a time, through the Ariel permit pool: at most 20 Ariel searches per console: WAF 2 for the volume method plus 1 for each breakdown its profile collects (up to 3), IPS 1 for each dimension its mapping plans (up to 7), QRADAR_HEALTH 2, and 1 for each of the other six families. The searches are recorded in `ariel_search_run` under the caller `DOCTOR_AQL`, not under the family. Not covered, on purpose: ANOMALY_EXPLANATION, PREVIEW, SCHEDULED_SEARCH and MANUAL_RUN (on demand, or saved by a user and validated at save). | OPS-R72 |
 | `email` | Alert e-mail in one line: whether `SMTP_HOST` is set, the relay, the security mode and whether a login is configured. SKIP when no relay is configured. FAIL when a username is set with `SMTP_SECURITY=none`: that configuration is refused because the password would cross the network in clear text, and the line says so. Only with `./qradar-dash doctor --check-smtp` it also connects, says EHLO and finishes the STARTTLS or SSL handshake, then quits: nothing is sent and no login is attempted; a failed handshake is a WARN with the failure code. | OPS-R68 |
@@ -3227,6 +3228,55 @@ docker compose exec backend python -m app.cli.doctor --aql --json | python3 -c '
 ```
 
 The line holds the status, the query version, the property names from our settings and the HTTP status. It holds no event value and no QRadar reply.
+
+### OPS-R73. `entity_mentions` warns: the timeline index is incomplete
+
+**Symptom:** `doctor` shows `WARN entity_mentions` with `runbook: OPS-R73`. The line names each
+console and mention source that is not `COMPLETE`, the rows written so far, and, for a `RUNNING`
+source that stopped moving, when it last advanced. `python -m app.cli.entity_mentions status`
+lists the same rows, one per console and source.
+
+**What it means:** The entity timeline reads `entity_mention`, an index the collectors fill when
+they store a parent, and the backfill (SOC-16f4) fills for parents stored before the index
+existed. One state row per console and source is kept in `entity_mention_backfill`. `PENDING` and
+`RUNNING` mean that source is not indexed yet, so the timeline **cannot prove absence** there: an
+entity that is not shown may still have occurred. Items that exist still show, because the index
+is additive; but "no mention in this window" is not a conclusion for that source until it
+completes. `FAILED` means the last batch failed and was rolled back; it is retried from the same
+cursor on the next run. The check never reports `FAIL`: an incomplete index is honest degraded
+state, not a fault, and the rest of the platform keeps working.
+
+**What to do:**
+- `PENDING` or `RUNNING`: wait. The beat task runs every
+  `ENTITY_MENTION_BACKFILL_INTERVAL_SECONDS` (default 300 s) and spends at most
+  `ENTITY_MENTION_BACKFILL_MAX_BATCHES_PER_RUN` batches (default 20) of at most
+  `ENTITY_MENTION_BACKFILL_BATCH_SIZE` parents (default 500) per run, so a large history takes
+  many ticks. `python -m app.cli.entity_mentions status` shows where each source stands.
+- To go faster, run it by hand: `python -m app.cli.entity_mentions run` runs until every source
+  is `COMPLETE` (or `--max-batches N`). It holds the same lock as the task, so the two never
+  overlap; exit code 3 means a run was already in progress.
+- A source named **not advancing** has a `RUNNING` row whose `updated_at` is older than three
+  intervals. Either its collector lock is held on every tick (the explanation and offense batches
+  share that collector's lock; the run reports the source as `busy` and retries) or the worker is
+  not running: read `doctor`'s `celery_workers` and `celery_beat` lines (OPS-R41, OPS-R9).
+- `FAILED`: the line prints the row's `last_error`, which is short and already sanitized. The next
+  run retries the same source from its cursor; `python -m app.cli.entity_mentions run` does that
+  now and exits 4 when a source fails again. The service log has one warning with the console id
+  and the source name.
+- "the entity-mention backfill has not run yet" means no state row exists: the beat task creates
+  them on its first tick. If the feature is switched off, the line says so and the check passes
+  (`ENTITY_MENTION_BACKFILL_ENABLED=false`).
+
+**Verify:**
+
+```bash
+./qradar-dash doctor
+docker compose exec -T backend python -m app.cli.entity_mentions status
+```
+
+**It is safe:** the backfill is insert-only (`ON CONFLICT DO NOTHING`); it never updates or
+deletes a mention, and it is read-only against QRadar — it reads stored aggregates and sends no
+search. Running it again changes nothing that is already indexed.
 
 
 ## Investigate in QRadar (pivot blocks)

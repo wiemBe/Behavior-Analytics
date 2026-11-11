@@ -1478,3 +1478,215 @@ async def test_rule_match_coverage_check_covers_every_state(settings: Settings) 
     assert broken.status is Status.FAIL
     assert broken.message == "rule-match window coverage could not be read (RuntimeError)"
     assert broken.runbook == "OPS-R65"
+
+
+# ------------------------------------------- entity mentions (SOC-16f4b, OPS-R73)
+# One row per (console, mention source) in `entity_mention_backfill`. The check reads them all
+# in one SELECT; a source whose index is incomplete is honest degraded state, never a FAIL.
+
+_ENTITY_NOW = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
+
+
+def _backfill_row(
+    source: str,
+    status: str,
+    *,
+    instance: str = "console-a",
+    written: int = 0,
+    updated_at: datetime | None = None,
+    last_error: str | None = None,
+) -> tuple[str, str, str, int, datetime, str | None]:
+    return (
+        instance,
+        source,
+        status,
+        written,
+        _ENTITY_NOW if updated_at is None else updated_at,
+        last_error,
+    )
+
+
+@pytest.mark.asyncio
+async def test_entity_mentions_warns_before_the_first_run(settings: Settings) -> None:
+    session = FakeSession(execute_values=[[]])
+    result = await make_doctor(
+        settings, session, now=lambda: _ENTITY_NOW
+    ).check_entity_mentions()
+    assert result.status is Status.WARN
+    assert result.runbook == "OPS-R73"
+    assert result.message == (
+        "the entity-mention backfill has not run yet; run it now: "
+        "python -m app.cli.entity_mentions run"
+    )
+    # One SELECT, whatever the number of consoles.
+    assert len(session.statements) == 1
+
+
+@pytest.mark.asyncio
+async def test_entity_mentions_passes_switched_off_when_no_row_exists(settings: Settings) -> None:
+    off = settings.model_copy(update={"entity_mention_backfill_enabled": False})
+    result = await make_doctor(off, FakeSession(execute_values=[[]])).check_entity_mentions()
+    assert result.status is Status.PASS
+    assert result.runbook is None
+    assert result.message == (
+        "entity-mention backfill is switched off (ENTITY_MENTION_BACKFILL_ENABLED=false)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_entity_mentions_warns_for_each_failed_row_with_the_retry(settings: Settings) -> None:
+    rows = [
+        _backfill_row(
+            "EXPLANATION",
+            "FAILED",
+            written=12,
+            last_error="RuntimeError: batch failed and was rolled back; it is retried "
+            "on the next run",
+        ),
+        _backfill_row("OFFENSE", "FAILED", instance="console-b", last_error="ValueError: boom"),
+    ]
+    result = await make_doctor(
+        settings, FakeSession(execute_values=[rows]), now=lambda: _ENTITY_NOW
+    ).check_entity_mentions()
+    assert result.status is Status.WARN
+    assert result.runbook == "OPS-R73"
+    assert result.message == (
+        "entity-mention backfill failed for "
+        "console-a/EXPLANATION (RuntimeError: batch failed and was rolled back; it is "
+        "retried on the next run); console-b/OFFENSE (ValueError: boom); "
+        "retry: python -m app.cli.entity_mentions run"
+    )
+    assert "incomplete" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_entity_mentions_masks_a_token_shaped_last_error(settings: Settings) -> None:
+    planted = "Zk9qL2mPx7VbN4cRt8YwHs3Q"
+    rows = [_backfill_row("WAF_TOP", "FAILED", last_error=planted)]
+    result = await make_doctor(
+        settings, FakeSession(execute_values=[rows]), now=lambda: _ENTITY_NOW
+    ).check_entity_mentions()
+    assert planted not in result.message
+    assert "***redacted***" in result.message
+    assert planted not in render_text([result]) + render_json([result])
+
+
+@pytest.mark.asyncio
+async def test_entity_mentions_warns_for_pending_sources_and_says_absence_is_unprovable(
+    settings: Settings,
+) -> None:
+    rows = [
+        _backfill_row("EXPLANATION", "PENDING"),
+        _backfill_row("WAF_TOP", "PENDING", written=7),
+    ]
+    result = await make_doctor(
+        settings, FakeSession(execute_values=[rows]), now=lambda: _ENTITY_NOW
+    ).check_entity_mentions()
+    assert result.status is Status.WARN
+    assert result.runbook == "OPS-R73"
+    assert result.message == (
+        "entity timeline index incomplete for 2 source(s): "
+        "console-a/EXPLANATION (PENDING, 0 row(s) written); "
+        "console-a/WAF_TOP (PENDING, 7 row(s) written); "
+        "absence cannot be proven there until it completes; run it now: "
+        "python -m app.cli.entity_mentions run"
+    )
+
+
+@pytest.mark.asyncio
+async def test_entity_mentions_names_a_running_source_as_not_advancing_only_when_stale(
+    settings: Settings,
+) -> None:
+    # Three 300-s ticks: exactly on the bound is still fresh.
+    fresh = _backfill_row(
+        "IPS_TOP", "RUNNING", written=3, updated_at=_ENTITY_NOW - timedelta(seconds=900)
+    )
+    result = await make_doctor(
+        settings, FakeSession(execute_values=[[fresh]]), now=lambda: _ENTITY_NOW
+    ).check_entity_mentions()
+    assert result.status is Status.WARN
+    assert "not advancing" not in result.message
+    assert "console-a/IPS_TOP (RUNNING, 3 row(s) written)" in result.message
+
+    stale = _backfill_row(
+        "IPS_TOP", "RUNNING", written=3, updated_at=_ENTITY_NOW - timedelta(seconds=901)
+    )
+    result = await make_doctor(
+        settings, FakeSession(execute_values=[[stale]]), now=lambda: _ENTITY_NOW
+    ).check_entity_mentions()
+    assert result.status is Status.WARN
+    assert (
+        "console-a/IPS_TOP (RUNNING, 3 row(s) written, "
+        "not advancing since 2026-11-11 11:44 UTC)"
+    ) in result.message
+
+
+@pytest.mark.asyncio
+async def test_entity_mentions_passes_when_every_source_is_complete(settings: Settings) -> None:
+    rows = [
+        _backfill_row("EXPLANATION", "COMPLETE", written=100),
+        _backfill_row("LOG_SOURCE", "COMPLETE"),
+        _backfill_row("WAF_TOP", "COMPLETE", instance="console-b", written=20),
+    ]
+    session = FakeSession(execute_values=[rows])
+    result = await make_doctor(
+        settings, session, now=lambda: _ENTITY_NOW
+    ).check_entity_mentions()
+    assert result.status is Status.PASS
+    assert result.runbook is None
+    assert result.message == "3 source(s) indexed, 120 row(s) written"
+    assert len(session.statements) == 1
+
+
+@pytest.mark.asyncio
+async def test_entity_mentions_leads_with_a_failure_and_still_names_the_incomplete(
+    settings: Settings,
+) -> None:
+    rows = [
+        _backfill_row("EXPLANATION", "FAILED", last_error="RuntimeError: boom"),
+        _backfill_row("OFFENSE", "RUNNING", written=4),
+        _backfill_row("WAF_TOP", "COMPLETE", written=9),
+    ]
+    result = await make_doctor(
+        settings, FakeSession(execute_values=[rows]), now=lambda: _ENTITY_NOW
+    ).check_entity_mentions()
+    assert result.status is Status.WARN
+    assert result.message.startswith(
+        "entity-mention backfill failed for console-a/EXPLANATION (RuntimeError: boom)"
+    )
+    assert result.message.index("failed for") < result.message.index("index incomplete")
+    assert "entity timeline index incomplete for 1 source(s): " in result.message
+    assert "console-a/OFFENSE (RUNNING, 4 row(s) written)" in result.message
+    assert "console-a/WAF_TOP" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_entity_mentions_warns_when_the_state_cannot_be_read(settings: Settings) -> None:
+    result = await make_doctor(
+        settings, FakeSession(execute_values=[RuntimeError("boom")])
+    ).check_entity_mentions()
+    assert result.status is Status.WARN
+    assert result.runbook == "OPS-R73"
+    assert result.message == "entity-mention backfill state could not be read (RuntimeError)"
+
+
+def test_entity_mentions_is_registered_before_qradar_access_with_its_runbook() -> None:
+    ids = [check_id for check_id, _runbook in doctor_module._CHECK_RUNBOOKS]
+    assert ("entity_mentions", "OPS-R73") in doctor_module._CHECK_RUNBOOKS
+    assert ids.index("entity_mentions") == ids.index("qradar_access") - 1
+    assert ids[-1] == "qradar_health"
+    operations = (
+        pathlib.Path(__file__).resolve().parents[3] / "docs" / "OPERATIONS.md"
+    ).read_text(encoding="utf-8")
+    assert "| `entity_mentions` |" in operations
+    entry = operations[operations.index("### OPS-R73.") :]
+    for fragment in (
+        "entity_mentions",
+        "ENTITY_MENTION_BACKFILL_ENABLED",
+        "python -m app.cli.entity_mentions status",
+        "python -m app.cli.entity_mentions run",
+        "absence",
+        "insert-only",
+        "read-only",
+    ):
+        assert fragment in entry, fragment
