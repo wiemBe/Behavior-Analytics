@@ -18,12 +18,7 @@ from dataclasses import dataclass, field
 
 from app.core.config import Settings, get_settings
 from app.models.alert import Alert
-from app.models.enums import NotificationChannel, Severity
-
-_SEVERITY_RANK = {
-    Severity.INFO: 0, Severity.LOW: 1, Severity.MEDIUM: 2,
-    Severity.HIGH: 3, Severity.CRITICAL: 4,
-}
+from app.models.enums import SEVERITY_RANK, NotificationChannel, Severity
 
 
 @dataclass(frozen=True)
@@ -51,7 +46,10 @@ class RoutingRule:
     source_types: frozenset[str] | None = None
 
     def matches(self, alert: Alert) -> bool:
-        if _SEVERITY_RANK[alert.severity] < _SEVERITY_RANK[self.min_severity]:
+        # The shared order (DEBT-8b). `Severity` is a StrEnum and `alert.severity`
+        # is a stored string, so both index the string-keyed map directly, and an
+        # unknown value still raises `KeyError` rather than routing silently.
+        if SEVERITY_RANK[alert.severity] < SEVERITY_RANK[self.min_severity]:
             return False
         if self.alert_types is not None:
             condition = alert.fingerprint.split(":", 1)[0]
