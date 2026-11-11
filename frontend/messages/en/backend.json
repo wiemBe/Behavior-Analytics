@@ -52,6 +52,7 @@
       }
     },
     "log_source_collection": {
+      "not_judged_no_monitored_sources": "Closed without a verdict: no log source of this console is monitored, so collection freshness is not judged.",
       "recovered": "Log source volume collection freshness recovered.",
       "stale": {
         "description": "The last read failed or did not run, so the platform cannot confirm whether sources are silent. NO_EVENTS alerts are not raised for the missing intervals.",

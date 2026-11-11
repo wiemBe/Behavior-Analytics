@@ -344,6 +344,49 @@ async def test_open_alert_resolves_when_the_last_monitored_source_is_switched_of
     assert alerts[0].resolved_by == "system:log-source-collection-monitor"
 
 
+async def test_alert_closed_without_monitored_sources_says_not_judged_not_recovered(
+    task_maker,
+) -> None:
+    instance = await _instance(
+        task_maker,
+        registered_at=datetime.now(UTC) - timedelta(seconds=_threshold_seconds() + 60),
+    )
+    await tasks.detect_stale_log_source_collection(instance.name)
+    assert (await _alerts(task_maker))[0].status == AlertStatus.OPEN
+
+    await _monitor(task_maker, instance.id, enabled=False)
+    await tasks.detect_stale_log_source_collection(instance.name)
+
+    # Freshness was not measured again, so the closed alert must not read as a recovery.
+    alert = (await _alerts(task_maker))[0]
+    assert alert.status == AlertStatus.RESOLVED
+    assert (
+        alert.resolution_reason_code
+        == "alert.log_source_collection.not_judged_no_monitored_sources"
+    )
+    reason = alert.resolution_reason or ""
+    assert "not judged" in reason
+    assert "recovered" not in reason.lower()
+
+
+async def test_fresh_again_resolution_records_recovered(task_maker) -> None:
+    instance = await _instance(
+        task_maker,
+        registered_at=datetime.now(UTC) - timedelta(seconds=_threshold_seconds() + 60),
+    )
+    await tasks.detect_stale_log_source_collection(instance.name)
+    assert (await _alerts(task_maker))[0].status == AlertStatus.OPEN
+
+    await _watermark(task_maker, instance.id, last_run_at=datetime.now(UTC))
+    await tasks.detect_stale_log_source_collection(instance.name)
+
+    # Collection was measured and is fresh: this one is a recovery.
+    alert = (await _alerts(task_maker))[0]
+    assert alert.status == AlertStatus.RESOLVED
+    assert alert.resolution_reason_code == "alert.log_source_collection.recovered"
+    assert alert.resolution_reason == "Log source volume collection freshness recovered."
+
+
 async def test_failing_collector_inside_the_grace_period_is_stale(task_maker) -> None:
     instance = await _instance(task_maker)
     await _watermark(
