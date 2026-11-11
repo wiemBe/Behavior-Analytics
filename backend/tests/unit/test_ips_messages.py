@@ -943,6 +943,9 @@ ENGINE_ONLY = {
     "ips.history_check.not_loaded",
     "ips.history_check.before_hand_off",
 }
+#: Codes an API route raises, pinned by `tests/integration/test_ips_analyst_api.py`, never by
+#: a verdict.
+ROUTE_ONLY = {"ips.source.not_found"}
 
 
 def _walk(message: MessageRef):  # type: ignore[no-untyped-def]
@@ -954,6 +957,34 @@ def _walk(message: MessageRef):  # type: ignore[no-untyped-def]
 
 def _verdict_scenarios() -> list[str]:
     return [name for name in SCENARIOS if not name.startswith(("history.", "flood."))]
+
+
+def _used_ips_sentence_codes() -> set[str]:
+    used: set[str] = set()
+    for name in _verdict_scenarios():
+        verdict = RAW[name]()
+        assert isinstance(verdict, IpsVerdict)
+        if verdict.evidence.reason_message is not None:
+            used.update(m.code for m in _walk(verdict.evidence.reason_message))
+        if verdict.evidence.extra.get("caveat_code"):
+            used.add(verdict.evidence.extra["caveat_code"])
+    for name in SCENARIOS:
+        if name.startswith("history."):
+            SCENARIOS[name]()
+            facts = LAST_HISTORY[-1]
+            if isinstance(facts, WafHistoryFacts) and facts.message is not None:
+                used.update(m.code for m in _walk(facts.message))
+    discovery = ti._bucket(destination_port=ti._dimension(coverage=0.5))
+    admission = ti._bucket(destination_port=ti._dimension(admission_truncated=True))
+    for flood in (
+        appearance_flood_ref(discovery, min_coverage=0.9),
+        appearance_flood_ref(admission, min_coverage=0.9),
+    ):
+        assert flood is not None
+        used.add(flood.code)
+    # The roles a scope narrows on are reached through `ips_scope_ref` (pinned below).
+    used.update(ROLE_CODES.values())
+    return used
 
 
 def test_every_scenario_has_an_expected_sentence() -> None:
@@ -1007,33 +1038,16 @@ def test_a_lower_bound_names_its_scope_by_a_code_and_a_role() -> None:
 
 
 def test_every_ips_sentence_is_used_by_a_scenario_or_the_engine() -> None:
-    used: set[str] = set()
-    for name in _verdict_scenarios():
-        verdict = RAW[name]()
-        assert isinstance(verdict, IpsVerdict)
-        if verdict.evidence.reason_message is not None:
-            used.update(m.code for m in _walk(verdict.evidence.reason_message))
-        if verdict.evidence.extra.get("caveat_code"):
-            used.add(verdict.evidence.extra["caveat_code"])
-    for name in SCENARIOS:
-        if name.startswith("history."):
-            SCENARIOS[name]()
-            facts = LAST_HISTORY[-1]
-            if isinstance(facts, WafHistoryFacts) and facts.message is not None:
-                used.update(m.code for m in _walk(facts.message))
-    discovery = ti._bucket(destination_port=ti._dimension(coverage=0.5))
-    admission = ti._bucket(destination_port=ti._dimension(admission_truncated=True))
-    for flood in (
-        appearance_flood_ref(discovery, min_coverage=0.9),
-        appearance_flood_ref(admission, min_coverage=0.9),
-    ):
-        assert flood is not None
-        used.add(flood.code)
-    # The roles a scope narrows on are reached through `ips_scope_ref` (pinned below).
-    used.update(ROLE_CODES.values())
+    used = _used_ips_sentence_codes()
     ips = {spec.code for spec in REGISTRY if spec.code.startswith("ips.")}
-    unused = ips - used - ENGINE_ONLY
+    unused = ips - used - ENGINE_ONLY - ROUTE_ONLY
     assert not unused, f"codes no scenario reaches: {sorted(unused)}"
+
+
+def test_route_only_codes_are_registered_and_never_reached_by_a_scenario() -> None:
+    registry_codes = {spec.code for spec in REGISTRY}
+    assert registry_codes >= ROUTE_ONLY
+    assert ROUTE_ONLY.isdisjoint(_used_ips_sentence_codes())
 
 
 # ------------------------------------------------------------------- the scope map
