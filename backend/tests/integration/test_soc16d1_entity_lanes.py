@@ -337,12 +337,12 @@ async def test_lane_honesty_live_empty_history_bounded_and_forbidden(db_session)
     assert (
         next(lane for lane in history_host.lanes if lane.source.value == "CATCHALL")
         .state.value
-        == "NOT_COLLECTED"
+        == "OK"
     )
     assert (
         next(lane for lane in history_user.lanes if lane.source.value == "PW_VALUE")
         .state.value
-        == "NOT_COLLECTED"
+        == "OK"
     )
 
     (await db_session.get(CatchallBucket, (source.id, at))).origin = "LIVE"

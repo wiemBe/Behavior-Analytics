@@ -589,7 +589,9 @@ async def test_catchall_history_records_sender_mentions(db_session) -> None:  # 
         start=window_start,
         end=window_end,
     )
-    _assert_history_lane(page, EntityTimelineLane.CATCHALL)
+    _assert_history_lane(
+        page, EntityTimelineLane.CATCHALL, reason=REASON_INDEX_INCOMPLETE
+    )
     absent = await _timeline(
         db_session,
         instance.id,
@@ -599,7 +601,9 @@ async def test_catchall_history_records_sender_mentions(db_session) -> None:  # 
         start=window_start,
         end=window_end,
     )
-    _assert_not_ok_empty(absent, EntityTimelineLane.CATCHALL)
+    _assert_not_ok_empty(
+        absent, EntityTimelineLane.CATCHALL, state=RelatedSectionState.PARTIAL
+    )
 
     before = {_identity(item) for item in await _mentions(db_session, instance.id)}
     scope = await catchall_scope(db_session, instance)
@@ -691,7 +695,9 @@ async def test_property_watch_history_records_classified_values(db_session) -> N
         start=target,
         end=target + PW_STEP,
     )
-    _assert_history_lane(page, EntityTimelineLane.PW_VALUE)
+    _assert_history_lane(
+        page, EntityTimelineLane.PW_VALUE, reason=REASON_INDEX_INCOMPLETE
+    )
     absent = await _timeline(
         db_session,
         instance.id,
@@ -701,7 +707,9 @@ async def test_property_watch_history_records_classified_values(db_session) -> N
         start=target,
         end=target + PW_STEP,
     )
-    _assert_not_ok_empty(absent, EntityTimelineLane.PW_VALUE)
+    _assert_not_ok_empty(
+        absent, EntityTimelineLane.PW_VALUE, state=RelatedSectionState.PARTIAL
+    )
 
     before = {_identity(item) for item in mentions}
     for watch in (user, combo, other):
