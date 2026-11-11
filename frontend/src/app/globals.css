@@ -3234,6 +3234,15 @@ td.cell-name.ips-source-cell {
 .list-keys-label {
   color: var(--text-3);
 }
+.list-keys-go {
+  margin-top: var(--sp-1);
+}
+.list-keys-result {
+  margin: 0;
+}
+.list-keys-result.pill {
+  margin-top: var(--sp-1);
+}
 .list-keys kbd {
   display: inline-block;
   min-width: 1.6em;

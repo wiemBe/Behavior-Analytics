@@ -269,7 +269,7 @@ async function AnomaliesPage({
         </div>
       ) : (
         <>
-          <ListKeyboard table="table.anomaly-list" open="td.row-actions a" />
+          <ListKeyboard table="table.anomaly-list" open="td.row-actions a" note />
           <TableScroll label={t("label")}>
             <table className="sticky-actions anomaly-list">
               <caption className="sr-only">

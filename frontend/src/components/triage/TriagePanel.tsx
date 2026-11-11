@@ -92,6 +92,16 @@ export function TriagePanel({ family, anomalyId, initial, access, me, alert }: T
     if (mode === null) restore.current = null;
   }, [mode]);
 
+  // `n` on the anomaly list lands here with `#triage-note` (SOC-15b): focus the comment field, and
+  // only when the panel really has one (a read-only viewer has none).
+  const commentRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    if (window.location.hash !== "#triage-note") return;
+    const field = commentRef.current;
+    field?.focus();
+    field?.scrollIntoView?.({ block: "center" });
+  }, []);
+
   const word = {
     status: (value: string) => t(`status.${value}` as never),
     disposition: (value: string) =>
@@ -571,6 +581,7 @@ export function TriagePanel({ family, anomalyId, initial, access, me, alert }: T
 
           {access === "write" && (
             <form
+              id="triage-note"
               className="triage-form triage-comment"
               aria-label={t("panel.commentAdd")}
               onSubmit={(e) => {
@@ -581,6 +592,7 @@ export function TriagePanel({ family, anomalyId, initial, access, me, alert }: T
               <label htmlFor={`${ids}-comment`}>{t("panel.commentLabel", { max: COMMENT_MAX })}</label>
               <textarea
                 id={`${ids}-comment`}
+                ref={commentRef}
                 className="field"
                 rows={3}
                 maxLength={COMMENT_MAX}

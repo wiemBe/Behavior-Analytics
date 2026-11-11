@@ -165,7 +165,7 @@ async function AlertsPage({
               })}
             </p>
           )}
-          <ListKeyboard table="table.alerts-list" open="td.alert-title a" />
+          <ListKeyboard table="table.alerts-list" open="td.alert-title a" acknowledge />
           <TableScroll label={t("table.label")}>
             <table className="table-dense alerts-list" aria-label={t("table.label")}>
               <thead>
@@ -191,7 +191,12 @@ async function AlertsPage({
               </thead>
               <tbody>
                 {alerts.map((a) => (
-                  <tr key={a.id}>
+                  <tr
+                    key={a.id}
+                    data-alert-id={a.id}
+                    data-alert-status={a.status}
+                    data-alert-title={alertTitleText(a, locale, say)}
+                  >
                     <td className="alert-title">
                       <Link href={`/alerts/${a.id}`}>
                         {alertTitleText(a, locale, say)}
