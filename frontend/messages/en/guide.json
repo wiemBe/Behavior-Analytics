@@ -264,6 +264,9 @@
         },
         {
           "p": "A bucket whose endpoint coverage falls below the coverage floor is recorded as a lower bound, not as an exact count. An endpoint with no collected bucket has no baseline and is not judged."
+        },
+        {
+          "p": "The **EMA 3**, **EMA 5**, **EMA 10** and **EMA 20** buttons above the chart overlay exponential moving averages of the observed line of the requests panel (or of the proportion, when the chart plots one). The periods are counted in buckets, and the legend gives each one's span in time. All are off until you switch them on, and the browser remembers your choice, shared with the other charts. An average is drawn in your browser for display only. It takes no part in detection, and it stops at a bucket that was not fully observed, or measured only as a lower bound, rather than bridging the gap."
         }
       ],
       "states": [
@@ -287,6 +290,9 @@
         },
         {
           "p": "The source page draws one series of the source against its expected range: total events, the top source IP share, port fan-out or the blocked share, over **24 hours** or **7 days**. The band is drawn only for buckets whose weekday and hour have a reliable baseline cell; total events has no baseline. An interval with no stored bucket is a gap, not zero. **Action mix** appears only when the profile maps an action. The **Entities** table lists tracked entities with **Baseline cells**, **Tracking** and **State**; an entity no detector has evaluated says **Not evaluated**, and one with active anomalies links to the Anomalies list for that entity."
+        },
+        {
+          "p": "The **EMA 3**, **EMA 5**, **EMA 10** and **EMA 20** buttons above the chart overlay exponential moving averages of the series of the source. The periods are counted in buckets, and the legend gives each one's span in time. All are off until you switch them on, and the browser remembers your choice, shared with the other charts. An average is drawn in your browser for display only. It takes no part in detection, and it stops at a bucket that was not fully observed, or measured only as a lower bound, rather than bridging the gap."
         }
       ],
       "states": [
@@ -307,6 +313,9 @@
         },
         {
           "p": "Two banners qualify the list: **COLLECTION OFF.** when `PW_COLLECTION_ENABLED` is false, so no search is sent for any watch, and **SHADOW MODE.** when incidents are recorded but nothing pages until `PW_ALERTING_ENABLED` is on. A watch that is disabled sends no search."
+        },
+        {
+          "p": "The **EMA 3**, **EMA 5**, **EMA 10** and **EMA 20** buttons above the chart overlay exponential moving averages of the single selected value (the legend names it). With several values plotted no average is drawn, and the chart says so; your choice of periods is kept. The periods are counted in buckets, and the legend gives each one's span in time. All are off until you switch them on, and the browser remembers your choice, shared with the other charts. An average is drawn in your browser for display only. It takes no part in detection, and it stops at a bucket that was not fully observed, or counted only as a lower bound, rather than bridging the gap."
         }
       ],
       "states": [

@@ -33,6 +33,8 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef } from "react";
 
+import { EmaLegendItems, EmaNote, EmaSummary } from "@/components/behavior/EmaLegend";
+import { EmaToggles, useEmaPeriods } from "@/components/behavior/EmaToggles";
 import { HistoryKey, HistoryText } from "@/components/behavior/HistoryKey";
 import {
   historyIntervals,
@@ -44,7 +46,9 @@ import {
 } from "@/components/behavior/historyOrigin";
 import { TURKISH_ECHARTS_LOCALE } from "@/components/home/chartLocale";
 import { readChartPalette } from "@/lib/chartPalette";
+import { emaColours, emaLinesOf, emaSeries, emaTooltipRows } from "@/lib/emaSeries";
 import { grouped, plainCount, fixed } from "@/lib/figureText";
+import { useTranslations } from "next-intl";
 import { formatShare } from "@/lib/format";
 import type { BehaviorI18n } from "@/lib/behaviorI18n";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
@@ -165,6 +169,14 @@ export function IpsSeriesChart({
   const locale = x.locale;
 
   const scale = unit === "share" ? 100 : 1;
+  const tEma = useTranslations("behavior.chart");
+  // The overlay (display only): the averages of the plotted series. A bucket measured only as a
+  // floor is not an exact figure, so it ends the line like an unobserved one.
+  const [emaOn, toggleEma] = useEmaPeriods();
+  const emaLines = useMemo(
+    () => emaLinesOf(points.map((p) => (p.lowerBound ? null : p.observed)), emaOn),
+    [points, emaOn],
+  );
   const marks = useMemo(() => ipsMarkedIntervals(rows, points), [rows, points]);
   const history = useMemo(() => historyIntervals(rows), [rows]);
   const origins = useMemo(() => originByTime(rows), [rows]);
@@ -308,6 +320,9 @@ export function IpsSeriesChart({
               t("ips.chart.measurementLabel", { meaning: measurementMeaning(p.measurement, x) }),
               p.maintenance ? t("ips.chart.maintenanceTip") : "",
               p.admissionTruncated ? t("ips.chart.admissionTip") : "",
+              ...emaTooltipRows(emaLines, i, (period, v) =>
+                tEma("tooltip.emaValue", { period, value: `${fmt(v)}${suffix}` }),
+              ),
               originText(origins.get(p.t), { say: t, locale }),
             ]
               .filter(Boolean)
@@ -334,6 +349,13 @@ export function IpsSeriesChart({
             locale === "tr" ? { ...text, formatter: (value: number) => grouped(value, locale) } : text,
         },
         series: [
+          // Under the observed line (z 3): thin, solid, no markers, a gap where it stops.
+          ...emaSeries(
+            emaLines,
+            points.map((p) => p.t),
+            emaColours(c),
+            scale,
+          ),
           {
             type: "line",
             name: quantity,
@@ -435,6 +457,8 @@ export function IpsSeriesChart({
     medianLabel,
     history,
     origins,
+    emaLines,
+    tEma,
     t,
     locale,
     x,
@@ -465,8 +489,10 @@ export function IpsSeriesChart({
 
   return (
     <>
+      <EmaToggles enabled={emaOn} onToggle={toggleEma} />
       <div ref={containerRef} className="chart chart-ips" role="img" aria-label={ariaLabel} />
       {textSummary && <p className="sr-only">{textSummary}</p>}
+      <EmaSummary periods={emaOn} />
       <HistoryText rows={rows} />
       <ul className="chart-legend" aria-label={t("ips.chart.keyLabel")}>
         <li>
@@ -485,6 +511,7 @@ export function IpsSeriesChart({
             {bandLabel}
           </li>
         )}
+        <EmaLegendItems lines={emaLines} bucketSeconds={bucketSeconds} />
         {hasUnmeasured && (
           <li>
             <span className="chart-key chart-key-gap" aria-hidden="true" />
@@ -523,6 +550,7 @@ export function IpsSeriesChart({
         {hasLowerBound && ` ${t("ips.chart.noteLower")}`}
         {seasonal && ` ${t("ips.chart.noteSeasonal")}`}
       </p>
+      <EmaNote periods={emaOn} />
     </>
   );
 }
