@@ -50,7 +50,6 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Literal
 
 from sqlalchemy import String, any_, bindparam, delete, select
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -65,23 +64,13 @@ from app.models.offense import OffenseSnapshot
 from app.providers.base import ProviderError, QRadarProvider
 from app.providers.dto import OffenseDTO
 from app.security.sanitizer import sanitize_text
-from app.services.entity_mentions import (
-    EntityMentionRow,
-    EntityRole,
-    classify_entity,
-    normalize_entity,
-    record_mentions,
-    user_match_forms,
-)
+from app.services.entity_mention_folds import offense_mentions
+from app.services.entity_mentions import EntityMentionRow, record_mentions
 from app.services.locks import CollectorAdvisoryLock
 
 logger = logging.getLogger("app.collectors.offense")
 
 COLLECTOR_NAME = "offense_snapshot"
-
-#: QRadar offense types whose `offense_source` is a destination address (1 destination IP,
-#: 11 destination IPv6). Every other type names an IP as a source address.
-_DESTINATION_OFFENSE_TYPES = (1, 11)
 
 #: Fields whose change makes an offense meaningfully different. Deliberately
 #: excludes capture time and any counter QRadar bumps continuously without an
@@ -199,52 +188,6 @@ def _record_watermark_stall(watermark: CollectionWatermark, *, stalled: bool) ->
     watermark.collection_metadata = metadata
 
 
-def _offense_mentions(
-    instance: QRadarInstance, dto: OffenseDTO, *, captured_at: datetime
-) -> list[EntityMentionRow]:
-    """The mentions of one stored offense snapshot, from the values as stored.
-
-    Usernames are USER, once each, under the bare account. `offense_source` is
-    recorded only when the shared helper classifies it (an IP address); other text is not
-    guessed into HOST or USER. The address-id lists (`source_addresses`,
-    `local_destination_addresses`) are QRadar ids, never addresses.
-    """
-    occurred_at = dto.start_time or dto.last_updated_time or captured_at
-    occurred_end = dto.close_time or dto.last_updated_time
-    if occurred_end is not None and occurred_end <= occurred_at:
-        occurred_end = None
-    ref_id = str(dto.qradar_id)
-
-    def row(kind: Literal["IP", "USER"], value: str, role: EntityRole) -> EntityMentionRow | None:
-        value_norm = normalize_entity(kind, value)
-        if value_norm is None:
-            return None
-        return EntityMentionRow(
-            instance_id=instance.id,
-            kind=kind,
-            value_norm=value_norm,
-            role=role,
-            source="OFFENSE",
-            ref_table="offense_snapshot",
-            ref_id=ref_id,
-            occurred_at=occurred_at,
-            occurred_end=occurred_end,
-        )
-
-    # One mention per username, under its bare account (the form every query spelling
-    # binds); the normalised value itself when no bare form can be derived.
-    rows = [
-        row("USER", form, "USER")
-        for name in dto.usernames
-        for form in user_match_forms(sanitize_text(name) or "")[-1:]
-    ]
-    source = sanitize_text(dto.offense_source)
-    if source and classify_entity(source) == "IP":
-        destination = dto.offense_type in _DESTINATION_OFFENSE_TYPES
-        rows.append(row("IP", source, "DESTINATION_IP" if destination else "SOURCE_IP"))
-    return [item for item in rows if item is not None]
-
-
 class OffenseCollector:
     def __init__(
         self,
@@ -337,8 +280,16 @@ class OffenseCollector:
 
                 if written:
                     report.snapshots_written += 1
-                    stored_mentions[dto.qradar_id] = _offense_mentions(
-                        instance, dto, captured_at=started
+                    stored_mentions[dto.qradar_id] = offense_mentions(
+                        instance.id,
+                        qradar_offense_id=dto.qradar_id,
+                        captured_at=started,
+                        usernames=[sanitize_text(name) for name in dto.usernames],
+                        offense_source=sanitize_text(dto.offense_source),
+                        offense_type=dto.offense_type,
+                        start_time=dto.start_time,
+                        last_updated_time=dto.last_updated_time,
+                        close_time=dto.close_time,
                     )
                 else:
                     report.unchanged += 1

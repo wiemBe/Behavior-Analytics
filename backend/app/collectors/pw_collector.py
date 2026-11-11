@@ -122,15 +122,8 @@ from app.services.ariel_permit import (
     ariel_history_deferred_reason,
 )
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
-from app.services.entity_mentions import (
-    EntityKind,
-    EntityMentionRow,
-    EntityRole,
-    classify_entity,
-    normalize_entity,
-    record_mentions,
-    user_match_forms,
-)
+from app.services.entity_mention_folds import pw_value_mentions
+from app.services.entity_mentions import EntityMentionRow, record_mentions
 from app.services.search_cadence import SearchCadenceService
 
 logger = logging.getLogger("app.collectors.pw_collector")
@@ -459,39 +452,17 @@ def _pw_mention_row(
     bucket_start: datetime,
     bucket_seconds: int,
 ) -> EntityMentionRow | None:
-    """Classify one stored value only when its single property name is exact."""
-    if len(properties) != 1 or value.truncated:
-        return None
-    name = str(properties[0].get("name") or "").strip().lower()
-    property_kinds: dict[str, tuple[EntityKind, EntityRole]] = {
-        "username": ("USER", "USER"),
-        "sourceip": ("IP", "SOURCE_IP"),
-        "destinationip": ("IP", "DESTINATION_IP"),
-    }
-    classified = property_kinds.get(name)
-    if classified is None:
-        return None
-    kind, role = classified
-    if kind == "IP" and classify_entity(value.value_key) != "IP":
-        return None
-    if kind == "USER":
-        forms = user_match_forms(value.value_key)
-        normalized = forms[-1] if forms else None
-    else:
-        normalized = normalize_entity(kind, value.value_key)
-    if normalized is None:
-        return None
-    return EntityMentionRow(
-        instance_id=instance_id,
-        kind=kind,
-        value_norm=normalized,
-        role=role,
-        source="PW_VALUE",
-        ref_table="pw_value_metric",
-        ref_id=str(value.id),
-        occurred_at=bucket_start,
-        occurred_end=bucket_start + timedelta(seconds=bucket_seconds),
+    """Compatibility adapter for tests that predate the shared stored-value fold."""
+    mentions = pw_value_mentions(
+        instance_id,
+        properties,
+        pw_value_id=value.id,
+        value_key=value.value_key,
+        truncated=value.truncated,
+        bucket_start=bucket_start,
+        bucket_seconds=bucket_seconds,
     )
+    return mentions[0] if mentions else None
 
 
 def _provenance(outcome: PwBucketOutcome, chunks: int) -> dict[str, object] | None:
@@ -1663,15 +1634,17 @@ class PwCollector:
                     }
                 )
                 if not reading:
-                    mention = _pw_mention_row(
-                        watch.instance_id,
-                        cast(list[dict[str, str]], watch.properties),
-                        values[key],
-                        bucket_start=admitted.fact.bucket_start,
-                        bucket_seconds=interval,
+                    writes.mentions.extend(
+                        pw_value_mentions(
+                            watch.instance_id,
+                            cast(list[dict[str, str]], watch.properties),
+                            pw_value_id=values[key].id,
+                            value_key=values[key].value_key,
+                            truncated=values[key].truncated,
+                            bucket_start=admitted.fact.bucket_start,
+                            bucket_seconds=interval,
+                        )
                     )
-                    if mention is not None:
-                        writes.mentions.append(mention)
         for value in values.values():
             if value.dirty:
                 writes.values.append(_value_row(watch.id, version, value))
