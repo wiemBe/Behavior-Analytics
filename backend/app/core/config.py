@@ -328,6 +328,13 @@ class Settings(BaseSettings):
     ips_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
     ips_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     ips_retention_interval_seconds: int = Field(default=86400, ge=3600)
+    #: Entity-mention backfill (SOC-16f4, D-64): a beat task fills `entity_mention` for
+    #: parents stored before the index existed, in bounded keyset batches, resumable per
+    #: (instance, source). Insert-only; it never deletes a mention.
+    entity_mention_backfill_enabled: bool = True
+    entity_mention_backfill_batch_size: int = Field(default=500, ge=1, le=5000)
+    entity_mention_backfill_max_batches_per_run: int = Field(default=20, ge=1, le=1000)
+    entity_mention_backfill_interval_seconds: int = Field(default=300, ge=60)
     #: Closed IPS incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). Not the metric
     #: retention above, and not gated by IPS_RETENTION_ENABLED: the daily incident
     #: task runs on its own so a lookback skip cannot freeze incident aging.

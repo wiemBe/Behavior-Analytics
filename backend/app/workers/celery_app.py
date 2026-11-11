@@ -251,6 +251,13 @@ celery_app.conf.beat_schedule = {
         "task": "apply_ips_retention",
         "schedule": float(settings.ips_retention_interval_seconds),
     },
+    "backfill-entity-mentions": {
+        # Fills the entity timeline index for parents stored before it existed, a bounded
+        # number of keyset batches per tick; the task itself is a no-op once every
+        # source is COMPLETE and when ENTITY_MENTION_BACKFILL_ENABLED is off.
+        "task": "backfill_entity_mentions",
+        "schedule": float(settings.entity_mention_backfill_interval_seconds),
+    },
     "apply-ips-anomaly-retention": {
         # Closed IPS incidents. Separate from apply_ips_retention so a lookback
         # skip on the metric task cannot freeze the 365-day incident delete.

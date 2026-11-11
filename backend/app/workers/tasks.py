@@ -63,6 +63,7 @@ from app.services.ariel_search_retention import ArielSearchRunRetention
 from app.services.catchall_retention import CatchallRetention
 from app.services.detection_coverage import DetectionCoverageEvaluator
 from app.services.digest import run_due_digests
+from app.services.entity_mention_backfill import EntityMentionBackfillService
 from app.services.geo_retention import GeoRetention
 from app.services.ips_anomaly_retention import IpsAnomalyRetention
 from app.services.ips_pipeline import IpsInstancePipeline, ips_pipeline_lock_key
@@ -1921,6 +1922,20 @@ async def apply_ips_retention() -> dict:
         return (await IpsRetention(session).run()).as_dict()
 
 
+async def backfill_entity_mentions() -> dict:
+    """Run one bounded entity-mention backfill pass (SOC-16f4, D-64).
+
+    Disabled by `ENTITY_MENTION_BACKFILL_ENABLED`; a held lock reports `busy` and does nothing.
+    """
+    settings = get_settings()
+    if not settings.entity_mention_backfill_enabled:
+        return {"status": "disabled", "reason": "entity mention backfill is disabled"}
+    maker = get_sessionmaker()
+    async with maker() as session:
+        report = await EntityMentionBackfillService(session, settings=settings).run()
+    return {"status": "busy" if report.busy else "ok", **report.as_dict()}
+
+
 async def apply_ips_anomaly_retention() -> dict:
     """Delete closed IPS incidents past the retention window.
 
@@ -2257,6 +2272,11 @@ def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="apply_ips_retention")
 def apply_ips_retention_task() -> dict:
     return _run(apply_ips_retention())
+
+
+@celery_app.task(name="backfill_entity_mentions")
+def backfill_entity_mentions_task() -> dict:
+    return _run(backfill_entity_mentions())
 
 
 @celery_app.task(name="apply_ips_anomaly_retention")
