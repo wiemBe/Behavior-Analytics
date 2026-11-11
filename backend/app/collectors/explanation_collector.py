@@ -45,14 +45,8 @@ from app.models.explanation import (
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.providers.base import ProviderError, QRadarProvider
 from app.providers.dto import DimensionAggregate
-from app.services.entity_mentions import (
-    EntityKind,
-    EntityMentionRow,
-    EntityRole,
-    normalize_entity,
-    record_mentions,
-    user_match_forms,
-)
+from app.services.entity_mention_folds import explanation_mentions
+from app.services.entity_mentions import record_mentions
 
 logger = logging.getLogger("app.collectors.explanation")
 
@@ -61,15 +55,6 @@ COMPARISON_STRATEGY = "recent_normal_window"
 #: Advisory-lock name, so two workers cannot run investigation queries against
 #: the same instance concurrently.
 EXPLANATION_COLLECTOR = "anomaly_explanation"
-
-#: The contributor dimensions the entity timeline indexes, with the kind and role of each.
-#: Any other dimension records nothing: a value is never classified by its shape.
-MENTION_DIMENSIONS: dict[str, tuple[EntityKind, EntityRole]] = {
-    "source_ip": ("IP", "SOURCE_IP"),
-    "destination_ip": ("IP", "DESTINATION_IP"),
-    "username": ("USER", "USER"),
-}
-
 
 @dataclass
 class ExplanationReport:
@@ -242,35 +227,19 @@ class ExplanationCollector:
         contributor qualifies. A failure rolls back to the savepoint and is logged by class
         name: mentions are a derived index and never cost the package.
         """
-        mentions: list[EntityMentionRow] = []
-        for contributor in contributors:
-            target = MENTION_DIMENSIONS.get(contributor.dimension)
-            if target is None:
-                continue
-            kind, role = target
-            # A username is indexed once, under its bare account: every query spelling
-            # (`alice`, `CORP\alice`, `alice@corp`) binds that form. When no bare form
-            # can be derived the normalised value itself is the one row.
-            if kind == "USER":
-                values: tuple[str | None, ...] = user_match_forms(contributor.value)[-1:]
-            else:
-                values = (normalize_entity(kind, contributor.value),)
-            for value in values:
-                if value is None:
-                    continue
-                mentions.append(
-                    EntityMentionRow(
-                        instance_id=log_source.instance_id,
-                        kind=kind,
-                        value_norm=value,
-                        role=role,
-                        source="EXPLANATION",
-                        ref_table="anomaly_explanation_contributor",
-                        ref_id=str(contributor.id),
-                        occurred_at=package.anomaly_window_start,
-                        occurred_end=package.anomaly_window_end,
-                    )
-                )
+        mentions = explanation_mentions(
+            log_source.instance_id,
+            [
+                {
+                    "id": contributor.id,
+                    "dimension": contributor.dimension,
+                    "value": contributor.value,
+                }
+                for contributor in contributors
+            ],
+            anomaly_window_start=package.anomaly_window_start,
+            anomaly_window_end=package.anomaly_window_end,
+        )
         if not mentions:
             return
         try:

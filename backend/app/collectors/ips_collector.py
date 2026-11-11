@@ -136,7 +136,8 @@ from app.services.ariel_permit import (
     ariel_history_deferred_reason,
 )
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
-from app.services.entity_mentions import EntityMentionRow, normalize_entity, record_mentions
+from app.services.entity_mention_folds import ips_entity_mentions, ips_top_mentions
+from app.services.entity_mentions import record_mentions
 from app.services.ips_pipeline import ips_pipeline_lock_key
 from app.services.locks import collector_lock_key, session_lock_engine
 from app.services.search_cadence import SearchCadenceService
@@ -1845,42 +1846,28 @@ class IpsCollector:
         savepoint and is logged by class name: mentions are a derived index and never cost
         the run's metric rows.
         """
-        mentions: list[EntityMentionRow] = []
-        for row in bucket_rows:
-            contributors = cast(dict[str, list[dict[str, Any]]], row["contributors"])
-            for dimension in (IpsDimension.SOURCE_IP, IpsDimension.PORT_FANOUT):
-                for contributor in contributors.get(dimension.value, ()):
-                    value = normalize_entity("IP", str(contributor.get("source_ip") or ""))
-                    if value is None:
-                        continue
-                    mentions.append(
-                        EntityMentionRow(
-                            instance_id=instance.id,
-                            kind="IP",
-                            value_norm=value,
-                            role="SOURCE_IP",
-                            source="IPS_TOP",
-                            ref_table="ips_source_bucket",
-                            ref_id=str(row["log_source_id"]),
-                            occurred_at=cast(datetime, row["bucket_start"]),
-                        )
-                    )
-        for bucket_start, entity_id, raw in destination_rows:
-            value = normalize_entity("IP", raw)
-            if value is None:
-                continue
-            mentions.append(
-                EntityMentionRow(
-                    instance_id=instance.id,
-                    kind="IP",
-                    value_norm=value,
-                    role="DESTINATION_IP",
-                    source="IPS_ENTITY",
-                    ref_table="ips_entity",
-                    ref_id=str(entity_id),
-                    occurred_at=bucket_start,
-                )
+        mentions = [
+            mention
+            for row in bucket_rows
+            for mention in ips_top_mentions(
+                instance.id,
+                log_source_id=row["log_source_id"],
+                bucket_start=cast(datetime, row["bucket_start"]),
+                contributors=cast(
+                    dict[str, list[dict[str, object]]], row["contributors"]
+                ),
             )
+        ]
+        mentions.extend(
+            mention
+            for bucket_start, entity_id, value_key in destination_rows
+            for mention in ips_entity_mentions(
+                instance.id,
+                ips_entity_id=entity_id,
+                bucket_start=bucket_start,
+                value_key=value_key,
+            )
+        )
         try:
             async with self.session.begin_nested():
                 # One DELETE for both mention sources: the buckets this run replaces keep

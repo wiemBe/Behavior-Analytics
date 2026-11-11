@@ -31,12 +31,8 @@ from app.providers.base import ProviderError, QRadarProvider
 from app.repositories.log_source import LogSourceRepository
 from app.schemas.log_source import SyncResult
 from app.security.sanitizer import sanitize_text
-from app.services.entity_mentions import (
-    EntityMentionRow,
-    classify_entity,
-    normalize_entity,
-    record_mentions,
-)
+from app.services.entity_mention_folds import log_source_mentions
+from app.services.entity_mentions import record_mentions
 from app.services.waf_pipeline import sanitized_error
 
 logger = logging.getLogger("app.services.inventory_sync")
@@ -289,27 +285,14 @@ class InventorySyncService:
         pair. A failure rolls back to the savepoint and is logged by class name: mentions are a
         derived index and never cost the inventory.
         """
-        mentions: list[EntityMentionRow] = []
-        for source in seen:
-            candidates = [("HOST", source.name), ("HOST", source.identifier)]
-            if source.identifier and classify_entity(source.identifier) == "IP":
-                candidates.append(("IP", source.identifier))
-            for kind, raw in candidates:
-                value = normalize_entity(kind, raw) if raw else None
-                if value is None:
-                    continue
-                mentions.append(
-                    EntityMentionRow(
-                        instance_id=instance.id,
-                        kind="IP" if kind == "IP" else "HOST",
-                        value_norm=value,
-                        role="HOST",
-                        source="LOG_SOURCE",
-                        ref_table="log_source",
-                        ref_id=str(source.id),
-                        occurred_at=observed_at,
-                    )
-                )
+        mentions = log_source_mentions(
+            instance.id,
+            [
+                {"id": source.id, "name": source.name, "identifier": source.identifier}
+                for source in seen
+            ],
+            observed_at=observed_at,
+        )
         try:
             async with self.session.begin_nested():
                 await self.session.execute(

@@ -121,12 +121,8 @@ from app.services.ariel_permit import (
     ariel_history_deferred_reason,
 )
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
-from app.services.entity_mentions import (
-    EntityMentionRow,
-    classify_entity,
-    normalize_entity,
-    record_mentions,
-)
+from app.services.entity_mention_folds import catchall_mentions
+from app.services.entity_mentions import record_mentions
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.waf.admission import AdmissionPolicy
@@ -252,34 +248,7 @@ class _RunState:
     buckets: list[dict] = field(default_factory=list)
 
 
-def _catchall_mention_rows(
-    instance_id: uuid.UUID, buckets: Sequence[Mapping[str, Any]]
-) -> list[EntityMentionRow]:
-    """Mentions of only the bounded sender values persisted in live bucket rows."""
-    mentions: list[EntityMentionRow] = []
-    for bucket in buckets:
-        occurred_at = cast(datetime, bucket["bucket_start"])
-        occurred_end = occurred_at + timedelta(seconds=cast(int, bucket["bucket_seconds"]))
-        for sender in cast(Sequence[Mapping[str, Any]], bucket.get("top_senders") or ()):
-            raw = str(sender.get("identifier") or "")
-            kind = classify_entity(raw) or "HOST"
-            value = normalize_entity(kind, raw)
-            if value is None:
-                continue
-            mentions.append(
-                EntityMentionRow(
-                    instance_id=instance_id,
-                    kind=kind,
-                    value_norm=value,
-                    role="SOURCE_IP" if kind == "IP" else "HOST",
-                    source="CATCHALL",
-                    ref_table="catchall_bucket",
-                    ref_id=str(bucket["catchall_log_source_id"]),
-                    occurred_at=occurred_at,
-                    occurred_end=occurred_end,
-                )
-            )
-    return mentions
+_catchall_mention_rows = catchall_mentions
 
 
 def floor_to_bucket(moment: datetime, bucket_seconds: int) -> datetime:

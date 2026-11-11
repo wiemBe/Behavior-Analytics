@@ -141,7 +141,8 @@ from app.providers.dto import (
 )
 from app.services.ariel_permit import ArielPermitUnavailable, ariel_background_priority
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
-from app.services.entity_mentions import EntityMentionRow, normalize_entity, record_mentions
+from app.services.entity_mention_folds import waf_top_mentions
+from app.services.entity_mentions import record_mentions
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.services.waf_ariel_budget import WafArielBudget
@@ -1128,24 +1129,16 @@ class WafEndpointCollector:
         savepoint and is logged by class name: mentions are a derived index, so they never
         cost the bucket's metric rows.
         """
-        mentions: list[EntityMentionRow] = []
-        for row in rows:
-            for client in cast(list[dict[str, Any]], row.get("top_clients") or ()):
-                value = normalize_entity("IP", str(client.get("source_ip") or ""))
-                if value is None:
-                    continue
-                mentions.append(
-                    EntityMentionRow(
-                        instance_id=log_source.instance_id,
-                        kind="IP",
-                        value_norm=value,
-                        role="SOURCE_IP",
-                        source="WAF_TOP",
-                        ref_table="waf_endpoint_metric",
-                        ref_id=str(row["waf_endpoint_id"]),
-                        occurred_at=start,
-                    )
-                )
+        mentions = [
+            mention
+            for row in rows
+            for mention in waf_top_mentions(
+                log_source.instance_id,
+                waf_endpoint_id=row["waf_endpoint_id"],
+                bucket_start=start,
+                top_clients=cast(list[dict[str, object]] | None, row.get("top_clients")),
+            )
+        ]
         if not mentions and not replace_existing:
             return
         try:
