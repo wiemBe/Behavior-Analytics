@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import SearchCadencePage from "./page";
 import Loading from "./loading";
 import { ApiError, api, type SearchCadenceItem } from "@/lib/api";
+import { FAMILY_INFO } from "@/lib/searchCadence";
 
 function item(over: Partial<SearchCadenceItem> = {}): SearchCadenceItem {
   return {
@@ -73,6 +74,9 @@ describe("search cadence page", () => {
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent(/no search families/i);
     expect(alert).toHaveTextContent(/seed/i);
+    // FIX-48: the copy names nine families; the catalog must still list nine.
+    expect(Object.keys(FAMILY_INFO)).toHaveLength(9);
+    expect(alert).toHaveTextContent("All nine families");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 

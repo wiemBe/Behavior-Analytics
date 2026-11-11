@@ -93,7 +93,8 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
   const nextRun = nextRunCell(item, new Date());
   // Only a failed last run carries a reason; the sentence names both UTC times.
   // The neighbouring cells already show both times, so the known code gets a short line.
-  const reason = item.next_dispatch_reason
+  // A family that is off has no next run, so it gets no reason even if the API sends one.
+  const reason = item.enabled && item.next_dispatch_reason
     ? item.next_dispatch_reason_code === "search_cadence.next_dispatch.after_failed_run"
       ? t("notRetried")
       : backendMessage({

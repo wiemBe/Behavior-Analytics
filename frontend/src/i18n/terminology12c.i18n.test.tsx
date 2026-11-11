@@ -83,7 +83,10 @@ describe("one Turkish word per concept", () => {
 describe("the two English text fixes", () => {
   it("states the cadence seed truthfully in both languages", () => {
     const empty = english.get("cadence.page.empty") ?? "";
-    expect(empty).toContain("All eight families");
+    // FIX-48: nine families are seeded (the page lists nine); the Turkish
+    // catalog is frozen, so the English copy names the number in words.
+    expect(empty).toContain("All nine families");
+    expect(empty).not.toContain("All eight families");
     expect(empty).not.toContain("Four families");
     const trEmpty = turkish.get("cadence.page.empty") ?? "";
     expect(trEmpty).toContain("Sekiz ailenin hepsi");
