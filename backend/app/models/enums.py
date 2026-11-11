@@ -154,6 +154,24 @@ class Severity(StrEnum):
     INFO = "INFO"
 
 
+#: The one severity order (DEBT-8): a stored value to its rank, CRITICAL highest.
+#: Sort, filter and `max()` severity through this map rather than spelling the
+#: order out again. Rank 0 is not a severity; a caller that uses 0 for "none"
+#: keeps that meaning on its own side.
+SEVERITY_RANK: dict[str, int] = {
+    Severity.CRITICAL.value: 5,
+    Severity.HIGH.value: 4,
+    Severity.MEDIUM.value: 3,
+    Severity.LOW.value: 2,
+    Severity.INFO.value: 1,
+}
+
+#: The inverse of `SEVERITY_RANK`: a rank read back as the severity it came from.
+SEVERITY_BY_RANK: dict[int, Severity] = {
+    rank: Severity(value) for value, rank in SEVERITY_RANK.items()
+}
+
+
 class SearchFamily(StrEnum):
     PHASE_A_VOLUME = "PHASE_A_VOLUME"
     WAF_COLLECTION = "WAF_COLLECTION"

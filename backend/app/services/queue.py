@@ -32,6 +32,8 @@ from app.core.config import Settings
 from app.models.alert import Alert
 from app.models.catchall import CatchallSender
 from app.models.enums import (
+    SEVERITY_BY_RANK,
+    SEVERITY_RANK,
     AlertStatus,
     AnomalyFamily,
     CatchallReviewStatus,
@@ -100,15 +102,6 @@ KIND_PERMISSION: dict[QueueKind, str] = {
     QueueKind.CATCHALL_SENDER: PERM_FLEET_READ,
 }
 _KIND_ORDER = list(QueueKind)
-
-_SEVERITY_BY_RANK: dict[int, Severity] = {
-    5: Severity.CRITICAL,
-    4: Severity.HIGH,
-    3: Severity.MEDIUM,
-    2: Severity.LOW,
-    1: Severity.INFO,
-}
-_RANK_BY_SEVERITY: dict[str, int] = {s.value: r for r, s in _SEVERITY_BY_RANK.items()}
 
 _FAMILY_BY_SUBJECT = {
     "LOG_SOURCE": AnomalyFamily.LOG_SOURCE,
@@ -301,7 +294,7 @@ async def _load_alerts(
     severities: Collection[Severity] | None,
     new_only: bool,
 ) -> _Source:
-    rank = case(_RANK_BY_SEVERITY, value=Alert.severity, else_=0)
+    rank = case(SEVERITY_RANK, value=Alert.severity, else_=0)
     is_new = Alert.opened_at > compare_from
     is_updated = and_(Alert.acknowledged_at > compare_from, Alert.acknowledged_by != subject)
     change = case((is_new, "NEW"), (is_updated, "UPDATED"), else_=null())
@@ -470,7 +463,7 @@ async def _load_offenses(
     change = case((is_new, "NEW"), (is_updated, "UPDATED"), else_=null())
     conditions: list[ColumnElement[bool]] = [sub.c.status == "OPEN"]
     if severities is not None:
-        conditions.append(rank.in_([_RANK_BY_SEVERITY[s.value] for s in severities]))
+        conditions.append(rank.in_([SEVERITY_RANK[s.value] for s in severities]))
     if scope is QueueScope.MINE:
         conditions.append(
             func.lower(sub.c.assigned_to) == (principal.username or "").lower()
@@ -520,7 +513,7 @@ async def _load_offenses(
                     title_params=None,
                     subject=None,
                     detector=None,
-                    severity=_SEVERITY_BY_RANK.get(r["severity_rank"]),
+                    severity=SEVERITY_BY_RANK.get(r["severity_rank"]),
                     magnitude=r["magnitude"],
                     occurrence_count=None,
                     state=str(r["status"]),
