@@ -5852,3 +5852,109 @@ export const queueApi = {
   seen: (body: QueueSeenIn) =>
     request<QueueSeenOut>("/queue/seen", { method: "POST", body: JSON.stringify(body) }),
 };
+
+// --- the shift handover (SOC-14) -----------------------------------------------
+// Mirrors backend/app/schemas/handover.py. A frozen source that did not load has `count: null`,
+// never 0, and an empty list under a FAILED or FORBIDDEN source is not "nothing was there".
+export interface HandoverWatchKey {
+  kind: QueueKind;
+  id: string;
+}
+
+export interface HandoverItem {
+  kind: QueueKind;
+  family: QueueFamily | null;
+  id: string;
+  link: string;
+  state: string;
+  owner: string | null;
+  owner_kind: string | null;
+  severity: QueueSeverity | null;
+  waiting_since: string;
+  age_seconds: number;
+  change: "NEW" | "UPDATED" | null;
+  watch: boolean;
+  over_sla: boolean | null;
+  title: string;
+  title_code: string | null;
+  title_params: Record<string, unknown> | null;
+}
+
+export interface HandoverActedOn {
+  kind: string;
+  id: string;
+  related_id: string;
+  link: string;
+  event: string;
+  at: string;
+  from_value: string | null;
+  to_value: string | null;
+}
+
+export interface HandoverActedOnSource {
+  kind: string;
+  state: QueueSourceState;
+  count: number | null;
+  permission: string | null;
+  reason_code: string | null;
+}
+
+export interface HandoverBody {
+  as_of: string;
+  window_started_at: string;
+  sources: QueueSource[];
+  total: number;
+  total_exact: boolean;
+  truncated: boolean;
+  items: HandoverItem[];
+  acted_on: HandoverActedOn[];
+  acted_on_sources: HandoverActedOnSource[];
+  watch_dropped: HandoverWatchKey[];
+}
+
+export interface HandoverRecord {
+  id: string;
+  author: string;
+  written_at: string;
+  window_started_at: string;
+  previous_id: string | null;
+  note: string;
+  body: HandoverBody;
+}
+
+export interface HandoverSummary {
+  id: string;
+  author: string;
+  written_at: string;
+  window_started_at: string;
+  previous_id: string | null;
+  note_length: number;
+  note_excerpt: string;
+}
+
+export interface HandoverList {
+  items: HandoverSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface HandoverCreate {
+  note: string;
+  watch: HandoverWatchKey[];
+}
+
+export const handoverApi = {
+  list: (limit: number, offset: number) =>
+    request<HandoverList>(`/handover?limit=${limit}&offset=${offset}`),
+  latest: () => request<{ handover: HandoverRecord | null }>("/handover/latest"),
+  one: (id: string) => request<HandoverRecord>(`/handover/${encodeURIComponent(id)}`),
+  preview: () => request<HandoverBody>("/handover/preview"),
+  create: (body: HandoverCreate) =>
+    request<HandoverRecord>("/handover", { method: "POST", body: JSON.stringify(body) }),
+};
+
+/** The Dashboard widget's read: the same route, shared with its hook key. */
+export const handoverRead = {
+  latest: () => homeRead<{ handover: HandoverRecord | null }>("/handover/latest"),
+};

@@ -1,0 +1,210 @@
+/* The handover: layout only. Colours, sizes and spacing come from the tokens. */
+
+.ho {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+.ho > * {
+  margin: 0;
+}
+
+.ho-record {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+.ho-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.ho-meta p {
+  margin: 0;
+}
+.ho-meta-line {
+  font-size: var(--fs-base);
+  color: var(--text);
+}
+.ho-meta-label {
+  font-weight: var(--fw-semibold);
+  margin-right: var(--sp-2);
+}
+.ho-author {
+  margin-left: var(--sp-4);
+  color: var(--text-2);
+}
+.ho-window {
+  font-size: var(--fs-sm);
+}
+
+.ho-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.main .ho-h,
+.ho-h {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-base);
+  color: var(--text);
+}
+.ho-count {
+  margin-left: var(--sp-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-normal);
+  color: var(--text-2);
+}
+.ho-more {
+  margin-left: var(--sp-4);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-normal);
+}
+.ho-note {
+  margin: 0;
+  max-width: 80ch;
+  font-size: var(--fs-base);
+  line-height: var(--lh-prose);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ho-empty,
+.ho-empty-state p {
+  margin: 0;
+}
+.ho-empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* --- tables --- */
+.ho-table td.ho-title {
+  min-width: 14ch;
+  overflow-wrap: break-word;
+}
+.ho-table td.ho-owner,
+.ho-table td.ho-excerpt {
+  min-width: 8ch;
+}
+.ho-table td.ho-waiting {
+  white-space: nowrap;
+}
+.ho-table td.ho-excerpt {
+  max-width: 60ch;
+  overflow-wrap: anywhere;
+}
+.ho-table td.ho-check {
+  width: 1%;
+  text-align: center;
+}
+.ho-age {
+  display: block;
+}
+.ho-sub {
+  display: block;
+  font-size: var(--fs-xs);
+}
+.ho-flags {
+  white-space: nowrap;
+}
+.ho-flag {
+  display: inline-block;
+  margin-right: var(--sp-3);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.ho-flag-overSla {
+  color: var(--warn-text);
+}
+.ho-flag-updated,
+.ho-flag-unassigned {
+  color: var(--text-2);
+}
+.ho-pager {
+  margin: 0;
+}
+
+/* --- source lines --- */
+.ho-sources {
+  border-top: 1px solid var(--border);
+  padding-top: var(--sp-3);
+  min-width: 0;
+}
+.main .ho-sources-title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0;
+  color: var(--text-3);
+}
+.ho-source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.ho-source {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+  overflow-wrap: anywhere;
+}
+.ho-source-warn {
+  color: var(--warn-text);
+}
+.ho-source-crit {
+  color: var(--crit-text);
+}
+
+/* --- compose --- */
+.ho-compose {
+  max-width: 100%;
+}
+.ho-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: 80ch;
+}
+.ho-field > * {
+  margin: 0;
+}
+.ho-hint {
+  font-size: var(--fs-sm);
+}
+.ho-textarea {
+  width: 100%;
+  min-height: 9em;
+  resize: vertical;
+  font: inherit;
+  line-height: var(--lh-prose);
+}
+.ho-counter {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.ho-over {
+  color: var(--crit-text);
+}
+.ho-actions {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+@media (max-width: 1100px) {
+  .ho-table {
+    font-size: var(--fs-sm);
+  }
+  .ho-table td.ho-owner {
+    min-width: 0;
+  }
+}

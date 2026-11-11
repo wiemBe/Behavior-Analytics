@@ -10,6 +10,7 @@
     "dashboard": "Dashboard",
     "overview": "Overview",
     "queue": "Queue",
+    "handover": "Handover",
     "anomalies": "Anomalies",
     "sources": "Sources",
     "wafBehavior": "WAF behavior",

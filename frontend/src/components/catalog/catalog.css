@@ -61,3 +61,26 @@
 .tw-body-fill .hc-chart.cw-tall {
   min-height: var(--cw-chart-h);
 }
+
+/* Latest handover: the note's start, clamped to the room the widget has. */
+.ho-widget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.ho-widget > * {
+  margin: 0;
+}
+.ho-widget-head {
+  font-size: var(--fs-sm);
+}
+.ho-widget-note {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

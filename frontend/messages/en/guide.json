@@ -438,6 +438,35 @@
         }
       ]
     },
+    "handover": {
+      "title": "Handover",
+      "answers": "What did the last shift leave, and how do I leave the next one a record?",
+      "body": [
+        {
+          "p": "A handover is a written record, frozen when it was saved. It holds the author, the time in UTC, a **Note**, the rows marked **Watch**, the other open rows the queue listed at that moment (**Open when this was written**) and what the author did in the window (**Acted on by {author} in this window**). It does not update afterwards: the rows show the state they had when the handover was written, and each links to the page where the live state is. Nothing can be edited or deleted; a correction is a new handover."
+        },
+        {
+          "p": "Each open row carries flags: **Unassigned**, **Over SLA**, **New** and **Updated**. A row appears once, so a watched row is under **Watch** and not again below. When the queue held more rows than were frozen, the count reads \"50 of N\", or \"50 of at least N\" when N is itself a lower bound, and **See all in the queue** opens the live queue."
+        },
+        {
+          "p": "Under the lists, **Sources not read cleanly** names every source that was failed, forbidden, stale or not collected when the handover was written. A source in that list is missing rows, not empty: do not read the lists above it as the whole picture. **Earlier handovers** lists the older records, and **Show earlier** loads more."
+        },
+        {
+          "p": "Reading needs only a signed-in account. Writing needs the `anomaly:triage` permission: without it the page offers no **Write handover** button, and opening the write form directly says so and saves nothing. Saving a handover does not change any triage, alert or the queue's last-visit marker."
+        }
+      ],
+      "steps": [
+        "Open **Handover**. The latest record comes first: read its **Note**, then the rows under **Watch**, then **Open when this was written**.",
+        "Check **Sources not read cleanly** before trusting an empty list, then open a row to see its live state.",
+        "To write the next one, choose **Write handover**, enter the **Note** (1 to 4000 characters) and tick **Watch** on up to 20 of the listed rows.",
+        "Choose **Save handover**. The page then shows the saved record, and names any watched row that was no longer in the snapshot and was not frozen."
+      ],
+      "states": [
+        {
+          "p": "**No handover yet. The queue lists what is waiting.**; **The handover could not be loaded.** with **Retry**; **You cannot write a handover.** when the account lacks the permission. On the Dashboard, the **Latest handover** widget shows the author, the time, the start of the note and the number of watched rows, and, when a source was not read cleanly, a **Not read cleanly:** line naming it."
+        }
+      ]
+    },
     "rules": {
       "title": "Rules",
       "answers": "Which analytics rules are healthy, and which are not firing?",

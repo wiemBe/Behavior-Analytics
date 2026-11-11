@@ -46,7 +46,8 @@ export const SOC_OVERVIEW: DescribedDashboardTemplate = {
       at("srchealth", "health.log_sources", 8, 22, 4, 16),
       at("recanom", "table.recent_anomalies", 0, 38, 6, 16),
       at("recoff", "table.recent_offenses", 6, 38, 6, 16),
-      at("geomap", "map.geography", 0, 54, 12, 18),
+      at("handover", "table.handover", 0, 54, 12, 7),
+      at("geomap", "map.geography", 0, 61, 12, 18),
     ],
   },
 };

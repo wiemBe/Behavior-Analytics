@@ -68,6 +68,10 @@
       "title": "Outage policy",
       "description": "The default outage mode, the classes that depart from it and the overrides."
     },
+    "table_handover": {
+      "title": "Latest handover",
+      "description": "The newest shift handover: who wrote it, when, the note and how many rows it watches."
+    },
     "waf_sources": {
       "title": "WAF sources",
       "description": "Profile verdict, endpoint coverage and active endpoints against the ceiling."
