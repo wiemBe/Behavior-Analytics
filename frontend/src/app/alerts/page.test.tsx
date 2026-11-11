@@ -391,3 +391,47 @@ describe("alert to anomaly links (QW4)", () => {
     expect(screen.getByRole("columnheader", { name: "Anomaly" })).toBeInTheDocument();
   });
 });
+
+describe("alert list CSV export (SOC-8c)", () => {
+  const exportLink = () => screen.getByRole("link", { name: "Export CSV" });
+  const exportParams = () => Object.fromEntries(new URL(exportLink().getAttribute("href")!).searchParams);
+
+  it("carries the list's own filters, with the range as since and until and no page", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert()], { total: 201, offset: 100 }));
+    await renderPage({
+      status: "OPEN",
+      family: "waf",
+      severity: "HIGH",
+      since: "2026-11-04T09:00:00Z",
+      until: "2026-11-11T09:00:00Z",
+      sort: "severity",
+      order: "asc",
+      offset: "100",
+    });
+    const url = new URL(exportLink().getAttribute("href")!);
+    expect(url.pathname.endsWith("/alerts.csv")).toBe(true);
+    expect(exportParams()).toEqual({
+      status: "OPEN",
+      severity: "HIGH",
+      family: "waf",
+      since: "2026-11-04T09:00:00.000Z",
+      until: "2026-11-11T09:00:00.000Z",
+      sort: "severity",
+      order: "asc",
+    });
+    expect(exportLink()).toHaveAttribute("download");
+  });
+
+  it("says the file holds at most 10,000 rows, and sends nothing for an unfiltered list", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
+    await renderPage();
+    expect(exportParams()).toEqual({});
+    expect(screen.getByText("at most 10,000 rows")).toBeInTheDocument();
+  });
+
+  it("is offered when the list is empty, since the file then holds only the header", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([]));
+    await renderPage({ status: "RESOLVED" });
+    expect(exportParams()).toEqual({ status: "RESOLVED" });
+  });
+});

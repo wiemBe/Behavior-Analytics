@@ -5958,3 +5958,108 @@ export const handoverApi = {
 export const handoverRead = {
   latest: () => homeRead<{ handover: HandoverRecord | null }>("/handover/latest"),
 };
+
+// --- reports (SOC-8) -----------------------------------------------------------------------------
+// Mirrors `app/schemas/reports.py`. Four blocks, each with its own state: one block's failure or
+// missing permission never hides another. A figure that cannot be judged is `null` with a state,
+// never a zero.
+export type ReportPeriod = "last_7d" | "last_30d" | "calendar_week" | "calendar_month";
+export type ReportBlockState = "OK" | "PARTIAL" | "INSUFFICIENT_DATA" | "FORBIDDEN";
+export type ReportFigureState = "OK" | "PARTIAL" | "INSUFFICIENT_DATA";
+
+export interface ReportBlockBase {
+  state: ReportBlockState;
+  /** The permission a FORBIDDEN block needs. */
+  permission: string | null;
+  /** Why a block is not OK (`reports.reason.*`). */
+  reason_code: string | null;
+}
+
+export interface ReportAlertCell {
+  /** `null` for a source type no alert family claims. */
+  family: string | null;
+  severity: string;
+  count: number;
+}
+
+export interface ReportAnomalyCell {
+  family: ActiveFamily;
+  severity: string;
+  count: number;
+}
+
+/** A median in seconds; `null` whenever `n` is below the floor. */
+export interface ReportClock {
+  median_seconds: number | null;
+  n: number;
+  state: ReportFigureState;
+}
+
+export interface ReportFamilyCoverage {
+  family: ActiveFamily;
+  state: ReportFigureState;
+  retention_days: number;
+  /** Set when PARTIAL: the earliest instant the family still holds closed rows for. */
+  covered_from: string | null;
+}
+
+export interface ReportNoiseRow {
+  family: ActiveFamily;
+  anomaly_type: string;
+  judged: number;
+  noise: number;
+  ratio: number | null;
+  state: ReportFigureState;
+}
+
+export interface ReportAlertsBlock extends ReportBlockBase {
+  rows: ReportAlertCell[] | null;
+  mtta: ReportClock | null;
+  mttr: ReportClock | null;
+}
+
+export interface ReportAnomaliesBlock extends ReportBlockBase {
+  rows: ReportAnomalyCell[] | null;
+  coverage: ReportFamilyCoverage[] | null;
+}
+
+export interface ReportAnomalyClocksBlock extends ReportBlockBase {
+  mtta: ReportClock | null;
+  mttr: ReportClock | null;
+  coverage: ReportFamilyCoverage[] | null;
+}
+
+export interface ReportNoiseBlock extends ReportBlockBase {
+  rows: ReportNoiseRow[] | null;
+  coverage: ReportFamilyCoverage[] | null;
+}
+
+export interface ReportSummary {
+  period: ReportPeriod;
+  /** The resolved half-open range `[start, end)`, UTC. */
+  start: string;
+  end: string;
+  generated_at: string;
+  alerts: ReportAlertsBlock;
+  anomalies: ReportAnomaliesBlock;
+  anomaly_clocks: ReportAnomalyClocksBlock;
+  noise_by_detector: ReportNoiseBlock;
+}
+
+export const reportsApi = {
+  /** `start` is required for the calendar periods and must be a boundary (Monday / the 1st). */
+  summary: (period: ReportPeriod, start?: string) =>
+    request<ReportSummary>(`/reports/summary${qs({ period, start })}`),
+};
+
+/**
+ * The CSV export of the alert or anomaly list under the list's own filters: a plain link for the
+ * browser, which sends the session cookie as it does for the page's own reads. The API caps the
+ * file and names it.
+ */
+type CsvParams = Record<string, QueryValue | QueryValue[] | undefined>;
+
+export const alertsCsvUrl = (params: CsvParams): string => `${PUBLIC_BASE}/alerts.csv${qs(params)}`;
+
+export const anomaliesCsvUrl = (params: CsvParams): string =>
+  `${PUBLIC_BASE}/anomalies.csv${qs(params)}`;

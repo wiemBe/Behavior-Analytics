@@ -81,6 +81,8 @@ export const NAV: NavGroup[] = [
       { href: "/rules/statistics", label: "Rule statistics" },
       { href: "/custom-rules", label: "Custom rules" },
       { href: "/coverage", label: "Coverage" },
+      // How the period went: opened, time to act, noise. Read from one summary, nothing new collected.
+      { href: "/reports", label: "Reports" },
     ],
   },
   {

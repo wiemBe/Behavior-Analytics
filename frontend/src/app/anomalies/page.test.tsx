@@ -458,3 +458,41 @@ describe("empty list", () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("anomaly list CSV export (SOC-8c)", () => {
+  const exportLink = () => screen.getByRole("link", { name: "Export CSV" });
+  const exportParams = () => Object.fromEntries(new URL(exportLink().getAttribute("href")!).searchParams);
+
+  it("carries the list's own filters and no page", async () => {
+    await renderPage({
+      subject_kind: "WAF_ENDPOINT",
+      severity: "HIGH",
+      state: "OPEN",
+      since: "2026-11-04T09:00:00Z",
+      until: "2026-11-11T09:00:00Z",
+      offset: "25",
+    });
+    const url = new URL(exportLink().getAttribute("href")!);
+    expect(url.pathname.endsWith("/anomalies.csv")).toBe(true);
+    expect(exportParams()).toEqual({
+      subject_kind: "WAF_ENDPOINT",
+      severity: "HIGH",
+      state: "OPEN",
+      since: "2026-11-04T09:00:00.000Z",
+      until: "2026-11-11T09:00:00.000Z",
+    });
+    expect(exportLink()).toHaveAttribute("download");
+  });
+
+  it("names both IPS kinds for the all-IPS filter, like the list request", async () => {
+    await renderPage({ subject_kind: "IPS" });
+    const url = new URL(exportLink().getAttribute("href")!);
+    expect(url.searchParams.getAll("subject_kind")).toEqual(["IPS_ENTITY", "IPS_SOURCE"]);
+  });
+
+  it("says the file holds at most 10,000 rows", async () => {
+    await renderPage();
+    expect(screen.getByText("at most 10,000 rows")).toBeInTheDocument();
+    expect(exportParams()).toEqual({});
+  });
+});

@@ -50,6 +50,7 @@ import pwchart from "./pwchart.json";
 import qradarAccess from "./qradarAccess.json";
 import queue from "./queue.json";
 import related from "./related.json";
+import reports from "./reports.json";
 import rules from "./rules.json";
 import searches from "./searches.json";
 import shell from "./shell.json";
@@ -112,6 +113,7 @@ const messages = {
   qradarAccess,
   queue,
   related,
+  reports,
   rules,
   searches,
   shell,

@@ -26,6 +26,7 @@ type ExtendedEnumGroup =
   | "alertTransition"
   | "ruleHealth"
   | "propertyWatchAnomalyType"
+  | "ruleAnomalyType"
   | "propertyWatchStatus"
   | "propertyWatchHistoryState"
   | "propertyWatchPreviewOutcome"

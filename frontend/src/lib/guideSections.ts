@@ -193,6 +193,14 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
     related: ["alerts", "investigate-anomaly", "honesty-states"],
   },
   {
+    id: "reports",
+    group: "pages",
+    routes: ["/reports"],
+    audience: "analyst",
+    permissions: [],
+    related: ["alerts", "coverage", "source-behavior"],
+  },
+  {
     id: "rules",
     group: "pages",
     routes: ["/rules", "/rules/[id]"],

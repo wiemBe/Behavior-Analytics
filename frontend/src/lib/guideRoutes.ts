@@ -25,6 +25,7 @@ export const GUIDE_ROUTES = {
   "/behavior/watches/new": "property-watch-setup",
   "/geography": "geography",
   "/handover": "handover",
+  "/reports": "reports",
   "/fleet": "fleet",
   "/fleet/sources": "fleet-sources",
   "/fleet/catchall": "catch-all-senders",

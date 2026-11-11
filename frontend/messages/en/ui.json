@@ -75,5 +75,8 @@
     },
     "acknowledged": "Alert acknowledged: {title}.",
     "notOpen": "Only an open alert can be acknowledged."
+  },
+  "exportCsv": {
+    "limit": "at most {max} rows"
   }
 }
