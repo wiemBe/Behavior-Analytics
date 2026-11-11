@@ -1181,8 +1181,9 @@ class WafEndpointCollector:
         The endpoint ledger is loaded once for the source, including retired endpoints,
         then ``fold_volume_history`` replays admission and per-bucket retirement in
         memory.  Bucket and metric conflicts do nothing: history can never replace a
-        live row.  The surrounding pipeline transaction writes scope progress beside
-        these rows, so a worker failure commits neither.
+        live row.  Volume history stores no client list (``top_clients`` is null), so
+        this path writes no entity mentions.  The surrounding pipeline transaction
+        writes scope progress beside these rows, so a worker failure commits neither.
         """
         stored = (
             await self.session.scalars(
@@ -1623,7 +1624,9 @@ class WafEndpointCollector:
         Endpoints are loaded once for the whole step.  A breakdown value is written only
         to an existing metric whose endpoint was tracked at that bucket.  Both UPDATEs
         join back to a HISTORY source bucket, so neither a conflicting live bucket nor a
-        live metric at the same time can be changed.
+        live metric at the same time can be changed.  Mentions are recorded once, for
+        the metric rows whose stored ``top_clients`` is a list, and the write is insert
+        only.
         """
         if not results:
             return 0, 0
@@ -1736,7 +1739,48 @@ class WafEndpointCollector:
                     )
                 },
             )
+        await self._record_history_client_mentions(log_source, metric_rows)
         return len(bucket_rows), len(metric_rows)
+
+    async def _record_history_client_mentions(
+        self,
+        log_source: LogSource,
+        rows: list[dict[str, object]],
+    ) -> None:
+        """Index the ``top_clients`` lists this history step stores.  Insert only.
+
+        Volume history stores no client list, so only a breakdown row whose stored
+        ``top_clients`` is a list is folded.  The parent key matches a live metric of
+        the same endpoint and bucket.  History never replaces a live row (the UPDATE
+        is restricted to ``origin = 'HISTORY'``), so this write does not delete.
+        One INSERT for the whole step, inside the same savepoint the live writer
+        uses: a failure is logged and the metric rows stay.
+        """
+        mentions = [
+            mention
+            for row in rows
+            if isinstance(row.get("top_clients"), list)
+            for mention in waf_top_mentions(
+                log_source.instance_id,
+                waf_endpoint_id=row["waf_endpoint_id"],
+                bucket_start=cast(datetime, row["bucket_start"]),
+                top_clients=cast(list[dict[str, object]], row["top_clients"]),
+            )
+        ]
+        if not mentions:
+            return
+        try:
+            async with self.session.begin_nested():
+                await record_mentions(self.session, mentions, single_statement=True)
+        except Exception as exc:
+            logger.warning(
+                "WAF entity mentions were not recorded",
+                extra={
+                    "log_source_id": str(log_source.id),
+                    "buckets": len({row.get("bucket_start") for row in rows}),
+                    "error_class": type(exc).__name__,
+                },
+            )
 
     async def _history_volume_search(
         self, log_source: LogSource, span: Span, bucket_seconds: int

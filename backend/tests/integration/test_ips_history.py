@@ -832,7 +832,8 @@ class TestStatementCount:
             ).all()
             assert rows, "the counted tick wrote no history row"
         assert first_counts == {1: 13, 10: 13}
-        assert later_counts == {1: 16, 10: 16}
+        # The reading tick records mentions: SAVEPOINT, one INSERT, RELEASE.
+        assert later_counts == {1: 19, 10: 19}
 
     async def test_three_failed_sources_write_scope_errors_in_one_statement(
         self, db_session
@@ -898,7 +899,8 @@ class TestStatementCount:
             counts[buckets_written] = len(statements)
         assert counts[12] == counts[2016], counts
         # Pinned: the whole reading of one source, scan tick and reading tick.
-        assert counts[12] == 31, counts
+        # The reading tick adds SAVEPOINT, one INSERT, RELEASE.
+        assert counts[12] == 34, counts
 
     async def test_the_count_does_not_grow_with_the_number_of_entities(
         self, db_session
@@ -944,7 +946,8 @@ class TestStatementCount:
             counts[entities] = len(statements)
         assert counts[1] == counts[22], counts
         # Pinned: the same reading, with one entity per bucket and with many.
-        assert counts[1] == 31, counts
+        # The reading tick adds SAVEPOINT, one INSERT, RELEASE.
+        assert counts[1] == 34, counts
 
     async def test_a_step_writes_more_rows_than_the_bind_limit_allows(
         self, db_session

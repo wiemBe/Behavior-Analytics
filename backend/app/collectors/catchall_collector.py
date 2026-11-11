@@ -1110,7 +1110,9 @@ class CatchallCollector:
             row for chunk in chunks for row in chunk.rows if row["bucket_start"] in writable
         ]
         touches = merge_touches((chunk.touches for chunk in chunks), buckets=writable)
-        report.history_buckets_written = await self._write_history_buckets(rows)
+        report.history_buckets_written = await self._write_history_buckets(
+            rows, instance_id=instance.id
+        )
         report.history_senders_written = await self._write_history_senders(
             touches, instance=instance, anchor=anchor, now=now
         )
@@ -1233,8 +1235,15 @@ class CatchallCollector:
         )
         return change.state
 
-    async def _write_history_buckets(self, rows: list[dict[str, Any]]) -> int:
-        """The history buckets, in chunks; a live bucket is never replaced."""
+    async def _write_history_buckets(
+        self, rows: list[dict[str, Any]], *, instance_id: uuid.UUID
+    ) -> int:
+        """The history buckets, in chunks; a live bucket is never replaced.
+
+        Mentions for every row of the step are one insert after the chunks, not one
+        insert per chunk. A conflicting live bucket is left as it was, and so are
+        its mentions.
+        """
         for offset in range(0, len(rows), _BUCKET_CHUNK):
             chunk = rows[offset : offset + _BUCKET_CHUNK]
             statement = pg_insert(CatchallBucket).values(chunk)
@@ -1242,7 +1251,36 @@ class CatchallCollector:
                 index_elements=["catchall_log_source_id", "bucket_start"]
             )
             await self.session.execute(statement)
+        await self._record_history_mentions(instance_id, rows)
         return len(rows)
+
+    async def _record_history_mentions(
+        self, instance_id: uuid.UUID, rows: Sequence[Mapping[str, Any]]
+    ) -> None:
+        """Index the sender lists this history step stores. Insert only.
+
+        The payload is the same ``top_senders`` list the live writer folds. History
+        bucket inserts conflict-do-nothing, so a live bucket is never replaced and
+        this write does not delete its mentions. One INSERT for the whole step,
+        inside the same savepoint the live writer uses.
+        """
+        if not rows:
+            return
+        mentions = _catchall_mention_rows(instance_id, rows)
+        if not mentions:
+            return
+        try:
+            async with self.session.begin_nested():
+                await record_mentions(self.session, mentions, single_statement=True)
+        except Exception as exc:
+            logger.warning(
+                "catch-all entity mentions were not recorded",
+                extra={
+                    "instance_id": str(instance_id),
+                    "buckets": len(rows),
+                    "error_class": type(exc).__name__,
+                },
+            )
 
     async def _write_history_senders(
         self,

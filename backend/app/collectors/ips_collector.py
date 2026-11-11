@@ -1448,6 +1448,68 @@ class IpsCollector:
                 metric_rows,
             )
         report.history_buckets_written += len(bucket_rows)
+        await self._record_history_mentions(
+            instance, bucket_rows, metric_rows, entity_rows
+        )
+
+    async def _record_history_mentions(
+        self,
+        instance: QRadarInstance,
+        bucket_rows: list[dict[str, object]],
+        metric_rows: list[dict[str, object]],
+        entity_rows: list[dict[str, object]],
+    ) -> None:
+        """Index the contributors and destination IPs this history step stores.
+
+        The lists are the ones the history fold just persisted, the same ones a live
+        bucket stores, so the fold output matches. Insert only: history bucket and
+        metric rows conflict-do-nothing, so a live parent at the same time is never
+        replaced and its mentions are not deleted. One INSERT for the whole step,
+        inside the same savepoint the live writer uses. A failure is logged by class
+        name and the metric rows stay.
+        """
+        destinations: dict[object, str] = {
+            row["id"]: cast(str, row["value_key"])
+            for row in entity_rows
+            if row.get("dimension") == IpsDimension.DESTINATION_IP.value
+        }
+        mentions = [
+            mention
+            for row in bucket_rows
+            for mention in ips_top_mentions(
+                instance.id,
+                log_source_id=row["log_source_id"],
+                bucket_start=cast(datetime, row["bucket_start"]),
+                contributors=cast(
+                    dict[str, list[dict[str, object]]], row["contributors"]
+                ),
+            )
+        ]
+        mentions.extend(
+            mention
+            for row in metric_rows
+            if row["ips_entity_id"] in destinations
+            for mention in ips_entity_mentions(
+                instance.id,
+                ips_entity_id=row["ips_entity_id"],
+                bucket_start=cast(datetime, row["bucket_start"]),
+                value_key=destinations[row["ips_entity_id"]],
+            )
+        )
+        if not mentions:
+            return
+        try:
+            async with self.session.begin_nested():
+                await record_mentions(self.session, mentions, single_statement=True)
+        except Exception as exc:
+            logger.warning(
+                "IPS entity mentions were not recorded",
+                extra={
+                    "instance_id": str(instance.id),
+                    "buckets": len(bucket_rows),
+                    "error_class": type(exc).__name__,
+                },
+            )
 
     async def _write_handoff_watermarks(
         self,
