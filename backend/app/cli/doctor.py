@@ -33,6 +33,7 @@ from app.collectors.offense_collector import WATERMARK_STALLED_KEY
 from app.core.config import Environment, Settings, get_settings, unknown_setting_names
 from app.core.database import dispose_engine, get_sessionmaker
 from app.history.origin import is_live_clause
+from app.models.entity import EntityMentionBackfill
 from app.models.enums import SearchFamily, default_search_cadence
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource, LogSourceMetric
@@ -99,6 +100,8 @@ _CHECK_RUNBOOKS = (
     ("email", "OPS-R68"),
     ("qradar_disk", "OPS-R69"),
     ("qradar_pipeline", "OPS-R70"),
+    # Before `qradar_access`, which an older test pins immediately before `qradar_health`.
+    ("entity_mentions", "OPS-R73"),
     # Before `qradar_health`: two older tests pin that one as the last check.
     ("qradar_access", "OPS-R71"),
     ("qradar_health", "OPS-R67"),
@@ -490,6 +493,22 @@ _FAMILY_SWITCHES: dict[str, str] = {
 #: The families with no off switch, listed so the drift test can tell "deliberately switchless"
 #: from "forgotten". `PHASE_A_VOLUME` is the only one.
 _FAMILIES_WITHOUT_SWITCH = frozenset({SearchFamily.PHASE_A_VOLUME.value})
+
+#: The operator command that advances the entity-mention backfill (SOC-16f4, D-64).
+_ENTITY_MENTIONS_COMMAND = "python -m app.cli.entity_mentions run"
+#: How many backfill ticks a RUNNING row may stay unchanged before `entity_mentions` names it as
+#: not advancing: three missed ticks are a held collector lock or a worker that is not running.
+_ENTITY_MENTIONS_STALL_TICKS = 3
+
+
+def _entity_mentions_incomplete_message(sources: Sequence[str]) -> str:
+    """The WARN clause for sources whose entity timeline index is not complete."""
+    return (
+        f"entity timeline index incomplete for {len(sources)} source(s): "
+        + "; ".join(sources)
+        + "; absence cannot be proven there until it completes; run it now: "
+        + _ENTITY_MENTIONS_COMMAND
+    )
 
 
 class Doctor:
@@ -1531,6 +1550,115 @@ class Doctor:
                 check_id, Status.WARN, f"{line}: handshake failed ({exc.code})", "OPS-R68"
             )
         return CheckResult(check_id, Status.PASS, f"{line}: handshake completed, nothing sent")
+
+    async def check_entity_mentions(self) -> CheckResult:
+        """How far the entity timeline index has been backfilled (SOC-16f4, OPS-R73).
+
+        One read of `entity_mention_backfill`, at most one row per enabled console and mention
+        source, so the statement count does not follow the number of consoles. A PENDING or
+        RUNNING source cannot prove absence on the entity timeline, and a FAILED one is retried
+        on the next tick: both are honest degraded state, so this check never FAILs. It calls no
+        QRadar API and writes nothing. A row of a disabled console is not judged (that console is
+        not backfilled); `python -m app.cli.entity_mentions status` still lists it.
+        """
+        check_id = "entity_mentions"
+        try:
+            async with self.sessionmaker() as session:
+                rows = (
+                    await session.execute(
+                        select(
+                            QRadarInstance.name,
+                            EntityMentionBackfill.source,
+                            EntityMentionBackfill.status,
+                            EntityMentionBackfill.rows_written,
+                            EntityMentionBackfill.updated_at,
+                            EntityMentionBackfill.last_error,
+                        )
+                        .select_from(QRadarInstance)
+                        .join(
+                            EntityMentionBackfill,
+                            EntityMentionBackfill.instance_id == QRadarInstance.id,
+                        )
+                        .where(QRadarInstance.enabled.is_(True))
+                        .order_by(QRadarInstance.name, EntityMentionBackfill.source)
+                    )
+                ).all()
+            if not rows:
+                if not self.settings.entity_mention_backfill_enabled:
+                    return CheckResult(
+                        check_id,
+                        Status.PASS,
+                        "entity-mention backfill is switched off "
+                        "(ENTITY_MENTION_BACKFILL_ENABLED=false)",
+                    )
+                return CheckResult(
+                    check_id,
+                    Status.WARN,
+                    "the entity-mention backfill has not run yet; run it now: "
+                    f"{_ENTITY_MENTIONS_COMMAND}",
+                    "OPS-R73",
+                )
+            stall_after = timedelta(
+                seconds=_ENTITY_MENTIONS_STALL_TICKS
+                * self.settings.entity_mention_backfill_interval_seconds
+            )
+            now = self.now()
+            failed: list[str] = []
+            incomplete: list[str] = []
+            complete = 0
+            complete_rows = 0
+            for name, source, status, written, updated_at, last_error in rows:
+                label = f"{name}/{source}"
+                if status == "FAILED":
+                    reason = _safe_text(last_error) if last_error else "no error was recorded"
+                    failed.append(f"{label} ({reason})")
+                elif status == "COMPLETE":
+                    complete += 1
+                    complete_rows += written
+                else:
+                    # PENDING, RUNNING, and any status this code does not know: the index
+                    # cannot be complete there, so it is reported as incomplete (fail closed).
+                    detail = f"{_safe_text(status)}, {written} row(s) written"
+                    if (
+                        status == "RUNNING"
+                        and updated_at is not None
+                        and now - updated_at > stall_after
+                    ):
+                        detail += (
+                            ", not advancing since "
+                            f"{updated_at.astimezone(UTC):%Y-%m-%d %H:%M} UTC"
+                        )
+                    incomplete.append(f"{label} ({detail})")
+        except Exception as exc:
+            return CheckResult(
+                check_id,
+                Status.WARN,
+                f"entity-mention backfill state could not be read ({type(exc).__name__})",
+                "OPS-R73",
+            )
+        if failed:
+            # A failed source is the retry case, so it leads the line; an incomplete source on
+            # another console is still named, or the operator never sees it.
+            message = (
+                "entity-mention backfill failed for "
+                + "; ".join(failed)
+                + f"; retry: {_ENTITY_MENTIONS_COMMAND}"
+            )
+            if incomplete:
+                message = f"{message}; {_entity_mentions_incomplete_message(incomplete)}"
+            return CheckResult(check_id, Status.WARN, message, "OPS-R73")
+        if incomplete:
+            return CheckResult(
+                check_id,
+                Status.WARN,
+                _entity_mentions_incomplete_message(incomplete),
+                "OPS-R73",
+            )
+        return CheckResult(
+            check_id,
+            Status.PASS,
+            f"{complete} source(s) indexed, {complete_rows} row(s) written",
+        )
 
     async def check_qradar_access(self) -> CheckResult:
         """Which QRadar APIs the token can reach, from the latest stored access check.
