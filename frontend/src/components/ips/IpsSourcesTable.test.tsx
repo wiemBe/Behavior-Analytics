@@ -25,13 +25,13 @@ describe("IPS sources table", () => {
 
   it("has column headers, a caption and a labelled scroll region", () => {
     render(<IpsSourcesTable sources={[ipsSource()]} />);
-    expect(screen.getAllByRole("columnheader")).toHaveLength(5);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(6);
     expect(screen.getByRole("table")).toHaveAccessibleName(/IPS sources with profile and validation/);
     expect(screen.getByRole("region", { name: "IPS sources" })).toBeInTheDocument();
   });
 
   it("shows a source with no bucket as not collected yet, never as zero", () => {
-    render(<IpsSourcesTable sources={[ipsSource({ latest_bucket: null })]} />);
+    render(<IpsSourcesTable sources={[ipsSource({ latest_bucket: null, active_anomaly_count: null })]} />);
     const r = row("lab-ips-01");
     expect(r.getAllByText("Not collected yet")).toHaveLength(2);
     expect(r.queryByText(/^0$/)).toBeNull();
@@ -98,7 +98,8 @@ describe("IPS sources table", () => {
 
   it("calls out admission overflow only when it is non-zero", () => {
     const { rerender } = render(<IpsSourcesTable sources={[ipsSource()]} />);
-    expect(row("lab-ips-01").getByText("None")).toBeInTheDocument();
+    // The admission cell's "None" and the (judged, zero) anomalies cell's "None".
+    expect(row("lab-ips-01").getAllByText("None")).toHaveLength(2);
     expect(screen.queryByText("Overflowing")).toBeNull();
 
     rerender(
@@ -136,6 +137,9 @@ describe("IPS sources table", () => {
       <IpsSourcesTable
         sources={[
           ipsSource({
+            // Not judged, so the anomalies cell says "Not judged" and this assertion about the
+            // admission cell's own "None" stays unambiguous.
+            active_anomaly_count: null,
             latest_bucket: latestBucket({ admission: [{ dimension: "SIGNATURE", ...blank }] }),
           }),
         ]}
@@ -154,3 +158,48 @@ describe("IPS sources table", () => {
     );
   });
 });
+
+describe("IPS sources table: active anomalies", () => {
+  it("shows the count, the worst severity and a link to this source's active IPS anomalies", () => {
+    render(
+      <IpsSourcesTable
+        sources={[ipsSource({ log_source_id: "s-1", active_anomaly_count: 4, worst_active_severity: "CRITICAL" })]}
+      />,
+    );
+    const r = row("lab-ips-01");
+    const link = r.getByRole("link", { name: /^4/ });
+    expect(link).toHaveAttribute("href", "/anomalies?subject_kind=IPS&log_source_id=s-1&active_only=true");
+    expect(link.closest("td")).toHaveClass("num");
+    expect(r.getByText("CRITICAL")).toHaveClass("crit");
+    expect(link.closest("td")).toHaveTextContent("CRITICAL");
+  });
+
+  it("shows None, plain, for a judged source with no active anomaly", () => {
+    render(<IpsSourcesTable sources={[ipsSource({ active_anomaly_count: 0 })]} />);
+    const r = row("lab-ips-01");
+    expect(r.getAllByText("None").length).toBeGreaterThan(0);
+    expect(r.queryByText("Not judged")).toBeNull();
+    expect(r.queryByRole("link", { name: /active anomalies/ })).toBeNull();
+  });
+
+  it("shows Not judged, muted, for null and never a zero or None in that cell", () => {
+    render(
+      <IpsSourcesTable
+        sources={[
+          ipsSource({
+            active_anomaly_count: null,
+            worst_active_severity: null,
+            validation_current: false,
+            latest_bucket: null,
+          }),
+        ]}
+      />,
+    );
+    const r = row("lab-ips-01");
+    const cell = r.getByText("Not judged").closest("td")!;
+    expect(r.getByText("Not judged").closest(".muted")).not.toBeNull();
+    expect(cell).not.toHaveTextContent(/^0|None/);
+    expect(within(cell).queryByRole("link")).toBeNull();
+  });
+});
+

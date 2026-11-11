@@ -94,11 +94,19 @@ td.num .ips-unit {
   font-size: inherit;
   font-weight: inherit;
 }
+.ips-lead .pill {
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
 .ips-section {
   margin-top: var(--sp-7);
 }
 .ips-actions td.num,
 .ips-actions th.num {
+  white-space: nowrap;
+}
+.ips-sources td.ips-active {
   white-space: nowrap;
 }
 .ips-entities td.num,

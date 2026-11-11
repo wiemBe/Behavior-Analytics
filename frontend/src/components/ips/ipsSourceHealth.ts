@@ -109,12 +109,44 @@ export function needsAttention(s: IpsSourceBehavior): boolean {
   return !isJudged(s) || isOverflowing(s) || atCeiling(s);
 }
 
+/** Judged, with at least one active incident. `null` (not judged) never counts as one. */
+export function hasActiveAnomalies(s: IpsSourceBehavior): boolean {
+  return s.active_anomaly_count != null && s.active_anomaly_count > 0;
+}
+
+const SEVERITY_RANK: Record<string, number> = { CRITICAL: 5, HIGH: 4, MEDIUM: 3, LOW: 2, INFO: 1 };
+
+/** The anomalies of one IPS source (its entities and the source itself) that are still active. */
+export function activeAnomaliesHref(logSourceId: string): string {
+  return `/anomalies?subject_kind=IPS&log_source_id=${encodeURIComponent(logSourceId)}&active_only=true`;
+}
+
+/**
+ * Order of the list. A source that is not judged comes first: it produces no verdicts, which needs
+ * an analyst for a different reason than an open incident. Then a judged source with active
+ * incidents, by worst severity and then count; then a judged source that is overflowing or at the
+ * ceiling; then the rest. Ties break by name.
+ */
+function tier(s: IpsSourceBehavior): number {
+  if (!isJudged(s)) return 0;
+  if (hasActiveAnomalies(s)) return 1;
+  return needsAttention(s) ? 2 : 3;
+}
+
 export function sortByAttention(items: IpsSourceBehavior[]): IpsSourceBehavior[] {
-  return [...items].sort(
-    (a, b) =>
-      Number(needsAttention(b)) - Number(needsAttention(a)) ||
-      a.log_source_name.localeCompare(b.log_source_name),
-  );
+  return [...items].sort((a, b) => {
+    const byTier = tier(a) - tier(b);
+    if (byTier !== 0) return byTier;
+    if (tier(a) === 1) {
+      const bySeverity =
+        (SEVERITY_RANK[b.worst_active_severity ?? ""] ?? 0) -
+        (SEVERITY_RANK[a.worst_active_severity ?? ""] ?? 0);
+      if (bySeverity !== 0) return bySeverity;
+      const byCount = (b.active_anomaly_count ?? 0) - (a.active_anomaly_count ?? 0);
+      if (byCount !== 0) return byCount;
+    }
+    return a.log_source_name.localeCompare(b.log_source_name);
+  });
 }
 
 /** The search dimensions of a latest bucket, grouped by their measurement, in the API's order. */

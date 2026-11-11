@@ -41,7 +41,7 @@ beforeEach(() => {
 interface Setup {
   entities?: IpsEntityInventory[];
   total?: number;
-  source?: IpsSourceBehavior | null;
+  source?: IpsSourceBehavior;
   buckets?: IpsSourceMetricBucket[];
   metricsTotal?: number;
   cells?: IpsBaselineCell[];
@@ -51,13 +51,8 @@ interface Setup {
 async function renderPage(o: Setup = {}) {
   const entities = o.entities ?? [ipsEntity()];
   const buckets = o.buckets ?? [ipsSourceBucket({ bucket_start: at(0) }), ipsSourceBucket({ bucket_start: at(5) })];
-  const source = o.source === undefined ? ipsSource() : o.source;
-  vi.spyOn(api, "ipsBehaviorSources").mockResolvedValue({
-    items: source ? [source] : [],
-    total: source ? 1 : 0,
-    limit: 200,
-    offset: 0,
-  });
+  const source = o.source ?? ipsSource();
+  const sourceCall = vi.spyOn(api, "ipsBehaviorSource").mockResolvedValue(source);
   const entityCall = vi
     .spyOn(api, "ipsBehaviorEntities")
     .mockResolvedValue({ items: entities, total: o.total ?? entities.length, limit: 50, offset: 0 });
@@ -78,7 +73,7 @@ async function renderPage(o: Setup = {}) {
       searchParams: Promise.resolve(o.search ?? {}),
     }),
   );
-  return { ...view, entityCall, metricsCall, baselineCall };
+  return { ...view, sourceCall, entityCall, metricsCall, baselineCall };
 }
 
 describe("IPS source: header", () => {
@@ -174,7 +169,7 @@ describe("IPS source: the chart", () => {
 
   it("says the band is missing, not normal, when the cells could not be loaded", async () => {
     vi.spyOn(api, "ipsSourceBaselines").mockRejectedValue(new Error("down"));
-    vi.spyOn(api, "ipsBehaviorSources").mockResolvedValue({ items: [ipsSource()], total: 1, limit: 200, offset: 0 });
+    vi.spyOn(api, "ipsBehaviorSource").mockResolvedValue(ipsSource());
     vi.spyOn(api, "ipsBehaviorEntities").mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
     vi.spyOn(api, "ipsSourceMetrics").mockResolvedValue({
       items: [ipsSourceBucket()],
@@ -331,9 +326,46 @@ describe("IPS source: entities", () => {
   });
 });
 
+describe("IPS source: the single read and active anomalies", () => {
+  it("reads the source with the single-source call, not by paging the list", async () => {
+    const list = vi.spyOn(api, "ipsBehaviorSources");
+    const { sourceCall } = await renderPage();
+    expect(sourceCall).toHaveBeenCalledWith(ID);
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("says how many anomalies are active and the worst severity, linking to them", async () => {
+    await renderPage({ source: ipsSource({ active_anomaly_count: 3, worst_active_severity: "HIGH" }) });
+    const link = screen.getByRole("link", { name: "3 active anomalies" });
+    expect(link).toHaveAttribute(
+      "href",
+      `/anomalies?subject_kind=IPS&log_source_id=${ID}&active_only=true`,
+    );
+    expect(link.closest("p")).toHaveTextContent("Worst severity: HIGH");
+  });
+
+  it("uses the singular for one active anomaly", async () => {
+    await renderPage({ source: ipsSource({ active_anomaly_count: 1, worst_active_severity: "LOW" }) });
+    expect(screen.getByRole("link", { name: "1 active anomaly" })).toBeInTheDocument();
+  });
+
+  it("adds no line for a judged source with none active", async () => {
+    await renderPage({ source: ipsSource({ active_anomaly_count: 0 }) });
+    expect(screen.queryByRole("link", { name: /active anomal/ })).toBeNull();
+  });
+
+  it("adds no line for a source that is not judged, and keeps the not-collected banner", async () => {
+    await renderPage({
+      source: ipsSource({ active_anomaly_count: null, enabled: true, validation_current: false }),
+    });
+    expect(screen.queryByRole("link", { name: /active anomal/ })).toBeNull();
+    expect(screen.getByText(/This source is not collected/)).toBeInTheDocument();
+  });
+});
+
 describe("IPS source: failures", () => {
   async function failing(status: number, retryAfter: number | null = null) {
-    vi.spyOn(api, "ipsBehaviorSources").mockResolvedValue({ items: [ipsSource()], total: 1, limit: 200, offset: 0 });
+    vi.spyOn(api, "ipsBehaviorSource").mockResolvedValue(ipsSource());
     vi.spyOn(api, "ipsBehaviorEntities").mockRejectedValue(
       status === 0 ? new Error("ECONNREFUSED 10.0.0.9") : new ApiError(status, "x", undefined, undefined, retryAfter),
     );
@@ -362,13 +394,34 @@ describe("IPS source: failures", () => {
 
   it("gives an unknown id a not-found text with a way back to the list", async () => {
     await failing(404);
-    expect(screen.getByRole("alert")).toHaveTextContent("This IPS source does not exist.");
+    expect(screen.getByRole("alert")).toHaveTextContent("IPS source not found.");
     expect(screen.getByRole("link", { name: "Open IPS behavior" })).toHaveAttribute("href", "/behavior/ips");
   });
 
-  it("gives a source the list does not hold the same not-found text", async () => {
-    await renderPage({ source: null });
-    expect(screen.getByRole("alert")).toHaveTextContent("This IPS source does not exist.");
+  it("renders the server's coded 404 as the not-found state, in the server's words, with the way back", async () => {
+    vi.spyOn(api, "ipsBehaviorSource").mockRejectedValue(
+      new ApiError(404, "IPS source not found", "IPS source not found", {
+        detail: "IPS source not found",
+        detail_code: "ips.source.not_found",
+        detail_params: {},
+      }),
+    );
+    vi.spyOn(api, "ipsBehaviorEntities").mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+    vi.spyOn(api, "ipsSourceMetrics").mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 5000,
+      offset: 0,
+      range_start: "2026-10-12T08:00:00Z",
+      range_end: "2026-10-13T08:00:00Z",
+    });
+    render(await IpsSourcePage({ params: Promise.resolve({ id: ID }), searchParams: Promise.resolve({}) }));
+    const alert = screen.getByRole("alert");
+    expect(alert.querySelector("strong")).toHaveTextContent("IPS source not found.");
+    expect(alert).toHaveTextContent("No log source with an enabled IPS behavior profile has this id on this console.");
+    expect(alert).not.toHaveTextContent("does not exist");
+    expect(alert.textContent?.match(/IPS source not found/g)).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Open IPS behavior" })).toHaveAttribute("href", "/behavior/ips");
   });
 
   it("reports a rate limit with its own wording", async () => {
@@ -387,7 +440,7 @@ describe("IPS source: failures", () => {
   });
 
   it("says the chart is absent when only the metrics failed, and keeps the entities", async () => {
-    vi.spyOn(api, "ipsBehaviorSources").mockResolvedValue({ items: [ipsSource()], total: 1, limit: 200, offset: 0 });
+    vi.spyOn(api, "ipsBehaviorSource").mockResolvedValue(ipsSource());
     vi.spyOn(api, "ipsBehaviorEntities").mockResolvedValue({ items: [ipsEntity()], total: 1, limit: 50, offset: 0 });
     vi.spyOn(api, "ipsSourceMetrics").mockRejectedValue(new Error("down"));
     render(await IpsSourcePage({ params: Promise.resolve({ id: ID }), searchParams: Promise.resolve({}) }));
