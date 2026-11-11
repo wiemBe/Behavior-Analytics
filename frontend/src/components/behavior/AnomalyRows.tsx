@@ -434,9 +434,15 @@ export function AnomalyRows({ items, nowMs }: { items: AnomalySummary[]; nowMs: 
                 {/* Up to 1280 px the Triage and Owner columns fold under the state. */}
                 <span className="cell-sub cell-fold fold-md">
                   {a.triage
-                    ? t("triageFoldLine", {
+                    ? t.rich("triageFoldLine", {
                         status: tt(`status.${a.triage.status}` as never),
-                        owner: a.triage.owner ?? t("unassigned"),
+                        // A long subject breaks at its natural points, as in the Owner cell.
+                        // (next-intl renders a node value as is; its types only list tags.)
+                        owner: (a.triage.owner ? (
+                          <OwnerText value={a.triage.owner} />
+                        ) : (
+                          t("unassigned")
+                        )) as never,
                       })
                     : t("triageUnknown")}
                 </span>

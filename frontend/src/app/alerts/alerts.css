@@ -1,7 +1,8 @@
 /* A long alert title keeps a readable measure at 1024 px instead of breaking into a word
-   per line once the time columns take their width. */
+   per line once the time columns take their width. 16ch is the widest floor at which the table
+   still fits its frame at 1024 px (18ch left it 12 px too wide, so "Last seen" was cut). */
 td.alert-title {
-  min-width: 18ch;
+  min-width: 16ch;
   overflow-wrap: anywhere;
 }
 

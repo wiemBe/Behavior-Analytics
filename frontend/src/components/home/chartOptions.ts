@@ -24,6 +24,8 @@ import { utcTimeHtml } from "@/components/ui/UtcTime";
 import { unitGap } from "@/i18n/measures";
 import { formatCount, formatPercent, type FormatLocale } from "@/lib/format";
 
+import { emaTooltipRows, emaSeries, emaColours, type EmaLine } from "@/lib/emaSeries";
+
 import { epsHistoryLine, type EpsHistory } from "./epsHistory";
 
 import type { EChartsOption } from "echarts";
@@ -84,6 +86,7 @@ export function epsTooltip(
   index: number,
   history?: EpsHistory,
   x: ChartI18n = ENGLISH_CHART,
+  ema: ReadonlyArray<EmaLine> = [],
 ): string {
   const s = model.steps[index];
   if (!s) return "";
@@ -103,6 +106,15 @@ export function epsTooltip(
       `${x.t("home.chart.expectedName")}: ${epsText(s.expected, x)}${unitGap(x.locale)}${x.t("units.eps")}`,
     );
   }
+  // An average only where the step has one: a step that was not measured shows none.
+  lines.push(
+    ...emaTooltipRows(ema, index, (period, value) =>
+      x.t("behavior.chart.tooltip.emaValue", {
+        period,
+        value: `${epsText(value, x)}${unitGap(x.locale)}${x.t("units.eps")}`,
+      }),
+    ),
+  );
   const fromHistory = epsHistoryLine(history, s.t, x.t, x.locale);
   if (fromHistory) lines.push(fromHistory);
   return lines.join("<br/>");
@@ -126,6 +138,7 @@ export function buildEpsOption(
   reduceMotion = prefersReducedMotion(),
   history?: EpsHistory,
   x: ChartI18n = ENGLISH_CHART,
+  ema: ReadonlyArray<EmaLine> = [],
 ): EChartsOption {
   const text = { color: p.label, fontFamily: p.font };
   const historyAreas =
@@ -143,7 +156,7 @@ export function buildEpsOption(
       formatter: (params: unknown) => {
         const list = Array.isArray(params) ? params : [params];
         const first = list[0] as { dataIndex?: number } | undefined;
-        return first?.dataIndex != null ? epsTooltip(model, first.dataIndex, history, x) : "";
+        return first?.dataIndex != null ? epsTooltip(model, first.dataIndex, history, x, ema) : "";
       },
     },
     xAxis: {
@@ -220,6 +233,12 @@ export function buildEpsOption(
             },
           ]
         : []),
+      // The EMA lines (expanded view only): the caller passes none in the tile.
+      ...emaSeries(
+        ema,
+        model.steps.map((s) => s.t),
+        emaColours(p),
+      ),
     ],
   };
 }
