@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.alert import Alert
 from app.models.catchall import CatchallSender
 from app.models.custom_rule import CustomRule
-from app.models.enums import AlertStatus, Severity
+from app.models.enums import SEVERITY_RANK, AlertStatus, Severity
 from app.models.ips import IpsEntity
 from app.models.property_watch import PropertyWatch, PwValue
 from app.models.waf import WafEndpoint
@@ -83,15 +83,11 @@ def alert_family(source_type: str) -> AlertFamily | None:
 FAMILY_EXPRESSION = case(FAMILY_BY_SOURCE_TYPE, value=Alert.source_type)
 
 #: Severity as an ordinal, so `sort=severity&order=asc` lists INFO first rather
-#: than sorting the labels alphabetically (which would put CRITICAL first).
-_SEVERITY_RANK = {
-    Severity.INFO.value: 0,
-    Severity.LOW.value: 1,
-    Severity.MEDIUM.value: 2,
-    Severity.HIGH.value: 3,
-    Severity.CRITICAL.value: 4,
-}
-SEVERITY_RANK_EXPRESSION = case(_SEVERITY_RANK, value=Alert.severity)
+#: than sorting the labels alphabetically (which would put CRITICAL first). The
+#: numbers are the shared order's (`SEVERITY_RANK`), so the list cannot drift
+#: from every other severity comparison. A stored value with no branch has no
+#: `else_` and therefore ranks SQL NULL, as it did before (DEBT-8b).
+SEVERITY_RANK_EXPRESSION = case(SEVERITY_RANK, value=Alert.severity)
 
 
 class AlertSort(StrEnum):
