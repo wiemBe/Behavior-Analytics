@@ -24,6 +24,7 @@ import { Account } from "./Account";
 import { AlertBell } from "./AlertBell";
 import { AutoRefresh } from "./AutoRefresh";
 import { ConnectionStatus } from "./ConnectionStatus";
+import { GoKeys } from "./GoKeys";
 import { TopSearch } from "./TopSearch";
 
 /** A read as the bar sees it: pending, answered, refused (403) or failed. */
@@ -69,6 +70,7 @@ export function TopBar() {
 
   return (
     <div className={`topbar ${styles.bar}`}>
+      <GoKeys />
       <TopSearch />
       <AutoRefresh onRefresh={reload} />
       <AlertBell overview={overview} />

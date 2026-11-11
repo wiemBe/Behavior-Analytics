@@ -62,6 +62,18 @@
     "clear": "clear",
     "position": "Row {n} of {total}: {label}",
     "last": "Row {n} of {total} is the last on this page. Use the page links below the table for more.",
-    "cleared": "Row mark cleared"
+    "cleared": "Row mark cleared",
+    "acknowledge": "acknowledge",
+    "note": "add a note",
+    "goLabel": "Go to",
+    "go": {
+      "dashboard": "Dashboard",
+      "queue": "Queue",
+      "anomalies": "Anomalies",
+      "alerts": "Alerts",
+      "offenses": "Offenses"
+    },
+    "acknowledged": "Alert acknowledged: {title}.",
+    "notOpen": "Only an open alert can be acknowledged."
   }
 }

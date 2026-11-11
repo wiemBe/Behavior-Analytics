@@ -12,7 +12,12 @@
 // Meta is held (Ctrl K stays the search), while a dialog is open, and, for Enter and o, while
 // focus is on a link, button or summary, which have their own meaning for them.
 
-import { useCallback, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { actionErrorMessage, api } from "@/lib/api";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { useSafeRouter } from "./useSafeRouter";
 
 export const KBD_ROW_ATTR = "data-kbd-row";
 
@@ -21,17 +26,27 @@ export interface ListKeyboardOptions {
   table: string;
   /** CSS selector, inside a row, of the link Enter / o follows. */
   open: string;
+  /** `a` acknowledges the marked alert (SOC-15b): the rows carry `data-alert-*`. */
+  acknowledge?: boolean;
+  /** `n` opens the marked row's detail at its triage comment field (SOC-15b). */
+  note?: boolean;
 }
+
+/** The anchor the anomaly detail's comment form carries; the panel focuses its field on it. */
+export const TRIAGE_NOTE_HASH = "#triage-note";
 
 export type ListKeyboardNote =
   | { kind: "none" }
   | { kind: "row"; n: number; total: number; label: string }
   | { kind: "last"; n: number; total: number; label: string }
-  | { kind: "cleared" };
+  | { kind: "cleared" }
+  | { kind: "notOpen" }
+  | { kind: "acked"; title: string }
+  | { kind: "ackFailed"; message: string };
 
 const LABEL_MAX = 80;
 
-function typingTarget(el: EventTarget | null): boolean {
+export function typingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
   if (el.isContentEditable) return true;
   return el.closest("input, select, textarea, [contenteditable=''], [contenteditable='true']") !== null;
@@ -52,14 +67,25 @@ function labelOf(row: HTMLElement): string {
   return text.length > LABEL_MAX ? `${text.slice(0, LABEL_MAX - 1)}…` : text;
 }
 
-function dialogOpen(): boolean {
+export function dialogOpen(): boolean {
   return document.querySelector('dialog[open], [aria-modal="true"]') !== null;
 }
 
-export function useListKeyboard({ table: selector, open }: ListKeyboardOptions): {
+export function useListKeyboard({
+  table: selector,
+  open,
+  acknowledge = false,
+  note: noteKey = false,
+}: ListKeyboardOptions): {
   note: ListKeyboardNote;
 } {
   const [note, setNote] = useState<ListKeyboardNote>({ kind: "none" });
+  const router = useSafeRouter();
+  const say = asTextTranslator(useTranslations());
+  const sayRef = useRef(say);
+  sayRef.current = say;
+  // A second `a` while the call runs is ignored; the ref is read in the key handler.
+  const acking = useRef(false);
 
   const clear = useCallback((table: HTMLElement) => {
     table.querySelectorAll(`[${KBD_ROW_ATTR}]`).forEach((r) => {
@@ -73,7 +99,10 @@ export function useListKeyboard({ table: selector, open }: ListKeyboardOptions):
       if (e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey) return;
       if (typingTarget(e.target) || dialogOpen()) return;
       const key = e.key;
-      if (!["j", "k", "Enter", "o", "Escape"].includes(key)) return;
+      const keys = ["j", "k", "Enter", "o", "Escape"];
+      if (acknowledge) keys.push("a");
+      if (noteKey) keys.push("n");
+      if (!keys.includes(key)) return;
       const table = document.querySelector<HTMLElement>(selector);
       if (!table) return;
       const rows = rowsOf(table);
@@ -92,6 +121,44 @@ export function useListKeyboard({ table: selector, open }: ListKeyboardOptions):
         if (!link) return;
         e.preventDefault();
         link.click();
+        return;
+      }
+      if (key === "a") {
+        if (at < 0) return;
+        e.preventDefault();
+        const row = rows[at];
+        if (row.dataset.alertStatus !== "OPEN" || !row.dataset.alertId) {
+          setNote({ kind: "notOpen" });
+          return;
+        }
+        if (acking.current) return;
+        acking.current = true;
+        const id = row.dataset.alertId;
+        const title = row.dataset.alertTitle ?? "";
+        void api
+          .acknowledgeAlert(id)
+          .then(() => {
+            setNote({ kind: "acked", title });
+            // The list is a server component: a refresh re-reads it, and the keyed row keeps
+            // its mark, so the position stays on the same alert.
+            router?.refresh();
+          })
+          .catch((err: unknown) => {
+            setNote({ kind: "ackFailed", message: actionErrorMessage(err, sayRef.current) });
+          })
+          .finally(() => {
+            acking.current = false;
+          });
+        return;
+      }
+      if (key === "n") {
+        if (at < 0 || ownsEnter(e.target)) return;
+        const href = rows[at].querySelector<HTMLElement>(open)?.getAttribute("href");
+        if (!href) return;
+        e.preventDefault();
+        const target = `${href.split("#")[0]}${TRIAGE_NOTE_HASH}`;
+        if (router) router.push(target);
+        else window.location.assign(target);
         return;
       }
       // j / k. `k` with no mark does nothing, so the first `j` is always the first row.
@@ -113,7 +180,7 @@ export function useListKeyboard({ table: selector, open }: ListKeyboardOptions):
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [selector, open, clear]);
+  }, [selector, open, clear, acknowledge, noteKey, router]);
 
   return { note };
 }
