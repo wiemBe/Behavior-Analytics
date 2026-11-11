@@ -385,12 +385,21 @@ function TriageCell({ a }: { a: AnomalySummary }) {
 }
 
 /**
+ * A subject of at most this many characters is rendered as one word, with no break opportunity:
+ * `td.cell-owner` has a 12ch floor, so such a subject always fits the Owner column unbroken, and
+ * in the narrower fold line a short name ("m.chen") must move to the next line whole instead of
+ * being split at its dot. 12 is also below what the fold line holds at 1024 px.
+ */
+export const OWNER_UNBROKEN_MAX = 12;
+
+/**
  * An owner subject with break opportunities after "@", "." "-" and "_", so a long address wraps
  * at a natural point first. `<wbr>` adds no character: the text content stays the subject and a
- * copy gives the address. A single segment longer than the column still breaks anywhere
+ * copy gives the address. Only a subject longer than `OWNER_UNBROKEN_MAX` gets them. A single segment longer than the column still breaks anywhere
  * (`td.cell-owner`).
  */
 function OwnerText({ value }: { value: string }) {
+  if (value.length <= OWNER_UNBROKEN_MAX) return <>{value}</>;
   const parts = value.match(/[^@._-]*[@._-]?/g)?.filter((p) => p !== "") ?? [value];
   return (
     <>

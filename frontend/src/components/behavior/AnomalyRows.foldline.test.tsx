@@ -5,6 +5,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AnomaliesPage from "@/app/anomalies/page";
+import { OWNER_UNBROKEN_MAX } from "@/components/behavior/AnomalyRows";
 import { api, type AnomalySummary } from "@/lib/api";
 
 const OWNER = "analyst.lastname@example.org";
@@ -64,5 +65,31 @@ describe("the Triage fold line", () => {
     expect(line.textContent).toBe("Triage: In progress, Unassigned");
     expect(line.querySelectorAll("wbr")).toHaveLength(0);
     expect(screen.getAllByText("Unassigned").length).toBeGreaterThan(0);
+  });
+});
+
+describe("the fold line's short owners (r1)", () => {
+  it("keeps a short owner whole, in the fold line and in the Owner cell", async () => {
+    const { container } = await renderList("m.chen");
+    const line = foldLine(container);
+    expect(line.textContent).toBe("Triage: In progress, m.chen");
+    expect(line.querySelectorAll("wbr")).toHaveLength(0);
+    const cell = container.querySelector("td.cell-owner") as HTMLElement;
+    expect(cell.textContent).toBe("m.chen");
+    expect(cell.querySelectorAll("wbr")).toHaveLength(0);
+  });
+
+  it("offers breaks only above the limit", async () => {
+    const over = "ab.cdefg@h.ij";
+    expect(over.length).toBe(OWNER_UNBROKEN_MAX + 1);
+    const limit = "ab.cdefg@h.i"; // 12
+    expect(limit.length).toBe(OWNER_UNBROKEN_MAX);
+    const first = await renderList(limit);
+    expect(foldLine(first.container).querySelectorAll("wbr")).toHaveLength(0);
+    expect(foldLine(first.container).textContent).toBe(`Triage: In progress, ${limit}`);
+    first.unmount();
+    const second = await renderList(over);
+    expect(foldLine(second.container).querySelectorAll("wbr").length).toBeGreaterThan(0);
+    expect(foldLine(second.container).textContent).toBe(`Triage: In progress, ${over}`);
   });
 });
