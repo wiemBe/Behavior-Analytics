@@ -29,7 +29,11 @@ from app.models.waf import WafEndpoint, WafEndpointMetric, WafSourceBucket
 from app.schemas.entity_timeline import EntityTimelineKind, EntityTimelineLane
 from app.schemas.related_activity import RelatedSectionState
 from app.security.rbac import Principal
-from app.services.entity_timeline import REASON_NO_COVERAGE, EntityTimelineService
+from app.services.entity_timeline import (
+    REASON_INDEX_INCOMPLETE,
+    REASON_NO_COVERAGE,
+    EntityTimelineService,
+)
 from tests.integration.factories import make_instance
 from tests.integration.test_catchall_history import FIRST as CATCHALL_FIRST
 from tests.integration.test_catchall_history import NOW as CATCHALL_NOW
@@ -204,21 +208,33 @@ def _mention_sql(statements: Sequence[str], verb: str) -> list[str]:
     ]
 
 
-def _assert_history_lane(page, source: EntityTimelineLane) -> None:  # type: ignore[no-untyped-def]
+def _assert_history_lane(  # type: ignore[no-untyped-def]
+    page,
+    source: EntityTimelineLane,
+    *,
+    reason: str = REASON_NO_COVERAGE,
+) -> None:
     lane = _lane(page, source)
     assert lane.state is RelatedSectionState.PARTIAL
-    assert lane.reason_code == REASON_NO_COVERAGE
+    assert lane.reason_code == reason
     assert lane.total is not None and lane.total > 0
     assert page.dangling == 0
     assert any(item.source is source for item in page.items)
     assert page.state is not RelatedSectionState.OK
 
 
-def _assert_not_ok_empty(page, source: EntityTimelineLane) -> None:  # type: ignore[no-untyped-def]
+def _assert_not_ok_empty(  # type: ignore[no-untyped-def]
+    page,
+    source: EntityTimelineLane,
+    *,
+    state: RelatedSectionState = RelatedSectionState.NOT_COLLECTED,
+) -> None:
     lane = _lane(page, source)
-    assert lane.state is RelatedSectionState.NOT_COLLECTED
+    assert lane.state is state
     assert lane.state is not RelatedSectionState.OK
     assert lane.total != 0
+    if state is RelatedSectionState.PARTIAL:
+        assert lane.reason_code == REASON_INDEX_INCOMPLETE
 
 
 async def test_waf_history_breakdown_records_client_mentions_and_volume_writes_none(
@@ -289,7 +305,9 @@ async def test_waf_history_breakdown_records_client_mentions_and_volume_writes_n
         start=T0,
         end=T0 + STEP,
     )
-    _assert_history_lane(page, EntityTimelineLane.WAF_TOP)
+    _assert_history_lane(
+        page, EntityTimelineLane.WAF_TOP, reason=REASON_INDEX_INCOMPLETE
+    )
     absent = await _timeline(
         db_session,
         instance.id,
@@ -299,7 +317,9 @@ async def test_waf_history_breakdown_records_client_mentions_and_volume_writes_n
         start=T0,
         end=T0 + STEP,
     )
-    _assert_not_ok_empty(absent, EntityTimelineLane.WAF_TOP)
+    _assert_not_ok_empty(
+        absent, EntityTimelineLane.WAF_TOP, state=RelatedSectionState.PARTIAL
+    )
 
     before = {_identity(item) for item in mentions}
     with _statements(db_session) as replay_sql:
@@ -468,7 +488,9 @@ async def test_ips_history_records_top_and_entity_mentions(db_session) -> None: 
         start=window_start,
         end=window_end,
     )
-    _assert_history_lane(top_page, EntityTimelineLane.IPS_TOP)
+    _assert_history_lane(
+        top_page, EntityTimelineLane.IPS_TOP, reason=REASON_INDEX_INCOMPLETE
+    )
     entity_page = await _timeline(
         db_session,
         instance.id,
@@ -478,7 +500,9 @@ async def test_ips_history_records_top_and_entity_mentions(db_session) -> None: 
         start=window_start,
         end=window_end,
     )
-    _assert_history_lane(entity_page, EntityTimelineLane.IPS_ENTITY)
+    _assert_history_lane(
+        entity_page, EntityTimelineLane.IPS_ENTITY, reason=REASON_INDEX_INCOMPLETE
+    )
     absent = await _timeline(
         db_session,
         instance.id,
@@ -488,7 +512,9 @@ async def test_ips_history_records_top_and_entity_mentions(db_session) -> None: 
         start=window_start,
         end=window_end,
     )
-    _assert_not_ok_empty(absent, EntityTimelineLane.IPS_TOP)
+    _assert_not_ok_empty(
+        absent, EntityTimelineLane.IPS_TOP, state=RelatedSectionState.PARTIAL
+    )
 
     before = {_identity(item) for item in await _mentions(db_session, instance.id)}
     scope = await scope_of(db_session, instance, str(SOURCE_ID))

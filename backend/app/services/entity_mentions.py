@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import delete, text
+from sqlalchemy import delete, func, null, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ips.fold import canonical_ip
-from app.models.entity import EntityMention
+from app.models.entity import EntityMention, EntityMentionBackfill
 
 type EntityKind = Literal["IP", "HOST", "USER"]
 type EntityRole = Literal["SOURCE_IP", "DESTINATION_IP", "HOST", "USER"]
@@ -31,6 +31,7 @@ type EntitySource = Literal[
 
 MAX_ENTITY_VALUE_LENGTH = 255
 MENTION_INSERT_CHUNK_SIZE = 1000
+MENTION_WRITE_FAILED = "mention_write_failed"
 
 
 @dataclass(frozen=True)
@@ -182,6 +183,50 @@ async def record_mentions(
             .on_conflict_do_nothing(constraint="pk_entity_mention")
         )
         await session.execute(statement)
+
+
+async def mark_mentions_incomplete(
+    session: AsyncSession,
+    instance_id: uuid.UUID,
+    sources: Collection[str],
+) -> None:
+    """Mark mention sources incomplete so a reader stops proving absence.
+
+    One upsert. Each ``(instance, source)`` row of ``entity_mention_backfill`` becomes
+    PENDING, with ``cursor`` and ``completed_at`` cleared and ``last_error`` set to
+    ``mention_write_failed``. A missing row is inserted. The backfill re-runs that
+    source from the start; it is insert-only, so re-running is safe. ``rows_written``
+    and ``started_at`` are left as they are on an existing row. A failure of this
+    write propagates: the collector run then fails and its transaction rolls back.
+    """
+    unique = tuple(dict.fromkeys(sources))
+    if not unique:
+        return
+    statement = pg_insert(EntityMentionBackfill).values(
+        [
+            {
+                "instance_id": instance_id,
+                "source": source,
+                "status": "PENDING",
+                "cursor": None,
+                "rows_written": 0,
+                "completed_at": None,
+                "last_error": MENTION_WRITE_FAILED,
+            }
+            for source in unique
+        ]
+    )
+    statement = statement.on_conflict_do_update(
+        constraint="pk_entity_mention_backfill",
+        set_={
+            "status": "PENDING",
+            "cursor": null(),
+            "completed_at": null(),
+            "last_error": MENTION_WRITE_FAILED,
+            "updated_at": func.now(),
+        },
+    )
+    await session.execute(statement)
 
 
 async def delete_mentions_for(

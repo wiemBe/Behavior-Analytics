@@ -123,7 +123,11 @@ from app.services.ariel_permit import (
 )
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
 from app.services.entity_mention_folds import pw_value_mentions
-from app.services.entity_mentions import EntityMentionRow, record_mentions
+from app.services.entity_mentions import (
+    EntityMentionRow,
+    mark_mentions_incomplete,
+    record_mentions,
+)
 from app.services.search_cadence import SearchCadenceService
 
 logger = logging.getLogger("app.collectors.pw_collector")
@@ -1783,3 +1787,4 @@ class PwCollector:
                     "error_class": type(exc).__name__,
                 },
             )
+            await mark_mentions_incomplete(self.session, instance_id, ("PW_VALUE",))

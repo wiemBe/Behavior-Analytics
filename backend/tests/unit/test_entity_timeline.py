@@ -191,6 +191,41 @@ def test_lane_reports_items_but_omits_a_total_when_the_page_is_truncated() -> No
     assert dangling.total is None
 
 
+def test_incomplete_mention_index_never_reports_an_empty_ok() -> None:
+    shown = decide_lane(
+        LaneEvidence(EntityTimelineLane.WAF_TOP, 2, index_complete=False)
+    )
+    assert shown.state is RelatedSectionState.PARTIAL
+    assert shown.reason_code == REASON_INDEX_INCOMPLETE
+    assert shown.total == 2
+
+    empty = decide_lane(
+        LaneEvidence(
+            EntityTimelineLane.WAF_TOP,
+            0,
+            proves_absence=True,
+            index_complete=False,
+        )
+    )
+    assert empty.state is RelatedSectionState.PARTIAL
+    assert empty.reason_code == REASON_INDEX_INCOMPLETE
+    assert empty.total is None
+
+    # Volume-only history is not a collected measurement, so the lane stays
+    # not collected even when the mention index is also incomplete.
+    volume_only = decide_lane(
+        LaneEvidence(
+            EntityTimelineLane.WAF_TOP,
+            0,
+            collected=False,
+            index_complete=False,
+        )
+    )
+    assert volume_only.state is RelatedSectionState.NOT_COLLECTED
+    assert volume_only.reason_code == REASON_NO_COVERAGE
+    assert volume_only.total is None
+
+
 def test_page_state_preserves_truncation_then_collection_honesty() -> None:
     ok = decide_lane(LaneEvidence(EntityTimelineLane.EXPLANATION, 0, proves_absence=True))
     missing = decide_lane(LaneEvidence(EntityTimelineLane.WAF_TOP, 0, collected=False))

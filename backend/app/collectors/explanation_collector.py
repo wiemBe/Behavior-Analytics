@@ -46,7 +46,7 @@ from app.models.log_source import LogSource, LogSourceAnomaly
 from app.providers.base import ProviderError, QRadarProvider
 from app.providers.dto import DimensionAggregate
 from app.services.entity_mention_folds import explanation_mentions
-from app.services.entity_mentions import record_mentions
+from app.services.entity_mentions import mark_mentions_incomplete, record_mentions
 
 logger = logging.getLogger("app.collectors.explanation")
 
@@ -249,6 +249,9 @@ class ExplanationCollector:
             logger.warning(
                 "explanation entity mentions were not recorded",
                 extra={"anomaly": str(package.anomaly_id), "error_class": type(exc).__name__},
+            )
+            await mark_mentions_incomplete(
+                self.session, log_source.instance_id, ("EXPLANATION",)
             )
 
     async def _drop_mentions(self, explanation_id: object) -> None:

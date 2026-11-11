@@ -122,7 +122,7 @@ from app.services.ariel_permit import (
 )
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
 from app.services.entity_mention_folds import catchall_mentions
-from app.services.entity_mentions import record_mentions
+from app.services.entity_mentions import mark_mentions_incomplete, record_mentions
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.waf.admission import AdmissionPolicy
@@ -694,6 +694,7 @@ class CatchallCollector:
                     "error_class": type(exc).__name__,
                 },
             )
+            await mark_mentions_incomplete(self.session, instance_id, ("CATCHALL",))
 
     async def _raise_alerts(
         self,
@@ -1281,6 +1282,7 @@ class CatchallCollector:
                     "error_class": type(exc).__name__,
                 },
             )
+            await mark_mentions_incomplete(self.session, instance_id, ("CATCHALL",))
 
     async def _write_history_senders(
         self,

@@ -5,10 +5,11 @@ explicit instance id and a fully authorised caller its SQL cost is exactly
 ``3 + H`` statements: one ``entity_mention`` range read (``limit + 1``), one
 offense-watermark read through :class:`RelatedActivityRepository`, one combined
 collection-coverage read, and one IN-list hydrate for each of the ``H`` distinct
-supported ``ref_table`` values on the page.  The count is independent of the
-window size, number of sources and number of mentions.  A caller forbidden from
-the offense or fleet lane executes neither that lane's watermark/hydrate read
-nor a matching inventory subquery.
+supported ``ref_table`` values on the page.  The coverage statement also reads
+``entity_mention_backfill``; that does not add a statement.  The count is
+independent of the window size, number of sources and number of mentions.  A
+caller forbidden from the offense or fleet lane executes neither that lane's
+watermark/hydrate read nor a matching inventory subquery.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ from app.core.config import Settings
 from app.history.origin import is_live_clause
 from app.i18n.messages import MessageRef
 from app.models.catchall import CatchallBucket
-from app.models.entity import EntityMention
+from app.models.entity import EntityMention, EntityMentionBackfill
 from app.models.enums import (
     DimensionAvailability,
     EvidenceStatus,
@@ -133,6 +134,9 @@ class LaneEvidence:
     count_is_total: bool = True
     incomplete_reason: str = REASON_BOUNDED
     dangling_count: int = 0
+    # False when this source has no COMPLETE entity_mention_backfill row.
+    # Items still render. An empty collected lane is PARTIAL index_incomplete.
+    index_complete: bool = True
 
 
 @dataclass(frozen=True)
@@ -150,6 +154,13 @@ class Coverage:
     catchall_proves_absence: bool
     pw_collected: bool
     pw_proves_absence: bool
+    explanation_index_complete: bool
+    waf_index_complete: bool
+    ips_top_index_complete: bool
+    ips_entity_index_complete: bool
+    offense_index_complete: bool
+    catchall_index_complete: bool
+    pw_index_complete: bool
 
 
 @dataclass(frozen=True)
@@ -262,7 +273,13 @@ def resolve_entity(kind: str | None, value: str) -> tuple[EntityTimelineKind, st
 
 
 def decide_lane(evidence: LaneEvidence) -> EntityTimelineLaneOut:
-    """Fold permissions, coverage and boundedness into one lane honesty state."""
+    """Fold permissions, coverage and boundedness into one lane honesty state.
+
+    ``index_complete`` is false when that source's mention backfill row is missing
+    or not COMPLETE. Items still render. A collected empty lane is then PARTIAL
+    ``index_incomplete`` and never an empty OK. A lane with no measurement stays
+    not collected.
+    """
     if not evidence.permitted:
         return EntityTimelineLaneOut(
             source=evidence.source,
@@ -294,16 +311,25 @@ def decide_lane(evidence: LaneEvidence) -> EntityTimelineLaneOut:
             reason_code=REASON_INDEX_INCOMPLETE,
         )
     if evidence.item_count:
-        if not evidence.enabled or not evidence.collected or not evidence.complete:
+        if (
+            evidence.index_complete
+            and evidence.enabled
+            and evidence.collected
+            and evidence.complete
+        ):
             return EntityTimelineLaneOut(
                 source=evidence.source,
-                state=RelatedSectionState.PARTIAL,
-                reason_code=REASON_FAMILY_OFF if not evidence.enabled else REASON_NO_COVERAGE,
+                state=RelatedSectionState.OK,
                 total=evidence.item_count if evidence.count_is_total else None,
             )
+        if evidence.enabled and evidence.collected and not evidence.index_complete:
+            reason = REASON_INDEX_INCOMPLETE
+        else:
+            reason = REASON_FAMILY_OFF if not evidence.enabled else REASON_NO_COVERAGE
         return EntityTimelineLaneOut(
             source=evidence.source,
-            state=RelatedSectionState.OK,
+            state=RelatedSectionState.PARTIAL,
+            reason_code=reason,
             total=evidence.item_count if evidence.count_is_total else None,
         )
     if not evidence.enabled:
@@ -317,6 +343,12 @@ def decide_lane(evidence: LaneEvidence) -> EntityTimelineLaneOut:
             source=evidence.source,
             state=RelatedSectionState.NOT_COLLECTED,
             reason_code=REASON_NO_COVERAGE,
+        )
+    if not evidence.index_complete:
+        return EntityTimelineLaneOut(
+            source=evidence.source,
+            state=RelatedSectionState.PARTIAL,
+            reason_code=REASON_INDEX_INCOMPLETE,
         )
     if evidence.proves_absence:
         return EntityTimelineLaneOut(
@@ -614,10 +646,11 @@ class EntityTimelineService:
             explanation_collected = literal(False)
             explanation_proves = literal(False)
 
-        # Mentions are written by live collection only (no backfill), so only a live
-        # bucket may count as coverage; a history-origin bucket must never prove absence.
+        # Stored buckets of both origins count for WAF and IPS once that source's
+        # mention backfill is COMPLETE. Volume-only WAF history records the bucket
+        # with client_measurement NOT_COLLECTED and no client list; that is not a
+        # collected client measurement (D-64), so it cannot prove absence.
         waf_window = (
-            is_live_clause(WafSourceBucket),
             WafSourceBucket.bucket_start < end,
             WafSourceBucket.bucket_start + WafSourceBucket.bucket_seconds * _SECOND > start,
         )
@@ -625,7 +658,12 @@ class EntityTimelineService:
             exists(
                 select(WafSourceBucket.log_source_id)
                 .join(LogSource, LogSource.id == WafSourceBucket.log_source_id)
-                .where(LogSource.instance_id == instance_id, *waf_window)
+                .where(
+                    LogSource.instance_id == instance_id,
+                    *waf_window,
+                    WafSourceBucket.client_measurement
+                    != WafTelemetryStatus.NOT_COLLECTED,
+                )
             )
             if kind is EntityTimelineKind.IP
             else literal(False)
@@ -639,12 +677,20 @@ class EntityTimelineService:
                 WafSourceBucket.client_measurement != WafTelemetryStatus.EXACT,
             )
         )
+        # Metrics carry collection_source, not origin. Join the source bucket so a
+        # metric counts only with the bucket it belongs to, live or history.
         waf_bad_metric = exists(
             select(WafEndpointMetric.waf_endpoint_id)
             .join(WafEndpoint, WafEndpoint.id == WafEndpointMetric.waf_endpoint_id)
+            .join(
+                WafSourceBucket,
+                and_(
+                    WafSourceBucket.log_source_id == WafEndpoint.log_source_id,
+                    WafSourceBucket.bucket_start == WafEndpointMetric.bucket_start,
+                ),
+            )
             .where(
                 WafEndpoint.instance_id == instance_id,
-                is_live_clause(WafEndpointMetric),
                 WafEndpointMetric.bucket_start < end,
                 WafEndpointMetric.bucket_start
                 + WafEndpointMetric.bucket_seconds * _SECOND
@@ -659,7 +705,6 @@ class EntityTimelineService:
         )
 
         ips_window = (
-            is_live_clause(IpsSourceBucket),
             IpsSourceBucket.bucket_start < end,
             IpsSourceBucket.bucket_start + IpsSourceBucket.bucket_seconds * _SECOND > start,
         )
@@ -801,28 +846,54 @@ class EntityTimelineService:
             )
             pw_proves = and_(pw_collected, ~pw_bad)
 
+        def backfill_complete(source: str) -> Any:
+            return exists(
+                select(EntityMentionBackfill.instance_id).where(
+                    EntityMentionBackfill.instance_id == instance_id,
+                    EntityMentionBackfill.source == source,
+                    EntityMentionBackfill.status == "COMPLETE",
+                )
+            )
+
+        explanation_index = backfill_complete(EntityTimelineLane.EXPLANATION.value)
+        waf_index = backfill_complete(EntityTimelineLane.WAF_TOP.value)
+        ips_top_index = backfill_complete(EntityTimelineLane.IPS_TOP.value)
+        ips_entity_index = backfill_complete(EntityTimelineLane.IPS_ENTITY.value)
+        offense_index = backfill_complete(EntityTimelineLane.OFFENSE.value)
+        catchall_index = backfill_complete(EntityTimelineLane.CATCHALL.value)
+        pw_index = backfill_complete(EntityTimelineLane.PW_VALUE.value)
+
         row = (
             await self.session.execute(
                 select(
                     explanation_collected.label("explanation_collected"),
-                    explanation_proves.label("explanation_proves"),
+                    and_(explanation_proves, explanation_index).label(
+                        "explanation_proves"
+                    ),
                     waf_collected.label("waf_collected"),
-                    and_(waf_collected, ~waf_bad_bucket, ~waf_bad_metric).label(
-                        "waf_proves"
-                    ),
+                    and_(
+                        waf_collected, ~waf_bad_bucket, ~waf_bad_metric, waf_index
+                    ).label("waf_proves"),
                     ips_top_collected.label("ips_top_collected"),
-                    and_(ips_top_collected, ~ips_top_incomplete).label(
-                        "ips_top_complete"
-                    ),
+                    and_(
+                        ips_top_collected, ~ips_top_incomplete, ips_top_index
+                    ).label("ips_top_complete"),
                     ips_entity_collected.label("ips_entity_collected"),
-                    and_(ips_entity_collected, ~ips_entity_incomplete).label(
-                        "ips_entity_complete"
-                    ),
+                    and_(
+                        ips_entity_collected, ~ips_entity_incomplete, ips_entity_index
+                    ).label("ips_entity_complete"),
                     log_match.label("log_match"),
                     catchall_collected.label("catchall_collected"),
-                    catchall_proves.label("catchall_proves"),
+                    and_(catchall_proves, catchall_index).label("catchall_proves"),
                     pw_collected.label("pw_collected"),
-                    pw_proves.label("pw_proves"),
+                    and_(pw_proves, pw_index).label("pw_proves"),
+                    explanation_index.label("explanation_index"),
+                    waf_index.label("waf_index"),
+                    ips_top_index.label("ips_top_index"),
+                    ips_entity_index.label("ips_entity_index"),
+                    offense_index.label("offense_index"),
+                    catchall_index.label("catchall_index"),
+                    pw_index.label("pw_index"),
                 )
             )
         ).one()
@@ -1112,6 +1183,7 @@ class EntityTimelineService:
                     proves_absence=coverage.explanation_proves_absence,
                     count_is_total=not truncated,
                     dangling_count=dangling_counts.get(EntityTimelineLane.EXPLANATION, 0),
+                    index_complete=coverage.explanation_index_complete,
                 )
             ),
             decide_lane(
@@ -1124,6 +1196,7 @@ class EntityTimelineService:
                     proves_absence=coverage.waf_proves_absence,
                     count_is_total=not truncated,
                     dangling_count=dangling_counts.get(EntityTimelineLane.WAF_TOP, 0),
+                    index_complete=coverage.waf_index_complete,
                 )
             ),
             decide_lane(
@@ -1136,6 +1209,7 @@ class EntityTimelineService:
                     proves_absence=False,
                     count_is_total=not truncated,
                     dangling_count=dangling_counts.get(EntityTimelineLane.IPS_TOP, 0),
+                    index_complete=coverage.ips_top_index_complete,
                 )
             ),
             decide_lane(
@@ -1148,6 +1222,7 @@ class EntityTimelineService:
                     proves_absence=False,
                     count_is_total=not truncated,
                     dangling_count=dangling_counts.get(EntityTimelineLane.IPS_ENTITY, 0),
+                    index_complete=coverage.ips_entity_index_complete,
                 )
             ),
             decide_lane(
@@ -1157,10 +1232,15 @@ class EntityTimelineService:
                     permitted=offense_allowed,
                     permission=PERM_OFFENSE_READ,
                     collected=offense_freshness is not RelatedSectionState.NOT_COLLECTED,
-                    proves_absence=kind is not EntityTimelineKind.USER,
+                    complete=coverage.offense_index_complete,
+                    proves_absence=(
+                        kind is not EntityTimelineKind.USER
+                        and coverage.offense_index_complete
+                    ),
                     freshness=offense_freshness,
                     count_is_total=not truncated,
                     dangling_count=dangling_counts.get(EntityTimelineLane.OFFENSE, 0),
+                    index_complete=coverage.offense_index_complete,
                 )
             ),
             decide_lane(
@@ -1188,6 +1268,7 @@ class EntityTimelineService:
                     proves_absence=coverage.catchall_proves_absence,
                     count_is_total=not truncated,
                     dangling_count=dangling_counts.get(EntityTimelineLane.CATCHALL, 0),
+                    index_complete=coverage.catchall_index_complete,
                 )
             ),
             decide_lane(
@@ -1202,6 +1283,7 @@ class EntityTimelineService:
                     proves_absence=coverage.pw_proves_absence,
                     count_is_total=not truncated,
                     dangling_count=dangling_counts.get(EntityTimelineLane.PW_VALUE, 0),
+                    index_complete=coverage.pw_index_complete,
                 )
             ),
         ]

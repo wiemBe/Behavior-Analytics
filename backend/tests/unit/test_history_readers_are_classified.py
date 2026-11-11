@@ -206,12 +206,11 @@ HISTORY_TABLES = (
             "app.waf.engine.WafAnomalyEngine._load_novelty_traffic": Reader(
                 "novelty evidence", ReaderKind.EVIDENCE
             ),
-            # SOC-16b/16a3: coverage for the entity timeline's "proves absence". Mentions are
-            # written by live collection only (no backfill), so a history bucket must not count.
+            # SOC-16f5: once the WAF mention backfill is COMPLETE, coverage counts stored
+            # buckets of both origins. Volume-only history is not a client measurement.
             "app.services.entity_timeline.EntityTimelineService._coverage": Reader(
-                "entity timeline coverage: mentions exist for live buckets only",
-                ReaderKind.LIVE_ONLY,
-                1,
+                "mentions exist for stored buckets of both origins once backfill is complete",
+                ReaderKind.DISPLAY,
             ),
             "app.waf.engine.WafAnomalyEngine._load_novelty": Reader(
                 "novelty history", ReaderKind.EVIDENCE
@@ -343,9 +342,8 @@ HISTORY_TABLES = (
                 "novelty evidence", ReaderKind.EVIDENCE
             ),
             "app.services.entity_timeline.EntityTimelineService._coverage": Reader(
-                "entity timeline coverage: mentions exist for live buckets only",
-                ReaderKind.LIVE_ONLY,
-                1,
+                "mentions exist for stored buckets of both origins once backfill is complete",
+                ReaderKind.DISPLAY,
             ),
             # The mention names this exact (endpoint, bucket); show it whatever its origin.
             (
@@ -408,9 +406,8 @@ HISTORY_TABLES = (
             ),
             "app.services.ips_retention.<module>": Reader("retention", ReaderKind.DELETE),
             "app.services.entity_timeline.EntityTimelineService._coverage": Reader(
-                "entity timeline coverage: mentions exist for live buckets only",
-                ReaderKind.LIVE_ONLY,
-                1,
+                "mentions exist for stored buckets of both origins once backfill is complete",
+                ReaderKind.DISPLAY,
             ),
             # The mention names this exact (source, bucket); show it whatever its origin.
             (
