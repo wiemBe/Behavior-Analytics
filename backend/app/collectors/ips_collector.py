@@ -137,7 +137,7 @@ from app.services.ariel_permit import (
 )
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
 from app.services.entity_mention_folds import ips_entity_mentions, ips_top_mentions
-from app.services.entity_mentions import record_mentions
+from app.services.entity_mentions import mark_mentions_incomplete, record_mentions
 from app.services.ips_pipeline import ips_pipeline_lock_key
 from app.services.locks import collector_lock_key, session_lock_engine
 from app.services.search_cadence import SearchCadenceService
@@ -1510,6 +1510,9 @@ class IpsCollector:
                     "error_class": type(exc).__name__,
                 },
             )
+            await mark_mentions_incomplete(
+                self.session, instance.id, ("IPS_TOP", "IPS_ENTITY")
+            )
 
     async def _write_handoff_watermarks(
         self,
@@ -1970,6 +1973,9 @@ class IpsCollector:
                     "buckets": len(collected_pairs),
                     "error_class": type(exc).__name__,
                 },
+            )
+            await mark_mentions_incomplete(
+                self.session, instance.id, ("IPS_TOP", "IPS_ENTITY")
             )
 
     def _bucket_values(

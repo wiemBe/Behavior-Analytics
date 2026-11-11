@@ -13,7 +13,7 @@ from app.collectors.catchall_collector import CatchallCollector
 from app.collectors.pw_collector import PwCollector
 from app.core.config import get_settings
 from app.models.catchall import CatchallBucket
-from app.models.entity import EntityMention
+from app.models.entity import EntityMention, EntityMentionBackfill
 from app.models.enums import SearchFamily
 from app.models.monitoring import CollectionWatermark
 from app.models.property_watch import PropertyWatch, PwBucket, PwValue, PwValueMetric
@@ -258,7 +258,22 @@ async def test_lane_honesty_live_empty_history_bounded_and_forbidden(db_session)
     )
     user_watch = await add_watch(db_session, instance)
     at = datetime(2026, 11, 11, 9, 0, tzinfo=UTC)
-    db_session.add_all([_catchall_bucket(source.id, at), _pw_bucket(user_watch, at)])
+    db_session.add_all(
+        [
+            _catchall_bucket(source.id, at),
+            _pw_bucket(user_watch, at),
+            *(
+                EntityMentionBackfill(
+                    instance_id=instance.id,
+                    source=backfill_source,
+                    status="COMPLETE",
+                    rows_written=0,
+                    completed_at=at,
+                )
+                for backfill_source in ("CATCHALL", "PW_VALUE")
+            ),
+        ]
+    )
     await db_session.flush()
 
     host = await _timeline(

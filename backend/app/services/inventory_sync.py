@@ -309,6 +309,9 @@ class InventorySyncService:
                 "log source entity mentions were not recorded",
                 extra={"instance_id": str(instance.id), "error_class": type(exc).__name__},
             )
+            # LOG_SOURCE is not gated on entity_mention_backfill: the lane uses the
+            # inventory check, and the next sync rewrites these mentions. Marking the
+            # row would not change the read, so a failed write is only logged.
 
     async def ensure_default_instance(self) -> QRadarInstance:
         """Return the first stored instance, creating one when the table is empty.

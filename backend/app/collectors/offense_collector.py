@@ -65,7 +65,11 @@ from app.providers.base import ProviderError, QRadarProvider
 from app.providers.dto import OffenseDTO
 from app.security.sanitizer import sanitize_text
 from app.services.entity_mention_folds import offense_mentions
-from app.services.entity_mentions import EntityMentionRow, record_mentions
+from app.services.entity_mentions import (
+    EntityMentionRow,
+    mark_mentions_incomplete,
+    record_mentions,
+)
 from app.services.locks import CollectorAdvisoryLock
 
 logger = logging.getLogger("app.collectors.offense")
@@ -425,6 +429,7 @@ class OffenseCollector:
                     "error_class": type(exc).__name__,
                 },
             )
+            await mark_mentions_incomplete(self.session, instance.id, ("OFFENSE",))
 
     def _resume_point(
         self, watermark: CollectionWatermark, now: datetime

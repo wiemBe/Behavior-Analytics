@@ -142,7 +142,7 @@ from app.providers.dto import (
 from app.services.ariel_permit import ArielPermitUnavailable, ariel_background_priority
 from app.services.ariel_search_log import CALLER_HISTORY, ariel_caller
 from app.services.entity_mention_folds import waf_top_mentions
-from app.services.entity_mentions import record_mentions
+from app.services.entity_mentions import mark_mentions_incomplete, record_mentions
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.services.waf_ariel_budget import WafArielBudget
@@ -1168,6 +1168,9 @@ class WafEndpointCollector:
                     "error_class": type(exc).__name__,
                 },
             )
+            await mark_mentions_incomplete(
+                self.session, log_source.instance_id, ("WAF_TOP",)
+            )
 
     async def persist_history_volume(
         self,
@@ -1780,6 +1783,9 @@ class WafEndpointCollector:
                     "buckets": len({row.get("bucket_start") for row in rows}),
                     "error_class": type(exc).__name__,
                 },
+            )
+            await mark_mentions_incomplete(
+                self.session, log_source.instance_id, ("WAF_TOP",)
             )
 
     async def _history_volume_search(
