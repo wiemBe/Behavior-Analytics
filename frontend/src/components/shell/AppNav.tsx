@@ -13,16 +13,58 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { NAV, activeNavHref, type NavGroup } from "@/lib/nav";
+
+// Which labeled groups the analyst opened or closed, remembered per browser. Only an explicit
+// choice is stored; a group never chosen is closed, except that Behavior, the product's purpose,
+// starts open on a page no labeled group owns (the Dashboard). The group that holds the current
+// page is open whatever is stored, so the position in the site is never hidden.
+const STORAGE_KEY = "qradar-dash.nav.groups";
+const DEFAULT_OPEN = "Behavior";
+
+function readChoices(): Record<string, boolean> {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(parsed)) if (typeof v === "boolean") out[k] = v;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function writeChoices(choices: Record<string, boolean>): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(choices));
+  } catch {
+    // Storage blocked: the choice lasts until the page is reloaded.
+  }
+}
 
 export function AppNav({ groups = NAV }: { groups?: NavGroup[] }) {
   const t = useTranslations("shell");
   const nav = useTranslations("shell.nav");
   const pathname = usePathname() ?? "/";
   const active = activeNavHref(pathname, groups);
+  const currentInLabeled = groups.some(
+    (g) => g.label !== null && g.items.some((item) => item.href === active),
+  );
   const navRef = useRef<HTMLElement>(null);
+  // Empty on the server and on the first client render, so both render the defaults; the
+  // remembered choices are applied after mount.
+  const [choices, setChoices] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    setChoices(readChoices());
+  }, []);
+  const toggle = (label: string, open: boolean) => {
+    const next = { ...choices, [label]: !open };
+    setChoices(next);
+    writeChoices(next);
+  };
 
   // The sidebar scrolls inside itself on a short viewport, so the current
   // entry may start off screen. `block: "nearest"` moves only the sidebar's own
@@ -37,7 +79,13 @@ export function AppNav({ groups = NAV }: { groups?: NavGroup[] }) {
 
   return (
     <nav aria-label={t("primaryNavigation")} ref={navRef}>
-      {groups.map((group, i) => (
+      {groups.map((group, i) => {
+        const holdsCurrent = group.items.some((item) => item.href === active);
+        const open =
+          !group.label ||
+          holdsCurrent ||
+          (choices[group.label] ?? (group.label === DEFAULT_OPEN && !currentInLabeled));
+        return (
         <div
           key={group.label ?? `primary-${i}`}
           className={`nav-group${group.label ? " nav-group-supporting" : ""}`}
@@ -48,11 +96,30 @@ export function AppNav({ groups = NAV }: { groups?: NavGroup[] }) {
               still announced, via `aria-labelledby` on the list below. */}
           {group.label && (
             <div className="nav-group-label" id={`nav-group-${i}`}>
-              {groupLabel(group.label, nav)}
+              {/* A disclosure button. The group that holds the current page cannot be closed,
+                  and says so with aria-disabled rather than the disabled attribute, which
+                  would take it out of the tab order. */}
+              <button
+                type="button"
+                className="nav-group-toggle"
+                aria-expanded={open}
+                aria-controls={`nav-list-${i}`}
+                aria-disabled={holdsCurrent ? true : undefined}
+                onClick={() => {
+                  if (!holdsCurrent) toggle(group.label as string, open);
+                }}
+              >
+                <span>{groupLabel(group.label, nav)}</span>
+                <span className="nav-group-state" aria-hidden="true">
+                  {holdsCurrent ? "" : open ? "\u2212" : "+"}
+                </span>
+              </button>
             </div>
           )}
           <ul
             className="nav-list"
+            id={`nav-list-${i}`}
+            inert={!open}
             aria-labelledby={group.label ? `nav-group-${i}` : undefined}
           >
             {group.items.map((item) => (
@@ -68,7 +135,8 @@ export function AppNav({ groups = NAV }: { groups?: NavGroup[] }) {
             ))}
           </ul>
         </div>
-      ))}
+        );
+      })}
     </nav>
   );
 }
