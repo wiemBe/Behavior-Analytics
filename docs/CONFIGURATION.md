@@ -321,6 +321,10 @@ Field names and blocked/allowed values belong to each source's versioned profile
 | `IPS_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch |
 | `IPS_RETENTION_MAX_BATCHES` | `20` | Batches per retention run |
 | `IPS_RETENTION_INTERVAL_SECONDS` | `86400` | Metric retention schedule |
+| `ENTITY_MENTION_BACKFILL_ENABLED` | `true` | Run the beat task that fills the entity timeline index for parents stored before it existed. Insert-only; resumable per console and source. `python -m app.cli.entity_mentions` runs it by hand |
+| `ENTITY_MENTION_BACKFILL_BATCH_SIZE` | `500` | Parents read per batch. `1`–`5000` |
+| `ENTITY_MENTION_BACKFILL_MAX_BATCHES_PER_RUN` | `20` | Batches per task run, across sources. `1`–`1000` |
+| `ENTITY_MENTION_BACKFILL_INTERVAL_SECONDS` | `300` | Task schedule. At least `60` |
 | `IPS_ANOMALY_RETENTION_DAYS` | `365` | Closed IPS incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA), entity and source. `1`–`3650`. Task `apply_ips_anomaly_retention`; not gated by `IPS_RETENTION_ENABLED` or `RETENTION_ENABLED`. An alert that lists the incident in `source_anomaly_ids` keeps it for the life of the alert, whatever the alert status (nothing deletes alerts). `evidence_snapshot` and `source_id` are not guards |
 | `IPS_ANOMALY_RETENTION_BATCH_SIZE` | `5000` | Incident rows deleted per batch |
 | `IPS_ANOMALY_RETENTION_MAX_BATCHES` | `20` | Batches per incident run |

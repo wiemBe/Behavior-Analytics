@@ -333,6 +333,12 @@ HISTORY_TABLES = (
                 "TOP-1 traffic series", ReaderKind.DISPLAY
             ),
             "app.services.waf_retention.<module>": Reader("retention", ReaderKind.DELETE),
+            (
+                "app.services.entity_mention_backfill.EntityMentionBackfillService._waf_top"
+            ): Reader(
+                "the mention backfill indexes stored buckets of both origins",
+                ReaderKind.DISPLAY,
+            ),
             "app.waf.baseline.WafBaselineBuilder._rows": Reader(
                 "baseline", ReaderKind.EVIDENCE
             ),
@@ -407,6 +413,12 @@ HISTORY_TABLES = (
                 "pending evaluation", ReaderKind.LIVE_ONLY, 1
             ),
             "app.services.ips_retention.<module>": Reader("retention", ReaderKind.DELETE),
+            (
+                "app.services.entity_mention_backfill.EntityMentionBackfillService._ips_top"
+            ): Reader(
+                "the mention backfill indexes stored buckets of both origins",
+                ReaderKind.DISPLAY,
+            ),
             "app.services.entity_timeline.EntityTimelineService._coverage": Reader(
                 "entity timeline coverage: mentions exist for live buckets only",
                 ReaderKind.LIVE_ONLY,
@@ -451,6 +463,12 @@ HISTORY_TABLES = (
                 "TOP-1 traffic series", ReaderKind.DISPLAY
             ),
             "app.services.ips_retention.<module>": Reader("retention", ReaderKind.DELETE),
+            (
+                "app.services.entity_mention_backfill.EntityMentionBackfillService._ips_entity"
+            ): Reader(
+                "the mention backfill indexes stored buckets of both origins",
+                ReaderKind.DISPLAY,
+            ),
         },
     ),
 )
