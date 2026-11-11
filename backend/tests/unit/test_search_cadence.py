@@ -202,6 +202,36 @@ def test_next_dispatch_message_is_set_only_while_the_last_run_failed() -> None:
     assert service.next_dispatch_message(row, next_at) is None
 
 
+def test_an_off_family_has_no_reason_even_after_a_failed_run() -> None:
+    # FIX-48: a family switched off is never dispatched, so the page shows only
+    # its dash; an old failed run must not add "Not retried after the failed run".
+    settings = Settings(
+        search_cadence_settle_seconds=120,
+        rule_match_collection_enabled=False,
+    )
+    service = SearchCadenceService(None, settings)  # type: ignore[arg-type]
+    now = datetime(2026, 11, 4, 19, 48, tzinfo=UTC)
+    row = SearchCadenceSetting(
+        family="RULE_MATCH",
+        cadence_seconds=SearchCadence.ONE_HOUR,
+        last_slot_start=datetime(2026, 11, 4, 19, 0, tzinfo=UTC),
+        last_run_at=datetime(2026, 11, 4, 19, 24, tzinfo=UTC),
+        last_run_outcome="failed",
+        updated_at=now,
+    )
+    next_at = service.next_dispatch_at(row, now)
+    assert service.next_dispatch_message(row, next_at) is None
+
+    # The same failed run keeps the existing reason once the family is on.
+    enabled = settings.model_copy(update={"rule_match_collection_enabled": True})
+    message = SearchCadenceService(None, enabled).next_dispatch_message(  # type: ignore[arg-type]
+        row, next_at
+    )
+    assert message is not None
+    assert message.code == "search_cadence.next_dispatch.after_failed_run"
+    assert message.params["next"] == next_at
+
+
 @pytest.mark.parametrize("old_cadence", list(SearchCadence))
 @pytest.mark.parametrize("new_cadence", list(SearchCadence))
 def test_next_dispatch_matches_the_first_slot_claim_would_accept(

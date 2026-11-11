@@ -213,7 +213,14 @@ class SearchCadenceService:
         A failed run keeps the slot it claimed, so the family runs again at the
         next slot of its own cadence and not at once. Without that sentence a
         row reads as if a short cadence had skipped a long gap.
+
+        A family that is off is not dispatched at all, so it has no next run
+        and no such reason either: the page shows only the dash and its hover
+        text. An old failed run must not speak for a family that is switched
+        off.
         """
+        if not family_enabled(SearchFamily(row.family), self.settings):
+            return None
         if row.last_run_outcome != "failed" or row.last_run_at is None:
             return None
         return MessageRef(

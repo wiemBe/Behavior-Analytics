@@ -129,6 +129,32 @@ async def test_a_failed_last_run_says_why_the_next_run_waits(db_session, db_sche
     assert by_family[SearchFamily.PHASE_A_VOLUME.value]["next_dispatch_reason"] is None
 
 
+async def test_an_off_family_has_no_next_dispatch_reason(db_session, db_schema) -> None:
+    """FIX-48: an off family's dash carries no failed-run sentence."""
+    await _seed(db_session)
+    failed = await db_session.get(SearchCadenceSetting, SearchFamily.RULE_MATCH.value)
+    assert failed is not None
+    failed.last_slot_start = datetime(2026, 11, 4, 19, 0, tzinfo=UTC)
+    failed.last_run_at = datetime(2026, 11, 4, 19, 24, tzinfo=UTC)
+    failed.last_run_outcome = "failed"
+    await db_session.commit()
+
+    client = _client(
+        db_schema,
+        Principal(subject="viewer", permissions=frozenset({"read:*"})),
+    )
+    response = client.get("/api/v1/admin/search-cadence")
+    assert response.status_code == 200, response.text
+    row = {item["family"]: item for item in response.json()}[
+        SearchFamily.RULE_MATCH.value
+    ]
+    assert row["enabled"] is False
+    assert row["last_run"]["outcome"] == "failed"
+    assert row["next_dispatch_reason"] is None
+    assert row["next_dispatch_reason_code"] is None
+    assert row["next_dispatch_reason_params"] is None
+
+
 async def test_admin_validation_not_found_update_and_audit(db_session, db_schema) -> None:
     await _seed(db_session)
     client = _client(

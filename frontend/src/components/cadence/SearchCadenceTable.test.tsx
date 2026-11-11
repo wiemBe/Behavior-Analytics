@@ -93,7 +93,7 @@ describe("rows", () => {
     ).toBeInTheDocument();
   });
 
-  const failedRow = (code: string | null) =>
+  const failedRow = (code: string | null, over: Partial<SearchCadenceItem> = {}) =>
     item({
       family: "CATCHALL_SENDERS",
       cadence_seconds: 3600,
@@ -108,6 +108,7 @@ describe("rows", () => {
       next_dispatch_reason: "The run at 2026-11-04 19:24:00 UTC failed; backend sentence.",
       next_dispatch_reason_code: code,
       next_dispatch_reason_params: {},
+      ...over,
     });
 
   it("shows a short line for the failed-run code, not the long sentence", () => {
@@ -131,6 +132,22 @@ describe("rows", () => {
   it("shows no reason for a row that did not fail", () => {
     render(<SearchCadenceTable items={[item()]} />);
     expect(screen.queryByText(/Not retried after the failed run/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    "search_cadence.next_dispatch.after_failed_run",
+    "search_cadence.next_dispatch.other",
+  ])("shows no reason for an off family even when the payload carries one: %s", (code) => {
+    // FIX-48: a family that is off has no next run, so an old failed run's
+    // sentence must not print under its dash (defence in depth for the API).
+    render(<SearchCadenceTable items={[failedRow(code, { enabled: false })]} />);
+    const row = within(screen.getAllByRole("row")[1]);
+    expect(row.getByText("—")).toHaveAttribute(
+      "title",
+      "This family is off, so it has no next run.",
+    );
+    expect(row.queryByText("Not retried after the failed run.")).not.toBeInTheDocument();
+    expect(row.queryByText(/backend sentence/)).not.toBeInTheDocument();
   });
 
   it("shows times in UTC with the zone", () => {
