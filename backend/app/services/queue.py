@@ -103,7 +103,7 @@ KIND_PERMISSION: dict[QueueKind, str] = {
 }
 _KIND_ORDER = list(QueueKind)
 
-_FAMILY_BY_SUBJECT = {
+FAMILY_BY_SUBJECT = _FAMILY_BY_SUBJECT = {
     "LOG_SOURCE": AnomalyFamily.LOG_SOURCE,
     "WAF_ENDPOINT": AnomalyFamily.WAF,
     "IPS_ENTITY": AnomalyFamily.IPS,

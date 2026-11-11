@@ -12,9 +12,8 @@ auditable rather than something the UI must take on faith.
 
 from __future__ import annotations
 
-import re
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, NamedTuple
 
@@ -27,6 +26,19 @@ from app.anomaly.capabilities import (
     all_detectors,
     bucket_telemetry,
     detector_status,
+)
+
+# The traffic export's helpers live in `app.api.csv_export`; `_csv_field` stays
+# importable from this module because the traffic export's tests import it here.
+from app.api.csv_export import _csv_field as _csv_field
+from app.api.csv_export import (
+    _csv_row,
+    _csv_time,
+    csv_document,
+    csv_export_response,
+    csv_range_filename,
+    csv_slug,
+    csv_stamp,
 )
 from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
@@ -166,6 +178,7 @@ from app.services.anomaly_triage import (
     TriageInvalid,
     TriageNotFound,
 )
+from app.services.queue import FAMILY_BY_SUBJECT
 from app.services.related_activity import (
     RelatedActivityNotFound,
     RelatedActivityService,
@@ -254,6 +267,80 @@ def _active_only_range(
 
 
 # --------------------------------------------------------------------- list
+async def _unified_rows(
+    repo: AnomalyRepository,
+    *,
+    principal: Principal,
+    settings: Settings,
+    limit: int,
+    offset: int,
+    log_source_id: uuid.UUID | None,
+    instance_id: uuid.UUID | None,
+    anomaly_type: AnomalyType
+    | WafAnomalyType
+    | IpsAnomalyType
+    | PwAnomalyType
+    | RuleAnomalyType
+    | None,
+    subject_kind: list[SubjectKind] | None,
+    waf_endpoint_id: uuid.UUID | None,
+    ips_entity_id: uuid.UUID | None,
+    property_watch_id: uuid.UUID | None,
+    state: AnomalyState | None,
+    severity: Severity | None,
+    evidence_status: EvidenceStatus | None,
+    triage_status: TriageStatus | None,
+    owner: str | None,
+    disposition: TriageDisposition | None,
+    active_only: bool,
+    since: datetime | None,
+    until: datetime | None,
+) -> tuple[list[dict], int, datetime | None, datetime]:
+    """The unified list's window, owner resolution and read, plus that window.
+
+    `GET /anomalies` and `GET /anomalies.csv` differ only in how many rows they
+    ask for and where they start (`limit`, `min(limit, api_max_page_size)`), so
+    the rules that decide *which* rows are meant live here once: the active-only
+    window, `owner=me` resolved against the caller, and the filter object the
+    repository turns into the union. Returns `(rows, total, start, end)`; the
+    export names its file after the window it actually read.
+    """
+    # "Active" is a state, not a time window: without `since`, an active-only list has no
+    # lower bound, so it holds every active incident up to `until`, whatever its age, and
+    # matches the Dashboard's count. Without `active_only` the list keeps its 1-day default.
+    # An explicit `since`/`until` is used and bounded exactly as before; the summary
+    # (`/anomalies/summary`) counts the same active population with no lower bound either.
+    if active_only:
+        start, end = _active_only_range(since, until, settings.api_max_range_days)
+    else:
+        start, end = _validate_range(since, until, settings.api_max_range_days)
+    # `owner=me` is resolved here, against the authenticated principal, not in SQL:
+    # the database has no notion of the caller. `none` stays a literal and asks for
+    # an unowned item, including one with no triage row at all.
+    owner_filter = principal.subject if owner == "me" else owner
+    rows, total = await repo.list_unified(
+        limit=limit,
+        offset=offset,
+        subject_kind=subject_kind,
+        waf_endpoint_id=waf_endpoint_id,
+        ips_entity_id=ips_entity_id,
+        pw_watch_id=property_watch_id,
+        log_source_id=log_source_id,
+        instance_id=instance_id,
+        anomaly_type=anomaly_type.value if anomaly_type is not None else None,
+        state=state,
+        severity=severity,
+        evidence_status=evidence_status,
+        triage_status=triage_status,
+        triage_owner=owner_filter,
+        triage_disposition=disposition,
+        active_only=active_only,
+        since=start,
+        until=end,
+    )
+    return rows, total, start, end
+
+
 @router.get("", response_model=PagedAnomalies)
 async def list_anomalies(
     session: SessionDep,
@@ -283,46 +370,166 @@ async def list_anomalies(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> PagedAnomalies:
-    # "Active" is a state, not a time window: without `since`, an active-only list has no
-    # lower bound, so it holds every active incident up to `until`, whatever its age, and
-    # matches the Dashboard's count. Without `active_only` the list keeps its 1-day default.
-    # An explicit `since`/`until` is used and bounded exactly as before; the summary
-    # (`/anomalies/summary`) counts the same active population with no lower bound either.
-    if active_only:
-        start, end = _active_only_range(since, until, settings.api_max_range_days)
-    else:
-        start, end = _validate_range(since, until, settings.api_max_range_days)
-
-    repo = AnomalyRepository(session)
-    # `owner=me` is resolved here, against the authenticated principal, not in SQL:
-    # the database has no notion of the caller. `none` stays a literal and asks for
-    # an unowned item, including one with no triage row at all.
-    owner_filter = principal.subject if owner == "me" else owner
-    rows, total = await repo.list_unified(
+    rows, total, _start, _end = await _unified_rows(
+        AnomalyRepository(session),
+        principal=principal,
+        settings=settings,
         limit=min(limit, settings.api_max_page_size),
         offset=offset,
+        log_source_id=log_source_id,
+        instance_id=instance_id,
+        anomaly_type=anomaly_type,
         subject_kind=subject_kind,
         waf_endpoint_id=waf_endpoint_id,
         ips_entity_id=ips_entity_id,
-        pw_watch_id=property_watch_id,
-        log_source_id=log_source_id,
-        instance_id=instance_id,
-        anomaly_type=anomaly_type.value if anomaly_type is not None else None,
+        property_watch_id=property_watch_id,
         state=state,
         severity=severity,
         evidence_status=evidence_status,
         triage_status=triage_status,
-        triage_owner=owner_filter,
-        triage_disposition=disposition,
+        owner=owner,
+        disposition=disposition,
         active_only=active_only,
-        since=start,
-        until=end,
+        since=since,
+        until=until,
     )
     return PagedAnomalies(
         items=[_unified_item(row) for row in rows],
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+# --------------------------------------------------------------- CSV export
+#: The export's column order, fixed by the SOC-8 design (§5): identity, source,
+#: severity, lifecycle and the analyst's triage. The explanation, the contributors
+#: and the detector's raw numbers are deliberately absent.
+ANOMALY_EXPORT_COLUMNS = (
+    "id",
+    "family",
+    "anomaly_type",
+    "log_source_id",
+    "log_source_name",
+    "severity",
+    "state",
+    "detected_at",
+    "opened_at",
+    "resolved_at",
+    "triage_status",
+    "triage_owner",
+    "triage_disposition",
+)
+
+
+def _anomaly_export_row(row: dict) -> tuple[object, ...]:
+    """One row of the unified union as the export's cells, in column order.
+
+    `subject_kind` is the union's own discriminator, and the family comes from
+    the mapping the triage queue already reads (`app.services.queue`), so a new
+    subject kind cannot be exported under a stale family. A kind outside that
+    map belongs to no family, and its cell is empty rather than forcing a bad
+    value into the file -- an unknown kind must not cost the whole export. A
+    missing triage row exports as NEW and unowned, which is what the JSON list
+    reads it as; the owner and disposition cells stay empty, because neither is
+    known.
+    """
+    family = FAMILY_BY_SUBJECT.get(row["subject_kind"])
+    return (
+        row["id"],
+        None if family is None else family.value,
+        row["anomaly_type"],
+        row["log_source_id"],
+        row["log_source_name"],
+        row["severity"],
+        row["state"],
+        _csv_time(row["detected_at"]),
+        _csv_time(row["opened_at"]),
+        _csv_time(row["resolved_at"]),
+        row["triage_status"] or TriageStatus.NEW.value,
+        row["triage_owner"],
+        row["triage_disposition"],
+    )
+
+
+@router.get(
+    ".csv",
+    response_class=Response,
+    responses={
+        200: {
+            "description": (
+                "The filtered anomaly list as RFC 4180 CSV, at most "
+                "API_MAX_EXPORT_ROWS rows in the list's own order. The header row is "
+                "always present; X-Export-Truncated says the export was cut."
+            ),
+            "content": {"text/csv": {"schema": {"type": "string"}}},
+        }
+    },
+)
+async def export_anomalies_csv(
+    session: SessionDep,
+    settings: SettingsDep,
+    principal: PrincipalDep,
+    log_source_id: uuid.UUID | None = Query(default=None),
+    instance_id: uuid.UUID | None = Query(default=None),
+    anomaly_type: AnomalyType
+    | WafAnomalyType
+    | IpsAnomalyType
+    | PwAnomalyType
+    | RuleAnomalyType
+    | None = Query(default=None),
+    subject_kind: Annotated[list[SubjectKind] | None, Query()] = None,
+    waf_endpoint_id: uuid.UUID | None = Query(default=None),
+    ips_entity_id: uuid.UUID | None = Query(default=None),
+    property_watch_id: uuid.UUID | None = Query(default=None),
+    state: AnomalyState | None = Query(default=None),
+    severity: Severity | None = Query(default=None),
+    evidence_status: EvidenceStatus | None = Query(default=None),
+    triage_status: TriageStatus | None = Query(default=None),
+    owner: str | None = Query(default=None, max_length=255),
+    disposition: TriageDisposition | None = Query(default=None),
+    active_only: bool = Query(default=False),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+) -> Response:
+    """The filtered list as a CSV attachment, one row per anomaly.
+
+    The parameters are the list's and so are the rows: the window, the filters,
+    the union and its ordering all come from `_unified_rows`, so the export of a
+    narrowed list is exactly what the page showed. There is no paging here --
+    the file is the first `api_max_export_rows` of the filtered set, and when
+    more matched the response says `X-Export-Truncated: true`.
+
+    Declared before `/{anomaly_id}`, like `/summary`: a UUID path parameter must
+    never be the route that answers an export request.
+    """
+    rows, total, start, end = await _unified_rows(
+        AnomalyRepository(session),
+        principal=principal,
+        settings=settings,
+        limit=settings.api_max_export_rows,
+        offset=0,
+        log_source_id=log_source_id,
+        instance_id=instance_id,
+        anomaly_type=anomaly_type,
+        subject_kind=subject_kind,
+        waf_endpoint_id=waf_endpoint_id,
+        ips_entity_id=ips_entity_id,
+        property_watch_id=property_watch_id,
+        state=state,
+        severity=severity,
+        evidence_status=evidence_status,
+        triage_status=triage_status,
+        owner=owner,
+        disposition=disposition,
+        active_only=active_only,
+        since=since,
+        until=until,
+    )
+    return csv_export_response(
+        csv_document(ANOMALY_EXPORT_COLUMNS, (_anomaly_export_row(row) for row in rows)),
+        filename=csv_range_filename("anomalies", start, end),
+        truncated=total > len(rows),
     )
 
 
@@ -2000,50 +2207,13 @@ _EXPORT_TAIL = (
     "truncated",
 )
 
-#: A text cell opening with one of these is run as a formula by a spreadsheet.
-_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
-
-
-def _csv_field(value: object) -> str:
-    """One RFC 4180 field built from a cell value.
-
-    None is an empty cell, never 0 (rule 8). A text cell that opens with `=`,
-    `+`, `-`, `@`, a tab or a CR is prefixed with `'`, so a spreadsheet opens it
-    as text instead of evaluating it. A field holding a comma, a quote or a line
-    break is quoted and its own quotes doubled. Rates are plain with three
-    decimals and `.` as the decimal point.
-    """
-    if value is None:
-        text = ""
-    elif isinstance(value, bool):
-        text = "true" if value else "false"
-    elif isinstance(value, float):
-        text = f"{value:.3f}"
-    elif isinstance(value, str):
-        text = "'" + value if value.startswith(_FORMULA_PREFIXES) else value
-    else:
-        text = str(value)
-    if any(ch in text for ch in ',"\r\n'):
-        return '"' + text.replace('"', '""') + '"'
-    return text
-
-
-def _csv_row(cells: Iterable[object]) -> str:
-    """One RFC 4180 record, CRLF-terminated."""
-    return ",".join(_csv_field(cell) for cell in cells) + "\r\n"
-
-
-def _csv_time(value: datetime | None) -> str | None:
-    """An ISO 8601 UTC stamp with `Z`; None stays an empty cell."""
-    return None if value is None else value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
 
 def _csv_filename(
     family: str, source_name: str, window: TrafficWindow, end: datetime | None
 ) -> str:
     """The attachment filename; `no-range` when no bucket defined the range."""
-    slug = re.sub(r"[^a-z0-9]+", "-", source_name.lower()).strip("-") or "source"
-    stamp = "no-range" if end is None else end.astimezone(UTC).strftime("%Y%m%dT%H%MZ")
+    slug = csv_slug(source_name) or "source"
+    stamp = "no-range" if end is None else csv_stamp(end)
     return f"traffic-{family}-{slug}-{window.value}-{stamp}.csv"
 
 
@@ -2157,20 +2327,13 @@ def _csv_response(
     truncated: bool,
 ) -> Response:
     """A CSV attachment, naming the range, the state and any truncation."""
-    headers = {
-        "Content-Disposition": (
-            'attachment; filename="'
-            + _csv_filename(
-                family, source_name, window, None if span is None else span.end
-            )
-            + '"'
+    return csv_export_response(
+        body,
+        filename=_csv_filename(
+            family, source_name, window, None if span is None else span.end
         ),
-        "X-Export-State": state.value,
-    }
-    if truncated:
-        headers["X-Export-Truncated"] = "true"
-    return Response(
-        content=body, media_type="text/csv; charset=utf-8", headers=headers
+        truncated=truncated,
+        extra_headers={"X-Export-State": state.value},
     )
 
 

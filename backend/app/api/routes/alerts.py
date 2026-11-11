@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,11 +17,19 @@ from app.alerts.query import (
     AlertFilters,
     AlertSort,
     SortOrder,
+    alert_family,
     facet_counts,
     normalise_q,
 )
 from app.alerts.routing import default_policy
 from app.alerts.service import AlertResult, AlertService
+from app.api.csv_export import (
+    _csv_time,
+    csv_document,
+    csv_enum,
+    csv_export_response,
+    csv_range_filename,
+)
 from app.api.deps import SessionDep, SettingsDep
 from app.i18n.refusal import permission_refusal
 from app.models.alert import Alert, AlertNotification
@@ -192,6 +200,120 @@ async def list_alerts(
         filters_applied=_applied(filters),
         sort=sort,
         order=order,
+    )
+
+
+# --------------------------------------------------------------- CSV export
+#: The export's column order, fixed by the SOC-8 design (§5): identity, subject,
+#: severity, lifecycle and dedup. `evidence_snapshot` and `description` are
+#: deliberately absent -- the snapshot is raw evidence, and the export is a list.
+ALERT_EXPORT_COLUMNS = (
+    "id",
+    "family",
+    "source_type",
+    "source_id",
+    "title",
+    "severity",
+    "status",
+    "opened_at",
+    "acknowledged_at",
+    "acknowledged_by",
+    "resolved_at",
+    "resolved_by",
+    "occurrence_count",
+    "fingerprint",
+)
+
+
+def _alert_export_row(alert: Alert) -> tuple[object, ...]:
+    """One alert as the export's cells, in column order.
+
+    The family is resolved through the same map the list's `family` filter uses
+    (`FAMILY_BY_SOURCE_TYPE`); a `source_type` outside it belongs to no family,
+    and its cell is empty rather than forced into one.
+    """
+    family = alert_family(alert.source_type)
+    return (
+        alert.id,
+        None if family is None else family.value,
+        alert.source_type,
+        alert.source_id,
+        alert.title,
+        csv_enum(alert.severity),
+        csv_enum(alert.status),
+        _csv_time(alert.opened_at),
+        _csv_time(alert.acknowledged_at),
+        alert.acknowledged_by,
+        _csv_time(alert.resolved_at),
+        alert.resolved_by,
+        alert.occurrence_count,
+        alert.fingerprint,
+    )
+
+
+@router.get(
+    ".csv",
+    response_class=Response,
+    responses={
+        200: {
+            "description": (
+                "The filtered alert list as RFC 4180 CSV, at most "
+                "API_MAX_EXPORT_ROWS rows in the requested order. The header row is "
+                "always present; X-Export-Truncated says the export was cut."
+            ),
+            "content": {"text/csv": {"schema": {"type": "string"}}},
+        }
+    },
+)
+async def export_alerts_csv(
+    session: SessionDep,
+    settings: SettingsDep,
+    status_filter: AlertStatus | None = Query(default=None, alias="status"),
+    severity: Annotated[list[Severity] | None, Query()] = None,
+    log_source_id: Annotated[list[uuid.UUID] | None, Query()] = None,
+    family: AlertFamily | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=MAX_Q_LENGTH),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    sort: AlertSort = Query(default=AlertSort.CREATED_AT),
+    order: SortOrder = Query(default=SortOrder.DESC),
+) -> Response:
+    """The filtered list as a CSV attachment, one row per alert.
+
+    The filters, their validation and the ordering are the list's own
+    (`_filters` and `AlertFilters`), so an export of a narrowed list is exactly
+    what the page showed. There is no paging: the file is the first
+    `api_max_export_rows` rows in the requested order. One row more than the cap
+    is read, so "there are more" is known without a second statement over the
+    same rows; when it comes back, the response says `X-Export-Truncated: true`.
+
+    Declared before `/{alert_id}`: a UUID path parameter must never be the route
+    that answers an export request. Reads are not audited on this surface (the
+    JSON list records none either), so the export records none.
+    """
+    filters = _filters(
+        status_filter=status_filter,
+        severity=severity,
+        log_source_id=log_source_id,
+        family=family,
+        q=q,
+        since=since,
+        until=until,
+        max_days=settings.api_max_range_days,
+    )
+    cap = settings.api_max_export_rows
+    rows = (
+        await session.scalars(
+            select(Alert)
+            .where(*filters.clauses())
+            .order_by(*filters.order_by(sort, order))
+            .limit(cap + 1)
+        )
+    ).all()
+    return csv_export_response(
+        csv_document(ALERT_EXPORT_COLUMNS, (_alert_export_row(r) for r in rows[:cap])),
+        filename=csv_range_filename("alerts", filters.since, filters.until),
+        truncated=len(rows) > cap,
     )
 
 
