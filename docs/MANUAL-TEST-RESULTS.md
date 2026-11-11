@@ -1,6 +1,6 @@
 # QRadar-Dash manual test results page
 
-This page is the results page for the **0.1.15** section of the guide `docs/MANUAL-TEST.md`. It can be printed or a copy can be filled in. The result cells are left empty: write `Pass`, `Fail` or `Not run`; write a Note for `Fail` and `Not run`. **Do not write** passwords, tokens, `.env` values or customer data.
+This page is the results page for the **0.1.16** section of the guide `docs/MANUAL-TEST.md`. It can be printed or a copy can be filled in. The result cells are left empty: write `Pass`, `Fail` or `Not run`; write a Note for `Fail` and `Not run`. **Do not write** passwords, tokens, `.env` values or customer data.
 
 | Field | Value |
 |---|---|
@@ -12,14 +12,14 @@ This page is the results page for the **0.1.15** section of the guide `docs/MANU
 | Start (UTC) | |
 | End (UTC) | |
 | Upgrade path (online / offline bundle) | |
-| Migration head after (`0060`) | |
+| Migration head after (`0063`) | |
 | Rollback done (no / yes, time) | |
 
-**Core (production path)**, 40 checks: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-136, MT-10, MT-11, MT-144, MT-145, MT-126, MT-12, MT-13, MT-14, MT-15, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-128, MT-95, MT-119, MT-120, MT-121, MT-125. In production only the rows whose `Core` column says "yes" are filled in; the others are for the lab run. MT-126, although its number is high, is done right after MT-11. MT-128 is also done after a `GEO_COLLECTION` cadence has passed.
+**Core (production path)**, 42 checks: MT-01, MT-02, MT-03, MT-04, MT-05, MT-06, MT-07, MT-08, MT-09, MT-136, MT-10, MT-11, MT-144, MT-145, MT-159, MT-160, MT-126, MT-12, MT-13, MT-14, MT-15, MT-21, MT-22, MT-24, MT-26, MT-27, MT-28, MT-29, MT-30, MT-38, MT-39, MT-44, MT-50, MT-51, MT-52, MT-55, MT-128, MT-95, MT-119, MT-120, MT-121, MT-125. In production only the rows whose `Core` column says "yes" are filled in; the others are for the lab run. MT-126, although its number is high, is done right after MT-11. MT-128 is also done after a `GEO_COLLECTION` cadence has passed.
 
-Since 0.1.10 the interface is English only (D-41). The checks of section 4 that tested the Turkish interface or the language switch were removed (MT-20, MT-58, MT-59, MT-124: the result cell says `Removed`; nothing to run) or rewritten as English checks with the same ids. A raw message key or Turkish text anywhere is a Fail of the check where it was seen. Fifteen checks are new in 0.1.15, MT-144 to MT-158. MT-144 (the defaults keep 0.1.14's behaviour) and MT-145 (role permissions after the upgrade) are core, so the core is 40; the other thirteen are not core. MT-146, MT-155 and MT-157 are `lab only` (they write to the site's own tables), and MT-150 has one `lab only` part. MT-143 came in 0.1.14 and the checks MT-137 to MT-142 in 0.1.12.
+Since 0.1.10 the interface is English only (D-41). The checks of section 4 that tested the Turkish interface or the language switch were removed (MT-20, MT-58, MT-59, MT-124: the result cell says `Removed`; nothing to run) or rewritten as English checks with the same ids. A raw message key or Turkish text anywhere is a Fail of the check where it was seen. Thirteen checks are new in 0.1.16, MT-159 to MT-171. MT-159 (`doctor` line `entity_mentions` and the backfill) and MT-160 (the postgres container runs with TimescaleDB telemetry off) are core, so the core is 42; the other eleven are not core. MT-163, MT-165 and MT-171 are `lab only` (they write to the site's own tables). MT-144 to MT-158 came in 0.1.15 (MT-144 is renamed: it no longer compares with the previous release), MT-143 in 0.1.14 and the checks MT-137 to MT-142 in 0.1.12.
 
-Version before: `0.1.14`, migration head `0054`. Version after: `0.1.15`, migration head `0060`.
+Version before: `0.1.15`, migration head `0060`. Version after: `0.1.16`, migration head `0063`.
 
 
 ## 1. Preconditions
@@ -32,7 +32,7 @@ Version before: `0.1.14`, migration head `0054`. Version after: `0.1.15`, migrat
 | MT-04 | yes | Where the logs and the support bundle are — (writes) | | |
 | MT-05 | yes | The window and the people to inform | | |
 
-## 2. Upgrade 0.1.14 → 0.1.15
+## 2. Upgrade 0.1.15 → 0.1.16
 
 | Id | Core | Check (short) | Result (Pass / Fail / Not run) | Note |
 |---|---|---|---|---|
@@ -43,8 +43,10 @@ Version before: `0.1.14`, migration head `0054`. Version after: `0.1.15`, migrat
 | MT-136 | yes | `doctor --aql`: every family's query is accepted by the console | | |
 | MT-10 | yes | Outage duration and the interface's return | | |
 | MT-11 | yes | Collection runs again after the first cadence | | |
-| MT-144 | yes | The defaults keep 0.1.14's behaviour | | |
+| MT-144 | yes | The alerting, triage and rule-match defaults are unchanged | | |
 | MT-145 | yes | Role permissions after the upgrade | | |
+| MT-159 | yes | `doctor` line `entity_mentions` and the entity-mention backfill | | |
+| MT-160 | yes | The postgres container runs with TimescaleDB telemetry off (FIX-47) | | |
 | MT-126 | yes | The rate limit does not cut the page in production | | |
 | MT-127 |  | The lowered limit gives 429 and the retry sentence — (writes) lab only | | |
 
@@ -132,6 +134,7 @@ Version before: `0.1.14`, migration head `0054`. Version after: `0.1.15`, migrat
 | MT-77 |  | Dashboard widget: “WAF sources” | | |
 | MT-78 |  | Dashboard widget: “Recent WAF anomalies” | | |
 | MT-79 |  | Dashboard widget: “Recent IPS anomalies” | | |
+| MT-161 |  | Dashboard widget: “Latest handover” (SOC-14b) | | |
 | MT-128 | yes | World map: dashboard widget and `/geography` | | |
 | MT-129 |  | Country source and the `geo_country_source` check (GEO-3) | | |
 
@@ -156,6 +159,11 @@ Version before: `0.1.14`, migration head `0054`. Version after: `0.1.15`, migrat
 | MT-153 |  | Low-volume model (shadow view) | | |
 | MT-154 |  | Traffic by destination | | |
 | MT-155 |  | Queue and the "last visit" marker — (writes) lab only | | |
+| MT-162 |  | Keyboard on the lists: `j`, `k`, Enter, `o`, Esc, `n` and `g` (SOC-15a, SOC-15b) | | |
+| MT-163 |  | `a` acknowledges the marked alert (SOC-15b) — (writes) lab only | | |
+| MT-164 |  | Handover page: the latest record and the earlier ones (SOC-14b) | | |
+| MT-165 |  | Writing a handover — (writes) lab only | | |
+| MT-166 |  | Entity timeline: what the platform stored about an IP, host or user (SOC-16) | | |
 
 ## 7. Alerts
 
@@ -166,6 +174,7 @@ Version before: `0.1.14`, migration head `0054`. Version after: `0.1.15`, migrat
 | MT-89 |  | Acknowledging and resolving an alert — (writes) lab only | | |
 | MT-156 |  | Alert filters, facet counts and a link that reproduces the view | | |
 | MT-157 |  | Don't alert this again — (writes) lab only | | |
+| MT-171 |  | The log-source collection alert and `sync stale-log-sources` (FIX-45e, FIX-45f) — (writes) lab only | | |
 
 ## 8. Custom rules
 
@@ -201,11 +210,14 @@ Version before: `0.1.14`, migration head `0054`. Version after: `0.1.15`, migrat
 | MT-102 |  | Rule health list | | |
 | MT-103 |  | Rule detail and health history | | |
 | MT-104 |  | Rule statistics | | |
+| MT-170 |  | Rule-match anomalies: statistics, rule detail and the anomaly list (SOC-6d, SOC-6e) | | |
 | MT-105 |  | Coverage | | |
 | MT-106 |  | Fleet, fleet sources and catch-all senders | | |
 | MT-107 |  | Log sources and detail | | |
 | MT-108 |  | Configuration changes | | |
 | MT-109 |  | Behavior pages: overview, sources, WAF, property watches, offenses | | |
+| MT-167 |  | IPS behavior: the source list and one IPS source (IPS-UI-1, IPS-UI-2, IPS-API-1) | | |
+| MT-168 |  | EMA overlays on the charts: off by default, display only (CHART-1, CHART-2, UIQ-3) | | |
 
 ## 12. Administration
 
@@ -216,6 +228,7 @@ Version before: `0.1.14`, migration head `0054`. Version after: `0.1.15`, migrat
 | MT-112 |  | Re-running a source validation — (writes) lab only QRadar search | | |
 | MT-113 |  | Users and directory (view only) | | |
 | MT-114 |  | Search cadence (view only) | | |
+| MT-169 |  | Search cadence: “Bucket width” and the reason of a failed run (FIX-44, FIX-44-ui) (view only) | | |
 | MT-115 |  | Changing the search cadence — (writes) lab only | | |
 | MT-116 |  | Outage policy and classification rules (view only) | | |
 | MT-117 |  | Administration home page | | |

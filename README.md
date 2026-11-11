@@ -275,6 +275,7 @@ The upstream MCP tool audit is published in the
 | [Release 0.1.13](docs/releases/0.1.13.md) | Release notes and upgrade boundary for 0.1.13 |
 | [Release 0.1.14](docs/releases/0.1.14.md) | Release notes and upgrade boundary for 0.1.14 |
 | [Release 0.1.15](docs/releases/0.1.15.md) | Release notes and upgrade boundary for 0.1.15 |
+| [Release 0.1.16](docs/releases/0.1.16.md) | Release notes and upgrade boundary for 0.1.16 |
 
 ## Operational limits worth knowing
 
