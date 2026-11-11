@@ -1,0 +1,145 @@
+{
+  "title": "Reports",
+  "meta": "Reports",
+  "description": "How did the period go?",
+  "boundary": {
+    "title": "Reports",
+    "loading": "the report",
+    "error": "The report"
+  },
+  "loading": "Loading the report…",
+  "retry": "Retry",
+  "loadFailed": {
+    "title": "The report could not be loaded.",
+    "network": "The backend did not answer. Retry; if it keeps failing, check that the backend is reachable.",
+    "expired": "Your session has expired. Sign in again to continue.",
+    "server": "The backend failed while building the report. Retry; if it keeps failing, check the backend log.",
+    "refused": "The backend refused the period: {reason} Choose another period."
+  },
+  "ignored": {
+    "unknownPeriod": "Ignored an unknown period; showing the last 7 days.",
+    "badStart": "Ignored a start that is not the first instant of its period; showing the current period.",
+    "futureStart": "Ignored a start in the future; showing the current period."
+  },
+  "period": {
+    "label": "Report period",
+    "chipsLabel": "Periods",
+    "last_7d": "Last 7 days",
+    "last_30d": "Last 30 days",
+    "calendar_week": "UTC week",
+    "calendar_month": "UTC month",
+    "stepLabel": "Step through {unit}",
+    "unit": {
+      "calendar_week": "weeks",
+      "calendar_month": "months"
+    },
+    "previous": {
+      "calendar_week": "Previous week",
+      "calendar_month": "Previous month"
+    },
+    "next": {
+      "calendar_week": "Next week",
+      "calendar_month": "Next month"
+    },
+    "nextOff": "This is the current period.",
+    "startingWeek": "Week starting {date} UTC",
+    "startingMonth": "Month starting {date} UTC",
+    "range": "Range: {from} → {to}",
+    "rangeNow": "Range: {from} → {to} (to now)",
+    "rangeLabel": "Resolved range"
+  },
+  "empty": {
+    "text": "No alerts or anomalies were opened in this period.",
+    "range": "Checked {from} → {to}.",
+    "rangeNow": "Checked {from} → {to} (to now)."
+  },
+  "state": {
+    "partial": "Partial",
+    "insufficient": "Insufficient data",
+    "forbidden": "Forbidden",
+    "ok": "Measured"
+  },
+  "forbidden": "You need the <code>{permission}</code> permission to see this block. The other blocks are not affected.",
+  "blockFailed": "This block could not be read: its query failed, so nothing is shown rather than a zero. Retry the report; the other blocks are not affected.",
+  "blockUnknown": "This block could not be measured (reason {code}). Nothing is shown rather than a zero.",
+  "blockNoReason": "This block could not be measured. Nothing is shown rather than a zero.",
+  "family": {
+    "log_source": "Log sources",
+    "waf": "WAF",
+    "ips": "IPS",
+    "property_watch": "Property watches",
+    "rule": "Rules",
+    "catchall_sender": "Catch-all senders",
+    "custom_rule": "Custom rules",
+    "scheduled_search": "Scheduled searches",
+    "qradar_instance": "QRadar instances",
+    "other": "Other source types"
+  },
+  "otherHint": "No alert family claims these source types, so the list cannot be filtered to them.",
+  "alertsBlock": {
+    "title": "Alerts opened",
+    "caption": "Alerts opened in the period, by family and severity (alerts)",
+    "empty": "No alerts were opened in this period.",
+    "clocks": "Time to act on alerts"
+  },
+  "anomaliesBlock": {
+    "title": "Anomalies opened",
+    "caption": "Anomalies opened in the period, by family and severity (anomalies)",
+    "empty": "No anomalies were opened in this period."
+  },
+  "table": {
+    "family": "Family",
+    "total": "Total alerts",
+    "totalAnomalies": "Total anomalies",
+    "drill": "{count} {severity} in {family}: open the list",
+    "lowerBound": "At least {count}"
+  },
+  "retention": {
+    "partial": "{family}: anomaly rows are kept for {days} days, so this period is counted only from {from} UTC. Counts marked ≥ are lower bounds.",
+    "partialNoDate": "{family}: anomaly rows are kept for {days} days, so this period is only partly covered. Counts marked ≥ are lower bounds.",
+    "insufficient": "{family}: nothing in this period is still within the {days}-day retention, so no figure is shown.",
+    "heading": "Coverage"
+  },
+  "clock": {
+    "caption": "Median time to act, in hours and minutes",
+    "measure": "Measure",
+    "median": "Median",
+    "n": "n",
+    "basis": "Basis",
+    "mtta": "Time to acknowledge (MTTA)",
+    "mttr": "Time to resolve (MTTR)",
+    "mttaAnomaly": "Time to first owner or status change (MTTA)",
+    "mttrAnomaly": "Time to close (MTTR)",
+    "insufficient": "Insufficient data: a median needs at least {min} closed items.",
+    "partial": "Partial: older rows are no longer kept.",
+    "measured": "Measured"
+  },
+  "anomalyClocks": {
+    "title": "Time to act on anomalies",
+    "none": "No clock was measured for this block."
+  },
+  "noise": {
+    "title": "Noise by detector",
+    "caption": "Anomalies judged by an analyst, and how many were noise (anomalies, %)",
+    "family": "Family",
+    "detector": "Detector",
+    "judged": "Judged",
+    "noise": "Noise",
+    "ratio": "Noise ratio",
+    "state": "Basis",
+    "empty": "No anomaly opened in this period has been judged yet.",
+    "insufficient": "Insufficient data",
+    "partial": "Partial: lower bounds"
+  },
+  "export": {
+    "alerts": "Export alerts CSV",
+    "anomalies": "Export anomalies CSV"
+  },
+  "links": {
+    "title": "Related views",
+    "noise": "Noisy sources",
+    "noiseHint": "the sources with the most noise judgements, last 7 days",
+    "coverage": "Coverage",
+    "coverageHint": "as of now, not as of this period"
+  }
+}

@@ -3195,6 +3195,15 @@ td.cell-name.ips-source-cell {
 .copy-link-note {
   font-size: var(--fs-xs);
 }
+.export-csv {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+}
+.export-csv-note {
+  font-size: var(--fs-xs);
+}
 /* Inside a `.filters` form every button is a primary action; a range chip is not. */
 .filters button.range-chip {
   background: var(--surface-2);

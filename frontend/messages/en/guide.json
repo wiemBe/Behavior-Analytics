@@ -467,6 +467,35 @@
         }
       ]
     },
+    "reports": {
+      "title": "Reports",
+      "answers": "How did the period go: what was opened, how fast did we act, and which detectors were noise?",
+      "body": [
+        {
+          "p": "Choose a period with the chips: **Last 7 days** (the default), **Last 30 days**, **UTC week** or **UTC month**. The two calendar periods have **Previous week** / **Next week** (or month) controls; the next control is off at the current period, which ends where the data ends. The range is printed in UTC, and ends with the words to now when the period is still running. The period is in the address, so a copied link shows the same report."
+        },
+        {
+          "p": "**Alerts opened** counts alerts by family and severity. A count opens the alert list for that family, severity and range. Under the table, the median time to acknowledge and to resolve is shown with the number of alerts behind it (**n**). A median needs at least 5 items: with fewer, it reads as an em dash and **Insufficient data**, never as 0 min. **Anomalies opened** does the same for anomalies, and each count opens the anomaly list for that family and severity."
+        },
+        {
+          "p": "Anomaly rows are kept for a limited time, and the retention differs per family. When a period reaches back past it, the family is **Partial**: its counts read at least, shown with the sign ≥, and a line under the table names the retention and the instant the counts start from. **Time to act on anomalies** measures the first owner or status change and the closing status. A clock stopped by the system on a stale item is not a response time and is left out. **Noise by detector** shows, per detector, how many anomalies an analyst judged and how many of them were noise, as a percentage."
+        },
+        {
+          "p": "Each block is read on its own. The page needs only a signed-in account, and each block needs its own permission: `read:alerts` for **Alerts opened**, `read:anomalies` for the other three. A block you may not read says which permission it needs, and the other blocks still show. **Export alerts CSV** and **Export anomalies CSV** download the period as a file of at most 10,000 rows; the file is marked when it was cut."
+        }
+      ],
+      "steps": [
+        "Open **Reports** and choose a period. For a calendar period, use **Previous week** or **Previous month** to look back.",
+        "Read **Alerts opened** and **Anomalies opened**. Choose a count to open the list behind it.",
+        "Check the **n** and the basis beside each median, and the lines under a table, before comparing two periods.",
+        "Choose an export link when the numbers must leave the page."
+      ],
+      "states": [
+        {
+          "p": "**No alerts or anomalies were opened in this period.** with the range; **The report could not be loaded.** with **Retry**; a block that says **You need the read:alerts permission** or that it could not be read, while the other blocks show; **Insufficient data** and **Partial** on a single figure, with the measured figures around it unchanged."
+        }
+      ]
+    },
     "rules": {
       "title": "Rules",
       "answers": "Which analytics rules are healthy, and which are not firing?",

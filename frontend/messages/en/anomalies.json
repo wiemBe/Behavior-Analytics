@@ -341,6 +341,7 @@
     "defaultWindow": "Default window, last 24 hours: {from} to {to}",
     "metaTitle": "Anomalies",
     "title": "Anomalies",
+    "exportCsv": "Export CSV",
     "description": "Open an anomaly to see what changed during its interval. Times are UTC.",
     "forbidden": "You do not have permission to view anomalies. Ask an administrator for the read:anomalies grant.",
     "expired": "Your session has expired. Sign in again to continue.",

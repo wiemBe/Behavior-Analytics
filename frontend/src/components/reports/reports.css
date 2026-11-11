@@ -1,0 +1,125 @@
+/* The reports page: layout only. Colours, sizes and spacing come from the tokens. */
+
+.rp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+.rp > * {
+  margin: 0;
+}
+
+.rp-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.rp-bar > * {
+  margin: 0;
+}
+.rp-step {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+}
+.rp-step-label {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.range-chip.rp-off {
+  color: var(--text-3);
+  cursor: default;
+}
+.rp-range {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.rp-block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+.main .rp-h,
+.rp-h {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-base);
+  color: var(--text);
+}
+.rp-actions {
+  margin-left: auto;
+}
+.rp-notice {
+  text-align: left;
+  margin: 0;
+  max-width: 80ch;
+}
+
+.rp-table .rp-caption {
+  caption-side: top;
+  text-align: left;
+  padding: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.rp-table td,
+.rp-table th {
+  font-variant-numeric: tabular-nums;
+}
+.rp-table tbody th[scope="row"] {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-normal);
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text);
+}
+.rp-table tbody tr:last-child th[scope="row"] {
+  border-bottom-color: transparent;
+}
+.rp-table td.rp-basis {
+  min-width: 18ch;
+}
+
+.rp-notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  max-width: 90ch;
+  font-size: var(--fs-sm);
+}
+
+.rp-links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+.rp-links > * {
+  margin: 0;
+}
+.rp-empty-exports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3) var(--sp-5);
+}
+
+/* A figure such as "27 min" stays whole; the basis column takes the wrapping. */
+.table-dense.rp-table td.num {
+  white-space: nowrap;
+}

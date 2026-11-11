@@ -30,6 +30,8 @@ import {
   ApiError,
   rateLimitedText,
   api,
+  anomaliesCsvUrl,
+  type AnomalyListParams,
   type AnomalySummary,
   type Page,
   type SourceBehavior,
@@ -48,6 +50,7 @@ import { sourcesAsOf } from "@/lib/home/asOf";
 import { utcTimeText } from "@/components/ui/UtcTime";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 import { CopyLink } from "@/components/listview/CopyLink";
+import { ExportCsv } from "@/components/listview/ExportCsv";
 import { ListKeyboard } from "@/components/listview/ListKeyboard";
 import { rangeWindow, stampText } from "@/lib/timeRange";
 
@@ -85,6 +88,25 @@ async function AnomaliesPage({
     subject.pw_anomaly_type ||
     subject.rule_anomaly_type;
 
+  // The list's filters without its page: the list request and the CSV export both take these.
+  const filterParams: AnomalyListParams = {
+    active_only: q.active_only || undefined,
+    log_source_id: q.log_source_id || undefined,
+    instance_id: q.instance_id || undefined,
+    anomaly_type: anomalyType || undefined,
+    subject_kind: subjectKindsForApi(subject.subject_kind),
+    ips_entity_id: subject.ips_entity_id || undefined,
+    property_watch_id: subject.property_watch_id || undefined,
+    state: q.state || undefined,
+    severity: q.severity || undefined,
+    evidence_status: q.evidence_status || undefined,
+    triage_status: triage.triage_status || undefined,
+    owner: triage.owner || undefined,
+    disposition: triage.disposition || undefined,
+    since: q.since || undefined,
+    until: q.until || undefined,
+  };
+
   let page: Page<AnomalySummary> | null = null;
   let sources: SourceBehavior[] = [];
   let sourcesFailed = false;
@@ -94,25 +116,7 @@ async function AnomaliesPage({
     // The source list only populates the filter dropdown, so its failure must
     // not blank the table; it is fetched alongside but tolerated separately.
     const [listed, behaviors] = await Promise.all([
-      api.anomalies({
-        limit: PAGE_SIZE,
-        offset: q.offset,
-        active_only: q.active_only || undefined,
-        log_source_id: q.log_source_id || undefined,
-        instance_id: q.instance_id || undefined,
-        anomaly_type: anomalyType || undefined,
-        subject_kind: subjectKindsForApi(subject.subject_kind),
-        ips_entity_id: subject.ips_entity_id || undefined,
-        property_watch_id: subject.property_watch_id || undefined,
-        state: q.state || undefined,
-        severity: q.severity || undefined,
-        evidence_status: q.evidence_status || undefined,
-        triage_status: triage.triage_status || undefined,
-        owner: triage.owner || undefined,
-        disposition: triage.disposition || undefined,
-        since: q.since || undefined,
-        until: q.until || undefined,
-      }),
+      api.anomalies({ limit: PAGE_SIZE, offset: q.offset, ...filterParams }),
       api.sourceBehaviors().catch(() => {
         sourcesFailed = true;
         return [] as SourceBehavior[];
@@ -195,7 +199,12 @@ async function AnomaliesPage({
         guide={guideFor("/anomalies")}
         title={t("title")}
         description={t("description")}
-        actions={<CopyLink href={viewHref} />}
+        actions={
+          <>
+            <ExportCsv href={anomaliesCsvUrl({ ...filterParams })} label={t("exportCsv")} />
+            <CopyLink href={viewHref} />
+          </>
+        }
       />
 
       <AnomalyFilters

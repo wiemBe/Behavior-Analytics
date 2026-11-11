@@ -210,6 +210,15 @@ export function alertListParams(query: AlertQuery): AlertListParams {
   };
 }
 
+/** The list request without its page: what `GET /alerts.csv` takes, so the file is the view. */
+export function alertExportParams(query: AlertQuery): AlertListParams {
+  return {
+    ...alertFilterParams(query),
+    sort: query.sort === DEFAULT_SORT ? undefined : query.sort,
+    order: query.order === DEFAULT_ORDER ? undefined : query.order,
+  };
+}
+
 /** A sortable column's next sort: the default order the first time, the opposite after. */
 export function sortPatch(
   query: AlertQuery,

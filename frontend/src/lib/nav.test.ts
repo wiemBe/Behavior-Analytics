@@ -39,6 +39,7 @@ describe("NAV", () => {
       "Rule statistics",
       "Custom rules",
       "Coverage",
+      "Reports",
     ]);
     expect(NAV[4].items.map((i) => i.label)).toEqual(["Log Sources", "Searches"]);
   });
@@ -86,7 +87,7 @@ describe("NAV", () => {
     expect(hrefs).not.toContain("/audit");
     expect(hrefs).not.toContain("/config-changes");
     expect(hrefs).toContain("/admin");
-    expect(hrefs).not.toContain("/reports");
+    expect(hrefs).toContain("/reports");
   });
 });
 

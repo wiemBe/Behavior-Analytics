@@ -4,7 +4,7 @@ import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { ApiError, api, sevTone, type AlertFacets, type AlertPage, type LogSourceSummary } from "@/lib/api";
+import { ApiError, api, alertsCsvUrl, sevTone, type AlertFacets, type AlertPage, type LogSourceSummary } from "@/lib/api";
 import { formatCount } from "@/lib/format";
 import { loadErrorMessage } from "@/lib/loadError";
 import { UtcTime } from "@/components/ui/UtcTime";
@@ -17,6 +17,7 @@ import {
   PAGE_SIZE,
   alertFilterParams,
   alertHref,
+  alertExportParams,
   alertListParams,
   alertPairs,
   isAlertFiltered,
@@ -30,6 +31,7 @@ import {
 import { rangeWindow } from "@/lib/timeRange";
 import { AlertFilters } from "@/components/alerts/AlertFilters";
 import { CopyLink } from "@/components/listview/CopyLink";
+import { ExportCsv } from "@/components/listview/ExportCsv";
 import { ListKeyboard } from "@/components/listview/ListKeyboard";
 
 import "./alerts.css";
@@ -122,7 +124,12 @@ async function AlertsPage({
         guide={guideFor("/alerts")}
         title={t("title")}
         description={t("description")}
-        actions={<CopyLink href={canonical} />}
+        actions={
+          <>
+            <ExportCsv href={alertsCsvUrl(alertExportParams(query))} label={t("exportCsv")} />
+            <CopyLink href={canonical} />
+          </>
+        }
       />
 
       {query.ignored.length > 0 && (
