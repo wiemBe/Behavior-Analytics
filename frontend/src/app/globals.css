@@ -2818,6 +2818,17 @@ td.cell-name.cell-subject {
 td.cell-detector {
   min-width: 13ch;
 }
+/* An owner is a subject such as `analyst.lastname@example.org`: one unbroken word. Without a
+   break opportunity its min-content is the whole address, the table grows past the container
+   and the sticky actions cell covers the end of it. Wrapping anywhere keeps it fully readable;
+   the owner text carries `<wbr>` after "@", ".", "-" and "_" so it breaks there first;
+   this is only the fallback for one segment longer than the column. The floor is the widest
+   that still fits the table at 1440 px (12ch; 13ch pushed the table 4px past its container and
+   the sticky actions cell covered the text again) and holds the longest usual segment. */
+td.cell-owner {
+  min-width: 12ch;
+  overflow-wrap: anywhere;
+}
 th.col-nowrap {
   white-space: nowrap;
 }

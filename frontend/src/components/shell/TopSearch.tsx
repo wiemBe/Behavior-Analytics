@@ -350,7 +350,13 @@ export function TopSearch() {
           )}
           <div id={listId} role="listbox" aria-label={t("results")}>
             {(groups ?? [])
-              .filter((g) => g.status !== "forbidden")
+              .filter(
+                (g) =>
+                  g.status !== "forbidden" &&
+                  // Nothing found anywhere: the status line says so, and a heading above
+                  // nothing says it a second time. A failed read keeps its heading.
+                  !(nothingFound && g.status === "ok" && g.hits.length === 0),
+              )
               .map((g) => (
                 <div key={g.key} role="group" aria-labelledby={`${uid}-g-${g.key}`}>
                   <div className="topsearch-group" id={`${uid}-g-${g.key}`}>
