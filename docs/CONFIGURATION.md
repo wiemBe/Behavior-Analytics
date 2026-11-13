@@ -626,6 +626,13 @@ compression; a repeat install keeps operator-set values. The install summary nam
 | `NOTIFY_SEND_RECOVERY` | `true` | Deliver recovery transitions |
 | `NOTIFY_PER_CHANNEL_RATE` | `30/minute` | Accepted. No notifier reads it |
 
+Named webhook destinations and the routing rules that send alerts to them are administered through
+the admin API under `admin:notifications` (`/api/v1/admin/notifications/destinations` and
+`/api/v1/admin/notifications/rules`) and stored in the database, not in `.env`;
+an empty rule table sends what the `.env` targets send today. A named destination receives the
+versioned payload, whose events, fields, headers, signature and delivery rules are in
+[`WEBHOOK-PAYLOAD.md`](WEBHOOK-PAYLOAD.md). The `.env` generic webhook keeps its older body.
+
 The `NOTIFY_*` target names are not `Settings` fields. `alerts/routing.py` reads them from the
 process environment, so they belong in the production `.env`. A blank target adds no route.
 Doctor's unknown-setting check already allowlists the names, so a site that sets them is not
