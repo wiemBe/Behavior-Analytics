@@ -141,6 +141,9 @@ class World:
 
 
 async def seed_explanation(session, instance, source, world: World, *, created_at=None):  # type: ignore[no-untyped-def]
+    # The database would stamp the real `now()`, which a fixed clock cannot bound (FIX-51).
+    if created_at is None:
+        created_at = T0
     anomaly = LogSourceAnomaly(
         log_source_id=source.id,
         anomaly_type=AnomalyType.VOLUME_SPIKE,
@@ -178,8 +181,7 @@ async def seed_explanation(session, instance, source, world: World, *, created_a
         row = AnomalyExplanationContributor(
             explanation_id=package.id, dimension=dimension, value=value
         )
-        if created_at is not None:
-            row.created_at = created_at
+        row.created_at = created_at
         session.add(row)
         contributors.append(row)
     await session.flush()

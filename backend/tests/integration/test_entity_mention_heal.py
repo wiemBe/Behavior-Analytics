@@ -70,6 +70,19 @@ async def _forget_rows(session) -> None:  # type: ignore[no-untyped-def]
     await session.commit()
 
 
+async def _backdate_contributors(session) -> None:  # type: ignore[no-untyped-def]
+    """The database stamps `created_at` with the real `now()`, but the service clock is fixed.
+
+    The EXPLANATION source only backfills contributors created before its start time, so a
+    fixture row stamped after the fixed clock would be skipped (a time bomb: FIX-51). Pin them
+    to the anomaly window instead, which is always before the fixed clock.
+    """
+    await session.execute(
+        text("UPDATE anomaly_explanation_contributor SET created_at = :at"), {"at": START_A}
+    )
+    await session.commit()
+
+
 async def _status_lines(session, capsys, source: str) -> list[str]:  # type: ignore[no-untyped-def]
     await session.commit()
     # `main` runs its own event loop, so it cannot be called from this one.
@@ -174,6 +187,7 @@ async def test_explanation_lane_heals_end_to_end(  # type: ignore[no-untyped-def
     with monkeypatch.context() as m:
         m.setattr("app.collectors.explanation_collector.record_mentions", _failing)
         await explain(db_session, anomaly, first)
+    await _backdate_contributors(db_session)
     await _forget_rows(db_session)
     probe = (EntityTimelineKind.IP, "203.0.113.50", "EXPLANATION", START_A, end)
     assert await _lane(db_session, iid, *probe) == ("PARTIAL", INCOMPLETE, None, 0, 0)
@@ -191,7 +205,7 @@ async def test_explanation_lane_heals_end_to_end(  # type: ignore[no-untyped-def
     with monkeypatch.context() as m:
         m.setattr("app.collectors.explanation_collector.record_mentions", _failing)
         await explain(db_session, anomaly, second)
-    await db_session.commit()
+    await _backdate_contributors(db_session)
     new = (EntityTimelineKind.IP, "203.0.113.60", "EXPLANATION", START_A, end)
     assert await _lane(db_session, iid, *new) == ("PARTIAL", INCOMPLETE, None, 0, 0)
     (line,) = await _status_lines(db_session, capsys, "EXPLANATION")
