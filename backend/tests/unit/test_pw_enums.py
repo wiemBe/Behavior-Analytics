@@ -51,7 +51,7 @@ def test_the_search_family_only_grew() -> None:
     assert [member.value for member in SearchFamily] == [
         "PHASE_A_VOLUME", "WAF_COLLECTION", "ANOMALY_EXPLANATION", "RULE_MATCH",
         "IPS_COLLECTION", "PROPERTY_WATCH", "CATCHALL_SENDERS", "GEO_COLLECTION",
-        "QRADAR_HEALTH",
+        "QRADAR_HEALTH", "IDENTITY_COLLECTION",
     ]
 
 

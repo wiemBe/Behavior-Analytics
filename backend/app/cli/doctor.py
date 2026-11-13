@@ -165,6 +165,7 @@ _WATERMARK_NAMES = frozenset(
         "catchall_senders",
         "property_watch",
         "qradar_health",
+        "identity_collection",
     }
 )
 
@@ -242,6 +243,15 @@ BATCH_DELETERS: tuple[BatchDeleter, ...] = (
             BatchTable("ips_entity", "ips_metric_retention_days"),
         ),
         "IPS_RETENTION_ENABLED",
+    ),
+    BatchDeleter(
+        "apply_identity_retention",
+        (
+            BatchTable("identity_bucket", "identity_count_retention_days"),
+            BatchTable("identity_event_count", "identity_count_retention_days"),
+            BatchTable("identity_top_username", "identity_count_retention_days"),
+        ),
+        "IDENTITY_RETENTION_ENABLED",
     ),
     BatchDeleter(
         "apply_ips_anomaly_retention",
@@ -492,6 +502,7 @@ _FAMILY_SWITCHES: dict[str, str] = {
     SearchFamily.CATCHALL_SENDERS.value: "catchall_collection_enabled",
     SearchFamily.GEO_COLLECTION.value: "geo_collection_enabled",
     SearchFamily.QRADAR_HEALTH.value: "qradar_health_collection_enabled",
+    SearchFamily.IDENTITY_COLLECTION.value: "identity_collection_enabled",
 }
 
 #: The families with no off switch, listed so the drift test can tell "deliberately switchless"

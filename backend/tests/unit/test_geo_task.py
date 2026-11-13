@@ -30,12 +30,13 @@ class TestRegistration:
         assert "apply_geo_retention" in celery_app.tasks
 
     def test_the_family_is_last_in_the_enum(self) -> None:
-        # D-42 appended QRADAR_HEALTH after it; the order of the others is unchanged.
-        assert list(SearchFamily)[-1] is SearchFamily.QRADAR_HEALTH
-        assert [f.value for f in SearchFamily][-3:] == [
+        # D-42 appended QRADAR_HEALTH, then SOC-10b appended IDENTITY_COLLECTION.
+        assert list(SearchFamily)[-1] is SearchFamily.IDENTITY_COLLECTION
+        assert [f.value for f in SearchFamily][-4:] == [
             "CATCHALL_SENDERS",
             "GEO_COLLECTION",
             "QRADAR_HEALTH",
+            "IDENTITY_COLLECTION",
         ]
 
 

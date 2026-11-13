@@ -256,6 +256,16 @@ celery_app.conf.beat_schedule = {
         "task": "apply_ips_retention",
         "schedule": float(settings.ips_retention_interval_seconds),
     },
+    "dispatch-identity-collection": {
+        # Claims IDENTITY_COLLECTION before it builds a provider, so a losing
+        # or early minute sends nothing. A no-op while the family switch is off.
+        "task": "dispatch_identity_collection",
+        "schedule": 60.0,
+    },
+    "apply-identity-retention": {
+        "task": "apply_identity_retention",
+        "schedule": float(settings.identity_retention_interval_seconds),
+    },
     "backfill-entity-mentions": {
         # Fills the entity timeline index for parents stored before it existed, a bounded
         # number of keyset batches per tick; the task itself is a no-op once every

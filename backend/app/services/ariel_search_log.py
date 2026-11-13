@@ -79,6 +79,8 @@ CALLER_MANUAL_RUN = "MANUAL_RUN"
 CALLER_DOCTOR_AQL = "DOCTOR_AQL"
 #: The access check's one probe search per console per check (ACC-1, ACC-3).
 CALLER_ACCESS_CHECK = "ACCESS_CHECK"
+#: Identity collection's three keyed searches per mapping chunk (D-75).
+CALLER_IDENTITY_COLLECTION = "IDENTITY_COLLECTION"
 
 OUTCOME_COMPLETED = "COMPLETED"
 OUTCOME_ERROR = "ERROR"

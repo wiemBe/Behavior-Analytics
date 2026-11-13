@@ -77,10 +77,10 @@ The same `/current` document carries `qradar`: how QRadar itself is doing, a lis
 
 ## Search cadence and bucket collection
 
-Six search families default to a five-minute cadence, and three default to fifteen minutes: WAF,
-IPS and QRadar health. Operators can select 5 minutes, 15 minutes, 30 minutes, 1 hour, 2 hours, 4
-hours or 8 hours; those seven presets are the only accepted set, and the API, the service and the
-table's check constraint all enforce it. Cadence controls when a family searches;
+Six search families default to a five-minute cadence, and four default to fifteen minutes: WAF,
+IPS, QRadar health and identity. Operators can select 5 minutes, 15 minutes, 30 minutes, 1 hour,
+2 hours, 4 hours or 8 hours; those seven presets are the only accepted set, and the API, the
+service and the table's check constraint all enforce it. Cadence controls when a family searches;
 `COLLECTION_INTERVAL_SECONDS` controls bucket width. A tick may collect several complete buckets
 in one keyed search. Truncated multi-bucket results are split and are never stored as complete
 data.
@@ -96,17 +96,19 @@ data.
 | `WAF_COLLECTION` | 15 minutes | no | `WAF_COLLECTION_ENABLED` |
 | `IPS_COLLECTION` | 15 minutes | no | `IPS_COLLECTION_ENABLED` |
 | `QRADAR_HEALTH` | 15 minutes | yes | `QRADAR_HEALTH_COLLECTION_ENABLED` |
+| `IDENTITY_COLLECTION` | 15 minutes | no | `IDENTITY_COLLECTION_ENABLED` |
 
 The seed rows come from the family migrations: `0013` creates the table and seeds `PHASE_A_VOLUME`,
 `WAF_COLLECTION`, `ANOMALY_EXPLANATION` and `RULE_MATCH` at one hour; `0018`, `0020`, `0022` and
 `0026` add `IPS_COLLECTION`, `CATCHALL_SENDERS`, `GEO_COLLECTION` and `PROPERTY_WATCH` at one hour;
 `0028` moves every row the operator has not changed to the current default, fifteen minutes for WAF
-and IPS and five for the rest; `0050` seeds `QRADAR_HEALTH` at fifteen minutes. A family row that
+and IPS and five for the rest; `0050` seeds `QRADAR_HEALTH` at fifteen minutes; `0069` seeds
+`IDENTITY_COLLECTION` at fifteen minutes and writes no audit row. A family row that
 is missing is recreated at its default when the next slot is claimed.
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| search-family cadence | `5 minutes` | Initial cadence; `15 minutes` for `WAF_COLLECTION`, `IPS_COLLECTION` and `QRADAR_HEALTH` |
+| search-family cadence | `5 minutes` | Initial cadence; `15 minutes` for `WAF_COLLECTION`, `IPS_COLLECTION`, `QRADAR_HEALTH` and `IDENTITY_COLLECTION` |
 | `COLLECTION_INTERVAL_SECONDS` | `300` | Bucket width; it does not schedule collection |
 | `COLLECTION_BATCH_SIZE` | `50` | Accepted. No collector reads it |
 | `COLLECTION_MAX_BACKFILL_INTERVALS` | `12` | Buckets a metric run may backfill |
@@ -356,6 +358,30 @@ When `IPS_COLLECTION_ENABLED` and `IPS_RETENTION_ENABLED` are both on, startup r
 included). The metric retention task repeats that check and deletes nothing when the days
 do not exceed the lookback, even if collection is off. Closed-incident retention is a
 separate task and is not skipped by that check.
+
+## Identity collection
+
+Identity collection is opt-in. A log source is searched only when its profile is enabled and
+`VALID` for the current mapping version. The collector sends three Ariel searches per mapping
+chunk (counts, rare names, volume names), not one search per username. Counts and the top-N
+usernames share the bucket row and are deleted together. Anomaly rows are a later slice and
+are not deleted here.
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `IDENTITY_COLLECTION_ENABLED` | `false` | Family collection switch. Profiles must also be enabled and valid |
+| `IDENTITY_MAX_SOURCES_PER_SEARCH` | `50` | Sources that share a field mapping, per search. `1`–`500` |
+| `IDENTITY_RETENTION_ENABLED` | `true` | Delete aged identity buckets, counts and top-N usernames |
+| `IDENTITY_COUNT_RETENTION_DAYS` | `35` | Age of a `bucket_start` before that delete. At least `29`, above the 28-day lookback. A row at the cutoff is kept |
+| `IDENTITY_RETENTION_BATCH_SIZE` | `5000` | Bucket starts deleted per batch. `100`–`100000` |
+| `IDENTITY_RETENTION_MAX_BATCHES` | `20` | Batches per retention run. `1`–`1000` |
+| `IDENTITY_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule. At least `3600` |
+| `IDENTITY_VALIDATION_WINDOW_SECONDS` | `900` | Recent interval the validation probe reads. `60`–`3600` |
+| `IDENTITY_VALIDATION_MIN_RATIO` | `0.90` | Minimum share of events that must carry the mapped event id and username |
+
+`python -m app.cli.identity set`, `validate` and `enable` are the operator path. `enable` refuses
+a profile version that is not `VALID`. An operator who raises the future detector lookback past
+29 days can outrun `IDENTITY_COUNT_RETENTION_DAYS`.
 
 ## Geography
 

@@ -50,6 +50,7 @@ def test_the_cadence_sentence_matches_the_code() -> None:
         SearchFamily.WAF_COLLECTION,
         SearchFamily.IPS_COLLECTION,
         SearchFamily.QRADAR_HEALTH,
+        SearchFamily.IDENTITY_COLLECTION,
     }
     for family in SearchFamily:
         expected = waf if family in fifteen else usual

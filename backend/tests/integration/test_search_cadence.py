@@ -90,6 +90,7 @@ async def test_get_and_list_treat_missing_seed_rows_as_the_default(db_session) -
             SearchFamily.WAF_COLLECTION,
             SearchFamily.IPS_COLLECTION,
             SearchFamily.QRADAR_HEALTH,
+            SearchFamily.IDENTITY_COLLECTION,
         )
         else 300
         for family in SearchFamily

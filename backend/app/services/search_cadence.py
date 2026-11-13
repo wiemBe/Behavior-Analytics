@@ -28,6 +28,7 @@ _FAMILY_SWITCHES: dict[SearchFamily, str] = {
     SearchFamily.CATCHALL_SENDERS: "catchall_collection_enabled",
     SearchFamily.GEO_COLLECTION: "geo_collection_enabled",
     SearchFamily.QRADAR_HEALTH: "qradar_health_collection_enabled",
+    SearchFamily.IDENTITY_COLLECTION: "identity_collection_enabled",
 }
 
 
@@ -44,6 +45,7 @@ def bucket_seconds(family: SearchFamily, settings: Settings) -> int | None:
         SearchFamily.PROPERTY_WATCH,
         SearchFamily.CATCHALL_SENDERS,
         SearchFamily.GEO_COLLECTION,
+        SearchFamily.IDENTITY_COLLECTION,
     }:
         return settings.collection_interval_seconds
     if family == SearchFamily.RULE_MATCH:

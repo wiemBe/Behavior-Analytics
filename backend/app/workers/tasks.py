@@ -46,6 +46,8 @@ from app.core.database import dispose_engine, get_sessionmaker
 from app.custom_rules.engine import CustomRuleEngine
 from app.custom_rules.retention import CustomRuleRetention
 from app.i18n.messages import MessageRef, render
+from app.identity.collector import IdentityCollector
+from app.identity.retention import IdentityRetention
 from app.models.enums import AlertDigestState, EvidenceStatus, Severity
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
@@ -1957,6 +1959,67 @@ async def apply_ips_retention() -> dict:
         return (await IpsRetention(session).run()).as_dict()
 
 
+async def dispatch_identity_collection(instance_name: str | None = None) -> dict:
+    """Run one identity plan per instance after claiming its cadence slot.
+
+    A no-op while ``IDENTITY_COLLECTION_ENABLED`` is false. The slot is claimed
+    before any provider is built, so an early minute sends nothing to QRadar.
+    """
+    settings = get_settings()
+    if not settings.identity_collection_enabled:
+        return {"status": "disabled", "instances": 0, "results": []}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.IDENTITY_COLLECTION
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed is None:
+        return {"status": "not_due", "family": family.value}
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        assert provider is not None
+        report = await IdentityCollector(session, provider, settings=settings).collect(instance)
+        return report.as_dict()
+
+    result = await _for_each_instance(run, instance_name)
+    statuses = [item.get("status") for item in result.get("results", [])]
+    failed = any(status == "failed" for status in statuses)
+    searches = None if failed else sum(
+        int(item.get("searches_sent", 0)) for item in result.get("results", [])
+    )
+    buckets = None if failed else sum(
+        int(item.get("buckets_written", 0)) for item in result.get("results", [])
+    )
+    splits = None if failed else sum(
+        int(item.get("splits", 0)) for item in result.get("results", [])
+    )
+    partial = any(status in {"partial", "skipped_locked", "unsupported"} for status in statuses)
+    async with maker() as cadence_session:
+        await SearchCadenceService(cadence_session, settings).record_run(
+            family,
+            outcome="failed" if failed else "partial" if partial else "ok",
+            searches=searches,
+            buckets=buckets,
+            splits=splits,
+        )
+        await cadence_session.commit()
+    return result
+
+
+async def apply_identity_retention() -> dict:
+    """Delete identity buckets older than the count window, with their rows."""
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await IdentityRetention(session).run()).as_dict()
+
+
 async def backfill_entity_mentions() -> dict:
     """Run one bounded entity-mention backfill pass (SOC-16f4, D-64).
 
@@ -2312,6 +2375,16 @@ def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="apply_ips_retention")
 def apply_ips_retention_task() -> dict:
     return _run(apply_ips_retention())
+
+
+@celery_app.task(name="dispatch_identity_collection")
+def dispatch_identity_collection_task(instance_name: str | None = None) -> dict:
+    return _run(dispatch_identity_collection(instance_name))
+
+
+@celery_app.task(name="apply_identity_retention")
+def apply_identity_retention_task() -> dict:
+    return _run(apply_identity_retention())
 
 
 @celery_app.task(name="backfill_entity_mentions")
