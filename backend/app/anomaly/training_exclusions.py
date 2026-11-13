@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.training_exclusion import MAX_INTERVAL_DAYS, BaselineTrainingExclusion
@@ -44,6 +44,15 @@ LOG_SOURCE_VOLUME_SCOPE = "log_source:volume"
 #: the scope, and the client cannot pick a metric, so one incident interval is
 #: kept out of the request-count cell and every ratio cell together.
 WAF_ENDPOINT_SCOPE = "waf:endpoint"
+#: One scope for every metric of an IPS entity baseline (SOC-13g). An entity
+#: incident — port rate, destination rate, signature burst, or a new destination
+#: port — maps here. The subject is the entity. A source incident does not.
+IPS_ENTITY_SCOPE = "ips:entity"
+#: One scope for every source-level IPS metric (top-source share, block ratio,
+#: port fan-out). A source incident maps here. The subject is the log source.
+#: The server derives the scope, so one interval leaves every metric of that
+#: source together. Entity incidents stay on `ips:entity`.
+IPS_SOURCE_SCOPE = "ips:source"
 
 Span = tuple[datetime, datetime]
 SpanKey = tuple[str, uuid.UUID, str]
@@ -256,3 +265,46 @@ async def load_active(
         (subject_kind, subject_id, scope_key): coalesce(spans)
         for subject_id, spans in grouped.items()
     }
+
+
+async def load_active_scopes(
+    session: AsyncSession,
+    scopes: Sequence[tuple[str, Sequence[uuid.UUID], str]],
+    lookback_start: datetime,
+    lookback_end: datetime,
+) -> dict[SpanKey, list[Span]]:
+    """One SELECT for every scope of a training run (SOC-13g).
+
+    Each entry is ``(subject_kind, subject_ids, scope_key)``. An empty id list
+    adds no predicate. When every list is empty, this issues no statement. A
+    subject with no row has no key. Spans are coalesced per subject and scope.
+    """
+    clauses = [
+        and_(
+            BaselineTrainingExclusion.subject_kind == kind,
+            BaselineTrainingExclusion.scope_key == scope,
+            BaselineTrainingExclusion.subject_id.in_(list(ids)),
+        )
+        for kind, ids, scope in scopes
+        if ids
+    ]
+    if not clauses:
+        return {}
+    rows = await session.execute(
+        select(
+            BaselineTrainingExclusion.subject_kind,
+            BaselineTrainingExclusion.subject_id,
+            BaselineTrainingExclusion.scope_key,
+            BaselineTrainingExclusion.starts_at,
+            BaselineTrainingExclusion.ends_at,
+        ).where(
+            or_(*clauses),
+            BaselineTrainingExclusion.revoked_at.is_(None),
+            BaselineTrainingExclusion.starts_at < lookback_end,
+            BaselineTrainingExclusion.ends_at > lookback_start,
+        )
+    )
+    grouped: dict[SpanKey, list[Span]] = defaultdict(list)
+    for kind, subject_id, scope, starts_at, ends_at in rows:
+        grouped[(kind, subject_id, scope)].append((starts_at, ends_at))
+    return {key: coalesce(spans) for key, spans in grouped.items()}

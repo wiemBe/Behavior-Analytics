@@ -597,8 +597,9 @@ def test_waf_guards_match_phase_a(db_schema) -> None:  # type: ignore[no-untyped
     blank = Client(TRIAGER).post(_url(anomaly_id), json=_body(start, start + STEP, reason="  "))
     assert _code(blank) == "baseline_exclusion.reason_invalid"
     # Family is refused before the reason is read, so a blank reason cannot hide it.
+    # SOC-13g accepts `ips`, so the probe is a family that is still refused.
     early = Client(TRIAGER).post(
-        _url(uuid.uuid4(), "ips"), json=_body(start, start + STEP, reason="  ")
+        _url(uuid.uuid4(), "property_watch"), json=_body(start, start + STEP, reason="  ")
     )
     assert early.status_code == 422
     assert _code(early) == "baseline_exclusion.family_unsupported"
@@ -629,7 +630,8 @@ async def _audits(session):  # type: ignore[no-untyped-def]
     )).all())
 
 
-@pytest.mark.parametrize("family", ["ips", "property_watch", "rule", "nonsense"])
+# SOC-13g accepts `ips`; tests/integration/test_ips_training_exclusion.py pins that.
+@pytest.mark.parametrize("family", ["property_watch", "rule", "nonsense"])
 def test_other_families_stay_unsupported(db_schema, family: str) -> None:
     start = _anchor()
     response = Client(TRIAGER).post(_url(uuid.uuid4(), family), json=_body(start, start + STEP))

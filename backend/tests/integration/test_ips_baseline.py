@@ -290,6 +290,9 @@ async def test_entity_rebuild_statement_count_grows_only_with_chunks(db_session)
     with recorded_statements(db_session, only="ips_") as large:
         await builder.rebuild_entities(entities, train_through=train_through)
 
+    # SOC-13g: the exclusion read is on baseline_training_exclusion, which
+    # `only="ips_"` does not count. Nothing here is emptied, so the invalidation
+    # UPDATE is skipped. These pins stay 5 and 14.
     assert len(small) == 5
     assert len(large) == 14
     assert len(large) - len(small) == 3 * 3

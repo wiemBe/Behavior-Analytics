@@ -9,17 +9,23 @@ Statements therefore scale with configured subject chunks, not with entities or
 seasonal cells. ``train_through`` is the end of the last evaluated bucket: later
 buckets are counted as unfinished exclusions and cannot teach the baseline that
 will judge them.
+
+Analyst training exclusions load in one SELECT per rebuild run (SOC-13g).
+``rebuild_due`` reads the entity scope and the source scope together. Each
+rebuild method reads its own scope when it is called on its own. Cells an
+analyst exclusion emptied are made unusable in one UPDATE per table, so the
+detector fails closed instead of keeping the old band.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
-from sqlalchemy import Table, func, select
+from sqlalchemy import Table, func, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +35,14 @@ from app.anomaly.seasonal import (
     retained_fraction,
     seasonal_key,
     summarize_cell,
+)
+from app.anomaly.training_exclusions import (
+    IPS_ENTITY_SCOPE,
+    IPS_SOURCE_SCOPE,
+    Span,
+    SpanKey,
+    load_active,
+    load_active_scopes,
 )
 from app.core.config import Settings, get_settings
 from app.ips.inputs import (
@@ -86,13 +100,20 @@ class IpsExclusionTally:
     low_coverage: int = 0
     unmapped_actions: int = 0
     no_population: int = 0
+    #: Buckets inside an active analyst training exclusion (SOC-13g). Charged only
+    #: after every automatic reason, so a bucket an incident span already removes
+    #: is counted once, as ``known_anomaly``.
+    analyst_exclusion: int = 0
+    #: The (weekday, hour) cells an analyst exclusion removed a bucket from.
+    #: Working data for the rebuild, not part of the stored counts.
+    analyst_slots: set[tuple[int, int]] = field(default_factory=set)
 
     @property
     def total(self) -> int:
         return sum(self.as_dict().values())
 
     def as_dict(self) -> dict[str, int]:
-        return {
+        counts = {
             "known_anomaly": self.known_anomaly,
             "maintenance": self.maintenance,
             "unfinished": self.unfinished,
@@ -104,6 +125,11 @@ class IpsExclusionTally:
             "unmapped_actions": self.unmapped_actions,
             "no_population": self.no_population,
         }
+        # Present only when an analyst exclusion took effect, so a subject
+        # without one stores exactly the document it always did.
+        if self.analyst_exclusion:
+            counts["analyst_exclusion"] = self.analyst_exclusion
+        return counts
 
 
 @dataclass(frozen=True)
@@ -142,6 +168,28 @@ def _common_exclusion(
     return True
 
 
+def _in_half_open(when: datetime, spans: Sequence[tuple[datetime, datetime]]) -> bool:
+    """Whether ``when`` falls in a half-open ``[start, end)`` span.
+
+    Analyst exclusions use this. ``in_any_span`` is closed on the end, which is
+    what an incident span wants and what an analyst interval does not.
+    """
+    return any(start <= when < end for start, end in spans)
+
+
+def _charge_analyst(
+    bucket_start: datetime,
+    spans: Sequence[tuple[datetime, datetime]],
+    tally: IpsExclusionTally,
+) -> bool:
+    """Charge a half-open analyst span. The caller runs this last."""
+    if not _in_half_open(bucket_start, spans):
+        return False
+    tally.analyst_exclusion += 1
+    tally.analyst_slots.add(seasonal_key(bucket_start))
+    return True
+
+
 def clean_entity_samples(
     entity: IpsEntityFacts,
     buckets: Sequence[IpsSourceBucketFacts],
@@ -153,8 +201,14 @@ def clean_entity_samples(
     normalizer_version: int,
     min_coverage: float,
     spans: Sequence[tuple[datetime, datetime]] = (),
+    analyst_spans: Sequence[tuple[datetime, datetime]] = (),
 ) -> tuple[list[IpsSample], IpsExclusionTally, int]:
-    """Exact entity observations that may train, and their exclusions. Pure."""
+    """Exact entity observations that may train, and their exclusions. Pure.
+
+    Automatic reasons are charged first. An analyst span is half-open and is
+    charged only when the bucket would otherwise train, so a bucket an incident
+    span already removes is counted once, as ``known_anomaly`` (SOC-13g).
+    """
     tally = IpsExclusionTally()
     samples: list[IpsSample] = []
     for bucket in buckets:
@@ -192,6 +246,8 @@ def clean_entity_samples(
             tally.unknown += 1
         elif count.measurement is not WafMeasurement.EXACT:
             tally.lower_bound += 1
+        elif _charge_analyst(bucket.bucket_start, analyst_spans, tally):
+            continue
         else:
             samples.append(IpsSample(bucket.bucket_start, float(count.events)))
     return samples, tally, len(buckets)
@@ -207,8 +263,14 @@ def clean_source_samples(
     normalizer_version: int,
     min_coverage: float,
     spans: Sequence[tuple[datetime, datetime]] = (),
+    analyst_spans: Sequence[tuple[datetime, datetime]] = (),
 ) -> tuple[list[IpsSample], IpsExclusionTally, int]:
-    """Whole source observations for one source-level metric. Pure."""
+    """Whole source observations for one source-level metric. Pure.
+
+    Automatic reasons are charged first. An analyst span is half-open and is
+    charged only when the bucket would otherwise train (SOC-13g). The same
+    source spans apply to every source metric; incident spans stay per detector.
+    """
     if metric_name not in IPS_SOURCE_METRIC_SEMANTICS:
         raise ValueError(f"unknown IPS source baseline metric: {metric_name}")
     tally = IpsExclusionTally()
@@ -255,12 +317,16 @@ def clean_source_samples(
             tally.unknown += 1
             continue
         if metric_name == IPS_FANOUT_METRIC:
+            if _charge_analyst(bucket.bucket_start, analyst_spans, tally):
+                continue
             samples.append(IpsSample(bucket.bucket_start, float(numerator)))
             continue
         if denominator is None:
             tally.unknown += 1
         elif denominator <= 0:
             tally.no_population += 1
+        elif _charge_analyst(bucket.bucket_start, analyst_spans, tally):
+            continue
         else:
             samples.append(
                 IpsSample(
@@ -286,14 +352,28 @@ class IpsBaselineBuilder:
         *,
         train_through: datetime,
         now: datetime | None = None,
+        analyst: Mapping[SpanKey, Sequence[Span]] | None = None,
     ) -> dict[uuid.UUID, int]:
-        """Recompute many entity baselines; statement growth is per configured chunk."""
+        """Recompute many entity baselines; statement growth is per configured chunk.
+
+        Analyst exclusions for every entity load in one SELECT before the chunk
+        loop, unless ``analyst`` was already loaded for this run. ``None`` means
+        load; an empty map means the run already looked and found nothing.
+        Cells an analyst exclusion emptied are made unusable in one UPDATE.
+        """
         written = {entity.id: 0 for entity in entities}
         if not entities:
             return written
-        now = now or datetime.now(UTC)
-        train_through = min(now, train_through)
-        start = train_through - timedelta(days=self.settings.ips_baseline_lookback_days)
+        now, train_through, start = self._training_bounds(train_through, now)
+        if analyst is None:
+            analyst = await load_active(
+                self.session,
+                "entity",
+                [entity.id for entity in entities],
+                IPS_ENTITY_SCOPE,
+                start,
+                train_through,
+            )
         source_ids = {entity.log_source_id for entity in entities}
         profiles = {
             profile.log_source_id: profile
@@ -304,6 +384,8 @@ class IpsBaselineBuilder:
             ).all()
         }
         buckets = await self._source_buckets(source_ids, start, now)
+        # (entity, metric, weekday, hour) emptied by an analyst exclusion.
+        stale: list[tuple[uuid.UUID, str, int, int]] = []
         chunk_size = self.settings.ips_baseline_rebuild_batch_size
         for offset in range(0, len(entities), chunk_size):
             chunk = entities[offset : offset + chunk_size]
@@ -323,6 +405,7 @@ class IpsBaselineBuilder:
                     last_seen_at=entity.last_seen_at,
                     normalizer_version=entity.normalizer_version,
                 )
+                analyst_spans = analyst.get(("entity", entity.id, IPS_ENTITY_SCOPE), ())
                 samples, tally, candidates = clean_entity_samples(
                     facts,
                     buckets.get(entity.log_source_id, ()),
@@ -333,6 +416,7 @@ class IpsBaselineBuilder:
                     normalizer_version=IPS_NORMALIZER_VERSION,
                     min_coverage=self.settings.ips_min_coverage,
                     spans=spans.get(entity.id, ()),
+                    analyst_spans=analyst_spans,
                 )
                 cells = self._group(samples)
                 for (weekday, hour), grouped in cells.items():
@@ -354,7 +438,15 @@ class IpsBaselineBuilder:
                         )
                     )
                 written[entity.id] = len(cells)
+                stale.extend(
+                    (entity.id, IPS_ENTITY_EVENTS_METRIC, weekday, hour)
+                    for weekday, hour in sorted(tally.analyst_slots)
+                    if (weekday, hour) not in cells
+                )
             await self._upsert(IpsEntityBaseline, "ips_entity_id", cell_rows)
+        await self._invalidate_cells(
+            IpsEntityBaseline, "ips_entity_id", stale, now, clear_ratio_sums=False
+        )
         await self.session.flush()
         return written
 
@@ -364,16 +456,31 @@ class IpsBaselineBuilder:
         *,
         train_through: datetime,
         now: datetime | None = None,
+        analyst: Mapping[SpanKey, Sequence[Span]] | None = None,
     ) -> dict[uuid.UUID, int]:
-        """Recompute source-level ratio and fan-out cells in source chunks."""
+        """Recompute source-level ratio and fan-out cells in source chunks.
+
+        One scope, ``ips:source``, covers every source metric. Analyst exclusions
+        for every source load in one SELECT before the chunk loop, unless
+        ``analyst`` was already loaded for this run. Cells an analyst exclusion
+        emptied are made unusable in one UPDATE.
+        """
         written = {source.log_source_id: 0 for source in sources}
         if not sources:
             return written
-        now = now or datetime.now(UTC)
-        train_through = min(now, train_through)
-        start = train_through - timedelta(days=self.settings.ips_baseline_lookback_days)
+        now, train_through, start = self._training_bounds(train_through, now)
+        if analyst is None:
+            analyst = await load_active(
+                self.session,
+                "source",
+                [source.log_source_id for source in sources],
+                IPS_SOURCE_SCOPE,
+                start,
+                train_through,
+            )
         source_ids = {source.log_source_id for source in sources}
         buckets = await self._source_buckets(source_ids, start, now)
+        stale: list[tuple[uuid.UUID, str, int, int]] = []
         chunk_size = self.settings.ips_baseline_rebuild_batch_size
         for offset in range(0, len(sources), chunk_size):
             chunk = sources[offset : offset + chunk_size]
@@ -385,6 +492,9 @@ class IpsBaselineBuilder:
                 action_values = source.action_value_map or {}
                 if action_mapping is not None and any(action_values.values()):
                     metric_names.append(IPS_BLOCK_RATIO_METRIC)
+                analyst_spans = analyst.get(
+                    ("source", source.log_source_id, IPS_SOURCE_SCOPE), ()
+                )
                 for metric_name in metric_names:
                     detector = _SOURCE_DETECTOR[metric_name]
                     samples, tally, candidates = clean_source_samples(
@@ -396,6 +506,7 @@ class IpsBaselineBuilder:
                         normalizer_version=IPS_NORMALIZER_VERSION,
                         min_coverage=self.settings.ips_min_coverage,
                         spans=spans.get((source.log_source_id, detector), ()),
+                        analyst_spans=analyst_spans,
                     )
                     cells = self._group(samples)
                     for (weekday, hour), grouped in cells.items():
@@ -417,7 +528,15 @@ class IpsBaselineBuilder:
                             )
                         )
                     written[source.log_source_id] += len(cells)
+                    stale.extend(
+                        (source.log_source_id, metric_name, weekday, hour)
+                        for weekday, hour in sorted(tally.analyst_slots)
+                        if (weekday, hour) not in cells
+                    )
             await self._upsert(IpsSourceBaseline, "log_source_id", cell_rows)
+        await self._invalidate_cells(
+            IpsSourceBaseline, "log_source_id", stale, now, clear_ratio_sums=True
+        )
         await self.session.flush()
         return written
 
@@ -434,7 +553,8 @@ class IpsBaselineBuilder:
         With ``log_source_id`` only that source's subjects (its entities and its
         own cells) are rebuilt, so ``train_through`` is that source's evaluation
         bound and never reaches another source's data. The cost is the same
-        constant set of statements per call, whatever the entity count.
+        constant set of statements per call, whatever the entity count. Analyst
+        exclusions for both scopes load in that one extra SELECT (SOC-13g).
         """
         limit = limit or self.settings.ips_baseline_rebuild_batch_size
         entity_last = (
@@ -495,12 +615,33 @@ class IpsBaselineBuilder:
                 )
             ).all()
         )
+        now, bounded, start = self._training_bounds(train_through, now)
+        analyst = await load_active_scopes(
+            self.session,
+            (
+                ("entity", [entity.id for entity in entities], IPS_ENTITY_SCOPE),
+                ("source", [source.log_source_id for source in sources], IPS_SOURCE_SCOPE),
+            ),
+            start,
+            bounded,
+        )
         return {
             "entities": await self.rebuild_entities(
-                entities, train_through=train_through, now=now
+                entities, train_through=train_through, now=now, analyst=analyst
             ),
-            "sources": await self.rebuild_sources(sources, train_through=train_through, now=now),
+            "sources": await self.rebuild_sources(
+                sources, train_through=train_through, now=now, analyst=analyst
+            ),
         }
+
+    def _training_bounds(
+        self, train_through: datetime, now: datetime | None
+    ) -> tuple[datetime, datetime, datetime]:
+        """``(now, bounded train-through, lookback start)`` for one rebuild."""
+        clock = now or datetime.now(UTC)
+        bounded = min(clock, train_through)
+        start = bounded - timedelta(days=self.settings.ips_baseline_lookback_days)
+        return clock, bounded, start
 
     async def _source_buckets(
         self, source_ids: set[uuid.UUID], start: datetime, end: datetime
@@ -669,6 +810,60 @@ class IpsBaselineBuilder:
             },
         )
         await self.session.execute(stmt, rows)
+        self._expire(model)
+
+    async def _invalidate_cells(
+        self,
+        model: type[IpsEntityBaseline] | type[IpsSourceBaseline],
+        subject: str,
+        stale: Sequence[tuple[uuid.UUID, str, int, int]],
+        computed_at: datetime,
+        *,
+        clear_ratio_sums: bool,
+    ) -> None:
+        """Make cells an analyst exclusion emptied unusable, in one UPDATE.
+
+        The detector reads `is_reliable` false as INSUFFICIENT_DATA. The version
+        still moves. Median and MAD stay (they are non-null); the band does not.
+        A source cell also drops its pooled ratio sums, so a ratio guard cannot
+        keep a population the analyst removed. An entity cell has no such sums.
+        The key is `(subject, metric, weekday, hour)`: IPS cells are not versioned
+        on the normalizer in the unique key. A cell that does not exist matches
+        nothing. Skipped when nothing was emptied, so a rebuild with no analyst
+        exclusion issues no extra write. `computed_at` is the rebuild's `now`,
+        the same stamp an upserted cell gets. Exclusion counts stay as the
+        previous rebuild wrote them, because an emptied cell is not upserted.
+        """
+        if not stale:
+            return
+        table = cast(Table, model.__table__)
+        key = tuple_(
+            getattr(table.c, subject),
+            table.c.metric_name,
+            table.c.weekday,
+            table.c.hour,
+        )
+        emptied: dict[str, object] = {
+            "sample_count": 0,
+            "is_reliable": False,
+            "p05": None,
+            "p95": None,
+            "observations": [],
+            "completeness": 0.0,
+            "computed_at": computed_at,
+            "updated_at": computed_at,
+            "baseline_version": table.c.baseline_version + 1,
+        }
+        if clear_ratio_sums:
+            emptied["numerator_sum"] = None
+            emptied["denominator_sum"] = None
+        await self.session.execute(
+            update(table).where(key.in_(list(stale))).values(**emptied)
+        )
+        self._expire(model)
+
+    def _expire(self, model: type[IpsEntityBaseline] | type[IpsSourceBaseline]) -> None:
+        """The upsert and the invalidation bypass the unit of work."""
         for obj in list(self.session.identity_map.values()):
             if isinstance(obj, model):
                 self.session.expire(obj)
