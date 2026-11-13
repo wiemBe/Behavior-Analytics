@@ -551,7 +551,11 @@ class TestCostAndAccess:
         counts[500] = len(second)
         assert sum("rule-section windows" in statement for statement in second) == 1
 
-        assert counts[10] == counts[500] == 7, counts
+        # SOC-13h adds one SELECT on baseline_training_exclusion (scope
+        # rule:silence) so this page holds out the same windows the engine
+        # does. Storm's predicate stays inside the existing storm statement.
+        # 10 windows and 500 windows both cost 8; the equality stays exact.
+        assert counts[10] == counts[500] == 8, counts
 
     def test_unknown_rule_is_404(self, db_schema) -> None:
         response = fetch(uuid.uuid4(), settings=cfg())
