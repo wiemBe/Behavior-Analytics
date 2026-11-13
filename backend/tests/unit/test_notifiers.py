@@ -15,6 +15,7 @@ from app.alerts.notifiers.channels import (
     TeamsNotifier,
 )
 from app.models.enums import AlertTransition, NotificationChannel, Severity
+from app.schemas.alert import notification_error_message
 
 pytestmark = pytest.mark.asyncio
 
@@ -73,6 +74,89 @@ async def test_generic_webhook_4xx_is_permanent() -> None:
         with pytest.raises(NotifierError) as exc:
             await GenericWebhookNotifier(client).send("https://hook.test/x", _msg())
     assert exc.value.permanent  # 4xx -> do not retry
+
+
+async def test_http_transport_error_does_not_expose_webhook_url() -> None:
+    target = "https://hooks.example.test/secret-path?token=credential"
+
+    def fail(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(
+            f"could not connect to {request.url}", request=request
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(fail)) as client:
+        with pytest.raises(NotifierError) as exc:
+            await GenericWebhookNotifier(client).send(target, _msg())
+
+    assert str(exc.value) == "transport error: ConnectError"
+    assert target not in str(exc.value)
+    assert "secret-path" not in str(exc.value)
+    assert "credential" not in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    ("channel", "target", "error_message", "expected"),
+    [
+        (
+            NotificationChannel.TEAMS,
+            "https://hooks.example.test/SECRET?token=credential",
+            (
+                "first https://hooks.example.test/SECRET?token=credential; "
+                "second https://hooks.example.test/SECRET?token=credential"
+            ),
+            "first https://hooks.example.test; second https://hooks.example.test",
+        ),
+        (
+            NotificationChannel.SLACK,
+            "https://hooks.example.test/SECRET?token=credential",
+            "transport error for /SECRET?token=credential",
+            "transport error for https://hooks.example.test",
+        ),
+        (
+            NotificationChannel.WEBHOOK,
+            "https://hooks.example.test/SECRET?token=credential",
+            "transport error for /SECRET",
+            "transport error for https://hooks.example.test",
+        ),
+        (
+            NotificationChannel.WEBHOOK,
+            "https://hooks.example.test/SECRET?token=credential",
+            "transport error for token=credential",
+            "transport error for https://hooks.example.test",
+        ),
+        (
+            NotificationChannel.WEBHOOK,
+            "https://hooks.example.test/SECRET?token=credential",
+            "transport error: ConnectError",
+            "transport error: ConnectError",
+        ),
+        (
+            NotificationChannel.EMAIL,
+            "analyst@example.test",
+            "delivery failed for analyst@example.test",
+            "delivery failed for analyst@example.test",
+        ),
+        (
+            NotificationChannel.SYSLOG,
+            "logs.example.test:6514",
+            "delivery failed for logs.example.test:6514",
+            "delivery failed for logs.example.test:6514",
+        ),
+        (
+            NotificationChannel.WEBHOOK,
+            "https://hooks.example.test/SECRET?token=credential",
+            None,
+            None,
+        ),
+    ],
+)
+async def test_notification_error_message_redacts_legacy_http_targets(
+    channel: NotificationChannel,
+    target: str,
+    error_message: str | None,
+    expected: str | None,
+) -> None:
+    assert notification_error_message(channel, target, error_message) == expected
 
 
 async def test_syslog_sends_udp_without_network(monkeypatch: pytest.MonkeyPatch) -> None:

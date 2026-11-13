@@ -44,6 +44,8 @@ from app.schemas.alert import (
     AlertOut,
     AlertPage,
     NotificationOut,
+    notification_error_message,
+    notification_target_label,
 )
 from app.schemas.pivot import PivotOut
 from app.security.auth import get_principal
@@ -393,7 +395,17 @@ async def alert_notifications(alert_id: uuid.UUID, session: SessionDep) -> list[
             .order_by(AlertNotification.created_at.desc())
         )
     ).all()
-    return [NotificationOut.model_validate(r) for r in rows]
+    return [
+        NotificationOut.model_validate(row).model_copy(
+            update={
+                "target": notification_target_label(row.channel, row.target),
+                "error_message": notification_error_message(
+                    row.channel, row.target, row.error_message
+                ),
+            }
+        )
+        for row in rows
+    ]
 
 
 @router.post("/{alert_id}/acknowledge", response_model=AlertOut)
