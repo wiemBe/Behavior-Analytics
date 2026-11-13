@@ -328,6 +328,97 @@ class RuleAnomalyType(StrEnum):
     RULE_STORM = "RULE_STORM"
 
 
+class IdentityAnomalyType(StrEnum):
+    """SOC-10 identity detector taxonomy (design §2).
+
+    A Python enum, not a PostgreSQL enum, and not a member of `AnomalyType`.
+    That enum is persisted on Phase A rows and in alert fingerprints. These
+    values are not persisted until the anomaly tables of a later slice.
+    """
+
+    #: 1102. One audit-log clear is the finding; there is no band.
+    IDENTITY_AUDIT_LOG_CLEARED = "IDENTITY_AUDIT_LOG_CLEARED"
+    #: 4728, 4732 or 4756. The count fires even when the name list was cut.
+    IDENTITY_PRIVILEGED_GROUP_ADD = "IDENTITY_PRIVILEGED_GROUP_ADD"
+    #: A privileged-group username absent from a verified history of the stored top-N.
+    IDENTITY_NEW_PRIVILEGED_ACCOUNT = "IDENTITY_NEW_PRIVILEGED_ACCOUNT"
+    #: 4625. Seasonal rate on the event-ID count; the top-N names explain it.
+    IDENTITY_FAILED_LOGON_SPIKE = "IDENTITY_FAILED_LOGON_SPIKE"
+    #: 4740. Same rate baseline as failed logons. A cold band is not healthy.
+    IDENTITY_LOCKOUT_SPIKE = "IDENTITY_LOCKOUT_SPIKE"
+    #: 4720. Threshold of one. A known provisioning source is a suppression, not a band.
+    IDENTITY_ACCOUNT_CREATED = "IDENTITY_ACCOUNT_CREATED"
+    #: 4726. Threshold of one, and it ranks above creates.
+    IDENTITY_ACCOUNT_DELETED = "IDENTITY_ACCOUNT_DELETED"
+
+
+class IdentityEventKind(StrEnum):
+    """Whether a catalog event ID keeps every actor, or only a repeated one.
+
+    Rare IDs store a username from one event, because the actor is the finding.
+    Volume IDs (failed logon, lockout) store a username only at the admission floor.
+    """
+
+    RARE = "RARE"
+    VOLUME = "VOLUME"
+
+
+class IdentityMeasurement(StrEnum):
+    """What one identity search established for a source and bucket.
+
+    `EXACT` is the only healthy state. `TRUNCATED` is a floor: the spike spec may
+    use it, and nothing may call it healthy. `NOT_COLLECTED` means the search did
+    not run, which is never a zero.
+    """
+
+    EXACT = "EXACT"
+    TRUNCATED = "TRUNCATED"
+    NOT_COLLECTED = "NOT_COLLECTED"
+
+
+class IdentityProfileValidationStatus(StrEnum):
+    """Whether the current profile version may collect. Same vocabulary as WAF and IPS."""
+
+    UNVALIDATED = "UNVALIDATED"
+    VALID = "VALID"
+    INVALID = "INVALID"
+    INCONCLUSIVE = "INCONCLUSIVE"
+
+
+#: Stamped on every bucket the fold emits. Bump it when the catalog changes.
+IDENTITY_CATALOG_VERSION: int = 1
+
+#: Fixed Active Directory event IDs. A source may disable one; an operator cannot
+#: add one, because a busy ID in the rare search would truncate the rare names.
+#: Order is the design order (SOC-10 §3).
+IDENTITY_EVENT_CATALOG: tuple[tuple[int, IdentityEventKind], ...] = (
+    (4625, IdentityEventKind.VOLUME),
+    (4740, IdentityEventKind.VOLUME),
+    (4720, IdentityEventKind.RARE),
+    (4726, IdentityEventKind.RARE),
+    (4728, IdentityEventKind.RARE),
+    (4732, IdentityEventKind.RARE),
+    (4756, IdentityEventKind.RARE),
+    (1102, IdentityEventKind.RARE),
+)
+
+#: Usernames kept per (source, event ID, bucket), count descending, username ascending.
+IDENTITY_TOP_N: int = 20
+#: Stored width of a username. Longer text is cut and the row is flagged.
+IDENTITY_USERNAME_MAX_LENGTH: int = 255
+#: 4625 and 4740 store a username only at this many events in the bucket.
+IDENTITY_VOLUME_NAME_FLOOR: int = 3
+#: Rare IDs store the actor from a single event.
+IDENTITY_RARE_NAME_FLOOR: int = 1
+#: Bucket width. The family cadence is 15 minutes; the bucket stays 5.
+IDENTITY_BUCKET_SECONDS: int = 300
+#: Counts and the top-N stay this many days, above the 28-day lookback (design §3).
+#: The migration installs no retention policy; a later deleter reads this constant.
+IDENTITY_COUNT_RETENTION_DAYS: int = 35
+#: Anomaly rows stay this many days. Their tables are a later slice.
+IDENTITY_ANOMALY_RETENTION_DAYS: int = 180
+
+
 class PwScopeKind(StrEnum):
     """What a property watch is scoped to: exactly one of a source, a type or a group."""
 

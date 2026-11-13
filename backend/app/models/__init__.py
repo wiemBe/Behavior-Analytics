@@ -31,6 +31,12 @@ from app.models.geo import GeoCountryBucket
 from app.models.handover import ShiftHandover
 from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
 from app.models.identity import AuditLog, AuthSession, LdapConfig, Role, User, user_role
+from app.models.identity_detection import (
+    IdentityBucket,
+    IdentityEventCount,
+    IdentitySourceProfile,
+    IdentityTopUsername,
+)
 from app.models.instance import QRadarInstance
 from app.models.ips import (
     IpsAnomaly,
@@ -134,6 +140,9 @@ HYPERTABLES: dict[str, str] = {
     "geo_country_bucket": "bucket_start",
     "ips_source_bucket": "bucket_start",
     "ips_entity_metric": "bucket_start",
+    "identity_bucket": "bucket_start",
+    "identity_event_count": "bucket_start",
+    "identity_top_username": "bucket_start",
     "pw_bucket": "bucket_start",
     "pw_value_metric": "bucket_start",
     "qradar_health_run": "window_start",
@@ -185,6 +194,10 @@ __all__ = [
     "GeoCountryBucket",
     "HistoryBackfillDecision",
     "HistoryBackfillScope",
+    "IdentityBucket",
+    "IdentityEventCount",
+    "IdentitySourceProfile",
+    "IdentityTopUsername",
     "IpsAnomaly",
     "IpsAnomalyTransition",
     "IpsDetectorState",
