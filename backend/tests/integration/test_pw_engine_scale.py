@@ -195,8 +195,9 @@ async def test_training_scales_with_chunks_not_values(db_session) -> None:
         counts[values] = len(statements)
     # Per chunk: the due-values read, the buckets, the metrics, the incident spans, the
     # upsert of the rebuilt cells, and the delete of the cells the rebuild did not write
-    # (PW-3c item 3). Every one is bounded, so 50 values and 100 values cost the same.
-    assert counts == {50: 6, 100: 6}
+    # (PW-3c item 3). SOC-13h adds one baseline_training_exclusion read for every due
+    # value, before the chunk loop. 50 values and 100 values still cost the same.
+    assert counts == {50: 7, 100: 7}
 
 
 async def test_training_100_values_by_288_buckets_keeps_six_statements_and_same_inputs(
@@ -285,7 +286,8 @@ async def test_training_100_values_by_288_buckets_keeps_six_statements_and_same_
             instance, now=NOW
         )
     assert report.values_rebuilt == 100 and report.cells_written > 0
-    assert len(statements) == 6
+    # SOC-13h: six chunk statements plus one exclusion read for the whole run.
+    assert len(statements) == 7
     [metric_select] = [sql for sql in statements if "FROM pw_value_metric" in sql]
     assert "pw_value_metric.bucket_seconds" not in metric_select
 

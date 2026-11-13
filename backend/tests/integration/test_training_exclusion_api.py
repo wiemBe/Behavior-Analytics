@@ -152,9 +152,9 @@ def test_active_anomaly_is_409(db_schema) -> None:  # type: ignore[no-untyped-de
     assert _counts() == (0, 0, 0)
 
 
-# SOC-13e accepts `waf`; SOC-13g accepts `ips`. The family files pin that.
-# These families stay unsupported.
-@pytest.mark.parametrize("family", ["property_watch", "rule", "nonsense"])
+# SOC-13e accepts `waf`, SOC-13g accepts `ips`, SOC-13h accepts `property_watch`
+# and `rule`. The family files pin that. A name that is not a family stays refused.
+@pytest.mark.parametrize("family", ["nonsense"])
 def test_other_family_is_422_unsupported(db_schema, family) -> None:  # type: ignore[no-untyped-def]
     response = Client(TRIAGER).post(_url(uuid.uuid4(), family), json=_body())
     assert response.status_code == 422

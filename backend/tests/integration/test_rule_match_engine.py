@@ -281,6 +281,17 @@ async def test_statement_count_matches_at_100_and_5000_rules(db_session) -> None
         assert _marked(statements, "-- rule-engine probe") == 0
         assert _marked(statements, "-- rule-engine silence") == 1
         assert _marked(statements, "-- rule-engine storm") == 1
+        # SOC-13h: storm exclusions sit inside the existing storm statement.
+        # Silence exclusions are one extra SELECT for every rule, so both sizes
+        # gain the same one read.
+        storm_sql = next(sql for sql in statements if "-- rule-engine storm" in sql)
+        assert "baseline_training_exclusion" in storm_sql
+        silence_reads = [
+            sql
+            for sql in statements
+            if "baseline_training_exclusion" in sql and "-- rule-engine storm" not in sql
+        ]
+        assert len(silence_reads) == 1
         assert _marked(statements, "-- rule-engine state-upsert") == 1
         assert _marked(statements, "-- rule-engine anomaly-upsert") == 0
         blob = "\n".join(statements).lower()
