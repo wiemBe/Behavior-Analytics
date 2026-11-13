@@ -39,6 +39,7 @@ from app.models.enums import (
     AnomalyFamily,
     AnomalyType,
     Criticality,
+    IdentityAnomalyType,
     IpsAnomalyType,
     PwAnomalyType,
     RuleAnomalyType,
@@ -302,6 +303,17 @@ BREAKTHROUGH_RULES: dict[AnomalyFamily, dict[str, _Rule]] = {
         # whole window (D-60).
         RuleAnomalyType.RULE_SILENCE.value: _never,
     },
+    AnomalyFamily.IDENTITY: {
+        # The two rate detectors carry a ratio. Ten times the band breaks through.
+        IdentityAnomalyType.IDENTITY_FAILED_LOGON_SPIKE.value: _spike_rule,
+        IdentityAnomalyType.IDENTITY_LOCKOUT_SPIKE.value: _spike_rule,
+        # Threshold and novelty have no magnitude that breaks a hold.
+        IdentityAnomalyType.IDENTITY_AUDIT_LOG_CLEARED.value: _never,
+        IdentityAnomalyType.IDENTITY_PRIVILEGED_GROUP_ADD.value: _never,
+        IdentityAnomalyType.IDENTITY_NEW_PRIVILEGED_ACCOUNT.value: _never,
+        IdentityAnomalyType.IDENTITY_ACCOUNT_CREATED.value: _never,
+        IdentityAnomalyType.IDENTITY_ACCOUNT_DELETED.value: _never,
+    },
 }
 
 
@@ -340,6 +352,8 @@ def breaks_through(
     PW           new value, new combination      never (novelty)
     Rule         ``RULE_STORM``                  ratio >= 10; a null ratio never
     Rule         ``RULE_SILENCE``                never (a muted silence stays muted)
+    Identity     failed-logon and lockout spikes ratio >= 10
+    Identity     threshold and new account       never (no magnitude)
     ============ ================================= =====================
 
     A detector with no magnitude in its evidence is "never", never "always":

@@ -31,6 +31,11 @@ from app.models.geo import GeoCountryBucket
 from app.models.handover import ShiftHandover
 from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
 from app.models.identity import AuditLog, AuthSession, LdapConfig, Role, User, user_role
+from app.models.identity_anomaly import (
+    IdentityAnomaly,
+    IdentityAnomalyTransition,
+    IdentityDetectorState,
+)
 from app.models.identity_detection import (
     IdentityBucket,
     IdentityEventCount,
@@ -194,7 +199,10 @@ __all__ = [
     "GeoCountryBucket",
     "HistoryBackfillDecision",
     "HistoryBackfillScope",
+    "IdentityAnomaly",
+    "IdentityAnomalyTransition",
     "IdentityBucket",
+    "IdentityDetectorState",
     "IdentityEventCount",
     "IdentitySourceProfile",
     "IdentityTopUsername",

@@ -63,6 +63,7 @@ def test_normalise_q_refuses_more_than_the_bound() -> None:
         ("custom_rule", AlertFamily.CUSTOM_RULE),
         ("scheduled_search", AlertFamily.SCHEDULED_SEARCH),
         ("qradar_instance", AlertFamily.QRADAR_INSTANCE),
+        ("identity_source", AlertFamily.IDENTITY),
     ],
 )
 def test_alert_family_maps_every_producer(source_type: str, family: AlertFamily) -> None:

@@ -18,6 +18,7 @@ from app.models.enums import (
     AnomalyFamily,
     AnomalyType,
     Criticality,
+    IdentityAnomalyType,
     IpsAnomalyType,
     PwAnomalyType,
     RuleAnomalyType,
@@ -32,6 +33,7 @@ FAMILY_ENUMS = {
     AnomalyFamily.IPS: IpsAnomalyType,
     AnomalyFamily.PROPERTY_WATCH: PwAnomalyType,
     AnomalyFamily.RULE: RuleAnomalyType,
+    AnomalyFamily.IDENTITY: IdentityAnomalyType,
 }
 
 
@@ -138,6 +140,18 @@ def test_rule_storm_breaks_through_at_ten_and_silence_never_does() -> None:
     assert not _breaks(AnomalyFamily.RULE, storm, {})
     assert not _breaks(AnomalyFamily.RULE, silence, {"ratio": 100})
     assert not _breaks(AnomalyFamily.RULE, silence, {"ratio_to_baseline": 0})
+
+
+def test_identity_spikes_break_through_at_ten_and_the_rest_never_do() -> None:
+    """A rate of ten times the band pages through a hold. A threshold does not."""
+    spike = IdentityAnomalyType.IDENTITY_FAILED_LOGON_SPIKE.value
+    lockout = IdentityAnomalyType.IDENTITY_LOCKOUT_SPIKE.value
+    deleted = IdentityAnomalyType.IDENTITY_ACCOUNT_DELETED.value
+    assert _breaks(AnomalyFamily.IDENTITY, spike, {"ratio": 10})
+    assert _breaks(AnomalyFamily.IDENTITY, lockout, {"ratio": 10})
+    assert not _breaks(AnomalyFamily.IDENTITY, spike, {"ratio": 9.9})
+    assert not _breaks(AnomalyFamily.IDENTITY, spike, {"ratio": None})
+    assert not _breaks(AnomalyFamily.IDENTITY, deleted, {"ratio": 100})
 
 
 def test_unknown_detectors_and_missing_or_non_numeric_magnitudes_never_break_through() -> None:

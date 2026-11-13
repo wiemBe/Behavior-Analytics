@@ -754,8 +754,9 @@ async def test_one_instance_run_costs_twelve_statements_at_two_fleet_sizes(
         return len(statements)
 
     # The thirteenth statement is the rule-family grouped read (SOC-6c, design
-    # §5.7). It runs at every fleet size, including while rule alerting is off.
-    assert await statements_for(1) == await statements_for(4) == 13
+    # §5.7). The fourteenth is the identity-family grouped read (SOC-10c). Both
+    # run at every fleet size, including while that family's alerting is off.
+    assert await statements_for(1) == await statements_for(4) == 14
 
 
 # ------------------------------------------------------- recipient union

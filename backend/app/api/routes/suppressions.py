@@ -39,6 +39,7 @@ from app.models.alert_suppression import AlertSuppression, AlertSuppressionHit
 from app.models.enums import (
     AnomalyFamily,
     AnomalyType,
+    IdentityAnomalyType,
     IpsAnomalyType,
     PwAnomalyType,
     RuleAnomalyType,
@@ -73,7 +74,12 @@ WritePrincipal = Annotated[Principal, Depends(requires(PERM_ALERT_SUPPRESS))]
 #: suppression to the whole source (design §5.1). Property watch's subject is a
 #: watch, and "the whole source" has no meaning there.
 SOURCE_ANCHORED = frozenset(
-    {AnomalyFamily.LOG_SOURCE, AnomalyFamily.WAF, AnomalyFamily.IPS}
+    {
+        AnomalyFamily.LOG_SOURCE,
+        AnomalyFamily.WAF,
+        AnomalyFamily.IPS,
+        AnomalyFamily.IDENTITY,
+    }
 )
 
 _DETECTORS: dict[AnomalyFamily, tuple[str, ...]] = {
@@ -82,6 +88,7 @@ _DETECTORS: dict[AnomalyFamily, tuple[str, ...]] = {
     AnomalyFamily.IPS: tuple(item.value for item in IpsAnomalyType),
     AnomalyFamily.PROPERTY_WATCH: tuple(item.value for item in PwAnomalyType),
     AnomalyFamily.RULE: tuple(item.value for item in RuleAnomalyType),
+    AnomalyFamily.IDENTITY: tuple(item.value for item in IdentityAnomalyType),
 }
 
 #: The `alert.source_type` values of the four anomaly producers, by family
@@ -94,6 +101,7 @@ _ALERT_FAMILY: dict[str, AnomalyFamily] = {
     "ips_source": AnomalyFamily.IPS,
     "pw_value": AnomalyFamily.PROPERTY_WATCH,
     "analytics_rule": AnomalyFamily.RULE,
+    "identity_source": AnomalyFamily.IDENTITY,
 }
 
 

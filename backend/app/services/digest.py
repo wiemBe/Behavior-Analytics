@@ -11,13 +11,14 @@ ratio, and the first and last abnormal bucket in UTC, with a link to the filtere
 anomaly list. A source name is the only free text that leaves the database; no
 raw event value, address or AQL appears in the mail.
 
-Cost is thirteen statements per instance run, whatever the fleet and the number of
+Cost is fourteen statements per instance run, whatever the fleet and the number of
 incidents: the per-instance advisory lock (take and release), one idempotency
-check under that lock, one policy read, one outage-policy read, five grouped
-incident reads (Phase A, WAF, IPS, property watch, and rule), one recipient read,
-one template read and one run insert. The source class comes with the incident
-reads (an outer join), so it costs no statement of its own. The rule read runs
-even while ``rule_alerting_enabled`` is false; that switch only drops the rows.
+check under that lock, one policy read, one outage-policy read, six grouped
+incident reads (Phase A, WAF, IPS, property watch, rule, and identity), one
+recipient read, one template read and one run insert. The source class comes
+with the incident reads (an outer join), so it costs no statement of its own.
+The rule and identity reads run even while their alerting switches are false;
+those switches only drop the rows.
 
 The run is recorded in ``alert_digest_run``. Its unique ``(instance_id,
 digest_date)`` is the idempotency key: a second beat tick on the same day sends
@@ -71,6 +72,7 @@ from app.models.enums import (
     SourceClass,
 )
 from app.models.fleet import LogSourceClassification
+from app.models.identity_anomaly import IdentityAnomaly
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsAnomaly
 from app.models.log_source import LogSource, LogSourceAnomaly
@@ -165,9 +167,9 @@ class DigestRunResult:
 def _family_alerting(settings: Settings, family: AnomalyFamily) -> bool:
     """The family switch is the outer gate; a policy can only reduce paging.
 
-    Phase A has no family switch. WAF, IPS, property watch and rule are opt-in,
-    so a digest row on a family that is still in shadow mode must list nothing.
-    A new family must not fall through to Phase A's ``return True``.
+    Phase A has no family switch. WAF, IPS, property watch, rule and identity are
+    opt-in, so a digest row on a family that is still in shadow mode must list
+    nothing. A new family must not fall through to Phase A's ``return True``.
     """
     if family is AnomalyFamily.WAF:
         return bool(settings.waf_alerting_enabled)
@@ -177,6 +179,8 @@ def _family_alerting(settings: Settings, family: AnomalyFamily) -> bool:
         return bool(settings.pw_alerting_enabled)
     if family is AnomalyFamily.RULE:
         return bool(settings.rule_alerting_enabled)
+    if family is AnomalyFamily.IDENTITY:
+        return bool(settings.identity_alerting_enabled)
     return True
 
 
@@ -312,7 +316,7 @@ class DigestService:
         policy_rows: Sequence[AlertPolicy],
         outage_rows: Sequence[OutageAlertPolicy],
     ) -> list[DigestItem]:
-        """Run the five grouped reads and keep only final-DIGEST groups."""
+        """Run the six grouped reads and keep only final-DIGEST groups."""
         classification = func.coalesce(
             LogSourceClassification.source_class, SourceClass.UNCLASSIFIED.value
         )
@@ -502,6 +506,46 @@ class DigestService:
             )
         ).all()
 
+        # Runs on every digest, including while identity_alerting_enabled is false.
+        # Skipping it would make the pinned statement count depend on a default.
+        identity = (
+            await self.session.execute(
+                select(
+                    LogSource.id,
+                    LogSource.name,
+                    classification,
+                    IdentityAnomaly.detector_type,
+                    func.count(IdentityAnomaly.id),
+                    func.max(_severity_rank(IdentityAnomaly.severity)),
+                    func.max(IdentityAnomaly.deviation_ratio),
+                    func.min(
+                        func.coalesce(IdentityAnomaly.anomaly_start, IdentityAnomaly.detected_at)
+                    ),
+                    func.max(
+                        func.coalesce(IdentityAnomaly.anomaly_end, IdentityAnomaly.detected_at)
+                    ),
+                )
+                .select_from(IdentityAnomaly)
+                .join(LogSource, LogSource.id == IdentityAnomaly.log_source_id)
+                .outerjoin(
+                    LogSourceClassification,
+                    LogSourceClassification.log_source_id == LogSource.id,
+                )
+                .where(
+                    LogSource.instance_id == instance.id,
+                    IdentityAnomaly.suppressed.is_(False),
+                    IdentityAnomaly.detected_at >= start,
+                    IdentityAnomaly.detected_at < end,
+                )
+                .group_by(
+                    LogSource.id,
+                    LogSource.name,
+                    LogSourceClassification.source_class,
+                    IdentityAnomaly.detector_type,
+                )
+            )
+        ).all()
+
         candidates: list[DigestItem] = []
         for family, rows in (
             (AnomalyFamily.LOG_SOURCE, phase_a),
@@ -585,6 +629,32 @@ class DigestService:
                         last_bucket=last_bucket,
                     )
                 )
+        if _family_alerting(self.settings, AnomalyFamily.IDENTITY):
+            for (
+                source_id,
+                source_name,
+                source_class,
+                detector,
+                count,
+                severity_rank,
+                worst_ratio,
+                first_bucket,
+                last_bucket,
+            ) in identity:
+                candidates.append(
+                    DigestItem(
+                        family=AnomalyFamily.IDENTITY,
+                        source_id=source_id,
+                        source_name=source_name,
+                        source_class=str(source_class) if source_class is not None else None,
+                        detector=str(detector),
+                        count=int(count),
+                        severity=_RANK_TO_SEVERITY[int(severity_rank)],
+                        worst_ratio=float(worst_ratio) if worst_ratio is not None else None,
+                        first_bucket=first_bucket,
+                        last_bucket=last_bucket,
+                    )
+                )
 
         items: list[DigestItem] = []
         for item in candidates:
@@ -625,9 +695,9 @@ class DigestService:
         unit runs under the collector advisory lock, and the row is committed
         before the lock is released, so two overlapping ticks send one mail.
 
-        Thirteen statements per run: the lock (take and release), one idempotency
-        check, one policy read, one outage-policy read, five grouped incident
-        reads (the fifth is the rule family), one recipient read, one template
+        Fourteen statements per run: the lock (take and release), one idempotency
+        check, one policy read, one outage-policy read, six grouped incident
+        reads (the sixth is the identity family), one recipient read, one template
         read and the run insert. Nothing here loops over a source or an incident.
         """
         now = self._clock()
@@ -763,7 +833,7 @@ async def run_due_digests(
     """Run today's digest for every instance that is due and has no run row.
 
     Two statements for the fleet (the already-run instance ids and the instance
-    list) plus thirteen per instance actually run. Before ``DIGEST_HOUR_UTC`` it
+    list) plus fourteen per instance actually run. Before ``DIGEST_HOUR_UTC`` it
     returns without touching the database. The fleet check is a fast path only;
     each instance re-checks under its own advisory lock.
     """

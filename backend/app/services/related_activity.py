@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.models.enums import AnomalyFamily, TriageStatus
+from app.models.identity_anomaly import IdentityAnomaly
 from app.models.ips import IpsAnomaly, IpsEntity
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.property_watch import PropertyWatch, PwAnomaly
@@ -318,6 +319,18 @@ class RelatedActivityService:
             raise RelatedActivityNotFound(
                 "related activity does not apply to a rule-match incident: it has no log source"
             )
+
+        if family is AnomalyFamily.IDENTITY:
+            identity_anomaly = await self.session.get(IdentityAnomaly, anomaly_id)
+            if identity_anomaly is None:
+                raise RelatedActivityNotFound("anomaly not found")
+            source = await self.session.get(LogSource, identity_anomaly.log_source_id)
+            start, end = anomaly_span(
+                detected_at=identity_anomaly.detected_at,
+                anomaly_start=identity_anomaly.anomaly_start,
+                anomaly_end=identity_anomaly.anomaly_end,
+            )
+            return Anchor(family, anomaly_id, source, start, end)
 
         pw_anomaly = await self.session.get(PwAnomaly, anomaly_id)
         if pw_anomaly is None:

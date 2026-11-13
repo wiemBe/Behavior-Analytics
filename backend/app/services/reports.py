@@ -39,6 +39,7 @@ from app.models.enums import (
     TriageEventKind,
     TriageStatus,
 )
+from app.models.identity_anomaly import IdentityAnomaly
 from app.models.ips import IpsAnomaly
 from app.models.log_source import LogSourceAnomaly
 from app.models.property_watch import PwAnomaly
@@ -97,6 +98,7 @@ RETENTION_SETTING: dict[AnomalyFamily, str] = {
     AnomalyFamily.RULE: "rule_anomaly_retention_days",  # config.py:348
     AnomalyFamily.WAF: "waf_anomaly_retention_days",  # config.py:755
     AnomalyFamily.PROPERTY_WATCH: "pw_anomaly_retention_days",  # config.py:1005
+    AnomalyFamily.IDENTITY: "identity_anomaly_retention_days",
 }
 
 #: Design §1: judged = closed with one of these (not STALE, not null).
@@ -282,11 +284,12 @@ _FAMILY_TABLES: tuple[tuple[AnomalyFamily, Any, Any], ...] = (
     (AnomalyFamily.IPS, IpsAnomaly, IpsAnomaly.detector_type),
     (AnomalyFamily.PROPERTY_WATCH, PwAnomaly, PwAnomaly.detector_type),
     (AnomalyFamily.RULE, RuleAnomaly, RuleAnomaly.detector_type),
+    (AnomalyFamily.IDENTITY, IdentityAnomaly, IdentityAnomaly.detector_type),
 )
 
 
 def _anomaly_union(start: datetime, end: datetime) -> Any:
-    """The five family tables as one subquery (design §1/§4).
+    """The family tables as one subquery (design §1/§4).
 
     Membership is `COALESCE(opened_at, detected_at)` in `[start, end)`
     (`app/models/log_source.py:351-354`); `opened_at` is exposed as it is, so a clock can

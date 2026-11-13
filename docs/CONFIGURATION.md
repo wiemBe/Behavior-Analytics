@@ -364,8 +364,10 @@ separate task and is not skipped by that check.
 Identity collection is opt-in. A log source is searched only when its profile is enabled and
 `VALID` for the current mapping version. The collector sends three Ariel searches per mapping
 chunk (counts, rare names, volume names), not one search per username. Counts and the top-N
-usernames share the bucket row and are deleted together. Anomaly rows are a later slice and
-are not deleted here.
+usernames share the bucket row and are deleted together. Closed identity incidents are a
+separate delete: 180 days, and a row an open incident or an alert still names is kept. The
+series delete does not skip a bucket an open incident covers. The incident row and the
+alert's evidence snapshot are the copies that outlive the series.
 
 | Setting | Default | Meaning |
 |---|---:|---|
@@ -378,6 +380,11 @@ are not deleted here.
 | `IDENTITY_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule. At least `3600` |
 | `IDENTITY_VALIDATION_WINDOW_SECONDS` | `900` | Recent interval the validation probe reads. `60`–`3600` |
 | `IDENTITY_VALIDATION_MIN_RATIO` | `0.90` | Minimum share of events that must carry the mapped event id and username |
+| `IDENTITY_ALERTING_ENABLED` | `false` | Open alerts for identity incidents. Incidents are recorded either way |
+| `IDENTITY_OPEN_AFTER_INTERVALS` | `1` | Anomalous buckets before an incident opens. `1`–`100` |
+| `IDENTITY_RESOLVE_AFTER_INTERVALS` | `2` | Healthy buckets before an open incident resolves. `1`–`100` |
+| `IDENTITY_ANOMALY_RETENTION_DAYS` | `180` | Age of a closed identity incident before it is deleted. `1`–`3650`. Not gated by `IDENTITY_RETENTION_ENABLED` |
+| `IDENTITY_ANOMALY_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule of that delete. At least `3600`. Batch size and batch cap reuse the series retention settings |
 
 `python -m app.cli.identity set`, `validate` and `enable` are the operator path. `enable` refuses
 a profile version that is not `VALID`. An operator who raises the future detector lookback past

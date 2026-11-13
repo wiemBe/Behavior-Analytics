@@ -43,6 +43,7 @@ EMAIL_ALERT_TYPES: tuple[str, ...] = (
     "qradar_instance",
     "scheduled_search",
     "analytics_rule",
+    "identity_source",
     "digest",
 )
 

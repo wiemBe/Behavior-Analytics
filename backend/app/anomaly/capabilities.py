@@ -33,6 +33,8 @@ from app.ips.inputs import (
 from app.ips.inputs import input_measurement as ips_input_measurement
 from app.models.enums import (
     AnomalyType,
+    IdentityAnomalyType,
+    IdentityMeasurement,
     IpsAnomalyType,
     PwAnomalyType,
     RuleAnomalyType,
@@ -68,6 +70,7 @@ class BehaviorDomain(StrEnum):
     IPS_SOURCE = "IPS_SOURCE"
     PW_VALUE = "PW_VALUE"
     RULE = "RULE"
+    IDENTITY_SOURCE = "IDENTITY_SOURCE"
 
 
 class DetectorStatus(StrEnum):
@@ -109,6 +112,10 @@ IPS_BASELINE_METRICS = frozenset(
 
 #: Every baseline metric the property-watch builder trains (design §G.8.0).
 PW_BASELINE_METRICS = frozenset({PW_VALUE_EVENTS_METRIC})
+
+#: The identity rate detectors compare the event-ID count. There is no per-user
+#: baseline. Threshold and novelty specs declare an empty set.
+IDENTITY_BASELINE_METRICS = frozenset({"identity_event_count"})
 
 
 @dataclass(frozen=True)
@@ -884,8 +891,97 @@ def waf_verdict_scope(
     return verdict_scope(spec.measurement or WafMeasurementRequirement.EXACT, measurement)
 
 
+_IDENTITY_TASK = "dispatch_identity_collection"
+
+
+def _identity(
+    detector_type: IdentityAnomalyType,
+    *,
+    measurement: WafMeasurementRequirement,
+    baselines: set[str] | None = None,
+) -> DetectorSpec:
+    return DetectorSpec(
+        domain=BehaviorDomain.IDENTITY_SOURCE,
+        detector_type=detector_type.value,
+        telemetry=frozenset(),
+        baseline_metrics=frozenset(baselines or ()),
+        scheduled_task=_IDENTITY_TASK,
+        enabling_setting="identity_collection_enabled",
+        activation=(
+            "alerts are opened only when IDENTITY_ALERTING_ENABLED=true; "
+            "incidents are recorded either way"
+        ),
+        measurement=measurement,
+        implemented=True,
+    )
+
+
+#: SOC-10 design §2. Spikes and thresholds declare a lower bound: a truncated
+#: count can prove an increase and cannot prove a healthy zero. Novelty is an
+#: absence claim and needs the whole stored list.
+IDENTITY_DETECTORS: dict[IdentityAnomalyType, DetectorSpec] = {
+    IdentityAnomalyType.IDENTITY_AUDIT_LOG_CLEARED: _identity(
+        IdentityAnomalyType.IDENTITY_AUDIT_LOG_CLEARED, measurement=_INCREASE
+    ),
+    IdentityAnomalyType.IDENTITY_PRIVILEGED_GROUP_ADD: _identity(
+        IdentityAnomalyType.IDENTITY_PRIVILEGED_GROUP_ADD, measurement=_INCREASE
+    ),
+    IdentityAnomalyType.IDENTITY_ACCOUNT_CREATED: _identity(
+        IdentityAnomalyType.IDENTITY_ACCOUNT_CREATED, measurement=_INCREASE
+    ),
+    IdentityAnomalyType.IDENTITY_ACCOUNT_DELETED: _identity(
+        IdentityAnomalyType.IDENTITY_ACCOUNT_DELETED, measurement=_INCREASE
+    ),
+    IdentityAnomalyType.IDENTITY_NEW_PRIVILEGED_ACCOUNT: _identity(
+        IdentityAnomalyType.IDENTITY_NEW_PRIVILEGED_ACCOUNT, measurement=_EXACT
+    ),
+    IdentityAnomalyType.IDENTITY_FAILED_LOGON_SPIKE: _identity(
+        IdentityAnomalyType.IDENTITY_FAILED_LOGON_SPIKE,
+        measurement=_INCREASE,
+        baselines={"identity_event_count"},
+    ),
+    IdentityAnomalyType.IDENTITY_LOCKOUT_SPIKE: _identity(
+        IdentityAnomalyType.IDENTITY_LOCKOUT_SPIKE,
+        measurement=_INCREASE,
+        baselines={"identity_event_count"},
+    ),
+}
+
+_IDENTITY_MEASUREMENT: dict[IdentityMeasurement, WafMeasurement | None] = {
+    IdentityMeasurement.EXACT: WafMeasurement.EXACT,
+    IdentityMeasurement.TRUNCATED: WafMeasurement.LOWER_BOUND,
+    IdentityMeasurement.NOT_COLLECTED: None,
+}
+
+
+def identity_verdict_scope(
+    detector_type: IdentityAnomalyType, measurement: IdentityMeasurement | None
+) -> ScopeDecision:
+    """What an identity detector may conclude from this series measurement.
+
+    The scope comes from the declared requirement. `NOT_COLLECTED` and a missing
+    measurement grant nothing. A truncated count is a lower bound only when the
+    spec says an increase can be proven from one.
+    """
+    spec = IDENTITY_DETECTORS[detector_type]
+    mapped = None if measurement is None else _IDENTITY_MEASUREMENT[measurement]
+    return verdict_scope(spec.measurement or WafMeasurementRequirement.EXACT, mapped)
+
+
 def detector_status(spec: DetectorSpec, settings: Any | None = None) -> DetectorStatus:
     """What the code supports, and -- given `settings` -- what this deployment runs."""
+    if spec.domain is BehaviorDomain.IDENTITY_SOURCE:
+        if not spec.implemented or not spec.baseline_metrics <= IDENTITY_BASELINE_METRICS:
+            return DetectorStatus.UNSUPPORTED
+        if not spec.scheduled_task:
+            return DetectorStatus.NOT_SCHEDULED
+        if (
+            settings is not None
+            and spec.enabling_setting is not None
+            and not getattr(settings, spec.enabling_setting)
+        ):
+            return DetectorStatus.NOT_ENABLED
+        return DetectorStatus.OPERATIONAL
     if spec.domain is BehaviorDomain.PW_VALUE:
         if not spec.implemented or not spec.baseline_metrics <= PW_BASELINE_METRICS:
             return DetectorStatus.UNSUPPORTED
@@ -952,4 +1048,5 @@ def all_detectors() -> list[DetectorSpec]:
         *IPS_DETECTORS.values(),
         *PW_DETECTORS.values(),
         *RULE_DETECTORS.values(),
+        *IDENTITY_DETECTORS.values(),
     ]

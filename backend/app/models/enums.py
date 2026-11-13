@@ -340,7 +340,7 @@ class IdentityAnomalyType(StrEnum):
 
     A Python enum, not a PostgreSQL enum, and not a member of `AnomalyType`.
     That enum is persisted on Phase A rows and in alert fingerprints. These
-    values are not persisted until the anomaly tables of a later slice.
+    values are persisted as strings on `identity_anomaly` and its detector state.
     """
 
     #: 1102. One audit-log clear is the finding; there is no band.
@@ -422,7 +422,8 @@ IDENTITY_BUCKET_SECONDS: int = 300
 #: Counts and the top-N stay this many days, above the 28-day lookback (design §3).
 #: The migration installs no retention policy; a later deleter reads this constant.
 IDENTITY_COUNT_RETENTION_DAYS: int = 35
-#: Anomaly rows stay this many days. Their tables are a later slice.
+#: Closed identity incidents stay this many days. The deleter reads the setting
+#: `identity_anomaly_retention_days`, whose default is this constant.
 IDENTITY_ANOMALY_RETENTION_DAYS: int = 180
 
 
@@ -703,6 +704,7 @@ class AnomalyFamily(StrEnum):
     IPS = "ips"
     PROPERTY_WATCH = "property_watch"
     RULE = "rule"
+    IDENTITY = "identity"
 
 
 class TriageStatus(StrEnum):

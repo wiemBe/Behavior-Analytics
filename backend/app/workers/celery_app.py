@@ -267,6 +267,12 @@ celery_app.conf.beat_schedule = {
         "task": "apply_identity_retention",
         "schedule": float(settings.identity_retention_interval_seconds),
     },
+    "apply-identity-anomaly-retention": {
+        # Closed identity incidents. Separate from apply_identity_retention so a
+        # lookback skip on the series task cannot freeze the 180-day delete.
+        "task": "apply_identity_anomaly_retention",
+        "schedule": float(settings.identity_anomaly_retention_interval_seconds),
+    },
     "backfill-entity-mentions": {
         # Fills the entity timeline index for parents stored before it existed, a bounded
         # number of keyset batches per tick; the task itself is a no-op once every

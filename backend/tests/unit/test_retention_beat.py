@@ -7,6 +7,8 @@ import inspect
 from app.cli.doctor import BATCH_DELETERS
 from app.core.config import get_settings
 from app.models.enums import AnomalyState
+from app.services.identity_anomaly_retention import DELETE_SQL as IDENTITY_DELETE_SQL
+from app.services.identity_anomaly_retention import TERMINAL_STATES as IDENTITY_TERMINAL
 from app.services.ips_anomaly_retention import DELETE_SQL as IPS_DELETE_SQL
 from app.services.ips_anomaly_retention import TERMINAL_STATES as IPS_TERMINAL
 from app.services.log_source_anomaly_retention import DELETE_SQL as PHASE_A_DELETE_SQL
@@ -38,6 +40,11 @@ def test_new_retention_tasks_are_daily_beats() -> None:
             settings.rule_match_retention_interval_seconds,
             tasks.apply_rule_match_retention_task,
         ),
+        "apply-identity-anomaly-retention": (
+            "apply_identity_anomaly_retention",
+            settings.identity_anomaly_retention_interval_seconds,
+            tasks.apply_identity_anomaly_retention_task,
+        ),
     }
     for key, (name, interval, shim) in expected.items():
         entry = celery_app.conf.beat_schedule[key]
@@ -57,6 +64,7 @@ def test_beat_start_does_not_send_the_new_deleters() -> None:
         "apply_ips_anomaly_retention",
         "apply_snapshot_retention",
         "apply_rule_match_retention",
+        "apply_identity_anomaly_retention",
     ):
         assert name not in source
 
@@ -87,6 +95,7 @@ def test_incident_sql_names_terminal_states_and_both_reference_guards() -> None:
     for sql, states in (
         (PHASE_A_DELETE_SQL, PHASE_A_TERMINAL),
         (IPS_DELETE_SQL, IPS_TERMINAL),
+        (IDENTITY_DELETE_SQL, IDENTITY_TERMINAL),
     ):
         for state in states:
             assert f"'{state}'" in sql
@@ -98,7 +107,9 @@ def test_incident_sql_names_terminal_states_and_both_reference_guards() -> None:
         assert "al.status" not in sql
     assert "log_source_detector_state" in PHASE_A_DELETE_SQL
     assert "ips_detector_state" in IPS_DELETE_SQL
+    assert "identity_detector_state" in IDENTITY_DELETE_SQL
     assert "subject_kind" not in IPS_DELETE_SQL
+    assert "subject_kind" not in IDENTITY_DELETE_SQL
 
 
 def test_catalog_names_every_beat_task_whose_name_contains_retention() -> None:
