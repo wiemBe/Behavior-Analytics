@@ -1105,40 +1105,55 @@
       "answers": "Which alerts leave the site over a webhook, and where do they go?",
       "body": [
         {
-          "p": "A named destination is a webhook this site stores and posts to: an address, whether plain HTTP and private addresses are allowed, an optional signing secret and up to five custom headers. A site holds at most ten destinations and fifty rules. The address is checked when it is saved and again at every send: HTTPS only unless plain HTTP is allowed, and a host that resolves to a private, loopback, link-local or reserved address is refused unless private addresses are allowed. Both flags are a deliberate exception for an internal SOAR; leave them off otherwise. The API never returns a secret or a header value, only whether a secret is set and the header names."
+          "p": "Open **Administration**, then **Notification routing**. The page needs `admin:notifications`. Rules are first, then webhook destinations. A site holds at most ten destinations and fifty rules. The same writes exist on the admin API under `/api/v1/admin/notifications`."
         },
         {
-          "h": "Rules"
+          "h": "Routing rules"
         },
         {
-          "p": "A rule adds destinations to an alert's routes. It matches on a minimum severity and, optionally, on alert family, log-source owner, source class, QRadar log-source group and a UTC time window; an empty clause matches any alert. Every matching rule adds its destinations, in priority order and then by id, and one alert is never queued twice for the same destination. With no rule matching, alerts still go to the `.env` channels and the stored e-mail recipients, exactly as before."
+          "p": "A rule adds destinations for the alerts it matches. It matches on a **Minimum severity** (that severity and every higher one; Info is not routed) and, optionally, on **Alert families** (none ticked means every family), **Owners**, **Source classes**, **QRadar log source group ids** and a UTC window. An empty clause matches any alert. Every matching rule adds its destinations, and one alert is never queued twice for the same destination. Priority only orders the list: lower numbers are listed first, and every matching rule applies. With no rule matching, alerts still go to the `.env` channels and the stored e-mail recipients."
         },
         {
-          "p": "`stop_default` turns those default routes off for the alerts a rule matches, and only those: such an alert goes to the destinations of its matching rules and to no `.env` channel or stored e-mail recipient. Leave it off until the default channels are known to be redundant, because a rule with it on stops their mail for every alert it matches."
+          "p": "**Stop the .env channels and e-mail recipients for the alerts this rule matches** turns those default routes off for the alerts that rule matches, and only those: such an alert goes to the destinations of its matching rules and to no `.env` channel or stored e-mail recipient. The page warns that matched alerts then reach only the destinations picked on the rule. Leave it off until those destinations replace e-mail and the `.env` channels."
         },
         {
-          "p": "The window is minutes from midnight UTC, read on the stored transition time: when the alert opened, was acknowledged or was resolved, not when the delivery ran, so a retry after midnight still matches. A start later than the end wraps past midnight; a start equal to the end is refused. No window means all day. A rule with no enabled destination delivers nothing and is skipped, so it cannot silence the defaults either."
+          "p": "**Only inside a time window** uses **From** and **To** as 24-hour times, labelled **UTC**, read on the stored transition time: when the alert opened, was acknowledged or was resolved, not when the delivery ran. A start later than the end wraps past midnight, and the form says so. A start equal to the end is refused. No window means all day. A rule with no enabled destination delivers nothing and is skipped, so it cannot silence the defaults either. **Add rule** stays disabled until a destination exists, and at fifty rules, and the line under the button says why."
         },
         {
-          "h": "Test and history"
+          "h": "Webhook destinations"
         },
         {
-          "p": "Send test posts one body to the destination through the same checks and signature as a real event, and records its time, HTTP status and result on the destination. It writes no alert notification, so it proves the address and the secret, not the routing. The attempt history belongs to the alert: its notification table shows the channel, transition, status, attempt count, send time, next attempt and last error for each row, and the alert's notification API returns the newest eight attempts of a row with their time, HTTP status and class, and a named destination's name in place of its URL. The alert page does not yet show the attempt list or the destination name."
+          "p": "Each destination receives the versioned JSON webhook. **URL**, **Signing secret** and **Custom headers** are write-only: they are stored encrypted and are never put back into a field. The table shows the scheme and host, whether the destination is **Signed** or **Not signed**, and the header names or **No custom headers**. **Allow HTTP** and **Allow private addresses** each carry a one-sentence warning and, when on, show as **HTTP allowed** and **Private addresses allowed**. Both are a deliberate exception for an internal endpoint; leave them off otherwise."
         },
         {
-          "p": "A named destination receives the versioned payload: one JSON body per opened, acknowledged, resolved or test event, a stable idempotency key, the JSON content type, the `Idempotency-Key` header and, when a secret is set, an `X-QRadar-Dash-Signature: v1=<hex>` over the exact bytes. Delivery is at least once, retries follow the `NOTIFY_*` settings, redirects are never followed, the request times out after 10 s and only the status is read. The events, every field, the bodies and a signature check are in `docs/WEBHOOK-PAYLOAD.md`."
+          "p": "On an edit the form shows the stored address and **Replace URL** (leave it empty to keep the stored URL), **Keep the stored secret**, **Replace the secret** or **Remove the secret**, and **Keep the stored headers** or **Replace all headers**. An edit that leaves those choices untouched sends no URL, secret or headers. **Remove the secret** is offered only when a secret is set. Replacing headers replaces every stored header; leaving the new rows empty removes them all. A header name is up to 64 letters, digits and hyphens, a value is at most 4096 characters, and a value may not contain a carriage return, a line feed or a NUL. `Host`, `Content-Length`, `Content-Type`, `Idempotency-Key`, `X-QRadar-Dash-Signature`, `Transfer-Encoding`, `Connection`, `TE`, `Upgrade` and `Expect` are refused."
+        },
+        {
+          "p": "The address is checked when it is saved and again at every send: HTTPS unless **Allow HTTP** is on, and a host that resolves to a private, loopback, link-local, reserved, non-global or IPv6 site-local address is refused unless **Allow private addresses** is on. Non-global includes CGNAT (`100.64.0.0/10`). Site-local is `fec0::/10`. With private addresses allowed, those checks are skipped. **Add destination** stays disabled at ten destinations, and the line under the button says why. A destination that a rule uses cannot be deleted; the refusal is the server's sentence."
+        },
+        {
+          "h": "Send test and history"
+        },
+        {
+          "p": "**Send test** posts one body to that destination through the same checks and signature as a real event, and records its time, HTTP status and result under **Last test**. A destination that has never been tested reads **Not tested**. The outcome names the destination, quotes the server's sentence, states the class and status, and adds a next step for `ok`, `transport`, `timeout`, `http_status`, `ssrf_refused` and `redirect_refused`. A rate limit or another error is the server's sentence, not that next step. The test writes no alert notification, so it proves the address and the secret, not the routing. It is limited by `RATE_LIMIT_WEBHOOK_TEST` (default `5/minute`)."
+        },
+        {
+          "p": "The attempt history is on the alert page, under **Notification Delivery History**. Each notification row has **Channel**, **Target**, **Transition**, **Status**, **Attempts**, **Sent (UTC)**, **Next attempt (UTC)** and **Error**. The row under it shows **Last attempt** as the class, the status when there is one, and the UTC time, or **No attempt recorded**. When there is more than one attempt, **All attempts** opens the newest eight. **Target** is the destination's name, or `(deleted destination)`; a `.env` webhook's target is only `scheme://host[:port]`. The label may break after `://`, `.` and `@`."
+        },
+        {
+          "p": "A named destination receives the versioned payload: one JSON body per opened, acknowledged, resolved or test event, a stable idempotency key, the JSON content type, the `Idempotency-Key` header and, when a secret is set, an `X-QRadar-Dash-Signature: v1=<hex>` over the exact bytes. Delivery is at least once. Retries follow the `NOTIFY_*` settings. Redirects are never followed. Each socket operation idles out after 10 s, and the whole send stops at `NOTIFY_SEND_DEADLINE_SECONDS` (default 30 s). One dispatch run at a time; a second overlapping run skips. Only the status is read. The signed body carries no send-time timestamp; a receiver that needs replay protection stores the `Idempotency-Key`. The events, every field, the bodies and a signature check are in `docs/WEBHOOK-PAYLOAD.md`. The `.env` webhook URLs are trusted as given, a 3xx from them is a permanent failure, and that client does not read `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `SSL_CERT_FILE` or `SSL_CERT_DIR`."
         }
       ],
       "steps": [
-        "Administer destinations and rules through the admin API under `/api/v1/admin/notifications`, with a principal that holds `admin:notifications`; this version has no page for them.",
-        "Create a destination: a name, the full URL, and the two address exceptions only if the peer is internal. Set a signing secret when the peer verifies the signature, and give the peer the same value.",
-        "Send a test to the destination and read the outcome: the status and the class say whether the peer answered, redirected, timed out or refused the address.",
-        "Create a rule: a minimum severity, at least one destination and the optional filters and UTC window. Leave `stop_default` off at first.",
-        "Read the first matching alerts' notification rows on the alert page before you widen the rule."
+        "Open **Administration**, then **Notification routing**.",
+        "Choose **Add destination**: a name, the **URL**, and **Allow HTTP** or **Allow private addresses** only if the peer is internal. Set a **Signing secret** when the peer verifies the signature, and give the peer the same value. It is not shown again.",
+        "Choose **Send test** on that destination and read the outcome: the class and the status say whether the peer answered, redirected, timed out or refused the address.",
+        "Choose **Add rule**: a **Minimum severity**, at least one destination, and the optional filters and UTC window. Leave **Stop the .env channels and e-mail recipients for the alerts this rule matches** off at first.",
+        "Read the first matching alerts under **Notification Delivery History** before you widen the rule."
       ],
       "states": [
         {
-          "p": "With no rules saved, alerts still use the `.env` channels and the stored e-mail recipients. A destination keeps the class and HTTP status of its last test. An address the guard refuses is rejected with its code when it is saved. Without `admin:notifications` every notification administration call is refused."
+          "p": "**No routing rules. Alerts still use the .env channels and e-mail recipients.**; **No webhook destinations. Alerts still use the .env channels and e-mail recipients.**; **Not tested**; **Notification routing cannot be shown to this account.**, naming `admin:notifications`; a part that could not be read, with **Try again**; **This site already has the maximum of {max} rules. Remove one to add another.**; **Add a destination first: a rule needs at least one.**; an address the guard refuses, shown as the server's sentence when it is saved."
         }
       ],
       "permission": "`admin:notifications`"

@@ -7,6 +7,7 @@ import { getTranslations } from "next-intl/server";
 
 import { NotificationRoutingPage } from "@/components/notifyrouting/NotificationRoutingPage";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { guideFor } from "@/lib/guideRoutes";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
 import "@/components/ui/controls.css";
@@ -20,7 +21,11 @@ async function Page() {
   const t = await getTranslations("notifyRouting.page");
   return (
     <>
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader
+        guide={guideFor("/admin/notifications")}
+        title={t("title")}
+        description={t("description")}
+      />
       <NotificationRoutingPage />
     </>
   );

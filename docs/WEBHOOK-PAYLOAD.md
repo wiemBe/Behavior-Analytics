@@ -3,9 +3,10 @@
 This document is for the engineer who wires a SOAR, a ticket system or an automation platform to
 the alerts this product sends. It describes what arrives at a named webhook destination: the four
 events, their exact JSON bodies, the fields, the headers, how to verify the signature, and the
-delivery guarantees and refusals to expect. The destinations and their rules are administered through the admin API
-(`/api/v1/admin/notifications/destinations` and `/api/v1/admin/notifications/rules`) by a
-principal with `admin:notifications`; this version has no `/admin/notifications` page for them.
+delivery guarantees and refusals to expect. Destinations and rules are administered on
+`/admin/notifications` (Notification routing) by a principal with `admin:notifications`. The
+admin API (`/api/v1/admin/notifications/destinations` and `/api/v1/admin/notifications/rules`)
+accepts the same writes.
 
 A named destination is a webhook this site administers in the application, not a URL in `.env`.
 Only a named destination receives a v1 body. The older `.env` generic webhook keeps its own body
@@ -20,7 +21,7 @@ One v1 body per lifecycle event and destination:
 | `opened` | A new alert row is opened. A refresh of an open alert sends nothing. |
 | `acknowledged` | An analyst acknowledges the alert, from `OPEN` only. |
 | `resolved` | The alert is resolved from `OPEN` or `ACKNOWLEDGED`, and `NOTIFY_SEND_RECOVERY` is `true` (the default). With that setting off, no resolution event is sent. |
-| `test` | An administrator chooses "send test" on the destination. It carries no alert. |
+| `test` | An administrator chooses "Send test" on the destination's row on `/admin/notifications`. It carries no alert. |
 
 There is no `reopened` event: after a resolution the next observation of the same condition opens
 a new alert row and sends `opened` with a new `alert_id`. A named destination receives an event
@@ -105,10 +106,12 @@ Every request carries:
 | `X-QRadar-Dash-Signature` | `v1=<hex>`, the HMAC-SHA256 of the raw body, lowercase hex. Present only when the destination has a signing secret. |
 
 The destination may add up to five custom headers. A name must match `^[A-Za-z0-9-]{1,64}$`, a
-value is at most 4096 characters and may not contain a carriage return or line feed. `Host`,
-`Content-Length`, `Content-Type`, `Idempotency-Key` and `X-QRadar-Dash-Signature` cannot be
-redefined; the API refuses them. Header values are stored encrypted and the API returns their
-names only.
+value is at most 4096 characters and may not contain a carriage return, a line feed or a NUL.
+`Host`, `Content-Length`, `Content-Type`, `Idempotency-Key`, `X-QRadar-Dash-Signature`,
+`Transfer-Encoding`, `Connection`, `TE`, `Upgrade` and `Expect` cannot be set. The page and the
+API refuse them, and a stored block that would not pass that check is refused again at send time
+as `payload_invalid` without a connection. Header values are stored encrypted. The page and the
+API show header names only, never the values.
 
 The request is sent to the address resolved and checked for that send, while `Host` and the TLS
 server name stay the configured host, so a virtual host and its certificate still match.
@@ -133,7 +136,9 @@ secret `demo-shared-secret`, carries `v1=98247548768adcbaa78ca1bd1e3f37ea258f3d4
 It is a made-up value for this example, not a secret of any site.
 
 Reject a request whose signature does not match, or one whose destination has no secret and so
-carries no signature header, then apply the `Idempotency-Key` check below.
+carries no signature header, then apply the `Idempotency-Key` check below. The signed body
+carries no send-time timestamp; a receiver that needs replay protection stores the
+`Idempotency-Key`.
 
 ## Delivery semantics
 
@@ -144,11 +149,14 @@ attempt succeeded.
 
 Within this site the notification row is unique per (alert, transition, channel, target), so the
 same event is never queued twice for one destination. The `dispatch_notifications` worker delivers
-due rows every 30 s, at most 100 per run.
+due rows every 30 s, at most 100 per run. That task holds one advisory lock; a second run that
+overlaps it returns without delivering.
 
-Each attempt is one POST. Redirects are never followed: a 3xx is refused and recorded. There is
-no proxy layer. The request times out after 10 s, and the response body is read for at most 64 KiB
-and discarded; only the status code is used. A status or failure maps to one class:
+Each attempt is one POST. Redirects are never followed: a 3xx is refused and recorded as
+`redirect_refused`. There is no proxy layer. Each socket operation has an idle timeout of 10 s,
+and the whole send is bounded by `NOTIFY_SEND_DEADLINE_SECONDS` (default 30 seconds). Either
+expiry is class `timeout`. The response body is read for at most 64 KiB and discarded; only the
+status code is used. A status or failure maps to one class:
 
 | Outcome | Class | Retried |
 |---|---|---|
@@ -156,7 +164,7 @@ and discarded; only the status code is used. A status or failure maps to one cla
 | 429, any 5xx | `http_status` | Yes |
 | Any other 4xx | `http_status` | No: permanent |
 | 3xx | `redirect_refused` | No: permanent |
-| Timeout after 10 s | `timeout` | Yes |
+| Idle timeout of 10 s, or the `NOTIFY_SEND_DEADLINE_SECONDS` budget | `timeout` | Yes |
 | Connection, DNS or TLS failure | `transport` | Yes |
 | The destination was deleted or disabled before the send | `no_destination` | No |
 | The send-time URL check refused the address or a plain-HTTP URL | `ssrf_refused` | No |
@@ -171,23 +179,35 @@ letter: it stays on the alert's notification history for inspection and is not s
 
 ## Destination URL rules
 
-An administrator saves a destination through the admin API. The URL is checked when it is
-saved and again at every send:
+An administrator saves a destination on `/admin/notifications`. The admin API accepts the same
+write. The URL is checked when it is saved and again at every send:
 
-- `https` only, unless the destination's `allow_http` flag is set.
+- `https` only, unless the destination's "Allow HTTP" control is on (`allow_http`).
 - A user name, a password or a fragment in the URL is refused.
-- The host is resolved. Every address it resolves to must be public, unless the destination's
-  `allow_private` flag is set. Private, loopback, link-local, multicast, unspecified and reserved
-  addresses are refused, a metadata address included.
+- The host is resolved. Every address it resolves to must be global, unless the destination's
+  "Allow private addresses" control is on (`allow_private`). Private, loopback, link-local,
+  multicast, unspecified, reserved, non-global (including CGNAT `100.64.0.0/10`) and IPv6
+  site-local (`fec0::/10`) addresses are refused, a metadata address included. With private
+  addresses allowed, those checks are skipped, so that destination can still use CGNAT and
+  site-local addresses.
 - The checked address is pinned for the send: the connection goes to the address that was checked,
   so a name that changes its answer between the check and the send does not redirect the request.
 
-Both flags default off. Each one is a deliberate exception, for an internal SOAR reached over
+Both controls default off. Each one is a deliberate exception, for an internal SOAR reached over
 plain HTTP or by a private address. Leave them off unless the peer is on that internal network.
+The page shows a one-sentence warning beside each control, and a warn pill in the table when it
+is on ("HTTP allowed", "Private addresses allowed").
 
-A site may hold at most 10 destinations and 50 routing rules. The API returns a destination's
-scheme, host and port, whether a secret is set and its custom header names; never the path, the
-secret or a header value.
+A site may hold at most 10 destinations and 50 routing rules. "Add destination" stays disabled
+at 10, and "Add rule" stays disabled at 50 or when no destination exists; the line under the
+button says why. The page shows a destination's scheme, host and port, whether a secret is set
+and its custom header names; never the path, the query, the secret or a header value. The API
+returns the same fields. On an edit the URL, the secret and the header values are write-only.
+The form shows the stored address and the choices "Replace URL" (empty keeps the stored URL),
+"Keep the stored secret", "Replace the secret" and, when a secret is set, "Remove the secret",
+and "Keep the stored headers" or "Replace all headers". Replacing headers replaces every stored
+header; empty rows remove them all. An edit that leaves those choices untouched sends no URL,
+secret or headers.
 
 ## What is never sent
 
@@ -216,34 +236,48 @@ signature. Its shape, with the evidence keys present only when the alert stored 
 {"title":"...","body":"...","severity":"HIGH","transition":"OPENED","alert_id":"<uuid>","fingerprint":"<fp>","fields":{"occurrences":1,"first_seen":"...","observed_value":...,"expected_value":...,"deviation_score":...,"reason":"..."}}
 ```
 
-That channel's URL is itself the credential and is not checked against the private-address rules.
+`NOTIFY_TEAMS_WEBHOOK_URL`, `NOTIFY_SLACK_WEBHOOK_URL` and `NOTIFY_GENERIC_WEBHOOK_URL` are
+trusted as given: no private-address check. A 3xx from one of them is a permanent failure. The
+client does not follow the redirect, and the attempt is stored as class `http_status` with that
+status. The same client does not read `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `SSL_CERT_FILE`
+or `SSL_CERT_DIR`. No setting offers an outbound proxy or a custom CA for these three URLs.
 Use a named destination for any new integration.
 
 ## Sending a test and reading the history
 
-"Send test" on a destination posts one `test` body through the same guarded sender:
+"Send test" on a destination's row posts one `test` body through the same guarded sender. The
+page shows whether that destination accepted the test, the server's sentence, a next step for
+`ok`, `transport`, `timeout`, `http_status`, `ssrf_refused` and `redirect_refused`, and the class
+with the HTTP status when there is one. It writes no notification row and stores no body. The
+"Last test" column keeps the time, HTTP status and outcome class; a destination that has not
+been tested reads "Not tested". The same call is
 `POST /api/v1/admin/notifications/destinations/<id>/test`, under `admin:notifications`, limited by
-`RATE_LIMIT_WEBHOOK_TEST` (default `5/minute`). It writes no notification row and stores no
-body; the destination keeps the time, HTTP status and outcome class of the last test. The answer
-is a status, a class and a sentence saying what happened. A test with no alert deliberately
-proves the transport, the signature and the URL, not the routing of a real event: it bypasses
-rules, so it reaches the destination even when no rule selects it.
+`RATE_LIMIT_WEBHOOK_TEST` (default `5/minute`). A rate limit or another error is the server's
+sentence on the page, not one of those next steps. A test with no alert deliberately proves the
+transport, the signature and the URL, not the routing of a real event: it bypasses rules, so it
+reaches the destination even when no rule selects it.
 
-The alert page lists each notification with its channel, transition, status, attempt count and
-last error. `GET /api/v1/alerts/<id>/notifications` returns the same rows with `attempt_log`: the
-newest eight attempts, each with `attempted_at`, `http_status` and `error_class`. The classes are
-`ok`, `transport`, `timeout`, `http_status`, `redirect_refused`, `ssrf_refused`, `no_notifier`,
-`no_destination`, `permanent` and `payload_invalid`. In that response a named destination's
-`target` is the destination name, or `(deleted destination)`; a `.env` webhook's is only
-`scheme://host[:port]`. The URL path, the body and the response are never stored or shown.
+The alert page's "Notification Delivery History" lists each notification with Channel, Target,
+Transition, Status, Attempts, Sent (UTC), Next attempt (UTC) and Error. The row under it shows
+"Last attempt" as the newest attempt's class, its HTTP status when there is one, and the UTC
+time, or "No attempt recorded". "All attempts (n)" opens when there is more than one, newest
+first, at most eight. `GET /api/v1/alerts/<id>/notifications` returns the same rows with
+`attempt_log`: those newest eight attempts, each with `attempted_at`, `http_status` and
+`error_class`. The classes are `ok`, `transport`, `timeout`, `http_status`, `redirect_refused`,
+`ssrf_refused`, `no_notifier`, `no_destination`, `permanent` and `payload_invalid`. In that
+response a named destination's `target` is the destination name, or `(deleted destination)`; a
+`.env` webhook's is only `scheme://host[:port]`. The page may break that label after `://`, `.`
+and `@`. The URL path, the body and the response are never stored or shown.
 
 ## Checklist for a new integration
 
-1. Create the destination through the admin API, with `https` and no address exception
-   unless the peer needs one. Set a signing secret and give the same value to the peer.
-2. Send a test and confirm the peer answers 2xx and verifies the signature.
-3. Create a routing rule that names the destination, with the minimum severity and the optional
-   family, owner, source class, group or UTC time window. Leave `stop_default` off until the
-   default channels are known to be redundant.
+1. On `/admin/notifications`, add a destination with `https` and no address exception unless the
+   peer needs one. Set a signing secret and give the same value to the peer. The secret is not
+   shown again.
+2. Choose "Send test" and confirm the peer answers 2xx and verifies the signature.
+3. Add a routing rule that names the destination, with the minimum severity and the optional
+   family, owner, source class, group or UTC time window. Leave "Stop the .env channels and
+   e-mail recipients for the alerts this rule matches" off until those defaults are known to be
+   redundant.
 4. Let one real alert through and check the peer's stored body against the field table here and
-   the alert's notification history against what the peer logged.
+   the alert's "Notification Delivery History" against what the peer logged.

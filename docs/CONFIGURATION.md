@@ -625,20 +625,29 @@ compression; a repeat install keeps operator-set values. The install summary nam
 | `NOTIFY_RETRY_MAX_SECONDS` | `300.0` | Maximum retry delay |
 | `NOTIFY_SEND_RECOVERY` | `true` | Deliver recovery transitions |
 | `NOTIFY_PER_CHANNEL_RATE` | `30/minute` | Accepted. No notifier reads it |
-| `NOTIFY_SEND_DEADLINE_SECONDS` | `30.0` | Wall-clock budget, in seconds, for one named-destination POST. The 10 second connect, read, write and pool timeouts still apply to each idle socket operation; this deadline bounds the whole send. A peer that writes a byte before each idle timeout cannot hold the worker longer than this. Minimum greater than 0 |
+| `NOTIFY_SEND_DEADLINE_SECONDS` | `30.0` | Wall-clock budget, in seconds, for one named-destination POST. The 10 second connect, read, write and pool timeouts still apply to each idle socket operation; this deadline bounds the whole send. A peer that writes a byte before each idle timeout cannot hold the worker longer than this. Expiry is class `timeout`. Minimum greater than 0 |
 
-Named webhook destinations and the routing rules that send alerts to them are administered through
-the admin API under `admin:notifications` (`/api/v1/admin/notifications/destinations` and
-`/api/v1/admin/notifications/rules`) and stored in the database, not in `.env`;
-an empty rule table sends what the `.env` targets send today. A named destination receives the
-versioned payload, whose events, fields, headers, signature and delivery rules are in
-[`WEBHOOK-PAYLOAD.md`](WEBHOOK-PAYLOAD.md). The `.env` generic webhook keeps its older body.
+Named webhook destinations and the routing rules that send alerts to them are administered on
+`/admin/notifications` (Notification routing, `admin:notifications`) and stored in the database,
+not in `.env`. The page is rules first, then destinations. The URL, the signing secret and custom
+header values are write-only: an edit shows the stored scheme and host, and sends a new URL,
+secret or header block only when the administrator replaces them. "Send test" posts one test
+event and records the class, status and time on the destination. An empty rule table sends what
+the `.env` targets send today. One `dispatch_notifications` run holds an advisory lock; a second
+overlapping run skips. A named destination receives the versioned payload, whose events, fields,
+headers, signature and delivery rules are in [`WEBHOOK-PAYLOAD.md`](WEBHOOK-PAYLOAD.md). The
+`.env` generic webhook keeps its older body. The admin API
+(`/api/v1/admin/notifications/destinations` and `/api/v1/admin/notifications/rules`) accepts the
+same writes.
 
 The `NOTIFY_*` target names are not `Settings` fields. `alerts/routing.py` reads them from the
 process environment, so they belong in the production `.env`. A blank target adds no route.
 The `NOTIFY_TEAMS_WEBHOOK_URL`, `NOTIFY_SLACK_WEBHOOK_URL` and `NOTIFY_GENERIC_WEBHOOK_URL`
 values are trusted as given (no private-address check); named destinations
-(`/admin/notifications`) are the guarded path.
+(`/admin/notifications`) are the guarded path. A 3xx from one of those three URLs is a permanent
+failure: the client does not follow the redirect, and the attempt is class `http_status` with
+that status. That client does not read `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `SSL_CERT_FILE`
+or `SSL_CERT_DIR`. No setting offers an outbound proxy or a custom CA for them.
 Doctor's unknown-setting check already allowlists the names, so a site that sets them is not
 warned. The installer does not write them; a repeat install keeps extra lines it does not own.
 The `SMTP_*` names below are `Settings` fields (MAIL-1); the e-mail notifier and the admin API
