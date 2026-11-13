@@ -58,8 +58,8 @@ Commands
   upgrade       Pull and install one explicit production SemVer release.
   rollback      Restore the pre-upgrade backup and previous image digests (asks first).
   repair-state  Record a healthy upgrade or rollback whose state file was not written.
-  bundle        On a connected host: write the offline bundle (images and checkout) for an
-                air-gapped host.
+  bundle        On a connected host: write the offline bundle (images, checkout and operator
+                documents) for an air-gapped host.
 
 backup options
   --no-verify       Skip the scratch-database restore (not allowed for pre-upgrade).
@@ -81,6 +81,9 @@ bundle options
   --local-images    Do not pull the five product images; use the ones built from this checkout
                     (docs/tasks/REL-LOCAL.design.md step 8). Refuses when the checkout is not a
                     clean git work tree or an image's version/revision label does not match.
+  The checkout part also carries the operator documents, so the air-gapped host has them:
+  README.md, .env.example, docs/INSTALL.md, docs/OPERATIONS.md, docs/CONFIGURATION.md,
+  docs/SEARCH-CADENCE.md and docs/OPERATIONS-DESIGN.md.
 
 rollback options
   --non-interactive Refuse unless --yes is also present.
@@ -911,6 +914,14 @@ secrets_helper_image() {
 # secrets helper are digest-pinned references, not services, and follow below.
 BUNDLE_SERVICES=(postgres backend frontend proxy qradar-mcp)
 
+# The operator documents the bundle carries at their checkout paths. The installer
+# messages point at docs/OPERATIONS.md and the install guide is docs/INSTALL.md, and
+# an air-gapped host has no other way to get them.
+BUNDLE_DOCUMENTS=(
+  README.md .env.example docs/INSTALL.md docs/OPERATIONS.md docs/CONFIGURATION.md
+  docs/SEARCH-CADENCE.md docs/OPERATIONS-DESIGN.md
+)
+
 bundle_image_refs() { # bundle_image_refs PREFIX VERSION -> the image references, one per line
   local prefix=$1 version=$2 service ref
   for service in "${BUNDLE_SERVICES[@]}"; do
@@ -990,7 +1001,8 @@ cmd_bundle() {
   if [ -e "$target" ] || [ -L "$target" ]; then
     die "bundle refused: $target already exists and is not overwritten; move or delete it, or pass --output DIR"
   fi
-  for member in qradar-dash docker-compose.yml docker-compose.prod.yml "docs/releases/$version.md"; do
+  for member in qradar-dash docker-compose.yml docker-compose.prod.yml "docs/releases/$version.md" \
+    "${BUNDLE_DOCUMENTS[@]}"; do
     [ -f "$member" ] || die "bundle refused: $member is missing from this checkout; restore it (git checkout v$version) and run ./qradar-dash bundle again"
   done
   [ -d deploy ] || die "bundle refused: deploy/ is missing from this checkout; restore it (git checkout v$version) and run ./qradar-dash bundle again"
@@ -1077,6 +1089,10 @@ cmd_bundle() {
     || die "cannot copy the checkout files into the bundle"
   mkdir -p "$BUNDLE_STAGE/docs/releases"
   cp -p "docs/releases/$version.md" "$BUNDLE_STAGE/docs/releases/" || die "cannot copy docs/releases/$version.md"
+  for member in "${BUNDLE_DOCUMENTS[@]}"; do
+    mkdir -p "$BUNDLE_STAGE/$(dirname -- "$member")"
+    cp -p -- "$member" "$BUNDLE_STAGE/$member" || die "cannot copy $member into the bundle"
+  done
   cp -pR deploy "$BUNDLE_STAGE/deploy" || die "cannot copy deploy/"
   member=$(find "$BUNDLE_STAGE" \( -name .env -o -name .secrets -o -name docker-compose.override.yml \) -print -quit)
   [ -z "$member" ] || die "bundle refused: ${member#"$BUNDLE_STAGE"/} would go into the bundle and holds this site's configuration; remove it from deploy/ and run ./qradar-dash bundle again"
@@ -1088,7 +1104,8 @@ cmd_bundle() {
     done >SHA256SUMS
   ) || die "cannot write SHA256SUMS"
   tar --owner=0 --group=0 --numeric-owner -cf "$BUNDLE_PARTIAL" -C "$BUNDLE_STAGE" \
-    SHA256SUMS MANIFEST VERSION qradar-dash docker-compose.yml docker-compose.prod.yml deploy docs images.tar \
+    SHA256SUMS MANIFEST VERSION qradar-dash docker-compose.yml docker-compose.prod.yml \
+    README.md .env.example deploy docs images.tar \
     || die "cannot write the bundle archive (is there room in $out?); free space or pass --output DIR"
   if [ -e "$target" ] || [ -L "$target" ]; then
     die "bundle refused: $target appeared while the bundle was being made and is not overwritten"
