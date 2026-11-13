@@ -27,6 +27,7 @@ type EntitySource = Literal[
     "CATCHALL",
     "PW_VALUE",
     "LOG_SOURCE",
+    "IDENTITY_TOP",
 ]
 
 MAX_ENTITY_VALUE_LENGTH = 255

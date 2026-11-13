@@ -1,6 +1,6 @@
 """The triage queue read model (SOC-4b, design `SOC-4.design.md` §2.4 and §3).
 
-One list of unfinished work from five sources: anomalies (five families), alerts that are not
+One list of unfinished work from five sources: anomalies (six families), alerts that are not
 an anomaly's alert, open offenses, sources awaiting classification review, and catch-all
 senders awaiting review. Membership is state-based; "new since" is a flag laid over the rows
 and never adds or removes one.
@@ -110,6 +110,19 @@ FAMILY_BY_SUBJECT = _FAMILY_BY_SUBJECT = {
     "IPS_SOURCE": AnomalyFamily.IPS,
     "PW_VALUE": AnomalyFamily.PROPERTY_WATCH,
     "RULE": AnomalyFamily.RULE,
+    "IDENTITY_SOURCE": AnomalyFamily.IDENTITY,
+}
+
+# English names of the identity detectors. Kept beside the queue so a waiting
+# row is not labelled with the raw enum. The strings match the engine titles.
+_IDENTITY_DETECTOR_LABELS = {
+    "IDENTITY_AUDIT_LOG_CLEARED": "Audit log cleared",
+    "IDENTITY_PRIVILEGED_GROUP_ADD": "Privileged group membership added",
+    "IDENTITY_NEW_PRIVILEGED_ACCOUNT": "New privileged account",
+    "IDENTITY_FAILED_LOGON_SPIKE": "Failed logon spike",
+    "IDENTITY_LOCKOUT_SPIKE": "Account lockout spike",
+    "IDENTITY_ACCOUNT_CREATED": "Account created",
+    "IDENTITY_ACCOUNT_DELETED": "Account deleted",
 }
 
 
@@ -206,6 +219,12 @@ def _subject_label(row: dict[str, Any]) -> str | None:
         return f"{row['pw_watch_name']}: {row['pw_value_key']}"
     if kind == "RULE":
         return row["rule_name"]
+    if kind == "IDENTITY_SOURCE":
+        event_id = row.get("identity_event_id")
+        name = row.get("log_source_name")
+        if event_id is not None and name:
+            return f"event {event_id} on {name}"
+        return name
     return row["log_source_name"]
 
 
@@ -221,8 +240,13 @@ def _anomaly_entry(row: dict[str, Any], as_of: datetime) -> _Entry:
     waiting = _aware(row["waiting_since"])
     change = _change(row["change"])
     detector = str(row["anomaly_type"])
-    # A rule incident's detector is named in English, never by its enum value.
-    name = DETECTOR_LABELS.get(detector, detector) if family is AnomalyFamily.RULE else detector
+    # Rule and identity detectors are named in English, never by the raw enum.
+    if family is AnomalyFamily.RULE:
+        name = DETECTOR_LABELS.get(detector, detector)
+    elif family is AnomalyFamily.IDENTITY:
+        name = _IDENTITY_DETECTOR_LABELS.get(detector, detector)
+    else:
+        name = detector
     return _Entry(
         key=_sort_key(row["severity_rank"], waiting, QueueKind.ANOMALY, str(row["id"])),
         anomaly_id=str(row["id"]),

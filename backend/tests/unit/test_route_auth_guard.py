@@ -100,6 +100,12 @@ _BODIES: dict[tuple[str, str], dict] = {
         },
         "action_value_map": {"BLOCKED": [], "ALLOWED": []},
     },
+    # SOC-10de. The write handler checks `admin:identity` after body validation.
+    ("PUT", "/api/v1/identity/sources/{log_source_id}/profile"): {
+        "event_id_property": "EventID",
+        "username_property": "username",
+        "enabled_event_ids": [4625],
+    },
     ("PUT", "/api/v1/ips/log-sources/{log_source_id}/profile"): {
         "expected_profile_version": None,
         "product_label": None,
@@ -320,6 +326,7 @@ def test_route_set_includes_known_surfaces() -> None:
     for expected in (
         "/api/v1/log-sources", "/api/v1/log-sources/sync", "/api/v1/overview",
         "/api/v1/searches", "/api/v1/alerts", "/api/v1/offenses", "/api/v1/waf/sources",
+        "/api/v1/identity/sources",
     ):
         assert any(p.startswith(expected) for p in paths), expected
 

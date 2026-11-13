@@ -30,6 +30,7 @@ from app.models.enums import (
     BucketCompleteness,
     DimensionAvailability,
     EvidenceStatus,
+    IdentityAnomalyType,
     IpsAnomalyType,
     IpsDimension,
     PwAnomalyType,
@@ -60,6 +61,8 @@ class SubjectKind(StrEnum):
     PW_VALUE = "PW_VALUE"
     #: An analytics rule or building block (SOC-6). Its row is `rule_anomaly`.
     RULE = "RULE"
+    #: One identity source and one catalog event ID (SOC-10). Its row is `identity_anomaly`.
+    IDENTITY_SOURCE = "IDENTITY_SOURCE"
 
 
 class WafEndpointRefOut(BaseModel):
@@ -109,6 +112,25 @@ class PwValueRefOut(BaseModel):
     #: The tracked value's id, for the watch page's `?value=` selection. None once retention
     #: deleted the value row: the incident outlives it, so the link then has no target.
     value_id: uuid.UUID | None = None
+
+
+class IdentityUsernameOut(BaseModel):
+    """One stored top-N username on an identity incident. Rank, name and count only."""
+
+    rank: int
+    username: str
+    count: int
+
+
+class IdentityRefOut(BaseModel):
+    """The catalog event an identity incident explains.
+
+    The list leaves ``usernames`` empty. The detail fills it from the incident's
+    stored top-N and from nowhere else.
+    """
+
+    event_id: int
+    usernames: list[IdentityUsernameOut] = Field(default_factory=list)
 
 
 class RuleRefOut(BaseModel):
@@ -305,8 +327,18 @@ class AnomalyListItem(BaseModel):
     pw_value: PwValueRefOut | None = None
     #: Set for a RULE subject, otherwise None.
     rule: RuleRefOut | None = None
+    #: Set for an IDENTITY_SOURCE subject, otherwise None. The list carries the event id
+    #: and an empty username list; the detail adds the stored top-N.
+    identity: IdentityRefOut | None = None
     #: A Phase A type, or for another subject the row's detector type.
-    anomaly_type: AnomalyType | WafAnomalyType | IpsAnomalyType | PwAnomalyType | RuleAnomalyType
+    anomaly_type: (
+        AnomalyType
+        | WafAnomalyType
+        | IpsAnomalyType
+        | PwAnomalyType
+        | RuleAnomalyType
+        | IdentityAnomalyType
+    )
     state: AnomalyState
     severity: Severity
     observed_value: float | None = None
@@ -617,6 +649,20 @@ class PwDetectionDetailOut(BaseModel):
     claim_params: dict[str, MessageParamValue] | None = None
 
 
+class IdentityDetectionDetailOut(BaseModel):
+    """The identity detector's working, from the stored evidence by whitelist.
+
+    Named keys only. Usernames stay on ``identity``, not in this block. A missing
+    value is None, never 0.
+    """
+
+    event_id: int | None = None
+    measurement: str | None = None
+    ratio: float | None = None
+    robust_z: float | None = None
+    score_status: str | None = None
+
+
 class AnomalyDetailOut(AnomalyListItem):
     """Everything the investigation page needs for one anomaly."""
 
@@ -639,6 +685,7 @@ class AnomalyDetailOut(AnomalyListItem):
         WafDetectionDetailOut
         | IpsDetectionDetailOut
         | PwDetectionDetailOut
+        | IdentityDetectionDetailOut
         | DetectionDetailOut
         | None
     ) = None
@@ -661,6 +708,7 @@ class ActiveByFamily(BaseModel):
     ips: ActiveStateCounts
     property_watch: ActiveStateCounts
     rule: ActiveStateCounts
+    identity: ActiveStateCounts
 
 
 class BehaviorSummaryOut(BaseModel):
@@ -692,8 +740,9 @@ class BehaviorSummaryOut(BaseModel):
     resolved_last_24h: int = 0
     recently_resolved: list[AnomalyListItem] = Field(default_factory=list)
     highest_deviation: list[AnomalyListItem] = Field(default_factory=list)
-    #: Active anomalies of every family (log source, WAF, IPS, property watch, rule): the same
-    #: population as `GET /anomalies?active_only=true` without `since`, every active incident up
+    #: Active anomalies of every family (log source, WAF, IPS, property watch, rule,
+    #: identity): the same population as `GET /anomalies?active_only=true` without `since`,
+    #: every active incident up
     #: to now whatever its age. The Phase A fields above keep their own meaning.
     active_by_family: ActiveByFamily | None = None
 
@@ -985,6 +1034,31 @@ def pw_detection_detail(details: dict[str, Any] | None) -> PwDetectionDetailOut 
     )
 
 
+def identity_detection_detail(details: dict[str, Any] | None) -> IdentityDetectionDetailOut | None:
+    """Project identity evidence onto the whitelist. Usernames are not copied here."""
+    if not details:
+        return None
+
+    def text(key: str) -> str | None:
+        value = details.get(key)
+        return value if isinstance(value, str) else None
+
+    def number(key: str) -> float | None:
+        value = details.get(key)
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            return None
+        return float(value)
+
+    event_id = details.get("event_id")
+    return IdentityDetectionDetailOut(
+        event_id=event_id if isinstance(event_id, int) and not isinstance(event_id, bool) else None,
+        measurement=text("measurement"),
+        ratio=number("ratio"),
+        robust_z=number("robust_z"),
+        score_status=text("score_status"),
+    )
+
+
 # ------------------------------------------------------------ WAF behavior
 class WafLatestBucketOut(BaseModel):
     """The most recent bucket a WAF source collected, and how whole it was."""
@@ -1238,7 +1312,8 @@ class AnomalyHistogramOut(BaseModel):
     bucket_seconds: int
     #: The anomaly families the totals cover, so a client knows what was counted.
     #: Ordering: with no `subject_kind`, the list is
-    #: ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE", "PW_VALUE", "RULE"]; with
+    #: ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE", "PW_VALUE", "RULE",
+    #: "IDENTITY_SOURCE"]; with
     #: `subject_kind=IPS_ENTITY` it is ["IPS_ENTITY"]; with
     #: `subject_kind=IPS_SOURCE` it is ["IPS_SOURCE"]; with `subject_kind=LOG_SOURCE`,
     #: `WAF_ENDPOINT`, `PW_VALUE` or `RULE` it is the single corresponding family.

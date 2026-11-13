@@ -90,6 +90,14 @@ PERM_WAF_ADMIN = "admin:waf"
 # Phase D profile administration is intentionally separate: WAF administrators
 # do not implicitly control IPS collection semantics.
 PERM_IPS_ADMIN = "admin:ips"
+# SOC-10. The identity source page shows the stored top-N usernames, so reading
+# it is `read:identity` and `read:*` satisfies it, the same way a viewer already
+# sees offense usernames. Changing a profile, running the probe, or enabling
+# collection is `admin:identity`. `read:*` does not grant that, and it is not
+# `admin:waf` or `admin:ips`. `admin:*` does, so the admin role does not list
+# the string.
+PERM_IDENTITY_READ = "read:identity"
+PERM_IDENTITY_ADMIN = "admin:identity"
 # Log-source inventory and the SOC overview. The inventory is a map of every
 # monitored system and its owner; the overview aggregates it. Both were once
 # mounted with no guard at all. `read:*` satisfies the two read capabilities.

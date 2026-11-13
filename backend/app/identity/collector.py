@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -41,9 +41,12 @@ from app.identity.search import (
     run_chunk,
 )
 from app.identity.writer import write_tick
+from app.models.entity import EntityMention
 from app.models.enums import (
     FIRST_RUN_LOOKBACK_BUCKETS,
+    IDENTITY_BUCKET_SECONDS,
     IDENTITY_CATALOG_VERSION,
+    IdentityMeasurement,
     IdentityProfileValidationStatus,
     SearchFamily,
 )
@@ -52,6 +55,8 @@ from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderCapability, QRadarProvider
+from app.services.entity_mention_folds import identity_top_mentions
+from app.services.entity_mentions import mark_mentions_incomplete, record_mentions
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 
@@ -179,6 +184,7 @@ class IdentityCollector:
                     "splits": splits,
                 },
             )
+            await _record_identity_mentions(self.session, instance.id, facts)
             series = [item for fact in facts for item in fact.series]
             await IdentityAnomalyEngine(
                 self.session, settings=settings, clock=self._clock
@@ -268,6 +274,57 @@ class IdentityCollector:
             return
         end_of_last = watermark.watermark_at + timedelta(seconds=bucket_seconds)
         watermark.lag_seconds = max(0, int((started - end_of_last).total_seconds()))
+
+
+async def _record_identity_mentions(
+    session: AsyncSession, instance_id: UUID, facts: Sequence[IdentityBucketFact]
+) -> None:
+    """Index stored top-N names. One delete and one insert for the whole tick.
+
+    A series whose name search did not run is left alone, so a failed name
+    search cannot wipe mentions of names already stored. The insert is one
+    bulk statement however many sources or names the tick holds. A failure
+    marks the source incomplete inside the same transaction and does not
+    roll back the buckets the writer just stored.
+    """
+    keys: list[tuple[str, datetime]] = []
+    mentions = []
+    for fact in facts:
+        for series in fact.series:
+            if series.names_measurement is IdentityMeasurement.NOT_COLLECTED:
+                continue
+            ref_id = f"{series.log_source_id}:{series.event_id}"
+            keys.append((ref_id, series.bucket_start))
+            mentions.extend(
+                identity_top_mentions(
+                    instance_id,
+                    log_source_id=series.log_source_id,
+                    event_id=series.event_id,
+                    bucket_start=series.bucket_start,
+                    bucket_end=series.bucket_start + timedelta(seconds=IDENTITY_BUCKET_SECONDS),
+                    usernames=series.usernames,
+                )
+            )
+    if not keys:
+        return
+    try:
+        async with session.begin_nested():
+            await session.execute(
+                delete(EntityMention).where(
+                    EntityMention.instance_id == instance_id,
+                    EntityMention.source == "IDENTITY_TOP",
+                    EntityMention.ref_table == "identity_top_username",
+                    tuple_(EntityMention.ref_id, EntityMention.occurred_at).in_(keys),
+                )
+            )
+            if mentions:
+                await record_mentions(session, mentions, single_statement=True)
+    except Exception as exc:
+        logger.warning(
+            "identity entity mentions were not recorded",
+            extra={"buckets": len(facts), "error_class": type(exc).__name__},
+        )
+        await mark_mentions_incomplete(session, instance_id, ("IDENTITY_TOP",))
 
 
 def _due_buckets(

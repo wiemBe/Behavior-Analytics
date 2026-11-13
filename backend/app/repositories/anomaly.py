@@ -43,6 +43,7 @@ from app.models.enums import (
     AnomalyType,
     BucketCompleteness,
     EvidenceStatus,
+    IdentityAnomalyType,
     IpsAnomalyType,
     PwAnomalyType,
     RuleAnomalyType,
@@ -53,6 +54,7 @@ from app.models.enums import (
     WafMeasurement,
 )
 from app.models.explanation import AnomalyExplanation
+from app.models.identity_anomaly import IdentityAnomaly, IdentityAnomalyTransition
 from app.models.ips import IpsAnomaly, IpsAnomalyTransition, IpsEntity
 from app.models.log_source import (
     LogSource,
@@ -83,6 +85,7 @@ _RULE_TYPES = frozenset(t.value for t in RuleAnomalyType)
 _WAF_TYPES = frozenset(t.value for t in WafAnomalyType)
 _IPS_TYPES = frozenset(t.value for t in IpsAnomalyType)
 _PW_TYPES = frozenset(t.value for t in PwAnomalyType)
+_IDENTITY_TYPES = frozenset(t.value for t in IdentityAnomalyType)
 
 SubjectKindFilter = SubjectKind | Collection[SubjectKind] | None
 
@@ -129,6 +132,11 @@ class WafTrafficPage(NamedTuple):
     total: int
     max_events: int | None
     attributed_events: int
+
+
+def _null_identity_event() -> ColumnElement[Any]:
+    """The identity event id of a union branch whose subject is not an identity source."""
+    return cast(null(), Integer).label("identity_event_id")
 
 
 def _null_rule_columns() -> list[ColumnElement[Any]]:
@@ -228,6 +236,7 @@ class AnomalyRepository:
                 t.owner.label("triage_owner"),
                 t.disposition.label("triage_disposition"),
                 t.updated_at.label("triage_updated_at"),
+                _null_identity_event(),
             )
             .select_from(a)
             .outerjoin(LogSource, LogSource.id == a.log_source_id)
@@ -285,6 +294,7 @@ class AnomalyRepository:
                 t.owner.label("triage_owner"),
                 t.disposition.label("triage_disposition"),
                 t.updated_at.label("triage_updated_at"),
+                _null_identity_event(),
             )
             .select_from(w)
             .join(e, e.id == w.waf_endpoint_id)
@@ -340,6 +350,7 @@ class AnomalyRepository:
                 t.owner.label("triage_owner"),
                 t.disposition.label("triage_disposition"),
                 t.updated_at.label("triage_updated_at"),
+                _null_identity_event(),
             )
             .select_from(a)
             .outerjoin(e, e.id == a.ips_entity_id)
@@ -391,6 +402,7 @@ class AnomalyRepository:
                 t.owner.label("triage_owner"),
                 t.disposition.label("triage_disposition"),
                 t.updated_at.label("triage_updated_at"),
+                _null_identity_event(),
             )
             .select_from(a)
             .join(w, w.id == a.watch_id)
@@ -445,10 +457,61 @@ class AnomalyRepository:
                 t.owner.label("triage_owner"),
                 t.disposition.label("triage_disposition"),
                 t.updated_at.label("triage_updated_at"),
+                _null_identity_event(),
             )
             .select_from(a)
             .join(r, r.id == a.rule_id)
             .outerjoin(t, and_(t.family == AnomalyFamily.RULE, t.anomaly_id == a.id))
+            .where(*conditions)
+        )
+
+    def _unified_identity(self, conditions: list[ColumnElement[bool]]) -> Select:
+        a = IdentityAnomaly
+        t = AnomalyTriage
+        return (
+            select(
+                a.id,
+                cast(literal_column("'IDENTITY_SOURCE'"), String).label("subject_kind"),
+                a.log_source_id,
+                LogSource.name.label("log_source_name"),
+                cast(null(), PgUUID(as_uuid=True)).label("waf_endpoint_id"),
+                cast(null(), String).label("endpoint_normalized"),
+                cast(null(), String).label("endpoint_method"),
+                cast(null(), String).label("endpoint_virtual_host"),
+                cast(null(), Boolean).label("endpoint_virtual_host_available"),
+                cast(null(), Integer).label("endpoint_normalizer_version"),
+                cast(null(), PgUUID(as_uuid=True)).label("ips_entity_id"),
+                cast(null(), String).label("entity_dimension"),
+                cast(null(), String).label("entity_value_key"),
+                cast(null(), String).label("entity_display_name"),
+                cast(null(), PgUUID(as_uuid=True)).label("pw_watch_id"),
+                cast(null(), String).label("pw_watch_name"),
+                cast(null(), Integer).label("pw_watch_version"),
+                cast(null(), String).label("pw_scope_kind"),
+                cast(null(), JSONB).label("pw_properties"),
+                cast(null(), String).label("pw_value_key"),
+                cast(null(), PgUUID(as_uuid=True)).label("pw_value_id"),
+                *_null_rule_columns(),
+                a.detector_type.label("anomaly_type"),
+                a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
+                a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
+                a.detected_at, a.opened_at, a.anomaly_start, a.anomaly_end, a.resolved_at,
+                a.evidence_status, a.suppressed,
+                a.observed_measurement.label("observed_measurement"),
+                a.explanation,
+                a.explanation_i18n.label("explanation_i18n"),
+                t.status.label("triage_status"),
+                t.owner.label("triage_owner"),
+                t.disposition.label("triage_disposition"),
+                t.updated_at.label("triage_updated_at"),
+                a.event_id.label("identity_event_id"),
+            )
+            .select_from(a)
+            .outerjoin(LogSource, LogSource.id == a.log_source_id)
+            .outerjoin(
+                t,
+                and_(t.family == AnomalyFamily.IDENTITY, t.anomaly_id == a.id),
+            )
             .where(*conditions)
         )
 
@@ -474,7 +537,7 @@ class AnomalyRepository:
         since: datetime | None = None,
         until: datetime | None = None,
     ) -> tuple[list[dict], int]:
-        """Phase A, WAF, IPS, property-watch and rule anomalies in one ordering: two statements.
+        """Phase A, WAF, IPS, property-watch, rule and identity anomalies in one ordering.
 
         One `UNION ALL` of the applicable families, counted once and paged once.
         Source names and subject identity (endpoint or IPS entity) are joined
@@ -511,6 +574,13 @@ class AnomalyRepository:
             rule = False
         if anomaly_type is not None:
             rule = rule and anomaly_type in _RULE_TYPES
+        # Identity matches a log source, unlike a rule. A filter that names another
+        # family's subject, endpoint, entity or watch excludes it.
+        identity = kinds is None or SubjectKind.IDENTITY_SOURCE in kinds
+        if waf_endpoint_id is not None or ips_entity_id is not None or pw_watch_id is not None:
+            identity = False
+        if anomaly_type is not None:
+            identity = identity and anomaly_type in _IDENTITY_TYPES
         active = [s.value for s in ACTIVE_ANOMALY_STATES]
 
         def triage_filters() -> list[ColumnElement[bool]]:
@@ -629,6 +699,19 @@ class AnomalyRepository:
             if anomaly_type is not None:
                 conditions.append(RuleAnomaly.detector_type == anomaly_type)
             branches.append(self._unified_rule(conditions))
+        if identity:
+            conditions = common(IdentityAnomaly)
+            if log_source_id is not None:
+                conditions.append(IdentityAnomaly.log_source_id == log_source_id)
+            if instance_id is not None:
+                conditions.append(
+                    IdentityAnomaly.log_source_id.in_(
+                        select(LogSource.id).where(LogSource.instance_id == instance_id)
+                    )
+                )
+            if anomaly_type is not None:
+                conditions.append(IdentityAnomaly.detector_type == anomaly_type)
+            branches.append(self._unified_identity(conditions))
         if not branches:
             return [], 0
 
@@ -707,6 +790,8 @@ class AnomalyRepository:
             branches.append(self._unified_pw(common(PwAnomaly)))
         if wanted is None or AnomalyFamily.RULE in wanted:
             branches.append(self._unified_rule(common(RuleAnomaly)))
+        if wanted is None or AnomalyFamily.IDENTITY in wanted:
+            branches.append(self._unified_identity(common(IdentityAnomaly)))
         if not branches:
             return [], 0, 0
 
@@ -723,6 +808,10 @@ class AnomalyRepository:
                 AnomalyFamily.IPS.value,
             ),
             (union.c.subject_kind == SubjectKind.RULE.value, AnomalyFamily.RULE.value),
+            (
+                union.c.subject_kind == SubjectKind.IDENTITY_SOURCE.value,
+                AnomalyFamily.IDENTITY.value,
+            ),
             else_=AnomalyFamily.PROPERTY_WATCH.value,
         )
         triage = AnomalyTriage.__table__.alias("queue_triage")
@@ -829,14 +918,14 @@ class AnomalyRepository:
     async def active_family_counts(
         self, *, since: datetime | None, until: datetime
     ) -> dict[tuple[str, str], int]:
-        """Active anomalies keyed by (family, state): one statement over the five families.
+        """Active anomalies keyed by (family, state): one statement over the six families.
 
         The population is `list_unified(active_only=True)` for the same window --
         the same states, the same `detected_at` bounds and the same joins -- so the
         counts add up to that list's `total`. Without a `since` there is no lower
         bound, as on that list: an active incident older than the range ceiling is
         still active. The family key is `log_source`, `waf`, `ips`,
-        `property_watch` or `rule`.
+        `property_watch`, `rule` or `identity`.
         """
         active = [s.value for s in ACTIVE_ANOMALY_STATES]
 
@@ -868,6 +957,7 @@ class AnomalyRepository:
                 (PropertyWatch, PropertyWatch.id == PwAnomaly.watch_id),
             ),
             branch("rule", RuleAnomaly, (AnalyticsRule, AnalyticsRule.id == RuleAnomaly.rule_id)),
+            branch("identity", IdentityAnomaly),
         ).subquery()
         rows = await self.session.execute(select(union.c.family, union.c.state, union.c.n))
         return {(str(f), str(s)): int(n) for f, s, n in rows.all()}
@@ -1142,6 +1232,33 @@ class AnomalyRepository:
             ).all()
         )
         return row[0], row[1], str(row[2]), transitions
+
+    async def get_identity_detail(
+        self, anomaly_id: uuid.UUID
+    ) -> tuple[IdentityAnomaly, LogSource | None, list[IdentityAnomalyTransition]] | None:
+        """One identity incident, its log source and its lifecycle: two statements."""
+        row = (
+            await self.session.execute(
+                select(IdentityAnomaly, LogSource)
+                .outerjoin(LogSource, LogSource.id == IdentityAnomaly.log_source_id)
+                .where(IdentityAnomaly.id == anomaly_id)
+            )
+        ).first()
+        if row is None:
+            return None
+        transitions = list(
+            (
+                await self.session.scalars(
+                    select(IdentityAnomalyTransition)
+                    .where(IdentityAnomalyTransition.identity_anomaly_id == anomaly_id)
+                    .order_by(
+                        IdentityAnomalyTransition.occurred_at,
+                        IdentityAnomalyTransition.created_at,
+                    )
+                )
+            ).all()
+        )
+        return row[0], row[1], transitions
 
     async def virtual_host_available(self, log_source_id: uuid.UUID) -> bool:
         """Whether the source's profile maps a virtual host property."""

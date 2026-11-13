@@ -116,6 +116,7 @@ async def test_readonly_principal(db_schema: str) -> None:
     assert "admin:waf" not in effective
     assert "admin:outage" not in effective
     assert "admin:ips" not in effective
+    assert "admin:identity" not in effective
     assert "admin:classification" not in effective
     assert "admin:search_cadence" not in effective
     assert "rule:write" not in effective

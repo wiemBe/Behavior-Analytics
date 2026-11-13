@@ -192,3 +192,7 @@ class IdentityAnomalyTransition(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     @property
     def reason_code(self) -> str | None:
         return stored_code(self.reason_i18n)
+
+    @property
+    def reason_params(self) -> dict[str, Any] | None:
+        return stored_params(self.reason_i18n)

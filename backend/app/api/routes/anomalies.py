@@ -52,6 +52,7 @@ from app.models.enums import (
     AnomalyType,
     BucketCompleteness,
     EvidenceStatus,
+    IdentityAnomalyType,
     IpsAnomalyType,
     IpsDimension,
     IpsProfileValidationStatus,
@@ -65,6 +66,7 @@ from app.models.enums import (
     WafProfileValidationStatus,
 )
 from app.models.explanation import AnomalyExplanation
+from app.models.identity_anomaly import IdentityAnomaly, IdentityAnomalyTransition
 from app.models.ips import (
     IpsAnomaly,
     IpsAnomalyTransition,
@@ -101,6 +103,8 @@ from app.schemas.anomaly import (
     DetectorCapabilityOut,
     ExplanationDimensionOut,
     ExplanationOut,
+    IdentityRefOut,
+    IdentityUsernameOut,
     InputRequirementOut,
     IpsEntityRefOut,
     IpsTrafficSort,
@@ -134,6 +138,7 @@ from app.schemas.anomaly import (
     WafValidationFieldOut,
     WafValidationReportOut,
     detection_detail,
+    identity_detection_detail,
     ips_detection_detail,
     pw_detection_detail,
     waf_detection_detail,
@@ -281,6 +286,7 @@ async def _unified_rows(
     | IpsAnomalyType
     | PwAnomalyType
     | RuleAnomalyType
+    | IdentityAnomalyType
     | None,
     subject_kind: list[SubjectKind] | None,
     waf_endpoint_id: uuid.UUID | None,
@@ -353,6 +359,7 @@ async def list_anomalies(
     | IpsAnomalyType
     | PwAnomalyType
     | RuleAnomalyType
+    | IdentityAnomalyType
     | None = Query(default=None),
     subject_kind: Annotated[list[SubjectKind] | None, Query()] = None,
     waf_endpoint_id: uuid.UUID | None = Query(default=None),
@@ -477,6 +484,7 @@ async def export_anomalies_csv(
     | IpsAnomalyType
     | PwAnomalyType
     | RuleAnomalyType
+    | IdentityAnomalyType
     | None = Query(default=None),
     subject_kind: Annotated[list[SubjectKind] | None, Query()] = None,
     waf_endpoint_id: uuid.UUID | None = Query(default=None),
@@ -573,10 +581,16 @@ def _unified_item(row: dict) -> AnomalyListItem:
             qradar_id=row["rule_qradar_id"],
             is_building_block=bool(row["rule_is_building_block"]),
         )
+    identity = None
+    if row.get("subject_kind") == SubjectKind.IDENTITY_SOURCE.value and row.get(
+        "identity_event_id"
+    ) is not None:
+        # The list names the event. Usernames are filled only on the detail.
+        identity = IdentityRefOut(event_id=row["identity_event_id"])
     fields = {
         k: v
         for k, v in row.items()
-        if not k.startswith(("endpoint_", "entity_", "pw_", "triage_", "rule_"))
+        if not k.startswith(("endpoint_", "entity_", "pw_", "triage_", "rule_", "identity_"))
         and k not in ("waf_endpoint_id", "ips_entity_id", "explanation_i18n")
     }
     stored = row.get("explanation_i18n")
@@ -600,6 +614,7 @@ def _unified_item(row: dict) -> AnomalyListItem:
         ips_entity=ips_entity,
         pw_value=pw_value,
         rule=rule,
+        identity=identity,
     )
 
 
@@ -698,6 +713,7 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
             ips=family("ips"),
             property_watch=family("property_watch"),
             rule=family("rule"),
+            identity=family("identity"),
         ),
     )
 
@@ -904,10 +920,15 @@ async def get_anomaly(anomaly_id: uuid.UUID, session: SessionDep) -> AnomalyDeta
                     family = AnomalyFamily.PROPERTY_WATCH
                 else:
                     rule = await repo.get_rule_detail(anomaly_id)
-                    if rule is None:
-                        raise HTTPException(status.HTTP_404_NOT_FOUND, "anomaly not found")
-                    detail = _rule_detail(*rule)
-                    family = AnomalyFamily.RULE
+                    if rule is not None:
+                        detail = _rule_detail(*rule)
+                        family = AnomalyFamily.RULE
+                    else:
+                        identity = await repo.get_identity_detail(anomaly_id)
+                        if identity is None:
+                            raise HTTPException(status.HTTP_404_NOT_FOUND, "anomaly not found")
+                        detail = _identity_detail(*identity)
+                        family = AnomalyFamily.IDENTITY
     else:
         detail = AnomalyDetailOut.model_validate(anomaly)
         source = await session.get(LogSource, anomaly.log_source_id)
@@ -1166,6 +1187,77 @@ def _rule_detail(
         transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
         explanation_package=None,
         detection=None,
+    )
+
+
+def _identity_usernames(details: dict) -> list[IdentityUsernameOut]:
+    """The stored top-N only: rank, username and count. Any other key is dropped."""
+    raw = details.get("usernames")
+    if not isinstance(raw, list):
+        return []
+    names: list[IdentityUsernameOut] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        username = item.get("username")
+        rank = item.get("rank")
+        count = item.get("count")
+        if not isinstance(username, str) or not username:
+            continue
+        if isinstance(rank, bool) or not isinstance(rank, int):
+            continue
+        if isinstance(count, bool) or not isinstance(count, int):
+            continue
+        names.append(IdentityUsernameOut(rank=rank, username=username, count=count))
+    return names
+
+
+def _identity_detail(
+    anomaly: IdentityAnomaly,
+    source: LogSource | None,
+    transitions: list[IdentityAnomalyTransition],
+) -> AnomalyDetailOut:
+    """An identity incident as the shared detail shape.
+
+    ``explanation_package`` is None: this family has no evidence package. Usernames
+    on the identity ref are the stored top-N already on the incident. The detection
+    block is the whitelist and does not repeat them.
+    """
+    return AnomalyDetailOut(
+        id=anomaly.id,
+        subject_kind=SubjectKind.IDENTITY_SOURCE,
+        log_source_id=anomaly.log_source_id,
+        log_source_name=source.name if source else None,
+        identity=IdentityRefOut(
+            event_id=anomaly.event_id,
+            usernames=_identity_usernames(anomaly.details or {}),
+        ),
+        anomaly_type=IdentityAnomalyType(anomaly.detector_type),
+        state=anomaly.state,
+        severity=anomaly.severity,
+        observed_value=anomaly.observed_value,
+        expected_value=anomaly.expected_value,
+        deviation_ratio=anomaly.deviation_ratio,
+        robust_z=anomaly.robust_z,
+        absolute_delta=anomaly.absolute_delta,
+        consecutive_buckets=anomaly.consecutive_buckets,
+        confidence=anomaly.confidence,
+        detected_at=anomaly.detected_at,
+        opened_at=anomaly.opened_at,
+        anomaly_start=anomaly.anomaly_start,
+        anomaly_end=anomaly.anomaly_end,
+        resolved_at=anomaly.resolved_at,
+        evidence_status=anomaly.evidence_status,
+        suppressed=anomaly.suppressed,
+        suppression_reason=anomaly.suppression_reason,
+        observed_measurement=str(anomaly.observed_measurement),
+        explanation=anomaly.explanation,
+        explanation_code=anomaly.explanation_code,
+        explanation_params=anomaly.explanation_params,
+        policy_version=anomaly.policy_version,
+        transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
+        explanation_package=None,
+        detection=identity_detection_detail(anomaly.details),
     )
 
 

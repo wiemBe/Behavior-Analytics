@@ -631,6 +631,40 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "are still being indexed, or a stored record could not be indexed or opened.",
     ),
     _fixed(
+        "entity_timeline.reason.not_observed",
+        "This username was not observed in collected data.",
+    ),
+    _fixed(
+        "identity.source.not_found",
+        "that log source is not in the inventory",
+    ),
+    _fixed(
+        "identity.profile.not_found",
+        "no identity profile exists for this log source",
+    ),
+    _fixed(
+        "identity.profile.invalid",
+        "the identity profile was refused",
+    ),
+    _text(
+        "identity.profile.enable_refused",
+        "profile version {version} is UNVALIDATED; run validate before enable",
+        version="1",
+    ),
+    _fixed(
+        "identity.provider.unsupported",
+        "this provider cannot run an identity validation probe",
+    ),
+    _fixed(
+        "identity.window.order",
+        "start must be earlier than end",
+    ),
+    _mixed(
+        "identity.window.max",
+        "the identity window must not exceed {days} days",
+        count={"days": 7},
+    ),
+    _fixed(
         "explanation.dimension.unpopulated",
         "field is not populated for this log source",
     ),

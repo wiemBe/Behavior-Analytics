@@ -24,6 +24,7 @@ from app.api.routes import (
     handover,
     health,
     history_backfill,
+    identity,
     ips,
     log_sources,
     me,
@@ -59,6 +60,7 @@ from app.security.rbac import (
     PERM_FLEET_READ,
     PERM_GEO_READ,
     PERM_HISTORY_BACKFILL_READ,
+    PERM_IDENTITY_READ,
     PERM_IPS_ADMIN,
     PERM_LOG_SOURCE_READ,
     PERM_NOTIFICATIONS_ADMIN,
@@ -180,6 +182,12 @@ api_router.include_router(waf_catalog.router, dependencies=[Depends(requires(PER
 # IPS source mappings control future collection semantics and require their own
 # administrative capability; neither read:* nor admin:waf satisfies it.
 api_router.include_router(ips.router, dependencies=[Depends(requires(PERM_IPS_ADMIN))])
+# SOC-10. Reading the stored top-N is `read:identity` (`read:*` satisfies it).
+# Profile writes check `admin:identity` in the handler; `read:*`, `admin:waf`
+# and `admin:ips` do not.
+api_router.include_router(
+    identity.router, dependencies=[Depends(requires(PERM_IDENTITY_READ))]
+)
 # --- Phase C ---
 # The fleet view and classification rules. Both reads need `read:fleet` (satisfied
 # by `read:*`); rule writes check `admin:classification` in the handler.

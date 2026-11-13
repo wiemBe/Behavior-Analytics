@@ -376,6 +376,7 @@
       "no_coverage": "No usable collection bucket covers this lane in the selected window.",
       "not_among_stored_top": "This bounded lane cannot prove that the entity was absent from its full input.",
       "not_collected": "No timeline lane measured this entity in the selected window.",
+      "not_observed": "This username was not observed in collected data.",
       "offense_not_collected": "QRadar offense collection has not run for this console.",
       "offense_stale": "QRadar offense collection is stale, so this lane may be incomplete.",
       "page_truncated": "More stored mentions match this window than are shown. Continue with the next cursor.",
@@ -579,6 +580,23 @@
       "plan_one": "1 per-source plan",
       "source_many": "{count} sources",
       "source_one": "1 source"
+    }
+  },
+  "identity": {
+    "profile": {
+      "enable_refused": "profile version {version} is UNVALIDATED; run validate before enable",
+      "invalid": "the identity profile was refused",
+      "not_found": "no identity profile exists for this log source"
+    },
+    "provider": {
+      "unsupported": "this provider cannot run an identity validation probe"
+    },
+    "source": {
+      "not_found": "that log source is not in the inventory"
+    },
+    "window": {
+      "max": "the identity window must not exceed {days} days",
+      "order": "start must be earlier than end"
     }
   },
   "ips": {
