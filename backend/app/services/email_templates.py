@@ -43,6 +43,7 @@ ALERT_TYPE_LABELS: dict[str, str] = {
     "qradar_instance": "QRadar instance",
     "scheduled_search": "Scheduled search",
     "analytics_rule": "Analytics rule",
+    "identity_source": "Identity source",
     "digest": "Daily digest",
 }
 
@@ -729,6 +730,22 @@ _SAMPLE_BY_TYPE: dict[str, dict[str, str]] = {
         "evidence.expected": "—",
         "evidence.deviation": "—",
         "evidence.reason": "consecutive failures reached the alert threshold",
+    },
+    # A log-source name and a Windows event id. No username: the identity
+    # allow-list is for stored top-N evidence, not for a preview fixture.
+    "identity_source": {
+        "alert.title": "Failed logon spike on dc-01 (4625)",
+        "alert.description": (
+            "Event 4625 is above its seasonal band "
+            "(observed 48, median 6, ratio 8.00)."
+        ),
+        "evidence.observed": "48",
+        "evidence.expected": "6",
+        "evidence.deviation": "8",
+        "evidence.reason": (
+            "Event 4625 is above its seasonal band "
+            "(observed 48, median 6, ratio 8.00)."
+        ),
     },
 }
 

@@ -45,6 +45,7 @@ from app.models.enums import (
     RuleAnomalyType,
     WafAnomalyType,
 )
+from app.models.identity_anomaly import IdentityAnomaly
 from app.models.ips import IpsAnomaly, IpsEntity
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.property_watch import PropertyWatch, PwAnomaly, PwValue
@@ -91,9 +92,9 @@ _DETECTORS: dict[AnomalyFamily, tuple[str, ...]] = {
     AnomalyFamily.IDENTITY: tuple(item.value for item in IdentityAnomalyType),
 }
 
-#: The `alert.source_type` values of the four anomaly producers, by family
-#: (`ips_entity` and `ips_source` are one family). The four non-anomaly
-#: producers have no detector condition to suppress (design §1.1).
+#: `alert.source_type` of each anomaly family (`ips_entity` and `ips_source`
+#: are one family). Producers that are not anomalies have no detector condition
+#: to suppress.
 _ALERT_FAMILY: dict[str, AnomalyFamily] = {
     "log_source": AnomalyFamily.LOG_SOURCE,
     "waf_endpoint": AnomalyFamily.WAF,
@@ -102,6 +103,17 @@ _ALERT_FAMILY: dict[str, AnomalyFamily] = {
     "pw_value": AnomalyFamily.PROPERTY_WATCH,
     "analytics_rule": AnomalyFamily.RULE,
     "identity_source": AnomalyFamily.IDENTITY,
+}
+
+#: The same producers, grouped for the breakthrough read. A family missing here
+#: must not be read as property watch.
+_BREAKTHROUGH_SOURCE_TYPES: dict[AnomalyFamily, tuple[str, ...]] = {
+    AnomalyFamily.LOG_SOURCE: ("log_source",),
+    AnomalyFamily.WAF: ("waf_endpoint",),
+    AnomalyFamily.IPS: ("ips_entity", "ips_source"),
+    AnomalyFamily.PROPERTY_WATCH: ("pw_value",),
+    AnomalyFamily.RULE: ("analytics_rule",),
+    AnomalyFamily.IDENTITY: ("identity_source",),
 }
 
 
@@ -156,9 +168,9 @@ async def _condition_from_anomaly(
 ) -> tuple[uuid.UUID, str]:
     """The (subject, detector) a suppression over this anomaly governs.
 
-    The subject is the producer's log source for Phase A, WAF and both IPS
-    kinds (an entity anomaly maps back through ``IpsEntity.log_source_id``),
-    and the watch id for property watch (design §5.2).
+    The subject is the log source for Phase A, WAF, both IPS kinds and identity
+    (an entity anomaly maps back through ``IpsEntity.log_source_id``), the rule
+    id for a rule, and the watch id for property watch (design §5.2).
     """
     if family is AnomalyFamily.LOG_SOURCE:
         phase_a = await session.get(LogSourceAnomaly, anomaly_id)
@@ -189,6 +201,11 @@ async def _condition_from_anomaly(
         if rule is None:
             raise _gone("anomaly not found")
         return rule.rule_id, str(rule.detector_type)
+    if family is AnomalyFamily.IDENTITY:
+        identity = await session.get(IdentityAnomaly, anomaly_id)
+        if identity is None:
+            raise _gone("anomaly not found")
+        return identity.log_source_id, str(identity.detector_type)
     pw = await session.get(PwAnomaly, anomaly_id)
     if pw is None:
         raise _gone("anomaly not found")
@@ -234,6 +251,10 @@ async def _condition_from_alert(
             if entity is not None and entity.log_source_id is not None:
                 return family, entity.log_source_id, None
         if alert.source_type == "ips_source" and alert.source_id is not None:
+            return family, alert.source_id, None
+        if alert.source_type == "identity_source":
+            if alert.source_id is None:
+                raise _gone("the alert names no log source")
             return family, alert.source_id, None
         raise _gone("the alert names no log source")
     if not alert.source_anomaly_ids:
@@ -640,12 +661,20 @@ async def _breakthrough_alerts(
     value id for the non-Phase-A producers, so the subject's rows map to alert
     source ids first, in one statement per family.
     """
-    source_ids: list[uuid.UUID]
-    if family is AnomalyFamily.LOG_SOURCE:
-        source_types: list[str] = ["log_source"]
+    try:
+        source_types = list(_BREAKTHROUGH_SOURCE_TYPES[family])
+    except KeyError as exc:
+        raise _unprocessable(
+            f"an anomaly family {family.value} has no alert source type"
+        ) from exc
+    if family in (
+        AnomalyFamily.LOG_SOURCE,
+        AnomalyFamily.IDENTITY,
+        AnomalyFamily.RULE,
+    ):
+        # Those three store the subject id on the alert: the log source, or the rule.
         source_ids = [subject_id]
     elif family is AnomalyFamily.WAF:
-        source_types = ["waf_endpoint"]
         source_ids = list(
             (
                 await session.scalars(
@@ -654,7 +683,6 @@ async def _breakthrough_alerts(
             ).all()
         )
     elif family is AnomalyFamily.IPS:
-        source_types = ["ips_entity", "ips_source"]
         source_ids = [
             subject_id,
             *(
@@ -663,14 +691,17 @@ async def _breakthrough_alerts(
                 )
             ).all(),
         ]
-    else:
-        source_types = ["pw_value"]
+    elif family is AnomalyFamily.PROPERTY_WATCH:
         source_ids = list(
             (
                 await session.scalars(
                     select(PwValue.id).where(PwValue.watch_id == subject_id)
                 )
             ).all()
+        )
+    else:
+        raise _unprocessable(
+            f"an anomaly family {family.value} has no breakthrough read"
         )
     if not source_ids:
         return []

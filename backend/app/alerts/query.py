@@ -60,7 +60,8 @@ class AlertFamily(StrEnum):
 
 #: Every `alert.source_type` the application opens alerts with, mapped onto the
 #: family an analyst filters by. `ips_entity` and `ips_source` are one family:
-#: both are IPS anomalies. The keys are exactly `EMAIL_ALERT_TYPES`.
+#: both are IPS anomalies. `ips_source` is a producer and has no e-mail template
+#: key. `digest` is a template key, not a producer, and is not a key here.
 FAMILY_BY_SOURCE_TYPE: dict[str, AlertFamily] = {
     "log_source": AlertFamily.LOG_SOURCE,
     "waf_endpoint": AlertFamily.WAF,
@@ -201,8 +202,8 @@ def _log_source_clause(log_source_ids: tuple[uuid.UUID, ...]) -> ColumnElement[b
     The link is stored differently per family, so this is one clause with a
     branch per family rather than one column comparison:
 
-    * `log_source` and `ips_source` alerts already hold the log source id in
-      `source_id`;
+    * `log_source`, `ips_source` and `identity_source` alerts already hold the
+      log source id in `source_id`;
     * a WAF, IPS-entity, catch-all-sender or pinned-value alert holds its own
       subject's id, which is resolved to the log source here;
     * a custom-rule alert follows its rule's subject.

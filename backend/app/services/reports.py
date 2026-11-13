@@ -86,6 +86,7 @@ ENGINE_ACTORS: tuple[str, ...] = (
     "custom-rule-evaluator",  # app/custom_rules/alerts.py:43
     "search-scheduler",  # app/alerts/search_alerts.py:89
     "rule-engine",  # app/rules/engine.py:85
+    "identity-anomaly-engine",  # app/identity/engine.py:78
 )
 #: `system:anomaly-engine` (app/anomaly/engine.py:608) and the monitors in app/workers/tasks.py
 #: use this prefix. `_` and `%` are not in it, so the LIKE needs no escaping.
