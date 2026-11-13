@@ -34,6 +34,7 @@ def build_provider(settings: Settings | None = None) -> QRadarProvider:
             return MockQRadarProvider(
                 ips_max_sources_per_search=settings.ips_max_sources_per_search,
                 pw_max_sources_per_search=settings.pw_max_sources_per_search,
+                identity_max_sources_per_search=settings.identity_max_sources_per_search,
             )
         case ProviderKind.REST:
             return QRadarRestProvider(
@@ -46,6 +47,7 @@ def build_provider(settings: Settings | None = None) -> QRadarProvider:
                 ariel_stop_pad_seconds=settings.ariel_stop_pad_seconds,
                 ips_max_sources_per_search=settings.ips_max_sources_per_search,
                 pw_max_sources_per_search=settings.pw_max_sources_per_search,
+                identity_max_sources_per_search=settings.identity_max_sources_per_search,
                 permit=ArielPermitBudget(get_engine(), settings, instance_id=None),
             )
         case ProviderKind.MCP:
@@ -84,6 +86,7 @@ def build_provider_for_instance(
             return MockQRadarProvider(
                 ips_max_sources_per_search=settings.ips_max_sources_per_search,
                 pw_max_sources_per_search=settings.pw_max_sources_per_search,
+                identity_max_sources_per_search=settings.identity_max_sources_per_search,
             )
         case ProviderKind.REST:
             token = instance.sec_token
@@ -105,6 +108,7 @@ def build_provider_for_instance(
                 ariel_stop_pad_seconds=settings.ariel_stop_pad_seconds,
                 ips_max_sources_per_search=settings.ips_max_sources_per_search,
                 pw_max_sources_per_search=settings.pw_max_sources_per_search,
+                identity_max_sources_per_search=settings.identity_max_sources_per_search,
                 permit=(
                     ArielPermitBudget.for_session(
                         audit_session,

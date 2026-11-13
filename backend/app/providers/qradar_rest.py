@@ -46,6 +46,7 @@ from app.health_detail.rows import (
     parse_health_metric_rows,
     parse_health_notification_rows,
 )
+from app.identity.dto import IdentityKeyedResult, IdentityProbeResult, IdentitySearchKind
 from app.ips.keyed_rows import (
     parse_ips_keyed_rows,
     validate_ips_fields,
@@ -380,6 +381,7 @@ class QRadarRestProvider(QRadarProvider):
         clock: Callable[[], datetime] | None = None,
         ips_max_sources_per_search: int = 50,
         pw_max_sources_per_search: int = 50,
+        identity_max_sources_per_search: int = 50,
         permit: ArielPermitBudget | None = None,
     ) -> None:
         if not verify_ssl:
@@ -400,6 +402,7 @@ class QRadarRestProvider(QRadarProvider):
         self._ariel_stop_pad_seconds = max(0, int(ariel_stop_pad_seconds))
         self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
         self._pw_max_sources_per_search = max(1, int(pw_max_sources_per_search))
+        self._identity_max_sources_per_search = max(1, int(identity_max_sources_per_search))
         self._clock = clock or (lambda: datetime.now(UTC))
         self._permit = permit
 
@@ -2150,6 +2153,178 @@ class QRadarRestProvider(QRadarProvider):
             rows=rows,
             truncated=truncated,
             query=aql,
+        )
+
+    @_loads(ariel_log.CALLER_IDENTITY_COLLECTION)
+    async def get_identity_keyed(
+        self,
+        search: IdentitySearchKind,
+        *,
+        qradar_log_source_ids: Sequence[int],
+        event_id_property: str,
+        username_property: str,
+        event_ids: Sequence[int],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> IdentityKeyedResult:
+        """One keyed identity search. The query comes from ``app.identity.aql``."""
+        from app.identity.aql import build_query, validate_query_inputs
+        from app.identity.rows import parse_identity_rows
+
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        spec = validate_query_inputs(
+            search,
+            source_ids=qradar_log_source_ids,
+            event_id_property=event_id_property,
+            username_property=username_property,
+            event_ids=event_ids,
+            max_sources=self._identity_max_sources_per_search,
+        )
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        cap = self._keyed_row_cap(max_rows)
+        aql = (
+            build_query(
+                spec,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                bucket_ms=int(bucket_seconds) * 1000,
+                max_rows=cap,
+            )
+            + f" {self._ariel_scope(start_ms, end_ms)}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        rows, truncated = parse_identity_rows(
+            raw,
+            source_ids=spec.source_ids,
+            event_ids=spec.event_ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=cap,
+            with_username=spec.search is not IdentitySearchKind.COUNTS,
+        )
+        return IdentityKeyedResult(
+            search=spec.search,
+            qradar_log_source_ids=spec.source_ids,
+            event_ids=spec.event_ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=rows,
+            truncated=truncated,
+            query=aql,
+        )
+
+    @_loads(ariel_log.CALLER_IDENTITY_COLLECTION)
+    async def probe_identity_fields(
+        self,
+        *,
+        qradar_log_source_id: int,
+        event_id_property: str,
+        username_property: str,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> IdentityProbeResult:
+        """Four bounded searches. A 422 marks that field rejected. No query is stored."""
+        from app.identity.aql import build_catalog_query, build_populated_query, build_total_query
+        from app.identity.dto import IdentityFieldProbe
+        from app.identity.reference import validate_probe_window
+        from app.identity.rows import coerce_events, parse_event_id
+        from app.models.enums import IDENTITY_EVENT_CATALOG
+
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_probe_window(window_start, window_end)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        scope = " " + self._ariel_scope(start_ms, end_ms)
+        searches = 0
+        truncated = False
+
+        async def run(statement: str, *, max_rows: int) -> list[dict[str, Any]]:
+            nonlocal searches
+            searches += 1
+            return await self._run_bounded_aggregate(statement + scope, max_rows=max_rows)
+
+        total: int | None = None
+        error: str | None = None
+        try:
+            rows = await run(
+                build_total_query(
+                    qradar_log_source_id=qradar_log_source_id,
+                    start_ms=start_ms,
+                    end_ms=end_ms,
+                ),
+                max_rows=2,
+            )
+            truncated = len(rows) > 1
+            total = coerce_events(rows[0].get("events")) if rows else 0
+            if total is None:
+                error = "ProviderError"
+        except ProviderQueryRejectedError:
+            error = "ProviderQueryRejectedError"
+        except (ProviderError, ValueError) as exc:
+            error = type(exc).__name__
+
+        async def one_field(field: str) -> IdentityFieldProbe:
+            nonlocal truncated
+            try:
+                rows = await run(
+                    build_populated_query(
+                        qradar_log_source_id=qradar_log_source_id,
+                        event_id_property=event_id_property,
+                        username_property=username_property,
+                        field=field,
+                        start_ms=start_ms,
+                        end_ms=end_ms,
+                    ),
+                    max_rows=2,
+                )
+            except ProviderQueryRejectedError:
+                return IdentityFieldProbe(None, True, "ProviderQueryRejectedError")
+            except (ProviderError, ValueError) as exc:
+                return IdentityFieldProbe(None, False, type(exc).__name__)
+            truncated = truncated or len(rows) > 1
+            populated = coerce_events(rows[0].get("events")) if rows else 0
+            if populated is None:
+                return IdentityFieldProbe(None, False, "ProviderError")
+            return IdentityFieldProbe(populated, False, None)
+
+        event_probe = await one_field("event_id")
+        user_probe = await one_field("username")
+        catalog: list[int] = []
+        try:
+            rows = await run(
+                build_catalog_query(
+                    qradar_log_source_id=qradar_log_source_id,
+                    event_id_property=event_id_property,
+                    start_ms=start_ms,
+                    end_ms=end_ms,
+                ),
+                max_rows=len(IDENTITY_EVENT_CATALOG) + 1,
+            )
+            truncated = truncated or len(rows) > len(IDENTITY_EVENT_CATALOG)
+            for row in rows[: len(IDENTITY_EVENT_CATALOG)]:
+                event_id = parse_event_id(row.get("event_id"))
+                if event_id is not None:
+                    catalog.append(event_id)
+        except ProviderQueryRejectedError:
+            event_probe = IdentityFieldProbe(
+                event_probe.populated_events, True, "ProviderQueryRejectedError"
+            )
+        except (ProviderError, ValueError) as exc:
+            error = error or type(exc).__name__
+        return IdentityProbeResult(
+            total_events=total,
+            event_id=event_probe,
+            username=user_probe,
+            catalog_event_ids=tuple(dict.fromkeys(catalog)),
+            truncated=truncated,
+            error=error,
+            searches=searches,
         )
 
     @staticmethod

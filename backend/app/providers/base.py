@@ -66,6 +66,7 @@ if TYPE_CHECKING:
     # annotations here only.
     from app.geo.fold import GeoDirection, GeoKeyedResult
     from app.health_detail.rows import HealthMetricsResult, HealthNotificationsResult
+    from app.identity.dto import IdentityKeyedResult, IdentityProbeResult, IdentitySearchKind
 
 #: Upper bound on a WAF property probe window. Validation is a spot check, not a
 #: survey, and a small window keeps it cheap on a loaded appliance.
@@ -603,6 +604,48 @@ class QRadarProvider(ABC):
         integer-valued number fails the whole search with a ProviderError.
 
         Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_identity_keyed(
+        self,
+        search: IdentitySearchKind,
+        *,
+        qradar_log_source_ids: Sequence[int],
+        event_id_property: str,
+        username_property: str,
+        event_ids: Sequence[int],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> IdentityKeyedResult:
+        """One keyed identity search for a mapping chunk (design §3).
+
+        ``search`` is the counts search or one of the two name searches. Every
+        source in the chunk and every catalog id in the set share this call.
+        Identifiers are validated again here and refused rather than escaped.
+        ``LIMIT`` is ``max_rows + 1``. More rows than ``max_rows`` set
+        ``truncated``. Requires AQL_EXECUTION, so this never runs through MCP.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def probe_identity_fields(
+        self,
+        *,
+        qradar_log_source_id: int,
+        event_id_property: str,
+        username_property: str,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> IdentityProbeResult:
+        """Bounded read-only population evidence for an identity field mapping.
+
+        Four aggregates at most: a total, the event-id field, the username
+        field, and the catalog ids present. A window longer than an hour is
+        refused before a search is built. Requires AQL_EXECUTION.
         """
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError

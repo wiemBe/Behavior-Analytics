@@ -182,6 +182,7 @@ class SearchFamily(StrEnum):
     CATCHALL_SENDERS = "CATCHALL_SENDERS"
     GEO_COLLECTION = "GEO_COLLECTION"
     QRADAR_HEALTH = "QRADAR_HEALTH"
+    IDENTITY_COLLECTION = "IDENTITY_COLLECTION"
 
 
 class SearchCadence(IntEnum):
@@ -196,9 +197,15 @@ class SearchCadence(IntEnum):
 
 #: D-28, amended 2026-10-18: WAF and IPS cost the most searches per source, so they default to
 #: 15 minutes; every other family defaults to 5. D-42 (2026-11-03): the QRadar health family
-#: reads a window per host, not per bucket, and defaults to 15 minutes too.
+#: reads a window per host, not per bucket, and defaults to 15 minutes too. D-75 (2026-11-13):
+#: identity collection is three fleet searches per mapping chunk and defaults to 15 minutes.
 _FIFTEEN_MINUTE_FAMILIES = frozenset(
-    {SearchFamily.WAF_COLLECTION, SearchFamily.IPS_COLLECTION, SearchFamily.QRADAR_HEALTH}
+    {
+        SearchFamily.WAF_COLLECTION,
+        SearchFamily.IPS_COLLECTION,
+        SearchFamily.QRADAR_HEALTH,
+        SearchFamily.IDENTITY_COLLECTION,
+    }
 )
 
 

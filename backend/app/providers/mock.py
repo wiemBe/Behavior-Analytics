@@ -32,6 +32,7 @@ from app.health_detail.rows import (
     parse_health_metric_rows,
     parse_health_notification_rows,
 )
+from app.identity.dto import IdentityKeyedResult, IdentityProbeResult, IdentitySearchKind
 from app.ips.keyed_rows import (
     parse_ips_keyed_rows,
     validate_ips_fields,
@@ -183,6 +184,42 @@ class MockIpsSearch:
 IpsFault = Callable[[MockIpsSearch], Exception | None]
 #: A truncation hook: True forces the search to read as truncated.
 IpsTruncation = Callable[[MockIpsSearch], bool]
+
+
+@dataclass(frozen=True)
+class MockIdentitySearch:
+    """One identity search the mock was asked for. ``query`` is the real AQL."""
+
+    kind: IdentitySearchKind
+    qradar_log_source_ids: tuple[int, ...]
+    event_ids: tuple[int, ...]
+    window_start: datetime
+    window_end: datetime
+    query: str
+
+
+IdentityFault = Callable[[MockIdentitySearch], Exception | None]
+IdentityTruncation = Callable[[MockIdentitySearch], bool]
+IdentityScript = Callable[[MockIdentitySearch], list[dict[str, Any]] | None]
+
+#: Demo Windows Security sources (qradar id = 1000 + template index).
+_IDENTITY_EVENTS: dict[int, tuple[tuple[int, str, int], ...]] = {
+    1003: (
+        (4625, "alice", 5),
+        (4625, "bob", 1),
+        (4625, "carol", 3),
+        (4740, "dave", 4),
+        (4720, "eve", 1),
+        (1102, "auditor", 1),
+    ),
+    1004: (
+        (4625, "mallory", 6),
+        (4726, "frank", 1),
+    ),
+}
+_IDENTITY_PROBE_SOURCES = frozenset({1003, 1004})
+_IDENTITY_EVENT_PROPERTIES = frozenset({"qid", "EventID"})
+_IDENTITY_USERNAME_PROPERTIES = frozenset({"username"})
 
 
 @dataclass(frozen=True)
@@ -441,6 +478,23 @@ def _plan_ips_probe(
     return outcomes
 
 
+def _plan_identity_probe(
+    _owner: MockQRadarProvider, _args: Any, _kwargs: Any, result: IdentityProbeResult
+) -> Sequence[str]:
+    """Four outcomes: total, event id, username, catalog. A rejection is ERROR."""
+
+    def outcome(rejected: bool) -> str:
+        return ariel_log.OUTCOME_ERROR if rejected else ariel_log.OUTCOME_COMPLETED
+
+    total_failed = result.error is not None and result.total_events is None
+    return [
+        ariel_log.OUTCOME_ERROR if total_failed else ariel_log.OUTCOME_COMPLETED,
+        outcome(result.event_id.rejected),
+        outcome(result.username.rejected),
+        outcome(result.event_id.rejected),
+    ]
+
+
 def _notes_ariel[**P, R](
     family: str,
     plan: _SearchPlan | None = None,
@@ -548,6 +602,7 @@ class MockQRadarProvider(QRadarProvider):
         now: datetime | None = None,
         ips_max_sources_per_search: int = 50,
         pw_max_sources_per_search: int = 50,
+        identity_max_sources_per_search: int = 50,
         instance_id: uuid.UUID | None = None,
     ) -> None:
         self.instance_id = instance_id
@@ -556,6 +611,7 @@ class MockQRadarProvider(QRadarProvider):
         self._seed = seed
         self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
         self._pw_max_sources_per_search = max(1, int(pw_max_sources_per_search))
+        self._identity_max_sources_per_search = max(1, int(identity_max_sources_per_search))
         #: ARL-3 health reads. A test sets the answer, or puts an exception in
         #: `health_faults` under the read's method name; `health_calls` counts every read.
         self.health_servers: list[ManagedServerDTO] = [
@@ -611,6 +667,11 @@ class MockQRadarProvider(QRadarProvider):
         self.health_force_truncated: Callable[[MockHealthSearch], bool] | None = None
         self.health_metric_script: HealthScript | None = None
         self.health_notification_script: HealthScript | None = None
+        #: Keyed identity searches, in order, plus the same fault and truncation hooks.
+        self.identity_searches: list[MockIdentitySearch] = []
+        self.identity_fault: IdentityFault | None = None
+        self.identity_force_truncated: IdentityTruncation | None = None
+        self.identity_script: IdentityScript | None = None
         self._now = now or datetime.now(UTC)
         self._rng = random.Random(seed)  # noqa: S311 (not cryptographic)
         #: Replaces the built-in offense catalog when a test needs a backlog.
@@ -1517,6 +1578,217 @@ class MockQRadarProvider(QRadarProvider):
             rows=parsed,
             truncated=truncated,
             query=f"MOCK IPS {dimension.value}",
+        )
+
+    @staticmethod
+    def _identity_raw(
+        *,
+        source_ids: Sequence[int],
+        event_ids: Sequence[int],
+        names: bool,
+        start: datetime,
+        end: datetime,
+        bucket_seconds: int,
+    ) -> list[dict]:
+        """Demo rows for dc01/dc02. Other sources contribute nothing.
+
+        The same counts repeat in every bucket of the window. A counts search
+        sums usernames; a name search keeps one row per username.
+        """
+        first = int(start.timestamp()) // bucket_seconds
+        last = int(end.timestamp()) // bucket_seconds
+        asked = set(event_ids)
+        raw: list[dict] = []
+        for source_id in source_ids:
+            events = _IDENTITY_EVENTS.get(source_id, ())
+            if names:
+                grouped: dict[tuple[int, str], int] = {}
+                for event_id, username, count in events:
+                    if event_id in asked:
+                        grouped[(event_id, username)] = count
+                ordered = sorted(grouped.items(), key=lambda item: (-item[1], item[0][1]))
+                for bucket_key in range(first, last):
+                    for (event_id, username), count in ordered:
+                        raw.append(
+                            {
+                                "log_source_id": source_id,
+                                "event_id": event_id,
+                                "username": username,
+                                "k": bucket_key,
+                                "events": count,
+                            }
+                        )
+                continue
+            totals: dict[int, int] = {}
+            for event_id, _username, count in events:
+                if event_id in asked:
+                    totals[event_id] = totals.get(event_id, 0) + count
+            ranked = sorted(totals.items(), key=lambda item: (-item[1], item[0]))
+            for bucket_key in range(first, last):
+                for event_id, count in ranked:
+                    raw.append(
+                        {
+                            "log_source_id": source_id,
+                            "event_id": event_id,
+                            "k": bucket_key,
+                            "events": count,
+                        }
+                    )
+        return raw
+
+    @_notes_ariel(ariel_log.CALLER_IDENTITY_COLLECTION)
+    async def get_identity_keyed(
+        self,
+        search: IdentitySearchKind,
+        *,
+        qradar_log_source_ids: Sequence[int],
+        event_id_property: str,
+        username_property: str,
+        event_ids: Sequence[int],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> IdentityKeyedResult:
+        """Keyed identity rows from the demo catalog, parsed by the real parser."""
+        from app.identity.aql import build_query, validate_query_inputs
+        from app.identity.rows import parse_identity_rows
+
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        spec = validate_query_inputs(
+            search,
+            source_ids=qradar_log_source_ids,
+            event_id_property=event_id_property,
+            username_property=username_property,
+            event_ids=event_ids,
+            max_sources=self._identity_max_sources_per_search,
+        )
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        query = build_query(
+            spec,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            bucket_ms=int(bucket_seconds) * 1000,
+            max_rows=max_rows,
+        )
+        recorded = MockIdentitySearch(
+            kind=spec.search,
+            qradar_log_source_ids=spec.source_ids,
+            event_ids=spec.event_ids,
+            window_start=start,
+            window_end=end,
+            query=query,
+        )
+        self.identity_searches.append(recorded)
+        if self.identity_fault is not None and (fault := self.identity_fault(recorded)) is not None:
+            raise fault
+        scripted = None if self.identity_script is None else self.identity_script(recorded)
+        raw = (
+            self._identity_raw(
+                source_ids=spec.source_ids,
+                event_ids=spec.event_ids,
+                names=spec.search is not IdentitySearchKind.COUNTS,
+                start=start,
+                end=end,
+                bucket_seconds=bucket_seconds,
+            )
+            if scripted is None
+            else scripted
+        )
+        parsed, truncated = parse_identity_rows(
+            raw,
+            source_ids=spec.source_ids,
+            event_ids=spec.event_ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=max_rows,
+            with_username=spec.search is not IdentitySearchKind.COUNTS,
+        )
+        if self.identity_force_truncated is not None and self.identity_force_truncated(recorded):
+            truncated = True
+        return IdentityKeyedResult(
+            search=spec.search,
+            qradar_log_source_ids=spec.source_ids,
+            event_ids=spec.event_ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=parsed,
+            truncated=truncated,
+            query=query,
+        )
+
+    @_notes_ariel(ariel_log.CALLER_IDENTITY_COLLECTION, _plan_identity_probe)
+    async def probe_identity_fields(
+        self,
+        *,
+        qradar_log_source_id: int,
+        event_id_property: str,
+        username_property: str,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> IdentityProbeResult:
+        """Population evidence for dc01 and dc02. A bad name raises before a search.
+
+        A pattern-valid name outside the mock's known properties is a rejection,
+        the same way QRadar answers 422. The property text is not stored.
+        """
+        from app.identity.aql import build_catalog_query, build_populated_query, build_total_query
+        from app.identity.dto import IdentityFieldProbe
+        from app.identity.reference import validate_probe_window
+
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_probe_window(window_start, window_end)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        build_total_query(
+            qradar_log_source_id=qradar_log_source_id, start_ms=start_ms, end_ms=end_ms
+        )
+        build_populated_query(
+            qradar_log_source_id=qradar_log_source_id,
+            event_id_property=event_id_property,
+            username_property=username_property,
+            field="event_id",
+            start_ms=start_ms,
+            end_ms=end_ms,
+        )
+        build_populated_query(
+            qradar_log_source_id=qradar_log_source_id,
+            event_id_property=event_id_property,
+            username_property=username_property,
+            field="username",
+            start_ms=start_ms,
+            end_ms=end_ms,
+        )
+        build_catalog_query(
+            qradar_log_source_id=qradar_log_source_id,
+            event_id_property=event_id_property,
+            start_ms=start_ms,
+            end_ms=end_ms,
+        )
+        demo = qradar_log_source_id in _IDENTITY_PROBE_SOURCES
+        event_known = event_id_property in _IDENTITY_EVENT_PROPERTIES
+        user_known = username_property in _IDENTITY_USERNAME_PROPERTIES
+        if event_known:
+            event_probe = IdentityFieldProbe(95 if demo else 0, False, None)
+        else:
+            event_probe = IdentityFieldProbe(None, True, "ProviderQueryRejectedError")
+        if user_known:
+            user_probe = IdentityFieldProbe(92 if demo else 0, False, None)
+        else:
+            user_probe = IdentityFieldProbe(None, True, "ProviderQueryRejectedError")
+        catalog = (4625, 4740, 4720, 1102) if demo and event_known else ()
+        return IdentityProbeResult(
+            total_events=100 if demo else 0,
+            event_id=event_probe,
+            username=user_probe,
+            catalog_event_ids=catalog,
+            truncated=False,
+            error=None,
+            searches=4,
         )
 
     def _pw_events(self, scope_id: int, key: int, names: tuple[str, ...]) -> list[dict]:

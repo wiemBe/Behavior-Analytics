@@ -309,6 +309,7 @@ def test_family_enabled_matches_every_collection_switch() -> None:
         catchall_collection_enabled=False,
         geo_collection_enabled=False,
         qradar_health_collection_enabled=False,
+        identity_collection_enabled=False,
     )
     assert family_enabled(SearchFamily.PHASE_A_VOLUME, settings) is True
     assert all(
@@ -327,6 +328,7 @@ def test_family_enabled_matches_every_collection_switch() -> None:
             "catchall_collection_enabled": True,
             "geo_collection_enabled": True,
             "qradar_health_collection_enabled": True,
+            "identity_collection_enabled": True,
         }
     )
     assert all(family_enabled(family, enabled) for family in SearchFamily)

@@ -328,6 +328,20 @@ class Settings(BaseSettings):
     ips_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
     ips_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     ips_retention_interval_seconds: int = Field(default=86400, ge=3600)
+    #: Identity collection (D-75) is opt-in. A profile must also be enabled and
+    #: VALID for its current mapping version before it is searched.
+    identity_collection_enabled: bool = False
+    #: Sources that share a field mapping go in one search, cut at this cap.
+    identity_max_sources_per_search: int = Field(default=50, ge=1, le=500)
+    identity_retention_enabled: bool = True
+    #: Counts, top-N usernames and their bucket. Above the 28-day lookback.
+    #: An operator who raises the lookback past 29 can outrun this window.
+    identity_count_retention_days: int = Field(default=35, ge=29)
+    identity_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
+    identity_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    identity_retention_interval_seconds: int = Field(default=86400, ge=3600)
+    identity_validation_window_seconds: int = Field(default=900, ge=60, le=3600)
+    identity_validation_min_ratio: float = Field(default=0.90, gt=0, le=1)
     #: Entity-mention backfill (SOC-16f4, D-64): a beat task fills `entity_mention` for
     #: parents stored before the index existed, in bounded keyset batches, resumable per
     #: (instance, source). Insert-only; it never deletes a mention.
