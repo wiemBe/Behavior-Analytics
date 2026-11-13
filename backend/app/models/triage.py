@@ -141,7 +141,7 @@ class AnomalyTriageEvent(UUIDPrimaryKeyMixin, Base):
         ForeignKey("anomaly_triage.id", ondelete="CASCADE"),
         nullable=False,
     )
-    kind: Mapped[TriageEventKind] = mapped_column(String(16), nullable=False)
+    kind: Mapped[TriageEventKind] = mapped_column(String(32), nullable=False)
     #: The principal subject that performed the change.
     actor: Mapped[str] = mapped_column(String(SUBJECT_MAX_LENGTH), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

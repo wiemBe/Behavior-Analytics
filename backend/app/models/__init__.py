@@ -102,6 +102,7 @@ from app.models.search import (
     SearchResultMetric,
 )
 from app.models.search_cadence import SearchCadenceSetting
+from app.models.training_exclusion import BaselineTrainingExclusion
 from app.models.triage import AnomalyTriage, AnomalyTriageEvent
 from app.models.waf import (
     WafAnomaly,
@@ -161,6 +162,7 @@ __all__ = [
     "AuditLog",
     "AuthSession",
     "Base",
+    "BaselineTrainingExclusion",
     "CatchallBucket",
     "CatchallSender",
     "ClassificationRule",
