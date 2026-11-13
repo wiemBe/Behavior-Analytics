@@ -16,6 +16,7 @@
     "source-behavior": "Sources",
     "waf-behavior": "WAF behavior",
     "ips-behavior": "IPS behavior",
+    "identity": "Identity",
     "property-watches": "Property watches",
     "geography": "Geography",
     "fleet": "Fleet",

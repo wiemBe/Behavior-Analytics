@@ -9,7 +9,8 @@
     "log_source": "Log source",
     "waf": "WAF",
     "ips": "IPS",
-    "property_watch": "Property watch"
+    "property_watch": "Property watch",
+    "identity": "Identity source"
   },
   "scope": {
     "everyDetector": "Every detector",

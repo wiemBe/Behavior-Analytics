@@ -16,6 +16,7 @@
     "sources": "Sources",
     "wafBehavior": "WAF behavior",
     "ipsBehavior": "IPS behavior",
+    "identityBehavior": "Identity",
     "traffic": "Traffic",
     "noisySources": "Noisy sources",
     "propertyWatches": "Property watches",

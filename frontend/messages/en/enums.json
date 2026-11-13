@@ -87,6 +87,15 @@
     "RULE_SILENCE": "Rule silence",
     "RULE_STORM": "Rule storm"
   },
+  "identityAnomalyType": {
+    "IDENTITY_AUDIT_LOG_CLEARED": "Audit log cleared",
+    "IDENTITY_PRIVILEGED_GROUP_ADD": "Privileged group membership added",
+    "IDENTITY_NEW_PRIVILEGED_ACCOUNT": "New privileged account",
+    "IDENTITY_FAILED_LOGON_SPIKE": "Failed logon spike",
+    "IDENTITY_LOCKOUT_SPIKE": "Account lockout spike",
+    "IDENTITY_ACCOUNT_CREATED": "Account created",
+    "IDENTITY_ACCOUNT_DELETED": "Account deleted"
+  },
   "propertyWatchAnomalyType": {
     "PW_VALUE_SPIKE": "Value spike",
     "PW_VALUE_DROP": "Value drop",

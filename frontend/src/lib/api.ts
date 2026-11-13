@@ -1401,6 +1401,8 @@ export interface AnomalySummary {
   pw_value?: PwValueRef | null;
   // RULE only (SOC-6): the rule the incident is about.
   rule?: RuleRef | null;
+  // IDENTITY_SOURCE only (SOC-10): the catalogue event ID. The list leaves `usernames` empty.
+  identity?: IdentityRef | null;
   // WAF and IPS: EXACT, or LOWER_BOUND when observed_value is "at least n".
   observed_measurement?: MeasurementKind | null;
   // The analyst's triage (SOC-1a): always present on a current backend, a NEW unowned block for an
@@ -1421,7 +1423,7 @@ export type TriageDisposition =
   | "STALE";
 /** STALE is system-only; an analyst PATCH can never select it. */
 export type AnalystTriageDisposition = Exclude<TriageDisposition, "STALE">;
-export type TriageFamily = "log_source" | "waf" | "ips" | "property_watch" | "rule";
+export type TriageFamily = "log_source" | "waf" | "ips" | "property_watch" | "rule" | "identity";
 export type TriageEventKind =
   | "STATUS"
   | "OWNER"
@@ -1806,7 +1808,9 @@ export type SubjectKind =
   | "IPS_SOURCE"
   | "PW_VALUE"
   // An analytics rule or building block (SOC-6): its row is a rule-match incident.
-  | "RULE";
+  | "RULE"
+  // One identity source and one catalogue event ID (SOC-10).
+  | "IDENTITY_SOURCE";
 
 /** EXACT, or LOWER_BOUND when the count is "at least n". */
 export type MeasurementKind = "EXACT" | "LOWER_BOUND";
@@ -3388,9 +3392,14 @@ export const api = {
   anomalies: (params: AnomalyListParams = {}) =>
     request<Page<AnomalySummary>>(`/anomalies${qs({ ...params })}`),
   anomaly: (id: string) =>
-    request<AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail | RuleAnomalyDetail>(
-      `/anomalies/${id}`,
-    ),
+    request<
+      | AnomalyDetail
+      | WafAnomalyDetail
+      | IpsAnomalyDetail
+      | PwAnomalyDetail
+      | RuleAnomalyDetail
+      | IdentityAnomalyDetail
+    >(`/anomalies/${id}`),
   anomalyPivot: (id: string) => request<Pivot>(`/anomalies/${id}/pivot`),
   // SOC-3: what else happened on the anomaly's source around it (offenses, anomalies, rules).
   relatedActivity: (family: RelatedFamily, id: string, pad?: RelatedPad) =>
@@ -4183,7 +4192,9 @@ export const alertPolicyApi = {
 // Mirrors backend/app/schemas/suppression.py. A MAINTENANCE row is synthetic: read-only, no id,
 // no start, and no hit count (null is "not counted", never zero).
 export type SuppressionKind = "ANALYST" | "KNOWN_CHANGE" | "MAINTENANCE";
-export type SuppressionFamily = AlertPolicyFamily;
+// An identity incident is quieted on its log source (FIX-62); the policy editor's family list is
+// unchanged, so this widens the quiet-period family only.
+export type SuppressionFamily = AlertPolicyFamily | "identity";
 
 export interface Suppression {
   id: string | null;
@@ -4582,6 +4593,139 @@ export const ruleMatchApi = {
     request<RuleMatchAnomalies>(`/rules/match-anomalies${qs({ days })}`),
   section: (ruleId: string) => request<RuleMatchSection>(`/rules/${ruleId}/match-anomalies`),
 };
+
+// --- SOC-10: identity sources and their incidents ---------------------------------------
+// Mirrors app/schemas/identity.py and the identity additions of app/schemas/anomaly.py. A count
+// that was not measured is `null`, never 0. A username is shown only as the stored rows hold it,
+// and is attacker-controlled text: render it as text. Reads need `read:identity`; the profile
+// writes need `admin:identity`, which does not grant the read.
+
+export type IdentityMeasurement = "EXACT" | "TRUNCATED" | "NOT_COLLECTED";
+
+export interface IdentityProfile {
+  id: string;
+  log_source_id: string;
+  instance_id: string;
+  qradar_log_source_id: number;
+  log_source_name: string;
+  enabled: boolean;
+  profile_version: number;
+  product_label: string | null;
+  event_id_property: string;
+  username_property: string;
+  logon_type_property: string | null;
+  enabled_event_ids: number[];
+  validation_status: string;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation_report: Record<string, unknown>;
+}
+
+export interface IdentityCollection {
+  watermark_at: string | null;
+  last_run_at: string | null;
+  lag_seconds: number | null;
+  // null: no watermark row yet, which is not "no failures".
+  consecutive_failures: number | null;
+  last_error: string | null;
+}
+
+export interface IdentityBucketSummary {
+  bucket_start: string;
+  bucket_seconds: number;
+  measurement: IdentityMeasurement | string;
+  population: number | null;
+  admission_truncated: boolean;
+}
+
+export interface IdentitySource {
+  profile: IdentityProfile;
+  collection: IdentityCollection;
+  last_bucket: IdentityBucketSummary | null;
+}
+
+export interface IdentityStoredName {
+  rank: number;
+  username: string;
+  count: number;
+  // The text was cut at the stored length, not the search cap.
+  truncated: boolean;
+}
+
+export interface IdentitySeriesPoint {
+  event_id: number;
+  bucket_start: string;
+  event_count: number | null;
+  measurement: IdentityMeasurement | string | null;
+  names_measurement: IdentityMeasurement | string | null;
+  admission_truncated: boolean | null;
+  usernames: IdentityStoredName[];
+}
+
+export interface IdentitySourceDetail {
+  profile: IdentityProfile;
+  series: IdentitySeriesPoint[];
+}
+
+export interface IdentityProfileInput {
+  event_id_property: string;
+  username_property: string;
+  logon_type_property: string | null;
+  enabled_event_ids: number[];
+  product_label: string | null;
+}
+
+export const identityApi = {
+  sources: () => request<IdentitySource[]>("/identity/sources"),
+  // The window is at most 7 days; the default is the last 24 hours.
+  source: (logSourceId: string, window: { start?: string; end?: string } = {}) =>
+    request<IdentitySourceDetail>(`/identity/sources/${logSourceId}${qs({ ...window })}`),
+  saveProfile: (logSourceId: string, body: IdentityProfileInput) =>
+    request<IdentityProfile>(`/identity/sources/${logSourceId}/profile`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  validate: (logSourceId: string) =>
+    request<IdentityProfile>(`/identity/sources/${logSourceId}/validate`, { method: "POST" }),
+  enable: (logSourceId: string) =>
+    request<IdentityProfile>(`/identity/sources/${logSourceId}/enable`, { method: "POST" }),
+  disable: (logSourceId: string) =>
+    request<IdentityProfile>(`/identity/sources/${logSourceId}/disable`, { method: "POST" }),
+};
+
+/** The event an identity incident explains; the detail adds the stored top-N names. */
+export interface IdentityRef {
+  event_id: number;
+  usernames: Array<{ rank: number; username: string; count: number }>;
+}
+
+export interface IdentityDetectionDetail {
+  event_id: number | null;
+  measurement: string | null;
+  ratio: number | null;
+  robust_z: number | null;
+  score_status: string | null;
+}
+
+/** An identity incident as `GET /anomalies/{id}` is read for the investigation page. */
+export interface IdentityAnomalyDetail
+  extends Omit<AnomalyDetail, "detection" | "subject_kind" | "identity"> {
+  subject_kind: "IDENTITY_SOURCE";
+  identity: IdentityRef;
+  detection: IdentityDetectionDetail | null;
+}
+
+export function isIdentityDetail(
+  a:
+    | AnomalyDetail
+    | WafAnomalyDetail
+    | IpsAnomalyDetail
+    | PwAnomalyDetail
+    | RuleAnomalyDetail
+    | IdentityAnomalyDetail,
+): a is IdentityAnomalyDetail {
+  return a.subject_kind === "IDENTITY_SOURCE";
+}
 
 // --- IPS source administration (docs/FIELD-MAPPING.md §FM.9, T-049's /ips API) ---
 // Guarded by admin:ips, which admin:waf does not grant. A field reference has
@@ -5986,7 +6130,7 @@ export const homeReads = {
 export type QueueSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
 export type QueueKind = "anomaly" | "alert" | "offense" | "source_review" | "catchall_sender";
 export type QueueScope = "mine" | "unassigned" | "all";
-export type QueueFamily = "log_source" | "waf" | "ips" | "property_watch" | "rule";
+export type QueueFamily = "log_source" | "waf" | "ips" | "property_watch" | "rule" | "identity";
 export type QueueSourceState = "OK" | "FORBIDDEN" | "FAILED" | "NOT_COLLECTED" | "STALE" | "PARTIAL";
 export type QueueCompareKind = "DEFAULT_WINDOW" | "OVERRIDE" | "STORED";
 

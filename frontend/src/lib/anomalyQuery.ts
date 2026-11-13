@@ -6,6 +6,7 @@
 // page or smuggled into the upstream request; timestamps are validated and the
 // range is clamped before it reaches an endpoint that queries a hypertable.
 
+import { isIdentityType } from "@/components/identity/identityFormat";
 import { isIpsType } from "@/components/ips/ipsLabels";
 import { isPwType } from "@/components/propertywatch/pwFormat";
 import { isRuleType } from "@/components/rules/ruleMatchFormat";
@@ -142,6 +143,7 @@ export const SUBJECT_KINDS: Array<{ value: SubjectFilterKind; label: string }> =
   { value: "IPS", label: "IPS entities and sources" },
   { value: "PW_VALUE", label: "Property watch values" },
   { value: "RULE", label: "Rule" },
+  { value: "IDENTITY_SOURCE", label: "Identity sources" },
 ];
 
 export interface SubjectQuery {
@@ -155,6 +157,8 @@ export interface SubjectQuery {
   pw_anomaly_type: string;
   /** A rule-match detector type, or "". */
   rule_anomaly_type: string;
+  /** An identity detector type, or "". */
+  identity_anomaly_type: string;
   /** An IPS entity id (a link from an entity view), or "" when absent or not a UUID. */
   ips_entity_id: string;
   /** One property watch (a link from its page), or "" when absent or not a UUID. */
@@ -171,6 +175,7 @@ export function parseSubjectQuery(params: Record<string, SearchParamValue>): Sub
     ips_anomaly_type: type && isIpsType(type) ? type : "",
     pw_anomaly_type: type && isPwType(type) ? type : "",
     rule_anomaly_type: type && isRuleType(type) ? type : "",
+    identity_anomaly_type: type && isIdentityType(type) ? type : "",
     ips_entity_id: uuid(params.ips_entity_id),
     property_watch_id: uuid(params.property_watch_id),
   };

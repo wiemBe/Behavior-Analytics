@@ -19,6 +19,7 @@ describe("NAV", () => {
       "Noisy sources",
       "WAF behavior",
       "IPS behavior",
+      "Identity",
       "Traffic",
       "Property watches",
       "Geography",

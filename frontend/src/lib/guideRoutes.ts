@@ -18,6 +18,8 @@ export const GUIDE_ROUTES = {
   "/behavior/traffic": "waf-behavior",
   "/behavior/waf": "waf-behavior",
   "/behavior/waf/sources/[id]": "waf-behavior",
+  "/behavior/identity": "identity",
+  "/behavior/identity/sources/[id]": "identity",
   "/behavior/ips": "ips-behavior",
   "/behavior/ips/sources/[id]": "ips-behavior",
   "/behavior/watches": "property-watches",

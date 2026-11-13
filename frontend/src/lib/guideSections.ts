@@ -129,6 +129,14 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
     related: ["ips-source-setup", "expected-range", "anomalies"],
   },
   {
+    id: "identity",
+    group: "pages",
+    routes: ["/behavior/identity", "/behavior/identity/sources/[id]"],
+    audience: "analyst",
+    permissions: ["read:identity"],
+    related: ["honesty-states", "anomalies", "entity-timeline"],
+  },
+  {
     id: "property-watches",
     group: "pages",
     routes: ["/behavior/watches", "/behavior/watches/[id]"],

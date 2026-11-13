@@ -20,7 +20,14 @@ export const QUEUE_KINDS: readonly QueueKind[] = [
   "source_review",
   "catchall_sender",
 ];
-export const QUEUE_FAMILIES: readonly QueueFamily[] = ["log_source", "waf", "ips", "property_watch", "rule"];
+export const QUEUE_FAMILIES: readonly QueueFamily[] = [
+  "log_source",
+  "waf",
+  "ips",
+  "property_watch",
+  "rule",
+  "identity",
+];
 export const QUEUE_SEVERITIES: readonly QueueSeverity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
 
 const HOUR_MS = 3_600_000;

@@ -32,6 +32,7 @@ describe("subject filter", () => {
       "IPS entities and sources",
       "Property watch values",
       "Rule",
+      "Identity sources",
     ]);
   });
 

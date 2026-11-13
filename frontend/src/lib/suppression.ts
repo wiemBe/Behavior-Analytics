@@ -26,19 +26,23 @@ export const REFERENCE_MAX = 255;
 const DAY_MS = 86_400_000;
 
 /** The families whose subject is a log source: only these may be quieted as a whole source. */
-const SOURCE_ANCHORED: readonly SuppressionFamily[] = ["log_source", "waf", "ips"];
+const SOURCE_ANCHORED: readonly SuppressionFamily[] = ["log_source", "waf", "ips", "identity"];
 
-/** `alert.source_type` of the four anomaly producers, by family (the backend's `_ALERT_FAMILY`). */
+/** `alert.source_type` of the anomaly producers that have a quiet-period condition, by family (the backend's `_ALERT_FAMILY`). */
 const ALERT_FAMILY: Readonly<Record<string, SuppressionFamily>> = {
   log_source: "log_source",
   waf_endpoint: "waf",
   ips_entity: "ips",
   ips_source: "ips",
   pw_value: "property_watch",
+  identity_source: "identity",
 };
 
 /** The `enums` group that names a family's detectors. */
-export function detectorGroup(family: SuppressionFamily): "anomalyType" | "propertyWatchAnomalyType" {
+export function detectorGroup(
+  family: SuppressionFamily,
+): "anomalyType" | "propertyWatchAnomalyType" | "identityAnomalyType" {
+  if (family === "identity") return "identityAnomalyType";
   return family === "property_watch" ? "propertyWatchAnomalyType" : "anomalyType";
 }
 

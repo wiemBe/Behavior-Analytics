@@ -66,7 +66,8 @@
     "IPS_SOURCE": "IPS sources",
     "IPS": "IPS entities and sources",
     "PW_VALUE": "Property watch values",
-    "RULE": "Rule"
+    "RULE": "Rule",
+    "IDENTITY_SOURCE": "Identity sources"
   },
   "incident": {
     "intervalNotRecorded": "Interval not recorded",
@@ -242,7 +243,12 @@
       "ownerNone": "Owner: unassigned",
       "disposition": "Disposition: {value}",
       "range": "Range: {value}",
-      "rangeValue": { "1h": "last hour", "24h": "last 24 hours", "7d": "last 7 days", "30d": "last 30 days" },
+      "rangeValue": {
+        "1h": "last hour",
+        "24h": "last 24 hours",
+        "7d": "last 7 days",
+        "30d": "last 30 days"
+      },
       "since": "From: {value}",
       "until": "To: {value}",
       "sinceRich": "From: <value></value>",
@@ -286,7 +292,8 @@
     "allEvidence": "All evidence states",
     "filteredBy": "Filtered by",
     "removeFilter": "Remove filter {chip}",
-    "clearAll": "Clear all"
+    "clearAll": "Clear all",
+    "groupIdentity": "Identity"
   },
   "rows": {
     "unnamed": "Unnamed subject",
@@ -330,7 +337,10 @@
     "ageLabel": "Started {age} ago",
     "noEventsFor": "No events for {duration}",
     "noEventsUnknown": "No events; how long is not recorded",
-    "deviationChange": "{change} against expected"
+    "deviationChange": "{change} against expected",
+    "eventsPerBucket": "events / 5 min",
+    "eventsTruncated": "Truncated bucket: at least this many events.",
+    "identityEvent": "{event}"
   },
   "boundary": {
     "title": "Anomalies",
