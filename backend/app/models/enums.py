@@ -644,6 +644,10 @@ class TriageEventKind(StrEnum):
     NOTE = "NOTE"
     #: An analyst comment. Its text lives only on `anomaly_triage_event.comment`.
     COMMENT = "COMMENT"
+    #: A baseline training exclusion was created; the exclusion id is in `to_value`.
+    BASELINE_EXCLUSION_CREATED = "BASELINE_EXCLUSION_CREATED"
+    #: A baseline training exclusion was revoked; the exclusion id is in `to_value`.
+    BASELINE_EXCLUSION_REVOKED = "BASELINE_EXCLUSION_REVOKED"
 
 
 class AnomalyState(StrEnum):
