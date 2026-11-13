@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +16,72 @@ from app.models.enums import (
     Severity,
 )
 from app.schemas.messages import MessageParamValue
+
+_HTTP_NOTIFICATION_CHANNELS = frozenset(
+    {
+        NotificationChannel.TEAMS,
+        NotificationChannel.SLACK,
+        NotificationChannel.WEBHOOK,
+    }
+)
+
+
+def notification_target_label(channel: NotificationChannel, target: str) -> str:
+    """Return the non-secret destination label exposed by notification history."""
+    if channel not in _HTTP_NOTIFICATION_CHANNELS:
+        return target
+
+    try:
+        parsed = urlsplit(target)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return "(webhook)"
+
+    scheme = parsed.scheme.lower()
+    if (
+        scheme not in {"http", "https"}
+        or hostname is None
+        or any(char.isspace() or char in "/\\?#@%" for char in hostname)
+    ):
+        return "(webhook)"
+
+    display_host = f"[{hostname}]" if ":" in hostname else hostname
+    default_port = 80 if scheme == "http" else 443
+    port_suffix = f":{port}" if port is not None and port != default_port else ""
+    return f"{scheme}://{display_host}{port_suffix}"
+
+
+def notification_error_message(
+    channel: NotificationChannel,
+    target: str,
+    error_message: str | None,
+) -> str | None:
+    """Replace legacy HTTP target text with its non-secret display label."""
+    if error_message is None or channel not in _HTTP_NOTIFICATION_CHANNELS:
+        return error_message
+
+    label = notification_target_label(channel, target)
+    replacements = {target}
+    try:
+        parsed = urlsplit(target)
+    except ValueError:
+        parsed = None
+
+    if parsed is not None:
+        path = parsed.path
+        query = parsed.query
+        if path and query:
+            replacements.add(f"{path}?{query}")
+        if path and path != "/":
+            replacements.add(path)
+        if query:
+            replacements.update({f"?{query}", query})
+
+    sanitized = error_message
+    for value in sorted((value for value in replacements if value), key=len, reverse=True):
+        sanitized = sanitized.replace(value, label)
+    return sanitized
 
 
 class AlertOut(BaseModel):

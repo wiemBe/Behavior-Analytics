@@ -44,7 +44,9 @@ class _HttpNotifier(Notifier):
         try:
             resp = await self._client.post(url, json=payload, timeout=self._timeout)
         except httpx.HTTPError as exc:
-            raise NotifierError(f"transport error: {exc}") from exc
+            # HTTPX exception text may contain the request URL, whose path or
+            # query is the webhook credential. Persist only the error class.
+            raise NotifierError(f"transport error: {type(exc).__name__}") from exc
         if resp.status_code >= 500 or resp.status_code == 429:
             raise NotifierError(f"retryable status {resp.status_code}")
         if resp.status_code >= 400:
