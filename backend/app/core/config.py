@@ -1039,6 +1039,10 @@ class Settings(BaseSettings):
     notify_retry_max_seconds: float = Field(default=300.0, ge=1.0)
     notify_send_recovery: bool = True
     notify_per_channel_rate: str = "30/minute"
+    #: One wall-clock budget for a named-destination POST, on top of the 10 s
+    #: idle timeouts. A peer that writes a byte before each idle timeout cannot
+    #: hold the worker past this.
+    notify_send_deadline_seconds: float = Field(default=30.0, gt=0)
 
     # --- E-mail delivery (MAIL-1) -------------------------------------------
     # The transport every alert e-mail is sent through: the site's SMTP relay.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import timedelta
 
@@ -185,6 +186,47 @@ async def test_no_notifier_and_destination_classes(db_session) -> None:
     await disp.dispatch_due()
     [attempt] = await _attempts(db_session, bad)
     assert attempt.error_class == "payload_invalid"
+
+
+async def test_a_stored_forbidden_header_records_payload_invalid(db_session) -> None:
+    dest = NotificationDestination(
+        name="D2", enabled=True, url=SECRET_URL, allow_http=False, allow_private=False,
+        hmac_secret="s3cret-xyz",
+        headers=json.dumps({"Transfer-Encoding": "chunked"}),
+        created_by="t", updated_by="t",
+    )  # fmt: skip
+    db_session.add(dest)
+    await db_session.flush()
+    alert = await _alert(db_session)
+    notif = AlertNotification(
+        alert_id=alert.id,
+        channel=NotificationChannel.WEBHOOK,
+        target=f"destination:{dest.id}",
+        transition=AlertTransition.OPENED,
+        status=NotificationStatus.PENDING,
+        max_attempts=3,
+        next_attempt_at=utc(),
+        payload={
+            "title": "t", "alert_type": "log_source", "severity": "HIGH", "status": "OPEN",
+            "opened_at": "2026-11-13T09:00:00+00:00",
+        },
+    )  # fmt: skip
+    db_session.add(notif)
+    await db_session.flush()
+    def no_transport() -> httpx.AsyncBaseTransport:
+        raise AssertionError("a refused header must not reach the transport")
+
+    disp = NotificationDispatcher(
+        db_session,
+        {},
+        _policy(NotificationChannel.SLACK),
+        destination_resolver=lambda h, p: ("93.184.216.34",),
+        destination_transport=no_transport,
+    )
+    await disp.dispatch_due()
+    [attempt] = await _attempts(db_session, notif)
+    assert (attempt.error_class, attempt.http_status) == ("payload_invalid", None)
+    assert notif.status == NotificationStatus.DEAD_LETTER
 
 
 async def test_destination_attempt_records_sender_class_and_status(db_session) -> None:

@@ -37,6 +37,12 @@ def _resolver(*addresses: str):  # type: ignore[no-untyped-def]
         ("2001:db8::1", "non-public reserved IPv6"),
         ("::ffff:127.0.0.1", "IPv4-mapped IPv6 loopback"),
         ("::ffff:169.254.169.254", "IPv4-mapped metadata"),
+        ("100.64.0.1", "CGNAT"),
+        ("100.100.100.200", "CGNAT metadata"),
+        ("100.127.255.254", "CGNAT end"),
+        ("::ffff:100.64.0.1", "IPv4-mapped CGNAT"),
+        ("::ffff:100.100.100.200", "IPv4-mapped CGNAT metadata"),
+        ("fec0::1", "site-local"),
     ],
 )
 def test_every_non_public_address_class_is_refused(address: str, address_class: str) -> None:
@@ -64,6 +70,13 @@ def test_private_flag_allows_private_literal_mapped_and_mixed_answers() -> None:
         resolver=_resolver("::ffff:10.0.0.2", PUBLIC_V4),
     )
     assert mapped.addresses == ("::ffff:10.0.0.2", PUBLIC_V4)
+    # The new refusals sit with the other flags: an explicit private opt-in still opens them.
+    cgnat = guard_url(
+        "https://100.100.100.200/latest/meta-data/", allow_private=True, resolver=_resolver()
+    )
+    assert cgnat.addresses == ("100.100.100.200",)
+    site = guard_url("https://[fec0::1]/x", allow_private=True, resolver=_resolver())
+    assert site.addresses == ("fec0::1",)
 
 
 def test_http_needs_its_own_flag_independently_of_private_addresses() -> None:
@@ -144,3 +157,33 @@ def test_pinned_url_preserves_path_query_host_and_sni_inputs() -> None:
 
 def test_webhook_test_limit_defaults_to_five_per_minute() -> None:
     assert Settings.model_fields["rate_limit_webhook_test"].default == "5/minute"
+
+
+def _no_dns(host: str, port: int) -> tuple[str, ...]:
+    raise AssertionError("a literal address must not use DNS")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://100.64.0.1/",
+        "https://100.100.100.200/latest/meta-data/",
+        "https://100.127.255.254/",
+        "https://[::ffff:100.64.0.1]/",
+        "https://[::ffff:100.100.100.200]/",
+        "https://[fec0::1]/",
+    ],
+)
+def test_cgnat_and_site_local_literals_are_refused(url: str) -> None:
+    with pytest.raises(URLGuardError) as caught:
+        guard_url(url, resolver=_no_dns)
+    assert caught.value.code == "notifications.private_refused"
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["100.128.0.1", "100.63.255.255", "192.0.0.9", "192.0.0.10", "168.63.129.16"],
+)
+def test_addresses_python_marks_global_stay_allowed(address: str) -> None:
+    checked = guard_url(f"https://{address}/", resolver=_no_dns)
+    assert checked.addresses == (address,)

@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
@@ -47,7 +52,46 @@ from app.schemas.notification_destination import (
 from app.security.auth import get_principal
 from app.security.rbac import Principal
 
-router = APIRouter(prefix="/admin/notifications/destinations", tags=["notification-destinations"])
+# Fields whose submitted value must not come back on a 422. `headers` is the
+# whole map, so one bad value would otherwise echo every other value too.
+_SECRET_FIELDS = frozenset({"hmac_secret", "headers"})
+
+
+def _without_secret_inputs(errors: list[Any]) -> list[Any]:
+    published: list[Any] = []
+    for error in errors:
+        loc = error.get("loc", ()) if isinstance(error, dict) else ()
+        if any(part in _SECRET_FIELDS for part in loc):
+            published.append({key: value for key, value in error.items() if key != "input"})
+        else:
+            published.append(error)
+    return published
+
+
+class _DestinationRoute(APIRoute):
+    """Validation failures on this router omit secret field inputs."""
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        original = super().get_route_handler()
+
+        async def handler(request: Request) -> Response:
+            try:
+                return await original(request)
+            except RequestValidationError as exc:
+                detail = jsonable_encoder(_without_secret_inputs(list(exc.errors())))
+                return JSONResponse(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    content={"detail": detail},
+                )
+
+        return handler
+
+
+router = APIRouter(
+    prefix="/admin/notifications/destinations",
+    tags=["notification-destinations"],
+    route_class=_DestinationRoute,
+)
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
 
 MAX_DESTINATIONS = 10
@@ -318,7 +362,17 @@ async def send_test(
     """Send only the operator-requested test event, with a bounded response read."""
     row = await _get(session, destination_id, for_update=True)
     now = _utcnow()
-    result, response_status = await _send(row, now)
+    try:
+        result, response_status = await _send(row, now)
+    except destination_sender.StoredHeadersInvalid:
+        # A row that bypassed the schema cannot be sent, and the class is permanent.
+        result, response_status = "payload_invalid", None
+    except Exception as exc:
+        # A protocol error (h11, for example) is not an httpx.TransportError, and
+        # its text can carry the URL. Keep the class; do not become an unhandled 500.
+        mapped = destination_sender.transport_failure_class(exc)
+        result = mapped if mapped is not None else "transport"
+        response_status = None
     row.last_test_at = now
     row.last_test_status = response_status
     row.last_test_class = result

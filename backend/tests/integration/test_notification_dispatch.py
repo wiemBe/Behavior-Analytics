@@ -3,10 +3,13 @@ No real notification is sent (MockNotifier). DB-gated."""
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import uuid
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.alerts.dispatcher import NotificationDispatcher
 from app.alerts.notifiers.base import MockNotifier
@@ -20,6 +23,8 @@ from app.models.enums import (
     NotificationStatus,
     Severity,
 )
+from app.services.locks import collector_lock_key
+from app.workers import tasks
 from tests.integration.factories import FakeClock, utc
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -114,3 +119,96 @@ async def test_recovery_notification_toggle(db_session) -> None:
     d = NotificationDispatcher(db_session, {}, _policy(), settings=settings)
     created = await d.enqueue(alert, AlertTransition.RESOLVED)
     assert created == []  # recovery disabled -> nothing enqueued
+
+
+async def test_dispatch_lock_key_is_not_the_anomaly_or_search_key() -> None:
+    dispatch = collector_lock_key(tasks.DISPATCH_NOTIFICATIONS_LOCK_ID, "dispatch_notifications")
+    anomaly = collector_lock_key(tasks.ANOMALY_EVALUATION_LOCK_ID, "anomaly_evaluation")
+    search = collector_lock_key(tasks.SEARCH_SCHEDULER_LOCK_ID, "search_scheduler")
+    assert len({dispatch, anomaly, search}) == 3
+
+
+def _bind(db_schema: str, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+    engine = create_async_engine(db_schema, future=True)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(tasks, "get_sessionmaker", lambda: maker)
+    return engine, maker
+
+
+async def test_two_dispatch_runs_do_not_overlap(
+    db_schema: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    engine, _maker = _bind(db_schema, monkeypatch)
+    built = {"n": 0}
+    calls = {"n": 0}
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    def build_notifiers() -> dict:  # type: ignore[type-arg]
+        built["n"] += 1
+        return {}
+
+    async def dispatch_due(self, *, limit: int = 100) -> dict[str, int]:  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        if calls["n"] == 1:
+            entered.set()
+            await release.wait()
+        return {"sent": 0, "failed": 0, "dead_letter": 0}
+
+    monkeypatch.setattr(tasks, "build_notifiers", build_notifiers)
+    monkeypatch.setattr(NotificationDispatcher, "dispatch_due", dispatch_due)
+    caplog.set_level(logging.INFO, logger="app.tasks")
+    first: asyncio.Task[dict] | None = None
+    try:
+        first = asyncio.create_task(tasks.dispatch_notifications())
+        await asyncio.wait_for(entered.wait(), 5)
+        second = await asyncio.wait_for(tasks.dispatch_notifications(), 5)
+        assert second == {"status": "skipped_locked"}
+        assert calls["n"] == 1 and built["n"] == 1
+        assert any("already in progress" in record.getMessage() for record in caplog.records)
+        release.set()
+        assert await asyncio.wait_for(first, 5) == {
+            "sent": 0,
+            "failed": 0,
+            "dead_letter": 0,
+        }
+        assert await tasks.dispatch_notifications() == {
+            "sent": 0,
+            "failed": 0,
+            "dead_letter": 0,
+        }
+        assert calls["n"] == 2 and built["n"] == 2
+    finally:
+        release.set()
+        if first is not None and not first.done():
+            first.cancel()
+            await asyncio.gather(first, return_exceptions=True)
+        await engine.dispose()
+
+
+async def test_a_failed_dispatch_releases_the_lock(
+    db_schema: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine, _maker = _bind(db_schema, monkeypatch)
+    state = {"fail": True}
+
+    def build_notifiers() -> dict:  # type: ignore[type-arg]
+        return {}
+
+    async def dispatch_due(self, *, limit: int = 100) -> dict[str, int]:  # type: ignore[no-untyped-def]
+        if state["fail"]:
+            raise RuntimeError("dispatch fault")
+        return {"sent": 0, "failed": 0, "dead_letter": 0}
+
+    monkeypatch.setattr(tasks, "build_notifiers", build_notifiers)
+    monkeypatch.setattr(NotificationDispatcher, "dispatch_due", dispatch_due)
+    try:
+        with pytest.raises(RuntimeError, match="dispatch fault"):
+            await tasks.dispatch_notifications()
+        state["fail"] = False
+        assert await tasks.dispatch_notifications() == {
+            "sent": 0,
+            "failed": 0,
+            "dead_letter": 0,
+        }
+    finally:
+        await engine.dispose()

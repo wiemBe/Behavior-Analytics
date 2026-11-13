@@ -11,6 +11,7 @@ import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
 
+import h11
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -380,6 +381,131 @@ def test_response_body_read_stops_at_64_kib(
     response = admin.post(f"{BASE}/{destination_id}/test")
     assert response.json()["result"] == "ok"
     assert stream.chunks == 8 and stream.closed is True
+
+
+def test_validation_omits_the_secret_and_header_values(db_schema) -> None:
+    admin = Client(ADMIN)
+    secret = "S" * 4097
+    too_long = admin.post(
+        BASE, json={"name": "echo", "url": "https://hooks.example/x", "hmac_secret": secret}
+    )
+    assert too_long.status_code == 422
+    assert secret not in too_long.text
+    assert all("input" not in error for error in too_long.json()["detail"])
+
+    header_secret = "header-value-secret-9f3a" + ("H" * 4100)
+    long_header = admin.post(
+        BASE,
+        json={
+            "name": "echo-header",
+            "url": "https://hooks.example/x",
+            "headers": {"X-SOC-Key": header_secret},
+        },
+    )
+    assert long_header.status_code == 422
+    assert header_secret not in long_header.text
+    assert "header-value-secret-9f3a" not in long_header.text
+
+    injected = "prefix-9f3a\r\nX-Injected: yes"
+    broken = admin.post(
+        BASE,
+        json={"name": "echo-cr", "url": "https://hooks.example/x", "headers": {"X-A": injected}},
+    )
+    assert broken.status_code == 422
+    assert injected not in broken.text and "prefix-9f3a" not in broken.text
+
+    nul = "abc\x00def-token-58"
+    embedded = admin.post(
+        BASE,
+        json={"name": "echo-nul", "url": "https://hooks.example/x", "headers": {"X-A": nul}},
+    )
+    assert embedded.status_code == 422
+    assert "def-token-58" not in embedded.text
+
+    created = _create(admin, name="echo-patch")
+    patched = admin.patch(f"{BASE}/{created['id']}", json={"hmac_secret": secret})
+    assert patched.status_code == 422
+    assert secret not in patched.text
+    patched_header = admin.patch(
+        f"{BASE}/{created['id']}", json={"headers": {"X-SOC-Key": header_secret}}
+    )
+    assert patched_header.status_code == 422
+    assert header_secret not in patched_header.text
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Transfer-Encoding", "Connection", "TE", "Upgrade", "Expect", "transfer-encoding"],
+)
+def test_hop_by_hop_header_names_are_refused(db_schema, name: str) -> None:
+    admin = Client(ADMIN)
+    response = admin.post(
+        BASE,
+        json={"name": "hop", "url": "https://hooks.example/x", "headers": {name: "chunked"}},
+    )
+    assert response.status_code == 422
+    assert "chunked" not in response.text
+
+
+class _Protocol(httpx.AsyncBaseTransport):
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        raise h11.LocalProtocolError("Too much data for declared Content-Length")
+
+
+def test_a_protocol_error_on_send_test_is_transport_not_a_500(
+    db_schema, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    admin = Client(ADMIN)
+    destination_id = _create(admin)["id"]
+    monkeypatch.setattr(routes, "_http_transport", lambda: _Protocol())
+    response = admin.post(f"{BASE}/{destination_id}/test")
+    assert response.status_code == 200, response.text
+    assert response.json()["result"] == "transport"
+    assert response.json()["status"] is None
+    assert "Too much data" not in response.text
+    assert "hooks.example" not in response.text
+    [row] = _rows(NotificationDestination)
+    assert row.last_test_class == "transport" and row.last_test_status is None
+
+
+def test_send_test_maps_an_escaped_protocol_error_without_a_500(
+    db_schema, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    admin = Client(ADMIN)
+    destination_id = _create(admin)["id"]
+
+    async def explode(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise h11.LocalProtocolError("Too much data for declared Content-Length")
+
+    monkeypatch.setattr(routes.destination_sender, "send_to_destination", explode)
+    response = admin.post(f"{BASE}/{destination_id}/test")
+    assert response.status_code == 200, response.text
+    assert response.json()["result"] == "transport"
+    assert "Too much data" not in response.text and PATH_TOKEN not in response.text
+
+
+def test_send_test_of_a_bypassed_header_is_payload_invalid(
+    db_schema, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    admin = Client(ADMIN)
+    created = _create(admin, name="bypass")
+
+    async def poison(session):  # type: ignore[no-untyped-def]
+        row = await session.get(NotificationDestination, uuid.UUID(created["id"]))
+        row.headers = json.dumps({"Transfer-Encoding": "chunked", "X-SOC-Key": HEADER_VALUE})
+
+    run(poison)
+
+    def no_transport() -> httpx.AsyncBaseTransport:
+        raise AssertionError("a refused stored header must not reach the transport")
+
+    monkeypatch.setattr(routes, "_http_transport", no_transport)
+    response = admin.post(f"{BASE}/{created['id']}/test")
+    assert response.status_code == 200, response.text
+    assert response.json()["result"] == "payload_invalid"
+    assert "chunked" not in response.text and HEADER_VALUE not in response.text
+    [row] = _rows(NotificationDestination)
+    assert row.last_test_class == "payload_invalid"
 
 
 def test_test_send_is_limited_to_five_per_minute_and_writes_no_outbox_row(
