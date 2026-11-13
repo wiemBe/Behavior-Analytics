@@ -23,6 +23,7 @@ export const ALERT_FAMILIES = [
   "waf",
   "ips",
   "property_watch",
+  "identity",
   "catchall_sender",
   "custom_rule",
   "scheduled_search",

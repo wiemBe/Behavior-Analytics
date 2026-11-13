@@ -83,6 +83,7 @@
       "waf": "WAF anomalies",
       "ips": "IPS anomalies",
       "property_watch": "Property-watch anomalies",
+      "identity": "Identity",
       "catchall_sender": "Catch-all senders",
       "custom_rule": "Custom rules",
       "scheduled_search": "Scheduled searches",

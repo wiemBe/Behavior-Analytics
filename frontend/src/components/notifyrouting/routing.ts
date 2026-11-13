@@ -13,6 +13,7 @@ export const FAMILIES = [
   "ips",
   "property_watch",
   "rule",
+  "identity",
   "catchall_sender",
   "custom_rule",
   "scheduled_search",

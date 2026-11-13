@@ -4,6 +4,7 @@ import { destination, rule } from "./fixtures";
 import {
   BLANK_DESTINATION,
   BLANK_RULE,
+  FAMILIES,
   destinationBody,
   formFromRule,
   minuteText,
@@ -14,6 +15,13 @@ import {
   windowWraps,
   type RuleForm,
 } from "./routing";
+
+describe("families", () => {
+  it("offers identity with the other alert families, after rule", () => {
+    expect(FAMILIES).toContain("identity");
+    expect(FAMILIES.indexOf("identity")).toBe(FAMILIES.indexOf("rule") + 1);
+  });
+});
 
 describe("UTC window", () => {
   it("round-trips minutes and HH:MM", () => {

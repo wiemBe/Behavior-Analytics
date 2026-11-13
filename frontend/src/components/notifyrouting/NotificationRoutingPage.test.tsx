@@ -535,6 +535,11 @@ describe("rule form", () => {
     return { user, form: screen.getByRole("form", { name: "Add a routing rule" }) };
   }
 
+  it("offers identity in the family list", async () => {
+    const { form } = await open();
+    expect(within(form).getByRole("checkbox", { name: "Identity" })).toBeInTheDocument();
+  });
+
   it("offers every destination, marks a disabled one, and needs at least one pick", async () => {
     api.destinations.mockResolvedValue([
       destination(),

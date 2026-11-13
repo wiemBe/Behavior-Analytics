@@ -9,12 +9,16 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 RuleSeverity = Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+# String Literal on purpose. mypy does not accept a Literal unpacked from AlertFamily,
+# and a Literal of the enum members rejects the strings this API receives. Drift is
+# guarded by test_family_literal_is_exactly_alert_family.
 FamilyName = Literal[
     "log_source",
     "waf",
     "ips",
     "property_watch",
     "rule",
+    "identity",
     "catchall_sender",
     "custom_rule",
     "scheduled_search",

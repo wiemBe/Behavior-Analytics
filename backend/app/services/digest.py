@@ -132,7 +132,13 @@ class DigestItem:
     last_bucket: datetime
 
     def link(self, origin: str) -> str:
-        """The filtered anomaly list for this row, on the site's own origin."""
+        """The filtered list for this row, on the site's own origin.
+
+        Every anomaly family except identity links to ``/anomalies``. Identity
+        incidents have no list subject there: naming the detector is refused,
+        and the property-watch parameters would point at the wrong object. The
+        alert list already filters this family by log source.
+        """
         params: dict[str, str] = {"anomaly_type": self.detector}
         if self.family is AnomalyFamily.LOG_SOURCE:
             params["subject_kind"] = "LOG_SOURCE"
@@ -144,9 +150,18 @@ class DigestItem:
         elif self.family is AnomalyFamily.RULE:
             params["subject_kind"] = "RULE"
             params["rule_id"] = str(self.source_id)
-        else:
+        elif self.family is AnomalyFamily.IDENTITY:
+            params = {
+                "family": AnomalyFamily.IDENTITY.value,
+                "log_source_id": str(self.source_id),
+            }
+            return f"{origin.rstrip('/')}/alerts?{urlencode(params)}"
+        elif self.family is AnomalyFamily.PROPERTY_WATCH:
             params["subject_kind"] = "PW_VALUE"
             params["property_watch_id"] = str(self.source_id)
+        else:
+            name = getattr(self.family, "value", self.family)
+            raise ValueError(f"digest link has no subject for {name}")
         return f"{origin.rstrip('/')}/anomalies?{urlencode(params)}"
 
 

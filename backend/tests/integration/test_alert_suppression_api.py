@@ -16,7 +16,15 @@ from app.core.database import get_session
 from app.main import create_app
 from app.models.alert import Alert
 from app.models.alert_suppression import AlertSuppression, AlertSuppressionHit
-from app.models.enums import AnomalyState, AnomalyType, Severity
+from app.models.enums import (
+    AnomalyState,
+    AnomalyType,
+    EvidenceStatus,
+    IdentityAnomalyType,
+    IdentityMeasurement,
+    Severity,
+)
+from app.models.identity_anomaly import IdentityAnomaly
 from app.models.log_source import LogSourceAnomaly
 from app.models.rule import AnalyticsRule
 from app.models.rule_anomaly import RuleAnomaly
@@ -569,3 +577,110 @@ def test_a_rule_has_no_whole_source_scope(db_schema) -> None:
     assert alert_response.status_code == 422, alert_response.text
     assert "a rule has no whole-source scope" in alert_response.text
     assert client.get(f"{BASE}/suppressions?active=false").json() == []
+
+
+def test_an_identity_incident_suppresses_on_its_log_source(db_schema) -> None:
+    """The condition is the log source, and the identity alert is the breakthrough.
+
+    Whole-source on the alert stays on that log source. A property-watch lookup
+    would 404, and the old whole-source fall-through would say the alert names
+    no log source.
+    """
+
+    async def setup(session):  # type: ignore[no-untyped-def]
+        instance = await make_instance(session)
+        source = await make_log_source(session, instance, qradar_id=6201, name="dc-01")
+        anomaly = IdentityAnomaly(
+            log_source_id=source.id,
+            event_id=4625,
+            detector_type=IdentityAnomalyType.IDENTITY_FAILED_LOGON_SPIKE,
+            fingerprint=f"fp-{uuid.uuid4().hex[:12]}",
+            severity=Severity.HIGH,
+            state=AnomalyState.OPEN,
+            detected_at=NOW,
+            consecutive_buckets=1,
+            policy_version=1,
+            profile_version=1,
+            catalog_version=1,
+            details={},
+            evidence_status=EvidenceStatus.COMPLETE,
+            observed_measurement=IdentityMeasurement.EXACT,
+        )
+        session.add(anomaly)
+        await session.flush()
+        alert = _alert(
+            source_id=source.id,
+            anomaly_id=anomaly.id,
+            source_type="identity_source",
+            title="Failed logon spike on dc-01 (4625)",
+            opened_at=datetime.now(UTC) + timedelta(seconds=5),
+        )
+        session.add(alert)
+        await session.flush()
+        return str(source.id), str(anomaly.id), str(alert.id)
+
+    source_id, anomaly_id, alert_id = run(setup)
+    client = Client(ANALYST)
+    created = client.post(
+        f"{BASE}/anomalies/identity/{anomaly_id}/suppress", json=_body()
+    )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert body["family"] == "identity"
+    assert body["subject_id"] == source_id
+    assert body["detector_type"] == IdentityAnomalyType.IDENTITY_FAILED_LOGON_SPIKE.value
+    listed = client.get(f"{BASE}/suppressions/for/identity/{anomaly_id}")
+    assert listed.status_code == 200, listed.text
+    assert [row["id"] for row in listed.json()["breakthrough_alerts"]] == [alert_id]
+    wide = client.post(
+        f"{BASE}/alerts/{alert_id}/suppress", json=_body(whole_source=True)
+    )
+    assert wide.status_code == 200, wide.text
+    assert wide.json()["family"] == "identity"
+    assert wide.json()["subject_id"] == source_id
+    assert wide.json()["detector_type"] is None
+
+
+def test_a_rule_alert_breaks_through_on_the_rule(db_schema) -> None:
+    """A rule suppression reads analytics_rule alerts, not property-watch values."""
+
+    async def setup(session):  # type: ignore[no-untyped-def]
+        instance = await make_instance(session)
+        rule = AnalyticsRule(
+            instance_id=instance.id,
+            qradar_id=6202,
+            name="scoped-rule",
+            rule_type="EVENT",
+            enabled=True,
+        )
+        session.add(rule)
+        await session.flush()
+        anomaly = RuleAnomaly(
+            rule_id=rule.id,
+            qradar_id=rule.qradar_id,
+            detector_type="RULE_SILENCE",
+            fingerprint=f"rule_anomaly:{uuid.uuid4().hex[:12]}",
+            severity=Severity.MEDIUM.value,
+            state=AnomalyState.OPEN.value,
+            detected_at=NOW,
+        )
+        session.add(anomaly)
+        await session.flush()
+        alert = _alert(
+            source_id=rule.id,
+            anomaly_id=anomaly.id,
+            source_type="analytics_rule",
+            title="Rule silence: scoped-rule",
+            opened_at=datetime.now(UTC) + timedelta(seconds=5),
+        )
+        session.add(alert)
+        await session.flush()
+        return str(anomaly.id), str(alert.id)
+
+    anomaly_id, alert_id = run(setup)
+    client = Client(ANALYST)
+    created = client.post(f"{BASE}/anomalies/rule/{anomaly_id}/suppress", json=_body())
+    assert created.status_code == 200, created.text
+    listed = client.get(f"{BASE}/suppressions/for/rule/{anomaly_id}")
+    assert listed.status_code == 200, listed.text
+    assert [row["id"] for row in listed.json()["breakthrough_alerts"]] == [alert_id]

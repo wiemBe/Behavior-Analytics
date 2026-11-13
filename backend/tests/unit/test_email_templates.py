@@ -310,3 +310,12 @@ def test_the_sample_alerts_cover_every_type_and_use_no_real_data() -> None:
         assert values["alert.url"].startswith("https://qradar.example.internal/")
     assert tpl.sample_values("waf_endpoint", settings)["alert.type"] == "WAF endpoint"
     assert tpl.sample_values("bogus", settings)["alert.type"] == "Log source"
+
+
+def test_the_identity_sample_names_the_event_and_carries_no_username() -> None:
+    """The preview is a log source and an event id. A username is not a fixture."""
+    values = tpl.sample_values("identity_source", _settings())
+    assert values["alert.type"] == "Identity source"
+    assert "4625" in values["alert.title"]
+    assert values["alert.title"] != "Alert: this is a preview"
+    assert "username" not in " ".join(values.values()).lower()

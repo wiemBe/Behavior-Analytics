@@ -97,6 +97,14 @@ describe("values dropped from the address", () => {
     expect(JSON.stringify(sent)).not.toMatch(/BOGUS|not-a-uuid|colour|sideways|yesterday/);
   });
 
+  it("keeps the identity family and writes it back into the address", () => {
+    const query = parseAlertQuery({ family: "identity" }, NOW);
+    expect(query.ignored).toEqual([]);
+    expect(query.family).toBe("identity");
+    expect(alertHref(query)).toBe("/alerts?family=identity");
+    expect(alertListParams(query).family).toBe("identity");
+  });
+
   it("keeps the valid severity beside an unknown one", () => {
     expect(parseAlertQuery({ severity: ["BOGUS", "HIGH"] }, NOW).severity).toEqual(["HIGH"]);
   });

@@ -60,7 +60,8 @@ def test_the_template_list_covers_the_default_and_every_type(db_schema) -> None:
     body = Client(ADMIN).get(f"{BASE}/templates").json()
     assert [t["key"] for t in body["templates"]] == [
         "default", "log_source", "waf_endpoint", "ips_entity", "custom_rule", "pw_value",
-        "catchall_sender", "qradar_instance", "scheduled_search", "analytics_rule", "digest",
+        "catchall_sender", "qradar_instance", "scheduled_search", "analytics_rule",
+        "identity_source", "digest",
     ]
     assert all(t["customised"] is False for t in body["templates"])
     assert [t["key"] for t in body["alert_types"]] == [t["key"] for t in body["templates"]][1:-1]

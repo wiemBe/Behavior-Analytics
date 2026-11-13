@@ -56,6 +56,7 @@ function facets(over: Partial<AlertFacets> = {}): AlertFacets {
       { value: "waf", count: 4 },
       { value: "ips", count: 0 },
       { value: "property_watch", count: 0 },
+      { value: "identity", count: 0 },
       { value: "catchall_sender", count: 0 },
       { value: "custom_rule", count: 0 },
       { value: "scheduled_search", count: 0 },
@@ -153,6 +154,7 @@ describe("facet counts", () => {
     const family = screen.getByLabelText("Kind");
     expect(within(family).getByRole("option", { name: "WAF anomalies (4)" })).toBeInTheDocument();
     expect(within(family).getByRole("option", { name: "IPS anomalies (0)" })).toBeInTheDocument();
+    expect(within(family).getByRole("option", { name: "Identity (0)" })).toBeInTheDocument();
     const severity = screen.getByRole("group", { name: "Severity" });
     expect(within(severity).getByRole("link", { name: "CRITICAL: 2 alerts" })).toHaveTextContent("2");
     // A zero is a measurement: it is drawn as 0 and is not hidden or worded as missing.
