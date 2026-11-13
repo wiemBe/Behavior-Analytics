@@ -163,6 +163,23 @@ class IdentityProfileService:
         )
         return True
 
+    async def disable(self, profile: IdentitySourceProfile, *, actor: str) -> bool:
+        """Stop collection. The audit detail is the profile version only."""
+        if not profile.enabled:
+            return False
+        profile.enabled = False
+        profile.updated_by = actor
+        await self.session.flush()
+        await record_audit(
+            self.session,
+            action="identity.profile.disabled",
+            actor=actor,
+            object_type=AUDIT_OBJECT,
+            object_id=str(profile.id),
+            detail={"profile_version": profile.profile_version},
+        )
+        return True
+
     async def validate(
         self,
         profile: IdentitySourceProfile,

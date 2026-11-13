@@ -3103,6 +3103,13 @@
     "sample_english_params": {},
     "template": "No timeline lane measured this entity in the selected window."
   },
+  "entity_timeline.reason.not_observed": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This username was not observed in collected data.",
+    "sample_english_params": {},
+    "template": "This username was not observed in collected data."
+  },
   "entity_timeline.reason.offense_not_collected": {
     "params": {},
     "sample": {},
@@ -5312,6 +5319,72 @@
     "sample_english": "1 source",
     "sample_english_params": {},
     "template": "1 source"
+  },
+  "identity.profile.enable_refused": {
+    "params": {
+      "version": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "version": "1"
+    },
+    "sample_english": "profile version 1 is UNVALIDATED; run validate before enable",
+    "sample_english_params": {
+      "version": "1"
+    },
+    "template": "profile version {version} is UNVALIDATED; run validate before enable"
+  },
+  "identity.profile.invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the identity profile was refused",
+    "sample_english_params": {},
+    "template": "the identity profile was refused"
+  },
+  "identity.profile.not_found": {
+    "params": {},
+    "sample": {},
+    "sample_english": "no identity profile exists for this log source",
+    "sample_english_params": {},
+    "template": "no identity profile exists for this log source"
+  },
+  "identity.provider.unsupported": {
+    "params": {},
+    "sample": {},
+    "sample_english": "this provider cannot run an identity validation probe",
+    "sample_english_params": {},
+    "template": "this provider cannot run an identity validation probe"
+  },
+  "identity.source.not_found": {
+    "params": {},
+    "sample": {},
+    "sample_english": "that log source is not in the inventory",
+    "sample_english_params": {},
+    "template": "that log source is not in the inventory"
+  },
+  "identity.window.max": {
+    "params": {
+      "days": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "days": 7
+    },
+    "sample_english": "the identity window must not exceed 7 days",
+    "sample_english_params": {
+      "days": "7"
+    },
+    "template": "the identity window must not exceed {days} days"
+  },
+  "identity.window.order": {
+    "params": {},
+    "sample": {},
+    "sample_english": "start must be earlier than end",
+    "sample_english_params": {},
+    "template": "start must be earlier than end"
   },
   "ips.basis.mad_above_p95_events": {
     "params": {

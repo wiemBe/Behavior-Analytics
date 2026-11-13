@@ -35,8 +35,10 @@ from app.i18n.messages import MessageRef
 from app.models.catchall import CatchallBucket
 from app.models.entity import EntityMention, EntityMentionBackfill
 from app.models.enums import (
+    IDENTITY_BUCKET_SECONDS,
     DimensionAvailability,
     EvidenceStatus,
+    IdentityMeasurement,
     PwBucketMeasurement,
     PwPinnedMeasurement,
     Severity,
@@ -47,6 +49,7 @@ from app.models.explanation import (
     AnomalyExplanationContributor,
     AnomalyExplanationDimension,
 )
+from app.models.identity_detection import IdentityEventCount, IdentityTopUsername
 from app.models.ips import IpsEntity, IpsSourceBucket
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.offense import OffenseSnapshot
@@ -89,6 +92,7 @@ REASON_OFFENSE_NOT_COLLECTED = "entity_timeline.reason.offense_not_collected"
 REASON_OFFENSE_STALE = "entity_timeline.reason.offense_stale"
 REASON_PERMISSION = "entity_timeline.reason.permission"
 REASON_INDEX_INCOMPLETE = "entity_timeline.reason.index_incomplete"
+REASON_NOT_OBSERVED = "entity_timeline.reason.not_observed"
 
 _SECOND: Any = literal_column("INTERVAL '1 second'")
 _SUPPORTED_REF_TABLES = {
@@ -100,6 +104,7 @@ _SUPPORTED_REF_TABLES = {
     "log_source": EntityTimelineLane.LOG_SOURCE,
     "catchall_bucket": EntityTimelineLane.CATCHALL,
     "pw_value_metric": EntityTimelineLane.PW_VALUE,
+    "identity_top_username": EntityTimelineLane.IDENTITY_TOP,
 }
 _LANES = tuple(EntityTimelineLane)
 
@@ -160,6 +165,9 @@ class Coverage:
     offense_index_complete: bool
     catchall_index_complete: bool
     pw_index_complete: bool
+    identity_collected: bool
+    identity_names_exact: bool
+    identity_index_complete: bool
 
 
 @dataclass(frozen=True)
@@ -422,6 +430,9 @@ class EntityTimelineService:
             allowed_sources.append(EntityTimelineLane.CATCHALL.value)
         if property_watch_allowed:
             allowed_sources.append(EntityTimelineLane.PW_VALUE.value)
+        # Identity mentions are USER rows. The lane itself is emitted only for a
+        # USER query, so an IP page keeps the lane set it already measured.
+        allowed_sources.append(EntityTimelineLane.IDENTITY_TOP.value)
 
         forms = user_match_forms(value) if kind is EntityTimelineKind.USER else (value_norm,)
         mentions = await self._mentions(
@@ -843,6 +854,48 @@ class EntityTimelineService:
             )
             pw_proves = and_(pw_collected, ~pw_bad)
 
+        # Identity names are a live index. A missing backfill row is complete:
+        # this release does not backfill Ariel history. A non-COMPLETE row,
+        # written when a mention insert failed, means the index is not whole.
+        # The lane still never proves absence.
+        identity_collected: Any = literal(False)
+        identity_names_exact: Any = literal(False)
+        if kind is EntityTimelineKind.USER:
+            identity_window = (
+                IdentityEventCount.bucket_start < end,
+                IdentityEventCount.bucket_start
+                + literal(IDENTITY_BUCKET_SECONDS) * _SECOND
+                > start,
+            )
+            identity_rows = (
+                select(IdentityEventCount.log_source_id)
+                .join(LogSource, LogSource.id == IdentityEventCount.log_source_id)
+                .where(LogSource.instance_id == instance_id, *identity_window)
+            )
+            identity_collected = exists(
+                identity_rows.where(
+                    IdentityEventCount.names_measurement
+                    != IdentityMeasurement.NOT_COLLECTED.value
+                )
+            )
+            identity_bad = exists(
+                identity_rows.where(
+                    or_(
+                        IdentityEventCount.names_measurement
+                        != IdentityMeasurement.EXACT.value,
+                        IdentityEventCount.admission_truncated.is_(True),
+                    )
+                )
+            )
+            identity_names_exact = and_(identity_collected, ~identity_bad)
+        identity_index = ~exists(
+            select(EntityMentionBackfill.instance_id).where(
+                EntityMentionBackfill.instance_id == instance_id,
+                EntityMentionBackfill.source == EntityTimelineLane.IDENTITY_TOP.value,
+                EntityMentionBackfill.status != "COMPLETE",
+            )
+        )
+
         def backfill_complete(source: str) -> Any:
             return exists(
                 select(EntityMentionBackfill.instance_id).where(
@@ -891,6 +944,9 @@ class EntityTimelineService:
                     offense_index.label("offense_index"),
                     catchall_index.label("catchall_index"),
                     pw_index.label("pw_index"),
+                    identity_collected.label("identity_collected"),
+                    identity_names_exact.label("identity_names_exact"),
+                    identity_index.label("identity_index"),
                 )
             )
         ).one()
@@ -911,6 +967,61 @@ class EntityTimelineService:
             loader = getattr(self, f"_hydrate_{ref_table}")
             out.update(await loader(instance_id, rows))
         return out
+
+    async def _hydrate_identity_top_username(
+        self, instance_id: uuid.UUID, mentions: Sequence[EntityMention]
+    ) -> dict[tuple[str, str, datetime], ParentPresentation]:
+        """Confirm the stored top-N row still exists. The title names the event, not a user."""
+        pairs: list[tuple[uuid.UUID, int, datetime]] = []
+        for mention in mentions:
+            source_text, separator, event_text = mention.ref_id.partition(":")
+            if not separator:
+                continue
+            try:
+                pairs.append((uuid.UUID(source_text), int(event_text), mention.occurred_at))
+            except ValueError:
+                continue
+        pairs = list(dict.fromkeys(pairs))
+        rows = (
+            await self.session.execute(
+                select(
+                    IdentityTopUsername.log_source_id,
+                    IdentityTopUsername.event_id,
+                    IdentityTopUsername.bucket_start,
+                    LogSource.name,
+                    IdentityEventCount.names_measurement,
+                )
+                .join(LogSource, LogSource.id == IdentityTopUsername.log_source_id)
+                .outerjoin(
+                    IdentityEventCount,
+                    and_(
+                        IdentityEventCount.log_source_id == IdentityTopUsername.log_source_id,
+                        IdentityEventCount.event_id == IdentityTopUsername.event_id,
+                        IdentityEventCount.bucket_start == IdentityTopUsername.bucket_start,
+                    ),
+                )
+                .where(
+                    LogSource.instance_id == instance_id,
+                    tuple_(
+                        IdentityTopUsername.log_source_id,
+                        IdentityTopUsername.event_id,
+                        IdentityTopUsername.bucket_start,
+                    ).in_(pairs)
+                    if pairs
+                    else false(),
+                )
+                .distinct()
+            )
+        ).all()
+        by_pair: dict[tuple[str, datetime], ParentPresentation] = {}
+        for source_id, event_id, bucket_start, source_name, measurement in rows:
+            label = sanitize_text(source_name) or "unnamed log source"
+            by_pair[(f"{source_id}:{event_id}", bucket_start)] = ParentPresentation(
+                title=f"Windows event {event_id} on {label}",
+                href=f"/behavior/identity/sources/{source_id}",
+                measurement=None if measurement is None else str(measurement),
+            )
+        return _presentations_for_pairs(mentions, by_pair)
 
     async def _hydrate_anomaly_explanation_contributor(
         self, instance_id: uuid.UUID, mentions: Sequence[EntityMention]
@@ -1169,7 +1280,7 @@ class EntityTimelineService:
         offense_freshness: RelatedSectionState,
         truncated: bool,
     ) -> list[EntityTimelineLaneOut]:
-        return [
+        lanes = [
             decide_lane(
                 LaneEvidence(
                     EntityTimelineLane.EXPLANATION,
@@ -1284,6 +1395,24 @@ class EntityTimelineService:
                 )
             ),
         ]
+        if kind is EntityTimelineKind.USER:
+            lanes.append(
+                decide_lane(
+                    LaneEvidence(
+                        EntityTimelineLane.IDENTITY_TOP,
+                        counts.get(EntityTimelineLane.IDENTITY_TOP, 0),
+                        enabled=self.settings.identity_collection_enabled,
+                        collected=coverage.identity_collected,
+                        complete=coverage.identity_names_exact,
+                        proves_absence=False,
+                        count_is_total=not truncated,
+                        incomplete_reason=REASON_NOT_OBSERVED,
+                        dangling_count=dangling_counts.get(EntityTimelineLane.IDENTITY_TOP, 0),
+                        index_complete=coverage.identity_index_complete,
+                    )
+                )
+            )
+        return lanes
 
 
 def _mention_key(mention: EntityMention) -> tuple[str, str, datetime]:

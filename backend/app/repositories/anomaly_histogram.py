@@ -7,8 +7,8 @@ complete count is what makes an empty hour a measured zero rather than "none
 seen on this page".
 
 T-085 (the IPS analyst read API) is merged; this module includes the IPS branch
-alongside Phase A and WAF, the property-watch branch (PW-5c) and the rule branch (SOC-6).
-A new family is one more branch here, nothing else.
+alongside Phase A and WAF, the property-watch branch (PW-5c), the rule branch (SOC-6)
+and the identity branch (SOC-10). A new family is one more branch here, nothing else.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.identity_anomaly import IdentityAnomaly
 from app.models.ips import IpsAnomaly
 from app.models.log_source import LogSourceAnomaly
 from app.models.property_watch import PwAnomaly
@@ -208,6 +209,26 @@ def _rule_branch(since: datetime, until: datetime) -> Select:
     )
 
 
+def _identity_branch(since: datetime, until: datetime) -> Select:
+    """Identity incidents grouped by hour and severity.
+
+    No join: every identity incident carries its log source id, and the histogram
+    only counts rows.
+    """
+    a = IdentityAnomaly
+    hour = _hour_of(a.detected_at)
+    return (
+        select(
+            hour.label("hour"),
+            cast(literal_column("'IDENTITY_SOURCE'"), String).label("family"),
+            a.severity.label("severity"),
+            func.count().label("anomalies"),
+        )
+        .where(a.detected_at >= since, a.detected_at < until)
+        .group_by(hour, a.severity)
+    )
+
+
 def fill_hours(
     span: list[datetime], counts: dict[datetime, dict[str, int]]
 ) -> list[HourCounts]:
@@ -267,6 +288,9 @@ async def histogram(
     if kinds is None or SubjectKind.RULE in kinds:
         branches.append(_rule_branch(since, until))
         families.append(SubjectKind.RULE.value)
+    if kinds is None or SubjectKind.IDENTITY_SOURCE in kinds:
+        branches.append(_identity_branch(since, until))
+        families.append(SubjectKind.IDENTITY_SOURCE.value)
     span = hour_span(since, until)
     if not branches:
         # Reachable only if a future SubjectKind is added without a branch here.

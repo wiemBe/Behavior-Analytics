@@ -256,6 +256,46 @@ def catchall_mentions(
     return mentions
 
 
+def identity_top_mentions(
+    instance_id: uuid.UUID,
+    *,
+    log_source_id: uuid.UUID,
+    event_id: int,
+    bucket_start: datetime,
+    bucket_end: datetime | None,
+    usernames: Sequence[Any],
+) -> list[EntityMentionRow]:
+    """Fold one stored identity top-N list. One USER mention per stored name.
+
+    The caller passes only rows the writer stored. A name the fold kept inside
+    the admission floor is not in that list, so it cannot become a mention.
+    Normalization is ``normalize_entity("USER")``; the table keeps QRadar's string.
+    """
+    mentions: list[EntityMentionRow] = []
+    ref_id = f"{log_source_id}:{event_id}"
+    for stored in usernames:
+        raw = getattr(stored, "username", None)
+        if not isinstance(raw, str):
+            continue
+        value = normalize_entity("USER", raw)
+        if value is None:
+            continue
+        mentions.append(
+            EntityMentionRow(
+                instance_id=instance_id,
+                kind="USER",
+                value_norm=value,
+                role="USER",
+                source="IDENTITY_TOP",
+                ref_table="identity_top_username",
+                ref_id=ref_id,
+                occurred_at=bucket_start,
+                occurred_end=bucket_end,
+            )
+        )
+    return mentions
+
+
 def pw_value_mentions(
     instance_id: uuid.UUID,
     properties: Sequence[Mapping[str, str]],
