@@ -400,6 +400,13 @@ HISTORY_TABLES = (
             "app.ips.baseline.IpsBaselineBuilder._source_buckets": Reader(
                 "baseline", ReaderKind.EVIDENCE
             ),
+            # SOC-13g: an IPS training exclusion aligns to the live detector's
+            # bucket width. A history row's width is the replay's, not the incident's.
+            "app.api.routes.training_exclusions._ips_bucket_seconds": Reader(
+                "bucket width for an IPS training exclusion (SOC-13g)",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
             "app.ips.engine.IpsAnomalyEngine._load_novelty": Reader(
                 "novelty history", ReaderKind.EVIDENCE
             ),

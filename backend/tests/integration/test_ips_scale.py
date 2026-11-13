@@ -210,6 +210,8 @@ async def test_scoped_training_statement_count_is_constant_in_entities(db_sessio
         assert len(rebuilt["entities"]) == size
         counts[size] = len(statements)
     # Eight times the entities, the same statements per source.
+    # SOC-13g: both sizes include the one constant exclusion read (both scopes,
+    # one SELECT on baseline_training_exclusion). The equality is the pin.
     assert counts[5] == counts[40], counts
 
 

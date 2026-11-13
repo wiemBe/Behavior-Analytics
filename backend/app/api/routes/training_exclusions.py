@@ -1,8 +1,10 @@
-"""Baseline training exclusion API (SOC-13b, WAF in SOC-13e).
+"""Baseline training exclusion API (SOC-13b, WAF in SOC-13e, IPS in SOC-13g).
 
 Create and revoke need `anomaly:triage`; reading is covered by the router's
 `read:anomalies` guard. Phase A excludes a log source's volume. A resolved WAF
 anomaly excludes its endpoint, one scope for every metric of that baseline.
+A resolved IPS anomaly excludes its entity (`ips:entity`) or its source
+(`ips:source`); one source interval covers every source metric together.
 The reason is analyst text: it lives on the exclusion row and on the triage event
 `comment`, and never reaches the audit detail or a log line.
 """
@@ -26,6 +28,13 @@ from app.history.origin import is_live_clause
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import CodedHTTPException
 from app.models.enums import AnomalyFamily, AnomalyState, TriageEventKind, TriageStatus
+from app.models.ips import (
+    IpsAnomaly,
+    IpsEntity,
+    IpsEntityBaseline,
+    IpsSourceBaseline,
+    IpsSourceBucket,
+)
 from app.models.log_source import LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
 from app.models.training_exclusion import REASON_MAX_LENGTH, BaselineTrainingExclusion
 from app.models.triage import AnomalyTriage, AnomalyTriageEvent
@@ -102,10 +111,11 @@ def _state(
 async def _rebuilt_at(
     session: AsyncSession, rows: Sequence[BaselineTrainingExclusion]
 ) -> dict[tuple[str, uuid.UUID], datetime]:
-    """Latest baseline `computed_at` per subject. One aggregate per family present.
+    """Latest baseline `computed_at` per subject. One aggregate per kind present.
 
-    Keyed by `(subject_kind, subject_id)` so a source id and an endpoint id that
-    happened to be equal cannot overwrite each other.
+    Keyed by `(subject_kind, subject_id)` so a log source, an endpoint, an IPS
+    entity and an IPS source that happened to share an id cannot overwrite each
+    other. `source` is the IPS source subject, not Phase A's `log_source`.
     """
     found: dict[tuple[str, uuid.UUID], datetime] = {}
     source_ids = {row.subject_id for row in rows if row.subject_kind == "log_source"}
@@ -130,6 +140,30 @@ async def _rebuilt_at(
         )
         found.update(
             {("endpoint", endpoint_id): at for endpoint_id, at in endpoints.all() if at is not None}
+        )
+    entity_ids = {row.subject_id for row in rows if row.subject_kind == "entity"}
+    if entity_ids:
+        entities = await session.execute(
+            select(IpsEntityBaseline.ips_entity_id, func.max(IpsEntityBaseline.computed_at))
+            .where(IpsEntityBaseline.ips_entity_id.in_(entity_ids))
+            .group_by(IpsEntityBaseline.ips_entity_id)
+        )
+        found.update(
+            {("entity", entity_id): at for entity_id, at in entities.all() if at is not None}
+        )
+    ips_source_ids = {row.subject_id for row in rows if row.subject_kind == "source"}
+    if ips_source_ids:
+        ips_sources = await session.execute(
+            select(IpsSourceBaseline.log_source_id, func.max(IpsSourceBaseline.computed_at))
+            .where(IpsSourceBaseline.log_source_id.in_(ips_source_ids))
+            .group_by(IpsSourceBaseline.log_source_id)
+        )
+        found.update(
+            {
+                ("source", source_id): at
+                for source_id, at in ips_sources.all()
+                if at is not None
+            }
         )
     return found
 
@@ -258,6 +292,79 @@ async def _waf_target(session: AsyncSession, anomaly_id: uuid.UUID) -> _Target:
     )
 
 
+async def _ips_bucket_seconds(
+    session: AsyncSession,
+    *,
+    detected_at: datetime,
+    entity_id: uuid.UUID | None = None,
+    log_source_id: uuid.UUID | None = None,
+) -> int | None:
+    """Live IPS source-bucket width at or before the incident, or None.
+
+    An entity anomaly has no log source of its own, so the width is read from
+    the entity's source. A history row carries the replay's width, not the
+    width the live detector used. No live row means no width: the caller fails
+    closed rather than guessing one.
+    """
+    if entity_id is None and log_source_id is None:
+        return None
+    stmt = select(IpsSourceBucket.bucket_seconds).where(
+        IpsSourceBucket.bucket_start <= detected_at,
+        is_live_clause(IpsSourceBucket),
+    )
+    if entity_id is not None:
+        stmt = stmt.join(
+            IpsEntity, IpsEntity.log_source_id == IpsSourceBucket.log_source_id
+        ).where(IpsEntity.id == entity_id)
+    else:
+        stmt = stmt.where(IpsSourceBucket.log_source_id == log_source_id)
+    return await session.scalar(
+        stmt.order_by(IpsSourceBucket.bucket_start.desc()).limit(1)
+    )
+
+
+async def _ips_target(session: AsyncSession, anomaly_id: uuid.UUID) -> _Target:
+    """Subject, scope and incident span of a resolved IPS anomaly.
+
+    The subject check is mutually exclusive. An entity incident — including a
+    new destination port, which has no rate baseline of its own — maps to
+    `ips:entity` and the entity id. A source incident maps to `ips:source` and
+    the log source id, one scope for every source metric.
+    """
+    anomaly = await session.get(IpsAnomaly, anomaly_id)
+    if anomaly is None:
+        raise _refuse(te.NOT_FOUND)
+    if anomaly.state != AnomalyState.RESOLVED:
+        raise _refuse(te.ANOMALY_ACTIVE)
+    if anomaly.ips_entity_id is not None:
+        subject_kind = "entity"
+        subject_id = anomaly.ips_entity_id
+        scope_key = te.IPS_ENTITY_SCOPE
+        bucket_seconds = await _ips_bucket_seconds(
+            session, detected_at=anomaly.detected_at, entity_id=anomaly.ips_entity_id
+        )
+    else:
+        source_id = anomaly.log_source_id
+        assert source_id is not None
+        subject_kind = "source"
+        subject_id = source_id
+        scope_key = te.IPS_SOURCE_SCOPE
+        bucket_seconds = await _ips_bucket_seconds(
+            session, detected_at=anomaly.detected_at, log_source_id=source_id
+        )
+    if bucket_seconds is None:
+        raise _refuse(te.INTERVAL_INVALID)
+    return _Target(
+        origin_family=AnomalyFamily.IPS.value,
+        subject_kind=subject_kind,
+        subject_id=subject_id,
+        scope_key=scope_key,
+        incident_start=anomaly.detected_at,
+        incident_end=anomaly.resolved_at or anomaly.anomaly_end or anomaly.detected_at,
+        bucket_seconds=bucket_seconds,
+    )
+
+
 def _audit_detail(row: BaselineTrainingExclusion, actor: str) -> dict[str, object]:
     """Ids, UTC bounds, subject, scope and actor. Never the reason.
 
@@ -290,16 +397,22 @@ async def create_training_exclusion(
 ) -> ExclusionOut:
     """Exclude a UTC interval of a resolved incident from baseline training.
 
-    Phase A (`log_source`) and WAF (`waf`) are accepted. 201 for a new row, 200
-    for the exact active row that already exists. The server derives the subject,
-    scope and incident span; the client may only widen it.
+    Phase A (`log_source`), WAF (`waf`) and IPS (`ips`) are accepted. 201 for a
+    new row, 200 for the exact active row that already exists. The server
+    derives the subject, scope and incident span; the client may only widen it.
     """
     _guard(principal, PERM_ANOMALY_TRIAGE)
-    if family not in (AnomalyFamily.LOG_SOURCE.value, AnomalyFamily.WAF.value):
+    if family not in (
+        AnomalyFamily.LOG_SOURCE.value,
+        AnomalyFamily.WAF.value,
+        AnomalyFamily.IPS.value,
+    ):
         raise _refuse(te.FAMILY_UNSUPPORTED, _UNPROCESSABLE)
     reason = _reason(payload.reason)
     if family == AnomalyFamily.WAF.value:
         target = await _waf_target(session, anomaly_id)
+    elif family == AnomalyFamily.IPS.value:
+        target = await _ips_target(session, anomaly_id)
     else:
         anomaly = await session.get(LogSourceAnomaly, anomaly_id)
         if anomaly is None:
@@ -430,9 +543,24 @@ async def list_training_exclusions(
             .correlate(model)
             .scalar_subquery()
         )
+        # `source` is the IPS source baseline. Phase A stays on `log_source`.
+        entity_latest = (
+            select(func.max(IpsEntityBaseline.computed_at))
+            .where(IpsEntityBaseline.ips_entity_id == model.subject_id)
+            .correlate(model)
+            .scalar_subquery()
+        )
+        ips_source_latest = (
+            select(func.max(IpsSourceBaseline.computed_at))
+            .where(IpsSourceBaseline.log_source_id == model.subject_id)
+            .correlate(model)
+            .scalar_subquery()
+        )
         applied = or_(
             and_(model.subject_kind == "log_source", source_latest > model.created_at),
             and_(model.subject_kind == "endpoint", endpoint_latest > model.created_at),
+            and_(model.subject_kind == "entity", entity_latest > model.created_at),
+            and_(model.subject_kind == "source", ips_source_latest > model.created_at),
         )
         stmt = stmt.where(
             model.revoked_at.is_(None),
