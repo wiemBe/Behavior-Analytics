@@ -317,19 +317,27 @@ def test_startup_logs_unknown_setting_names_and_not_values(
     monkeypatch.setenv("CATCHALL_COLLECTION_ENABLE", planted)
     root = logging.getLogger()
     access = logging.getLogger("uvicorn.access")
+    httpx_logger = logging.getLogger("httpx")
+    httpcore_logger = logging.getLogger("httpcore")
     saved_handlers = list(root.handlers)
     saved_level = root.level
+    saved_filters = list(root.filters)
     saved_access_handlers = list(access.handlers)
     saved_access_level = access.level
+    saved_httpx_level = httpx_logger.level
+    saved_httpcore_level = httpcore_logger.level
     try:
         with TestClient(create_app()) as client:
             assert client.get("/api/v1/health/live").status_code == 200
         captured = capsys.readouterr().out
     finally:
         root.handlers[:] = saved_handlers
+        root.filters[:] = saved_filters
         root.setLevel(saved_level)
         access.handlers[:] = saved_access_handlers
         access.setLevel(saved_access_level)
+        httpx_logger.setLevel(saved_httpx_level)
+        httpcore_logger.setLevel(saved_httpcore_level)
     assert "ignoring unknown settings:" in captured
     assert "CATCHALL_COLLECTION_ENABLE" in captured
     assert planted not in captured

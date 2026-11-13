@@ -10,9 +10,10 @@ from __future__ import annotations
 import logging
 
 from celery import Celery
-from celery.signals import beat_init, worker_ready
+from celery.signals import after_setup_logger, after_setup_task_logger, beat_init, worker_ready
 
 from app.core.config import get_settings
+from app.core.logging import configure_logging, install_redaction_filter
 
 settings = get_settings()
 
@@ -317,6 +318,40 @@ celery_app.conf.beat_schedule = {
         "schedule": float(settings.timescale_policy_interval_seconds),
     },
 }
+
+
+def _level_name(loglevel: object) -> str:
+    """Celery passes the level as an int. The shared helper takes the name."""
+    if isinstance(loglevel, int):
+        name = logging.getLevelName(loglevel)
+        if isinstance(name, str) and not name.startswith("Level "):
+            return name
+    elif isinstance(loglevel, str) and loglevel:
+        return loglevel
+    return settings.log_level
+
+
+@after_setup_logger.connect
+def _configure_worker_and_beat_logging(
+    logger: logging.Logger | None = None, loglevel: object = None, **_: object
+) -> None:
+    """Worker and beat both emit this after Celery has installed its handlers.
+
+    Connecting to ``setup_logging`` would skip that installation. The API calls
+    ``configure_logging`` from its lifespan and replaces the root handlers;
+    here the handlers stay, and the same redaction and httpx/httpcore levels
+    are applied on top. ``--loglevel`` wins over the settings default.
+    """
+    configure_logging(_level_name(loglevel), keep_handlers=True)
+    if logger is not None and logger is not logging.getLogger():
+        install_redaction_filter(logger)
+
+
+@after_setup_task_logger.connect
+def _redact_celery_task_logs(logger: logging.Logger | None = None, **_: object) -> None:
+    # The task logger does not propagate, so the root filter never sees it.
+    if logger is not None:
+        install_redaction_filter(logger)
 
 
 def _send_at_beat_start(name: str, logger_name: str) -> None:

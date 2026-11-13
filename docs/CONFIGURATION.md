@@ -629,6 +629,9 @@ compression; a repeat install keeps operator-set values. The install summary nam
 
 The `NOTIFY_*` target names are not `Settings` fields. `alerts/routing.py` reads them from the
 process environment, so they belong in the production `.env`. A blank target adds no route.
+The `NOTIFY_TEAMS_WEBHOOK_URL`, `NOTIFY_SLACK_WEBHOOK_URL` and `NOTIFY_GENERIC_WEBHOOK_URL`
+values are trusted as given (no private-address check); named destinations
+(`/admin/notifications`) are the guarded path.
 Doctor's unknown-setting check already allowlists the names, so a site that sets them is not
 warned. The installer does not write them; a repeat install keeps extra lines it does not own.
 The `SMTP_*` names below are `Settings` fields (MAIL-1); the e-mail notifier and the admin API

@@ -24,7 +24,10 @@ from app.models.enums import NotificationChannel
 def build_notifiers(
     client: httpx.AsyncClient | None = None, settings: Settings | None = None
 ) -> dict[NotificationChannel, Notifier]:
-    client = client or httpx.AsyncClient()
+    # No setting and no operator doc offers an outbound proxy for these URLs.
+    # trust_env would send the webhook, whose path is the credential, to an
+    # HTTP(S)_PROXY inherited from the environment. Redirects are not followed.
+    client = client or httpx.AsyncClient(trust_env=False, follow_redirects=False)
     return {
         NotificationChannel.TEAMS: TeamsNotifier(client),
         NotificationChannel.SLACK: SlackNotifier(client),

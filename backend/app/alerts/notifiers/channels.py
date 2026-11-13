@@ -3,7 +3,9 @@
 Each maps a NotificationMessage onto the channel's wire format. HTTP channels
 share an injected httpx.AsyncClient so tests can mock transport with respx and
 production reuses connections. No secret is logged; the webhook URL is the
-credential and is passed as the target, never emitted.
+credential and is passed as the target, never emitted. The response is read
+raw, at most 64 KiB, and a redirect is a permanent failure: the client does
+not follow it.
 """
 
 from __future__ import annotations
@@ -34,6 +36,25 @@ _SYSLOG_SEVERITY = {
     Severity.LOW: 5, Severity.INFO: 6,
 }
 
+# Same bound as the named-destination sender: raw bytes, no decompression.
+_MAX_RESPONSE_BYTES = 64 * 1024
+_READ_CHUNK_BYTES = 8 * 1024
+
+
+async def _discard_body(response: httpx.Response) -> None:
+    """Read at most 64 KiB of the raw body and drop it.
+
+    ``aiter_raw`` does not honour ``Content-Encoding``, so a gzip body stays
+    compressed and cannot expand a small payload into a large allocation.
+    """
+    if response.is_stream_consumed:
+        return
+    read = 0
+    async for chunk in response.aiter_raw(chunk_size=_READ_CHUNK_BYTES):
+        read += len(chunk)
+        if read >= _MAX_RESPONSE_BYTES:
+            break
+
 
 class _HttpNotifier(Notifier):
     def __init__(self, client: httpx.AsyncClient, *, timeout: float = 10.0) -> None:
@@ -42,16 +63,28 @@ class _HttpNotifier(Notifier):
 
     async def _post(self, url: str, payload: dict) -> None:
         try:
-            resp = await self._client.post(url, json=payload, timeout=self._timeout)
+            # stream=True skips the client's decoded ``aread``. follow_redirects
+            # is pinned off even when the injected client would follow.
+            async with self._client.stream(
+                "POST",
+                url,
+                json=payload,
+                timeout=self._timeout,
+                follow_redirects=False,
+            ) as resp:
+                await _discard_body(resp)
+                status = resp.status_code
         except httpx.HTTPError as exc:
             # HTTPX exception text may contain the request URL, whose path or
             # query is the webhook credential. Persist only the error class.
             raise NotifierError(f"transport error: {type(exc).__name__}") from exc
-        if resp.status_code >= 500 or resp.status_code == 429:
-            raise NotifierError(f"retryable status {resp.status_code}")
-        if resp.status_code >= 400:
-            # 4xx (bad webhook, unauthorized) won't fix itself — permanent.
-            raise NotifierError(f"permanent status {resp.status_code}", permanent=True)
+        if 200 <= status < 300:
+            return
+        if status >= 500 or status == 429:
+            raise NotifierError(f"retryable status {status}")
+        # 3xx is not a delivery: the Location is not fetched. 4xx will not
+        # succeed on retry. Both are permanent, as on the named-destination path.
+        raise NotifierError(f"permanent status {status}", permanent=True)
 
 
 class TeamsNotifier(_HttpNotifier):

@@ -3,6 +3,9 @@ HTTP channels are mocked with respx; syslog's socket is monkeypatched."""
 
 from __future__ import annotations
 
+import gzip
+from collections.abc import AsyncIterator
+
 import httpx
 import pytest
 import respx
@@ -14,6 +17,7 @@ from app.alerts.notifiers.channels import (
     SyslogNotifier,
     TeamsNotifier,
 )
+from app.alerts.notifiers.registry import build_notifiers
 from app.models.enums import AlertTransition, NotificationChannel, Severity
 from app.schemas.alert import notification_error_message
 
@@ -157,6 +161,103 @@ async def test_notification_error_message_redacts_legacy_http_targets(
     expected: str | None,
 ) -> None:
     assert notification_error_message(channel, target, error_message) == expected
+
+
+@pytest.mark.parametrize("status_code", [301, 302, 307, 308])
+async def test_redirect_is_a_permanent_failure(status_code: int) -> None:
+    target = "https://hooks.example/secret-path?token=credential"
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(
+            status_code,
+            headers={"location": "http://169.254.169.254/latest/meta-data/"},
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), follow_redirects=True
+    ) as client:
+        with pytest.raises(NotifierError) as exc:
+            await GenericWebhookNotifier(client).send(target, _msg())
+
+    assert exc.value.permanent is True
+    assert str(exc.value) == f"permanent status {status_code}"
+    assert seen == [target]
+    text = str(exc.value)
+    assert "secret-path" not in text
+    assert "credential" not in text
+    assert "169.254.169.254" not in text
+
+
+async def test_gzip_body_is_capped_raw_and_not_decompressed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The probe's plain body is 100000 B's. Stored (uncompressed) gzip keeps the
+    # magic header and is larger than the 64 KiB raw cap, so a decoded read
+    # would pull the whole stream and a capped raw read stops at 64 KiB.
+    blob = gzip.compress(b"B" * 100_000, compresslevel=0)
+    assert blob.startswith(b"\x1f\x8b")
+    assert len(blob) > 64 * 1024
+
+    class CountingStream(httpx.AsyncByteStream):
+        def __init__(self) -> None:
+            self.pulled = 0
+            self.closed = False
+
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            position = 0
+            while position < len(blob):
+                chunk = blob[position : position + 8 * 1024]
+                position += len(chunk)
+                self.pulled += len(chunk)
+                yield chunk
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    stream = CountingStream()
+
+    async def decoded_read(self: httpx.Response, *_args: object, **_kwargs: object) -> bytes:
+        raise AssertionError("env channel decoded the response body")
+
+    async def decoded_chunks(
+        self: httpx.Response, chunk_size: int | None = None
+    ) -> AsyncIterator[bytes]:
+        raise AssertionError("env channel decoded the response body")
+        yield b""
+
+    monkeypatch.setattr(httpx.Response, "aread", decoded_read)
+    monkeypatch.setattr(httpx.Response, "aiter_bytes", decoded_chunks)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, headers={"content-encoding": "gzip"}, stream=stream, request=request
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        await GenericWebhookNotifier(client).send("https://hooks.example/gzip-bomb", _msg())
+
+    assert stream.closed is True
+    assert stream.pulled == 64 * 1024
+    assert stream.pulled < len(blob)
+
+
+async def test_env_channel_client_ignores_proxy_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+    monkeypatch.setenv("ALL_PROXY", "http://127.0.0.1:9")
+    notifiers = build_notifiers()
+    client = notifiers[NotificationChannel.SLACK]._client
+    try:
+        assert client.trust_env is False
+        assert client.follow_redirects is False
+        transport = client._transport_for_url(httpx.URL("https://hooks.example/secret-path"))
+        assert type(transport._pool).__name__ == "AsyncConnectionPool"
+    finally:
+        await client.aclose()
 
 
 async def test_syslog_sends_udp_without_network(monkeypatch: pytest.MonkeyPatch) -> None:
