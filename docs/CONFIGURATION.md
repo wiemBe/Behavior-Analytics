@@ -625,6 +625,7 @@ compression; a repeat install keeps operator-set values. The install summary nam
 | `NOTIFY_RETRY_MAX_SECONDS` | `300.0` | Maximum retry delay |
 | `NOTIFY_SEND_RECOVERY` | `true` | Deliver recovery transitions |
 | `NOTIFY_PER_CHANNEL_RATE` | `30/minute` | Accepted. No notifier reads it |
+| `NOTIFY_SEND_DEADLINE_SECONDS` | `30.0` | Wall-clock budget, in seconds, for one named-destination POST. The 10 second connect, read, write and pool timeouts still apply to each idle socket operation; this deadline bounds the whole send. A peer that writes a byte before each idle timeout cannot hold the worker longer than this. Minimum greater than 0 |
 
 The `NOTIFY_*` target names are not `Settings` fields. `alerts/routing.py` reads them from the
 process environment, so they belong in the production `.env`. A blank target adds no route.

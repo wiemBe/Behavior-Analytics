@@ -90,9 +90,15 @@ def display_url(url: str) -> str:
 
 
 def _ip_is_refused(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    # The mapped form is checked on its own: Python can mark an IPv4-mapped
+    # address global while the IPv4 address it carries is not (or the reverse).
     mapped = getattr(address, "ipv4_mapped", None)
     if mapped is not None and _ip_is_refused(mapped):
         return True
+    # Multicast is global in this Python, and site-local (fec0::/10) is global
+    # too, so `not is_global` does not replace those two flags. CGNAT
+    # (100.64.0.0/10) is neither private nor global; `not is_global` refuses it.
+    site_local = isinstance(address, ipaddress.IPv6Address) and address.is_site_local
     return any(
         (
             address.is_private,
@@ -101,6 +107,8 @@ def _ip_is_refused(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bo
             address.is_multicast,
             address.is_unspecified,
             address.is_reserved,
+            site_local,
+            not address.is_global,
         )
     )
 

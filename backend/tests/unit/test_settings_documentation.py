@@ -68,6 +68,11 @@ def test_the_cadence_sentence_matches_the_code() -> None:
     assert "1 h default cadence" not in config
 
 
+def test_send_deadline_default_is_documented() -> None:
+    assert Settings.model_fields["notify_send_deadline_seconds"].default == 30.0
+    assert "| `NOTIFY_SEND_DEADLINE_SECONDS` | `30.0` |" in _configuration()
+
+
 def test_rate_limit_default_matches_env_example() -> None:
     """The shared default and the example file name the same limit.
 

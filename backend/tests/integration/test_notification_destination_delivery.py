@@ -8,6 +8,7 @@ import json
 import uuid
 from datetime import UTC
 
+import h11
 import httpx
 import pytest
 from sqlalchemy import event, select
@@ -276,6 +277,63 @@ async def test_4xx_and_3xx_are_permanent_on_the_first_attempt(db_session, handle
     assert row.status == NotificationStatus.DEAD_LETTER
     assert row.error_message == message
     assert PATH_TOKEN not in row.error_message and "hooks.example" not in row.error_message
+
+
+async def test_a_protocol_error_is_a_retryable_transport_failure(db_session) -> None:
+    def boom(request: httpx.Request) -> httpx.Response:
+        raise h11.LocalProtocolError("Too much data for declared Content-Length")
+
+    disp, row, _ = await _one_failure(db_session, boom)
+    await disp.dispatch_due()
+    assert row.status == NotificationStatus.FAILED
+    assert row.error_message == "transport"
+    assert "Too much data" not in (row.error_message or "")
+    assert PATH_TOKEN not in (row.error_message or "")
+
+
+async def test_an_escaped_protocol_error_stays_a_transport_class(
+    db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def explode(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise h11.LocalProtocolError("Too much data for declared Content-Length")
+
+    monkeypatch.setattr(
+        "app.alerts.dispatcher.destination_sender.send_to_destination", explode
+    )
+    disp, row, _ = await _one_failure(db_session, _ok)
+    await disp.dispatch_due()
+    assert row.status == NotificationStatus.FAILED
+    assert row.error_message == "transport"
+    assert row.attempts == 1
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        {"Transfer-Encoding": "chunked"},
+        {"Connection": "close"},
+        {"Host": "evil.example"},
+        {"X-QRadar-Dash-Signature": "v1=forged"},
+        {"X-SOC-Key": "has\r\ninjection"},
+        {"X-SOC-Key": "has\x00a-nul"},
+    ],
+)
+async def test_a_stored_forbidden_header_is_permanent_payload_invalid(
+    db_session, stored: dict[str, str]
+) -> None:
+    called: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        called.append(request)
+        return httpx.Response(204)
+
+    dest = await _destination(db_session, headers=json.dumps(stored))
+    disp, row, _ = await _one_failure(db_session, handler, dest=dest)
+    stats = await disp.dispatch_due()
+    assert called == []
+    assert stats["dead_letter"] == 1 and row.attempts == 1
+    assert row.status == NotificationStatus.DEAD_LETTER
+    assert row.error_message == "payload_invalid"
 
 
 async def test_timeout_and_transport_errors_retry(db_session) -> None:

@@ -2,36 +2,13 @@
 
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import datetime
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.alerts.notifiers.webhook_v1 import SIGNATURE_HEADER
-
-HEADER_NAME = re.compile(r"^[A-Za-z0-9-]{1,64}$")
-FORBIDDEN_HEADERS = frozenset(
-    {
-        "host",
-        "content-length",
-        "content-type",
-        "idempotency-key",
-        SIGNATURE_HEADER.lower(),
-    }
-)
-
-
-def _checked_headers(value: dict[str, str]) -> dict[str, str]:
-    if len(value) > 5:
-        raise ValueError("at most five custom headers are allowed")
-    for name, header_value in value.items():
-        if not HEADER_NAME.fullmatch(name) or name.lower() in FORBIDDEN_HEADERS:
-            raise ValueError(f"custom header name is not allowed: {name[:64]}")
-        if len(header_value) > 4096 or "\r" in header_value or "\n" in header_value:
-            raise ValueError(f"custom header value is not allowed for: {name[:64]}")
-    return value
+from app.alerts.notifiers.destination_sender import checked_custom_headers
 
 
 class DestinationCreate(BaseModel):
@@ -56,7 +33,7 @@ class DestinationCreate(BaseModel):
     @field_validator("headers")
     @classmethod
     def _headers(cls, value: dict[str, str]) -> dict[str, str]:
-        return _checked_headers(value)
+        return checked_custom_headers(value)
 
 
 class DestinationPatch(BaseModel):
@@ -83,7 +60,7 @@ class DestinationPatch(BaseModel):
     @field_validator("headers")
     @classmethod
     def _optional_headers(cls, value: dict[str, str] | None) -> dict[str, str] | None:
-        return None if value is None else _checked_headers(value)
+        return None if value is None else checked_custom_headers(value)
 
     @model_validator(mode="after")
     def _only_secret_may_be_cleared(self) -> Self:
@@ -118,7 +95,13 @@ class MessageOut(BaseModel):
 
 
 TestClass = Literal[
-    "ok", "transport", "timeout", "http_status", "ssrf_refused", "redirect_refused"
+    "ok",
+    "transport",
+    "timeout",
+    "http_status",
+    "ssrf_refused",
+    "redirect_refused",
+    "payload_invalid",
 ]
 
 

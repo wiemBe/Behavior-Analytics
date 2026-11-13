@@ -35,6 +35,7 @@ from app.alerts.notifiers import destination_sender
 from app.alerts.notifiers.base import NotificationMessage, Notifier, NotifierError
 from app.alerts.notifiers.destination_sender import (
     DESTINATION_TARGET_PREFIX,
+    StoredHeadersInvalid,
     destination_target_id,
 )
 from app.alerts.notifiers.url_guard import resolve_host
@@ -375,9 +376,18 @@ class NotificationDispatcher:
                 resolver=self._destination_resolver,
                 transport_factory=self._destination_transport,
             )
-        except Exception:  # the text could carry the URL, so only a class is kept
-            self._record(notif, "transport")
-            self._handle_failure(notif, NotifierError("transport"), stats)
+        except StoredHeadersInvalid:
+            # A stored header block that fails the schema will not improve on retry.
+            self._record(notif, "payload_invalid")
+            self._handle_failure(notif, NotifierError("payload_invalid", permanent=True), stats)
+            return
+        except Exception as exc:
+            # The text could carry the URL, so only a class is kept. A protocol
+            # error is not an httpx.TransportError; it is still a transport failure.
+            failure = destination_sender.transport_failure_class(exc)
+            error_class = failure if failure is not None else "transport"
+            self._record(notif, error_class)
+            self._handle_failure(notif, NotifierError(error_class), stats)
             return
         self._record(notif, result, http_status)
         if result == "ok":

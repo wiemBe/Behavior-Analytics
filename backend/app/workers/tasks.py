@@ -2097,20 +2097,42 @@ async def apply_timescale_policies() -> dict:
 
 
 # --------------------------------------------------------------- notifications
+# The dispatcher has no QRadar instance; a fixed id gives `collector_lock_key`
+# a stable key. The collector name keeps it off the anomaly and search locks,
+# which use the same id.
+DISPATCH_NOTIFICATIONS_LOCK_ID = uuid.UUID(int=0)
+
+
 async def dispatch_notifications() -> dict:
+    """Deliver due notifications. A second overlapping run skips.
+
+    The lock is held on a connection of its own: this session commits when the
+    batch finishes, and a lock taken on it would follow that connection back
+    to the pool. If this process dies the lock's connection closes and
+    PostgreSQL frees the lock.
+    """
+    settings = get_settings()
     maker = get_sessionmaker()
-    notifiers = build_notifiers()
-    try:
-        async with maker() as session:
+    async with maker() as session, CollectorAdvisoryLock(
+        session, settings, DISPATCH_NOTIFICATIONS_LOCK_ID, "dispatch_notifications"
+    ) as acquired:
+        if not acquired:
+            logger.info(
+                "notification dispatch skipped: a run is already in progress",
+                extra={"lock": "dispatch_notifications"},
+            )
+            return {"status": "skipped_locked"}
+        notifiers = build_notifiers()
+        try:
             dispatcher = NotificationDispatcher(session, notifiers, default_policy())
             stats = await dispatcher.dispatch_due()
             await session.commit()
             return stats
-    finally:
-        for n in notifiers.values():
-            client = getattr(n, "_client", None)
-            if client is not None:
-                await client.aclose()
+        finally:
+            for n in notifiers.values():
+                client = getattr(n, "_client", None)
+                if client is not None:
+                    await client.aclose()
 
 
 # --------------------------------------------------------------- celery shims
