@@ -69,6 +69,7 @@
     "ips": "IPS",
     "property_watch": "Property watches",
     "rule": "Rules",
+    "identity": "Identity",
     "catchall_sender": "Catch-all senders",
     "custom_rule": "Custom rules",
     "scheduled_search": "Scheduled searches",

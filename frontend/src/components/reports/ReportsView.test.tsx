@@ -160,6 +160,22 @@ describe("a full report", () => {
     expect(within(cells[0]).queryByRole("link")).toBeNull();
   });
 
+  it("labels an identity alert row and drills to that family", async () => {
+    const base = summary();
+    mocks.summary.mockResolvedValue(
+      summary({
+        alerts: {
+          ...base.alerts,
+          rows: [{ family: "identity", severity: "HIGH", count: 4 }],
+        },
+      }),
+    );
+    mount();
+    const table = await screen.findByRole("table", { name: /Alerts opened in the period/ });
+    const link = within(table).getByRole("link", { name: "4 HIGH in Identity: open the list" });
+    expect(new URL(link.getAttribute("href")!, "http://x").searchParams.get("family")).toBe("identity");
+  });
+
   it("lists a source type no family claims without a drill link", async () => {
     mount();
     const table = await screen.findByRole("table", { name: /Alerts opened in the period/ });
