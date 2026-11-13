@@ -35,11 +35,14 @@
       "start-later": "Start cannot be later than the detected span's start, {time}.",
       "end-earlier": "End cannot be earlier than the detected span's end, {time}.",
       "too-long": "The interval can be at most {days} days.",
-      "not-widened": "Widen the interval to include nearby buckets. The detected span is already excluded automatically."
+      "not-widened": "Widen the interval to include nearby buckets. The detected span is already excluded automatically.",
+      "unalignedFamily": "Start and end must fall on the {minutes}-minute {grid} boundaries."
     },
     "forbidden": "Recording an exclusion needs the {permission} permission.",
     "notSaved": "The exclusion was not saved. {reason}",
-    "gone": "The anomaly no longer exists. Reload the page."
+    "gone": "The anomaly no longer exists. Reload the page.",
+    "confirmFamily": "Exclude {interval} from {baseline}. The detected incident span is already excluded automatically. {scopeNote} Extend the UTC bounds only if nearby intervals were also affected. {when}, may make the expected range unavailable, and does not change this anomaly or its alerts.",
+    "formatFamily": "Format: YYYY-MM-DD HH:MM, in UTC. Bounds align to the {minutes}-minute {grid} boundaries."
   },
   "result": {
     "PENDING_REBUILD": "Pending next baseline rebuild. The expected range has not changed.",
@@ -54,7 +57,13 @@
     "REVOKED": "Revoked"
   },
   "scope": {
-    "log_source:volume": "Source volume"
+    "log_source:volume": "Source volume",
+    "waf:endpoint": "Endpoint requests and ratios",
+    "ips:entity": "IPS entity events",
+    "ips:source": "IPS source metrics",
+    "pw:value": "Property value counts",
+    "rule:storm": "Rule storm",
+    "rule:silence": "Rule silence"
   },
   "list": {
     "heading": "Baseline training exclusions",
@@ -82,10 +91,68 @@
     "revoked": "Exclusion revoked. The interval returns to training at the next baseline rebuild.",
     "revokeNotSaved": "The exclusion was not revoked. {reason}",
     "revokeNeedsPermission": "Revoking an exclusion needs the {permission} permission.",
-    "needsReason": "Enter a reason of 1 to {max} characters."
+    "needsReason": "Enter a reason of 1 to {max} characters.",
+    "revokeIntroRule": "Revoke the exclusion of {interval}. The interval returns to the rule's baseline from the next evaluation, except where an incident span is excluded automatically.",
+    "revokedRule": "Exclusion revoked. The interval returns to the rule's baseline from the next evaluation."
   },
   "band": {
     "heading": "Excluded from baseline training:",
     "row": "{interval} ({state})"
+  },
+  "variant": {
+    "waf": {
+      "baseline": "this endpoint's request baseline",
+      "scopeNote": "It applies to the request count and to every ratio of this endpoint.",
+      "when": "This takes effect after the next baseline rebuild",
+      "grid": "bucket",
+      "noWidth": "The bucket width of this endpoint's source could not be read, so no interval can be proposed.",
+      "lead": "Intervals an analyst removed from this endpoint's request baseline (request count and every ratio). An exclusion takes effect at the next baseline rebuild; it never overrides the automatic exclusion of detected incidents."
+    },
+    "ipsEntity": {
+      "baseline": "this entity's IPS event baseline",
+      "scopeNote": "It applies to this entity's event-rate baseline only.",
+      "when": "This takes effect after the next baseline rebuild",
+      "grid": "bucket",
+      "noWidth": "The bucket width of this entity's source could not be read, so no interval can be proposed.",
+      "lead": "Intervals an analyst removed from this entity's IPS event baseline. An exclusion takes effect at the next baseline rebuild; it never overrides the automatic exclusion of detected incidents."
+    },
+    "ipsSource": {
+      "baseline": "this source's IPS baseline",
+      "scopeNote": "It applies to all of this source's IPS metrics: top-source share, block ratio and port fan-out.",
+      "when": "This takes effect after the next baseline rebuild",
+      "grid": "bucket",
+      "noWidth": "The bucket width of this source could not be read, so no interval can be proposed.",
+      "lead": "Intervals an analyst removed from this source's IPS baselines (top-source share, block ratio and port fan-out). An exclusion takes effect at the next baseline rebuild; it never overrides the automatic exclusion of detected incidents."
+    },
+    "pwValue": {
+      "baseline": "this property value's baseline",
+      "scopeNote": "It applies to the spike, drop and disappeared baselines of this value.",
+      "when": "This takes effect after the next baseline rebuild",
+      "grid": "bucket",
+      "noWidth": "The bucket width of this value's watch could not be read, so no interval can be proposed.",
+      "lead": "Intervals an analyst removed from this property value's baselines (spike, drop and disappeared). An exclusion takes effect at the next baseline rebuild; it never overrides the automatic exclusion of detected incidents."
+    },
+    "ruleStorm": {
+      "baseline": "this rule's storm baseline",
+      "scopeNote": "It applies to the storm baseline only; the rule's silence baseline is not changed.",
+      "when": "This is used from the next evaluation",
+      "grid": "match-window",
+      "noWidth": "The match-window width of this rule could not be read, so no interval can be proposed.",
+      "lead": "Intervals an analyst removed from this rule's storm and silence baselines. A rule exclusion is used from the next evaluation; it never overrides the automatic exclusion of detected incidents."
+    },
+    "ruleSilence": {
+      "baseline": "this rule's silence baseline",
+      "scopeNote": "It applies to the silence baseline only; the rule's storm baseline is not changed.",
+      "when": "This is used from the next evaluation",
+      "grid": "match-window",
+      "noWidth": "The match-window width of this rule could not be read, so no interval can be proposed.",
+      "lead": "Intervals an analyst removed from this rule's storm and silence baselines. A rule exclusion is used from the next evaluation; it never overrides the automatic exclusion of detected incidents."
+    }
+  },
+  "stateRule": {
+    "PENDING_REBUILD": "Used from the next evaluation"
+  },
+  "resultRule": {
+    "PENDING_REBUILD": "Recorded. The rule's next evaluation uses it; the expected range has not changed yet."
   }
 }

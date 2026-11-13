@@ -10,6 +10,8 @@ import {
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { CapacityHistory } from "@/components/rules/CapacityHistory";
+import { TrainingExclusions } from "@/components/baseline/TrainingExclusions";
+import { loadExclusionsFor } from "@/lib/trainingExclusionLoad";
 import { RuleMatchSectionView } from "@/components/rules/RuleMatchSection";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
@@ -294,6 +296,12 @@ async function RuleDetailPage({
         </table>
         </TableScroll>
       )}
+
+      <TrainingExclusions
+        subject={{ kind: "rule", id }}
+        variant="ruleStorm"
+        initial={await loadExclusionsFor({ kind: "rule", id })}
+      />
     </>
   );
 }

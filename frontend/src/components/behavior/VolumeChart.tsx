@@ -51,7 +51,10 @@ import { utcTimeHtml } from "@/components/ui/UtcTime";
 
 
 import "@/components/baseline/baseline.css";
-import { exclusionMarkAreas, type ExclusionSpan } from "@/components/baseline/exclusionBand";
+import { exclusionMarkAreas, mergeIntervals, type ExclusionSpan } from "@/components/baseline/exclusionBand";
+
+// The merge lives with the exclusion band (the other families' charts need it without this module).
+export { mergeIntervals };
 import { EmaLegendItems, EmaNote, EmaSummary } from "./EmaLegend";
 import { EmaToggles, useEmaPeriods } from "./EmaToggles";
 import { HistoryKey, HistoryText } from "./HistoryKey";
@@ -93,29 +96,6 @@ export interface AnomalyInterval {
 export interface TransitionMarker {
   at: string;
   label: string;
-}
-
-/**
- * Union of overlapping or touching `[start, end]` intervals, in epoch ms.
- *
- * Each mark area is painted with the same translucent fill, so two incidents
- * over one stretch of time would stack their alpha and read as a stronger
- * signal there. Merged, every instant is covered by exactly one band.
- */
-export function mergeIntervals(
-  spans: Array<{ start: number; end: number }>,
-): Array<{ start: number; end: number }> {
-  const sorted = spans
-    .filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end))
-    .map((s) => ({ start: Math.min(s.start, s.end), end: Math.max(s.start, s.end) }))
-    .sort((a, b) => a.start - b.start);
-  const out: Array<{ start: number; end: number }> = [];
-  for (const s of sorted) {
-    const last = out[out.length - 1];
-    if (last && s.start <= last.end) last.end = Math.max(last.end, s.end);
-    else out.push({ ...s });
-  }
-  return out;
 }
 
 export function VolumeChart({

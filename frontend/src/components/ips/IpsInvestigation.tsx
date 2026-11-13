@@ -11,12 +11,14 @@
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
+import { ExclusionBandText, effectiveSpans } from "@/components/baseline/ExclusionBandText";
 import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
 import type {
   IpsAnomalyDetail,
   IpsBaselineCell,
   IpsEntityMetricBucket,
   IpsSourceMetricBucket,
+  TrainingExclusion,
 } from "@/lib/api";
 import { wordOrValue, type BehaviorI18n } from "@/lib/behaviorI18n";
 import { formatShare } from "@/lib/format";
@@ -140,6 +142,7 @@ export function IpsInvestigation({
   canOpenSource = false,
   triage = null,
   related = null,
+  exclusionRows = null,
 }: {
   anomaly: IpsAnomalyDetail;
   /** Stored buckets around the incident, or null when they could not be loaded. */
@@ -151,6 +154,8 @@ export function IpsInvestigation({
   /** The triage block (SOC-1b), shown under the state sentence. */
   triage?: ReactNode;
   /** The Related activity section (SOC-3b), after the evidence and before the lifecycle. */
+  /** The subject's analyst training exclusions (SOC-13f), or null when they could not be read. */
+  exclusionRows?: TrainingExclusion[] | null;
   related?: ReactNode;
 }) {
   const t = useTranslations("ips");
@@ -277,7 +282,9 @@ export function IpsInvestigation({
                 }))}
                 ariaLabel={t("chart.aria", { quantity })}
                 textSummary={ipsChartSummary(anomaly, planned.plan.points, quantity, i18n)}
+                exclusions={effectiveSpans(exclusionRows)}
               />
+              <ExclusionBandText rows={exclusionRows} />
             </>
           )
         )}

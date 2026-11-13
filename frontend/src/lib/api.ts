@@ -4290,10 +4290,30 @@ export const trainingExclusionApi = {
         limit,
       })}`,
     ),
-  /** 201 for a new row, 200 for the exact row that already existed (`anomaly:triage`). */
-  create: (anomalyId: string, body: { starts_at: string; ends_at: string; reason: string }) =>
+  /**
+   * The exclusions of one subject's baseline in any family (SOC-13f), newest first. Without a
+   * `scopeKey` every scope of the subject is listed (a rule has a storm and a silence scope).
+   */
+  forSubject: (subjectKind: string, subjectId: string, scopeKey?: string, limit = 100) =>
+    request<TrainingExclusionList>(
+      `/behavior/training-exclusions${qs({
+        subject_kind: subjectKind,
+        subject_id: subjectId,
+        ...(scopeKey ? { scope_key: scopeKey } : {}),
+        limit,
+      })}`,
+    ),
+  /**
+   * 201 for a new row, 200 for the exact row that already existed (`anomaly:triage`). The family
+   * is the server's path segment: `log_source` (default), `waf`, `ips`, `property_watch`, `rule`.
+   */
+  create: (
+    anomalyId: string,
+    body: { starts_at: string; ends_at: string; reason: string },
+    family = "log_source",
+  ) =>
     request<TrainingExclusion>(
-      `/anomalies/log_source/${encodeURIComponent(anomalyId)}/training-exclusions`,
+      `/anomalies/${encodeURIComponent(family)}/${encodeURIComponent(anomalyId)}/training-exclusions`,
       { method: "POST", body: JSON.stringify(body) },
     ),
   revoke: (id: string, body: { reason: string }) =>

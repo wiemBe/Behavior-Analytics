@@ -11,6 +11,9 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { Pagination } from "@/components/Pagination";
+import { TrainingExclusions } from "@/components/baseline/TrainingExclusions";
+import { loadExclusionsFor } from "@/lib/trainingExclusionLoad";
+import { IPS_SOURCE_SCOPE } from "@/lib/trainingExclusion";
 import { IpsEntitiesTable } from "@/components/ips/IpsEntitiesTable";
 import {
   IpsDimensionFilter,
@@ -323,6 +326,14 @@ async function IpsSourcePage({
             />
           </>
         )}
+      </section>
+
+      <section className="stack-6 ips-section">
+        <TrainingExclusions
+          subject={{ kind: "source", id, scope: IPS_SOURCE_SCOPE }}
+          variant="ipsSource"
+          initial={await loadExclusionsFor({ kind: "source", id, scope: IPS_SOURCE_SCOPE })}
+        />
       </section>
 
       <section className="stack-6 ips-section">
