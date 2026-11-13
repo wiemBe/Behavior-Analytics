@@ -733,6 +733,21 @@
       "direction_disabled": "the direction was disabled by a tuning change"
     }
   },
+  "notifications": {
+    "destination_in_use": "The destination {name} is used by a notification rule. Remove it from the rule first.",
+    "destination_unknown": "The notification destination was not found.",
+    "http_refused": "The destination uses HTTP. Enable HTTP only for an endpoint the site administrator trusts.",
+    "limit": "This site already has the maximum of 10 destinations.",
+    "name_taken": "A notification destination named {name} already exists.",
+    "private_refused": "The destination resolves to a non-public address. Enable private addresses only for an endpoint the site administrator trusts.",
+    "rule_limit": "This site already has the maximum of 50 rules.",
+    "rule_name_taken": "A notification rule named {name} already exists.",
+    "rule_unknown": "The notification rule was not found.",
+    "rule_window_invalid": "The time window needs both a start and an end between 0 and 1439 minutes after 00:00 UTC, and they must differ.",
+    "test_failed": "The test webhook was not accepted. Result: {failure_class}.",
+    "test_ok": "The destination accepted the test webhook.",
+    "url_invalid": "The destination URL must have a valid HTTP or HTTPS host and no credentials."
+  },
   "propertywatch": {
     "action": {
       "change_pins": "change the scope, properties or pins",

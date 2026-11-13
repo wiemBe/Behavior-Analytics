@@ -220,6 +220,12 @@ _BODIES: dict[tuple[str, str], dict] = {
     ("PATCH", "/api/v1/admin/notifications/destinations/{destination_id}"): {
         "enabled": False,
     },
+    ("POST", "/api/v1/admin/notifications/rules"): {
+        "name": "guard",
+        "min_severity": "HIGH",
+        "destination_ids": ["00000000-0000-0000-0000-000000000001"],
+    },
+    ("PATCH", "/api/v1/admin/notifications/rules/{rule_id}"): {"enabled": False},
     # History backfill: the three writes check `admin:history_backfill` in the
     # handler, after body validation, so the guard needs a body that passes it.
     ("PUT", "/api/v1/admin/history-backfill/{instance_id}"): {"answer": "YES"},

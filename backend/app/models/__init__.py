@@ -59,6 +59,7 @@ from app.models.monitoring import (
     QRadarAccessRun,
 )
 from app.models.notification_destination import NotificationDestination
+from app.models.notification_rule import NotificationRule
 from app.models.offense import OffenseSnapshot
 from app.models.outage import OutageAlertPolicy
 from app.models.property_watch import (
@@ -202,6 +203,7 @@ __all__ = [
     "LogSourceMetric",
     "LogSourceType",
     "NotificationDestination",
+    "NotificationRule",
     "OffenseSnapshot",
     "OutageAlertPolicy",
     "PropertyWatch",

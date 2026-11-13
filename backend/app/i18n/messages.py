@@ -878,6 +878,24 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "A notification destination named {name} already exists.",
         name="SOAR",
     ),
+    # Notification routing rules (SOC-12c).
+    _fixed("notifications.rule_limit", "This site already has the maximum of 50 rules."),
+    _fixed("notifications.rule_unknown", "The notification rule was not found."),
+    _text(
+        "notifications.rule_name_taken",
+        "A notification rule named {name} already exists.",
+        name="Critical to SOAR",
+    ),
+    _fixed(
+        "notifications.rule_window_invalid",
+        "The time window needs both a start and an end between 0 and 1439 minutes after "
+        "00:00 UTC, and they must differ.",
+    ),
+    _text(
+        "notifications.destination_in_use",
+        "The destination {name} is used by a notification rule. Remove it from the rule first.",
+        name="SOAR",
+    ),
     _fixed("notifications.test_ok", "The destination accepted the test webhook."),
     _text(
         "notifications.test_failed",

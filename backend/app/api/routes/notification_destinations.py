@@ -31,6 +31,7 @@ from app.core.rate_limit import limiter
 from app.i18n.messages import MessageRef, render
 from app.i18n.refusal import CodedHTTPException
 from app.models.notification_destination import NotificationDestination
+from app.models.notification_rule import NotificationRule
 from app.repositories.audit import record_audit
 from app.schemas.notification_destination import (
     DestinationCreate,
@@ -279,6 +280,15 @@ async def delete_destination(
     destination_id: uuid.UUID, session: SessionDep, principal: PrincipalDep
 ) -> Response:
     row = await _get(session, destination_id, for_update=True)
+    in_use = await session.scalar(
+        select(NotificationRule.id)
+        .where(NotificationRule.destination_ids.contains([destination_id]))
+        .limit(1)
+    )
+    if in_use is not None:
+        raise _coded(
+            status.HTTP_409_CONFLICT, "notifications.destination_in_use", {"name": row.name}
+        )
     detail = _audit_detail(row)
     await session.delete(row)
     await session.flush()
