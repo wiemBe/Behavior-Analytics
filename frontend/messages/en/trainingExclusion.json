@@ -1,0 +1,91 @@
+{
+  "block": {
+    "heading": "Baseline training",
+    "active": "Available once the anomaly is resolved.",
+    "notResolved": "Only a resolved anomaly can be excluded from training.",
+    "noWidth": "The bucket width of this source could not be read, so no interval can be proposed.",
+    "protectionLabel": "Training protection",
+    "autoOnly": "The detected incident span is excluded from training automatically. No analyst exclusion exists for this incident.",
+    "auto": "The detected incident span is excluded from training automatically.",
+    "listUnknown": "Analyst exclusions could not be loaded for this incident.",
+    "listForbidden": "Reading analyst exclusions needs the {permission} permission.",
+    "readOnly": "Recording an exclusion needs the {permission} permission.",
+    "open": "Exclude interval from training"
+  },
+  "form": {
+    "title": "Exclude interval from training",
+    "confirm": "Exclude {interval} from this source-volume baseline. The detected incident span is already excluded automatically. Extend the UTC bounds only if nearby buckets were also affected. This takes effect after the next baseline rebuild, may make the expected range unavailable, and does not change this anomaly or its alerts.",
+    "start": "Start (UTC)",
+    "end": "End (UTC, exclusive)",
+    "format": "Format: YYYY-MM-DD HH:MM, in UTC. Bounds align to the source's {minutes}-minute bucket width.",
+    "widenOnly": "Start can only move earlier and end only later; the detected span is {interval}. The interval can be at most {days} days.",
+    "reason": "Reason",
+    "reasonHelp": "Required, 1 to {max} characters. It is kept with the exclusion and in the incident's activity.",
+    "count": "{used} of {max} characters",
+    "save": "Exclude interval",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "needsWiden": "Widen the interval to include nearby buckets. The detected span is already excluded automatically.",
+    "needsReason": "Enter a reason of 1 to {max} characters.",
+    "problem": {
+      "start-unreadable": "Start is not a UTC time in the form YYYY-MM-DD HH:MM.",
+      "end-unreadable": "End is not a UTC time in the form YYYY-MM-DD HH:MM.",
+      "unaligned": "Start and end must fall on the source's {minutes}-minute bucket boundaries.",
+      "start-order": "Start must be before end.",
+      "start-later": "Start cannot be later than the detected span's start, {time}.",
+      "end-earlier": "End cannot be earlier than the detected span's end, {time}.",
+      "too-long": "The interval can be at most {days} days.",
+      "not-widened": "Widen the interval to include nearby buckets. The detected span is already excluded automatically."
+    },
+    "forbidden": "Recording an exclusion needs the {permission} permission.",
+    "notSaved": "The exclusion was not saved. {reason}",
+    "gone": "The anomaly no longer exists. Reload the page."
+  },
+  "result": {
+    "PENDING_REBUILD": "Pending next baseline rebuild. The expected range has not changed.",
+    "APPLIED": "This exact interval was already excluded and a baseline rebuild has applied it.",
+    "OUTSIDE_LOOKBACK": "This exact interval was already excluded. It is older than the baseline lookback and changes nothing.",
+    "REVOKED": "This interval was revoked."
+  },
+  "state": {
+    "PENDING_REBUILD": "Pending next baseline rebuild",
+    "APPLIED": "Applied by a baseline rebuild",
+    "OUTSIDE_LOOKBACK": "Outside the baseline lookback",
+    "REVOKED": "Revoked"
+  },
+  "scope": {
+    "log_source:volume": "Source volume"
+  },
+  "list": {
+    "heading": "Baseline training exclusions",
+    "lead": "Intervals an analyst removed from this source's volume baseline. An exclusion takes effect at the next baseline rebuild; it never overrides the automatic exclusion of detected incidents.",
+    "loading": "Loading training exclusions…",
+    "empty": "No analyst training exclusions affect this baseline.",
+    "error": "Training exclusions could not be loaded.",
+    "retry": "Retry",
+    "forbidden": "Reading training exclusions needs the {permission} permission.",
+    "capped": "Showing the newest {limit} exclusions.",
+    "caption": "Analyst training exclusions",
+    "interval": "Interval (UTC)",
+    "scope": "Scope",
+    "reason": "Reason",
+    "by": "Created by",
+    "effect": "Effect",
+    "action": "Action",
+    "revokedBy": "Revoked by {actor}: {reason}",
+    "revoke": "Revoke",
+    "revokeTitle": "Revoke training exclusion",
+    "revokeIntro": "Revoke the exclusion of {interval}. The interval returns to training at the next baseline rebuild, except where an incident span is excluded automatically.",
+    "revokeReason": "Reason for revoking",
+    "revokeSave": "Revoke exclusion",
+    "revokeCancel": "Cancel",
+    "revoked": "Exclusion revoked. The interval returns to training at the next baseline rebuild.",
+    "revokeNotSaved": "The exclusion was not revoked. {reason}",
+    "revokeNeedsPermission": "Revoking an exclusion needs the {permission} permission.",
+    "needsReason": "Enter a reason of 1 to {max} characters."
+  },
+  "band": {
+    "heading": "Excluded from baseline training:",
+    "row": "{interval} ({state})"
+  }
+}

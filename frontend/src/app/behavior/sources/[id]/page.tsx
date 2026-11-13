@@ -25,6 +25,9 @@ import { SourceHeader } from "@/components/behavior/SourceHeader";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { SourceQuality } from "@/components/behavior/SourceQuality";
+import { ExclusionBandText, effectiveSpans } from "@/components/baseline/ExclusionBandText";
+import { TrainingExclusions } from "@/components/baseline/TrainingExclusions";
+import { loadExclusions, type ExclusionLoad } from "@/lib/trainingExclusionLoad";
 import { VolumeChart } from "@/components/behavior/VolumeChart";
 import {
   ApiError,
@@ -120,7 +123,7 @@ async function SourceBehaviorPage({
 
   // Each of these enriches the page; none of them is the page. A failure in
   // one is reported in place rather than replacing everything with an error.
-  const [metaResult, bucketsResult, anomaliesResult, activeResult, cellsResult] =
+  const [metaResult, bucketsResult, anomaliesResult, activeResult, cellsResult, exclusionsResult] =
     await Promise.allSettled([
       api.logSource(id),
       api.sourceMetrics(id, { since, until, limit: METRIC_LIMIT }),
@@ -134,6 +137,7 @@ async function SourceBehaviorPage({
         subject_kind: "LOG_SOURCE",
       }),
       api.sourceBaselines(id),
+      loadExclusions(id),
     ]);
 
   const meta: LogSourceDetail | null =
@@ -147,6 +151,8 @@ async function SourceBehaviorPage({
     activeResult.status === "fulfilled" ? activeResult.value : null;
   const cells: BaselineCell[] =
     cellsResult.status === "fulfilled" ? cellsResult.value : [];
+  const exclusions: ExclusionLoad =
+    exclusionsResult.status === "fulfilled" ? exclusionsResult.value : { kind: "error" };
 
   const { active } = partitionAnomalies(activePage?.items ?? []);
   const { recent } = partitionAnomalies(anomalies);
@@ -292,10 +298,12 @@ async function SourceBehaviorPage({
                 end: a.anomaly_end,
                 label: detectorLabel(a.anomaly_type, i18n),
               }))}
+            exclusions={effectiveSpans(exclusions.kind === "ok" ? exclusions.items : null)}
             ariaLabel={t("chartAria", { name: behavior.name })}
             textSummary={chartSummary}
           />
         )}
+        <ExclusionBandText rows={exclusions.kind === "ok" ? exclusions.items : null} />
       </section>
 
       {/* --- 4. anomalies, above the technical detail ---------------------- */}
@@ -323,6 +331,7 @@ async function SourceBehaviorPage({
           lastBucketAt={behavior.last_bucket_at}
           qradarStatus={meta?.qradar_status ?? null}
         />
+        <TrainingExclusions sourceId={behavior.log_source_id} initial={exclusions} />
       </section>
 
       {/* --- 7. advanced, all collapsed ------------------------------------ */}

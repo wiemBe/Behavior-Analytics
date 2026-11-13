@@ -49,7 +49,7 @@ async function alertFor(
   }
 }
 
-export async function triageNode(anomaly: AnomalySummary): Promise<ReactNode> {
+export async function triageNode(anomaly: AnomalySummary, extra?: ReactNode): Promise<ReactNode> {
   const family = triageFamilyOf(anomaly);
   if (family === null) return <TriageUnavailable />;
 
@@ -87,6 +87,7 @@ export async function triageNode(anomaly: AnomalySummary): Promise<ReactNode> {
       access={access}
       me={caller?.subject ?? null}
       alert={ref}
+      extra={extra}
     />
   );
 }

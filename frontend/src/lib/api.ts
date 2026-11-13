@@ -1413,7 +1413,14 @@ export type TriageDisposition =
 /** STALE is system-only; an analyst PATCH can never select it. */
 export type AnalystTriageDisposition = Exclude<TriageDisposition, "STALE">;
 export type TriageFamily = "log_source" | "waf" | "ips" | "property_watch" | "rule";
-export type TriageEventKind = "STATUS" | "OWNER" | "DISPOSITION" | "NOTE" | "COMMENT";
+export type TriageEventKind =
+  | "STATUS"
+  | "OWNER"
+  | "DISPOSITION"
+  | "NOTE"
+  | "COMMENT"
+  | "BASELINE_EXCLUSION_CREATED"
+  | "BASELINE_EXCLUSION_REVOKED";
 
 export interface TriageSummary {
   status: TriageStatus;
@@ -4239,6 +4246,61 @@ export const suppressionApi = {
     ),
   end: (id: string) =>
     request<Suppression>(`/suppressions/${encodeURIComponent(id)}/end`, { method: "POST" }),
+};
+
+// --- baseline training exclusions (SOC-13, mirrors app/schemas/training_exclusion.py) -------
+/** `APPLIED` once a rebuild after creation used the row; `OUTSIDE_LOOKBACK` changes nothing. */
+export type TrainingExclusionState =
+  | "PENDING_REBUILD"
+  | "APPLIED"
+  | "OUTSIDE_LOOKBACK"
+  | "REVOKED";
+
+export interface TrainingExclusion {
+  id: string;
+  origin_family: string;
+  origin_anomaly_id: string;
+  subject_kind: string;
+  subject_id: string;
+  scope_key: string;
+  starts_at: string;
+  ends_at: string;
+  reason: string;
+  created_by: string;
+  created_at: string;
+  revoked_by: string | null;
+  revoked_at: string | null;
+  revocation_reason: string | null;
+  state: TrainingExclusionState;
+}
+
+export interface TrainingExclusionList {
+  items: TrainingExclusion[];
+  limit: number;
+}
+
+export const trainingExclusionApi = {
+  /** The exclusions of one source's volume baseline, newest first (`read:anomalies`). */
+  forSource: (sourceId: string, limit = 100) =>
+    request<TrainingExclusionList>(
+      `/behavior/training-exclusions${qs({
+        subject_kind: "log_source",
+        subject_id: sourceId,
+        scope_key: "log_source:volume",
+        limit,
+      })}`,
+    ),
+  /** 201 for a new row, 200 for the exact row that already existed (`anomaly:triage`). */
+  create: (anomalyId: string, body: { starts_at: string; ends_at: string; reason: string }) =>
+    request<TrainingExclusion>(
+      `/anomalies/log_source/${encodeURIComponent(anomalyId)}/training-exclusions`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  revoke: (id: string, body: { reason: string }) =>
+    request<TrainingExclusion>(
+      `/behavior/training-exclusions/${encodeURIComponent(id)}/revoke`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
 };
 
 // --- rule statistics (T-062) -----------------------------------------------

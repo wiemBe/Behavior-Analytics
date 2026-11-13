@@ -50,6 +50,8 @@ import {
 import { utcTimeHtml } from "@/components/ui/UtcTime";
 
 
+import "@/components/baseline/baseline.css";
+import { exclusionMarkAreas, type ExclusionSpan } from "@/components/baseline/exclusionBand";
 import { EmaLegendItems, EmaNote, EmaSummary } from "./EmaLegend";
 import { EmaToggles, useEmaPeriods } from "./EmaToggles";
 import { HistoryKey, HistoryText } from "./HistoryKey";
@@ -123,6 +125,7 @@ export function VolumeChart({
   expectedHigh,
   anomalies = [],
   transitions = [],
+  exclusions = [],
   ariaLabel,
   textSummary,
 }: {
@@ -132,6 +135,8 @@ export function VolumeChart({
   expectedHigh: number | null;
   anomalies?: AnomalyInterval[];
   transitions?: TransitionMarker[];
+  /** Intervals an analyst excluded from the baseline's training (SOC-13d), shaded in neutral. */
+  exclusions?: ExclusionSpan[];
   ariaLabel?: string;
   /** A prose description of what the chart shows, for readers who cannot see
    *  it. An aria-label alone says only that a chart is present. */
@@ -148,6 +153,13 @@ export function VolumeChart({
   // Buckets read from QRadar's past: shaded in the neutral span and named in text.
   const history = useMemo(() => historyIntervals(buckets), [buckets]);
   const origins = useMemo(() => originByTime(buckets), [buckets]);
+  const excluded = useMemo(
+    () =>
+      mergeIntervals(
+        exclusions.map((s) => ({ start: Date.parse(s.start), end: Date.parse(s.end) })),
+      ),
+    [exclusions],
+  );
 
   // The overlay: which averages are on, and their values over the observed line
   // (whose nulls are the unobserved buckets), aligned with `points`.
@@ -195,6 +207,7 @@ export function VolumeChart({
           ],
         ),
         ...historyMarkAreas(history, readHistoryShade(), true, i18n.t("behavior.history.text")),
+        ...exclusionMarkAreas(excluded, readHistoryShade(), t("key.excluded")),
       ];
 
       // Honour the OS-level preference: the CSS guard cannot reach a canvas
@@ -379,7 +392,7 @@ export function VolumeChart({
         ],
       };
     };
-  }, [points, unobserved, expected, expectedLow, expectedHigh, hasBand, anomalies, transitions, history, origins, emaLines, t, i18n, locale]);
+  }, [points, unobserved, expected, expectedLow, expectedHigh, hasBand, anomalies, transitions, history, origins, excluded, emaLines, t, i18n, locale]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -462,6 +475,12 @@ export function VolumeChart({
           </li>
         )}
         {history.length > 0 && <HistoryKey />}
+        {excluded.length > 0 && (
+          <li>
+            <span className="chart-key chart-key-excluded" aria-hidden="true" />
+            {t("key.excluded")}
+          </li>
+        )}
       </ul>
       <p className="subtitle chart-note">{t("note")}</p>
       <EmaNote periods={emaOn} />

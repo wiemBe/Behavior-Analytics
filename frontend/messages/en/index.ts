@@ -58,6 +58,7 @@ import siemLoad from "./siemLoad.json";
 import states from "./states.json";
 import suppression from "./suppression.json";
 import traffic from "./traffic.json";
+import trainingExclusion from "./trainingExclusion.json";
 import trend from "./trend.json";
 import triage from "./triage.json";
 import ui from "./ui.json";
@@ -121,6 +122,7 @@ const messages = {
   states,
   suppression,
   traffic,
+  trainingExclusion,
   trend,
   triage,
   ui,
