@@ -21,6 +21,11 @@ export const KNOWN_PERMISSIONS = [
   "anomaly:triage",
   "admin:waf",
   "admin:ips",
+  // SOC-10: reading the identity source page is `read:*`. Changing a profile, probing,
+  // or enabling collection is `admin:identity`; `read:*` does not grant it, and it is
+  // not `admin:waf` or `admin:ips`. `admin:*` does.
+  "read:identity",
+  "admin:identity",
   "read:log_sources",
   "read:overview",
   "log_source:write",
