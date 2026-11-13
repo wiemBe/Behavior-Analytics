@@ -58,6 +58,7 @@ from app.models.monitoring import (
     QRadarAccessResult,
     QRadarAccessRun,
 )
+from app.models.notification_attempt import NotificationAttempt
 from app.models.notification_destination import NotificationDestination
 from app.models.notification_rule import NotificationRule
 from app.models.offense import OffenseSnapshot
@@ -202,6 +203,7 @@ __all__ = [
     "LogSourceGroup",
     "LogSourceMetric",
     "LogSourceType",
+    "NotificationAttempt",
     "NotificationDestination",
     "NotificationRule",
     "OffenseSnapshot",

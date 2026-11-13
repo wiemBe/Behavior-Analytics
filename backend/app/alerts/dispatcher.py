@@ -20,12 +20,13 @@ MockNotifiers and no real notification is ever sent under test.
 from __future__ import annotations
 
 import random
+import re
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, cast
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, func, insert, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,12 +51,24 @@ from app.models.enums import (
     NotificationStatus,
     Severity,
 )
+from app.models.notification_attempt import MAX_ATTEMPTS_KEPT, NotificationAttempt
 from app.models.notification_destination import NotificationDestination
 from app.security.redaction import redact
 from app.services.backoff import backoff_delay
 
 # Failure classes from the sender that retry; every other non-ok class is permanent.
 _PERMANENT_STATUS_CLASSES = frozenset({"redirect_refused", "ssrf_refused"})
+
+
+_STATUS_IN_MESSAGE = re.compile(r"status (\d{3})$")
+
+
+def _classify_notifier_error(exc: NotifierError) -> tuple[str, int | None]:
+    """The stored attempt class of an env-channel failure; the message itself is not kept."""
+    match = _STATUS_IN_MESSAGE.search(str(exc))
+    if match is not None:
+        return "http_status", int(match.group(1))
+    return ("permanent" if exc.permanent else "transport"), None
 
 
 class AlertEnqueuer(Protocol):
@@ -94,6 +107,8 @@ class NotificationDispatcher:
         self._email_templates: list[EmailTemplate] | None = None
         # SOC-12d. Notification rules (with their enabled destinations) load once.
         self._rule_views: list[RuleView] | None = None
+        # SOC-12e. Attempts of this run, written in bulk at its end.
+        self._attempt_log: list[dict[str, object]] = []
         self._destination_resolver = destination_resolver
         self._destination_transport = destination_transport or destination_sender.http_transport
 
@@ -231,6 +246,7 @@ class NotificationDispatcher:
                 select(NotificationDestination).where(NotificationDestination.id.in_(wanted))
             )
             destinations = {row.id: row for row in rows}
+        self._attempt_log = []
         for notif in due:
             if (
                 notif.channel == NotificationChannel.WEBHOOK
@@ -240,7 +256,56 @@ class NotificationDispatcher:
                 continue
             await self._attempt(notif, stats)
         await self.session.flush()
+        await self._write_attempts()
         return stats
+
+    def _record(
+        self, notif: AlertNotification, error_class: str, status: int | None = None
+    ) -> None:
+        self._attempt_log.append(
+            {
+                "id": uuid.uuid4(),
+                "notification_id": notif.id,
+                "attempted_at": self._clock(),
+                "http_status": status,
+                "error_class": error_class,
+            }
+        )
+
+    async def _write_attempts(self) -> None:
+        """Store this run's attempts and trim each notification to the newest eight.
+
+        Two statements for the whole run, however many notifications were due: one
+        multi-row INSERT and one DELETE over a window function (AGENTS 2.9).
+        """
+        log, self._attempt_log = self._attempt_log, []
+        if not log:
+            return
+        await self.session.execute(insert(NotificationAttempt), log)
+        ids = {entry["notification_id"] for entry in log}
+        ranked = (
+            select(
+                NotificationAttempt.id,
+                func.row_number()
+                .over(
+                    partition_by=NotificationAttempt.notification_id,
+                    order_by=(
+                        NotificationAttempt.attempted_at.desc(),
+                        NotificationAttempt.id.desc(),
+                    ),
+                )
+                .label("rank"),
+            )
+            .where(NotificationAttempt.notification_id.in_(ids))
+            .subquery()
+        )
+        await self.session.execute(
+            delete(NotificationAttempt).where(
+                NotificationAttempt.id.in_(
+                    select(ranked.c.id).where(ranked.c.rank > MAX_ATTEMPTS_KEPT)
+                )
+            )
+        )
 
     async def _attempt(self, notif: AlertNotification, stats: dict[str, int]) -> None:
         notifier = self.notifiers.get(notif.channel)
@@ -249,6 +314,7 @@ class NotificationDispatcher:
             notif.status = NotificationStatus.DEAD_LETTER
             notif.error_message = f"no notifier registered for {notif.channel}"
             stats["dead_letter"] += 1
+            self._record(notif, "no_notifier")
             return
 
         message = self._message_from_payload(notif)
@@ -259,16 +325,20 @@ class NotificationDispatcher:
         try:
             await notifier.send(notif.target, message)
         except NotifierError as exc:
+            self._record(notif, *_classify_notifier_error(exc))
             self._handle_failure(notif, exc, stats)
             return
         except Exception as exc:
-            self._handle_failure(notif, NotifierError(str(exc)), stats)
+            wrapped = NotifierError(str(exc))
+            self._record(notif, *_classify_notifier_error(wrapped))
+            self._handle_failure(notif, wrapped, stats)
             return
 
         notif.status = NotificationStatus.SENT
         notif.sent_at = self._clock()
         notif.error_message = None
         stats["sent"] += 1
+        self._record(notif, "ok")
 
     async def _attempt_destination(
         self,
@@ -281,6 +351,7 @@ class NotificationDispatcher:
         destination_id = destination_target_id(notif.target)
         row = destinations.get(destination_id) if destination_id is not None else None
         if row is None or not row.enabled:
+            self._record(notif, "no_destination")
             self._handle_failure(notif, NotifierError("no_destination", permanent=True), stats)
             return
         try:
@@ -293,6 +364,7 @@ class NotificationDispatcher:
             )
         except ValueError:
             # A stored payload that cannot meet the contract will not improve on retry.
+            self._record(notif, "payload_invalid")
             self._handle_failure(notif, NotifierError("payload_invalid", permanent=True), stats)
             return
         try:
@@ -304,8 +376,10 @@ class NotificationDispatcher:
                 transport_factory=self._destination_transport,
             )
         except Exception:  # the text could carry the URL, so only a class is kept
+            self._record(notif, "transport")
             self._handle_failure(notif, NotifierError("transport"), stats)
             return
+        self._record(notif, result, http_status)
         if result == "ok":
             notif.status = NotificationStatus.SENT
             notif.sent_at = self._clock()

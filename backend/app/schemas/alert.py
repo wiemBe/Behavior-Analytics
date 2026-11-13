@@ -184,6 +184,14 @@ class AlertFacetsOut(BaseModel):
     filters_applied: AlertFiltersApplied
 
 
+class NotificationAttemptOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    attempted_at: datetime
+    http_status: int | None
+    error_class: str
+
+
 class NotificationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -198,6 +206,9 @@ class NotificationOut(BaseModel):
     next_attempt_at: datetime | None
     sent_at: datetime | None
     error_message: str | None
+    #: SOC-12e: newest first, at most eight, class and status only. Not `attempts`: that
+    #: name already carries the attempt count.
+    attempt_log: list[NotificationAttemptOut] = Field(default_factory=list)
 
 
 class AlertActionIn(BaseModel):
