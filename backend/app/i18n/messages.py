@@ -512,6 +512,46 @@ REGISTRY: tuple[MessageSpec, ...] = (
         count={"max": 20},
     ),
     _fixed("handover.not_found", "handover was not found"),
+    # SOC-13b baseline training exclusions (English only, D-45).
+    _fixed(
+        "baseline_exclusion.anomaly_active",
+        "the anomaly is still active; an interval can be excluded only after it is resolved",
+    ),
+    _fixed(
+        "baseline_exclusion.family_unsupported",
+        "training exclusions are not supported for this anomaly family",
+    ),
+    _fixed(
+        "baseline_exclusion.interval_invalid",
+        "the interval must be in UTC, aligned to the bucket width, and start before it ends",
+    ),
+    _fixed(
+        "baseline_exclusion.interval_not_widened",
+        "the interval must cover the whole detected incident span; it can only be widened",
+    ),
+    _mixed(
+        "baseline_exclusion.interval_too_long",
+        "the interval must not be longer than {max} days",
+        count={"max": 7},
+    ),
+    _fixed(
+        "baseline_exclusion.overlap",
+        "the interval partly overlaps an active exclusion for the same baseline",
+    ),
+    _mixed(
+        "baseline_exclusion.limit_reached",
+        "this baseline already has {max} active exclusions in its lookback",
+        count={"max": 50},
+    ),
+    _fixed("baseline_exclusion.not_found", "the training exclusion was not found"),
+    _fixed(
+        "baseline_exclusion.already_protected",
+        "the interval is already excluded automatically",
+    ),
+    _fixed(
+        "baseline_exclusion.reason_invalid",
+        "a reason of 1 to 1000 characters is required",
+    ),
     # SOC-16 entity timeline request validation. These refusals are English-only
     # under D-45; the generated English artifact is refreshed with this block.
     _fixed(

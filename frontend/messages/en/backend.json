@@ -231,6 +231,18 @@
       "shape": "username must be 1 to 255 characters without spaces or control characters"
     }
   },
+  "baseline_exclusion": {
+    "already_protected": "the interval is already excluded automatically",
+    "anomaly_active": "the anomaly is still active; an interval can be excluded only after it is resolved",
+    "family_unsupported": "training exclusions are not supported for this anomaly family",
+    "interval_invalid": "the interval must be in UTC, aligned to the bucket width, and start before it ends",
+    "interval_not_widened": "the interval must cover the whole detected incident span; it can only be widened",
+    "interval_too_long": "the interval must not be longer than {max} days",
+    "limit_reached": "this baseline already has {max} active exclusions in its lookback",
+    "not_found": "the training exclusion was not found",
+    "overlap": "the interval partly overlaps an active exclusion for the same baseline",
+    "reason_invalid": "a reason of 1 to 1000 characters is required"
+  },
   "classification": {
     "rule": {
       "built_in_delete": "a built-in rule cannot be deleted; disable it instead",

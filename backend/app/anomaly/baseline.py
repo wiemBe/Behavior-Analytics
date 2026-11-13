@@ -19,11 +19,12 @@ spec:
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
-from sqlalchemy import Table, select
+from sqlalchemy import Table, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +37,7 @@ from app.anomaly.seasonal import (
     seasonal_key,
     summarize_cell,
 )
+from app.anomaly.training_exclusions import LOG_SOURCE_VOLUME_SCOPE, Span, load_active
 from app.core.config import Settings, get_settings
 from app.models.log_source import (
     LogSource,
@@ -70,6 +72,13 @@ class ExclusionTally:
     known_anomaly: int = 0
     incomplete: int = 0
     unfinished: int = 0
+    #: Buckets inside an active analyst training exclusion (SOC-13). Charged only after
+    #: the automatic reasons, so a bucket an incident span already removes is counted once,
+    #: as `known_anomaly`.
+    analyst_exclusion: int = 0
+    #: The (weekday, hour) cells analyst exclusions removed a bucket from. Working data for
+    #: the rebuild, not part of the stored counts.
+    analyst_slots: set[tuple[int, int]] = field(default_factory=set)
 
     @property
     def total(self) -> int:
@@ -79,32 +88,97 @@ class ExclusionTally:
             + self.known_anomaly
             + self.incomplete
             + self.unfinished
+            + self.analyst_exclusion
         )
 
     def as_dict(self) -> dict[str, int]:
-        return {
+        counts = {
             "maintenance": self.maintenance,
             "off_hours": self.off_hours,
             "known_anomaly": self.known_anomaly,
             "incomplete": self.incomplete,
             "unfinished": self.unfinished,
         }
+        # Present only when an analyst exclusion took effect, so a source without one
+        # stores exactly the document it always did.
+        if self.analyst_exclusion:
+            counts["analyst_exclusion"] = self.analyst_exclusion
+        return counts
 
 
 class BaselineBuilder:
     def __init__(self, session: AsyncSession, *, settings: Settings | None = None) -> None:
         self.session = session
         self.settings = settings or get_settings()
+        self._stale_sink: list[tuple[uuid.UUID, str, int, int]] | None = None
+
+    async def rebuild_many(
+        self, log_sources: Sequence[LogSource], *, now: datetime | None = None
+    ) -> int:
+        """Rebuild several sources with one read of the analyst exclusions (SOC-13c).
+
+        The exclusions of every source load in one SELECT, and the cells that lost every
+        sample to an analyst exclusion are made unusable in one UPDATE, whatever the number
+        of sources. Each source otherwise costs what `rebuild_for_source` costs.
+        """
+        now = now or datetime.now(UTC)
+        lookback_start = now - timedelta(days=self.settings.baseline_lookback_days)
+        spans = await load_active(
+            self.session,
+            "log_source",
+            [source.id for source in log_sources],
+            LOG_SOURCE_VOLUME_SCOPE,
+            lookback_start,
+            now,
+        )
+        written = 0
+        # While a batch runs, `rebuild_for_source` hands the cells it emptied to this list
+        # instead of updating them, so the whole batch needs one UPDATE.
+        sink: list[tuple[uuid.UUID, str, int, int]] = []
+        self._stale_sink = sink
+        try:
+            for source in log_sources:
+                analyst = spans.get(("log_source", source.id, LOG_SOURCE_VOLUME_SCOPE))
+                if analyst:
+                    written += await self.rebuild_for_source(
+                        source, now=now, analyst_spans=analyst
+                    )
+                else:
+                    written += await self.rebuild_for_source(source, now=now)
+        finally:
+            self._stale_sink = None
+        await self._invalidate_cells(sink, now)
+        return written
 
     async def rebuild_for_source(
-        self, log_source: LogSource, *, now: datetime | None = None
+        self,
+        log_source: LogSource,
+        *,
+        now: datetime | None = None,
+        analyst_spans: Sequence[Span] = (),
     ) -> int:
-        """Recompute all baseline cells for one source. Returns cells written."""
+        """Recompute all baseline cells for one source. Returns cells written.
+
+        `analyst_spans` are the source's active analyst exclusions, already loaded by the
+        caller (`rebuild_many` loads them for many sources at once). None means none: this
+        method issues no exclusion read of its own.
+        """
         now = now or datetime.now(UTC)
+        count, stale = await self._rebuild(log_source, now, analyst_spans)
+        if self._stale_sink is not None:
+            self._stale_sink.extend(stale)
+        else:
+            await self._invalidate_cells(stale, now)
+        return count
+
+    async def _rebuild(
+        self, log_source: LogSource, now: datetime, analyst_spans: Sequence[Span]
+    ) -> tuple[int, list[tuple[uuid.UUID, str, int, int]]]:
+        """Upsert the source's cells; return them and the cells an analyst emptied."""
         lookback_start = now - timedelta(days=self.settings.baseline_lookback_days)
 
         observations, tally, candidates = await self._load_clean_observations(
-            log_source, lookback_start, now
+            log_source, lookback_start, now, analyst_spans
         )
 
         # Group by (metric, weekday, hour). Phase A seasonality is ISO weekday
@@ -137,10 +211,23 @@ class BaselineBuilder:
             for (metric, weekday, hour), values in cells.items()
         ]
         await self._upsert_cells(rows)
-        return len(rows)
+        # A cell the analyst's exclusions left with no observation must not keep its old
+        # band (design 2.5, fail closed). Cells that lost samples to anything else stay
+        # untouched, as before.
+        stale = [
+            (log_source.id, metric, weekday, hour)
+            for weekday, hour in sorted(tally.analyst_slots)
+            for metric in BASELINE_METRICS
+            if (metric, weekday, hour) not in cells
+        ]
+        return len(rows), stale
 
     async def _load_clean_observations(
-        self, log_source: LogSource, start: datetime, end: datetime
+        self,
+        log_source: LogSource,
+        start: datetime,
+        end: datetime,
+        analyst_spans: Sequence[Span] = (),
     ) -> tuple[list[Observation], ExclusionTally, int]:
         """Return usable observations, why the rest were dropped, and how many
         candidate buckets were considered."""
@@ -173,6 +260,9 @@ class BaselineBuilder:
                 tally.incomplete += 1
                 continue
             reason = self._exclusion_reason(m.bucket_start, log_source, excluded)
+            if reason is None and any(lo <= m.bucket_start < hi for lo, hi in analyst_spans):
+                reason = "analyst_exclusion"
+                tally.analyst_slots.add(seasonal_key(m.bucket_start))
             if reason is not None:
                 setattr(tally, reason, getattr(tally, reason) + 1)
                 continue
@@ -295,6 +385,38 @@ class BaselineBuilder:
             "created_at": window_end,
             "updated_at": window_end,
         }
+
+    async def _invalidate_cells(
+        self, stale: Sequence[tuple[uuid.UUID, str, int, int]], now: datetime
+    ) -> None:
+        """Make the named cells unusable in one UPDATE: no samples, not reliable.
+
+        The detector reads an unreliable cell as INSUFFICIENT_DATA. The version still
+        moves, so a verdict can tell the baseline changed. A cell that does not exist
+        matches nothing.
+        """
+        if not stale:
+            return
+        table = cast(Table, LogSourceBaseline.__table__)
+        key = tuple_(table.c.log_source_id, table.c.metric_name, table.c.weekday, table.c.hour)
+        await self.session.execute(
+            update(table)
+            .where(key.in_(list(stale)))
+            .values(
+                sample_count=0,
+                is_reliable=False,
+                p05=None,
+                p95=None,
+                observations=[],
+                completeness=0.0,
+                computed_at=now,
+                updated_at=now,
+                baseline_version=table.c.baseline_version + 1,
+            )
+        )
+        for obj in list(self.session.identity_map.values()):
+            if isinstance(obj, LogSourceBaseline):
+                self.session.expire(obj)
 
     async def _upsert_cells(self, rows: list[dict[str, object]]) -> None:
         """Write a source's cells in one statement.

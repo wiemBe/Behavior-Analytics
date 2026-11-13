@@ -1280,9 +1280,8 @@ async def rebuild_baselines() -> dict:
                 )
             ).all()
         )
-        cells = 0
-        for source in sources:
-            cells += await builder.rebuild_for_source(source)
+        # One read of the analyst training exclusions for every source (SOC-13c).
+        cells = await builder.rebuild_many(sources)
         await session.commit()
         return {"sources": len(sources), "cells": cells}
 
