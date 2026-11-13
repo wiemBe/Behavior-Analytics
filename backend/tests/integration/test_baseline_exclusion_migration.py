@@ -105,7 +105,8 @@ def test_0064_round_trip_checks_and_alembic_check() -> None:
             assert "BASELINE_EXCLUSION" not in _event_kind_check(connection)
 
         command.upgrade(config, "0064")
-        command.check(config)
+        # `alembic check` needs the head revision, so the drift check runs after
+        # the final `upgrade head` below; a later migration must not break this test.
 
         with engine.begin() as connection:
             _insert(connection)

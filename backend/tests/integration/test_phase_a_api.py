@@ -102,7 +102,12 @@ TRIAGE_WRITES = {
 SUPPRESSION_WRITES = {
     ("/api/v1/anomalies/{family}/{anomaly_id}/suppress", "post"),
 }
-ANOMALY_SURFACE_WRITES = TRIAGE_WRITES | SUPPRESSION_WRITES
+TRAINING_EXCLUSION_WRITES = {
+    # SOC-13b: both guarded by `anomaly:triage` (`_guard(principal, PERM_ANOMALY_TRIAGE)`).
+    ("/api/v1/anomalies/{family}/{anomaly_id}/training-exclusions", "post"),
+    ("/api/v1/behavior/training-exclusions/{exclusion_id}/revoke", "post"),
+}
+ANOMALY_SURFACE_WRITES = TRIAGE_WRITES | SUPPRESSION_WRITES | TRAINING_EXCLUSION_WRITES
 
 
 def _walk_routes(routes):  # type: ignore[no-untyped-def]
