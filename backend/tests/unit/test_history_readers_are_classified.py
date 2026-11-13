@@ -139,6 +139,12 @@ HISTORY_TABLES = (
             "app.noise.backtest.NoiseBacktest._metrics": Reader(
                 "replay window (SOC-17b)", ReaderKind.LIVE_ONLY, 1
             ),
+            # SOC-13b: the exclusion interval aligns to the bucket width the LIVE
+            # detector used for the anomaly, as the replay does above. A history
+            # bucket's width is the replay's, not the incident's.
+            "app.api.routes.training_exclusions.create_training_exclusion": Reader(
+                "bucket width for a training exclusion (SOC-13b)", ReaderKind.LIVE_ONLY, 1
+            ),
         },
     ),
     HistoryTable(
