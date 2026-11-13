@@ -30,10 +30,12 @@ endpoint without a row, and a lower-bound bucket contributes nothing but an
 `incomplete` exclusion, as its explicit PARTIAL zero row did.
 
 **Cost.** A rebuild of any number of endpoints loads the source's bucket records
-once, then per chunk of `WAF_BASELINE_REBUILD_CHUNK_SIZE` endpoints issues one
-query for their rows, one for their incident spans, one bulk upsert for all
-their cells and one batched update of their rebuild time. Statements scale with
-chunks, never with endpoints or cells.
+once and the analyst training exclusions of every endpoint in the run once
+(SOC-13e), then per chunk of `WAF_BASELINE_REBUILD_CHUNK_SIZE` endpoints issues
+one query for their rows, one for their incident spans, one bulk upsert for all
+their cells and one batched update of their rebuild time. Cells an analyst
+exclusion emptied are made unusable in one further UPDATE for the whole run.
+Statements scale with chunks, never with endpoints or cells.
 
 A rebuild may be bounded by `train_through`, so scheduled rebuilds train only on
 buckets the detector has already judged (app/services/waf_pipeline.py).
@@ -43,11 +45,11 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
-from sqlalchemy import Table, func, select
+from sqlalchemy import Table, func, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,6 +61,7 @@ from app.anomaly.seasonal import (
     seasonal_key,
     summarize_cell,
 )
+from app.anomaly.training_exclusions import WAF_ENDPOINT_SCOPE, load_active
 from app.core.config import Settings, get_settings
 from app.models.enums import WafBreakdown, WafMeasurement, WafTelemetryStatus
 from app.models.log_source import LogSource
@@ -145,13 +148,20 @@ class WafExclusionTally:
     low_coverage: int = 0
     maintenance: int = 0
     incompatible_semantics: int = 0
+    #: Buckets inside an active analyst training exclusion (SOC-13e). Charged only
+    #: after the automatic reasons, so a bucket an incident span already removes is
+    #: counted once, as `known_anomaly`.
+    analyst_exclusion: int = 0
+    #: The (weekday, hour) cells an analyst exclusion removed a bucket from.
+    #: Working data for the rebuild, not part of the stored counts.
+    analyst_slots: set[tuple[int, int]] = field(default_factory=set)
 
     @property
     def total(self) -> int:
         return sum(self.as_dict().values())
 
     def as_dict(self) -> dict[str, int]:
-        return {
+        counts = {
             "known_anomaly": self.known_anomaly,
             "incomplete": self.incomplete,
             "unfinished": self.unfinished,
@@ -159,6 +169,11 @@ class WafExclusionTally:
             "maintenance": self.maintenance,
             "incompatible_semantics": self.incompatible_semantics,
         }
+        # Present only when an analyst exclusion took effect, so an endpoint
+        # without one stores exactly the document it always did.
+        if self.analyst_exclusion:
+            counts["analyst_exclusion"] = self.analyst_exclusion
+        return counts
 
 
 @dataclass
@@ -190,6 +205,15 @@ class RatioSample:
     denominator: int
 
 
+def _in_half_open(when: datetime, spans: Sequence[tuple[datetime, datetime]]) -> bool:
+    """Whether `when` falls in a half-open `[start, end)` span.
+
+    Analyst exclusions use this. `in_any_span` is closed on the end, which is
+    what an incident span wants and what an analyst interval does not.
+    """
+    return any(start <= when < end for start, end in spans)
+
+
 def clean_samples(
     series: Sequence[EndpointObservation],
     *,
@@ -198,11 +222,16 @@ def clean_samples(
     min_coverage: float,
     spans: Sequence[tuple[datetime, datetime]],
     maintenance_rule: Callable[[datetime], bool],
+    analyst_spans: Sequence[tuple[datetime, datetime]] = (),
 ) -> tuple[list[tuple[datetime, float]], WafExclusionTally, int]:
     """The observations that may train, and why the others may not. Pure.
 
     Returns (samples, tally, candidates). The order of the checks is the order
-    exclusions are attributed in, and is part of the contract operators read.
+    exclusions are attributed in, and is part of the contract operators read:
+    unfinished, incompatible_semantics, maintenance, incomplete, low_coverage,
+    known_anomaly, analyst_exclusion. An analyst span is half-open
+    `[start, end)` on the bucket start, and is charged only when no automatic
+    reason already applies (SOC-13e).
     """
     tally = WafExclusionTally()
     out: list[tuple[datetime, float]] = []
@@ -228,6 +257,10 @@ def clean_samples(
         if in_any_span(obs.bucket_start, spans):
             tally.known_anomaly += 1
             continue
+        if _in_half_open(obs.bucket_start, analyst_spans):
+            tally.analyst_exclusion += 1
+            tally.analyst_slots.add(seasonal_key(obs.bucket_start))
+            continue
         out.append((obs.bucket_start, float(obs.request_count)))
     return out, tally, len(series)
 
@@ -242,6 +275,7 @@ def clean_ratio_samples(
     min_denominator: int,
     spans: Sequence[tuple[datetime, datetime]],
     maintenance_rule: Callable[[datetime], bool],
+    analyst_spans: Sequence[tuple[datetime, datetime]] = (),
 ) -> tuple[list[RatioSample], WafRatioExclusionTally, int]:
     """Material exact proportions that may train one ratio metric. Pure.
 
@@ -249,7 +283,9 @@ def clean_ratio_samples(
     part of the contract operators read: unfinished, incompatible_semantics,
     maintenance, unavailable, incomplete, uncertain_values, inexact_request_count,
     low_source_coverage, immaterial (empty population), low_coverage, immaterial
-    (below the minimum denominator), known_anomaly.
+    (below the minimum denominator), known_anomaly, analyst_exclusion.
+    An analyst span is half-open and is charged only when no earlier reason
+    already applies (SOC-13e).
 
     `low_source_coverage` is the share of the source's events that parsed to an
     endpoint at all (decision D-3). `low_coverage` is the breakdown's share of
@@ -311,6 +347,10 @@ def clean_ratio_samples(
         if in_any_span(obs.bucket_start, spans):
             tally.known_anomaly += 1
             continue
+        if _in_half_open(obs.bucket_start, analyst_spans):
+            tally.analyst_exclusion += 1
+            tally.analyst_slots.add(seasonal_key(obs.bucket_start))
+            continue
         out.append(RatioSample(obs.bucket_start, numerator / denominator, numerator, denominator))
     return out, tally, len(series)
 
@@ -361,6 +401,12 @@ class WafBaselineBuilder:
         each uses that breakdown's identity. `train_through` bounds the window's
         end below `now`. `source_buckets` may be supplied by a caller that
         already loaded the source's bucket records for the same window.
+
+        Analyst exclusions for every endpoint load in one SELECT before the
+        chunk loop. This method is the only production rebuild, so the scheduled
+        run and a history pass that trains afterwards both honour them. Cells
+        an analyst exclusion emptied are made unusable in one UPDATE after the
+        chunks; a run that emptied none issues no such UPDATE.
         """
         written: dict[uuid.UUID, int] = {e.id: 0 for e in endpoints}
         if not endpoints:
@@ -375,6 +421,16 @@ class WafBaselineBuilder:
             log_source = await self.session.get(LogSource, source_id)
         if source_buckets is None:
             source_buckets = await self.source_bucket_facts(source_id, lookback_start, window_end)
+        analyst = await load_active(
+            self.session,
+            "endpoint",
+            [endpoint.id for endpoint in endpoints],
+            WAF_ENDPOINT_SCOPE,
+            lookback_start,
+            window_end,
+        )
+        # (endpoint, metric, weekday, hour, normalizer version) emptied by an analyst.
+        stale: list[tuple[uuid.UUID, str, int, int, int]] = []
 
         def rule(bucket_start: datetime) -> bool:
             return log_source is not None and in_maintenance(
@@ -398,6 +454,9 @@ class WafBaselineBuilder:
                     start=lookback_start,
                     end=window_end,
                 )
+                analyst_spans = analyst.get(
+                    ("endpoint", endpoint.id, WAF_ENDPOINT_SCOPE), ()
+                )
                 values, tally, candidates = clean_samples(
                     series,
                     end=window_end,
@@ -405,6 +464,7 @@ class WafBaselineBuilder:
                     min_coverage=self.settings.waf_min_endpoint_coverage,
                     spans=spans.get(endpoint.id, ()),
                     maintenance_rule=rule,
+                    analyst_spans=analyst_spans,
                 )
                 cells: dict[tuple[int, int], list[float]] = {}
                 for bucket_start, value in values:
@@ -419,6 +479,17 @@ class WafBaselineBuilder:
                         )
                     )
                 written[endpoint.id] += len(cells)
+                stale.extend(
+                    (
+                        endpoint.id,
+                        WAF_BASELINE_METRIC,
+                        weekday,
+                        hour,
+                        ENDPOINT_NORMALIZER_VERSION,
+                    )
+                    for weekday, hour in sorted(tally.analyst_slots)
+                    if (weekday, hour) not in cells
+                )
 
                 for metric_name, metric in RATIO_METRICS.items():
                     identity = (breakdown_identities or {}).get(metric.breakdown)
@@ -433,6 +504,7 @@ class WafBaselineBuilder:
                         min_denominator=getattr(self.settings, metric.materiality_setting),
                         spans=spans.get(endpoint.id, ()),
                         maintenance_rule=rule,
+                        analyst_spans=analyst_spans,
                     )
                     ratio_cells: dict[tuple[int, int], list[RatioSample]] = {}
                     for sample in ratio_values:
@@ -464,8 +536,20 @@ class WafBaselineBuilder:
                             )
                         )
                     written[endpoint.id] += len(ratio_cells)
+                    stale.extend(
+                        (
+                            endpoint.id,
+                            metric_name,
+                            weekday,
+                            hour,
+                            ENDPOINT_NORMALIZER_VERSION,
+                        )
+                        for weekday, hour in sorted(ratio_tally.analyst_slots)
+                        if (weekday, hour) not in ratio_cells
+                    )
                 endpoint.baseline_rebuilt_at = now
             await self._upsert_cells(cell_rows)
+        await self._invalidate_cells(stale, window_end)
         await self.session.flush()
         return written
 
@@ -600,8 +684,54 @@ class WafBaselineBuilder:
             },
         )
         await self.session.execute(stmt, cell_rows)
-        # The upsert bypassed the unit of work; cells already loaded into this
-        # session must not keep serving their old statistics.
+        self._expire_cells()
+
+    async def _invalidate_cells(
+        self,
+        stale: Sequence[tuple[uuid.UUID, str, int, int, int]],
+        window_end: datetime,
+    ) -> None:
+        """Make cells an analyst exclusion emptied unusable, in one UPDATE.
+
+        The detector reads `is_reliable` false as INSUFFICIENT_DATA. The version
+        still moves. Median and MAD stay (they are non-null); the band and the
+        pooled ratio sums do not, so a ratio guard cannot keep using a population
+        the analyst removed. A cell that does not exist matches nothing. Skipped
+        when nothing was emptied, so a rebuild with no analyst exclusion issues
+        no extra write. `computed_at` is the rebuild's window end, the same stamp
+        an upserted cell gets.
+        """
+        if not stale:
+            return
+        table = cast(Table, WafEndpointBaseline.__table__)
+        key = tuple_(
+            table.c.waf_endpoint_id,
+            table.c.metric_name,
+            table.c.weekday,
+            table.c.hour,
+            table.c.normalizer_version,
+        )
+        await self.session.execute(
+            update(table)
+            .where(key.in_(list(stale)))
+            .values(
+                sample_count=0,
+                is_reliable=False,
+                p05=None,
+                p95=None,
+                observations=[],
+                completeness=0.0,
+                numerator_sum=None,
+                denominator_sum=None,
+                computed_at=window_end,
+                updated_at=window_end,
+                baseline_version=table.c.baseline_version + 1,
+            )
+        )
+        self._expire_cells()
+
+    def _expire_cells(self) -> None:
+        """The upsert and the invalidation bypass the unit of work."""
         for obj in list(self.session.identity_map.values()):
             if isinstance(obj, WafEndpointBaseline):
                 self.session.expire(obj)

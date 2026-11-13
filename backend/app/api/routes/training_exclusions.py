@@ -1,7 +1,8 @@
-"""Baseline training exclusion API (SOC-13b).
+"""Baseline training exclusion API (SOC-13b, WAF in SOC-13e).
 
 Create and revoke need `anomaly:triage`; reading is covered by the router's
-`read:anomalies` guard. The first release supports Phase A source-volume baselines only.
+`read:anomalies` guard. Phase A excludes a log source's volume. A resolved WAF
+anomaly excludes its endpoint, one scope for every metric of that baseline.
 The reason is analyst text: it lives on the exclusion row and on the triage event
 `comment`, and never reaches the audit detail or a log line.
 """
@@ -11,9 +12,10 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import NamedTuple
 
 from fastapi import APIRouter, Query, Response, status
-from sqlalchemy import and_, false, func, not_, select
+from sqlalchemy import and_, false, func, not_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +29,7 @@ from app.models.enums import AnomalyFamily, AnomalyState, TriageEventKind, Triag
 from app.models.log_source import LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
 from app.models.training_exclusion import REASON_MAX_LENGTH, BaselineTrainingExclusion
 from app.models.triage import AnomalyTriage, AnomalyTriageEvent
+from app.models.waf import WafAnomaly, WafEndpoint, WafEndpointBaseline, WafSourceBucket
 from app.repositories.audit import record_audit
 from app.repositories.triage import TriageRepository
 from app.schemas.training_exclusion import (
@@ -98,17 +101,37 @@ def _state(
 
 async def _rebuilt_at(
     session: AsyncSession, rows: Sequence[BaselineTrainingExclusion]
-) -> dict[uuid.UUID, datetime]:
-    """Latest baseline rebuild per Phase A source: one aggregate for all listed rows."""
-    ids = {row.subject_id for row in rows if row.subject_kind == "log_source"}
-    if not ids:
-        return {}
-    found = await session.execute(
-        select(LogSourceBaseline.log_source_id, func.max(LogSourceBaseline.computed_at))
-        .where(LogSourceBaseline.log_source_id.in_(ids))
-        .group_by(LogSourceBaseline.log_source_id)
-    )
-    return {source_id: at for source_id, at in found.all() if at is not None}
+) -> dict[tuple[str, uuid.UUID], datetime]:
+    """Latest baseline `computed_at` per subject. One aggregate per family present.
+
+    Keyed by `(subject_kind, subject_id)` so a source id and an endpoint id that
+    happened to be equal cannot overwrite each other.
+    """
+    found: dict[tuple[str, uuid.UUID], datetime] = {}
+    source_ids = {row.subject_id for row in rows if row.subject_kind == "log_source"}
+    if source_ids:
+        sources = await session.execute(
+            select(LogSourceBaseline.log_source_id, func.max(LogSourceBaseline.computed_at))
+            .where(LogSourceBaseline.log_source_id.in_(source_ids))
+            .group_by(LogSourceBaseline.log_source_id)
+        )
+        found.update(
+            {("log_source", source_id): at for source_id, at in sources.all() if at is not None}
+        )
+    endpoint_ids = {row.subject_id for row in rows if row.subject_kind == "endpoint"}
+    if endpoint_ids:
+        endpoints = await session.execute(
+            select(
+                WafEndpointBaseline.waf_endpoint_id,
+                func.max(WafEndpointBaseline.computed_at),
+            )
+            .where(WafEndpointBaseline.waf_endpoint_id.in_(endpoint_ids))
+            .group_by(WafEndpointBaseline.waf_endpoint_id)
+        )
+        found.update(
+            {("endpoint", endpoint_id): at for endpoint_id, at in endpoints.all() if at is not None}
+        )
+    return found
 
 
 def _out(
@@ -179,6 +202,62 @@ async def _append_event(
     await session.flush()
 
 
+class _Target(NamedTuple):
+    """The subject and incident span the server derives from one anomaly."""
+
+    origin_family: str
+    subject_kind: str
+    subject_id: uuid.UUID
+    scope_key: str
+    incident_start: datetime
+    incident_end: datetime
+    bucket_seconds: int
+
+
+async def _waf_bucket_seconds(
+    session: AsyncSession, endpoint_id: uuid.UUID, detected_at: datetime
+) -> int | None:
+    """Live source-bucket width at or before the incident, or None when there is none.
+
+    A history row carries the replay's width, not the width the live detector used.
+    No live row means no width: the caller fails closed rather than guessing one.
+    """
+    return await session.scalar(
+        select(WafSourceBucket.bucket_seconds)
+        .join(WafEndpoint, WafEndpoint.log_source_id == WafSourceBucket.log_source_id)
+        .where(
+            WafEndpoint.id == endpoint_id,
+            WafSourceBucket.bucket_start <= detected_at,
+            is_live_clause(WafSourceBucket),
+        )
+        .order_by(WafSourceBucket.bucket_start.desc())
+        .limit(1)
+    )
+
+
+async def _waf_target(session: AsyncSession, anomaly_id: uuid.UUID) -> _Target:
+    """Subject, scope and incident span of a resolved WAF anomaly."""
+    anomaly = await session.get(WafAnomaly, anomaly_id)
+    if anomaly is None:
+        raise _refuse(te.NOT_FOUND)
+    if anomaly.state != AnomalyState.RESOLVED:
+        raise _refuse(te.ANOMALY_ACTIVE)
+    bucket_seconds = await _waf_bucket_seconds(
+        session, anomaly.waf_endpoint_id, anomaly.detected_at
+    )
+    if bucket_seconds is None:
+        raise _refuse(te.INTERVAL_INVALID)
+    return _Target(
+        origin_family=AnomalyFamily.WAF.value,
+        subject_kind="endpoint",
+        subject_id=anomaly.waf_endpoint_id,
+        scope_key=te.WAF_ENDPOINT_SCOPE,
+        incident_start=anomaly.detected_at,
+        incident_end=anomaly.resolved_at or anomaly.anomaly_end or anomaly.detected_at,
+        bucket_seconds=bucket_seconds,
+    )
+
+
 def _audit_detail(row: BaselineTrainingExclusion, actor: str) -> dict[str, object]:
     """Ids, UTC bounds, subject, scope and actor. Never the reason.
 
@@ -209,72 +288,84 @@ async def create_training_exclusion(
     settings: SettingsDep,
     principal: PrincipalDep,
 ) -> ExclusionOut:
-    """Exclude a UTC interval of a resolved Phase A incident from baseline training.
+    """Exclude a UTC interval of a resolved incident from baseline training.
 
-    201 for a new row, 200 for the exact active row that already exists. The server
-    derives the subject, scope and incident span; the client may only widen it.
+    Phase A (`log_source`) and WAF (`waf`) are accepted. 201 for a new row, 200
+    for the exact active row that already exists. The server derives the subject,
+    scope and incident span; the client may only widen it.
     """
     _guard(principal, PERM_ANOMALY_TRIAGE)
-    if family != AnomalyFamily.LOG_SOURCE.value:
+    if family not in (AnomalyFamily.LOG_SOURCE.value, AnomalyFamily.WAF.value):
         raise _refuse(te.FAMILY_UNSUPPORTED, _UNPROCESSABLE)
     reason = _reason(payload.reason)
-    anomaly = await session.get(LogSourceAnomaly, anomaly_id)
-    if anomaly is None:
-        raise _refuse(te.NOT_FOUND)
-    if anomaly.state != AnomalyState.RESOLVED:
-        raise _refuse(te.ANOMALY_ACTIVE)
-    bucket_seconds = await session.scalar(
-        select(LogSourceMetric.bucket_seconds)
-        .where(
-            LogSourceMetric.log_source_id == anomaly.log_source_id,
-            LogSourceMetric.bucket_start <= anomaly.detected_at,
-            # Align to the width the live detector used: a learning-only history
-            # bucket carries the replay's width, not the incident's (§B.4.7).
-            is_live_clause(LogSourceMetric),
+    if family == AnomalyFamily.WAF.value:
+        target = await _waf_target(session, anomaly_id)
+    else:
+        anomaly = await session.get(LogSourceAnomaly, anomaly_id)
+        if anomaly is None:
+            raise _refuse(te.NOT_FOUND)
+        if anomaly.state != AnomalyState.RESOLVED:
+            raise _refuse(te.ANOMALY_ACTIVE)
+        bucket_seconds = await session.scalar(
+            select(LogSourceMetric.bucket_seconds)
+            .where(
+                LogSourceMetric.log_source_id == anomaly.log_source_id,
+                LogSourceMetric.bucket_start <= anomaly.detected_at,
+                # Align to the width the live detector used: a learning-only history
+                # bucket carries the replay's width, not the incident's (§B.4.7).
+                is_live_clause(LogSourceMetric),
+            )
+            .order_by(LogSourceMetric.bucket_start.desc())
+            .limit(1)
         )
-        .order_by(LogSourceMetric.bucket_start.desc())
-        .limit(1)
-    )
-    if bucket_seconds is None:
-        # No live metric to read the bucket width from: fail closed rather than guess one.
-        raise _refuse(te.INTERVAL_INVALID)
-    incident_end = anomaly.resolved_at or anomaly.anomaly_end or anomaly.detected_at
+        if bucket_seconds is None:
+            # No live metric to read the bucket width from: fail closed rather than guess one.
+            raise _refuse(te.INTERVAL_INVALID)
+        target = _Target(
+            origin_family=AnomalyFamily.LOG_SOURCE.value,
+            subject_kind="log_source",
+            subject_id=anomaly.log_source_id,
+            scope_key=te.LOG_SOURCE_VOLUME_SCOPE,
+            incident_start=anomaly.detected_at,
+            incident_end=anomaly.resolved_at or anomaly.anomaly_end or anomaly.detected_at,
+            bucket_seconds=bucket_seconds,
+        )
     code = te.validate_interval(
         payload.starts_at,
         payload.ends_at,
-        bucket_seconds=bucket_seconds,
-        incident_start=anomaly.detected_at,
-        incident_end=incident_end,
+        bucket_seconds=target.bucket_seconds,
+        incident_start=target.incident_start,
+        incident_end=target.incident_end,
     )
     if code is not None:
         raise _refuse(code)
     now = datetime.now(UTC)
     lookback_start = _lookback_start(now, settings.baseline_lookback_days)
-    arguments = {
-        "origin_family": AnomalyFamily.LOG_SOURCE.value,
-        "origin_anomaly_id": anomaly_id,
-        "subject_kind": "log_source",
-        "subject_id": anomaly.log_source_id,
-        "scope_key": te.LOG_SOURCE_VOLUME_SCOPE,
-        "starts_at": payload.starts_at,
-        "ends_at": payload.ends_at,
-        "reason": reason,
-        "created_by": principal.subject,
-        "lookback_start": lookback_start,
-    }
     try:
         # A savepoint, so a lost race on the unique index leaves the request usable.
         async with session.begin_nested():
-            result = await te.create(session, **arguments)  # type: ignore[arg-type]
+            result = await te.create(
+                session,
+                origin_family=target.origin_family,
+                origin_anomaly_id=anomaly_id,
+                subject_kind=target.subject_kind,
+                subject_id=target.subject_id,
+                scope_key=target.scope_key,
+                starts_at=payload.starts_at,
+                ends_at=payload.ends_at,
+                reason=reason,
+                created_by=principal.subject,
+                lookback_start=lookback_start,
+            )
         row, created = result.row, result.created
     except te.ExclusionError as exc:
         raise _refuse(exc.code) from exc
     except IntegrityError as exc:
         existing = await te.find_active_exact(
             session,
-            subject_kind="log_source",
-            subject_id=anomaly.log_source_id,
-            scope_key=te.LOG_SOURCE_VOLUME_SCOPE,
+            subject_kind=target.subject_kind,
+            subject_id=target.subject_id,
+            scope_key=target.scope_key,
             starts_at=payload.starts_at,
             ends_at=payload.ends_at,
         )
@@ -297,7 +388,7 @@ async def create_training_exclusion(
     else:
         response.status_code = status.HTTP_200_OK
     rebuilt = await _rebuilt_at(session, [row])
-    return _out(row, lookback_start, rebuilt.get(row.subject_id))
+    return _out(row, lookback_start, rebuilt.get((row.subject_kind, row.subject_id)))
 
 
 @behavior_router.get("/training-exclusions", response_model=ExclusionListOut)
@@ -326,14 +417,23 @@ async def list_training_exclusions(
         stmt = stmt.where(model.revoked_at.is_(None), model.ends_at <= lookback_start)
     elif state in (ExclusionState.PENDING_REBUILD, ExclusionState.APPLIED):
         # The same rule as `_state`, in SQL: applied when the subject's latest baseline
-        # rebuild is newer than the row.
-        latest = (
+        # rebuild is newer than the row. Each family reads its own computed-at column.
+        source_latest = (
             select(func.max(LogSourceBaseline.computed_at))
             .where(LogSourceBaseline.log_source_id == model.subject_id)
             .correlate(model)
             .scalar_subquery()
         )
-        applied = and_(model.subject_kind == "log_source", latest > model.created_at)
+        endpoint_latest = (
+            select(func.max(WafEndpointBaseline.computed_at))
+            .where(WafEndpointBaseline.waf_endpoint_id == model.subject_id)
+            .correlate(model)
+            .scalar_subquery()
+        )
+        applied = or_(
+            and_(model.subject_kind == "log_source", source_latest > model.created_at),
+            and_(model.subject_kind == "endpoint", endpoint_latest > model.created_at),
+        )
         stmt = stmt.where(
             model.revoked_at.is_(None),
             model.ends_at > lookback_start,
@@ -346,7 +446,10 @@ async def list_training_exclusions(
     ).all()
     rebuilt = await _rebuilt_at(session, rows)
     return ExclusionListOut(
-        items=[_out(row, lookback_start, rebuilt.get(row.subject_id)) for row in rows],
+        items=[
+            _out(row, lookback_start, rebuilt.get((row.subject_kind, row.subject_id)))
+            for row in rows
+        ],
         limit=limit,
     )
 
@@ -386,4 +489,8 @@ async def revoke_training_exclusion(
         )
     rebuilt = await _rebuilt_at(session, [result.row])
     lookback_start = _lookback_start(datetime.now(UTC), settings.baseline_lookback_days)
-    return _out(result.row, lookback_start, rebuilt.get(result.row.subject_id))
+    return _out(
+        result.row,
+        lookback_start,
+        rebuilt.get((result.row.subject_kind, result.row.subject_id)),
+    )

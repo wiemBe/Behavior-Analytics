@@ -219,9 +219,10 @@ class TestStatementCounts:
                 counts.append(len(statements))
             per_run[size] = counts
 
-        # Twenty times the endpoints, the same statements.
+        # Twenty times the endpoints, the same statements. SOC-13e adds one
+        # exclusion read for the whole rebuild, so the ceiling is one higher.
         assert per_run[60] == per_run[1200]
-        assert max(per_run[1200]) <= 40, per_run
+        assert max(per_run[1200]) <= 41, per_run
         print(f"no-decision scheduled-run statements: {per_run}")
 
     async def test_a_run_for_a_yes_console_with_a_finished_scope_does_not_grow(
@@ -288,8 +289,9 @@ class TestStatementCounts:
             per_run[size] = counts
 
         assert per_run[60] == per_run[1200], per_run
-        # The decision, the scope row and nothing more than the no-decision run plus them.
-        assert max(per_run[1200]) <= 41, per_run
+        # The decision and the scope row, and nothing more than the no-decision
+        # run plus them. SOC-13e adds the same one exclusion read to both.
+        assert max(per_run[1200]) <= 42, per_run
         print(f"active-Yes COMPLETE-scope statements: {per_run}")
 
     async def test_evaluation_does_not_multiply_by_endpoints_times_detectors(
@@ -726,10 +728,11 @@ class TestStatementCounts:
 
         one_chunk = await statements_for(endpoints[:25])
         four_chunks = await statements_for(endpoints[25:125])
-        # One bucket-record load; then, per chunk of 25, its rows, its incident
-        # spans, one upsert of all its cells, and one batched update of the
-        # endpoints' rebuild time. 25 or 100 endpoints: only the chunk count moves.
-        assert one_chunk == 5
+        # One bucket-record load and one analyst-exclusion load for the whole
+        # rebuild (SOC-13e); then, per chunk of 25, its rows, its incident spans,
+        # one upsert of all its cells, and one batched update of the endpoints'
+        # rebuild time. 25 or 100 endpoints: only the chunk count moves.
+        assert one_chunk == 6
         assert four_chunks - one_chunk == 3 * 4, (one_chunk, four_chunks)
 
     async def test_training_statement_count_is_unchanged_with_breakdowns(self, db_session) -> None:
@@ -803,7 +806,8 @@ class TestStatementCounts:
             )
         with_breakdowns = len(statements)
 
-        assert with_breakdowns == without_breakdowns == 5
+        # SOC-13e: both counts include the one exclusion read. Breakdowns add none.
+        assert with_breakdowns == without_breakdowns == 6
 
 
 async def test_collection_at_the_default_ceiling_is_bulk(db_session) -> None:
@@ -824,7 +828,8 @@ async def test_collection_at_the_default_ceiling_is_bulk(db_session) -> None:
     assert result["rows_written"] == 2000
     assert result["endpoint_evaluations"] == 2000
     assert await count(db_session, WafEndpointMetric, WafEndpointMetric.bucket_start == at) == 2000
-    assert len(statements) <= 40, len(statements)
+    # SOC-13e: the rebuild's one exclusion read sits inside this ceiling.
+    assert len(statements) <= 41, len(statements)
     # Informational bound on a developer workstation; the statement count is the guard.
     assert elapsed < 30
 

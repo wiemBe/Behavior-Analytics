@@ -152,7 +152,9 @@ def test_active_anomaly_is_409(db_schema) -> None:  # type: ignore[no-untyped-de
     assert _counts() == (0, 0, 0)
 
 
-@pytest.mark.parametrize("family", ["waf", "ips", "property_watch", "rule", "nonsense"])
+# SOC-13e accepts `waf`; tests/integration/test_waf_training_exclusion.py pins that.
+# These families stay unsupported.
+@pytest.mark.parametrize("family", ["ips", "property_watch", "rule", "nonsense"])
 def test_other_family_is_422_unsupported(db_schema, family) -> None:  # type: ignore[no-untyped-def]
     response = Client(TRIAGER).post(_url(uuid.uuid4(), family), json=_body())
     assert response.status_code == 422
