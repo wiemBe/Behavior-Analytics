@@ -28,6 +28,7 @@ from app.api.routes import (
     log_sources,
     me,
     noise,
+    notification_destinations,
     offenses,
     outage_policy,
     overview,
@@ -191,6 +192,10 @@ api_router.include_router(
 # guards every method, reads included; `read:*` does not satisfy it.
 api_router.include_router(
     admin_email.router, dependencies=[Depends(requires(PERM_NOTIFICATIONS_ADMIN))]
+)
+api_router.include_router(
+    notification_destinations.router,
+    dependencies=[Depends(requires(PERM_NOTIFICATIONS_ADMIN))],
 )
 # `admin:outage` guards every method, reads included; `read:*` does not satisfy it.
 api_router.include_router(
