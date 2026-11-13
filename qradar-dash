@@ -922,6 +922,24 @@ BUNDLE_DOCUMENTS=(
   docs/SEARCH-CADENCE.md docs/OPERATIONS-DESIGN.md docs/WEBHOOK-PAYLOAD.md
 )
 
+# bundle_document_members -> the top-level archive members the documents need, one per
+# line. Derived from BUNDLE_DOCUMENTS — the distinct first path component of each entry,
+# in array order — so a document added there is copied, summed and archived without
+# another edit to the tar line. A name is an exact key: "Release Notes.md" must not
+# hide "Notes.md", and a glob character in a name must not match some other member.
+bundle_document_members() {
+  local member top
+  local -A emitted=()
+  for member in "${BUNDLE_DOCUMENTS[@]}"; do
+    top=${member%%/*}
+    if [ -n "${emitted["$top"]+x}" ]; then
+      continue
+    fi
+    emitted["$top"]=1
+    printf '%s\n' "$top"
+  done
+}
+
 bundle_image_refs() { # bundle_image_refs PREFIX VERSION -> the image references, one per line
   local prefix=$1 version=$2 service ref
   for service in "${BUNDLE_SERVICES[@]}"; do
@@ -968,6 +986,7 @@ cmd_bundle() {
   local version="" out="" checkout prefix source ref id bytes target name member
   local local_images=no images_source=registry revision="" worktree="" label expected actual
   local index product_count service
+  local -a document_members=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --version) [ $# -ge 2 ] || { fail "--version needs a release such as 0.2.0"; return 2; }; version=$2; shift ;;
@@ -1006,6 +1025,11 @@ cmd_bundle() {
     [ -f "$member" ] || die "bundle refused: $member is missing from this checkout; restore it (git checkout v$version) and run ./qradar-dash bundle again"
   done
   [ -d deploy ] || die "bundle refused: deploy/ is missing from this checkout; restore it (git checkout v$version) and run ./qradar-dash bundle again"
+  # The archive's document members, derived from the copy list so a document added there
+  # cannot be summed into the stage and then left out of the tar.
+  mapfile -t document_members < <(bundle_document_members)
+  [ "${#document_members[@]}" -gt 0 ] \
+    || die "bundle refused: BUNDLE_DOCUMENTS in this copy of qradar-dash is empty, so the bundle would carry no operator documents; restore the array and run ./qradar-dash bundle again"
 
   prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
   if [ -n "$prefix" ]; then source="QRADAR_DASH_IMAGE_PREFIX in .env"; else prefix=$DEFAULT_IMAGE_PREFIX; source="the default; no QRADAR_DASH_IMAGE_PREFIX in .env"; fi
@@ -1105,7 +1129,7 @@ cmd_bundle() {
   ) || die "cannot write SHA256SUMS"
   tar --owner=0 --group=0 --numeric-owner -cf "$BUNDLE_PARTIAL" -C "$BUNDLE_STAGE" \
     SHA256SUMS MANIFEST VERSION qradar-dash docker-compose.yml docker-compose.prod.yml \
-    README.md .env.example deploy docs images.tar \
+    "${document_members[@]}" deploy images.tar \
     || die "cannot write the bundle archive (is there room in $out?); free space or pass --output DIR"
   if [ -e "$target" ] || [ -L "$target" ]; then
     die "bundle refused: $target appeared while the bundle was being made and is not overwritten"
