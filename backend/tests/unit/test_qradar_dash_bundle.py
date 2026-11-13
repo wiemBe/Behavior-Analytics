@@ -43,6 +43,19 @@ COMPOSE_PROD = REPO / "docker-compose.prod.yml"
 DEFAULT_PREFIX = "ghcr.io/wiembe/behavior-analytics"
 UPGRADE_PREFIX = "registry.example/qradar"
 
+# The operator documents the bundle carries at their checkout paths (REL-17a): the
+# installer points at docs/OPERATIONS.md and docs/INSTALL.md, which an air-gapped host
+# would otherwise not have.
+BUNDLE_DOCUMENTS = [
+    "README.md",
+    ".env.example",
+    "docs/INSTALL.md",
+    "docs/OPERATIONS.md",
+    "docs/CONFIGURATION.md",
+    "docs/SEARCH-CADENCE.md",
+    "docs/OPERATIONS-DESIGN.md",
+]
+
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="bash is required")
 
 PRODUCER_TOOLS = [
@@ -184,6 +197,8 @@ class Producer:
         notes = self.root / "docs" / "releases"
         notes.mkdir(parents=True)
         (notes / f"{version}.md").write_text(f"---\nversion: {version}\nmin_from: 0.1.0\n---\nx\n")
+        for name in BUNDLE_DOCUMENTS:
+            shutil.copy(REPO / name, self.root / name)
         if prefix is not None:
             (self.root / ".env").write_text(f"QRADAR_DASH_IMAGE_PREFIX={prefix}\nSECRET=hunter2\n")
         self.bin = tmp_path / f"producer-bin-{version}"
@@ -366,10 +381,12 @@ def test_bundle_has_exactly_the_designed_members_and_correct_sums(producer: Prod
     top = {n.split("/")[0] for n in names}
     assert top == {
         "images.tar", "SHA256SUMS", "MANIFEST", "VERSION", "docs", "qradar-dash",
-        "docker-compose.yml", "docker-compose.prod.yml", "deploy",
+        "docker-compose.yml", "docker-compose.prod.yml", "deploy", "README.md", ".env.example",
     }
     assert "docs/releases/0.1.0.md" in names
     assert "deploy/load-secrets.sh" in names
+    for name in BUNDLE_DOCUMENTS:
+        assert name in names, name
     with tarfile.open(bundle) as tar:
         files = {m.name: tar.extractfile(m).read() for m in tar.getmembers() if m.isfile()}
         script = tar.getmember("qradar-dash")
@@ -388,6 +405,68 @@ def test_bundle_has_exactly_the_designed_members_and_correct_sums(producer: Prod
     images = [line.split() for line in manifest if line.startswith("image ")]
     assert [i[1] for i in images] == bundle_refs(DEFAULT_PREFIX, "0.1.0")
     assert all(re.fullmatch(r"sha256:[0-9a-f]{64}", i[2]) for i in images)
+
+
+def test_bundle_carries_each_operator_document_at_its_checkout_path(producer: Producer) -> None:
+    bundle = producer.make()
+
+    with tarfile.open(bundle) as tar:
+        packed = {m.name: tar.extractfile(m).read() for m in tar.getmembers() if m.isfile()}
+    for name in BUNDLE_DOCUMENTS:
+        assert name in packed, name
+        assert packed[name] == (REPO / name).read_bytes(), name
+
+
+def test_sha256sums_covers_every_operator_document(producer: Producer) -> None:
+    bundle = producer.make()
+
+    with tarfile.open(bundle) as tar:
+        files = {m.name: tar.extractfile(m).read() for m in tar.getmembers() if m.isfile()}
+    sums = dict(
+        reversed(line.split("  ", 1)) for line in files["SHA256SUMS"].decode().splitlines()
+    )
+    for name in BUNDLE_DOCUMENTS:
+        assert name in sums, name
+        assert hashlib.sha256(files[name]).hexdigest() == sums[name], name
+
+
+@pytest.mark.parametrize("name", BUNDLE_DOCUMENTS)
+def test_bundle_refuses_a_missing_operator_document_and_writes_nothing(
+    producer: Producer, name: str
+) -> None:
+    (producer.root / name).unlink()
+
+    result = producer.run("bundle", "--output", str(producer.out))
+
+    assert result.returncode == 1
+    assert f"bundle refused: {name} is missing from this checkout" in result.stderr
+    assert "restore it (git checkout v0.1.0)" in result.stderr
+    assert list(producer.out.iterdir()) == []
+    assert producer.docker_calls() == []  # refused before any pull
+
+
+def test_bundle_carries_env_example_but_never_env(tmp_path: Path) -> None:
+    prod = Producer(tmp_path, version="0.1.0", prefix="registry.example/qradar")
+    assert (prod.root / ".env").is_file()  # the site's own file is in the checkout
+
+    bundle = prod.make()
+
+    names = members(bundle)
+    assert ".env.example" in names
+    assert ".env" not in names
+    assert not [n for n in names if n.split("/")[0] in (".env", ".secrets")]
+    with tarfile.open(bundle) as tar:
+        assert tar.extractfile(".env.example").read() == (REPO / ".env.example").read_bytes()
+        blob = b"".join(tar.extractfile(m).read() for m in tar.getmembers() if m.isfile())
+    assert b"hunter2" not in blob
+
+
+def test_bundle_help_names_the_operator_documents(producer: Producer) -> None:
+    helped = producer.run("bundle", "--help")
+
+    assert helped.returncode == 0
+    for name in BUNDLE_DOCUMENTS:
+        assert name in helped.stdout, name
 
 
 def test_bundle_never_carries_the_sites_configuration(tmp_path: Path) -> None:
@@ -795,6 +874,9 @@ def test_the_operators_path_bundle_then_install_offline(
     assert extract.returncode == 0, extract.stderr
     assert not (consumer.root / "images.tar").exists()
     assert (consumer.root / "docs" / "releases" / "0.1.0.md").is_file()
+    # The installer messages point at docs/OPERATIONS.md; the bundle put it on this host.
+    assert (consumer.root / "docs" / "OPERATIONS.md").is_file()
+    assert (consumer.root / "docs" / "INSTALL.md").is_file()
     _stub(consumer.root / "deploy" / "load-secrets.sh", "#!/bin/sh\nexit 0\n")
 
     result = offline_install(consumer, bundle)
