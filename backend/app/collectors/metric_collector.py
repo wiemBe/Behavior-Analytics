@@ -1231,8 +1231,8 @@ class MetricCollector:
             )
         ).all()
         builder = BaselineBuilder(self.session, settings=self.settings)
-        for source in sources:
-            await builder.rebuild_for_source(source, now=now)
+        # One read of the analyst training exclusions for the batch (SOC-13c).
+        await builder.rebuild_many(sources, now=now)
         report.rebuilt = len(sources)
         adapter = {**decoded.adapter, phase_a.REBUILD_PENDING_KEY: rest}
         base = (

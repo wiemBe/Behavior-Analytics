@@ -9,10 +9,11 @@ The reason is analyst text: it lives on the exclusion row and on the triage even
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Query, Response, status
-from sqlalchemy import false, select
+from sqlalchemy import and_, false, func, not_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +23,7 @@ from app.api.routes.anomalies import PrincipalDep, _guard
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import CodedHTTPException
 from app.models.enums import AnomalyFamily, AnomalyState, TriageEventKind, TriageStatus
-from app.models.log_source import LogSourceAnomaly, LogSourceMetric
+from app.models.log_source import LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
 from app.models.training_exclusion import REASON_MAX_LENGTH, BaselineTrainingExclusion
 from app.models.triage import AnomalyTriage, AnomalyTriageEvent
 from app.repositories.audit import record_audit
@@ -75,17 +76,45 @@ def _lookback_start(now: datetime, days: int) -> datetime:
     return now - timedelta(days=days)
 
 
-def _state(row: BaselineTrainingExclusion, lookback_start: datetime) -> ExclusionState:
-    # APPLIED needs a record of the rebuild that used the row; training does not read
-    # exclusions yet (SOC-13c), so an active row in the lookback is always pending.
+def _state(
+    row: BaselineTrainingExclusion,
+    lookback_start: datetime,
+    rebuilt_at: datetime | None = None,
+) -> ExclusionState:
+    """`rebuilt_at` is the subject's latest baseline `computed_at`, None when unknown.
+
+    An active row is APPLIED once the baseline was rebuilt after the row was created:
+    training reads every active row, so that rebuild used it.
+    """
     if row.revoked_at is not None:
         return ExclusionState.REVOKED
     if row.ends_at <= lookback_start:
         return ExclusionState.OUTSIDE_LOOKBACK
+    if rebuilt_at is not None and rebuilt_at > row.created_at:
+        return ExclusionState.APPLIED
     return ExclusionState.PENDING_REBUILD
 
 
-def _out(row: BaselineTrainingExclusion, lookback_start: datetime) -> ExclusionOut:
+async def _rebuilt_at(
+    session: AsyncSession, rows: Sequence[BaselineTrainingExclusion]
+) -> dict[uuid.UUID, datetime]:
+    """Latest baseline rebuild per Phase A source: one aggregate for all listed rows."""
+    ids = {row.subject_id for row in rows if row.subject_kind == "log_source"}
+    if not ids:
+        return {}
+    found = await session.execute(
+        select(LogSourceBaseline.log_source_id, func.max(LogSourceBaseline.computed_at))
+        .where(LogSourceBaseline.log_source_id.in_(ids))
+        .group_by(LogSourceBaseline.log_source_id)
+    )
+    return {source_id: at for source_id, at in found.all() if at is not None}
+
+
+def _out(
+    row: BaselineTrainingExclusion,
+    lookback_start: datetime,
+    rebuilt_at: datetime | None = None,
+) -> ExclusionOut:
     return ExclusionOut(
         id=row.id,
         origin_family=row.origin_family,
@@ -101,7 +130,7 @@ def _out(row: BaselineTrainingExclusion, lookback_start: datetime) -> ExclusionO
         revoked_by=row.revoked_by,
         revoked_at=row.revoked_at,
         revocation_reason=row.revocation_reason,
-        state=_state(row, lookback_start),
+        state=_state(row, lookback_start, rebuilt_at),
     )
 
 
@@ -263,7 +292,8 @@ async def create_training_exclusion(
         )
     else:
         response.status_code = status.HTTP_200_OK
-    return _out(row, lookback_start)
+    rebuilt = await _rebuilt_at(session, [row])
+    return _out(row, lookback_start, rebuilt.get(row.subject_id))
 
 
 @behavior_router.get("/training-exclusions", response_model=ExclusionListOut)
@@ -290,16 +320,31 @@ async def list_training_exclusions(
         stmt = stmt.where(model.revoked_at.is_not(None))
     elif state is ExclusionState.OUTSIDE_LOOKBACK:
         stmt = stmt.where(model.revoked_at.is_(None), model.ends_at <= lookback_start)
-    elif state is ExclusionState.PENDING_REBUILD:
-        stmt = stmt.where(model.revoked_at.is_(None), model.ends_at > lookback_start)
-    elif state is ExclusionState.APPLIED:
-        stmt = stmt.where(false())
+    elif state in (ExclusionState.PENDING_REBUILD, ExclusionState.APPLIED):
+        # The same rule as `_state`, in SQL: applied when the subject's latest baseline
+        # rebuild is newer than the row.
+        latest = (
+            select(func.max(LogSourceBaseline.computed_at))
+            .where(LogSourceBaseline.log_source_id == model.subject_id)
+            .correlate(model)
+            .scalar_subquery()
+        )
+        applied = and_(model.subject_kind == "log_source", latest > model.created_at)
+        stmt = stmt.where(
+            model.revoked_at.is_(None),
+            model.ends_at > lookback_start,
+            applied if state is ExclusionState.APPLIED else not_(func.coalesce(applied, false())),
+        )
     rows = (
         await session.scalars(
             stmt.order_by(model.created_at.desc(), model.id.desc()).limit(limit)
         )
     ).all()
-    return ExclusionListOut(items=[_out(row, lookback_start) for row in rows], limit=limit)
+    rebuilt = await _rebuilt_at(session, rows)
+    return ExclusionListOut(
+        items=[_out(row, lookback_start, rebuilt.get(row.subject_id)) for row in rows],
+        limit=limit,
+    )
 
 
 @behavior_router.post("/training-exclusions/{exclusion_id}/revoke", response_model=ExclusionOut)
@@ -335,4 +380,6 @@ async def revoke_training_exclusion(
             object_id=str(result.row.id),
             detail=_audit_detail(result.row, principal.subject),
         )
-    return _out(result.row, _lookback_start(datetime.now(UTC), settings.baseline_lookback_days))
+    rebuilt = await _rebuilt_at(session, [result.row])
+    lookback_start = _lookback_start(datetime.now(UTC), settings.baseline_lookback_days)
+    return _out(result.row, lookback_start, rebuilt.get(result.row.subject_id))
