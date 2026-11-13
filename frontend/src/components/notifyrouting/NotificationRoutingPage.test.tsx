@@ -102,6 +102,44 @@ describe("states", () => {
     expect(api.destinations).toHaveBeenCalledTimes(1);
   });
 
+  it("says the destinations could not be loaded, never that there are none, and retries them", async () => {
+    api.destinations.mockRejectedValueOnce(new ApiError(500, "boom"));
+    const user = userEvent.setup();
+    render(<NotificationRoutingPage />);
+    await screen.findByRole("table", { name: "Routing rules" });
+    expect(screen.getByRole("button", { name: "Add rule" })).toBeDisabled();
+    expect(
+      screen.getByText(/The destinations could not be loaded, so a rule cannot be added/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Add a destination first/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Try loading the destinations again" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add rule" })).toBeEnabled());
+    expect(api.destinations).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument();
+  });
+
+  it("offers no retry when the destination list is simply empty", async () => {
+    api.destinations.mockResolvedValue([]);
+    render(<NotificationRoutingPage />);
+    await screen.findByText(/Add a destination first/);
+    expect(
+      screen.queryByRole("button", { name: "Try loading the destinations again" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("draws no count in a heading whose read failed or is pending", async () => {
+    api.destinations.mockRejectedValueOnce(new ApiError(500, "boom"));
+    api.rules.mockRejectedValueOnce(new ApiError(500, "boom"));
+    render(<NotificationRoutingPage />);
+    // Pending: the two reads have not answered.
+    expect(screen.getByRole("heading", { name: "Routing rules" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Webhook destinations" })).toBeInTheDocument();
+    await screen.findAllByText(/Could not read/);
+    expect(screen.getByRole("heading", { name: "Routing rules" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Webhook destinations" })).toBeInTheDocument();
+    expect(screen.queryByText(/\(0 of/)).not.toBeInTheDocument();
+  });
+
   it("names the permission when forbidden and shows no rows", async () => {
     api.rules.mockRejectedValue(new ApiError(403, "no"));
     api.destinations.mockRejectedValue(new ApiError(403, "no"));
@@ -357,6 +395,27 @@ describe("send test", () => {
     const banner = (await screen.findByText("SOAR did not accept the test.")).closest(".banner") as HTMLElement;
     expect(banner).toHaveTextContent("Result: ssrf_refused.");
     expect(banner).toHaveTextContent("The address is private, or it uses HTTP without the flag.");
+  });
+
+  it("tells the administrator to replace the headers on payload_invalid", async () => {
+    api.testDestination.mockResolvedValue(
+      testResult({
+        ok: false,
+        status: null,
+        result: "payload_invalid",
+        outcome: {
+          code: "notifications.test_failed",
+          params: { failure_class: "payload_invalid" },
+          message: "The test webhook was not accepted. Result: payload_invalid.",
+        },
+      }),
+    );
+    await send();
+    const banner = (await screen.findByText("SOAR did not accept the test.")).closest(".banner") as HTMLElement;
+    expect(banner).toHaveTextContent("Result: payload_invalid.");
+    expect(banner).toHaveTextContent(
+      "The stored headers are not valid. Edit the destination and replace its headers.",
+    );
   });
 
   it("shows the rate-limit refusal and does not claim a result", async () => {

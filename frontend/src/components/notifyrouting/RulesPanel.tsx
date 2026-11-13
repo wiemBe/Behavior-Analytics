@@ -40,19 +40,22 @@ export function RulesPanel({
   destinations,
   onChanged,
   onRetry,
+  onRetryDestinations,
 }: {
   part: Part<NotificationRule[]>;
   destinations: Part<NotificationDestination[]>;
   onChanged: () => void;
   onRetry: () => void;
+  onRetryDestinations: () => void;
 }) {
   const t = useTranslations("notifyRouting.rules");
   const headingId = useId();
-  const count = part.status === "ok" ? part.data.length : 0;
   return (
     <section className="nr-section" aria-labelledby={headingId}>
       <h2 className="nr-h" id={headingId}>
-        {t("heading", { count, max: MAX_RULES })}
+        {part.status === "ok"
+          ? t("heading", { count: part.data.length, max: MAX_RULES })
+          : t("headingNoCount")}
       </h2>
       {part.status === "loading" ? (
         <p className="notice" role="status" aria-live="polite">
@@ -71,6 +74,8 @@ export function RulesPanel({
         <Loaded
           list={part.data}
           destinations={destinations.status === "ok" ? destinations.data : null}
+          destinationsState={destinations.status}
+          onRetryDestinations={onRetryDestinations}
           onChanged={onChanged}
         />
       ) : null}
@@ -124,11 +129,15 @@ function When({ rule }: { rule: NotificationRule }) {
 function Loaded({
   list,
   destinations,
+  destinationsState,
+  onRetryDestinations,
   onChanged,
 }: {
   list: NotificationRule[];
-  /** Null when the destination list could not be read. */
+  /** Null when the destination list is not loaded: still loading, or it failed. */
   destinations: NotificationDestination[] | null;
+  destinationsState: Part<NotificationDestination[]>["status"];
+  onRetryDestinations: () => void;
   onChanged: () => void;
 }) {
   const t = useTranslations("notifyRouting.rules");
@@ -364,8 +373,17 @@ function Loaded({
           </button>
           {full || noDestinations ? (
             <p className="nr-hint" id="nr-rule-limit">
-              {full ? t("limit", { max: MAX_RULES }) : t("needDestination")}
+              {full
+                ? t("limit", { max: MAX_RULES })
+                : destinations === null
+                  ? t(destinationsState === "loading" ? "destinationsLoading" : "destinationsFailed")
+                  : t("needDestination")}
             </p>
+          ) : null}
+          {!full && destinationsState === "error" ? (
+            <button type="button" className="action secondary" onClick={onRetryDestinations}>
+              {t("destinationsRetry")}
+            </button>
           ) : null}
         </div>
       )}

@@ -5435,7 +5435,8 @@ export type DestinationTestClass =
   | "timeout"
   | "http_status"
   | "ssrf_refused"
-  | "redirect_refused";
+  | "redirect_refused"
+  | "payload_invalid";
 
 export interface DestinationTestResult {
   ok: boolean;

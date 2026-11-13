@@ -39,6 +39,7 @@ export function NotificationRoutingPage() {
         destinations={destinations.part}
         onChanged={rules.reload}
         onRetry={rules.reload}
+        onRetryDestinations={destinations.reload}
       />
       <DestinationsPanel
         part={destinations.part}

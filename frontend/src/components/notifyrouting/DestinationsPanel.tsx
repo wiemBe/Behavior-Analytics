@@ -46,11 +46,12 @@ export function DestinationsPanel({
 }) {
   const t = useTranslations("notifyRouting.destinations");
   const headingId = useId();
-  const count = part.status === "ok" ? part.data.length : 0;
   return (
     <section className="nr-section" aria-labelledby={headingId}>
       <h2 className="nr-h" id={headingId}>
-        {t("heading", { count, max: MAX_DESTINATIONS })}
+        {part.status === "ok"
+          ? t("heading", { count: part.data.length, max: MAX_DESTINATIONS })
+          : t("headingNoCount")}
       </h2>
       {part.status === "loading" ? (
         <p className="notice" role="status" aria-live="polite">
@@ -322,7 +323,11 @@ function LastTest({ item }: { item: NotificationDestination }) {
   if (item.last_test_at === null) return <span className="muted">{t("notTested")}</span>;
   const result = item.last_test_class ?? "";
   const failed = result !== "ok";
-  const known = ["ok", "transport", "timeout", "http_status", "ssrf_refused", "redirect_refused"];
+  const known = [
+    "ok", "transport", "timeout", "http_status", "ssrf_refused",
+    "redirect_refused",
+    "payload_invalid",
+  ];
   return (
     <>
       <span className={failed ? "pill crit" : "pill ok"}>

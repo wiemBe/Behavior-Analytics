@@ -21,6 +21,7 @@
   },
   "rules": {
     "heading": "Routing rules ({count} of {max})",
+    "headingNoCount": "Routing rules",
     "what": "the routing rules",
     "loading": "Loading the routing rules.",
     "empty": "No routing rules. Alerts still use the .env channels and e-mail recipients.",
@@ -49,6 +50,9 @@
     "add": "Add rule",
     "limit": "This site already has the maximum of {max} rules. Remove one to add another.",
     "needDestination": "Add a destination first: a rule needs at least one.",
+    "destinationsLoading": "Loading the destinations. A rule needs at least one.",
+    "destinationsFailed": "The destinations could not be loaded, so a rule cannot be added. Nothing was changed.",
+    "destinationsRetry": "Try loading the destinations again",
     "edit": "Edit",
     "editNamed": "Edit rule {name}",
     "delete": "Delete",
@@ -106,6 +110,7 @@
   },
   "destinations": {
     "heading": "Webhook destinations ({count} of {max})",
+    "headingNoCount": "Webhook destinations",
     "what": "the webhook destinations",
     "loading": "Loading the webhook destinations.",
     "empty": "No webhook destinations. Alerts still use the .env channels and e-mail recipients.",
@@ -132,7 +137,8 @@
       "timeout": "timeout",
       "http_status": "http_status",
       "ssrf_refused": "ssrf_refused",
-      "redirect_refused": "redirect_refused"
+      "redirect_refused": "redirect_refused",
+      "payload_invalid": "payload_invalid"
     },
     "testLine": "{result} {status}",
     "add": "Add destination",
@@ -160,7 +166,8 @@
         "timeout": "The endpoint did not answer within 10 seconds. Check that it is running.",
         "http_status": "The endpoint answered with an error status. Check its log.",
         "ssrf_refused": "The address is private, or it uses HTTP without the flag. Tick the matching option on the destination only for an endpoint you trust.",
-        "redirect_refused": "The endpoint answered with a redirect. Redirects are never followed. Enter the final address."
+        "redirect_refused": "The endpoint answered with a redirect. Redirects are never followed. Enter the final address.",
+        "payload_invalid": "The stored headers are not valid. Edit the destination and replace its headers."
       }
     },
     "form": {
