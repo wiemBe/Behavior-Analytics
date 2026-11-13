@@ -39,6 +39,11 @@ MAX_INTERVAL = timedelta(days=MAX_INTERVAL_DAYS)
 
 #: The scope Phase A source-volume baselines train on (design section 1).
 LOG_SOURCE_VOLUME_SCOPE = "log_source:volume"
+#: One scope for every metric of a WAF endpoint baseline (SOC-13e).
+#: Design section 1 allows separate request and ratio scopes. The server derives
+#: the scope, and the client cannot pick a metric, so one incident interval is
+#: kept out of the request-count cell and every ratio cell together.
+WAF_ENDPOINT_SCOPE = "waf:endpoint"
 
 Span = tuple[datetime, datetime]
 SpanKey = tuple[str, uuid.UUID, str]

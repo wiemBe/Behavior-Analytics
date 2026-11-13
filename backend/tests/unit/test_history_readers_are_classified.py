@@ -208,6 +208,13 @@ HISTORY_TABLES = (
             "app.waf.baseline.WafBaselineBuilder.source_bucket_facts": Reader(
                 "baseline", ReaderKind.EVIDENCE
             ),
+            # SOC-13e: a WAF training exclusion aligns to the live detector's bucket
+            # width. A history row's width is the replay's, not the incident's.
+            "app.api.routes.training_exclusions._waf_bucket_seconds": Reader(
+                "bucket width for a WAF training exclusion (SOC-13e)",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
             "app.waf.engine.WafAnomalyEngine._load_novelty_traffic": Reader(
                 "novelty evidence", ReaderKind.EVIDENCE
             ),
