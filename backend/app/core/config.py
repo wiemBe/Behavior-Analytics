@@ -1070,6 +1070,9 @@ class Settings(BaseSettings):
     #: The admin "send a test message" action spends a real delivery; it carries
     #: its own limit beside the API default.
     rate_limit_email_test: str = "5/minute"
+    #: A webhook test opens an outbound connection and therefore has the same
+    #: deliberately tight operator-action limit as an e-mail test.
+    rate_limit_webhook_test: str = "5/minute"
     #: "Check now" on the access page sends about a dozen reads and one search to the console.
     rate_limit_access_check: str = "2/minute"
 
