@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import datetime
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.alerts.notifiers.destination_sender import DESTINATION_TARGET_PREFIX, destination_target_id
 from app.alerts.query import AlertFamily, AlertSort, SortOrder
 from app.models.enums import (
     AlertStatus,
@@ -26,10 +28,22 @@ _HTTP_NOTIFICATION_CHANNELS = frozenset(
 )
 
 
-def notification_target_label(channel: NotificationChannel, target: str) -> str:
-    """Return the non-secret destination label exposed by notification history."""
+def notification_target_label(
+    channel: NotificationChannel,
+    target: str,
+    destination_names: Mapping[uuid.UUID, str] | None = None,
+) -> str:
+    """Return the non-secret destination label exposed by notification history.
+
+    A `destination:<uuid>` webhook target (SOC-12d) shows the destination's name, or
+    "(deleted destination)" when it no longer exists; the URL is never read.
+    """
     if channel not in _HTTP_NOTIFICATION_CHANNELS:
         return target
+    if channel == NotificationChannel.WEBHOOK and target.startswith(DESTINATION_TARGET_PREFIX):
+        destination_id = destination_target_id(target)
+        name = (destination_names or {}).get(destination_id) if destination_id else None
+        return name if name is not None else "(deleted destination)"
 
     try:
         parsed = urlsplit(target)

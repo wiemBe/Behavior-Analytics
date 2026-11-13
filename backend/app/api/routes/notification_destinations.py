@@ -2,29 +2,32 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, cast
+from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
+from app.alerts.notifiers import destination_sender
+from app.alerts.notifiers.destination_sender import (
+    READ_CHUNK_BYTES,  # noqa: F401 - re-exported: tests drive the bounded read through it
+)
+from app.alerts.notifiers.destination_sender import (
+    decode_headers as _decode_headers,
+)
+from app.alerts.notifiers.destination_sender import (
+    encode_headers as _encode_headers,
+)
 from app.alerts.notifiers.url_guard import (
     GuardedURL,
     URLGuardError,
     display_url,
-    guard_url,
     resolve_host,
 )
-from app.alerts.notifiers.webhook_v1 import (
-    SIGNATURE_HEADER,
-    build_webhook_v1_test,
-    sign_v1,
-)
+from app.alerts.notifiers.webhook_v1 import build_webhook_v1_test
 from app.api.deps import SessionDep
 from app.core.config import get_settings
 from app.core.rate_limit import limiter
@@ -48,8 +51,6 @@ router = APIRouter(prefix="/admin/notifications/destinations", tags=["notificati
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
 
 MAX_DESTINATIONS = 10
-MAX_RESPONSE_BYTES = 64 * 1024
-READ_CHUNK_BYTES = 8 * 1024
 
 # Named seams, not settings: tests replace both and therefore never resolve or
 # contact a real endpoint. Production uses the system resolver and direct HTTPX.
@@ -57,9 +58,7 @@ _resolver = resolve_host
 
 
 def _http_transport() -> httpx.AsyncBaseTransport:
-    # A transport has no redirect or environment-proxy layer. Calling it directly
-    # also avoids HTTPX's INFO request log, which includes the sensitive path/query.
-    return httpx.AsyncHTTPTransport(retries=0)
+    return destination_sender.http_transport()
 
 
 def _utcnow() -> datetime:
@@ -83,26 +82,9 @@ def _guard_refusal(exc: URLGuardError) -> CodedHTTPException:
 async def _guard(
     url: str, *, allow_http: bool, allow_private: bool
 ) -> GuardedURL:
-    return await asyncio.to_thread(
-        guard_url,
-        url,
-        allow_http=allow_http,
-        allow_private=allow_private,
-        resolver=_resolver,
+    return await destination_sender.guard(
+        url, allow_http=allow_http, allow_private=allow_private, resolver=_resolver
     )
-
-
-def _encode_headers(headers: dict[str, str]) -> str:
-    return json.dumps(headers, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-
-
-def _decode_headers(row: NotificationDestination) -> dict[str, str]:
-    value = json.loads(row.headers)
-    if not isinstance(value, dict) or not all(
-        isinstance(name, str) and isinstance(header, str) for name, header in value.items()
-    ):
-        raise RuntimeError("stored notification destination headers are malformed")
-    return cast(dict[str, str], value)
 
 
 def _out(row: NotificationDestination) -> DestinationOut:
@@ -303,69 +285,12 @@ async def delete_destination(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-async def _discard_body(response: httpx.Response) -> None:
-    if response.is_stream_consumed:
-        return
-    read = 0
-    async for chunk in response.aiter_raw(chunk_size=READ_CHUNK_BYTES):
-        read += len(chunk)
-        if read >= MAX_RESPONSE_BYTES:
-            break
-
-
-class _BodyStream(httpx.AsyncByteStream):
-    def __init__(self, body: bytes) -> None:
-        self.body = body
-
-    async def __aiter__(self):  # type: ignore[no-untyped-def]
-        yield self.body
-
-
 async def _send(row: NotificationDestination, now: datetime) -> tuple[TestClass, int | None]:
-    try:
-        checked = await _guard(
-            row.url, allow_http=row.allow_http, allow_private=row.allow_private
-        )
-    except URLGuardError as exc:
-        result: TestClass = (
-            "ssrf_refused"
-            if exc.code in {"notifications.private_refused", "notifications.http_refused"}
-            else "transport"
-        )
-        return result, None
     body, headers = build_webhook_v1_test(str(row.id), now)
-    headers["Host"] = checked.host_header
-    if row.hmac_secret is not None:
-        headers[SIGNATURE_HEADER] = sign_v1(body, row.hmac_secret)
-    headers.update(_decode_headers(row))
-    request = httpx.Request(
-        "POST",
-        checked.pinned_url(checked.addresses[0]),
-        stream=_BodyStream(body),
-        headers=headers,
-        extensions={
-            "sni_hostname": checked.hostname,
-            "timeout": httpx.Timeout(10.0).as_dict(),
-        },
+    # The seams are looked up here, at call time, so a test that replaces them is honoured.
+    return await destination_sender.send_to_destination(
+        row, body, headers, resolver=_resolver, transport_factory=_http_transport
     )
-    try:
-        async with _http_transport() as transport:
-            response = await transport.handle_async_request(request)
-            response.request = request
-            response_status = response.status_code
-            try:
-                await _discard_body(response)
-            finally:
-                await response.aclose()
-    except httpx.TimeoutException:
-        return "timeout", None
-    except httpx.TransportError:
-        return "transport", None
-    if 200 <= response_status < 300:
-        return "ok", response_status
-    if 300 <= response_status < 400:
-        return "redirect_refused", response_status
-    return "http_status", response_status
 
 
 def _test_outcome(result: TestClass, response_status: int | None) -> DestinationTestOut:

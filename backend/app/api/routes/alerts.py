@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import NotificationDispatcher
+from app.alerts.notifiers.destination_sender import destination_target_id
 from app.alerts.query import (
     MAX_Q_LENGTH,
     AlertFamily,
@@ -33,7 +34,8 @@ from app.api.csv_export import (
 from app.api.deps import SessionDep, SettingsDep
 from app.i18n.refusal import permission_refusal
 from app.models.alert import Alert, AlertNotification
-from app.models.enums import AlertStatus, Severity
+from app.models.enums import AlertStatus, NotificationChannel, Severity
+from app.models.notification_destination import NotificationDestination
 from app.pivot.service import PivotNotFound, alert_pivot
 from app.repositories.audit import record_audit
 from app.schemas.alert import (
@@ -395,10 +397,25 @@ async def alert_notifications(alert_id: uuid.UUID, session: SessionDep) -> list[
             .order_by(AlertNotification.created_at.desc())
         )
     ).all()
+    # One query names every destination the listed rows point at.
+    wanted = {
+        d
+        for row in rows
+        if row.channel == NotificationChannel.WEBHOOK
+        and (d := destination_target_id(row.target)) is not None
+    }
+    names: dict[uuid.UUID, str] = {}
+    if wanted:
+        found = await session.execute(
+            select(NotificationDestination.id, NotificationDestination.name).where(
+                NotificationDestination.id.in_(wanted)
+            )
+        )
+        names = {r.id: r.name for r in found}
     return [
         NotificationOut.model_validate(row).model_copy(
             update={
-                "target": notification_target_label(row.channel, row.target),
+                "target": notification_target_label(row.channel, row.target, names),
                 "error_message": notification_error_message(
                     row.channel, row.target, row.error_message
                 ),
