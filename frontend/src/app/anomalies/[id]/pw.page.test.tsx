@@ -6,7 +6,7 @@ import {
   bucket, HOSTILE, incident, iso, newValueDetection, point, pwDetail, series, spikeDetection, WATCH_ID,
 } from "@/components/propertywatch/fixtures";
 import type { PropertyWatchSeriesChartProps } from "@/components/propertywatch/PropertyWatchSeriesChart";
-import { ApiError, api, type PwAnomalyDetail } from "@/lib/api";
+import { ApiError, api, suppressionApi, type PwAnomalyDetail } from "@/lib/api";
 
 const lastChart = vi.hoisted(() => ({ props: null as unknown }));
 vi.mock("@/components/propertywatch/PropertyWatchSeriesChart", () => ({
@@ -27,6 +27,8 @@ function detail(over: Partial<PwAnomalyDetail> = {}): PwAnomalyDetail {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  // The page renders SuppressionBlock; keep its read from reaching the network.
+  vi.spyOn(suppressionApi, "forAnomaly").mockRejectedValue(new ApiError(500, "no suppression read"));
   vi.spyOn(api, "anomalyPivot").mockRejectedValue(new ApiError(404, "no pivot"));
   lastChart.props = null;
   vi.spyOn(api, "propertyWatchValues");

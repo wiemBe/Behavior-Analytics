@@ -4,11 +4,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StaticSession, type SessionValue } from "@/components/auth/session";
 import { ApiError, api, suppressionApi } from "@/lib/api";
-import type { SuppressTarget } from "@/lib/suppression";
+import { readFailure, type SuppressTarget } from "@/lib/suppression";
 
 import { SuppressionBlock } from "./SuppressionBlock";
 import { forAnomaly, row, session } from "./suppressionFixtures";
 
+// A pass-through spy: lets the unmount test see whether a late failure reached the translator.
+vi.mock("@/lib/suppression", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/suppression")>();
+  return { ...real, readFailure: vi.fn(real.readFailure) };
+});
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 
 const TARGET: SuppressTarget = { via: "anomaly", family: "log_source", anomalyId: "22222222-2222-2222-2222-222222222222" };
@@ -25,7 +30,29 @@ function mount(value: SessionValue = CAN) {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.mocked(readFailure).mockClear();
   vi.spyOn(api, "anomaly").mockResolvedValue({ log_source_name: "Linux audit fleet" } as never);
+});
+
+describe("unmount", () => {
+  it("ignores a read that rejects after the block is gone", async () => {
+    let reject!: (e: unknown) => void;
+    vi.spyOn(suppressionApi, "forAnomaly").mockReturnValue(
+      new Promise((_, r) => {
+        reject = r;
+      }),
+    );
+    const { unmount } = render(
+      <StaticSession value={CAN}>
+        <SuppressionBlock target={TARGET} />
+      </StaticSession>,
+    );
+    unmount();
+    reject(new ApiError(500, "late"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(readFailure).not.toHaveBeenCalled();
+    expect(suppressionApi.forAnomaly).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("loading and nothing active", () => {

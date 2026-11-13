@@ -4,7 +4,7 @@
 // condition is already quiet, and the "Don't alert this again" action. It owns the one read both
 // parts depend on, so saving or ending a quiet period updates the banner without a page reload.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { asTextTranslator } from "@/i18n/textTranslator";
@@ -26,11 +26,21 @@ export function SuppressionBlock({ target }: { target: SuppressTarget }) {
   const [sourceName, setSourceName] = useState<string | null>(null);
   const { family, anomalyId } = target;
 
+  // Cleared on unmount: a read that settles afterwards must not set state or call `say`.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
   const load = useCallback(async () => {
     try {
-      setState({ kind: "ready", data: await suppressionApi.forAnomaly(family, anomalyId) });
+      const data = await suppressionApi.forAnomaly(family, anomalyId);
+      if (alive.current) setState({ kind: "ready", data });
     } catch (err) {
-      setState(readFailure(err, say, ""));
+      if (alive.current) setState(readFailure(err, say, ""));
     }
     // `say` is rebuilt every render and carries no state of its own.
     // eslint-disable-next-line react-hooks/exhaustive-deps
