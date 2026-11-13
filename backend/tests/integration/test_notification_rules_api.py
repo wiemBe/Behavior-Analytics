@@ -228,7 +228,7 @@ def test_destination_in_use_cannot_be_deleted(db_schema) -> None:
     assert admin.delete(f"{DESTS}/{used}").status_code == 204
 
 
-def test_loader_uses_two_queries_and_skips_disabled(db_schema) -> None:
+def test_loader_uses_one_query_and_skips_disabled(db_schema) -> None:
     admin = Client(ADMIN)
     live = _dest(admin, "Live")
     off = _dest(admin, "Off", enabled=False)
@@ -249,7 +249,7 @@ def test_loader_uses_two_queries_and_skips_disabled(db_schema) -> None:
         return await load_rules(session)
 
     views: list[RuleView] = run(work)
-    assert len(counted) == 2
+    assert len(counted) == 1
     names = {v.priority for v in views}
     assert len(views) == 7 and 50 in names  # disabled and only-off rules are gone
     mixed_view = next(v for v in views if v.priority == 50)

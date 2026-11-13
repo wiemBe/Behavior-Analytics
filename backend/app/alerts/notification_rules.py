@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 
-from sqlalchemy import select
+from sqlalchemy import and_, any_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.query import alert_family
@@ -114,28 +114,34 @@ def _frozen(values: Sequence[object] | None) -> frozenset | None:
 
 
 async def load_rules(session: AsyncSession) -> list[RuleView]:
-    """All enabled rules, limited to enabled destinations, in at most two queries.
+    """All enabled rules, limited to enabled destinations, in one query.
 
     A rule left with no enabled destination is dropped: it could deliver nothing, so it
     must not suppress the default routes through ``stop_default`` either.
     """
-    rows = list(
-        (await session.scalars(select(NotificationRule).where(NotificationRule.enabled))).all()
-    )
-    if not rows:
-        return []
-    wanted = {d for row in rows for d in row.destination_ids}
-    live = set(
-        (
-            await session.scalars(
-                select(NotificationDestination.id).where(
-                    NotificationDestination.enabled, NotificationDestination.id.in_(wanted)
-                )
+    pairs = (
+        await session.execute(
+            select(NotificationRule, NotificationDestination.id)
+            .outerjoin(
+                NotificationDestination,
+                and_(
+                    NotificationDestination.enabled.is_(True),
+                    NotificationDestination.id == any_(NotificationRule.destination_ids),
+                ),
             )
-        ).all()
-    )
+            .where(NotificationRule.enabled.is_(True))
+        )
+    ).all()
+    rules: dict[uuid.UUID, NotificationRule] = {}
+    live_by_rule: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for rule, destination_id in pairs:
+        rules[rule.id] = rule
+        if destination_id is not None:
+            live_by_rule.setdefault(rule.id, set()).add(destination_id)
+
     views: list[RuleView] = []
-    for row in rows:
+    for row in rules.values():
+        live = live_by_rule.get(row.id, set())
         destinations = tuple(d for d in row.destination_ids if d in live)
         if not destinations:
             continue

@@ -341,8 +341,9 @@ async def test_statement_counts_one_rules_load_and_one_destination_load(db_sessi
     disp = _dispatcher(db_session)
     for alert in alerts:
         await disp.enqueue(alert, AlertTransition.OPENED)
-    assert sum("FROM notification_rule" in s for s in seen) == 1
-    assert sum("FROM notification_destination" in s for s in seen) == 1  # the loader's own
+    rule_loads = [s for s in seen if "FROM notification_rule" in s]
+    assert len(rule_loads) == 1
+    assert "notification_destination" in rule_loads[0]  # joined into the one rules load
 
     seen.clear()
     fresh = _dispatcher(db_session)

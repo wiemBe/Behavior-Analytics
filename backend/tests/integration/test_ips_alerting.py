@@ -245,8 +245,15 @@ async def test_shadow_mode_writes_no_alert_and_adds_no_statement(db_session) -> 
     def alert_path(statement: str) -> bool:
         lowered = statement.lower()
         # AlertService.apply_bulk wraps each outcome in a savepoint.
+        # SOC-12d adds one notification_rule read on the first alert per dispatcher.
         return "savepoint" in lowered or any(
-            token in lowered for token in ("alert", "log_source_classification", "qradar_instance")
+            token in lowered
+            for token in (
+                "alert",
+                "log_source_classification",
+                "notification_rule",
+                "qradar_instance",
+            )
         )
 
     assert not any(alert_path(s) for s in counts["off"])

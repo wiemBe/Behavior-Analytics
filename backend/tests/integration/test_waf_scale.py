@@ -606,13 +606,14 @@ class TestStatementCounts:
 
         open_cost = paging_open - shadow_open
         resolve_cost = paging_resolve - shadow_resolve
-        # Measured 10 (shadow 7, paging 17). The two statements past the
+        # Measured 11 (shadow 7, paging 18). The three statements past the
         # pre-17c cost of 8 are one SELECT of alert_policy (SOC-17c's per-run
         # policy load) and one SELECT of alert_suppression (SOC-17d's per-run
-        # suppression load). Neither is per endpoint: the constant-cost tests
-        # above keep the same count at 40 and 800 endpoints. Resolution is not
-        # gated, so its bound is unchanged.
-        assert 0 < open_cost <= 10, (shadow_open, paging_open)
+        # suppression load), plus SOC-12d's one notification_rule SELECT per
+        # dispatcher. None is per endpoint: the constant-cost tests above keep
+        # the same count at 40 and 800 endpoints. Resolution is not gated, so its
+        # bound is unchanged.
+        assert 0 < open_cost <= 11, (shadow_open, paging_open)
         assert 0 < resolve_cost <= 6, (shadow_resolve, paging_resolve)
 
     async def test_the_open_cost_is_constant_in_endpoints(self, db_session) -> None:
@@ -636,7 +637,6 @@ class TestStatementCounts:
                 )
             ]
         )
-        dispatcher = NotificationDispatcher(db_session, {}, route, settings=alerting)
         open_at = T0 + STEP * 10
 
         async def open_once(
@@ -688,6 +688,9 @@ class TestStatementCounts:
             shadow = await seeded(db_session, instance, 312, size, base)
             paging = await seeded(db_session, instance, 313, size, alerting)
             shadow_alerts, shadow_open = await open_once(shadow, base)
+            # Each size models a separate evaluation run. SOC-12d loads rules once
+            # per dispatcher, so both measured windows need a fresh dispatcher.
+            dispatcher = NotificationDispatcher(db_session, {}, route, settings=alerting)
             paging_alerts, paging_open = await open_once(
                 paging, alerting, enqueuer=dispatcher
             )
