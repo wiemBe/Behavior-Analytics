@@ -15,6 +15,7 @@
 
 import { format } from "echarts/core";
 
+import { exclusionMarkAreas } from "@/components/baseline/exclusionBand";
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { PwBucket } from "@/lib/api";
 import { utcTimeHtml } from "@/components/ui/UtcTime";
@@ -36,6 +37,8 @@ export interface PwPalette {
   gap: string;
   anomaly: string;
   history: string;
+  /** The outline of an excluded interval (`--neutral-border`); optional so older palettes still type. */
+  excludedBorder?: string;
   marker: string;
   expected: string;
   /** The EMA overlay lines, one token per period. */
@@ -230,6 +233,13 @@ export interface PwOptionInput {
    * incident's span (an open one ends at the last slot). Never three lines.
    */
   detectionBand?: DetectionBand | null;
+  /**
+   * Intervals an analyst excluded from the value's baseline training (SOC-13f), merged, in epoch
+   * ms. Drawn in the neutral fill with a solid outline, told apart from the history span.
+   */
+  excluded?: Span[];
+  /** The words inside the excluded band; required with `excluded`. */
+  excludedLabel?: string;
   coverage?: CoverageModel | null;
   compact?: boolean;
   /** The EMA overlay of the first plotted value; omitted: none is drawn. */
@@ -268,6 +278,11 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
   const gapAreas = areas(model.uncollected, c.gap, x.t("pwchart.area.notCollected"));
   const incidentAreas = areas(incidentSpans, c.anomaly, x.t("pwchart.area.incident"));
   const historyAreas = areas(model.history, c.history, x.t("pwchart.area.history"));
+  const excludedAreas: MarkAreaPair[] = exclusionMarkAreas(
+    input.excluded ?? [],
+    { color: c.history, border: c.excludedBorder ?? c.axis, text: c.label, font: c.font },
+    input.excludedLabel ?? "",
+  ) as unknown as MarkAreaPair[];
   const detected = input.detectionBand ?? null;
   const detectionAreas: MarkAreaPair[] =
     detected && model.lines.length > 0
@@ -307,11 +322,12 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
     itemStyle: { color: c.cat[i % c.cat.length] },
     z: 3,
     markArea:
-      i === 0 && gapAreas.length + incidentAreas.length + historyAreas.length + detectionAreas.length > 0
+      i === 0 &&
+      gapAreas.length + incidentAreas.length + historyAreas.length + detectionAreas.length + excludedAreas.length > 0
         ? {
             silent: true,
             label: { show: false },
-            data: [...historyAreas, ...gapAreas, ...incidentAreas, ...detectionAreas],
+            data: [...historyAreas, ...excludedAreas, ...gapAreas, ...incidentAreas, ...detectionAreas],
           }
         : undefined,
   }));

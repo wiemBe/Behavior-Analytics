@@ -53,6 +53,17 @@ IPS_ENTITY_SCOPE = "ips:entity"
 #: The server derives the scope, so one interval leaves every metric of that
 #: source together. Entity incidents stay on `ips:entity`.
 IPS_SOURCE_SCOPE = "ips:source"
+#: One scope for the property-watch event-count cell (SOC-13h). Spike, drop and
+#: disappeared share that cell, so one interval leaves all three together.
+#: A new-value or new-combination incident has no band and does not map here.
+PW_VALUE_SCOPE = "pw:value"
+#: Rule storm's weekday/slot cell (SOC-13h). Separate from silence: holding a
+#: storm outlier out must not blank a silence baseline, which fails closed when
+#: any required window is missing. The server derives the scope from the detector.
+RULE_STORM_SCOPE = "rule:storm"
+#: Rule silence's seven-day grid (SOC-13h). A window inside the span is missing,
+#: so the baseline fails closed exactly as an incomplete window does.
+RULE_SILENCE_SCOPE = "rule:silence"
 
 Span = tuple[datetime, datetime]
 SpanKey = tuple[str, uuid.UUID, str]

@@ -42,6 +42,151 @@ export function availability(
   return RUNNING.includes(anomaly.state) ? "active" : "not-resolved";
 }
 
+// --- the families (SOC-13f) -------------------------------------------------------------------
+// The server derives the subject and the scope of every family from the anomaly; the client only
+// needs to know which anomalies may carry the control, which path segment to post to, which
+// subject to list, and which words name the baseline. Everything else is the server's.
+
+/** Which baseline an exclusion touches; it picks the words, not the behaviour. */
+export type Variant =
+  | "source"
+  | "waf"
+  | "ipsEntity"
+  | "ipsSource"
+  | "pwValue"
+  | "ruleStorm"
+  | "ruleSilence";
+
+export interface ExclusionTarget {
+  /** The server's path segment: `log_source`, `waf`, `ips`, `property_watch` or `rule`. */
+  family: string;
+  variant: Variant;
+  /** The subject the exclusion is stored against (what the list endpoint filters by). */
+  subjectKind: string;
+  subjectId: string;
+  /** The baseline scope when exactly one exists; `undefined` for a rule (storm and silence). */
+  scopeKey?: string;
+}
+
+export const WAF_SCOPE = "waf:endpoint";
+export const IPS_ENTITY_SCOPE = "ips:entity";
+export const IPS_SOURCE_SCOPE = "ips:source";
+export const PW_SCOPE = "pw:value";
+export const RULE_STORM_SCOPE = "rule:storm";
+export const RULE_SILENCE_SCOPE = "rule:silence";
+
+/** Only the fields the decision reads; an `AnomalyDetail` of any family fits. */
+export interface TargetFields {
+  subject_kind?: string;
+  anomaly_type?: string;
+  log_source_id?: string | null;
+  waf_endpoint?: { id: string } | null;
+  ips_entity?: { id: string } | null;
+  pw_value?: { value_id: string | null } | null;
+  rule?: { rule_id: string } | null;
+}
+
+// A novelty detector (a new property value or
+// combination, a new endpoint, a new destination port) has no band of its own: the server refuses
+// the property-watch ones, and for the other two the exclusion would change a baseline that the
+// detector which raised the anomaly never reads, so no control is offered.
+const IPS_SOURCE_TYPES: readonly string[] = [
+  "IPS_SOURCE_CONCENTRATION_SPIKE",
+  "IPS_PORT_FANOUT_SPIKE",
+  "IPS_BLOCK_RATIO_SHIFT",
+];
+const NOVELTY: readonly string[] = [
+  "WAF_NEW_ENDPOINT_ACCESS",
+  "IPS_NEW_DESTINATION_PORT",
+  "PW_NEW_VALUE",
+  "PW_NEW_COMBINATION",
+];
+
+/**
+ * Where an anomaly's exclusion goes, or `null` when the anomaly cannot carry one (another detector
+ * type, a novelty detector, a subject the read did not name). A null is "no control", never a
+ * disabled button.
+ */
+export function exclusionTargetOf(a: TargetFields): ExclusionTarget | null {
+  const kind = a.subject_kind ?? "LOG_SOURCE";
+  const type = a.anomaly_type ?? "";
+  switch (kind) {
+    case "LOG_SOURCE":
+      return {
+        family: "log_source",
+        variant: "source",
+        subjectKind: SOURCE_SUBJECT,
+        subjectId: a.log_source_id ?? "",
+        scopeKey: VOLUME_SCOPE,
+      };
+    case "WAF_ENDPOINT":
+      return a.waf_endpoint && !NOVELTY.includes(type)
+        ? { family: "waf", variant: "waf", subjectKind: "endpoint", subjectId: a.waf_endpoint.id, scopeKey: WAF_SCOPE }
+        : null;
+    case "IPS_ENTITY":
+      return a.ips_entity && !NOVELTY.includes(type)
+        ? { family: "ips", variant: "ipsEntity", subjectKind: "entity", subjectId: a.ips_entity.id, scopeKey: IPS_ENTITY_SCOPE }
+        : null;
+    case "IPS_SOURCE":
+      return a.log_source_id && IPS_SOURCE_TYPES.includes(type)
+        ? { family: "ips", variant: "ipsSource", subjectKind: "source", subjectId: a.log_source_id, scopeKey: IPS_SOURCE_SCOPE }
+        : null;
+    case "PW_VALUE":
+      return a.pw_value?.value_id && !NOVELTY.includes(type)
+        ? { family: "property_watch", variant: "pwValue", subjectKind: "value", subjectId: a.pw_value.value_id, scopeKey: PW_SCOPE }
+        : null;
+    case "RULE":
+      if (!a.rule || (type !== "RULE_STORM" && type !== "RULE_SILENCE")) return null;
+      return {
+        family: "rule",
+        variant: type === "RULE_STORM" ? "ruleStorm" : "ruleSilence",
+        subjectKind: "rule",
+        subjectId: a.rule.rule_id,
+        scopeKey: type === "RULE_STORM" ? RULE_STORM_SCOPE : RULE_SILENCE_SCOPE,
+      };
+    default:
+      return null;
+  }
+}
+
+/** Availability across families: `unsupported` unless {@link exclusionTargetOf} names a target. */
+export function exclusionAvailability(
+  anomaly: Pick<AnomalyDetail, "state"> & TargetFields,
+): Availability {
+  if (exclusionTargetOf(anomaly) === null) return "unsupported";
+  if (anomaly.state === "RESOLVED") return "available";
+  return RUNNING.includes(anomaly.state) ? "active" : "not-resolved";
+}
+
+/** A rule has no per-rule rebuild stamp, so its exclusion is never reported as applied. */
+export const isRuleRow = (row: Pick<TrainingExclusion, "subject_kind">) => row.subject_kind === "rule";
+
+/** The message key of a row's effect state: a rule row that is pending reads "used from the next evaluation". */
+export function stateKey(row: Pick<TrainingExclusion, "state" | "subject_kind">): string {
+  return isRuleRow(row) && row.state === "PENDING_REBUILD" ? "stateRule.PENDING_REBUILD" : `state.${row.state}`;
+}
+
+/** The message key of the sentence shown after a create, by the row the server returned. */
+export function resultKey(row: Pick<TrainingExclusion, "state" | "subject_kind">): string {
+  return isRuleRow(row) && row.state === "PENDING_REBUILD" ? "resultRule.PENDING_REBUILD" : `result.${row.state}`;
+}
+
+/**
+ * The bucket width of a family's own series: the latest LIVE bucket at or before `detected_at`,
+ * as the server reads it (a history bucket carries the replay's width). A bucket with no origin
+ * on an older response counts as live; a bucket whose origin is unknown (`null`) does not.
+ */
+export function liveBucketWidthFor(
+  anomaly: Pick<AnomalyDetail, "detected_at">,
+  buckets: readonly { bucket_start: string; bucket_seconds: number; origin?: string | null }[] | null,
+): number | null {
+  if (!buckets) return null;
+  return bucketWidthFor(
+    { detected_at: anomaly.detected_at, detection: null },
+    buckets.filter((b) => b.origin === undefined || b.origin === "LIVE"),
+  );
+}
+
 /**
  * The bucket width the server will align to: its `log_source_metric` row at or before
  * `detected_at` (the latest one), else the width the detection recorded. `null` when neither is

@@ -14,13 +14,20 @@ import { useSession } from "@/components/auth/session";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { ApiError, trainingExclusionApi, type TrainingExclusion } from "@/lib/api";
-import { loadExclusions, type ExclusionLoad } from "@/lib/trainingExclusionLoad";
+import {
+  loadExclusions,
+  loadExclusionsFor,
+  type ExclusionLoad,
+  type ExclusionSubject,
+} from "@/lib/trainingExclusionLoad";
 import {
   REASON_MAX,
   TRAIN_PERMISSION,
   canExclude,
   intervalText,
   permissionOf,
+  stateKey,
+  type Variant,
 } from "@/lib/trainingExclusion";
 
 import "@/components/ui/controls.css";
@@ -28,9 +35,15 @@ import "./baseline.css";
 
 export function TrainingExclusions({
   sourceId,
+  subject,
+  variant = "source",
   initial,
 }: {
-  sourceId: string;
+  /** A log source (Phase A). Give this or `subject`. */
+  sourceId?: string;
+  /** Any other family's subject (SOC-13f), with the words of its baseline. */
+  subject?: ExclusionSubject;
+  variant?: Variant;
   initial: ExclusionLoad;
 }) {
   const t = useTranslations("trainingExclusion");
@@ -58,7 +71,7 @@ export function TrainingExclusions({
 
   async function retry() {
     setLoading(true);
-    setLoad(await loadExclusions(sourceId));
+    setLoad(subject ? await loadExclusionsFor(subject) : await loadExclusions(sourceId ?? ""));
     setLoading(false);
   }
 
@@ -105,6 +118,7 @@ export function TrainingExclusions({
     }
   }
 
+  const rule = variant === "ruleStorm" || variant === "ruleSilence";
   const heading = (
     <h3 className="exclusions-head" id={`${uid}-h`}>
       {t("list.heading")}
@@ -175,7 +189,7 @@ export function TrainingExclusions({
                     <UtcTime value={r.created_at} variant="compact" />
                   </td>
                   <td>
-                    <span className="pill">{t(`state.${r.state}` as never)}</span>
+                    <span className="pill">{t(stateKey(r) as never)}</span>
                   </td>
                   {allowed && (
                     <td>
@@ -217,7 +231,9 @@ export function TrainingExclusions({
           >
             <p className="outage-form-title">{t("list.revokeTitle")}</p>
             <p className="training-confirm">
-              {t("list.revokeIntro", { interval: intervalText(target.starts_at, target.ends_at) })}
+              {t(target.subject_kind === "rule" ? "list.revokeIntroRule" : "list.revokeIntro", {
+                interval: intervalText(target.starts_at, target.ends_at),
+              })}
             </p>
             <label htmlFor={`${uid}-reason`}>{t("list.revokeReason")}</label>
             <textarea
@@ -261,7 +277,7 @@ export function TrainingExclusions({
         )}
         {done && (
           <p className="exclusions-state" role="status">
-            {t("list.revoked")}
+            {t(rule ? "list.revokedRule" : "list.revoked")}
           </p>
         )}
       </>
@@ -271,7 +287,9 @@ export function TrainingExclusions({
   return (
     <div className="exclusions" role="group" aria-labelledby={`${uid}-h`}>
       {heading}
-      <p className="exclusions-lead">{t("list.lead")}</p>
+      <p className="exclusions-lead">
+        {variant === "source" ? t("list.lead") : t(`variant.${variant}.lead` as never)}
+      </p>
       {body}
       {known && !allowed && load.kind === "ok" && load.items.length > 0 && (
         <p className="exclusions-state">

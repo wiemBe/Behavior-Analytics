@@ -35,6 +35,7 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { EmaLegendItems, EmaNote, EmaSummary } from "@/components/behavior/EmaLegend";
 import { EmaToggles, useEmaPeriods } from "@/components/behavior/EmaToggles";
+import { NO_SPANS, exclusionMarkAreas, mergeExclusions, type ExclusionSpan } from "@/components/baseline/exclusionBand";
 import { HistoryKey, HistoryText } from "@/components/behavior/HistoryKey";
 import {
   historyIntervals,
@@ -82,7 +83,7 @@ echarts.use([
 type MarkAreaPair = [
   {
     xAxis: number;
-    itemStyle?: { color: string; borderColor?: string; borderType?: "dashed"; borderWidth?: number };
+    itemStyle?: { color: string; borderColor?: string; borderType?: "dashed" | "solid"; borderWidth?: number };
     name?: string;
   },
   { xAxis: number },
@@ -136,6 +137,7 @@ export function IpsSeriesChart({
   ariaLabel,
   textSummary,
   i18n,
+  exclusions = NO_SPANS,
 }: {
   points: IpsPoint[];
   /** The stored bucket rows behind `points`, for the marked intervals. */
@@ -161,6 +163,8 @@ export function IpsSeriesChart({
   textSummary?: string;
   /** Overrides the interface language (tests); the chart reads it itself otherwise. */
   i18n?: BehaviorI18n;
+  /** Intervals an analyst excluded from the subject's baseline training (SOC-13f), shaded in neutral. */
+  exclusions?: ExclusionSpan[];
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const own = useBehaviorI18n();
@@ -178,6 +182,10 @@ export function IpsSeriesChart({
     [points, emaOn],
   );
   const marks = useMemo(() => ipsMarkedIntervals(rows, points), [rows, points]);
+  const excluded = useMemo(
+    () => mergeExclusions(exclusions),
+    [exclusions],
+  );
   const history = useMemo(() => historyIntervals(rows), [rows]);
   const origins = useMemo(() => originByTime(rows), [rows]);
   const seasonal = baseline != null;
@@ -230,6 +238,11 @@ export function IpsSeriesChart({
         ];
       });
       const historyAreas = historyMarkAreas(history, readHistoryShade());
+      const excludedAreas: MarkAreaPair[] = exclusionMarkAreas(
+        excluded,
+        readHistoryShade(),
+        tEma("key.excluded"),
+      );
       const anomalyAreas: MarkAreaPair[] = anomalies.map(
         (a): MarkAreaPair => [
           { xAxis: Date.parse(a.start), itemStyle: { color: c.anomaly }, name: "anomaly" },
@@ -382,8 +395,8 @@ export function IpsSeriesChart({
                 }
               : undefined,
             markArea:
-              markAreas.length + anomalyAreas.length + historyAreas.length
-                ? { ...quiet, data: [...markAreas, ...historyAreas, ...anomalyAreas] }
+              markAreas.length + anomalyAreas.length + historyAreas.length + excludedAreas.length
+                ? { ...quiet, data: [...markAreas, ...historyAreas, ...excludedAreas, ...anomalyAreas] }
                 : undefined,
             markLine: transitions.length
               ? {
@@ -456,6 +469,7 @@ export function IpsSeriesChart({
     bandLabel,
     medianLabel,
     history,
+    excluded,
     origins,
     emaLines,
     tEma,
@@ -537,6 +551,12 @@ export function IpsSeriesChart({
           </li>
         )}
         {history.length > 0 && <HistoryKey />}
+        {excluded.length > 0 && (
+          <li>
+            <span className="chart-key chart-key-excluded" aria-hidden="true" />
+            {tEma("key.excluded")}
+          </li>
+        )}
       </ul>
       <p className="subtitle chart-note">
         {t("ips.chart.noteGaps", {

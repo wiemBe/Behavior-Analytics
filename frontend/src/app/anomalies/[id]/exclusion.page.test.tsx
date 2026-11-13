@@ -99,8 +99,12 @@ describe("the control in the triage block", () => {
     expect(screen.getByText("Available once the anomaly is resolved.")).toBeInTheDocument();
   });
 
-  it("shows nothing about training on another family's page", async () => {
-    await renderFor(wafDetail({ state: "RESOLVED" }) as unknown as AnomalyDetail);
+  // SOC-13f: a resolved WAF rate anomaly now carries the control (exclusion.family.page.test.tsx);
+  // a novelty detector has no band, so this page still says nothing about training for it.
+  it("shows nothing about training for a detector with no baseline band", async () => {
+    await renderFor(
+      wafDetail({ state: "RESOLVED", anomaly_type: "WAF_NEW_ENDPOINT_ACCESS" }) as unknown as AnomalyDetail,
+    );
     expect(control()).toBeNull();
     expect(screen.queryByText("Baseline training")).toBeNull();
     expect(forSource).not.toHaveBeenCalled();

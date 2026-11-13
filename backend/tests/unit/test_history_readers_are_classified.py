@@ -73,6 +73,13 @@ HISTORY_TABLES = (
                 "R6 (PW-13d)", ReaderKind.DISPLAY
             ),
             "app.services.pw_retention.<module>": Reader("R7", ReaderKind.DELETE),
+            # SOC-13h: a property-watch training exclusion aligns to the live
+            # detector's bucket width. A history row's width is the replay's.
+            "app.api.routes.training_exclusions._pw_bucket_seconds": Reader(
+                "bucket width for a property-watch training exclusion (SOC-13h)",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
         },
     ),
     HistoryTable(
@@ -288,6 +295,13 @@ HISTORY_TABLES = (
             ),
             "app.rules.engine.RuleMatchEngine._load_rule_cells": Reader(
                 "SOC-6d2 storm cell", ReaderKind.EVIDENCE
+            ),
+            # SOC-13h: a rule training exclusion aligns to the live detector's
+            # window width. A history row's width is the replay's.
+            "app.api.routes.training_exclusions._rule_bucket_seconds": Reader(
+                "bucket width for a rule training exclusion (SOC-13h)",
+                ReaderKind.LIVE_ONLY,
+                1,
             ),
         },
     ),

@@ -22,17 +22,21 @@ import {
   MAX_DAYS,
   REASON_MAX,
   TRAIN_PERMISSION,
-  availability,
   canExclude,
   defaultInterval,
+  exclusionAvailability,
+  exclusionTargetOf,
   intervalProblem,
   intervalText,
   isLive,
   parseUtcField,
   permissionOf,
+  resultKey,
+  stateKey,
   utcFieldText,
   type IntervalProblem,
   type Span,
+  type TargetFields,
 } from "@/lib/trainingExclusion";
 import type { AnomalyDetail } from "@/lib/api";
 import type { ExclusionLoad } from "@/lib/trainingExclusionLoad";
@@ -50,10 +54,9 @@ function PageRefresh() {
   return null;
 }
 
-type AnomalyFields = Pick<
-  AnomalyDetail,
-  "id" | "state" | "subject_kind" | "detected_at" | "resolved_at" | "anomaly_end" | "detection"
->;
+/** Any family's anomaly: the lifecycle fields plus whatever names the subject. */
+type AnomalyFields = Pick<AnomalyDetail, "id" | "state" | "detected_at" | "resolved_at" | "anomaly_end"> &
+  TargetFields;
 
 export function ExcludeInterval({
   anomaly,
@@ -61,14 +64,18 @@ export function ExcludeInterval({
   load,
 }: {
   anomaly: AnomalyFields;
-  /** The bucket width the server aligns to; null when the page could not read one. */
+  /** The bucket width the server aligns to; null when the page could not read one (for a rule: the
+   *  match-window width). */
   bucketSeconds: number | null;
   load: ExclusionLoad;
 }) {
   const t = useTranslations("trainingExclusion");
   const session = useSession();
   const uid = useId();
-  const kind = availability(anomaly);
+  const kind = exclusionAvailability(anomaly);
+  const target = exclusionTargetOf(anomaly);
+  const variant = target?.variant ?? "source";
+  const family = variant !== "source";
 
   const [rows, setRows] = useState<TrainingExclusion[]>(load.kind === "ok" ? load.items : []);
   const [open, setOpen] = useState(false);
@@ -122,7 +129,9 @@ export function ExcludeInterval({
 
   function problemText(p: IntervalProblem): string {
     const edge = base ? (p === "start-later" ? base.startMs : base.endMs) : null;
-    return t(`form.problem.${p}` as never, {
+    const key = family && p === "unaligned" ? "form.problem.unalignedFamily" : `form.problem.${p}`;
+    return t(key as never, {
+      grid: family ? t(`variant.${variant}.grid` as never) : "",
       minutes,
       days: MAX_DAYS,
       time: edge === null ? "" : `${utcFieldText(edge)} UTC`,
@@ -159,15 +168,18 @@ export function ExcludeInterval({
     setRefused(null);
     setOutcome({ kind: "pending" });
     try {
-      const row = await trainingExclusionApi.create(anomaly.id, {
+      const body = {
         starts_at: new Date(shownStart).toISOString(),
         ends_at: new Date(shownEnd).toISOString(),
         reason: text,
-      });
+      };
+      const row = target && target.family !== "log_source"
+        ? await trainingExclusionApi.create(anomaly.id, body, target.family)
+        : await trainingExclusionApi.create(anomaly.id, body);
       setRows((cur) => [row, ...cur.filter((r) => r.id !== row.id)]);
       restore.current = true;
       setOpen(false);
-      setOutcome({ kind: "ok", text: t(`result.${row.state}` as never) });
+      setOutcome({ kind: "ok", text: t(resultKey(row) as never) });
       setRefresh(true);
     } catch (err) {
       setOutcome({ kind: "idle" });
@@ -222,7 +234,7 @@ export function ExcludeInterval({
           {mine.map((r) => (
             <li key={r.id}>
               <span className="num">{intervalText(r.starts_at, r.ends_at)}</span>
-              <span className="pill">{t(`state.${r.state}` as never)}</span>
+              <span className="pill">{t(stateKey(r) as never)}</span>
             </li>
           ))}
         </ul>
@@ -230,7 +242,11 @@ export function ExcludeInterval({
 
       {known && !allowed && <p className="training-note">{t("block.readOnly", { permission: TRAIN_PERMISSION })}</p>}
 
-      {allowed && base === null && <p className="training-note">{t("block.noWidth")}</p>}
+      {allowed && base === null && (
+        <p className="training-note">
+          {family ? t(`variant.${variant}.noWidth` as never) : t("block.noWidth")}
+        </p>
+      )}
 
       {allowed && base !== null && !open && (
         <div className="actions">
@@ -251,7 +267,16 @@ export function ExcludeInterval({
           }}
         >
           <p className="outage-form-title">{t("form.title")}</p>
-          <p className="training-confirm">{t("form.confirm", { interval: typed })}</p>
+          <p className="training-confirm">
+            {family
+              ? t("form.confirmFamily", {
+                  interval: typed,
+                  baseline: t(`variant.${variant}.baseline` as never),
+                  scopeNote: t(`variant.${variant}.scopeNote` as never),
+                  when: t(`variant.${variant}.when` as never),
+                })
+              : t("form.confirm", { interval: typed })}
+          </p>
           <div className="rule-form-grid">
             <label htmlFor={ids.start}>{t("form.start")}</label>
             <div>
@@ -292,7 +317,9 @@ export function ExcludeInterval({
                 }}
               />
               <p className="field-hint" id={ids.hint}>
-                {t("form.format", { minutes })}{" "}
+                {family
+                  ? t("form.formatFamily", { minutes, grid: t(`variant.${variant}.grid` as never) })
+                  : t("form.format", { minutes })}{" "}
                 {t("form.widenOnly", {
                   interval: baseIso ? intervalText(baseIso.start, baseIso.end) : "—",
                   days: MAX_DAYS,

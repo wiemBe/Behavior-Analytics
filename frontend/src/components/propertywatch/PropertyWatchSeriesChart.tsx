@@ -24,6 +24,7 @@ import { CanvasRenderer } from "echarts/renderers";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef } from "react";
 
+import { NO_SPANS, mergeExclusions, type ExclusionSpan } from "@/components/baseline/exclusionBand";
 import { EmaLegendItems, EmaNote, EmaSummary } from "@/components/behavior/EmaLegend";
 import { EmaToggles, useEmaPeriods } from "@/components/behavior/EmaToggles";
 import { TURKISH_ECHARTS_LOCALE } from "@/components/home/chartLocale";
@@ -65,6 +66,7 @@ export function readPwPalette(root: Element = document.documentElement): PwPalet
     gap: base.gap,
     anomaly: base.anomaly,
     history: style.getPropertyValue("--neutral-bg").trim(),
+    excludedBorder: style.getPropertyValue("--neutral-border").trim(),
     marker: base.marker,
     expected: base.expected,
     ema: emaColours(base),
@@ -99,6 +101,8 @@ export interface PropertyWatchSeriesChartProps {
   emptyText?: string;
   /** The interface language; without it the chart is in English (the watch pages). */
   i18n?: PwI18n;
+  /** Intervals an analyst excluded from the value's baseline training (SOC-13f), shaded in neutral. */
+  exclusions?: ExclusionSpan[];
 }
 
 export function PropertyWatchSeriesChart({
@@ -114,6 +118,7 @@ export function PropertyWatchSeriesChart({
   ariaLabel: ariaLabelProp,
   emptyText: emptyTextProp,
   i18n: x = ENGLISH_PW,
+  exclusions = NO_SPANS,
 }: PropertyWatchSeriesChartProps) {
   const { t } = x;
   const ariaLabel = ariaLabelProp ?? t("pwchart.chart.ariaLabel");
@@ -130,6 +135,11 @@ export function PropertyWatchSeriesChart({
   );
   const unit = pwUnit(x, bucketSeconds);
   const tEma = useTranslations("behavior.chart");
+  const excluded = useMemo(
+    () => mergeExclusions(exclusions),
+    [exclusions],
+  );
+  const excludedLabel = tEma("key.excluded");
   // The overlay (display only) is drawn for one value at a time, like the expected band: with
   // several values plotted their colours would collide with the average lines, and an average of
   // a small value among large ones cannot be read. The stored choice is the viewer's and is kept
@@ -178,6 +188,8 @@ export function PropertyWatchSeriesChart({
         palette: readPwPalette(),
         incidents,
         detectionBand,
+        excluded,
+        excludedLabel,
         coverage: coverageModel,
         compact,
         ema: emaOption,
@@ -191,7 +203,7 @@ export function PropertyWatchSeriesChart({
       observer.disconnect();
       chart.dispose();
     };
-  }, [model, coverageModel, incidents, detectionBand, compact, showCoverage, emaOption, x]);
+  }, [model, coverageModel, incidents, detectionBand, excluded, excludedLabel, compact, showCoverage, emaOption, x]);
 
   if (model.lines.length === 0 && !showCoverage) {
     return (
@@ -273,6 +285,12 @@ export function PropertyWatchSeriesChart({
           <li>
             <span className="chart-key pw-key-history" aria-hidden="true" />
             {t("pwchart.chart.history")}
+          </li>
+        )}
+        {excluded.length > 0 && model.lines.length > 0 && (
+          <li>
+            <span className="chart-key chart-key-excluded" aria-hidden="true" />
+            {excludedLabel}
           </li>
         )}
         {detectionBand && model.lines.length > 0 && (

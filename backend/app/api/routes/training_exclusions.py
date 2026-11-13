@@ -1,12 +1,16 @@
-"""Baseline training exclusion API (SOC-13b, WAF in SOC-13e, IPS in SOC-13g).
+"""Baseline training exclusion API (SOC-13b, WAF SOC-13e, IPS SOC-13g, SOC-13h).
 
 Create and revoke need `anomaly:triage`; reading is covered by the router's
 `read:anomalies` guard. Phase A excludes a log source's volume. A resolved WAF
 anomaly excludes its endpoint, one scope for every metric of that baseline.
 A resolved IPS anomaly excludes its entity (`ips:entity`) or its source
 (`ips:source`); one source interval covers every source metric together.
-The reason is analyst text: it lives on the exclusion row and on the triage event
-`comment`, and never reaches the audit detail or a log line.
+A resolved property-watch band anomaly excludes its value (`pw:value`): spike,
+drop and disappeared share that cell. A new value or a new combination has no
+band and is refused. A resolved rule anomaly excludes `rule:storm` or
+`rule:silence`, derived from the detector. The reason is analyst text: it lives
+on the exclusion row and on the triage event `comment`, and never reaches the
+audit detail or a log line.
 """
 
 from __future__ import annotations
@@ -27,7 +31,14 @@ from app.api.routes.anomalies import PrincipalDep, _guard
 from app.history.origin import is_live_clause
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import CodedHTTPException
-from app.models.enums import AnomalyFamily, AnomalyState, TriageEventKind, TriageStatus
+from app.models.enums import (
+    AnomalyFamily,
+    AnomalyState,
+    PwAnomalyType,
+    RuleAnomalyType,
+    TriageEventKind,
+    TriageStatus,
+)
 from app.models.ips import (
     IpsAnomaly,
     IpsEntity,
@@ -36,6 +47,9 @@ from app.models.ips import (
     IpsSourceBucket,
 )
 from app.models.log_source import LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
+from app.models.property_watch import PwAnomaly, PwBucket, PwValue, PwValueBaseline
+from app.models.rule import AnalyticsRule, RuleMatchWindow
+from app.models.rule_anomaly import RuleAnomaly
 from app.models.training_exclusion import REASON_MAX_LENGTH, BaselineTrainingExclusion
 from app.models.triage import AnomalyTriage, AnomalyTriageEvent
 from app.models.waf import WafAnomaly, WafEndpoint, WafEndpointBaseline, WafSourceBucket
@@ -68,6 +82,11 @@ _PARAMS_BY_CODE: dict[str, dict[str, object]] = {
     te.INTERVAL_TOO_LONG: {"max": 7},
     te.LIMIT_REACHED: {"max": te.MAX_RELEVANT_PER_SCOPE},
 }
+# Novelty detectors have no seasonal cell (design section 1). Spike, drop and
+# disappeared share `pw:value`. Both rule detectors have a baseline, on two scopes.
+_PW_NOVELTY = frozenset(
+    {PwAnomalyType.PW_NEW_VALUE.value, PwAnomalyType.PW_NEW_COMBINATION.value}
+)
 
 
 def _refuse(code: str, http_status: int | None = None) -> CodedHTTPException:
@@ -114,8 +133,10 @@ async def _rebuilt_at(
     """Latest baseline `computed_at` per subject. One aggregate per kind present.
 
     Keyed by `(subject_kind, subject_id)` so a log source, an endpoint, an IPS
-    entity and an IPS source that happened to share an id cannot overwrite each
-    other. `source` is the IPS source subject, not Phase A's `log_source`.
+    entity, an IPS source and a property-watch value that happened to share an
+    id cannot overwrite each other. `source` is the IPS source subject, not
+    Phase A's `log_source`. A rule has no stored baseline `computed_at`, so a
+    rule exclusion stays pending until a later slice records one.
     """
     found: dict[tuple[str, uuid.UUID], datetime] = {}
     source_ids = {row.subject_id for row in rows if row.subject_kind == "log_source"}
@@ -164,6 +185,16 @@ async def _rebuilt_at(
                 for source_id, at in ips_sources.all()
                 if at is not None
             }
+        )
+    value_ids = {row.subject_id for row in rows if row.subject_kind == "value"}
+    if value_ids:
+        values = await session.execute(
+            select(PwValueBaseline.pw_value_id, func.max(PwValueBaseline.computed_at))
+            .where(PwValueBaseline.pw_value_id.in_(value_ids))
+            .group_by(PwValueBaseline.pw_value_id)
+        )
+        found.update(
+            {("value", value_id): at for value_id, at in values.all() if at is not None}
         )
     return found
 
@@ -365,6 +396,114 @@ async def _ips_target(session: AsyncSession, anomaly_id: uuid.UUID) -> _Target:
     )
 
 
+async def _pw_bucket_seconds(
+    session: AsyncSession, value_id: uuid.UUID, detected_at: datetime
+) -> int | None:
+    """Live property-watch bucket width at or before the incident, or None.
+
+    A history row carries the replay's width, not the width the live detector
+    used. No live row means no width: the caller fails closed rather than
+    guessing one.
+    """
+    return await session.scalar(
+        select(PwBucket.bucket_seconds)
+        .join(PwValue, PwValue.watch_id == PwBucket.watch_id)
+        .where(
+            PwValue.id == value_id,
+            PwBucket.bucket_start <= detected_at,
+            is_live_clause(PwBucket),
+        )
+        .order_by(PwBucket.bucket_start.desc())
+        .limit(1)
+    )
+
+
+async def _pw_target(session: AsyncSession, anomaly_id: uuid.UUID) -> _Target:
+    """Subject, scope and incident span of a resolved property-watch anomaly.
+
+    Spike, drop and disappeared share `pw:value` and the value id. A new value
+    or a new combination has no band. The state is checked first, so an open
+    novelty is still `anomaly_active`. A deleted value, or no live bucket, has
+    no width to align to.
+    """
+    anomaly = await session.get(PwAnomaly, anomaly_id)
+    if anomaly is None:
+        raise _refuse(te.NOT_FOUND)
+    if anomaly.state != AnomalyState.RESOLVED:
+        raise _refuse(te.ANOMALY_ACTIVE)
+    if str(anomaly.detector_type) in _PW_NOVELTY:
+        raise _refuse(te.FAMILY_UNSUPPORTED, _UNPROCESSABLE)
+    value_id = anomaly.pw_value_id
+    if value_id is None:
+        raise _refuse(te.INTERVAL_INVALID)
+    bucket_seconds = await _pw_bucket_seconds(session, value_id, anomaly.detected_at)
+    if bucket_seconds is None:
+        raise _refuse(te.INTERVAL_INVALID)
+    return _Target(
+        origin_family=AnomalyFamily.PROPERTY_WATCH.value,
+        subject_kind="value",
+        subject_id=value_id,
+        scope_key=te.PW_VALUE_SCOPE,
+        incident_start=anomaly.detected_at,
+        incident_end=anomaly.resolved_at or anomaly.anomaly_end or anomaly.detected_at,
+        bucket_seconds=bucket_seconds,
+    )
+
+
+async def _rule_bucket_seconds(
+    session: AsyncSession, rule_id: uuid.UUID, detected_at: datetime
+) -> int | None:
+    """Live rule-match window width at or before the incident, or None.
+
+    A history row carries the replay's width, not the width the live detector
+    used. No live row means no width: the caller fails closed rather than
+    guessing one.
+    """
+    return await session.scalar(
+        select(RuleMatchWindow.window_seconds)
+        .join(AnalyticsRule, AnalyticsRule.instance_id == RuleMatchWindow.instance_id)
+        .where(
+            AnalyticsRule.id == rule_id,
+            RuleMatchWindow.window_start <= detected_at,
+            is_live_clause(RuleMatchWindow),
+        )
+        .order_by(RuleMatchWindow.window_start.desc())
+        .limit(1)
+    )
+
+
+async def _rule_target(session: AsyncSession, anomaly_id: uuid.UUID) -> _Target:
+    """Subject, scope and incident span of a resolved rule anomaly.
+
+    Storm and silence are different scopes. The server derives the scope from
+    the detector, so a storm hold-out cannot blank the silence grid.
+    """
+    anomaly = await session.get(RuleAnomaly, anomaly_id)
+    if anomaly is None:
+        raise _refuse(te.NOT_FOUND)
+    if anomaly.state != AnomalyState.RESOLVED:
+        raise _refuse(te.ANOMALY_ACTIVE)
+    detector = str(anomaly.detector_type)
+    if detector == RuleAnomalyType.RULE_STORM.value:
+        scope_key = te.RULE_STORM_SCOPE
+    elif detector == RuleAnomalyType.RULE_SILENCE.value:
+        scope_key = te.RULE_SILENCE_SCOPE
+    else:
+        raise _refuse(te.FAMILY_UNSUPPORTED, _UNPROCESSABLE)
+    bucket_seconds = await _rule_bucket_seconds(session, anomaly.rule_id, anomaly.detected_at)
+    if bucket_seconds is None:
+        raise _refuse(te.INTERVAL_INVALID)
+    return _Target(
+        origin_family=AnomalyFamily.RULE.value,
+        subject_kind="rule",
+        subject_id=anomaly.rule_id,
+        scope_key=scope_key,
+        incident_start=anomaly.detected_at,
+        incident_end=anomaly.resolved_at or anomaly.anomaly_end or anomaly.detected_at,
+        bucket_seconds=bucket_seconds,
+    )
+
+
 def _audit_detail(row: BaselineTrainingExclusion, actor: str) -> dict[str, object]:
     """Ids, UTC bounds, subject, scope and actor. Never the reason.
 
@@ -397,15 +536,19 @@ async def create_training_exclusion(
 ) -> ExclusionOut:
     """Exclude a UTC interval of a resolved incident from baseline training.
 
-    Phase A (`log_source`), WAF (`waf`) and IPS (`ips`) are accepted. 201 for a
-    new row, 200 for the exact active row that already exists. The server
-    derives the subject, scope and incident span; the client may only widen it.
+    Phase A (`log_source`), WAF (`waf`), IPS (`ips`), property watch
+    (`property_watch`) and rules (`rule`) are accepted. A property-watch novelty
+    incident is refused after the reason is read: the family itself is supported.
+    201 for a new row, 200 for the exact active row that already exists. The
+    server derives the subject, scope and incident span; the client may only widen it.
     """
     _guard(principal, PERM_ANOMALY_TRIAGE)
     if family not in (
         AnomalyFamily.LOG_SOURCE.value,
         AnomalyFamily.WAF.value,
         AnomalyFamily.IPS.value,
+        AnomalyFamily.PROPERTY_WATCH.value,
+        AnomalyFamily.RULE.value,
     ):
         raise _refuse(te.FAMILY_UNSUPPORTED, _UNPROCESSABLE)
     reason = _reason(payload.reason)
@@ -413,6 +556,10 @@ async def create_training_exclusion(
         target = await _waf_target(session, anomaly_id)
     elif family == AnomalyFamily.IPS.value:
         target = await _ips_target(session, anomaly_id)
+    elif family == AnomalyFamily.PROPERTY_WATCH.value:
+        target = await _pw_target(session, anomaly_id)
+    elif family == AnomalyFamily.RULE.value:
+        target = await _rule_target(session, anomaly_id)
     else:
         anomaly = await session.get(LogSourceAnomaly, anomaly_id)
         if anomaly is None:
@@ -556,11 +703,19 @@ async def list_training_exclusions(
             .correlate(model)
             .scalar_subquery()
         )
+        # A rule has no per-rule computed_at, so a rule row is never applied here.
+        value_latest = (
+            select(func.max(PwValueBaseline.computed_at))
+            .where(PwValueBaseline.pw_value_id == model.subject_id)
+            .correlate(model)
+            .scalar_subquery()
+        )
         applied = or_(
             and_(model.subject_kind == "log_source", source_latest > model.created_at),
             and_(model.subject_kind == "endpoint", endpoint_latest > model.created_at),
             and_(model.subject_kind == "entity", entity_latest > model.created_at),
             and_(model.subject_kind == "source", ips_source_latest > model.created_at),
+            and_(model.subject_kind == "value", value_latest > model.created_at),
         )
         stmt = stmt.where(
             model.revoked_at.is_(None),

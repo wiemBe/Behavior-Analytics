@@ -7,6 +7,7 @@ import { ipsCell, ipsSourceBucket } from "@/components/ips/fixtures";
 import {
   ApiError,
   api,
+  trainingExclusionApi,
   type IpsBaselineCell,
   type IpsEntityInventory,
   type IpsSourceBehavior,
@@ -52,6 +53,8 @@ async function renderPage(o: Setup = {}) {
   const entities = o.entities ?? [ipsEntity()];
   const buckets = o.buckets ?? [ipsSourceBucket({ bucket_start: at(0) }), ipsSourceBucket({ bucket_start: at(5) })];
   const source = o.source ?? ipsSource();
+  // SOC-13f: the page also lists the source's training exclusions; an empty list keeps this suite's status counts.
+  vi.spyOn(trainingExclusionApi, "forSubject").mockResolvedValue({ items: [], limit: 100 });
   const sourceCall = vi.spyOn(api, "ipsBehaviorSource").mockResolvedValue(source);
   const entityCall = vi
     .spyOn(api, "ipsBehaviorEntities")

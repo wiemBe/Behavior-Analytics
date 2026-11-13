@@ -11,8 +11,9 @@
 
 import type { ReactNode } from "react";
 
+import { ExclusionBandText, effectiveSpans } from "@/components/baseline/ExclusionBandText";
 import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
-import type { WafAnomalyDetail, WafBaselineCell, WafMetricBucket } from "@/lib/api";
+import type { TrainingExclusion, WafAnomalyDetail, WafBaselineCell, WafMetricBucket } from "@/lib/api";
 import { stateMeaningIn } from "@/lib/behavior";
 import { fixed, type BehaviorI18n } from "@/lib/behaviorI18n";
 import { formatCount, formatShare } from "@/lib/format";
@@ -89,6 +90,7 @@ export function WafInvestigation({
   i18n = ENGLISH_WAF,
   triage = null,
   related = null,
+  exclusionRows = null,
 }: {
   anomaly: WafAnomalyDetail;
   /** Stored buckets around the incident, or null when they could not be loaded. */
@@ -100,6 +102,8 @@ export function WafInvestigation({
   /** The triage block (SOC-1b), shown under the state sentence. */
   triage?: ReactNode;
   /** The Related activity section (SOC-3b), after the evidence and before the lifecycle. */
+  /** The subject's analyst training exclusions (SOC-13f), or null when they could not be read. */
+  exclusionRows?: TrainingExclusion[] | null;
   related?: ReactNode;
 }) {
   const t = useTranslations("waf.investigation");
@@ -165,8 +169,10 @@ export function WafInvestigation({
               label: stateLabel(tr.to_state, i18n),
             }))}
             textSummary={wafChartSummary(anomaly, buckets, i18n)}
+            exclusions={effectiveSpans(exclusionRows)}
           />
         )}
+        <ExclusionBandText rows={exclusionRows} />
       </section>
 
       <section>

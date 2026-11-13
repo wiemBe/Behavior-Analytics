@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -54,6 +54,12 @@ from app.alerts.suppression import SuppressionGate, record_hit
 from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.lifecycle import LifecycleInput, advance_counters, next_state
 from app.anomaly.seasonal import CellSummary
+from app.anomaly.training_exclusions import (
+    RULE_SILENCE_SCOPE,
+    Span,
+    SpanKey,
+    load_active,
+)
 from app.collectors.rule_collector import COLLECTOR_NAME as RULE_INVENTORY
 from app.core.config import Settings, get_settings
 from app.models.enums import (
@@ -431,6 +437,16 @@ class RuleMatchEngine:
         batch = _Batch()
         await self._load_states(instance_id, batch)
         await self._load_open_incidents(instance_id, batch)
+        # One silence-exclusion read for every rule of this run. An empty rule
+        # list issues none. Storm exclusions are inside `_load_cells` (SOC-13h).
+        silence_spans = await load_active(
+            self.session,
+            "rule",
+            [rule.id for rule in rules],
+            RULE_SILENCE_SCOPE,
+            load_from,
+            newest_end,
+        )
         for rule in rules:
             rule = _with_transitions(rule, transitions.get(rule.id, ()))
             if not rule.subject.enabled:
@@ -458,6 +474,7 @@ class RuleMatchEngine:
                     width,
                     batch,
                     report,
+                    silence_spans=silence_spans,
                 )
         report.windows_judged = len(starts)
         report.rules_seen = len(rules)
@@ -753,6 +770,16 @@ class RuleMatchEngine:
                                     :newest_end
                                   )
                         )
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM baseline_training_exclusion ex
+                            WHERE ex.subject_kind = 'rule'
+                              AND ex.subject_id = sr.rule_id
+                              AND ex.scope_key = 'rule:storm'
+                              AND ex.revoked_at IS NULL
+                              AND w.window_start >= ex.starts_at
+                              AND w.window_start < ex.ends_at
+                        )
                     ),
                     medians AS (
                         SELECT
@@ -870,6 +897,8 @@ class RuleMatchEngine:
         width: int,
         batch: _Batch,
         report: RuleEvaluationReport,
+        *,
+        silence_spans: Mapping[SpanKey, Sequence[Span]] | None = None,
     ) -> None:
         lag = self.settings.rule_match_settle_lag_seconds
         settled_until = self._clock() - timedelta(seconds=lag)
@@ -887,6 +916,9 @@ class RuleMatchEngine:
                 AnomalyState.RECOVERING,
             ) and incident is not None
             streak = incident.anomaly_start if incident_open and incident is not None else None
+            raw = () if silence_spans is None else silence_spans.get(
+                ("rule", rule.id, RULE_SILENCE_SCOPE), ()
+            )
             evidence = self._evidence(
                 rule,
                 detector,
@@ -899,6 +931,7 @@ class RuleMatchEngine:
                 settled_until,
                 incident_open=incident_open,
                 streak=streak,
+                analyst_spans=raw,
             )
             self._advance(
                 instance_id,
@@ -928,6 +961,7 @@ class RuleMatchEngine:
         *,
         incident_open: bool,
         streak: datetime | None,
+        analyst_spans: Sequence[tuple[datetime, datetime]] = (),
     ) -> AnomalyEvidence[RuleAnomalyType]:
         if detector == RuleAnomalyType.RULE_SILENCE.value:
             return detect_silence(
@@ -941,6 +975,10 @@ class RuleMatchEngine:
                     incident_open=incident_open,
                     incident_streak_start=streak,
                     thresholds=thresholds,
+                    analyst_spans=tuple(
+                        (_aware(start_at) or start_at, _aware(end_at) or end_at)
+                        for start_at, end_at in analyst_spans
+                    ),
                 )
             )
         key = slot_of(start, width)
@@ -1514,6 +1552,17 @@ class RuleMatchEngine:
         )
         silence_row = _open_for(incidents, RuleAnomalyType.RULE_SILENCE.value)
         storm_row = _open_for(incidents, RuleAnomalyType.RULE_STORM.value)
+        # One silence-exclusion read for this rule. Storm exclusions are inside
+        # `_load_rule_cells`, the same predicate as the batch statement (SOC-13h).
+        loaded_spans = await load_active(
+            self.session,
+            "rule",
+            [rule.id],
+            RULE_SILENCE_SCOPE,
+            load_from,
+            judged_end,
+        )
+        analyst_spans = loaded_spans.get(("rule", rule.id, RULE_SILENCE_SCOPE), ())
         silence = self._evidence(
             rule,
             RuleAnomalyType.RULE_SILENCE.value,
@@ -1526,6 +1575,7 @@ class RuleMatchEngine:
             settled_until,
             incident_open=silence_row is not None,
             streak=None if silence_row is None else _optional_dt(silence_row.anomaly_start),
+            analyst_spans=analyst_spans,
         )
         storm = self._evidence(
             rule,
@@ -1539,6 +1589,7 @@ class RuleMatchEngine:
             settled_until,
             incident_open=storm_row is not None,
             streak=None if storm_row is None else _optional_dt(storm_row.anomaly_start),
+            analyst_spans=analyst_spans,
         )
         return RuleSectionRead(
             rule_id=rule.id,
@@ -1779,6 +1830,16 @@ class RuleMatchEngine:
                                     incident.anomaly_end,
                                     :newest_end
                                   )
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM baseline_training_exclusion ex
+                            WHERE ex.subject_kind = 'rule'
+                              AND ex.subject_id = sr.rule_id
+                              AND ex.scope_key = 'rule:storm'
+                              AND ex.revoked_at IS NULL
+                              AND w.window_start >= ex.starts_at
+                              AND w.window_start < ex.ends_at
                         )
                     ),
                     medians AS (

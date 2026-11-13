@@ -31,6 +31,7 @@ import { CanvasRenderer } from "echarts/renderers";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef } from "react";
 
+import { NO_SPANS, exclusionMarkAreas, mergeExclusions, type ExclusionSpan } from "@/components/baseline/exclusionBand";
 import { EmaLegendItems, EmaNote, EmaSummary } from "@/components/behavior/EmaLegend";
 import { EmaToggles, useEmaPeriods } from "@/components/behavior/EmaToggles";
 import { HistoryKey, HistoryText } from "@/components/behavior/HistoryKey";
@@ -107,6 +108,7 @@ export function WafRequestChart({
   baseline,
   compact = false,
   historyLabel = !compact,
+  exclusions = NO_SPANS,
 }: {
   buckets: WafMetricBucket[];
   expected: number | null;
@@ -138,6 +140,8 @@ export function WafRequestChart({
   compact?: boolean;
   /** The history words inside the chart. Default: the full-size chart has them, the tile does not. */
   historyLabel?: boolean;
+  /** Intervals an analyst excluded from the endpoint's baseline training (SOC-13f), shaded in neutral. */
+  exclusions?: ExclusionSpan[];
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const t = useTranslations("waf.chart");
@@ -154,6 +158,10 @@ export function WafRequestChart({
     [buckets, ratio],
   );
   const history = useMemo(() => historyIntervals(buckets), [buckets]);
+  const excluded = useMemo(
+    () => mergeExclusions(exclusions),
+    [exclusions],
+  );
   const origins = useMemo(() => originByTime(buckets), [buckets]);
   const scale = ratio ? 100 : 1;
   // The overlay (display only) follows the primary line, the one plotted on the requests panel:
@@ -220,6 +228,11 @@ export function WafRequestChart({
         ],
       );
       const historyAreas = historyMarkAreas(history, readHistoryShade(), historyLabel);
+      const excludedAreas: MarkAreaPair[] = exclusionMarkAreas(
+        excluded,
+        readHistoryShade(),
+        tEma("key.excluded"),
+      );
       const anomalyAreas: MarkAreaPair[] = anomalies.map(
         (a): MarkAreaPair => [
           { xAxis: Date.parse(a.start), itemStyle: { color: c.anomaly }, name: "anomaly" },
@@ -430,8 +443,8 @@ export function WafRequestChart({
                 }
               : undefined,
             markArea:
-              gapAreas.length + anomalyAreas.length + historyAreas.length
-                ? { ...quiet, data: [...gapAreas, ...historyAreas, ...anomalyAreas] }
+              gapAreas.length + anomalyAreas.length + historyAreas.length + excludedAreas.length
+                ? { ...quiet, data: [...gapAreas, ...historyAreas, ...excludedAreas, ...anomalyAreas] }
                 : undefined,
             markLine: transitions.length
               ? {
@@ -531,6 +544,7 @@ export function WafRequestChart({
     medianLabel,
     compact,
     history,
+    excluded,
     origins,
     historyLabel,
     i18n,
@@ -630,6 +644,12 @@ export function WafRequestChart({
           </li>
         )}
         {history.length > 0 && <HistoryKey />}
+        {excluded.length > 0 && (
+          <li>
+            <span className="chart-key chart-key-excluded" aria-hidden="true" />
+            {tEma("key.excluded")}
+          </li>
+        )}
       </ul>
       <p className={compact ? "sr-only" : "subtitle chart-note"}>
         {ratio ? t("noteRatio") : t("noteVolume")}

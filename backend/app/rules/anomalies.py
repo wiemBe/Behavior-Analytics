@@ -334,13 +334,29 @@ def _grid(span_start: datetime, span_end: datetime, width: int) -> list[datetime
     return out
 
 
+def _in_half_open(when: datetime, spans: Sequence[tuple[datetime, datetime]]) -> bool:
+    """Whether ``when`` falls in a half-open ``[start, end)`` span.
+
+    Analyst exclusions use this. An incident span is closed on the end, which
+    is what that span wants and what an analyst interval does not.
+    """
+    return any(start <= when < end for start, end in spans)
+
+
 def _baseline(
-    by_start: Mapping[datetime, WindowFact], span_start: datetime, span_end: datetime, width: int
+    by_start: Mapping[datetime, WindowFact],
+    span_start: datetime,
+    span_end: datetime,
+    width: int,
+    analyst_spans: Sequence[tuple[datetime, datetime]] = (),
 ) -> tuple[BaselineTally, list[float], int]:
     """(tally, per-window matched_events of the COMPLETE windows, HISTORY window count).
 
     Only a span whose every grid window is COMPLETE of the current width is a baseline;
     the caller refuses otherwise, so the values never include a filled-in gap.
+    A COMPLETE window inside an analyst span counts as missing (SOC-13h). The span
+    is half-open, and it applies only when the window would otherwise count, so a
+    truncated, failed or wrong-width window keeps that reason.
     """
     expected = complete = truncated = failed = missing = wrong = history = 0
     values: list[float] = []
@@ -349,6 +365,9 @@ def _baseline(
         fact = by_start.get(start)
         kind = _kind(fact, width)
         if kind in (_Kind.ZERO, _Kind.COUNT):
+            if _in_half_open(start, analyst_spans):
+                missing += 1
+                continue
             complete += 1
             values.append(float(fact.matched_events or 0) if fact else 0.0)
             history += 1 if fact is not None and fact.origin == "HISTORY" else 0
@@ -379,6 +398,8 @@ class SilenceContext:
     #: Start of the open incident's streak, so its explanation keeps the original baseline.
     incident_streak_start: datetime | None = None
     thresholds: RuleThresholds = field(default_factory=RuleThresholds)
+    #: Half-open ``rule:silence`` spans (SOC-13h). Empty leaves the grid unchanged.
+    analyst_spans: Sequence[tuple[datetime, datetime]] = ()
 
 
 def detect_silence(ctx: SilenceContext) -> AnomalyEvidence[RuleAnomalyType]:
@@ -433,7 +454,9 @@ def detect_silence(ctx: SilenceContext) -> AnomalyEvidence[RuleAnomalyType]:
     else:
         streak_start = start - (run - 1) * step
     span_start = streak_start - timedelta(days=th.silence_baseline_days)
-    tally, values, history = _baseline(by_start, span_start, streak_start, width)
+    tally, values, history = _baseline(
+        by_start, span_start, streak_start, width, ctx.analyst_spans
+    )
 
     facts: dict[str, Any] = {
         "evidence_version": EVIDENCE_VERSION,

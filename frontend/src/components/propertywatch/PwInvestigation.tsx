@@ -12,9 +12,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { ExclusionBandText, effectiveSpans } from "@/components/baseline/ExclusionBandText";
 import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
 import { PropertyWatchSeriesChart } from "@/components/propertywatch/PropertyWatchSeriesChart";
-import type { PwAnomalyDetail, PwBucket, PwValueSeries } from "@/lib/api";
+import type { PwAnomalyDetail, PwBucket, PwValueSeries, TrainingExclusion } from "@/lib/api";
 import { sevTone } from "@/lib/api";
 import { formatMetric, formatRatio, robustScoreMeaning, stateMeaningIn, stateTone } from "@/lib/behavior";
 import { enumLabel } from "@/i18n/enumLabels";
@@ -60,6 +61,7 @@ export function PwInvestigation({
   i18n: providedI18n,
   triage = null,
   related = null,
+  exclusionRows = null,
 }: {
   anomaly: PwAnomalyDetail;
   data: PwInvestigationData;
@@ -67,6 +69,8 @@ export function PwInvestigation({
   /** The triage block (SOC-1b), shown under the state sentence. */
   triage?: ReactNode;
   /** The Related activity section (SOC-3b), after the series and evidence and before the lifecycle. */
+  /** The subject's analyst training exclusions (SOC-13f), or null when they could not be read. */
+  exclusionRows?: TrainingExclusion[] | null;
   related?: ReactNode;
 }) {
   const runtimeI18n = useBehaviorI18n();
@@ -345,8 +349,10 @@ export function PwInvestigation({
             detectionBand={band}
             emptyText={t("propertyWatch.investigation.seriesEmpty")}
             i18n={i18n}
+            exclusions={effectiveSpans(exclusionRows)}
           />
         )}
+        <ExclusionBandText rows={exclusionRows} />
       </section>
 
       {anomaly.explanation_package && (

@@ -4,7 +4,7 @@
 import { useTranslations } from "next-intl";
 
 import type { TrainingExclusion } from "@/lib/api";
-import { intervalText, isEffective } from "@/lib/trainingExclusion";
+import { intervalText, isEffective, stateKey } from "@/lib/trainingExclusion";
 
 import "./baseline.css";
 
@@ -24,7 +24,7 @@ export function ExclusionBandText({ rows }: { rows: readonly TrainingExclusion[]
         .map((r) =>
           t("band.row", {
             interval: intervalText(r.starts_at, r.ends_at),
-            state: t(`state.${r.state}` as never),
+            state: t(stateKey(r) as never),
           }),
         )
         .join("; ")}

@@ -38,8 +38,9 @@ import { SuppressionBlock } from "@/components/alerts/SuppressionBlock";
 import { triageNode } from "@/components/triage/triageNode";
 import { ExcludeInterval } from "@/components/baseline/ExcludeInterval";
 import { ExclusionBandText, effectiveSpans } from "@/components/baseline/ExclusionBandText";
-import { bucketWidthFor } from "@/lib/trainingExclusion";
-import { loadExclusions, type ExclusionLoad } from "@/lib/trainingExclusionLoad";
+import { TrainingExclusions } from "@/components/baseline/TrainingExclusions";
+import { bucketWidthFor, exclusionTargetOf, liveBucketWidthFor, type ExclusionTarget } from "@/lib/trainingExclusion";
+import { loadExclusions, loadExclusionsFor, type ExclusionLoad } from "@/lib/trainingExclusionLoad";
 import { PivotBlock } from "@/components/pivot/PivotBlock";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
@@ -205,6 +206,60 @@ async function canOpenIpsSource(): Promise<boolean> {
   }
 }
 
+/**
+ * A non-Phase-A anomaly's training control and exclusion list (SOC-13f), or nulls when the anomaly
+ * cannot carry one. `width` is the family's own live bucket width (null: the control says it could
+ * not read one). The list is shown here for the families whose subject has no page of its own
+ * (a WAF endpoint, an IPS entity, a property-watch value); an IPS source and a rule list theirs on
+ * the source and rule pages.
+ */
+async function familyExclusions(
+  anomaly: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail | RuleAnomalyDetail,
+  width: number | null,
+): Promise<{
+  target: ExclusionTarget | null;
+  load: ExclusionLoad;
+  control: ReactNode;
+  list: ReactNode;
+}> {
+  const target = exclusionTargetOf(anomaly);
+  // A rule has no chart to shade and its control only matters once resolved: read nothing before that.
+  if (target === null || (target.family === "rule" && anomaly.state !== "RESOLVED")) {
+    const idle: ExclusionLoad = { kind: "ok", items: [] };
+    return {
+      target,
+      load: idle,
+      control: target ? <ExcludeInterval anomaly={anomaly} bucketSeconds={null} load={idle} /> : null,
+      list: null,
+    };
+  }
+  const load = await loadExclusionsFor({
+    kind: target.subjectKind,
+    id: target.subjectId,
+    scope: target.family === "rule" ? undefined : target.scopeKey,
+  });
+  const control = <ExcludeInterval anomaly={anomaly} bucketSeconds={width} load={load} />;
+  const ownPage = target.variant === "ipsSource" || target.family === "rule";
+  const list = ownPage ? null : (
+    <TrainingExclusions
+      subject={{ kind: target.subjectKind, id: target.subjectId, scope: target.scopeKey }}
+      variant={target.variant}
+      initial={load}
+    />
+  );
+  return { target, load, control, list };
+}
+
+/** The rule engine's match-window width, from the one read that carries it; null when unreadable. */
+async function ruleWindowSeconds(): Promise<number | null> {
+  try {
+    const span = (await ruleMatchApi.anomalies(7)).span;
+    return span && span.window_seconds > 0 ? span.window_seconds : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The series read serves at most this many hours back from now. */
 const PW_SERIES_MAX_HOURS = 168;
 
@@ -323,7 +378,8 @@ async function AnomalyDetailPage({
     } catch {
       band = { kind: "not-loaded" };
     }
-    return <RuleInvestigation anomaly={loaded} band={band} triage={await triageNode(loaded)} />;
+    const fx = await familyExclusions(loaded, loaded.state === "RESOLVED" && exclusionTargetOf(loaded) ? await ruleWindowSeconds() : null);
+    return <RuleInvestigation anomaly={loaded} band={band} triage={await triageNode(loaded, fx.control)} />;
   }
 
   // The pivot is a separate read: a failure shows in its own block and never in the page.
@@ -345,12 +401,20 @@ async function AnomalyDetailPage({
   // A property-watch value is investigated against its own watch's series, in events per bucket.
   if (isPwDetail(loaded)) {
     const pwI18n = await getBehaviorI18n();
+    const pwDataRead = await pwData(loaded, pwI18n);
+    const fx = await familyExclusions(loaded, liveBucketWidthFor(loaded, pwDataRead.buckets));
     return (
       <>
         <PwInvestigation
           anomaly={loaded}
-          data={await pwData(loaded, pwI18n)}
-          triage={await triageBlockWith()}
+          data={pwDataRead}
+          exclusionRows={fx.load.kind === "ok" ? fx.load.items : null}
+          triage={
+            <>
+              {await triageBlockWith(fx.control)}
+              {fx.list}
+            </>
+          }
           related={relatedBlock}
         />
         {pivotBlock}
@@ -361,6 +425,7 @@ async function AnomalyDetailPage({
   // rather than EPS, so it has its own view; the Phase A page below is unchanged.
   if (isWafDetail(loaded)) {
     const [buckets, baselines] = await Promise.all([wafBuckets(loaded), wafBaselines(loaded)]);
+    const fx = await familyExclusions(loaded, liveBucketWidthFor(loaded, buckets));
     return (
       <>
         <WafInvestigation
@@ -368,7 +433,13 @@ async function AnomalyDetailPage({
           buckets={buckets}
           baselines={baselines}
           i18n={await getBehaviorI18n()}
-          triage={await triageBlockWith()}
+          exclusionRows={fx.load.kind === "ok" ? fx.load.items : null}
+          triage={
+            <>
+              {await triageBlockWith(fx.control)}
+              {fx.list}
+            </>
+          }
           related={relatedBlock}
         />
         {pivotBlock}
@@ -383,6 +454,7 @@ async function AnomalyDetailPage({
       ipsBaselines(loaded),
       canOpenIpsSource(),
     ]);
+    const fx = await familyExclusions(loaded, liveBucketWidthFor(loaded, series?.buckets ?? null));
     return (
       <>
         <IpsInvestigation
@@ -390,7 +462,13 @@ async function AnomalyDetailPage({
           series={series}
           baselines={baselines}
           canOpenSource={canOpenSource}
-          triage={await triageBlockWith()}
+          exclusionRows={fx.load.kind === "ok" ? fx.load.items : null}
+          triage={
+            <>
+              {await triageBlockWith(fx.control)}
+              {fx.list}
+            </>
+          }
           related={relatedBlock}
         />
         {pivotBlock}
