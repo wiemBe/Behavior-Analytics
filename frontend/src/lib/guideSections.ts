@@ -385,6 +385,14 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
     related: ["siem-load", "honesty-states", "times-and-cadence"],
   },
   {
+    id: "notification-routing",
+    group: "adminTasks",
+    routes: ["/admin/notifications"],
+    audience: "admin",
+    permissions: ["admin:notifications"],
+    related: ["alert-email", "work-an-alert", "honesty-states"],
+  },
+  {
     id: "users-and-directory",
     group: "adminTasks",
     routes: ["/admin/users", "/admin/directory"],

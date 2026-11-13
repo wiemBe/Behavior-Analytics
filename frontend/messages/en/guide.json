@@ -1100,6 +1100,49 @@
       ],
       "permission": "`admin:notifications`"
     },
+    "notification-routing": {
+      "title": "Notification routing",
+      "answers": "Which alerts leave the site over a webhook, and where do they go?",
+      "body": [
+        {
+          "p": "A named destination is a webhook this site stores and posts to: an address, whether plain HTTP and private addresses are allowed, an optional signing secret and up to five custom headers. A site holds at most ten destinations and fifty rules. The address is checked when it is saved and again at every send: HTTPS only unless plain HTTP is allowed, and a host that resolves to a private, loopback, link-local or reserved address is refused unless private addresses are allowed. Both flags are a deliberate exception for an internal SOAR; leave them off otherwise. The API never returns a secret or a header value, only whether a secret is set and the header names."
+        },
+        {
+          "h": "Rules"
+        },
+        {
+          "p": "A rule adds destinations to an alert's routes. It matches on a minimum severity and, optionally, on alert family, log-source owner, source class, QRadar log-source group and a UTC time window; an empty clause matches any alert. Every matching rule adds its destinations, in priority order and then by id, and one alert is never queued twice for the same destination. With no rule matching, alerts still go to the `.env` channels and the stored e-mail recipients, exactly as before."
+        },
+        {
+          "p": "`stop_default` turns those default routes off for the alerts a rule matches, and only those: such an alert goes to the destinations of its matching rules and to no `.env` channel or stored e-mail recipient. Leave it off until the default channels are known to be redundant, because a rule with it on stops their mail for every alert it matches."
+        },
+        {
+          "p": "The window is minutes from midnight UTC, read on the stored transition time: when the alert opened, was acknowledged or was resolved, not when the delivery ran, so a retry after midnight still matches. A start later than the end wraps past midnight; a start equal to the end is refused. No window means all day. A rule with no enabled destination delivers nothing and is skipped, so it cannot silence the defaults either."
+        },
+        {
+          "h": "Test and history"
+        },
+        {
+          "p": "Send test posts one body to the destination through the same checks and signature as a real event, and records its time, HTTP status and result on the destination. It writes no alert notification, so it proves the address and the secret, not the routing. The attempt history belongs to the alert: its notification table shows the channel, transition, status, attempt count, send time, next attempt and last error for each row, and the alert's notification API returns the newest eight attempts of a row with their time, HTTP status and class, and a named destination's name in place of its URL. The alert page does not yet show the attempt list or the destination name."
+        },
+        {
+          "p": "A named destination receives the versioned payload: one JSON body per opened, acknowledged, resolved or test event, a stable idempotency key, the JSON content type, the `Idempotency-Key` header and, when a secret is set, an `X-QRadar-Dash-Signature: v1=<hex>` over the exact bytes. Delivery is at least once, retries follow the `NOTIFY_*` settings, redirects are never followed, the request times out after 10 s and only the status is read. The events, every field, the bodies and a signature check are in `docs/WEBHOOK-PAYLOAD.md`."
+        }
+      ],
+      "steps": [
+        "Administer destinations and rules through the admin API under `/api/v1/admin/notifications`, with a principal that holds `admin:notifications`; this version has no page for them.",
+        "Create a destination: a name, the full URL, and the two address exceptions only if the peer is internal. Set a signing secret when the peer verifies the signature, and give the peer the same value.",
+        "Send a test to the destination and read the outcome: the status and the class say whether the peer answered, redirected, timed out or refused the address.",
+        "Create a rule: a minimum severity, at least one destination and the optional filters and UTC window. Leave `stop_default` off at first.",
+        "Read the first matching alerts' notification rows on the alert page before you widen the rule."
+      ],
+      "states": [
+        {
+          "p": "With no rules saved, alerts still use the `.env` channels and the stored e-mail recipients. A destination keeps the class and HTTP status of its last test. An address the guard refuses is rejected with its code when it is saved. Without `admin:notifications` every notification administration call is refused."
+        }
+      ],
+      "permission": "`admin:notifications`"
+    },
     "users-and-directory": {
       "title": "Users and directory sign-in",
       "answers": "Who can sign in, with which roles, and how does directory sign-in reach the platform?",
