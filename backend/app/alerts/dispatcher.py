@@ -29,11 +29,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.notifiers.base import NotificationMessage, Notifier, NotifierError
+from app.alerts.query import alert_family
 from app.alerts.routing import RoutingPolicy, RoutingRule
 from app.core.config import Settings, get_settings
 from app.models.alert import Alert, AlertNotification
 from app.models.email import EmailRecipient, EmailTemplate
-from app.models.enums import AlertTransition, NotificationChannel, NotificationStatus, Severity
+from app.models.enums import (
+    AlertStatus,
+    AlertTransition,
+    NotificationChannel,
+    NotificationStatus,
+    Severity,
+)
 from app.security.redaction import redact
 from app.services.backoff import backoff_delay
 
@@ -214,7 +221,13 @@ class NotificationDispatcher:
         notif.next_attempt_at = self._clock() + timedelta(seconds=delay)
         stats["failed"] += 1
 
+    @staticmethod
+    def _iso(value: datetime | None) -> str | None:
+        """ISO-8601 with the zone offset the column carries (UTC in practice)."""
+        return value.isoformat() if value is not None else None
+
     def _render(self, alert: Alert, transition: AlertTransition) -> dict:
+        family = alert_family(alert.source_type)
         return {
             "title": alert.title,
             "body": alert.description or alert.title,
@@ -224,14 +237,36 @@ class NotificationDispatcher:
             "fingerprint": alert.fingerprint,
             # MAIL-1: what an e-mail template needs beyond the shared fields.
             "alert_type": alert.source_type,
-            "opened_at": alert.opened_at.isoformat() if alert.opened_at else None,
+            "opened_at": self._iso(alert.opened_at),
             "instance": (alert.context or {}).get("instance"),
             "fields": {
                 "occurrences": alert.occurrence_count,
-                "first_seen": alert.first_seen_at.isoformat() if alert.first_seen_at else None,
+                "first_seen": self._iso(alert.first_seen_at),
                 **{k: v for k, v in (alert.evidence_snapshot or {}).items()
                    if k in ("observed_value", "expected_value", "deviation_score", "reason")},
             },
+            # SOC-12a: the inputs the versioned generic-webhook contract (v1) needs.
+            # Additive only -- every key above keeps its name and value, so the
+            # channels that read this payload today send exactly what they sent
+            # before. `family` reuses the alert-list mapping (and is null for a
+            # producer that mapping does not know).
+            "family": family.value if family is not None else None,
+            # The source id is frozen as a URN: `redact` masks a bare UUID as
+            # token-shaped (it does that to `alert_id` too), and unlike `alert_id`
+            # this one is needed at delivery time, when only the notification row
+            # is loaded. The v1 builder emits the bare UUID from this form.
+            "source_id": f"urn:uuid:{alert.source_id}" if alert.source_id else None,
+            "status": AlertStatus(alert.status).value,
+            "acknowledged_at": self._iso(alert.acknowledged_at),
+            # A principal is frozen with a scheme for the same reason: a username of
+            # 24+ token-shaped characters would otherwise leave as ***redacted***.
+            "acknowledged_by": (
+                f"principal:{alert.acknowledged_by}" if alert.acknowledged_by else None
+            ),
+            "resolved_at": self._iso(alert.resolved_at),
+            "resolved_by": f"principal:{alert.resolved_by}" if alert.resolved_by else None,
+            # The code only: a resolution's free text is never part of a payload.
+            "resolution_reason_code": alert.resolution_reason_code,
         }
 
     def _message_from_payload(self, notif: AlertNotification) -> NotificationMessage:
