@@ -28,6 +28,7 @@ const SECTIONS: readonly Section[] = [
   { key: "siemLoad", href: "/admin/siem-load", permission: "admin:*" },
   { key: "qradarAccess", href: "/admin/qradar-access", permission: "admin:*" },
   { key: "alertEmail", href: "/admin/email", permission: "admin:notifications" },
+  { key: "notificationRouting", href: "/admin/notifications", permission: "admin:notifications" },
   { key: "users", href: "/admin/users", permission: "admin:users" },
   { key: "directory", href: "/admin/directory", permission: "admin:auth" },
 ];

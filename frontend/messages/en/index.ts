@@ -42,6 +42,7 @@ import login from "./login.json";
 import mailAdmin from "./mailAdmin.json";
 import meta from "./meta.json";
 import noise from "./noise.json";
+import notifyRouting from "./notifyRouting.json";
 import offenses from "./offenses.json";
 import outage from "./outage.json";
 import password from "./password.json";
@@ -106,6 +107,7 @@ const messages = {
   mailAdmin,
   meta,
   noise,
+  notifyRouting,
   offenses,
   outage,
   password,
