@@ -780,7 +780,13 @@ async def apply_handover_retention() -> dict:
 
 
 async def detect_stale_offense_collection(instance_name: str | None = None) -> dict:
-    """Open/resolve one deduplicated alert per stale offense collector."""
+    """Open/resolve one deduplicated alert per stale offense collector.
+
+    A console registered less than its stale threshold ago that has neither a
+    successful nor a failed run yet is still in its first-run window: the run
+    reports `awaiting_first_run` and opens nothing. A failing collector is stale at
+    once, grace or not.
+    """
 
     async def run(
         session: AsyncSession, instance: QRadarInstance, _: QRadarProvider | None
@@ -807,6 +813,23 @@ async def detect_stale_offense_collection(instance_name: str | None = None) -> d
                 int((now - last_run).total_seconds()) if last_run is not None else None
             )
             failures = watermark.consecutive_failures if watermark is not None else 0
+            registered_at = instance.created_at
+            if registered_at.tzinfo is None:
+                registered_at = registered_at.replace(tzinfo=UTC)
+            awaiting_first_run = (
+                last_run is None
+                and failures == 0
+                and (now - registered_at).total_seconds() < settings.offense_stale_after_seconds
+            )
+            if awaiting_first_run:
+                return {
+                    "status": "ok",
+                    "stale": False,
+                    "judged": False,
+                    "reason": "awaiting_first_run",
+                    "duration_ms": int((time.perf_counter() - started) * 1000),
+                }
+
             stale = (
                 last_run is None
                 or age_seconds is None
@@ -865,6 +888,7 @@ async def detect_stale_offense_collection(instance_name: str | None = None) -> d
             return {
                 "status": "ok",
                 "stale": stale,
+                "judged": True,
                 "age_seconds": age_seconds,
                 "consecutive_failures": failures,
                 "transition": str(transition) if transition is not None else None,
