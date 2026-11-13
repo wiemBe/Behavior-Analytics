@@ -6,9 +6,10 @@ plus the event-ID counts those lists explain. A 4625 or 4740 username below the
 admission floor is not a row. No per-user baseline.
 
 `identity_bucket`, `identity_event_count` and `identity_top_username` are
-TimescaleDB hypertables on `bucket_start`. Retention is a later bounded delete
-of 35 days for counts and the top-N; this migration installs no policy, the same
-way the WAF and IPS bucket migrations do not. Anomaly tables are a later slice.
+TimescaleDB hypertables on `bucket_start`. Retention is a bounded delete of 35
+days for counts and the top-N; this migration installs no policy, the same way
+the WAF and IPS bucket migrations do not. Incidents live in `identity_anomaly`,
+which is not a hypertable.
 """
 
 from __future__ import annotations

@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import AnomalyFamily
+from app.models.identity_anomaly import IdentityAnomaly
 from app.models.ips import IpsAnomaly
 from app.models.log_source import LogSourceAnomaly
 from app.models.property_watch import PwAnomaly
@@ -33,6 +34,7 @@ FAMILY_MODELS: dict[AnomalyFamily, Any] = {
     AnomalyFamily.IPS: IpsAnomaly,
     AnomalyFamily.PROPERTY_WATCH: PwAnomaly,
     AnomalyFamily.RULE: RuleAnomaly,
+    AnomalyFamily.IDENTITY: IdentityAnomaly,
 }
 
 

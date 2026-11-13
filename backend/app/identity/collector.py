@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.identity.engine import IdentityAnomalyEngine
 from app.identity.fold import (
     CountRow,
     CountSearch,
@@ -177,6 +178,14 @@ class IdentityCollector:
                     "searches": searches,
                     "splits": splits,
                 },
+            )
+            series = [item for fact in facts for item in fact.series]
+            await IdentityAnomalyEngine(
+                self.session, settings=settings, clock=self._clock
+            ).evaluate(
+                instance_id=instance.id,
+                series=series,
+                bucket_seconds=bucket_seconds,
             )
         advanced = _advance(watermark, chunks, results, buckets)
         if _counts_failed(chunks, results):

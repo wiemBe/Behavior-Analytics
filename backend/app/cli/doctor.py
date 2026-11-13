@@ -258,6 +258,10 @@ BATCH_DELETERS: tuple[BatchDeleter, ...] = (
         (BatchTable("ips_anomaly", "ips_anomaly_retention_days"),),
     ),
     BatchDeleter(
+        "apply_identity_anomaly_retention",
+        (BatchTable("identity_anomaly", "identity_anomaly_retention_days"),),
+    ),
+    BatchDeleter(
         "apply_rule_anomaly_retention",
         (BatchTable("rule_anomaly", "rule_anomaly_retention_days"),),
     ),

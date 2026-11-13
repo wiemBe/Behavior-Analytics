@@ -68,6 +68,7 @@ from app.services.digest import run_due_digests
 from app.services.entity_mention_backfill import EntityMentionBackfillService
 from app.services.geo_retention import GeoRetention
 from app.services.handover_retention import HandoverRetention
+from app.services.identity_anomaly_retention import IdentityAnomalyRetention
 from app.services.ips_anomaly_retention import IpsAnomalyRetention
 from app.services.ips_pipeline import IpsInstancePipeline, ips_pipeline_lock_key
 from app.services.ips_profiles import IpsProfileService
@@ -2020,6 +2021,17 @@ async def apply_identity_retention() -> dict:
         return (await IdentityRetention(session).run()).as_dict()
 
 
+async def apply_identity_anomaly_retention() -> dict:
+    """Delete closed identity incidents past the retention window.
+
+    Not the series task: a lookback skip there must not freeze incident aging.
+    Open and recovering incidents are never pruned, whatever their age.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await IdentityAnomalyRetention(session).run()).as_dict()
+
+
 async def backfill_entity_mentions() -> dict:
     """Run one bounded entity-mention backfill pass (SOC-16f4, D-64).
 
@@ -2385,6 +2397,11 @@ def dispatch_identity_collection_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="apply_identity_retention")
 def apply_identity_retention_task() -> dict:
     return _run(apply_identity_retention())
+
+
+@celery_app.task(name="apply_identity_anomaly_retention")
+def apply_identity_anomaly_retention_task() -> dict:
+    return _run(apply_identity_anomaly_retention())
 
 
 @celery_app.task(name="backfill_entity_mentions")

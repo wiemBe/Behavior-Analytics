@@ -342,6 +342,17 @@ class Settings(BaseSettings):
     identity_retention_interval_seconds: int = Field(default=86400, ge=3600)
     identity_validation_window_seconds: int = Field(default=900, ge=60, le=3600)
     identity_validation_min_ratio: float = Field(default=0.90, gt=0, le=1)
+    #: Identity alerting is opt-in. Incidents are recorded either way.
+    identity_alerting_enabled: bool = False
+    #: The first anomalous bucket opens. Thresholds are the finding on that bucket.
+    identity_open_after_intervals: int = Field(default=1, ge=1, le=100)
+    #: Two healthy buckets resolve. One healthy bucket moves an open incident to recovering.
+    identity_resolve_after_intervals: int = Field(default=2, ge=1, le=100)
+    #: Closed identity incidents. Not gated by IDENTITY_RETENTION_ENABLED: the
+    #: series lookback skip must not freeze incident aging. The delete reuses
+    #: IDENTITY_RETENTION_BATCH_SIZE and IDENTITY_RETENTION_MAX_BATCHES.
+    identity_anomaly_retention_days: int = Field(default=180, ge=1, le=3650)
+    identity_anomaly_retention_interval_seconds: int = Field(default=86400, ge=3600)
     #: Entity-mention backfill (SOC-16f4, D-64): a beat task fills `entity_mention` for
     #: parents stored before the index existed, in bounded keyset batches, resumable per
     #: (instance, source). Insert-only; it never deletes a mention.

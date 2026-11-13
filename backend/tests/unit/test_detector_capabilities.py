@@ -16,6 +16,8 @@ import pytest
 
 from app.anomaly.capabilities import (
     ARIEL_AGGREGATE_TELEMETRY,
+    IDENTITY_BASELINE_METRICS,
+    IDENTITY_DETECTORS,
     IPS_BASELINE_METRICS,
     IPS_DETECTORS,
     LOG_SOURCE_DETECTORS,
@@ -45,6 +47,7 @@ from app.models.enums import (
     AnomalyType,
     BucketCompleteness,
     DetectorSignal,
+    IdentityAnomalyType,
     IpsAnomalyType,
     PwAnomalyType,
     RuleAnomalyType,
@@ -90,6 +93,13 @@ EXPECTED_STATUS = {
     "PW_NEW_COMBINATION": DetectorStatus.OPERATIONAL,
     "RULE_SILENCE": DetectorStatus.OPERATIONAL,
     "RULE_STORM": DetectorStatus.OPERATIONAL,
+    "IDENTITY_AUDIT_LOG_CLEARED": DetectorStatus.OPERATIONAL,
+    "IDENTITY_PRIVILEGED_GROUP_ADD": DetectorStatus.OPERATIONAL,
+    "IDENTITY_ACCOUNT_CREATED": DetectorStatus.OPERATIONAL,
+    "IDENTITY_ACCOUNT_DELETED": DetectorStatus.OPERATIONAL,
+    "IDENTITY_NEW_PRIVILEGED_ACCOUNT": DetectorStatus.OPERATIONAL,
+    "IDENTITY_FAILED_LOGON_SPIKE": DetectorStatus.OPERATIONAL,
+    "IDENTITY_LOCKOUT_SPIKE": DetectorStatus.OPERATIONAL,
 }
 
 
@@ -109,6 +119,7 @@ def test_every_named_detector_has_a_spec() -> None:
     assert set(IPS_DETECTORS) == set(IpsAnomalyType)
     assert set(PW_DETECTORS) == set(PwAnomalyType)
     assert set(RULE_DETECTORS) == set(RuleAnomalyType)
+    assert set(IDENTITY_DETECTORS) == set(IdentityAnomalyType)
 
 
 def test_all_detectors_lists_every_family() -> None:
@@ -120,8 +131,9 @@ def test_all_detectors_lists_every_family() -> None:
         | {t.value for t in IpsAnomalyType}
         | {t.value for t in PwAnomalyType}
         | {t.value for t in RuleAnomalyType}
+        | {t.value for t in IdentityAnomalyType}
     )
-    assert len(listed) == 30
+    assert len(listed) == 37
 
 
 def test_rule_detectors_name_the_alerting_switch_beyond_the_enabling_setting() -> None:
@@ -130,6 +142,28 @@ def test_rule_detectors_name_the_alerting_switch_beyond_the_enabling_setting() -
         assert spec.enabling_setting == "rule_match_collection_enabled"
         assert spec.activation is not None
         assert "RULE_ALERTING_ENABLED=true" in spec.activation
+
+
+def test_every_identity_detector_is_operational_until_collection_is_off() -> None:
+    """Incidents need collection. Alerts need the second switch (D-75)."""
+    disabled = Settings(_env_file=None, identity_collection_enabled=False)
+    for spec in IDENTITY_DETECTORS.values():
+        assert spec.implemented is True
+        assert spec.scheduled_task == "dispatch_identity_collection"
+        assert spec.enabling_setting == "identity_collection_enabled"
+        assert spec.activation is not None
+        assert "IDENTITY_ALERTING_ENABLED=true" in spec.activation
+        assert spec.limitation is None
+        assert spec.inputs == ()
+        assert spec.baseline_metrics <= IDENTITY_BASELINE_METRICS
+        assert detector_status(spec) is DetectorStatus.OPERATIONAL
+        assert detector_status(spec, disabled) is DetectorStatus.NOT_ENABLED
+    assert frozenset({"identity_event_count"}) == IDENTITY_BASELINE_METRICS
+    for detector in (
+        IdentityAnomalyType.IDENTITY_FAILED_LOGON_SPIKE,
+        IdentityAnomalyType.IDENTITY_LOCKOUT_SPIKE,
+    ):
+        assert IDENTITY_DETECTORS[detector].baseline_metrics == IDENTITY_BASELINE_METRICS
 
 
 def test_every_ips_detector_is_implemented_scheduled_and_gated() -> None:

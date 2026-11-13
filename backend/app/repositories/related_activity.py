@@ -26,6 +26,7 @@ from sqlalchemy.sql.selectable import Subquery
 
 from app.models.custom_rule import CustomRule, CustomRuleBreach
 from app.models.enums import AnomalyFamily, TriageStatus
+from app.models.identity_anomaly import IdentityAnomaly
 from app.models.ips import IpsAnomaly, IpsEntity
 from app.models.log_source import LogSourceAnomaly
 from app.models.monitoring import CollectionWatermark
@@ -243,6 +244,10 @@ class RelatedActivityRepository:
             # A rule incident has no log-source subject, so it is not part of a
             # source's related activity. The fall-through below is property watch.
             return []
+        if family is AnomalyFamily.IDENTITY:
+            return await self._identity_anomalies(
+                source_id, anchor_id, window_start, window_end
+            )
         return await self._pw_anomalies(source_id, anchor_id, window_start, window_end)
 
     async def _log_source_anomalies(
@@ -368,6 +373,48 @@ class RelatedActivityRepository:
             .where(
                 source == source_id,
                 IpsAnomaly.id != anchor_id,
+                start <= window_end,
+                end >= window_start,
+            )
+        )
+        return _mappings(await self.session.execute(stmt))
+
+    async def _identity_anomalies(
+        self,
+        source_id: uuid.UUID,
+        anchor_id: uuid.UUID,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> list[dict[str, Any]]:
+        start = func.coalesce(IdentityAnomaly.anomaly_start, IdentityAnomaly.detected_at)
+        end = func.coalesce(
+            IdentityAnomaly.anomaly_end,
+            IdentityAnomaly.anomaly_start,
+            IdentityAnomaly.detected_at,
+        )
+        stmt = (
+            select(
+                _family_label(AnomalyFamily.IDENTITY),
+                IdentityAnomaly.id,
+                IdentityAnomaly.detector_type.label("type"),
+                IdentityAnomaly.state.label("lifecycle_state"),
+                IdentityAnomaly.severity,
+                start.label("start"),
+                end.label("end"),
+                func.coalesce(AnomalyTriage.status, TriageStatus.NEW).label(
+                    "triage_status"
+                ),
+            )
+            .outerjoin(
+                AnomalyTriage,
+                and_(
+                    AnomalyTriage.family == AnomalyFamily.IDENTITY,
+                    AnomalyTriage.anomaly_id == IdentityAnomaly.id,
+                ),
+            )
+            .where(
+                IdentityAnomaly.log_source_id == source_id,
+                IdentityAnomaly.id != anchor_id,
                 start <= window_end,
                 end >= window_start,
             )

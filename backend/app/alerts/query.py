@@ -51,6 +51,7 @@ class AlertFamily(StrEnum):
     IPS = "ips"
     PROPERTY_WATCH = "property_watch"
     RULE = "rule"
+    IDENTITY = "identity"
     CATCHALL_SENDER = "catchall_sender"
     CUSTOM_RULE = "custom_rule"
     SCHEDULED_SEARCH = "scheduled_search"
@@ -67,6 +68,7 @@ FAMILY_BY_SOURCE_TYPE: dict[str, AlertFamily] = {
     "ips_source": AlertFamily.IPS,
     "pw_value": AlertFamily.PROPERTY_WATCH,
     "analytics_rule": AlertFamily.RULE,
+    "identity_source": AlertFamily.IDENTITY,
     "catchall_sender": AlertFamily.CATCHALL_SENDER,
     "custom_rule": AlertFamily.CUSTOM_RULE,
     "scheduled_search": AlertFamily.SCHEDULED_SEARCH,
@@ -221,7 +223,7 @@ def _log_source_clause(log_source_ids: tuple[uuid.UUID, ...]) -> ColumnElement[b
     )
     return or_(
         and_(
-            Alert.source_type.in_(("log_source", "ips_source")),
+            Alert.source_type.in_(("log_source", "ips_source", "identity_source")),
             Alert.source_id.in_(ids),
         ),
         and_(Alert.source_type == "waf_endpoint", Alert.source_id.in_(endpoint_ids)),
