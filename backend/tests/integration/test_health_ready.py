@@ -99,11 +99,17 @@ def _client() -> Iterator[TestClient]:
 
     app = create_app()
     app.dependency_overrides[get_session] = _override
-    # Lifespan calls configure_logging, which replaces the root handlers.
-    # Put them back so a later test in the same session still sees its own.
+    # Lifespan calls configure_logging, which replaces the root handlers,
+    # installs the redaction filter and quiets the httpx loggers. Put all of
+    # that back so a later test in the same session still sees its own.
     root = logging.getLogger()
+    httpx_logger = logging.getLogger("httpx")
+    httpcore_logger = logging.getLogger("httpcore")
     saved_handlers = list(root.handlers)
     saved_level = root.level
+    saved_filters = list(root.filters)
+    saved_httpx_level = httpx_logger.level
+    saved_httpcore_level = httpcore_logger.level
     try:
         with TestClient(app) as client:
             yield client
@@ -111,7 +117,10 @@ def _client() -> Iterator[TestClient]:
         root.handlers.clear()
         for handler in saved_handlers:
             root.addHandler(handler)
+        root.filters[:] = saved_filters
         root.setLevel(saved_level)
+        httpx_logger.setLevel(saved_httpx_level)
+        httpcore_logger.setLevel(saved_httpcore_level)
         engine.sync_engine.dispose()
 
 
