@@ -20,17 +20,27 @@ MockNotifiers and no real notification is ever sent under test.
 from __future__ import annotations
 
 import random
+import re
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Protocol, cast
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, func, insert, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.alerts.notification_rules import AlertView, RuleView, load_rules, match_rules
+from app.alerts.notifiers import destination_sender
 from app.alerts.notifiers.base import NotificationMessage, Notifier, NotifierError
+from app.alerts.notifiers.destination_sender import (
+    DESTINATION_TARGET_PREFIX,
+    destination_target_id,
+)
+from app.alerts.notifiers.url_guard import resolve_host
+from app.alerts.notifiers.webhook_v1 import build_webhook_v1
 from app.alerts.query import alert_family
-from app.alerts.routing import RoutingPolicy, RoutingRule
+from app.alerts.routing import Route, RoutingPolicy, RoutingRule
 from app.core.config import Settings, get_settings
 from app.models.alert import Alert, AlertNotification
 from app.models.email import EmailRecipient, EmailTemplate
@@ -41,8 +51,24 @@ from app.models.enums import (
     NotificationStatus,
     Severity,
 )
+from app.models.notification_attempt import MAX_ATTEMPTS_KEPT, NotificationAttempt
+from app.models.notification_destination import NotificationDestination
 from app.security.redaction import redact
 from app.services.backoff import backoff_delay
+
+# Failure classes from the sender that retry; every other non-ok class is permanent.
+_PERMANENT_STATUS_CLASSES = frozenset({"redirect_refused", "ssrf_refused"})
+
+
+_STATUS_IN_MESSAGE = re.compile(r"status (\d{3})$")
+
+
+def _classify_notifier_error(exc: NotifierError) -> tuple[str, int | None]:
+    """The stored attempt class of an env-channel failure; the message itself is not kept."""
+    match = _STATUS_IN_MESSAGE.search(str(exc))
+    if match is not None:
+        return "http_status", int(match.group(1))
+    return ("permanent" if exc.permanent else "transport"), None
 
 
 class AlertEnqueuer(Protocol):
@@ -65,6 +91,8 @@ class NotificationDispatcher:
         settings: Settings | None = None,
         clock: Callable[[], datetime] | None = None,
         rng: random.Random | None = None,
+        destination_resolver: destination_sender.Resolver = resolve_host,
+        destination_transport: destination_sender.TransportFactory | None = None,
     ) -> None:
         self.session = session
         self.notifiers = notifiers
@@ -77,6 +105,17 @@ class NotificationDispatcher:
         # routes or delivers.
         self._stored_rules: list[RoutingRule] | None = None
         self._email_templates: list[EmailTemplate] | None = None
+        # SOC-12d. Notification rules (with their enabled destinations) load once.
+        self._rule_views: list[RuleView] | None = None
+        # SOC-12e. Attempts of this run, written in bulk at its end.
+        self._attempt_log: list[dict[str, object]] = []
+        self._destination_resolver = destination_resolver
+        self._destination_transport = destination_transport or destination_sender.http_transport
+
+    async def _rules(self) -> list[RuleView]:
+        if self._rule_views is None:
+            self._rule_views = await load_rules(self.session)
+        return self._rule_views
 
     async def _stored_email_rules(self) -> list[RoutingRule]:
         """One routing rule per enabled administered recipient (MAIL-1)."""
@@ -118,8 +157,25 @@ class NotificationDispatcher:
         if transition is AlertTransition.RESOLVED and not self.settings.notify_send_recovery:
             return []
 
+        match = match_rules(
+            await self._rules(),
+            cast(AlertView, alert),  # the ORM row satisfies the read-only view
+            at=self._transition_time(alert, transition),
+        )
+        # A rule only adds destinations; today's routes stay unless a match says stop.
+        routes = [] if match.stop_default else self.policy.resolve(
+            alert, await self._stored_email_rules()
+        )
+        routes = [
+            *routes,
+            *(
+                Route(NotificationChannel.WEBHOOK, f"{DESTINATION_TARGET_PREFIX}{destination}")
+                for destination in match.destination_ids
+            ),
+        ]
+
         created: list[AlertNotification] = []
-        for route in self.policy.resolve(alert, await self._stored_email_rules()):
+        for route in routes:
             payload = self._render(alert, transition)
             notif = AlertNotification(
                 alert_id=alert.id,
@@ -146,6 +202,15 @@ class NotificationDispatcher:
             created.append(notif)
         return created
 
+    def _transition_time(self, alert: Alert, transition: AlertTransition) -> datetime:
+        """The stored time of the transition, so a rule window judges the event, not the retry."""
+        stamp = {
+            AlertTransition.OPENED: alert.opened_at,
+            AlertTransition.ACKNOWLEDGED: alert.acknowledged_at,
+            AlertTransition.RESOLVED: alert.resolved_at,
+        }.get(transition)
+        return stamp if stamp is not None else self._clock()
+
     async def dispatch_due(self, *, limit: int = 100) -> dict[str, int]:
         now = self._clock()
         due = list(
@@ -168,10 +233,79 @@ class NotificationDispatcher:
         )
 
         stats = {"sent": 0, "failed": 0, "dead_letter": 0}
+        # One query for every destination this run delivers to, however many rows.
+        wanted = {
+            destination
+            for n in due
+            if n.channel == NotificationChannel.WEBHOOK
+            and (destination := destination_target_id(n.target)) is not None
+        }
+        destinations: dict[uuid.UUID, NotificationDestination] = {}
+        if wanted:
+            rows = await self.session.scalars(
+                select(NotificationDestination).where(NotificationDestination.id.in_(wanted))
+            )
+            destinations = {row.id: row for row in rows}
+        self._attempt_log = []
         for notif in due:
+            if (
+                notif.channel == NotificationChannel.WEBHOOK
+                and notif.target.startswith(DESTINATION_TARGET_PREFIX)
+            ):
+                await self._attempt_destination(notif, destinations, stats)
+                continue
             await self._attempt(notif, stats)
         await self.session.flush()
+        await self._write_attempts()
         return stats
+
+    def _record(
+        self, notif: AlertNotification, error_class: str, status: int | None = None
+    ) -> None:
+        self._attempt_log.append(
+            {
+                "id": uuid.uuid4(),
+                "notification_id": notif.id,
+                "attempted_at": self._clock(),
+                "http_status": status,
+                "error_class": error_class,
+            }
+        )
+
+    async def _write_attempts(self) -> None:
+        """Store this run's attempts and trim each notification to the newest eight.
+
+        Two statements for the whole run, however many notifications were due: one
+        multi-row INSERT and one DELETE over a window function (AGENTS 2.9).
+        """
+        log, self._attempt_log = self._attempt_log, []
+        if not log:
+            return
+        await self.session.execute(insert(NotificationAttempt), log)
+        ids = {entry["notification_id"] for entry in log}
+        ranked = (
+            select(
+                NotificationAttempt.id,
+                func.row_number()
+                .over(
+                    partition_by=NotificationAttempt.notification_id,
+                    order_by=(
+                        NotificationAttempt.attempted_at.desc(),
+                        NotificationAttempt.id.desc(),
+                    ),
+                )
+                .label("rank"),
+            )
+            .where(NotificationAttempt.notification_id.in_(ids))
+            .subquery()
+        )
+        await self.session.execute(
+            delete(NotificationAttempt).where(
+                NotificationAttempt.id.in_(
+                    select(ranked.c.id).where(ranked.c.rank > MAX_ATTEMPTS_KEPT)
+                )
+            )
+        )
 
     async def _attempt(self, notif: AlertNotification, stats: dict[str, int]) -> None:
         notifier = self.notifiers.get(notif.channel)
@@ -180,6 +314,7 @@ class NotificationDispatcher:
             notif.status = NotificationStatus.DEAD_LETTER
             notif.error_message = f"no notifier registered for {notif.channel}"
             stats["dead_letter"] += 1
+            self._record(notif, "no_notifier")
             return
 
         message = self._message_from_payload(notif)
@@ -190,16 +325,76 @@ class NotificationDispatcher:
         try:
             await notifier.send(notif.target, message)
         except NotifierError as exc:
+            self._record(notif, *_classify_notifier_error(exc))
             self._handle_failure(notif, exc, stats)
             return
         except Exception as exc:
-            self._handle_failure(notif, NotifierError(str(exc)), stats)
+            wrapped = NotifierError(str(exc))
+            self._record(notif, *_classify_notifier_error(wrapped))
+            self._handle_failure(notif, wrapped, stats)
             return
 
         notif.status = NotificationStatus.SENT
         notif.sent_at = self._clock()
         notif.error_message = None
         stats["sent"] += 1
+        self._record(notif, "ok")
+
+    async def _attempt_destination(
+        self,
+        notif: AlertNotification,
+        destinations: dict[uuid.UUID, NotificationDestination],
+        stats: dict[str, int],
+    ) -> None:
+        """Deliver one row to its named destination: the v1 body through the pinned sender."""
+        notif.attempts += 1
+        destination_id = destination_target_id(notif.target)
+        row = destinations.get(destination_id) if destination_id is not None else None
+        if row is None or not row.enabled:
+            self._record(notif, "no_destination")
+            self._handle_failure(notif, NotifierError("no_destination", permanent=True), stats)
+            return
+        try:
+            body, headers = build_webhook_v1(
+                notif.payload or {},
+                alert_id=notif.alert_id,
+                transition=notif.transition,
+                destination_id=str(row.id),
+                public_origin=self.settings.public_origin,
+            )
+        except ValueError:
+            # A stored payload that cannot meet the contract will not improve on retry.
+            self._record(notif, "payload_invalid")
+            self._handle_failure(notif, NotifierError("payload_invalid", permanent=True), stats)
+            return
+        try:
+            result, http_status = await destination_sender.send_to_destination(
+                row,
+                body,
+                headers,
+                resolver=self._destination_resolver,
+                transport_factory=self._destination_transport,
+            )
+        except Exception:  # the text could carry the URL, so only a class is kept
+            self._record(notif, "transport")
+            self._handle_failure(notif, NotifierError("transport"), stats)
+            return
+        self._record(notif, result, http_status)
+        if result == "ok":
+            notif.status = NotificationStatus.SENT
+            notif.sent_at = self._clock()
+            notif.error_message = None
+            stats["sent"] += 1
+            return
+        # Class and status only: never the URL, the response body, a header or the secret.
+        message = result if http_status is None else f"{result} {http_status}"
+        permanent = result in _PERMANENT_STATUS_CLASSES or (
+            result == "http_status"
+            and http_status is not None
+            and http_status != 429
+            and http_status < 500
+        )
+        self._handle_failure(notif, NotifierError(message, permanent=permanent), stats)
 
     def _handle_failure(
         self, notif: AlertNotification, exc: NotifierError, stats: dict[str, int]
