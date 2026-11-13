@@ -211,6 +211,21 @@ _BODIES: dict[tuple[str, str], dict] = {
     },
     ("PUT", "/api/v1/users/{user_id}/roles"): {"roles": []},
     ("POST", "/api/v1/users/{user_id}/reset-password"): {"password": "guard-password-12"},
+    # Named webhook administration is mounted behind admin:notifications. Valid bodies
+    # ensure a 422 cannot hide a missing permission on create or patch.
+    ("POST", "/api/v1/admin/notifications/destinations"): {
+        "name": "guard",
+        "url": "https://example.com/hook",
+    },
+    ("PATCH", "/api/v1/admin/notifications/destinations/{destination_id}"): {
+        "enabled": False,
+    },
+    ("POST", "/api/v1/admin/notifications/rules"): {
+        "name": "guard",
+        "min_severity": "HIGH",
+        "destination_ids": ["00000000-0000-0000-0000-000000000001"],
+    },
+    ("PATCH", "/api/v1/admin/notifications/rules/{rule_id}"): {"enabled": False},
     # History backfill: the three writes check `admin:history_backfill` in the
     # handler, after body validation, so the guard needs a body that passes it.
     ("PUT", "/api/v1/admin/history-backfill/{instance_id}"): {"answer": "YES"},

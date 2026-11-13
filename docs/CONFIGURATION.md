@@ -653,6 +653,7 @@ read them there.
 | `SITE_NAME` | `QRadar Behavior Analytics` | The site's name, available to e-mail templates as `{{ site.name }}` |
 | `DIGEST_HOUR_UTC` | `7` | UTC hour (`0`–`23`) after which each instance's daily digest may run. The beat ticks every 300 s; the task gates the hour and records one `alert_digest_run` row per instance and date, so a repeat is a no-op |
 | `RATE_LIMIT_EMAIL_TEST` | `5/minute` | Limit on the admin "send a test message" action, which spends a real delivery |
+| `RATE_LIMIT_WEBHOOK_TEST` | `5/minute` | Limit on the admin "send a test webhook" action, which spends a real delivery |
 | `RATE_LIMIT_ACCESS_CHECK` | `2/minute` | Limit on the admin "check QRadar access now" action, which sends about a dozen reads and one search to each console |
 
 ## LLM interface

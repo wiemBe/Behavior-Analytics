@@ -855,6 +855,53 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "email.test.auth_failed",
         "The relay rejected the sign-in. Check SMTP_USERNAME and SMTP_PASSWORD.",
     ),
+    # Named generic-webhook destinations (SOC-12b). Values are deliberately absent:
+    # an API refusal may name a destination or header, never its URL, secret or value.
+    _fixed(
+        "notifications.url_invalid",
+        "The destination URL must have a valid HTTP or HTTPS host and no credentials.",
+    ),
+    _fixed(
+        "notifications.private_refused",
+        "The destination resolves to a non-public address. Enable private addresses only "
+        "for an endpoint the site administrator trusts.",
+    ),
+    _fixed(
+        "notifications.http_refused",
+        "The destination uses HTTP. Enable HTTP only for an endpoint the site administrator "
+        "trusts.",
+    ),
+    _fixed("notifications.limit", "This site already has the maximum of 10 destinations."),
+    _fixed("notifications.destination_unknown", "The notification destination was not found."),
+    _text(
+        "notifications.name_taken",
+        "A notification destination named {name} already exists.",
+        name="SOAR",
+    ),
+    # Notification routing rules (SOC-12c).
+    _fixed("notifications.rule_limit", "This site already has the maximum of 50 rules."),
+    _fixed("notifications.rule_unknown", "The notification rule was not found."),
+    _text(
+        "notifications.rule_name_taken",
+        "A notification rule named {name} already exists.",
+        name="Critical to SOAR",
+    ),
+    _fixed(
+        "notifications.rule_window_invalid",
+        "The time window needs both a start and an end between 0 and 1439 minutes after "
+        "00:00 UTC, and they must differ.",
+    ),
+    _text(
+        "notifications.destination_in_use",
+        "The destination {name} is used by a notification rule. Remove it from the rule first.",
+        name="SOAR",
+    ),
+    _fixed("notifications.test_ok", "The destination accepted the test webhook."),
+    _text(
+        "notifications.test_failed",
+        "The test webhook was not accepted. Result: {failure_class}.",
+        failure_class="transport",
+    ),
     _fixed(
         "email.test.recipient_refused",
         "The relay refused the recipient address.",

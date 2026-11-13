@@ -7549,6 +7549,129 @@
     "sample_english_params": {},
     "template": "the direction was disabled by a tuning change"
   },
+  "notifications.destination_in_use": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "SOAR"
+    },
+    "sample_english": "The destination SOAR is used by a notification rule. Remove it from the rule first.",
+    "sample_english_params": {
+      "name": "SOAR"
+    },
+    "template": "The destination {name} is used by a notification rule. Remove it from the rule first."
+  },
+  "notifications.destination_unknown": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The notification destination was not found.",
+    "sample_english_params": {},
+    "template": "The notification destination was not found."
+  },
+  "notifications.http_refused": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The destination uses HTTP. Enable HTTP only for an endpoint the site administrator trusts.",
+    "sample_english_params": {},
+    "template": "The destination uses HTTP. Enable HTTP only for an endpoint the site administrator trusts."
+  },
+  "notifications.limit": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This site already has the maximum of 10 destinations.",
+    "sample_english_params": {},
+    "template": "This site already has the maximum of 10 destinations."
+  },
+  "notifications.name_taken": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "SOAR"
+    },
+    "sample_english": "A notification destination named SOAR already exists.",
+    "sample_english_params": {
+      "name": "SOAR"
+    },
+    "template": "A notification destination named {name} already exists."
+  },
+  "notifications.private_refused": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The destination resolves to a non-public address. Enable private addresses only for an endpoint the site administrator trusts.",
+    "sample_english_params": {},
+    "template": "The destination resolves to a non-public address. Enable private addresses only for an endpoint the site administrator trusts."
+  },
+  "notifications.rule_limit": {
+    "params": {},
+    "sample": {},
+    "sample_english": "This site already has the maximum of 50 rules.",
+    "sample_english_params": {},
+    "template": "This site already has the maximum of 50 rules."
+  },
+  "notifications.rule_name_taken": {
+    "params": {
+      "name": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "name": "Critical to SOAR"
+    },
+    "sample_english": "A notification rule named Critical to SOAR already exists.",
+    "sample_english_params": {
+      "name": "Critical to SOAR"
+    },
+    "template": "A notification rule named {name} already exists."
+  },
+  "notifications.rule_unknown": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The notification rule was not found.",
+    "sample_english_params": {},
+    "template": "The notification rule was not found."
+  },
+  "notifications.rule_window_invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The time window needs both a start and an end between 0 and 1439 minutes after 00:00 UTC, and they must differ.",
+    "sample_english_params": {},
+    "template": "The time window needs both a start and an end between 0 and 1439 minutes after 00:00 UTC, and they must differ."
+  },
+  "notifications.test_failed": {
+    "params": {
+      "failure_class": {
+        "kind": "text"
+      }
+    },
+    "sample": {
+      "failure_class": "transport"
+    },
+    "sample_english": "The test webhook was not accepted. Result: transport.",
+    "sample_english_params": {
+      "failure_class": "transport"
+    },
+    "template": "The test webhook was not accepted. Result: {failure_class}."
+  },
+  "notifications.test_ok": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The destination accepted the test webhook.",
+    "sample_english_params": {},
+    "template": "The destination accepted the test webhook."
+  },
+  "notifications.url_invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The destination URL must have a valid HTTP or HTTPS host and no credentials.",
+    "sample_english_params": {},
+    "template": "The destination URL must have a valid HTTP or HTTPS host and no credentials."
+  },
   "propertywatch.action.change_pins": {
     "params": {},
     "sample": {},
