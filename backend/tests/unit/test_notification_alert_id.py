@@ -31,6 +31,7 @@ from app.security.redaction import redact
 pytestmark = pytest.mark.asyncio
 
 ALERT_ID = uuid.UUID("0c2792c2-d687-41d7-9c9d-8d5688c2696d")
+SOURCE_ID = uuid.UUID("5a6b7c8d-90e1-4f2a-8b3c-4d5e6f708192")
 
 
 def _notification() -> AlertNotification:
@@ -93,3 +94,68 @@ async def test_the_message_and_syslog_line_use_the_real_id(monkeypatch) -> None:
     monkeypatch.setattr("socket.socket", lambda *a, **k: FakeSock())
     await SyslogNotifier().send("logs.internal:514", message)
     assert b"redacted" not in sent[0]
+
+
+async def test_the_render_is_additive_and_freezes_the_v1_inputs() -> None:
+    """SOC-12a. Every older key keeps its name and value, so the channels that read
+    this payload today send the same bytes; the new keys are the versioned webhook's
+    frozen inputs, stored in a form ``redact`` leaves alone."""
+    opened = datetime(2026, 11, 13, 9, 0, tzinfo=UTC)
+    acknowledged = datetime(2026, 11, 13, 9, 14, tzinfo=UTC)
+    resolved = datetime(2026, 11, 13, 10, 2, tzinfo=UTC)
+    alert = Alert(
+        id=ALERT_ID, dedup_key="anomaly:abc", fingerprint="anomaly:abc",
+        title="Volume drop on proxy-04", description="Events fell below the band.",
+        severity=Severity.HIGH, status=AlertStatus.RESOLVED, source_type="waf_endpoint",
+        source_id=SOURCE_ID, opened_at=opened, first_seen_at=opened, occurrence_count=4,
+        context={"instance": "qradar-lab"},
+        evidence_snapshot={"reason": "below band", "observed_value": 3.0},
+        acknowledged_at=acknowledged, acknowledged_by="security-operations-lead",
+        resolved_at=resolved, resolved_by="system:waf-anomaly-engine",
+        resolution_reason="scanned by the analyst",
+        resolution_reason_i18n={"code": "alert.resolution.false_positive", "params": {}},
+    )
+    dispatcher = NotificationDispatcher(None, {}, RoutingPolicy())  # type: ignore[arg-type]
+    payload = dispatcher._render(alert, AlertTransition.RESOLVED)
+
+    assert payload == {
+        # Pre-existing keys, unchanged.
+        "title": "Volume drop on proxy-04",
+        "body": "Events fell below the band.",
+        "severity": "HIGH",
+        "transition": "RESOLVED",
+        "alert_id": str(ALERT_ID),
+        "fingerprint": "anomaly:abc",
+        "alert_type": "waf_endpoint",
+        "opened_at": "2026-11-13T09:00:00+00:00",
+        "instance": "qradar-lab",
+        "fields": {
+            "occurrences": 4,
+            "first_seen": "2026-11-13T09:00:00+00:00",
+            "reason": "below band",
+            "observed_value": 3.0,
+        },
+        # SOC-12a additions.
+        "family": "waf",
+        "source_id": f"urn:uuid:{SOURCE_ID}",
+        "status": "RESOLVED",
+        "acknowledged_at": "2026-11-13T09:14:00+00:00",
+        "acknowledged_by": "principal:security-operations-lead",
+        "resolved_at": "2026-11-13T10:02:00+00:00",
+        "resolved_by": "principal:system:waf-anomaly-engine",
+        "resolution_reason_code": "alert.resolution.false_positive",
+    }
+    # The code only: the resolution's free text is not part of the payload.
+    assert "resolution_reason" not in payload
+
+    stored = redact(payload)
+    # `alert_id` was always masked; the new inputs survive to delivery time.
+    assert stored["alert_id"] == "***redacted***"
+    assert stored["source_id"] == f"urn:uuid:{SOURCE_ID}"
+    assert stored["family"] == "waf"
+    assert stored["status"] == "RESOLVED"
+    assert stored["acknowledged_at"] == "2026-11-13T09:14:00+00:00"
+    assert stored["acknowledged_by"] == "principal:security-operations-lead"
+    assert stored["resolved_at"] == "2026-11-13T10:02:00+00:00"
+    assert stored["resolved_by"] == "principal:system:waf-anomaly-engine"
+    assert stored["resolution_reason_code"] == "alert.resolution.false_positive"
