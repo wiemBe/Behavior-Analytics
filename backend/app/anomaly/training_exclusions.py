@@ -182,6 +182,28 @@ async def revoke(
     return RevokeResult(row=row, changed=True)
 
 
+async def find_active_exact(
+    session: AsyncSession,
+    *,
+    subject_kind: str,
+    subject_id: uuid.UUID,
+    scope_key: str,
+    starts_at: datetime,
+    ends_at: datetime,
+) -> BaselineTrainingExclusion | None:
+    """The active row with exactly these bounds, for the re-read after a lost race."""
+    return await session.scalar(
+        select(BaselineTrainingExclusion).where(
+            BaselineTrainingExclusion.subject_kind == subject_kind,
+            BaselineTrainingExclusion.subject_id == subject_id,
+            BaselineTrainingExclusion.scope_key == scope_key,
+            BaselineTrainingExclusion.starts_at == starts_at,
+            BaselineTrainingExclusion.ends_at == ends_at,
+            BaselineTrainingExclusion.revoked_at.is_(None),
+        )
+    )
+
+
 def coalesce(spans: Sequence[Span]) -> list[Span]:
     """Merge overlapping or touching half-open spans, sorted by start."""
     merged: list[Span] = []

@@ -223,6 +223,16 @@ _BODIES: dict[tuple[str, str], dict] = {
     ("POST", "/api/v1/anomalies/triage/{family}/{anomaly_id}/comments"): {
         "text": "guard",
     },
+    # SOC-13b training exclusions: both writes check `anomaly:triage` in the handler,
+    # after body validation, so the bodies must pass for the 403 to be reached.
+    ("POST", "/api/v1/anomalies/{family}/{anomaly_id}/training-exclusions"): {
+        "starts_at": "2026-11-04T08:00:00+00:00",
+        "ends_at": "2026-11-04T10:00:00+00:00",
+        "reason": "guard",
+    },
+    ("POST", "/api/v1/behavior/training-exclusions/{exclusion_id}/revoke"): {
+        "reason": "guard",
+    },
     # SOC-17d. Both suppress writes check `alert:suppress` in the handler, after
     # body validation. A missing duration or reason is a 422 and would hide a
     # missing guard. The end route takes no body.

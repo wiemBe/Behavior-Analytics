@@ -2091,6 +2091,94 @@
     "sample_english_params": {},
     "template": "username must be 1 to 255 characters without spaces or control characters"
   },
+  "baseline_exclusion.already_protected": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the interval is already excluded automatically",
+    "sample_english_params": {},
+    "template": "the interval is already excluded automatically"
+  },
+  "baseline_exclusion.anomaly_active": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the anomaly is still active; an interval can be excluded only after it is resolved",
+    "sample_english_params": {},
+    "template": "the anomaly is still active; an interval can be excluded only after it is resolved"
+  },
+  "baseline_exclusion.family_unsupported": {
+    "params": {},
+    "sample": {},
+    "sample_english": "training exclusions are not supported for this anomaly family",
+    "sample_english_params": {},
+    "template": "training exclusions are not supported for this anomaly family"
+  },
+  "baseline_exclusion.interval_invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the interval must be in UTC, aligned to the bucket width, and start before it ends",
+    "sample_english_params": {},
+    "template": "the interval must be in UTC, aligned to the bucket width, and start before it ends"
+  },
+  "baseline_exclusion.interval_not_widened": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the interval must cover the whole detected incident span; it can only be widened",
+    "sample_english_params": {},
+    "template": "the interval must cover the whole detected incident span; it can only be widened"
+  },
+  "baseline_exclusion.interval_too_long": {
+    "params": {
+      "max": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "max": 7
+    },
+    "sample_english": "the interval must not be longer than 7 days",
+    "sample_english_params": {
+      "max": "7"
+    },
+    "template": "the interval must not be longer than {max} days"
+  },
+  "baseline_exclusion.limit_reached": {
+    "params": {
+      "max": {
+        "kind": "count",
+        "style": "plain"
+      }
+    },
+    "sample": {
+      "max": 50
+    },
+    "sample_english": "this baseline already has 50 active exclusions in its lookback",
+    "sample_english_params": {
+      "max": "50"
+    },
+    "template": "this baseline already has {max} active exclusions in its lookback"
+  },
+  "baseline_exclusion.not_found": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the training exclusion was not found",
+    "sample_english_params": {},
+    "template": "the training exclusion was not found"
+  },
+  "baseline_exclusion.overlap": {
+    "params": {},
+    "sample": {},
+    "sample_english": "the interval partly overlaps an active exclusion for the same baseline",
+    "sample_english_params": {},
+    "template": "the interval partly overlaps an active exclusion for the same baseline"
+  },
+  "baseline_exclusion.reason_invalid": {
+    "params": {},
+    "sample": {},
+    "sample_english": "a reason of 1 to 1000 characters is required",
+    "sample_english_params": {},
+    "template": "a reason of 1 to 1000 characters is required"
+  },
   "classification.rule.built_in_delete": {
     "params": {},
     "sample": {},

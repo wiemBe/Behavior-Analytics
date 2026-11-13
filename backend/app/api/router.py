@@ -40,6 +40,7 @@ from app.api.routes import (
     search_cadence,
     searches,
     suppressions,
+    training_exclusions,
     users,
     version,
     waf,
@@ -146,6 +147,13 @@ api_router.include_router(
 )
 api_router.include_router(
     anomalies.behavior_router, dependencies=[Depends(requires(PERM_ANOMALY_READ))]
+)
+# SOC-13b: create and revoke add `anomaly:triage` in their handlers.
+api_router.include_router(
+    training_exclusions.anomaly_router, dependencies=[Depends(requires(PERM_ANOMALY_READ))]
+)
+api_router.include_router(
+    training_exclusions.behavior_router, dependencies=[Depends(requires(PERM_ANOMALY_READ))]
 )
 # SOC-16: the entity timeline exposes the same bounded contributor evidence as
 # the anomaly investigation surface. Individual offense and fleet lanes apply
