@@ -41,6 +41,7 @@
     "siemLoad": "SIEM load",
     "qradarAccess": "QRadar access",
     "alertEmail": "Alert e-mail",
+    "notificationRouting": "Notification routing",
     "users": "Users",
     "directory": "Directory",
     "adminOverview": "Administration overview",

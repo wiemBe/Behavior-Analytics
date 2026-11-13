@@ -58,6 +58,7 @@ describe("NAV", () => {
       { href: "/admin/siem-load", label: "SIEM load", permission: "admin:*" },
       { href: "/admin/qradar-access", label: "QRadar access", permission: "admin:*" },
       { href: "/admin/email", label: "Alert e-mail", permission: "admin:notifications" },
+      { href: "/admin/notifications", label: "Notification routing", permission: "admin:notifications" },
       { href: "/admin/users", label: "Users", permission: "admin:users" },
       { href: "/admin/directory", label: "Directory", permission: "admin:auth" },
     ]);

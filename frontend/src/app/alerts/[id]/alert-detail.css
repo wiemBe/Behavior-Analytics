@@ -54,3 +54,49 @@ td.cell-error {
   gap: var(--sp-1) var(--sp-4);
   font-variant-numeric: tabular-nums;
 }
+
+/* The target is a label from the API (destination name, scheme://host or mailbox), never a URL. It
+   breaks only at the <wbr> points after "://", "." and "@", never inside a word. */
+td.cell-target {
+  min-width: 10ch;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+/* The attempts sit on a row of their own under each notification, across every column, so the
+   table needs no inner horizontal scroll at 1024 px. */
+.delivery-table tr.notification-row td {
+  border-bottom: 0;
+}
+.delivery-table tr.attempt-row td {
+  padding-top: 0;
+  font-size: var(--fs-sm);
+}
+.attempt-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--sp-3);
+  font-variant-numeric: tabular-nums;
+}
+.attempt-label {
+  color: var(--text-3);
+}
+.attempt-line code,
+.delivery-table time {
+  white-space: nowrap;
+}
+.attempt-log {
+  margin-top: var(--sp-1);
+}
+.attempt-log summary {
+  cursor: pointer;
+  color: var(--link);
+}
+.attempt-log ol {
+  margin: var(--sp-2) 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--sp-1);
+}

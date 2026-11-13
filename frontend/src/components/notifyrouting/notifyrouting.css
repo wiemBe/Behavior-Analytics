@@ -1,0 +1,195 @@
+/* The notification routing page. Built from tokens only; tables, pills, banners, notices and
+ * buttons are the shared ones. */
+
+.nr-page {
+  display: grid;
+  gap: var(--sp-8);
+  min-width: 0;
+}
+.nr-section {
+  display: grid;
+  gap: var(--sp-4);
+  align-content: start;
+  min-width: 0;
+}
+/* `.main h2` carries a section margin of its own; the sections are spaced by their grid. */
+.nr-page .nr-h {
+  margin: 0;
+}
+.nr-page .nr-h3 {
+  margin: 0;
+  font-size: var(--fs-base);
+}
+.nr-hint {
+  margin: 0;
+  max-width: var(--admin-form-max);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+}
+.nr-current {
+  color: var(--text);
+}
+.nr-mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+.nr-code-line {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+.nr-table th,
+.nr-table td {
+  padding: var(--sp-3);
+  vertical-align: top;
+}
+.nr-table td.num {
+  white-space: normal;
+}
+.nr-pill {
+  margin-left: var(--sp-2);
+}
+.nr-flags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+  justify-items: start;
+  font-size: var(--fs-sm);
+}
+/* Three buttons wrap onto a second line in a narrow column instead of being cut off. */
+.nr-actions {
+  min-width: 11rem;
+  text-align: right;
+}
+.nr-actions .action {
+  margin: 0 0 var(--sp-2) var(--sp-2);
+}
+.nr-lines {
+  margin: var(--sp-2) 0 0;
+  padding-left: var(--sp-5);
+}
+
+.nr-form {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+  max-width: var(--admin-form-max);
+}
+.nr-field {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.nr-field label,
+.nr-fieldset legend {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+}
+.nr-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--target-min);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.nr-field-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+.nr-field-inline .nr-hint {
+  flex: 1 1 100%;
+}
+.nr-form input.nr-narrow {
+  width: 8rem;
+  flex: 0 0 auto;
+}
+.nr-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.nr-check input {
+  margin-top: var(--sp-1);
+}
+.nr-check label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+.nr-flag-field {
+  display: grid;
+  gap: var(--sp-1);
+}
+.nr-fieldset {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.nr-fieldset legend {
+  padding: 0;
+  margin-bottom: var(--sp-1);
+}
+.nr-radio {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--target-min);
+  font-size: var(--fs-sm);
+}
+.nr-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: var(--sp-1) var(--sp-4);
+}
+.nr-window {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+.nr-window label {
+  font-size: var(--fs-sm);
+}
+.nr-window input {
+  min-height: var(--target-min);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.nr-utc {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+.nr-headers {
+  display: grid;
+  gap: var(--sp-2);
+}
+.nr-header-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--sp-2);
+}
+.nr-header-row input {
+  min-width: 0;
+  min-height: var(--target-min);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.nr-field-error {
+  margin: 0;
+  color: var(--crit-text);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+}

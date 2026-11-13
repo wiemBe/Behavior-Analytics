@@ -163,6 +163,7 @@ describe("administration hub", () => {
       "SIEM load",
       "QRadar access",
       "Alert e-mail",
+      "Notification routing",
       "Users",
       "Directory",
     ]);
@@ -192,6 +193,30 @@ describe("administration hub", () => {
         </StaticSession>,
       );
       expect(screen.queryByRole("link", { name: "Alert e-mail" })).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("lists Notification routing for admin:notifications and admin:*, never for read:* or another admin permission", () => {
+    for (const permissions of [["admin:notifications"], ["admin:*"]]) {
+      const { unmount } = render(
+        <StaticSession value={ready(permissions)}>
+          <AdminPage />
+        </StaticSession>,
+      );
+      expect(screen.getByRole("link", { name: "Notification routing" })).toHaveAttribute(
+        "href",
+        "/admin/notifications",
+      );
+      unmount();
+    }
+    for (const permissions of [["read:*"], ["admin:users"], ["admin:auth"]]) {
+      const { unmount } = render(
+        <StaticSession value={ready(permissions)}>
+          <AdminPage />
+        </StaticSession>,
+      );
+      expect(screen.queryByRole("link", { name: "Notification routing" })).not.toBeInTheDocument();
       unmount();
     }
   });

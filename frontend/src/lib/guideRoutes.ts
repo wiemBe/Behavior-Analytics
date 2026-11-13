@@ -71,6 +71,7 @@ export const GUIDE_EXCLUDED: Readonly<Record<string, string>> = {
   "/admin": "The administration index: the route map gives it no section.",
   "/guide": "The Guide's own index.",
   "/queue": "The queue has no Guide section yet; its page states what each label means.",
+  "/admin/notifications": "The Guide section notification-routing comes with SOC-12g; move this page into the route map then.",
   "/guide/[section]": "A Guide section: it is the destination of the links.",
   "/account/password": "Omitted by the route map: the password change belongs to the Account section.",
 };
