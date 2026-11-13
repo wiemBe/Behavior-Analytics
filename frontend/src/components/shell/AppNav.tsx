@@ -191,6 +191,7 @@ function itemLabel(href: string, fallback: string, t: NavTranslator): string {
     case "/admin/siem-load": return t("siemLoad");
     case "/admin/qradar-access": return t("qradarAccess");
     case "/admin/email": return t("alertEmail");
+    case "/admin/notifications": return t("notificationRouting");
     case "/admin/users": return t("users");
     case "/admin/directory": return t("directory");
     case "/guide": return t("guide");

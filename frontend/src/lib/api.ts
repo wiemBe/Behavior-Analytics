@@ -995,6 +995,15 @@ export interface Notification {
   next_attempt_at: string | null;
   sent_at: string | null;
   error_message: string | null;
+  /** SOC-12e: newest first, at most eight; the class and status only, never a body or a URL. */
+  attempt_log?: NotificationAttempt[];
+}
+
+export interface NotificationAttempt {
+  attempted_at: string;
+  http_status: number | null;
+  /** `ok`, `http_status`, `transport`, `timeout`, `redirect_refused`, `ssrf_refused`, ... */
+  error_class: string;
 }
 
 // --- Phase 3 types ---------------------------------------------------------
@@ -5382,6 +5391,131 @@ export const mailAdminApi = {
     ),
   removeRecipient: (id: string, signal?: AbortSignal) =>
     request<void>(`/admin/email/recipients/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      signal,
+    }),
+};
+
+// --- Notification routing (SOC-12b/c) ---------------------------------------------------------
+// Mirrors `app/schemas/notification_destination.py` and `notification_rule.py`. Both need
+// `admin:notifications`. A destination never carries its URL path, secret or header values: only
+// `url_display` (scheme://host), `secret_set` and the header names come back.
+export interface NotificationDestination {
+  id: string;
+  name: string;
+  enabled: boolean;
+  url_display: string;
+  allow_http: boolean;
+  allow_private: boolean;
+  secret_set: boolean;
+  header_names: string[];
+  last_test_at: string | null;
+  last_test_status: number | null;
+  last_test_class: string | null;
+  created_by: string;
+  created_at: string;
+  updated_by: string;
+  updated_at: string;
+}
+
+/** `hmac_secret` and `headers` are write-only: absent keeps, `null` (secret) clears. */
+export interface DestinationBody {
+  name?: string;
+  enabled?: boolean;
+  url?: string;
+  allow_http?: boolean;
+  allow_private?: boolean;
+  hmac_secret?: string | null;
+  headers?: Record<string, string>;
+}
+
+export type DestinationTestClass =
+  | "ok"
+  | "transport"
+  | "timeout"
+  | "http_status"
+  | "ssrf_refused"
+  | "redirect_refused"
+  | "payload_invalid";
+
+export interface DestinationTestResult {
+  ok: boolean;
+  status: number | null;
+  result: DestinationTestClass;
+  outcome: { code: string; params: Record<string, unknown>; message: string };
+}
+
+export type RuleSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+
+export interface NotificationRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  min_severity: RuleSeverity;
+  families: string[] | null;
+  owners: string[] | null;
+  source_classes: string[] | null;
+  group_ids: number[] | null;
+  window_start_minute: number | null;
+  window_end_minute: number | null;
+  destinations: { id: string; name: string }[];
+  stop_default: boolean;
+  created_by: string;
+  created_at: string;
+  updated_by: string;
+  updated_at: string;
+}
+
+export interface RuleBody {
+  name?: string;
+  enabled?: boolean;
+  priority?: number;
+  min_severity?: RuleSeverity;
+  families?: string[] | null;
+  owners?: string[] | null;
+  source_classes?: string[] | null;
+  group_ids?: number[] | null;
+  window_start_minute?: number | null;
+  window_end_minute?: number | null;
+  destination_ids?: string[];
+  stop_default?: boolean;
+}
+
+export const notificationRoutingApi = {
+  destinations: (signal?: AbortSignal) =>
+    request<NotificationDestination[]>("/admin/notifications/destinations", { signal }),
+  createDestination: (body: DestinationBody, signal?: AbortSignal) =>
+    request<NotificationDestination>(
+      "/admin/notifications/destinations",
+      jsonBody("POST", body, signal),
+    ),
+  saveDestination: (id: string, body: DestinationBody, signal?: AbortSignal) =>
+    request<NotificationDestination>(
+      `/admin/notifications/destinations/${encodeURIComponent(id)}`,
+      jsonBody("PATCH", body, signal),
+    ),
+  deleteDestination: (id: string, signal?: AbortSignal) =>
+    request<void>(`/admin/notifications/destinations/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      signal,
+    }),
+  testDestination: (id: string, signal?: AbortSignal) =>
+    request<DestinationTestResult>(
+      `/admin/notifications/destinations/${encodeURIComponent(id)}/test`,
+      { method: "POST", signal },
+    ),
+  rules: (signal?: AbortSignal) =>
+    request<NotificationRule[]>("/admin/notifications/rules", { signal }),
+  createRule: (body: RuleBody, signal?: AbortSignal) =>
+    request<NotificationRule>("/admin/notifications/rules", jsonBody("POST", body, signal)),
+  saveRule: (id: string, body: RuleBody, signal?: AbortSignal) =>
+    request<NotificationRule>(
+      `/admin/notifications/rules/${encodeURIComponent(id)}`,
+      jsonBody("PATCH", body, signal),
+    ),
+  deleteRule: (id: string, signal?: AbortSignal) =>
+    request<void>(`/admin/notifications/rules/${encodeURIComponent(id)}`, {
       method: "DELETE",
       signal,
     }),

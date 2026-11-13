@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment, type ReactNode } from "react";
 import { AlertActions } from "@/components/AlertActions";
 import { SuppressionBlock } from "@/components/alerts/SuppressionBlock";
 import { alertTarget } from "@/lib/suppression";
@@ -9,7 +10,7 @@ import { pivotReads } from "@/lib/pivot";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { api, sevTone, type Notification } from "@/lib/api";
+import { api, sevTone, type Notification, type NotificationAttempt } from "@/lib/api";
 import { formatCount } from "@/lib/format";
 import { axisTimeLabel } from "@/lib/searchRuns";
 import { UtcTime } from "@/components/ui/UtcTime";
@@ -28,6 +29,23 @@ function notifTone(status: string): string {
   if (status === "DEAD_LETTER") return "crit";
   if (status === "FAILED") return "warn";
   return "";
+}
+
+/** A host label may break after "://", "." and "@", never inside a word. */
+function breakableLabel(label: string): ReactNode {
+  const parts = label.split(/(?<=:\/\/|[.@])/);
+  return parts.map((part, index) => (
+    <Fragment key={index}>
+      {index > 0 ? <wbr /> : null}
+      {part}
+    </Fragment>
+  ));
+}
+
+function attemptResult(attempt: NotificationAttempt): string {
+  return attempt.http_status === null
+    ? attempt.error_class
+    : `${attempt.error_class} ${attempt.http_status}`;
 }
 
 export async function generateMetadata() {
@@ -173,6 +191,7 @@ async function AlertDetailPage({
             <thead>
               <tr>
                 <th>{t("channel")}</th>
+                <th>{t("target")}</th>
                 <th>{t("transition")}</th>
                 <th>{t("status")}</th>
                 <th className="num">{t("attempts")}</th>
@@ -182,9 +201,13 @@ async function AlertDetailPage({
               </tr>
             </thead>
             <tbody>
-              {notifications.map((n) => (
-                <tr key={n.id}>
+              {notifications.map((n) => {
+                const log = n.attempt_log ?? [];
+                return (
+                <Fragment key={n.id}>
+                <tr className="notification-row">
                   <td>{enumLabel(say, "notificationChannel", n.channel)}</td>
+                  <td className="cell-target">{breakableLabel(n.target)}</td>
                   <td>{enumLabel(say, "alertTransition", n.transition)}</td>
                   <td><span className={`pill ${notifTone(n.status)}`}>{enumLabel(say, "notificationStatus", n.status)}</span></td>
                   <td className="num">{t("attemptCount", {
@@ -195,7 +218,37 @@ async function AlertDetailPage({
                   <td className="nowrap">{axisTimeLabel(n.next_attempt_at)}</td>
                   <td className="cell-error">{n.error_message ?? "—"}</td>
                 </tr>
-              ))}
+                <tr className="attempt-row">
+                  <td colSpan={8}>
+                    {log.length === 0 ? (
+                      <span className="muted">{t("noAttempt")}</span>
+                    ) : (
+                      <>
+                        <span className="attempt-line">
+                          <span className="attempt-label">{t("lastAttempt")}</span>{" "}
+                          <code>{attemptResult(log[0])}</code>{" "}
+                          <UtcTime value={log[0].attempted_at} variant="compact" />
+                        </span>
+                        {log.length > 1 ? (
+                          <details className="attempt-log">
+                            <summary>{t("allAttempts", { count: log.length })}</summary>
+                            <ol aria-label={t("attemptsListLabel")}>
+                              {log.slice(0, 8).map((a, index) => (
+                                <li key={`${a.attempted_at}-${index}`} className="attempt-line">
+                                  <code>{attemptResult(a)}</code>{" "}
+                                  <UtcTime value={a.attempted_at} variant="compact" />
+                                </li>
+                              ))}
+                            </ol>
+                          </details>
+                        ) : null}
+                      </>
+                    )}
+                  </td>
+                </tr>
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </TableScroll>

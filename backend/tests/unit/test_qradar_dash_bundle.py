@@ -54,6 +54,7 @@ BUNDLE_DOCUMENTS = [
     "docs/CONFIGURATION.md",
     "docs/SEARCH-CADENCE.md",
     "docs/OPERATIONS-DESIGN.md",
+    "docs/WEBHOOK-PAYLOAD.md",
 ]
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="bash is required")

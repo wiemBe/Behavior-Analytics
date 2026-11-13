@@ -83,7 +83,7 @@ bundle options
                     clean git work tree or an image's version/revision label does not match.
   The checkout part also carries the operator documents, so the air-gapped host has them:
   README.md, .env.example, docs/INSTALL.md, docs/OPERATIONS.md, docs/CONFIGURATION.md,
-  docs/SEARCH-CADENCE.md and docs/OPERATIONS-DESIGN.md.
+  docs/SEARCH-CADENCE.md, docs/OPERATIONS-DESIGN.md and docs/WEBHOOK-PAYLOAD.md.
 
 rollback options
   --non-interactive Refuse unless --yes is also present.
@@ -919,7 +919,7 @@ BUNDLE_SERVICES=(postgres backend frontend proxy qradar-mcp)
 # an air-gapped host has no other way to get them.
 BUNDLE_DOCUMENTS=(
   README.md .env.example docs/INSTALL.md docs/OPERATIONS.md docs/CONFIGURATION.md
-  docs/SEARCH-CADENCE.md docs/OPERATIONS-DESIGN.md
+  docs/SEARCH-CADENCE.md docs/OPERATIONS-DESIGN.md docs/WEBHOOK-PAYLOAD.md
 )
 
 bundle_image_refs() { # bundle_image_refs PREFIX VERSION -> the image references, one per line

@@ -47,6 +47,7 @@
     "siem-load": "SIEM load",
     "qradar-access": "QRadar access",
     "alert-email": "Alert e-mail",
+    "notification-routing": "Notification routing",
     "users-and-directory": "Users and directory sign-in"
   }
 }

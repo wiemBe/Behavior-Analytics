@@ -117,7 +117,8 @@ It pulls seven images: `postgres`, `backend`, `frontend`, `proxy` and `qradar-mc
 digest. It writes `qradar-dash-<version>-bundle.tar`: `images.tar`, `SHA256SUMS`,
 `MANIFEST` (each image reference and its local image ID), `VERSION`, `docs/releases/<version>.md`,
 the operator documents (`README.md`, `.env.example`, `docs/INSTALL.md`, `docs/OPERATIONS.md`,
-`docs/CONFIGURATION.md`, `docs/SEARCH-CADENCE.md`, `docs/OPERATIONS-DESIGN.md`), `qradar-dash`,
+`docs/CONFIGURATION.md`, `docs/SEARCH-CADENCE.md`, `docs/OPERATIONS-DESIGN.md`,
+`docs/WEBHOOK-PAYLOAD.md`), `qradar-dash`,
 `docker-compose.yml`, `docker-compose.prod.yml` and `deploy/`. It never contains
 `.env`, `.secrets/` or `docker-compose.override.yml`. The file is written under a temporary name and
 moved into place, so a failure leaves no partial bundle, and an existing bundle is never overwritten.

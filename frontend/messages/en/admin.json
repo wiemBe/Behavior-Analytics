@@ -48,6 +48,10 @@
       "name": "Alert e-mail",
       "description": "What an alert e-mail looks like, who receives it, and whether the relay accepts it"
     },
+    "notificationRouting": {
+      "name": "Notification routing",
+      "description": "Which alerts go to which webhook, and where each webhook points"
+    },
     "users": {
       "name": "Users",
       "description": "Who can sign in, and the roles an administrator assigned"

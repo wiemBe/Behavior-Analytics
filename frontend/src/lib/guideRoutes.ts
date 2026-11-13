@@ -59,6 +59,7 @@ export const GUIDE_ROUTES = {
   "/admin/siem-load": "siem-load",
   "/admin/qradar-access": "qradar-access",
   "/admin/email": "alert-email",
+  "/admin/notifications": "notification-routing",
   "/admin/users": "users-and-directory",
   "/admin/directory": "users-and-directory",
 } as const;
