@@ -155,6 +155,39 @@ a {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+/* The label is a disclosure button: text only, a plus or minus sign at the right, no box. */
+.nav-group-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.nav-group-toggle:hover {
+  color: var(--text);
+}
+.nav-group-toggle[aria-disabled="true"] {
+  cursor: default;
+}
+.nav-group-toggle[aria-disabled="true"]:hover {
+  color: inherit;
+}
+.nav-group-state {
+  font-variant-numeric: tabular-nums;
+}
+.nav-list[inert] {
+  display: none;
+}
 .nav-list {
   list-style: none;
   margin: 0;
