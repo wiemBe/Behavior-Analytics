@@ -430,6 +430,65 @@ def test_sha256sums_covers_every_operator_document(producer: Producer) -> None:
         assert hashlib.sha256(files[name]).hexdigest() == sums[name], name
 
 
+def test_a_document_added_to_the_array_is_archived_and_summed(producer: Producer) -> None:
+    """A new top-level document reaches the tar, not only the stage.
+
+    REL-17a copies and sums whatever BUNDLE_DOCUMENTS holds, while the archive listed
+    README.md, .env.example and docs/ by hand: a document added only to the array was
+    summed into the stage and left out of the tar. The two added names also pin exact
+    de-duplication under the script's quoting: a space-separated seen-list treats
+    Notes.md as already present inside Release Notes.md and leaves it out of the tar.
+    """
+    added = ("Release Notes.md", "Notes.md")
+    script = producer.root / "qradar-dash"
+    text = script.read_text()
+    marker = "BUNDLE_DOCUMENTS=(\n"
+    assert marker in text
+    inserted = "".join(f'  "{name}"\n' for name in added)
+    script.write_text(text.replace(marker, f"{marker}{inserted}", 1))
+    for name in added:
+        (producer.root / name).write_text(f"text of {name}\n")
+
+    bundle = producer.make()
+
+    names = members(bundle)
+    for name in added:
+        assert name in names
+        assert names.count(name) == 1
+    # The five docs/ entries share one top-level member; de-duplication keeps it once.
+    assert names.count("docs") == 1
+    with tarfile.open(bundle) as tar:
+        files = {m.name: tar.extractfile(m).read() for m in tar.getmembers() if m.isfile()}
+    for name in added:
+        assert files[name] == f"text of {name}\n".encode()
+    sums = dict(
+        reversed(line.split("  ", 1)) for line in files["SHA256SUMS"].decode().splitlines()
+    )
+    for name in added:
+        assert name in sums, sorted(sums)
+        assert hashlib.sha256(files[name]).hexdigest() == sums[name]
+    # Array order, not a sorted or hash order: the first time each top-level component
+    # appears in the archive.
+    expected_order = [*added, "README.md", ".env.example", "docs"]
+    seen: list[str] = []
+    for name in names:
+        top = name.split("/", 1)[0]
+        if top in expected_order and top not in seen:
+            seen.append(top)
+    assert seen == expected_order
+    for fixed in (
+        "SHA256SUMS",
+        "MANIFEST",
+        "VERSION",
+        "qradar-dash",
+        "docker-compose.yml",
+        "docker-compose.prod.yml",
+        "deploy",
+        "images.tar",
+    ):
+        assert fixed in names, fixed
+
+
 @pytest.mark.parametrize("name", BUNDLE_DOCUMENTS)
 def test_bundle_refuses_a_missing_operator_document_and_writes_nothing(
     producer: Producer, name: str
@@ -441,6 +500,21 @@ def test_bundle_refuses_a_missing_operator_document_and_writes_nothing(
     assert result.returncode == 1
     assert f"bundle refused: {name} is missing from this checkout" in result.stderr
     assert "restore it (git checkout v0.1.0)" in result.stderr
+    assert list(producer.out.iterdir()) == []
+    assert producer.docker_calls() == []  # refused before any pull
+
+
+def test_bundle_refuses_an_empty_document_array(producer: Producer) -> None:
+    script = producer.root / "qradar-dash"
+    text = script.read_text()
+    start = text.index("BUNDLE_DOCUMENTS=(\n")
+    end = text.index("\n)\n", start) + len("\n)\n")
+    script.write_text(text[:start] + "BUNDLE_DOCUMENTS=()\n" + text[end:])
+
+    result = producer.run("bundle", "--output", str(producer.out))
+
+    assert result.returncode == 1
+    assert "BUNDLE_DOCUMENTS in this copy of qradar-dash is empty" in result.stderr
     assert list(producer.out.iterdir()) == []
     assert producer.docker_calls() == []  # refused before any pull
 

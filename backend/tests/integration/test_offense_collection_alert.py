@@ -73,6 +73,23 @@ async def _alerts(maker) -> list[Alert]:  # type: ignore[no-untyped-def]
         return list((await session.scalars(select(Alert).order_by(Alert.source_id))).all())
 
 
+async def _record_successful_run(  # type: ignore[no-untyped-def]
+    maker, instance_id: uuid.UUID
+) -> None:
+    """Update the watermark row in place, the way a successful collector run does."""
+    async with maker() as session:
+        watermark = await session.scalar(
+            select(CollectionWatermark).where(
+                CollectionWatermark.instance_id == instance_id,
+                CollectionWatermark.collector == COLLECTOR_NAME,
+            )
+        )
+        assert watermark is not None
+        watermark.last_run_at = datetime.now(UTC)
+        watermark.consecutive_failures = 0
+        await session.commit()
+
+
 async def test_missing_watermark_inside_the_grace_is_awaiting_first_run(
     task_maker,
 ) -> None:
@@ -165,3 +182,37 @@ async def test_fresh_run_resolves_the_alert(task_maker) -> None:
     alert = (await _alerts(task_maker))[0]
     assert alert.status == AlertStatus.RESOLVED
     assert alert.resolved_by == "system:offense-collection-monitor"
+    assert alert.resolution_reason_code == "alert.offense_collection.recovered"
+
+
+async def test_recovered_watermark_inside_the_grace_is_judged_fresh(task_maker) -> None:
+    """A console inside its first-run window whose collector then succeeds is judged.
+
+    Only a watermark with no run at all is `awaiting_first_run`: once the row carries a
+    run time, freshness is measured however young the console is, so the alert the failing
+    run opened is resolved as a recovery.
+    """
+    # Registered now, so the console is inside offense_stale_after_seconds. The grace
+    # must not apply once this watermark has a run time.
+    instance = await _instance(task_maker, registered_at=datetime.now(UTC))
+    await _watermark(task_maker, instance.id, consecutive_failures=1)
+    first_run = await tasks.detect_stale_offense_collection(instance.name)
+
+    assert first_run["results"][0]["judged"] is True
+    assert first_run["results"][0]["stale"] is True
+    alerts = await _alerts(task_maker)
+    assert len(alerts) == 1
+    assert alerts[0].status == AlertStatus.OPEN
+    assert alerts[0].severity == Severity.HIGH
+
+    await _record_successful_run(task_maker, instance.id)
+    second_run = await tasks.detect_stale_offense_collection(instance.name)
+
+    outcome = second_run["results"][0]
+    assert outcome["judged"] is True
+    assert outcome["stale"] is False
+    alerts = await _alerts(task_maker)
+    assert len(alerts) == 1
+    assert alerts[0].status == AlertStatus.RESOLVED
+    assert alerts[0].resolution_reason_code == "alert.offense_collection.recovered"
+
