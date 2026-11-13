@@ -60,6 +60,7 @@
       "ips": "IPS",
       "property_watch": "Property watch",
       "rule": "Rule match",
+      "identity": "Identity",
       "custom_rule": "Custom rule"
     },
     "customRuleType": "Custom rule breach",

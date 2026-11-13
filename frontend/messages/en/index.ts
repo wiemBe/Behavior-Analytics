@@ -36,6 +36,7 @@ import guideLinks from "./guideLinks.json";
 import handover from "./handover.json";
 import history from "./history.json";
 import home from "./home.json";
+import identity from "./identity.json";
 import ips from "./ips.json";
 import logSources from "./logSources.json";
 import login from "./login.json";
@@ -101,6 +102,7 @@ const messages = {
   handover,
   history,
   home,
+  identity,
   ips,
   logSources,
   login,

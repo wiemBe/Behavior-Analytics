@@ -165,6 +165,7 @@ function itemLabel(href: string, fallback: string, t: NavTranslator): string {
     case "/behavior/sources": return t("sources");
     case "/behavior/waf": return t("wafBehavior");
     case "/behavior/ips": return t("ipsBehavior");
+    case "/behavior/identity": return t("identityBehavior");
     case "/behavior/traffic": return t("traffic");
     case "/behavior/noise": return t("noisySources");
     case "/behavior/watches": return t("propertyWatches");

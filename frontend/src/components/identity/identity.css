@@ -1,0 +1,57 @@
+/* Identity pages (SOC-10f). Layout only; every value is a token. */
+
+.identity-lead {
+  margin: 0;
+  max-width: 90ch;
+  font-size: var(--fs-md);
+  line-height: var(--lh-prose);
+}
+.identity-controls {
+  margin-top: var(--sp-3);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-6);
+}
+.identity-counts th.num,
+.identity-counts td.num {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.identity-counts th .cell-sub {
+  white-space: normal;
+  max-width: 11ch;
+  margin-left: auto;
+}
+.chart-key-floor {
+  height: 10px;
+  background: var(--neutral-bg);
+  border: 1px solid var(--neutral-border);
+}
+.identity-name {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.identity-chart {
+  height: 300px;
+  width: 100%;
+}
+.identity-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.identity-profile dt {
+  color: var(--text-2);
+}
+.identity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.identity-evidence {
+  max-width: 70ch;
+}

@@ -86,7 +86,8 @@ async function AnomaliesPage({
     subject.waf_anomaly_type ||
     subject.ips_anomaly_type ||
     subject.pw_anomaly_type ||
-    subject.rule_anomaly_type;
+    subject.rule_anomaly_type ||
+    subject.identity_anomaly_type;
 
   // The list's filters without its page: the list request and the CSV export both take these.
   const filterParams: AnomalyListParams = {

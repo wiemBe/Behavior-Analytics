@@ -46,18 +46,21 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { anomalyTarget } from "@/lib/suppressTarget";
 import { pivotReads } from "@/lib/pivot";
+import { IdentityInvestigation } from "@/components/identity/IdentityInvestigation";
 import { RuleInvestigation, type RuleBand } from "@/components/rules/RuleInvestigation";
 import { WafInvestigation } from "@/components/waf/WafInvestigation";
 import {
   ApiError,
   rateLimitedText,
   api,
+  isIdentityDetail,
   isIpsDetail,
   isPwDetail,
   isRuleDetail,
   isWafDetail,
   ruleMatchApi,
   type AnomalyDetail,
+  type IdentityAnomalyDetail,
   type IpsAnomalyDetail,
   type IpsBaselineCell,
   type MetricBucket,
@@ -331,6 +334,7 @@ async function AnomalyDetailPage({
     | IpsAnomalyDetail
     | PwAnomalyDetail
     | RuleAnomalyDetail
+    | IdentityAnomalyDetail
     | null = null;
   let status = 0;
   let limited: string | null = null;
@@ -362,6 +366,23 @@ async function AnomalyDetailPage({
           </p>
         </div>
       </>
+    );
+  }
+
+  // An identity incident is about one log source and one catalogue event ID. Its evidence is the
+  // stored counts and names on the incident. The anomaly-level pivot has no identity branch, so
+  // the QRadar block is the log source's own (SOC-2): the events of that source in a window.
+  if (isIdentityDetail(loaded)) {
+    const quiet = anomalyTarget(loaded);
+    const sourcePivot = loaded.log_source_id ? await pivotReads.logSource(loaded.log_source_id) : null;
+    return (
+      <IdentityInvestigation
+        anomaly={loaded}
+        triage={await triageNode(loaded)}
+        quiet={quiet && <SuppressionBlock target={quiet} />}
+        related={await relatedNode(loaded, pad)}
+        pivot={sourcePivot && <PivotBlock pivot={sourcePivot.pivot} failed={sourcePivot.failed} />}
+      />
     );
   }
 

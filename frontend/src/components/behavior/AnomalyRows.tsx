@@ -42,6 +42,14 @@ import { formatFigure } from "@/components/ips/ipsFormat";
 import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
 import { isPwRow, pwTypeLabel } from "@/components/propertywatch/pwFormat";
 import { valueText } from "@/components/propertywatch/WatchValuesTable";
+import {
+  eventKey,
+  formatEvents,
+  identityHref,
+  identityTypeLabel,
+  isCatalogueEvent,
+  isIdentityRow,
+} from "@/components/identity/identityFormat";
 import { formatMatches, isRuleRow, ruleTypeLabel } from "@/components/rules/ruleMatchFormat";
 import { formatRequests, listUnit, sinceUnit } from "@/components/waf/wafFormat";
 import { formatPercent } from "@/lib/format";
@@ -68,6 +76,7 @@ import "@/components/ui/controls.css";
  */
 function SubjectCell({ a, nowMs }: { a: AnomalySummary; nowMs: number }) {
   const t = useTranslations("anomalies.rows");
+  const identityEvents = useTranslations("identity.events");
   const ipsI18n = useBehaviorI18n();
   // A property-watch row has no source of its own: its watch names it.
   const source = a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? t("unnamed");
@@ -88,6 +97,32 @@ function SubjectCell({ a, nowMs }: { a: AnomalySummary; nowMs: number }) {
       )}
     </>
   );
+  if (isIdentityRow(a) && a.identity) {
+    // The log source links to its identity page on this event; the event is named beneath it.
+    return (
+      <td className="cell-name cell-subject">
+        {a.log_source_id ? (
+          <Link
+            className="subject-source"
+            href={identityHref(`/behavior/identity/sources/${a.log_source_id}`, { event: a.identity.event_id })}
+            title={source}
+          >
+            {source}
+          </Link>
+        ) : (
+          <span className="subject-source" title={source}>
+            {source}
+          </span>
+        )}
+        <span className="cell-sub subject-host">
+          {isCatalogueEvent(a.identity.event_id)
+            ? `${a.identity.event_id} ${identityEvents(eventKey(a.identity.event_id))}`
+            : a.identity.event_id}
+        </span>
+        {started}
+      </td>
+    );
+  }
   if (isRuleRow(a) && a.rule) {
     // The rule's name links to the rule; its QRadar id and the building-block marker sit beneath.
     return (
@@ -188,6 +223,23 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
   const units = useTranslations("units");
   const i18n = useBehaviorI18n();
   const { locale } = i18n;
+  if (isIdentityRow(a)) {
+    // Events per 5-minute bucket. A null count is the dash, never 0; a floor says "at least".
+    return (
+      <>
+        <span className="ips-figures">
+          {a.observed_measurement === "LOWER_BOUND" && a.observed_value != null ? "≥ " : ""}
+          {formatEvents(a.observed_value, locale)}
+          <span className="muted"> {ARROW} </span>
+          {formatEvents(a.expected_value, locale)}
+        </span>
+        <span className="cell-sub ips-unit">{t("eventsPerBucket")}</span>
+        {a.observed_measurement === "LOWER_BOUND" && (
+          <span className="cell-sub">{t("eventsTruncated")}</span>
+        )}
+      </>
+    );
+  }
   if (isRuleRow(a)) {
     // Matched events per collection window. A null count is the dash, never 0; a silence's
     // observed 0 is a measurement and stays "0".
@@ -338,6 +390,7 @@ function ipsDeltaHidden(a: AnomalySummary): boolean {
 
 /** The detector's name in a row: Phase A in the interface language; the other families' own labels. */
 function typeText(a: AnomalySummary, i18n: BehaviorI18n): string {
+  if (isIdentityRow(a)) return identityTypeLabel(a.anomaly_type, i18n);
   if (isRuleRow(a)) return ruleTypeLabel(a.anomaly_type, i18n);
   if (isPwRow(a)) return pwTypeLabel(a.anomaly_type, i18n);
   if (isWafRow(a)) return anomalyTypeLabel(a.anomaly_type, i18n);
@@ -525,7 +578,9 @@ export function AnomalyRows({ items, nowMs }: { items: AnomalySummary[]; nowMs: 
                     aria-label={t(open ? "hideDetail" : "showDetail", {
                       type: typeText(a, i18n).toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-US"),
                       subject:
-                        isRuleRow(a) && a.rule
+                        isIdentityRow(a) && a.identity
+                          ? `${a.log_source_name ?? a.log_source_id ?? ""} · ${a.identity.event_id}`
+                          : isRuleRow(a) && a.rule
                           ? `${a.rule.name} · ${t("qradarId", { id: a.rule.qradar_id })}`
                           : isPwRow(a) && a.pw_value
                             ? `${valueText(a.pw_value)} · ${a.pw_value.watch_name}`

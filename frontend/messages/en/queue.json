@@ -111,6 +111,7 @@
     "family_ips": "IPS",
     "family_property_watch": "Property watch",
     "family_rule": "Rule match",
+    "family_identity": "Identity",
     "chip": {
       "kind": "Kind: {value}",
       "family": "Family: {value}",

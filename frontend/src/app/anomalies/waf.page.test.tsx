@@ -117,6 +117,7 @@ describe("the subject filter", () => {
       "IPS entities and sources",
       "Property watch values",
       "Rule",
+      "Identity sources",
     ]);
     expect(select.name).toBe("subject_kind");
   });
