@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.anomaly import training_exclusions as te
+from app.history.origin import PHASE_A_HISTORY_SOURCE
 from app.models.enums import (
     AnomalyState,
     AnomalyType,
@@ -58,7 +59,9 @@ def _url(anomaly_id: uuid.UUID, family: str = "log_source") -> str:
     return f"/api/v1/anomalies/{family}/{anomaly_id}/training-exclusions"
 
 
-async def _seed_one(session, *, state=AnomalyState.RESOLVED, metric=True):  # type: ignore[no-untyped-def]
+async def _seed_one(  # type: ignore[no-untyped-def]
+    session, *, state=AnomalyState.RESOLVED, metric=True, metric_source=None
+):
     inst = await make_instance(session)
     source = await make_log_source(
         session, inst, qradar_id=7001, name=f"tx-{uuid.uuid4().hex[:6]}"
@@ -76,7 +79,12 @@ async def _seed_one(session, *, state=AnomalyState.RESOLVED, metric=True):  # ty
     session.add(anomaly)
     if metric:
         session.add(
-            LogSourceMetric(log_source_id=source.id, bucket_start=START, bucket_seconds=300)
+            LogSourceMetric(
+                log_source_id=source.id,
+                bucket_start=START,
+                bucket_seconds=300,
+                collection_source=metric_source,
+            )
         )
     await session.flush()
     return anomaly.id, source.id
@@ -162,6 +170,15 @@ def test_missing_bucket_width_fails_closed(db_schema) -> None:  # type: ignore[n
     response = Client(TRIAGER).post(_url(anomaly_id), json=_body())
     assert response.status_code == 422
     assert response.json()["detail_code"] == "baseline_exclusion.interval_invalid"
+
+
+def test_history_only_bucket_width_fails_closed(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """The interval aligns to the live detector's width, never a learning-only row's."""
+    anomaly_id, _ = _seed(metric_source=PHASE_A_HISTORY_SOURCE)
+    response = Client(TRIAGER).post(_url(anomaly_id), json=_body())
+    assert response.status_code == 422
+    assert response.json()["detail_code"] == "baseline_exclusion.interval_invalid"
+    assert _counts() == (0, 0, 0)
 
 
 @pytest.mark.parametrize(

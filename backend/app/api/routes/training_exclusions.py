@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.anomaly import training_exclusions as te
 from app.api.deps import SessionDep, SettingsDep
 from app.api.routes.anomalies import PrincipalDep, _guard
+from app.history.origin import is_live_clause
 from app.i18n.messages import MessageRef
 from app.i18n.refusal import CodedHTTPException
 from app.models.enums import AnomalyFamily, AnomalyState, TriageEventKind, TriageStatus
@@ -227,12 +228,15 @@ async def create_training_exclusion(
         .where(
             LogSourceMetric.log_source_id == anomaly.log_source_id,
             LogSourceMetric.bucket_start <= anomaly.detected_at,
+            # Align to the width the live detector used: a learning-only history
+            # bucket carries the replay's width, not the incident's (§B.4.7).
+            is_live_clause(LogSourceMetric),
         )
         .order_by(LogSourceMetric.bucket_start.desc())
         .limit(1)
     )
     if bucket_seconds is None:
-        # No metric to read the bucket width from: fail closed rather than guess one.
+        # No live metric to read the bucket width from: fail closed rather than guess one.
         raise _refuse(te.INTERVAL_INVALID)
     incident_end = anomaly.resolved_at or anomaly.anomaly_end or anomaly.detected_at
     code = te.validate_interval(
