@@ -71,6 +71,8 @@
     "dispositionCleared": "Disposition cleared",
     "noteSet": "Closing note",
     "noteCleared": "Closing note cleared",
-    "comment": "Comment"
+    "comment": "Comment",
+    "baselineExclusionCreated": "Interval excluded from baseline training",
+    "baselineExclusionRevoked": "Training exclusion revoked"
   }
 }

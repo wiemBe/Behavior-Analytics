@@ -1,0 +1,100 @@
+/* Baseline training exclusions (SOC-13d). Layout only: colours and sizes come from tokens. */
+
+.training {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.training .triage-subheading {
+  margin: 0;
+}
+.training-line,
+.training-note,
+.training-confirm {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+  max-width: 90ch;
+}
+.training-note {
+  color: var(--text-3);
+}
+.training-label {
+  color: var(--text-3);
+  margin-right: var(--sp-2);
+}
+.training-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+.training-rows li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-4);
+  min-width: 0;
+}
+.training-form {
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.training-form .field-narrow {
+  width: 18ch;
+  max-width: 100%;
+}
+
+/* The Baseline quality list on the source page. */
+.exclusions {
+  display: grid;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+  min-width: 0;
+}
+.exclusions-head {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+}
+.exclusions-lead,
+.exclusions-state {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  max-width: 90ch;
+}
+.exclusions td,
+.exclusions th {
+  vertical-align: top;
+}
+.exclusions-reason {
+  overflow-wrap: anywhere;
+  min-width: 18ch;
+}
+.exclusions-revoked {
+  display: block;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.exclusions-form {
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+/* The chart key's swatch for an excluded interval: the neutral fill with a solid outline (the
+   history span's outline is dashed). */
+.chart-key-excluded {
+  height: 10px;
+  background: var(--neutral-bg);
+  border: 1px solid var(--neutral-border);
+}

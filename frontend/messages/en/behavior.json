@@ -369,7 +369,8 @@
       "range": "Expected range",
       "gap": "Not fully collected",
       "anomaly": "Anomalous interval",
-      "transition": "Lifecycle transition"
+      "transition": "Lifecycle transition",
+      "excluded": "Excluded from baseline training"
     },
     "note": "Gaps in the observed line are intervals that were not fully collected. They are not zero traffic.",
     "ema": {

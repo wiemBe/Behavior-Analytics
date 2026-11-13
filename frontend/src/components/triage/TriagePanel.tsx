@@ -13,7 +13,7 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { UtcTime } from "@/components/ui/UtcTime";
 import { ApiError, actionErrorMessage, api } from "@/lib/api";
@@ -57,11 +57,13 @@ export interface TriagePanelProps {
   me: string | null;
   /** `undefined`: not looked up. `null`: looked up completely, none references this anomaly. */
   alert?: TriageAlertRef | null;
+  /** More of the analyst's decisions about this anomaly, below the activity (SOC-13d). */
+  extra?: ReactNode;
 }
 
 type Mode = "assign" | "close" | null;
 
-export function TriagePanel({ family, anomalyId, initial, access, me, alert }: TriagePanelProps) {
+export function TriagePanel({ family, anomalyId, initial, access, me, alert, extra }: TriagePanelProps) {
   const t = useTranslations("triage");
   const say = asTextTranslator(useTranslations());
   const ids = useId();
@@ -256,6 +258,7 @@ export function TriagePanel({ family, anomalyId, initial, access, me, alert }: T
             {t("panel.retry")}
           </button>
         )}
+        {extra}
       </section>
     );
   }
@@ -612,6 +615,7 @@ export function TriagePanel({ family, anomalyId, initial, access, me, alert }: T
           )}
         </div>
       </div>
+      {extra}
     </section>
   );
 }

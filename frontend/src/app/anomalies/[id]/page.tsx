@@ -19,6 +19,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { EvidenceBanner } from "@/components/behavior/EvidenceBanner";
 import { DimensionExplorer } from "@/components/behavior/DimensionExplorer";
@@ -35,6 +36,10 @@ import { PwInvestigation, type PwInvestigationData } from "@/components/property
 import { relatedNode } from "@/components/related/relatedNode";
 import { SuppressionBlock } from "@/components/alerts/SuppressionBlock";
 import { triageNode } from "@/components/triage/triageNode";
+import { ExcludeInterval } from "@/components/baseline/ExcludeInterval";
+import { ExclusionBandText, effectiveSpans } from "@/components/baseline/ExclusionBandText";
+import { bucketWidthFor } from "@/lib/trainingExclusion";
+import { loadExclusions, type ExclusionLoad } from "@/lib/trainingExclusionLoad";
 import { PivotBlock } from "@/components/pivot/PivotBlock";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
@@ -324,9 +329,11 @@ async function AnomalyDetailPage({
   // The pivot is a separate read: a failure shows in its own block and never in the page.
   const pivotRead = await pivotReads.anomaly(id);
   const quietTarget = anomalyTarget(loaded);
-  const triageBlock = (
+  const subject = loaded;
+  // Built where each view needs it: the Phase A view hands the triage panel its training control.
+  const triageBlockWith = async (extra?: ReactNode) => (
     <>
-      {await triageNode(loaded)}
+      {await triageNode(subject, extra)}
       {quietTarget && <SuppressionBlock target={quietTarget} />}
     </>
   );
@@ -343,7 +350,7 @@ async function AnomalyDetailPage({
         <PwInvestigation
           anomaly={loaded}
           data={await pwData(loaded, pwI18n)}
-          triage={triageBlock}
+          triage={await triageBlockWith()}
           related={relatedBlock}
         />
         {pivotBlock}
@@ -361,7 +368,7 @@ async function AnomalyDetailPage({
           buckets={buckets}
           baselines={baselines}
           i18n={await getBehaviorI18n()}
-          triage={triageBlock}
+          triage={await triageBlockWith()}
           related={relatedBlock}
         />
         {pivotBlock}
@@ -383,7 +390,7 @@ async function AnomalyDetailPage({
           series={series}
           baselines={baselines}
           canOpenSource={canOpenSource}
-          triage={triageBlock}
+          triage={await triageBlockWith()}
           related={relatedBlock}
         />
         {pivotBlock}
@@ -407,6 +414,13 @@ async function AnomalyDetailPage({
       CONTEXT_HOURS * 3600_000,
   ).toISOString();
 
+  // Analyst training exclusions of this source: the chart shades them and the triage block offers
+  // the control. A failed read is its own state; the investigation does not depend on it.
+  const exclusions: ExclusionLoad =
+    anomaly.log_source_id === null
+      ? { kind: "ok", items: [] }
+      : await loadExclusions(anomaly.log_source_id);
+
   // A failed metric fetch must not take down the whole investigation: the
   // summary, the metrics, the evidence and the lifecycle are the substance.
   let buckets: MetricBucket[] = [];
@@ -417,6 +431,14 @@ async function AnomalyDetailPage({
   } catch {
     bucketsFailed = true;
   }
+
+  const triageBlock = await triageBlockWith(
+    <ExcludeInterval
+      anomaly={anomaly}
+      bucketSeconds={bucketWidthFor(anomaly, buckets)}
+      load={exclusions}
+    />,
+  );
 
   const pkg = anomaly.explanation_package;
   const detection = anomaly.detection;
@@ -480,10 +502,12 @@ async function AnomalyDetailPage({
               at: tr.occurred_at,
               label: enumText("anomalyState", tr.to_state),
             }))}
+            exclusions={effectiveSpans(exclusions.kind === "ok" ? exclusions.items : null)}
             ariaLabel={t("chartAria")}
             textSummary={chartSummary}
           />
         )}
+        <ExclusionBandText rows={exclusions.kind === "ok" ? exclusions.items : null} />
       </section>
 
       {/* --- E. what changed --------------------------------------------- */}

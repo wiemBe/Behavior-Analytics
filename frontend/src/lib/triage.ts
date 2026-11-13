@@ -120,5 +120,10 @@ export function eventSentence(
       return say(event.comment ? "events.noteSet" : "events.noteCleared", {});
     case "COMMENT":
       return say("events.comment", {});
+    // SOC-13: the reason is the event's comment, which the panel shows beneath this line.
+    case "BASELINE_EXCLUSION_CREATED":
+      return say("events.baselineExclusionCreated", {});
+    case "BASELINE_EXCLUSION_REVOKED":
+      return say("events.baselineExclusionRevoked", {});
   }
 }
