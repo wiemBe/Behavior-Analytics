@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { setOption, init } = vi.hoisted(() => {
   const setOption = vi.fn();
@@ -24,11 +24,18 @@ import IdentitySourcePage from "./page";
 const caller = (perms: string[]): CallerInfo =>
   ({ subject: "analyst", email: null, permissions: perms, effective_permissions: perms }) as CallerInfo;
 
+// The fixtures use fixed bucket times, and the page derives its window from `Date.now()`; pinning
+// the clock keeps the points inside the window on any day the suite runs.
+const NOW = new Date("2026-11-13T10:00:00Z");
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
   vi.restoreAllMocks();
   setOption.mockClear();
   init.mockClear();
 });
+afterEach(() => vi.useRealTimers());
 
 function names(): IdentitySeriesPoint[] {
   return [
