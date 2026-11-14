@@ -149,6 +149,15 @@ refuse_if_last_upgrade_failed() {
 
 # ---------------------------------------------------------------- answers
 
+# trim_ws VALUE -> VALUE without leading or trailing whitespace (space, tab, a stray \r).
+# Inner whitespace stays: the validators still refuse it where they refuse it.
+trim_ws() {
+  local v=$1
+  v=${v#"${v%%[![:space:]]*}"}
+  v=${v%"${v##*[![:space:]]}"}
+  printf '%s' "$v"
+}
+
 # Keys an answers file may hold. None is a secret: files are named, never read here.
 ANSWER_KEYS="PUBLIC_HOSTNAME TLS_CERT_FILE TLS_KEY_FILE EXTERNAL_PROXY FORWARDED_ALLOW_IPS
 QRADAR_URL QRADAR_CONSOLE_FQDN QRADAR_API_VERSION QRADAR_TOKEN_FILE QRADAR_CA_FILE
@@ -174,11 +183,11 @@ check_value() {
       [[ $val =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] \
         || { say "must be a bare host name (no scheme, port or path)"; return 1; } ;;
     TLS_CERT_FILE)
-      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: $val"; return 1; }
-      grep -q 'BEGIN CERTIFICATE' "$val" || { say "not a PEM certificate: $val"; return 1; } ;;
+      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: '$val'"; return 1; }
+      grep -q 'BEGIN CERTIFICATE' "$val" || { say "not a PEM certificate: '$val'"; return 1; } ;;
     TLS_KEY_FILE)
-      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: $val"; return 1; }
-      grep -q 'PRIVATE KEY' "$val" || { say "not a PEM private key: $val"; return 1; } ;;
+      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: '$val'"; return 1; }
+      grep -q 'PRIVATE KEY' "$val" || { say "not a PEM private key: '$val'"; return 1; } ;;
     EXTERNAL_PROXY | QRADAR_ALLOW_MISSING_AKI | HISTORY_BACKFILL)
       [[ $val =~ ^(yes|no)$ ]] || { say "must be yes or no"; return 1; } ;;
     FORWARDED_ALLOW_IPS)
@@ -204,11 +213,11 @@ check_value() {
     QRADAR_API_VERSION)
       [[ $val =~ ^[0-9]{1,3}\.[0-9]{1,3}$ ]] || { say "must look like 20.0"; return 1; } ;;
     QRADAR_TOKEN_FILE)
-      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: $val"; return 1; }
-      [ -s "$val" ] || { say "file is empty: $val"; return 1; } ;;
+      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: '$val'"; return 1; }
+      [ -s "$val" ] || { say "file is empty: '$val'"; return 1; } ;;
     QRADAR_CA_FILE)
-      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: $val"; return 1; }
-      grep -q 'BEGIN CERTIFICATE' "$val" || { say "no PEM certificate in: $val"; return 1; } ;;
+      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: '$val'"; return 1; }
+      grep -q 'BEGIN CERTIFICATE' "$val" || { say "no PEM certificate in: '$val'"; return 1; } ;;
     INSTANCE_NAME)
       [[ $val =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] \
         || { say "1 to 64 characters: letters, digits, . _ -"; return 1; } ;;
@@ -221,7 +230,7 @@ check_value() {
       [[ $val =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]] || { say "not a registry user name"; return 1; } ;;
     GHCR_TOKEN_FILE)
       [ -r "$val" ] && [ -f "$val" ] && [ -s "$val" ] \
-        || { say "file not readable or empty: $val"; return 1; } ;;
+        || { say "file not readable or empty: '$val'"; return 1; } ;;
     ADMIN_USERNAME)
       [[ $val =~ ^[^[:space:][:cntrl:]]{1,255}$ ]] \
         || { say "1 to 255 characters, no spaces or control characters"; return 1; } ;;
@@ -260,9 +269,9 @@ parse_answers() {
     fi
     key=${BASH_REMATCH[1]}
     val=${BASH_REMATCH[2]}
-    val=${val#"${val%%[![:space:]]*}"}
-    val=${val%"${val##*[![:space:]]}"}
+    val=$(trim_ws "$val")
     if [[ $val =~ ^\"(.*)\"$ ]] || [[ $val =~ ^\'(.*)\'$ ]]; then val=${BASH_REMATCH[1]}; fi
+    val=$(trim_ws "$val")
     if ! is_answer_key "$key"; then
       if [[ $key =~ (TOKEN|PASSWORD|SECRET|ENCRYPTION|PRIVATE) ]] && [[ ! $key =~ _FILE$ ]]; then
         ERRORS+=("$file:$n: $key looks like a secret; an answers file holds paths, never secrets")
@@ -350,6 +359,7 @@ ask() { # ask KEY "question" [hint]
     if [ -n "$hint" ]; then say "    $hint"; fi
     if [ -n "$def" ]; then printf '%s [%s]: ' "$question" "$def"; else printf '%s: ' "$question"; fi
     IFS= read -r reply || die "input ended before the wizard finished"
+    reply=$(trim_ws "$reply")
     reply=${reply:-$def}
     if [ -z "$reply" ]; then
       case "$key" in
@@ -389,8 +399,13 @@ wizard() {
     say "   Your proxy must APPEND the client address to X-Forwarded-For (nginx: \$proxy_add_x_forwarded_for)."
   fi
   ask QRADAR_URL "4. QRadar base URL (https://...)"
+  if [ -z "${ANS[QRADAR_CONSOLE_FQDN]:-}" ]; then
+    local qh=${ANS[QRADAR_URL]#https://}
+    qh=${qh%%/*}
+    ANS[QRADAR_CONSOLE_FQDN]=${qh%%:*}
+  fi
   ask QRADAR_CONSOLE_FQDN "5. QRadar console FQDN (host name, optional :port)" \
-    "Used by the MCP profile only; asked now so a later enable has the value. Port, if any, is 1-65535."
+    "Used only by the optional MCP profile; press Enter to use the QRadar URL host. Port, if any, is 1-65535."
   ask QRADAR_API_VERSION "6. QRadar API version" \
     "Default 20.0. The lab console in the README uses 29.0. Not guessed."
   ask QRADAR_TOKEN_FILE "7. Path to the file holding the SEC token" \
@@ -420,7 +435,14 @@ wizard() {
 
 CPU_MIN=4
 MEM_MIN_KB=7864320 # 7.5 GiB: a nominal 8 GiB host reports slightly less
+# Disk rule. DockerRootDir holds the database, the volumes and the backup scratch restore: 80 GiB.
+# With the containerd image store (docker info: driver-type io.containerd.snapshotter.v1) images
+# and container layers live under containerd's root instead: that root needs 20 GiB when it is on a
+# different filesystem than DockerRootDir. On the same filesystem, that one filesystem needs 80 GiB
+# (the 80 already covers the images).
 DISK_MIN_KB=$((80 * 1024 * 1024))
+CONTAINERD_MIN_KB=$((20 * 1024 * 1024))
+CONTAINERD_DEFAULT_ROOT=/var/lib/containerd
 BACKUP_MIN_KB=$((20 * 1024 * 1024))
 COMPOSE_MIN="2.24"
 
@@ -430,6 +452,32 @@ free_kb() { # free space of the nearest existing parent of $1
   local p=$1
   while [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done
   df -Pk "$p" 2>/dev/null | awk 'NR==2 {print $4}'
+}
+
+docker_uses_containerd() { # the image store is containerd's, not Docker's own
+  local status
+  status=$(docker info --format '{{json .DriverStatus}}' 2>/dev/null) || return 1
+  [[ $status == *io.containerd.snapshotter* ]]
+}
+
+# containerd_root -> "PATH SOURCE" on stdout: the root of `containerd config dump` when that
+# works, else the default /var/lib/containerd.
+containerd_root() {
+  local dumped=""
+  if command -v containerd >/dev/null 2>&1; then
+    dumped=$(containerd config dump 2>/dev/null | sed -n 's/^root = "\(.*\)"[[:space:]]*$/\1/p' | head -n1 || true)
+  fi
+  if [ -n "$dumped" ]; then
+    printf '%s containerd config dump\n' "$dumped"
+  else
+    printf '%s default (containerd config dump unavailable)\n' "$CONTAINERD_DEFAULT_ROOT"
+  fi
+}
+
+fs_id() { # the filesystem of the nearest existing parent of $1: "device mount-point"
+  local p=$1
+  while [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done
+  df -Pk "$p" 2>/dev/null | awk 'NR==2 {print $1, $6}'
 }
 
 port_free() { ! ss -ltnH "sport = :$1" 2>/dev/null | grep . >/dev/null; }
@@ -458,10 +506,11 @@ preflight_host() {
   if [ -z "$free" ] || [ ! -d "$root" ]; then
     warn "cannot read the free space of the Docker root (${root:-unknown}); check 80 GiB by hand"
   elif [ "$free" -ge "$DISK_MIN_KB" ]; then
-    info "$((free / 1024 / 1024)) GiB free on the Docker root ($root)"
+    info "$((free / 1024 / 1024)) GiB free on the Docker root ($root: database, volumes, backup scratch)"
   else
-    fail "$((free / 1024 / 1024)) GiB free on the Docker root ($root); at least 80 GiB is required"; bad=1
+    fail "$((free / 1024 / 1024)) GiB free on the Docker root ($root: database, volumes, backup scratch); at least 80 GiB is required"; bad=1
   fi
+  if docker_uses_containerd; then preflight_containerd_disk "$root" || bad=1; fi
   if command -v getenforce >/dev/null 2>&1; then
     info "SELinux: $(getenforce) (left as it is; secrets go through deploy/load-secrets.sh)"
   else
@@ -477,6 +526,29 @@ preflight_host() {
     warn "timedatectl not found; check the clock by hand"
   fi
   [ "$bad" -eq 0 ] || { fail "preflight failed; nothing was written."; exit 1; }
+}
+
+# preflight_containerd_disk DOCKER_ROOT: returns 1 when containerd's root is short.
+preflight_containerd_disk() {
+  local droot=$1 line croot source cfree cfs dfs
+  line=$(containerd_root)
+  croot=${line%% *}
+  source=${line#* }
+  cfree=$(free_kb "$croot" || true)
+  if [ -z "$cfree" ]; then
+    warn "cannot read the free space of the containerd root ($croot, from $source); images and layers live there, check 20 GiB by hand"
+    return 0
+  fi
+  cfs=$(fs_id "$croot")
+  dfs=$(fs_id "$droot")
+  if [ -n "$cfs" ] && [ "$cfs" = "$dfs" ]; then
+    info "containerd image store: containerd root $croot (from $source) holds images and layers and shares the filesystem of the Docker root $droot; that filesystem needs 80 GiB, counted above"
+  elif [ "$cfree" -ge "$CONTAINERD_MIN_KB" ]; then
+    info "$((cfree / 1024 / 1024)) GiB free on the containerd root ($croot, from $source), which holds images and layers"
+  else
+    fail "$((cfree / 1024 / 1024)) GiB free on the containerd root ($croot, from $source), which holds images and layers; at least 20 GiB is required (the Docker root $droot holds the database and volumes)"
+    return 1
+  fi
 }
 
 stack_running() {
@@ -536,13 +608,21 @@ preflight_network() {
     host=${url%%:*}
     port=443
     if [[ $url == *:* ]]; then port=${url##*:}; fi
-    # A handshake only: no token and no AQL are sent.
+    # A handshake only: no token and no AQL are sent. It accepts what the backend accepts
+    # (app/providers/tls.py): a partial chain (a self-signed leaf without keyCertSign) and a host
+    # name or address that the certificate's SAN covers (check_hostname=True there).
+    local verify_host=-verify_hostname
+    if [[ $host =~ ^[0-9.]+$ ]] || [[ $host == *:* ]]; then verify_host=-verify_ip; fi
     out=$(timeout 15 openssl s_client -connect "$host:$port" -servername "$host" \
-      -CAfile "${ANS[QRADAR_CA_FILE]}" -verify_return_error </dev/null 2>&1 || true)
+      -CAfile "${ANS[QRADAR_CA_FILE]}" -partial_chain "$verify_host" "$host" \
+      -verify_return_error </dev/null 2>&1 || true)
     if grep -q 'Verify return code: 0' <<<"$out"; then
       info "QRadar $host:$port presents a certificate the CA bundle verifies"
     elif grep -q 'Authority Key Identifier' <<<"$out"; then
       warn "QRadar $host:$port certificate has no Authority Key Identifier; see runbook symptom 3 (QRADAR_ALLOW_MISSING_AKI)"
+    elif grep -q 'verify error.*mismatch' <<<"$out"; then
+      fail "QRadar certificate is not valid for the host '$host' in the QRadar URL ($(grep -m1 'verify error' <<<"$out")); use the name or address that the certificate's Subject Alternative Name lists"
+      bad=1
     elif grep -q 'verify error' <<<"$out"; then
       fail "QRadar $host:$port certificate does not verify against ${ANS[QRADAR_CA_FILE]}: $(grep -m1 'verify error' <<<"$out")"
       bad=1
@@ -4017,7 +4097,32 @@ doctor_disk_docker() {
   free_gib=$(doctor_free_gib "$free")
   status=PASS
   if [ "$used" -ge 90 ]; then status=FAIL; elif [ "$used" -ge 70 ]; then status=WARN; fi
-  doctor_line "$status" disk_docker "$used% used; $free_gib GiB free on $root" \
+  doctor_line "$status" disk_docker "$used% used; $free_gib GiB free on $root (Docker root: database, volumes, backup scratch)" \
+    "$([ "$status" = PASS ] || echo OPS-R14)"
+}
+
+doctor_disk_containerd() { # a second line only with the containerd image store
+  local line croot source metrics free used free_gib status droot
+  [ "$DOCTOR_HAS_DOCKER" -eq 1 ] || return 0
+  docker_uses_containerd || return 0
+  line=$(containerd_root)
+  croot=${line%% *}
+  source=${line#* }
+  droot=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)
+  if [ -n "$droot" ] && [ -n "$(fs_id "$croot")" ] && [ "$(fs_id "$croot")" = "$(fs_id "$droot")" ]; then
+    doctor_line PASS disk_containerd "containerd root $croot (from $source; images and layers) shares the filesystem of the Docker root; counted in disk_docker"
+    return
+  fi
+  metrics=$(doctor_df "$croot" || true)
+  if [ -z "$metrics" ]; then
+    doctor_line FAIL disk_containerd "free space is unavailable for the containerd root $croot (from $source; images and layers)" OPS-R14
+    return
+  fi
+  read -r free used <<<"$metrics"
+  free_gib=$(doctor_free_gib "$free")
+  status=PASS
+  if [ "$used" -ge 90 ]; then status=FAIL; elif [ "$used" -ge 70 ]; then status=WARN; fi
+  doctor_line "$status" disk_containerd "$used% used; $free_gib GiB free on the containerd root $croot (from $source; images and layers)" \
     "$([ "$status" = PASS ] || echo OPS-R14)"
 }
 
@@ -4322,6 +4427,7 @@ cmd_doctor() {
   DOCTOR_HAS_DOCKER=0
   if need_docker; then DOCTOR_HAS_DOCKER=1; fi
   doctor_disk_docker
+  doctor_disk_containerd
   doctor_disk_backup
   doctor_clock
   doctor_selinux

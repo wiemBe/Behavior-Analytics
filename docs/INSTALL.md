@@ -101,6 +101,88 @@ The default release images are under `ghcr.io/wiembe/behavior-analytics/`. The i
 --skip-qradar-check      skip the QRadar TLS handshake check
 ```
 
+### Prepare these files
+
+The wizard asks for paths. Have these ready before you run it. Type every path answer without
+trailing spaces: 0.1.16 and earlier refuse a pasted answer with a trailing space, and the message
+does not show the space. Later versions trim the answer.
+
+| File | Wizard question | Notes |
+|---|---|---|
+| SEC token file | 7 | One line, mode `0600`. Create it with the `read -rs` recipe in "QRadar credentials and CA bundle". |
+| QRadar CA bundle (PEM) | 8 | Root and intermediate certificates, or the self-signed leaf itself. See below. |
+| Proxy TLS certificate and key (PEM) | 2 | For `PUBLIC_HOSTNAME`. Not needed with `--external-proxy`. See below. |
+| Backup directory | 11 | An absolute path outside the checkout, writable by the installing account. |
+
+Never type the token on a command line (`echo TOKEN > file`, `--token ...`): process arguments are
+visible to other users and stay in shell history. If it happened, delete that line from the
+history (`history -d <number>`, then `history -w`), and consider the token exposed: ask the QRadar
+administrator to replace it.
+
+If your user is not in the `docker` group, run every `./qradar-dash` command with `sudo`, and
+keep doing so for every later command (`doctor`, `upgrade`, `backup`), so the files stay owned by
+one account.
+
+**QRadar CA bundle.** Read what the console presents and save each certificate block:
+
+```bash
+openssl s_client -connect qradar.example.internal:443 -showcerts </dev/null
+```
+
+Copy each `-----BEGIN CERTIFICATE----- ... -----END CERTIFICATE-----` block into one file, leaf
+first. Then run `openssl x509 -in <block-file> -noout -subject -issuer -fingerprint -sha256` on a
+block. If subject and issuer are the same, the certificate is self-signed: the bundle is that
+certificate. If they differ and the issuer is not in the file, the chain is missing: obtain the
+issuer's certificate from the QRadar administrator and append it. Compare the SHA-256 fingerprint
+with the QRadar administrator before you trust it. Verify the way the application does:
+
+```bash
+openssl s_client -connect qradar.example.internal:443 -CAfile <bundle> -partial_chain \
+  -verify_hostname qradar.example.internal -verify_return_error </dev/null 2>&1 | grep Verify
+```
+
+`Verify return code: 0 (ok)` is the expected result. `-partial_chain` is what lets a self-signed
+leaf without `keyCertSign` verify, as it does in the backend. The certificate's Subject
+Alternative Name must contain the host used in the QRadar URL (question 4); a mismatch fails the
+preflight naming that host. Use the name or address that the certificate lists. Question 9 (AKI)
+is for a different case: a certificate with no Authority Key Identifier.
+
+**Proxy certificate.** Production uses a certificate from the organisation's CA. For a
+pre-production host, create a self-signed one (browsers will warn until it is trusted):
+
+```bash
+mkdir -p .secrets/tls && chmod 700 .secrets/tls
+openssl req -x509 -newkey rsa:3072 -nodes -days 365 -subj "/CN=soc.example.internal" \
+  -addext "subjectAltName=DNS:soc.example.internal" \
+  -keyout .secrets/tls/dash.key -out .secrets/tls/dash.crt
+chmod 600 .secrets/tls/dash.key
+```
+
+Use `IP:10.0.0.5` in place of `DNS:...` when analysts open the host by address. The name must be
+`PUBLIC_HOSTNAME`.
+
+**Disk.** Preflight needs 80 GiB free on Docker's data root (database, volumes, backup scratch
+restore). With the containerd image store (`docker info` shows the storage driver `overlayfs`),
+images and layers live under containerd's root instead (default `/var/lib/containerd`): that
+directory needs 20 GiB when it is on another filesystem, and when both share one filesystem that
+filesystem needs 80 GiB. Preflight and `./qradar-dash doctor` report each directory and say what it
+holds. If `/` is small, move the data root:
+
+1. Stop Docker: `systemctl stop docker docker.socket`.
+2. Copy the data: `rsync -a /var/lib/docker/ /data/docker/`, or `cp -a /var/lib/docker/. /data/docker/`
+   when `rsync` is absent.
+3. Set `{"data-root": "/data/docker"}` in `/etc/docker/daemon.json` (create the file if it is
+   missing). Do not also pass `--data-root` on the service unit: Docker refuses to start with
+   both.
+4. With the containerd image store, do the same for containerd: stop it, copy
+   `/var/lib/containerd`, and set `root = "/data/containerd"` in `/etc/containerd/config.toml`
+   (`containerd config default > /etc/containerd/config.toml` creates a full file).
+5. Start the services and check `docker info | grep -i "root dir"`.
+
+On an SELinux-enforcing host, label the new directories as the old ones before you start Docker:
+`semanage fcontext -a -e /var/lib/docker /data/docker && restorecon -R /data/docker`, and the same
+with `/var/lib/containerd` and `/data/containerd`.
+
 ### Offline hosts
 
 A production host that cannot reach the registry installs from a bundle made on a connected host.
@@ -243,10 +325,12 @@ console sends only its leaf certificate, concatenate the root and intermediate c
 
 ```bash
 openssl s_client -connect qradar.example.internal:443 \
-  -CAfile .secrets/qradar-ca.pem -verify_return_error </dev/null 2>&1 | grep Verify
+  -CAfile .secrets/qradar-ca.pem -partial_chain -verify_hostname qradar.example.internal \
+  -verify_return_error </dev/null 2>&1 | grep Verify
 ```
 
-The expected result is `Verify return code: 0 (ok)`.
+The expected result is `Verify return code: 0 (ok)`. The installer's preflight runs the same
+check.
 
 Load the token and CA bundle into the named volume used by the containers:
 
