@@ -228,7 +228,7 @@ describe("IPS sources list", () => {
     expect(header).toContainElement(region);
     expect(table).not.toContainElement(region);
     await user.tab();
-    expect(screen.getByLabelText("Search log sources by name")).toHaveFocus();
+    expect(screen.getByLabelText("Name, type, identifier or QRadar ID")).toHaveFocus();
 
     button.focus();
     await user.keyboard("{Enter}");

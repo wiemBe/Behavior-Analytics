@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import case, func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import SessionDep, SettingsDep
@@ -41,6 +41,7 @@ from app.schemas.waf import (
 )
 from app.security.auth import get_principal
 from app.security.rbac import Principal
+from app.services.log_source_search import apply_candidate_search
 from app.services.waf_profiles import AUDIT_OBJECT, WafProfileService
 from app.services.waf_status import waf_ariel_budget_status, waf_source_statuses
 from app.waf.profile import (
@@ -237,15 +238,8 @@ async def list_waf_candidates(
             LogSource.instance_id == resolved,
             WafSourceProfile.id.is_(None),
         )
-        .order_by(
-            case((LogSourceClassification.source_class == SourceClass.WAF, 0), else_=1),
-            func.lower(LogSource.name),
-            LogSource.qradar_id,
-        )
-        .limit(limit)
     )
-    if q:
-        query = query.where(LogSource.name.icontains(q, autoescape=True))
+    query = apply_candidate_search(query, family=SourceClass.WAF, q=q, limit=limit)
     rows = (await session.execute(query)).all()
     return [
         WafCandidateOut(
@@ -254,6 +248,7 @@ async def list_waf_candidates(
             qradar_id=source.qradar_id,
             name=source.name,
             type_name=source.type_name,
+            identifier=source.identifier,
             source_class=str(source_class) if source_class is not None else None,
         )
         for source, source_class in rows

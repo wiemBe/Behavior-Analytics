@@ -179,6 +179,7 @@ class IpsCandidateOut(BaseModel):
     qradar_id: int
     name: str
     type_name: str | None = None
+    identifier: str | None = None
     source_class: str | None = None
 
 

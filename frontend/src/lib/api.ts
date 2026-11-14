@@ -792,6 +792,7 @@ export interface WafCandidateOut {
   qradar_id: number;
   name: string;
   type_name: string | null;
+  identifier: string | null;
   source_class: string | null;
   instance_id: string;
 }
@@ -4884,6 +4885,7 @@ export interface IpsCandidateOut {
   qradar_id: number;
   name: string;
   type_name: string | null;
+  identifier: string | null;
   source_class: string | null;
 }
 

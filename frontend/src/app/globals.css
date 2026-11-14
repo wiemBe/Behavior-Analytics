@@ -2364,22 +2364,10 @@ th.fm-value-cell .cell-sub {
   max-width: 48ch;
 }
 .fm-candidates {
-  list-style: none;
   margin: var(--sp-4) 0 0;
-  padding: 0;
   border-top: 1px solid var(--border);
-}
-.fm-candidates li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--sp-1) var(--sp-4);
-  padding: var(--sp-3) 0;
-  border-bottom: 1px solid var(--border);
   font-size: var(--fs-sm);
-}
-.fm-candidates a {
-  overflow-wrap: anywhere;
+  overflow-x: auto;
 }
 
 @media (max-width: 860px) {

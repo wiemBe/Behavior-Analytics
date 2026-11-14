@@ -6,7 +6,7 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import SessionDep, SettingsDep
@@ -55,6 +55,7 @@ from app.schemas.property_catalog import PropertyCatalogOut
 from app.security.auth import get_principal
 from app.security.rbac import Principal
 from app.services.ips_profiles import AUDIT_OBJECT, IpsProfileService
+from app.services.log_source_search import apply_candidate_search
 from app.services.property_catalog import PropertyCatalogService, get_property_catalog_service
 
 router = APIRouter(prefix="/ips", tags=["ips"])
@@ -311,15 +312,8 @@ async def list_ips_candidates(
             LogSourceClassification.log_source_id == LogSource.id,
         )
         .where(LogSource.instance_id == resolved, IpsSourceProfile.id.is_(None))
-        .order_by(
-            case((LogSourceClassification.source_class == SourceClass.IPS, 0), else_=1),
-            func.lower(LogSource.name),
-            LogSource.qradar_id,
-        )
-        .limit(limit)
     )
-    if q:
-        query = query.where(LogSource.name.icontains(q, autoescape=True))
+    query = apply_candidate_search(query, family=SourceClass.IPS, q=q, limit=limit)
     rows = (await session.execute(query)).all()
     return [
         IpsCandidateOut(
@@ -328,6 +322,7 @@ async def list_ips_candidates(
             qradar_id=source.qradar_id,
             name=source.name,
             type_name=source.type_name,
+            identifier=source.identifier,
             source_class=str(source_class) if source_class is not None else None,
         )
         for source, source_class in rows
