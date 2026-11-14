@@ -303,6 +303,7 @@ export function candidate(over: Partial<IpsCandidateOut> = {}): IpsCandidateOut 
     qradar_id: 412,
     name: "PaSeries @ pa-fw-01",
     type_name: "Palo Alto PA Series",
+    identifier: "10.4.0.21",
     source_class: "IPS",
     ...over,
   };

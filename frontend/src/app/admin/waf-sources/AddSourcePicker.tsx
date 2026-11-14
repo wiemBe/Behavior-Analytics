@@ -7,7 +7,8 @@ import Link from "next/link";
 // Choosing which log source to configure.
 //
 // Lists the log sources that have no WAF profile, those QRadar classes as WAF
-// first (the server orders them). Choosing one opens its editor in create mode;
+// first (the server orders them). The search text matches name, type,
+// identifier and QRadar id; each row shows the first three and the id. Choosing one opens its editor in create mode;
 // nothing is created here.
 
 import { useEffect, useId, useState } from "react";
@@ -94,25 +95,46 @@ export function AddSourcePicker({ defaultOpen = false }: { defaultOpen?: boolean
           )}
           {state.kind === "ready" && state.items.length === 0 && (
             <p className="fm-empty" role="status">
-              {q.trim() ? t("emptyQuery", { q: q.trim() }) : t("empty")}
+              {q.trim() ? t("emptyQuery", { q: q.trim() }) : t("empty")} {t("emptySync")}{" "}
+              <Link href="/log-sources">{t("emptyLink")}</Link>
             </p>
           )}
           {state.kind === "ready" && state.items.length > 0 && (
             <>
-              <ul className="fm-candidates" aria-label={t("listLabel")}>
-                {state.items.map((c) => (
-                  <li key={c.log_source_id}>
-                    <Link href={`/admin/waf-sources/${c.log_source_id}?instance=${encodeURIComponent(c.instance_id)}`}>{c.name}</Link>
-                    <span className="muted">
-                      {t("qradarId", { id: formatCount(c.qradar_id, i18n.locale) })}
-                      {c.type_name ? ` · ${c.type_name}` : ""}
-                    </span>
-                    {c.source_class === "WAF" && (
-                      <span className="pill info">{t("classedAsWaf")}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <div className="fm-candidates">
+                <table className="table-dense" aria-label={t("listLabel")}>
+                  <thead>
+                    <tr>
+                      <th scope="col">{t("colSource")}</th>
+                      <th scope="col">{t("colType")}</th>
+                      <th scope="col">{t("colIdentifier")}</th>
+                      <th scope="col" className="num">
+                        {t("colQradarId")}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {state.items.map((c) => (
+                      <tr key={c.log_source_id}>
+                        <td className="cell-name">
+                          <Link href={`/admin/waf-sources/${c.log_source_id}?instance=${encodeURIComponent(c.instance_id)}`}>{c.name}</Link>
+                          {c.source_class === "WAF" && (
+                            <>
+                              {" "}
+                              <span className="pill info">{t("classedAsWaf")}</span>
+                            </>
+                          )}
+                        </td>
+                        <td className="cell-name">{c.type_name ?? ""}</td>
+                        <td className="cell-name">
+                          <span className="num">{c.identifier ?? ""}</span>
+                        </td>
+                        <td className="num">{formatCount(c.qradar_id, i18n.locale)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {state.items.length >= LIMIT && (
                 <p className="fm-note">
                   {t("capped", { limit: formatCount(LIMIT, i18n.locale) })}

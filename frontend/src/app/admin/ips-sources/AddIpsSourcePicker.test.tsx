@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -39,12 +39,12 @@ describe("AddIpsSourcePicker", () => {
     expect(spy).toHaveBeenCalledWith({ instance_id: "inst-1", q: undefined, limit: 50 });
   });
 
-  it("searches by name", async () => {
+  it("searches the one text the label names", async () => {
     const spy = vi.spyOn(ipsApi, "candidates").mockResolvedValue(CANDIDATES);
     const user = userEvent.setup();
     render(<AddIpsSourcePicker instanceId="inst-1" defaultOpen />);
     await screen.findAllByRole("link");
-    await user.type(screen.getByLabelText("Search log sources by name"), "linux");
+    await user.type(screen.getByLabelText("Name, type, identifier or QRadar ID"), "linux");
     await vi.waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({ instance_id: "inst-1", q: "linux", limit: 50 }),
     );
@@ -55,14 +55,60 @@ describe("AddIpsSourcePicker", () => {
     vi.spyOn(ipsApi, "candidates").mockResolvedValue([]);
     const user = userEvent.setup();
     render(<AddIpsSourcePicker instanceId="inst-1" defaultOpen />);
-    await user.type(screen.getByLabelText("Search log sources by name"), "zzz");
-    expect(await screen.findByText(/name containing “zzz”/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Name, type, identifier or QRadar ID"), "zzz");
+    const empty = await screen.findByText(/matches “zzz” in its name, type, identifier or QRadar ID/);
+    expect(empty).toHaveTextContent(/not synced yet appears after the next inventory/);
+    expect(screen.getByRole("link", { name: "Open the log source inventory" })).toHaveAttribute(
+      "href",
+      "/log-sources",
+    );
   });
 
   it("says when every log source already has a profile", async () => {
     vi.spyOn(ipsApi, "candidates").mockResolvedValue([]);
     render(<AddIpsSourcePicker instanceId="inst-1" defaultOpen />);
-    expect(await screen.findByText("Every known log source already has an IPS profile.")).toBeInTheDocument();
+    expect(await screen.findByText(/Every known log source already has an IPS profile\./)).toBeInTheDocument();
+  });
+
+  it("shows name, type, identifier and QRadar ID as columns, ids right-aligned", async () => {
+    vi.spyOn(ipsApi, "candidates").mockResolvedValue([
+      candidate({ identifier: "10.4.0.21" }),
+      candidate({ log_source_id: "ls-9", qradar_id: 9, name: "linux-ids-02", type_name: null, identifier: null, source_class: null }),
+    ]);
+    render(<AddIpsSourcePicker instanceId="inst-1" defaultOpen />);
+    const table = await screen.findByRole("table", { name: "Log sources without an IPS profile" });
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "Log source",
+      "Type",
+      "Identifier",
+      "QRadar ID",
+    ]);
+    const [, first, second] = within(table).getAllByRole("row");
+    const cells = within(first).getAllByRole("cell");
+    expect(cells.map((c) => c.textContent)).toEqual([
+      "PaSeries @ pa-fw-01 Classed as IPS",
+      "Palo Alto PA Series",
+      "10.4.0.21",
+      "412",
+    ]);
+    expect(cells[3]).toHaveClass("num");
+    expect(within(second).getAllByRole("cell").map((c) => c.textContent)).toEqual(["linux-ids-02", "", "", "9"]);
+  });
+
+  it("notes the cap when a full page came back", async () => {
+    const full = Array.from({ length: 50 }, (_, i) =>
+      candidate({ log_source_id: `ls-${i}`, qradar_id: i + 1, name: `src-${i}` }),
+    );
+    vi.spyOn(ipsApi, "candidates").mockResolvedValue(full);
+    render(<AddIpsSourcePicker instanceId="inst-1" defaultOpen />);
+    expect(await screen.findByText("Showing the first 50. Narrow the search to see others.")).toBeInTheDocument();
+  });
+
+  it("does not note a cap below a full page", async () => {
+    vi.spyOn(ipsApi, "candidates").mockResolvedValue(CANDIDATES);
+    render(<AddIpsSourcePicker instanceId="inst-1" defaultOpen />);
+    await screen.findAllByRole("link");
+    expect(screen.queryByText(/Showing the first/)).not.toBeInTheDocument();
   });
 
   it("names admin:ips when the lookup is forbidden", async () => {
@@ -89,7 +135,7 @@ describe("AddIpsSourcePicker", () => {
     const spy = vi.spyOn(ipsApi, "candidates");
     render(<AddIpsSourcePicker instanceId={null} defaultOpen />);
     expect(screen.getByRole("alert")).toHaveTextContent(/no QRadar instance is known/);
-    expect(screen.queryByLabelText("Search log sources by name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Name, type, identifier or QRadar ID")).not.toBeInTheDocument();
     expect(spy).not.toHaveBeenCalled();
   });
 });
