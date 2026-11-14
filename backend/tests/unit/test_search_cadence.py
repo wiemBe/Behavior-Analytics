@@ -279,6 +279,18 @@ def test_settle_setting_is_bounded_and_explanation_beat_ticks_every_minute() -> 
     assert celery_app.conf.beat_schedule["collect-anomaly-explanations"]["schedule"] == 60.0
 
 
+def test_identity_bucket_width_ignores_the_collection_interval() -> None:
+    from app.models.enums import IDENTITY_BUCKET_SECONDS, SearchFamily
+    from app.services.search_cadence import bucket_seconds
+
+    short = Settings(collection_interval_seconds=60)
+    assert bucket_seconds(SearchFamily.IDENTITY_COLLECTION, short) == IDENTITY_BUCKET_SECONDS
+    assert bucket_seconds(SearchFamily.PHASE_A_VOLUME, short) == 60
+    lab = Settings(lab_mode=True, environment="development")
+    assert lab.collection_interval_seconds == 60
+    assert bucket_seconds(SearchFamily.IDENTITY_COLLECTION, lab) == IDENTITY_BUCKET_SECONDS
+
+
 def test_bucket_seconds_is_none_only_for_a_family_with_no_buckets() -> None:
     from app.core.config import get_settings
     from app.models.enums import SearchFamily

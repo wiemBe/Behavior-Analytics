@@ -380,6 +380,7 @@ alert's evidence snapshot are the copies that outlive the series.
 | `IDENTITY_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule. At least `3600` |
 | `IDENTITY_VALIDATION_WINDOW_SECONDS` | `900` | Recent interval the validation probe reads. `60`–`3600` |
 | `IDENTITY_VALIDATION_MIN_RATIO` | `0.90` | Minimum share of events that must carry the mapped event id and username |
+| `IDENTITY_REVALIDATION_INTERVAL_SECONDS` | `86400` | How often every enabled profile is probed again. At least `3600` |
 | `IDENTITY_ALERTING_ENABLED` | `false` | Open alerts for identity incidents. Incidents are recorded either way |
 | `IDENTITY_OPEN_AFTER_INTERVALS` | `1` | Anomalous buckets before an incident opens. `1`–`100` |
 | `IDENTITY_RESOLVE_AFTER_INTERVALS` | `2` | Healthy buckets before an open incident resolves. `1`–`100` |
@@ -387,7 +388,13 @@ alert's evidence snapshot are the copies that outlive the series.
 | `IDENTITY_ANOMALY_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule of that delete. At least `3600`. Batch size and batch cap reuse the series retention settings |
 
 `python -m app.cli.identity set`, `validate` and `enable` are the operator path. `enable` refuses
-a profile version that is not `VALID`. An operator who raises the future detector lookback past
+a profile version that is not `VALID`. A beat task probes every enabled profile again every
+`IDENTITY_REVALIDATION_INTERVAL_SECONDS` (24 hours by default), with the same read-only validation
+probe. `VALID` keeps collecting. `INVALID` or `INCONCLUSIVE` stays enabled and is not collected
+until a later probe of the same profile version is `VALID`. A probe that does not finish (a search
+error, a timeout, or no Ariel permit) leaves the previous status in place. A change on the QRadar
+side that makes the mapping stop matching can still be stored as exact zero counts until that
+probe runs, which is at most one interval. An operator who raises the future detector lookback past
 29 days can outrun `IDENTITY_COUNT_RETENTION_DAYS`.
 
 ## Geography

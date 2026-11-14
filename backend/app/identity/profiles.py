@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.identity.dto import IdentityProbeResult
 from app.identity.reference import (
     PROBE_MAX_WINDOW_SECONDS,
     IdentityFieldMapping,
@@ -190,23 +191,49 @@ class IdentityProfileService:
         """Run the bounded probe and store its result on this profile version."""
         if not provider.supports(ProviderCapability.AQL_EXECUTION):
             raise IdentityProfileError("this provider cannot run an identity validation probe")
+        probe = await self.run_probe(profile, provider)
+        result = await self.store_probe(profile, probe, actor=actor)
+        await record_audit(
+            self.session,
+            action="identity.profile.validated",
+            actor=actor,
+            object_type=AUDIT_OBJECT,
+            object_id=str(profile.id),
+            detail={"profile_version": profile.profile_version, "status": result.status.value},
+        )
+        return result
+
+    async def run_probe(
+        self, profile: IdentitySourceProfile, provider: QRadarProvider
+    ) -> IdentityProbeResult:
+        """The same bounded probe ``validate`` runs. No status is written."""
         now = self._clock()
         seconds = min(
             self.settings.identity_validation_window_seconds, PROBE_MAX_WINDOW_SECONDS
         )
         end = now.astimezone(UTC)
         start = end - timedelta(seconds=seconds)
-        probe = await provider.probe_identity_fields(
+        return await provider.probe_identity_fields(
             qradar_log_source_id=await self._qradar_id(profile),
             event_id_property=profile.event_id_property,
             username_property=profile.username_property,
             window_start=start,
             window_end=end,
         )
+
+    async def store_probe(
+        self,
+        profile: IdentitySourceProfile,
+        probe: IdentityProbeResult,
+        *,
+        actor: str,
+    ) -> IdentityValidation:
+        """Write the evaluator's outcome. Does not audit and does not enable."""
         try:
             enabled = IdentityFieldMapping.from_profile(profile).enabled_event_ids
         except IdentityReferenceError as exc:
             raise IdentityProfileError(str(exc)) from exc
+        now = self._clock()
         result = evaluate_probe(
             probe, enabled, min_ratio=self.settings.identity_validation_min_ratio
         )
@@ -218,14 +245,6 @@ class IdentityProfileService:
         profile.validation_requested_by = actor
         profile.updated_by = actor
         await self.session.flush()
-        await record_audit(
-            self.session,
-            action="identity.profile.validated",
-            actor=actor,
-            object_type=AUDIT_OBJECT,
-            object_id=str(profile.id),
-            detail={"profile_version": profile.profile_version, "status": result.status.value},
-        )
         return result
 
     async def _qradar_id(self, profile: IdentitySourceProfile) -> int:

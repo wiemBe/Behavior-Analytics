@@ -191,8 +191,10 @@ def test_0069_caller_check_matches_the_model_and_follows_0068() -> None:
 
 
 def test_identity_beat_entries_match_the_tasks() -> None:
+    import inspect
+
     from app.workers import tasks
-    from app.workers.celery_app import celery_app
+    from app.workers.celery_app import _send_startup_tasks_at_beat_start, celery_app
 
     schedule = celery_app.conf.beat_schedule
     assert schedule["dispatch-identity-collection"] == {
@@ -202,10 +204,20 @@ def test_identity_beat_entries_match_the_tasks() -> None:
     retention = schedule["apply-identity-retention"]
     assert retention["task"] == "apply_identity_retention"
     assert retention["schedule"] == float(Settings().identity_retention_interval_seconds)
+    again = schedule["revalidate-identity-profiles"]
+    assert again["task"] == "revalidate_identity_profiles"
+    assert again["schedule"] == float(Settings().identity_revalidation_interval_seconds)
+    assert Settings.model_fields["identity_revalidation_interval_seconds"].default == 86400
+    with pytest.raises(ValueError):
+        Settings(identity_revalidation_interval_seconds=3599)
     assert tasks.dispatch_identity_collection_task.name == "dispatch_identity_collection"
     assert tasks.apply_identity_retention_task.name == "apply_identity_retention"
+    assert tasks.revalidate_identity_profiles_task.name == "revalidate_identity_profiles"
     assert "dispatch_identity_collection" in celery_app.tasks
     assert "apply_identity_retention" in celery_app.tasks
+    assert "revalidate_identity_profiles" in celery_app.tasks
+    startup = inspect.getsource(_send_startup_tasks_at_beat_start)
+    assert "revalidate_identity_profiles" not in startup
     cadence = default_search_cadence(SearchFamily.IDENTITY_COLLECTION)
     assert cadence is SearchCadence.FIFTEEN_MINUTES
 

@@ -13,7 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.i18n.messages import MessageRef
-from app.models.enums import SearchCadence, SearchFamily, default_search_cadence
+from app.models.enums import (
+    IDENTITY_BUCKET_SECONDS,
+    SearchCadence,
+    SearchFamily,
+    default_search_cadence,
+)
 from app.models.search_cadence import SearchCadenceSetting
 from app.repositories.audit import record_audit
 
@@ -38,6 +43,10 @@ class InvalidSearchCadenceError(ValueError):
 
 def bucket_seconds(family: SearchFamily, settings: Settings) -> int | None:
     """Return the stored bucket width a search family collects, if it has one."""
+    if family == SearchFamily.IDENTITY_COLLECTION:
+        # Identity does not follow collection_interval_seconds. That setting is
+        # 60 in LAB_MODE; the writer and the detectors use the 300 s constant.
+        return IDENTITY_BUCKET_SECONDS
     if family in {
         SearchFamily.PHASE_A_VOLUME,
         SearchFamily.WAF_COLLECTION,
@@ -45,7 +54,6 @@ def bucket_seconds(family: SearchFamily, settings: Settings) -> int | None:
         SearchFamily.PROPERTY_WATCH,
         SearchFamily.CATCHALL_SENDERS,
         SearchFamily.GEO_COLLECTION,
-        SearchFamily.IDENTITY_COLLECTION,
     }:
         return settings.collection_interval_seconds
     if family == SearchFamily.RULE_MATCH:

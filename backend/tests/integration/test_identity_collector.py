@@ -7,6 +7,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 
 import pytest
 from sqlalchemy import create_engine, delete, event, func, select
@@ -591,3 +592,63 @@ async def test_integrity_error_records_the_constraint_and_does_not_advance(
     assert watermark.intervals_collected == 0
     assert "alice" not in str(watermark.collection_metadata)
     assert watermark.collection_metadata["searches"] == 3
+
+
+async def test_bucket_width_stays_300_when_the_collection_interval_is_60(db_session) -> None:
+    """LAB_MODE and a short collection interval change the cadence, not the bucket."""
+    instance = await make_instance(db_session)
+    source = await make_log_source(db_session, instance, qradar_id=1003, name="dc01")
+    await _profile(db_session, instance, source)
+    await _mark(db_session, instance, NOW - 2 * WIDTH)
+    provider = MockQRadarProvider(seed=1)
+    settings = _settings(collection_interval_seconds=60)
+    assert settings.collection_interval_seconds == 60
+    report = await IdentityCollector(
+        db_session, provider, settings=settings, clock=lambda: NOW
+    ).collect(instance)
+
+    assert report.status == "ok"
+    assert report.buckets_written == 1
+    buckets = await _buckets(db_session)
+    assert {row.bucket_seconds for row in buckets} == {300}
+    assert {row.bucket_start for row in buckets} == {NOW - WIDTH}
+    watermark = await db_session.scalar(
+        select(CollectionWatermark).where(CollectionWatermark.collector == COLLECTOR_NAME)
+    )
+    assert watermark is not None
+    assert watermark.watermark_at == NOW - WIDTH
+    assert provider.identity_searches
+    for item in provider.identity_searches:
+        assert "starttime / 300000" in item.query
+        assert "starttime / 60000" not in item.query
+
+
+async def test_first_run_under_lab_mode_covers_one_hour_of_300_second_buckets(
+    db_session,
+) -> None:
+    instance = await make_instance(db_session)
+    source = await make_log_source(db_session, instance, qradar_id=1003, name="dc01")
+    await _profile(db_session, instance, source)
+    provider = MockQRadarProvider(seed=1)
+    settings = _settings(lab_mode=True, environment="development")
+    assert settings.collection_interval_seconds == 60
+    report = await IdentityCollector(
+        db_session, provider, settings=settings, clock=lambda: NOW
+    ).collect(instance)
+
+    assert report.status == "ok"
+    assert report.buckets_written == FIRST_RUN_LOOKBACK_BUCKETS
+    buckets = await _buckets(db_session)
+    starts = sorted({row.bucket_start for row in buckets})
+    assert len(starts) == FIRST_RUN_LOOKBACK_BUCKETS
+    assert {row.bucket_seconds for row in buckets} == {300}
+    assert all(right - left == WIDTH for left, right in pairwise(starts))
+    assert (starts[-1] + WIDTH) - starts[0] == timedelta(minutes=60)
+    watermark = await db_session.scalar(
+        select(CollectionWatermark).where(CollectionWatermark.collector == COLLECTOR_NAME)
+    )
+    assert watermark is not None
+    assert watermark.watermark_at == starts[-1]
+    for item in provider.identity_searches:
+        assert "starttime / 300000" in item.query
+        assert "starttime / 60000" not in item.query
