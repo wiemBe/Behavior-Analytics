@@ -15,6 +15,7 @@
 #   ./qradar-dash bundle [--version X.Y.Z] [--output DIR] [--local-images]
 #   ./qradar-dash rollback [--non-interactive --yes]
 #   ./qradar-dash repair-state
+#   ./qradar-dash reset [--backup] [--include-secrets] [--non-interactive --yes] [--dry-run]
 #
 # Specified in docs/OPERATIONS-DESIGN.md section 3. The script needs bash and
 # Docker with Compose v2 on the host, plus openssl and curl. It never calls
@@ -58,6 +59,8 @@ Commands
   upgrade       Pull and install one explicit production SemVer release.
   rollback      Restore the pre-upgrade backup and previous image digests (asks first).
   repair-state  Record a healthy upgrade or rollback whose state file was not written.
+  reset         Wipe an installed site (database, Redis, .env, state, saved answers) so it can be
+                installed again, for example against a production console (asks first).
   bundle        On a connected host: write the offline bundle (images, checkout and operator
                 documents) for an air-gapped host.
 
@@ -104,6 +107,15 @@ doctor options
                     sent, no login is attempted). Without it the e-mail check never connects.
   --aql             Also send every collection family's real query once per REST console
                     (read-only, up to 20 Ariel searches per console). See runbook OPS-R72.
+
+reset options
+  --backup          Take a verified backup first; if it fails, nothing is removed.
+  --include-secrets Also remove the two external volumes (QRadar secrets, proxy certificates).
+  --non-interactive Refuse unless --yes is also present.
+  --yes             Confirm a non-interactive reset.
+  --dry-run         Print the plan and exit; change nothing.
+  No backup is taken by default. The backup root and its backups, the checkout and the loaded
+  images are never touched.
 
 repair-state
   No options. Refuses unless the API is ready, the database revision matches the running
@@ -4646,6 +4658,169 @@ cmd_repair_state() {
   fi
 }
 
+# ---------------------------------------------------------------- reset
+
+# The script holds no site lock, so reset cannot refuse while another command runs.
+cmd_reset() {
+  local backup=no secrets=no non_interactive=no yes=no dry=no answer v name
+  local origin qradar_host backup_root proj secrets_vol proxy_vol vol_list
+  local -a volumes=() ext=() files=() containers=() gone=() left=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --backup) backup=yes ;;
+      --include-secrets) secrets=yes ;;
+      --non-interactive) non_interactive=yes ;;
+      --yes) yes=yes ;;
+      --dry-run) dry=yes ;;
+      -h | --help) usage; return 0 ;;
+      *) fail "unknown reset option: $1"; return 2 ;;
+    esac
+    shift
+  done
+  # 1. Preflight. Writes nothing.
+  if [ ! -f .qradar-dash/state.json ] && [ ! -f "$ENV_FILE" ]; then
+    fail "reset refused: nothing to reset here ($ENV_FILE and .qradar-dash/state.json are both missing). Nothing was changed."
+    return 1
+  fi
+  need_docker || return 1
+  load_project_from_env
+  proj=$PROJECT
+  origin=$(env_get PUBLIC_ORIGIN)
+  qradar_host=$(env_get QRADAR_BASE_URL | sed -E 's#^[a-zA-Z]+://##; s#^[^@/]*@##; s#[/?].*$##')
+  backup_root=$(env_get QRADAR_DASH_BACKUP_DIR)
+  secrets_vol=$(env_get SECRETS_VOLUME)
+  proxy_vol=$(env_get PROXY_CERTS_VOLUME)
+  : "${secrets_vol:=qradar-observability-secrets}"
+  : "${proxy_vol:=qradar-observability-proxy-certs}"
+  # Every local volume of this project, as Docker labels it. External volumes carry no
+  # project label, so they never appear here.
+  if ! vol_list=$(docker volume ls -q --filter "label=com.docker.compose.project=$proj"); then
+    fail "reset refused: could not list the Docker volumes of project $proj. Nothing was changed."
+    return 1
+  fi
+  mapfile -t volumes < <(printf '%s\n' "$vol_list" | sed '/^$/d')
+  ext=("$secrets_vol" "$proxy_vol")
+  # install writes these; a second install would refuse on the state file or reuse the answers
+  # (and the old ENCRYPTION_KEY in .env), so they go.
+  [ ! -e "$ENV_FILE" ] && [ ! -L "$ENV_FILE" ] || files+=("$ENV_FILE")
+  [ ! -e .qradar-dash/state.json ] && [ ! -L .qradar-dash/state.json ] || files+=(.qradar-dash/state.json)
+  [ ! -e "$SAVED_ANSWERS" ] && [ ! -L "$SAVED_ANSWERS" ] || files+=("$SAVED_ANSWERS")
+  mapfile -t containers < <(dc ps -a --format '{{.Name}}' 2>/dev/null || true)
+
+  # 2. The plan.
+  say "Reset plan"
+  say "  compose project:   $proj"
+  say "  PUBLIC_ORIGIN:     ${origin:-unset}"
+  say "  QRadar console:    ${qradar_host:-unset}"
+  say "Containers stopped and removed (this project only):"
+  if [ ${#containers[@]} -gt 0 ] && [ -n "${containers[0]}" ]; then
+    for v in "${containers[@]}"; do say "  $v"; done
+  else
+    say "  none found"
+  fi
+  say "Docker volumes removed (this project's local volumes: database, Redis, logs...):"
+  for v in "${volumes[@]}"; do say "  $v"; done
+  [ ${#volumes[@]} -gt 0 ] || say "  none found"
+  if [ "$secrets" = yes ]; then
+    say "External volumes removed (--include-secrets):"
+    for v in "${ext[@]}"; do say "  $v"; done
+  fi
+  say "Files deleted:"
+  for v in "${files[@]}"; do
+    case "$v" in
+      "$ENV_FILE") say "  $v  (holds the ENCRYPTION_KEY and the old console URL; a new install makes its own)" ;;
+      .qradar-dash/state.json) say "  $v  (install refuses while it records an installed version)" ;;
+      *) say "  $v  (the saved answers; install would reuse the old console and paths)" ;;
+    esac
+  done
+  [ ${#files[@]} -gt 0 ] || say "  none present"
+  say "Kept:"
+  say "  the backup root ${backup_root:-(not configured)} and every backup in it"
+  if [ "$secrets" = yes ]; then
+    say "  (the external volumes are removed, see above)"
+  else
+    say "  the external volumes ${ext[0]} and ${ext[1]} (QRadar token, CA, TLS certificates)"
+  fi
+  say "  the other files in .secrets/, this checkout and the loaded Docker images"
+  if [ "$backup" = yes ]; then
+    say "A verified backup is taken first."
+  else
+    say "No backup is taken (use --backup to take one first)."
+  fi
+  if [ "$dry" = yes ]; then
+    say "Dry run: nothing was changed."
+    return 0
+  fi
+
+  # 3. Confirm.
+  if [ "$non_interactive" = yes ]; then
+    [ "$yes" = yes ] || { fail "--non-interactive reset requires --yes. Nothing was changed."; return 1; }
+  else
+    printf 'Type the project name (%s) to wipe this site: ' "$proj"
+    IFS= read -r answer || answer=""
+    [ -t 0 ] || printf '\n'
+    [ "$answer" = "$proj" ] || { fail "reset cancelled; nothing was changed"; return 1; }
+  fi
+
+  # 4. Optional backup. Any failure stops here, before anything is removed.
+  if [ "$backup" = yes ]; then
+    if ! ( cmd_backup_create manual yes ); then
+      fail "reset stopped: the backup failed. Nothing was removed."
+      return 1
+    fi
+    info "backup taken and verified"
+  fi
+
+  # 5. Wipe.
+  if ! dc down -v --remove-orphans; then
+    fail "reset failed: docker compose down -v returned an error. Removed: nothing confirmed. Not removed: the containers, volumes ${volumes[*]} and the files ${files[*]:-none}."
+    say "To finish by hand: $(compose_command) down -v --remove-orphans, then remove the files listed above."
+    return 1
+  fi
+  info "containers stopped and removed; compose volumes removed"
+  for name in "${volumes[@]}"; do
+    if docker volume inspect "$name" >/dev/null 2>&1; then
+      if docker volume rm "$name" >/dev/null 2>&1; then
+        info "volume $name removed by name (down -v left it)"
+      else
+        left+=("$name")
+      fi
+    fi
+  done
+  if [ "$secrets" = yes ]; then
+    for name in "${ext[@]}"; do
+      if ! docker volume inspect "$name" >/dev/null 2>&1; then
+        info "external volume $name was not present"
+      elif docker volume rm "$name" >/dev/null 2>&1; then
+        info "external volume $name removed"
+      else
+        left+=("$name")
+      fi
+    done
+  fi
+  if [ ${#left[@]} -gt 0 ]; then
+    fail "reset incomplete: these volumes could not be removed: ${left[*]}. The files were not deleted. To finish by hand: docker volume rm ${left[*]}, then delete ${files[*]:-nothing}."
+    return 1
+  fi
+  for v in "${files[@]}"; do
+    if rm -f -- "$v"; then
+      gone+=("$v")
+      info "deleted $v"
+    else
+      fail "reset incomplete: $v could not be deleted. Deleted: ${gone[*]:-none}. To finish by hand: delete the remaining listed files."
+      return 1
+    fi
+  done
+  rmdir .qradar-dash 2>/dev/null || true
+
+  # 6. Next steps.
+  say ""
+  say "The site is wiped. Next:"
+  say "  1. ./deploy/load-secrets.sh        (the new token and CA; the TLS certificate too)"
+  say "  2. ./qradar-dash install           (against the new console)"
+  say "  3. In the UI: register the console, sync, validate the profiles, run the history backfill."
+}
+
 main() {
   local cmd=${1:-}
   [ $# -eq 0 ] || shift
@@ -4660,6 +4835,7 @@ main() {
     doctor) cmd_doctor "$@" ;;
     support-bundle) cmd_support_bundle "$@" ;;
     repair-state) cmd_repair_state "$@" ;;
+    reset) cmd_reset "$@" ;;
     bundle) cmd_bundle "$@" ;;
     -h | --help | help | "") usage; [ -n "$cmd" ] || exit 2 ;;
     *) fail "unknown command: $cmd"; usage >&2; exit 2 ;;

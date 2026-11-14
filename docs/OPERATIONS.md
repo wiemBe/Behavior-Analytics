@@ -973,6 +973,14 @@ yolu yazdırılır, durum `outcome=failed` olarak kaydedilir ve üçüncü bir y
 Başarılı bir geri almadan sonra (elle ya da otomatik) checkout'u artık çalışan sürüme döndür:
 `git checkout v<önceki>`. `install` ve compose dosyaları böylece çalışan sürümle eşleşir.
 
+### Wiping a site (`reset`)
+
+To install again from nothing, for example against a production QRadar after testing on a
+pre-production one, use `./qradar-dash reset [--backup] [--include-secrets] [--dry-run]`. It removes
+this project's containers, all its local Docker volumes (database, Redis, logs), `.env`, `.qradar-dash/state.json` and the
+saved answers; it keeps the backups, the external secret volumes (unless `--include-secrets`) and
+the checkout. See [`INSTALL.md`](INSTALL.md), "Moving from a pre-production to a production QRadar".
+
 ### Seçili yedeği geri yükleme (`restore`)
 
 ```bash
