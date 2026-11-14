@@ -109,6 +109,7 @@ async def test_http_transport_writes_content_length_and_the_signed_body() -> Non
                 row,
                 BODY,
                 _headers(),
+                console_hosts=frozenset(),
                 resolver=resolve,
                 transport_factory=http_transport,
                 deadline_seconds=5,
@@ -148,6 +149,7 @@ async def test_one_deadline_stops_a_stalled_send_before_the_idle_timeout() -> No
         _row(),
         BODY,
         _headers(),
+        console_hosts=frozenset(),
         resolver=_public,
         transport_factory=_Stall,
         deadline_seconds=0.2,
@@ -166,7 +168,12 @@ async def test_the_deadline_setting_is_what_bounds_the_send(
     )
     started = asyncio.get_running_loop().time()
     result = await send_to_destination(
-        _row(), BODY, _headers(), resolver=_public, transport_factory=_Stall
+        _row(),
+        BODY,
+        _headers(),
+        console_hosts=frozenset(),
+        resolver=_public,
+        transport_factory=_Stall,
     )
     assert result == ("timeout", None)
     assert asyncio.get_running_loop().time() - started < 1
@@ -183,6 +190,7 @@ async def test_idle_timeouts_stay_ten_seconds_under_the_deadline() -> None:
         _row(),
         BODY,
         _headers(),
+        console_hosts=frozenset(),
         resolver=_public,
         transport_factory=lambda: httpx.MockTransport(handler),
         deadline_seconds=5,
@@ -201,6 +209,7 @@ async def test_a_protocol_error_is_a_transport_failure_not_an_exception() -> Non
         _row(),
         BODY,
         _headers(),
+        console_hosts=frozenset(),
         resolver=_public,
         transport_factory=_Protocol,
     )
@@ -234,6 +243,7 @@ async def test_a_stored_header_the_schema_would_refuse_never_reaches_the_transpo
             _row(headers=json.dumps(stored)),
             BODY,
             _headers(),
+            console_hosts=frozenset(),
             resolver=_public,
             transport_factory=no_transport,
         )
@@ -248,6 +258,55 @@ async def test_malformed_stored_headers_are_payload_invalid() -> None:
             _row(headers="[]"),
             BODY,
             _headers(),
+            console_hosts=frozenset(),
             resolver=_public,
             transport_factory=no_transport,
         )
+
+
+# --------------------------------------------------------------- SEC-RO2
+@pytest.mark.parametrize(
+    "stored",
+    [
+        {"SEC": "val-7q"},
+        {"sec": "val-7q"},
+        {"Authorization": "Bearer val-7q"},
+        {"Proxy-Authorization": "val-7q"},
+        {"Cookie": "a=val-7q"},
+    ],
+)
+async def test_a_stored_console_credential_header_is_refused_before_any_connect(
+    stored: dict[str, str],
+) -> None:
+    def no_transport() -> httpx.AsyncBaseTransport:
+        raise AssertionError("a reserved header must not reach the transport")
+
+    with pytest.raises(StoredHeadersInvalid) as caught:
+        await send_to_destination(
+            _row(headers=json.dumps(stored)),
+            BODY,
+            _headers(),
+            console_hosts=frozenset(),
+            resolver=_public,
+            transport_factory=no_transport,
+        )
+    assert next(iter(stored))[:64] in caught.value.reason
+    assert "val-7q" not in caught.value.reason
+
+
+async def test_a_destination_on_a_console_host_is_refused_before_resolving() -> None:
+    def no_resolver(host: str, port: int) -> tuple[str, ...]:
+        raise AssertionError("the console check must run before any DNS lookup")
+
+    def no_transport() -> httpx.AsyncBaseTransport:
+        raise AssertionError("must not be sent")
+
+    result = await send_to_destination(
+        _row(url="https://Hooks.Example.:9443/hook"),
+        BODY,
+        _headers(),
+        console_hosts=frozenset({"hooks.example"}),
+        resolver=no_resolver,
+        transport_factory=no_transport,
+    )
+    assert result == ("ssrf_refused", None)

@@ -945,6 +945,10 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "The destination uses HTTP. Enable HTTP only for an endpoint the site administrator "
         "trusts.",
     ),
+    _fixed(
+        "notifications.console_refused",
+        "The destination points at a QRadar console. A webhook never targets a console.",
+    ),
     _fixed("notifications.limit", "This site already has the maximum of 10 destinations."),
     _fixed("notifications.destination_unknown", "The notification destination was not found."),
     _text(

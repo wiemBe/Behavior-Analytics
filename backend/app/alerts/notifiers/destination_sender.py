@@ -18,6 +18,7 @@ from typing import Literal, cast
 
 import httpx
 
+from app.alerts.notifiers.console_hosts import refuse_console_target
 from app.alerts.notifiers.url_guard import GuardedURL, URLGuardError, guard_url, resolve_host
 from app.alerts.notifiers.webhook_v1 import SIGNATURE_HEADER, sign_v1
 from app.core.config import get_settings
@@ -56,6 +57,11 @@ FORBIDDEN_HEADER_NAMES = frozenset(
         "te",
         "upgrade",
         "expect",
+        # Credentials the console accepts: a destination never carries them (SEC-RO2).
+        "sec",
+        "authorization",
+        "proxy-authorization",
+        "cookie",
     }
 )
 
@@ -97,8 +103,10 @@ def decode_headers(row: NotificationDestination) -> dict[str, str]:
 class StoredHeadersInvalid(Exception):
     """Stored custom headers cannot be sent, and a retry will not repair them."""
 
-    def __init__(self) -> None:
+    def __init__(self, reason: str = "") -> None:
         super().__init__("payload_invalid")
+        #: Which rule refused the block (a header name, never a value); for logs and audits.
+        self.reason = reason
 
 
 def checked_custom_headers(value: dict[str, str]) -> dict[str, str]:
@@ -128,7 +136,7 @@ def headers_for_send(row: NotificationDestination) -> dict[str, str]:
     try:
         return checked_custom_headers(decoded)
     except ValueError as exc:
-        raise StoredHeadersInvalid() from exc
+        raise StoredHeadersInvalid(str(exc)) from exc
 
 
 def transport_failure_class(exc: BaseException) -> SendClass | None:
@@ -157,7 +165,11 @@ async def _discard_body(response: httpx.Response) -> None:
 
 
 def _guard_class(exc: URLGuardError) -> SendClass:
-    if exc.code in {"notifications.private_refused", "notifications.http_refused"}:
+    if exc.code in {
+        "notifications.private_refused",
+        "notifications.http_refused",
+        "notifications.console_refused",
+    }:
         return "ssrf_refused"
     return "transport"
 
@@ -167,6 +179,7 @@ async def send_to_destination(
     body: bytes,
     headers: dict[str, str],
     *,
+    console_hosts: frozenset[str],
     resolver: Resolver = resolve_host,
     transport_factory: TransportFactory = http_transport,
     deadline_seconds: float | None = None,
@@ -188,6 +201,8 @@ async def send_to_destination(
     try:
         async with asyncio.timeout(budget):
             try:
+                # Checked at send time too: a console can be registered after the destination.
+                refuse_console_target(row.url, console_hosts)
                 checked = await guard(
                     row.url,
                     allow_http=row.allow_http,

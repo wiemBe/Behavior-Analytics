@@ -23,12 +23,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 import ssl
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from functools import wraps
 from typing import Any, ClassVar, NamedTuple, Protocol, cast
+from urllib.parse import quote
 
 import httpx
 
@@ -285,6 +287,23 @@ def parse_rule_match_rows(raw_rows: Sequence[dict]) -> tuple[list[RuleMatchRow],
 
 class MalformedUpstreamResponse(ProviderError):
     """QRadar returned something we could not safely interpret."""
+
+
+#: QRadar's Ariel search ids are UUIDs and the mock's are ``mock-000001``: letters, digits and
+#: ``-`` cover both. Anything else (a slash, dots, a percent escape) never reaches a URL path.
+_SEARCH_ID_RE = re.compile(r"[A-Za-z0-9-]{1,64}", re.ASCII)
+
+
+def _search_id_path(search_id: object) -> str:
+    """Return the search id percent-encoded for a path, or refuse it (SEC-RO2).
+
+    The id comes from QRadar's create response; a hostile or faulty one such as
+    ``../../siem/offenses/5`` would otherwise be normalised into another endpoint.
+    The error never carries the value.
+    """
+    if not isinstance(search_id, str) or _SEARCH_ID_RE.fullmatch(search_id) is None:
+        raise MalformedUpstreamResponse("QRadar Ariel search id has an unexpected shape")
+    return quote(search_id, safe="")
 
 
 def _metric_log_source_clause(qradar_ids: Sequence[int] | None) -> str:
@@ -2925,6 +2944,11 @@ class QRadarRestProvider(QRadarProvider):
         search_id = body.get("search_id") or body.get("cursor_id")
         if not isinstance(search_id, str) or not search_id:
             raise MalformedUpstreamResponse("QRadar returned an Ariel handle without a search id")
+        try:
+            _search_id_path(search_id)
+        except MalformedUpstreamResponse:
+            logger.warning("QRadar returned an Ariel search id with an unexpected shape")
+            raise
         return ArielSearchHandleDTO(
             search_id=search_id,
             status=str(body.get("status") or "WAIT"),
@@ -2935,7 +2959,7 @@ class QRadarRestProvider(QRadarProvider):
         self.require(ProviderCapability.AQL_EXECUTION)
         body = await self._request(
             "GET",
-            f"/ariel/searches/{search_id}",
+            f"/ariel/searches/{_search_id_path(search_id)}",
             category=EndpointCategory.ARIEL_STATUS,
         )
         if not isinstance(body, dict):
@@ -2966,7 +2990,7 @@ class QRadarRestProvider(QRadarProvider):
         self.require(ProviderCapability.AQL_EXECUTION)
         body = await self._request(
             "GET",
-            f"/ariel/searches/{search_id}/results",
+            f"/ariel/searches/{_search_id_path(search_id)}/results",
             category=EndpointCategory.ARIEL_RESULTS,
             # One row past the cap: the server honours the range, so seeing the
             # extra row is the only way to tell a capped result from a whole one.
@@ -2996,7 +3020,7 @@ class QRadarRestProvider(QRadarProvider):
         # DELETE is idempotent, so a retry is safe and a 404 means "already gone".
         await self._request(
             "DELETE",
-            f"/ariel/searches/{search_id}",
+            f"/ariel/searches/{_search_id_path(search_id)}",
             category=EndpointCategory.ARIEL_CANCEL,
             allow_404=True,
         )

@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.alerts.notification_rules import AlertView, RuleView, load_rules, match_rules
 from app.alerts.notifiers import destination_sender
 from app.alerts.notifiers.base import NotificationMessage, Notifier, NotifierError
+from app.alerts.notifiers.console_hosts import registered_console_hosts, targets_console
 from app.alerts.notifiers.destination_sender import (
     DESTINATION_TARGET_PREFIX,
     StoredHeadersInvalid,
@@ -58,6 +59,10 @@ from app.security.redaction import redact
 from app.services.backoff import backoff_delay
 
 # Failure classes from the sender that retry; every other non-ok class is permanent.
+#: Channels whose target is a URL the product POSTs to.
+_URL_CHANNELS = frozenset(
+    {NotificationChannel.TEAMS, NotificationChannel.SLACK, NotificationChannel.WEBHOOK}
+)
 _PERMANENT_STATUS_CLASSES = frozenset({"redirect_refused", "ssrf_refused"})
 
 
@@ -110,6 +115,7 @@ class NotificationDispatcher:
         self._rule_views: list[RuleView] | None = None
         # SOC-12e. Attempts of this run, written in bulk at its end.
         self._attempt_log: list[dict[str, object]] = []
+        self._console_hosts: frozenset[str] = frozenset()
         self._destination_resolver = destination_resolver
         self._destination_transport = destination_transport or destination_sender.http_transport
 
@@ -242,6 +248,12 @@ class NotificationDispatcher:
             and (destination := destination_target_id(n.target)) is not None
         }
         destinations: dict[uuid.UUID, NotificationDestination] = {}
+        # Loaded once per run: a console may be registered after a route or destination was.
+        self._console_hosts = (
+            await registered_console_hosts(self.session)
+            if any(n.channel in _URL_CHANNELS for n in due)
+            else frozenset()
+        )
         if wanted:
             rows = await self.session.scalars(
                 select(NotificationDestination).where(NotificationDestination.id.in_(wanted))
@@ -318,6 +330,14 @@ class NotificationDispatcher:
             self._record(notif, "no_notifier")
             return
 
+        if notif.channel in _URL_CHANNELS and targets_console(notif.target, self._console_hosts):
+            # An env route aimed at a registered console: never sent, and a retry cannot help.
+            self._record(notif, "ssrf_refused")
+            self._handle_failure(
+                notif, NotifierError("ssrf_refused: console_refused", permanent=True), stats
+            )
+            return
+
         message = self._message_from_payload(notif)
         if notif.channel == NotificationChannel.EMAIL:
             from app.services.email_templates import choose_template
@@ -373,6 +393,7 @@ class NotificationDispatcher:
                 row,
                 body,
                 headers,
+                console_hosts=self._console_hosts,
                 resolver=self._destination_resolver,
                 transport_factory=self._destination_transport,
             )

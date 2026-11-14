@@ -7710,6 +7710,13 @@
     "sample_english_params": {},
     "template": "the direction was disabled by a tuning change"
   },
+  "notifications.console_refused": {
+    "params": {},
+    "sample": {},
+    "sample_english": "The destination points at a QRadar console. A webhook never targets a console.",
+    "sample_english_params": {},
+    "template": "The destination points at a QRadar console. A webhook never targets a console."
+  },
   "notifications.destination_in_use": {
     "params": {
       "name": {
