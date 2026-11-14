@@ -10,6 +10,7 @@ failure does not hold it. Unattempted buckets are not written as zeros.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -17,6 +18,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete, select, tuple_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -63,6 +65,25 @@ from app.services.search_cadence import SearchCadenceService
 logger = logging.getLogger("app.identity.collector")
 
 COLLECTOR_NAME = "identity_collection"
+_CONSTRAINT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+_INTEGRITY_FALLBACK = "integrity_error"
+
+
+def integrity_failure_reason(exc: BaseException) -> str:
+    """The constraint name, or a fixed token. Never the row or the message."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        name = getattr(current, "constraint_name", None)
+        if isinstance(name, str) and _CONSTRAINT_NAME.fullmatch(name):
+            return name
+        nxt = getattr(current, "orig", None)
+        if not isinstance(nxt, BaseException):
+            cause = current.__cause__
+            nxt = cause if isinstance(cause, BaseException) else None
+        current = nxt
+    return _INTEGRITY_FALLBACK
 
 
 @dataclass
@@ -75,10 +96,12 @@ class IdentityCollectionReport:
     buckets_written: int = 0
     watermark_at: datetime | None = None
     skipped_locked: bool = False
+    error_class: str | None = None
+    reason: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         stamp = None if self.watermark_at is None else self.watermark_at.isoformat()
-        return {
+        payload: dict[str, Any] = {
             "status": self.status,
             "searches_sent": self.searches_sent,
             "splits": self.splits,
@@ -86,6 +109,11 @@ class IdentityCollectionReport:
             "watermark_at": stamp,
             "skipped_locked": self.skipped_locked,
         }
+        if self.error_class is not None:
+            payload["error_class"] = self.error_class
+        if self.reason is not None:
+            payload["reason"] = self.reason
+        return payload
 
 
 def floor_to_bucket(moment: datetime, bucket_seconds: int) -> datetime:
@@ -172,27 +200,35 @@ class IdentityCollector:
         searches = sum(result.searches for result in results)
         splits = sum(result.splits for result in results)
         if facts:
-            await write_tick(
-                self.session,
-                IdentityFold(catalog_version=IDENTITY_CATALOG_VERSION, buckets=tuple(facts)),
-                collected_at=started,
-                bucket_seconds=bucket_seconds,
-                provenance={
-                    "family": SearchFamily.IDENTITY_COLLECTION.value,
-                    "catalog_version": IDENTITY_CATALOG_VERSION,
-                    "searches": searches,
-                    "splits": splits,
-                },
-            )
-            await _record_identity_mentions(self.session, instance.id, facts)
-            series = [item for fact in facts for item in fact.series]
-            await IdentityAnomalyEngine(
-                self.session, settings=settings, clock=self._clock
-            ).evaluate(
-                instance_id=instance.id,
-                series=series,
-                bucket_seconds=bucket_seconds,
-            )
+            try:
+                async with self.session.begin_nested():
+                    await write_tick(
+                        self.session,
+                        IdentityFold(
+                            catalog_version=IDENTITY_CATALOG_VERSION, buckets=tuple(facts)
+                        ),
+                        collected_at=started,
+                        bucket_seconds=bucket_seconds,
+                        provenance={
+                            "family": SearchFamily.IDENTITY_COLLECTION.value,
+                            "catalog_version": IDENTITY_CATALOG_VERSION,
+                            "searches": searches,
+                            "splits": splits,
+                        },
+                    )
+                    await _record_identity_mentions(self.session, instance.id, facts)
+                    series = [item for fact in facts for item in fact.series]
+                    await IdentityAnomalyEngine(
+                        self.session, settings=settings, clock=self._clock
+                    ).evaluate(
+                        instance_id=instance.id,
+                        series=series,
+                        bucket_seconds=bucket_seconds,
+                    )
+            except IntegrityError as exc:
+                return await self._record_integrity_failure(
+                    watermark, started, bucket_seconds, searches, splits, exc
+                )
         advanced = _advance(watermark, chunks, results, buckets)
         if _counts_failed(chunks, results):
             watermark.consecutive_failures += 1
@@ -274,6 +310,44 @@ class IdentityCollector:
             return
         end_of_last = watermark.watermark_at + timedelta(seconds=bucket_seconds)
         watermark.lag_seconds = max(0, int((started - end_of_last).total_seconds()))
+
+    async def _record_integrity_failure(
+        self,
+        watermark: CollectionWatermark,
+        started: datetime,
+        bucket_seconds: int,
+        searches: int,
+        splits: int,
+        exc: IntegrityError,
+    ) -> IdentityCollectionReport:
+        """Keep the constraint name. Roll the tick back and do not advance."""
+        await self.session.refresh(watermark)
+        reason = integrity_failure_reason(exc)[:512]
+        watermark.consecutive_failures += 1
+        watermark.last_error = reason
+        watermark.collection_metadata = {
+            "family": SearchFamily.IDENTITY_COLLECTION.value,
+            "catalog_version": IDENTITY_CATALOG_VERSION,
+            "searches": searches,
+            "splits": splits,
+            "bucket_seconds": bucket_seconds,
+        }
+        self._stamp(watermark, started, bucket_seconds)
+        await self.session.flush()
+        logger.warning(
+            "identity collection failed: %s",
+            reason,
+            extra={"error_class": "IntegrityError", "constraint": reason},
+        )
+        return IdentityCollectionReport(
+            status="failed",
+            searches_sent=searches,
+            splits=splits,
+            buckets_written=0,
+            watermark_at=watermark.watermark_at,
+            error_class="IntegrityError",
+            reason=reason,
+        )
 
 
 async def _record_identity_mentions(
