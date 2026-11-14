@@ -235,6 +235,39 @@ same `coverage` block. `suppression` and `replay` are null in this slice; the su
 and the 28-day replay arrive with later steps, and null says so rather than inventing an empty
 object.
 
+## Fleet source list
+
+`GET /fleet/sources` (`read:fleet`) lists classified sources, filtered, sorted, paged, with facets.
+
+| Parameter | Meaning |
+|---|---|
+| `q` | Case-insensitive substring of name, type name or identifier (max 100 characters; `%` and `_` are literal). An all-digit `q` also matches the QRadar id exactly. |
+| `class`, `type_id`, `group`, `flow`, `eps`, `profile` | Repeatable. Values within one parameter are OR; parameters are AND. `type_id` is the QRadar log-source type id, `group` a QRadar group id. `flow`: `FLOWING`, `SILENT` (open unsuppressed NO_EVENTS finding on a monitored, enabled source not in maintenance), `DISABLED_IN_QRADAR`, `NEVER` (no last event time). `eps`: `BELOW_EXPECTED`, `ABOVE_EXPECTED`, `WITHIN_EXPECTED`, `NO_BASELINE`, judged on the latest complete bucket of the last hour against the reliable p05 to p95 baseline cell of the current UTC weekday and hour. `profile`: `NONE`, `WAF`, `IPS`, `IDENTITY`. |
+| `review_status`, `has_conflict`, `basis` | As before. |
+| `sort`, `order` | `name` (default), `type`, `class`, `eps`, `last_event`, `silent_for`; `asc` (default) or `desc`. Nulls last; ties by QRadar id. |
+| `limit`, `offset` | Bounded by `api_max_page_size`. `total` is exact. |
+
+Each item adds `identifier`, `type_id`, `group_names` (at most five) and `group_count`, `flow`,
+`last_event_at`, `silent_for_seconds`, `current_eps`, `expected_eps` with `expected_eps_low` and
+`expected_eps_high`, `eps_state`, and `waf_profile`, `ips_profile`, `identity_profile` (null, or
+`{status, enabled}`). A missing measurement is null, never zero. The response adds `facets`
+(`source_class`, `type` top 50, `flow`, `profile`), each counted under every active filter except
+its own family. The request runs a constant number of statements: page ids, rows, group names, count
+and four facet reads.
+
+`GET /fleet/sources.csv` takes the same filters and sort, has no paging, and returns the first
+`api_max_export_rows` rows (`X-Export-Truncated: true` when cut). UTC timestamps; text cells that
+start with `=`, `+`, `-` or `@` are prefixed with `'`.
+
+`POST /fleet/sources/classification` (`log_source:write`) takes
+`{"log_source_ids": [uuid, ...] (1 to 500), "class": SourceClass | null, "mark_reviewed": bool}`.
+`class: null` clears the override. It applies the per-source override semantics of
+`PATCH /log-sources/{id}/classification` in one transaction. Unknown ids give 404 with only a count,
+ids of more than one instance give 422. It writes one `log_source.classification_override` audit row
+per source (as the PATCH does), one `log_source.review` per source newly reviewed, and one
+`fleet.classification_bulk` row with counts. The response is `{"updated": n, "items": [...]}` in the
+list row shape.
+
 ## Log-source fleet summary
 
 `GET /fleet/summary` returns one class summary for each non-internal source class. Its `buckets`

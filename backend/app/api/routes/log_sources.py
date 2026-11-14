@@ -11,11 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import NotificationDispatcher
-from app.alerts.fingerprint import anomaly_fingerprint, inventory_fingerprint
+from app.alerts.fingerprint import anomaly_fingerprint
 from app.alerts.routing import default_policy
-from app.alerts.service import AlertResolution, AlertService
+from app.alerts.service import AlertService
 from app.anomaly.thresholds import ThresholdResolver, direction_excluded
 from app.api.deps import ProviderDep, SessionDep
+from app.fleet.review import review_classification
 from app.fleet.service import reclassify_instance
 from app.i18n.messages import MessageRef, render
 from app.i18n.refusal import permission_refusal
@@ -23,7 +24,6 @@ from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     AnomalyState,
     AnomalyType,
-    ClassificationReviewStatus,
     Criticality,
 )
 from app.models.fleet import LogSourceClassification
@@ -402,32 +402,6 @@ async def mark_reviewed(
             source_ids=[log_source_id],
         )
         row = await _classification(session, log_source_id)
-    elif row.review_status != ClassificationReviewStatus.REVIEWED:
-        now = datetime.now(UTC)
-        row.review_status = ClassificationReviewStatus.REVIEWED
-        row.reviewed_at = now
-        row.reviewed_by = principal.subject
-        await session.flush()
-        _, resolved = await AlertService(session, clock=lambda: now).apply_bulk(
-            [],
-            [
-                AlertResolution(
-                    fingerprint=inventory_fingerprint(ls.instance_id, ls.qradar_id),
-                    actor=principal.subject,
-                    reason_message=MessageRef("alert.inventory.log_source.reviewed"),
-                )
-            ],
-        )
-        result = resolved[0]
-        if result is not None and result.transition is not None:
-            # Enqueue only: delivery belongs to the dispatch worker, as for the
-            # alert resolve route.
-            await NotificationDispatcher(
-                session, notifiers={}, policy=default_policy()
-            ).enqueue(result.alert, result.transition)
-        await record_audit(
-            session, action="log_source.review", actor=principal.subject,
-            object_type="log_source", object_id=str(log_source_id),
-            detail={"alert_resolved": result is not None},
-        )
+    else:
+        await review_classification(session, ls, row, principal.subject)
     return fleet_source_out(ls, row)
