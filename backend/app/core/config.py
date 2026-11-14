@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import (
@@ -24,7 +24,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core.patterns import PROPERTY_NAME_PATTERN
 from app.models.enums import AlertPolicyMode, OutagePolicyMode
@@ -188,6 +188,81 @@ LAB_PROFILE: dict[str, int] = {
     "anomaly_resolve_after_intervals": 2,
     "offense_collection_interval_seconds": 60,
 }
+
+#: Documented defaults of the four list-typed settings. Named so the ``Field``
+#: default and the empty-value fallback in `_list_setting_value` cannot drift
+#: apart. Each is a tuple: the field receives a fresh list.
+_EXPLANATION_DIMENSIONS_DEFAULT: tuple[str, ...] = (
+    "qid",
+    "event_name",
+    "source_ip",
+    "destination_ip",
+    "destination_port",
+    "source_port",
+    "username",
+    "action",
+    "category",
+    "protocol",
+)
+_CATCHALL_TYPE_IDS_DEFAULT: tuple[int, ...] = (67, 39, 212, 367, 4000)
+_GEO_DIRECTIONS_DEFAULT: tuple[str, ...] = ("SOURCE", "DESTINATION")
+_QRADAR_HEALTH_DISK_MOUNTS_DEFAULT: tuple[str, ...] = (
+    "/",
+    "/store",
+    "/storetmp",
+    "/transient",
+    "/var/log",
+    "/var/log/audit",
+    "/opt",
+    "/home",
+    "/tmp",  # noqa: S108 - a mount name to compare, not a file to open
+    "/var",
+    "/boot",
+    "/recovery",
+)
+
+
+def _list_setting_value(
+    value: object, *, variable: str, default: Sequence[Any]
+) -> object:
+    """A list setting from either of its two documented forms.
+
+    pydantic-settings JSON-decodes a complex field before validation, so a plain
+    or comma-separated value -- the forms ``docs/CONFIGURATION.md`` shows -- raised
+    at start-up: ``migrate`` exited, and the whole product stayed down (FIX-70).
+    Each such field carries ``NoDecode``, and this accepts both forms:
+
+    * a JSON array: ``["SOURCE", "DESTINATION"]``, ``[39, 40]``;
+    * a comma-separated string with optional spaces: ``SOURCE,DESTINATION``,
+      ``39, 40``, or a single value with no comma.
+
+    An empty value means the setting is unset, so the documented default applies.
+    It is never read as an empty list: ``.env`` uses ``KEY=`` to clear a name, and
+    three of these fields refuse an empty list outright. A doubled or trailing
+    comma names no value and is ignored. Members are passed on untouched, so each
+    field's own validator still judges them, naming the variable and its values.
+    """
+    if not isinstance(value, str):
+        # A list (or tuple) passed as a keyword argument. No decoding needed.
+        return value
+    text = value.strip()
+    if not text:
+        return list(default)
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"{variable} must be a JSON array or a comma-separated list, "
+                f'for example ["A", "B"] or A, B (not valid JSON: {exc.msg})'
+            ) from None
+        if not isinstance(parsed, list):
+            raise ValueError(
+                f"{variable} must be a JSON array or a comma-separated list, "
+                'for example ["A", "B"] or A, B'
+            )
+        return parsed
+    return [part.strip() for part in text.split(",") if part.strip()]
 
 
 class Settings(BaseSettings):
@@ -683,20 +758,10 @@ class Settings(BaseSettings):
     #: Per-dimension Ariel timeout for an explanation job.
     explanation_query_timeout_seconds: int = Field(default=120, ge=10, le=900)
     #: Dimensions to compare, in priority order. Trimmed per source to those
-    #: the DSM actually populates; the rest are recorded UNAVAILABLE.
-    explanation_dimensions: list[str] = Field(
-        default_factory=lambda: [
-            "qid",
-            "event_name",
-            "source_ip",
-            "destination_ip",
-            "destination_port",
-            "source_port",
-            "username",
-            "action",
-            "category",
-            "protocol",
-        ]
+    #: the DSM actually populates; the rest are recorded UNAVAILABLE. A JSON
+    #: array or a comma-separated list.
+    explanation_dimensions: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(_EXPLANATION_DIMENSIONS_DEFAULT)
     )
 
     # --- Phase B: WAF endpoint behavior -------------------------------------
@@ -792,8 +857,9 @@ class Settings(BaseSettings):
     catchall_collection_enabled: bool = True
     #: Device types whose events are searched for senders. Sites have their own
     #: catch-alls. Ints only; each is validated again before it enters a query.
-    catchall_type_ids: list[int] = Field(
-        default_factory=lambda: [67, 39, 212, 367, 4000], max_length=32
+    #: A JSON array or a comma-separated list.
+    catchall_type_ids: Annotated[list[int], NoDecode] = Field(
+        default_factory=lambda: list(_CATCHALL_TYPE_IDS_DEFAULT), max_length=32
     )
     #: Rows kept per keyed search before truncation splits it.
     catchall_max_rows_per_search: int = Field(default=2000, ge=10, le=100_000)
@@ -823,8 +889,9 @@ class Settings(BaseSettings):
     #: instance. Property mode sends no search for a direction with no property.
     geo_collection_enabled: bool = True
     #: Which side of the event is counted, each a separate stored series.
-    geo_directions: list[str] = Field(
-        default_factory=lambda: ["SOURCE", "DESTINATION"], min_length=1, max_length=2
+    #: A JSON array or a comma-separated list.
+    geo_directions: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(_GEO_DIRECTIONS_DEFAULT), min_length=1, max_length=2
     )
     #: ``property`` reads a QRadar custom property. ``lookup`` keeps GEO::LOOKUP.
     geo_country_source: str = "property"
@@ -853,22 +920,10 @@ class Settings(BaseSettings):
     #: REST health sample per run. QRADAR_HEALTH defaults to 15 minutes in the cadence table.
     qradar_health_collection_enabled: bool = True
     #: Mount points shown and stored. Any other mount (container overlays, /run/user,
-    #: /dev/shm) is ignored. A JSON list in the environment.
-    qradar_health_disk_mounts: list[str] = Field(
-        default_factory=lambda: [
-            "/",
-            "/store",
-            "/storetmp",
-            "/transient",
-            "/var/log",
-            "/var/log/audit",
-            "/opt",
-            "/home",
-            "/tmp",  # noqa: S108 - a mount name to compare, not a file to open
-            "/var",
-            "/boot",
-            "/recovery",
-        ],
+    #: /dev/shm) is ignored. A JSON array or a comma-separated list, in the
+    #: environment.
+    qradar_health_disk_mounts: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(_QRADAR_HEALTH_DISK_MOUNTS_DEFAULT),
         min_length=1,
         max_length=64,
     )
@@ -1299,12 +1354,28 @@ class Settings(BaseSettings):
             raise ValueError(f"{(info.field_name or '').upper()} is not an allowed property name")
         return name
 
+    @field_validator("geo_directions", mode="before")
+    @classmethod
+    def _geo_directions_from_env(cls, value: object) -> object:
+        return _list_setting_value(
+            value, variable="GEO_DIRECTIONS", default=_GEO_DIRECTIONS_DEFAULT
+        )
+
     @field_validator("geo_directions")
     @classmethod
     def _geo_directions_are_known(cls, value: list[str]) -> list[str]:
         if any(item not in ("SOURCE", "DESTINATION") for item in value):
             raise ValueError("GEO_DIRECTIONS holds SOURCE and DESTINATION")
         return list(dict.fromkeys(value))
+
+    @field_validator("qradar_health_disk_mounts", mode="before")
+    @classmethod
+    def _qradar_health_mounts_from_env(cls, value: object) -> object:
+        return _list_setting_value(
+            value,
+            variable="QRADAR_HEALTH_DISK_MOUNTS",
+            default=_QRADAR_HEALTH_DISK_MOUNTS_DEFAULT,
+        )
 
     @field_validator("qradar_health_disk_mounts")
     @classmethod
@@ -1327,6 +1398,29 @@ class Settings(BaseSettings):
             )
         return self
 
+    @field_validator("catchall_type_ids", mode="before")
+    @classmethod
+    def _catchall_type_ids_from_env(cls, value: object) -> object:
+        raw = _list_setting_value(
+            value, variable="CATCHALL_TYPE_IDS", default=_CATCHALL_TYPE_IDS_DEFAULT
+        )
+        if not isinstance(raw, list):
+            return raw
+        # pydantic's own int error names the field in lower case and does not say
+        # what the setting accepts, so a text member is converted (or refused) here.
+        out: list[object] = []
+        for item in raw:
+            if isinstance(item, str):
+                try:
+                    item = int(item.strip())
+                except ValueError:
+                    raise ValueError(
+                        "CATCHALL_TYPE_IDS holds integers from 1 to 100000, in a JSON "
+                        "array or a comma-separated list (for example 67, 39, 212)"
+                    ) from None
+            out.append(item)
+        return out
+
     @field_validator("catchall_type_ids")
     @classmethod
     def _catchall_type_ids_are_ids(cls, value: list[int]) -> list[int]:
@@ -1336,6 +1430,15 @@ class Settings(BaseSettings):
             if isinstance(item, bool) or not isinstance(item, int) or not 1 <= item <= 100_000:
                 raise ValueError("CATCHALL_TYPE_IDS holds integers from 1 to 100000")
         return value
+
+    @field_validator("explanation_dimensions", mode="before")
+    @classmethod
+    def _explanation_dimensions_from_env(cls, value: object) -> object:
+        return _list_setting_value(
+            value,
+            variable="EXPLANATION_DIMENSIONS",
+            default=_EXPLANATION_DIMENSIONS_DEFAULT,
+        )
 
     @field_validator("smtp_security", mode="before")
     @classmethod

@@ -8,6 +8,14 @@ uppercase names shown here.
 Never put a QRadar token, database password, encryption key, OIDC secret or notification webhook
 in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment variable.
 
+Four settings hold a list: `EXPLANATION_DIMENSIONS`, `CATCHALL_TYPE_IDS`, `GEO_DIRECTIONS` and
+`QRADAR_HEALTH_DISK_MOUNTS`. Each accepts both a JSON array and a comma-separated string with
+optional spaces, so `["SOURCE", "DESTINATION"]` and `SOURCE, DESTINATION` mean the same thing; a
+single value needs no comma. An empty value means the setting is unset, so its documented default
+applies. A value that still cannot be read fails start-up (`migrate`, backend and worker all
+refuse), with an error naming the variable and the accepted form and never carrying a
+secret-typed setting's value.
+
 ## Core and providers
 
 | Setting | Default | Meaning |
@@ -185,7 +193,8 @@ reference heading for them.
 | `EXPLANATION_DIMENSIONS` | see below | Dimensions compared, in priority order |
 
 `EXPLANATION_DIMENSIONS` defaults to `qid`, `event_name`, `source_ip`, `destination_ip`,
-`destination_port`, `source_port`, `username`, `action`, `category`, `protocol`. A source is
+`destination_port`, `source_port`, `username`, `action`, `category`, `protocol`. It accepts a JSON
+array or a comma-separated list: `["qid", "username"]` or `qid, username`. A source is
 trimmed to the dimensions its DSM populates; the rest are recorded unavailable.
 
 ## Anomaly triage
@@ -285,7 +294,7 @@ Field names and blocked/allowed values belong to each source's versioned profile
 | Setting | Default | Meaning |
 |---|---:|---|
 | `CATCHALL_COLLECTION_ENABLED` | `true` | Family collection switch |
-| `CATCHALL_TYPE_IDS` | `67, 39, 212, 367, 4000` | Device types searched for sender names |
+| `CATCHALL_TYPE_IDS` | `67, 39, 212, 367, 4000` | Device types searched for sender names. A JSON array or a comma-separated list: `[67, 39]` or `67, 39`; each is an integer from `1` to `100000`, at most 32 in all |
 | `CATCHALL_MAX_ROWS_PER_SEARCH` | `2000` | Rows accepted before time splitting |
 | `CATCHALL_MAX_NEW_SENDERS_PER_BUCKET` | `20` | New senders admitted per source and bucket |
 | `CATCHALL_MAX_ACTIVE_SENDERS_PER_SOURCE` | `2000` | Active sender ceiling |
@@ -402,7 +411,7 @@ probe runs, which is at most one interval. An operator who raises the future det
 | Setting | Default | Meaning |
 |---|---:|---|
 | `GEO_COLLECTION_ENABLED` | `true` | Family collection switch |
-| `GEO_DIRECTIONS` | `SOURCE, DESTINATION` | Event sides stored as separate series |
+| `GEO_DIRECTIONS` | `SOURCE, DESTINATION` | Event sides stored as separate series. A JSON array or a comma-separated list: `["SOURCE", "DESTINATION"]` or `SOURCE, DESTINATION`; each is `SOURCE` or `DESTINATION` |
 | `GEO_COUNTRY_SOURCE` | `property` | `property` reads a custom property; `lookup` keeps `GEO::LOOKUP` |
 | `GEO_SOURCE_COUNTRY_PROPERTY` | `Source Geographic Location` | SOURCE property. Empty: that direction is not collected |
 | `GEO_DESTINATION_COUNTRY_PROPERTY` | empty | DESTINATION property. Empty: that direction is not collected |
@@ -442,7 +451,7 @@ and says why, and the notification part still runs.
 | Setting | Default | Meaning |
 |---|---:|---|
 | `QRADAR_HEALTH_COLLECTION_ENABLED` | `true` | Family collection switch |
-| `QRADAR_HEALTH_DISK_MOUNTS` | `["/", "/store", "/storetmp", "/transient", "/var/log", "/var/log/audit", "/opt", "/home", "/tmp", "/var", "/boot", "/recovery"]` | JSON list of mount points shown and stored. Any other mount (container overlays, `/run/user/...`, `/dev/shm`) is ignored. Each entry must be an absolute path of letters, digits and `_ . / -` |
+| `QRADAR_HEALTH_DISK_MOUNTS` | `["/", "/store", "/storetmp", "/transient", "/var/log", "/var/log/audit", "/opt", "/home", "/tmp", "/var", "/boot", "/recovery"]` | Mount points shown and stored: a JSON array or a comma-separated list (`["/store", "/tmp"]` or `/store, /tmp`). Any other mount (container overlays, `/run/user/...`, `/dev/shm`) is ignored. Each entry must be an absolute path of letters, digits and `_ . / -` |
 | `QRADAR_HEALTH_DISK_WARN_PERCENT` | `85` | The fullest allowlisted mount of a host warns at this share of the disk (`1`-`100`) |
 | `QRADAR_HEALTH_DISK_FAIL_PERCENT` | `95` | ... and fails at this share. Must be above the warning share |
 | `QRADAR_HEALTH_CRE_QUEUE_WARN` | `10000` | Events waiting for the rule engine above which `doctor` warns. A throttle spill above zero always warns |
