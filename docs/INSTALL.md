@@ -519,6 +519,42 @@ The first builds `./qradar-mcp` with IBM's own Dockerfile and tags it
 if the first step was skipped, the build fails instead of fetching an image of that name from a
 public registry.
 
+## Moving from a pre-production to a production QRadar
+
+Use `./qradar-dash reset` when a site was installed against a pre-production console and must be
+installed again against production. It replaces the manual `docker compose down -v`, the deletion
+of `.env` and `.qradar-dash/state.json`, and the reload of secrets. Do not use it to change
+versions (`upgrade`) or to recover data (`restore`).
+
+What `reset` removes (this compose project only):
+
+- the containers, and every local Docker volume of this compose project (the database, Redis and
+  the MCP logs: `<project>_postgres_data`, `<project>_redis_data`, ...). `reset` lists them from
+  Docker by the compose project label, and `--dry-run` shows the exact names;
+- `.env`, so the next install generates a new `ENCRYPTION_KEY`;
+- `.qradar-dash/state.json`, which makes `install` refuse while it records an installed version;
+- `.secrets/install.answers`, so `install` asks again and does not reuse the pre-production
+  console URL and paths.
+
+What it keeps: the backup root and every backup in it, the other files in `.secrets/`, the two
+external Docker volumes (QRadar token and CA, proxy certificates) unless you pass
+`--include-secrets`, this checkout and the loaded images. No backup is taken unless you pass
+`--backup`; the backup is verified and, if it fails, nothing is removed.
+
+```bash
+./qradar-dash reset --dry-run          # print the plan, change nothing
+./qradar-dash reset                    # type the project name to confirm
+./deploy/load-secrets.sh               # the production token and CA
+./qradar-dash install                  # answer the questions for the production console
+```
+
+Then register the console, run the sync, and validate the profiles again. Data from the
+pre-production console is gone, and QRadar log source ids differ between consoles, so a profile
+that was valid there is not valid here until it is validated on the new console. Run the history
+backfill if you want the new console's past.
+
+For a scripted run use `--non-interactive --yes`; without `--yes` it refuses.
+
 ## Upgrade, backup and recovery
 
 Use the operator CLI rather than running migrations against a live old application:
