@@ -15,8 +15,13 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.notifiers import destination_sender
+from app.alerts.notifiers.console_hosts import (
+    refuse_console_target,
+    registered_console_hosts,
+)
 from app.alerts.notifiers.destination_sender import (
     READ_CHUNK_BYTES,  # noqa: F401 - re-exported: tests drive the bounded read through it
 )
@@ -124,8 +129,9 @@ def _guard_refusal(exc: URLGuardError) -> CodedHTTPException:
 
 
 async def _guard(
-    url: str, *, allow_http: bool, allow_private: bool
+    url: str, *, allow_http: bool, allow_private: bool, session: AsyncSession
 ) -> GuardedURL:
+    refuse_console_target(url.strip(), await registered_console_hosts(session))
     return await destination_sender.guard(
         url, allow_http=allow_http, allow_private=allow_private, resolver=_resolver
     )
@@ -201,6 +207,7 @@ async def create_destination(
             payload.url,
             allow_http=payload.allow_http,
             allow_private=payload.allow_private,
+            session=session,
         )
     except URLGuardError as exc:
         raise _guard_refusal(exc) from exc
@@ -268,7 +275,9 @@ async def patch_destination(
     if await _name_taken(session, name, except_id=row.id):
         raise _duplicate(name)
     try:
-        checked = await _guard(url, allow_http=allow_http, allow_private=allow_private)
+        checked = await _guard(
+            url, allow_http=allow_http, allow_private=allow_private, session=session
+        )
     except URLGuardError as exc:
         raise _guard_refusal(exc) from exc
     row.name = name
@@ -329,11 +338,18 @@ async def delete_destination(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-async def _send(row: NotificationDestination, now: datetime) -> tuple[TestClass, int | None]:
+async def _send(
+    row: NotificationDestination, now: datetime, console_hosts: frozenset[str]
+) -> tuple[TestClass, int | None]:
     body, headers = build_webhook_v1_test(str(row.id), now)
     # The seams are looked up here, at call time, so a test that replaces them is honoured.
     return await destination_sender.send_to_destination(
-        row, body, headers, resolver=_resolver, transport_factory=_http_transport
+        row,
+        body,
+        headers,
+        console_hosts=console_hosts,
+        resolver=_resolver,
+        transport_factory=_http_transport,
     )
 
 
@@ -362,8 +378,9 @@ async def send_test(
     """Send only the operator-requested test event, with a bounded response read."""
     row = await _get(session, destination_id, for_update=True)
     now = _utcnow()
+    console_hosts = await registered_console_hosts(session)
     try:
-        result, response_status = await _send(row, now)
+        result, response_status = await _send(row, now, console_hosts)
     except destination_sender.StoredHeadersInvalid:
         # A row that bypassed the schema cannot be sent, and the class is permanent.
         result, response_status = "payload_invalid", None

@@ -275,10 +275,12 @@ The application refuses disabled TLS verification.
 
 ### What the token must be allowed to read
 
-The token is read-only, and the application never writes to QRadar. You do not have to know every
-capability in advance: after the installer registers the console, the application asks QRadar,
-API by API, which of the calls below the token can make, and lists what is still missing together
-with what each missing API feeds. When the QRadar administrator grants more, one **Check now**
+The application changes no QRadar configuration or data. It uses the token read-only for every API
+except Ariel, where it creates searches (`POST /ariel/searches`) and cancels only the ones it
+created (`DELETE /ariel/searches/{id}`). QRadar's Log Activity permission is what allows both. You
+do not have to know every capability in advance: after the installer registers the console, the
+application asks QRadar, API by API, which of the calls below the token can make, and lists what
+is still missing together with what each missing API feeds. When the QRadar administrator grants more, one **Check now**
 restarts what was blocked. The check runs at start-up, every six hours
 (`QRADAR_ACCESS_CHECK_INTERVAL_SECONDS`) and on demand. The result is
 `GET /api/v1/admin/qradar-access` ([API](API.md)) and the `qradar_access` line of

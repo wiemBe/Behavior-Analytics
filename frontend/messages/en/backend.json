@@ -764,6 +764,7 @@
     }
   },
   "notifications": {
+    "console_refused": "The destination points at a QRadar console. A webhook never targets a console.",
     "destination_in_use": "The destination {name} is used by a notification rule. Remove it from the rule first.",
     "destination_unknown": "The notification destination was not found.",
     "http_refused": "The destination uses HTTP. Enable HTTP only for an endpoint the site administrator trusts.",
