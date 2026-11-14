@@ -989,7 +989,7 @@ class IdentityAnomalyEngine:
                 ).all()
             )
             now = self._clock()
-            fresh = [item for item in allowed if item.fingerprint not in existing]
+            fresh, repeats = _collapse_opens(allowed, existing)
             if fresh:
                 await self.session.execute(
                     pg_insert(Alert).values(
@@ -1008,18 +1008,16 @@ class IdentityAnomalyEngine:
                                 "opened_at": now,
                                 "first_seen_at": now,
                                 "last_seen_at": now,
-                                "occurrence_count": 1,
+                                "occurrence_count": count,
                                 "evidence_snapshot": item.evidence,
                                 "source_anomaly_ids": [str(item.anomaly_id)],
                             }
-                            for item in fresh
+                            for item, count in fresh
                         ]
                     )
                 )
                 report.alerts_opened += len(fresh)
-            for item in allowed:
-                if item.fingerprint not in existing:
-                    continue
+            for item, count in repeats:
                 await self.session.execute(
                     update(Alert)
                     .where(
@@ -1027,7 +1025,7 @@ class IdentityAnomalyEngine:
                         Alert.status != AlertStatus.RESOLVED.value,
                     )
                     .values(
-                        occurrence_count=Alert.occurrence_count + 1,
+                        occurrence_count=Alert.occurrence_count + count,
                         last_seen_at=now,
                         evidence_snapshot=item.evidence,
                         context=item.context,
@@ -1054,6 +1052,30 @@ class IdentityAnomalyEngine:
                     )
                 )
                 report.alerts_resolved += int(getattr(result, "rowcount", 0) or 0)
+
+
+def _collapse_opens(
+    allowed: Sequence[_AlertOpen], existing: set[str]
+) -> tuple[list[tuple[_AlertOpen, int]], list[tuple[_AlertOpen, int]]]:
+    """One open alert per fingerprint. The last fire in the tick is the evidence.
+
+    A tick judges every due bucket. ``uq_alert_active_dedup`` allows one open
+    row per fingerprint, so repeats of that fingerprint are a count.
+    """
+    latest: dict[str, _AlertOpen] = {}
+    fires: dict[str, int] = {}
+    for item in allowed:
+        latest[item.fingerprint] = item
+        fires[item.fingerprint] = fires.get(item.fingerprint, 0) + 1
+    fresh: list[tuple[_AlertOpen, int]] = []
+    repeats: list[tuple[_AlertOpen, int]] = []
+    for fingerprint, item in latest.items():
+        pair = (item, fires[fingerprint])
+        if fingerprint in existing:
+            repeats.append(pair)
+        else:
+            fresh.append(pair)
+    return fresh, repeats
 
 
 def _group(series: Sequence[IdentitySeries]) -> dict[_Key, list[IdentitySeries]]:

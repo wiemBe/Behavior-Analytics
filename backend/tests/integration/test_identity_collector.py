@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine, delete, event, select
+from sqlalchemy import create_engine, delete, event, func, select
 from sqlalchemy import text as sql_text
 
 from app.core.config import Settings
-from app.identity.collector import COLLECTOR_NAME, IdentityCollector
+from app.identity.collector import COLLECTOR_NAME, IdentityCollector, integrity_failure_reason
 from app.identity.dto import IdentitySearchKind
+from app.identity.engine import fingerprint
+from app.models.alert import Alert
 from app.models.enums import (
+    FIRST_RUN_LOOKBACK_BUCKETS,
     IDENTITY_EVENT_CATALOG,
+    IdentityAnomalyType,
     IdentityMeasurement,
     IdentityProfileValidationStatus,
 )
@@ -404,3 +409,185 @@ async def test_insert_count_stays_one_per_table_as_sources_grow(db_session) -> N
     assert quiet_counts[4625].measurement == EXACT
     assert quiet_counts[4625].event_count == 0
     assert len({item.query for item in provider.identity_searches}) == 3
+
+
+async def test_integrity_failure_reason_keeps_the_constraint_name() -> None:
+    """The operator text is the constraint. The message can carry a row."""
+
+    class _Inner(Exception):
+        def __init__(self) -> None:
+            super().__init__("duplicate key value violates unique constraint")
+            self.constraint_name = "uq_alert_active_dedup"
+
+    class _Wrapped(Exception):
+        def __init__(self) -> None:
+            super().__init__("INSERT INTO alert VALUES (alice)")
+            self.orig = _Inner()
+
+    reason = integrity_failure_reason(_Wrapped())
+    assert reason == "uq_alert_active_dedup"
+    assert "alice" not in reason
+
+    class _Unsafe(Exception):
+        def __init__(self) -> None:
+            super().__init__("alice")
+            self.constraint_name = "alice's row"
+
+    assert integrity_failure_reason(_Unsafe()) == "integrity_error"
+    assert "alice" not in integrity_failure_reason(_Unsafe())
+
+
+async def test_mock_catalog_first_tick_is_idempotent_with_one_alert_each(
+    db_session,
+) -> None:
+    """The demo path: no watermark, the mock's own 1003 and 1004 rows, alerting on.
+
+    One tick judges every lookback bucket. Each open condition is one alert.
+    """
+    instance = await make_instance(db_session)
+    dc01 = await make_log_source(db_session, instance, qradar_id=1003, name="dc01")
+    dc02 = await make_log_source(db_session, instance, qradar_id=1004, name="dc02")
+    await _profile(db_session, instance, dc01)
+    await _profile(db_session, instance, dc02)
+    provider = MockQRadarProvider(seed=1)
+    report = await _collect(
+        db_session, instance, provider, _settings(), identity_alerting_enabled=True
+    )
+
+    lookback = FIRST_RUN_LOOKBACK_BUCKETS
+    assert report.status == "ok"
+    assert report.searches_sent == 3
+    assert report.splits == 0
+    assert report.buckets_written == 2 * lookback
+    assert report.error_class is None and report.reason is None
+    assert "error_class" not in report.as_dict()
+    assert provider.identity_script is None
+    kinds = [item.kind for item in provider.identity_searches]
+    assert kinds == [
+        IdentitySearchKind.COUNTS,
+        IdentitySearchKind.RARE_NAMES,
+        IdentitySearchKind.VOLUME_NAMES,
+    ]
+
+    buckets = await _buckets(db_session)
+    assert len(buckets) == 2 * lookback
+    by_source: dict[object, list[IdentityBucket]] = {}
+    for row in buckets:
+        by_source.setdefault(row.log_source_id, []).append(row)
+    assert len(by_source[dc01.id]) == lookback
+    assert {row.population for row in by_source[dc01.id]} == {15}
+    assert {row.measurement for row in by_source[dc01.id]} == {EXACT}
+    assert {row.population for row in by_source[dc02.id]} == {7}
+    assert {row.measurement for row in by_source[dc02.id]} == {EXACT}
+    assert "alice" not in str(by_source[dc01.id][0].query_provenance)
+
+    counts = (
+        await db_session.scalars(
+            select(IdentityEventCount).where(
+                IdentityEventCount.log_source_id.in_([dc01.id, dc02.id])
+            )
+        )
+    ).all()
+    assert len(counts) == 2 * lookback * len(CATALOG)
+
+    def _series(source_id: object, event_id: int) -> list[IdentityEventCount]:
+        return [
+            row
+            for row in counts
+            if row.log_source_id == source_id and row.event_id == event_id
+        ]
+
+    assert {row.event_count for row in _series(dc01.id, 4625)} == {9}
+    assert {row.event_count for row in _series(dc01.id, 4740)} == {4}
+    assert {row.event_count for row in _series(dc01.id, 4726)} == {0}
+    assert {row.measurement for row in _series(dc01.id, 4726)} == {EXACT}
+    assert {row.event_count for row in _series(dc02.id, 4625)} == {6}
+    assert {row.event_count for row in _series(dc02.id, 4726)} == {1}
+    assert await _names(db_session, dc01) == {"alice", "carol", "dave", "eve", "auditor"}
+    assert "bob" not in await _names(db_session, dc01)
+    assert await _names(db_session, dc02) == {"mallory", "frank"}
+    name_rows = await db_session.scalar(select(func.count()).select_from(IdentityTopUsername))
+    assert name_rows == lookback * 7
+
+    created = IdentityAnomalyType.IDENTITY_ACCOUNT_CREATED.value
+    cleared = IdentityAnomalyType.IDENTITY_AUDIT_LOG_CLEARED.value
+    deleted = IdentityAnomalyType.IDENTITY_ACCOUNT_DELETED.value
+    expected = {
+        fingerprint(instance.id, dc01.id, 4720, created),
+        fingerprint(instance.id, dc01.id, 1102, cleared),
+        fingerprint(instance.id, dc02.id, 4726, deleted),
+    }
+    alerts = (await db_session.scalars(select(Alert))).all()
+    assert {row.fingerprint for row in alerts} == expected
+    assert {row.dedup_key for row in alerts} == expected
+    assert {row.occurrence_count for row in alerts} == {lookback}
+    assert {row.status for row in alerts} == {"OPEN"}
+    assert {row.source_type for row in alerts} == {"identity_source"}
+    stored = " ".join(str(row.context) + str(row.evidence_snapshot) for row in alerts)
+    assert "bob" not in stored
+
+    watermark = await db_session.scalar(
+        select(CollectionWatermark).where(CollectionWatermark.collector == COLLECTOR_NAME)
+    )
+    assert watermark is not None
+    assert watermark.watermark_at == NOW - WIDTH
+    assert watermark.last_error is None
+    assert watermark.consecutive_failures == 0
+
+    again = await _collect(
+        db_session, instance, provider, _settings(), identity_alerting_enabled=True
+    )
+    assert again.status == "caught_up"
+    assert again.buckets_written == 0
+    assert again.searches_sent == 0
+    assert len(await _buckets(db_session)) == 2 * lookback
+    assert await db_session.scalar(select(func.count()).select_from(IdentityTopUsername)) == (
+        lookback * 7
+    )
+    again_alerts = (await db_session.scalars(select(Alert))).all()
+    assert {row.fingerprint for row in again_alerts} == expected
+    assert {row.occurrence_count for row in again_alerts} == {lookback}
+
+
+async def test_integrity_error_records_the_constraint_and_does_not_advance(
+    db_session, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A duplicate open alert rolls the tick back and keeps the constraint name."""
+    instance = await make_instance(db_session)
+    dc01 = await make_log_source(db_session, instance, qradar_id=1003, name="dc01")
+    dc02 = await make_log_source(db_session, instance, qradar_id=1004, name="dc02")
+    await _profile(db_session, instance, dc01)
+    await _profile(db_session, instance, dc02)
+
+    def _each_open(allowed, existing):  # type: ignore[no-untyped-def]
+        fresh = [(item, 1) for item in allowed if item.fingerprint not in existing]
+        repeats = [(item, 1) for item in allowed if item.fingerprint in existing]
+        return fresh, repeats
+
+    monkeypatch.setattr("app.identity.engine._collapse_opens", _each_open)
+    provider = MockQRadarProvider(seed=1)
+    with caplog.at_level(logging.WARNING, logger="app.identity.collector"):
+        report = await _collect(
+            db_session, instance, provider, _settings(), identity_alerting_enabled=True
+        )
+
+    assert report.status == "failed"
+    assert report.error_class == "IntegrityError"
+    assert report.reason == "uq_alert_active_dedup"
+    assert report.buckets_written == 0
+    assert report.as_dict()["reason"] == "uq_alert_active_dedup"
+    assert "alice" not in caplog.text
+    assert "bob" not in caplog.text
+    assert "uq_alert_active_dedup" in caplog.text
+    assert await _buckets(db_session) == []
+    assert await db_session.scalar(select(func.count()).select_from(Alert)) == 0
+    watermark = await db_session.scalar(
+        select(CollectionWatermark).where(CollectionWatermark.collector == COLLECTOR_NAME)
+    )
+    assert watermark is not None
+    assert watermark.watermark_at is None
+    assert watermark.last_error == "uq_alert_active_dedup"
+    assert watermark.consecutive_failures == 1
+    assert watermark.intervals_collected == 0
+    assert "alice" not in str(watermark.collection_metadata)
+    assert watermark.collection_metadata["searches"] == 3
