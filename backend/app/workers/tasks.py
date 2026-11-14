@@ -48,6 +48,7 @@ from app.custom_rules.retention import CustomRuleRetention
 from app.i18n.messages import MessageRef, render
 from app.identity.collector import IdentityCollector
 from app.identity.retention import IdentityRetention
+from app.identity.revalidation import IdentityRevalidator
 from app.models.enums import AlertDigestState, EvidenceStatus, Severity
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
@@ -2014,6 +2015,25 @@ async def dispatch_identity_collection(instance_name: str | None = None) -> dict
     return result
 
 
+async def revalidate_identity_profiles(instance_name: str | None = None) -> dict:
+    """Probe every enabled identity profile again.
+
+    Not gated by ``IDENTITY_COLLECTION_ENABLED`` and does not claim the
+    collection slot. A provider without Ariel is a no-op. One probe per
+    profile per interval; a second call in the same slot does not search.
+    """
+    settings = get_settings()
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        assert provider is not None
+        report = await IdentityRevalidator(session, settings=settings).run(instance, provider)
+        return report.as_dict()
+
+    return await _for_each_instance(run, instance_name)
+
+
 async def apply_identity_retention() -> dict:
     """Delete identity buckets older than the count window, with their rows."""
     maker = get_sessionmaker()
@@ -2414,6 +2434,11 @@ def apply_ips_retention_task() -> dict:
 @celery_app.task(name="dispatch_identity_collection")
 def dispatch_identity_collection_task(instance_name: str | None = None) -> dict:
     return _run(dispatch_identity_collection(instance_name))
+
+
+@celery_app.task(name="revalidate_identity_profiles")
+def revalidate_identity_profiles_task(instance_name: str | None = None) -> dict:
+    return _run(revalidate_identity_profiles(instance_name))
 
 
 @celery_app.task(name="apply_identity_retention")

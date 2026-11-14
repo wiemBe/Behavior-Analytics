@@ -263,6 +263,12 @@ celery_app.conf.beat_schedule = {
         "task": "dispatch_identity_collection",
         "schedule": 60.0,
     },
+    "revalidate-identity-profiles": {
+        # One validation probe per enabled profile. A provider without Ariel
+        # sends nothing. Not queued at beat start: a restart must not probe.
+        "task": "revalidate_identity_profiles",
+        "schedule": float(settings.identity_revalidation_interval_seconds),
+    },
     "apply-identity-retention": {
         "task": "apply_identity_retention",
         "schedule": float(settings.identity_retention_interval_seconds),

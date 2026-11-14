@@ -149,7 +149,9 @@ class IdentityCollector:
     async def _collect_locked(self, instance: QRadarInstance) -> IdentityCollectionReport:
         started = self._clock()
         settings = self.settings
-        bucket_seconds = settings.collection_interval_seconds
+        # The family cadence is how often the task runs. The bucket stays 300 s
+        # when LAB_MODE or an operator shortens collection_interval_seconds.
+        bucket_seconds = IDENTITY_BUCKET_SECONDS
         watermark = await self._watermark(instance)
         eligible = await self._eligible(instance)
         if not eligible:
