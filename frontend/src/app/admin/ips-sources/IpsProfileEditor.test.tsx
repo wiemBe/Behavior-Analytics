@@ -692,7 +692,7 @@ describe("IpsProfileEditor: errors", () => {
   it("degrades to free text when the property list is unavailable, and says why", async () => {
     const user = userEvent.setup();
     editor({ catalog: null });
-    expect(screen.getByText(/The property list is unavailable/)).toBeInTheDocument();
+    expect(screen.getByText(/Property list unavailable/)).toBeInTheDocument();
     await user.click(within(kindGroup("Signature")).getByRole("radio", { name: "Custom property" }));
     expect(screen.getByRole("combobox", { name: /signature property/i })).toBeInTheDocument();
   });

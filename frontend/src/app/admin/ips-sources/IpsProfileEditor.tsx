@@ -31,6 +31,7 @@ import {
   reportForTable,
   type IpsDraft,
 } from "@/app/admin/ips-sources/ips";
+import { usePropertyCatalog } from "@/components/fieldmapping/usePropertyCatalog";
 import { FieldMappingForm, referenceKindLabel } from "@/components/fieldmapping/FieldMappingForm";
 import { MappingHistory } from "@/components/fieldmapping/MappingHistory";
 import { ValidationReport } from "@/components/fieldmapping/ValidationReport";
@@ -115,7 +116,7 @@ export function IpsProfileEditor({
   const backendMessage = useBackendMessage();
   const formSch = useMemo(() => formSchema(schema), [schema]);
   const [profile, setProfile] = useState<IpsProfileOut | null>(initialProfile);
-  const [catalog, setCatalog] = useState<PropertyCatalogOut | null>(initialCatalog);
+  const [catalog, setCatalog] = usePropertyCatalog(initialCatalog, () => ipsApi.propertyCatalog(source.id));
   const [history, setHistory] = useState(initialHistory);
   const creating = profile === null;
 
@@ -669,6 +670,7 @@ export function IpsProfileEditor({
           fieldErrors={fieldErrors}
           disabled={busy !== null}
           onRefreshCatalog={refreshCatalog}
+          onSearchCatalog={async (q) => (await ipsApi.propertyCatalog(source.id, false, q)).properties}
           referenceKinds={draft.kinds}
           onKindChange={setKind}
         />

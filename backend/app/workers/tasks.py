@@ -2504,3 +2504,33 @@ def evaluate_custom_rules_task() -> dict:
 @celery_app.task(name="apply_custom_rule_retention")
 def apply_custom_rule_retention_task() -> dict:
     return _run(apply_custom_rule_retention())
+
+
+@celery_app.task(name="refresh_property_catalog")
+def refresh_property_catalog(instance_id: str) -> None:
+    _run(_refresh_property_catalog(uuid.UUID(instance_id)))
+
+
+async def _refresh_property_catalog(instance_id: uuid.UUID) -> None:
+    from app.services.property_catalog import refresh_catalog_snapshot
+
+    async with get_sessionmaker()() as session:
+        instance = await session.get(QRadarInstance, instance_id)
+        if instance is not None and instance.enabled:
+            await refresh_catalog_snapshot(
+                session, instance_id, lambda: build_provider_for_instance(instance)
+            )
+
+
+@celery_app.task(name="dispatch_property_catalog_refresh")
+def dispatch_property_catalog_refresh() -> None:
+    _run(_dispatch_property_catalog_refresh())
+
+
+async def _dispatch_property_catalog_refresh() -> None:
+    async with get_sessionmaker()() as session:
+        ids = (await session.scalars(select(QRadarInstance.id).where(
+            QRadarInstance.enabled.is_(True)
+        ))).all()
+    for instance_id in ids:
+        refresh_property_catalog.delay(str(instance_id))

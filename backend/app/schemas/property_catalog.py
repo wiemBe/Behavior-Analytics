@@ -11,6 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.providers.dto import CatalogFailureDTO
+
 
 class PropertyCatalogItemOut(BaseModel):
     name: str
@@ -29,3 +31,15 @@ class PropertyCatalogOut(BaseModel):
     filtered_by_source_type: bool
     properties: list[PropertyCatalogItemOut]
     detail: str | None = None
+
+    search_limited: bool = False
+    as_of: datetime | None = None
+    catalog_status: Literal["NEVER", "REFRESHING", "COMPLETE", "PARTIAL", "FAILED"] = "NEVER"
+    applicability_complete: bool = False
+    last_started_at: datetime | None = None
+    last_completed_at: datetime | None = None
+    property_count: int | None = None
+    expression_count: int | None = None
+    duration_seconds: float | None = None
+    failure: CatalogFailureDTO | None = None
+    refresh_seconds: int = 600

@@ -140,8 +140,10 @@ describe("FieldMappingForm", () => {
       />,
     );
     expect(screen.getByRole("status")).toHaveTextContent(
-      "The property list is unavailable: QRadar refused the request (403).",
+      "Property list unavailable — names can still be typed",
     );
+    await user.click(screen.getByText("Details"));
+    expect(screen.getByText("QRadar refused the request (403).")).toBeVisible();
     const vhost = input(/virtual host/i);
     await user.type(vhost, "Anything_At_All");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
@@ -150,7 +152,7 @@ describe("FieldMappingForm", () => {
 
   it("treats a catalog that never loaded as unavailable", () => {
     render(<Harness cat={null} />);
-    expect(screen.getByRole("status")).toHaveTextContent(/unavailable/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/property list unavailable/i);
   });
 
   it("refreshes the list on request", async () => {

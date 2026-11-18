@@ -129,7 +129,18 @@
     "propertyLabel": "{field} property",
     "propertyPlaceholder": "Property name",
     "unmapAria": "Do not map {field}",
-    "unmap": "Unmap"
+    "unmap": "Unmap",
+    "catalogUnavailable": "Property list unavailable — names can still be typed",
+    "catalogEmpty": "No custom properties reported as of {time}",
+    "catalogAsOf": "Property list as of {time}",
+    "catalogNever": "Not loaded yet — names can still be typed",
+    "catalogRefreshing": "Refreshing…",
+    "catalogFailedOld": "Last refresh failed ({cause}) — showing {time} list",
+    "catalogFailedEmpty": "Property list failed ({cause}) — names can still be typed",
+    "catalogPartial": "Property names loaded — applicability unknown ({cause})",
+    "catalogDetails": "Details",
+    "catalogCadence": "Refresh interval: {seconds} seconds",
+    "catalogFailureDetails": "{failureClass} · {endpoint} · HTTP {status} · items {start}–{end} · {attempts} attempts · {seconds} s"
   },
   "input": {
     "groupApplies": "Applies to this source type",
@@ -141,7 +152,10 @@
     "count": "{total} properties",
     "countNote": " for “{query}”. The name you typed can still be used; validation will check it.",
     "listLabel": "Properties for {label}",
-    "current": "current"
+    "current": "current",
+    "searchCount": "{shown, plural, one {# suggestion} other {# suggestions}}",
+    "searchLoading": "Searching properties…",
+    "searchFailed": "Property search failed — names can still be typed"
   },
   "report": {
     "none": "Version {version} has not been validated, so there is no report. Validation reads a bounded sample of this source’s events from QRadar.",

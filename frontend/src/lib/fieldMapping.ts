@@ -270,6 +270,7 @@ export function catalogNote(
   const value = name.trim();
   if (value === "" || catalog === null || catalog.status !== "AVAILABLE") return null;
   const hit = catalog.properties.find((p) => p.name === value);
+  if (!hit && catalog.search_limited) return null;
   if (!hit) {
     return { kind: "not-listed", text: i18n.t(k("catalogNote.notListed")) };
   }

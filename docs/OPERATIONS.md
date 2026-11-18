@@ -3318,3 +3318,36 @@ page after a QRadar upgrade, correct `ARIEL_SEARCH_PATH`, `ARIEL_SEARCH_FIXED` o
 The API: `GET /api/v1/anomalies/{id}/pivot`, `/alerts/{id}/pivot`, `/offenses/{id}/pivot` and
 `/log-sources/{id}/pivot`. Each uses the permission of its object's detail route and answers 404 for
 an unknown id (or an alert that has no QRadar object behind it, such as a stored-search threshold).
+
+## Property catalog on large consoles (FIX-72)
+
+Open the WAF or IPS source profile editor under Administration to inspect the
+catalog state. The mapping toolbar shows the snapshot's UTC time, refreshing,
+never loaded, failed, or partial applicability. **Details** shows the configured
+refresh interval and safe diagnostics: failure kind, endpoint, HTTP status,
+page range, attempts and elapsed seconds. **Refresh list** queues work; it does
+not hold the API request open while QRadar is read. The editor polls for up to
+one minute; reopening the editor reads the latest state if the walk takes longer.
+These existing administration editors are the operations view for this catalog.
+
+Celery worker and Beat must both run. Beat dispatches every 600 seconds by default.
+A restart preserves names and their timestamp. A crashed refresh's queue lease
+expires after the walk budget plus 60 seconds; periodic refreshes also recover
+under the same per-instance advisory lock.
+
+50,000 EPS and 8,000 log sources do not cause one catalog request per source.
+The cost follows custom properties and property expressions: at 500 items/page,
+12,000 properties and 40,000 expressions require 106 GETs including the two empty
+terminal pages, before retries. Fields exclude extraction regexes and payloads.
+The expression walk remains console-wide because production endpoint timings
+have not established that unfiltered expressions are the bottleneck. This also
+covers types that may receive profiles without querying all sources. Measure
+both endpoints and later page ranges before changing page size or deadline;
+synthetic timings do not establish the appliance's tolerated page size.
+
+Failed or ceiling-limited walks never replace an existing snapshot. When the
+first names walk completes but expressions fail, names are usable and type
+applicability is unknown. A later complete refresh replaces names and applicability
+atomically. A failure retains the safe cause without upstream bodies, hostnames,
+credentials or extraction logic. Names remain freely editable and validation
+still checks the chosen mapping.

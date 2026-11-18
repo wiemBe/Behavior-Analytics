@@ -53,6 +53,10 @@ celery_app.conf.imports = ("app.workers.tasks",)
 
 # Periodic schedule. Intervals are conservative defaults; tune per deployment.
 celery_app.conf.beat_schedule = {
+    "property-catalog-refresh": {
+        "task": "dispatch_property_catalog_refresh",
+        "schedule": float(settings.qradar_property_catalog_refresh_seconds),
+    },
     "beat-heartbeat": {
         # Also sent once when beat starts (below): without that, the first
         # write comes one interval after a restart, and doctor FAILs on a

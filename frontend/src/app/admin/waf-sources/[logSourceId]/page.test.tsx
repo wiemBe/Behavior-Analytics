@@ -110,7 +110,7 @@ describe("WAF source page", () => {
     vi.spyOn(api, "wafProfile").mockResolvedValue(profile());
     vi.spyOn(api, "wafPropertyCatalog").mockRejectedValue(new ApiError(500, "x"));
     render(await WafSourcePage(params("ls-1")));
-    expect(screen.getByText(/property list is unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/property list unavailable/i)).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /url path property/i })).toBeInTheDocument();
   });
 

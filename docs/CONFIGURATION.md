@@ -738,3 +738,24 @@ read them there.
 The interface accepts only a redacted, normalized investigation package and returns structured
 analysis. It cannot close offenses, block addresses, disable users, modify rules or update QRadar
 reference data.
+
+### Property catalog background refresh (FIX-72)
+
+WAF and IPS editors search a shared PostgreSQL snapshot. Editor requests never read
+QRadar. Celery Beat dispatches one refresh per enabled instance; an advisory lock
+prevents concurrent walks for the same instance.
+
+| Environment variable | Default | Bounds |
+| --- | --- | --- |
+| `QRADAR_PROPERTY_CATALOG_REFRESH_SECONDS` | `600` | 60–86400 seconds |
+| `QRADAR_PROPERTY_CATALOG_PAGE_SIZE` | `500` | 1–1000 items |
+| `QRADAR_PROPERTY_CATALOG_MAX_PAGES` | `200` | 1–1000 per endpoint |
+| `QRADAR_PROPERTY_CATALOG_PAGE_TIMEOUT_SECONDS` | `15` | >0–60 seconds per attempt |
+| `QRADAR_PROPERTY_CATALOG_MAX_RETRIES` | `2` | 0–3 retries after the first attempt |
+| `QRADAR_PROPERTY_CATALOG_WALK_TIMEOUT_SECONDS` | `300` | >0–1800 seconds total |
+
+Retries use bounded exponential backoff (1, 2, 4 seconds), within the total walk
+budget. Authentication and malformed responses are not retried. The total budget
+covers both collections and retry waits; cleanup is bounded separately at five
+seconds. The older `QRADAR_PROPERTY_CATALOG_TTL_SECONDS` setting applies only to
+the legacy property-watch discovery cache, not to either profile editor.

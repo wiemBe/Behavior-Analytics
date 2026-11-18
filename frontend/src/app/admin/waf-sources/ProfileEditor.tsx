@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { usePropertyCatalog } from "@/components/fieldmapping/usePropertyCatalog";
 import { FieldMappingForm } from "@/components/fieldmapping/FieldMappingForm";
 import { MappingHistory } from "@/components/fieldmapping/MappingHistory";
 import { ValidationReport } from "@/components/fieldmapping/ValidationReport";
@@ -137,7 +138,7 @@ export function ProfileEditor({
   const { locale } = i18n;
   const count = (value: number) => formatCount(value, locale);
   const [profile, setProfile] = useState<WafProfileOut | null>(initialProfile);
-  const [catalog, setCatalog] = useState<PropertyCatalogOut | null>(initialCatalog);
+  const [catalog, setCatalog] = usePropertyCatalog(initialCatalog, () => api.wafPropertyCatalog(source.id));
   const [history, setHistory] = useState(initialHistory);
   const creating = profile === null;
 
@@ -643,6 +644,7 @@ export function ProfileEditor({
           fieldErrors={fieldErrors}
           disabled={busy !== null}
           onRefreshCatalog={refreshCatalog}
+          onSearchCatalog={async (q) => (await api.wafPropertyCatalog(source.id, false, q)).properties}
           copyFrom={{ options: copyOptions, onCopy: copyFrom }}
         />
         <div className="fm-label-row">

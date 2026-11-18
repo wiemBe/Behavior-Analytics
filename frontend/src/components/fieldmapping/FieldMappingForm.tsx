@@ -12,7 +12,7 @@ import { useTranslations } from "next-intl";
 import { PropertyInput } from "@/components/fieldmapping/PropertyInput";
 import type { CatalogProperty, MappingFieldOut, MappingSchemaOut, PropertyCatalogOut } from "@/lib/api";
 import { catalogNote, draftErrors, type MappingDraft } from "@/lib/fieldMapping";
-import { UtcTime } from "@/components/ui/UtcTime";
+import { CatalogStatus } from "./CatalogStatus";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import "@/components/ui/controls.css";
@@ -131,6 +131,7 @@ export function FieldMappingForm({
   copyFrom,
   referenceKinds,
   onKindChange,
+  onSearchCatalog,
 }: {
   schema: MappingSchemaOut;
   draft: MappingDraft;
@@ -149,6 +150,7 @@ export function FieldMappingForm({
   /** The chosen reference kind per field key. With `onKindChange` it turns on the kind switch. */
   referenceKinds?: Record<string, string>;
   onKindChange?: (key: string, kind: string) => void;
+  onSearchCatalog?: (q: string) => Promise<CatalogProperty[]>;
 }) {
   const t = useTranslations("fieldMapping.form");
   const i18n = useBehaviorI18n();
@@ -170,31 +172,16 @@ export function FieldMappingForm({
     }
   }
 
-  const available = catalog?.status === "AVAILABLE";
 
   return (
     <div className="fm-form">
       <div className="fm-toolbar">
-        <p className="fm-catalog" role="status">
-          {available ? (
-            <>
-              {t.rich("catalogFetched", { time: () => <UtcTime value={catalog.fetched_at} /> })}{" "}
-              {catalog.filtered_by_source_type
-                ? t("catalogApplies", { type: typeName ?? t("catalogThisType") })
-                : t("catalogUnfiltered")}
-            </>
-          ) : (
-            t("catalogDownTail", {
-              lead:
-                t("catalogDown") + (catalog?.detail ? `: ${catalog.detail}` : "."),
-            })
-          )}
-        </p>
+        <CatalogStatus catalog={catalog} typeName={typeName} />
         {onRefreshCatalog && (
           <button
             type="button"
             className="action secondary"
-            disabled={disabled || refreshing}
+            disabled={disabled || refreshing || catalog?.catalog_status === "REFRESHING"}
             onClick={() => void refresh()}
           >
             {refreshing ? t("refreshing") : t("refresh")}
@@ -282,6 +269,7 @@ export function FieldMappingForm({
                       value={value}
                       placeholder={field.required ? t("propertyPlaceholder") : t("notMapped")}
                       suggestions={propertiesFor(field, catalog)}
+                      search={onSearchCatalog}
                       normalized={switchable ? [] : normalizedFor(field)}
                       describedBy={hasMsg ? `${descId} ${msgId}` : descId}
                       invalid={Boolean(error)}

@@ -28,7 +28,6 @@ from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
 from app.models.log_source import LogSource
 from app.providers.base import PROPERTY_NAME_PATTERN
-from app.providers.factory import build_provider_for_instance
 from app.schemas.ips import (
     IpsActionValueMapIn,
     IpsCandidateOut,
@@ -56,7 +55,7 @@ from app.security.auth import get_principal
 from app.security.rbac import Principal
 from app.services.ips_profiles import AUDIT_OBJECT, IpsProfileService
 from app.services.log_source_search import apply_candidate_search
-from app.services.property_catalog import PropertyCatalogService, get_property_catalog_service
+from app.services.property_catalog import stored_catalog
 
 router = APIRouter(prefix="/ips", tags=["ips"])
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
@@ -525,17 +524,20 @@ async def get_ips_profile_history(
 async def get_ips_property_catalog(
     log_source_id: uuid.UUID,
     session: SessionDep,
-    service: Annotated[PropertyCatalogService, Depends(get_property_catalog_service)],
     refresh: bool = Query(default=False),
+    q: str = Query(default="", max_length=512),
+    type_id: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
 ) -> PropertyCatalogOut:
     source = await session.get(LogSource, log_source_id)
     instance = await session.get(QRadarInstance, source.instance_id) if source else None
     if source is None or instance is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Log source not found")
-    return await service.catalog(
+    return await stored_catalog(
+        session,
         instance_id=instance.id,
-        provider_factory=lambda: build_provider_for_instance(instance),
-        source_type_id=source.type_id,
+        source_type_id=type_id if type_id is not None else source.type_id,
+        q=q, limit=limit,
         refresh=refresh,
     )
 
