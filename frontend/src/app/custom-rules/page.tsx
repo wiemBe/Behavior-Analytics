@@ -145,7 +145,7 @@ async function CustomRulesPage() {
                           {subject ? <Link href={subject.href}>{subject.label}</Link> : "—"}
                         </td>
                         <td>{conditionText(rule, locale, say)}</td>
-                        <td><span className={`pill ${sevTone(rule.severity)}`}>{enumLabel(say, "severityPill", rule.severity)}</span></td>
+                        <td><span className={`pill pill-quiet ${sevTone(rule.severity)}`}>{enumLabel(say, "severityPill", rule.severity)}</span></td>
                         <td>{rule.enabled ? t("table.yes") : t("table.no")}</td>
                         <td className="num cell-when">
                           {rule.last_evaluated_at ? <UtcTime value={rule.last_evaluated_at} /> : t("table.never")}

@@ -63,7 +63,7 @@ export function QueueTable({ items }: { items: QueueItem[] }) {
                 </td>
                 <td>
                   {item.severity ? (
-                    <span className={`pill ${sevTone(item.severity)}`}>
+                    <span className={`pill pill-quiet ${sevTone(item.severity)}`}>
                       {enumLabel(say, "severityPill", item.severity)}
                     </span>
                   ) : (

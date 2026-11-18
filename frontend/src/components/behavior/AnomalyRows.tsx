@@ -427,7 +427,7 @@ function TriageCell({ a }: { a: AnomalySummary }) {
   const s = a.triage.status;
   return (
     <>
-      <span className={`pill pill-quiet ${s === "IN_PROGRESS" ? "info" : s === "NEW" ? "warn" : ""}`}>
+      <span className={`pill pill-quiet ${s === "IN_PROGRESS" || s === "NEW" ? "warn" : ""}`}>
         {tt(`status.${s}` as never)}
       </span>
       {a.triage.disposition && (

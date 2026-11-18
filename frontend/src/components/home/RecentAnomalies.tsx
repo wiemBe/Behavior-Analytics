@@ -150,7 +150,7 @@ export function RecentAnomalies({ subject }: { subject?: SubjectKind } = {}) {
                           </span>
                         </td>
                         <td className="tw-unfold">
-                          <span className={`pill ${sevTone(r.severity)}`}>
+                          <span className={`pill pill-quiet ${sevTone(r.severity)}`}>
                             {severityPill(r.severity)}
                           </span>
                           <span className={`tw-sub tw-wrap tw-state-word ${stateTone(r.state)}`}>
