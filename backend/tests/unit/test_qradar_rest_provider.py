@@ -267,6 +267,56 @@ class TestLogSourceMetrics:
             )
 
 
+class TestAggregateSearchFailureMessages:
+    """WAF aggregate failures must not be named after the explanation family."""
+
+    @pytest.mark.asyncio
+    async def test_failed_aggregate_names_the_aggregate_not_the_explanation(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/ariel/searches"):
+                return httpx.Response(201, json={"search_id": "agg-1", "status": "WAIT"})
+            if request.url.path.endswith("/ariel/searches/agg-1"):
+                return httpx.Response(200, json={"status": "ERROR", "progress": 100})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        provider, _ = build_provider(handler)
+        try:
+            with pytest.raises(ProviderError) as caught:
+                await provider._run_bounded_aggregate("SELECT * FROM events", max_rows=10)
+        finally:
+            await provider.aclose()
+
+        message = str(caught.value)
+        assert message == "Ariel aggregate search did not complete"
+        assert "explanation" not in message.lower()
+        assert "SELECT" not in message
+        assert SEC_TOKEN not in message
+
+    @pytest.mark.asyncio
+    async def test_timed_out_aggregate_names_the_aggregate_not_the_explanation(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/ariel/searches"):
+                return httpx.Response(201, json={"search_id": "agg-1", "status": "WAIT"})
+            if request.method == "DELETE":
+                return httpx.Response(200, json={})
+            if request.url.path.endswith("/ariel/searches/agg-1"):
+                return httpx.Response(200, json={"status": "EXECUTE", "progress": 10})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        provider, _ = build_provider(handler)
+        try:
+            with pytest.raises(ProviderUnavailableError) as caught:
+                await provider._run_bounded_aggregate("SELECT * FROM events", max_rows=10)
+        finally:
+            await provider.aclose()
+
+        message = str(caught.value)
+        assert message == "Ariel aggregate search timed out"
+        assert "explanation" not in message.lower()
+        assert "SELECT" not in message
+        assert SEC_TOKEN not in message
+
+
 class CoalescingAriel:
     """A minimal Ariel that answers aggregate searches over coalesced records.
 
