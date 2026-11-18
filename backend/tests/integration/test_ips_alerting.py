@@ -274,10 +274,10 @@ async def test_shadow_mode_still_records_the_incident(db_session) -> None:
     assert await notification_count(db_session) == 0
 
 
-async def test_default_setting_is_off() -> None:
+async def test_default_setting_is_on() -> None:
     from app.core.config import Settings
 
-    assert Settings.model_fields["ips_alerting_enabled"].default is False
+    assert Settings.model_fields["ips_alerting_enabled"].default is True
 
 
 async def test_maintenance_neither_opens_nor_refreshes(db_session) -> None:

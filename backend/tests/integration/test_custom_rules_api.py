@@ -598,7 +598,7 @@ async def test_create_reports_shadow_mode_and_a_null_evaluation(db_session, db_s
     instance = await make_instance(db_session)
     source = await make_log_source(db_session, instance, qradar_id=707, name="shadow-src")
     await db_session.commit()
-    client = _client(db_schema, _principal("admin"))
+    client = _client(db_schema, _principal("admin"), custom_rules_alerting_enabled=False)
     created = client.post(PREFIX, json=_rule_body(source.id, "fresh", enabled=False))
     assert created.status_code == 201, created.text
     body = created.json()

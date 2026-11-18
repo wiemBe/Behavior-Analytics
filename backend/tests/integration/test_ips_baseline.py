@@ -37,6 +37,8 @@ def settings(**overrides: object) -> Settings:
     values = get_settings().model_dump()
     values.update(
         collection_interval_seconds=3600,
+        ips_collection_enabled=False,
+        ips_alerting_enabled=False,
         ips_baseline_lookback_days=60,
         ips_baseline_rebuild_batch_size=50,
         ips_min_coverage=0.9,

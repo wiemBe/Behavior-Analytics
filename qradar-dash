@@ -1716,11 +1716,11 @@ summary_search_lines() {
 catch-all	CATCHALL_COLLECTION_ENABLED	on	no
 geo	GEO_COLLECTION_ENABLED	on	no
 explanations	ANOMALY_EXPLANATION_ENABLED	on	no
-WAF	WAF_COLLECTION_ENABLED	off	yes
-IPS	IPS_COLLECTION_ENABLED	off	yes
+WAF	WAF_COLLECTION_ENABLED	on	yes
+IPS	IPS_COLLECTION_ENABLED	on	yes
 rule-match collection	RULE_MATCH_COLLECTION_ENABLED	off	no
-custom rules	CUSTOM_RULES_ENABLED	off	no
-property watch	PW_COLLECTION_ENABLED	off	no
+custom rules	CUSTOM_RULES_ENABLED	on	no
+property watch	PW_COLLECTION_ENABLED	on	no
 EOF
   on_text=$(csv_join "${on[@]}")
   note="every 5 min unless changed under Administration → Search cadence"

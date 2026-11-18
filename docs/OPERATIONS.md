@@ -126,10 +126,11 @@ sudo chmod 700 /var/backups/qradar-dash
 Bayt/satır değerleri ölçülmüş değildir. Planlama sabiti satır başına 1 KiB'dir. İlk haftadan sonra
 `pg_database_size` ile değiştirilecek bir tahmindir. `doctor` bu boyutu yazar.
 
-- **En az:** 4 vCPU, 8 GiB RAM, **Docker kökünde 80 GiB boş** disk. Bu ana makine log source hacmi ile
-  varsayılanda açık aileler (catch-all, geo, explanations) içindir. Bunlar Administration →
-  Search cadence sayfasından değiştirilmedikçe 5 dakikada bir aranır. WAF, IPS, kural eşleşmesi
-  toplama, özel kurallar ve mülk izleme (property watch) kapalı bırakılmıştır.
+- **Minimum:** 4 vCPU, 8 GiB RAM and **80 GiB free in Docker's filesystem**.
+  This minimum assumes source-volume collection and the original catch-all, geography and
+  explanation families. In 0.1.17 WAF, IPS, identity, property watches and custom rules are
+  also on by default, but require their own configuration; size the host for configured work.
+  Rule-match collection remains off because it has no empty-configuration search guard.
 - **Önerilen:** 8 vCPU, 16 GiB RAM, Docker ve Postgres için 400 GiB ve yedek dizini olarak bağlanmış
   **ikinci bir dosya sistemi** (400 GiB). İkinci dosya sistemi, veri diski dolduğunda bile yedeğe
   erişmeni sağlar. Yedek dizini ile Docker veri kökü aynı aygıttaysa kurulum ön kontrolü uyarır,
@@ -204,15 +205,18 @@ Sorular şu sırayla sorulur:
     ilk yönetici oturum açmasında soru sorulur. Ayrıntı: [Geçmiş okuma](#geçmiş-okuma).
 
 Sorulmayanlar: LDAP (arayüzden yapılır), dedektör eşikleri, aile etkinleştirme, SMTP, webhook, LLM.
-WAF, IPS, kural eşleşmesi toplama, özel kurallar ve mülk izleme (property watch) varsayılanda
-**kapalı** kalır. Log source hacmi her zaman açıktır. Catch-all, geo ve explanations varsayılanda açıktır.
+WAF, IPS, identity, property-watch and custom-rule collection/evaluation and alerting default
+to **on** in 0.1.17. Profiles, watches or rules must still be configured. Rule-match collection
+and alerting remain **off** because collection has no empty-configuration search guard.
+Source-volume collection always runs; catch-all, geography and explanations remain on by default.
 Kurulum özeti açık aileleri ve kapalı aileleri ayrı satırlarda yazar. Açık aileler, Administration →
 Search cadence sayfasından değiştirilmedikçe 5 dakikada bir aranır. WAF veya IPS açıksa özet, onların
 o sayfada değiştirilene kadar 15 dakika kullandığını da yazar.
 
-**Mülk izleme.** İki anahtar vardır: `PW_COLLECTION_ENABLED` (varsayılan **false**) aile
-anahtarı, `PW_ALERTING_ENABLED` (varsayılan **false**) gölge moddur; gölge modda olaylar ve yaşam
-döngüsü yazılır ama hiçbir şey sayfa açmaz. Üst sınırlar: `PW_MAX_ENABLED_WATCHES` 10, tick başına
+**Property watches.** `PW_COLLECTION_ENABLED` and `PW_ALERTING_ENABLED` both default to
+**true**. Setting alerting false keeps incidents in shadow mode without paging.
+
+Üst sınırlar: `PW_MAX_ENABLED_WATCHES` 10, tick başına
 `PW_MAX_SEARCHES_PER_TICK` 40, izleme başına `PW_MAX_SEARCHES_PER_WATCH_PER_TICK` 12, izleme başına
 etkin değer `PW_MAX_ACTIVE_VALUES_PER_WATCH` 200, sabitlenmiş (pinned) değer `PW_MAX_PINNED_VALUES`
 10. En yüksek sıklık `PROPERTY_WATCH` ailesine `/admin/search-cadence` sayfasından verilir (5 dk –
@@ -288,7 +292,7 @@ Bir test VM'de ilk kurulum toplam 1 dk 40 sn sürdü (QRadar erişilemezken). Bu
 Özet en sonda yazdırılır: URL `https://<ad>/`, oturum açma yolu `/login`, yönetici kullanıcı adı ve
 "parola yukarıda yazdırıldı ve saklanmıyor" cümlesi, QRadar bağlantı sonucu, geçmiş okuma yanıtı
 (kaydedildiyse yanıtın kendisi, kaydedilmediyse "not decided; the first administrator sign-in will
-ask"), kapalı aileler (WAF, IPS, kural eşleşmeleri, özel kurallar), yedek dizini ve bu kılavuzun
+ask"), family switches (on by default except rule-match collection), yedek dizini ve bu kılavuzun
 yolu `docs/OPERATIONS.md`.
 
 - Çıkış kodu 0: yığın sağlıklı, `/health/ready` ve `/version` 200 döndürdü, QRadar kontrolü geçti ve
@@ -1253,7 +1257,7 @@ The default "SOC Overview" (`SOC Genel Bakışı`) template carries a Geography 
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `GEO_COUNTRY_SOURCE` | `property` | `property` groups the search by a custom property; `lookup` keeps `GEO::LOOKUP` on the address (the 0.1.9 behaviour). |
+| `GEO_COUNTRY_SOURCE` | `lookup` | `property` groups the search by a custom property; `lookup` keeps `GEO::LOOKUP` on the address (the 0.1.9 behaviour). |
 | `GEO_SOURCE_COUNTRY_PROPERTY` | `Source Geographic Location` | Exact property name for the Source direction. Empty: Source is not collected. |
 | `GEO_DESTINATION_COUNTRY_PROPERTY` | empty | Exact property name for the Destination direction. Empty: Destination is not collected. |
 
@@ -1783,8 +1787,8 @@ reddediyor. WAF ve IPS de sınırlanmış bir dökümü aynı şekilde işaretle
 
 **Olası neden:** Aile bayrağı kapalı, profil devre dışı ya da izleme kapalı. WAF için:
 `WAF collection is disabled (WAF_COLLECTION_ENABLED=false)` ve üç komşu mesajı. IPS için:
-`IPS_COLLECTION_ENABLED` varsayılanda false'tur ve toplayıcı `profile disabled` ya da
-`monitoring disabled` döndürür.
+`IPS_COLLECTION_ENABLED` defaults to true; an operator can turn it off. Collection also
+requires an enabled, VALID profile and a monitored source.
 
 **Doğrulama:** `families_off` satırı ya da filigranın `last_error` alanı.
 
@@ -1792,8 +1796,9 @@ reddediyor. WAF ve IPS de sınırlanmış bir dökümü aynı şekilde işaretle
 ./qradar-dash doctor
 ```
 
-**Çözüm:** Bayrağı yalnız profil geçerli olduktan sonra aç. Yeni kurulumda kapalı bir aile beklenen
-durumdur (Kurulum, Sihirbaz).
+**Action:** Check the profile or watch configuration first. These families are on by default;
+a disabled family usually reflects an operator override. Check stored feature-switch rows as
+well as `.env`. Rule-match collection is the exception and remains off by default.
 
 ### OPS-R8. WAF profili bir düzenlemeden sonra toplamıyor
 
@@ -2348,8 +2353,8 @@ hata metnini içermez. `OPS-R11` (`doctor` `migration_head`) ve `OPS-R14` ile do
 
 **Belirti:** Özel kurallar hiç değerlendirilmiyor.
 
-**Olası neden:** `CUSTOM_RULES_ENABLED` varsayılanda false'tur ve false iken beat görevi hiçbir şey
-yapmaz. `RULE_MATCH_COLLECTION_ENABLED` de aynı biçimdedir.
+**Possible cause:** `CUSTOM_RULES_ENABLED` defaults to true; when explicitly false, its beat
+task does nothing. `RULE_MATCH_COLLECTION_ENABLED` remains false by default.
 
 **Doğrulama:** `families_off`.
 
@@ -2518,7 +2523,7 @@ kopyası silinmeden durur.
 **Belirti:** `/behavior/watches` listesi boş ya da her izleme `NOT_ENABLED` gösteriyor; hiçbir izleme
 için toplanmış kova yok.
 
-**Olası neden:** `PW_COLLECTION_ENABLED` varsayılanda false'tur; false iken
+**Possible cause:** `PW_COLLECTION_ENABLED` defaults to true; when explicitly false,
 `dispatch_property_watch_collection` görevi hiç oturum açmaz ve QRadar'a arama gitmez, bu yüzden
 ailenin `last_run_at` alanı NULL kalır. Kaydedilen bir izleme her zaman **devre dışı** başlar ve
 çalışana kadar durum göstermez (`last_status` boştur); daha önce etkinleştirilip sonra kapatılan
@@ -2666,7 +2671,8 @@ sayılır, `total_events > 0` gerekir) izleme `NOT_APPLICABLE` olur (OPS-R7).
 **Belirti:** `/anomalies` içinde mülk izleme olayları (`PW_VALUE`) görünüyor ama bunlara karşılık
 gelen bir uyarı yok; olayların yaşam döngüsü yine de ilerliyor.
 
-**Olası neden:** `PW_ALERTING_ENABLED` varsayılanda false'tur; bu **gölge moddur**. Gölge modda
+**Possible cause:** `PW_ALERTING_ENABLED` defaults to true; explicitly setting it false selects
+shadow mode. Gölge modda
 olaylar ve yaşam döngüsü (CANDIDATE → OPEN → RECOVERING → RESOLVED) yazılır ama motor hiçbir uyarı
 açmaz, yenilemez, çözmez ya da bildirim kuyruklamaz. Uyarılar olaylar kapalı olduğu için değil,
 bilerek açılmaz.

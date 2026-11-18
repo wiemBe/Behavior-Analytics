@@ -37,8 +37,8 @@ NOW = datetime(2026, 11, 4, 12, 7, 31, tzinfo=UTC)
 #: The properties the console must have for the geo and health families to send a search.
 PROPERTIES = ("Metric ID", "Value", "Element", "Source Geographic Location")
 
-#: The families with a switch that is off by default; on, they still SKIP with no profile
-#: or watch in the database, which is what this fixture database has.
+#: Family switches this fixture explicitly enables. WAF, IPS and property watches still
+#: SKIP with no profile or watch in the database, which is what this fixture has.
 FAMILIES_ON = {
     "rule_match_collection_enabled": True,
     "waf_collection_enabled": True,

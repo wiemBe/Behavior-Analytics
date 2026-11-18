@@ -36,6 +36,7 @@ def settings_for(**overrides: Any) -> Settings:
     """A 7-day window with a one-hour margin: the shortest window the design allows."""
     base: dict[str, Any] = dict(
         encryption_key="x" * 44,
+        pw_collection_enabled=False,
         collection_interval_seconds=300,
         collection_max_backfill_intervals=3,
         history_backfill_days=7,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -341,3 +342,68 @@ def test_startup_logs_unknown_setting_names_and_not_values(
     assert "ignoring unknown settings:" in captured
     assert "CATCHALL_COLLECTION_ENABLE" in captured
     assert planted not in captured
+
+
+_FAMILY_DEFAULTS = {
+    "waf_collection_enabled": True,
+    "waf_outcome_collection_enabled": True,
+    "waf_client_collection_enabled": True,
+    "waf_alerting_enabled": True,
+    "ips_collection_enabled": True,
+    "ips_alerting_enabled": True,
+    "identity_collection_enabled": True,
+    "identity_alerting_enabled": True,
+    "rule_match_collection_enabled": False,
+    "rule_alerting_enabled": False,
+    "pw_collection_enabled": True,
+    "pw_alerting_enabled": True,
+    "custom_rules_enabled": True,
+    "custom_rules_alerting_enabled": True,
+}
+
+
+@pytest.fixture
+def clean_settings_env(monkeypatch):
+    for name in list(os.environ):
+        if name.lower() in Settings.model_fields:
+            monkeypatch.delenv(name)
+
+
+@pytest.mark.parametrize(("name", "expected"), _FAMILY_DEFAULTS.items())
+def test_family_code_defaults(clean_settings_env, name, expected):
+    settings = Settings(_env_file=None)
+    assert getattr(settings, name) is expected
+    assert name not in settings.model_fields_set
+
+
+def test_geography_code_defaults(clean_settings_env):
+    settings = Settings(_env_file=None)
+    assert settings.geo_country_source == "lookup"
+    assert settings.geo_directions == ["SOURCE"]
+
+
+@pytest.mark.parametrize(
+    ("collection", "alerting"),
+    [
+        ("waf_collection_enabled", "waf_alerting_enabled"),
+        ("ips_collection_enabled", "ips_alerting_enabled"),
+        ("identity_collection_enabled", "identity_alerting_enabled"),
+        ("rule_match_collection_enabled", "rule_alerting_enabled"),
+        ("pw_collection_enabled", "pw_alerting_enabled"),
+        ("custom_rules_enabled", "custom_rules_alerting_enabled"),
+    ],
+)
+def test_collection_opt_out_turns_defaulted_alerting_off(
+    clean_settings_env, monkeypatch, collection, alerting
+):
+    monkeypatch.setenv(collection.upper(), "false")
+    settings = Settings(_env_file=None)
+    assert getattr(settings, collection) is False
+    assert getattr(settings, alerting) is False
+    assert alerting not in settings.model_fields_set
+    # This base accepts explicit alerting values independently of collection.
+    for value in (True, False):
+        monkeypatch.setenv(alerting.upper(), str(value))
+        explicit = Settings(_env_file=None)
+        assert getattr(explicit, alerting) is value
+        assert alerting in explicit.model_fields_set

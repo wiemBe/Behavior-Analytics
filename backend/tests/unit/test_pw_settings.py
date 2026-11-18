@@ -14,10 +14,10 @@ def make(**over: object) -> Settings:
     return Settings(_env_file=None, encryption_key=KEY, **over)  # type: ignore[call-arg]
 
 
-def test_both_switches_default_false() -> None:
+def test_both_switches_default_true() -> None:
     settings = make()
-    assert settings.pw_collection_enabled is False
-    assert settings.pw_alerting_enabled is False
+    assert settings.pw_collection_enabled is True
+    assert settings.pw_alerting_enabled is True
 
 
 def test_the_designed_defaults() -> None:
@@ -102,10 +102,10 @@ def test_each_bound_is_enforced(
 ) -> None:
     for value in bad:
         with pytest.raises(ValidationError):
-            make(**{name: value})
+            make(pw_collection_enabled=False, **{name: value})
     for value in good:
         # The cross-checks run only with collection on, so a single bound is tested alone.
-        assert getattr(make(**{name: value}), name) == value
+        assert getattr(make(pw_collection_enabled=False, **{name: value}), name) == value
 
 
 class TestCrossChecks:
@@ -146,9 +146,10 @@ class TestCrossChecks:
     def test_the_baseline_visits_are_bounded(self) -> None:
         for bad in (0, 53):
             with pytest.raises(ValidationError):
-                make(pw_baseline_min_visits=bad)
-        assert make(pw_baseline_min_visits=1).pw_baseline_min_visits == 1
-        assert make(pw_baseline_min_visits=52).pw_baseline_min_visits == 52
+                make(pw_collection_enabled=False, pw_baseline_min_visits=bad)
+        for visits in (1, 52):
+            settings = make(pw_collection_enabled=False, pw_baseline_min_visits=visits)
+            assert settings.pw_baseline_min_visits == visits
 
     def test_the_novelty_history_must_stay_below_retention(self) -> None:
         with pytest.raises(ValidationError, match="PW_NEW_VALUE_HISTORY_DAYS"):
@@ -226,7 +227,8 @@ class TestCrossChecks:
         assert "PW_NEW_VALUE_HISTORY_DAYS" in message
 
     def test_a_deployment_without_pw_is_never_refused_over_a_pw_setting(self) -> None:
-        settings = make(pw_baseline_min_visits=52, pw_baseline_lookback_days=90,
+        settings = make(pw_collection_enabled=False, pw_baseline_min_visits=52,
+                        pw_baseline_lookback_days=90,
                         pw_new_value_history_days=50,
                         pw_max_searches_per_tick=5, pw_max_pinned_values=20,
                         pw_max_active_values_per_watch=3, pw_bootstrap_days=1,

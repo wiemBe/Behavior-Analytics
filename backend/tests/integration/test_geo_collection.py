@@ -79,6 +79,7 @@ def collector(session, provider, *, now=NOW, **overrides) -> GeoCollector:  # ty
         update={
             "search_cadence_max_searches_per_tick": 50,
             "geo_country_source": "lookup",
+            "geo_directions": ["SOURCE", "DESTINATION"],
             **overrides,
         }
     )

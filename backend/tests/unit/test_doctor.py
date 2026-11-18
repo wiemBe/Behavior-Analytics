@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import json
+import os
 import pathlib
 import ssl
 import sys
@@ -150,6 +151,11 @@ def settings(tmp_path) -> Settings:
     token.write_text("fixture-token", encoding="utf-8")
     ca.write_text("fixture-ca", encoding="utf-8")
     return Settings(
+        waf_collection_enabled=False,
+        ips_collection_enabled=False,
+        identity_collection_enabled=False,
+        pw_collection_enabled=False,
+        custom_rules_enabled=False,
         qradar_host="https://qradar.example.test",
         qradar_api_token_file=str(token),
         qradar_ca_bundle=str(ca),
@@ -973,7 +979,7 @@ async def test_cadence_pass_and_warn(settings: Settings) -> None:
 
 @pytest.mark.asyncio
 async def test_cadence_skips_property_watch_while_its_switch_is_off(settings: Settings) -> None:
-    """The default install: `PW_COLLECTION_ENABLED=false`, a PW row never run, no warning."""
+    """An explicit opt-out: `PW_COLLECTION_ENABLED=false`, a PW row never run, no warning."""
     never = SimpleNamespace(family="PROPERTY_WATCH", cadence_seconds=3600, last_run_at=None)
     result = await make_doctor(settings, FakeSession(scalars_values=[[never]])).check_cadence()
     assert result.status is Status.PASS
@@ -1690,3 +1696,17 @@ def test_entity_mentions_is_registered_before_qradar_access_with_its_runbook() -
         "read-only",
     ):
         assert fragment in entry, fragment
+
+
+async def test_fresh_family_summary_uses_code_defaults(monkeypatch) -> None:
+    for name in list(os.environ):
+        if name.lower() in Settings.model_fields:
+            monkeypatch.delenv(name)
+    result = await make_doctor(Settings(_env_file=None)).check_families_off()
+    assert result.status is Status.PASS
+    for key in (
+        "WAF_COLLECTION_ENABLED", "IPS_COLLECTION_ENABLED", "IDENTITY_COLLECTION_ENABLED",
+        "PW_COLLECTION_ENABLED", "CUSTOM_RULES_ENABLED",
+    ):
+        assert f"{key}=on" in result.message
+    assert "RULE_MATCH_COLLECTION_ENABLED=off" in result.message

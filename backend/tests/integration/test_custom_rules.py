@@ -57,6 +57,7 @@ def _settings(**overrides: object) -> Settings:
     values = get_settings().model_dump()
     values.update(
         custom_rules_enabled=True,
+        custom_rules_alerting_enabled=False,
         collection_interval_seconds=300,
         custom_rules_max_buckets_per_run=288,
     )
@@ -390,7 +391,8 @@ async def test_disabled_and_uncollected_rules_do_not_seed_or_judge(db_session) -
     # WAF and IPS collection stay off. A disabled log-source rule is not a
     # reason to seed the log-source watermark either.
     report = await CustomRuleEngine(
-        db_session, _settings(), clock=lambda: utc(h=10, mi=16)
+        db_session, _settings(waf_collection_enabled=False, ips_collection_enabled=False),
+        clock=lambda: utc(h=10, mi=16)
     ).run()
 
     assert report.judged_buckets == 0

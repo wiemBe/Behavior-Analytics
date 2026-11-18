@@ -270,17 +270,19 @@ class TestContent:
 
 
 class TestSource:
-    def test_the_default_is_the_property_and_names_it(self, full) -> None:
+    def test_the_default_is_lookup_without_a_property(self, full) -> None:
         body = Client(VIEWER).get(URL, params=params()).json()
-        assert body["country_source"] == "PROPERTY"
-        assert body["country_property"] == "Source Geographic Location"
-        assert body["unresolved_note"] == (
-            "UNRESOLVED counts events whose country property was empty."
-        )
-        assert body["unresolved_note_code"] == "geo.note.unresolved_property"
+        assert body["country_source"] == "LOOKUP"
+        assert body["country_property"] is None
+        assert body["unresolved_note"] == UNRESOLVED_NOTE
+        assert body["unresolved_note_code"] == "geo.note.unresolved_lookup"
 
     def test_a_direction_with_no_property_has_no_name(self, full) -> None:
-        body = Client(VIEWER).get(URL, params=params(direction="DESTINATION")).json()
+        client = Client(VIEWER)
+        client.http.app.dependency_overrides[get_settings] = lambda: Settings(
+            geo_country_source="property"
+        )
+        body = client.get(URL, params=params(direction="DESTINATION")).json()
         assert body["country_source"] == "PROPERTY"
         assert body["country_property"] is None
         assert body["status"] == "NOT_COLLECTED"
@@ -288,6 +290,7 @@ class TestSource:
     def test_the_configured_destination_property_is_named(self, full) -> None:
         client = Client(VIEWER)
         client.http.app.dependency_overrides[get_settings] = lambda: Settings(
+            geo_country_source="property",
             geo_destination_country_property="Destination Country"
         )
         body = client.get(URL, params=params(direction="DESTINATION")).json()
@@ -311,7 +314,11 @@ class TestSource:
             return rows
 
         seed(property_rows)
-        body = Client(VIEWER).get(URL, params=params()).json()
+        client = Client(VIEWER)
+        client.http.app.dependency_overrides[get_settings] = lambda: Settings(
+            geo_country_source="property"
+        )
+        body = client.get(URL, params=params()).json()
         assert body["countries"][0]["country_code"] == "TR"
         assert body["country_source"] == "PROPERTY"
 
@@ -469,7 +476,11 @@ class TestCollectedWith:
 
     def test_the_setting_is_kept_beside_it_and_may_differ(self, db_schema) -> None:
         seed(lambda inst: [tagged(inst, 0, "LOOKUP", None)])
-        body = Client(VIEWER).get(URL, params=params()).json()
+        client = Client(VIEWER)
+        client.http.app.dependency_overrides[get_settings] = lambda: Settings(
+            geo_country_source="property"
+        )
+        body = client.get(URL, params=params()).json()
         assert body["country_source"] == "PROPERTY"
         assert body["collected_with"]["ways"][0]["country_source"] == "LOOKUP"
 
