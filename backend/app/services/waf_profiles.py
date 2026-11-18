@@ -127,6 +127,34 @@ class WafProfileService:
         )
         return profile, True
 
+    async def remove(
+        self, profile: WafSourceProfile, log_source: LogSource, *, actor: str
+    ) -> None:
+        """Delete the profile row, whatever its state or the log source's.
+
+        Nothing but this row references it (collected buckets, endpoints and
+        anomalies hang off the log source), so the aggregates stay until retention.
+        The audit row records the version that went away.
+        """
+        profile_id = profile.id
+        detail = {
+            "log_source_id": str(log_source.id),
+            "qradar_log_source_id": log_source.qradar_id,
+            "profile_version": profile.profile_version,
+            "enabled": profile.enabled,
+            "validation_status": f"{profile.validation_status}",
+        }
+        await self.session.delete(profile)
+        await self.session.flush()
+        await record_audit(
+            self.session,
+            action="waf.profile.removed",
+            actor=actor,
+            object_type=AUDIT_OBJECT,
+            object_id=str(profile_id),
+            detail=detail,
+        )
+
     async def set_enabled(
         self, profile: WafSourceProfile, enabled: bool, *, actor: str
     ) -> bool:

@@ -201,5 +201,20 @@
     "outcome": "Outcome",
     "addLabel": "Add a value that was not listed",
     "addAs": "Add as {outcome}"
+  },
+  "remove": {
+    "title": "Remove {name} from {family}?",
+    "stays": "Collection stops. Collected history stays until retention.",
+    "clearClass": "Also clear the {family} class",
+    "fromRule": "The {family} class comes from a rule.",
+    "rulesLink": "Classification rules",
+    "classUnread": "The class could not be read.",
+    "cancel": "Cancel",
+    "confirm": "Remove source",
+    "forbidden": "Not permitted: removing needs {permission}.",
+    "failed": "Could not remove the {family} source. Try again.",
+    "classFailed": "{name} was removed, but its {family} class stays.",
+    "classForbidden": "{name} was removed, but clearing its {family} class needs log source write.",
+    "removedNote": "Removed {name}."
   }
 }

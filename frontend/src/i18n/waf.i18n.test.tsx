@@ -39,6 +39,11 @@ import { SCHEMA, status } from "@/components/fieldmapping/fixtures";
 import en from "../../messages/en";
 import tr from "../../messages/tr";
 
+// The admin tables and editors read the router to refresh after a removal (UIQ-9).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
 const TR: BehaviorI18n = { t: createTextTranslator("tr", tr as never), locale: "tr" };
 
 const chartProps = vi.hoisted(() => ({ last: null as null | Record<string, unknown> }));

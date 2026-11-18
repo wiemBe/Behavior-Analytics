@@ -1,9 +1,14 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 
 import { HISTORY, IPS_SCHEMA, catalog, profile } from "./fixtures";
 import { IpsProfileEditor } from "./IpsProfileEditor";
+
+// The admin tables and editors read the router to refresh after a removal (UIQ-9).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 
 it("closes the change review with Escape and returns focus to its opener", async () => {
   const user = userEvent.setup();

@@ -2,8 +2,10 @@
 
 import { useTranslations } from "next-intl";
 import Link from "next/link";
+import { useState } from "react";
 // The WAF sources table: one row per profile, needing-attention first.
 
+import { RemoveSource } from "@/components/fieldmapping/RemoveSource";
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { MappingSchemaOut, WafSourceStatus } from "@/lib/api";
 import { collectionState, sortByAttention, validationState } from "@/lib/fieldMapping";
@@ -23,12 +25,23 @@ export function WafSourceTable({
   schema: MappingSchemaOut | null;
 }) {
   const t = useTranslations("waf.admin.table");
+  const remove = useTranslations("fieldMapping.remove");
+  const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
+  const [notes, setNotes] = useState<string[]>([]);
   const i18n = useBehaviorI18n();
   const backendMessage = useBackendMessage();
   const { locale } = i18n;
-  const rows = sortByAttention(sources);
+  const rows = sortByAttention(sources.filter((s) => !gone.has(s.log_source_id)));
   return (
     <>
+      {notes.length > 0 && (
+        <div className="notice" role="status">
+          {notes.map((n) => (
+            <p key={n}>{n}</p>
+          ))}
+        </div>
+      )}
+      {rows.length > 0 && (
       <TableScroll label={t("label")}>
         <table className="table-dense">
           <caption className="sr-only">{t("caption")}</caption>
@@ -43,6 +56,9 @@ export function WafSourceTable({
               <th scope="col">{t("collection")}</th>
               <th scope="col" className="num">
                 {t("lastValidated")}
+              </th>
+              <th scope="col">
+                <span className="sr-only">{t("actions")}</span>
               </th>
             </tr>
           </thead>
@@ -100,12 +116,29 @@ export function WafSourceTable({
                       </span>
                     )}
                   </td>
+                  <td>
+                    <RemoveSource
+                      family="WAF"
+                      logSourceId={s.log_source_id}
+                      name={s.log_source_name}
+                      label={t("remove")}
+                      onRemoved={(note) => {
+                        setGone((prev) => new Set(prev).add(s.log_source_id));
+                        setNotes((prev) => [
+                          ...prev,
+                          remove("removedNote", { name: s.log_source_name }),
+                          ...(note ? [note] : []),
+                        ]);
+                      }}
+                    />
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </TableScroll>
+      )}
     </>
   );
 }

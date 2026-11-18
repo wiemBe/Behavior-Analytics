@@ -11,7 +11,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 
+import { RemoveSource } from "@/components/fieldmapping/RemoveSource";
 import { FieldMappingForm } from "@/components/fieldmapping/FieldMappingForm";
 import { MappingHistory } from "@/components/fieldmapping/MappingHistory";
 import { ValidationReport } from "@/components/fieldmapping/ValidationReport";
@@ -130,6 +132,7 @@ export function ProfileEditor({
   pollMs?: number;
 }) {
   const t = useTranslations("waf.editor");
+  const router = useRouter();
   const pageT = useTranslations("waf.admin.page");
   const common = useTranslations("common");
   const i18n = useBehaviorI18n();
@@ -782,6 +785,16 @@ export function ProfileEditor({
                 {block}
               </span>
             )}
+            <RemoveSource
+              family="WAF"
+              logSourceId={source.id}
+              name={source.name}
+              label={t("removeFrom")}
+              onRemoved={() => {
+                router.push("/admin/waf-sources");
+                router.refresh();
+              }}
+            />
           </div>
           <Notice msg={collectMsg} />
         </section>

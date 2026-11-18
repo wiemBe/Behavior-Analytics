@@ -1,0 +1,41 @@
+/* The remove-source dialog: a native <dialog> in the dashboard modal's look. */
+dialog.rm-dialog {
+  width: min(var(--dash-modal-w), calc(100vw - 2 * var(--sp-5)));
+  max-height: calc(100vh - 2 * var(--sp-5));
+  margin: auto;
+  padding: var(--sp-5);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+}
+dialog.rm-dialog:not([open]) {
+  display: none;
+}
+dialog.rm-dialog::backdrop {
+  background: var(--scrim);
+}
+.rm-title {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  overflow-wrap: anywhere;
+}
+.rm-text {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.rm-check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.rm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+}

@@ -288,7 +288,9 @@
       "neverValidated": "never validated",
       "notesTitle": "How to read the table",
       "notePaused": "A mapping change pauses collection from that source until the new version validates. “Version 5 not validated” therefore means the source is paused, not that it is unhealthy.",
-      "noteDash": "A dash means the source has never been validated. It is not a failed validation."
+      "noteDash": "A dash means the source has never been validated. It is not a failed validation.",
+      "actions": "Actions",
+      "remove": "Remove"
     },
     "picker": {
       "add": "Add WAF source",
@@ -391,7 +393,8 @@
     "copied": "Copied from {name} (version {version}). Nothing is saved until you save.",
     "notCopied": "Not copied. {message}",
     "historyTitle": "History",
-    "historyFailed": "History could not be loaded. Reload to retry."
+    "historyFailed": "History could not be loaded. Reload to retry.",
+    "removeFrom": "Remove from WAF"
   },
   "chart": {
     "ariaDefault": "Requests against the expected range, and endpoint coverage",

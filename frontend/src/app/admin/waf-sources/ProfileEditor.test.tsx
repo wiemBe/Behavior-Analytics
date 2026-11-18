@@ -13,6 +13,11 @@ import {
 import { ApiError, api } from "@/lib/api";
 import { draftFromProfile } from "@/lib/fieldMapping";
 
+// The admin tables and editors read the router to refresh after a removal (UIQ-9).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
 const SOURCE: EditorSource = {
   id: "ls-1",
   name: "WAF edge - eu-west",

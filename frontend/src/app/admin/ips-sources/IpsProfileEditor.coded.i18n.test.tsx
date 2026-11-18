@@ -10,6 +10,11 @@ import { IpsProfileEditor, type IpsEditorSource } from "./IpsProfileEditor";
 import { HISTORY, IPS_SCHEMA, catalog, profile } from "./fixtures";
 import { ApiError, ipsApi } from "@/lib/api";
 
+// The admin tables and editors read the router to refresh after a removal (UIQ-9).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
 const SOURCE: IpsEditorSource = {
   id: "ls-413",
   name: "CiscoFirepowerThreatDefense @ ftd-01",

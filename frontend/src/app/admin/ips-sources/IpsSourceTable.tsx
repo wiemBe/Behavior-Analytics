@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 // The IPS sources table: one row per profile, needing-attention first.
 
+import { RemoveSource } from "@/components/fieldmapping/RemoveSource";
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { IpsSourceStatus } from "@/lib/api";
 import { versionLabel } from "@/lib/behaviorI18n";
@@ -16,11 +18,22 @@ import "@/components/ui/controls.css";
 
 export function IpsSourceTable({ sources }: { sources: IpsSourceStatus[] }) {
   const t = useTranslations("ips.table");
+  const remove = useTranslations("fieldMapping.remove");
+  const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
+  const [notes, setNotes] = useState<string[]>([]);
   const i18n = useBehaviorI18n();
   const backendMessage = useBackendMessage();
-  const rows = sortByAttention(sources);
+  const rows = sortByAttention(sources.filter((s) => !gone.has(s.log_source_id)));
   return (
     <>
+      {notes.length > 0 && (
+        <div className="notice" role="status">
+          {notes.map((n) => (
+            <p key={n}>{n}</p>
+          ))}
+        </div>
+      )}
+      {rows.length > 0 && (
       <TableScroll label={t("ipsSources")}>
         <table className="table-dense">
           <caption className="sr-only">{t("caption")}</caption>
@@ -36,6 +49,9 @@ export function IpsSourceTable({ sources }: { sources: IpsSourceStatus[] }) {
               <th scope="col">{t("collection")}</th>
               <th scope="col" className="num">
                 {t("lastValidated")}
+              </th>
+              <th scope="col">
+                <span className="sr-only">{t("actions")}</span>
               </th>
             </tr>
           </thead>
@@ -80,12 +96,29 @@ export function IpsSourceTable({ sources }: { sources: IpsSourceStatus[] }) {
                       </span>
                     )}
                   </td>
+                  <td>
+                    <RemoveSource
+                      family="IPS"
+                      logSourceId={s.log_source_id}
+                      name={s.log_source_name}
+                      label={t("remove")}
+                      onRemoved={(note) => {
+                        setGone((prev) => new Set(prev).add(s.log_source_id));
+                        setNotes((prev) => [
+                          ...prev,
+                          remove("removedNote", { name: s.log_source_name }),
+                          ...(note ? [note] : []),
+                        ]);
+                      }}
+                    />
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </TableScroll>
+      )}
       <ul className="table-notes" aria-label={t("notesLabel")}>
         <li>{t("notes")}</li>
         <li>{t("noteDash")}</li>

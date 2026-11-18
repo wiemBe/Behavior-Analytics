@@ -131,6 +131,17 @@ class WafCandidateOut(BaseModel):
     source_class: str | None = None
 
 
+class ProfileClassOut(BaseModel):
+    """How a log source is classified: what the remove dialog needs, nothing more.
+
+    All three are null when the source has no classification row yet.
+    """
+
+    source_class: str | None = None
+    basis: str | None = None
+    override_class: str | None = None
+
+
 class WafProfileHistoryEntryOut(BaseModel):
     at: datetime
     actor: str | None = None
