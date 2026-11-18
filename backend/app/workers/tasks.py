@@ -789,7 +789,9 @@ async def detect_stale_offense_collection(instance_name: str | None = None) -> d
     A console registered less than its stale threshold ago that has neither a
     successful nor a failed run yet is still in its first-run window: the run
     reports `awaiting_first_run` and opens nothing. A failing collector is stale at
-    once, grace or not.
+    once, grace or not. Past that grace, a console whose collector has never
+    completed a run is reported as `never_collected`, with its own description:
+    silence would claim health no read supports.
     """
 
     async def run(
@@ -834,6 +836,9 @@ async def detect_stale_offense_collection(instance_name: str | None = None) -> d
                     "duration_ms": int((time.perf_counter() - started) * 1000),
                 }
 
+            # No run time and no failure is a collector that never completed once,
+            # not a collector that fell behind: the operator needs the difference.
+            never_collected = last_run is None and failures == 0
             stale = (
                 last_run is None
                 or age_seconds is None
@@ -856,7 +861,9 @@ async def detect_stale_offense_collection(instance_name: str | None = None) -> d
                     "alert.offense_collection.stale.title", {"instance": instance.name}
                 )
                 description_message = MessageRef(
-                    "alert.offense_collection.stale.description"
+                    "alert.offense_collection.never_collected.description"
+                    if never_collected
+                    else "alert.offense_collection.stale.description"
                 )
                 result = await alerts.open_or_update(
                     AlertInput(
@@ -893,6 +900,9 @@ async def detect_stale_offense_collection(instance_name: str | None = None) -> d
                 "status": "ok",
                 "stale": stale,
                 "judged": True,
+                # A stale console past its grace that never completed a run says
+                # so in the run result as well as in the alert description.
+                "reason": "never_collected" if never_collected else None,
                 "age_seconds": age_seconds,
                 "consecutive_failures": failures,
                 "transition": str(transition) if transition is not None else None,
@@ -916,7 +926,10 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
     than a recovery, and the run reports `no_monitored_sources`. A console registered
     less than the stale threshold ago that has neither a successful nor a failed run yet
     is still in its first-run window: the run reports `awaiting_first_run` and opens
-    nothing. A failing collector is stale at once, grace or not.
+    nothing. A failing collector is stale at once, grace or not. Past that grace, a
+    console whose collector has never completed a run is reported as
+    `never_collected`, with its own description: silence would claim health no read
+    supports.
     """
 
     async def run(
@@ -1004,6 +1017,9 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
                     "duration_ms": int((time.perf_counter() - started) * 1000),
                 }
 
+            # No run time and no failure is a collector that never completed once,
+            # not a collector that fell behind: the operator needs the difference.
+            never_collected = last_run is None and failures == 0
             stale = (
                 last_run is None
                 or age_seconds is None
@@ -1018,7 +1034,9 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
                     {"instance": instance.name},
                 )
                 description_message = MessageRef(
-                    "alert.log_source_collection.stale.description"
+                    "alert.log_source_collection.never_collected.description"
+                    if never_collected
+                    else "alert.log_source_collection.stale.description"
                 )
                 watermark_at = watermark.watermark_at if watermark is not None else None
                 if watermark_at is not None and watermark_at.tzinfo is None:
@@ -1067,6 +1085,9 @@ async def detect_stale_log_source_collection(instance_name: str | None = None) -
                 "status": "ok",
                 "stale": stale,
                 "judged": True,
+                # A stale console past its grace that never completed a run says
+                # so in the run result as well as in the alert description.
+                "reason": "never_collected" if never_collected else None,
                 "age_seconds": age_seconds,
                 "consecutive_failures": failures,
                 "transition": str(transition) if transition is not None else None,

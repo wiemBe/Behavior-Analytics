@@ -2740,6 +2740,11 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "threshold.",
     ),
     _fixed(
+        "alert.offense_collection.never_collected.description",
+        "No collection has completed since install. The read-only offense collector has not "
+        "read this console yet, so offense freshness is unknown.",
+    ),
+    _fixed(
         "alert.offense_collection.recovered",
         "Offense collection freshness recovered.",
     ),
@@ -2752,6 +2757,12 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "alert.log_source_collection.stale.description",
         "The last read failed or did not run, so the platform cannot confirm whether sources "
         "are silent. NO_EVENTS alerts are not raised for the missing intervals.",
+    ),
+    _fixed(
+        "alert.log_source_collection.never_collected.description",
+        "No collection has completed since install. The platform has not read log source "
+        "volumes yet, so it cannot confirm whether any source is silent. NO_EVENTS alerts "
+        "are not raised for the missing intervals.",
     ),
     _fixed(
         "alert.log_source_collection.recovered",

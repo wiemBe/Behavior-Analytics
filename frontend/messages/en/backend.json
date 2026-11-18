@@ -52,6 +52,9 @@
       }
     },
     "log_source_collection": {
+      "never_collected": {
+        "description": "No collection has completed since install. The platform has not read log source volumes yet, so it cannot confirm whether any source is silent. NO_EVENTS alerts are not raised for the missing intervals."
+      },
       "not_judged_no_monitored_sources": "Closed without a verdict: no log source of this console is monitored, so collection freshness is not judged.",
       "recovered": "Log source volume collection freshness recovered.",
       "stale": {
@@ -60,6 +63,9 @@
       }
     },
     "offense_collection": {
+      "never_collected": {
+        "description": "No collection has completed since install. The read-only offense collector has not read this console yet, so offense freshness is unknown."
+      },
       "recovered": "Offense collection freshness recovered.",
       "stale": {
         "description": "The read-only offense collector has not completed within its configured freshness threshold.",
