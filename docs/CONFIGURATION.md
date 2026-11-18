@@ -15,6 +15,7 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 | `ENVIRONMENT` | `development` | `development`, `staging` or `production`. Staging is the production posture for a pre-production site |
 | `DEBUG` | `false` | Diagnostic mode; refused outside development |
 | `LAB_MODE` | `false` | Isolated accelerated lab profile; refused in production |
+| `FEATURE_SWITCHES_DB` | `true` | Read the runtime family switches from the database. `false` ignores the table and uses the `.env` values exactly as before it existed; the feature's own kill switch |
 | `LOG_LEVEL` | `INFO` | Application log level |
 | `API_PREFIX` | `/api/v1` | Versioned API prefix |
 | `QRADAR_PROVIDER` | `mock` | `mock`, `rest` or `mcp`; `mock` is refused outside development. `mcp` needs the same token as `rest` (`QRADAR_API_TOKEN_FILE` or `QRADAR_SEC_TOKEN`); production refuses it without one |
