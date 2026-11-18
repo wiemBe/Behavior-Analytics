@@ -29,22 +29,22 @@
   /* --- background layers -------------------------------------------------
      Four steps, deepest first. `canvas` is the page, `surface` is a panel on
      it, `surface-2` is an inset inside a panel, `surface-3` is a hover. */
-  --canvas: #111214;
-  --surface: #1b1c1f;
-  --surface-2: #252629;
-  --surface-3: #2d2e32;
+  --canvas: #101216;
+  --surface: #1b1f25;
+  --surface-2: #242930;
+  --surface-3: #2c323b;
 
   /* --- borders -----------------------------------------------------------
      `border` is the default hairline; `border-strong` is for a boundary that
      must survive next to a filled surface, such as a focused input. */
-  --border: #35363a;
+  --border: #2e343d;
   --border-strong: #35363a;
 
   /* --- text hierarchy ----------------------------------------------------
      Three levels only. A fourth invites unreadable text: `text-3` is already
      the floor at which 12 px stays legible on `--surface`. */
   --text: #e8e8e8;
-  --text-2: #96989d;
+  --text-2: #a6aeb9;
   --text-3: #73757b;
 
   /* --- status ------------------------------------------------------------
@@ -57,28 +57,28 @@
                neither good nor bad news and must never be coloured as either. */
   --crit: #e36565;
   --crit-text: #f08f8f;
-  --crit-bg: rgba(227, 101, 101, 0.12);
-  --crit-border: rgba(227, 101, 101, 0.34);
+  --crit-bg: rgba(227, 101, 101, 0.08);
+  --crit-border: rgba(227, 101, 101, 0.26);
 
   --warn: #e5ad56;
   --warn-text: #edc27e;
-  --warn-bg: rgba(229, 173, 86, 0.12);
-  --warn-border: rgba(229, 173, 86, 0.34);
+  --warn-bg: rgba(229, 173, 86, 0.08);
+  --warn-border: rgba(229, 173, 86, 0.26);
 
   --ok: #3fbf91;
   --ok-text: #6bd6af;
-  --ok-bg: rgba(63, 191, 145, 0.12);
-  --ok-border: rgba(63, 191, 145, 0.32);
+  --ok-bg: rgba(63, 191, 145, 0.08);
+  --ok-border: rgba(63, 191, 145, 0.24);
 
   --info: #6fd0e0;
   --info-text: #8edce8;
-  --info-bg: rgba(111, 208, 224, 0.12);
-  --info-border: rgba(111, 208, 224, 0.34);
+  --info-bg: rgba(111, 208, 224, 0.08);
+  --info-border: rgba(111, 208, 224, 0.26);
 
   --neutral: #b6b8bd;
   --neutral-text: #b6b8bd;
-  --neutral-bg: rgba(182, 184, 189, 0.1);
-  --neutral-border: rgba(182, 184, 189, 0.28);
+  --neutral-bg: rgba(182, 184, 189, 0.06);
+  --neutral-border: rgba(182, 184, 189, 0.20);
 
   /* --- focus -------------------------------------------------------------
      Deliberately not an accent tint: the focus ring must be visible on top of
@@ -187,9 +187,9 @@
   /* --- chart --------------------------------------------------------------
      Consumed by the ECharts option builder so the chart shares the page's
      palette rather than carrying its own hard-coded one. */
-  --chart-grid: #2a2b2f;
-  --chart-axis: #3a3b40;
-  --chart-label: var(--text-3);
+  --chart-grid: #2a3038;
+  --chart-axis: #414a56;
+  --chart-label: var(--text-2);
 
   /* The series, by role. The observed line is the one saturated mark on the
      chart. The expected range is neutral, not green: green is a status colour
@@ -197,7 +197,7 @@
      reuse the warn and crit fills because they ARE those statuses. */
   --chart-observed: var(--info);
   --chart-expected: var(--neutral-text);
-  --chart-band: rgba(182, 184, 189, 0.14);
+  --chart-band: rgba(182, 184, 189, 0.18);
   --chart-gap: var(--warn-bg);
   --chart-anomaly: var(--crit-bg);
   --chart-marker: var(--neutral);
@@ -206,38 +206,38 @@
   --chart-tooltip-text: var(--text);
 
   /* --- redesign additions (UR.2.3) ---------------------------------------- */
-  --sidebar-bg: #151618;
+  --sidebar-bg: #15181d;
   --primary: #e8e8e8;
   --primary-hover: #ffffff;
   /* `accent-color` of native radios and checkboxes: neutral, never the
      browser's default blue. */
   --control-accent: var(--neutral);
-  --link: var(--info-text);
+  --link: #b4dce3;
   --topbar-h: 56px;
   --widget-pad: var(--sp-5);
   --widget-gap: var(--sp-3);
 
   /* Categorical series (UR.2.6). Never a status hue. */
   --chart-cat-1: #6fd0e0;
-  --chart-cat-2: #b59a7a;
-  --chart-cat-3: #e6e1d3;
-  --chart-cat-4: #7c93d1;
-  --chart-cat-5: #e08cb8;
+  --chart-cat-2: #b4a1d8;
+  --chart-cat-3: #bcc9d5;
+  --chart-cat-4: #829fd6;
+  --chart-cat-5: #c996b8;
   --chart-other: #73757b;
 
   /* Severity scale: charts only (UR.2.4). */
   --sev-critical: #e36565;
-  --sev-high: #a64b4b;
+  --sev-high: #bd7272;
   --sev-medium: #e5ad56;
   --sev-low: #6fd0e0;
-  --sev-info: #8c8e94;
+  --sev-info: #969ea9;
 
   /* World-map ramp (UR.2.7). */
-  --map-0: #2a2b2f;
-  --map-1: #2f4a50;
-  --map-2: #3c7580;
-  --map-3: #58a5b4;
-  --map-4: #8edce8;
+  --map-0: #293133;
+  --map-1: #3e727d;
+  --map-2: #5093a1;
+  --map-3: #6bb7c7;
+  --map-4: #9ad9e6;
 
   /* Home KPI cards (UI-2.2). The sparkline is context for the headline figure,
      not a chart: short, one hairline stroke, no fill. */
