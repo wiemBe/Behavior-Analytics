@@ -818,7 +818,7 @@ def test_watermark_family_maps_every_collector_kind(
         ("geo_countries_source", 300),
         ("geo_countries_destination", 300),
         ("log_source_metric", 300),
-        ("log_source_inventory", 3600),
+        ("log_source_inventory", 900),
         ("offense_snapshot", 300),
         ("rule_inventory", 3600),
         ("rule_metric", 3600),

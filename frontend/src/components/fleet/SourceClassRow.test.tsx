@@ -43,6 +43,19 @@ function row(over: Partial<FleetSourceRow> = {}): FleetSourceRow {
     waf_profile: null,
     ips_profile: null,
     identity_profile: null,
+    description: null,
+    protocol_type_id: null,
+    target_event_collector_id: null,
+    credibility: null,
+    qradar_status: null,
+    qradar_created_at: null,
+    qradar_modified_at: null,
+    criticality: "MEDIUM",
+    owner: null,
+    monitoring_enabled: true,
+    maintenance_mode: false,
+    maintenance_until: null,
+    groups: [],
     ...over,
   };
 }
@@ -170,6 +183,37 @@ describe("profile link", () => {
     unmount();
     view(row({ source_class: "IPS", ips_profile: { status: "UNVALIDATED", enabled: false } }));
     expect(screen.getByRole("link", { name: "IPS profile" })).toHaveAttribute("href", "/admin/ips-sources/s1");
+  });
+
+  it("re-reads the row after a save so the profile link follows", async () => {
+    vi.spyOn(fleetApi, "setOverride").mockResolvedValue(row({ source_class: "WAF", override_class: "WAF" }));
+    const reread = vi
+      .spyOn(fleetApi, "sourceClass")
+      .mockResolvedValue(row({ source_class: "WAF", override_class: "WAF", waf_profile: { status: "VALID", enabled: true } }));
+    view(row());
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "New class" }), "WAF");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("link", { name: "WAF profile" })).toHaveAttribute("href", "/admin/waf-sources/s1");
+    expect(reread).toHaveBeenCalledWith("s1");
+    expect(screen.queryByRole("link", { name: /Create/ })).toBeNull();
+  });
+
+  it("keeps the saved class when the re-read fails", async () => {
+    vi.spyOn(fleetApi, "setOverride").mockResolvedValue(row({ source_class: "WAF", override_class: "WAF" }));
+    vi.spyOn(fleetApi, "sourceClass").mockRejectedValue(new ApiError(500, "x"));
+    view(row());
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "New class" }), "WAF");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("link", { name: "Create WAF profile" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows a save error in the error tone", async () => {
+    vi.spyOn(fleetApi, "setOverride").mockRejectedValue(new ApiError(403, "x"));
+    view(row());
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "New class" }), "WAF");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveClass("crit");
   });
 
   it("other classes have no link, and a link follows a changed class", async () => {

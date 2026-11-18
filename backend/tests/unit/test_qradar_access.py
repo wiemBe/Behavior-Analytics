@@ -329,6 +329,7 @@ class FakeSession:
     def __init__(self, rows: list[QRadarAccessResult] | None = None) -> None:
         self.rows = rows or []
         self.added: list[QRadarAccessResult] = []
+        self.watermark: Any = None
 
     async def scalars(self, _statement: object) -> Any:
         rows = self.rows
@@ -338,6 +339,10 @@ class FakeSession:
                 return rows
 
         return Result()
+
+    async def scalar(self, _statement: object) -> Any:
+        # The inventory watermark lookup (FIX-74): none stored unless a test sets one.
+        return self.watermark
 
     def add(self, row: QRadarAccessResult) -> None:
         self.added.append(row)
@@ -450,6 +455,106 @@ async def test_not_ok_to_ok_starts_exactly_the_dependents_once_and_records_them(
     assert by_entry["analytics_rules"].syncs_started == []
     assert by_entry["log_sources"].previous_status == "forbidden"
     assert by_entry["offenses"].previous_status == "unreachable"
+
+
+async def _check_inventory(
+    *,
+    watermark_at: datetime | None,
+    has_mark: bool = True,
+    rows_ok: bool = True,
+    answers: dict[str, access.ProbeOutcome | None] | None = None,
+) -> tuple[access.ConsoleCheck, Dispatcher, list[Any]]:
+    """One check of a console whose entries all stayed ok, against a stored inventory mark."""
+    dispatcher = Dispatcher()
+    rows = [_row(e.id, "ok") for e in catalog.ACCESS_CATALOG] if rows_ok else []
+    session = FakeSession(rows)
+    session.watermark = (
+        SimpleNamespace(watermark_at=watermark_at, collector="log_source_inventory")
+        if has_mark
+        else None
+    )
+
+    async def probe(_provider: object) -> dict[str, access.ProbeOutcome | None]:
+        return answers or _all_ok()
+
+    report = await access.check_console_access(
+        session,  # type: ignore[arg-type]
+        INSTANCE,  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        settings=Settings(_env_file=None),
+        dispatcher=dispatcher,
+        now=lambda: NOW,
+        probe=probe,
+    )
+    return report, dispatcher, rows
+
+
+@pytest.mark.asyncio
+async def test_a_check_queues_one_inventory_sync_when_none_completed_since_the_last_check() -> None:
+    """FIX-74: a wider token profile changes no API's status, so staleness is what triggers."""
+    report, dispatcher, rows = await _check_inventory(watermark_at=NOW - timedelta(hours=7))
+    assert dispatcher.started == ["log_source_inventory"]
+    assert report.syncs_started == ["log_source_inventory"]
+    # Not recorded on an entry: no entry became reachable.
+    assert all(row.syncs_started == [] for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_a_console_whose_inventory_never_completed_is_synced_by_the_check() -> None:
+    _, dispatcher, _ = await _check_inventory(watermark_at=None)
+    assert dispatcher.started == ["log_source_inventory"]
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_inventory_a_first_check_or_no_inventory_run_queues_nothing() -> None:
+    _, fresh, _ = await _check_inventory(watermark_at=NOW - timedelta(hours=1))
+    assert fresh.started == []  # completed after the previous check (6 h ago)
+    _, first, _ = await _check_inventory(watermark_at=None, rows_ok=False)
+    assert first.started == []  # nothing earlier to be stale against
+    _, none, _ = await _check_inventory(watermark_at=None, has_mark=False)
+    assert none.started == []  # the beat makes the first pass
+
+
+@pytest.mark.asyncio
+async def test_a_refused_or_unanswered_log_source_api_queues_no_inventory_sync() -> None:
+    refused = _all_ok()
+    refused["log_sources"] = access.ProbeOutcome("forbidden", 403)
+    _, dispatcher, _ = await _check_inventory(
+        watermark_at=NOW - timedelta(hours=7), answers=refused
+    )
+    assert dispatcher.started == []
+    unanswered: dict[str, access.ProbeOutcome | None] = _all_ok()
+    unanswered["log_sources"] = None
+    _, other, _ = await _check_inventory(
+        watermark_at=NOW - timedelta(hours=7), answers=unanswered
+    )
+    assert other.started == []
+
+
+@pytest.mark.asyncio
+async def test_a_returning_log_source_api_and_a_stale_inventory_start_one_sync_not_two() -> None:
+    dispatcher = Dispatcher()
+    rows = [_row(e.id, "ok") for e in catalog.ACCESS_CATALOG]
+    for row in rows:
+        if row.entry_id == "log_sources":
+            row.status, row.http_status = "forbidden", 403
+    session = FakeSession(rows)
+    session.watermark = SimpleNamespace(watermark_at=None)
+
+    async def probe(_provider: object) -> dict[str, access.ProbeOutcome | None]:
+        return _all_ok()
+
+    report = await access.check_console_access(
+        session,  # type: ignore[arg-type]
+        INSTANCE,  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        settings=Settings(_env_file=None),
+        dispatcher=dispatcher,
+        now=lambda: NOW,
+        probe=probe,
+    )
+    assert dispatcher.started == ["log_source_inventory"]
+    assert report.syncs_started == ["log_source_inventory"]
 
 
 @pytest.mark.asyncio

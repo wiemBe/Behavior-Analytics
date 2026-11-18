@@ -243,6 +243,12 @@ class SyncResult(BaseModel):
     created: int
     updated: int
     instance_version: str | None = None
+    # FIX-74: the walk's own account. A provider with no pages is one complete page.
+    complete: bool = True
+    pages_done: int = 0
+    pages_failed: int = 0
+    failed_page: int | None = None
+    failure_kind: str | None = None
 
 
 # --- SOC overview ----------------------------------------------------------

@@ -14,6 +14,8 @@ import { UtcTime } from "@/components/ui/UtcTime";
 import { ApiError, fleetApi, type FleetSyncStatus } from "@/lib/api";
 import { ADMIN_PERMISSION, holds } from "@/lib/fleetSources";
 
+import { InventoryPassLine } from "./InventoryPassLine";
+
 import "@/components/ui/controls.css";
 import "./fleet-sources.css";
 
@@ -24,6 +26,7 @@ type Outcome =
   | { kind: "idle" }
   | { kind: "waiting"; already: boolean }
   | { kind: "done" }
+  | { kind: "partial" }
   | { kind: "failed"; names: string }
   | { kind: "timeout" }
   | { kind: "error"; message: string };
@@ -92,7 +95,8 @@ export function FleetSyncNow({ onFinished }: { onFinished: () => void }) {
         if (names) {
           setOutcome({ kind: "failed", names });
         } else {
-          setOutcome({ kind: "done" });
+          // A partial pass stored the pages it read: the list has new rows, so reload it.
+          setOutcome({ kind: (now?.instances ?? []).some((i) => i.status === "PARTIAL") ? "partial" : "done" });
           onFinished();
         }
         return;
@@ -136,10 +140,21 @@ export function FleetSyncNow({ onFinished }: { onFinished: () => void }) {
       <button type="button" className="action secondary" disabled={waiting} onClick={() => void start()}>
         {waiting ? t("running") : t("button")}
       </button>
-      <p className="muted fs-sync-line">
+      <div className="muted fs-sync-line">
         {statusFailed ? (
           t("statusError")
-        ) : status === null ? null : last ? (
+        ) : status === null ? null : (status.instances ?? []).some((i) => i.last_pass) ? (
+          (status.instances ?? []).map((i) => (
+            <InventoryPassLine
+              key={i.instance_id}
+              pass={i.last_pass ?? null}
+              running={status.running || i.status === "RUNNING"}
+              consoleName={status.instances.length > 1 ? i.instance_name : null}
+            />
+          ))
+        ) : status.running ? (
+          t("pass.running")
+        ) : last ? (
           <>
             {t("last")}
             <UtcTime value={last} />
@@ -148,7 +163,7 @@ export function FleetSyncNow({ onFinished }: { onFinished: () => void }) {
         ) : (
           t("never")
         )}
-      </p>
+      </div>
       {outcome.kind === "waiting" && (
         <p className="change-status" role="status">
           {outcome.already ? t("alreadyRunning") : t("queued")}
@@ -159,8 +174,13 @@ export function FleetSyncNow({ onFinished }: { onFinished: () => void }) {
           {t("done")}
         </p>
       )}
+      {outcome.kind === "partial" && (
+        <p className="change-status" role="status">
+          {t("donePartial")}
+        </p>
+      )}
       {outcome.kind === "failed" && (
-        <p className="change-status error" role="alert">
+        <p className="change-status crit" role="alert">
           {t("failedNow", { names: outcome.names })}
         </p>
       )}
@@ -170,7 +190,7 @@ export function FleetSyncNow({ onFinished }: { onFinished: () => void }) {
         </p>
       )}
       {outcome.kind === "error" && (
-        <p className="change-status error" role="alert">
+        <p className="change-status crit" role="alert">
           {outcome.message}
         </p>
       )}

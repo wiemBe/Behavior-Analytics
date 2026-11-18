@@ -14,6 +14,7 @@ import {
   type FleetSourceFacets,
   type FleetSourceSort,
   type SourceClass,
+  type YesNo,
 } from "@/lib/api";
 import { ALL_CLASSES, BASIS_OPTIONS } from "@/lib/fleet";
 
@@ -39,6 +40,30 @@ export function withQradarStatus(flow: readonly FleetFlow[], status: QradarStatu
   return status === "DISABLED" ? [DISABLED_FLOW] : status === "ENABLED" ? [...ENABLED_FLOWS] : [...flow];
 }
 
+export const CRITICALITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
+export const YES_NO: YesNo[] = ["YES", "NO"];
+/** Longest owner name the API takes. */
+export const OWNER_MAX = 255;
+
+/** The optional columns, in table order. The compact default shows none of them. */
+export const OPTIONAL_COLUMNS = [
+  "description",
+  "protocol",
+  "collector",
+  "credibility",
+  "auto",
+  "status",
+  "created",
+  "modified",
+  "criticality",
+  "owner",
+  "monitoring",
+  "maintenance",
+] as const;
+export type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
+/** Columns of numbers: right-aligned, tabular. */
+export const NUMERIC_COLUMNS: readonly OptionalColumn[] = ["protocol", "collector", "credibility"];
+
 export const EPS_STATES: FleetEpsState[] = [
   "BELOW_EXPECTED",
   "WITHIN_EXPECTED",
@@ -60,6 +85,13 @@ export interface SourceListQuery {
   class: SourceClass[];
   type_id: number[];
   group: number[];
+  criticality: string[];
+  owner: string[];
+  auto_discovered: YesNo[];
+  monitoring: YesNo[];
+  maintenance: YesNo[];
+  collector: number[];
+  cols: OptionalColumn[];
   flow: FleetFlow[];
   eps: FleetEpsState[];
   profile: FleetProfileKind[];
@@ -84,6 +116,12 @@ function pick<T extends string>(values: string[], allowed: readonly T[]): T[] {
   return [...new Set(kept)];
 }
 
+/** `cols=a,b`: the known columns, in table order, each once; anything else is dropped. */
+export function columnsOf(value: string): OptionalColumn[] {
+  const asked = new Set(value.split(","));
+  return OPTIONAL_COLUMNS.filter((c) => asked.has(c));
+}
+
 export function parseSourceListQuery(raw: RawQuery): SourceListQuery {
   const one = (key: string) => all(raw, key)[0] ?? "";
   const limit = Number(one("limit"));
@@ -104,6 +142,13 @@ export function parseSourceListQuery(raw: RawQuery): SourceListQuery {
     class: pick(all(raw, "class"), ALL_CLASSES),
     type_id: ids("type_id"),
     group: ids("group"),
+    criticality: pick(all(raw, "criticality"), CRITICALITIES),
+    owner: [...new Set(all(raw, "owner").map((v) => v.slice(0, OWNER_MAX)).filter(Boolean))],
+    auto_discovered: pick(all(raw, "auto_discovered"), YES_NO),
+    monitoring: pick(all(raw, "monitoring"), YES_NO),
+    maintenance: pick(all(raw, "maintenance"), YES_NO),
+    collector: ids("collector"),
+    cols: columnsOf(one("cols")),
     flow: pick(all(raw, "flow"), FLOWS),
     eps: pick(all(raw, "eps"), EPS_STATES),
     profile: pick(all(raw, "profile"), PROFILE_KINDS),
@@ -124,6 +169,12 @@ export function filterCount(q: SourceListQuery): number {
     q.class.length +
     q.type_id.length +
     q.group.length +
+    q.criticality.length +
+    q.owner.length +
+    q.auto_discovered.length +
+    q.monitoring.length +
+    q.maintenance.length +
+    q.collector.length +
     q.flow.length +
     q.eps.length +
     q.profile.length +
@@ -143,6 +194,12 @@ export function toApiParams(q: SourceListQuery): FleetListParams {
     class: q.class.length ? q.class : undefined,
     type_id: q.type_id.length ? q.type_id : undefined,
     group: q.group.length ? q.group : undefined,
+    criticality: q.criticality.length ? q.criticality : undefined,
+    owner: q.owner.length ? q.owner : undefined,
+    auto_discovered: q.auto_discovered.length ? q.auto_discovered : undefined,
+    monitoring: q.monitoring.length ? q.monitoring : undefined,
+    maintenance: q.maintenance.length ? q.maintenance : undefined,
+    collector: q.collector.length ? q.collector : undefined,
     flow: q.flow.length ? q.flow : undefined,
     eps: q.eps.length ? q.eps : undefined,
     profile: q.profile.length ? q.profile : undefined,
@@ -164,6 +221,13 @@ export function toSearch(q: SourceListQuery): string {
   q.class.forEach((v) => add("class", v));
   q.type_id.forEach((v) => add("type_id", v));
   q.group.forEach((v) => add("group", v));
+  q.criticality.forEach((v) => add("criticality", v));
+  q.owner.forEach((v) => add("owner", v));
+  q.auto_discovered.forEach((v) => add("auto_discovered", v));
+  q.monitoring.forEach((v) => add("monitoring", v));
+  q.maintenance.forEach((v) => add("maintenance", v));
+  q.collector.forEach((v) => add("collector", v));
+  if (q.cols.length) add("cols", q.cols.join(","));
   q.flow.forEach((v) => add("flow", v));
   q.eps.forEach((v) => add("eps", v));
   q.profile.forEach((v) => add("profile", v));
@@ -197,6 +261,12 @@ export function clearedFilters(q: SourceListQuery): SourceListQuery {
     class: [],
     type_id: [],
     group: [],
+    criticality: [],
+    owner: [],
+    auto_discovered: [],
+    monitoring: [],
+    maintenance: [],
+    collector: [],
     flow: [],
     eps: [],
     profile: [],

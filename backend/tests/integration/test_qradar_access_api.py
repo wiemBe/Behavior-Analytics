@@ -409,3 +409,48 @@ async def test_the_scheduled_task_checks_every_rest_console_and_stores_codes_onl
         assert await session.scalar(select(func.count()).select_from(AuditLog)) == 0
         assert {r.http_status for r in rows} <= {200, 201, 403}
         assert BODY not in " ".join(f"{r.status}{r.syncs_started}" for r in rows)
+
+
+def test_the_console_carries_its_last_inventory_pass(db_schema) -> None:
+    from app.collectors.log_source_collector import COLLECTOR_NAME
+    from app.models.monitoring import CollectionWatermark
+
+    quiet = _console("quiet")
+    seen = _console("seen")
+
+    async def _add(session):  # type: ignore[no-untyped-def]
+        session.add(
+            CollectionWatermark(
+                instance_id=seen,
+                collector=COLLECTOR_NAME,
+                last_run_at=datetime.now(UTC),
+                watermark_at=None,
+                consecutive_failures=1,
+                collection_metadata={
+                    "inventory_pass": {
+                        "status": "PARTIAL",
+                        "finished_at": "2026-11-18T22:10:00+00:00",
+                        "elapsed_ms": 9000,
+                        "seen": 4000,
+                        "created": 0,
+                        "updated": 4000,
+                        "pages_done": 8,
+                        "pages_failed": 1,
+                        "failed_page": 9,
+                        "failure_kind": "timeout",
+                    }
+                },
+            )
+        )
+
+    run(_add)
+    body = Client(ADMIN).get(BASE).json()
+    by = {c["instance_id"]: c for c in body["consoles"]}
+    assert by[quiet]["inventory_pass"] is None
+    got = by[seen]["inventory_pass"]
+    assert (got["status"], got["seen"], got["failed_page"], got["failure_kind"]) == (
+        "PARTIAL",
+        4000,
+        9,
+        "timeout",
+    )

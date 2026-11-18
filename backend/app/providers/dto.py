@@ -133,6 +133,23 @@ class LogSourceDTO(ProviderDTO):
     internal: bool | None = None
 
 
+class LogSourceWalk(ProviderDTO):
+    """What one walk of the log-source collection got, and whether it got all of it.
+
+    `complete` is the only statement that the console listed nothing more: a walk that stopped
+    on a failed page, the wall-clock cap or the page ceiling is incomplete, and what it did not
+    reach says nothing about absence. `failure_kind` is one of `app.providers.base.FAILURE_KINDS`
+    and names the first failure; `failed_page` is its 1-based page number.
+    """
+
+    sources: list[LogSourceDTO] = Field(default_factory=list)
+    complete: bool = True
+    pages_done: int = 0
+    pages_failed: int = 0
+    failed_page: int | None = None
+    failure_kind: str | None = None
+
+
 class LogSourceTypeDTO(ProviderDTO):
     type_id: int
     name: str

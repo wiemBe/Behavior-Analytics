@@ -255,11 +255,26 @@ Each item adds `identifier`, `type_id`, `group_names` (at most five) and `group_
 except its own family. `group` is `[{group_id, name, count}]`: the top 50 groups by count plus every
 selected group; the optional `group_q` (at most 100 characters, case-insensitive substring of the
 group name, LIKE wildcards literal) narrows only this facet and never the list. The request runs a
-constant number of statements: page ids, rows, group names, count and five facet reads (nine).
+constant number of statements: page ids, rows, group names, count and the facet reads.
 
 `GET /log-sources/{id}/classification` (`read:fleet` and the log-source read) returns one source in the
 list's row shape (class, `basis`, override fields, review status, WAF/IPS/identity profile states);
 404 for an unknown id. It reuses the list's row loader.
+
+UIQ-7d adds the log-source details to every row (`description`, `protocol_type_id` (the id; no name
+mapping exists), `target_event_collector_id`, `credibility`, `qradar_status`, `qradar_created_at`,
+`qradar_modified_at`, `criticality`, `owner`, `monitoring_enabled`, `maintenance_mode`,
+`maintenance_until`, and `groups`: every group name, at most 50) and these filters, repeatable and
+OR within one parameter: `criticality` (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), `owner` (exact name),
+`auto_discovered`, `monitoring`, `maintenance` (`YES` or `NO`; an unknown `auto_discovered` matches
+neither) and `collector` (target event collector id). `owner_q` narrows the owner facet by name only,
+like `group_q`. The facets gain `criticality`, `owner` (top 50 by count plus the selected), `auto_discovered`,
+`monitoring`, `maintenance` and `collector` (top 50), each under every other active filter. The four small
+families share one statement of conditional counts, so a page with facets stays at a fixed 12
+statements however many sources match.
+
+The CSV appends all fourteen detail columns after `groups` whatever columns the page shows (the file is the complete record; the
+column chooser only shapes the table). `groups` there is the full list.
 
 `GET /fleet/sources.csv` takes the same filters and sort, has no paging, and returns the first
 `api_max_export_rows` rows (`X-Export-Truncated: true` when cut). UTC timestamps; text cells that
@@ -282,9 +297,13 @@ collector lock it queues nothing and answers `{"queued": false, "already_running
 503 when the broker refuses the task. One `fleet.sources_sync` audit row per request.
 `GET /fleet/sources/sync` (`admin:*`) returns `{"instances": [...], "running": bool}`: per enabled
 console `instance_id`, `instance_name`, `status` (`RUNNING` while the lock is held, `FAILED` when
-the last pass failed, `OK`, `NEVER`), `last_run_at`, `last_success_at` and `consecutive_failures`.
-There is no run table for this collector: the state comes from its watermark row and its advisory
-lock, and the counts of the last pass and the error text are not stored or returned.
+the last pass read nothing, `PARTIAL` when it read some pages and stored them, `OK`, `NEVER`),
+`last_run_at`, `last_success_at`, `consecutive_failures` and `last_pass` (null before any pass
+recorded one): `status` (`COMPLETE`, `PARTIAL`, `FAILED`), `finished_at`, `elapsed_ms`, `seen`,
+`created`, `updated`, `pages_done`, `pages_failed`, `failed_page` and `failure_kind` (`timeout`,
+`auth`, `rate_limited`, `upstream`, `network`, `malformed`; null when nothing failed). There is no
+run table for this collector: the state comes from its watermark row, the pass summary kept in its
+metadata and its advisory lock. The error text is not returned.
 
 ## Log-source fleet summary
 
@@ -884,7 +903,7 @@ lists it for the QRadar administrator. Both routes need `admin:*` (`read:*` does
 
 | Route | What it does |
 |---|---|
-| `GET /api/v1/admin/qradar-access` | The latest stored result per enabled console and catalog entry, and the state of its check. Sends nothing to QRadar. `{consoles: [{instance_id, instance_name, applicable, last_checked_at, check_running, last_check_started_at, last_check_finished_at, entries, syncs_started}], check_interval_seconds}`. `applicable` is false for a console that is not on the direct REST provider: nothing is checked on it. `syncs_started` names the syncs the latest check started. `check_running` is true while a check of that console runs, whoever started it (beat, worker start-up or the POST below); `last_check_started_at` and `last_check_finished_at` are UTC, null when no check ever started or finished (while a check runs, the finished time is the previous run's). **A run that started more than 10 minutes ago and never finished counts as not running**, so a worker that died mid-check cannot leave `check_running` true; the next check then starts normally |
+| `GET /api/v1/admin/qradar-access` | The latest stored result per enabled console and catalog entry, and the state of its check. Sends nothing to QRadar. `{consoles: [{instance_id, instance_name, applicable, last_checked_at, check_running, last_check_started_at, last_check_finished_at, entries, inventory_pass, syncs_started}], check_interval_seconds}`. `applicable` is false for a console that is not on the direct REST provider: nothing is checked on it. `inventory_pass` is the console's last log-source inventory pass (same shape as `last_pass` of `GET /fleet/sources/sync`; null before any pass). `syncs_started` names the syncs the latest check started. `check_running` is true while a check of that console runs, whoever started it (beat, worker start-up or the POST below); `last_check_started_at` and `last_check_finished_at` are UTC, null when no check ever started or finished (while a check runs, the finished time is the previous run's). **A run that started more than 10 minutes ago and never finished counts as not running**, so a worker that died mid-check cannot leave `check_running` true; the next check then starts normally |
 | `POST /api/v1/admin/qradar-access/check` | Queues the check for every enabled REST console and answers `202` at once with the same shape as `GET` plus `started` (consoles queued by this request), `already_running` (consoles that had a check running: nothing was queued for them, the answer shows the running one) and `failed` (consoles whose task the queue refused; their run is released). It never probes inside the request, because a check takes about a minute and the proxy waits 60 seconds. Poll `GET` until `check_running` is false. Rate limited by `RATE_LIMIT_ACCESS_CHECK` (`2/minute`; `429` beyond it); a request answered with `already_running` still counts. Audited as `qradar_access.check`, with `started`, `already_running` and `failed` in the detail |
 
 An entry: `id`, `title`, `method`, `path`, `feeds` (what it feeds in this application), `used_by`

@@ -13,7 +13,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import cast
 
-from sqlalchemy import Table, delete
+from sqlalchemy import ARRAY, String, Table, any_, delete, literal
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,7 +53,9 @@ class InventorySyncService:
         self.settings = settings or get_settings()
         self._clock = clock or (lambda: datetime.now(UTC))
 
-    async def sync(self, instance: QRadarInstance) -> SyncResult:
+    async def sync(
+        self, instance: QRadarInstance, *, bootstrap_hint: bool = False
+    ) -> SyncResult:
         # Read once, so the health stamp and every row written by this pass
         # carry the same observation time.
         now = self._clock()
@@ -82,7 +84,12 @@ class InventorySyncService:
             group_dtos = await self.provider.list_log_source_groups()
         except ProviderError:
             group_dtos = []
-        dtos = await self.provider.list_log_sources()
+        walk = await self.provider.walk_log_sources(
+            page_timeout_seconds=self.settings.log_source_page_timeout_seconds,
+            page_attempts=self.settings.log_source_page_attempts,
+            wall_seconds=float(self.settings.log_source_walk_max_seconds),
+        )
+        dtos = walk.sources
 
         type_rows = [
             LogSourceType(
@@ -158,7 +165,9 @@ class InventorySyncService:
             await self.session.execute(group_statement, group_values)
 
         existing_by_qradar_id = await self.repo.by_qradar_id(instance.id)
-        bootstrap = not existing_by_qradar_id
+        # `bootstrap_hint`: no complete pass has run yet, so a first partial pass must not
+        # make the rest of the console look new when a later pass reaches it.
+        bootstrap = not existing_by_qradar_id or bootstrap_hint
         created = updated = 0
         new_sources: list[LogSource] = []
         for dto in dtos:
@@ -201,6 +210,7 @@ class InventorySyncService:
             instance,
             [existing_by_qradar_id[q] for q in dict.fromkeys(d.qradar_id for d in dtos)],
             observed_at=now,
+            replace_all=walk.complete,
         )
         sources = list(existing_by_qradar_id.values())
         applied = await classify_sources(
@@ -263,6 +273,11 @@ class InventorySyncService:
             created=created,
             updated=updated,
             instance_version=info.version,
+            complete=walk.complete,
+            pages_done=walk.pages_done,
+            pages_failed=walk.pages_failed,
+            failed_page=walk.failed_page,
+            failure_kind=walk.failure_kind,
         )
 
     async def _record_mentions(
@@ -271,6 +286,7 @@ class InventorySyncService:
         seen: list[LogSource],
         *,
         observed_at: datetime,
+        replace_all: bool = True,
     ) -> None:
         """Index the name and identifier of every log source this pass saw as entity mentions.
 
@@ -282,8 +298,10 @@ class InventorySyncService:
         old name and a source the console no longer lists drops out. `name` and `identifier`
         are HOST (role HOST); an `identifier` that parses as an address is also an IP. Statements
         per pass: one DELETE, one INSERT per 1,000 rows (the helper's chunk) and the savepoint
-        pair. A failure rolls back to the savepoint and is logged by class name: mentions are a
-        derived index and never cost the inventory.
+        pair. A walk that was not complete (`replace_all` False) replaces only the mentions of
+        the sources it saw: a source it did not reach keeps its mention, because absence is
+        concluded only from a complete walk. A failure rolls back to the savepoint and is
+        logged by class name: mentions are a derived index and never cost the inventory.
         """
         mentions = log_source_mentions(
             instance.id,
@@ -295,13 +313,19 @@ class InventorySyncService:
         )
         try:
             async with self.session.begin_nested():
-                await self.session.execute(
-                    delete(EntityMention)
-                    .where(
-                        EntityMention.instance_id == instance.id,
-                        EntityMention.source == "LOG_SOURCE",
+                purge = delete(EntityMention).where(
+                    EntityMention.instance_id == instance.id,
+                    EntityMention.source == "LOG_SOURCE",
+                )
+                if not replace_all:
+                    # One array parameter, not one bind per id: a console of 50k sources would
+                    # pass the driver's parameter limit.
+                    purge = purge.where(
+                        EntityMention.ref_id
+                        == any_(literal([str(source.id) for source in seen], ARRAY(String)))
                     )
-                    .execution_options(synchronize_session=False)
+                await self.session.execute(
+                    purge.execution_options(synchronize_session=False)
                 )
                 await record_mentions(self.session, mentions)
         except Exception as exc:

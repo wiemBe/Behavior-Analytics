@@ -47,6 +47,7 @@ from app.providers.dto import (
     LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
+    LogSourceWalk,
     ManagedServerDTO,
     OffenseListResult,
     PropertyCatalogWalkDTO,
@@ -186,6 +187,42 @@ class ProviderError(RuntimeError):
         self.status_code = status_code
 
 
+#: Why a call (or one page of a walk) failed, from the exception alone.
+FAILURE_TIMEOUT = "timeout"
+FAILURE_AUTH = "auth"
+FAILURE_RATE_LIMITED = "rate_limited"
+FAILURE_UPSTREAM = "upstream"
+FAILURE_NETWORK = "network"
+FAILURE_MALFORMED = "malformed"
+FAILURE_KINDS = (
+    FAILURE_TIMEOUT,
+    FAILURE_AUTH,
+    FAILURE_RATE_LIMITED,
+    FAILURE_UPSTREAM,
+    FAILURE_NETWORK,
+    FAILURE_MALFORMED,
+)
+
+
+def failure_kind(exc: BaseException) -> str:
+    """The failure kind of a provider exception; its message is never read."""
+    cause_names = {cls.__name__ for cls in type(exc.__cause__).__mro__} if exc.__cause__ else set()
+    code = getattr(exc, "status_code", None)
+    if isinstance(exc, ProviderAuthError) or code in (401, 403):
+        return FAILURE_AUTH
+    if code == 429:
+        return FAILURE_RATE_LIMITED
+    if isinstance(code, int) and code >= 400:
+        return FAILURE_UPSTREAM
+    if "TimeoutException" in cause_names or isinstance(exc, TimeoutError):
+        return FAILURE_TIMEOUT
+    if isinstance(exc, ProviderUnavailableError):
+        return FAILURE_NETWORK
+    if type(exc).__name__ == "MalformedUpstreamResponse":
+        return FAILURE_MALFORMED
+    return FAILURE_UPSTREAM
+
+
 class ProviderUnavailableError(ProviderError):
     """Transient connectivity/timeout failure — safe to retry."""
 
@@ -247,6 +284,20 @@ class QRadarProvider(ABC):
     @abstractmethod
     async def list_log_sources(self) -> list[LogSourceDTO]:
         ...
+
+    async def walk_log_sources(
+        self,
+        *,
+        page_timeout_seconds: float | None = None,
+        page_attempts: int | None = None,
+        wall_seconds: float | None = None,
+    ) -> LogSourceWalk:
+        """The log sources, page by page, keeping the pages that arrived when one fails.
+
+        The default is one all-or-nothing `list_log_sources`: a provider with no pages has
+        nothing to keep. The REST provider overrides it.
+        """
+        return LogSourceWalk(sources=await self.list_log_sources(), complete=True)
 
     @abstractmethod
     async def get_log_source(self, qradar_id: int) -> LogSourceDTO | None:

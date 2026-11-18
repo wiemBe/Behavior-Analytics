@@ -57,6 +57,19 @@ function row(over: Partial<FleetSourceRow> = {}): FleetSourceRow {
     waf_profile: { status: "VALID", enabled: true },
     ips_profile: null,
     identity_profile: { status: "UNVALIDATED", enabled: false },
+    description: null,
+    protocol_type_id: null,
+    target_event_collector_id: null,
+    credibility: null,
+    qradar_status: null,
+    qradar_created_at: null,
+    qradar_modified_at: null,
+    criticality: "MEDIUM",
+    owner: null,
+    monitoring_enabled: true,
+    maintenance_mode: false,
+    maintenance_until: null,
+    groups: ["Perimeter", "DMZ"],
     ...over,
   };
 }
@@ -71,6 +84,30 @@ function pageOf(items: FleetSourceRow[], total = items.length): FleetSourcePage 
       source_class: [
         { value: "WAF", count: 40 },
         { value: "IPS", count: 12 },
+      ],
+      criticality: [
+        { value: "HIGH", count: 12 },
+        { value: "LOW", count: 3 },
+      ],
+      owner: [
+        { value: "net-team", count: 9 },
+        { value: "soc", count: 4 },
+      ],
+      auto_discovered: [
+        { value: "YES", count: 40 },
+        { value: "NO", count: 5 },
+      ],
+      monitoring: [
+        { value: "YES", count: 44 },
+        { value: "NO", count: 1 },
+      ],
+      maintenance: [
+        { value: "YES", count: 2 },
+        { value: "NO", count: 43 },
+      ],
+      collector: [
+        { value: "1", count: 30 },
+        { value: "2", count: 15 },
       ],
       group: [
         { group_id: 5, name: "Perimeter", count: 30 },
@@ -625,5 +662,189 @@ describe("group facet", () => {
   it("round-trips the group ids through the URL and counts them as filters", () => {
     const q = parseSourceListQuery({ group: ["5", "x", "6", "5"] });
     expect(q.group).toEqual([5, 6]);
+  });
+});
+
+describe("more facets", () => {
+  it.each([
+    ["Criticality", /High/, "criticality=HIGH"],
+    ["Owner", /soc/, "owner=soc"],
+    ["Collector", /#2/, "collector=2"],
+    ["Auto-discovered", /No/, "auto_discovered=NO"],
+    ["Monitoring", /No/, "monitoring=NO"],
+    ["Maintenance", /Yes/, "maintenance=YES"],
+  ])("%s lists values with counts and sets the URL", async (name, option, param) => {
+    view();
+    await userEvent.click(screen.getByText(name, { selector: "summary span" }));
+    const panel = screen.getByRole("group", { name });
+    const box = within(panel).getByRole("checkbox", { name: option });
+    expect(within(box.closest("label")!).getByText(/^\d+$/)).toBeInTheDocument();
+    await userEvent.click(box);
+    expect(nav.push).toHaveBeenLastCalledWith(`/fleet/sources?${param}`);
+  });
+
+  it("round-trips every new filter through the URL and shows one chip each", async () => {
+    view({
+      criticality: ["HIGH", "LOW"],
+      owner: "soc",
+      collector: ["2"],
+      auto_discovered: "YES",
+      monitoring: "NO",
+      maintenance: "NO",
+      criticality_x: "ignored",
+    });
+    const chips = screen.getByRole("list", { name: "Active filters" });
+    for (const label of [
+      "Criticality: High",
+      "Criticality: Low",
+      "Owner: soc",
+      "Collector: #2",
+      "Auto-discovered: Yes",
+      "Monitoring: No",
+      "Maintenance: No",
+    ])
+      expect(within(chips).getByText(label)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Remove filter Owner: soc" }));
+    const url = nav.push.mock.calls.at(-1)![0] as string;
+    expect(url).not.toContain("owner=");
+    expect(url).toContain("criticality=HIGH&criticality=LOW");
+    expect(url).toContain("collector=2");
+    expect(url).toContain("auto_discovered=YES&monitoring=NO&maintenance=NO");
+  });
+
+  it("drops values that are not on the allow-lists", () => {
+    const q = parseSourceListQuery({ criticality: "URGENT", auto_discovered: "MAYBE", collector: "x", cols: "owner,drop" });
+    expect(q.criticality).toEqual([]);
+    expect(q.auto_discovered).toEqual([]);
+    expect(q.collector).toEqual([]);
+    expect(q.cols).toEqual(["owner"]);
+  });
+
+  it("asks the API for owners that match the search without changing the list", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const spy = vi.spyOn(fleetApi, "sourceList").mockResolvedValue({
+        ...pageOf([]),
+        facets: { ...pageOf([]).facets, owner: [{ value: "network-ops", count: 7 }] },
+      });
+      view();
+      await userEvent.click(screen.getByText("Owner", { selector: "summary span" }));
+      await userEvent.type(screen.getByRole("searchbox", { name: "Find an owner" }), "netw");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ owner_q: "netw", limit: 1 }));
+      expect(await screen.findByRole("checkbox", { name: /network-ops/ })).toBeInTheDocument();
+      expect(screen.queryByRole("checkbox", { name: /net-team/ })).toBeNull();
+      expect(nav.push).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("column chooser", () => {
+  const headers = () => screen.getAllByRole("columnheader").map((h) => h.textContent ?? "");
+
+  it("shows the compact table by default", () => {
+    view();
+    expect(headers().join("|")).not.toMatch(/Description|Protocol|Owner|Credibility/);
+  });
+
+  it("adds a chosen column to the URL in table order, and removes it again", async () => {
+    view();
+    await userEvent.click(screen.getByText("Columns", { selector: "summary span" }));
+    const panel = screen.getByRole("group", { name: "Columns" });
+    await userEvent.click(within(panel).getByRole("checkbox", { name: "Owner" }));
+    expect(nav.replace).toHaveBeenLastCalledWith("/fleet/sources?cols=owner");
+  });
+
+  it("keeps table order whatever the URL order, and keeps the other filters", () => {
+    view({ cols: "owner,description,protocol", class: "WAF" });
+    const h = headers().filter((x) => /Description|Protocol|Owner/.test(x));
+    expect(h).toEqual(["Description", "Protocol ID", "Owner"]);
+  });
+
+  it("right-aligns number columns and writes missing values as a dash with its name", () => {
+    view(
+      { cols: "protocol,credibility,collector,owner,created,maintenance" },
+      pageOf([row({ protocol_type_id: 12, credibility: 5, target_event_collector_id: null, owner: null })]),
+    );
+    const r = screen.getAllByRole("row")[1];
+    const cells = within(r).getAllByRole("cell");
+    const protocol = cells.find((c) => c.textContent === "12")!;
+    expect(protocol).toHaveClass("num");
+    expect(cells.find((c) => c.textContent === "5")).toHaveClass("num");
+    expect(within(r).getAllByTitle("Not recorded").length).toBeGreaterThanOrEqual(3);
+    expect(within(r).getAllByText("No").length).toBeGreaterThan(0);
+  });
+
+  it("shows when maintenance ends in UTC", () => {
+    view(
+      { cols: "maintenance" },
+      pageOf([row({ maintenance_mode: true, maintenance_until: "2026-11-18T12:00:00Z" })]),
+    );
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("UTC");
+  });
+
+  it("keeps the columns on the paging links and out of the CSV link", () => {
+    view({ cols: "owner,description" }, { ...pageOf([row()], 300), limit: 50 });
+    expect(screen.getByRole("link", { name: /Next/ }).getAttribute("href")).toContain("cols=description%2Cowner");
+    expect(screen.getByRole("link", { name: "Export CSV" }).getAttribute("href")).not.toContain("cols");
+  });
+});
+
+describe("row details", () => {
+  function many() {
+    return pageOf([
+      row({
+        description: "Perimeter WAF",
+        protocol_type_id: 12,
+        credibility: 5,
+        owner: "net-team",
+        group_count: 60,
+        groups: ["Perimeter", "DMZ", "Public web"],
+      }),
+      row({ id: "s2", name: "edge-ips-02", qradar_id: 202, owner: null }),
+    ]);
+  }
+
+  it("opens one row, shows every field and every group, and links to the source", async () => {
+    view({}, many());
+    const open = screen.getByRole("button", { name: "Details of dmz-waf-01" });
+    expect(open).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(open);
+    expect(open).toHaveAttribute("aria-expanded", "true");
+    const panel = screen.getByRole("group", { name: "Details" });
+    for (const text of ["Perimeter WAF", "net-team", "Perimeter, DMZ, Public web", "+57", "10.1.1.5", "WAF valid"])
+      expect(within(panel).getByText(new RegExp(text.replace("+", "\\+")))).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: "Open source" })).toHaveAttribute("href", "/log-sources/s1");
+  });
+
+  it("keeps one open at a time", async () => {
+    view({}, many());
+    await userEvent.click(screen.getByRole("button", { name: "Details of dmz-waf-01" }));
+    await userEvent.click(screen.getByRole("button", { name: "Details of edge-ips-02" }));
+    expect(screen.getAllByRole("group", { name: "Details" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Details of dmz-waf-01" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("closes with Escape and returns focus to its button", async () => {
+    view({}, many());
+    const open = screen.getByRole("button", { name: "Details of dmz-waf-01" });
+    open.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByRole("group", { name: "Details" })).toBeInTheDocument();
+    within(screen.getByRole("group", { name: "Details" })).getByRole("link").focus();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("group", { name: "Details" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Details of dmz-waf-01" })).toHaveFocus();
+  });
+
+  it("writes a missing value as a dash with its name", async () => {
+    view({}, many());
+    await userEvent.click(screen.getByRole("button", { name: "Details of edge-ips-02" }));
+    const panel = screen.getByRole("group", { name: "Details" });
+    expect(within(panel).getAllByTitle("Not recorded").length).toBeGreaterThan(3);
   });
 });

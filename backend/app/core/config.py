@@ -519,7 +519,15 @@ class Settings(BaseSettings):
     # --- Log source inventory (Phase 3) -------------------------------------
     # Full inventory pass; log sources are added and renamed rarely, so this is
     # deliberately far less frequent than metric collection.
-    log_source_sync_interval_seconds: int = Field(default=3600, ge=60)
+    # 900 s since FIX-74: a source the token could not see yesterday must reach the pickers
+    # within the quarter hour, and the walk is slim (see below), so the cadence is affordable.
+    log_source_sync_interval_seconds: int = Field(default=900, ge=60)
+    # One page of the walk (500 rows) gets this long and this many attempts; a page that fails
+    # for good is skipped and the pass ends PARTIAL, with the pages that arrived upserted.
+    log_source_page_timeout_seconds: float = Field(default=30.0, ge=5.0, le=300.0)
+    log_source_page_attempts: int = Field(default=3, ge=1, le=6)
+    # Wall-clock cap for the whole walk; keep it below the sync interval.
+    log_source_walk_max_seconds: int = Field(default=600, ge=60, le=3600)
     # New, non-internal inventory rows open a deduplicated review alert.
     inventory_new_source_alerts_enabled: bool = True
 

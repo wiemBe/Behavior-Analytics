@@ -27,7 +27,14 @@ import {
 import { ASSIGNABLE_CLASSES, basisLabel, classLabel, classTone, formatEpsValue } from "@/lib/fleet";
 import { useFleetText } from "@/lib/fleetText";
 import { formatAge } from "@/lib/health";
-import { WRITE_PERMISSION, holds, sortedBy, type SourceListQuery } from "@/lib/fleetSources";
+import {
+  NUMERIC_COLUMNS,
+  WRITE_PERMISSION,
+  holds,
+  sortedBy,
+  type OptionalColumn,
+  type SourceListQuery,
+} from "@/lib/fleetSources";
 
 import "@/components/ui/controls.css";
 import "./fleet-sources.css";
@@ -113,18 +120,182 @@ function ageOf(iso: string | null, nowIso: string): string | undefined {
   return Number.isFinite(seconds) && seconds >= 0 ? formatAge(Math.round(seconds)) : undefined;
 }
 
+const missing = (title: string) => (
+  <span className="muted" title={title}>
+    —
+  </span>
+);
+
+function yesNo(t: (key: string) => string, value: boolean | null) {
+  return value === null ? missing(t("details.missing")) : value ? t("yesNo.YES") : t("yesNo.NO");
+}
+
+/** One optional column's cell. Numbers are right-aligned; a missing value is `—` with its name. */
+function OptionalCell({ col, row }: { col: OptionalColumn; row: FleetSourceRow }) {
+  const tt = useTranslations("fleet.sourceList");
+  const t = (key: string) => tt(key as never);
+  const num = NUMERIC_COLUMNS.includes(col) ? "num" : undefined;
+  let body: React.ReactNode;
+  switch (col) {
+    case "description":
+      body = row.description ?? missing(t("details.missing"));
+      break;
+    case "protocol":
+      body = row.protocol_type_id ?? missing(t("details.missing"));
+      break;
+    case "collector":
+      body = row.target_event_collector_id ?? missing(t("details.missing"));
+      break;
+    case "credibility":
+      body = row.credibility ?? missing(t("details.missing"));
+      break;
+    case "auto":
+      body = yesNo(t, row.auto_discovered);
+      break;
+    case "status":
+      body = row.qradar_status ?? missing(t("details.missing"));
+      break;
+    case "created":
+      body = row.qradar_created_at ? (
+        <UtcTime value={row.qradar_created_at} variant="compact" />
+      ) : (
+        missing(t("details.missing"))
+      );
+      break;
+    case "modified":
+      body = row.qradar_modified_at ? (
+        <UtcTime value={row.qradar_modified_at} variant="compact" />
+      ) : (
+        missing(t("details.missing"))
+      );
+      break;
+    case "criticality":
+      body = tt(`criticality.${row.criticality}` as never);
+      break;
+    case "owner":
+      body = row.owner ?? missing(t("details.missing"));
+      break;
+    case "monitoring":
+      body = yesNo(t, row.monitoring_enabled);
+      break;
+    case "maintenance":
+      body = !row.maintenance_mode ? (
+        t("yesNo.NO")
+      ) : row.maintenance_until ? (
+        <UtcTime value={row.maintenance_until} variant="compact" />
+      ) : (
+        t("details.maintenanceOn")
+      );
+      break;
+  }
+  const clip = col === "description" || col === "owner" ? "fs-clip" : undefined;
+  return (
+    <td className={[num, clip].filter(Boolean).join(" ") || undefined} title={col === "description" ? (row.description ?? undefined) : undefined}>
+      {body}
+    </td>
+  );
+}
+
+/** Everything the list knows about one source, without leaving the list. */
+function Details({ row, onClose }: { row: FleetSourceRow; onClose: () => void }) {
+  const tt = useTranslations("fleet.sourceList");
+  const t = (key: string) => tt(key as never);
+  const text = useFleetText();
+  const na = missing(t("details.missing"));
+  const time = (v: string | null) => (v ? <UtcTime value={v} variant="compact" /> : na);
+  const profile = (label: string, cell: FleetProfileCell | null) =>
+    cell === null ? null : (
+      <li key={label}>
+        {label} {tt(`profileStatus.${cell.status}` as never)}
+        {cell.enabled ? "" : ` · ${t("details.off")}`}
+      </li>
+    );
+  const profiles = [
+    profile("WAF", row.waf_profile),
+    profile("IPS", row.ips_profile),
+    profile("Identity", row.identity_profile),
+  ].filter(Boolean);
+  const rest = row.group_count - row.groups.length;
+  const fields: [string, React.ReactNode][] = [
+    [t("columns.description"), row.description ?? na],
+    [t("table.identifier"), row.identifier ?? na],
+    [t("columns.protocol"), row.protocol_type_id ?? na],
+    [t("columns.collector"), row.target_event_collector_id ?? na],
+    [t("columns.credibility"), row.credibility ?? na],
+    [t("columns.auto"), yesNo(t, row.auto_discovered)],
+    [t("columns.status"), row.qradar_status ?? na],
+    [t("columns.created"), time(row.qradar_created_at)],
+    [t("columns.modified"), time(row.qradar_modified_at)],
+    [t("columns.criticality"), tt(`criticality.${row.criticality}` as never)],
+    [t("columns.owner"), row.owner ?? na],
+    [t("columns.monitoring"), yesNo(t, row.monitoring_enabled)],
+    [
+      t("columns.maintenance"),
+      !row.maintenance_mode ? t("yesNo.NO") : row.maintenance_until ? time(row.maintenance_until) : t("details.maintenanceOn"),
+    ],
+    [
+      t("details.class"),
+      `${classLabel(row.source_class, text)} · ${row.override_class !== null ? t("cell.overrideAnon") : basisLabel(row.basis, text)}`,
+    ],
+  ];
+  return (
+    <div
+      className="fs-details"
+      role="group"
+      aria-label={tt("details.title")}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <dl className="fs-details-grid">
+        {fields.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+        <div>
+          <dt>{t("details.groups")}</dt>
+          <dd>
+            {row.groups.length ? row.groups.join(", ") : na}
+            {rest > 0 && <span className="muted"> {tt("cell.moreGroups", { count: rest })}</span>}
+          </dd>
+        </div>
+        <div>
+          <dt>{t("details.profiles")}</dt>
+          <dd>{profiles.length ? <ul className="plain-list">{profiles}</ul> : na}</dd>
+        </div>
+      </dl>
+      <Link className="fs-details-link" href={`/log-sources/${row.id}`}>
+        {t("details.openSource")}
+      </Link>
+    </div>
+  );
+}
+
 function Row({
   row,
   nowIso,
   selectable,
   checked,
   onCheck,
+  cols,
+  open,
+  onToggle,
+  span,
 }: {
   row: FleetSourceRow;
   nowIso: string;
   selectable: boolean;
   checked: boolean;
   onCheck: (checked: boolean) => void;
+  cols: OptionalColumn[];
+  open: boolean;
+  onToggle: () => void;
+  span: number;
 }) {
   const t = useTranslations("fleet.sourceList");
   const text = useFleetText();
@@ -137,7 +308,20 @@ function Row({
   ] as const;
   const hasProfile = profiles.some(([, c]) => c !== null);
   return (
+    <>
     <tr aria-selected={selectable ? checked : undefined}>
+      <td className="fs-expand">
+        <button
+          type="button"
+          id={`fs-expand-${row.id}`}
+          className="fs-expand-btn"
+          aria-expanded={open}
+          aria-label={t(open ? "details.close" : "details.open", { name: row.name })}
+          onClick={onToggle}
+        >
+          <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+        </button>
+      </td>
       {selectable && (
         <td className="fs-check">
           <input
@@ -221,7 +405,18 @@ function Row({
           </>
         )}
       </td>
+      {cols.map((c) => (
+        <OptionalCell key={c} col={c} row={row} />
+      ))}
     </tr>
+    {open && (
+      <tr className="fs-details-row">
+        <td colSpan={span}>
+          <Details row={row} onClose={onToggle} />
+        </td>
+      </tr>
+    )}
+    </>
   );
 }
 
@@ -335,7 +530,7 @@ function BulkBar({
         </p>
       )}
       {phase.kind === "error" && (
-        <p className="change-status error" role="alert">
+        <p className="change-status crit" role="alert">
           {phase.message}
         </p>
       )}
@@ -376,6 +571,7 @@ export function FleetSourceList({
   const canWrite = holds(me, WRITE_PERMISSION);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [done, setDone] = useState<number | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const allRef = useRef<HTMLInputElement>(null);
 
   // A new page of rows is a new selection: ids of rows that are gone are not carried along.
@@ -449,6 +645,9 @@ export function FleetSourceList({
                   />
                 </th>
               )}
+              <th scope="col" className="fs-expand">
+                <span className="sr-only">{t("details.title")}</span>
+              </th>
               {head("name", t("table.name"))}
               {head("type", t("table.type"))}
               <th scope="col">{t("table.identifier")}</th>
@@ -461,6 +660,15 @@ export function FleetSourceList({
               <th scope="col">{t("table.profiles")}</th>
               {head("lastEvent", t("table.lastEvent"), true)}
               <th scope="col">{t("table.groups")}</th>
+              {query.cols.map((c) => (
+                <th
+                  key={c}
+                  scope="col"
+                  className={NUMERIC_COLUMNS.includes(c) ? "num" : undefined}
+                >
+                  {t(`columns.${c}`)}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -471,6 +679,13 @@ export function FleetSourceList({
                 nowIso={nowIso}
                 selectable={canWrite}
                 checked={selected.has(r.id)}
+                cols={query.cols}
+                open={openId === r.id}
+                span={11 + query.cols.length + (canWrite ? 1 : 0)}
+                onToggle={() => {
+                  setOpenId((cur) => (cur === r.id ? null : r.id));
+                  document.getElementById(`fs-expand-${r.id}`)?.focus();
+                }}
                 onCheck={(on) =>
                   setSelected((prev) => {
                     const next = new Set(prev);
