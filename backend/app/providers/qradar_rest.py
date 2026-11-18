@@ -56,6 +56,8 @@ from app.ips.keyed_rows import (
 )
 from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.base import (
+    FAILURE_AUTH,
+    FAILURE_TIMEOUT,
     IPS_NORMALIZED_FIELD_ALLOWLIST,
     IPS_PROBE_MAX_WINDOW_SECONDS,
     PROPERTY_NAME_PATTERN,
@@ -68,6 +70,7 @@ from app.providers.base import (
     ProviderQueryRejectedError,
     ProviderUnavailableError,
     QRadarProvider,
+    failure_kind,
 )
 from app.providers.dto import (
     HEALTH_HOSTS_BOUND,
@@ -95,6 +98,7 @@ from app.providers.dto import (
     LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
+    LogSourceWalk,
     ManagedServerDTO,
     OffenseDTO,
     OffenseListResult,
@@ -158,6 +162,22 @@ DEFAULT_PAGE_SIZE = 500
 #: Hard ceiling on pages walked in one call, so a pathological or hostile
 #: upstream cannot turn a list call into an unbounded loop.
 DEFAULT_MAX_PAGES = 200
+
+#: The fields the inventory reads from `GET .../log_sources`, and no others: a full row carries
+#: `protocol_parameters` (several KB with credentials-bearing keys) for every source, which on
+#: a console of thousands is the difference between a pass that finishes and one that times
+#: out. Every key `_to_log_source` reads is here (a test pins it); `type` (a nested object) is
+#: only read from the single-source detail, which sends no `fields=`.
+LOG_SOURCE_LIST_FIELDS = (
+    "id,name,description,type_id,protocol_type_id,enabled,status,credibility,"
+    "target_event_collector_id,last_event_time,creation_date,modified_date,"
+    "auto_discovered,group_ids,log_source_identifiers,internal"
+)
+
+#: A Range walk of thousands of rows needs a stable order, or a source created or removed
+#: between two pages shifts the rows and one is read twice or never. QRadar's `sort=+id` is
+#: the ascending sort every list endpoint accepts (the offense walk uses `+last_persisted_time`).
+LOG_SOURCE_LIST_SORT = "+id"
 
 #: Version of the stored rule-match AQL. Bump it with any change to the query
 #: text, so a stored window can always be tied to the query that produced it.
@@ -484,6 +504,7 @@ class QRadarRestProvider(QRadarProvider):
         headers: dict[str, str] | None = None,
         allow_404: bool = False,
         max_attempts: int | None = None,
+        timeout: float | None = None,
     ) -> Any:
         """One upstream call with bounded, jittered retries.
 
@@ -502,9 +523,14 @@ class QRadarRestProvider(QRadarProvider):
         for attempt in range(1, attempts + 1):
             with observe(PROVIDER_NAME, category) as outcome:
                 try:
-                    response = await self._client.request(
-                        method, path, params=params, headers=headers
-                    )
+                    if timeout is None:
+                        response = await self._client.request(
+                            method, path, params=params, headers=headers
+                        )
+                    else:
+                        response = await self._client.request(
+                            method, path, params=params, headers=headers, timeout=timeout
+                        )
                 except httpx.TimeoutException as exc:
                     outcome["error_class"] = ErrorClass.TIMEOUT
                     last_exc = ProviderUnavailableError("QRadar request timed out")
@@ -887,8 +913,102 @@ class QRadarRestProvider(QRadarProvider):
         rows = await self._paginate(
             "/config/event_sources/log_source_management/log_sources",
             category=EndpointCategory.LOG_SOURCE_LIST,
+            params={"fields": LOG_SOURCE_LIST_FIELDS, "sort": LOG_SOURCE_LIST_SORT},
         )
         return [dto for dto in (self._to_log_source(r) for r in rows) if dto is not None]
+
+    async def walk_log_sources(
+        self,
+        *,
+        page_timeout_seconds: float | None = None,
+        page_attempts: int | None = None,
+        wall_seconds: float | None = None,
+    ) -> LogSourceWalk:
+        """Walk the log sources one page at a time and keep every page that arrives.
+
+        Slim rows (`LOG_SOURCE_LIST_FIELDS`). Each page has its own timeout and attempt budget;
+        a page that fails for good is skipped and the walk goes on (the next page's Range does
+        not depend on it), except for an authorization failure, which is not about a page and
+        ends the walk, as do three failed pages in a row and the wall-clock cap. A walk is
+        `complete` only when it ended on a short page with no failed page before it: the
+        ceiling, the cap, the abort and any skipped page all make it incomplete, and the
+        caller must not read absence from it.
+        """
+        path = "/config/event_sources/log_source_management/log_sources"
+        size = self._page_size
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        sources: list[LogSourceDTO] = []
+        pages_done = pages_failed = 0
+        failed_page: int | None = None
+        kind: str | None = None
+        consecutive = 0
+        ended_short = False
+
+        def note(page: int, why: str) -> None:
+            nonlocal failed_page, kind
+            if failed_page is None:
+                failed_page, kind = page, why
+
+        for index in range(self._max_pages):
+            page = index + 1
+            if wall_seconds is not None and loop.time() - started >= wall_seconds:
+                note(page, FAILURE_TIMEOUT)
+                break
+            try:
+                body = await self._request(
+                    "GET",
+                    path,
+                    category=EndpointCategory.LOG_SOURCE_LIST,
+                    params={"fields": LOG_SOURCE_LIST_FIELDS, "sort": LOG_SOURCE_LIST_SORT},
+                    headers={"Range": f"items={index * size}-{index * size + size - 1}"},
+                    max_attempts=page_attempts,
+                    timeout=page_timeout_seconds,
+                )
+                if body is None:
+                    ended_short = True
+                    break
+                if not isinstance(body, list):
+                    raise MalformedUpstreamResponse(
+                        "QRadar returned a non-list body for a collection endpoint "
+                        f"({EndpointCategory.LOG_SOURCE_LIST})"
+                    )
+            except ProviderError as exc:
+                why = failure_kind(exc)
+                pages_failed += 1
+                consecutive += 1
+                note(page, why)
+                logger.warning(
+                    "log source page failed",
+                    extra={"page": page, "failure_kind": why},
+                )
+                if why == FAILURE_AUTH or consecutive >= 3:
+                    break
+                continue
+            consecutive = 0
+            pages_done += 1
+            rows = [item for item in body if isinstance(item, dict)]
+            sources.extend(
+                dto for dto in (self._to_log_source(row) for row in rows) if dto is not None
+            )
+            if len(body) < size:
+                ended_short = True
+                break
+        else:
+            logger.warning(
+                "pagination stopped at the page ceiling; results may be incomplete",
+                extra={"endpoint_category": "log_source_list", "max_pages": self._max_pages},
+            )
+        # A skipped page followed by a short page still ended the collection, but the skipped
+        # page's rows are missing: only a walk with no failure is complete.
+        return LogSourceWalk(
+            sources=sources,
+            complete=ended_short and pages_failed == 0 and failed_page is None,
+            pages_done=pages_done,
+            pages_failed=pages_failed,
+            failed_page=failed_page,
+            failure_kind=kind,
+        )
 
     async def get_log_source(self, qradar_id: int) -> LogSourceDTO | None:
         body = await self._request(

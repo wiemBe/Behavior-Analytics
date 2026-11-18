@@ -538,3 +538,39 @@ describe("QRadar access page: other consoles and states", () => {
     expect(document.body.textContent).not.toMatch(/real-time|\blive\b|!/i);
   });
 });
+
+const passLine = (re: RegExp) =>
+  screen.getByText((_, el) => el?.classList.contains("fs-pass") === true && re.test(el.textContent ?? ""));
+
+describe("QRadar access page: the inventory pass line (FIX-74)", () => {
+  const pass = {
+    status: "COMPLETE" as const,
+    finished_at: "2026-11-18T22:10:00Z",
+    elapsed_ms: 5000,
+    seen: 8012,
+    created: 1,
+    updated: 2,
+    pages_done: 17,
+    pages_failed: 0,
+    failed_page: null,
+    failure_kind: null,
+  };
+
+  it("shows the last complete pass with the number of sources seen", async () => {
+    api.get.mockResolvedValue(access({ consoles: [consoleOf({ inventory_pass: pass })] }));
+    await open();
+    expect(passLine(/Inventory 11-18 22:10 UTC · 8,012 sources/)).toBeInTheDocument();
+  });
+
+  it("shows a partial pass as partial", async () => {
+    const partial = { ...pass, status: "PARTIAL" as const, seen: 4000, failed_page: 9, failure_kind: "timeout" };
+    api.get.mockResolvedValue(access({ consoles: [consoleOf({ inventory_pass: partial })] }));
+    await open();
+    expect(passLine(/Last sync partial \(timeout on page 9\) — 4,000 sources updated/)).toBeInTheDocument();
+  });
+
+  it("says no inventory sync has run when the console has no pass", async () => {
+    await open();
+    expect(screen.getByText("No inventory sync has run yet.")).toBeInTheDocument();
+  });
+});

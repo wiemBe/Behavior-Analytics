@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 
 import { LoadingState } from "@/components/ui/RouteState";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { InventoryPassLine } from "@/components/fleet/InventoryPassLine";
 import type { AccessConsole } from "@/lib/api";
 import { formatExactDuration, relativeAge } from "@/lib/time";
 
@@ -257,6 +258,9 @@ function ConsoleSection({
                 )}
                 {t("console.interval", { interval: formatExactDuration(interval) })}
               </p>
+              <div className="qa-when">
+                <InventoryPassLine pass={console.inventory_pass ?? null} />
+              </div>
               {shared ? <Ask entry={shared} /> : null}
               {console.syncs_started.length > 0 ? (
                 <p className="qa-when">

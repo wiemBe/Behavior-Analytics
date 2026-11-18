@@ -50,6 +50,10 @@ COMMANDS: dict[str, Runner] = {
 }
 
 
+#: Keys whose None says "no failure", not "not measured".
+_ABSENT_WHEN_NONE = frozenset({"error", "failed_page", "failure_kind"})
+
+
 def _report(name: str, result: dict) -> None:
     """Print one run's outcome. Does not mutate `result`.
 
@@ -61,15 +65,16 @@ def _report(name: str, result: dict) -> None:
         return
 
     # `instance` and `status` have their own columns in the line format.
-    # Every other key is printed: 0 stays 0, None renders as "unknown".
-    # `--json` keeps every key unchanged.
+    # Every other key is printed: 0 stays 0, None renders as "unknown". The keys in
+    # `_ABSENT_WHEN_NONE` are left out when None: for them None means "nothing went wrong"
+    # (`error=unknown` on a good run read as a failure). `--json` keeps every key unchanged.
     for entry in result.get("results", []):
         instance = entry.get("instance", "?")
         status = entry.get("status")
         detail = " ".join(
             f"{k}={v if v is not None else 'unknown'}"
             for k, v in entry.items()
-            if k not in ("instance", "status")
+            if k not in ("instance", "status") and not (k in _ABSENT_WHEN_NONE and v is None)
         )
         print(f"{name:<12} {instance:<16} {status:<14} {detail}")
 
@@ -84,7 +89,10 @@ async def _run(names: list[str], instance: str | None, as_json: bool) -> int:
 
         # Success is decided by the result, never by which formatter ran, so
         # --json and the human output can never disagree about the exit code.
-        failed = any(e.get("status") == "failed" for e in result.get("results", []))
+        # `partial` (an inventory pass that read only some pages) is not a success either.
+        failed = any(
+            e.get("status") in ("failed", "partial") for e in result.get("results", [])
+        )
         if result.get("status") == "no-instance" or failed:
             exit_code = 1
 

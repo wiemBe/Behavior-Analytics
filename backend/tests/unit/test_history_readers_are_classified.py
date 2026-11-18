@@ -113,6 +113,11 @@ HISTORY_TABLES = (
                 "R5", ReaderKind.LIVE_ONLY, 1
             ),
             "app.fleet.series.build_fleet_eps_series": Reader("R6", ReaderKind.DISPLAY),
+            "app.fleet.sources._Eps.__init__": Reader(
+                "R6 (not in the design table: the fleet source list's current EPS, the latest "
+                "complete bucket of the last hour, shown and never judged)",
+                ReaderKind.DISPLAY,
+            ),
             "app.fleet.summary.build_fleet_summary": Reader(
                 "R6 (not in the design table: fleet totals)", ReaderKind.DISPLAY
             ),

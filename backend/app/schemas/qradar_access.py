@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.schemas.fleet import FleetSyncPass
+
 AccessStatus = Literal["ok", "forbidden", "unauthorized", "not_found", "unreachable", "error"]
 
 
@@ -66,6 +68,9 @@ class ConsoleAccessOut(BaseModel):
     #: UTC; null when no check ever finished. Keeps the previous run's time while one runs.
     last_check_finished_at: datetime | None
     entries: list[AccessEntryOut]
+    #: The last log-source inventory pass of this console (FIX-74): the token's visibility
+    #: shows here as "sources seen". Null before any pass finished.
+    inventory_pass: FleetSyncPass | None = None
     #: Syncs the latest check started, by name, over all entries.
     syncs_started: list[str]
 

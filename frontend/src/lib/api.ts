@@ -4027,10 +4027,24 @@ export interface FleetBulkClassificationResult {
   items: FleetSourceRow[];
 }
 
+export interface FleetSyncPass {
+  status: "COMPLETE" | "PARTIAL" | "FAILED";
+  finished_at: string | null;
+  elapsed_ms: number | null;
+  seen: number;
+  created: number;
+  updated: number;
+  pages_done: number;
+  pages_failed: number;
+  failed_page: number | null;
+  failure_kind: string | null;
+}
+
 export interface FleetSyncInstance {
   instance_id: string;
   instance_name: string;
-  status: "RUNNING" | "FAILED" | "OK" | "NEVER";
+  status: "RUNNING" | "FAILED" | "PARTIAL" | "OK" | "NEVER";
+  last_pass?: FleetSyncPass | null;
   last_run_at: string | null;
   last_success_at: string | null;
   consecutive_failures: number;
@@ -5881,6 +5895,8 @@ export interface AccessConsole {
   last_check_started_at: string | null;
   last_check_finished_at: string | null;
   entries: AccessEntry[];
+  /** The last log-source inventory pass of this console (FIX-74); null before any finished. */
+  inventory_pass?: FleetSyncPass | null;
   /** Syncs the latest check started, by name, over all entries. */
   syncs_started: string[];
 }

@@ -17,6 +17,11 @@ learned and the stored row is left as it was (reported as `deferred`).
 
 Nothing is started for an entry that stays refused. A first check (no stored row) starts nothing
 either: nothing was known to be blocked, and the collectors already run on their own cadence.
+
+One more sync is started for a different reason (FIX-74): a token's security profile can be
+widened without any API changing from refused to reachable, so a console whose log-source API
+answers ok gets one inventory sync queued when its last complete pass is older than the previous
+check (or no pass ever completed). The sync's own lock keeps two from running together.
 """
 
 from __future__ import annotations
@@ -33,9 +38,10 @@ from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.collectors.log_source_collector import sync_pass
 from app.core.config import Settings, get_settings
 from app.models.instance import QRadarInstance
-from app.models.monitoring import QRadarAccessResult, QRadarAccessRun
+from app.models.monitoring import CollectionWatermark, QRadarAccessResult, QRadarAccessRun
 from app.providers.access_catalog import (
     ACCESS_CATALOG,
     CATALOG_BY_ID,
@@ -76,6 +82,9 @@ ARIEL_PROBE_EXTRA_SECONDS = 90.0
 PROBE_CONCURRENCY = 4
 #: The entry probed first: when the console does not answer it, the rest are not attempted.
 FIRST_ENTRY_ID = "system_about"
+#: The entry whose answer says the inventory can be read, and the inventory's watermark name.
+LOG_SOURCES_ENTRY_ID = "log_sources"
+INVENTORY_COLLECTOR = "log_source_inventory"
 
 
 class AccessProbeProvider(Protocol):
@@ -298,6 +307,10 @@ async def check_console_access(
         for sync in SYNC_NAMES:
             if any(sync in names for names in wanted.values()):
                 started[sync] = dispatcher.start(sync, instance)
+        if SYNC_LOG_SOURCES not in started and await _inventory_may_be_stale(
+            session, instance, rows, answers, checked_at
+        ):
+            started[SYNC_LOG_SOURCES] = dispatcher.start(SYNC_LOG_SOURCES, instance)
         report.syncs_started = [sync for sync in SYNC_NAMES if started.get(sync)]
 
         for entry in ACCESS_CATALOG:
@@ -328,6 +341,34 @@ async def check_console_access(
                 row.syncs_started = mine
         await session.flush()
     return report
+
+
+async def _inventory_may_be_stale(
+    session: AsyncSession,
+    instance: QRadarInstance,
+    rows: dict[str, QRadarAccessResult],
+    answers: dict[str, ProbeOutcome | None],
+    checked_at: datetime,
+) -> bool:
+    """True when the log-source API answers ok and the inventory has not completed since the
+    previous check (so a wider token profile could be showing sources the product never read).
+
+    Never on a first check, and never for a console whose inventory has not run at all (the beat
+    makes the first pass): there is no earlier state to be stale against.
+    """
+    answered = answers.get(LOG_SOURCES_ENTRY_ID)
+    previous_checks = [row.checked_at for row in rows.values() if row.checked_at is not None]
+    if answered is None or answered.status != STATUS_OK or not previous_checks:
+        return False
+    mark = await session.scalar(
+        select(CollectionWatermark).where(
+            CollectionWatermark.instance_id == instance.id,
+            CollectionWatermark.collector == INVENTORY_COLLECTOR,
+        )
+    )
+    if mark is None:
+        return False
+    return mark.watermark_at is None or mark.watermark_at < max(previous_checks)
 
 
 def _is_running(run: QRadarAccessRun | None, now: datetime) -> bool:
@@ -392,6 +433,7 @@ def console_view(
     rows: list[QRadarAccessResult],
     run: QRadarAccessRun | None = None,
     now: datetime | None = None,
+    inventory: CollectionWatermark | None = None,
 ) -> ConsoleAccessOut:
     """One console's stored results, joined to the catalog, in catalog order."""
     by_entry = {row.entry_id: row for row in rows}
@@ -435,6 +477,7 @@ def console_view(
         last_check_started_at=run.started_at if run is not None else None,
         last_check_finished_at=run.finished_at if run is not None else None,
         entries=entries,
+        inventory_pass=sync_pass(inventory),
         syncs_started=[sync for sync in SYNC_NAMES if sync in started],
     )
 
@@ -442,7 +485,7 @@ def console_view(
 async def read_access(
     session: AsyncSession, instances: list[QRadarInstance], *, now: datetime | None = None
 ) -> list[ConsoleAccessOut]:
-    """Every given console's stored results and run state: two queries, whatever the number."""
+    """Every given console's stored results, run state and last inventory pass: three queries."""
     if not instances:
         return []
     rows = (
@@ -462,10 +505,27 @@ async def read_access(
             )
         ).all()
     }
+    marks = {
+        mark.instance_id: mark
+        for mark in (
+            await session.scalars(
+                select(CollectionWatermark).where(
+                    CollectionWatermark.collector == INVENTORY_COLLECTOR,
+                    CollectionWatermark.instance_id.in_([i.id for i in instances]),
+                )
+            )
+        ).all()
+    }
     grouped: dict[uuid.UUID, list[QRadarAccessResult]] = {}
     for row in rows:
         grouped.setdefault(row.instance_id, []).append(row)
     return [
-        console_view(instance, grouped.get(instance.id, []), runs.get(instance.id), now)
+        console_view(
+            instance,
+            grouped.get(instance.id, []),
+            runs.get(instance.id),
+            now,
+            marks.get(instance.id),
+        )
         for instance in instances
     ]

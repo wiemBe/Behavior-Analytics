@@ -329,7 +329,51 @@
       "forbidden": "Syncing the inventory needs {permission}.",
       "error": "The sync could not be queued: {detail}",
       "statusError": "The last sync time could not be read.",
-      "running": "Sync running"
+      "running": "Sync running",
+      "pass": {
+        "never": "No inventory sync has run yet.",
+        "running": "Inventory sync running.",
+        "complete": "Inventory",
+        "sources": "{count, number} {count, plural, one {source} other {sources}}",
+        "partial": "Last sync partial ({reason}) — {count, number} {count, plural, one {source} other {sources}} updated.",
+        "failed": "Last sync failed — {reason}.",
+        "onPage": " on page {page}",
+        "details": "Sync details",
+        "labelStatus": "Result",
+        "labelFinished": "Finished",
+        "labelPages": "Pages",
+        "labelSeen": "Sources seen",
+        "labelCreated": "Created",
+        "labelUpdated": "Updated",
+        "labelElapsed": "Elapsed",
+        "labelFailure": "Failure",
+        "pages": "{done} read, {failed} failed",
+        "status": {
+          "COMPLETE": "Complete",
+          "PARTIAL": "Partial",
+          "FAILED": "Failed"
+        },
+        "kind": {
+          "timeout": "timeout",
+          "auth": "token refused",
+          "rate_limited": "rate limited",
+          "upstream": "QRadar error",
+          "network": "console unreachable",
+          "malformed": "unreadable answer",
+          "unknown": "unknown cause"
+        },
+        "action": {
+          "timeout": "Use Sync now to retry; if it repeats, QRadar may be overloaded.",
+          "auth": "Check the API token in the console settings and its security profile.",
+          "rate_limited": "QRadar is limiting requests; Sync now again in a few minutes.",
+          "upstream": "QRadar answered with an error; retry with Sync now, then check its logs.",
+          "network": "Check that the console is reachable from this host, then use Sync now.",
+          "malformed": "QRadar sent a page this version cannot read; keep the support bundle for the maintainers.",
+          "unknown": "Use Sync now to retry; if it repeats, check the worker log."
+        },
+        "labelAction": "What to do"
+      },
+      "donePartial": "The sync finished partly; the list shows the pages that were read."
     },
     "state": {
       "updating": "Updating the list…",

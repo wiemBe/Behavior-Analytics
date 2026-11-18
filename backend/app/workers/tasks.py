@@ -290,6 +290,10 @@ async def _for_each_instance(
     return {"instances": len(results), "results": results}
 
 
+#: The task result's word for each inventory pass status ("ok" is what every collector says).
+_RUN_STATUS = {"COMPLETE": "ok", "PARTIAL": "partial", "FAILED": "failed"}
+
+
 async def sync_log_sources(
     instance_name: str | None = None,
     *,
@@ -304,11 +308,15 @@ async def sync_log_sources(
             "status": (
                 "skipped_locked"
                 if report.skipped_locked
-                else "failed" if report.partial_failure else "ok"
+                else _RUN_STATUS.get(report.status or "", "failed")
             ),
             "seen": report.log_sources_seen,
             "created": report.created,
             "updated": report.updated,
+            "pages_done": report.pages_done,
+            "pages_failed": report.pages_failed,
+            "failed_page": report.failed_page,
+            "failure_kind": report.failure_kind,
             "duration_ms": report.duration_ms,
             "error": report.error,
         }

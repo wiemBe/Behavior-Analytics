@@ -3286,6 +3286,23 @@ docker compose exec -T backend python -m app.cli.entity_mentions status
 deletes a mention, and it is read-only against QRadar — it reads stored aggregates and sends no
 search. Running it again changes nothing that is already indexed.
 
+### OPS-R74. A log source is missing from the product, or the inventory sync is partial
+
+**Symptom:** A source QRadar shows (for example one whose name starts with `f51`) is not in Fleet → Sources or in the WAF/IPS pickers, or the sync line on Fleet → Sources says "Last sync partial" or "Last sync failed".
+
+**Likely cause:** One of the following.
+- The API token's security profile does not let QRadar list that source. The inventory holds only what QRadar returns to the token. After the profile is widened, the next sync picks the sources up; the QRadar access check also queues one sync when no complete pass has finished since its previous run.
+- The last pass was PARTIAL: one page of the walk (500 sources) timed out or failed, the pages that arrived were stored and the rest were not read. A partial pass never marks an unseen source as missing.
+- The last pass FAILED: nothing was read (token refused, console unreachable, QRadar error). The line says which.
+
+**Verify:** The sync line on Fleet → Sources and on Admin → QRadar access shows the last pass (status, pages, sources seen, failure kind and page). The same data is `last_pass` of `GET /api/v1/fleet/sources/sync` and `inventory_pass` of `GET /api/v1/admin/qradar-access`.
+
+```bash
+docker compose exec -T backend python -m app.cli.sync log-sources
+```
+
+**Fix:** Widen the token's security profile if the source is outside it, then use Sync now on Fleet → Sources. After a timeout, raise `LOG_SOURCE_PAGE_TIMEOUT_SECONDS` (see `docs/CONFIGURATION.md`) or retry when the console is less busy; a COMPLETE pass reconciles a partial one.
+
 
 ## Investigate in QRadar (pivot blocks)
 

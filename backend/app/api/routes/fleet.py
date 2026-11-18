@@ -19,7 +19,7 @@ from app.api.csv_export import (
 )
 from app.api.deps import SessionDep, SettingsDep
 from app.api.routes.log_sources import PrincipalDep, _guard, _jsonable
-from app.collectors.log_source_collector import COLLECTOR_NAME
+from app.collectors.log_source_collector import COLLECTOR_NAME, stored_run, sync_pass
 from app.fleet.review import review_classification
 from app.fleet.series import build_fleet_eps_series
 from app.fleet.service import reclassify_instance
@@ -370,9 +370,10 @@ async def bulk_classification(
 async def _sync_status(session: SessionDep, settings: SettingsDep) -> FleetSyncStatus:
     """The stored inventory-sync state per enabled console; sends nothing to QRadar.
 
-    There is no run table for this collector. What exists: the collector's watermark row
-    (last pass, last success, failure streak) and its advisory lock, which is held for the
-    whole pass and so says "running". Counts of the last pass are not stored.
+    There is no run table for this collector. What exists: the collector's watermark row (last
+    pass, last complete pass, failure streak), the last pass's own account in its metadata
+    (status, counts, pages, failure kind, elapsed time) and its advisory lock, which is held
+    for the whole pass and so says "running".
     """
     instances = list(
         (
@@ -406,6 +407,8 @@ async def _sync_status(session: SessionDep, settings: SettingsDep) -> FleetSyncS
             state = "RUNNING"
         elif mark is None or mark.last_run_at is None:
             state = "NEVER"
+        elif (run := stored_run(mark)) is not None and run["status"] == "PARTIAL":
+            state = "PARTIAL"
         elif mark.consecutive_failures > 0:
             state = "FAILED"
         else:
@@ -415,6 +418,7 @@ async def _sync_status(session: SessionDep, settings: SettingsDep) -> FleetSyncS
                 instance_id=inst.id,
                 instance_name=inst.name,
                 status=state,
+                last_pass=sync_pass(mark),
                 last_run_at=mark.last_run_at if mark else None,
                 last_success_at=mark.watermark_at if mark else None,
                 consecutive_failures=mark.consecutive_failures if mark else 0,

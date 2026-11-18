@@ -127,7 +127,10 @@ reference heading for them.
 | Setting | Default | Meaning |
 |---|---:|---|
 | `COLLECTION_ADVISORY_LOCK_NAMESPACE` | `4711` | PostgreSQL advisory-lock namespace for metric collection |
-| `LOG_SOURCE_SYNC_INTERVAL_SECONDS` | `3600` | Full log-source inventory interval. Minimum `60` |
+| `LOG_SOURCE_SYNC_INTERVAL_SECONDS` | `900` | Full log-source inventory interval. Minimum `60` |
+| `LOG_SOURCE_PAGE_TIMEOUT_SECONDS` | `30` | Time one page (500 sources) of the inventory walk gets per attempt. A page that fails for good ends the pass as PARTIAL; the pages read are stored |
+| `LOG_SOURCE_PAGE_ATTEMPTS` | `3` | Attempts per page before it is skipped |
+| `LOG_SOURCE_WALK_MAX_SECONDS` | `600` | Wall-clock cap for the whole walk. Keep it below the sync interval |
 | `INVENTORY_NEW_SOURCE_ALERTS_ENABLED` | `true` | Open a review alert for a new non-internal log source |
 | `QRADAR_ACCESS_CHECK_INTERVAL_SECONDS` | `21600` | How often every console is asked which QRadar APIs the token can reach. Minimum `300` |
 | `OFFENSE_COLLECTION_INTERVAL_SECONDS` | `300` | Offense collection interval |

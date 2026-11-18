@@ -384,3 +384,36 @@
 .fs-details-link {
   font-size: var(--fs-sm);
 }
+
+/* The last inventory pass: one line, the rest behind a details disclosure (FIX-74). */
+.fs-pass {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.fs-pass-details {
+  margin-top: var(--sp-1);
+}
+.fs-pass-details > summary {
+  cursor: pointer;
+  color: var(--text-2);
+  min-height: var(--target-min);
+  display: inline-flex;
+  align-items: center;
+}
+.fs-pass-details > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.fs-pass-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-4);
+  margin: var(--sp-1) 0 0;
+}
+.fs-pass-grid dt {
+  color: var(--text-2);
+}
+.fs-pass-grid dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}

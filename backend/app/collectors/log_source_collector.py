@@ -6,6 +6,12 @@ collectors share: an advisory lock so two workers cannot sync one console
 concurrently, a watermark carrying run time and failure count, and a report the
 task layer can log.
 
+A pass ends COMPLETE, PARTIAL or FAILED (FIX-74). The pages that arrived are upserted even when
+a later page fails, and only a COMPLETE walk may conclude that a source is absent (nothing here
+deletes a source, and a partial walk leaves every unseen source's mentions as they were). Only a
+COMPLETE pass advances the watermark. The pass's own account (status, counts, pages, failure
+kind, elapsed time) is kept in the watermark's metadata for the Fleet and access pages.
+
 Unlike the offense collector there is no incremental window — QRadar's log
 source endpoint has no usable "changed since" filter, so this is a full
 inventory pass every run. The watermark therefore records *when we last
@@ -27,13 +33,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
-from app.providers.base import ProviderError, QRadarProvider
+from app.providers.base import ProviderError, QRadarProvider, failure_kind
+from app.schemas.fleet import FleetSyncPass
 from app.services.inventory_sync import InventorySyncService
 from app.services.locks import CollectorAdvisoryLock
 
 logger = logging.getLogger("app.collectors.log_source")
 
 COLLECTOR_NAME = "log_source_inventory"
+
+
+#: How one pass ended. Stored in `collection_watermark.collection_metadata["inventory_pass"]`.
+RUN_COMPLETE = "COMPLETE"
+RUN_PARTIAL = "PARTIAL"
+RUN_FAILED = "FAILED"
+INVENTORY_RUN_KEY = "inventory_pass"
 
 
 @dataclass
@@ -43,9 +57,65 @@ class LogSourceSyncReport:
     created: int = 0
     updated: int = 0
     skipped_locked: bool = False
+    #: True when the pass FAILED outright (nothing was read). A PARTIAL pass is not this.
     partial_failure: bool = False
     error: str | None = None
     duration_ms: int = 0
+    #: COMPLETE, PARTIAL or FAILED; None when the pass was skipped on the lock.
+    status: str | None = None
+    pages_done: int = 0
+    pages_failed: int = 0
+    failed_page: int | None = None
+    failure_kind: str | None = None
+
+
+def stored_run(mark: CollectionWatermark | None) -> dict | None:
+    """The last finished pass kept on the watermark, or None when none was recorded."""
+    if mark is None:
+        return None
+    run = (mark.collection_metadata or {}).get(INVENTORY_RUN_KEY)
+    return run if isinstance(run, dict) and run.get("status") in (
+        RUN_COMPLETE, RUN_PARTIAL, RUN_FAILED
+    ) else None
+
+
+def sync_pass(mark: CollectionWatermark | None) -> FleetSyncPass | None:
+    run = stored_run(mark)
+    if run is None:
+        return None
+
+    def number(key: str) -> int:
+        value = run.get(key)
+        return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+    def optional(key: str) -> int | None:
+        value = run.get(key)
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+    finished = run.get("finished_at")
+    try:
+        finished_at = datetime.fromisoformat(finished) if isinstance(finished, str) else None
+    except ValueError:
+        finished_at = None
+    kind = run.get("failure_kind")
+    return FleetSyncPass(
+        status=run["status"],
+        finished_at=finished_at,
+        elapsed_ms=optional("elapsed_ms"),
+        seen=number("seen"),
+        created=number("created"),
+        updated=number("updated"),
+        pages_done=number("pages_done"),
+        pages_failed=number("pages_failed"),
+        failed_page=optional("failed_page"),
+        failure_kind=kind if isinstance(kind, str) else None,
+    )
+
+
+def _describe(kind: str | None, page: int | None) -> str:
+    """One short line naming the failure; no upstream text ever reaches it."""
+    what = (kind or "upstream").replace("_", " ")
+    return f"{what} on page {page}" if page is not None else what
 
 
 class LogSourceCollector:
@@ -81,40 +151,78 @@ class LogSourceCollector:
                     self.provider,
                     settings=self.settings,
                     clock=self._clock,
-                ).sync(instance)
+                ).sync(instance, bootstrap_hint=watermark.watermark_at is None)
             except ProviderError as exc:
-                # The watermark is deliberately not advanced: a failed pass must
+                report.status = RUN_FAILED
+                report.failure_kind = failure_kind(exc)
+                report.error = _describe(report.failure_kind, None)
+            else:
+                report.log_sources_seen = result.log_sources_seen
+                report.created = result.created
+                report.updated = result.updated
+                report.pages_done = result.pages_done
+                report.pages_failed = result.pages_failed
+                report.failed_page = result.failed_page
+                report.failure_kind = result.failure_kind
+                if result.complete:
+                    report.status = RUN_COMPLETE
+                elif result.log_sources_seen > 0:
+                    report.status = RUN_PARTIAL
+                    report.error = _describe(result.failure_kind or "truncated", result.failed_page)
+                else:
+                    # Nothing arrived: there is nothing to keep, and no zero is recorded as a
+                    # count of sources.
+                    report.status = RUN_FAILED
+                    report.error = _describe(result.failure_kind or "truncated", result.failed_page)
+
+            finished = self._clock()
+            report.duration_ms = int((finished - started).total_seconds() * 1000)
+            watermark.last_run_at = started
+            if report.status == RUN_COMPLETE:
+                # Only a complete pass advances the watermark: it is the last time the whole
+                # console was read.
+                watermark.watermark_at = started
+                watermark.intervals_collected += 1
+                watermark.consecutive_failures = 0
+                watermark.last_error = None
+                watermark.lag_seconds = 0
+            else:
+                # The watermark is deliberately not advanced: a failed or partial pass must
                 # not read downstream as a completed observation.
                 watermark.consecutive_failures += 1
-                watermark.last_run_at = started
-                watermark.last_error = str(exc)[:512]
-                await self.session.flush()
-                report.partial_failure = True
-                report.error = str(exc)[:512]
-                logger.warning(
-                    "log source inventory sync failed",
-                    extra={
-                        "instance_id": str(instance.id),
-                        "error_class": type(exc).__name__,
-                    },
+                watermark.last_error = (
+                    f"{report.status.lower()}: {report.error}"[:512] if report.status else None
                 )
-                return report
-
-            report.log_sources_seen = result.log_sources_seen
-            report.created = result.created
-            report.updated = result.updated
-
-            watermark.last_run_at = started
-            watermark.watermark_at = started
-            watermark.intervals_collected += 1
-            watermark.consecutive_failures = 0
-            watermark.last_error = None
-            watermark.lag_seconds = 0
+            watermark.collection_metadata = {
+                **(watermark.collection_metadata or {}),
+                INVENTORY_RUN_KEY: {
+                    "status": report.status,
+                    "finished_at": finished.isoformat(),
+                    "elapsed_ms": report.duration_ms,
+                    "seen": report.log_sources_seen,
+                    "created": report.created,
+                    "updated": report.updated,
+                    "pages_done": report.pages_done,
+                    "pages_failed": report.pages_failed,
+                    "failed_page": report.failed_page,
+                    "failure_kind": report.failure_kind,
+                },
+            }
             await self.session.flush()
 
-        report.duration_ms = int((self._clock() - started).total_seconds() * 1000)
-        logger.info(
-            "log source inventory sync complete",
+        if report.status == RUN_FAILED:
+            report.partial_failure = True
+            logger.warning(
+                "log source inventory sync failed",
+                extra={
+                    "instance_id": str(instance.id),
+                    "failure_kind": report.failure_kind,
+                },
+            )
+            return report
+        logger.log(
+            logging.INFO if report.status == RUN_COMPLETE else logging.WARNING,
+            f"log source inventory sync {report.status.lower() if report.status else ''}",
             extra={
                 "instance_id": str(instance.id),
                 "log_sources_seen": report.log_sources_seen,
@@ -126,6 +234,7 @@ class LogSourceCollector:
                 "rows_created": report.created,
                 "rows_updated": report.updated,
                 "duration_ms": report.duration_ms,
+                "failure_kind": report.failure_kind,
             },
         )
         return report

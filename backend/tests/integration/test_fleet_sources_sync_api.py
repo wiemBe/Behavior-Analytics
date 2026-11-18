@@ -151,3 +151,55 @@ def test_status_shape_per_state(db_schema, delays) -> None:
     assert by[names["bad"]]["consecutive_failures"] == 2
     assert "secret detail" not in resp.text
     assert delays == []
+
+
+def _pass_metadata(**over):  # type: ignore[no-untyped-def]
+    run = {
+        "status": "COMPLETE",
+        "finished_at": "2026-10-13T10:05:00+00:00",
+        "elapsed_ms": 83000,
+        "seen": 8012,
+        "created": 12,
+        "updated": 7990,
+        "pages_done": 17,
+        "pages_failed": 0,
+        "failed_page": None,
+        "failure_kind": None,
+    }
+    run.update(over)
+    return {"inventory_pass": run}
+
+
+def test_status_carries_the_last_pass_and_says_partial(db_schema, delays) -> None:
+    async def setup(s):  # type: ignore[no-untyped-def]
+        done = await make_instance(s)
+        part = await make_instance(s)
+        none = await make_instance(s)
+        s.add(CollectionWatermark(
+            instance_id=done.id, collector=COLLECTOR_NAME, last_run_at=CLOSED,
+            watermark_at=CLOSED, consecutive_failures=0, collection_metadata=_pass_metadata()))
+        # A partial pass failed to finish, so the failure streak counts it: PARTIAL still wins.
+        s.add(CollectionWatermark(
+            instance_id=part.id, collector=COLLECTOR_NAME, last_run_at=CLOSED,
+            watermark_at=CLOSED - timedelta(hours=1), consecutive_failures=1,
+            collection_metadata=_pass_metadata(
+                status="PARTIAL", seen=4000, pages_done=8, pages_failed=1, failed_page=9,
+                failure_kind="timeout")))
+        s.add(CollectionWatermark(
+            instance_id=none.id, collector=COLLECTOR_NAME, last_run_at=CLOSED,
+            watermark_at=CLOSED, consecutive_failures=0))
+        return {"done": done.name, "part": part.name, "none": none.name}
+
+    names = run(setup)
+    resp = Client(ADMIN).get(URL)
+    assert resp.status_code == 200
+    by = {i["instance_name"]: i for i in resp.json()["instances"]}
+    assert by[names["done"]]["status"] == "OK"
+    assert by[names["done"]]["last_pass"]["seen"] == 8012
+    assert by[names["done"]]["last_pass"]["status"] == "COMPLETE"
+    part = by[names["part"]]
+    assert part["status"] == "PARTIAL"
+    assert (part["last_pass"]["failed_page"], part["last_pass"]["failure_kind"]) == (9, "timeout")
+    assert (part["last_pass"]["seen"], part["last_pass"]["pages_failed"]) == (4000, 1)
+    # A watermark that never recorded a pass has no pass to show.
+    assert by[names["none"]]["last_pass"] is None

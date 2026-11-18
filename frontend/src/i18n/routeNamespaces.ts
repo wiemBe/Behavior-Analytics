@@ -322,7 +322,7 @@ export const ROUTE_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
   "/admin/siem-load": ["siemLoad"],
   "/admin/email": ["backend", "enums", "mailAdmin"],
   "/admin/notifications": ["backend", "enums", "notifyRouting", "waf"],
-  "/admin/qradar-access": ["qradarAccess"],
+  "/admin/qradar-access": ["fleet", "qradarAccess"],
   "/admin/users": ["backend", "enums", "users"],
   "/admin/waf-sources/[logSourceId]": ["backend", "enums", "fieldMapping", "waf"],
   "/admin/waf-sources": ["backend", "enums", "fieldMapping", "waf"],
