@@ -13,6 +13,7 @@ import { PropertyInput } from "@/components/fieldmapping/PropertyInput";
 import type { CatalogProperty, MappingFieldOut, MappingSchemaOut, PropertyCatalogOut } from "@/lib/api";
 import { catalogNote, draftErrors, type MappingDraft } from "@/lib/fieldMapping";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { CatalogStatus } from "./CatalogStatus";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import "@/components/ui/controls.css";
@@ -131,6 +132,7 @@ export function FieldMappingForm({
   copyFrom,
   referenceKinds,
   onKindChange,
+  onSearchCatalog,
 }: {
   schema: MappingSchemaOut;
   draft: MappingDraft;
@@ -149,6 +151,7 @@ export function FieldMappingForm({
   /** The chosen reference kind per field key. With `onKindChange` it turns on the kind switch. */
   referenceKinds?: Record<string, string>;
   onKindChange?: (key: string, kind: string) => void;
+  onSearchCatalog?: (q: string) => Promise<CatalogProperty[]>;
 }) {
   const t = useTranslations("fieldMapping.form");
   const i18n = useBehaviorI18n();
@@ -170,7 +173,6 @@ export function FieldMappingForm({
     }
   }
 
-  const available = catalog?.status === "AVAILABLE";
 
   // One short hint, only when the label alone is ambiguous: a catalog hint for the long
   // schema descriptions, else the schema's own text when it is already short.
@@ -183,32 +185,41 @@ export function FieldMappingForm({
     return field.description.trim().split(/\s+/).length <= 10 ? field.description : null;
   }
 
+  // The persisted catalog states are English-only (D-45). A catalog without them keeps the
+  // frozen Turkish rendering, with the server's detail behind Details (UIQ-8a).
+  const legacyCatalog = !t.has("catalogAsOf");
+  const available = catalog?.status === "AVAILABLE";
+
   return (
     <div className="fm-form">
       <div className="fm-toolbar">
-        <div className="fm-catalog" role="status">
-          {available ? (
-            <p>
-              {t.rich("catalogFetched", { time: () => <UtcTime value={catalog.fetched_at} /> })}
-              {!catalog.filtered_by_source_type && <> {t("catalogUnfiltered")}</>}
-            </p>
-          ) : (
-            <>
-              <p>{t("catalogDownTail", { lead: t("catalogDown") })}</p>
-              {catalog?.detail && (
-                <details>
-                  <summary>{(t as unknown as { has(key: string): boolean }).has("details") ? t("details") : "Details"}</summary>
-                  <p>{catalog.detail}</p>
-                </details>
-              )}
-            </>
-          )}
-        </div>
+        {legacyCatalog ? (
+          <div className="fm-catalog" role="status">
+            {available ? (
+              <p>
+                {t.rich("catalogFetched", { time: () => <UtcTime value={catalog.fetched_at} /> })}
+                {!catalog.filtered_by_source_type && <> {t("catalogUnfiltered")}</>}
+              </p>
+            ) : (
+              <>
+                <p>{t("catalogDownTail", { lead: t("catalogDown") })}</p>
+                {catalog?.detail && (
+                  <details>
+                    <summary>{t.has("details") ? t("details") : "Details"}</summary>
+                    <p>{catalog.detail}</p>
+                  </details>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          <CatalogStatus catalog={catalog} typeName={typeName} />
+        )}
         {onRefreshCatalog && (
           <button
             type="button"
             className="action secondary"
-            disabled={disabled || refreshing}
+            disabled={disabled || refreshing || catalog?.catalog_status === "REFRESHING"}
             onClick={() => void refresh()}
           >
             {refreshing ? t("refreshing") : t("refresh")}
@@ -299,6 +310,7 @@ export function FieldMappingForm({
                       value={value}
                       placeholder={field.required ? t("propertyPlaceholder") : t("notMapped")}
                       suggestions={propertiesFor(field, catalog)}
+                      search={onSearchCatalog}
                       normalized={switchable ? [] : normalizedFor(field)}
                       describedBy={hasMsg ? `${descId} ${msgId}`.trim() : descId || undefined}
                       invalid={Boolean(error)}

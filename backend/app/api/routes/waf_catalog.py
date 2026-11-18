@@ -7,16 +7,14 @@ property names per instance; nothing is written and no AQL runs.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import SessionDep
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
-from app.providers.factory import build_provider_for_instance
 from app.schemas.property_catalog import PropertyCatalogOut
-from app.services.property_catalog import PropertyCatalogService, get_property_catalog_service
+from app.services.property_catalog import stored_catalog
 
 router = APIRouter(prefix="/waf", tags=["waf"])
 
@@ -25,8 +23,10 @@ router = APIRouter(prefix="/waf", tags=["waf"])
 async def get_property_catalog(
     log_source_id: uuid.UUID,
     session: SessionDep,
-    service: Annotated[PropertyCatalogService, Depends(get_property_catalog_service)],
     refresh: bool = Query(default=False),
+    q: str = Query(default="", max_length=512),
+    type_id: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
 ) -> PropertyCatalogOut:
     log_source = await session.get(LogSource, log_source_id)
     instance = (
@@ -34,9 +34,10 @@ async def get_property_catalog(
     )
     if log_source is None or instance is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Log source not found")
-    return await service.catalog(
+    return await stored_catalog(
+        session,
         instance_id=instance.id,
-        provider_factory=lambda: build_provider_for_instance(instance),
-        source_type_id=log_source.type_id,
+        source_type_id=type_id if type_id is not None else log_source.type_id,
+        q=q, limit=limit,
         refresh=refresh,
     )

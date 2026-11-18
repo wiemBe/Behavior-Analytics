@@ -381,6 +381,13 @@ class Settings(BaseSettings):
     search_cadence_max_searches_per_tick: int = Field(default=16, ge=1, le=256)
     #: How long the QRadar custom-property catalog is reused per instance.
     qradar_property_catalog_ttl_seconds: int = Field(default=600, ge=60, le=86400)
+    qradar_property_catalog_refresh_seconds: int = Field(default=600, ge=60, le=86400)
+    qradar_property_catalog_page_size: int = Field(default=500, ge=1, le=1000)
+    qradar_property_catalog_max_pages: int = Field(default=200, ge=1, le=1000)
+    qradar_property_catalog_page_timeout_seconds: float = Field(default=15, gt=0, le=60)
+    qradar_property_catalog_max_retries: int = Field(default=2, ge=0, le=3)
+    qradar_property_catalog_walk_timeout_seconds: float = Field(default=300, gt=0, le=1800)
+
     ariel_multi_bucket_max_rows: int = Field(default=5000, ge=1, le=100_000)
     #: IPS collection: sources per keyed search (`logsourceid IN (...)`). A larger
     #: group is chunked; truncation halves it. Design D.5.

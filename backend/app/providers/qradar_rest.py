@@ -25,6 +25,7 @@ import logging
 import random
 import re
 import ssl
+import time
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
@@ -77,6 +78,7 @@ from app.providers.dto import (
     ArielSearchListDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CatalogFailureDTO,
     CatchallKeyedResult,
     CustomPropertyDTO,
     DeploymentHostDTO,
@@ -98,6 +100,7 @@ from app.providers.dto import (
     ManagedServerDTO,
     OffenseDTO,
     OffenseListResult,
+    PropertyCatalogWalkDTO,
     PwKeyedResult,
     PwSearchKind,
     RuleMatchBatch,
@@ -958,7 +961,7 @@ class QRadarRestProvider(QRadarProvider):
         """
         self.require(ProviderCapability.CUSTOM_PROPERTY_CATALOG)
         base = "/config/event_sources/custom_properties"
-        props = await self._paginate(
+        props = await self._walk_pages(
             f"{base}/regex_properties",
             category=EndpointCategory.LOG_SOURCE_LIST,
             params={
@@ -970,11 +973,169 @@ class QRadarRestProvider(QRadarProvider):
         }
         if log_source_type_id is not None:
             expr_params["filter"] = f"log_source_type_id={int(log_source_type_id)}"
-        exprs = await self._paginate(
+        exprs = await self._walk_pages(
             f"{base}/property_expressions",
             category=EndpointCategory.LOG_SOURCE_LIST,
             params=expr_params,
         )
+        types_by_identifier: dict[str, set[int]] = {}
+        for expr in exprs.rows:
+            identifier = expr.get("regex_property_identifier")
+            type_id = as_int(expr.get("log_source_type_id"))
+            if (
+                not isinstance(identifier, str)
+                or type_id is None
+                or expr.get("enabled") is not True
+                or as_int(expr.get("log_source_id")) != -1
+            ):
+                continue
+            types_by_identifier.setdefault(identifier, set()).add(type_id)
+
+        out: list[CustomPropertyDTO] = []
+        for row in props.rows:
+            qradar_id = as_int(row.get("id"))
+            identifier = row.get("identifier")
+            name = row.get("name")
+            if qradar_id is None or not isinstance(identifier, str) or not isinstance(name, str):
+                continue
+            out.append(
+                CustomPropertyDTO(
+                    applicability_complete=not exprs.truncated and not props.truncated,
+                    qradar_id=qradar_id,
+                    identifier=identifier,
+                    name=name,
+                    property_type=str(row.get("property_type") or "string")[:32],
+                    use_for_rule_engine=row.get("use_for_rule_engine") is True,
+                    auto_discovered=row.get("auto_discovered") is True,
+                    log_source_type_ids=tuple(sorted(types_by_identifier.get(identifier, ()))),
+                    name_allowed=PROPERTY_NAME_PATTERN.match(name) is not None,
+                )
+            )
+        return out
+
+    async def read_property_catalog(
+        self, *, log_source_type_id: int | None = None
+    ) -> PropertyCatalogWalkDTO:
+        """Bounded GET-only walk. Names survive failed applicability enrichment."""
+        from app.core.config import get_settings
+
+        self.require(ProviderCapability.CUSTOM_PROPERTY_CATALOG)
+        settings = get_settings()
+        result = PropertyCatalogWalkDTO(names_complete=False, applicability_complete=False)
+        started = time.monotonic()
+        deadline = started + settings.qradar_property_catalog_walk_timeout_seconds
+        props: list[dict] = []
+        exprs: list[dict] = []
+        endpoints = (
+            ("regex_properties", "/config/event_sources/custom_properties/regex_properties"),
+            (
+                "property_expressions",
+                "/config/event_sources/custom_properties/property_expressions",
+            ),
+        )
+        for endpoint, path in endpoints:
+            rows: list[dict] = []
+            seen_ids: set[int] = set()
+            params = {"fields": (
+                "id,identifier,name,property_type,use_for_rule_engine,auto_discovered"
+                if endpoint == "regex_properties" else
+                "regex_property_identifier,log_source_type_id,log_source_id,enabled"
+            )}
+            if endpoint == "property_expressions" and log_source_type_id is not None:
+                params["filter"] = f"log_source_type_id={int(log_source_type_id)}"
+            size = settings.qradar_property_catalog_page_size
+            complete = False
+            for page in range(settings.qradar_property_catalog_max_pages):
+                start, end = page * size, (page + 1) * size - 1
+                failure = None
+                for attempt in range(1, settings.qradar_property_catalog_max_retries + 2):
+                    try:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise TimeoutError
+                        async with asyncio.timeout(min(
+                            remaining, settings.qradar_property_catalog_page_timeout_seconds
+                        )):
+                            body = await self._request(
+                                "GET", path,
+                                category=EndpointCategory.LOG_SOURCE_LIST, params=params,
+                                headers={"Range": f"items={start}-{end}"}, max_attempts=1,
+                            )
+                        if not isinstance(body, list) or any(not isinstance(r, dict) for r in body):
+                            raise MalformedUpstreamResponse("Invalid property page")
+                        if len(body) > size:
+                            raise MalformedUpstreamResponse("Oversized property page")
+                        if endpoint == "regex_properties" and any(
+                            as_int(row.get("id")) is None
+                            or not isinstance(row.get("identifier"), str)
+                            or not 0 < len(row["identifier"]) <= 512
+                            or not isinstance(row.get("name"), str)
+                            or not 0 < len(row["name"]) <= 512
+                            for row in body
+                        ):
+                            raise MalformedUpstreamResponse("Invalid property metadata")
+                        if endpoint == "regex_properties":
+                            ids = [int(row["id"]) for row in body]
+                            if len(ids) != len(set(ids)) or seen_ids.intersection(ids):
+                                raise MalformedUpstreamResponse("Duplicate property metadata")
+                            seen_ids.update(ids)
+                        elif any(
+                            not isinstance(row.get("enabled"), bool)
+                            or as_int(row.get("log_source_id")) is None
+                            or (row.get("enabled") is True and (
+                                not isinstance(row.get("regex_property_identifier"), str)
+                                or as_int(row.get("log_source_type_id")) is None
+                            )) for row in body
+                        ):
+                            raise MalformedUpstreamResponse("Invalid applicability metadata")
+                        failure = None
+                        break
+                    except Exception as exc:
+                        status = getattr(exc, "status_code", None)
+                        cause = exc.__cause__
+                        kind = (
+                            "timeout" if isinstance(exc, (TimeoutError, httpx.TimeoutException))
+                            or isinstance(cause, httpx.TimeoutException) else
+                            "auth" if status in (401, 403) else
+                            "rate-limited" if status == 429 else
+                            "malformed" if isinstance(exc, MalformedUpstreamResponse) else
+                            "network" if isinstance(cause, httpx.TransportError) else "upstream"
+                        )
+                        failure = CatalogFailureDTO(
+                            kind=kind, endpoint=endpoint, failure_class=type(exc).__name__,
+                            http_status=status, page_start=start, page_end=end, attempts=attempt,
+                            elapsed_seconds=time.monotonic() - started,
+                        )
+                        if kind in ("auth", "malformed") or (
+                            status is not None and 400 <= status < 500 and status != 429
+                        ) or time.monotonic() >= deadline:
+                            break
+                        if attempt <= settings.qradar_property_catalog_max_retries:
+                            await self._sleep(min(2 ** (attempt - 1), max(
+                                0, deadline - time.monotonic()
+                            )))
+                if failure is not None:
+                    result.failure = failure
+                    break
+                rows.extend(body)
+                if len(body) < size:
+                    complete = True
+                    break
+            if not complete and result.failure is None:
+                result.failure = CatalogFailureDTO(
+                    kind="ceiling", endpoint=endpoint, failure_class="PageCeiling",
+                    page_start=start, page_end=end, attempts=attempt,
+                    elapsed_seconds=time.monotonic() - started,
+                )
+            if endpoint == "regex_properties":
+                props = rows
+                result.names_complete = complete
+                if not complete:
+                    return result
+            else:
+                exprs = rows
+                result.expression_count = len(rows)
+                result.applicability_complete = complete
         types_by_identifier: dict[str, set[int]] = {}
         for expr in exprs:
             identifier = expr.get("regex_property_identifier")
@@ -997,6 +1158,7 @@ class QRadarRestProvider(QRadarProvider):
                 continue
             out.append(
                 CustomPropertyDTO(
+                    applicability_complete=result.applicability_complete,
                     qradar_id=qradar_id,
                     identifier=identifier,
                     name=name,
@@ -1007,7 +1169,8 @@ class QRadarRestProvider(QRadarProvider):
                     name_allowed=PROPERTY_NAME_PATTERN.match(name) is not None,
                 )
             )
-        return out
+        result.properties = out
+        return result
 
     @_holds_ariel_permit
     @_loads(ariel_log.CALLER_LOG_SOURCE_VOLUME)

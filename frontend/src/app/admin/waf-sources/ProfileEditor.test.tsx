@@ -507,8 +507,8 @@ describe("ProfileEditor: collection", () => {
 describe("ProfileEditor: property catalog", () => {
   it("falls back to free text and says why when the catalog is unavailable", () => {
     editor({ catalog: catalog({ status: "UNAVAILABLE", properties: [], detail: "QRadar refused the request." }) });
-    expect(screen.getByText(/Property list unavailable/)).toBeInTheDocument();
-    expect(screen.getByText("QRadar refused the request.").closest("details")).not.toBeNull();
+    expect(screen.getByText("Property list unavailable — names can still be typed")).toBeInTheDocument();
+    expect(screen.getByText("QRadar refused the request.").closest("details")).not.toHaveAttribute("open");
   });
 
   it("refreshes the list, bypassing the cache", async () => {
@@ -517,8 +517,8 @@ describe("ProfileEditor: property catalog", () => {
     editor();
     await user.click(screen.getByRole("button", { name: "Refresh list" }));
     expect(refresh).toHaveBeenCalledWith("ls-1", true);
-    expect(await screen.findByText(/Property list fetched/)).toHaveTextContent(
-      "fetched 2026-10-13 01:00:00 UTC",
+    expect(await screen.findByText(/Property list as of/)).toHaveTextContent(
+      "Property list as of 01:00 UTC",
     );
   });
 
@@ -528,7 +528,7 @@ describe("ProfileEditor: property catalog", () => {
     editor();
     await user.click(screen.getByRole("button", { name: "Refresh list" }));
     expect(await screen.findByText(/could not be refreshed\. The previous list is still shown\./)).toBeInTheDocument();
-    expect(screen.getByText(/Property list fetched/)).toBeInTheDocument();
+    expect(screen.getByText(/Property list as of/)).toBeInTheDocument();
   });
 
   it("warns about a name not in the catalog and about one for another type, without blocking a save", async () => {

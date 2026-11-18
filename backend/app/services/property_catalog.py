@@ -1,26 +1,28 @@
-"""The QRadar custom-property catalog, cached per instance.
+"""Property discovery and durable background snapshots.
 
-The slim joined list (names and type ids, two requests, about 80 KB) is kept
-per instance for a TTL and filtered in memory for each log source. The catalog
-is a suggestion for the mapping editor, never a gate, so any failure becomes an
-`UNAVAILABLE` answer with a fixed sentence; it is not cached, and no upstream
-text, header, token or console address reaches the caller.
-
-The cache is process-local: each API worker keeps its own, and a restart drops it.
+WAF/IPS editors use the database-only stored_catalog path. Legacy property-watch
+scope discovery retains its process-local cache and never gates validation.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from app.core.config import get_settings
 from app.providers.base import QRadarProvider
 from app.providers.dto import CustomPropertyDTO
 from app.schemas.property_catalog import PropertyCatalogItemOut, PropertyCatalogOut
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.models.property_catalog import PropertyCatalogState
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +169,8 @@ def _for_source_type(
             name=p.name,
             property_type=p.property_type,
             applies_to_source_type=(
-                None if source_type_id is None else source_type_id in p.log_source_type_ids
+                None if source_type_id is None or not p.applicability_complete
+                else source_type_id in p.log_source_type_ids
             ),
             name_allowed=p.name_allowed,
         )
@@ -205,3 +208,177 @@ def get_property_catalog_service() -> PropertyCatalogService:
             ttl_seconds=get_settings().qradar_property_catalog_ttl_seconds
         )
     return _service
+
+
+async def stored_catalog(
+    session: AsyncSession, *, instance_id: uuid.UUID, source_type_id: int | None,
+    q: str = "", limit: int = 50, refresh: bool = False,
+) -> PropertyCatalogOut:
+    """Editor reads are database-only, including empty and failed states."""
+    from sqlalchemy import case, func, or_, select, true
+    from sqlalchemy.orm import aliased
+
+    from app.models.property_catalog import PropertyCatalogEntry as Entry
+    from app.models.property_catalog import PropertyCatalogState as State
+
+    if refresh:
+        await queue_catalog_refresh(session, instance_id)
+    query = select(Entry).where(Entry.instance_id == instance_id)
+    if q:
+        needle = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        query = query.where(or_(
+            Entry.name.ilike(needle, escape="\\"), Entry.identifier.ilike(needle, escape="\\")
+        ))
+    if source_type_id is not None:
+        query = query.order_by(case((
+            State.applicability_complete.is_(True) & Entry.type_ids.contains([source_type_id]), 0
+        ), else_=1))
+    page = query.order_by(
+        func.lower(Entry.name), Entry.name, Entry.qradar_id
+    ).limit(min(200, max(1, limit))).correlate(State).lateral()
+    item = aliased(Entry, page)
+    # One statement gives state and rows the same MVCC snapshot during a swap.
+    result = (await session.execute(select(State, item).outerjoin(
+        item, true()
+    ).where(State.instance_id == instance_id).execution_options(populate_existing=True))).all()
+    state = result[0][0] if result else None
+    rows = [row[1] for row in result if row[1] is not None]
+    known = state is not None and state.applicability_complete and source_type_id is not None
+    return PropertyCatalogOut(
+        status="AVAILABLE" if state and state.as_of else "UNAVAILABLE",
+        fetched_at=state.as_of if state else None,
+        as_of=state.as_of if state else None,
+        search_limited=True,
+        catalog_status=state.status if state else "NEVER",
+        applicability_complete=bool(state and state.applicability_complete),
+        filtered_by_source_type=bool(known),
+        properties=[PropertyCatalogItemOut(
+            name=row.name, property_type=row.property_type, name_allowed=row.name_allowed,
+            applies_to_source_type=(source_type_id in row.type_ids if known else None),
+        ) for row in rows],
+        last_started_at=state.last_started_at if state else None,
+        last_completed_at=state.last_completed_at if state else None,
+        property_count=state.property_count if state else None,
+        expression_count=state.expression_count if state else None,
+        duration_seconds=state.duration_seconds if state else None,
+        failure=state.failure if state else None,
+        refresh_seconds=get_settings().qradar_property_catalog_refresh_seconds,
+    )
+
+
+async def queue_catalog_refresh(
+    session: AsyncSession, instance_id: uuid.UUID
+) -> PropertyCatalogState:
+    """Claim a bounded queue lease across API workers before publishing."""
+    from sqlalchemy import or_, update
+    from sqlalchemy.dialects.postgresql import insert
+
+    from app.models.property_catalog import PropertyCatalogState as State
+    from app.workers.tasks import refresh_property_catalog
+
+    now = datetime.now(UTC)
+    await session.execute(insert(State).values(
+        instance_id=instance_id, status="NEVER", applicability_complete=False,
+    ).on_conflict_do_nothing())
+    cutoff = now - timedelta(
+        seconds=get_settings().qradar_property_catalog_walk_timeout_seconds + 60
+    )
+    claimed = await session.scalar(update(State).where(
+        State.instance_id == instance_id,
+        or_(State.status != "REFRESHING", State.last_started_at < cutoff),
+    ).values(status="REFRESHING", last_started_at=now).returning(State.instance_id))
+    await session.commit()
+    if claimed is not None:
+        try:
+            refresh_property_catalog.delay(str(instance_id))
+        except Exception:
+            await session.execute(update(State).where(State.instance_id == instance_id).values(
+                status="FAILED", failure={
+                    "kind": "upstream", "endpoint": "queue", "failure_class": "QueueUnavailable",
+                },
+            ))
+            await session.commit()
+    state = await session.get(State, instance_id, populate_existing=True)
+    assert state is not None
+    return state
+
+
+async def refresh_catalog_snapshot(
+    session: AsyncSession, instance_id: uuid.UUID,
+    provider_factory: Callable[[], QRadarProvider],
+) -> bool:
+    """One locked refresh. Atomically publish complete snapshots only.
+
+    On the first refresh only, complete names may seed an unknown-applicability
+    list. A later failed walk never changes an existing snapshot.
+    """
+    import time
+
+    from sqlalchemy import delete, insert
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from app.models.property_catalog import PropertyCatalogEntry as Entry
+    from app.models.property_catalog import PropertyCatalogState as State
+    from app.providers.dto import CatalogFailureDTO, PropertyCatalogWalkDTO
+    from app.services.locks import CollectorAdvisoryLock
+
+    settings = get_settings()
+    lock = CollectorAdvisoryLock(session, settings, instance_id, "property_catalog")
+    async with lock as acquired:
+        if not acquired:
+            return False
+        started = time.monotonic()
+        await session.execute(pg_insert(State).values(
+            instance_id=instance_id, status="NEVER", applicability_complete=False,
+        ).on_conflict_do_nothing())
+        state = await session.get(State, instance_id, populate_existing=True)
+        assert state is not None
+        state.status = "REFRESHING"
+        state.last_started_at = datetime.now(UTC)
+        await session.commit()
+        provider = None
+        result = PropertyCatalogWalkDTO(names_complete=False, applicability_complete=False)
+        try:
+            async with asyncio.timeout(settings.qradar_property_catalog_walk_timeout_seconds + 5):
+                provider = provider_factory()
+                result = await provider.read_property_catalog()
+        except Exception as exc:
+            result.failure = CatalogFailureDTO(
+                kind="timeout" if isinstance(exc, TimeoutError) else "upstream",
+                endpoint="setup" if provider is None else "regex_properties",
+                failure_class=type(exc).__name__, elapsed_seconds=time.monotonic() - started,
+            )
+        finally:
+            if provider is not None:
+                try:
+                    async with asyncio.timeout(5):
+                        await provider.aclose()
+                except Exception:
+                    # Close is cleanup, not a failed data walk. Retain the safe diagnostic.
+                    logger.warning("property catalog provider close failed")
+        complete = result.names_complete and result.applicability_complete
+        now = datetime.now(UTC)
+        if complete or (result.names_complete and state.as_of is None):
+            await session.execute(delete(Entry).where(Entry.instance_id == instance_id))
+            values = [{
+                "instance_id": instance_id, "qradar_id": p.qradar_id, "identifier": p.identifier,
+                "name": p.name, "property_type": p.property_type,
+                "use_for_rule_engine": p.use_for_rule_engine, "auto_discovered": p.auto_discovered,
+                "name_allowed": p.name_allowed,
+                "type_ids": list(p.log_source_type_ids) if complete else [],
+            } for p in result.properties]
+            # Fixed batches bound asyncpg bind parameters at 12k+ properties.
+            for offset in range(0, len(values), 1000):
+                await session.execute(insert(Entry), values[offset:offset + 1000])
+            state.as_of = now
+            state.applicability_complete = complete
+            state.property_count = len(values)
+        state.status = "COMPLETE" if complete else "PARTIAL" if (
+            result.names_complete or (result.failure and result.failure.page_start > 0)
+        ) else "FAILED"
+        state.last_completed_at = now
+        state.expression_count = result.expression_count
+        state.duration_seconds = time.monotonic() - started
+        state.failure = result.failure.model_dump() if result.failure else None
+        await session.commit()
+        return True

@@ -163,8 +163,28 @@ class CustomPropertyDTO(ProviderDTO):
     auto_discovered: bool = False
     #: Types with an enabled, whole-type expression, sorted. Empty: none.
     log_source_type_ids: tuple[int, ...] = ()
+    applicability_complete: bool = True
     #: The name matches `PROPERTY_NAME_PATTERN`, so it may be used in AQL.
     name_allowed: bool = True
+
+
+class CatalogFailureDTO(ProviderDTO):
+    kind: str
+    endpoint: str
+    failure_class: str
+    http_status: int | None = None
+    page_start: int = 0
+    page_end: int = 0
+    attempts: int = 1
+    elapsed_seconds: float = 0
+
+
+class PropertyCatalogWalkDTO(BaseModel):
+    properties: list[CustomPropertyDTO] = []
+    names_complete: bool = True
+    applicability_complete: bool = True
+    expression_count: int = 0
+    failure: CatalogFailureDTO | None = None
 
 
 class DimensionValueCount(ProviderDTO):

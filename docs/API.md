@@ -958,3 +958,35 @@ refused with `422`.
 The e-mail is a `multipart/alternative` message (text, then HTML), UTF-8, with `Date`,
 `Message-ID`, `From` (`SMTP_FROM`, optional display name `SMTP_FROM_NAME`) and the recipient in
 `To`.
+
+### Persisted WAF/IPS property catalog
+
+`GET /api/v1/waf/log-sources/{id}/property-catalog` (`admin:waf`) and
+`GET /api/v1/ips/log-sources/{id}/property-catalog` (`admin:ips`) read PostgreSQL
+only. Unknown source/instance returns 404; missing permission returns 403.
+
+Query parameters: `q` (literal case-insensitive contains on name or identifier,
+maximum 512 characters), `type_id` (optional applicability ranking override;
+default is the source's type), `limit` (default 50, range 1–200), `refresh`
+(default false). Known type matches rank first, then remaining names; an unknown
+or incomplete type map returns null applicability. Type ranking does not remove
+other properties. Out-of-range limits return 422.
+
+The compatible `status`, `fetched_at`, `filtered_by_source_type`, `properties`
+and `detail` fields remain. Additions: `as_of`, `catalog_status`
+(`NEVER`, `REFRESHING`, `COMPLETE`, `PARTIAL`, `FAILED`),
+`applicability_complete`, `search_limited`, `property_count`, `expression_count`,
+`last_started_at`, `last_completed_at`, `duration_seconds`, `refresh_seconds`,
+and nullable `failure`. `property_count` describes the retained snapshot;
+`expression_count` describes the latest attempt. Never-loaded counts are null.
+`failure` has fixed `kind`, `endpoint`, `failure_class`, optional `http_status`,
+`page_start`, `page_end`, `attempts`, and `elapsed_seconds`; it never includes
+an upstream message. `search_limited=true` means absence from this response is
+not proof that a name is absent from the catalog.
+
+`refresh=true` returns HTTP 200 with the current snapshot/state after queueing a
+Celery task, or the current refresh lease if already queued/running. It never
+constructs a QRadar provider. A broker failure records `FAILED` with safe queue
+diagnostics. Refresh swaps complete snapshots atomically; failed refreshes retain
+the previous snapshot and its `as_of`. Complete names may seed the first snapshot
+with `PARTIAL` state and unknown applicability if expressions cannot complete.

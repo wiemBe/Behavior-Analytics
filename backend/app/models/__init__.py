@@ -75,6 +75,7 @@ from app.models.notification_destination import NotificationDestination
 from app.models.notification_rule import NotificationRule
 from app.models.offense import OffenseSnapshot
 from app.models.outage import OutageAlertPolicy
+from app.models.property_catalog import PropertyCatalogEntry, PropertyCatalogState
 from app.models.property_watch import (
     PropertyWatch,
     PwAnomaly,
@@ -231,6 +232,8 @@ __all__ = [
     "NotificationRule",
     "OffenseSnapshot",
     "OutageAlertPolicy",
+    "PropertyCatalogEntry",
+    "PropertyCatalogState",
     "PropertyWatch",
     "PwAnomaly",
     "PwAnomalyTransition",

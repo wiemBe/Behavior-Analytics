@@ -130,6 +130,7 @@ export function PropertyInput({
   invalid,
   disabled,
   onChange,
+  search,
 }: {
   id: string;
   /** Accessible name; the visible label sits outside this component. */
@@ -144,6 +145,7 @@ export function PropertyInput({
   invalid?: boolean;
   disabled?: boolean;
   onChange: (next: string) => void;
+  search?: (q: string) => Promise<CatalogProperty[]>;
 }) {
   const t = useTranslations("fieldMapping.input");
   const i18n = useBehaviorI18n();
@@ -157,10 +159,28 @@ export function PropertyInput({
   const listRef = useRef<HTMLDivElement>(null);
   const justFocused = useRef(false);
 
-  const usable = normalized.length + suggestions.length > 0;
+  const [remote, setRemote] = useState<CatalogProperty[] | null>(null);
+  const [searchState, setSearchState] = useState<"loading" | "failed" | null>(null);
+  const searchRef = useRef(search);
+  searchRef.current = search;
+  useEffect(() => {
+    if (!open || !searchRef.current) return;
+    let cancelled = false;
+    setSearchState("loading");
+    const timer = setTimeout(() => {
+      searchRef.current?.(query ?? "").then((items) => {
+        if (!cancelled) { setRemote(items); setSearchState(null); }
+      }).catch(() => {
+        if (!cancelled) { setRemote([]); setSearchState("failed"); }
+      });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [open, query]);
+  const offered = search ? (remote ?? suggestions) : suggestions;
+  const usable = Boolean(search) || normalized.length + offered.length > 0;
   const { sections, flat, total } = useMemo(
-    () => build(normalized, suggestions, query ?? "", (key) => t(key as "normalized")),
-    [normalized, suggestions, query, t],
+    () => build(normalized, offered, search ? "" : query ?? "", (key) => t(key as "normalized")),
+    [normalized, offered, query, t, search],
   );
   const visible = open && usable;
   const optionId = (i: number) => `${listId}-o${i}`;
@@ -247,7 +267,7 @@ export function PropertyInput({
   }
 
   const q = (query ?? "").trim();
-  const count = filtering
+  const count = search ? t("searchCount", { shown: flat.length }) : filtering
     ? t("countFiltered", {
         shown: plainCount(flat.length, i18n.locale),
         total: plainCount(total, i18n.locale),
@@ -302,7 +322,8 @@ export function PropertyInput({
         // popup before a choice or a scrollbar drag lands.
         <div className="fm-popup" onMouseDown={(e) => e.preventDefault()}>
           <p className="fm-count" role="status" aria-live="polite">
-            <span className="fm-count-n">{count}</span>
+            <span className="fm-count-n">{searchState === "loading" ? t("searchLoading")
+              : searchState === "failed" ? t("searchFailed") : count}</span>
             {flat.length === 0 && (
               <span className="fm-count-note">
                 {t("countNote", { query: q })}

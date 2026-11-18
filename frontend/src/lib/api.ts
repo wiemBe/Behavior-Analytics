@@ -812,6 +812,16 @@ export interface CatalogProperty {
 }
 
 export interface PropertyCatalogOut {
+  as_of?: string | null;
+  catalog_status?: "NEVER" | "REFRESHING" | "COMPLETE" | "PARTIAL" | "FAILED";
+  applicability_complete?: boolean;
+  search_limited?: boolean;
+  property_count?: number | null;
+  expression_count?: number | null;
+  refresh_seconds?: number;
+  failure?: { kind: string; endpoint: string; failure_class: string;
+    http_status?: number | null; page_start: number; page_end: number;
+    attempts: number; elapsed_seconds: number } | null;
   status: "AVAILABLE" | "UNAVAILABLE";
   fetched_at: string | null;
   filtered_by_source_type: boolean;
@@ -3638,9 +3648,9 @@ export const api = {
     request<ProfileClassOut>(`/waf/log-sources/${logSourceId}/class`),
   wafProfileHistory: (logSourceId: string) =>
     request<WafProfileHistoryEntryOut[]>(`/waf/log-sources/${logSourceId}/profile/history`),
-  wafPropertyCatalog: (logSourceId: string, refresh = false) =>
+  wafPropertyCatalog: (logSourceId: string, refresh = false, q = "") =>
     request<PropertyCatalogOut>(
-      `/waf/log-sources/${logSourceId}/property-catalog${qs({ refresh: refresh || undefined })}`,
+      `/waf/log-sources/${logSourceId}/property-catalog${qs({ refresh: refresh || undefined, q: q || undefined })}`,
     ),
 
   acknowledgeAlert: (id: string) =>
@@ -5054,9 +5064,9 @@ export const ipsApi = {
     request<ProfileClassOut>(`/ips/log-sources/${logSourceId}/class`),
   profileHistory: (logSourceId: string) =>
     request<IpsProfileHistoryEntryOut[]>(`/ips/log-sources/${logSourceId}/profile/history`),
-  propertyCatalog: (logSourceId: string, refresh = false) =>
+  propertyCatalog: (logSourceId: string, refresh = false, q = "") =>
     request<PropertyCatalogOut>(
-      `/ips/log-sources/${logSourceId}/property-catalog${qs({ refresh: refresh || undefined })}`,
+      `/ips/log-sources/${logSourceId}/property-catalog${qs({ refresh: refresh || undefined, q: q || undefined })}`,
     ),
 };
 

@@ -49,6 +49,7 @@ from app.providers.dto import (
     LogSourceTypeDTO,
     ManagedServerDTO,
     OffenseListResult,
+    PropertyCatalogWalkDTO,
     PwKeyedResult,
     PwSearchKind,
     RuleMatchBatch,
@@ -273,6 +274,10 @@ class QRadarProvider(ABC):
         raise CapabilityNotSupportedError(
             f"{type(self).__name__} does not support the custom-property catalog"
         )
+
+    async def read_property_catalog(self) -> PropertyCatalogWalkDTO:
+        """A names snapshot with explicit applicability completeness."""
+        return PropertyCatalogWalkDTO(properties=await self.list_custom_properties())
 
     async def get_log_source_metrics(
         self,

@@ -136,7 +136,7 @@ class TestRestCatalog:
         assert secret not in dumped
         assert set(dto.model_dump()) == {
             "qradar_id", "identifier", "name", "property_type", "use_for_rule_engine",
-            "auto_discovered", "log_source_type_ids", "name_allowed",
+            "auto_discovered", "log_source_type_ids", "name_allowed", "applicability_complete",
         }
 
     @pytest.mark.asyncio
@@ -393,7 +393,17 @@ def test_route_returns_catalog_without_bodies(monkeypatch: pytest.MonkeyPatch) -
     ls_id = uuid.uuid4()
     source = SimpleNamespace(id=ls_id, instance_id=instance.id, type_id=212)
     session = FakeSession({("LogSource", ls_id): source, ("QRadarInstance", instance.id): instance})
-    monkeypatch.setattr(waf_catalog, "build_provider_for_instance", lambda i: MockQRadarProvider())
+    from app.schemas.property_catalog import PropertyCatalogOut
+    from app.services.property_catalog import _for_source_type
+
+    async def stored(session, **kwargs):
+        properties = await MockQRadarProvider().list_custom_properties()
+        return PropertyCatalogOut(
+            status="AVAILABLE", filtered_by_source_type=True,
+            properties=_for_source_type(properties, 212),
+        )
+
+    monkeypatch.setattr(waf_catalog, "stored_catalog", stored)
     service = PropertyCatalogService(ttl_seconds=600)
     client = _app_client(session, service)
 
@@ -405,7 +415,7 @@ def test_route_returns_catalog_without_bodies(monkeypatch: pytest.MonkeyPatch) -
     assert applies["URL"] is True and applies["WAF_URL"] is False
     assert [p["applies_to_source_type"] for p in body["properties"]][:5] == [True] * 5
     text = resp.text.lower()
-    for forbidden in ("regex", "payload", "expression", "identifier"):
+    for forbidden in ("regex_body", "payload", "format_string", "sec_token"):
         assert forbidden not in text
 
     assert client.get(
@@ -429,3 +439,139 @@ def test_route_401_without_token_and_403_for_read_wildcard() -> None:
         subject="viewer", permissions=frozenset({"read:*"})
     )
     assert app_client.get(url).status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("status", "kind", "attempts"), [
+    (401, "auth", 1), (403, "auth", 1), (404, "upstream", 1),
+    (429, "rate-limited", 3), (503, "upstream", 3),
+])
+async def test_background_safe_http_failure(status, kind, attempts) -> None:
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(status, json={"secret": "DO-NOT-LEAK"})
+
+    provider, _ = build_provider(handler)
+    try:
+        result = await provider.read_property_catalog()
+    finally:
+        await provider.aclose()
+    assert not result.names_complete and not result.applicability_complete
+    assert result.failure.kind == kind
+    assert result.failure.endpoint == "regex_properties"
+    assert result.failure.http_status == status and result.failure.attempts == attempts
+    assert len(calls) == attempts
+    assert "DO-NOT-LEAK" not in result.model_dump_json()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["network", "timeout", "malformed", "ceiling"])
+async def test_background_names_survive_failed_or_truncated_expressions(
+    monkeypatch, failure
+) -> None:
+    settings = get_settings().model_copy(update={
+        "qradar_property_catalog_page_size": 1,
+        "qradar_property_catalog_max_pages": 2,
+    })
+    monkeypatch.setattr("app.core.config.get_settings", lambda: settings)
+
+    def handler(request):
+        if request.url.path == PROPS:
+            rows = [_prop(1, "URL")] if request.headers["Range"] == "items=0-0" else []
+            return httpx.Response(200, json=rows)
+        if failure == "network":
+            raise httpx.ConnectError("private TLS path and URL")
+        if failure == "timeout":
+            raise httpx.ReadTimeout("private URL")
+        if failure == "malformed":
+            return httpx.Response(200, json={"secret": "private"})
+        return httpx.Response(200, json=[_expr("ID1", 212)])
+
+    provider, _ = build_provider(handler)
+    try:
+        result = await provider.read_property_catalog()
+    finally:
+        await provider.aclose()
+    assert result.names_complete and not result.applicability_complete
+    assert result.failure.kind == failure
+    assert result.failure.endpoint == "property_expressions"
+    assert [p.name for p in result.properties] == ["URL"]
+    assert all(not p.applicability_complete for p in result.properties)
+    assert "private" not in result.model_dump_json()
+
+
+@pytest.mark.asyncio
+async def test_background_per_page_timeout_retry_and_total_deadline(monkeypatch) -> None:
+    import asyncio
+    import time
+
+    settings = get_settings().model_copy(update={
+        "qradar_property_catalog_page_timeout_seconds": 0.01,
+        "qradar_property_catalog_walk_timeout_seconds": 0.1,
+    })
+    monkeypatch.setattr("app.core.config.get_settings", lambda: settings)
+    calls = 0
+
+    async def handler(request):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            await asyncio.sleep(1)
+        return httpx.Response(200, json=[])
+
+    provider, _ = build_provider(handler)
+    try:
+        result = await provider.read_property_catalog()
+        assert result.names_complete and result.applicability_complete and calls == 3
+    finally:
+        await provider.aclose()
+
+    settings = settings.model_copy(update={"qradar_property_catalog_walk_timeout_seconds": 0.02})
+
+    async def slow(request):
+        await asyncio.sleep(1)
+        return httpx.Response(200, json=[])
+
+    provider, _ = build_provider(slow)
+    started = time.monotonic()
+    try:
+        result = await provider.read_property_catalog()
+    finally:
+        await provider.aclose()
+    assert not result.names_complete and result.failure.kind == "timeout"
+    assert time.monotonic() - started < 0.2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_rows", [
+    [{"id": 1, "name": "URL"}],
+    [{"id": 1, "identifier": "ID1", "name": ""}],
+    [{"id": "bad", "identifier": "ID1", "name": "URL"}],
+    [_prop(1, "URL"), _prop(1, "Duplicate")],
+])
+async def test_background_invalid_names_fail_closed(bad_rows) -> None:
+    provider, _ = build_provider(lambda request: httpx.Response(200, json=bad_rows))
+    try:
+        result = await provider.read_property_catalog()
+    finally:
+        await provider.aclose()
+    assert not result.names_complete and result.properties == []
+    assert result.failure.kind == "malformed" and result.failure.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_legacy_ceiling_never_claims_a_negative_type_match() -> None:
+    from app.services.property_catalog import _for_source_type
+
+    def handler(request):
+        return httpx.Response(200, json=[_prop(1, "URL")] if request.url.path == PROPS else [])
+
+    provider, _ = build_provider(handler, page_size=1, max_pages=1)
+    try:
+        properties = await provider.list_custom_properties()
+    finally:
+        await provider.aclose()
+    assert not properties[0].applicability_complete
+    assert _for_source_type(properties, 212)[0].applies_to_source_type is None
