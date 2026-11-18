@@ -526,6 +526,13 @@
     },
     "template": "{detector} on {log_source}"
   },
+  "alert.log_source_collection.never_collected.description": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No collection has completed since install. The platform has not read log source volumes yet, so it cannot confirm whether any source is silent. NO_EVENTS alerts are not raised for the missing intervals.",
+    "sample_english_params": {},
+    "template": "No collection has completed since install. The platform has not read log source volumes yet, so it cannot confirm whether any source is silent. NO_EVENTS alerts are not raised for the missing intervals."
+  },
   "alert.log_source_collection.not_judged_no_monitored_sources": {
     "params": {},
     "sample": {},
@@ -561,6 +568,13 @@
       "instance": "Lab console"
     },
     "template": "Log source volume collection is stale for {instance}"
+  },
+  "alert.offense_collection.never_collected.description": {
+    "params": {},
+    "sample": {},
+    "sample_english": "No collection has completed since install. The read-only offense collector has not read this console yet, so offense freshness is unknown.",
+    "sample_english_params": {},
+    "template": "No collection has completed since install. The read-only offense collector has not read this console yet, so offense freshness is unknown."
   },
   "alert.offense_collection.recovered": {
     "params": {},
