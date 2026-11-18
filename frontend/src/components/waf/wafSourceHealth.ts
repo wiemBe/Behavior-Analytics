@@ -6,7 +6,7 @@
 // version 2 and has since been edited is never shown as valid.
 
 import type { Tone } from "@/lib/health";
-import type { WafSourceBehavior } from "@/lib/api";
+import type { WafCollectionState, WafSourceBehavior } from "@/lib/api";
 
 import { ENGLISH_WAF, type BehaviorI18n } from "./wafI18n";
 import { isPlainKey } from "@/i18n/ownKey";
@@ -61,10 +61,40 @@ export function validationView(
   }
 }
 
-/** Collected and judged: enabled, and VALID for the current profile version. */
+/**
+ * Judged: the profile allows collection AND the source's own records show it running. A VALID
+ * profile alone proves nothing about collection: a source nothing recorded a run for, or whose
+ * last run failed or stored no bucket, is not judged. Fail closed on any state not listed.
+ */
 export function isJudged(s: WafSourceBehavior): boolean {
-  return s.enabled && s.validation_current && s.validation_status === "VALID";
+  return (
+    s.enabled &&
+    s.validation_current &&
+    s.validation_status === "VALID" &&
+    (s.collection.state === "collecting" || s.collection.state === "no_interval_due")
+  );
 }
+
+/** Tone of a collection state's pill: only a source that is collecting reads as ok. */
+export function collectionTone(state: WafCollectionState): Tone {
+  switch (state) {
+    case "collecting":
+      return "ok";
+    case "failed":
+      return "crit";
+    case "source_busy":
+    case "capacity_unavailable":
+    case "budget_exhausted":
+    case "no_progress":
+    case "no_run_recorded":
+      return "warn";
+    default:
+      return "";
+  }
+}
+
+/** The failed-run stages the server names; any other value is not shown. */
+export const FAILURE_STAGES = ["setup", "collect", "evaluate", "train", "commit"] as const;
 
 export function atCeiling(s: WafSourceBehavior): boolean {
   return s.active_endpoint_ceiling > 0 && s.active_endpoints >= s.active_endpoint_ceiling;

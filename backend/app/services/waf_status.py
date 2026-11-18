@@ -8,6 +8,7 @@ watermark reports an unknown failure count, not zero.
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Sequence
 from datetime import datetime, timedelta
@@ -20,12 +21,14 @@ from sqlalchemy.orm import aliased
 from app.collectors.waf_endpoint_collector import COLLECTOR_NAME, watermark_collector
 from app.core.config import Settings
 from app.history.origin import origin_of
-from app.history.state import HistoryFamily
+from app.history.state import HistoryFamily, HistoryState
 from app.i18n.messages import render
 from app.models.enums import WafMeasurement
+from app.models.history_backfill import HistoryBackfillScope
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafEndpoint, WafSourceBucket, WafSourceProfile
+from app.schemas.anomaly import WafCollectionOut
 from app.schemas.waf import (
     WafArielBudgetOut,
     WafFieldStatusOut,
@@ -35,6 +38,8 @@ from app.schemas.waf import (
 from app.services.waf_ariel_budget import WafArielBudget
 from app.services.waf_pipeline import (
     EVALUATION_COLLECTOR,
+    SKIP_GLOBAL_CAPACITY,
+    SKIP_SOURCE_LOCKED,
     evaluation_collector,
     scheduling_record,
 )
@@ -62,7 +67,7 @@ def _collector_sql(prefix: str) -> ColumnElement[str]:
 
 async def _watermarks(
     session: AsyncSession,
-    rows: Sequence[Row[WafSourceProfile, LogSource]],
+    rows: Sequence[Row[WafSourceProfile, LogSource] | tuple[WafSourceProfile, LogSource]],
 ) -> dict[tuple[uuid.UUID, str], CollectionWatermark]:
     """Every collection, evaluation and scheduling watermark for these profiles."""
     keys = [
@@ -104,6 +109,128 @@ async def _endpoint_counts(
         {sid: int(n) for sid, n, _ in rows},
         {sid: int(n) for sid, _, n in rows},
     )
+
+
+#: Message code of `collection_ineligibility_message` -> the short code the page words.
+_INELIGIBLE_CODES = {
+    "validation.waf.ineligible.collection_disabled": "collection_disabled",
+    "validation.waf.ineligible.source_missing": "source_missing",
+    "validation.profile.ineligible.disabled": "profile_disabled",
+    "validation.waf.ineligible.monitoring_disabled": "monitoring_disabled",
+    "validation.profile.ineligible.version_never_validated": "validation_stale",
+    "validation.profile.ineligible.version_not_validated": "validation_stale",
+    "validation.profile.ineligible.status": "validation_not_valid",
+}
+
+#: The lifecycle stages a failed run may name. Anything else recorded is dropped.
+_FAILURE_STAGES = frozenset({"setup", "collect", "evaluate", "train", "commit"})
+_SKIP_REASONS = frozenset({SKIP_SOURCE_LOCKED, SKIP_GLOBAL_CAPACITY})
+#: A recorded partial-run reason that means the per-run search budget ended the run.
+_BUDGET_REASONS = frozenset({"search_cap_reached", "budget_exhausted"})
+_CLASS_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+
+
+def _later(a: datetime | None, b: datetime | None) -> bool:
+    """True when `a` is recorded and strictly after `b` (or `b` is not recorded)."""
+    return a is not None and (b is None or a > b)
+
+
+async def waf_collection_health(
+    session: AsyncSession,
+    pairs: Sequence[tuple[WafSourceProfile, LogSource]],
+    *,
+    settings: Settings,
+) -> dict[uuid.UUID, WafCollectionOut]:
+    """Per-source collection health for a page of profiles: two statements in all.
+
+    One read of every collection and scheduling watermark and one of the WAF
+    history scopes, whatever the number of sources. The verdict is only what the
+    records say: a source nothing recorded a run for is `no_run_recorded`, which
+    is never healthy. Error text is never read, only its class and stage.
+    """
+    if not pairs:
+        return {}
+    watermarks = await _watermarks(session, pairs)
+    scope_keys = [(p.instance_id, str(ls.qradar_id)) for p, ls in pairs]
+    reading = {
+        (row[0], row[1])
+        for row in await session.execute(
+            select(HistoryBackfillScope.instance_id, HistoryBackfillScope.scope_key).where(
+                HistoryBackfillScope.family == HistoryFamily.WAF.value,
+                HistoryBackfillScope.state == HistoryState.READING.value,
+                tuple_(HistoryBackfillScope.instance_id, HistoryBackfillScope.scope_key).in_(
+                    scope_keys
+                ),
+            )
+        )
+    }
+    out: dict[uuid.UUID, WafCollectionOut] = {}
+    for profile, log_source in pairs:
+        iid = profile.instance_id
+        collection = watermarks.get((iid, watermark_collector(log_source)))
+        scheduling = watermarks.get((iid, scheduling_record(log_source)))
+        meta = (collection.collection_metadata if collection else None) or {}
+        sched = (scheduling.collection_metadata if scheduling else None) or {}
+        last_run_at = collection.last_run_at if collection else None
+        success_at = _parse(meta.get("last_success_at"))
+        failure_at = _parse(meta.get("last_failure_at"))
+        skipped_at = _parse(sched.get("last_skipped_at"))
+        skip = sched.get("last_skip_reason")
+        skip = skip if skip in _SKIP_REASONS else None
+        stage = meta.get("last_failure_stage")
+        stage = stage if stage in _FAILURE_STAGES else None
+        error_class = meta.get("last_error_class")
+        error_class = (
+            error_class if isinstance(error_class, str) and _CLASS_NAME.match(error_class) else None
+        )
+        due = _int(meta.get("last_run_intervals_due"))
+        collected = _int(meta.get("last_run_intervals"))
+        ineligible = collection_ineligibility_message(profile, log_source, settings)
+
+        failed = _later(failure_at, success_at)
+        skipped = skip is not None and _later(skipped_at, success_at)
+        busy = skipped and skip == SKIP_SOURCE_LOCKED
+        capacity = skipped and skip == SKIP_GLOBAL_CAPACITY
+
+        state: str
+        if ineligible is not None:
+            state = "not_eligible"
+        elif failed and not (skipped and _later(skipped_at, failure_at)):
+            state = "failed"
+        elif busy:
+            state = "source_busy"
+        elif capacity:
+            state = "capacity_unavailable"
+        elif (iid, str(log_source.qradar_id)) in reading:
+            state = "history_reading"
+        elif meta.get("last_run_partial_reason") in _BUDGET_REASONS:
+            state = "budget_exhausted"
+        elif last_run_at is None and success_at is None and failure_at is None:
+            state = "no_run_recorded"
+        elif due == 0:
+            state = "no_interval_due"
+        elif due is not None and collected == 0:
+            # Intervals were due and none was stored, with no failure and no skip.
+            state = "no_progress"
+        else:
+            state = "collecting"
+        out[log_source.id] = WafCollectionOut(
+            state=state,
+            ineligible_code=(
+                _INELIGIBLE_CODES.get(ineligible.code) if ineligible is not None else None
+            ),
+            last_run_at=last_run_at,
+            last_success_at=success_at,
+            last_failure_at=failure_at,
+            failure_stage=stage if failed else None,
+            failure_class=error_class if failed else None,
+            consecutive_failures=collection.consecutive_failures if collection else None,
+            skip_reason=skip if skipped else None,
+            skipped_at=skipped_at if skipped else None,
+            intervals_due=due,
+            intervals_collected=collected,
+        )
+    return out
 
 
 async def waf_ariel_budget_status(

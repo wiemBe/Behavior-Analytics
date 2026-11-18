@@ -175,7 +175,7 @@ export type OutcomeTone = "ok" | "warn" | "crit" | "neutral";
 
 /**
  * A family's last-run outcome as the backend records it (`ok`, `partial`,
- * `failed`, `no-instance`, `no-sources`, `dispatched`). A value this build does not know has no label: the
+ * `failed`, `no-instance`, `no-sources`, `dispatched` = source tasks queued). A value this build does not know has no label: the
  * caller shows it verbatim rather than guessing what it means.
  */
 export function outcomeInfo(
@@ -192,7 +192,8 @@ const OUTCOME_TONE: Record<string, OutcomeTone> = {
   failed: "crit",
   "no-instance": "neutral",
   "no-sources": "neutral",
-  dispatched: "ok",
+  // Tasks were queued; whether any ran is recorded per source, not here.
+  dispatched: "neutral",
 };
 
 /**

@@ -7,6 +7,7 @@
 // the select and says which permission is missing.
 
 import { useTranslations } from "next-intl";
+import Link from "next/link";
 import { useState } from "react";
 
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
@@ -143,6 +144,11 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
             <>
               <UtcTime value={lastRun.at} variant="compact" className="nowrap" />
               {lastRun.outcome && <Outcome value={lastRun.outcome} />}
+              {item.family === "WAF_COLLECTION" && (
+                <span className="cell-sub">
+                  <Link href="/behavior/waf">{t("sourceRuns")}</Link>
+                </span>
+              )}
             </>
           ) : (
             <span className="muted">{t("notRun")}</span>
@@ -167,7 +173,12 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
           {lastRun === null ? (
             <span className="muted">{t("noRunYet")}</span>
           ) : lastRun.searches_sent === null ? (
-            <span className="muted" title={t("notCountedTitle")}>
+            <span
+              className="muted"
+              title={
+                lastRun.outcome === "dispatched" ? t("notCountedTasksTitle") : t("notCountedTitle")
+              }
+            >
               {t("notCounted")}
             </span>
           ) : (

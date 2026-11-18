@@ -59,6 +59,7 @@ from app.models.enums import (
     PwAnomalyType,
     PwScopeKind,
     RuleAnomalyType,
+    SearchFamily,
     Severity,
     TriageDisposition,
     TriageStatus,
@@ -128,6 +129,7 @@ from app.schemas.anomaly import (
     WafAdmissionOverflowOut,
     WafBaselineAdequacyOut,
     WafBaselineCellOut,
+    WafDispatchOut,
     WafEndpointInventoryOut,
     WafEndpointRefOut,
     WafLatestBucketOut,
@@ -188,6 +190,8 @@ from app.services.related_activity import (
     RelatedActivityNotFound,
     RelatedActivityService,
 )
+from app.services.search_cadence import SearchCadenceService
+from app.services.waf_status import waf_collection_health
 
 router = APIRouter(prefix="/anomalies", tags=["anomalies"])
 behavior_router = APIRouter(prefix="/behavior", tags=["behavior"])
@@ -1671,6 +1675,7 @@ async def _waf_source_rows(
     counts = await repo.waf_endpoint_counts(ids)
     overflow = await repo.waf_admission_overflow(ids, since=since, until=until)
     mapped = await repo.waf_virtual_host_mapped(ids)
+    health = await waf_collection_health(repo.session, pairs, settings=settings)
     out: list[WafSourceBehaviorOut] = []
     for profile, source in pairs:
         bucket = latest.get(source.id)
@@ -1720,6 +1725,7 @@ async def _waf_source_rows(
                     if seen is not None
                     else WafAdmissionOverflowOut(buckets_in_range=0)
                 ),
+                collection=health[source.id],
             )
         )
     return out
@@ -1743,8 +1749,14 @@ async def list_waf_sources(
     limit = min(limit, settings.api_max_page_size)
     repo = AnomalyRepository(session)
     pairs, total = await repo.waf_sources_page(limit=limit, offset=offset)
+    cadence = await SearchCadenceService(session, settings).get(SearchFamily.WAF_COLLECTION)
     return PagedWafSources(
         items=await _waf_source_rows(repo, pairs, settings, start, end),
+        dispatch=(
+            WafDispatchOut(outcome=cadence.last_run_outcome, at=cadence.last_run_at)
+            if cadence.last_run_at is not None and cadence.last_run_outcome
+            else None
+        ),
         total=total,
         limit=limit,
         offset=offset,

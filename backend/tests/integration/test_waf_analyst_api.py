@@ -24,7 +24,7 @@ from app.models.enums import (
     WafProfileValidationStatus,
     WafTelemetryStatus,
 )
-from app.models.log_source import AnomalyStateTransition, LogSourceAnomaly
+from app.models.log_source import AnomalyStateTransition, LogSource, LogSourceAnomaly
 from app.models.waf import (
     WafAnomaly,
     WafAnomalyTransition,
@@ -567,7 +567,7 @@ SOURCE_KEYS = {
     "log_source_id", "log_source_name", "product_label", "enabled", "profile_version",
     "validation_status", "validated_profile_version", "validated_at", "validation_current",
     "virtual_host_available", "latest_bucket", "active_endpoints", "total_endpoints",
-    "active_endpoint_ceiling", "admission",
+    "active_endpoint_ceiling", "admission", "collection",
 }
 
 
@@ -599,6 +599,70 @@ def test_waf_sources_report_profile_coverage_and_overflow(db_schema) -> None:
     }
     assert waf2["validation_status"] == "UNVALIDATED" and waf2["validation_current"] is False
     assert waf2["enabled"] is False
+
+
+def test_waf_sources_project_collection_health_and_the_last_dispatch(
+    db_schema, monkeypatch
+) -> None:
+    """FIX-71e: the list says what each source's records show; absent evidence is not healthy."""
+    from app.collectors.waf_endpoint_collector import watermark_collector
+    from app.models.monitoring import CollectionWatermark
+    from app.models.search_cadence import SearchCadenceSetting
+
+    w = seed_behavior()
+    monkeypatch.setenv("WAF_COLLECTION_ENABLED", "true")
+    get_settings.cache_clear()
+    try:
+        client = Client(READER)
+        first = client.get("/api/v1/behavior/waf/sources", params=window()).json()
+        assert first["dispatch"] is None
+        by_name = {i["log_source_name"]: i for i in first["items"]}
+        # waf-1 is enabled and VALID but nothing recorded a run: not healthy, not "queue failed".
+        assert by_name["waf-1"]["collection"]["state"] == "no_run_recorded"
+        assert by_name["waf-1"]["collection"]["consecutive_failures"] is None
+        # waf-2 has its profile disabled: said as such.
+        assert by_name["waf-2"]["collection"]["state"] == "not_eligible"
+        assert by_name["waf-2"]["collection"]["ineligible_code"] == "profile_disabled"
+
+        async def record(s):  # type: ignore[no-untyped-def]
+            source = await s.get(LogSource, w["ws"])
+            s.add(CollectionWatermark(
+                instance_id=source.instance_id, collector=watermark_collector(source),
+                last_run_at=NOW, consecutive_failures=2,
+                last_error="SELECT secret -- token=abc",
+                collection_metadata={
+                    "last_failure_at": NOW.isoformat(),
+                    "last_error_class": "ProviderTimeoutError",
+                    "last_failure_stage": "collect",
+                },
+            ))
+            s.add(SearchCadenceSetting(
+                family="WAF_COLLECTION", cadence_seconds=900, updated_at=NOW,
+                last_run_at=NOW, last_run_outcome="failed",
+            ))
+
+        run(record)
+        resp = client.get("/api/v1/behavior/waf/sources", params=window())
+        body = resp.json()
+        assert body["dispatch"]["outcome"] == "failed"
+        coll = {i["log_source_name"]: i for i in body["items"]}["waf-1"]["collection"]
+        assert coll["state"] == "failed"
+        assert coll["failure_stage"] == "collect"
+        assert coll["failure_class"] == "ProviderTimeoutError"
+        assert coll["consecutive_failures"] == 2
+        assert set(coll) == {
+            "state", "ineligible_code", "last_run_at", "last_success_at", "last_failure_at",
+            "failure_stage", "failure_class", "consecutive_failures", "skip_reason",
+            "skipped_at", "intervals_due", "intervals_collected",
+        }
+        for forbidden in ("SELECT", "token=abc", "secret"):
+            assert forbidden not in resp.text, forbidden
+        # The detail route carries the same projection.
+        detail = client.get(f"/api/v1/behavior/waf/sources/{w['ws']}", params=window()).json()
+        assert detail["collection"]["state"] == "failed"
+    finally:
+        monkeypatch.delenv("WAF_COLLECTION_ENABLED")
+        get_settings.cache_clear()
 
 
 def test_waf_source_detail_serves_counts_only(db_schema) -> None:
@@ -880,7 +944,7 @@ def test_behavior_statement_counts_do_not_grow_with_the_data(db_schema) -> None:
         assert small == large, (name, small, large)
     # Pinned so a new per-row query cannot hide behind "still constant".
     assert {n: c[0] for n, c in counts.items()} == {
-        "sources": 6, "source": 5, "endpoints": 6, "metrics": 3, "baselines": 3,
+        "sources": 9, "source": 7, "endpoints": 6, "metrics": 3, "baselines": 3,
     }
 
 

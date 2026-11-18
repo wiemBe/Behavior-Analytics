@@ -118,6 +118,12 @@ async function WafBehaviorPage({
             )}
           </div>
 
+          {page?.dispatch?.outcome === "failed" && (
+            <p className="waf-table-state" role="status">
+              {t.rich("dispatchFailed", { time: () => <UtcTime value={page.dispatch?.at} /> })}
+            </p>
+          )}
+
           <div className="waf-sources">
             <WafSourcesTable sources={items} />
           </div>

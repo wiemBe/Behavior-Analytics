@@ -15,7 +15,14 @@ import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { UtcTime } from "@/components/ui/UtcTime";
 
 import { formatPercent } from "@/lib/format";
-import { atCeiling, isOverflowing, sortByAttention, validationView } from "./wafSourceHealth";
+import {
+  FAILURE_STAGES,
+  atCeiling,
+  collectionTone,
+  isOverflowing,
+  sortByAttention,
+  validationView,
+} from "./wafSourceHealth";
 
 import "@/components/ui/controls.css";
 
@@ -51,6 +58,82 @@ function CountLine({
     <span className="cell-sub">
       {formatCount(value, locale)} {label}
     </span>
+  );
+}
+
+/**
+ * One state per source, from what its collection recorded. The detail (stage, class, counts,
+ * last run) sits behind a disclosure; the pill never says "healthy" for absent evidence.
+ */
+function CollectionCell({ s }: { s: WafSourceBehavior }) {
+  const t = useTranslations("waf.sources");
+  const c = s.collection;
+  const stage = (FAILURE_STAGES as readonly string[]).includes(c.failure_stage ?? "")
+    ? c.failure_stage
+    : null;
+  // The validation and profile columns already say why for the other codes.
+  const why =
+    c.state !== "not_eligible"
+      ? null
+      : c.ineligible_code === "collection_disabled"
+        ? t("collectionWhy.collection_disabled")
+        : c.ineligible_code === "monitoring_disabled"
+          ? t("collectionWhy.monitoring_disabled")
+          : c.ineligible_code === "source_missing"
+            ? t("collectionWhy.source_missing")
+            : null;
+  let sub: React.ReactNode = null;
+  if (c.state === "failed" && c.last_failure_at) {
+    sub = stage
+      ? t.rich("collectionSub.failedAt", { stage, time: () => <UtcTime value={c.last_failure_at} variant="compact" /> })
+      : t.rich("collectionSub.failed", { time: () => <UtcTime value={c.last_failure_at} variant="compact" /> });
+  } else if (
+    (c.state === "source_busy" || c.state === "capacity_unavailable") &&
+    c.skipped_at
+  ) {
+    sub = t.rich("collectionSub.skipped", { time: () => <UtcTime value={c.skipped_at} variant="compact" /> });
+  } else if (c.state === "collecting" && c.last_success_at) {
+    sub = t.rich("collectionSub.succeeded", { time: () => <UtcTime value={c.last_success_at} variant="compact" /> });
+  }
+  const hasDetail =
+    c.state !== "not_eligible" &&
+    c.state !== "no_run_recorded" &&
+    (c.last_run_at != null ||
+      c.intervals_due != null ||
+      (c.consecutive_failures ?? 0) > 0 ||
+      c.failure_class != null);
+  return (
+    <>
+      <span className={`pill pill-quiet ${collectionTone(c.state)}`}>
+        {t(`collectionState.${c.state}`)}
+      </span>
+      {why && <span className="cell-sub">{why}</span>}
+      {sub && <span className="cell-sub">{sub}</span>}
+      {hasDetail && (
+        <details className="cell-sub">
+          <summary>{t("collectionDetails.summary")}</summary>
+          <ul className="waf-collection-detail">
+            {c.last_run_at && (
+              <li>{t.rich("collectionDetails.lastRun", { time: () => <UtcTime value={c.last_run_at} variant="compact" /> })}</li>
+            )}
+            {c.intervals_due != null && c.intervals_collected != null && (
+              <li>
+                {t("collectionDetails.intervals", {
+                  collected: c.intervals_collected,
+                  due: c.intervals_due,
+                })}
+              </li>
+            )}
+            {(c.consecutive_failures ?? 0) > 0 && (
+              <li>{t("collectionDetails.failures", { count: c.consecutive_failures ?? 0 })}</li>
+            )}
+            {c.failure_class && (
+              <li>{t("collectionDetails.errorClass", { name: c.failure_class })}</li>
+            )}
+          </ul>
+        </details>
+      )}
+    </>
   );
 }
 
@@ -144,6 +227,7 @@ export function WafSourcesTable({ sources }: { sources: WafSourceBehavior[] }) {
             <th scope="col">{t("source")}</th>
             <th scope="col">{t("profile")}</th>
             <th scope="col">{t("validation")}</th>
+            <th scope="col">{t("collection")}</th>
             <th scope="col" className="num">
               {t("coverage")}
             </th>
@@ -176,9 +260,9 @@ export function WafSourcesTable({ sources }: { sources: WafSourceBehavior[] }) {
                 <td>
                   <span className={`pill pill-quiet ${v.tone}`}>{v.label}</span>
                   {v.detail && <span className="cell-sub">{v.detail}</span>}
-                  {s.enabled && !s.validation_current && (
-                    <span className="cell-sub">{t("notCollected")}</span>
-                  )}
+                </td>
+                <td>
+                  <CollectionCell s={s} />
                 </td>
                 <td className="num">
                   <CoverageCell s={s} />

@@ -11,10 +11,11 @@ from sqlalchemy import event
 from app.collectors.waf_endpoint_collector import watermark_collector
 from app.core.config import get_settings
 from app.models.enums import BucketCompleteness, WafMeasurement, WafProfileValidationStatus
+from app.models.history_backfill import HistoryBackfillScope
 from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafEndpoint, WafSourceBucket, WafSourceProfile
-from app.services.waf_pipeline import evaluation_collector
-from app.services.waf_status import waf_source_statuses
+from app.services.waf_pipeline import evaluation_collector, scheduling_record
+from app.services.waf_status import waf_collection_health, waf_source_statuses
 from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 from tests.integration.factories import make_instance, make_log_source
 
@@ -181,3 +182,262 @@ async def test_status_statement_count_is_the_same_for_two_and_six_sources(db_ses
         f"2 sources: {len(first_sql)}\n" + "\n".join(first_sql)
         + f"\n6 sources: {len(second_sql)}\n" + "\n".join(second_sql)
     )
+
+
+# --- FIX-71e: per-source collection health for the behavior list -------------
+
+
+def _health_settings(**update):  # type: ignore[no-untyped-def]
+    return get_settings().model_copy(update={"waf_collection_enabled": True, **update})
+
+
+async def _health_source(  # type: ignore[no-untyped-def]
+    session, inst, qradar_id, *, collection=None, scheduling=None, run_at=None, failures=0,
+    profile=None, monitoring=True,
+):
+    """A source whose records are exactly the given watermark metadata."""
+    source = await make_log_source(
+        session, inst, qradar_id=qradar_id, name=f"h-{qradar_id}", monitoring_enabled=monitoring
+    )
+    prof = _profile(inst.id, source.id)
+    for key, value in (profile or {}).items():
+        setattr(prof, key, value)
+    session.add(prof)
+    if collection is not None:
+        session.add(CollectionWatermark(
+            instance_id=inst.id, collector=watermark_collector(source), last_run_at=run_at,
+            consecutive_failures=failures, collection_metadata=collection,
+            last_error="SELECT secret FROM events -- Bearer abc",
+        ))
+    if scheduling is not None:
+        session.add(CollectionWatermark(
+            instance_id=inst.id, collector=scheduling_record(source),
+            collection_metadata=scheduling,
+        ))
+    await session.flush()
+    return source, prof
+
+
+def _iso(minutes_ago: int) -> str:
+    return (NOW - timedelta(minutes=minutes_ago)).isoformat()
+
+
+async def _health_of(session, source, prof, **settings):  # type: ignore[no-untyped-def]
+    got = await waf_collection_health(
+        session, [(prof, source)], settings=_health_settings(**settings)
+    )
+    return got[source.id]
+
+
+async def test_health_no_record_is_not_a_healthy_source(db_session) -> None:  # type: ignore[no-untyped-def]
+    inst = await make_instance(db_session)
+    source, prof = await _health_source(db_session, inst, 1)
+    health = await _health_of(db_session, source, prof)
+    assert health.state == "no_run_recorded"
+    assert health.last_run_at is None and health.consecutive_failures is None
+    assert health.intervals_due is None and health.intervals_collected is None
+
+
+async def test_health_failure_names_stage_and_class_never_the_error_text(db_session) -> None:  # type: ignore[no-untyped-def]
+    inst = await make_instance(db_session)
+    source, prof = await _health_source(
+        db_session, inst, 1, run_at=NOW, failures=3,
+        collection={
+            "last_failure_at": _iso(5), "last_error_class": "ProviderUnavailableError",
+            "last_failure_stage": "collect", "last_success_at": _iso(60),
+        },
+    )
+    health = await _health_of(db_session, source, prof)
+    assert health.state == "failed"
+    assert (health.failure_stage, health.failure_class) == ("collect", "ProviderUnavailableError")
+    assert health.consecutive_failures == 3
+    assert "secret" not in health.model_dump_json() and "Bearer" not in health.model_dump_json()
+    # An unknown stage or a class that is not an identifier is dropped, not shown.
+    source2, prof2 = await _health_source(
+        db_session, inst, 2, run_at=NOW,
+        collection={
+            "last_failure_at": _iso(5), "last_error_class": "boom: SELECT 1",
+            "last_failure_stage": "SELECT 1",
+        },
+    )
+    odd = await _health_of(db_session, source2, prof2)
+    assert odd.state == "failed" and odd.failure_stage is None and odd.failure_class is None
+
+
+async def test_health_a_failure_older_than_a_success_is_not_current(db_session) -> None:  # type: ignore[no-untyped-def]
+    inst = await make_instance(db_session)
+    source, prof = await _health_source(
+        db_session, inst, 1, run_at=NOW,
+        collection={
+            "last_failure_at": _iso(60), "last_success_at": _iso(5),
+            "last_run_intervals": 1, "last_run_intervals_due": 1,
+        },
+    )
+    health = await _health_of(db_session, source, prof)
+    assert health.state == "collecting"
+    assert health.failure_class is None and health.failure_stage is None
+
+
+async def test_health_skips_busy_capacity_and_a_later_failure_wins(db_session) -> None:  # type: ignore[no-untyped-def]
+    inst = await make_instance(db_session)
+    busy, p1 = await _health_source(
+        db_session, inst, 1, run_at=NOW, collection={},
+        scheduling={"last_skip_reason": "source_locked", "last_skipped_at": _iso(2)},
+    )
+    cap, p2 = await _health_source(
+        db_session, inst, 2, run_at=NOW, collection={},
+        scheduling={"last_skip_reason": "global_capacity", "last_skipped_at": _iso(2)},
+    )
+    both, p3 = await _health_source(
+        db_session, inst, 3, run_at=NOW,
+        collection={"last_failure_at": _iso(1), "last_error_class": "ValueError"},
+        scheduling={"last_skip_reason": "source_locked", "last_skipped_at": _iso(9)},
+    )
+    assert (await _health_of(db_session, busy, p1)).state == "source_busy"
+    capacity = await _health_of(db_session, cap, p2)
+    assert capacity.state == "capacity_unavailable"
+    assert capacity.skip_reason == "global_capacity" and capacity.skipped_at is not None
+    assert (await _health_of(db_session, both, p3)).state == "failed"
+    # A skip recorded after the failure is the latest word on the source.
+    later, p5 = await _health_source(
+        db_session, inst, 5, run_at=NOW,
+        collection={"last_failure_at": _iso(9), "last_error_class": "ValueError"},
+        scheduling={"last_skip_reason": "source_locked", "last_skipped_at": _iso(1)},
+    )
+    assert (await _health_of(db_session, later, p5)).state == "source_busy"
+    # A skip reason this build does not know is not shown as a state.
+    odd, p4 = await _health_source(
+        db_session, inst, 4, run_at=NOW, collection={},
+        scheduling={"last_skip_reason": "queue lost", "last_skipped_at": _iso(2)},
+    )
+    assert (await _health_of(db_session, odd, p4)).skip_reason is None
+
+
+async def test_health_not_eligible_reasons(db_session) -> None:  # type: ignore[no-untyped-def]
+    inst = await make_instance(db_session)
+    disabled_global, p1 = await _health_source(db_session, inst, 1)
+    mon, p2 = await _health_source(db_session, inst, 2, monitoring=False)
+    stale, p3 = await _health_source(
+        db_session, inst, 3, profile={"profile_version": 3}
+    )
+    off, p4 = await _health_source(db_session, inst, 4, profile={"enabled": False})
+    inconclusive, p5 = await _health_source(
+        db_session, inst, 5,
+        profile={"validation_status": WafProfileValidationStatus.INCONCLUSIVE},
+    )
+    assert (await _health_of(db_session, disabled_global, p1, waf_collection_enabled=False)
+            ).ineligible_code == "collection_disabled"
+    assert (await _health_of(db_session, mon, p2)).ineligible_code == "monitoring_disabled"
+    assert (await _health_of(db_session, stale, p3)).ineligible_code == "validation_stale"
+    assert (await _health_of(db_session, off, p4)).ineligible_code == "profile_disabled"
+    assert (
+        await _health_of(db_session, inconclusive, p5)
+    ).ineligible_code == "validation_not_valid"
+    for src, prof in ((mon, p2), (stale, p3), (off, p4)):
+        assert (await _health_of(db_session, src, prof)).state == "not_eligible"
+    # Ineligible outranks recorded history: an old success does not make it collecting.
+    old, p6 = await _health_source(
+        db_session, inst, 6, run_at=NOW, monitoring=False,
+        collection={"last_success_at": _iso(5), "last_run_intervals": 1,
+                    "last_run_intervals_due": 1},
+    )
+    assert (await _health_of(db_session, old, p6)).state == "not_eligible"
+
+
+async def test_health_ran_without_storing_a_bucket_and_other_run_states(db_session) -> None:  # type: ignore[no-untyped-def]
+    inst = await make_instance(db_session)
+    none_stored, p1 = await _health_source(
+        db_session, inst, 1, run_at=NOW,
+        collection={"last_run_intervals": 0, "last_run_intervals_due": 3},
+    )
+    idle, p2 = await _health_source(
+        db_session, inst, 2, run_at=NOW,
+        collection={"last_run_intervals": 0, "last_run_intervals_due": 0,
+                    "last_success_at": _iso(1)},
+    )
+    budget, p3 = await _health_source(
+        db_session, inst, 3, run_at=NOW,
+        collection={"last_run_intervals": 0, "last_run_intervals_due": 3,
+                    "last_run_partial_reason": "search_cap_reached"},
+    )
+    ok, p4 = await _health_source(
+        db_session, inst, 4, run_at=NOW,
+        collection={"last_run_intervals": 2, "last_run_intervals_due": 2,
+                    "last_success_at": _iso(1)},
+    )
+    got = {
+        "none": await _health_of(db_session, none_stored, p1),
+        "idle": await _health_of(db_session, idle, p2),
+        "budget": await _health_of(db_session, budget, p3),
+        "ok": await _health_of(db_session, ok, p4),
+    }
+    assert {k: v.state for k, v in got.items()} == {
+        "none": "no_progress", "idle": "no_interval_due",
+        "budget": "budget_exhausted", "ok": "collecting",
+    }
+    assert (got["none"].intervals_due, got["none"].intervals_collected) == (3, 0)
+
+
+async def test_health_history_reading_is_its_own_state(db_session) -> None:  # type: ignore[no-untyped-def]
+    inst = await make_instance(db_session)
+    reading, p1 = await _health_source(db_session, inst, 1, run_at=NOW, collection={})
+    other, p2 = await _health_source(db_session, inst, 2, run_at=NOW, collection={})
+    for qradar_id, state in ((1, "READING"), (2, "COMPLETE")):
+        db_session.add(HistoryBackfillScope(
+            instance_id=inst.id, family="WAF", scope_key=str(qradar_id), state=state,
+            progress={},
+        ))
+    await db_session.flush()
+    assert (await _health_of(db_session, reading, p1)).state == "history_reading"
+    assert (await _health_of(db_session, other, p2)).state != "history_reading"
+
+
+async def test_health_statement_count_is_two_for_two_and_for_six_sources(db_session) -> None:  # type: ignore[no-untyped-def]
+    inst = await make_instance(db_session)
+    settings = _health_settings()
+    pairs = []
+    for qradar_id in range(1, 3):
+        pairs.append(await _health_source(db_session, inst, qradar_id, run_at=NOW, collection={}))
+    with recorded_statements(db_session) as first:
+        await waf_collection_health(
+            db_session, [(p, s) for s, p in pairs], settings=settings
+        )
+    for qradar_id in range(3, 7):
+        pairs.append(await _health_source(db_session, inst, qradar_id, run_at=NOW, collection={}))
+    with recorded_statements(db_session) as second:
+        await waf_collection_health(
+            db_session, [(p, s) for s, p in pairs], settings=settings
+        )
+    assert len(first) == len(second) == 2, "\n".join(first + second)
+    with recorded_statements(db_session) as empty:
+        assert await waf_collection_health(db_session, [], settings=settings) == {}
+    assert empty == []
+
+
+async def test_behavior_list_rows_cost_the_same_for_two_and_six_sources(db_session) -> None:  # type: ignore[no-untyped-def]
+    """The behavior list reads health in bulk: no statement per source (AGENTS 2.9)."""
+    from app.api.routes.anomalies import _waf_source_rows
+    from app.repositories.anomaly import AnomalyRepository
+
+    inst = await make_instance(db_session)
+    settings = _health_settings()
+    repo = AnomalyRepository(db_session)
+    pairs: list = []
+
+    async def rows():  # type: ignore[no-untyped-def]
+        with recorded_statements(db_session) as sql:
+            out = await _waf_source_rows(
+                repo, [(p, s) for s, p in pairs], settings, T0, NOW
+            )
+        return out, sql
+
+    for qradar_id in range(1, 3):
+        pairs.append(await _health_source(db_session, inst, qradar_id, run_at=NOW, collection={}))
+    first_rows, first = await rows()
+    for qradar_id in range(3, 7):
+        pairs.append(await _health_source(db_session, inst, qradar_id, run_at=NOW, collection={}))
+    second_rows, second = await rows()
+    assert len(first_rows) == 2 and len(second_rows) == 6
+    assert len(first) == len(second), "\n".join(first + second)
+    assert all(r.collection.state in {"collecting", "no_interval_due", "no_progress"}
+               or r.collection.state == "no_run_recorded" for r in second_rows)

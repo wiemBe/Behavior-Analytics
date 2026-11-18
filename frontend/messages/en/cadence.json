@@ -34,6 +34,8 @@
     "nextRunNone": "This family has not run, and no future run is scheduled.",
     "notCounted": "not counted",
     "notCountedTitle": "This family does not count its searches yet",
+    "notCountedTasksTitle": "Each source task runs on its own, so their searches are not totalled here",
+    "sourceRuns": "Source runs",
     "savedBy": "Saved. Changed by {user} at <time></time>.",
     "saved": "Saved. Changed at <time></time>.",
     "forbidden": "Your role cannot change search cadence (permission admin:search_cadence).",
@@ -57,7 +59,7 @@
     "failed": "Failed",
     "no-instance": "No enabled instance",
     "no-sources": "No eligible WAF source",
-    "dispatched": "Dispatched"
+    "dispatched": "Source tasks queued"
   },
   "change": {
     "nothingChanged": "{forbidden} Nothing was changed.",

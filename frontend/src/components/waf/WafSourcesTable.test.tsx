@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { WAF_SOURCE_ID, wafSource } from "./fixtures";
+import { NO_RUN_RECORDED, WAF_SOURCE_ID, wafCollection, wafSource } from "./fixtures";
 import { WafSourcesTable } from "./WafSourcesTable";
 
 function rowOf(name: string) {
@@ -31,7 +31,14 @@ describe("WafSourcesTable", () => {
   it("does not show a source as valid when it was validated for an older profile version", () => {
     render(
       <WafSourcesTable
-        sources={[wafSource({ profile_version: 5, validated_profile_version: 4, validation_current: false })]}
+        sources={[
+          wafSource({
+            profile_version: 5,
+            validated_profile_version: 4,
+            validation_current: false,
+            collection: wafCollection({ state: "not_eligible", ineligible_code: "validation_stale" }),
+          }),
+        ]}
       />,
     );
     const row = within(rowOf("lab-waf-behavior-01"));
@@ -175,5 +182,144 @@ describe("WafSourcesTable: admission wording", () => {
     render(<WafSourcesTable sources={[overflow({ rejected_over_quota: 0 })]} />);
     expect(screen.queryByText("Overflowing")).not.toBeInTheDocument();
     expect(screen.getByText("702 below admission threshold")).toBeInTheDocument();
+  });
+});
+
+
+describe("WafSourcesTable: collection health (FIX-71e)", () => {
+  const ran = (over = {}) => wafSource({ collection: wafCollection(over) });
+  const bucketless = { latest_bucket: null, admission: NO_ADMISSION };
+
+  it("says No source run recorded for an enabled VALID source nothing ran for, never Collecting", () => {
+    render(<WafSourcesTable sources={[wafSource({ ...bucketless, collection: NO_RUN_RECORDED })]} />);
+    const row = within(rowOf("lab-waf-behavior-01"));
+    expect(row.getByText("No source run recorded")).toHaveClass("warn");
+    expect(row.queryByText("Collecting")).not.toBeInTheDocument();
+    expect(row.queryByText("Details")).not.toBeInTheDocument();
+    // Said about the source, not as a claim that a task was lost.
+    expect(row.queryByText(/queue|lost|fail/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a failed run with its stage and time, and the class behind the disclosure", () => {
+    render(
+      <WafSourcesTable
+        sources={[
+          ran({
+            state: "failed",
+            last_failure_at: "2026-10-13T08:50:00Z",
+            failure_stage: "collect",
+            failure_class: "ProviderTimeoutError",
+            consecutive_failures: 4,
+            intervals_due: 2,
+            intervals_collected: 0,
+          }),
+        ]}
+      />,
+    );
+    const row = within(rowOf("lab-waf-behavior-01"));
+    expect(row.getByText("Last run failed")).toHaveClass("crit");
+    expect(row.getByText(/collect stage/)).toBeInTheDocument();
+    expect(row.getByText("Error class ProviderTimeoutError")).toBeInTheDocument();
+    expect(row.getByText("4 failed runs in a row")).toBeInTheDocument();
+    expect(row.getByText("0 of 2 intervals stored")).toBeInTheDocument();
+    // The class sits inside the disclosure, not in the row's first line.
+    expect(row.getByText("Details").closest("details")).toContainElement(
+      row.getByText("Error class ProviderTimeoutError"),
+    );
+  });
+
+  it("does not show a stage the server did not name from the closed list", () => {
+    render(
+      <WafSourcesTable
+        sources={[
+          ran({ state: "failed", last_failure_at: "2026-10-13T08:50:00Z", failure_stage: "SELECT 1" }),
+        ]}
+      />,
+    );
+    const row = within(rowOf("lab-waf-behavior-01"));
+    expect(row.queryByText(/SELECT/)).not.toBeInTheDocument();
+    expect(row.queryByText(/stage/)).not.toBeInTheDocument();
+    expect(row.getByText("Last run failed")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["source_busy", "Source busy", "warn"],
+    ["capacity_unavailable", "Waiting for search capacity", "warn"],
+    ["budget_exhausted", "Search budget used up", "warn"],
+    ["no_progress", "Ran, stored no bucket", "warn"],
+    ["history_reading", "Reading history", ""],
+    ["no_interval_due", "No interval due", ""],
+    ["collecting", "Collecting", "ok"],
+  ] as const)("words the %s state as %s", (state, label, tone) => {
+    render(<WafSourcesTable sources={[ran({ state })]} />);
+    const pill = within(rowOf("lab-waf-behavior-01")).getByText(label);
+    if (tone) expect(pill).toHaveClass(tone);
+    else expect(pill).not.toHaveClass("ok", "warn", "crit");
+  });
+
+  it("shows when a busy or capacity-bound source was last skipped, in UTC", () => {
+    render(
+      <WafSourcesTable
+        sources={[ran({ state: "source_busy", skip_reason: "source_locked", skipped_at: "2026-10-13T08:55:00Z" })]}
+      />,
+    );
+    expect(within(rowOf("lab-waf-behavior-01")).getByText(/Skipped/)).toHaveTextContent(/UTC/);
+  });
+
+  it("keeps the latest bucket separate: an old bucket with a newer failure shows both", () => {
+    render(
+      <WafSourcesTable
+        sources={[ran({ state: "failed", last_failure_at: "2026-10-13T09:50:00Z", failure_stage: "evaluate" })]}
+      />,
+    );
+    const row = within(rowOf("lab-waf-behavior-01"));
+    expect(row.getByText(/97\.2 %/)).toBeInTheDocument();
+    expect(row.getByText("Last run failed")).toBeInTheDocument();
+  });
+
+  it("names collection and monitoring switches as the reason a source is not collected", () => {
+    render(
+      <WafSourcesTable
+        sources={[
+          wafSource({
+            log_source_id: "a",
+            log_source_name: "alpha",
+            collection: wafCollection({ state: "not_eligible", ineligible_code: "collection_disabled" }),
+          }),
+          wafSource({
+            log_source_id: "b",
+            log_source_name: "bravo",
+            collection: wafCollection({ state: "not_eligible", ineligible_code: "monitoring_disabled" }),
+          }),
+          wafSource({
+            log_source_id: "c",
+            log_source_name: "charlie",
+            validation_current: false,
+            collection: wafCollection({ state: "not_eligible", ineligible_code: "validation_stale" }),
+          }),
+        ]}
+      />,
+    );
+    expect(within(rowOf("alpha")).getByText("Collection is off")).toBeInTheDocument();
+    expect(within(rowOf("bravo")).getByText("Monitoring is off for this source")).toBeInTheDocument();
+    // Validation and profile columns carry the other reasons; the cell does not repeat them.
+    expect(within(rowOf("charlie")).getByText("Not collected")).toBeInTheDocument();
+    for (const name of ["alpha", "bravo", "charlie"]) {
+      expect(within(rowOf(name)).getAllByText("Not collected")).toHaveLength(1);
+    }
+  });
+
+  it("puts the Collection column between Validation and Coverage", () => {
+    render(<WafSourcesTable sources={[wafSource()]} />);
+    const heads = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(heads).toEqual([
+      "Source",
+      "Profile",
+      "Validation",
+      "Collection",
+      "Coverage (%)",
+      "Active endpoints",
+      "Overflow",
+    ]);
   });
 });
