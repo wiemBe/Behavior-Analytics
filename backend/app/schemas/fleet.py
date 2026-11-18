@@ -202,6 +202,21 @@ class FleetSourceRow(FleetSourceOut):
     waf_profile: ProfileState | None
     ips_profile: ProfileState | None
     identity_profile: ProfileState | None
+    # The log-source details (UIQ-7d): mirrored from QRadar, then the SOC-owned fields.
+    description: str | None
+    protocol_type_id: int | None
+    target_event_collector_id: int | None
+    credibility: int | None
+    qradar_status: str | None
+    qradar_created_at: datetime | None
+    qradar_modified_at: datetime | None
+    criticality: str
+    owner: str | None
+    monitoring_enabled: bool
+    maintenance_mode: bool
+    maintenance_until: datetime | None
+    # Every group name, by name, at most FLEET_ALL_GROUP_NAMES; `group_count` is the real number.
+    groups: list[str]
 
 
 class FacetCount(BaseModel):
@@ -227,6 +242,12 @@ class FleetSourceFacets(BaseModel):
     source_class: list[FacetCount]
     type: list[TypeFacetCount]
     group: list[GroupFacetCount]
+    criticality: list[FacetCount]
+    owner: list[FacetCount]
+    auto_discovered: list[FacetCount]
+    monitoring: list[FacetCount]
+    maintenance: list[FacetCount]
+    collector: list[FacetCount]
     flow: list[FacetCount]
     profile: list[FacetCount]
 

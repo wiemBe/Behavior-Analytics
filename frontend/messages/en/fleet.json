@@ -182,7 +182,15 @@
       "noType": "No type matches.",
       "untyped": "Type not recorded",
       "noOptions": "No values.",
-      "selected": "{count} selected"
+      "selected": "{count} selected",
+      "criticality": "Criticality",
+      "owner": "Owner",
+      "ownerSearch": "Find an owner",
+      "noOwner": "No owner matches.",
+      "collector": "Collector",
+      "autoDiscovered": "Auto-discovered",
+      "monitoring": "Monitoring",
+      "maintenance": "Maintenance"
     },
     "status": {
       "label": "QRadar status",
@@ -232,7 +240,13 @@
       "searchName": "search",
       "reviewName": "review status",
       "conflictName": "conflicts",
-      "basisName": "classification basis"
+      "basisName": "classification basis",
+      "criticality": "Criticality: {value}",
+      "owner": "Owner: {value}",
+      "collector": "Collector: {value}",
+      "auto_discovered": "Auto-discovered: {value}",
+      "monitoring": "Monitoring: {value}",
+      "maintenance": "Maintenance: {value}"
     },
     "table": {
       "label": "Log sources with class, flow, EPS and profiles",
@@ -330,6 +344,45 @@
       "emptyFilteredHint": "Filters set: {filters}.",
       "clearAll": "Clear all",
       "count": "{total} sources"
+    },
+    "criticality": {
+      "CRITICAL": "Critical",
+      "HIGH": "High",
+      "MEDIUM": "Medium",
+      "LOW": "Low"
+    },
+    "yesNo": {
+      "YES": "Yes",
+      "NO": "No"
+    },
+    "columns": {
+      "button": "Columns",
+      "description": "Description",
+      "protocol": "Protocol ID",
+      "collector": "Collector ID",
+      "credibility": "Credibility",
+      "auto": "Auto-discovered",
+      "status": "QRadar status",
+      "created": "Created (UTC)",
+      "modified": "Modified (UTC)",
+      "criticality": "Criticality",
+      "owner": "Owner",
+      "monitoring": "Monitoring",
+      "maintenance": "Maintenance until (UTC)"
+    },
+    "details": {
+      "open": "Details of {name}",
+      "close": "Close details of {name}",
+      "title": "Details",
+      "openSource": "Open source",
+      "groups": "Groups",
+      "profiles": "Profiles",
+      "class": "Class",
+      "on": "On",
+      "off": "Off",
+      "none": "None",
+      "missing": "Not recorded",
+      "maintenanceOn": "In maintenance"
     }
   },
   "sourceClass": {

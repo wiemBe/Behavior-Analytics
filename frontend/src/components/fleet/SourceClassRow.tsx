@@ -71,9 +71,14 @@ export function SourceClassRow({
     setError(null);
     try {
       const next = await fleetApi.setOverride(id, choice === CLEAR ? null : choice);
-      // The response carries no profile states, so keep the ones already read.
-      setRow((prev) => (prev ? { ...prev, ...next } : prev));
       setChoice("");
+      // Re-read the row so the profile link follows the new class; the 2xx already holds, so a
+      // failed re-read keeps the saved class and the profile states read before.
+      try {
+        setRow(await fleetApi.sourceClass(id));
+      } catch {
+        setRow((prev) => (prev ? { ...prev, ...next } : prev));
+      }
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 403
@@ -136,7 +141,7 @@ export function SourceClassRow({
         </div>
       )}
       {error && (
-        <p className="change-status error" role="alert">
+        <p className="change-status crit" role="alert">
           {error}
         </p>
       )}

@@ -31,7 +31,7 @@ from app.fleet.sources import (
     page_ids,
 )
 from app.fleet.summary import build_fleet_summary
-from app.models.enums import ClassificationReviewStatus, SourceClass
+from app.models.enums import ClassificationReviewStatus, Criticality, SourceClass
 from app.models.fleet import LogSourceClassification
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
@@ -123,6 +123,12 @@ def source_filters(
     source_class: Annotated[list[SourceClass] | None, Query(alias="class")] = None,
     type_id: Annotated[list[_Id32] | None, Query()] = None,
     group: Annotated[list[_Id32] | None, Query()] = None,
+    criticality: Annotated[list[Criticality] | None, Query()] = None,
+    owner: Annotated[list[Annotated[str, Field(max_length=255)]] | None, Query()] = None,
+    auto_discovered: Annotated[list[Literal["YES", "NO"]] | None, Query()] = None,
+    monitoring: Annotated[list[Literal["YES", "NO"]] | None, Query()] = None,
+    maintenance: Annotated[list[Literal["YES", "NO"]] | None, Query()] = None,
+    collector: Annotated[list[_Id32] | None, Query()] = None,
     flow: Annotated[list[FleetFlow] | None, Query()] = None,
     eps: Annotated[list[FleetEpsState] | None, Query()] = None,
     profile: Annotated[list[FleetProfileKind] | None, Query()] = None,
@@ -131,6 +137,7 @@ def source_filters(
     basis: ClassificationBasis | None = Query(default=None),
     q: str | None = Query(default=None, max_length=100),
     group_q: str | None = Query(default=None, max_length=100),
+    owner_q: str | None = Query(default=None, max_length=100),
 ) -> SourceFilters:
     """The list's filters, parsed once for the page and the CSV export alike."""
     return SourceFilters(
@@ -145,6 +152,13 @@ def source_filters(
         has_conflict=has_conflict,
         basis=basis,
         group_q=group_q,
+        owner_q=owner_q,
+        criticalities=list(dict.fromkeys(c.value for c in criticality or [])),
+        owners=list(dict.fromkeys(owner or [])),
+        auto_discovered=list(dict.fromkeys(auto_discovered or [])),
+        monitoring=list(dict.fromkeys(monitoring or [])),
+        maintenance=list(dict.fromkeys(maintenance or [])),
+        collectors=list(dict.fromkeys(collector or [])),
     )
 
 
@@ -203,6 +217,19 @@ SOURCE_EXPORT_COLUMNS = (
     "ips_profile",
     "identity_profile",
     "groups",
+    "description",
+    "protocol_type_id",
+    "target_event_collector_id",
+    "credibility",
+    "auto_discovered",
+    "qradar_status",
+    "qradar_created_at",
+    "qradar_modified_at",
+    "criticality",
+    "owner",
+    "monitoring_enabled",
+    "maintenance_mode",
+    "maintenance_until",
 )
 
 
@@ -219,7 +246,11 @@ def _export_row(r: FleetSourceRow) -> list[object]:
         csv_enum(r.review_status), r.enabled, r.flow, _csv_time(r.last_event_at),
         r.silent_for_seconds, r.current_eps, r.expected_eps, r.eps_state,
         _profile_cell(r.waf_profile), _profile_cell(r.ips_profile),
-        _profile_cell(r.identity_profile), "; ".join(r.group_names),
+        _profile_cell(r.identity_profile), "; ".join(r.groups),
+        r.description, r.protocol_type_id, r.target_event_collector_id, r.credibility,
+        r.auto_discovered, r.qradar_status, _csv_time(r.qradar_created_at),
+        _csv_time(r.qradar_modified_at), r.criticality, r.owner, r.monitoring_enabled,
+        r.maintenance_mode, _csv_time(r.maintenance_until),
     ]
 
 

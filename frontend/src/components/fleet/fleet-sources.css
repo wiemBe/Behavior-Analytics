@@ -334,3 +334,53 @@
   margin-left: var(--sp-2);
   vertical-align: baseline;
 }
+
+/* Optional columns and the row details. */
+.fs-table td.fs-clip {
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fs-expand {
+  width: 1%;
+  padding-right: 0;
+}
+.fs-expand-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+}
+.fs-expand-btn:hover {
+  color: var(--text);
+}
+.fs-expand-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.fs-details-row > td {
+  white-space: normal;
+  background: var(--surface-2);
+}
+.fs-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: var(--sp-3) var(--sp-5);
+  margin: 0 0 var(--sp-3);
+}
+.fs-details-grid dt {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.fs-details-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.fs-details-link {
+  font-size: var(--fs-sm);
+}

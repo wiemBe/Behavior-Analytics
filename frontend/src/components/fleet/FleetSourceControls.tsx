@@ -9,11 +9,15 @@ import { useTranslations } from "next-intl";
 import { asTextTranslator } from "@/i18n/textTranslator";
 import { useEffect, useId, useRef, useState } from "react";
 
-import { fleetApi, fleetSourcesCsvUrl, type FleetSourceFacets, type SourceClass } from "@/lib/api";
+import { fleetApi, fleetSourcesCsvUrl, type FleetSourceFacets, type SourceClass, type YesNo } from "@/lib/api";
 import { basisLabel, classLabel, reviewLabel } from "@/lib/fleet";
 import { useFleetText } from "@/lib/fleetText";
 import {
+  CRITICALITIES,
   EPS_STATES,
+  OPTIONAL_COLUMNS,
+  YES_NO,
+  type OptionalColumn,
   EXPORT_CAP,
   FLOWS,
   PAGE_SIZES,
@@ -124,7 +128,11 @@ const GROUP_SEARCH_MS = 250;
  * The group facet. Its search asks the API (`group_q`) so one group is findable among hundreds;
  * the list itself is not changed by it.
  */
-function useGroupFind(query: SourceListQuery, listed: Option[]): [string, (v: string) => void, Option[]] {
+function useRemoteFind(
+  query: SourceListQuery,
+  listed: Option[],
+  param: "group_q" | "owner_q",
+): [string, (v: string) => void, Option[]] {
   const [find, setFind] = useState("");
   const [found, setFound] = useState<Option[] | null>(null);
   const needle = find.trim();
@@ -136,9 +144,14 @@ function useGroupFind(query: SourceListQuery, listed: Option[]): [string, (v: st
     let live = true;
     const timer = setTimeout(() => {
       fleetApi
-        .sourceList({ ...toApiParams(query), group_q: needle, limit: 1, offset: 0 })
+        .sourceList({ ...toApiParams(query), [param]: needle, limit: 1, offset: 0 })
         .then((p) => {
-          if (live) setFound(p.facets.group.map((g) => ({ value: String(g.group_id), label: g.name, count: g.count })));
+          if (!live) return;
+          setFound(
+            param === "group_q"
+              ? p.facets.group.map((g) => ({ value: String(g.group_id), label: g.name, count: g.count }))
+              : p.facets.owner.map((o) => ({ value: o.value, label: o.value, count: o.count })),
+          );
         })
         .catch(() => {
           if (live) setFound([]);
@@ -235,7 +248,33 @@ export function FleetSourceControls({
     query.group.map(String),
     (v) => groupName(facets, Number(v)),
   );
-  const [groupFind, setGroupFind, groupOptions] = useGroupFind(query, groupListed);
+  const critOptions = withSelected(
+    CRITICALITIES.map((v) => ({
+      value: v,
+      label: t(`criticality.${v}`),
+      count: facets?.criticality.find((f) => f.value === v)?.count,
+    })),
+    query.criticality,
+    (v) => t(`criticality.${v}`),
+  );
+  const ownerListed = withSelected(
+    (facets?.owner ?? []).map((o) => ({ value: o.value, label: o.value, count: o.count })),
+    query.owner,
+    (v) => v,
+  );
+  const [ownerFind, setOwnerFind, ownerOptions] = useRemoteFind(query, ownerListed, "owner_q");
+  const collectorOptions = withSelected(
+    (facets?.collector ?? []).map((c) => ({ value: c.value, label: `#${c.value}`, count: c.count })),
+    query.collector.map(String),
+    (v) => `#${v}`,
+  );
+  const yesNoOptions = (family: "auto_discovered" | "monitoring" | "maintenance") =>
+    YES_NO.map((v) => ({
+      value: v,
+      label: t(`yesNo.${v}`),
+      count: facets?.[family].find((f) => f.value === v)?.count,
+    }));
+  const [groupFind, setGroupFind, groupOptions] = useRemoteFind(query, groupListed, "group_q");
   const flowOptions = withSelected(
     FLOWS.filter((v) => v !== DISABLED_FLOW && (facets?.flow.some((f) => f.value === v) ?? false)).map((v) => ({
       value: v,
@@ -262,6 +301,15 @@ export function FleetSourceControls({
     chips.push({ key: "status", label: t("chips.status", { value: t(`status.${status}`) }), next: changed(query, { flow: [] }) });
   for (const v of query.group)
     chips.push({ key: `group-${v}`, label: t("chips.group", { value: groupName(facets, v) }), next: changed(query, { group: toggled(query.group, v) }) });
+  for (const v of query.criticality)
+    chips.push({ key: `crit-${v}`, label: t("chips.criticality", { value: t(`criticality.${v}`) }), next: changed(query, { criticality: toggled(query.criticality, v) }) });
+  for (const v of query.owner)
+    chips.push({ key: `owner-${v}`, label: t("chips.owner", { value: v }), next: changed(query, { owner: toggled(query.owner, v) }) });
+  for (const v of query.collector)
+    chips.push({ key: `coll-${v}`, label: t("chips.collector", { value: `#${v}` }), next: changed(query, { collector: toggled(query.collector, v) }) });
+  for (const family of ["auto_discovered", "monitoring", "maintenance"] as const)
+    for (const v of query[family])
+      chips.push({ key: `${family}-${v}`, label: t(`chips.${family}`, { value: t(`yesNo.${v}`) }), next: changed(query, { [family]: toggled(query[family], v) }) });
   for (const v of flowSelected)
     chips.push({ key: `flow-${v}`, label: t("chips.flow", { value: t(`flow.${v}`) }), next: changed(query, { flow: toggled(query.flow, v) }) });
   for (const v of query.eps)
@@ -335,6 +383,50 @@ export function FleetSourceControls({
             onToggle={(v) => go(changed(query, { group: toggled(query.group, Number(v)) }))}
           />
           <Facet
+            name={t("facets.criticality")}
+            options={critOptions}
+            selected={query.criticality}
+            emptyText={t("facets.noOptions")}
+            onToggle={(v) => go(changed(query, { criticality: toggled(query.criticality, v) }))}
+          />
+          <Facet
+            name={t("facets.owner")}
+            options={ownerOptions}
+            selected={query.owner}
+            searchLabel={t("facets.ownerSearch")}
+            remoteFind={{ value: ownerFind, set: setOwnerFind }}
+            emptyText={t("facets.noOwner")}
+            onToggle={(v) => go(changed(query, { owner: toggled(query.owner, v) }))}
+          />
+          <Facet
+            name={t("facets.collector")}
+            options={collectorOptions}
+            selected={query.collector.map(String)}
+            emptyText={t("facets.noOptions")}
+            onToggle={(v) => go(changed(query, { collector: toggled(query.collector, Number(v)) }))}
+          />
+          <Facet
+            name={t("facets.autoDiscovered")}
+            options={yesNoOptions("auto_discovered")}
+            selected={query.auto_discovered}
+            emptyText={t("facets.noOptions")}
+            onToggle={(v) => go(changed(query, { auto_discovered: toggled(query.auto_discovered, v as YesNo) }))}
+          />
+          <Facet
+            name={t("facets.monitoring")}
+            options={yesNoOptions("monitoring")}
+            selected={query.monitoring}
+            emptyText={t("facets.noOptions")}
+            onToggle={(v) => go(changed(query, { monitoring: toggled(query.monitoring, v as YesNo) }))}
+          />
+          <Facet
+            name={t("facets.maintenance")}
+            options={yesNoOptions("maintenance")}
+            selected={query.maintenance}
+            emptyText={t("facets.noOptions")}
+            onToggle={(v) => go(changed(query, { maintenance: toggled(query.maintenance, v as YesNo) }))}
+          />
+          <Facet
             name={t("facets.flow")}
             options={flowOptions}
             selected={flowSelected}
@@ -358,6 +450,16 @@ export function FleetSourceControls({
             onToggle={(v) => go(changed(query, { profile: toggled(query.profile, v as (typeof PROFILE_KINDS)[number]) }))}
           />
         </div>
+        <Facet
+          name={t("columns.button")}
+          options={OPTIONAL_COLUMNS.map((c) => ({ value: c, label: t(`columns.${c}`) }))}
+          selected={query.cols}
+          emptyText={t("facets.noOptions")}
+          onToggle={(v) => {
+            const on = toggled(query.cols, v as OptionalColumn);
+            go({ ...query, cols: OPTIONAL_COLUMNS.filter((c) => on.includes(c)) }, "replace");
+          }}
+        />
         <label className="fs-perpage">
           <span className="muted">{t("pager.perPage")}</span>
           <select

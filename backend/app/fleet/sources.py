@@ -26,10 +26,12 @@ from sqlalchemy import (
     ColumnElement,
     Integer,
     Select,
+    String,
     and_,
     case,
     cast,
     exists,
+    false,
     func,
     literal,
     or_,
@@ -45,6 +47,7 @@ from app.models.enums import (
     AnomalyType,
     BucketCompleteness,
     ClassificationReviewStatus,
+    Criticality,
     SourceClass,
 )
 from app.models.fleet import LogSourceClassification, LogSourceGroup
@@ -68,6 +71,12 @@ FLEET_GROUP_NAMES = 5
 TYPE_FACET_LIMIT = 50
 #: Groups in the group facet, by count (selected groups are always included).
 GROUP_FACET_LIMIT = 50
+#: Owners and target event collectors in their facets, by count (selected ones always included).
+OWNER_FACET_LIMIT = 50
+COLLECTOR_FACET_LIMIT = 50
+#: Every group name on one row's details; `group_count` says how many there really are.
+FLEET_ALL_GROUP_NAMES = 50
+YES_NO = ("YES", "NO")
 #: How far back "current EPS" looks for a COMPLETE bucket.
 CURRENT_EPS_LOOKBACK = timedelta(hours=1)
 _INT32_MAX = 2**31 - 1
@@ -82,6 +91,12 @@ class SourceFilters:
     classes: list[SourceClass] = field(default_factory=list)
     type_ids: list[int] = field(default_factory=list)
     group_ids: list[int] = field(default_factory=list)
+    criticalities: list[str] = field(default_factory=list)
+    owners: list[str] = field(default_factory=list)
+    auto_discovered: list[str] = field(default_factory=list)
+    monitoring: list[str] = field(default_factory=list)
+    maintenance: list[str] = field(default_factory=list)
+    collectors: list[int] = field(default_factory=list)
     flows: list[str] = field(default_factory=list)
     eps: list[str] = field(default_factory=list)
     profiles: list[str] = field(default_factory=list)
@@ -91,6 +106,8 @@ class SourceFilters:
     ids: list[uuid.UUID] | None = None
     #: Narrows the group facet by name only; it never filters the list.
     group_q: str | None = None
+    #: Narrows the owner facet by name only; it never filters the list.
+    owner_q: str | None = None
 
 
 # --------------------------------------------------------------------------- columns
@@ -201,6 +218,16 @@ def _like_pattern(needle: str) -> str:
     return f"%{escaped}%"
 
 
+def _yes_no(column: Any, values: list[str]) -> ColumnElement[bool]:
+    """`YES` is true, `NO` is false; a null (unknown) matches neither."""
+    terms = []
+    if "YES" in values:
+        terms.append(column.is_(True))
+    if "NO" in values:
+        terms.append(column.is_(False))
+    return or_(*terms) if terms else false()
+
+
 def conditions(
     f: SourceFilters, eps: _Eps | None, *, skip: str | None = None
 ) -> list[ColumnElement[bool]]:
@@ -215,6 +242,18 @@ def conditions(
         out.append(LogSource.type_id.in_(f.type_ids))
     if f.group_ids and skip != "group":
         out.append(or_(*(LogSource.group_ids.contains([g]) for g in f.group_ids)))
+    if f.criticalities and skip != "criticality":
+        out.append(LogSource.criticality.in_(f.criticalities))
+    if f.owners and skip != "owner":
+        out.append(LogSource.owner.in_(f.owners))
+    if f.auto_discovered and skip != "auto_discovered":
+        out.append(_yes_no(LogSource.auto_discovered, f.auto_discovered))
+    if f.monitoring and skip != "monitoring":
+        out.append(_yes_no(LogSource.monitoring_enabled, f.monitoring))
+    if f.maintenance and skip != "maintenance":
+        out.append(_yes_no(LogSource.maintenance_mode, f.maintenance))
+    if f.collectors and skip != "collector":
+        out.append(LogSource.target_event_collector_id.in_(f.collectors))
     if f.flows and skip != "flow":
         out.append(_flow().in_(f.flows))
     if f.eps and eps is not None:
@@ -402,6 +441,19 @@ async def load_rows(
                 expected_eps_low=row.expected_low,
                 expected_eps_high=row.expected_high,
                 eps_state=row.eps_state,
+                description=ls.description,
+                protocol_type_id=ls.protocol_type_id,
+                target_event_collector_id=ls.target_event_collector_id,
+                credibility=ls.credibility,
+                qradar_status=ls.qradar_status,
+                qradar_created_at=ls.qradar_created_at,
+                qradar_modified_at=ls.qradar_modified_at,
+                criticality=str(ls.criticality),
+                owner=ls.owner,
+                monitoring_enabled=ls.monitoring_enabled,
+                maintenance_mode=ls.maintenance_mode,
+                maintenance_until=ls.maintenance_until,
+                groups=group_names[:FLEET_ALL_GROUP_NAMES],
                 waf_profile=_profile(row.waf_status, row.waf_enabled),
                 ips_profile=_profile(row.ips_status, row.ips_enabled),
                 identity_profile=_profile(row.identity_status, row.identity_enabled),
@@ -413,7 +465,12 @@ async def load_rows(
 async def build_facets(
     session: AsyncSession, f: SourceFilters, *, now: datetime, bucket_seconds: int
 ) -> FleetSourceFacets:
-    """Five grouped reads, one per family, each under every other active filter."""
+    """Eight grouped reads, each family under every other active filter.
+
+    Class, type, group, flow, profile, owner and collector are one grouped read each; the four
+    small families (criticality and the three yes/no flags) share one read of conditional
+    counts, so a page with facets runs a fixed twelve statements, however many sources match.
+    """
     eps = _Eps(now, bucket_seconds) if f.eps else None
 
     klass = _klass()
@@ -433,6 +490,13 @@ async def build_facets(
         )
     ).all()
     group_rows = await _group_facet(session, f, eps)
+    small = await _small_facets(session, f, eps)
+    owner_rows = await _value_facet(session, f, eps, "owner", LogSource.owner, f.owners, f.owner_q,
+                                    OWNER_FACET_LIMIT)
+    collector_rows = await _value_facet(
+        session, f, eps, "collector", LogSource.target_event_collector_id, f.collectors, None,
+        COLLECTOR_FACET_LIMIT,
+    )
     class_rows = await _group_by(session, f, eps, "class", klass)
     flow_rows = await _group_by(session, f, eps, "flow", flow)
     profile_stmt = _join(
@@ -452,6 +516,12 @@ async def build_facets(
         group=[
             GroupFacetCount(group_id=g, name=name or f"#{g}", count=n) for g, name, n in group_rows
         ],
+        criticality=small["criticality"],
+        owner=[FacetCount(value=str(v), count=n) for v, n in owner_rows],
+        auto_discovered=small["auto_discovered"],
+        monitoring=small["monitoring"],
+        maintenance=small["maintenance"],
+        collector=[FacetCount(value=str(v), count=n) for v, n in collector_rows],
         flow=[FacetCount(value=v, count=n) for v, n in flow_rows],
         profile=[
             FacetCount(value="NONE", count=p.none),
@@ -493,7 +563,8 @@ async def _group_facet(
     )
     needle = (f.group_q or "").strip()
     if needle:
-        stmt = stmt.where(LogSourceGroup.name.ilike(_like_pattern(needle), escape="\\"))
+        hit = LogSourceGroup.name.ilike(_like_pattern(needle), escape="\\")
+        stmt = stmt.where(or_(hit, gid.in_(f.group_ids)) if f.group_ids else hit)
     selected = case((gid.in_(f.group_ids), 0), else_=1) if f.group_ids else literal(1)
     stmt = (
         stmt.group_by(gid)
@@ -501,6 +572,63 @@ async def _group_facet(
         .limit(GROUP_FACET_LIMIT + len(f.group_ids))
     )
     return [(int(g), name, int(n)) for g, name, n in (await session.execute(stmt)).all()]
+
+
+async def _small_facets(
+    session: AsyncSession, f: SourceFilters, eps: _Eps | None
+) -> dict[str, list[FacetCount]]:
+    """Criticality and the yes/no flags in one statement: a FILTER count per value, each under
+    every other active filter."""
+    families: list[tuple[str, Any, list[str]]] = [
+        ("criticality", LogSource.criticality, [c.value for c in Criticality]),
+        ("auto_discovered", LogSource.auto_discovered, list(YES_NO)),
+        ("monitoring", LogSource.monitoring_enabled, list(YES_NO)),
+        ("maintenance", LogSource.maintenance_mode, list(YES_NO)),
+    ]
+    columns: list[Any] = []
+    index: list[tuple[str, str]] = []
+    for family, column, values in families:
+        base = and_(*conditions(f, eps, skip=family), true())
+        for value in values:
+            match = column == value if family == "criticality" else column.is_(value == "YES")
+            columns.append(func.count().filter(and_(base, match)))
+            index.append((family, value))
+    stmt = _join(select(*columns).select_from(LogSource), eps, profiles=bool(f.profiles))
+    counts = (await session.execute(stmt)).one()
+    out: dict[str, list[FacetCount]] = {name: [] for name, _c, _v in families}
+    for (family, value), n in zip(index, counts, strict=True):
+        out[family].append(FacetCount(value=value, count=int(n)))
+    return out
+
+
+async def _value_facet(
+    session: AsyncSession,
+    f: SourceFilters,
+    eps: _Eps | None,
+    family: str,
+    column: Any,
+    selected: list[Any],
+    q: str | None,
+    limit: int,
+) -> list[tuple[Any, int]]:
+    """The top values of one column by count under every other filter; the selected values are
+    always listed. `q` narrows by case-insensitive substring and never filters the list."""
+    stmt = _join(
+        select(column.label("v"), func.count().label("n")).select_from(LogSource),
+        eps,
+        profiles=bool(f.profiles),
+    ).where(*conditions(f, eps, skip=family), column.is_not(None))
+    needle = (q or "").strip()
+    if needle:
+        hit = cast(column, String).ilike(_like_pattern(needle), escape="\\")
+        stmt = stmt.where(or_(hit, column.in_(selected)) if selected else hit)
+    rank = case((column.in_(selected), 0), else_=1) if selected else literal(1)
+    stmt = (
+        stmt.group_by(column)
+        .order_by(rank, func.count().desc(), column)
+        .limit(limit + len(selected))
+    )
+    return [(v, int(n)) for v, n in (await session.execute(stmt)).all()]
 
 
 async def _group_by(

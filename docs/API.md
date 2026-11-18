@@ -255,11 +255,26 @@ Each item adds `identifier`, `type_id`, `group_names` (at most five) and `group_
 except its own family. `group` is `[{group_id, name, count}]`: the top 50 groups by count plus every
 selected group; the optional `group_q` (at most 100 characters, case-insensitive substring of the
 group name, LIKE wildcards literal) narrows only this facet and never the list. The request runs a
-constant number of statements: page ids, rows, group names, count and five facet reads (nine).
+constant number of statements: page ids, rows, group names, count and the facet reads.
 
 `GET /log-sources/{id}/classification` (`read:fleet` and the log-source read) returns one source in the
 list's row shape (class, `basis`, override fields, review status, WAF/IPS/identity profile states);
 404 for an unknown id. It reuses the list's row loader.
+
+UIQ-7d adds the log-source details to every row (`description`, `protocol_type_id` (the id; no name
+mapping exists), `target_event_collector_id`, `credibility`, `qradar_status`, `qradar_created_at`,
+`qradar_modified_at`, `criticality`, `owner`, `monitoring_enabled`, `maintenance_mode`,
+`maintenance_until`, and `groups`: every group name, at most 50) and these filters, repeatable and
+OR within one parameter: `criticality` (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), `owner` (exact name),
+`auto_discovered`, `monitoring`, `maintenance` (`YES` or `NO`; an unknown `auto_discovered` matches
+neither) and `collector` (target event collector id). `owner_q` narrows the owner facet by name only,
+like `group_q`. The facets gain `criticality`, `owner` (top 50 by count plus the selected), `auto_discovered`,
+`monitoring`, `maintenance` and `collector` (top 50), each under every other active filter. The four small
+families share one statement of conditional counts, so a page with facets stays at a fixed 12
+statements however many sources match.
+
+The CSV appends all fourteen detail columns after `groups` whatever columns the page shows (the file is the complete record; the
+column chooser only shapes the table). `groups` there is the full list.
 
 `GET /fleet/sources.csv` takes the same filters and sort, has no paging, and returns the first
 `api_max_export_rows` rows (`X-Export-Truncated: true` when cut). UTC timestamps; text cells that

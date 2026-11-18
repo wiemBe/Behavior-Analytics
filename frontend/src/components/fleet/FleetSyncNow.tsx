@@ -160,7 +160,7 @@ export function FleetSyncNow({ onFinished }: { onFinished: () => void }) {
         </p>
       )}
       {outcome.kind === "failed" && (
-        <p className="change-status error" role="alert">
+        <p className="change-status crit" role="alert">
           {t("failedNow", { names: outcome.names })}
         </p>
       )}
@@ -170,7 +170,7 @@ export function FleetSyncNow({ onFinished }: { onFinished: () => void }) {
         </p>
       )}
       {outcome.kind === "error" && (
-        <p className="change-status error" role="alert">
+        <p className="change-status crit" role="alert">
           {outcome.message}
         </p>
       )}

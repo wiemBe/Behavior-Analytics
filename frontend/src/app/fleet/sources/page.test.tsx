@@ -13,7 +13,7 @@ const empty: FleetSourcePage = {
   total: 0,
   limit: 50,
   offset: 0,
-  facets: { source_class: [], type: [], group: [], flow: [], profile: [] },
+  facets: { source_class: [], type: [], group: [], criticality: [], owner: [], auto_discovered: [], monitoring: [], maintenance: [], collector: [], flow: [], profile: [] },
 };
 
 async function renderPage(params: Record<string, string | string[]> = {}) {

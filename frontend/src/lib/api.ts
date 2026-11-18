@@ -3959,12 +3959,34 @@ export interface FleetSourceRow extends FleetSource {
   waf_profile: FleetProfileCell | null;
   ips_profile: FleetProfileCell | null;
   identity_profile: FleetProfileCell | null;
+  // The log-source details (UIQ-7d).
+  description: string | null;
+  protocol_type_id: number | null;
+  target_event_collector_id: number | null;
+  credibility: number | null;
+  qradar_status: string | null;
+  qradar_created_at: string | null;
+  qradar_modified_at: string | null;
+  criticality: string;
+  owner: string | null;
+  monitoring_enabled: boolean;
+  maintenance_mode: boolean;
+  maintenance_until: string | null;
+  groups: string[];
 }
+
+export type YesNo = "YES" | "NO";
 
 export interface FleetSourceFacets {
   source_class: { value: SourceClass; count: number }[];
   type: { type_id: number | null; name: string | null; count: number }[];
   group: { group_id: number; name: string; count: number }[];
+  criticality: { value: string; count: number }[];
+  owner: { value: string; count: number }[];
+  auto_discovered: { value: YesNo; count: number }[];
+  monitoring: { value: YesNo; count: number }[];
+  maintenance: { value: YesNo; count: number }[];
+  collector: { value: string; count: number }[];
   flow: { value: FleetFlow; count: number }[];
   profile: { value: FleetProfileKind; count: number }[];
 }
@@ -3980,6 +4002,14 @@ export interface FleetListParams {
   group?: number[];
   /** Narrows the group facet by name; never the list. */
   group_q?: string;
+  criticality?: string[];
+  owner?: string[];
+  /** Narrows the owner facet by name; never the list. */
+  owner_q?: string;
+  auto_discovered?: YesNo[];
+  monitoring?: YesNo[];
+  maintenance?: YesNo[];
+  collector?: number[];
   flow?: FleetFlow[];
   eps?: FleetEpsState[];
   profile?: FleetProfileKind[];
