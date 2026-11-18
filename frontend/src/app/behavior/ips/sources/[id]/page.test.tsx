@@ -108,13 +108,13 @@ describe("IPS source: header", () => {
       source: ipsSource({ latest_bucket: null, enabled: false, validation_current: false }),
     });
     expect(screen.getByText("No bucket collected yet")).toBeInTheDocument();
-    expect(screen.getByText(/This source is not collected/)).toBeInTheDocument();
+    expect(screen.getByText(/Not collected: the profile is disabled/)).toBeInTheDocument();
     expect(screen.getByText("Disabled")).toBeInTheDocument();
   });
 
   it("does not say the source is not collected when it is judged", async () => {
     await renderPage();
-    expect(screen.queryByText(/This source is not collected:/)).toBeNull();
+    expect(screen.queryByText(/Not collected: the profile is disabled/)).toBeNull();
   });
 });
 
@@ -123,7 +123,7 @@ describe("IPS source: the chart", () => {
     const { baselineCall, metricsCall } = await renderPage();
     expect(chart.last).toMatchObject({ unit: "events", quantity: "Total events", baseline: null });
     expect(baselineCall).not.toHaveBeenCalled();
-    expect(screen.getByText(/No expected range is drawn for total events/)).toBeInTheDocument();
+    expect(screen.getByText(/No expected range for total events/)).toBeInTheDocument();
     const { since, until } = metricsCall.mock.calls[0][1]!;
     expect((Date.parse(until!) - Date.parse(since!)) / 3600_000).toBeCloseTo(24, 5);
     expect(screen.getByRole("link", { name: "24 hours" })).toHaveAttribute("aria-current", "page");
@@ -148,7 +148,7 @@ describe("IPS source: the chart", () => {
       unit: "ports",
       baseline: { metric: "max_distinct_ports", pooled: false },
     });
-    expect(screen.queryByText(/No seasonal cell of this series is reliable yet/)).toBeNull();
+    expect(screen.queryByText(/No reliable baseline yet/)).toBeNull();
   });
 
   it("draws no band and says so when no cell is reliable", async () => {
@@ -157,7 +157,7 @@ describe("IPS source: the chart", () => {
       cells: [ipsCell({ metric_name: "max_distinct_ports", is_reliable: false })],
     });
     expect(chart.last).toMatchObject({ baseline: null });
-    expect(screen.getByText(/No seasonal cell of this series is reliable yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No reliable baseline yet/)).toBeInTheDocument();
     expect(screen.getByText("INSUFFICIENT_DATA.")).toBeInTheDocument();
   });
 
@@ -188,7 +188,7 @@ describe("IPS source: the chart", () => {
         searchParams: Promise.resolve({ series: "fanout" }),
       }),
     );
-    expect(screen.getByText(/could not be loaded, so no expected range is drawn/)).toBeInTheDocument();
+    expect(screen.getByText(/Baseline could not be loaded; no expected range is drawn/)).toBeInTheDocument();
     expect(chart.last).toMatchObject({ baseline: null });
   });
 
@@ -204,12 +204,12 @@ describe("IPS source: the chart", () => {
       ],
     });
     expect(screen.getByText("PARTIAL.")).toBeInTheDocument();
-    expect(screen.getByText(/1 of 1 stored buckets were not measured exactly/)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 1 buckets not measured exactly/)).toBeInTheDocument();
   });
 
   it("states a range with more buckets than were drawn", async () => {
     await renderPage({ metricsTotal: 9000 });
-    expect(screen.getByText(/Only 2 of 9,000 buckets in this range are drawn/)).toBeInTheDocument();
+    expect(screen.getByText(/Drawing 2 of 9,000 buckets/)).toBeInTheDocument();
   });
 
   it("asks for 7 days when the range says so, and falls back to 24 hours for a range it does not know", async () => {
@@ -226,7 +226,7 @@ describe("IPS source: the chart", () => {
   it("says no bucket was stored, not zero events, for an empty range", async () => {
     await renderPage({ buckets: [] });
     expect(screen.getByRole("status", { name: "" })).toBeTruthy();
-    expect(screen.getAllByText(/absence of collection, not an observation of zero events/)).toHaveLength(2);
+    expect(screen.getAllByText(/No bucket stored for this source in this range/)).toHaveLength(2);
     expect(screen.queryByText(/Action not mapped/)).toBeNull();
     expect(chart.last).toBeNull();
   });
@@ -262,7 +262,7 @@ describe("IPS source: action mix", () => {
     expect(table.getByText("Blocked").closest("tr")).toHaveTextContent("300");
     expect(table.getByText("Blocked").closest("tr")).toHaveTextContent("30.0");
     expect(table.getByText("Allowed").closest("tr")).toHaveTextContent("600");
-    expect(screen.getByText(/1 of 1 buckets in the range carried an action split/)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 1 buckets carried an action split/)).toBeInTheDocument();
   });
 
   it("says the action is not mapped, and draws no zeros, when the fields are null", async () => {
@@ -271,7 +271,7 @@ describe("IPS source: action mix", () => {
         ipsSourceBucket({ bucket_start: at(0), blocked_events: null, allowed_events: null, unmapped_events: null }),
       ],
     });
-    expect(screen.getByText(/Action not mapped on this source/)).toBeInTheDocument();
+    expect(screen.getByText(/Action not mapped, or not measured in this range/)).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: /Events by action/ })).toBeNull();
   });
 });
@@ -315,12 +315,12 @@ describe("IPS source: entities", () => {
   it("says what is empty and why: a collected source with no entity yet", async () => {
     await renderPage({ entities: [] });
     expect(screen.getByText("No entity is tracked for this source.")).toBeInTheDocument();
-    expect(screen.getByText(/None has been admitted yet, so no entity is being judged/)).toBeInTheDocument();
+    expect(screen.getByText(/No entity admitted yet/)).toBeInTheDocument();
   });
 
   it("says an uncollected source cannot track entities", async () => {
     await renderPage({ entities: [], source: ipsSource({ enabled: false }) });
-    expect(screen.getByText(/This source is not collected \(its profile is disabled/)).toBeInTheDocument();
+    expect(screen.getByText(/Source not collected; no entity is tracked/)).toBeInTheDocument();
   });
 
   it("names the empty dimension when a filter is on", async () => {
@@ -344,7 +344,7 @@ describe("IPS source: the single read and active anomalies", () => {
       "href",
       `/anomalies?subject_kind=IPS&log_source_id=${ID}&active_only=true`,
     );
-    expect(link.closest("p")).toHaveTextContent("Worst severity: HIGH");
+    expect(link.closest("p")).toHaveTextContent("worst severity HIGH");
   });
 
   it("uses the singular for one active anomaly", async () => {
@@ -362,7 +362,7 @@ describe("IPS source: the single read and active anomalies", () => {
       source: ipsSource({ active_anomaly_count: null, enabled: true, validation_current: false }),
     });
     expect(screen.queryByRole("link", { name: /active anomal/ })).toBeNull();
-    expect(screen.getByText(/This source is not collected/)).toBeInTheDocument();
+    expect(screen.getByText(/Not collected: the profile is disabled/)).toBeInTheDocument();
   });
 });
 
@@ -421,7 +421,7 @@ describe("IPS source: failures", () => {
     render(await IpsSourcePage({ params: Promise.resolve({ id: ID }), searchParams: Promise.resolve({}) }));
     const alert = screen.getByRole("alert");
     expect(alert.querySelector("strong")).toHaveTextContent("IPS source not found.");
-    expect(alert).toHaveTextContent("No log source with an enabled IPS behavior profile has this id on this console.");
+    expect(alert).toHaveTextContent("No enabled IPS profile has this id on this console.");
     expect(alert).not.toHaveTextContent("does not exist");
     expect(alert.textContent?.match(/IPS source not found/g)).toHaveLength(1);
     expect(screen.getByRole("link", { name: "Open IPS behavior" })).toHaveAttribute("href", "/behavior/ips");
@@ -438,7 +438,7 @@ describe("IPS source: failures", () => {
     await failing(0);
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("This IPS source could not be loaded.");
-    expect(alert).toHaveTextContent(/backend may be unreachable/);
+    expect(alert).toHaveTextContent(/check that the backend is reachable/);
     expect(alert).not.toHaveTextContent("ECONNREFUSED");
   });
 
@@ -447,7 +447,7 @@ describe("IPS source: failures", () => {
     vi.spyOn(api, "ipsBehaviorEntities").mockResolvedValue({ items: [ipsEntity()], total: 1, limit: 50, offset: 0 });
     vi.spyOn(api, "ipsSourceMetrics").mockRejectedValue(new Error("down"));
     render(await IpsSourcePage({ params: Promise.resolve({ id: ID }), searchParams: Promise.resolve({}) }));
-    expect(screen.getAllByText(/could not be loaded. The rest of the page is unaffected/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/The measurement history could not be loaded/).length).toBeGreaterThan(0);
     expect(screen.getByText("Destination port 445/tcp")).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: /Events by action/ })).toBeNull();
   });

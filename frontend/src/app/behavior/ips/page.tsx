@@ -71,7 +71,6 @@ async function IpsBehaviorPage({
       <PageHeader
         guide={guideFor("/behavior/ips")}
         title={t("title")}
-        description={t("description")}
       />
 
       {error ? (
@@ -98,16 +97,12 @@ async function IpsBehaviorPage({
               pages: paginated ? "page" : "one",
               num: (chunks) => <strong className="num">{chunks}</strong>,
             })}
-            {withActive > 0 && (
-              <>
-                {" "}
-                {t.rich("leadActive", {
-                  active: count(withActive),
-                  plural: withActive,
-                  num: (chunks) => <strong className="num">{chunks}</strong>,
-                })}
-              </>
-            )}
+            {withActive > 0 &&
+              t.rich("leadActive", {
+                active: count(withActive),
+                num: (chunks) => <strong className="num">{chunks}</strong>,
+              })}
+            .
           </p>
 
           <div className="ips-sources">

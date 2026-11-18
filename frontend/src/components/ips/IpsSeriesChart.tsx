@@ -558,7 +558,7 @@ export function IpsSeriesChart({
           </li>
         )}
       </ul>
-      <p className="subtitle chart-note">
+      <p className="sr-only">
         {t("ips.chart.noteGaps", {
           zero:
             unit === "share"

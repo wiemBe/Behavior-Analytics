@@ -44,7 +44,6 @@ async function IpsSourcesPage() {
       <PageHeader
         guide={guideFor("/admin/ips-sources")}
         title={t("title")}
-        description={t("description")}
         actions={error ? null : <AddIpsSourcePicker instanceId={instanceId} />}
       />
 

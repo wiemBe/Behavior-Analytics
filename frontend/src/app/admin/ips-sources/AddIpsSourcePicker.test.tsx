@@ -56,9 +56,9 @@ describe("AddIpsSourcePicker", () => {
     const user = userEvent.setup();
     render(<AddIpsSourcePicker instanceId="inst-1" defaultOpen />);
     await user.type(screen.getByLabelText("Name, type, identifier or QRadar ID"), "zzz");
-    const empty = await screen.findByText(/matches “zzz” in its name, type, identifier or QRadar ID/);
-    expect(empty).toHaveTextContent(/not synced yet appears after the next inventory/);
-    expect(screen.getByRole("link", { name: "Open the log source inventory" })).toHaveAttribute(
+    const empty = await screen.findByText(/No log source matches “zzz”/);
+    expect(empty).not.toHaveTextContent(/not synced yet/);
+    expect(screen.getByRole("link", { name: "Open inventory" })).toHaveAttribute(
       "href",
       "/log-sources",
     );
@@ -101,7 +101,7 @@ describe("AddIpsSourcePicker", () => {
     );
     vi.spyOn(ipsApi, "candidates").mockResolvedValue(full);
     render(<AddIpsSourcePicker instanceId="inst-1" defaultOpen />);
-    expect(await screen.findByText("Showing the first 50. Narrow the search to see others.")).toBeInTheDocument();
+    expect(await screen.findByText("Showing the first 50. Narrow the search.")).toBeInTheDocument();
   });
 
   it("does not note a cap below a full page", async () => {
@@ -134,7 +134,7 @@ describe("AddIpsSourcePicker", () => {
   it("says so, and asks nothing, when no QRadar instance is known", () => {
     const spy = vi.spyOn(ipsApi, "candidates");
     render(<AddIpsSourcePicker instanceId={null} defaultOpen />);
-    expect(screen.getByRole("alert")).toHaveTextContent(/no QRadar instance is known/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/No QRadar instance known yet/);
     expect(screen.queryByLabelText("Name, type, identifier or QRadar ID")).not.toBeInTheDocument();
     expect(spy).not.toHaveBeenCalled();
   });

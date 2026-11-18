@@ -188,7 +188,7 @@ describe("IPS investigation: states", () => {
       ]),
     );
     expect(screen.getByText(/PARTIAL\./)).toBeInTheDocument();
-    expect(screen.getByText(/2 of 3 stored buckets were not measured exactly/)).toBeInTheDocument();
+    expect(screen.getByText(/2 of 3 buckets not measured exactly/)).toBeInTheDocument();
   });
 
   it("says TRUNCATED when admission lost entities", () => {

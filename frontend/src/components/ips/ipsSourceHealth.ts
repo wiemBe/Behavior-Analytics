@@ -38,7 +38,7 @@ export function ipsValidationView(
     i18n.t(`ips.bvalidation.${key}`, values);
   const version = String(s.profile_version);
   if (s.validation_status === "VALID" && s.validation_current) {
-    return { label: labelOf(i18n, "VALID"), tone: "ok", detail: say("forProfile", { version }) };
+    return { label: labelOf(i18n, "VALID"), tone: "ok", detail: "" };
   }
   if (s.validation_status === "VALID") {
     // Valid once, for an older mapping. Not collected until validated again.
@@ -53,9 +53,9 @@ export function ipsValidationView(
   }
   switch (s.validation_status) {
     case "INVALID":
-      return { label: labelOf(i18n, "INVALID"), tone: "crit", detail: say("forProfile", { version }) };
+      return { label: labelOf(i18n, "INVALID"), tone: "crit", detail: "" };
     case "INCONCLUSIVE":
-      return { label: labelOf(i18n, "INCONCLUSIVE"), tone: "warn", detail: say("forProfile", { version }) };
+      return { label: labelOf(i18n, "INCONCLUSIVE"), tone: "warn", detail: "" };
     case "UNVALIDATED":
       return { label: labelOf(i18n, "UNVALIDATED"), tone: "", detail: say("neverValidated", { version }) };
     default:

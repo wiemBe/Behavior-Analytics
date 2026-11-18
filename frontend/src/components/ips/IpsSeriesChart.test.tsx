@@ -88,7 +88,7 @@ describe("IpsSeriesChart", () => {
     chart([ipsEntityBucket({ bucket_start: T(0) }), ipsEntityBucket({ bucket_start: T(25) })]);
     expect(series("Events").data.map((d) => d[1])).toEqual([120, null, 120]);
     expect(series("Events").markArea?.data.length).toBeGreaterThan(0);
-    expect(screen.getByText("Not stored, not measured or not exact")).toBeInTheDocument();
+    expect(screen.getByText("Gap")).toBeInTheDocument();
   });
 
   it("draws the expected range as one stacked band plus one dashed line, not as three lines", () => {
@@ -122,9 +122,9 @@ describe("IpsSeriesChart", () => {
         cells: [ipsCell({ hour: 9 }), ipsCell({ hour: 10, is_reliable: false })],
       },
     });
-    const band = series("Expected range (seasonal p05–p95)");
+    const band = series("Expected range (p05–p95)");
     expect(band.data.map((d) => d[1])).toEqual([140, null]);
-    expect(series("Expected (seasonal cell)").data.map((d) => d[1])).toEqual([120, null]);
+    expect(series("Expected").data.map((d) => d[1])).toEqual([120, null]);
   });
 
   it("plots a share in percent and names the unit on the axis", () => {

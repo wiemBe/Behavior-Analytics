@@ -213,7 +213,7 @@ describe("IpsProfileEditor: creating from a preset", () => {
     const group = screen.getByRole("group", { name: "Start from a preset" });
     expect(within(group).getByRole("radio", { name: "Cisco Firepower Threat Defense" })).toBeInTheDocument();
     expect(within(group).getByRole("radio", { name: "Palo Alto THREAT" })).toBeInTheDocument();
-    expect(group).toHaveTextContent(/still has to validate/);
+    expect(group).not.toHaveTextContent(/still has to validate/);
     expect(screen.getByText("No IPS profile", { exact: false })).toBeInTheDocument();
   });
 
@@ -241,7 +241,7 @@ describe("IpsProfileEditor: creating from a preset", () => {
     await user.click(screen.getByRole("button", { name: "Review and create" }));
     const dialog = screen.getByRole("region", { name: "Confirm the change" });
     expect(dialog).toHaveTextContent("disabled");
-    expect(dialog).toHaveTextContent(/only filled in defaults; they are validated/);
+    expect(dialog).not.toHaveTextContent(/only filled in defaults/);
     await user.click(within(dialog).getByRole("button", { name: "Create profile" }));
     expect(save).toHaveBeenCalledWith(
       "ls-413",
@@ -259,9 +259,9 @@ describe("IpsProfileEditor: creating from a preset", () => {
   it("explains that Action is unmapped by default, and why", () => {
     create();
     const note = screen.getByText(/Action is not mapped/);
-    expect(note.parentElement).toHaveTextContent(/Neither Cisco Firepower Threat Defense nor Palo Alto THREAT exposes an action/);
+    expect(note.parentElement).not.toHaveTextContent(/Neither Cisco Firepower Threat Defense/);
     expect(note.parentElement).toHaveTextContent(/block ratio cannot be judged/);
-    expect(note.parentElement).toHaveTextContent(/never as no blocks/);
+    expect(note.parentElement).toHaveTextContent(/never no blocks/);
   });
 
   it("returns to the schema defaults for no preset", async () => {
@@ -325,9 +325,9 @@ describe("IpsProfileEditor: the Action value map", () => {
     // One banner, saying both facts once.
     const banners = within(section).getAllByRole("status");
     expect(banners).toHaveLength(1);
-    expect(banners[0]).toHaveTextContent(/at most 20 action values/);
-    expect(banners[0]).toHaveTextContent(/last validation was inconclusive/);
-    expect(banners[0]).toHaveTextContent(/never as allowed/);
+    expect(banners[0]).toHaveTextContent(/only 20 action values are listed/i);
+    expect(banners[0]).toHaveTextContent(/unlisted ones count as unmapped/);
+    expect(banners[0]).toHaveTextContent(/never allowed/);
     expect(within(section).queryByText(/List truncated/)).not.toBeInTheDocument();
   });
 
@@ -560,7 +560,7 @@ describe("IpsProfileEditor: validation requests", () => {
     });
     const section = screen.getByRole("region", { name: "Validation" });
     expect(section).toHaveTextContent(/did not run: another job held this source/);
-    expect(section).toHaveTextContent(/nothing was changed/);
+    expect(section).toHaveTextContent(/The result below is the previous one/);
     // The previous result is still the one shown.
     expect(screen.getByText("Valid (v2)")).toBeInTheDocument();
     const history = screen.getByRole("region", { name: "History" });
