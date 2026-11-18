@@ -192,7 +192,6 @@ export function ValidationReport({
                   <th scope="col">{t("result")}</th>
                   <th scope="col" className="num">
                     {t("populated")}
-                    <span className="cell-sub">{t("ofEvents")}</span>
                   </th>
                   {showDistinct && (
                     <th scope="col" className="num">
@@ -202,7 +201,6 @@ export function ValidationReport({
                   {showPlausible && (
                     <th scope="col" className="num">
                       {t("plausible")}
-                      <span className="cell-sub">{t("ofSampled")}</span>
                     </th>
                   )}
                 </tr>
@@ -231,7 +229,7 @@ export function ValidationReport({
                         <span className={`pill pill-quiet ${info.tone === "neutral" ? "" : info.tone}`}>
                           {info.label}
                         </span>
-                        <span className="cell-sub fm-sentence">{info.sentence}</span>
+                        {info.sentence && <span className="cell-sub fm-sentence">{info.sentence}</span>}
                         {f.detail && (
                           <span className="cell-sub fm-sentence">
                             {backendMessage({

@@ -24,12 +24,14 @@ describe("search cadence page", () => {
   it("keeps the time zone and the missing-measurement rules after the d40 text cut", async () => {
     vi.spyOn(api, "searchCadence").mockResolvedValue([item()]);
     render(await SearchCadencePage());
-    expect(screen.getByText("Times are UTC.")).toBeInTheDocument();
-    expect(screen.getByText("Cadence changes when a family searches, not its bucket width.")).toBeInTheDocument();
-    expect(screen.getByText("Bucket width is the span of one stored bucket, not how often the family searches; a dash means the family has no buckets.")).toBeInTheDocument();
-    expect(
-      screen.getByText("“Not run since upgrade” and “Not counted” are missing measurements, not zero."),
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Times are UTC.")).not.toBeInTheDocument(); // the header says only the title (UIQ-8a)
+    // The how-to-read footnotes left the page for the Guide; the missing measurements stay
+    // distinguishable in the cells themselves.
+    expect(screen.queryByText(/Cadence changes when a family searches/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bucket width is the span of one stored bucket/)).not.toBeInTheDocument();
+    expect(screen.getByText("Not run since upgrade")).toBeInTheDocument();
+    expect(screen.getByText("No run yet")).toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
   it("has exactly one h1 and names the question in its description", async () => {

@@ -323,7 +323,7 @@ describe("IpsProfileEditor: the Action value map", () => {
     expect(banners[0]).toHaveTextContent(/at most 20 action values/);
     expect(banners[0]).toHaveTextContent(/last validation was inconclusive/);
     expect(banners[0]).toHaveTextContent(/never as allowed/);
-    expect(within(section).queryByText(/This list is truncated/)).not.toBeInTheDocument();
+    expect(within(section).queryByText(/List truncated/)).not.toBeInTheDocument();
   });
 
   it("does not call the validation inconclusive when it was not", () => {
@@ -338,7 +338,7 @@ describe("IpsProfileEditor: the Action value map", () => {
     const section = screen.getByRole("region", { name: "Action values" });
     expect(section).not.toHaveTextContent(/inconclusive/);
     expect(within(section).getAllByRole("status")).toHaveLength(1);
-    expect(within(section).getByText(/This list is truncated/)).toBeInTheDocument();
+    expect(within(section).getByText(/List truncated/)).toBeInTheDocument();
   });
 
   it("does not tie a truncated list to inconclusive when the result is another version's", () => {
@@ -349,7 +349,7 @@ describe("IpsProfileEditor: the Action value map", () => {
     const section = screen.getByRole("region", { name: "Action values" });
     expect(section).not.toHaveTextContent(/inconclusive/);
     expect(within(section).getAllByRole("status")).toHaveLength(1);
-    expect(within(section).getByText(/This list is truncated/)).toBeInTheDocument();
+    expect(within(section).getByText(/List truncated/)).toBeInTheDocument();
   });
 });
 
@@ -484,7 +484,7 @@ describe("IpsProfileEditor: the validation report", () => {
         collection_eligible: false,
       }),
     });
-    expect(screen.getByText(/Version 1 has not been validated, so there is no report/)).toBeInTheDocument();
+    expect(screen.getByText(/No validation report for version 1/)).toBeInTheDocument();
   });
 });
 
@@ -686,13 +686,13 @@ describe("IpsProfileEditor: errors", () => {
 
   it("says an empty history is empty", () => {
     editor({ history: [] });
-    expect(screen.getByText(/No changes are recorded for this profile yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No changes recorded yet/)).toBeInTheDocument();
   });
 
   it("degrades to free text when the property list is unavailable, and says why", async () => {
     const user = userEvent.setup();
     editor({ catalog: null });
-    expect(screen.getByText(/The property list is unavailable/)).toBeInTheDocument();
+    expect(screen.getByText(/Property list unavailable/)).toBeInTheDocument();
     await user.click(within(kindGroup("Signature")).getByRole("radio", { name: "Custom property" }));
     expect(screen.getByRole("combobox", { name: /signature property/i })).toBeInTheDocument();
   });
@@ -733,7 +733,7 @@ describe("IpsProfileEditor: collection", () => {
       profile: notValid({ validation_pending: true, validation_requested_at: "2026-10-13T09:10:00Z" }),
     });
     expect(screen.getByRole("button", { name: "Enable collection" })).toBeDisabled();
-    expect(screen.getByText(/still being validated/)).toBeInTheDocument();
+    expect(screen.getByText(/is validating/)).toBeInTheDocument();
   });
 
   it("enables a valid version", async () => {
@@ -782,6 +782,6 @@ describe("IpsProfileEditor: history", () => {
     expect(history).toHaveTextContent("Validated");
     expect(history).toHaveTextContent("Mapping changed");
     expect(history).toHaveTextContent("Signature: PAN_ThreatID (custom property) → qid");
-    expect(history).toHaveTextContent("Times are UTC");
+    expect(history).toHaveTextContent("Time (UTC)"); // the column says UTC; the caption no longer repeats it
   });
 });

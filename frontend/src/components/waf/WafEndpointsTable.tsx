@@ -9,7 +9,7 @@ import { Fragment } from "react";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { WafEndpointInventory } from "@/lib/api";
-import { formatCount, stateTone } from "@/lib/behavior";
+import { NOT_MEASURED, formatCount, stateTone } from "@/lib/behavior";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
@@ -49,18 +49,16 @@ function BaselineCell({ e }: { e: WafEndpointInventory }) {
   return (
     <>
       {total === 0 ? (
-        <span>{t("noCells")}</span>
+        <span className="muted" title={t("noBaseline")}>
+          {NOT_MEASURED}
+          <span className="sr-only"> {t("noBaseline")}</span>
+        </span>
       ) : (
-        <>{t("reliableOfTotal", { reliable: formatCount(reliable, locale), total: formatCount(total, locale) })}</>
+        <span title={reliable === 0 ? t("noneReliable") : undefined}>
+          {t("reliableOfTotal", { reliable: formatCount(reliable, locale), total: formatCount(total, locale) })}
+        </span>
       )}
-      <span className="cell-sub">
-        {total === 0
-          ? t("noBaseline")
-          : reliable === 0
-            ? t("noneReliable")
-            : t("reliableCells")}
-      </span>
-      {e.baseline_rebuilt_at ? (
+      {total === 0 ? null : e.baseline_rebuilt_at ? (
         <span className="cell-sub">
           {t.rich("rebuilt", { time: () => <Utc value={e.baseline_rebuilt_at as string} /> })}
         </span>
@@ -84,7 +82,6 @@ export function WafEndpointsTable({ endpoints }: { endpoints: WafEndpointInvento
             <th scope="col">{t("endpoint")}</th>
             <th scope="col" className="num">
               {t("baselineCells")}
-              <span className="cell-sub">{t("reliableTotal")}</span>
             </th>
             <th scope="col" className="num">
               {t("lastSeen")}
@@ -98,12 +95,7 @@ export function WafEndpointsTable({ endpoints }: { endpoints: WafEndpointInvento
             <tr key={e.id}>
               <td className="cell-name">
                 <span className="waf-endpoint"><PathLabel text={endpointLabel(e)} /></span>
-                {e.virtual_host && (
-                  <span className="cell-sub">{t("virtualHost", { host: e.virtual_host })}</span>
-                )}
-                <span className="cell-sub">
-                  {t("normalizer", { version: String(e.normalizer_version) })}
-                </span>
+                {e.virtual_host && <span className="cell-sub">{e.virtual_host}</span>}
               </td>
               <td className="num">
                 <BaselineCell e={e} />
@@ -126,10 +118,9 @@ export function WafEndpointsTable({ endpoints }: { endpoints: WafEndpointInvento
                   t("active")
                 ) : (
                   // Inactive without a retirement time: not tracked, reason not recorded.
-                  <>
-                    <span className="pill pill-quiet">{t("inactive")}</span>
-                    <span className="cell-sub">{t("retirementNotRecorded")}</span>
-                  </>
+                  <span className="pill pill-quiet" title={t("retirementNotRecorded")}>
+                    {t("inactive")}
+                  </span>
                 )}
               </td>
               <td>
@@ -138,10 +129,9 @@ export function WafEndpointsTable({ endpoints }: { endpoints: WafEndpointInvento
                     {statePillText(e.state, i18n)}
                   </span>
                 ) : (
-                  <>
-                    <span className="muted">{t("notEvaluated")}</span>
-                    <span className="cell-sub">{t("noDetector")}</span>
-                  </>
+                  <span className="muted" title={t("noDetector")}>
+                    {t("notEvaluated")}
+                  </span>
                 )}
                 {e.active_anomaly_count > 0 && (
                   <span className="cell-sub">

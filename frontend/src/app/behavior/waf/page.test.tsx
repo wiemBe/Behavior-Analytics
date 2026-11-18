@@ -35,10 +35,12 @@ async function renderPage(
 describe("WAF behavior: composition", () => {
   it("keeps the time zone and the not-overflow reading after the d40 text cut", async () => {
     await renderPage();
-    expect(screen.getByText("Times are UTC.")).toBeInTheDocument();
-    expect(document.body.textContent).toContain(
-      "Below admission threshold is low-volume noise, not overflow.",
-    );
+    // The header says only the title; the range line carries its own UTC times and the
+    // definitions moved to the Guide (UIQ-8a).
+    expect(screen.queryByText("Times are UTC.")).not.toBeInTheDocument();
+    expect(document.body.textContent).toContain("UTC");
+    expect(document.body.textContent).not.toContain("Below admission threshold is low-volume noise");
+    expect(document.body.textContent).not.toContain("A key-bucket is one endpoint key");
     expect(document.body.textContent).not.toContain("Refused over quota means");
   });
 
@@ -50,7 +52,7 @@ describe("WAF behavior: composition", () => {
     expect(container.querySelectorAll("h1")).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("WAF behavior");
     expect(screen.getByText("1 of 2")).toBeInTheDocument();
-    expect(screen.getByText(/the others produce no verdicts/)).toBeInTheDocument();
+    expect(screen.getByText(/sources judged/)).toBeInTheDocument();
   });
 
   it("states the range overflow covers, in UTC", async () => {
@@ -104,7 +106,8 @@ describe("WAF behavior: source states", () => {
   it("shows a source with null coverage as unmeasured, not as 0%", async () => {
     await renderPage([wafSource({ latest_bucket: null })]);
     const row = within(screen.getByRole("link", { name: "lab-waf-behavior-01" }).closest("tr")!);
-    expect(row.getByText("No bucket collected yet")).toBeInTheDocument();
+    // The cell is a dash that names the state; the one-line summary above the table is pinned in WafSourcesTable.test.
+    expect(row.getByText(/no bucket has been collected/)).toBeInTheDocument();
     expect(row.queryByText(/%/)).not.toBeInTheDocument();
   });
 });
@@ -113,7 +116,7 @@ describe("WAF behavior: empty and failed", () => {
   it("says what is empty and why, and that empty is not normal", async () => {
     await renderPage([]);
     expect(screen.getByRole("status")).toHaveTextContent(/No WAF source has a behavior profile/);
-    expect(screen.getByRole("status")).toHaveTextContent(/not a statement that WAF traffic is normal/);
+    expect(screen.getByRole("status")).toHaveTextContent(/Nothing is collected or judged/);
   });
 
   it("says what failed and what to do on an outage, without the exception text", async () => {
@@ -121,7 +124,7 @@ describe("WAF behavior: empty and failed", () => {
     render(await WafBehaviorPage({ searchParams: Promise.resolve({}) }));
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent(/could not be loaded/);
-    expect(alert).toHaveTextContent(/check that it is running/);
+    expect(alert).toHaveTextContent(/Check the backend/);
     expect(alert.textContent).not.toContain("ECONNREFUSED");
   });
 
@@ -164,7 +167,7 @@ describe("WAF behavior: headline", () => {
   it("writes 'valid' in lower case inside the sentence", async () => {
     await renderPage();
     const lead = document.querySelector(".waf-lead") as HTMLElement;
-    expect(lead).toHaveTextContent("collected and judged; the others produce no verdicts");
+    expect(lead).toHaveTextContent("1 of 1 source judged");
     expect(lead).not.toHaveTextContent("VALID");
   });
 });

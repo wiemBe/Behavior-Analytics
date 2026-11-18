@@ -105,7 +105,7 @@ describe("ProfileEditor: saving a change", () => {
       "URL path: URL → request_uri",
     );
     expect(dialog).toHaveTextContent(
-      "Collection from this source pauses until version 5 validates. Validation starts now and runs a few bounded searches against QRadar.",
+      "Collection pauses until version 5 validates.",
     );
     expect(save).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -132,7 +132,7 @@ describe("ProfileEditor: saving a change", () => {
       expected_profile_version: 4,
       mapping: expect.objectContaining({ URL: "request_uri", VIRTUAL_HOST: null }),
     }));
-    expect(await screen.findByText(/Saved as version 5\. Collection is paused/)).toBeInTheDocument();
+    expect(await screen.findByText(/Saved as version 5; collection paused/)).toBeInTheDocument();
     expect(screen.getByText(/Validating version 5/)).toHaveTextContent("since 00:10 UTC");
     expect(screen.getByText("Validating v5…")).toBeInTheDocument();
     expect(screen.getByText("No unsaved changes.")).toBeInTheDocument();
@@ -170,11 +170,11 @@ describe("ProfileEditor: saving a change", () => {
     await user.type(label, "New label");
     await user.click(screen.getByRole("button", { name: "Review and save" }));
     const dialog = screen.getByRole("region", { name: "Confirm the change" });
-    expect(dialog).toHaveTextContent(/only the product label changes/i);
+    expect(dialog).toHaveTextContent(/version and validation are unchanged/i);
     expect(dialog).not.toHaveTextContent(/pauses until/i);
     await user.click(within(dialog).getByRole("button", { name: "Save label" }));
     expect(save).toHaveBeenCalledOnce();
-    expect(await screen.findByText(/label change only/i)).toBeInTheDocument();
+    expect(await screen.findByText(/label saved/i)).toBeInTheDocument();
   });
 
   it("keeps the edits and names the newer version on a 409", async () => {
@@ -202,7 +202,7 @@ describe("ProfileEditor: saving a change", () => {
     await user.click(screen.getByRole("button", { name: "Review and save" }));
     await user.click(screen.getByRole("button", { name: "Save as version 5" }));
     await user.click(await screen.findByRole("button", { name: "Reload their version" }));
-    expect(await screen.findByText(/Loaded version 5\. Your edits are still in the form/)).toBeInTheDocument();
+    expect(await screen.findByText(/Loaded version 5\. Your edits are kept/)).toBeInTheDocument();
     expect(screen.queryByText(/changed to version 5 while you were editing/)).not.toBeInTheDocument();
     expect(input(/url path property/i)).toHaveValue("request_uri");
     // The form is diffed against their version now: METHOD differs from the draft.
@@ -420,7 +420,7 @@ describe("ProfileEditor: action values", () => {
         },
       }),
     });
-    expect(screen.getByText(/this list is truncated/i)).toHaveTextContent(/never as allowed/);
+    expect(screen.getByText(/list truncated/i)).toHaveTextContent(/never allowed/);
   });
 
   it("explains values counted under an older property", () => {
@@ -431,7 +431,7 @@ describe("ProfileEditor: action values", () => {
         validation: { ...base, fields: base.fields.map((f) => (f.field === "ACTION" ? { ...f, property_name: "WAF_Action" } : f)) },
       }),
     });
-    expect(screen.getByText(/counted under WAF_Action; the mapping now reads Act2/)).toBeInTheDocument();
+    expect(screen.getByText(/Counted under WAF_Action; now mapped to Act2/)).toBeInTheDocument();
   });
 
   it("blocks assigning values while the action property is unmapped", () => {
@@ -502,7 +502,8 @@ describe("ProfileEditor: collection", () => {
 describe("ProfileEditor: property catalog", () => {
   it("falls back to free text and says why when the catalog is unavailable", () => {
     editor({ catalog: catalog({ status: "UNAVAILABLE", properties: [], detail: "QRadar refused the request." }) });
-    expect(screen.getByText(/property list is unavailable: QRadar refused the request\./)).toBeInTheDocument();
+    expect(screen.getByText(/Property list unavailable/)).toBeInTheDocument();
+    expect(screen.getByText("QRadar refused the request.").closest("details")).not.toBeNull();
   });
 
   it("refreshes the list, bypassing the cache", async () => {
@@ -511,7 +512,7 @@ describe("ProfileEditor: property catalog", () => {
     editor();
     await user.click(screen.getByRole("button", { name: "Refresh list" }));
     expect(refresh).toHaveBeenCalledWith("ls-1", true);
-    expect(await screen.findByText(/Property list from this console, fetched/)).toHaveTextContent(
+    expect(await screen.findByText(/Property list fetched/)).toHaveTextContent(
       "fetched 2026-10-13 01:00:00 UTC",
     );
   });
@@ -522,7 +523,7 @@ describe("ProfileEditor: property catalog", () => {
     editor();
     await user.click(screen.getByRole("button", { name: "Refresh list" }));
     expect(await screen.findByText(/could not be refreshed\. The previous list is still shown\./)).toBeInTheDocument();
-    expect(screen.getByText(/Property list from this console/)).toBeInTheDocument();
+    expect(screen.getByText(/Property list fetched/)).toBeInTheDocument();
   });
 
   it("warns about a name not in the catalog and about one for another type, without blocking a save", async () => {
@@ -566,16 +567,16 @@ describe("ProfileEditor: copy from another source", () => {
 describe("ProfileEditor: history", () => {
   it("shows the history", () => {
     editor();
-    expect(screen.getByRole("table", { name: /changes to this profile/i })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: /profile changes/i })).toBeInTheDocument();
   });
   it("says it is empty", () => {
     editor({ history: [] });
-    expect(screen.getByText(/no changes are recorded/i)).toBeInTheDocument();
+    expect(screen.getByText(/no changes recorded yet/i)).toBeInTheDocument();
   });
   it("says a failed history read failed instead of calling it empty", () => {
     editor({ history: null });
     expect(screen.getByText(/history could not be loaded/i)).toBeInTheDocument();
-    expect(screen.queryByText(/no changes are recorded/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no changes recorded yet/i)).not.toBeInTheDocument();
   });
 });
 
@@ -619,7 +620,7 @@ describe("ProfileEditor: create mode", () => {
     expect(within(dialog).getByRole("list", { name: "Changed fields" })).toHaveTextContent("URL path: not mapped → URL");
     await user.click(within(dialog).getByRole("button", { name: "Create profile" }));
     expect(save).toHaveBeenCalledWith("ls-1", expect.objectContaining({ expected_profile_version: null }));
-    expect(await screen.findByText(/Created version 1\. Collection stays off/)).toBeInTheDocument();
+    expect(await screen.findByText(/Created version 1; validation requested/)).toBeInTheDocument();
     expect(screen.getByText(/Validating version 1/)).toHaveTextContent("since 00:10 UTC");
     expect(screen.getByRole("heading", { name: "Validation" })).toBeInTheDocument();
     expect(screen.queryByText("This log source has no WAF profile.")).not.toBeInTheDocument();

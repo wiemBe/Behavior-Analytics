@@ -45,7 +45,7 @@ describe("WAF source page", () => {
     render(await WafSourcePage(params()));
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("WAF branch");
     expect(screen.getByText("This log source has no WAF profile.")).toBeInTheDocument();
-    expect(screen.getByText(/Prefilled from WAF edge - eu-west \(version 4\), the most recently validated profile/)).toBeInTheDocument();
+    expect(screen.getByText(/Prefilled from WAF edge - eu-west \(v4\)/)).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /url path property/i })).toHaveValue("request_uri");
   });
 
@@ -53,7 +53,7 @@ describe("WAF source page", () => {
     vi.spyOn(api, "wafProfile").mockRejectedValue(NOT_FOUND());
     vi.spyOn(api, "logSource").mockResolvedValue(LOG_SOURCE);
     render(await WafSourcePage(params()));
-    expect(screen.getByText(/Prefilled from the schema defaults/)).toBeInTheDocument();
+    expect(screen.getByText(/Prefilled from schema defaults/)).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /url path property/i })).toHaveValue("URL");
     expect(screen.getByRole("combobox", { name: /virtual host property/i })).toHaveValue("");
   });
@@ -63,7 +63,7 @@ describe("WAF source page", () => {
     vi.spyOn(api, "logSource").mockResolvedValue(LOG_SOURCE);
     vi.spyOn(api, "wafSources").mockResolvedValue([status({ log_source_id: "ls-seed" })]);
     render(await WafSourcePage(params()));
-    expect(screen.getByText(/Prefilled from the schema defaults/)).toBeInTheDocument();
+    expect(screen.getByText(/Prefilled from schema defaults/)).toBeInTheDocument();
   });
 
   it("does not guess the instance when several exist and the log source names none", async () => {
@@ -74,7 +74,7 @@ describe("WAF source page", () => {
       status({ log_source_id: "b", instance_id: "i2" }),
     ]);
     render(await WafSourcePage(params()));
-    expect(screen.getByText(/Prefilled from the schema defaults/)).toBeInTheDocument();
+    expect(screen.getByText(/Prefilled from schema defaults/)).toBeInTheDocument();
   });
 
   it("says a log source that does not exist does not exist", async () => {
@@ -89,7 +89,7 @@ describe("WAF source page", () => {
     render(await WafSourcePage(params("ls-1")));
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent(/could not be shown/i);
-    expect(alert).toHaveTextContent(/nothing was changed/i);
+    expect(alert).toHaveTextContent(/could not be loaded/i);
     expect(alert).not.toHaveTextContent("psycopg2");
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
@@ -110,7 +110,7 @@ describe("WAF source page", () => {
     vi.spyOn(api, "wafProfile").mockResolvedValue(profile());
     vi.spyOn(api, "wafPropertyCatalog").mockRejectedValue(new ApiError(500, "x"));
     render(await WafSourcePage(params("ls-1")));
-    expect(screen.getByText(/property list is unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/property list unavailable/i)).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /url path property/i })).toBeInTheDocument();
   });
 

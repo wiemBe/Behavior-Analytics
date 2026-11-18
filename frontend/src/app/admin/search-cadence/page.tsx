@@ -37,7 +37,7 @@ async function SearchCadencePage() {
 
   return (
     <>
-      <PageHeader guide={guideFor("/admin/search-cadence")} title={t("title")} description={t("description")} />
+      <PageHeader guide={guideFor("/admin/search-cadence")} title={t("title")} />
 
       {error ? (
         <div className="notice" role="alert">

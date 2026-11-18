@@ -48,9 +48,9 @@ describe("AddSourcePicker", () => {
     const user = userEvent.setup();
     render(<AddSourcePicker defaultOpen />);
     await user.type(screen.getByLabelText("Name, type, identifier or QRadar ID"), "zzz");
-    const empty = await screen.findByText(/matches “zzz” in its name, type, identifier or QRadar ID/);
-    expect(empty).toHaveTextContent(/not synced yet appears after the next inventory/);
-    expect(screen.getByRole("link", { name: "Open the log source inventory" })).toHaveAttribute(
+    const empty = await screen.findByText(/No log source matches “zzz”/);
+    expect(empty).not.toHaveTextContent(/next inventory/); // the sync note moved to the Guide
+    expect(screen.getByRole("link", { name: "Open inventory" })).toHaveAttribute(
       "href",
       "/log-sources",
     );

@@ -46,8 +46,14 @@ describe("FieldMappingForm", () => {
     render(<Harness />);
     for (const f of SCHEMA.fields) {
       expect(screen.getByText(f.label)).toBeInTheDocument();
-      expect(screen.getByText(f.description)).toBeInTheDocument();
     }
+    // One short hint per field, only where the label alone is ambiguous: the long schema
+    // descriptions are replaced by the catalog hint, the short ones are shown as sent.
+    expect(screen.getByText("Normalized into the endpoint key.")).toBeInTheDocument();
+    expect(screen.getByText("Separates apps sharing a path.")).toBeInTheDocument();
+    expect(screen.getByText("Feeds the block ratio.")).toBeInTheDocument();
+    expect(screen.getByText(SCHEMA.fields[1].description)).toBeInTheDocument();
+    expect(screen.queryByText(SCHEMA.fields[0].description)).not.toBeInTheDocument();
     expect(screen.getAllByText("Required")).toHaveLength(2);
     expect(screen.getAllByText("Optional")).toHaveLength(3);
     expect(screen.getAllByRole("combobox", { name: /property$/i })).toHaveLength(SCHEMA.fields.length);
@@ -140,8 +146,12 @@ describe("FieldMappingForm", () => {
       />,
     );
     expect(screen.getByRole("status")).toHaveTextContent(
-      "The property list is unavailable: QRadar refused the request (403).",
+      "Property list unavailable — type names as QRadar shows them.",
     );
+    // The server's detail is behind a Details disclosure, not in the headline.
+    const details = screen.getByText("QRadar refused the request (403).").closest("details");
+    expect(details).not.toBeNull();
+    expect(details).toHaveTextContent("Details");
     const vhost = input(/virtual host/i);
     await user.type(vhost, "Anything_At_All");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();

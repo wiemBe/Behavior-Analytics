@@ -95,7 +95,7 @@ export function AddSourcePicker({ defaultOpen = false }: { defaultOpen?: boolean
           )}
           {state.kind === "ready" && state.items.length === 0 && (
             <p className="fm-empty" role="status">
-              {q.trim() ? t("emptyQuery", { q: q.trim() }) : t("empty")} {t("emptySync")}{" "}
+              {q.trim() ? t("emptyQuery", { q: q.trim() }) : t("empty")}{" "}
               <Link href="/log-sources">{t("emptyLink")}</Link>
             </p>
           )}

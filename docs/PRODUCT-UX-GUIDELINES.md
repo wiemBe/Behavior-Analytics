@@ -446,6 +446,46 @@ Permitted hedged forms, consistent with the architecture document: "largest
 observed contributor", "largest volume change", "behavior is consistent with",
 "evidence suggests".
 
+## 7a. Copy budget
+
+Decision D-82 (2026-11-18). The page shows data; the Guide explains. These rules
+are normative for every route.
+
+1. A page must state data, never mechanism. A sentence that explains how a
+   measurement, detector, bucket, admission, validation, cadence or setting
+   works must not appear on the page; it belongs, condensed, in the Guide
+   section that owns the route. A route without a Guide link gets one text link
+   "Guide" in the `PageHeader` actions, never one per section.
+2. The page header must be the title only. A description line must not restate
+   the title. "Times are UTC." must not appear, because every time carries its
+   zone (§10). A description may stay only when it carries a live number or
+   state.
+3. A page must have at most one lead line, at most 12 words, and only when it
+   answers the page's question with numbers.
+4. Column headers must be at most 3 words and must not carry a sub-caption
+   line. The unit goes in the header (`EPS (events/s)`) or in the cell.
+5. Cells must carry values. An explanatory phrase must never repeat on every
+   row. A missing value is `—` with an accessible name or `title` naming the
+   honesty state; when every row has the same state, it is said once above the
+   table, in at most 12 words.
+6. A form field must have a label and at most one hint of at most 10 words, and
+   only when the label alone is ambiguous. Longer help goes to the Guide.
+7. States must stay honest and short: empty, error, forbidden,
+   INSUFFICIENT_DATA, PARTIAL, TRUNCATED, NOT_COLLECTED and stale are one line
+   of at most 14 words naming what is missing and why, plus at most one action
+   link. A reason code or technical detail (exception class, setting name) goes
+   behind a native `<details>` "Details" disclosure, never in the headline.
+   §4 and §6 still apply: a missing value is never drawn as a zero.
+8. A page must have at most one banner, and only for a state that blocks its
+   question (paused family, missing permission, collection off). A banner must
+   never restate what the table shows.
+9. Footnotes, glossaries and legends in prose must not appear under tables or
+   charts. A chart legend names series and unit only.
+10. A button or link must be verb plus object, at most 3 words.
+11. Nothing is lost silently. A removed explanatory sentence is moved into the
+    Guide section of its route, or recorded as dropped with a reason. A state
+    the page could show before must remain distinguishable after.
+
 ---
 
 ## Language
@@ -1131,6 +1171,7 @@ For use during code review of any UI change.
       (§10)? Does copy avoid "live" and "real-time"?
 - [ ] Do non-inline interactive controls keep the 24 px minimum target, and
       does an added dialog or drawer return focus to its trigger (§10)?
+- [ ] Copy budget §7a checked (data on the page, mechanism in the Guide)?
 - [ ] Do the targeted tests and the full frontend gates pass?
 - [ ] Was the change kept inside one coherent workstream, without unrelated
       fixes, dependency upgrades or scope expansion?

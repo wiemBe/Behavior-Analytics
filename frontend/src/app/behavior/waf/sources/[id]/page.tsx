@@ -130,11 +130,10 @@ async function WafSourceEndpointsPage({
       <PageHeader
         guide={guideFor("/behavior/waf/sources/[id]")}
         title={source.log_source_name}
-        description={t("description")}
         meta={
           <>
             <span className={`pill pill-strong ${v.tone}`}>{v.label}</span>
-            <span>{v.detail}</span>
+            {v.detail && <span>{v.detail}</span>}
             <span className="muted" aria-hidden="true">
               ·
             </span>

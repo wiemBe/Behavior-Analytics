@@ -83,7 +83,7 @@ describe("WAF helpers in Turkish", () => {
     expect(validationView(wafSource(), TR)).toEqual({
       label: "GEÇERLİ",
       tone: "ok",
-      detail: "profil v3 için",
+      detail: "",
     });
     expect(validationView(wafSource({ validation_status: "VALID", validation_current: false }), TR).label)
       .toBe("ESKİ");
@@ -119,7 +119,7 @@ describe("WAF behavior routes in Turkish", () => {
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
     expect(screen.getByText("1.204 / 500")).toBeInTheDocument();
     expect(screen.getByText("SONUÇSUZ")).toBeInTheDocument();
-    expect(screen.getByText("Henüz zaman dilimi toplanmadı")).toBeInTheDocument();
+    expect(screen.getByText("hiçbir zaman dilimi toplanmadı")).toBeInTheDocument();
   });
 
   it("renders empty, forbidden and boundary errors in Turkish", async () => {
@@ -193,7 +193,8 @@ describe("WAF administration in Turkish", () => {
     const full = render(await WafSourcesPage());
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("WAF kaynakları");
     expect(screen.getByRole("columnheader", { name: "Doğrulama" })).toBeInTheDocument();
-    expect(screen.getByText("Çizgi, kaynağın hiç doğrulanmadığını gösterir. Başarısız bir doğrulama değildir.")).toBeInTheDocument();
+    // The how-to-read notes left the page (UIQ-8a); they live in the Guide.
+    expect(screen.queryByText(/Çizgi, kaynağın hiç doğrulanmadığını gösterir/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "WAF kaynağı ekle" })).toBeInTheDocument();
     full.unmount();
 

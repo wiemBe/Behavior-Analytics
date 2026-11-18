@@ -69,9 +69,10 @@ describe("the search cadence table in Turkish", () => {
     for (const name of ["Aile", "Sıklık", /Zaman dilimi/, /En kötü durum algılama gecikmesi/, "Son çalıştırma (UTC)", "Sonraki çalıştırma (UTC)", "Son çalıştırmadaki arama"]) {
       expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
     }
-    expect(screen.getByText("sıklık + zaman dilimi + yerleşme payı")).toBeInTheDocument();
+    // The formula line and the family scopes left the page (UIQ-8a); the Guide carries them.
+    expect(screen.queryByText("sıklık + zaman dilimi + yerleşme payı")).not.toBeInTheDocument();
     expect(screen.getByText("Log source hacmi")).toBeInTheDocument();
-    expect(screen.getByText("Log source başına olay sayısı")).toBeInTheDocument();
+    expect(screen.queryByText("Log source başına olay sayısı")).not.toBeInTheDocument();
     const select = screen.getByRole("combobox", { name: "Log source hacmi için sıklık" });
     expect(select).toHaveValue("3600");
     expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(
@@ -93,7 +94,7 @@ describe("the search cadence table in Turkish", () => {
     expect(within(rules).getByText("sayılmadı")).toHaveAttribute("title", "Bu aile aramalarını henüz saymıyor");
     // An outcome this build does not know is shown as recorded, in code.
     expect(within(screen.getByRole("row", { name: /WAF toplama/ })).getByText("brand-new").tagName).toBe("CODE");
-    expect(screen.getByRole("list", { name: "Tablonun okunuşu" })).toHaveTextContent("İkisi de sıfır değildir.");
+    expect(screen.queryByRole("list", { name: "Tablonun okunuşu" })).not.toBeInTheDocument();
     expect(table.textContent).not.toMatch(/Cadence|Bucket|Not run|min\b/);
   });
 
@@ -139,7 +140,7 @@ describe("the search cadence page in Turkish", () => {
     render(await SearchCadencePage());
     expect(await generateMetadata()).toEqual({ title: "Arama sıklığı" });
     expect(screen.getByRole("heading", { level: 1, name: "Arama sıklığı" })).toBeInTheDocument();
-    expect(screen.getAllByText(/Saatler UTC'dir\./)).toHaveLength(2); // the description and the table caption
+    expect(screen.getAllByText(/Saatler UTC'dir\./)).toHaveLength(1); // the table caption; the description left the page
   });
 
   it("names the permission when the read is refused, and says the session expired", async () => {

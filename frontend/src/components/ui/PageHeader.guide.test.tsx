@@ -44,3 +44,13 @@ describe("PageHeader guide link", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 });
+
+describe("PageHeader without a description", () => {
+  it("does not reserve the description's room, and keeps it when there is one", () => {
+    const bare = render(<PageHeader title="Bare" />);
+    expect(bare.container.querySelector("header")).toHaveClass("page-header-bare");
+    bare.unmount();
+    const full = render(<PageHeader title="Full" description="A live count" />);
+    expect(full.container.querySelector("header")).not.toHaveClass("page-header-bare");
+  });
+});

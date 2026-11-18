@@ -461,6 +461,10 @@ a {
   min-height: var(--header-h);
   margin-bottom: var(--sp-6);
 }
+/* A title alone does not reserve the room a description or meta row would take. */
+.page-header-bare {
+  min-height: 0;
+}
 .page-title {
   margin: 0;
   font-size: var(--fs-xl);

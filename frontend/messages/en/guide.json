@@ -260,13 +260,13 @@
       "answers": "Which WAF sources are collected and judged, and which endpoints need attention?",
       "body": [
         {
-          "p": "The list covers WAF sources with **Profile**, **Validation**, **Endpoint coverage**, **Active endpoints** and **Admission overflow** in the selected range. **Admission overflow range** offers **24 hours**, **7 days** and **30 days**. A source is collected and judged only when its profile is enabled and valid for its current version; the others produce no verdicts. Refused over quota means the key met the volume threshold but the per-bucket quota for new endpoints, or the source's active ceiling, was full. Sources that need attention are listed first. **Profile settings** opens the source in WAF sources administration."
+          "p": "The list covers WAF sources with **Profile**, **Validation**, **Coverage (%)**, **Active endpoints** and **Overflow** for the selected range (**24 hours**, **7 days** or **30 days**); times are UTC and sources that need attention come first. A source is collected and judged only when its profile is enabled and valid for its current version; the others produce no verdicts, and the lead line counts judged sources over the rows listed on the page only. Coverage is the share of events in the latest collected bucket that fall on a tracked endpoint. Active endpoints count against the ceiling; the tracked total, retired endpoints included, shows on hover. A dash means nothing was measured: no bucket has been collected, or none in the range. It is not zero. Overflow counts key-buckets: one endpoint key in one collected bucket, so a key refused in several buckets counts once for each. Refused over quota means the key met the volume threshold but the per-bucket quota for new endpoints, or the source's active ceiling, was full. Below threshold is low-volume noise, not overflow. **Profile settings** opens the source in WAF sources administration."
         },
         {
-          "p": "The source page, **WAF source endpoints**, lists tracked endpoints with **Baseline cells**, **Last seen (UTC)**, **Tracking** and **State**, and offers **All endpoints** or **Active only**. An endpoint that no detector has evaluated says **Not evaluated**. **Active**, **Inactive** and **Retired** describe tracking, not health. The header states **Profile enabled** or **Profile disabled** and the count of active endpoints against the ceiling."
+          "p": "The source page, **WAF source endpoints**, lists tracked endpoints with **Reliable / total**, **Last seen (UTC)**, **Tracking** and **State**, and offers **All endpoints** or **Active only**. Reliable / total counts reliable over all baseline cells; a dash means no baseline has been built. An endpoint that no detector has evaluated says **Not evaluated**. **Active**, **Inactive** and **Retired** describe tracking, not health; an inactive endpoint without a retirement time has no recorded reason. The endpoint key uses the normalizer version in force when it was admitted. The header states **Profile enabled** or **Profile disabled** and the count of active endpoints against the ceiling. Without a virtual host, an endpoint may combine traffic for different applications that share the path. Endpoints appear once a collected bucket admits them, so an empty list on a collected source means none was admitted yet."
         },
         {
-          "p": "A bucket whose endpoint coverage falls below the coverage floor is recorded as a lower bound, not as an exact count. An endpoint with no collected bucket has no baseline and is not judged."
+          "p": "A bucket whose endpoint coverage falls below the coverage floor is recorded as a lower bound, shown with a ≥ sign, not as an exact count. An endpoint with no collected bucket has no baseline and is not judged. An empty WAF list is not a statement that WAF traffic is normal."
         },
         {
           "p": "The **EMA 3**, **EMA 5**, **EMA 10** and **EMA 20** buttons above the chart overlay exponential moving averages of the observed line of the requests panel (or of the proportion, when the chart plots one). The periods are counted in buckets, and the legend gives each one's span in time. All are off until you switch them on, and the browser remembers your choice, shared with the other charts. An average is drawn in your browser for display only. It takes no part in detection, and it stops at a bucket that was not fully observed, or measured only as a lower bound, rather than bridging the gap."
@@ -274,7 +274,7 @@
       ],
       "states": [
         {
-          "p": "**No WAF source has a behavior profile.**; **No bucket collected yet**; **Not collected**; **No baseline built**; **None reliable yet**; the forbidden notice."
+          "p": "**No WAF source has a behavior profile.**; **No bucket collected yet**; **Not collected**; **No baseline built**; the forbidden notice."
         }
       ]
     },
@@ -768,9 +768,9 @@
         }
       ],
       "steps": [
-        "Open **Administration**, then **WAF sources**. The table lists **Source**, **Product**, **Mapping**, **Validation**, **Collection** and **Last validated (UTC)**, with the sources that need attention first.",
-        "Choose **Add WAF source** and pick a log source from **Log sources without a WAF profile**. Search by name. **Classed as WAF** marks a source the fleet classification already treats as a WAF.",
-        "Under **Field mapping**, give each logical field the QRadar property it is read from: **URL path** and **HTTP method** are required; **Virtual host**, **Action**, **HTTP status**, **WAF rule id** and **User agent** are optional. Without **Virtual host**, endpoints that share a path combine their traffic. Property names are letters, digits, underscore, space and hyphen, at most 64 characters. **Copy mapping from…** reuses another source's mapping.",
+        "Open **Administration**, then **WAF sources**. The table lists **Source**, **Product**, **Version**, **Validation**, **Collection** and **Last validated (UTC)**, with the sources that need attention first.",
+        "Choose **Add WAF source** and pick a log source from **Log sources without a WAF profile**. Search by name. **Classed as WAF** marks a source the fleet classification already treats as a WAF. A log source QRadar has not synced yet appears after the next inventory; **Open inventory** goes to the log source list.",
+        "Under **Field mapping**, give each logical field the QRadar property it is read from: **URL path** and **HTTP method** are required; **Virtual host**, **Action**, **HTTP status**, **WAF rule id** and **User agent** are optional. Without **Virtual host**, endpoints that share a path combine their traffic. Hover or read the hints for what each field feeds: URL path becomes the endpoint key, Action feeds the block ratio. The property list comes from this console, and properties that apply to the source's type come first; if it is not filtered by type the form says so. Property names are letters, digits, underscore, space and hyphen, at most 64 characters. **Copy mapping from…** reuses another source's mapping.",
         "Set **Product label** if you want a note such as the WAF product. It is never parsed and does not change the version.",
         "Choose **Review and create**, read **Changed fields**, then **Create profile**. The profile is created disabled, as version 1, and validation starts at once.",
         "Read the result under **Validation**; the page checks every 5 seconds while it runs. Validation reads a bounded sample of the source's recent events (the last 15 minutes by default). A field that collection reads must be populated, with plausible values, on at least 90% of them. Each field gets one status: **Usable**, **Not mapped**, **Property rejected**, **Not populated**, **Low coverage** or **Values look wrong**, or **No verdict** when the source sent no events or a check could not run. A source with no events in the window is **Inconclusive**, not invalid: choose **Validate again** while it has traffic.",
@@ -780,12 +780,12 @@
       ],
       "afterSteps": [
         {
-          "p": "**What \"valid for the current version\" means:** validation belongs to one version. On the WAF behavior page a profile validated for an older version reads **STALE** (\"VALID for v3; profile is now v4\"), and a profile that was never validated reads **UNVALIDATED**. Neither is collected. A source reading \"Version 5 not validated\" is paused, not unhealthy."
+          "p": "**What \"valid for the current version\" means:** validation belongs to one version. On the WAF behavior page a profile validated for an older version reads **STALE** (\"VALID for v3; profile is now v4\"), and a profile that was never validated reads **UNVALIDATED**. Neither is collected. A source reading \"Version 5 not validated\" is paused, not unhealthy. A mapping change pauses collection from the source until the new version validates. A dash under **Last validated (UTC)** means the source has never been validated; that is not a failed validation. **Action values** are the raw action values counted as blocked and allowed; saving that map is a mapping change that bumps the version and validates again, and a source that is not yet mapped for Action cannot have values assigned."
         }
       ],
       "states": [
         {
-          "p": "A validation already running; **Reload their version** when another administrator saved first (your edits stay in the form); a property list that could not be refreshed, in which case you type the name as QRadar shows it and validation checks it; the forbidden notice naming `admin:waf`."
+          "p": "A validation already running; **Reload their version** when another administrator saved first (your edits stay in the form); a property list that could not be refreshed, in which case you type the name as QRadar shows it and validation checks it (**Details** holds the error); the forbidden notice naming `admin:waf`. A profile prefilled from another source says which one; nothing is saved until you confirm."
         }
       ]
     },
@@ -932,7 +932,7 @@
           "h": "How to read it"
         },
         {
-          "p": "The table has one row per family with **Family**, **Cadence**, **Bucket**, **Worst-case detection delay**, **Last run (UTC)**, **Next run (UTC)** and **Searches in last run**. The worst-case delay is the cadence plus the bucket plus a settle time (120 seconds by default). A dash in **Bucket** means the family has no buckets; for anomaly explanations the delay bounds how late evidence arrives, not how late a detection does. **Not run since upgrade** and **not counted** are missing measurements, not zero."
+          "p": "The table has one row per family with **Family**, **Cadence**, **Bucket width**, **Max delay**, **Last run (UTC)**, **Next run (UTC)** and **Searches sent**. Max delay is the cadence plus the bucket plus a settle time (120 seconds by default). A dash in **Bucket width** means the family has no buckets; for anomaly explanations the delay bounds how late evidence arrives, not how late a detection does. Changing the cadence changes when a family searches, not its bucket width. **Not run since upgrade** and **not counted** are missing measurements, not zero. The last run's status is **Complete**, **Partial**, **Failed** or **Dispatched**; Dispatched means the per-source searches were queued and the family does not aggregate their results. After a failed run the next run is not a retry: **Details** under the next run says so. The families are: log source volume (event count per log source), WAF collection (endpoint, status and client breakdowns), anomaly explanations (evidence for open anomalies), rule matches (events matched per rule), IPS collection (port, IP, signature and fan-out per source), catch-all senders, geography (events per country), property watches (event count per watched value) and QRadar health (disk, system, pipeline and notifications per host)."
         },
         {
           "p": "The choices are every 5 minutes, 15 minutes, 30 minutes, 1 hour, 2 hours, 4 hours and 8 hours. By default every family runs every 5 minutes, except **WAF collection** and **IPS collection**, which run every 15 minutes because they cost the most searches per source."
@@ -945,7 +945,7 @@
       ],
       "states": [
         {
-          "p": "**No search families were returned.**; **No run yet**; the forbidden notice naming `admin:search_cadence`. Every change is audited."
+          "p": "**No search families were returned.** means the database seed did not run: apply the database migrations (they seed all nine families) and reload. **No run yet**; the forbidden notice naming `admin:search_cadence`. Every change is audited."
         }
       ],
       "permission": "`read:search_cadence` (to view); `admin:search_cadence` (to change)"

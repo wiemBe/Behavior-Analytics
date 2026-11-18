@@ -29,7 +29,7 @@ export function PageHeader({
   guide?: string;
 }) {
   return (
-    <header className="page-header">
+    <header className={description || meta ? "page-header" : "page-header page-header-bare"}>
       <div>
         <h1 className="page-title">{title}</h1>
         {meta && <div className="row page-meta">{meta}</div>}

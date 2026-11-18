@@ -76,8 +76,8 @@ describe("ValueMapEditor", () => {
 
   it("says a truncated list is truncated and that unlisted values are unmapped, not allowed", () => {
     render(<Harness truncated />);
-    const note = screen.getByText(/this list is truncated/i);
-    expect(note).toHaveTextContent(/count as unmapped, never as allowed/i);
+    const note = screen.getByText(/list truncated/i);
+    expect(note).toHaveTextContent(/count as unmapped, never allowed/i);
   });
 
   it("does not claim truncation for a complete list", () => {
@@ -87,7 +87,7 @@ describe("ValueMapEditor", () => {
 
   it("says no values were discovered rather than showing an empty table", () => {
     render(<Harness discovered={null} initial={{ BLOCKED: [], ALLOWED: [] }} />);
-    expect(screen.getByText(/listed no action values/i)).toBeInTheDocument();
+    expect(screen.getByText(/no action values in the last validation/i)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 

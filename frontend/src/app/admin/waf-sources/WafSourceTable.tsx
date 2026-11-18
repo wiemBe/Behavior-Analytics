@@ -38,7 +38,6 @@ export function WafSourceTable({
               <th scope="col">{t("product")}</th>
               <th scope="col" className="num">
                 {t("mapping")}
-                <span className="cell-sub">{t("version")}</span>
               </th>
               <th scope="col">{t("validation")}</th>
               <th scope="col">{t("collection")}</th>
@@ -107,10 +106,6 @@ export function WafSourceTable({
           </tbody>
         </table>
       </TableScroll>
-      <ul className="table-notes" aria-label={t("notesTitle")}>
-        <li>{t("notePaused")}</li>
-        <li>{t("noteDash")}</li>
-      </ul>
     </>
   );
 }
