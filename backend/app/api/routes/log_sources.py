@@ -15,9 +15,10 @@ from app.alerts.fingerprint import anomaly_fingerprint
 from app.alerts.routing import default_policy
 from app.alerts.service import AlertService
 from app.anomaly.thresholds import ThresholdResolver, direction_excluded
-from app.api.deps import ProviderDep, SessionDep
+from app.api.deps import ProviderDep, SessionDep, SettingsDep
 from app.fleet.review import review_classification
 from app.fleet.service import reclassify_instance
+from app.fleet.sources import load_rows
 from app.i18n.messages import MessageRef, render
 from app.i18n.refusal import permission_refusal
 from app.models.enums import (
@@ -36,7 +37,12 @@ from app.models.log_source import (
 from app.pivot.service import PivotNotFound, log_source_pivot
 from app.repositories.audit import record_audit
 from app.repositories.log_source import LogSourceRepository
-from app.schemas.fleet import ClassificationOverrideIn, FleetSourceOut, fleet_source_out
+from app.schemas.fleet import (
+    ClassificationOverrideIn,
+    FleetSourceOut,
+    FleetSourceRow,
+    fleet_source_out,
+)
 from app.schemas.log_source import (
     AnomalySummary,
     LogSourceDetail,
@@ -49,6 +55,7 @@ from app.schemas.pivot import PivotOut
 from app.security.auth import get_principal
 from app.security.rbac import (
     PERM_ADMIN,
+    PERM_FLEET_READ,
     PERM_LOG_SOURCE_WRITE,
     PermissionDenied,
     Principal,
@@ -338,6 +345,28 @@ async def _classification(
         .where(LogSourceClassification.log_source_id == log_source_id)
         .execution_options(populate_existing=True)
     )
+
+
+@router.get("/{log_source_id}/classification", response_model=FleetSourceRow)
+async def get_classification(
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    principal: PrincipalDep,
+) -> FleetSourceRow:
+    """One source in the fleet list's row shape: class, basis, override and profile states.
+
+    Needs `read:fleet`, like the list. It reuses the list's row loader, so the cost is the
+    loader's fixed statement set whatever else exists.
+    """
+    _guard(principal, PERM_FLEET_READ)
+    rows = await load_rows(
+        session, [log_source_id], now=datetime.now(UTC),
+        bucket_seconds=settings.collection_interval_seconds,
+    )
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
+    return rows[0]
 
 
 @router.patch("/{log_source_id}/classification", response_model=FleetSourceOut)

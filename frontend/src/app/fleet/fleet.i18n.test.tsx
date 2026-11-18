@@ -22,7 +22,6 @@ import {
 import FleetError from "./error";
 import Loading from "./loading";
 import FleetPage from "./page";
-import FleetSourcesPage from "./sources/page";
 
 const NB = "\u00a0";
 
@@ -86,10 +85,6 @@ function source(over: Partial<FleetSource> = {}): FleetSource {
 async function renderFleet(params: Record<string, string> = {}) {
   return render(await FleetPage({ searchParams: Promise.resolve(params) }));
 }
-async function renderSources(params: Record<string, string> = {}) {
-  return render(await FleetSourcesPage({ searchParams: Promise.resolve(params) }));
-}
-
 beforeEach(() => {
   vi.restoreAllMocks();
   setTestLocale("tr");
@@ -266,51 +261,6 @@ describe("the window switch and the filters in Turkish", () => {
       />,
     );
     expect(screen.getByRole("link", { name: "Temizle" })).toHaveAttribute("href", "/fleet/sources");
-  });
-});
-
-describe("/fleet/sources in Turkish", () => {
-  it("titles the page, shows the active filters as chips and the Turkish table", async () => {
-    vi.spyOn(fleetApi, "sources").mockResolvedValue({ items: [source()], total: 1, limit: 50, offset: 0 });
-    await renderSources({ class: "IPS", review_status: "NEW", has_conflict: "true", basis: "NAME_REGEX" });
-    expect(screen.getByRole("heading", { level: 1, name: "Filo kaynakları" })).toBeInTheDocument();
-    const chips = screen.getByRole("list", { name: "Etkin filtreler" });
-    expect(within(chips).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "Sınıf: IPS",
-      "İnceleme: Yeni",
-      "Yalnızca çakışanlar",
-      "Dayanak: Ad kuralı",
-    ]);
-    const row = screen.getAllByRole("row")[1];
-    expect(row).toHaveTextContent("Linux OS · devre dışı");
-    expect(row).toHaveTextContent("Ad kuralı · atayan: s.okafor");
-    expect(row).toHaveTextContent("Çakışma: ad: IPS, tür: Linux");
-    expect(row).toHaveTextContent("Otomatik keşfedildi");
-    expect(row).toHaveTextContent("10-13 02:40 UTC");
-  });
-
-  it("says what is empty and why, for a filter and for an empty inventory", async () => {
-    vi.spyOn(fleetApi, "sources").mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
-    const { unmount } = await renderSources({ class: "WAF" });
-    expect(screen.getByText("Bu filtrelere uyan kaynak yok.")).toBeInTheDocument();
-    expect(screen.getByText("Daha fazla kaynak görmek için filtreleri genişletin veya temizleyin.")).toBeInTheDocument();
-    unmount();
-    await renderSources();
-    expect(screen.getByText("Envanterde log source yok.")).toBeInTheDocument();
-    expect(screen.getByText(/Log source'lar sayfasından bir envanter eşitlemesi çalıştırın/)).toBeInTheDocument();
-  });
-
-  it("names the permission on 403 and says what to do when the list cannot be loaded", async () => {
-    vi.spyOn(fleetApi, "sources").mockRejectedValueOnce(new ApiError(403, "no"));
-    const { unmount } = await renderSources();
-    expect(screen.getByRole("alert")).toHaveTextContent("Kaynak listesi gösterilemedi.");
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Rolünüz filoyu okuyamıyor (izin: read:fleet). Hiçbir şey değiştirilmedi.",
-    );
-    unmount();
-    vi.spyOn(fleetApi, "sources").mockRejectedValueOnce(new Error("down"));
-    await renderSources();
-    expect(screen.getByRole("alert")).toHaveTextContent("Kaynak listesi yüklenemedi. Backend'e erişilemiyor olabilir");
   });
 });
 

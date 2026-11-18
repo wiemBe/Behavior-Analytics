@@ -7,3 +7,7 @@
 .detail-note {
   margin-top: var(--sp-5);
 }
+.source-class-edit {
+  margin-top: var(--sp-2);
+  gap: var(--sp-2);
+}

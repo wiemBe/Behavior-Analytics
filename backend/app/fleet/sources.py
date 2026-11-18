@@ -11,7 +11,8 @@ Every figure comes from a definition the product already has:
 * profiles: the WAF, IPS and identity source-profile rows, one outer join each.
 
 The statement count is constant in the number of sources: one page of ids, one enriched read
-of that page, one count, one group-name read and one query per facet family.
+of that page, one count, one group-name read and one query per facet family (five: class,
+type, group, flow, profile).
 """
 
 from __future__ import annotations
@@ -23,9 +24,11 @@ from typing import Any
 
 from sqlalchemy import (
     ColumnElement,
+    Integer,
     Select,
     and_,
     case,
+    cast,
     exists,
     func,
     literal,
@@ -53,6 +56,7 @@ from app.schemas.fleet import (
     FacetCount,
     FleetSourceFacets,
     FleetSourceRow,
+    GroupFacetCount,
     ProfileState,
     TypeFacetCount,
     fleet_source_out,
@@ -62,6 +66,8 @@ from app.schemas.fleet import (
 FLEET_GROUP_NAMES = 5
 #: Types in the type facet, by count.
 TYPE_FACET_LIMIT = 50
+#: Groups in the group facet, by count (selected groups are always included).
+GROUP_FACET_LIMIT = 50
 #: How far back "current EPS" looks for a COMPLETE bucket.
 CURRENT_EPS_LOOKBACK = timedelta(hours=1)
 _INT32_MAX = 2**31 - 1
@@ -83,6 +89,8 @@ class SourceFilters:
     has_conflict: bool | None = None
     basis: str | None = None
     ids: list[uuid.UUID] | None = None
+    #: Narrows the group facet by name only; it never filters the list.
+    group_q: str | None = None
 
 
 # --------------------------------------------------------------------------- columns
@@ -205,7 +213,7 @@ def conditions(
         out.append(klass.in_([c.value for c in f.classes]))
     if f.type_ids and skip != "type":
         out.append(LogSource.type_id.in_(f.type_ids))
-    if f.group_ids:
+    if f.group_ids and skip != "group":
         out.append(or_(*(LogSource.group_ids.contains([g]) for g in f.group_ids)))
     if f.flows and skip != "flow":
         out.append(_flow().in_(f.flows))
@@ -405,7 +413,7 @@ async def load_rows(
 async def build_facets(
     session: AsyncSession, f: SourceFilters, *, now: datetime, bucket_seconds: int
 ) -> FleetSourceFacets:
-    """Four grouped reads, one per family, each under every other active filter."""
+    """Five grouped reads, one per family, each under every other active filter."""
     eps = _Eps(now, bucket_seconds) if f.eps else None
 
     klass = _klass()
@@ -424,6 +432,7 @@ async def build_facets(
             .limit(TYPE_FACET_LIMIT)
         )
     ).all()
+    group_rows = await _group_facet(session, f, eps)
     class_rows = await _group_by(session, f, eps, "class", klass)
     flow_rows = await _group_by(session, f, eps, "flow", flow)
     profile_stmt = _join(
@@ -440,6 +449,9 @@ async def build_facets(
     return FleetSourceFacets(
         source_class=[FacetCount(value=v, count=n) for v, n in class_rows],
         type=[TypeFacetCount(type_id=t, name=name, count=n) for t, name, n in type_rows],
+        group=[
+            GroupFacetCount(group_id=g, name=name or f"#{g}", count=n) for g, name, n in group_rows
+        ],
         flow=[FacetCount(value=v, count=n) for v, n in flow_rows],
         profile=[
             FacetCount(value="NONE", count=p.none),
@@ -448,6 +460,47 @@ async def build_facets(
             FacetCount(value="IDENTITY", count=p.identity),
         ],
     )
+
+
+async def _group_facet(
+    session: AsyncSession, f: SourceFilters, eps: _Eps | None
+) -> list[tuple[int, str | None, int]]:
+    """Group id, name and count: the top groups by count under every other filter.
+
+    The selected groups are always listed, so a chip can name them. `group_q` narrows the list
+    by name (substring, case-insensitive) so one group is findable among hundreds.
+    """
+    member = func.jsonb_array_elements_text(LogSource.group_ids).table_valued("value").lateral("m")
+    gid = cast(member.c.value, Integer)
+    stmt = (
+        _join(
+            select(
+                gid.label("gid"), func.min(LogSourceGroup.name).label("name"), func.count()
+            ).select_from(LogSource),
+            eps,
+            profiles=bool(f.profiles),
+        )
+        .join(member, true())
+        .outerjoin(
+            LogSourceGroup,
+            and_(
+                LogSourceGroup.instance_id == LogSource.instance_id,
+                LogSourceGroup.qradar_id == gid,
+            ),
+        )
+        .where(*conditions(f, eps, skip="group"))
+        .where(func.jsonb_typeof(LogSource.group_ids) == "array")
+    )
+    needle = (f.group_q or "").strip()
+    if needle:
+        stmt = stmt.where(LogSourceGroup.name.ilike(_like_pattern(needle), escape="\\"))
+    selected = case((gid.in_(f.group_ids), 0), else_=1) if f.group_ids else literal(1)
+    stmt = (
+        stmt.group_by(gid)
+        .order_by(selected, func.count().desc(), func.min(LogSourceGroup.name), gid)
+        .limit(GROUP_FACET_LIMIT + len(f.group_ids))
+    )
+    return [(int(g), name, int(n)) for g, name, n in (await session.execute(stmt)).all()]
 
 
 async def _group_by(

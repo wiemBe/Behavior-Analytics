@@ -251,9 +251,15 @@ Each item adds `identifier`, `type_id`, `group_names` (at most five) and `group_
 `last_event_at`, `silent_for_seconds`, `current_eps`, `expected_eps` with `expected_eps_low` and
 `expected_eps_high`, `eps_state`, and `waf_profile`, `ips_profile`, `identity_profile` (null, or
 `{status, enabled}`). A missing measurement is null, never zero. The response adds `facets`
-(`source_class`, `type` top 50, `flow`, `profile`), each counted under every active filter except
-its own family. The request runs a constant number of statements: page ids, rows, group names, count
-and four facet reads.
+(`source_class`, `type` top 50, `group`, `flow`, `profile`), each counted under every active filter
+except its own family. `group` is `[{group_id, name, count}]`: the top 50 groups by count plus every
+selected group; the optional `group_q` (at most 100 characters, case-insensitive substring of the
+group name, LIKE wildcards literal) narrows only this facet and never the list. The request runs a
+constant number of statements: page ids, rows, group names, count and five facet reads (nine).
+
+`GET /log-sources/{id}/classification` (`read:fleet` and the log-source read) returns one source in the
+list's row shape (class, `basis`, override fields, review status, WAF/IPS/identity profile states);
+404 for an unknown id. It reuses the list's row loader.
 
 `GET /fleet/sources.csv` takes the same filters and sort, has no paging, and returns the first
 `api_max_export_rows` rows (`X-Export-Truncated: true` when cut). UTC timestamps; text cells that
@@ -267,6 +273,18 @@ ids of more than one instance give 422. It writes one `log_source.classification
 per source (as the PATCH does), one `log_source.review` per source newly reviewed, and one
 `fleet.classification_bulk` row with counts. The response is `{"updated": n, "items": [...]}` in the
 list row shape.
+
+`POST /fleet/sources/sync` (`admin:*`) queues the log-source inventory sync the beat runs
+(`sync_log_sources`, for every enabled console; the task only reads from QRadar) and answers 202
+`{"queued": true, "already_running": false, "task_id": "..."}`. While any console's pass holds the
+collector lock it queues nothing and answers `{"queued": false, "already_running": true,
+"task_id": null}`. A task queued in the gap between two requests finds the lock taken and skips.
+503 when the broker refuses the task. One `fleet.sources_sync` audit row per request.
+`GET /fleet/sources/sync` (`admin:*`) returns `{"instances": [...], "running": bool}`: per enabled
+console `instance_id`, `instance_name`, `status` (`RUNNING` while the lock is held, `FAILED` when
+the last pass failed, `OK`, `NEVER`), `last_run_at`, `last_success_at` and `consecutive_failures`.
+There is no run table for this collector: the state comes from its watermark row and its advisory
+lock, and the counts of the last pass and the error text are not stored or returned.
 
 ## Log-source fleet summary
 

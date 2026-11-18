@@ -8,7 +8,15 @@ import { PivotBlock } from "@/components/pivot/PivotBlock";
 import { pivotReads } from "@/lib/pivot";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
-import { ApiError, api, rateLimitedText, type LogSourceDetail } from "@/lib/api";
+import {
+  ApiError,
+  api,
+  fleetApi,
+  rateLimitedText,
+  type FleetSourceRow,
+  type LogSourceDetail,
+} from "@/lib/api";
+import { SourceClassRow } from "@/components/fleet/SourceClassRow";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
@@ -55,6 +63,13 @@ async function LogSourceDetailPage({
   }
 
   const pivotRead = await pivotReads.logSource(id);
+  let classRow: FleetSourceRow | null = null;
+  let classFailed = false;
+  try {
+    classRow = await fleetApi.sourceClass(id);
+  } catch {
+    classFailed = true;
+  }
 
   return (
     <>
@@ -72,6 +87,7 @@ async function LogSourceDetailPage({
 
       <div className="card detail-card">
         <div className="k">{t("configuration")}</div>
+        <SourceClassRow id={d.id} initial={classRow} failed={classFailed} />
         <p>{t("description", { value: d.description ?? "—" })}</p>
         <p>{t("businessHours", { value: d.business_hours_only ? t("yes") : t("no") })}</p>
         <p>

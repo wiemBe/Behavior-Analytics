@@ -237,6 +237,30 @@ def test_facets_count_under_the_other_filters(db_schema) -> None:
     assert sum(x["count"] for x in f4["type"]) == 6  # the type facet ignores type_id
 
 
+def test_group_facet_counts_names_and_search(db_schema) -> None:
+    _fleet(db_schema)
+    c = Client(VIEWER)
+    body = c.get(URL).json()["facets"]["group"]
+    assert body == [
+        {"group_id": 10, "name": "Perimeter", "count": 2},
+        {"group_id": 11, "name": "Linux", "count": 1},
+    ]
+    # The group facet ignores its own filter and obeys the others; the list obeys group.
+    page = c.get(f"{URL}?group=11&flow=SILENT").json()
+    assert page["total"] == 1
+    assert {g["group_id"]: g["count"] for g in page["facets"]["group"]} == {10: 1, 11: 1}
+    only = c.get(f"{URL}?group=11").json()
+    assert [r["name"] for r in only["items"]] == ["b-ips"]
+    assert {g["group_id"] for g in only["facets"]["group"]} == {10, 11}
+    # Other families count under the group filter.
+    assert sum(x["count"] for x in only["facets"]["flow"]) == 1
+    # group_q narrows the facet only, case-insensitively, wildcards literal.
+    q = c.get(f"{URL}?group_q=LIN").json()
+    assert [g["name"] for g in q["facets"]["group"]] == ["Linux"]
+    assert q["total"] == 6
+    assert c.get(f"{URL}?group_q=%25").json()["facets"]["group"] == []
+
+
 def test_sql_is_constant_in_fleet_size(db_schema) -> None:
     async def setup(s):  # type: ignore[no-untyped-def]
         inst = await make_instance(s)
@@ -373,3 +397,34 @@ def test_csv_cap_marks_truncation(db_schema, monkeypatch) -> None:
     finally:
         monkeypatch.delenv("API_MAX_EXPORT_ROWS")
         get_settings.cache_clear()
+
+
+def test_one_source_classification_read(db_schema) -> None:
+    ids = _fleet(db_schema)
+    url = "/api/v1/log-sources/{}/classification"
+    assert Client(NOTHING).get(url.format(ids["a-waf"])).status_code == 403
+    # The log-source read alone is not the fleet read.
+    from app.security.rbac import Principal
+
+    only_ls = Principal(subject="x", permissions=frozenset({"read:log_sources"}))
+    assert Client(only_ls).get(url.format(ids["a-waf"])).status_code == 403
+    assert Client(VIEWER).get(url.format(MISSING_ID)).status_code == 404
+    c = Client(VIEWER)
+    waf = c.get(url.format(ids["a-waf"])).json()
+    assert waf["source_class"] == "WAF" and waf["override_class"] is None
+    assert waf["basis"] != "OVERRIDE"
+    assert waf["waf_profile"] == {"status": "VALID", "enabled": True}
+    assert waf["ips_profile"] is None and waf["instance_id"]
+    ips = c.get(url.format(ids["b-ips"])).json()
+    assert ips["ips_profile"] == {"status": "UNVALIDATED", "enabled": False}
+    assert ips["waf_profile"] is None
+    # An override shows as the class, the basis and the override fields.
+    editor = Client(EDITOR)
+    done = editor.patch(url.format(ids["d-never"]), json={"override_class": "WAF"})
+    assert done.status_code == 200
+    over = c.get(url.format(ids["d-never"])).json()
+    assert over["source_class"] == "WAF" and over["override_class"] == "WAF"
+    assert over["basis"] == "OVERRIDE" and over["override_by"] == "editor"
+    # Same row as the list gives.
+    listed = {r["id"]: r for r in c.get(URL).json()["items"]}
+    assert listed[ids["d-never"]] == over

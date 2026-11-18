@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import Field
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.api.csv_export import (
     _csv_time,
@@ -19,6 +19,7 @@ from app.api.csv_export import (
 )
 from app.api.deps import SessionDep, SettingsDep
 from app.api.routes.log_sources import PrincipalDep, _guard, _jsonable
+from app.collectors.log_source_collector import COLLECTOR_NAME
 from app.fleet.review import review_classification
 from app.fleet.series import build_fleet_eps_series
 from app.fleet.service import reclassify_instance
@@ -32,7 +33,9 @@ from app.fleet.sources import (
 from app.fleet.summary import build_fleet_summary
 from app.models.enums import ClassificationReviewStatus, SourceClass
 from app.models.fleet import LogSourceClassification
+from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
+from app.models.monitoring import CollectionWatermark
 from app.repositories.audit import record_audit
 from app.schemas.fleet import (
     ClassificationBasis,
@@ -47,9 +50,13 @@ from app.schemas.fleet import (
     FleetSourceRow,
     FleetSourceSort,
     FleetSummary,
+    FleetSyncInstance,
+    FleetSyncQueued,
+    FleetSyncStatus,
     FleetWindow,
 )
-from app.security.rbac import PERM_LOG_SOURCE_WRITE
+from app.security.rbac import PERM_ADMIN, PERM_LOG_SOURCE_WRITE
+from app.services.locks import collector_lock_key
 
 router = APIRouter(prefix="/fleet", tags=["fleet"])
 
@@ -123,6 +130,7 @@ def source_filters(
     has_conflict: bool | None = Query(default=None),
     basis: ClassificationBasis | None = Query(default=None),
     q: str | None = Query(default=None, max_length=100),
+    group_q: str | None = Query(default=None, max_length=100),
 ) -> SourceFilters:
     """The list's filters, parsed once for the page and the CSV export alike."""
     return SourceFilters(
@@ -136,6 +144,7 @@ def source_filters(
         review_status=review_status,
         has_conflict=has_conflict,
         basis=basis,
+        group_q=group_q,
     )
 
 
@@ -156,7 +165,7 @@ async def fleet_sources(
     """The classified source list: filtered, sorted, paged, with facets.
 
     Statements: one page of ids, one enriched read of that page (plus its group names),
-    one exact count and four facet reads, however many sources match.
+    one exact count and five facet reads, however many sources match.
     """
     bounded = max(1, min(limit, settings.api_max_page_size))
     now = _utcnow()
@@ -325,3 +334,106 @@ async def bulk_classification(
         session, ids, now=now, bucket_seconds=settings.collection_interval_seconds
     )
     return FleetBulkClassificationOut(updated=len(ids), items=items)
+
+
+async def _sync_status(session: SessionDep, settings: SettingsDep) -> FleetSyncStatus:
+    """The stored inventory-sync state per enabled console; sends nothing to QRadar.
+
+    There is no run table for this collector. What exists: the collector's watermark row
+    (last pass, last success, failure streak) and its advisory lock, which is held for the
+    whole pass and so says "running". Counts of the last pass are not stored.
+    """
+    instances = list(
+        (
+            await session.scalars(
+                select(QRadarInstance)
+                .where(QRadarInstance.enabled.is_(True))
+                .order_by(QRadarInstance.name)
+            )
+        ).all()
+    )
+    marks = {
+        w.instance_id: w
+        for w in await session.scalars(
+            select(CollectionWatermark).where(CollectionWatermark.collector == COLLECTOR_NAME)
+        )
+    }
+    held = {
+        int(key)
+        for key in await session.scalars(
+            text(
+                "SELECT objid::bigint FROM pg_locks WHERE locktype = 'advisory' "
+                "AND granted AND objsubid = 2 AND classid::bigint = :ns"
+            ).bindparams(ns=settings.collection_advisory_lock_namespace)
+        )
+    }
+    out: list[FleetSyncInstance] = []
+    for inst in instances:
+        mark = marks.get(inst.id)
+        running = collector_lock_key(inst.id, COLLECTOR_NAME) in held
+        if running:
+            state = "RUNNING"
+        elif mark is None or mark.last_run_at is None:
+            state = "NEVER"
+        elif mark.consecutive_failures > 0:
+            state = "FAILED"
+        else:
+            state = "OK"
+        out.append(
+            FleetSyncInstance(
+                instance_id=inst.id,
+                instance_name=inst.name,
+                status=state,
+                last_run_at=mark.last_run_at if mark else None,
+                last_success_at=mark.watermark_at if mark else None,
+                consecutive_failures=mark.consecutive_failures if mark else 0,
+            )
+        )
+    return FleetSyncStatus(instances=out, running=any(i.status == "RUNNING" for i in out))
+
+
+@router.get("/sources/sync", response_model=FleetSyncStatus)
+async def fleet_sources_sync_status(
+    session: SessionDep, settings: SettingsDep, principal: PrincipalDep
+) -> FleetSyncStatus:
+    """The last log-source inventory sync per console (`admin:*`)."""
+    _guard(principal, PERM_ADMIN)
+    return await _sync_status(session, settings)
+
+
+@router.post("/sources/sync", response_model=FleetSyncQueued, status_code=202)
+async def fleet_sources_sync(
+    session: SessionDep, settings: SettingsDep, principal: PrincipalDep
+) -> FleetSyncQueued:
+    """Queue the log-source inventory sync the beat runs, for every enabled console (`admin:*`).
+
+    The task runs in a worker and only reads from QRadar. While any console's pass holds the
+    collector lock nothing is queued and `already_running` is true; a task queued in the gap
+    between two requests finds the lock taken and skips, so no second pass ever runs together.
+    One audit row per request.
+    """
+    _guard(principal, PERM_ADMIN)
+    from app.workers import tasks
+
+    status_now = await _sync_status(session, settings)
+    task_id: str | None = None
+    running = status_now.running
+    if not running:
+        try:
+            task_id = str(tasks.sync_log_sources_task.delay().id)
+        except Exception as exc:
+            await record_audit(
+                session, action="fleet.sources_sync", actor=principal.subject,
+                object_type="fleet", object_id=None, outcome="FAILURE",
+                detail={"queued": False, "error_class": type(exc).__name__},
+            )
+            await session.commit()
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "the sync could not be queued"
+            ) from exc
+    await record_audit(
+        session, action="fleet.sources_sync", actor=principal.subject,
+        object_type="fleet", object_id=None,
+        detail={"queued": not running, "already_running": running, "task_id": task_id},
+    )
+    return FleetSyncQueued(queued=not running, already_running=running, task_id=task_id)

@@ -3931,6 +3931,99 @@ async function fleetRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// --- the fleet source list (UIQ-7a/7b) ---------------------------------------------------
+
+export type FleetFlow = "FLOWING" | "SILENT" | "DISABLED_IN_QRADAR" | "NEVER";
+export type FleetEpsState = "BELOW_EXPECTED" | "ABOVE_EXPECTED" | "WITHIN_EXPECTED" | "NO_BASELINE";
+export type FleetProfileKind = "NONE" | "WAF" | "IPS" | "IDENTITY";
+export type FleetSourceSort = "name" | "type" | "class" | "eps" | "last_event" | "silent_for";
+
+/** A WAF, IPS or Identity profile of a source: null when the source has none. */
+export interface FleetProfileCell {
+  status: "UNVALIDATED" | "VALID" | "INVALID" | "INCONCLUSIVE";
+  enabled: boolean;
+}
+
+export interface FleetSourceRow extends FleetSource {
+  identifier: string | null;
+  type_id: number | null;
+  group_names: string[];
+  group_count: number;
+  flow: FleetFlow;
+  last_event_at: string | null;
+  silent_for_seconds: number | null;
+  current_eps: number | null;
+  expected_eps: number | null;
+  expected_eps_low: number | null;
+  expected_eps_high: number | null;
+  eps_state: FleetEpsState | null;
+  waf_profile: FleetProfileCell | null;
+  ips_profile: FleetProfileCell | null;
+  identity_profile: FleetProfileCell | null;
+}
+
+export interface FleetSourceFacets {
+  source_class: { value: SourceClass; count: number }[];
+  type: { type_id: number | null; name: string | null; count: number }[];
+  group: { group_id: number; name: string; count: number }[];
+  flow: { value: FleetFlow; count: number }[];
+  profile: { value: FleetProfileKind; count: number }[];
+}
+
+export interface FleetSourcePage extends Page<FleetSourceRow> {
+  facets: FleetSourceFacets;
+}
+
+export interface FleetListParams {
+  q?: string;
+  class?: SourceClass[];
+  type_id?: number[];
+  group?: number[];
+  /** Narrows the group facet by name; never the list. */
+  group_q?: string;
+  flow?: FleetFlow[];
+  eps?: FleetEpsState[];
+  profile?: FleetProfileKind[];
+  review_status?: ClassificationReviewStatus;
+  has_conflict?: boolean;
+  basis?: ClassificationBasis;
+  sort?: FleetSourceSort;
+  order?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
+export interface FleetBulkClassificationResult {
+  updated: number;
+  items: FleetSourceRow[];
+}
+
+export interface FleetSyncInstance {
+  instance_id: string;
+  instance_name: string;
+  status: "RUNNING" | "FAILED" | "OK" | "NEVER";
+  last_run_at: string | null;
+  last_success_at: string | null;
+  consecutive_failures: number;
+}
+
+export interface FleetSyncStatus {
+  instances: FleetSyncInstance[];
+  running: boolean;
+}
+
+export interface FleetSyncQueued {
+  queued: boolean;
+  already_running: boolean;
+  task_id: string | null;
+}
+
+/** The CSV of the list with the same filters and sort: a plain link, the session cookie goes along. */
+export function fleetSourcesCsvUrl(params: FleetListParams): string {
+  const { limit: _limit, offset: _offset, ...rest } = params;
+  return `${PUBLIC_BASE}/fleet/sources.csv${qs({ ...rest })}`;
+}
+
 export const fleetApi = {
   summary: (window: FleetWindow) => fleetRequest<FleetSummary>(`/fleet/summary${qs({ window })}`),
   sources: (params: FleetSourceParams = {}) =>
@@ -3944,6 +4037,21 @@ export const fleetApi = {
     }),
   markReviewed: (id: string) =>
     fleetRequest<FleetSource>(`/log-sources/${id}/review`, { method: "POST" }),
+  /** One source in the list's row shape (class, basis, override, profile states). */
+  sourceClass: (id: string) => fleetRequest<FleetSourceRow>(`/log-sources/${id}/classification`),
+  sourceList: (params: FleetListParams = {}) =>
+    fleetRequest<FleetSourcePage>(`/fleet/sources${qs({ ...params })}`),
+  bulkClassification: (body: {
+    log_source_ids: string[];
+    class: SourceClass | null;
+    mark_reviewed: boolean;
+  }) =>
+    fleetRequest<FleetBulkClassificationResult>("/fleet/sources/classification", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  syncStatus: () => fleetRequest<FleetSyncStatus>("/fleet/sources/sync"),
+  queueSync: () => fleetRequest<FleetSyncQueued>("/fleet/sources/sync", { method: "POST" }),
   rules: () => fleetRequest<ClassificationRule[]>("/classification-rules"),
   createRule: (body: ClassificationRuleCreate) =>
     fleetRequest<ClassificationRule>("/classification-rules", {
