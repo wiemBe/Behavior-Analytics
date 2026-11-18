@@ -113,6 +113,11 @@ HISTORY_TABLES = (
                 "R5", ReaderKind.LIVE_ONLY, 1
             ),
             "app.fleet.series.build_fleet_eps_series": Reader("R6", ReaderKind.DISPLAY),
+            # UIQ-7a: the fleet list displays and filters stored EPS, both origins,
+            # against the expected band; it does not feed a detector or alert.
+            "app.fleet.sources._Eps.__init__": Reader(
+                "R6 (UIQ-7a fleet source list)", ReaderKind.DISPLAY
+            ),
             "app.fleet.summary.build_fleet_summary": Reader(
                 "R6 (not in the design table: fleet totals)", ReaderKind.DISPLAY
             ),

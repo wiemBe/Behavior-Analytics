@@ -135,6 +135,11 @@ _BODIES: dict[tuple[str, str], dict] = {
     ("PATCH", "/api/v1/log-sources/{log_source_id}/classification"): {
         "override_class": None,
     },
+    # UIQ-7a: bulk classification checks log_source:write after body validation.
+    ("POST", "/api/v1/fleet/sources/classification"): {
+        "log_source_ids": ["00000000-0000-0000-0000-000000000000"],
+        "class": None,
+    },
     # Phase C.2. The outage policy router guards every method at the mount, but
     # supply a valid body so a body-first failure cannot mask a missing guard.
     ("PUT", "/api/v1/outage-policy/classes/{source_class}"): {"mode": "ALERT"},
