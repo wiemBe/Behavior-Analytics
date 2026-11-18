@@ -91,6 +91,7 @@ def test_a_released_configuration_still_starts() -> None:
         waf_collection_enabled=True,
         waf_metric_retention_days=29,
         baseline_lookback_days=14,
+        ips_collection_enabled=False,
         ips_metric_retention_days=2,
         catchall_retention_days=2,
         retention_enabled=True,

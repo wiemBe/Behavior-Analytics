@@ -109,11 +109,11 @@ def test_custom_rule_fingerprint_is_pinned_for_string_and_uuid() -> None:
     )
 
 
-def test_alerting_mode_is_a_computed_field_and_defaults_to_shadow() -> None:
+def test_alerting_mode_is_a_computed_field_and_defaults_to_alerting() -> None:
     assert ALERTING_MODE_FIELD == "alerting_mode"
     assert alerting_mode(False) == ALERTING_MODE_SHADOW
     assert alerting_mode(True) == ALERTING_MODE_ALERTING
-    assert Settings.model_fields["custom_rules_alerting_enabled"].default is False
+    assert Settings.model_fields["custom_rules_alerting_enabled"].default is True
 
 
 def test_shadow_keeps_the_breach_and_compiles_no_alert() -> None:

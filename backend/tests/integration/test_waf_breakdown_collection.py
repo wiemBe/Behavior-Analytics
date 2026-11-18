@@ -443,8 +443,10 @@ class TestNotCollected:
             ):
                 assert getattr(row, name) is None, name
 
-    async def test_the_default_settings_collect_no_breakdown(self, db_session) -> None:
-        settings = cfg()
+    async def test_explicitly_disabled_settings_collect_no_breakdown(self, db_session) -> None:
+        settings = cfg(
+            waf_outcome_collection_enabled=False, waf_client_collection_enabled=False
+        )
         assert not settings.waf_outcome_collection_enabled
         assert not settings.waf_client_collection_enabled
         provider = BreakdownProvider([batch(T0, VOLUME)])

@@ -29,7 +29,13 @@ def doctor(
     provider: Any = None,
     **overrides: Any,
 ) -> Doctor:
-    settings = Settings(encryption_key=KEY, **overrides)
+    settings = Settings(
+        encryption_key=KEY, **{
+            "geo_country_source": "property",
+            "geo_directions": ["SOURCE", "DESTINATION"],
+            **overrides,
+        }
+    )
     built = Doctor(
         settings=settings,
         sessionmaker=cast(Any, _Maker()),

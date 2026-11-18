@@ -205,7 +205,7 @@ _EXPLANATION_DIMENSIONS_DEFAULT: tuple[str, ...] = (
     "protocol",
 )
 _CATCHALL_TYPE_IDS_DEFAULT: tuple[int, ...] = (67, 39, 212, 367, 4000)
-_GEO_DIRECTIONS_DEFAULT: tuple[str, ...] = ("SOURCE", "DESTINATION")
+_GEO_DIRECTIONS_DEFAULT: tuple[str, ...] = ("SOURCE",)
 _QRADAR_HEALTH_DISK_MOUNTS_DEFAULT: tuple[str, ...] = (
     "/",
     "/store",
@@ -395,11 +395,11 @@ class Settings(BaseSettings):
     #: IPS collection: entities kept per (source, bucket, dimension) after the
     #: fold's cut. The summed `dimension_events` still covers every row.
     ips_max_entities_per_bucket: int = Field(default=200, ge=1, le=5000)
-    #: IPS fleet collection is opt-in; individual profiles must also be enabled
+    #: IPS fleet collection is on by default; individual profiles must also be enabled
     #: and VALID for their current version.
-    ips_collection_enabled: bool = False
-    #: IPS alerting is opt-in: in shadow mode incidents are recorded and nothing pages.
-    ips_alerting_enabled: bool = False
+    ips_collection_enabled: bool = True
+    #: IPS alerting is on by default; switching it off records incidents without paging.
+    ips_alerting_enabled: bool = True
     ips_max_new_entities_per_bucket: int = Field(default=20, ge=0, le=1000)
     ips_max_active_entities_per_source_dimension: int = Field(
         default=2000, ge=1, le=50000
@@ -412,9 +412,9 @@ class Settings(BaseSettings):
     ips_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
     ips_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     ips_retention_interval_seconds: int = Field(default=86400, ge=3600)
-    #: Identity collection (D-75) is opt-in. A profile must also be enabled and
+    #: Identity collection (D-75) is on by default. A profile must also be enabled and
     #: VALID for its current mapping version before it is searched.
-    identity_collection_enabled: bool = False
+    identity_collection_enabled: bool = True
     #: Sources that share a field mapping go in one search, cut at this cap.
     identity_max_sources_per_search: int = Field(default=50, ge=1, le=500)
     identity_retention_enabled: bool = True
@@ -430,8 +430,8 @@ class Settings(BaseSettings):
     #: probe writes the same outcome as ``validate``. A probe that does not
     #: finish leaves the status. At least one hour, so Ariel spend stays bounded.
     identity_revalidation_interval_seconds: int = Field(default=86400, ge=3600)
-    #: Identity alerting is opt-in. Incidents are recorded either way.
-    identity_alerting_enabled: bool = False
+    #: Identity alerting is on by default. Incidents are recorded either way.
+    identity_alerting_enabled: bool = True
     #: The first anomalous bucket opens. Thresholds are the finding on that bucket.
     identity_open_after_intervals: int = Field(default=1, ge=1, le=100)
     #: Two healthy buckets resolve. One healthy bucket moves an open incident to recovering.
@@ -774,13 +774,10 @@ class Settings(BaseSettings):
     )
 
     # --- Phase B: WAF endpoint behavior -------------------------------------
-    #: WAF collection is opt-in. Phase B is a development capability until a
-    #: real WAF source proves the production field equivalents, so it stays off
-    #: unless an operator turns it on for a source they have verified.
-    waf_collection_enabled: bool = False
-    #: WAF alerting is separately opt-in, so a source can collect and baseline
-    #: silently in shadow mode before its endpoint incidents can page anyone.
-    waf_alerting_enabled: bool = False
+    #: WAF collection is on by default; sources still need enabled, VALID profiles.
+    waf_collection_enabled: bool = True
+    #: WAF alerting is on by default; switching it off keeps incidents in shadow mode.
+    waf_alerting_enabled: bool = True
     #: QRadar custom-property display names. Site-authored and NOT derivable
     #: from the LEEF keys a device emits -- assuming they matched cost an entire
     #: round of zero-population measurements. Validated against a strict
@@ -849,7 +846,7 @@ class Settings(BaseSettings):
     #: least recently rebuilt first.
     waf_baseline_endpoints_per_run: int = Field(default=50, ge=1, le=5000)
     #: WAF retention runs with WAF collection. Unlike the generic Timescale
-    #: policies it is on by default: WAF collection is itself opt-in, and its
+    #: policies it is on by default: WAF collection requires enabled, VALID profiles, and its
     #: row growth is influenced by whoever sends requests.
     waf_retention_enabled: bool = True
     #: Endpoint metrics and source buckets. Must exceed BASELINE_LOOKBACK_DAYS.
@@ -903,7 +900,7 @@ class Settings(BaseSettings):
         default_factory=lambda: list(_GEO_DIRECTIONS_DEFAULT), min_length=1, max_length=2
     )
     #: ``property`` reads a QRadar custom property. ``lookup`` keeps GEO::LOOKUP.
-    geo_country_source: str = "property"
+    geo_country_source: str = "lookup"
     #: Exact custom-property name for SOURCE. Empty: that direction is not collected.
     geo_source_country_property: str = "Source Geographic Location"
     #: Exact custom-property name for DESTINATION. Empty: that direction is not collected.
@@ -954,13 +951,11 @@ class Settings(BaseSettings):
     qradar_health_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
     # --- Phase F: custom threshold rules (design §F.4, §F.10) ----------------
-    #: Kill switch. The evaluator is DB-only and sends no Ariel search. Nothing
-    #: runs until this is set, so an upgrade changes no behaviour.
-    custom_rules_enabled: bool = False
+    #: On by default. The evaluator is DB-only and needs configured rules.
+    custom_rules_enabled: bool = True
     #: Shadow mode (D-17). Breaches and rule state are written either way.
-    #: Nothing opens, refreshes or resolves an alert, and nothing is enqueued,
-    #: until this is set. It sits beside ``custom_rules_enabled``.
-    custom_rules_alerting_enabled: bool = False
+    #: On by default; switching it off keeps breaches without paging.
+    custom_rules_alerting_enabled: bool = True
     #: Enabled rules. Creating or enabling beyond this is refused (409 at the API).
     custom_rules_max_enabled: int = Field(default=100, ge=1, le=10_000)
     #: Closed buckets judged per subject kind per run. 288 is a day of 5-minute buckets.
@@ -991,14 +986,14 @@ class Settings(BaseSettings):
 
     # --- Phase B.2: behavioural breakdowns and detectors ---------------------
     # Each breakdown is ONE more bounded Ariel search per source per bucket,
-    # under the same permit as the two volume searches. All are off by default:
-    # turning one on is an explicit decision to spend Ariel budget on it.
+    # under the same permit as the two volume searches. On by default, each still
+    # needs the corresponding validated profile fields.
     #: Collect the action breakdown (blocked / unmapped requests per endpoint)
     #: and the response-code breakdown (4xx / 5xx per endpoint), each only for a
     #: profile whose field validated -- and, for action, whose map is authored.
-    waf_outcome_collection_enabled: bool = False
+    waf_outcome_collection_enabled: bool = True
     #: Collect the source-IP breakdown (per-endpoint traffic composition).
-    waf_client_collection_enabled: bool = False
+    waf_client_collection_enabled: bool = True
     #: Group cap for each breakdown search. A breakdown grouped by (URL, method,
     #: host, field) has more groups than the volume search, so it has its own.
     #: Hitting it makes that breakdown a lower bound for the bucket.
@@ -1037,9 +1032,9 @@ class Settings(BaseSettings):
 
     # --- Phase G property watches (design §G.14.3) ---------------------------
     #: Family kill switch: the PROPERTY_WATCH dispatch is a no-op while false.
-    pw_collection_enabled: bool = False
+    pw_collection_enabled: bool = True
     #: Shadow mode: incidents are recorded and nothing opens an alert while false.
-    pw_alerting_enabled: bool = False
+    pw_alerting_enabled: bool = True
     #: Enabled watches; enabling beyond it is refused.
     pw_max_enabled_watches: int = Field(default=10, ge=1, le=100)
     #: Searches one instance may send per tick, and one watch within it.
@@ -1483,6 +1478,25 @@ class Settings(BaseSettings):
             raise ValueError("LAB_MODE is not permitted in production")
         for field_name, value in LAB_PROFILE.items():
             setattr(self, field_name, value)
+        return self
+
+    @model_validator(mode="after")
+    def _default_alerting_follows_collection(self) -> Settings:
+        """A collection opt-out also turns off alerting that no source supplied.
+
+        Preserve explicit values and their provenance for the runtime feature-switch
+        resolver. In particular, a derived value is still a code default, not an env key.
+        """
+        for alerting, collection in (
+            ("waf_alerting_enabled", "waf_collection_enabled"),
+            ("ips_alerting_enabled", "ips_collection_enabled"),
+            ("identity_alerting_enabled", "identity_collection_enabled"),
+            ("rule_alerting_enabled", "rule_match_collection_enabled"),
+            ("pw_alerting_enabled", "pw_collection_enabled"),
+            ("custom_rules_alerting_enabled", "custom_rules_enabled"),
+        ):
+            if alerting not in self.model_fields_set and not getattr(self, collection):
+                object.__setattr__(self, alerting, False)
         return self
 
     @model_validator(mode="after")

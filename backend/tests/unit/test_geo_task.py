@@ -83,7 +83,7 @@ class TestSettings:
     def test_defaults(self) -> None:
         s = Settings()
         assert s.geo_collection_enabled is True
-        assert s.geo_directions == ["SOURCE", "DESTINATION"]
+        assert s.geo_directions == ["SOURCE"]
         assert s.geo_max_rows_per_search == 5000
         assert s.geo_max_countries_per_bucket == 64
         assert s.geo_retention_days == 35
@@ -98,9 +98,9 @@ class TestSettings:
             "DESTINATION"
         ]
 
-    def test_property_mode_is_the_default(self) -> None:
+    def test_lookup_mode_is_the_default(self) -> None:
         settings = Settings()
-        assert settings.geo_country_source == "property"
+        assert settings.geo_country_source == "lookup"
         assert settings.geo_source_country_property == "Source Geographic Location"
         assert settings.geo_destination_country_property == ""
         assert settings.geo_property_for("SOURCE") == "Source Geographic Location"
@@ -152,7 +152,7 @@ class TestSettings:
         )
 
     def test_property_mode_names_the_configured_property_and_the_empty_note(self) -> None:
-        settings = Settings()
+        settings = Settings(geo_country_source="property")
         source, prop, note, code, params = country_source_fields(settings, GeoDirection.SOURCE)
         assert source is GeoCountrySource.PROPERTY
         assert prop == "Source Geographic Location"

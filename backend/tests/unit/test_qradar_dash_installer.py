@@ -1771,14 +1771,24 @@ def test_install_summary_names_on_and_off_families_and_the_backup_timer(
     assert result.returncode == 0, result.stdout + result.stderr
     phrase = _cadence_phrase()
     assert (
-        "Searching QRadar   log source volume, catch-all, geo, explanations "
-        f"({phrase})"
+        "Searching QRadar   log source volume, catch-all, geo, explanations, WAF, IPS, "
+        "custom rules, property watch "
+        f"({phrase}; WAF, IPS uses 15 min until changed on that page)"
     ) in result.stdout
     assert (
-        "Left off           WAF, IPS, rule-match collection, custom rules, "
-        "property watch (turn them on later)"
+        "Left off           rule-match collection (turn them on later)"
     ) in result.stdout
-    assert "uses 15 min" not in result.stdout
+    assert "WAF, IPS uses 15 min" in result.stdout
+    env_text = (inst.root / ".env").read_text()
+    for key in (
+        "WAF_COLLECTION_ENABLED", "WAF_OUTCOME_COLLECTION_ENABLED",
+        "WAF_CLIENT_COLLECTION_ENABLED", "WAF_ALERTING_ENABLED",
+        "IPS_COLLECTION_ENABLED", "IPS_ALERTING_ENABLED",
+        "IDENTITY_COLLECTION_ENABLED", "IDENTITY_ALERTING_ENABLED",
+        "PW_COLLECTION_ENABLED", "PW_ALERTING_ENABLED",
+        "CUSTOM_RULES_ENABLED", "CUSTOM_RULES_ALERTING_ENABLED",
+    ):
+        assert f"{key}=false" not in env_text
     assert f"Backup directory   {inst.files / 'backups'}" in result.stdout
     assert (
         "Backup timer       not installed. Run: ./qradar-dash backup --install-timer"
@@ -1801,7 +1811,7 @@ def test_install_summary_notes_fifteen_minutes_when_waf_is_on(
     inst: Install, tmp_path: Path, flow_path: str
 ) -> None:
     env_path = inst.root / ".env"
-    env_path.write_text("WAF_COLLECTION_ENABLED=true\n")
+    env_path.write_text("WAF_COLLECTION_ENABLED=true\nIPS_COLLECTION_ENABLED=false\nPW_COLLECTION_ENABLED=false\n")
     env_path.chmod(0o600)
 
     result = _install_flow(inst, tmp_path, flow_path)
@@ -2149,3 +2159,20 @@ def test_the_frontend_address_must_be_an_ipv4_address(inst: Install, tmp_path: P
 
     assert result.returncode != 0
     assert "FRONTEND_EDGE_IP" in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    ("label", "key"),
+    [
+        ("WAF", "WAF_COLLECTION_ENABLED"),
+        ("IPS", "IPS_COLLECTION_ENABLED"),
+        ("rule-match collection", "RULE_MATCH_COLLECTION_ENABLED"),
+        ("custom rules", "CUSTOM_RULES_ENABLED"),
+        ("property watch", "PW_COLLECTION_ENABLED"),
+    ],
+)
+def test_installer_family_table_matches_code_defaults(label: str, key: str) -> None:
+    from app.core.config import Settings
+
+    default = "on" if Settings.model_fields[key.lower()].default else "off"
+    assert f"{label}\t{key}\t{default}\t" in SCRIPT.read_text()

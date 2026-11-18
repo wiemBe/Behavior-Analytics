@@ -255,7 +255,7 @@ def _settings(tmp_path, **overrides: Any) -> Settings:
         qradar_ca_bundle=str(ca),
         public_origin="https://soc.example.test",
         encryption_key="sxvVvbfjEG8mA0m2m6b1cQ2E0N4l7rXqO4uJ6c8zY5A=",
-        **{**ALL_ON, **overrides},
+        **{**ALL_ON, "geo_country_source": "property", **overrides},
     )
 
 

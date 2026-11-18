@@ -817,8 +817,10 @@ async def test_a_family_that_is_switched_off_is_a_row_not_an_absence(  # type: i
 ) -> None:
     await make_instance(db_session)
     await db_session.commit()
-    # WAF collection is off by default; the family is still a row.
-    console = Client(db_schema, READER).get(BASE).json()[0]
+    # An explicit WAF opt-out still leaves the family as a row.
+    console = Client(
+        db_schema, READER, settings_update={"waf_collection_enabled": False}
+    ).get(BASE).json()[0]
     waf = family_of(console, "WAF")
     assert waf["collection_enabled"] is False
     assert "WAF_COLLECTION_ENABLED" in waf["collection_reason"]

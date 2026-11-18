@@ -86,6 +86,10 @@ def cfg(**overrides) -> Settings:  # type: ignore[no-untyped-def]
     base.update(
         {
             "waf_collection_enabled": True,
+            "waf_alerting_enabled": False,
+            "waf_outcome_collection_enabled": False,
+            "waf_client_collection_enabled": False,
+            "pw_collection_enabled": False,
             "collection_interval_seconds": 300,
             "collection_max_backfill_intervals": 12,
             "baseline_min_samples": 4,

@@ -16,6 +16,20 @@ applies. A value that still cannot be read fails start-up (`migrate`, backend an
 refuse), with an error naming the variable and the accepted form and never carrying a
 secret-typed setting's value.
 
+## Family defaults in 0.1.17
+
+WAF (including outcome and client breakdowns), IPS, identity, property watches and custom
+threshold rules default to collection/evaluation and alerting on. Each still requires its
+enabled, valid profile, enabled watch or configured rule. Baseline-dependent detectors
+remain `INSUFFICIENT_DATA` without a usable baseline; fixed threshold rules do not need one.
+Rule-match collection and alerting remain off because collection can search Ariel without
+configured rules or existing match data.
+
+Set a collection/evaluation switch to `false` to keep that family off. Unset alerting follows
+a disabled prerequisite; explicitly supplied values keep their existing meaning. A stored
+`feature_switch` row takes precedence over environment values, then code defaults; a failed
+switch-table read turns every family off for that run.
+
 ## Core and providers
 
 | Setting | Default | Meaning |
@@ -99,13 +113,13 @@ data.
 | `PHASE_A_VOLUME` | 5 minutes | yes | none; the source-volume collector always runs |
 | `ANOMALY_EXPLANATION` | 5 minutes | yes | `EXPLANATION_ENABLED` |
 | `RULE_MATCH` | 5 minutes | no | `RULE_MATCH_COLLECTION_ENABLED` |
-| `PROPERTY_WATCH` | 5 minutes | no | `PW_COLLECTION_ENABLED` |
+| `PROPERTY_WATCH` | 5 minutes | yes | `PW_COLLECTION_ENABLED` |
 | `CATCHALL_SENDERS` | 5 minutes | yes | `CATCHALL_COLLECTION_ENABLED` |
 | `GEO_COLLECTION` | 5 minutes | yes | `GEO_COLLECTION_ENABLED` |
-| `WAF_COLLECTION` | 15 minutes | no | `WAF_COLLECTION_ENABLED` |
-| `IPS_COLLECTION` | 15 minutes | no | `IPS_COLLECTION_ENABLED` |
+| `WAF_COLLECTION` | 15 minutes | yes | `WAF_COLLECTION_ENABLED` |
+| `IPS_COLLECTION` | 15 minutes | yes | `IPS_COLLECTION_ENABLED` |
 | `QRADAR_HEALTH` | 15 minutes | yes | `QRADAR_HEALTH_COLLECTION_ENABLED` |
-| `IDENTITY_COLLECTION` | 15 minutes | no | `IDENTITY_COLLECTION_ENABLED` |
+| `IDENTITY_COLLECTION` | 15 minutes | yes | `IDENTITY_COLLECTION_ENABLED` |
 
 The seed rows come from the family migrations: `0013` creates the table and seeds `PHASE_A_VOLUME`,
 `WAF_COLLECTION`, `ANOMALY_EXPLANATION` and `RULE_MATCH` at one hour; `0018`, `0020`, `0022` and
@@ -234,15 +248,15 @@ trimmed to the dimensions its DSM populates; the rest are recorded unavailable.
 
 ## WAF behavior
 
-WAF collection and alerting are separate opt-ins. A source also needs an enabled profile whose
+WAF collection and alerting are on by default. A source also needs an enabled profile whose
 current version has validated successfully.
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `WAF_COLLECTION_ENABLED` | `false` | Family collection switch |
-| `WAF_ALERTING_ENABLED` | `false` | Alerting switch; incidents remain in shadow mode while off |
-| `WAF_OUTCOME_COLLECTION_ENABLED` | `false` | Collect action and response-code breakdowns |
-| `WAF_CLIENT_COLLECTION_ENABLED` | `false` | Collect source-client breakdowns |
+| `WAF_COLLECTION_ENABLED` | `true` | Family collection switch |
+| `WAF_ALERTING_ENABLED` | `true` | Alerting switch; incidents remain in shadow mode while off |
+| `WAF_OUTCOME_COLLECTION_ENABLED` | `true` | Collect action and response-code breakdowns |
+| `WAF_CLIENT_COLLECTION_ENABLED` | `true` | Collect source-client breakdowns |
 | `WAF_MAX_GROUPS_PER_BUCKET` | `500` | Endpoint groups retained from a bucket search |
 | `WAF_MAX_BREAKDOWN_GROUPS_PER_BUCKET` | `2000` | Groups retained for an optional breakdown |
 | `WAF_MIN_ENDPOINT_COVERAGE` | `0.90` | Coverage floor for absence-based conclusions |
@@ -312,8 +326,8 @@ Field names and blocked/allowed values belong to each source's versioned profile
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `IPS_COLLECTION_ENABLED` | `false` | Fleet collection switch; profiles must also be enabled and valid |
-| `IPS_ALERTING_ENABLED` | `false` | Shadow-mode alerting switch |
+| `IPS_COLLECTION_ENABLED` | `true` | Fleet collection switch; profiles must also be enabled and valid |
+| `IPS_ALERTING_ENABLED` | `true` | Shadow-mode alerting switch |
 | `IPS_MAX_SOURCES_PER_SEARCH` | `50` | Sources grouped into one keyed search |
 | `IPS_MAX_ENTITIES_PER_BUCKET` | `200` | Entities retained per source, bucket and dimension |
 | `IPS_MAX_NEW_ENTITIES_PER_BUCKET` | `20` | New entities admitted per source and bucket |
@@ -371,7 +385,7 @@ separate task and is not skipped by that check.
 
 ## Identity collection
 
-Identity collection is opt-in. A log source is searched only when its profile is enabled and
+Identity collection is on by default. A log source is searched only when its profile is enabled and
 `VALID` for the current mapping version. The collector sends three Ariel searches per mapping
 chunk (counts, rare names, volume names), not one search per username. Counts and the top-N
 usernames share the bucket row and are deleted together. Closed identity incidents are a
@@ -381,7 +395,7 @@ alert's evidence snapshot are the copies that outlive the series.
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `IDENTITY_COLLECTION_ENABLED` | `false` | Family collection switch. Profiles must also be enabled and valid |
+| `IDENTITY_COLLECTION_ENABLED` | `true` | Family collection switch. Profiles must also be enabled and valid |
 | `IDENTITY_MAX_SOURCES_PER_SEARCH` | `50` | Sources that share a field mapping, per search. `1`–`500` |
 | `IDENTITY_RETENTION_ENABLED` | `true` | Delete aged identity buckets, counts and top-N usernames |
 | `IDENTITY_COUNT_RETENTION_DAYS` | `35` | Age of a `bucket_start` before that delete. At least `29`, above the 28-day lookback. A row at the cutoff is kept |
@@ -391,7 +405,7 @@ alert's evidence snapshot are the copies that outlive the series.
 | `IDENTITY_VALIDATION_WINDOW_SECONDS` | `900` | Recent interval the validation probe reads. `60`–`3600` |
 | `IDENTITY_VALIDATION_MIN_RATIO` | `0.90` | Minimum share of events that must carry the mapped event id and username |
 | `IDENTITY_REVALIDATION_INTERVAL_SECONDS` | `86400` | How often every enabled profile is probed again. At least `3600` |
-| `IDENTITY_ALERTING_ENABLED` | `false` | Open alerts for identity incidents. Incidents are recorded either way |
+| `IDENTITY_ALERTING_ENABLED` | `true` | Open alerts for identity incidents. Incidents are recorded either way |
 | `IDENTITY_OPEN_AFTER_INTERVALS` | `1` | Anomalous buckets before an incident opens. `1`–`100` |
 | `IDENTITY_RESOLVE_AFTER_INTERVALS` | `2` | Healthy buckets before an open incident resolves. `1`–`100` |
 | `IDENTITY_ANOMALY_RETENTION_DAYS` | `180` | Age of a closed identity incident before it is deleted. `1`–`3650`. Not gated by `IDENTITY_RETENTION_ENABLED` |
@@ -412,8 +426,8 @@ probe runs, which is at most one interval. An operator who raises the future det
 | Setting | Default | Meaning |
 |---|---:|---|
 | `GEO_COLLECTION_ENABLED` | `true` | Family collection switch |
-| `GEO_DIRECTIONS` | `SOURCE, DESTINATION` | Event sides stored as separate series. A JSON array or a comma-separated list: `["SOURCE", "DESTINATION"]` or `SOURCE, DESTINATION`; each is `SOURCE` or `DESTINATION` |
-| `GEO_COUNTRY_SOURCE` | `property` | `property` reads a custom property; `lookup` keeps `GEO::LOOKUP` |
+| `GEO_DIRECTIONS` | `SOURCE` | Event sides stored as separate series. A JSON array or a comma-separated list: `["SOURCE", "DESTINATION"]` or `SOURCE, DESTINATION`; each is `SOURCE` or `DESTINATION` |
+| `GEO_COUNTRY_SOURCE` | `lookup` | `property` reads a custom property; `lookup` keeps `GEO::LOOKUP` |
 | `GEO_SOURCE_COUNTRY_PROPERTY` | `Source Geographic Location` | SOURCE property. Empty: that direction is not collected |
 | `GEO_DESTINATION_COUNTRY_PROPERTY` | empty | DESTINATION property. Empty: that direction is not collected |
 | `GEO_MAX_ROWS_PER_SEARCH` | `5000` | Rows accepted before time splitting |
@@ -475,8 +489,8 @@ the latest stored run for its `qradar_disk` and `qradar_pipeline` lines (OPS-R69
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `CUSTOM_RULES_ENABLED` | `false` | Run the database-only evaluator |
-| `CUSTOM_RULES_ALERTING_ENABLED` | `false` | Open alerts for breaches; otherwise shadow mode |
+| `CUSTOM_RULES_ENABLED` | `true` | Run the database-only evaluator |
+| `CUSTOM_RULES_ALERTING_ENABLED` | `true` | Open alerts for breaches; otherwise shadow mode |
 | `CUSTOM_RULES_MAX_ENABLED` | `100` | Enabled-rule ceiling |
 | `CUSTOM_RULES_MAX_BUCKETS_PER_RUN` | `288` | Buckets judged per subject kind and run |
 | `CUSTOM_RULE_BREACH_RETENTION_DAYS` | `180` | Retention for resolved breach rows |
@@ -490,8 +504,8 @@ Custom rules evaluate aggregates already stored by the platform. They never add 
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `PW_COLLECTION_ENABLED` | `false` | Family collection switch |
-| `PW_ALERTING_ENABLED` | `false` | Alerting switch; otherwise incidents remain in shadow mode |
+| `PW_COLLECTION_ENABLED` | `true` | Family collection switch |
+| `PW_ALERTING_ENABLED` | `true` | Alerting switch; otherwise incidents remain in shadow mode |
 | `PW_MAX_ENABLED_WATCHES` | `10` | Enabled-watch ceiling |
 | `PW_MAX_SEARCHES_PER_TICK` | `40` | Search budget per instance and tick |
 | `PW_MAX_SEARCHES_PER_WATCH_PER_TICK` | `12` | One watch's share of the tick budget |

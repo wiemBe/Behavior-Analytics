@@ -259,8 +259,17 @@ class TestDeploymentStatus:
             TestDeploymentStatus.GATED | TestDeploymentStatus.UNGATED
         )}
 
-    def test_defaults_gate_the_opt_in_detectors(self) -> None:
+    def test_defaults_enable_the_breakdown_detectors(self) -> None:
         got = self._statuses(Settings(_env_file=None))
+        for t in self.GATED | self.UNGATED:
+            assert got[t] is DetectorStatus.OPERATIONAL, t
+
+    def test_explicit_opt_out_gates_the_breakdown_detectors(self) -> None:
+        got = self._statuses(Settings(
+            _env_file=None,
+            waf_outcome_collection_enabled=False,
+            waf_client_collection_enabled=False,
+        ))
         for t in self.GATED:
             assert got[t] is DetectorStatus.NOT_ENABLED, t
         for t in self.UNGATED:

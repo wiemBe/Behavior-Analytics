@@ -448,7 +448,10 @@ def test_metric_retention_must_exceed_the_lookback_when_waf_collection_runs() ->
 
 def test_a_deployment_without_waf_collection_is_not_refused_over_a_waf_setting() -> None:
     """Phase A deployments set long lookbacks; a WAF default must not stop them booting."""
-    settings = Settings(**{**get_settings().model_dump(), "baseline_lookback_days": 60})
+    settings = Settings(**{
+        **get_settings().model_dump(), "baseline_lookback_days": 60,
+        "waf_collection_enabled": False,
+    })
     assert settings.waf_collection_enabled is False
 
 
@@ -456,7 +459,10 @@ def test_a_deployment_without_waf_collection_is_not_refused_over_a_waf_setting()
 async def test_retention_refuses_to_delete_inside_the_baseline_lookback() -> None:
     from app.services.waf_retention import WafRetention
 
-    settings = Settings(**{**get_settings().model_dump(), "baseline_lookback_days": 60})
+    settings = Settings(**{
+        **get_settings().model_dump(), "baseline_lookback_days": 60,
+        "waf_collection_enabled": False,
+    })
     # No session is needed: the guard returns before touching the database.
     report = await WafRetention(None, settings=settings).run()  # type: ignore[arg-type]
     assert report.deleted == {}
@@ -482,10 +488,13 @@ def test_waf_tasks_are_registered_and_scheduled_from_settings() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dispatch_does_nothing_while_waf_collection_is_disabled() -> None:
+async def test_dispatch_does_nothing_while_waf_collection_is_disabled(monkeypatch) -> None:
     from app.workers.tasks import dispatch_waf_collection
 
-    assert get_settings().waf_collection_enabled is False
+    monkeypatch.setattr(
+        "app.workers.tasks.get_settings",
+        lambda: get_settings().model_copy(update={"waf_collection_enabled": False}),
+    )
     sent: list[str] = []
     assert await dispatch_waf_collection(enqueue=sent.append) == {
         "status": "disabled",

@@ -91,7 +91,7 @@ def test_qradar_health_disk_mounts_accepts_both_forms(
 @pytest.mark.parametrize(
     ("name", "attribute", "expected"),
     [
-        ("GEO_DIRECTIONS", "geo_directions", ["SOURCE", "DESTINATION"]),
+        ("GEO_DIRECTIONS", "geo_directions", ["SOURCE"]),
         ("CATCHALL_TYPE_IDS", "catchall_type_ids", [67, 39, 212, 367, 4000]),
         (
             "EXPLANATION_DIMENSIONS",
