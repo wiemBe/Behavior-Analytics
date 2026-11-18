@@ -1320,6 +1320,22 @@ async def test_unknown_settings_pass_and_warn(settings: Settings) -> None:
 
 
 @pytest.mark.asyncio
+async def test_unknown_settings_warn_names_the_canonical_for_a_near_miss(
+    settings: Settings,
+) -> None:
+    """FIX-71i: doctor's WARN tells the operator the canonical spelling."""
+    planted = "planted-secret-value-near-miss"
+    warned = await make_doctor(
+        settings, environ={"WAF_OUTCOME_ENABLED_COLLECTION": planted}
+    ).check_unknown_settings()
+    assert warned.status is Status.WARN
+    assert "WAF_OUTCOME_ENABLED_COLLECTION" in warned.message
+    assert "WAF_OUTCOME_COLLECTION_ENABLED" in warned.message
+    assert planted not in warned.message
+    assert warned.runbook == "OPS-R62"
+
+
+@pytest.mark.asyncio
 async def test_unknown_settings_pass_for_the_names_install_and_compose_use(
     settings: Settings,
 ) -> None:

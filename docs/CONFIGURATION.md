@@ -251,12 +251,18 @@ trimmed to the dimensions its DSM populates; the rest are recorded unavailable.
 WAF collection and alerting are on by default. A source also needs an enabled profile whose
 current version has validated successfully.
 
+Two older site `.env` files used transposed names for the optional breakdown switches. The
+transposed spellings below are accepted as aliases of the canonical keys, so those sites keep
+working. An alias is exactly as explicit as the canonical key: set either one. If both are set
+they must agree; different values refuse startup and the message names both variables. Doctor's
+unknown-settings WARN also names the canonical key when a near-miss (reordered parts) is seen.
+
 | Setting | Default | Meaning |
 |---|---:|---|
 | `WAF_COLLECTION_ENABLED` | `true` | Family collection switch |
 | `WAF_ALERTING_ENABLED` | `true` | Alerting switch; incidents remain in shadow mode while off |
-| `WAF_OUTCOME_COLLECTION_ENABLED` | `true` | Collect action and response-code breakdowns |
-| `WAF_CLIENT_COLLECTION_ENABLED` | `true` | Collect source-client breakdowns |
+| `WAF_OUTCOME_COLLECTION_ENABLED` | `true` | Collect action and response-code breakdowns. `WAF_COLLECTION_OUTCOME_ENABLED` is an accepted alias |
+| `WAF_CLIENT_COLLECTION_ENABLED` | `true` | Collect source-client breakdowns. `WAF_COLLECTION_CLIENT_ENABLED` is an accepted alias |
 | `WAF_MAX_GROUPS_PER_BUCKET` | `500` | Endpoint groups retained from a bucket search |
 | `WAF_MAX_BREAKDOWN_GROUPS_PER_BUCKET` | `2000` | Groups retained for an optional breakdown |
 | `WAF_MIN_ENDPOINT_COVERAGE` | `0.90` | Coverage floor for absence-based conclusions |

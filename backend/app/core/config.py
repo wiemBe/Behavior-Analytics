@@ -8,6 +8,7 @@ Staging is the production posture for a pre-production site.
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
@@ -98,6 +99,41 @@ DEPLOYMENT_ENV_NAMES: frozenset[str] = frozenset(
         "QRADAR_DASH_VERSION",
     }
 )
+
+#: Backward-compatible spellings for the two optional WAF breakdown switches
+#: (FIX-71i). A production `.env` used the transposed order and had it silently
+#: ignored. These are explicit aliases, not a second source of truth: when both
+#: names are present they must agree, or startup refuses (see
+#: ``_waf_breakdown_aliases_agree``). Mapping is canonical name -> alias.
+WAF_COLLECTION_ALIASES: dict[str, str] = {
+    "WAF_OUTCOME_COLLECTION_ENABLED": "WAF_COLLECTION_OUTCOME_ENABLED",
+    "WAF_CLIENT_COLLECTION_ENABLED": "WAF_COLLECTION_CLIENT_ENABLED",
+}
+
+_TRUE_ENV_FLAGS = frozenset({"1", "true", "t", "yes", "y", "on"})
+_FALSE_ENV_FLAGS = frozenset({"0", "false", "f", "no", "n", "off"})
+
+
+def _env_flag(value: str) -> bool | str:
+    """Normalize the strings pydantic accepts for a bool; keep bad ones distinct."""
+    lowered = value.strip().lower()
+    if lowered in _TRUE_ENV_FLAGS:
+        return True
+    if lowered in _FALSE_ENV_FLAGS:
+        return False
+    # Not a boolean. Returning the raw text keeps it unequal to any parsed flag,
+    # so a contradictory pair is refused rather than silently resolved; field
+    # validation reports the unparseable value in the usual way.
+    return value
+
+
+def _env_value(environ: Mapping[str, str], name: str) -> str | None:
+    """Case-insensitive environment lookup (``Settings`` is case-insensitive too)."""
+    wanted = name.upper()
+    for key, value in environ.items():
+        if key.upper() == wanted:
+            return value
+    return None
 
 
 def _fernet_accepts(value: str) -> bool:
@@ -984,9 +1020,22 @@ class Settings(BaseSettings):
     #: Collect the action breakdown (blocked / unmapped requests per endpoint)
     #: and the response-code breakdown (4xx / 5xx per endpoint), each only for a
     #: profile whose field validated -- and, for action, whose map is authored.
-    waf_outcome_collection_enabled: bool = True
+    # The transposed ``WAF_COLLECTION_*`` spellings are explicit aliases. Both
+    # names agreeing is accepted; only one need be set. Contradictory values are
+    # refused by ``_waf_breakdown_aliases_agree`` below.
+    waf_outcome_collection_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "WAF_OUTCOME_COLLECTION_ENABLED", "WAF_COLLECTION_OUTCOME_ENABLED"
+        ),
+    )
     #: Collect the source-IP breakdown (per-endpoint traffic composition).
-    waf_client_collection_enabled: bool = True
+    waf_client_collection_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "WAF_CLIENT_COLLECTION_ENABLED", "WAF_COLLECTION_CLIENT_ENABLED"
+        ),
+    )
     #: Group cap for each breakdown search. A breakdown grouped by (URL, method,
     #: host, field) has more groups than the volume search, so it has its own.
     #: Hitting it makes that breakdown a lower bound for the bucket.
@@ -1474,6 +1523,30 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _waf_breakdown_aliases_agree(self) -> Settings:
+        """Refuse a canonical/alias pair that disagrees; accept one or both alike.
+
+        ``AliasChoices`` silently takes the first name it finds, which would hide a
+        contradictory operator configuration. Read the raw environment so both
+        spellings are compared before the chosen value is used. An alias that is
+        set, alone or alongside the canonical name, still marks the field as
+        supplied -- pydantic records the field, not the alias, in
+        ``model_fields_set`` -- so OPS-DEFAULTS-1's provenance is unchanged.
+        """
+        environ: Mapping[str, str] = os.environ
+        for canonical, alias in WAF_COLLECTION_ALIASES.items():
+            canonical_value = _env_value(environ, canonical)
+            alias_value = _env_value(environ, alias)
+            if canonical_value is None or alias_value is None:
+                continue
+            if _env_flag(canonical_value) != _env_flag(alias_value):
+                raise ValueError(
+                    f"{canonical} and {alias} are both set to different values; "
+                    "set only one of them"
+                )
+        return self
+
+    @model_validator(mode="after")
     def _default_alerting_follows_collection(self) -> Settings:
         """A collection opt-out also turns off alerting that no source supplied.
 
@@ -1817,6 +1890,9 @@ def _known_setting_env_names() -> frozenset[str]:
             for choice in alias.choices:
                 if isinstance(choice, str):
                     names.add(choice.upper())
+    for canonical, alias in WAF_COLLECTION_ALIASES.items():
+        names.add(canonical)
+        names.add(alias)
     return frozenset(names)
 
 
@@ -1844,3 +1920,37 @@ def unknown_setting_names(environ: Mapping[str, str]) -> tuple[str, ...]:
         if name.split("_", 1)[0] in prefixes:
             found.add(name)
     return tuple(sorted(found))
+
+
+def unknown_setting_canonical_hints(environ: Mapping[str, str]) -> dict[str, str]:
+    """Suggest the canonical name for an unknown name that transposed its parts.
+
+    A name is a near-miss when its underscore-separated segments are the same
+    multiset as a known setting's but in a different order -- the exact class of
+    operator error FIX-71i found (``WAF_COLLECTION_OUTCOME_ENABLED`` for
+    ``WAF_OUTCOME_COLLECTION_ENABLED``). A plain truncation or typo (one segment
+    missing or misspelt) is not a near-miss here; it stays an ordinary unknown
+    so the existing warning wording and tests are unchanged. Prefix detection
+    follows the same field/alias-derived rule as ``unknown_setting_names``.
+    Values are never read.
+    """
+    known = _known_setting_env_names()
+    prefixes = _setting_env_prefixes()
+    ignored = SETTINGS_ENV_ALLOWLIST | DEPLOYMENT_ENV_NAMES
+    signatures: dict[tuple[str, ...], str] = {}
+    # Prefer canonical names: a transposed WAF name must be told the canonical
+    # spelling, never the equally-valid alias that happens to sort first.
+    alias_names = frozenset(WAF_COLLECTION_ALIASES.values())
+    for name in sorted(known - alias_names):
+        signatures.setdefault(tuple(sorted(name.split("_"))), name)
+    hints: dict[str, str] = {}
+    for raw in environ:
+        name = raw.upper()
+        if not name or name in known or name in ignored:
+            continue
+        if name.split("_", 1)[0] not in prefixes:
+            continue
+        canonical = signatures.get(tuple(sorted(name.split("_"))))
+        if canonical is not None and canonical != name:
+            hints[name] = canonical
+    return dict(sorted(hints.items()))
