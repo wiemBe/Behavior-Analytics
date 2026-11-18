@@ -165,11 +165,88 @@ def fleet_source_out(source, classification) -> FleetSourceOut:  # type: ignore[
     )
 
 
+FleetFlow = Literal["FLOWING", "SILENT", "DISABLED_IN_QRADAR", "NEVER"]
+FleetEpsState = Literal["BELOW_EXPECTED", "ABOVE_EXPECTED", "WITHIN_EXPECTED", "NO_BASELINE"]
+FleetProfileKind = Literal["NONE", "WAF", "IPS", "IDENTITY"]
+FleetSourceSort = Literal["name", "type", "class", "eps", "last_event", "silent_for"]
+ProfileValidation = Literal["UNVALIDATED", "VALID", "INVALID", "INCONCLUSIVE"]
+
+
+class ProfileState(BaseModel):
+    """One source's WAF, IPS or identity profile: its validation verdict and switch."""
+
+    status: ProfileValidation
+    enabled: bool
+
+
+class FleetSourceRow(FleetSourceOut):
+    """A fleet list row: the classified source plus what the list searches and sorts on."""
+
+    identifier: str | None
+    type_id: int | None
+    # At most FLEET_GROUP_NAMES names, by name; `group_count` is the real number.
+    group_names: list[str]
+    group_count: int
+    flow: FleetFlow
+    last_event_at: datetime | None
+    # Seconds since the last event, only for a SILENT source; null otherwise.
+    silent_for_seconds: int | None
+    # Latest COMPLETE bucket of the last hour; null when none was measured.
+    current_eps: float | None
+    # The reliable baseline cell for the current UTC weekday and hour.
+    expected_eps: float | None
+    expected_eps_low: float | None
+    expected_eps_high: float | None
+    # Null when there is a baseline but no current measurement.
+    eps_state: FleetEpsState | None
+    waf_profile: ProfileState | None
+    ips_profile: ProfileState | None
+    identity_profile: ProfileState | None
+
+
+class FacetCount(BaseModel):
+    value: str
+    count: int
+
+
+class TypeFacetCount(BaseModel):
+    type_id: int | None
+    name: str | None
+    count: int
+
+
+class FleetSourceFacets(BaseModel):
+    """Counts per value, each under every active filter except its own family."""
+
+    source_class: list[FacetCount]
+    type: list[TypeFacetCount]
+    flow: list[FacetCount]
+    profile: list[FacetCount]
+
+
 class FleetSourcePage(BaseModel):
-    items: list[FleetSourceOut]
+    items: list[FleetSourceRow]
     total: int
     limit: int
     offset: int
+    facets: FleetSourceFacets
+
+
+MAX_BULK_SOURCES = 500
+
+
+class FleetBulkClassificationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    log_source_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_BULK_SOURCES)
+    # Required, and null clears the override: an omitted field is a 422.
+    source_class: SourceClass | None = Field(alias="class")
+    mark_reviewed: bool = False
+
+
+class FleetBulkClassificationOut(BaseModel):
+    updated: int
+    items: list[FleetSourceRow]
 
 
 class ClassificationOverrideIn(BaseModel):
