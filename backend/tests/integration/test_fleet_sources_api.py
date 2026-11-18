@@ -397,3 +397,34 @@ def test_csv_cap_marks_truncation(db_schema, monkeypatch) -> None:
     finally:
         monkeypatch.delenv("API_MAX_EXPORT_ROWS")
         get_settings.cache_clear()
+
+
+def test_one_source_classification_read(db_schema) -> None:
+    ids = _fleet(db_schema)
+    url = "/api/v1/log-sources/{}/classification"
+    assert Client(NOTHING).get(url.format(ids["a-waf"])).status_code == 403
+    # The log-source read alone is not the fleet read.
+    from app.security.rbac import Principal
+
+    only_ls = Principal(subject="x", permissions=frozenset({"read:log_sources"}))
+    assert Client(only_ls).get(url.format(ids["a-waf"])).status_code == 403
+    assert Client(VIEWER).get(url.format(MISSING_ID)).status_code == 404
+    c = Client(VIEWER)
+    waf = c.get(url.format(ids["a-waf"])).json()
+    assert waf["source_class"] == "WAF" and waf["override_class"] is None
+    assert waf["basis"] != "OVERRIDE"
+    assert waf["waf_profile"] == {"status": "VALID", "enabled": True}
+    assert waf["ips_profile"] is None and waf["instance_id"]
+    ips = c.get(url.format(ids["b-ips"])).json()
+    assert ips["ips_profile"] == {"status": "UNVALIDATED", "enabled": False}
+    assert ips["waf_profile"] is None
+    # An override shows as the class, the basis and the override fields.
+    editor = Client(EDITOR)
+    done = editor.patch(url.format(ids["d-never"]), json={"override_class": "WAF"})
+    assert done.status_code == 200
+    over = c.get(url.format(ids["d-never"])).json()
+    assert over["source_class"] == "WAF" and over["override_class"] == "WAF"
+    assert over["basis"] == "OVERRIDE" and over["override_by"] == "editor"
+    # Same row as the list gives.
+    listed = {r["id"]: r for r in c.get(URL).json()["items"]}
+    assert listed[ids["d-never"]] == over

@@ -331,5 +331,22 @@
       "clearAll": "Clear all",
       "count": "{total} sources"
     }
+  },
+  "sourceClass": {
+    "label": "Class",
+    "readFailed": "could not be read.",
+    "override": "override",
+    "overrideBy": "override by {name}",
+    "create": "Create {kind} profile",
+    "open": "{kind} profile",
+    "newClass": "New class",
+    "choose": "Set class…",
+    "clear": "Clear override",
+    "save": "Save",
+    "saving": "Saving…",
+    "forbidden": "Not saved. It needs {permission}.",
+    "notFound": "Not saved. This source no longer exists.",
+    "refused": "Not saved. The class was refused.",
+    "failed": "Not saved. The backend could not be reached."
   }
 }

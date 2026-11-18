@@ -4036,6 +4036,8 @@ export const fleetApi = {
     }),
   markReviewed: (id: string) =>
     fleetRequest<FleetSource>(`/log-sources/${id}/review`, { method: "POST" }),
+  /** One source in the list's row shape (class, basis, override, profile states). */
+  sourceClass: (id: string) => fleetRequest<FleetSourceRow>(`/log-sources/${id}/classification`),
   sourceList: (params: FleetListParams = {}) =>
     fleetRequest<FleetSourcePage>(`/fleet/sources${qs({ ...params })}`),
   bulkClassification: (body: {

@@ -257,6 +257,10 @@ selected group; the optional `group_q` (at most 100 characters, case-insensitive
 group name, LIKE wildcards literal) narrows only this facet and never the list. The request runs a
 constant number of statements: page ids, rows, group names, count and five facet reads (nine).
 
+`GET /log-sources/{id}/classification` (`read:fleet` and the log-source read) returns one source in the
+list's row shape (class, `basis`, override fields, review status, WAF/IPS/identity profile states);
+404 for an unknown id. It reuses the list's row loader.
+
 `GET /fleet/sources.csv` takes the same filters and sort, has no paging, and returns the first
 `api_max_export_rows` rows (`X-Export-Truncated: true` when cut). UTC timestamps; text cells that
 start with `=`, `+`, `-` or `@` are prefixed with `'`.

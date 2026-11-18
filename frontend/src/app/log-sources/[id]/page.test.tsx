@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import LogSourceDetailPage from "./page";
-import { ApiError, api, type LogSourceDetail } from "@/lib/api";
+import { ApiError, api, fleetApi, type LogSourceDetail } from "@/lib/api";
 
 // States this route renders, from `page.tsx`:
 //  - the read fails: 401 session expired, 403 names read:log_sources, 404 is not
@@ -45,6 +45,14 @@ async function renderPage(id = "s-1") {
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(api, "logSourcePivot").mockRejectedValue(new ApiError(404, "no pivot"));
+  vi.spyOn(fleetApi, "sourceClass").mockRejectedValue(new ApiError(500, "no class"));
+});
+
+it("still renders the page and says the class could not be read", async () => {
+  vi.spyOn(api, "logSource").mockResolvedValue(detail());
+  await renderPage();
+  expect(screen.getByRole("heading", { name: "Core Firewall" })).toBeInTheDocument();
+  expect(screen.getByText(/Class could not be read/)).toBeInTheDocument();
 });
 
 describe("log source detail states", () => {
