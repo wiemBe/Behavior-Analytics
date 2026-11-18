@@ -607,7 +607,7 @@ export function ProfileEditor({
       {creating && (
         <p className="fm-banner is-info" role="status">
           <span>
-            <strong>{t("noProfile")}</strong> {prefillOrigin} {t("createTail")}
+            <strong>{t("noProfile")}</strong> {prefillOrigin}
           </span>
         </p>
       )}
@@ -628,7 +628,6 @@ export function ProfileEditor({
 
       <section aria-labelledby="fm-mapping-h" className="fm-section">
         <h2 id="fm-mapping-h">{t("mappingTitle")}</h2>
-        <p className="subtitle">{t("mappingNote")}</p>
         <FieldMappingForm
           schema={schema}
           draft={draft}
@@ -713,16 +712,6 @@ export function ProfileEditor({
         return (
           <section key={vm.field} aria-labelledby={`fm-values-${vm.field}`} className="fm-section">
             <h2 id={`fm-values-${vm.field}`}>{t("valuesTitle", { label })}</h2>
-            <p className="subtitle">
-              {t("valuesNote", {
-                label: label.toLocaleLowerCase(i18n.locale === "tr" ? "tr-TR" : "en-US"),
-                outcomes: vm.outcomes
-                  .map((o) =>
-                    outcomeLabel(o, i18n).toLocaleLowerCase(i18n.locale === "tr" ? "tr-TR" : "en-US"),
-                  )
-                  .join(i18n.locale === "tr" ? " ve " : " and "),
-              })}
-            </p>
             <ValueMapEditor
               fieldLabel={label}
               outcomes={vm.outcomes}

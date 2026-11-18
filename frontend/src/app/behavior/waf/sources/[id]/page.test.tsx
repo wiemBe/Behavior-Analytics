@@ -54,9 +54,9 @@ describe("WAF source endpoints", () => {
 
   it("shows the virtual-host caveat only when the source exposes no virtual host", async () => {
     await renderPage();
-    expect(screen.queryByText(/does not expose a virtual host/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No virtual host/)).not.toBeInTheDocument();
     await renderPage([wafEndpoint()], wafSource({ virtual_host_available: false }));
-    expect(screen.getByText(/does not expose a virtual host/)).toBeInTheDocument();
+    expect(screen.getByText(/No virtual host/)).toBeInTheDocument();
   });
 
   it("filters to active endpoints through the API, not in the browser", async () => {
@@ -76,12 +76,12 @@ describe("WAF source endpoints", () => {
   it("says what is empty and why when the source is not collected", async () => {
     await renderPage([], wafSource({ validation_current: false, validation_status: "UNVALIDATED" }));
     expect(screen.getByRole("status")).toHaveTextContent(/No endpoint is tracked/);
-    expect(screen.getByRole("status")).toHaveTextContent(/not collected/);
+    expect(screen.getByRole("status")).toHaveTextContent(/Not collected/);
   });
 
   it("says nothing has been admitted yet when a collected source has no endpoints", async () => {
     await renderPage([]);
-    expect(screen.getByRole("status")).toHaveTextContent(/None has been admitted yet, so nothing is being judged/);
+    expect(screen.getByRole("status")).toHaveTextContent(/No endpoint admitted yet; nothing is judged/);
   });
 });
 

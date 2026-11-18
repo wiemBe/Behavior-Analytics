@@ -820,13 +820,15 @@ describe("field mapping components", () => {
       />,
     );
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Bu konsolun özellik listesi, 2026-10-12 23:00:00 UTC tarihinde alındı. Generic WAF DSM için geçerli özellikler önce gelir.",
+      "Bu konsolun özellik listesi, 2026-10-12 23:00:00 UTC tarihinde alındı.",
     );
     expect(screen.getAllByText("Zorunlu")).toHaveLength(2);
     expect(screen.getAllByText("İsteğe bağlı")).toHaveLength(3);
     // Backend-authored labels and descriptions are shown as sent.
     expect(screen.getByText("URL path")).toBeInTheDocument();
-    expect(screen.getByText(SCHEMA.fields[0].description)).toBeInTheDocument();
+    // A description longer than ten words is not shown (UIQ-8a); a short one still is.
+    expect(screen.queryByText(SCHEMA.fields[0].description)).not.toBeInTheDocument();
+    expect(screen.getByText(SCHEMA.fields[1].description)).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "URL path özelliği" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Listeyi yenile" })).toBeInTheDocument();
     expect(screen.getByLabelText("Eşlemeyi şuradan kopyala…")).toBeInTheDocument();
@@ -848,8 +850,10 @@ describe("field mapping components", () => {
       />,
     );
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Özellik listesi kullanılamıyor: QRadar timed out Her adı QRadar'ın gösterdiği gibi yazın; doğrulama onu denetler.",
+      "Özellik listesi kullanılamıyor Her adı QRadar'ın gösterdiği gibi yazın; doğrulama onu denetler.",
     );
+    // The server's detail sits behind a "Details" disclosure, as sent.
+    expect(screen.getByText("QRadar timed out").closest("details")).not.toBeNull();
   });
 
   it("counts the property list in the Turkish form and words the groups and the empty match", async () => {
@@ -906,7 +910,7 @@ describe("field mapping components", () => {
     expect(screen.getByRole("list", { name: "Sonucun nedenleri" })).toHaveTextContent("URL path: Özellik var ama penceredeki hiçbir olay onu taşımadı.");
     expect(screen.getByRole("list", { name: "Sonucun nedenleri" })).toHaveTextContent("free text from the backend");
     const table = screen.getByRole("table");
-    for (const name of ["Alan", "Sonuç", "Dolu olayların yüzdesi", "Benzersiz değerler", "Makul örneklenenlerin yüzdesi"]) {
+    for (const name of ["Alan", "Sonuç", "Dolu", "Benzersiz değerler", "Makul"]) {
       expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
     }
     const url = within(table).getByRole("row", { name: /URL path/ });

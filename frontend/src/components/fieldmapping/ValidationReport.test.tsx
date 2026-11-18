@@ -111,12 +111,12 @@ describe("ValidationReport", () => {
     const s = screen.getByText(/Validating version 5/);
     expect(s).toHaveAttribute("role", "status");
     expect(s).toHaveTextContent("Validating version 5 since 23:52 UTC");
-    expect(s).toHaveTextContent(/every 5 seconds/);
+    expect(s).not.toHaveTextContent(/every 5 seconds/); // the polling cadence is in the Guide
   });
 
   it("explains that a version with no report has none, instead of showing an empty result", () => {
     show({ report: null, profileVersion: 2 });
-    expect(screen.getByText(/version 2 has not been validated, so there is no report/i)).toBeInTheDocument();
+    expect(screen.getByText(/no validation report for version 2/i)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 

@@ -44,7 +44,6 @@ async function WafSourcesPage() {
       <PageHeader
         guide={guideFor("/admin/waf-sources")}
         title={t("title")}
-        description={t("description")}
         actions={error ? null : <AddSourcePicker />}
       />
 

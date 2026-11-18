@@ -12,7 +12,8 @@ describe("WafEndpointsTable", () => {
   it("shows method and path, the virtual host, adequacy and last seen in UTC", () => {
     render(<WafEndpointsTable endpoints={[wafEndpoint()]} />);
     const row = within(rowOf("GET /portal/login"));
-    expect(row.getByText("Virtual host portal.lab.example")).toBeInTheDocument();
+    expect(row.getByText("portal.lab.example")).toBeInTheDocument();
+    expect(row.queryByText(/Normalizer v/)).not.toBeInTheDocument();
     expect(row.getByText("131 / 168")).toBeInTheDocument();
     expect(row.getAllByText(/10-13 08:55/).length).toBeGreaterThan(0);
     expect(row.getByText("NORMAL")).toBeInTheDocument();
@@ -35,7 +36,8 @@ describe("WafEndpointsTable", () => {
     render(<WafEndpointsTable endpoints={[wafEndpoint({ state: null })]} />);
     const row = within(rowOf("GET /portal/login"));
     expect(row.getByText("Not evaluated")).toBeInTheDocument();
-    expect(row.getByText("No detector has judged this endpoint")).toBeInTheDocument();
+    // The reason sits on the title, not on every row.
+    expect(row.getByTitle("No detector has judged this endpoint")).toHaveTextContent("Not evaluated");
     expect(row.queryByText("Normal")).not.toBeInTheDocument();
   });
 
@@ -53,9 +55,9 @@ describe("WafEndpointsTable", () => {
       />,
     );
     const row = within(rowOf("GET /portal/login"));
-    expect(row.getByText("No cells")).toBeInTheDocument();
-    expect(row.getByText("No baseline built")).toBeInTheDocument();
-    expect(row.getByText("Never rebuilt")).toBeInTheDocument();
+    // A dash that names the state, never a zero.
+    expect(row.getByTitle("No baseline built")).toHaveTextContent("—");
+    expect(row.queryByText("Never rebuilt")).not.toBeInTheDocument();
     expect(row.queryByText("0 / 0")).not.toBeInTheDocument();
   });
 
@@ -65,7 +67,7 @@ describe("WafEndpointsTable", () => {
     );
     const row = within(rowOf("GET /portal/login"));
     expect(row.getByText("0 / 3")).toBeInTheDocument();
-    expect(row.getByText("None reliable yet")).toBeInTheDocument();
+    expect(row.getByText("0 / 3")).toHaveAttribute("title", "None reliable yet");
   });
 
   it("counts active anomalies in words", () => {
@@ -82,7 +84,7 @@ describe("WafEndpointsTable", () => {
 
   it("right-aligns the numeric columns", () => {
     render(<WafEndpointsTable endpoints={[wafEndpoint()]} />);
-    expect(screen.getByRole("columnheader", { name: /Baseline cells/ })).toHaveClass("num");
+    expect(screen.getByRole("columnheader", { name: /Reliable \/ total/ })).toHaveClass("num");
     expect(screen.getByRole("columnheader", { name: /Last seen/ })).toHaveClass("num");
   });
 });

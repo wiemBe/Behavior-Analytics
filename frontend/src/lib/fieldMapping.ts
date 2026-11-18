@@ -392,7 +392,7 @@ export function fieldStatusInfo(
   });
   switch (status) {
     case "AVAILABLE":
-      return known(say("AVAILABLE.label"), say("AVAILABLE.sentence"), "ok");
+      return known(say("AVAILABLE.label"), "", "ok");
     case "NOT_MAPPED":
       return known(
         say("NOT_MAPPED.label"),

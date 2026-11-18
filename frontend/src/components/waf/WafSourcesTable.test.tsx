@@ -21,7 +21,8 @@ describe("WafSourcesTable", () => {
     render(<WafSourcesTable sources={[wafSource()]} />);
     const row = within(rowOf("lab-waf-behavior-01"));
     expect(row.getByText("VALID")).toBeInTheDocument();
-    expect(row.getByText("for profile v3")).toBeInTheDocument();
+    expect(row.queryByText(/for profile v3/)).not.toBeInTheDocument(); // the version sits in the Profile column
+    expect(row.getByText("v3")).toBeInTheDocument();
     expect(row.getByText(/97\.2 %/)).toBeInTheDocument();
     expect(row.getByText(/132 \/ 500/)).toBeInTheDocument();
     expect(row.getByText("None")).toBeInTheDocument();
@@ -68,12 +69,27 @@ describe("WafSourcesTable", () => {
   it("renders no collected bucket as an unmeasured coverage and overflow, never as 0 or None", () => {
     render(<WafSourcesTable sources={[wafSource({ latest_bucket: null, admission: NO_ADMISSION })]} />);
     const row = within(rowOf("lab-waf-behavior-01"));
-    expect(row.getByText("No bucket collected yet")).toBeInTheDocument();
-    expect(row.getByText("No bucket collected in range")).toBeInTheDocument();
+    // Said once above the table, not in every row.
+    expect(screen.getByText("No bucket collected yet")).toBeInTheDocument();
+    expect(row.queryByText("No bucket collected yet")).not.toBeInTheDocument();
+    expect(row.queryByText("No bucket collected in range")).not.toBeInTheDocument();
     expect(row.queryByText("None")).not.toBeInTheDocument();
     expect(row.queryByText(/0\.0 %/)).not.toBeInTheDocument();
     // The em dash carries its meaning for assistive technology.
     expect(row.getByText(/no bucket has been collected/)).toBeInTheDocument();
+  });
+
+  it("does not repeat the no-bucket line when only some sources lack a bucket", () => {
+    render(
+      <WafSourcesTable
+        sources={[
+          wafSource({ log_source_id: "a", log_source_name: "alpha-ok" }),
+          wafSource({ log_source_id: "b", log_source_name: "bravo-empty", latest_bucket: null, admission: NO_ADMISSION }),
+        ]}
+      />,
+    );
+    expect(screen.queryByText("No bucket collected yet")).not.toBeInTheDocument();
+    expect(within(rowOf("bravo-empty")).getByText(/no bucket has been collected/)).toBeInTheDocument();
   });
 
   it("renders a lower-bound coverage as ≥ and a partial bucket as such", () => {
@@ -124,7 +140,7 @@ describe("WafSourcesTable", () => {
   it("labels the table and right-aligns its numeric columns", () => {
     render(<WafSourcesTable sources={[wafSource()]} />);
     expect(screen.getByRole("region", { name: "WAF sources" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /Endpoint coverage/ })).toHaveClass("num");
+    expect(screen.getByRole("columnheader", { name: "Coverage (%)" })).toHaveClass("num");
     expect(screen.getByRole("columnheader", { name: /Active endpoints/ })).toHaveClass("num");
   });
 });
@@ -147,9 +163,9 @@ describe("WafSourcesTable: admission wording", () => {
     const row = within(rowOf("lab-waf-behavior-01"));
     expect(row.getByText("1,893 refused over quota")).toBeInTheDocument();
     expect(row.getByText("702 below admission threshold")).toBeInTheDocument();
-    expect(row.getAllByText("(key-buckets)")).toHaveLength(2);
-    expect(row.getAllByText("(key-buckets)")[0]).toHaveAttribute("title", expect.stringMatching(/once for each/));
-    expect(screen.getByText(/A key-bucket is one endpoint key in one collected bucket/)).toBeInTheDocument();
+    // The key-bucket definition lives in the Guide, not under the table.
+    expect(row.queryByText("(key-buckets)")).not.toBeInTheDocument();
+    expect(screen.queryByText(/A key-bucket is one endpoint key in one collected bucket/)).not.toBeInTheDocument();
   });
 
   it("calls quota refusals overflow, but never the below-threshold count", () => {

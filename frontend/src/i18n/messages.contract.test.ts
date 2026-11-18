@@ -47,7 +47,6 @@ const IDENTICAL_ALLOWLIST = new Set([
   "waf.chart.coverageLine",
   "waf.chart.keyCoverage",
   "waf.metrics.coverage",
-  "waf.sources.coverage",
   "waf.sourcesWidget.coverage",
   "widgets.propertyWatch.coverageBadge",
   // MSG-3: a dependency's QRadar name is passed through verbatim in both locales.

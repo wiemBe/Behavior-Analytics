@@ -95,7 +95,7 @@ describe("draftErrors", () => {
   });
   it("rejects values assigned while the action property is unmapped", () => {
     const d = draftFromProfile(SCHEMA, profile({ mapping: { URL: "URL", METHOD: "M", ACTION: null } }));
-    expect(draftErrors(SCHEMA, d)["@values"]).toMatch(/map the property first/i);
+    expect(draftErrors(SCHEMA, d)["@values"]).toMatch(/no property mapped/i);
   });
   it("rejects a value in both lists", () => {
     const d = draftFromProfile(SCHEMA, profile({ action_value_map: { BLOCKED: ["X"], ALLOWED: ["X"] } }));
@@ -275,7 +275,7 @@ describe("enableBlockReason", () => {
   });
   it("explains each way it is not allowed", () => {
     expect(enableBlockReason(profile({ profile_version: 5, validation_status: "UNVALIDATED", validated_profile_version: null }))).toMatch(/version 5 has not been validated/i);
-    expect(enableBlockReason(profile({ validation_pending: true }))).toMatch(/still being validated/i);
+    expect(enableBlockReason(profile({ validation_pending: true }))).toMatch(/is validating/i);
     expect(enableBlockReason(profile({ validation_status: "INVALID" }))).toMatch(/invalid/i);
     expect(enableBlockReason(profile({ validation_status: "INCONCLUSIVE" }))).toMatch(/inconclusive/i);
   });

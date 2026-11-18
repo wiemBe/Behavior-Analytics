@@ -52,7 +52,7 @@ describe("rows", () => {
     );
     expect(screen.getAllByRole("row")).toHaveLength(5); // header + 4
     expect(screen.getByText("Log source volume")).toBeInTheDocument();
-    expect(screen.getByText("Event count per log source")).toBeInTheDocument();
+    expect(screen.queryByText("Event count per log source")).not.toBeInTheDocument();
     expect(screen.getByText("Rule matches")).toBeInTheDocument();
   });
 
@@ -78,19 +78,15 @@ describe("rows", () => {
     );
     const row = rowOf("Anomaly explanations");
     expect(within(row).getByText("evidence up to 1 h 2 min")).toBeInTheDocument();
-    // No bucket reads as a dash, and the footnote says what that means.
+    // No bucket reads as a dash with its meaning on the title; no footnote.
     expect(within(row).getByTitle("This family has no buckets")).toHaveTextContent("—");
-    expect(screen.getByText(/a dash means the family has no buckets/i)).toBeInTheDocument();
+    expect(screen.queryByText(/a dash means the family has no buckets/i)).not.toBeInTheDocument();
   });
 
-  it("labels the header Bucket width and explains it in the footnote", () => {
+  it("labels the header Bucket width and keeps the explanation out of the page", () => {
     render(<SearchCadenceTable items={[item()]} />);
     expect(screen.getByRole("columnheader", { name: "Bucket width" })).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Bucket width is the span of one stored bucket, not how often the family searches; a dash means the family has no buckets.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/Bucket width is the span of one stored bucket/)).not.toBeInTheDocument();
   });
 
   const failedRow = (code: string | null, over: Partial<SearchCadenceItem> = {}) =>
@@ -229,10 +225,10 @@ describe("rows", () => {
     const numeric = headers.filter((h) => h.classList.contains("num"));
     expect(numeric.map((h) => h.textContent)).toEqual([
       expect.stringMatching(/^Bucket/),
-      expect.stringMatching(/^Worst-case detection delay/),
+      "Max delay",
       "Last run (UTC)",
       "Next run (UTC)",
-      "Searches in last run",
+      "Searches sent",
     ]);
   });
 });

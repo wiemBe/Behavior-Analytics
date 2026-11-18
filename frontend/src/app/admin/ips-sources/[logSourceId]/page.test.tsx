@@ -44,7 +44,7 @@ describe("IPS source page", () => {
     vi.spyOn(ipsApi, "propertyCatalog").mockRejectedValue(new ApiError(502, "upstream"));
     vi.spyOn(ipsApi, "profileHistory").mockRejectedValue(new ApiError(500, "boom"));
     render(await IpsSourcePage(params("ls-413")));
-    expect(screen.getByText(/The property list is unavailable/)).toBeInTheDocument();
+    expect(screen.getByText(/Property list unavailable/)).toBeInTheDocument();
     expect(screen.getByText(/The history could not be loaded/)).toBeInTheDocument();
   });
 

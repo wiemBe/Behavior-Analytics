@@ -50,3 +50,10 @@
   font-size: inherit;
   font-weight: inherit;
 }
+
+/* One-line state of the whole table, directly above it on the table's left edge. */
+.waf-table-state {
+  margin: 0 0 var(--sp-2);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}

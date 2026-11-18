@@ -169,7 +169,6 @@ export function ValueMapEditor({
                 <th scope="col">{t("value")}</th>
                 <th scope="col" className="num">
                   {t("events")}
-                  <span className="cell-sub">{t("inWindow")}</span>
                 </th>
                 <th scope="col">{t("outcome")}</th>
               </tr>

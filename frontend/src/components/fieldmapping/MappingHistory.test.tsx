@@ -7,7 +7,7 @@ import { MappingHistory } from "./MappingHistory";
 describe("MappingHistory", () => {
   it("says what is empty and what would fill it", () => {
     render(<MappingHistory schema={SCHEMA} entries={[]} />);
-    expect(screen.getByText(/no changes are recorded for this profile yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/no changes recorded yet/i)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 

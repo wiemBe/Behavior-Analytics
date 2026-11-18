@@ -172,24 +172,38 @@ export function FieldMappingForm({
 
   const available = catalog?.status === "AVAILABLE";
 
+  // One short hint, only when the label alone is ambiguous: a catalog hint for the long
+  // schema descriptions, else the schema's own text when it is already short.
+  function hintFor(field: MappingFieldOut): string | null {
+    // The hints exist in English only (D-45); a catalog without them keeps the schema text.
+    const hinted = t as unknown as { has(key: string): boolean };
+    if (field.key === "URL" && hinted.has("hint.URL")) return t("hint.URL");
+    if (field.key === "VIRTUAL_HOST" && hinted.has("hint.VIRTUAL_HOST")) return t("hint.VIRTUAL_HOST");
+    if (field.key === "ACTION" && hinted.has("hint.ACTION")) return t("hint.ACTION");
+    return field.description.trim().split(/\s+/).length <= 10 ? field.description : null;
+  }
+
   return (
     <div className="fm-form">
       <div className="fm-toolbar">
-        <p className="fm-catalog" role="status">
+        <div className="fm-catalog" role="status">
           {available ? (
-            <>
-              {t.rich("catalogFetched", { time: () => <UtcTime value={catalog.fetched_at} /> })}{" "}
-              {catalog.filtered_by_source_type
-                ? t("catalogApplies", { type: typeName ?? t("catalogThisType") })
-                : t("catalogUnfiltered")}
-            </>
+            <p>
+              {t.rich("catalogFetched", { time: () => <UtcTime value={catalog.fetched_at} /> })}
+              {!catalog.filtered_by_source_type && <> {t("catalogUnfiltered")}</>}
+            </p>
           ) : (
-            t("catalogDownTail", {
-              lead:
-                t("catalogDown") + (catalog?.detail ? `: ${catalog.detail}` : "."),
-            })
+            <>
+              <p>{t("catalogDownTail", { lead: t("catalogDown") })}</p>
+              {catalog?.detail && (
+                <details>
+                  <summary>{(t as unknown as { has(key: string): boolean }).has("details") ? t("details") : "Details"}</summary>
+                  <p>{catalog.detail}</p>
+                </details>
+              )}
+            </>
           )}
-        </p>
+        </div>
         {onRefreshCatalog && (
           <button
             type="button"
@@ -208,7 +222,8 @@ export function FieldMappingForm({
         {schema.fields.map((field) => {
           const value = draft.mapping[field.key] ?? "";
           const inputId = `${uid}-${field.key}`;
-          const descId = `${inputId}-d`;
+          const hint = hintFor(field);
+          const descId = hint ? `${inputId}-d` : "";
           const msgId = `${inputId}-m`;
           const switchable = Boolean(referenceKinds && onKindChange) && field.kinds.length > 1;
           const kind = switchable ? (referenceKinds?.[field.key] ?? field.kinds[0]) : null;
@@ -229,9 +244,11 @@ export function FieldMappingForm({
                 <span className={`fm-req${field.required ? " is-required" : ""}`}>
                   {field.required ? t("required") : t("optional")}
                 </span>
-                <p id={descId} className="fm-desc">
-                  {field.description}
-                </p>
+                {hint && (
+                  <p id={descId} className="fm-desc">
+                    {hint}
+                  </p>
+                )}
               </div>
               <div className="fm-control">
                 {switchable && kind && (
@@ -257,7 +274,7 @@ export function FieldMappingForm({
                       id={inputId}
                       className="select-control"
                       aria-label={t("fieldAria", { field: field.label })}
-                      aria-describedby={hasMsg ? `${descId} ${msgId}` : descId}
+                      aria-describedby={hasMsg ? `${descId} ${msgId}`.trim() : descId || undefined}
                       aria-invalid={Boolean(error) || undefined}
                       value={value}
                       disabled={disabled}
@@ -283,7 +300,7 @@ export function FieldMappingForm({
                       placeholder={field.required ? t("propertyPlaceholder") : t("notMapped")}
                       suggestions={propertiesFor(field, catalog)}
                       normalized={switchable ? [] : normalizedFor(field)}
-                      describedBy={hasMsg ? `${descId} ${msgId}` : descId}
+                      describedBy={hasMsg ? `${descId} ${msgId}`.trim() : descId || undefined}
                       invalid={Boolean(error)}
                       disabled={disabled}
                       onChange={(next) => setProperty(field.key, next)}

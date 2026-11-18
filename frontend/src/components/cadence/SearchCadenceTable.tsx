@@ -109,7 +109,6 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
       <tr className={hasStatus ? "has-status" : undefined}>
         <td className="cell-family">
           {info.name}
-          {info.scope && <span className="cell-sub">{info.scope}</span>}
         </td>
         <td className="cadence-cell">
           <select
@@ -157,7 +156,12 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
               —
             </span>
           )}
-          {reason && <span className="cell-sub cadence-reason">{reason}</span>}
+          {reason && (
+            <details className="cell-sub cadence-reason">
+              <summary>{(t as unknown as { has(key: string): boolean }).has("details") ? t("details") : "Details"}</summary>
+              {reason}
+            </details>
+          )}
         </td>
         <td className="num">
           {lastRun === null ? (
@@ -198,7 +202,6 @@ export function SearchCadenceTable({ items }: { items: SearchCadenceItem[] }) {
               </th>
               <th scope="col" className="num">
                 {t("worstCase")}
-                <span className="cell-sub">{t("formula")}</span>
               </th>
               <th scope="col" className="num">
                 {t("lastRun")}
@@ -219,11 +222,6 @@ export function SearchCadenceTable({ items }: { items: SearchCadenceItem[] }) {
         </table>
       </TableScroll>
 
-      <ul className="table-notes" aria-label={t("notesLabel")}>
-        <li>{t("noteCadence")}</li>
-        <li>{t("noteExplanation")}</li>
-        <li>{t("noteMissing")}</li>
-      </ul>
     </>
   );
 }

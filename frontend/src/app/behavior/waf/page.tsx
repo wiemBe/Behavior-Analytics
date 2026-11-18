@@ -78,11 +78,7 @@ async function WafBehaviorPage({
 
   return (
     <>
-      <PageHeader
-        guide={guideFor("/behavior/waf")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/behavior/waf")} title={t("title")} />
 
       {error ? (
         <div className="notice" role="alert">

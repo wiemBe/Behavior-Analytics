@@ -27,7 +27,7 @@ describe("WAF behavior: layout and honesty of the headline", () => {
     const group = container.querySelector(".waf-range") as HTMLElement;
     expect(group).not.toBeNull();
     expect(group.querySelector("nav")).not.toBeNull();
-    expect(group).toHaveTextContent(/Admission overflow covers 2026-10-12 09:00:00 UTC/);
+    expect(group).toHaveTextContent(/2026-10-12 09:00:00 UTC to 2026-10-13 09:00:00 UTC/);
     expect(container.querySelector(".waf-sources .table-scroll")).not.toBeNull();
   });
 
@@ -37,8 +37,7 @@ describe("WAF behavior: layout and honesty of the headline", () => {
       120,
     );
     const lead = container.querySelector(".waf-lead") as HTMLElement;
-    expect(lead).toHaveTextContent("1 of 2 sources are listed on this page and collected and judged");
-    expect(lead).toHaveTextContent("The list has 120 sources in all");
+    expect(lead).toHaveTextContent("1 of 2 sources judged on this page; 120 in all");
     expect(lead).not.toHaveTextContent("of 120");
     expect(screen.getByText("1 of 2")).toBeInTheDocument();
   });
