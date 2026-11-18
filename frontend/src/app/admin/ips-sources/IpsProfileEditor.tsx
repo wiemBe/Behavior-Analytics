@@ -12,6 +12,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { RemoveSource } from "@/components/fieldmapping/RemoveSource";
+import { useRouter } from "next/navigation";
 
 import {
   draftFromDefaults,
@@ -111,6 +113,7 @@ export function IpsProfileEditor({
   pollMs?: number;
 }) {
   const t = useTranslations("ips.editor");
+  const router = useRouter();
   const i18n = useBehaviorI18n();
   const backendMessage = useBackendMessage();
   const formSch = useMemo(() => formSchema(schema), [schema]);
@@ -830,6 +833,16 @@ export function IpsProfileEditor({
                 {block}
               </span>
             )}
+            <RemoveSource
+              family="IPS"
+              logSourceId={source.id}
+              name={source.name}
+              label={t("removeFrom")}
+              onRemoved={() => {
+                router.push("/admin/ips-sources");
+                router.refresh();
+              }}
+            />
           </div>
           <Notice msg={collectMsg} />
         </section>

@@ -52,6 +52,7 @@ from app.schemas.messages import (
     validation_report_messages,
 )
 from app.schemas.property_catalog import PropertyCatalogOut
+from app.schemas.waf import ProfileClassOut
 from app.security.auth import get_principal
 from app.security.rbac import Principal
 from app.services.ips_profiles import AUDIT_OBJECT, IpsProfileService
@@ -461,6 +462,44 @@ async def disable_ips_profile(
     principal: PrincipalDep,
 ) -> IpsProfileOut:
     return await _set_enabled(log_source_id, False, session, settings, principal)
+
+
+@router.delete("/log-sources/{log_source_id}/profile", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_ips_profile(
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    principal: PrincipalDep,
+) -> Response:
+    """Remove the profile, whatever the log source's or the profile's state.
+
+    Collected aggregates stay until retention; adding the source again starts a new
+    profile at version 1.
+    """
+    source = await _log_source(session, log_source_id)
+    profile = await _profile(session, source, for_update=True)
+    await IpsProfileService(session, settings=settings).remove(
+        profile, source, actor=principal.subject
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/log-sources/{log_source_id}/class", response_model=ProfileClassOut)
+async def get_ips_source_class(
+    log_source_id: uuid.UUID, session: SessionDep
+) -> ProfileClassOut:
+    """The source's class and where it comes from, for the remove dialog."""
+    source = await _log_source(session, log_source_id)
+    row = await session.scalar(
+        select(LogSourceClassification).where(LogSourceClassification.log_source_id == source.id)
+    )
+    if row is None:
+        return ProfileClassOut()
+    return ProfileClassOut(
+        source_class=str(row.source_class),
+        basis=row.basis,
+        override_class=str(row.override_class) if row.override_class is not None else None,
+    )
 
 
 @router.get(

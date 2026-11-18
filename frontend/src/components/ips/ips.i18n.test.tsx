@@ -67,6 +67,10 @@ vi.mock("echarts/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("echarts/core")>();
   return { ...actual, init, use: vi.fn() };
 });
+// The admin editors read the router to leave after a removal (UIQ-9).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock("echarts/charts", () => ({ LineChart: {} }));
 vi.mock("echarts/components", () => ({
   GridComponent: {},
@@ -389,7 +393,13 @@ describe("IPS sources administration in Turkish", () => {
     vi.spyOn(ipsApi, "sources").mockResolvedValue([status(), status({ profile_id: "p-2", log_source_id: "ls-2", log_source_name: "pa", validated_at: null })]);
     render(await IpsSourcesPage());
     expect(screen.getByRole("heading", { level: 1, name: "IPS kaynakları" })).toBeInTheDocument();
-    expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+    // The last column is the English-only Remove action (UIQ-9; Turkish is frozen), left out here.
+    expect(
+      screen
+        .getAllByRole("columnheader")
+        .slice(0, -1)
+        .map((h) => h.textContent),
+    ).toEqual([
       "Kaynak",
       "Profilsürüm",
       "Doğrulama",

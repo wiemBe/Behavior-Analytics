@@ -781,6 +781,9 @@
       "afterSteps": [
         {
           "p": "**What \"valid for the current version\" means:** validation belongs to one version. On the WAF behavior page a profile validated for an older version reads **STALE** (\"VALID for v3; profile is now v4\"), and a profile that was never validated reads **UNVALIDATED**. Neither is collected. A source reading \"Version 5 not validated\" is paused, not unhealthy. A mapping change pauses collection from the source until the new version validates. A dash under **Last validated (UTC)** means the source has never been validated; that is not a failed validation. **Action values** are the raw action values counted as blocked and allowed; saving that map is a mapping change that bumps the version and validates again, and a source that is not yet mapped for Action cannot have values assigned."
+        },
+        {
+          "p": "**Remove from WAF** deletes the profile, whatever state the source is in, including a log source disabled in QRadar. Collection stops; collected history stays until retention. Adding the source again starts a new profile at version 1. A class set by hand can be cleared in the same step; a class that comes from a rule is changed under **Classification rules**."
         }
       ],
       "states": [
@@ -795,6 +798,9 @@
       "body": [
         {
           "p": "The flow is the one of `waf-source-setup`: map fields, validate the saved version against the source's events, enable collection. IPS administration is a separate permission; a WAF administrator does not control IPS collection."
+        },
+        {
+          "p": "**Remove from IPS** works the same way: the profile is deleted, history stays until retention, and a new profile starts at version 1 when the source is added again."
         }
       ],
       "steps": [

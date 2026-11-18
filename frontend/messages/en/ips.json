@@ -259,7 +259,9 @@
     "ofVersion": "of v{version}",
     "neverValidated": "never validated",
     "notes": "A profile change pauses collection until the new version validates, so “Version 5 not validated” means paused, not unhealthy. An older validation shows the version it checked.",
-    "noteDash": "A dash means never validated, not a failed validation."
+    "noteDash": "A dash means never validated, not a failed validation.",
+    "actions": "Actions",
+    "remove": "Remove"
   },
   "picker": {
     "add": "Add IPS source",
@@ -372,7 +374,8 @@
     "noUnsaved": "No unsaved changes.",
     "reviewCreate": "Review and create",
     "reviewSave": "Review and save",
-    "discard": "Discard changes"
+    "discard": "Discard changes",
+    "removeFrom": "Remove from IPS"
   },
   "validation": {
     "fieldRejected": "Field rejected",

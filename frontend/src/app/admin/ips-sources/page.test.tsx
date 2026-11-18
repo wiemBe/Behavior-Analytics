@@ -7,6 +7,11 @@ import Loading from "./loading";
 import { candidate, status } from "./fixtures";
 import { ApiError, fleetApi, ipsApi, type FleetSource, type Page } from "@/lib/api";
 
+// The admin tables and editors read the router to refresh after a removal (UIQ-9).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(ipsApi, "candidates").mockResolvedValue([candidate()]);
@@ -71,6 +76,7 @@ describe("IPS sources list", () => {
       "Enabled",
       "Collection",
       "Last validated (UTC)",
+      "Actions",
     ]);
   });
 

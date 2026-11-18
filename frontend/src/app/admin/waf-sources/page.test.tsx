@@ -7,6 +7,11 @@ import Loading from "./loading";
 import { SCHEMA, status } from "@/components/fieldmapping/fixtures";
 import { ApiError, api } from "@/lib/api";
 
+// The admin tables and editors read the router to refresh after a removal (UIQ-9).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(api, "wafMappingSchema").mockResolvedValue(SCHEMA);

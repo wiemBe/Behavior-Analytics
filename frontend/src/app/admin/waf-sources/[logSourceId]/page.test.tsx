@@ -6,6 +6,11 @@ import Loading from "./loading";
 import { HISTORY, SCHEMA, catalog, profile, status } from "@/components/fieldmapping/fixtures";
 import { ApiError, api, type LogSourceDetail } from "@/lib/api";
 
+// The admin tables and editors read the router to refresh after a removal (UIQ-9).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
 const params = (id = "ls-new") => ({ params: Promise.resolve({ logSourceId: id }) });
 const NOT_FOUND = () => new ApiError(404, "WAF source profile not found");
 

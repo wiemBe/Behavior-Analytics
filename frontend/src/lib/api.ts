@@ -797,6 +797,13 @@ export interface WafCandidateOut {
   instance_id: string;
 }
 
+/** How a source is classified. `basis` is OVERRIDE when the operator set the class. */
+export interface ProfileClassOut {
+  source_class: string | null;
+  basis: string | null;
+  override_class: string | null;
+}
+
 export interface CatalogProperty {
   name: string;
   property_type: string | null;
@@ -3625,6 +3632,10 @@ export const api = {
     request<WafProfileOut>(`/waf/log-sources/${logSourceId}/profile/disable`, {
       method: "POST",
     }),
+  removeWafProfile: (logSourceId: string) =>
+    request<void>(`/waf/log-sources/${logSourceId}/profile`, { method: "DELETE" }),
+  wafSourceClass: (logSourceId: string) =>
+    request<ProfileClassOut>(`/waf/log-sources/${logSourceId}/class`),
   wafProfileHistory: (logSourceId: string) =>
     request<WafProfileHistoryEntryOut[]>(`/waf/log-sources/${logSourceId}/profile/history`),
   wafPropertyCatalog: (logSourceId: string, refresh = false) =>
@@ -4929,6 +4940,10 @@ export const ipsApi = {
     request<IpsProfileOut>(`/ips/log-sources/${logSourceId}/profile/disable`, {
       method: "POST",
     }),
+  removeProfile: (logSourceId: string) =>
+    request<void>(`/ips/log-sources/${logSourceId}/profile`, { method: "DELETE" }),
+  sourceClass: (logSourceId: string) =>
+    request<ProfileClassOut>(`/ips/log-sources/${logSourceId}/class`),
   profileHistory: (logSourceId: string) =>
     request<IpsProfileHistoryEntryOut[]>(`/ips/log-sources/${logSourceId}/profile/history`),
   propertyCatalog: (logSourceId: string, refresh = false) =>

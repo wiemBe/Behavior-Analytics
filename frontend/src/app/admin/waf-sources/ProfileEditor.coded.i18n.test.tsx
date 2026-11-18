@@ -11,6 +11,11 @@ import { ProfileEditor, type EditorSource } from "./ProfileEditor";
 import { HISTORY, SCHEMA, catalog, profile } from "@/components/fieldmapping/fixtures";
 import { ApiError, api } from "@/lib/api";
 
+// The admin tables and editors read the router to refresh after a removal (UIQ-9).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
 const SOURCE: EditorSource = {
   id: "ls-1",
   name: "WAF edge - eu-west",
