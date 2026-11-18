@@ -52,6 +52,12 @@ td.num .ips-unit {
   font-size: var(--fs-md);
   line-height: var(--lh-prose);
 }
+/* One line above a table when every row shares a state. */
+.ips-table-state {
+  margin: 0 0 var(--sp-2);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
 /* A row of controls (range, series, dimension filter) that belong to one question. */
 .ips-controls {
   display: flex;

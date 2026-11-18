@@ -113,7 +113,7 @@ export function AddIpsSourcePicker({
               )}
               {state.kind === "ready" && state.items.length === 0 && (
                 <p className="fm-empty" role="status">
-                  {q.trim() ? t("emptyQuery", { q: q.trim() }) : t("emptyAll")} {t("emptySync")}{" "}
+                  {q.trim() ? t("emptyQuery", { q: q.trim() }) : t("emptyAll")}{" "}
                   <Link href="/log-sources">{t("emptyLink")}</Link>
                 </p>
               )}

@@ -66,7 +66,7 @@ describe("IPS source page", () => {
     vi.spyOn(ipsApi, "profile").mockRejectedValue(new ApiError(403, "forbidden"));
     render(await IpsSourcePage(params("ls-413")));
     expect(screen.getByRole("alert")).toHaveTextContent("admin:ips");
-    expect(screen.getByRole("alert")).toHaveTextContent("Nothing was changed.");
+    expect(screen.getByRole("alert")).toHaveTextContent("admin:waf does not grant it");
   });
 
   it("names admin:ips on a 403 reading the schema", async () => {

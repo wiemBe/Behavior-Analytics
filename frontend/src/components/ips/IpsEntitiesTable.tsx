@@ -35,7 +35,7 @@ function BaselineCell({ e }: { e: IpsEntityInventory }) {
         t("reliableOfTotal", { reliable: formatCount(reliable, locale), total: formatCount(total, locale) })
       )}
       {(total === 0 || reliable === 0) && (
-        <span className="cell-sub">{total === 0 ? t("noBaseline") : t("noneReliable")}</span>
+        <span className="sr-only"> {total === 0 ? t("noBaseline") : t("noneReliable")}</span>
       )}
     </>
   );
@@ -53,7 +53,6 @@ export function IpsEntitiesTable({ entities }: { entities: IpsEntityInventory[] 
             <th scope="col">{t("entity")}</th>
             <th scope="col" className="num">
               {t("baseline")}
-              <span className="cell-sub">{t("baselineSub")}</span>
             </th>
             <th scope="col" className="num">
               {t("lastSeen")}
@@ -100,8 +99,9 @@ export function IpsEntitiesTable({ entities }: { entities: IpsEntityInventory[] 
                   </span>
                 ) : (
                   <>
-                    <span className="muted">{t("notEvaluated")}</span>
-                    <span className="cell-sub">{t("noDetector")}</span>
+                    <span className="muted" title={t("noDetector")}>
+                      {t("notEvaluated")}
+                    </span>
                   </>
                 )}
                 {e.active_anomaly_count > 0 && (

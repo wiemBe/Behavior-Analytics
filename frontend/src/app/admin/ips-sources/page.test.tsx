@@ -37,11 +37,12 @@ describe("IPS sources list", () => {
   it("keeps the time zone and the paused and never-validated meanings after the d40 text cut", async () => {
     vi.spyOn(ipsApi, "sources").mockResolvedValue([status()]);
     render(await IpsSourcesPage());
-    expect(screen.getByText("Times are UTC.")).toBeInTheDocument();
-    expect(
-      screen.getByText(/means paused, not unhealthy\. An older validation shows the version it checked\./),
-    ).toBeInTheDocument();
-    expect(screen.getByText("A dash means never validated, not a failed validation.")).toBeInTheDocument();
+    // The explanations moved to the Guide (UIQ-8b); the page keeps the time zone in each time
+    // and says "never validated" in the dash's accessible name.
+    expect(screen.queryByText("Times are UTC.")).toBeNull();
+    expect(screen.queryByText(/means paused, not unhealthy/)).toBeNull();
+    expect(screen.queryByText(/A dash means never validated/)).toBeNull();
+    expect(screen.getByText("10-13 09:02 UTC")).toBeInTheDocument();
   });
 
   it("has one h1 and links to each source's editor", async () => {
@@ -71,7 +72,7 @@ describe("IPS sources list", () => {
     render(await IpsSourcesPage());
     expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
       "Source",
-      "Profileversion",
+      "Version",
       "Validation",
       "Enabled",
       "Collection",
@@ -172,8 +173,7 @@ describe("IPS sources list", () => {
     vi.spyOn(ipsApi, "sources").mockResolvedValue([]);
     render(await IpsSourcesPage());
     expect(screen.getByText("No IPS source has a profile yet.")).toBeInTheDocument();
-    expect(screen.getByText(/starts from a preset/)).toBeInTheDocument();
-    expect(screen.getByText(/the profile still has to validate/)).toBeInTheDocument();
+    expect(screen.getByText(/nothing is collected until its profile validates/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add IPS source" })).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });

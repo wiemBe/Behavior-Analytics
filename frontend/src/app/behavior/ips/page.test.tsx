@@ -36,8 +36,8 @@ describe("IPS behavior: composition", () => {
     expect(container.querySelectorAll("h1")).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("IPS behavior");
     expect(screen.getByText("1 of 2")).toBeInTheDocument();
-    expect(screen.getByText(/the others produce no verdicts/)).toBeInTheDocument();
-    expect(screen.getByText("Times are UTC.")).toBeInTheDocument();
+    expect(screen.getByText(/sources? judged/)).toBeInTheDocument();
+    expect(screen.queryByText("Times are UTC.")).toBeNull();
   });
 
   it("takes no time range: no range selector, and the request carries only paging", async () => {
@@ -62,15 +62,14 @@ describe("IPS behavior: composition", () => {
       120,
     );
     const lead = container.querySelector(".ips-lead") as HTMLElement;
-    expect(lead).toHaveTextContent("1 of 2 sources are listed on this page and collected and judged");
-    expect(lead).toHaveTextContent("The list has 120 sources in all");
+    expect(lead).toHaveTextContent("1 of 2 sources judged on this page; 120 in all");
     expect(lead).not.toHaveTextContent("of 120");
   });
 
   it("keeps the plain wording when every source is on the page", async () => {
     const { container } = await renderPage();
     const lead = container.querySelector(".ips-lead") as HTMLElement;
-    expect(lead).not.toHaveTextContent("listed on this page");
+    expect(lead).not.toHaveTextContent("on this page");
     expect(lead).not.toHaveTextContent("in all");
   });
 
@@ -102,8 +101,7 @@ describe("IPS behavior: source states", () => {
       ipsSource({ log_source_id: "d", log_source_name: "d", active_anomaly_count: null, validation_current: false }),
     ]);
     const lead = container.querySelector(".ips-lead") as HTMLElement;
-    expect(lead).toHaveTextContent("3 of 4 sources are collected and judged");
-    expect(lead).toHaveTextContent("2 judged sources have active anomalies.");
+    expect(lead).toHaveTextContent("3 of 4 sources judged; 2 with active anomalies.");
   });
 
   it("says nothing about active anomalies in the lead when no judged source has one", async () => {
@@ -132,7 +130,9 @@ describe("IPS behavior: source states", () => {
   it("shows a source with no latest bucket as not collected yet, not as 0", async () => {
     await renderPage([ipsSource({ latest_bucket: null })]);
     const row = within(screen.getByRole("link", { name: "lab-ips-01" }).closest("tr")!);
-    expect(row.getAllByText("Not collected yet").length).toBeGreaterThan(0);
+    // One line above the table (every row shares it); the cells are dashes that name the state.
+    expect(screen.getByText("No bucket collected yet")).toBeInTheDocument();
+    expect(row.getAllByText("no bucket collected").length).toBeGreaterThan(0);
     expect(row.queryByText(/events$/)).toBeNull();
   });
 
@@ -145,7 +145,7 @@ describe("IPS behavior: source states", () => {
       }),
     ]);
     expect(screen.getByText("Overflowing")).toBeInTheDocument();
-    expect(screen.getByText("Destination: 12 refused over quota, 3 untracked entities")).toBeInTheDocument();
+    expect(screen.getByText("Destination: 12 refused, 3 untracked entities")).toBeInTheDocument();
   });
 
   it("does not call out admission when nothing overflowed", async () => {
@@ -158,7 +158,7 @@ describe("IPS behavior: empty and failed", () => {
   it("says what is empty and why, and that empty is not normal", async () => {
     await renderPage([]);
     expect(screen.getByRole("status")).toHaveTextContent(/No IPS source has a behavior profile/);
-    expect(screen.getByRole("status")).toHaveTextContent(/not a statement that IPS traffic is normal/);
+    expect(screen.getByRole("status")).toHaveTextContent(/Nothing is collected until a log source is mapped and validated/);
   });
 
   it("says what failed and what to do on an outage, without the exception text", async () => {
@@ -166,7 +166,7 @@ describe("IPS behavior: empty and failed", () => {
     render(await IpsBehaviorPage({ searchParams: Promise.resolve({}) }));
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("IPS behavior could not be shown.");
-    expect(alert).toHaveTextContent(/backend may be unreachable/);
+    expect(alert).toHaveTextContent(/Reload the page/);
     expect(alert).not.toHaveTextContent("ECONNREFUSED");
     expect(screen.queryByRole("table")).toBeNull();
   });

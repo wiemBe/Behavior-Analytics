@@ -41,8 +41,7 @@ export function IpsSourceTable({ sources }: { sources: IpsSourceStatus[] }) {
             <tr>
               <th scope="col">{t("source")}</th>
               <th scope="col" className="num">
-                {t("profile")}
-                <span className="cell-sub">{t("version")}</span>
+                {t("version")}
               </th>
               <th scope="col">{t("validation")}</th>
               <th scope="col">{t("enabled")}</th>
@@ -119,10 +118,6 @@ export function IpsSourceTable({ sources }: { sources: IpsSourceStatus[] }) {
         </table>
       </TableScroll>
       )}
-      <ul className="table-notes" aria-label={t("notesLabel")}>
-        <li>{t("notes")}</li>
-        <li>{t("noteDash")}</li>
-      </ul>
     </>
   );
 }
