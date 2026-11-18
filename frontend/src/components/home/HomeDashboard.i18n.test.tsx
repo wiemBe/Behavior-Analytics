@@ -129,7 +129,7 @@ describe("the Home page in Turkish", () => {
     render(<HomeDashboard />);
     await waitFor(() => expect(h1()).toHaveTextContent("SOC Genel Bakışı"));
     expect(await screen.findByText("Şablon, kaydedilmedi")).toBeInTheDocument();
-    expect(screen.getByText("Filo hacmi, kaynak sağlığı, anomaliler ve offense'ların 24 saatlik görünümü. Saatler UTC.")).toBeInTheDocument();
+    expect(screen.queryByText(/24 saatlik görünümü/)).toBeNull();
     expect(await screen.findByRole("button", { name: "Gösterge panelleri" })).toBeInTheDocument();
   });
 
@@ -139,9 +139,7 @@ describe("the Home page in Turkish", () => {
     await waitFor(() => expect(h1()).toHaveTextContent("Gündüz vardiyası"));
     expect(await screen.findByText("Varsayılan")).toBeInTheDocument();
     expect(screen.getByText("Paylaşılan")).toBeInTheDocument();
-    expect(
-      screen.getByText("Filo hacmi, kaynak sağlığı, anomaliler, offense'lar ve olayların geldiği ülkeler."),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/olayların geldiği ülkeler/)).toBeNull();
   });
 
   it("falls back to the template with a sentence that names why, when the list fails", async () => {

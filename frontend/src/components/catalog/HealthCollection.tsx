@@ -53,14 +53,8 @@ export function HealthCollection() {
                 <span className="muted"> · {t("someNotRun")}</span>
               ) : null}
             </p>
-            <table className="tw-table cw-table">
+            <table className="tw-table cw-table cw-collection">
               <caption className="sr-only">{t("caption")}</caption>
-              <colgroup>
-                <col />
-                <col className="tw-col-badge" />
-                <col className="tw-col-time" />
-                <col className="tw-col-magnitude" />
-              </colgroup>
               <thead>
                 <tr>
                   <th scope="col">{t("family")}</th>

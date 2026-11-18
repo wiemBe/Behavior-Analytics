@@ -110,7 +110,7 @@ describe("TopSources", () => {
   it("says the state is unavailable when the behavior list cannot be read, and why", () => {
     setup({ behaviors: failed() });
     render(<TopSources />);
-    expect(screen.getByText(/state are unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/Deviation and state unavailable/i)).toBeInTheDocument();
     expect(screen.getAllByText("State unavailable").length).toBeGreaterThan(0);
     for (const state of screen.getAllByText("State unavailable")) {
       expect(state.textContent?.trim()).not.toMatch(/^·/);
@@ -143,7 +143,7 @@ describe("TopSources", () => {
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent(/could not be read/);
     expect(alert).toHaveTextContent(/HTTP 503/);
-    expect(alert).toHaveTextContent(/check that the backend is reachable/);
+    expect(alert).toHaveTextContent(/Use Refresh in the top bar/);
   });
 
   it("keeps the old data and says so when a refresh failed", () => {

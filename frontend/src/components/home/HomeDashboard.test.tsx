@@ -240,13 +240,13 @@ describe("which dashboard `/` shows", () => {
     expect(screen.queryByRole("button", { name: "Rename…" })).toBeNull();
   });
 
-  it("sets 'Template, not saved' apart from its description as a badge", async () => {
+  it("sets 'Template, not saved' apart as a badge, with no description line", async () => {
     rows = [];
     render(<HomeDashboard />);
     await view();
     expect(screen.getByText("Template, not saved")).toHaveClass("badge");
     expect(screen.getByText("Template, not saved")).not.toHaveClass("dg-qualifier");
-    expect(screen.getByText(/24 h view of fleet volume/)).not.toHaveClass("badge");
+    expect(screen.queryByText(/24 h view of fleet volume/)).toBeNull();
   });
 
   it("shows the SOC Overview template, unsaved, when there are no dashboards", async () => {
@@ -257,9 +257,9 @@ describe("which dashboard `/` shows", () => {
     const qualifier = screen.getByText("Template, not saved");
     expect(qualifier).toBeInTheDocument();
     const qualifierRow = qualifier.closest(".page-meta");
-    expect(qualifierRow).toHaveTextContent(/Template, not saved24 h view of fleet volume/);
-    expect(qualifierRow?.children).toHaveLength(2);
-    expect(screen.getByText(/24 h view of fleet volume/)).toHaveClass("dg-qualifier");
+    expect(qualifierRow).toHaveTextContent(/^Template, not saved$/);
+    expect(qualifierRow?.children).toHaveLength(1);
+    expect(screen.queryByText(/24 h view of fleet volume/)).toBeNull();
     expect(screen.queryByText(/Template, not saved\s*·/)).toBeNull();
     expect(screen.getByTestId("view")).toHaveAttribute("data-saved", "false");
     // nothing reads as an error
@@ -280,7 +280,7 @@ describe("which dashboard `/` shows", () => {
     expect(await view()).toHaveTextContent("w_kpieps");
     const line = screen.getByText(/Saved dashboards could not be loaded/, { selector: "p" });
     expect(line).toHaveTextContent("the server answered HTTP 503");
-    expect(line).toHaveTextContent("changes here are not saved");
+    expect(line).toHaveTextContent("Showing the unsaved SOC Overview template");
     expect(h1()).toHaveTextContent("SOC Overview");
   });
 
@@ -297,7 +297,7 @@ describe("which dashboard `/` shows", () => {
     mocks.search = "dashboard=nope";
     render(<HomeDashboard />);
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("does not exist, or it is not shared with you");
+    expect(alert).toHaveTextContent("does not exist or is not shared with you");
     expect(within(alert).getByRole("link", { name: "Open your default dashboard" })).toHaveAttribute("href", "/");
     expect(screen.queryByTestId("view")).toBeNull();
     // the switcher is still there to leave by
@@ -336,7 +336,7 @@ describe("which dashboard `/` shows", () => {
     };
     render(<HomeDashboard />);
     expect(await screen.findByRole("heading", { name: "Unsupported widget" })).toBeInTheDocument();
-    expect(screen.getByText(/widget of type future\.widget that this version does not know/)).toBeInTheDocument();
+    expect(screen.getByText(/widget of type future\.widget this version does not know/)).toBeInTheDocument();
   });
 
   it("keeps dashboard navigation available while customizing and removes the interim no-save copy", async () => {
@@ -406,7 +406,7 @@ describe("permissions on the page", () => {
     me = { status: 200, body: { ...WRITER, effective_permissions: ["read:dashboards"] } };
     render(<HomeDashboard />);
     await view();
-    expect(await screen.findByText(/Your role cannot save dashboards/)).toBeInTheDocument();
+    expect(await screen.findByText(/Saving needs permission/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Manage" })).toBeNull();
     // the switcher still works
     expect(screen.getByRole("button", { name: "Dashboards" })).toBeInTheDocument();
@@ -416,7 +416,7 @@ describe("permissions on the page", () => {
     me = { status: 500, body: { detail: "boom" } };
     render(<HomeDashboard />);
     await view();
-    expect(await screen.findByText(/Your permissions could not be read \(the server answered HTTP 500\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/Read-only: permissions unreadable \(the server answered HTTP 500\)/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Manage" })).toBeNull();
   });
 
@@ -435,7 +435,7 @@ describe("permissions on the page", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Manage" }));
     await userEvent.click(screen.getByRole("button", { name: "Clear default" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Manage" })).toBeNull());
-    expect(screen.getByText(/refused the change: Only the owner or an administrator/)).toBeInTheDocument();
+    expect(screen.getByText(/Refused: Only the owner or an administrator/)).toBeInTheDocument();
   });
 });
 
@@ -574,7 +574,7 @@ describe("layout saving", () => {
     await makeRangeDirty();
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Save" })).toBeNull());
-    expect(screen.getAllByText(/server refused the change: Only the owner/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Refused: Only the owner/).length).toBeGreaterThan(0);
     expect(within(screen.getByRole("group", { name: "Window" })).getByRole("button", { name: "1 h" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -766,18 +766,16 @@ describe("template first save and navigation guard", () => {
     expect(mocks.push).toHaveBeenCalledWith("/?dashboard=d1");
   });
 
-  describe("the line under the title of a dashboard made from a template (T-098)", () => {
+  describe("the line under the title of a dashboard made from a template (T-098, UIQ-8c)", () => {
     const admin = "Search cadence, source classification, outage policy and detection evidence health.";
 
-    it("says what the template holds when the dashboard has no description of its own", async () => {
+    it("shows no template description line when the dashboard has none of its own", async () => {
       rows[0].templateKey = "qradar_administration";
       mocks.search = "dashboard=d1";
       const { container } = render(<HomeDashboard />);
       await screen.findByRole("heading", { name: "Night shift" });
-      expect(await screen.findByText(admin)).toBeInTheDocument();
-      expect(container.querySelector(".page-meta .dg-template-desc")).not.toBeNull();
-      // the clamped line carries its full text for the pointer that opens nothing
-      expect(container.querySelector(".dg-template-desc")!.getAttribute("title")).toBe(admin);
+      expect(screen.queryByText(admin)).toBeNull();
+      expect(container.querySelector(".dg-template-desc")).toBeNull();
     });
 
     it("leaves the dashboard's own description alone, and a plain dashboard without a line", async () => {

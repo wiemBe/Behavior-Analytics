@@ -85,7 +85,7 @@ describe("health.detection", () => {
       [RULES]: ok([]),
     };
     render(<HealthDetection />);
-    expect(screen.getByText(/Coverage has not been evaluated/)).toBeInTheDocument();
+    expect(screen.getByText(/Coverage not evaluated/)).toBeInTheDocument();
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
@@ -149,7 +149,7 @@ describe("health.collection", () => {
   it("explains an empty answer", () => {
     res.byKey = { [KEY]: ok([]) };
     render(<HealthCollection />);
-    expect(screen.getByText(/No search family was returned/)).toBeInTheDocument();
+    expect(screen.getByText(/No search family returned/)).toBeInTheDocument();
   });
 });
 
@@ -162,7 +162,7 @@ describe("health.evidence", () => {
     const row = screen.getByRole("cell", { name: "Failed" }).closest("tr")!;
     expect(within(row).getByText("2")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Anomalies" })).toBeInTheDocument();
-    expect(screen.getByText(/open them to see why/)).toBeInTheDocument();
+    expect(screen.getByText(/Evidence collection failed for these anomalies/)).toBeInTheDocument();
   });
 
   it("says nothing failed only when the count is a measured zero", () => {
@@ -423,7 +423,7 @@ describe("table.recent_waf_anomalies", () => {
     res.byKey = { [LIST]: ok(page([])) };
     render(<RecentWafAnomalies />);
     expect(screen.getByText(/No active WAF endpoint anomalies/)).toBeInTheDocument();
-    expect(screen.getByText(/not collected, so they are not judged/)).toBeInTheDocument();
+    expect(screen.getByText(/No active WAF endpoint anomalies/)).toBeInTheDocument();
   });
 
   it("is an error state when the list failed", () => {

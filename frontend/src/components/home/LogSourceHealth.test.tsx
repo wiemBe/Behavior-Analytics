@@ -91,7 +91,7 @@ describe("LogSourceHealth", () => {
   it("says the judged figure is unavailable when the summary cannot be read", () => {
     setup({ [SUM]: forbidden });
     render(<LogSourceHealth />);
-    expect(screen.getByText(/judged normal is unavailable/)).toBeInTheDocument();
+    expect(screen.getByText(/Judged-normal count unavailable/)).toBeInTheDocument();
     expect(within(row("Silent")).getByText("—")).toBeInTheDocument();
   });
 
@@ -105,7 +105,7 @@ describe("LogSourceHealth", () => {
   it("names what is empty and why when no source is monitored", () => {
     setup({ [BEH]: ok([]) });
     render(<LogSourceHealth />);
-    expect(screen.getByText(/No monitored log sources\. Enable monitoring/)).toBeInTheDocument();
+    expect(screen.getByText(/^No monitored log sources\.$/)).toBeInTheDocument();
   });
 
   it("shows the inventory failure and no zero health rows when no source exists", () => {
@@ -118,7 +118,7 @@ describe("LogSourceHealth", () => {
     render(<LogSourceHealth />);
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("The source states could not be read.");
-    expect(alert).toHaveTextContent("The inventory sync failed, so these are not counts of zero.");
+    expect(alert).toHaveTextContent("Inventory sync failed; no health counts.");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.queryByText("0")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View all" })).toHaveAttribute("href", "/behavior/sources");
@@ -133,7 +133,7 @@ describe("LogSourceHealth", () => {
     });
     render(<LogSourceHealth />);
     expect(screen.getByText("Not collected.")).toBeInTheDocument();
-    expect(screen.getByText(/there are no health counts/)).toBeInTheDocument();
+    expect(screen.getByText(/no health counts/)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.queryByText("0")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View all" })).toHaveAttribute("href", "/behavior/sources");
@@ -149,7 +149,7 @@ describe("LogSourceHealth", () => {
       } as SocOverview),
     });
     render(<LogSourceHealth />);
-    expect(screen.getByText(/No monitored log sources\. Enable monitoring/)).toBeInTheDocument();
+    expect(screen.getByText(/^No monitored log sources\.$/)).toBeInTheDocument();
     expect(within(row("Silent")).getByText("0")).toBeInTheDocument();
     expect(within(row("In maintenance")).getByText("0")).toBeInTheDocument();
   });

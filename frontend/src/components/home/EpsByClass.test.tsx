@@ -137,7 +137,7 @@ describe("EpsByClass", () => {
   it("counts a class with no mean in words and never lists it as zero", () => {
     res.state = ok(fleet([fleetClass("FIREWALL", { mean_eps: 10 }), noData("WAF")]));
     render(<EpsByClass />);
-    expect(screen.getByText(/1 class has no complete bucket and is not in the total/)).toBeInTheDocument();
+    expect(screen.getByText(/1 class has no complete bucket; not in the total/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "WAF" })).not.toBeInTheDocument();
     expect(data().map((d) => d.name)).toEqual(["Firewall"]);
   });
@@ -149,7 +149,7 @@ describe("EpsByClass", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByText("Insufficient data")).toBeInTheDocument();
     expect(screen.getByText(/No class has a complete bucket/)).toBeInTheDocument();
-    expect(screen.getByText(/2 classes have no complete bucket and are not in the total/)).toBeInTheDocument();
+    expect(screen.getByText(/2 classes have no complete bucket; not in the total/)).toBeInTheDocument();
   });
 
   it("says Partial with the interval coverage", () => {

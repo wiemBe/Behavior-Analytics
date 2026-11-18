@@ -327,10 +327,10 @@ describe("chart.property_watch, the other states", () => {
   it("empty: never collected, says why and when the watch was created", async () => {
     world({ watch: watch({ coverage: null, status: null, collected_through: null }) });
     renderWidget();
-    expect(await screen.findByText(/No bucket has been collected for this watch yet/)).toHaveTextContent(
+    expect(await screen.findByText(/No bucket collected yet/)).toHaveTextContent(
       "Created 2026-10-10 09:00:00 UTC",
     );
-    expect(screen.getByText(/has not run yet/)).toBeInTheDocument();
+    expect(screen.getByText(/Not run yet/)).toBeInTheDocument();
     expect(screen.queryByRole("img")).toBeNull();
     expect(api.propertyWatchValues).not.toHaveBeenCalled();
     expect(drill()).toBeInTheDocument();
@@ -345,14 +345,14 @@ describe("chart.property_watch, the other states", () => {
   it("empty: no value is tracked, and it is not a zero", async () => {
     world({ values: [] });
     renderWidget();
-    expect(await screen.findByText(/No value is tracked for this watch/)).toBeInTheDocument();
+    expect(await screen.findByText(/No value tracked in the last/)).toBeInTheDocument();
     expect(api.propertyWatchSeries).not.toHaveBeenCalled();
   });
 
   it("empty: nothing pinned and nothing counted says there is nothing to draw", async () => {
     world({ values: [value(vid(1), "a", { events: null, reading: "UNKNOWN" })] });
     renderWidget();
-    expect(await screen.findByText(/nothing to draw/)).toHaveTextContent("not a reading of zero events");
+    expect(await screen.findByText(/No pinned or counted value/)).toBeInTheDocument();
     expect(api.propertyWatchSeries).not.toHaveBeenCalled();
   });
 
@@ -415,7 +415,7 @@ describe("chart.property_watch, the other states", () => {
     vi.spyOn(api, "propertyWatchBuckets").mockRejectedValue(new ApiError(503, "x"));
     shell.tick = 1;
     rerender(<PropertyWatchWidget id="w_pw1" config={{ watch_id: WATCH_ID }} range={null} expanded={false} />);
-    expect(await screen.findByText(/The latest refresh failed/)).toBeInTheDocument();
+    expect(await screen.findByText(/Refresh failed; showing the previous answer/)).toBeInTheDocument();
     expect(screen.getByRole("img")).toBeInTheDocument();
   });
 
@@ -425,7 +425,6 @@ describe("chart.property_watch, the other states", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(PW_WIDGET_FORBIDDEN);
     expect(alert).toHaveTextContent("(permission read:property_watches)");
-    expect(alert).toHaveTextContent("An administrator grants read:property_watches");
     expect(drill()).toHaveAttribute("href", `/behavior/watches/${WATCH_ID}`);
   });
 

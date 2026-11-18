@@ -119,7 +119,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "kpi.total_eps",
     title: "Total EPS",
-    description: "Fleet events per second over the chosen range, against the baselines that exist.",
+    description: "Fleet EPS over the range, against baselines.",
     category: "KPI",
     requires: ["read:fleet"],
     sources: ["/fleet/summary", "/fleet/eps-series"],
@@ -131,7 +131,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "kpi.log_sources",
     title: "Log sources",
-    description: "How many sources are monitored now and how many are judged normal.",
+    description: "Monitored sources and how many are judged normal.",
     category: "KPI",
     requires: ["read:anomalies", "read:overview"],
     sources: ["/anomalies/summary", "/behavior/sources", "/overview"],
@@ -142,7 +142,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "kpi.offenses",
     title: "Open offenses",
-    description: "Open offenses in the latest snapshot, by severity.",
+    description: "Open offenses in the latest snapshot.",
     category: "KPI",
     requires: ["read:offenses"],
     sources: ["/offenses/analytics", "/offenses"],
@@ -153,7 +153,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "kpi.anomalies",
     title: "Active anomalies",
-    description: "Anomalies active now, by detector and lifecycle.",
+    description: "Active anomalies by detector and lifecycle.",
     category: "KPI",
     requires: ["read:anomalies"],
     sources: ["/anomalies/summary"],
@@ -164,7 +164,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "chart.eps_fleet_total",
     title: "Fleet EPS",
-    description: "Observed fleet EPS against the sum of per-source expected EPS, 1 h to 7 d.",
+    description: "Observed against expected fleet EPS, 1 h to 7 d.",
     category: "Chart",
     requires: ["read:fleet"],
     sources: ["/fleet/eps-series"],
@@ -176,7 +176,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "chart.eps_by_class",
     title: "EPS by source class",
-    description: "Mean EPS of each source class over the chosen range, with its share of the fleet.",
+    description: "Mean EPS and fleet share per source class.",
     category: "Chart",
     requires: ["read:fleet"],
     sources: ["/fleet/summary"],
@@ -188,7 +188,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "table.top_sources",
     title: "Top log sources by EPS",
-    description: "The five busiest sources over the chosen range with their deviation from expected.",
+    description: "Five busiest sources with deviation from expected.",
     category: "Table",
     requires: ["read:fleet", "read:anomalies"],
     sources: ["/fleet/summary", "/behavior/sources"],
@@ -200,7 +200,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "chart.anomaly_severity",
     title: "Anomalies by severity",
-    description: "Anomalies per hour over 24 h, stacked by severity (the latest 200 are read).",
+    description: "Anomalies per hour over 24 h, by severity.",
     category: "Chart",
     requires: ["read:anomalies"],
     sources: ["/anomalies"],
@@ -211,7 +211,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "health.log_sources",
     title: "Log source health",
-    description: "Sources by verdict now, and the categories that need a decision.",
+    description: "Sources by verdict, and categories needing a decision.",
     category: "Health",
     requires: ["read:anomalies", "read:fleet"],
     sources: ["/behavior/sources", "/anomalies/summary", "/fleet/summary", "/overview"],
@@ -222,7 +222,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "table.recent_anomalies",
     title: "Recent anomalies",
-    description: "The latest active anomalies with their deviation and a link to investigate.",
+    description: "Latest active anomalies with deviation.",
     category: "Table",
     requires: ["read:anomalies"],
     sources: ["/anomalies", "/anomalies/summary"],
@@ -233,7 +233,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "table.recent_offenses",
     title: "Recent offenses",
-    description: "The latest open offenses by last update, with their magnitude.",
+    description: "Latest open offenses with magnitude.",
     category: "Table",
     requires: ["read:offenses"],
     sources: ["/offenses"],
@@ -244,7 +244,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "health.detection",
     title: "Detection health",
-    description: "Technique coverage and rule verdicts: is detection holding up?",
+    description: "Technique coverage and rule verdicts.",
     category: "Health",
     requires: ["read:coverage", "read:rules"],
     sources: ["/coverage/summary", "/rules/health-summary"],
@@ -255,7 +255,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "health.collection",
     title: "Scheduled searches",
-    description: "Per search family: cadence, last run and how late it is.",
+    description: "Per search family: cadence, last run, lateness.",
     category: "Health",
     requires: ["read:search_cadence"],
     sources: ["/admin/search-cadence"],
@@ -266,7 +266,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "health.evidence",
     title: "Evidence collection",
-    description: "Anomalies whose evidence is pending or failed.",
+    description: "Anomalies with evidence pending or failed.",
     category: "Health",
     requires: ["read:anomalies"],
     sources: ["/anomalies/summary"],
@@ -277,7 +277,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "table.catchall_senders",
     title: "Catch-all senders to review",
-    description: "The newest unreviewed senders feeding the catch-all sources.",
+    description: "Newest unreviewed catch-all senders.",
     category: "Table",
     requires: ["read:fleet"],
     sources: ["/fleet/catchall/senders"],
@@ -288,7 +288,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "table.fleet_classes",
     title: "Source classes",
-    description: "Sources, mean EPS over the chosen range and open silence per source class.",
+    description: "Sources, mean EPS and open silence per class.",
     category: "Table",
     requires: ["read:fleet"],
     sources: ["/fleet/summary"],
@@ -300,7 +300,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "table.outage_policy",
     title: "Outage policy",
-    description: "The default outage mode, the classes that depart from it and the overrides.",
+    description: "Default outage mode, class departures and overrides.",
     category: "Admin",
     requires: ["read:fleet", "admin:outage"],
     sources: ["/fleet/summary"],
@@ -312,7 +312,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     type: "table.handover",
     title: "Latest handover",
     description:
-      "The newest shift handover: who wrote it, when, the note and how many rows it watches.",
+      "Newest shift handover: author, time, note, watched rows.",
     category: "Table",
     requires: ["read:anomalies"],
     sources: ["/handover/latest"],
@@ -323,7 +323,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "waf.sources",
     title: "WAF sources",
-    description: "Profile verdict, endpoint coverage and active endpoints against the ceiling.",
+    description: "Profile verdict, endpoint coverage and active endpoints.",
     category: "Health",
     requires: ["read:anomalies"],
     sources: ["/behavior/waf/sources"],
@@ -334,7 +334,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "table.recent_waf_anomalies",
     title: "Recent WAF anomalies",
-    description: "The latest active anomalies of WAF endpoints.",
+    description: "Latest active WAF endpoint anomalies.",
     category: "Table",
     requires: ["read:anomalies"],
     sources: ["/anomalies"],
@@ -347,7 +347,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     type: "waf.endpoint_traffic",
     title: "WAF endpoint traffic",
     description:
-      "One WAF endpoint's requests per bucket against its seasonal expected range. You choose the endpoint.",
+      "One endpoint's requests against its expected range. You choose the endpoint.",
     category: "Chart",
     requires: ["read:anomalies"],
     sources: [
@@ -371,7 +371,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     type: "chart.eps_observed_expected",
     title: "Log source EPS",
     description:
-      "One log source's EPS against its seasonal expected range. You choose the source; the fleet total is Fleet EPS.",
+      "One source's EPS against its expected range. You choose the source.",
     category: "Chart",
     requires: ["read:anomalies"],
     sources: [
@@ -390,7 +390,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     type: "chart.search_results",
     title: "Search results",
     description:
-      "One scheduled search's stored results: a line, bars, the latest total, or the latest run's top rows.",
+      "One scheduled search's stored results.",
     category: "Chart",
     requires: ["read:searches"],
     sources: [
@@ -415,7 +415,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     type: "chart.property_watch",
     title: "Property watch",
     description:
-      "One property watch: its pinned values and the top values of the last bucket, in events per bucket, with the coverage of the scope.",
+      "One property watch: pinned and top values per bucket.",
     category: "Chart",
     requires: ["read:property_watches"],
     sources: [
@@ -439,7 +439,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     type: "ips.source_anomalies",
     title: "Recent IPS anomalies",
     description:
-      "The latest active anomalies of IPS entities and IPS sources, in each detector's own unit.",
+      "Latest active IPS entity and source anomalies.",
     category: "Table",
     requires: ["read:anomalies"],
     sources: ["/anomalies"],
@@ -452,7 +452,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     type: "map.geography",
     title: "Geography",
     description:
-      "Where events come from, by country of the source or the destination address, over the chosen range.",
+      "Event countries by source or destination address.",
     category: "Chart",
     requires: ["read:geo"],
     sources: ["/geo/countries"],

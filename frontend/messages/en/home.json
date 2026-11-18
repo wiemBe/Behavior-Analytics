@@ -1,14 +1,14 @@
 {
   "frame": {
     "couldNotRead": "The {subject} could not be read.",
-    "readAdvice": "{answer} Nothing was changed. Use Refresh in the top bar; if it still fails, check that the backend is reachable.",
-    "rateLimited": "Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in a minute.",
-    "rateLimitedAfter": "Too many requests came from this address within a minute. Nothing is wrong with the data or the backend. Try again in {seconds, number} s.",
+    "readAdvice": "{answer} Use Refresh in the top bar.",
+    "rateLimited": "Too many requests from this address. Try again in a minute.",
+    "rateLimitedAfter": "Too many requests from this address. Try again in {seconds, number} s.",
     "refreshRateLimited": "too many requests, try again in a minute",
     "refreshRateLimitedAfter": "too many requests, try again in {seconds, number} s",
     "noAnswer": "The backend did not answer.",
     "answeredWith": "The backend answered with HTTP {status}.",
-    "forbidden": "Your role cannot read {what} (permission {permission}). Nothing was changed.",
+    "forbidden": "Your role cannot read {what} (permission {permission}).",
     "noDataLead": "No data.",
     "notCollectedLead": "Not collected.",
     "staleUnreadable": "Stale: the time the latest data reaches cannot be read.",
@@ -44,8 +44,8 @@
     "noStepComplete": "No step of {total, number} has every in-scope source-interval complete.",
     "noMonitored": "No monitored log source.",
     "noVerdict": "No monitored source has a verdict yet.",
-    "noSnapshot": "No offense snapshot has been collected yet.",
-    "snapshotUnconfirmed": "Could not confirm that an offense snapshot exists.",
+    "noSnapshot": "No offense snapshot collected yet.",
+    "snapshotUnconfirmed": "Offense snapshot could not be confirmed.",
     "invalidRange": "The range is not a valid span of hours."
   },
   "kpiEps": {
@@ -53,14 +53,14 @@
     "link": "Fleet",
     "linkLabel": "View fleet by class",
     "what": "fleet EPS",
-    "description": "Mean EPS over {window}, summed over source classes, complete intervals only. Expected is the sum of the baselines of the classes that have one.",
+    "description": "Mean EPS over {window}, complete intervals only.",
     "trendLoading": "Loading trend…",
-    "trendForbidden": "Trend not shown: your role cannot read it (permission read:fleet).",
+    "trendForbidden": "Trend hidden: your role cannot read it (permission read:fleet).",
     "trendUnavailable": "Trend unavailable{status}.",
     "classesNotInSum": "{count, plural, one {# class not in sum} other {# classes not in sum}}",
     "compared": "Observed {eps} EPS on baselined classes.",
-    "comparedPartial": "Compared on baselined classes only: observed {eps} EPS.",
-    "meanOver": "Mean over {window}, complete intervals only.",
+    "comparedPartial": "Baselined classes only: observed {eps} EPS.",
+    "meanOver": "Mean over {window}, complete intervals.",
     "expectedNone": "expected — (no reliable baseline)",
     "expected": "expected {eps} EPS",
     "topClassTitle": "{label}, {eps} EPS of the total",
@@ -77,43 +77,43 @@
     "link": "Sources",
     "linkLabel": "View log sources",
     "what": "log source health",
-    "description": "Monitored log sources and how many have a verdict. Judged excludes sources with insufficient data. Silent means the detector saw no events where some were expected (NO_EVENTS anomaly).",
+    "description": "Monitored log sources and how many are judged.",
     "ofMonitored": "of {total} monitored",
     "monitored": "monitored",
-    "noMonitored": "No monitored log source. Enable monitoring on a source to start collecting its volume baseline.",
-    "monitoredOf": "Monitored log sources, of {total} that QRadar knows.",
-    "silentDefinition": "Silent: the detector saw no events where some were expected (NO_EVENTS anomaly).",
+    "noMonitored": "No monitored log source.",
+    "monitoredOf": "Monitored, of {total} known to QRadar.",
+    "silentDefinition": "Silent: no events where some were expected.",
     "judgedNormal": "{normal} of {judged} judged normal",
     "noneJudged": "— judged normal (no source is judged yet)",
     "silent": "silent",
-    "totalForbidden": "Total log sources not shown: your role cannot read it (permission read:overview).",
-    "totalUnavailable": "Total log sources unavailable.",
-    "inventoryFailed": "The inventory sync failed, so this is not a monitored count of zero. Open log sources to see the collection state.",
-    "inventoryMissing": "Log source inventory has not been collected, so there is no monitored count."
+    "totalForbidden": "Total hidden: your role cannot read it (permission read:overview).",
+    "totalUnavailable": "Total unavailable.",
+    "inventoryFailed": "Inventory sync failed; monitored count unknown.",
+    "inventoryMissing": "Inventory not collected; no monitored count."
   },
   "kpiOffenses": {
-    "title": "Open offenses, latest snapshot",
+    "title": "Open offenses",
     "link": "Offenses",
     "linkLabel": "View open offenses",
     "what": "offenses",
-    "description": "Offenses open in the latest collected snapshot. Critical is magnitude at or above the product's threshold; an offense with no magnitude, or no age, is counted apart from those counts.",
+    "description": "Offenses open in the latest snapshot.",
     "unit": "open offenses",
-    "criticalMeans": "Critical means magnitude of {magnitude} or more, the product's own threshold.",
+    "criticalMeans": "Critical: magnitude {magnitude} or more.",
     "critical": "critical",
     "below": "below",
     "unknownMagnitude": "+ {count} with unknown magnitude",
-    "unknownMagnitudeTitle": "Open offenses with no magnitude: in neither the critical nor the below count.",
+    "unknownMagnitudeTitle": "No magnitude: in neither count.",
     "unassigned": "unassigned",
     "overSla": "over SLA",
     "unknownAge": "+ {count} with unknown age",
-    "unknownAgeTitle": "Open offenses with no age: not in the over SLA count."
+    "unknownAgeTitle": "No age: not in the over SLA count."
   },
   "kpiAnomalies": {
     "title": "Active anomalies, now",
     "link": "Anomalies",
     "linkLabel": "View active anomalies",
     "what": "anomalies",
-    "description": "Anomalies in an active state (candidate, open or recovering) across log sources, WAF endpoints, IPS, property watches and rule matches. Log sources without a baseline are not judged and are not counted.",
+    "description": "Active anomalies across log sources, WAF, IPS, property watches and rules.",
     "unit": "active anomalies",
     "lifecycle": "Lifecycle",
     "short": {
@@ -125,9 +125,9 @@
       "candidates": "candidates",
       "recovering": "recovering"
     },
-    "notJudged": "{count, plural, one {# log source not judged; it is not in these counts.} other {# log sources not judged; they are not in these counts.}}",
-    "notJudgedTitle": "A source without a baseline gets no verdict, so it cannot raise an anomaly.",
-    "nothingToJudge": "No monitored log source; there is nothing to judge yet.",
+    "notJudged": "{count, plural, one {# log source not judged} other {# log sources not judged}}",
+    "notJudgedTitle": "No baseline, no verdict.",
+    "nothingToJudge": "No monitored log source.",
     "logSources": "Log sources",
     "otherFamilies": "Also",
     "family": {
@@ -139,7 +139,7 @@
     },
     "familyNotRead": "{family} not read",
     "notRead": "not read",
-    "lowerBound": "At least this many: a family could not be read.",
+    "lowerBound": "At least: a family could not be read.",
     "logSourcesNotRead": "Log source count not read.",
     "byDetector": "By detector",
     "count": {
@@ -163,17 +163,17 @@
     "what": "the fleet EPS series",
     "ariaLabel": "Fleet EPS, {window}",
     "noStep": "No step was measured.",
-    "noLine": "No line is drawn; a step that was not measured is not zero traffic.",
+    "noLine": "Nothing is drawn as zero.",
     "summaryHead": "Fleet EPS over {window}, times in UTC.",
     "summaryMeasured": "{measured} of {total} steps measured, peak {peak} EPS.",
-    "summaryExpected": "The dashed line is the sum of per-source expected EPS, drawn only where every source has a reliable baseline. It is not a range.",
-    "summaryNoExpected": "No expected line: not every source has a reliable baseline.",
-    "summaryGaps": "Shaded intervals were not measured; they are not zero traffic.",
+    "summaryExpected": "Dashed line: summed per-source expected EPS, drawn where every source has a baseline.",
+    "summaryNoExpected": "No expected line: not every source has a baseline.",
+    "summaryGaps": "Shaded intervals were not measured, not zero.",
     "keyLabel": "Chart key",
     "observed": "Observed",
-    "expectedMeaning": "The sum of every source's expected EPS, drawn only where every source has a reliable baseline. It is not a range.",
+    "expectedMeaning": "Summed per-source expected EPS, where every source has a baseline.",
     "notMeasured": "Not measured",
-    "notMeasuredMeaning": "Intervals where not every source-interval was complete. They are not zero traffic."
+    "notMeasuredMeaning": "Incomplete source-intervals, not zero."
   },
   "chart": {
     "observed": "Observed: {eps} EPS",
@@ -201,10 +201,10 @@
     "what": "EPS by class",
     "rest": "Other classes",
     "restContents": "Other classes: {classes}",
-    "caption": "Mean EPS by source class, complete intervals only. Total {eps} EPS.",
+    "caption": "Mean EPS by source class. Total {eps} EPS.",
     "class": "Class",
     "share": "Share",
-    "withoutData": "{count, plural, one {# class has no complete bucket and is not in the total.} other {# classes have no complete bucket and are not in the total.}}",
+    "withoutData": "{count, plural, one {# class has no complete bucket; not in the total.} other {# classes have no complete bucket; not in the total.}}",
     "noMean": "No class has a mean EPS."
   },
   "severity": {
@@ -215,17 +215,17 @@
     "keyLabel": "Severity key",
     "summary": "Anomalies per UTC hour from {since} to {until}: {bound}{seen} in {hours} hours{by}{tail}",
     "atLeast": "at least ",
-    "cappedTail": ". The list was capped, so every count is a lower bound.",
+    "cappedTail": ". The list was capped: lower bounds.",
     "empty": "No anomaly opened in the last {window}.",
-    "capped": "None of the returned anomalies fall in this window. The list was capped, so this is not a measured zero.",
-    "uncounted": "The list's total does not match the rows returned, so this window is not counted."
+    "capped": "None of the returned anomalies fall in this window; the list was capped.",
+    "uncounted": "List total does not match the rows; window not counted."
   },
   "topSources": {
     "title": "Top log sources by EPS",
     "link": "View all",
     "what": "the fleet summary",
     "statesWhat": "source states",
-    "empty": "No log source has a complete bucket in the last {window}, so none can be ranked by EPS.",
+    "empty": "No log source has a complete bucket in the last {window}.",
     "source": "Source",
     "meanEps": "Mean EPS",
     "deviation": "Deviation",
@@ -233,15 +233,15 @@
     "state": "State",
     "stateUnavailable": "State unavailable",
     "atLeast": "at least",
-    "floorTitle": "The class's {window} window has missing or partial intervals, so this is a floor.",
+    "floorTitle": "Missing or partial intervals in the {window} window: a floor.",
     "gap": {
       "no_behavior_list": "Source states unavailable",
       "not_in_list": "Not in the behavior list",
       "no_expectation": "No expected value",
       "bucket_not_complete": "Latest bucket incomplete"
     },
-    "expandedNote": "Showing {shown} of {total} sources: the fleet summary lists the top five of each class.",
-    "noBehavior": "Deviation and state are unavailable: the source behavior list is not readable ({gap})."
+    "expandedNote": "Showing {shown} of {total}; the fleet summary holds the top five per class.",
+    "noBehavior": "Deviation and state unavailable: source list unreadable ({gap})."
   },
   "health": {
     "title": "Log source health",
@@ -251,8 +251,8 @@
     "loadingWhat": "log source health",
     "judgedNormal": "{normal} of {judged} judged normal",
     "notJudged": "{count} not judged",
-    "noSources": "No monitored log sources. Enable monitoring on a source to start collecting its volume baseline.",
-    "noSummary": "How many sources are judged normal is unavailable: the anomaly summary is not readable ({gap}).",
+    "noSources": "No monitored log sources.",
+    "noSummary": "Judged-normal count unavailable: anomaly summary unreadable ({gap}).",
     "categories": "Log source health categories",
     "category": "Category",
     "count": "Count",
@@ -265,20 +265,20 @@
       "maintenance": "In maintenance"
     },
     "categoryDefinition": {
-      "silent": "The detector saw no events where some were expected (NO_EVENTS anomaly).",
-      "exceeding": "Active volume spikes: observed above the expected range.",
-      "new": "Sources discovered and not yet reviewed.",
-      "conflict": "Sources whose classification rules disagree.",
-      "unclassified": "Sources that no classification rule matched.",
-      "maintenance": "Sources in a maintenance window; their anomalies are recorded, not notified."
+      "silent": "No events where some were expected.",
+      "exceeding": "Active spikes above the expected range.",
+      "new": "Discovered, not yet reviewed.",
+      "conflict": "Classification rules disagree.",
+      "unclassified": "No classification rule matched.",
+      "maintenance": "In a maintenance window; anomalies recorded, not notified."
     },
     "gap": {
       "summary": "Anomaly summary unavailable",
       "fleet": "Fleet summary unavailable",
       "overview": "Overview unavailable"
     },
-    "inventoryFailed": "The inventory sync failed, so these are not counts of zero. Open log sources to see the collection state.",
-    "inventoryMissing": "Log source inventory has not been collected, so there are no health counts."
+    "inventoryFailed": "Inventory sync failed; no health counts.",
+    "inventoryMissing": "Inventory not collected; no health counts."
   },
   "recent": {
     "title": "Recent anomalies",
@@ -289,9 +289,9 @@
     "what": "the active anomalies",
     "wafWhat": "the active WAF anomalies",
     "notJudgedWhat": "the not-judged source count",
-    "wafEmpty": "No active WAF endpoint anomalies. WAF sources without a valid profile are not collected, so they are not judged.",
-    "emptyUnread": "No active anomalies. How many sources are not being judged could not be read.",
-    "emptyNotJudged": "No active anomalies. Sources with no baseline are not being judged: {count, plural, one {# source} other {# sources}}.",
+    "wafEmpty": "No active WAF endpoint anomalies.",
+    "emptyUnread": "No active anomalies. Not-judged count unreadable.",
+    "emptyNotJudged": "No active anomalies; {count, plural, one {# source} other {# sources}} not judged.",
     "detected": "Detected",
     "anomaly": "Anomaly",
     "severityState": "Severity, state",
@@ -301,7 +301,7 @@
     "investigateNamed": "Investigate {subject}",
     "noDeviation": "No deviation ratio",
     "showing": "Showing the latest {shown} of {total}.",
-    "showingExpanded": "Showing {shown} of {total}. The widget reads the latest {limit}; the Anomalies page lists the rest."
+    "showingExpanded": "Showing {shown} of {total}; the widget reads the latest {limit}."
   },
   "offenses": {
     "title": "Recent offenses",
@@ -317,7 +317,7 @@
     "offenseId": "Offense {id}",
     "noMagnitude": "Magnitude not recorded",
     "showing": "Showing the latest {shown} of {total}.",
-    "showingExpanded": "Showing {shown} of {total}. The widget reads the latest {limit}; the Offenses page lists the rest."
+    "showingExpanded": "Showing {shown} of {total}; the widget reads the latest {limit}."
   },
   "parts": {
     "noTime": "No time recorded"
@@ -328,7 +328,7 @@
     "insufficient": "Insufficient data",
     "suppressed": "Suppressed",
     "normal": "Normal",
-    "noSources": "No monitored log sources. Enable monitoring on a source to start collecting its volume baseline."
+    "noSources": "No monitored log sources."
   },
   "healthGroupsInline": {
     "attention": "attention required",

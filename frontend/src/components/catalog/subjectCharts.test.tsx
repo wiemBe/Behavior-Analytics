@@ -348,7 +348,7 @@ describe("chart.eps_observed_expected", () => {
   it("an empty window is an absence of collection, never zero EPS", () => {
     set({ [SER()]: ok(series([])) });
     render(<SourceEps config={cfg} />);
-    expect(screen.getByText(/absence of collection, not zero EPS/)).toBeInTheDocument();
+    expect(screen.getByText(/in the last .*; not zero EPS/)).toBeInTheDocument();
     expect(init).not.toHaveBeenCalled();
   });
 
