@@ -95,7 +95,7 @@ export function TimelineTable({
                   {typeof item.severity === "number" ? (
                     <span title={t("items.numericSeverity", { value: item.severity })}>{item.severity}</span>
                   ) : item.severity ? (
-                    <span className={`pill ${sevTone(item.severity)}`}>
+                    <span className={`pill pill-quiet ${sevTone(item.severity)}`}>
                       {enumLabel(say, "severityPill", item.severity)}
                     </span>
                   ) : (

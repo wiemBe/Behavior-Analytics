@@ -223,7 +223,7 @@ async function AlertsPage({
                         </Link>
                       )}
                     </td>
-                    <td><span className={`pill ${sevTone(a.severity)}`}>{enumLabel(say, "severityPill", a.severity)}</span></td>
+                    <td><span className={`pill pill-quiet ${sevTone(a.severity)}`}>{enumLabel(say, "severityPill", a.severity)}</span></td>
                     <td><span className={`pill ${statusTone(a.status)}`}>{enumLabel(say, "alertStatusPill", a.status)}</span></td>
                     <td className="num">{formatCount(a.occurrence_count, locale)}</td>
                     <td className="nowrap">{<UtcTime value={a.first_seen_at} variant="compact" />}</td>

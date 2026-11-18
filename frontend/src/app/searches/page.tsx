@@ -94,7 +94,7 @@ async function SearchCatalogPage() {
                     <ScheduleLabel cron={s.schedule_cron} />
                   </td>
                   <td>
-                    <span className={`pill ${sevTone(s.severity)}`}>
+                    <span className={`pill pill-quiet ${sevTone(s.severity)}`}>
                       {enumLabel(say, "severityPill", s.severity)}
                     </span>
                   </td>

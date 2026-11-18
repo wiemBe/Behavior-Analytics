@@ -618,7 +618,7 @@ td.cell-name.cell-name-single {
 
 .card .k {
   overflow-wrap: anywhere;
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
   /* Lower case. Uppercasing every label across every page was a large part of
@@ -642,12 +642,13 @@ td.cell-name.cell-name-single {
   color: var(--warn-text);
 }
 .card .v.ok {
-  color: var(--ok-text);
+  /* D-85: a calm value is plain text; only a value that needs action is toned. */
+  color: var(--text);
 }
 .metric-note {
   margin: var(--sp-2) 0 0;
   font-size: var(--fs-xs);
-  color: var(--text-3);
+  color: var(--text-2);
   line-height: var(--lh-base);
 }
 
@@ -784,25 +785,33 @@ th[aria-sort="descending"] .sort-link {
      its content and the text clips. */
   flex: 0 0 auto;
 }
-.pill.ok {
-  color: var(--ok-text);
-  background: var(--ok-bg);
-  border-color: var(--ok-border);
+/* D-85: a pill is for the one state that needs action. A calm state (ok:
+   resolved, closed, complete, normal) and a low-grade one (info: LOW, INFO)
+   read as plain secondary text; a warning (acknowledged, in progress, MEDIUM)
+   reads as warning-toned text with no fill. Only .crit keeps the pill. The
+   word is always present, so colour is never the sole carrier (§10). */
+.pill.ok,
+.pill.info,
+.pill.warn {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  justify-content: flex-start;
+  /* min-height stays, so a row's height does not depend on whether its pill is drawn. */
+}
+.pill.ok,
+.pill.info {
+  color: var(--text-2);
+  font-weight: var(--fw-normal);
 }
 .pill.warn {
   color: var(--warn-text);
-  background: var(--warn-bg);
-  border-color: var(--warn-border);
 }
 .pill.crit {
   color: var(--crit-text);
   background: var(--crit-bg);
   border-color: var(--crit-border);
-}
-.pill.info {
-  color: var(--info-text);
-  background: var(--info-bg);
-  border-color: var(--info-border);
 }
 /* Secondary status: present and readable, but not competing with the primary
    lifecycle badge on the same row.
@@ -818,6 +827,12 @@ th[aria-sort="descending"] .sort-link {
   border-color: transparent;
   background: transparent;
   font-weight: var(--fw-normal);
+}
+/* D-85: a CRITICAL/HIGH severity in a table is a compact crit-toned text label, never a second
+   outlined pill beside the lifecycle badge. The detail headers keep the pill. */
+.pill.pill-quiet.crit {
+  padding: 0;
+  justify-content: flex-start;
 }
 
 /* A label paired with a status badge, on one line.
@@ -913,7 +928,7 @@ td {
   vertical-align: top;
 }
 th {
-  color: var(--text-3);
+  color: var(--text-2);
   font-weight: var(--fw-medium);
   font-size: var(--fs-xs);
   letter-spacing: 0;
@@ -1316,7 +1331,7 @@ a.action.secondary:hover {
 .measure-note {
   margin-top: var(--sp-1);
   font-size: var(--fs-xs);
-  color: var(--text-3);
+  color: var(--text-2);
   line-height: var(--lh-base);
 }
 .measure-foot {
@@ -1391,7 +1406,7 @@ a.action.secondary:hover {
 }
 .tab-active {
   color: var(--text);
-  border-bottom-color: var(--info);
+  border-bottom-color: var(--focus);
 }
 .tabpanel:focus-visible {
   outline: 2px solid var(--focus);
@@ -1980,7 +1995,7 @@ pre {
   margin: var(--sp-1) 0 0;
   font-size: var(--fs-xs);
   line-height: var(--lh-base);
-  color: var(--text-3);
+  color: var(--text-2);
   max-width: 52ch;
 }
 .fm-input-line {
