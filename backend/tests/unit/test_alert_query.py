@@ -209,11 +209,13 @@ def _produced_source_types() -> tuple[set[str], set[tuple[str, str]]]:
     return produced, unresolved
 
 
-#: Copies of an alert's existing type. A new producer written as one of these
-#: expressions fails this test until it is a literal or a module string.
+#: Copies of an alert's existing type and exact unrelated dict entries. A new producer
+#: written as one of these expressions fails until it is a literal or a module string.
 _SOURCE_TYPE_PASSTHROUGH = frozenset({
     ("alerts/service.py", "data.source_type"),
     ("alerts/notifiers/webhook_v1.py", "source_type"),
+    # CFG-1b: reference-resolution wording (singular, plural, qualifier), not an alert type.
+    ("config_transfer/refs.py", "('log source type', 'log source types', 'this name')"),
 })
 
 #: `ips_source` opens alerts and has no e-mail template key. `digest` is a
