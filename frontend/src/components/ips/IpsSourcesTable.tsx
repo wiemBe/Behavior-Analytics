@@ -40,12 +40,7 @@ function Unmeasured({ meaning }: { meaning: string }) {
 
 function NoBucket() {
   const t = useTranslations("ips.behavior");
-  return (
-    <>
-      <Unmeasured meaning={t("noBucketMeaning")} />
-      <span className="cell-sub">{t("noBucketYet")}</span>
-    </>
-  );
+  return <Unmeasured meaning={t("noBucketMeaning")} />;
 }
 
 function LatestCell({ s }: { s: IpsSourceBehavior }) {
@@ -56,7 +51,19 @@ function LatestCell({ s }: { s: IpsSourceBehavior }) {
   return (
     <>
       <UtcTime value={b.bucket_start} variant="compact" className="nowrap" />
-      <span className="cell-sub">{t("events", { count: formatCount(b.total_events, locale) })}</span>
+      <span
+        className="cell-sub"
+        title={t("exactOf", {
+          exact: formatCount(
+            groupByMeasurement(b.dimensions).find((g) => g.measurement === "EXACT")?.dimensions
+              .length ?? 0,
+            locale,
+          ),
+          total: formatCount(b.dimensions.length, locale),
+        })}
+      >
+        {t("events", { count: formatCount(b.total_events, locale) })}
+      </span>
       {b.in_maintenance && <span className="cell-sub">{t("inMaintenance")}</span>}
       <DimensionLines s={s} />
     </>
@@ -66,20 +73,12 @@ function LatestCell({ s }: { s: IpsSourceBehavior }) {
 function DimensionLines({ s }: { s: IpsSourceBehavior }) {
   const t = useTranslations("ips.behavior");
   const i18n = useBehaviorI18n();
-  const { locale } = i18n;
   const b = s.latest_bucket;
   if (!b) return null;
   const groups = groupByMeasurement(b.dimensions);
-  const exact = groups.find((g) => g.measurement === "EXACT")?.dimensions.length ?? 0;
   const name = (d: string) => wordOrValue(i18n, "ips.behavior.dim", d);
   return (
     <>
-      <span className="cell-sub ips-measurement">
-        {t("exactOf", {
-          exact: formatCount(exact, locale),
-          total: formatCount(b.dimensions.length, locale),
-        })}
-      </span>
       {groups
         .filter((g) => g.measurement !== "EXACT")
         .map((g) => (
@@ -135,14 +134,7 @@ function AdmissionCell({ s }: { s: IpsSourceBehavior }) {
   const { locale } = i18n;
   const b = s.latest_bucket;
   if (!b) return <NoBucket />;
-  if (admissionNotMeasured(s)) {
-    return (
-      <>
-        <Unmeasured meaning={t("overflowNotMeasuredMeaning")} />
-        <span className="cell-sub">{t("overflowNotMeasured")}</span>
-      </>
-    );
-  }
+  if (admissionNotMeasured(s)) return <Unmeasured meaning={t("overflowNotMeasuredMeaning")} />;
   if (!isOverflowing(s)) return <span>{t("overflowNone")}</span>;
   return (
     <>
@@ -163,8 +155,11 @@ export function IpsSourcesTable({ sources }: { sources: IpsSourceBehavior[] }) {
   const t = useTranslations("ips.behavior");
   const i18n = useBehaviorI18n();
   const rows = sortByAttention(sources);
+  // Said once above the table when it holds for every row, not once per row.
+  const noBuckets = rows.every((s) => !s.latest_bucket);
   return (
     <>
+      {noBuckets && <p className="ips-table-state">{t("noBucketYet")}</p>}
       <TableScroll label={t("table.label")}>
         <table className="table-dense">
           <caption className="sr-only">{t("table.caption")}</caption>
@@ -174,20 +169,12 @@ export function IpsSourcesTable({ sources }: { sources: IpsSourceBehavior[] }) {
               <th scope="col">{t("table.validation")}</th>
               <th scope="col" className="num">
                 {t("table.active")}
-                <span className="cell-sub">{t("table.activeSub")}</span>
               </th>
-              <th scope="col">
-                {t("table.latest")}
-                <span className="cell-sub">{t("table.latestSub")}</span>
-              </th>
+              <th scope="col">{t("table.latest")}</th>
               <th scope="col" className="num">
                 {t("table.entities")}
-                <span className="cell-sub">{t("table.entitiesSub")}</span>
               </th>
-              <th scope="col">
-                {t("table.admission")}
-                <span className="cell-sub">{t("table.admissionSub")}</span>
-              </th>
+              <th scope="col">{t("table.admission")}</th>
             </tr>
           </thead>
           <tbody>
@@ -203,8 +190,13 @@ export function IpsSourcesTable({ sources }: { sources: IpsSourceBehavior[] }) {
                     </span>
                   </td>
                   <td>
-                    <span className={`pill pill-quiet ${v.tone}`}>{v.label}</span>
-                    <span className="cell-sub">{v.detail}</span>
+                    <span
+                      className={`pill pill-quiet ${v.tone}`}
+                      title={s.enabled && !s.validation_current ? t("notCollected") : undefined}
+                    >
+                      {v.label}
+                    </span>
+                    {v.detail && <span className="cell-sub">{v.detail}</span>}
                     <span className="cell-sub">
                       {s.enabled ? (
                         t("profileEnabled")
@@ -212,9 +204,6 @@ export function IpsSourcesTable({ sources }: { sources: IpsSourceBehavior[] }) {
                         <span className="pill pill-quiet warn">{t("profileDisabled")}</span>
                       )}
                     </span>
-                    {s.enabled && !s.validation_current && (
-                      <span className="cell-sub">{t("notCollected")}</span>
-                    )}
                   </td>
                   <td className="num ips-active">
                     <ActiveAnomaliesCell s={s} />
@@ -234,7 +223,6 @@ export function IpsSourcesTable({ sources }: { sources: IpsSourceBehavior[] }) {
           </tbody>
         </table>
       </TableScroll>
-      <p className="subtitle">{t("note")}</p>
     </>
   );
 }

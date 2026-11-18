@@ -203,7 +203,6 @@ async function IpsSourcePage({
       <PageHeader
         guide={guideFor("/behavior/ips/sources/[id]")}
         title={source.log_source_name}
-        description={t("description")}
         meta={
           <>
             {source.product_label && <span>{source.product_label}</span>}
@@ -213,7 +212,7 @@ async function IpsSourcePage({
               </span>
             )}
             <span className={`pill pill-strong ${v.tone}`}>{v.label}</span>
-            <span>{v.detail}</span>
+            {v.detail && <span>{v.detail}</span>}
             <span className="muted" aria-hidden="true">
               ·
             </span>
@@ -382,7 +381,6 @@ async function IpsSourcePage({
                 measured: formatCount(mix.measured, locale),
                 stored: formatCount(mix.stored, locale),
               })}
-              {mix.lowerBound ? ` ${t("action.lower")}` : ""}
             </p>
           </>
         )}

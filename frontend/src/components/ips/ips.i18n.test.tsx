@@ -401,7 +401,7 @@ describe("IPS sources administration in Turkish", () => {
         .map((h) => h.textContent),
     ).toEqual([
       "Kaynak",
-      "Profilsürüm",
+      "sürüm",
       "Doğrulama",
       "Etkin",
       "Toplama",
@@ -502,20 +502,17 @@ describe("IPS profile editor in Turkish", () => {
     expect(screen.queryByText("Collecting")).not.toBeInTheDocument();
   });
 
-  it("builds the values sentence without lowercasing a Turkish outcome label", () => {
+  it("keeps the values section free of an explanatory sentence (UIQ-8b)", () => {
     const view = renderEditor();
-    const subtitle = view.container.querySelector("#fm-values-h + .subtitle");
-    expect(subtitle?.textContent).toMatch(/^Ham /);
-    expect(subtitle?.textContent).toContain("hangi sonuca eşleneceği: Engellendi ve İzin verildi.");
-    expect(subtitle?.textContent).not.toContain("izin verildi ve");
+    expect(view.container.querySelector("#fm-values-h")).not.toBeNull();
+    expect(view.container.querySelector("#fm-values-h + .subtitle")).toBeNull();
   });
 
-  it("keeps the English values sentence lower case", () => {
+  it("keeps the English values section free of an explanatory sentence too", () => {
     setTestLocale("en");
     const view = renderEditor();
-    expect(view.container.querySelector("#fm-values-h + .subtitle")?.textContent).toContain(
-      "count as blocked and allowed.",
-    );
+    expect(view.container.querySelector("#fm-values-h")).not.toBeNull();
+    expect(view.container.querySelector("#fm-values-h + .subtitle")).toBeNull();
   });
 
   it("words the field statuses of the shared table in Turkish, not only the IPS-specific one", () => {

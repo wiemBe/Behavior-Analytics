@@ -535,7 +535,7 @@ export function IpsProfileEditor({
         )}
         {creating ? (
           <p>
-            {t("createBody")} {draft.preset ? t("presetTail") : ""}
+            {t("createBody")}
           </p>
         ) : mapped ? (
           <p>{t("mappedBody", { version: nextVersion })}</p>
@@ -628,12 +628,10 @@ export function IpsProfileEditor({
 
       <section aria-labelledby="fm-mapping-h" className="fm-section">
         <h2 id="fm-mapping-h">{t("mappingTitle")}</h2>
-        <p className="subtitle">{t("mappingSubtitle")}</p>
 
         {creating && (
           <fieldset className="fm-presets" disabled={busy !== null}>
             <legend>{t("presetLegend")}</legend>
-            <p className="fm-note">{t("presetNote")}</p>
             <div className="fm-preset-options">
               {schema.presets.map((p) => (
                 <label key={p.key} className="fm-radio">
@@ -749,16 +747,6 @@ export function IpsProfileEditor({
       {profile && valueMap && (
         <section aria-labelledby="fm-values-h" className="fm-section">
           <h2 id="fm-values-h">{t("valuesTitle", { action: actionLabel })}</h2>
-          <p className="subtitle">
-            {t("valuesSubtitle", {
-              action: lower(actionLabel),
-              // The Turkish sentence puts the outcomes after a colon, so their labels keep
-              // their capital; the English one runs them into the sentence in lower case.
-              outcomes: valueMap.outcomes
-                .map((o) => (i18n.locale === "tr" ? outcomeLabel(o, i18n) : lower(outcomeLabel(o))))
-                .join(` ${t("and")} `),
-            })}
-          </p>
           {!actionMapped ? (
             actionUnmappedNote
           ) : (

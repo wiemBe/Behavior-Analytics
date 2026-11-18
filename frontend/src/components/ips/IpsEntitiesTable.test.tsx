@@ -57,13 +57,13 @@ describe("IPS entities table", () => {
         ]}
       />,
     );
-    expect(rowOf("Destination port 445/tcp").getByText("131 of 168")).toBeInTheDocument();
+    expect(rowOf("Destination port 445/tcp").getByText("131 / 168")).toBeInTheDocument();
     const none = rowOf("Destination port 22/tcp");
-    expect(none.getByText("0 of 40")).toBeInTheDocument();
-    expect(none.getByText("None reliable yet")).toBeInTheDocument();
+    expect(none.getByText("0 / 40")).toBeInTheDocument();
+    expect(none.getByText("none reliable")).toBeInTheDocument();
     const empty = rowOf("Destination port 80/tcp");
     expect(empty.getByText("None")).toBeInTheDocument();
-    expect(empty.getByText("No baseline built")).toBeInTheDocument();
+    expect(empty.getByText("no baseline built")).toBeInTheDocument();
   });
 
   it("distinguishes active, retired (with its time) and inactive", () => {

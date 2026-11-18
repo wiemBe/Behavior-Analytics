@@ -26,17 +26,34 @@ describe("IPS sources table", () => {
   it("has column headers, a caption and a labelled scroll region", () => {
     render(<IpsSourcesTable sources={[ipsSource()]} />);
     expect(screen.getAllByRole("columnheader")).toHaveLength(6);
-    expect(screen.getByRole("table")).toHaveAccessibleName(/IPS sources with profile and validation/);
+    expect(screen.getByRole("table")).toHaveAccessibleName(/IPS sources, attention first/);
     expect(screen.getByRole("region", { name: "IPS sources" })).toBeInTheDocument();
   });
 
   it("shows a source with no bucket as not collected yet, never as zero", () => {
     render(<IpsSourcesTable sources={[ipsSource({ latest_bucket: null, active_anomaly_count: null })]} />);
     const r = row("lab-ips-01");
-    expect(r.getAllByText("Not collected yet")).toHaveLength(2);
+    // Said once above the table, because every row shares it; each cell is a dash that names it.
+    expect(screen.getByText("No bucket collected yet")).toBeInTheDocument();
+    expect(r.getAllByText("no bucket collected")).toHaveLength(2);
     expect(r.queryByText(/^0$/)).toBeNull();
     expect(r.queryByText(/events$/)).toBeNull();
     expect(r.queryByText("None")).toBeNull();
+  });
+
+  it("says it above the table only when every row has no bucket", () => {
+    render(
+      <IpsSourcesTable
+        sources={[
+          ipsSource({ log_source_id: "a", log_source_name: "has-bucket" }),
+          ipsSource({ log_source_id: "b", log_source_name: "no-bucket", latest_bucket: null, active_anomaly_count: null }),
+        ]}
+      />,
+    );
+    expect(screen.queryByText("No bucket collected yet")).toBeNull();
+    // The row without a bucket still carries the dash and its accessible name.
+    expect(row("no-bucket").getAllByText("no bucket collected")).toHaveLength(2);
+    expect(row("has-bucket").queryByText("no bucket collected")).toBeNull();
   });
 
   it("shows the latest bucket in UTC with its event count and maintenance", () => {
@@ -59,7 +76,7 @@ describe("IPS sources table", () => {
     expect(r.getByText("STALE")).toBeInTheDocument();
     expect(r.queryByText("VALID")).toBeNull();
     expect(r.getByText("VALID for v4; profile is now v5")).toBeInTheDocument();
-    expect(r.getByText("Not collected")).toBeInTheDocument();
+    expect(r.getByTitle("Not collected")).toHaveTextContent("STALE");
   });
 
   it("marks a disabled profile", () => {
@@ -79,7 +96,7 @@ describe("IPS sources table", () => {
     );
     render(<IpsSourcesTable sources={[ipsSource({ latest_bucket: latestBucket({ dimensions: dims }) })]} />);
     const r = row("lab-ips-01");
-    expect(r.getByText(summary)).toBeInTheDocument();
+    expect(r.getByTitle(summary)).toBeInTheDocument();
     if (line) expect(r.getByText(line)).toBeInTheDocument();
     else expect(r.queryByText(/^(Lower bound|Not collected|Failed|Rejected):/)).toBeNull();
   });
@@ -93,7 +110,7 @@ describe("IPS sources table", () => {
     const r = row("lab-ips-01");
     expect(r.getByText("Ports: 40 / 500")).toBeInTheDocument();
     expect(r.getByText("Signatures: 500 / 500")).toBeInTheDocument();
-    expect(r.getAllByText("At the ceiling")).toHaveLength(1);
+    expect(r.getAllByText("At ceiling")).toHaveLength(1);
   });
 
   it("calls out admission overflow only when it is non-zero", () => {
@@ -119,7 +136,7 @@ describe("IPS sources table", () => {
     const r = row("lab-ips-01");
     expect(r.getByText("Overflowing")).toBeInTheDocument();
     expect(
-      r.getByText("Signature: 1,893 refused over quota, 310 untracked entities, 48,210 untracked events"),
+      r.getByText("Signature: 1,893 refused, 310 untracked entities, 48,210 untracked events"),
     ).toBeInTheDocument();
     expect(r.queryByText(/^Destination port:.*refused/)).toBeNull();
   });
@@ -146,7 +163,7 @@ describe("IPS sources table", () => {
       />,
     );
     const r = row("lab-ips-01");
-    expect(r.getByText("Not measured")).toBeInTheDocument();
+    expect(r.getByText("not measured in this bucket")).toBeInTheDocument();
     expect(r.queryByText("None")).toBeNull();
   });
 
