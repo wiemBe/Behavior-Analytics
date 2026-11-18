@@ -21,6 +21,7 @@ from app.models.explanation import (
     AnomalyExplanationContributor,
     AnomalyExplanationDimension,
 )
+from app.models.feature_switch import FeatureSwitch
 from app.models.fleet import (
     ClassificationRule,
     LogSourceClassification,
@@ -196,6 +197,7 @@ __all__ = [
     "EmailTemplate",
     "EntityMention",
     "EntityMentionBackfill",
+    "FeatureSwitch",
     "GeoCountryBucket",
     "HistoryBackfillDecision",
     "HistoryBackfillScope",

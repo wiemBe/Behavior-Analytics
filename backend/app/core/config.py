@@ -286,6 +286,8 @@ class Settings(BaseSettings):
     # Explicit opt-in for the isolated synthetic-telemetry lab. The profile
     # only accelerates stored-data observation; it never enables QRadar writes.
     lab_mode: bool = False
+    #: Kill switch for the runtime family switches: false ignores the feature_switch table.
+    feature_switches_db: bool = True
     log_level: str = "INFO"
     api_prefix: str = "/api/v1"
 
