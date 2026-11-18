@@ -237,6 +237,30 @@ def test_facets_count_under_the_other_filters(db_schema) -> None:
     assert sum(x["count"] for x in f4["type"]) == 6  # the type facet ignores type_id
 
 
+def test_group_facet_counts_names_and_search(db_schema) -> None:
+    _fleet(db_schema)
+    c = Client(VIEWER)
+    body = c.get(URL).json()["facets"]["group"]
+    assert body == [
+        {"group_id": 10, "name": "Perimeter", "count": 2},
+        {"group_id": 11, "name": "Linux", "count": 1},
+    ]
+    # The group facet ignores its own filter and obeys the others; the list obeys group.
+    page = c.get(f"{URL}?group=11&flow=SILENT").json()
+    assert page["total"] == 1
+    assert {g["group_id"]: g["count"] for g in page["facets"]["group"]} == {10: 1, 11: 1}
+    only = c.get(f"{URL}?group=11").json()
+    assert [r["name"] for r in only["items"]] == ["b-ips"]
+    assert {g["group_id"] for g in only["facets"]["group"]} == {10, 11}
+    # Other families count under the group filter.
+    assert sum(x["count"] for x in only["facets"]["flow"]) == 1
+    # group_q narrows the facet only, case-insensitively, wildcards literal.
+    q = c.get(f"{URL}?group_q=LIN").json()
+    assert [g["name"] for g in q["facets"]["group"]] == ["Linux"]
+    assert q["total"] == 6
+    assert c.get(f"{URL}?group_q=%25").json()["facets"]["group"] == []
+
+
 def test_sql_is_constant_in_fleet_size(db_schema) -> None:
     async def setup(s):  # type: ignore[no-untyped-def]
         inst = await make_instance(s)

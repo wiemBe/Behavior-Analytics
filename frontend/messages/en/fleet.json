@@ -129,7 +129,7 @@
   },
   "sourcesPage": {
     "title": "Fleet sources",
-    "description": "New and ambiguously classified log sources, with the class each one was given and why. Times are UTC.",
+    "description": "Fleet sources.",
     "activeFilters": "Active filters",
     "noticeHeading": "The source list could not be shown.",
     "unreachable": "The source list could not be loaded. The backend may be unreachable; check that it is running, then reload the page.",
@@ -162,5 +162,174 @@
     "overrideCleared": "Override cleared. Class is now {class} ({basis}).",
     "saved": "Saved. Class is now {class}.",
     "markedReviewed": "Marked reviewed."
+  },
+  "sourceList": {
+    "search": {
+      "label": "Search sources",
+      "placeholder": "Search name, type, identifier or QRadar ID"
+    },
+    "facets": {
+      "group": "Filters",
+      "class": "Class",
+      "type": "Type",
+      "flow": "Flow",
+      "eps": "EPS",
+      "profile": "Profile",
+      "typeSearch": "Find a type",
+      "byGroup": "Group",
+      "groupSearch": "Find a group",
+      "noGroup": "No group matches.",
+      "noType": "No type matches.",
+      "untyped": "Type not recorded",
+      "noOptions": "No values.",
+      "selected": "{count} selected"
+    },
+    "status": {
+      "label": "QRadar status",
+      "ENABLED": "Enabled",
+      "DISABLED": "Disabled"
+    },
+    "flow": {
+      "FLOWING": "Flowing",
+      "SILENT": "Silent",
+      "DISABLED_IN_QRADAR": "Disabled",
+      "NEVER": "No event"
+    },
+    "epsState": {
+      "BELOW_EXPECTED": "Below expected",
+      "ABOVE_EXPECTED": "Above expected",
+      "WITHIN_EXPECTED": "Within expected",
+      "NO_BASELINE": "No baseline"
+    },
+    "profile": {
+      "WAF": "WAF",
+      "IPS": "IPS",
+      "IDENTITY": "Identity",
+      "NONE": "No profile"
+    },
+    "profileStatus": {
+      "UNVALIDATED": "unvalidated",
+      "VALID": "valid",
+      "INVALID": "invalid",
+      "INCONCLUSIVE": "inconclusive"
+    },
+    "chips": {
+      "label": "Active filters",
+      "remove": "Remove filter {label}",
+      "clearAll": "Clear all",
+      "q": "Search: {value}",
+      "class": "Class: {value}",
+      "type": "Type: {value}",
+      "group": "Group: {value}",
+      "flow": "Flow: {value}",
+      "status": "QRadar: {value}",
+      "eps": "EPS: {value}",
+      "profile": "Profile: {value}",
+      "review": "Review: {value}",
+      "conflictYes": "Conflicting class",
+      "conflictNo": "No conflict",
+      "basis": "Basis: {value}",
+      "searchName": "search",
+      "reviewName": "review status",
+      "conflictName": "conflicts",
+      "basisName": "classification basis"
+    },
+    "table": {
+      "label": "Log sources with class, flow, EPS and profiles",
+      "caption": "Log sources",
+      "selectAll": "Select all {count} sources on this page",
+      "selectRow": "Select {name}",
+      "name": "Source",
+      "type": "Type",
+      "identifier": "Identifier",
+      "qradarId": "QRadar ID",
+      "class": "Class",
+      "flow": "Flow",
+      "lastEvent": "Last event (UTC)",
+      "eps": "EPS (events/s)",
+      "profiles": "Profiles",
+      "groups": "Groups"
+    },
+    "cell": {
+      "notRecorded": "Not recorded",
+      "notMeasured": "Not measured",
+      "noEvent": "No event seen",
+      "expectedBand": "expected {low}–{high}",
+      "expectedPoint": "expected {value}",
+      "noBaseline": "No baseline",
+      "override": "Override by {name}",
+      "overrideAnon": "Override",
+      "silentFor": "silent for {age}",
+      "profileOn": "{kind} {status}",
+      "profileOff": "{kind} off",
+      "profileOffTitle": "{kind} profile is off ({status})",
+      "noProfiles": "No profile",
+      "moreGroups": "+{count}",
+      "disabled": "Disabled",
+      "ago": "{age} ago"
+    },
+    "pager": {
+      "label": "Source list paging",
+      "range": "{from}–{to} of {total}",
+      "none": "0 sources",
+      "previous": "Previous",
+      "next": "Next",
+      "perPage": "Per page"
+    },
+    "bulk": {
+      "label": "Change the class of the selected sources",
+      "selected": "{count} selected",
+      "clearSelection": "Clear selection",
+      "classLabel": "New class",
+      "choose": "Choose a class",
+      "clearOverride": "Clear override",
+      "markReviewed": "Mark reviewed",
+      "review": "Set class…",
+      "confirmSet": "Set the class of {count} sources to {class}?",
+      "confirmClear": "Clear the class override of {count} sources?",
+      "confirmReviewed": "They will also be marked reviewed.",
+      "confirm": "Confirm",
+      "cancel": "Cancel",
+      "applying": "Applying…",
+      "done": "Updated {count} sources.",
+      "needsPermission": "Changing classes needs {permission}.",
+      "forbidden": "The change was not applied. It needs {permission}.",
+      "notFound": "Not applied: {count} selected sources no longer exist. Reload the list.",
+      "refused": "The change was not applied: {detail}",
+      "failed": "The change was not applied: {detail}"
+    },
+    "export": {
+      "button": "Export CSV",
+      "capped": "The file holds the first {cap} of {total} sources."
+    },
+    "sync": {
+      "button": "Sync now",
+      "last": "Last inventory sync: ",
+      "never": "No inventory sync has run yet.",
+      "failedOn": "The last sync failed on {names}.",
+      "queued": "Queued — the list refreshes when the sync finishes.",
+      "alreadyRunning": "A sync is already running — the list refreshes when it finishes.",
+      "done": "The sync finished and the list was reloaded.",
+      "failedNow": "The sync failed on {names}. The list is unchanged.",
+      "timeout": "No report after {minutes} minutes. It may still be queued.",
+      "forbidden": "Syncing the inventory needs {permission}.",
+      "error": "The sync could not be queued: {detail}",
+      "statusError": "The last sync time could not be read.",
+      "running": "Sync running"
+    },
+    "state": {
+      "updating": "Updating the list…",
+      "errorHeading": "The source list could not be shown.",
+      "errorUnreachable": "The source list could not be loaded.",
+      "errorForbidden": "You may not view the fleet. The list needs {permission}.",
+      "errorSession": "Your session has ended. Sign in again, then reload the page.",
+      "retry": "Retry",
+      "emptyInventory": "No log sources are in the inventory.",
+      "emptyInventoryHint": "Sync the inventory to list sources.",
+      "emptyFiltered": "No source matches these filters.",
+      "emptyFilteredHint": "Filters set: {filters}.",
+      "clearAll": "Clear all",
+      "count": "{total} sources"
+    }
   }
 }

@@ -1,0 +1,336 @@
+/* The fleet source list (UIQ-7b): search, facet menus, chips, bulk bar and the wide table. */
+
+.fs-browser {
+  min-width: 0;
+}
+
+.fs-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-5);
+}
+
+.fs-controls {
+  flex: 1 1 36rem;
+  min-width: 0;
+}
+
+.fs-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.fs-search {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.fs-search input,
+.fs-facet-panel input[type="search"],
+.fs-perpage select {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+}
+.fs-search input {
+  width: 100%;
+}
+
+.fs-facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.fs-facet {
+  position: relative;
+}
+.fs-facet > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--target-min);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.fs-facet > summary::-webkit-details-marker {
+  display: none;
+}
+.fs-facet > summary::after {
+  content: "▾";
+  color: var(--text-2);
+}
+.fs-facet[open] > summary {
+  border-color: var(--neutral-border);
+}
+.fs-facet > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.fs-facet-n {
+  min-width: 1.5em;
+  padding: 0 var(--sp-1);
+  text-align: center;
+  background: var(--info-bg);
+  border: 1px solid var(--info-border);
+  border-radius: var(--r-pill);
+  color: var(--info-text);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.fs-facet-panel {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + var(--sp-1));
+  left: 0;
+  width: max-content;
+  min-width: 16rem;
+  max-width: min(24rem, 90vw);
+  padding: var(--sp-2);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+}
+.fs-facet-panel input[type="search"] {
+  width: 100%;
+  margin-bottom: var(--sp-2);
+}
+.fs-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: var(--picker-list-max-h);
+  overflow-y: auto;
+}
+.fs-options label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--target-min);
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.fs-options label:hover {
+  background: var(--surface-2);
+}
+.fs-option-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.fs-option-count {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.fs-facet-empty {
+  margin: var(--sp-2);
+}
+
+.fs-perpage {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.fs-export {
+  text-decoration: none;
+}
+.fs-export-note {
+  margin: var(--sp-2) 0 var(--sp-3);
+  font-size: var(--fs-xs);
+}
+
+.fs-chips {
+  align-items: center;
+}
+.fs-chips .filter-chip {
+  gap: var(--sp-2);
+}
+.fs-chip-x,
+.fs-clear,
+.fs-sort {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.fs-chip-x {
+  color: var(--text-2);
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  margin: calc(var(--sp-1) * -1) calc(var(--sp-2) * -1) calc(var(--sp-1) * -1) 0;
+}
+.fs-chip-x:hover,
+.fs-clear:hover {
+  color: var(--text);
+}
+.fs-clear {
+  color: var(--link);
+  font-size: var(--fs-xs);
+  min-height: var(--target-min);
+}
+.fs-chip-x:focus-visible,
+.fs-clear:focus-visible,
+.fs-sort:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.fs-sync {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.fs-sync-line {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+}
+
+.fs-readonly {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+}
+.fs-bulk {
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+}
+.fs-bulk-count {
+  margin: 0 0 var(--sp-2);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+}
+.fs-bulk-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.fs-bulk-controls select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+}
+.fs-confirm {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+.fs-confirm p {
+  margin: 0 0 var(--sp-2);
+}
+
+.fs-table th,
+.fs-table td {
+  vertical-align: top;
+}
+.fs-table th.fs-check,
+.fs-table td.fs-check {
+  width: 1%;
+  text-align: center;
+}
+.fs-table td,
+.fs-table th[scope="row"] {
+  white-space: nowrap;
+}
+.fs-table th[scope="row"] {
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fs-table td .cell-sub {
+  max-width: none;
+  white-space: nowrap;
+}
+.fs-table td.fs-type {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fs-table td.fs-groups {
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fs-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-weight: inherit;
+  color: inherit;
+}
+.fs-sort-mark {
+  display: inline-block;
+  min-width: 1em;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.fs-profiles {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fs-eps-crit {
+  color: var(--crit-text);
+}
+.fs-eps-warn {
+  color: var(--warn-text);
+}
+.fs-table tr[aria-selected="true"] {
+  background: var(--surface-2);
+}
+
+/* QRadar status: two toggle buttons with counts, next to the facets. */
+.fs-status {
+  display: inline-flex;
+  gap: var(--sp-1);
+}
+
+.fs-status-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--target-min);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.fs-status-btn[aria-pressed="true"] {
+  background: var(--surface-2);
+  border-color: var(--text-2);
+}
+
+.fs-disabled {
+  margin-left: var(--sp-2);
+  vertical-align: baseline;
+}

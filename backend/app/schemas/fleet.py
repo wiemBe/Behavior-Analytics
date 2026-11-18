@@ -215,11 +215,18 @@ class TypeFacetCount(BaseModel):
     count: int
 
 
+class GroupFacetCount(BaseModel):
+    group_id: int
+    name: str
+    count: int
+
+
 class FleetSourceFacets(BaseModel):
     """Counts per value, each under every active filter except its own family."""
 
     source_class: list[FacetCount]
     type: list[TypeFacetCount]
+    group: list[GroupFacetCount]
     flow: list[FacetCount]
     profile: list[FacetCount]
 
@@ -247,6 +254,29 @@ class FleetBulkClassificationIn(BaseModel):
 class FleetBulkClassificationOut(BaseModel):
     updated: int
     items: list[FleetSourceRow]
+
+
+class FleetSyncInstance(BaseModel):
+    """The last log-source inventory sync of one enabled console."""
+
+    instance_id: uuid.UUID
+    instance_name: str
+    # RUNNING (the collector holds its lock now), FAILED (the last pass failed), OK, NEVER.
+    status: Literal["RUNNING", "FAILED", "OK", "NEVER"]
+    last_run_at: datetime | None
+    last_success_at: datetime | None
+    consecutive_failures: int
+
+
+class FleetSyncStatus(BaseModel):
+    instances: list[FleetSyncInstance]
+    running: bool
+
+
+class FleetSyncQueued(BaseModel):
+    queued: bool
+    already_running: bool
+    task_id: str | None = None
 
 
 class ClassificationOverrideIn(BaseModel):
