@@ -10,11 +10,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.engine import make_url
 
 from app.config_transfer.document import SECTION_ORDER, build_document
-from app.config_transfer.import_bundle import SOC_DEFAULTS
+from app.config_transfer.import_bundle import SOC_DEFAULTS, plan
+from app.config_transfer.report import ImportReport
 from app.fleet.service import ensure_seed_rules
 from app.models.fleet import ClassificationRule, LogSourceClassification
 from app.models.identity import AuditLog
@@ -342,7 +343,7 @@ async def test_classification_override_sets_actor_and_time(db_schema, db_session
     assert len(_lines(report, "classification_overrides", "unchanged")) == 1
     await db_session.refresh(row)
     assert row.override_at == timestamp and row.override_by == "soc"
-    for value, outcome in (("IPS", "conflict"), (None, "unchanged"), ("INVALID", "unresolved")):
+    for value, outcome in (("IPS", "conflict"), (None, "conflict"), ("INVALID", "unresolved")):
         report = _report(_run(db_schema, tmp_path, "--apply", "--yes", document=_document(
             classification_overrides=[{"log_source": REF, "override_class": value}])))
         assert len(_lines(report, "classification_overrides", outcome)) == 1
@@ -455,3 +456,69 @@ async def test_invalid_seed_pattern_is_still_validated(db_schema, db_session, tm
         "row validation failed")
     await db_session.refresh(rule)
     assert rule.enabled is True
+
+
+async def test_created_reason_uses_mode_specific_wording(db_schema, db_session, tmp_path):
+    await _fleet(db_session)
+    document = _document(log_source_settings=[_soc(owner="soc")])
+    dry = _report(_run(db_schema, tmp_path, "--dry-run", document=document))
+    assert dry["mode"] == "dry-run" and dry["committed"] is False
+    assert _lines(dry, "log_source_settings", "created")[0]["reason"] == (
+        "would apply configuration")
+    applied = _report(_run(db_schema, tmp_path, "--apply", "--yes", document=document))
+    assert applied["mode"] == "apply" and applied["committed"] is True
+    assert _lines(applied, "log_source_settings", "created")[0]["reason"] == (
+        "applied configuration")
+
+
+async def test_null_file_override_conflicts_with_set_local_override(db_schema, db_session,
+                                                                  tmp_path):
+    _, source = await _fleet(db_session, classified=True)
+    first = _report(_run(db_schema, tmp_path, "--apply", "--yes", "--actor", "soc",
+                         document=_document(classification_overrides=[
+                             {"log_source": REF, "override_class": "WAF"}])))
+    assert len(_lines(first, "classification_overrides", "created")) == 1
+    row = await db_session.get(LogSourceClassification, source.id)
+    assert (row.override_class, row.override_by) == ("WAF", "soc")
+    stamp, actor = row.override_at, row.override_by
+
+    cleared = _report(_run(db_schema, tmp_path, "--apply", "--yes", document=_document(
+        classification_overrides=[{"log_source": REF, "override_class": None}])))
+    line = _lines(cleared, "classification_overrides", "conflict")[0]
+    assert line["reason"] == "file has no override; import never clears a local override"
+    assert "configuration already matches" not in json.dumps(cleared)
+    await db_session.refresh(row)
+    assert (row.override_class, row.override_by, row.override_at) == ("WAF", actor, stamp)
+
+
+async def test_classification_query_is_one_join_loading_every_classified_source(db_schema,
+                                                                             db_session):
+    console, source = await _fleet(db_session, classified=True)
+    second = LogSource(instance_id=console.id, qradar_id=2, name="Second WAF",
+                       type_name=REF["type_name"])
+    db_session.add(second)
+    await db_session.flush()
+    db_session.add(LogSourceClassification(
+        log_source_id=second.id, source_class="OTHER", basis="DEFAULT", conflicts=[],
+        classified_at=datetime.now(UTC), review_status="NEW"))
+    await db_session.commit()
+
+    statements: list[tuple[str, object]] = []
+
+    @event.listens_for(db_session.get_bind(), "before_cursor_execute")
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append((statement, parameters))
+
+    report = ImportReport("apply")
+    await plan(db_session, _document(classification_overrides=[
+        {"log_source": REF, "override_class": "WAF"},
+        {"log_source": {"name": "Second WAF", "type_name": REF["type_name"]},
+         "override_class": "IPS"},
+    ]), console, report, "soc", "apply")
+    created = report.sections["classification_overrides"]["created"]
+    assert [line["local_id"] for line in created] == [str(source.id), str(second.id)]
+    queries = [sql for sql, _ in statements
+               if "log_source_classification" in sql and sql.lstrip().lower().startswith("select")]
+    assert len(queries) == 1
+    assert "join log_source" in queries[0].lower()
+    await db_session.rollback()

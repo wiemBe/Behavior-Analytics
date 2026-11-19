@@ -106,7 +106,8 @@ async def _export(args: argparse.Namespace) -> int:
 async def _import(args: argparse.Namespace) -> int:
     document = parse(sys.stdin.buffer.read(MAX_DOCUMENT_BYTES + 1))
     maker = get_sessionmaker()
-    report = ImportReport("apply" if args.apply else "dry-run")
+    mode = "apply" if args.apply else "dry-run"
+    report = ImportReport(mode)
     action = "config.import.apply" if args.apply else "config.import.dry_run"
 
     async def audit(outcome: str = "SUCCESS") -> None:
@@ -128,7 +129,7 @@ async def _import(args: argparse.Namespace) -> int:
                 raise PreflightError(message) from None
             report.instance = instance.name
             try:
-                await plan(session, document, instance, report, args.actor)
+                await plan(session, document, instance, report, args.actor, mode)
                 if args.apply:
                     await record_audit(session, action=action, actor=args.actor,
                                        object_type="config_bundle", object_id=instance.name,

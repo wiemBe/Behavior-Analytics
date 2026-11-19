@@ -62,7 +62,7 @@ def _merge(target: Any, values: dict[str, Any], default: bool) -> str:
 
 
 async def plan(session: AsyncSession, document: dict[str, Any], instance: QRadarInstance,
-               report: ImportReport, actor: str) -> None:
+               report: ImportReport, actor: str, mode: str) -> None:
     """Make the same writes for dry-run and apply; no provider or secret column is read."""
     sources = list(await session.scalars(select(LogSource).where(
         LogSource.instance_id == instance.id).options(load_only(
@@ -71,19 +71,26 @@ async def plan(session: AsyncSession, document: dict[str, Any], instance: QRadar
     by_id = {str(row.id): row for row in sources}
     catalog = ResolutionCatalog(log_sources=tuple(
         (str(row.id), row.name, row.type_name) for row in sources))
+    # One query, no bind parameter per source: asyncpg caps a statement at 32,767 parameters.
+    # Joining the instance's own sources yields exactly the rows the id list used to.
     classifications = {str(row.log_source_id): row for row in await session.scalars(
-        select(LogSourceClassification).where(LogSourceClassification.log_source_id.in_(
-            [row.id for row in sources])))}
+        select(LogSourceClassification).join(
+            LogSource, LogSourceClassification.log_source_id == LogSource.id
+        ).where(LogSource.instance_id == instance.id))}
     rules = list(await session.scalars(select(ClassificationRule).where(or_(
         ClassificationRule.instance_id == instance.id, ClassificationRule.instance_id.is_(None)))))
     cadences = {row.family: row for row in await session.scalars(select(SearchCadenceSetting))}
     now = datetime.now(UTC)
-    reasons = {"created": "would apply configuration", "unchanged": "configuration already matches",
-               "conflict": "stored configuration differs from the file and is not default"}
+    reasons = {
+        "created": "applied configuration" if mode == "apply" else "would apply configuration",
+        "unchanged": "configuration already matches",
+        "conflict": "stored configuration differs from the file and is not default",
+    }
     for section, rows in document["sections"].items():
         keys = Counter(_key(row) for row in rows)
         for row in rows:
             key, local_id = _key(row), None
+            row_reason: str | None = None
             if section not in FLEET:
                 report.add(section, "unresolved", key, "not applied in this release")
                 continue
@@ -115,11 +122,18 @@ async def plan(session: AsyncSession, document: dict[str, Any], instance: QRadar
                     classification = classifications.get(str(local_id))
                     if classification is None:
                         raise RowError("log source has not been classified")
-                    outcome = ("unchanged" if value is None else _merge(
-                        classification, {"override_class": value},
-                        classification.override_class is None))
-                    if outcome == "created":
-                        classification.override_by, classification.override_at = actor[:255], now
+                    if value is None and classification.override_class is not None:
+                        # The import never clears an operator override; it does not write a
+                        # null over a set one, and it must not call that "already matches".
+                        outcome = "conflict"
+                        row_reason = "file has no override; import never clears a local override"
+                    else:
+                        outcome = ("unchanged" if value is None else _merge(
+                            classification, {"override_class": value},
+                            classification.override_class is None))
+                        if outcome == "created":
+                            classification.override_by, classification.override_at = (
+                                actor[:255], now)
                 elif section == "classification_rules":
                     kind = ClassificationRuleKind(row["kind"])
                     if not isinstance(row["pattern"], str):
@@ -171,7 +185,7 @@ async def plan(session: AsyncSession, document: dict[str, Any], instance: QRadar
                                      cadence.cadence_seconds == default_search_cadence(family))
                     if outcome == "created":
                         cadence.updated_by, cadence.updated_at = actor[:255], now
-                report.add(section, outcome, key, reasons[outcome], local_id)
+                report.add(section, outcome, key, row_reason or reasons[outcome], local_id)
             except (ValueError, TypeError, KeyError) as exc:
                 # Never stringify validators: their messages can include input values.
                 reason = str(exc) if type(exc) is RowError else "row validation failed"

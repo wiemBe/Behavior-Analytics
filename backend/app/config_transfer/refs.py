@@ -10,7 +10,7 @@ from __future__ import annotations
 import enum
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 type LogSourceRow = tuple[str, str, str | None]
@@ -179,14 +179,27 @@ class ResolutionCatalog:
     destinations: tuple[NamedRow, ...] = ()  # id, name
     searches: tuple[NamedRow, ...] = ()  # id, name
 
+    # Built once, not per row: a linear scan per file row is O(rows x sources).
+    # Values keep file order, so exact / missing / ambiguous reasons stay identical.
+    _log_source_index: dict[tuple[str, str | None], tuple[str, ...]] = field(
+        init=False, repr=False, compare=False, default_factory=dict
+    )
+
+    def __post_init__(self) -> None:
+        grouped: dict[tuple[str, str | None], list[str]] = {}
+        for source_id, name, type_name in self.log_sources:
+            grouped.setdefault((name, type_name), []).append(source_id)
+        object.__setattr__(self, "_log_source_index", {
+            key: tuple(ids) for key, ids in grouped.items()
+        })
+
     def match_log_source(self, ref: object) -> RefMatch:
         body = _as_map(ref)
         _, name = _text(body, "name")
         present, type_name = _text(body, "type_name", null=True)
         if name is None or not present:
             return _miss(_LS_BAD)
-        found = [row[0] for row in self.log_sources if row[1:] == (name, type_name)]
-        return _done(found, "log_source")
+        return _done(self._log_source_index.get((name, type_name), ()), "log_source")
 
     def match_log_source_type(self, ref: object) -> RefMatch:
         _, name = _text(_as_map(ref), "name")

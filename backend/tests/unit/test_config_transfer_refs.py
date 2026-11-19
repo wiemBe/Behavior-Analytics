@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import time
 from pathlib import Path
 
 import pytest
@@ -306,3 +307,14 @@ def test_widget_bindings() -> None:
     ok(nested.unresolved[0], MI, (), "widget config contains an id")
     assert U not in nested.unresolved[0].reason
     ok(view(empty, "chart.future", U).unresolved[0], MI, (), "widget config is not an object")
+
+
+def test_log_source_index_resolves_eight_thousand_rows_quickly() -> None:
+    count = 8_000
+    catalog = ResolutionCatalog(log_sources=tuple(
+        (f"id-{i}", f"source-{i}", "F5") for i in range(count)))
+    started = time.perf_counter()
+    for i in range(count):
+        ok(catalog.match_log_source(ls(f"source-{i}", "F5")), EX, (f"id-{i}",))
+    # A per-row linear scan takes several seconds at this size; the index is milliseconds.
+    assert time.perf_counter() - started < 2.0
