@@ -175,6 +175,227 @@ async def test_disabled_returns_before_the_gate_is_touched(monkeypatch) -> None:
     assert sent == []
 
 
+def _cadence_with_claims(
+    events: list[str],
+    recorded: list[dict],
+    *,
+    claims: list[object],
+    fail_records: int = 0,
+):  # type: ignore[no-untyped-def]
+    """A cadence that yields queued slots in order and can fail its first writes."""
+
+    class Cadence:
+        def __init__(self, *args: object) -> None:
+            pass
+
+        async def claim_slot(self, family: SearchFamily):  # type: ignore[no-untyped-def]
+            assert family == SearchFamily.WAF_COLLECTION
+            events.append("claim")
+            return claims.pop(0) if claims else None
+
+        async def record_run(self, family: SearchFamily, **values: object) -> None:
+            assert family == SearchFamily.WAF_COLLECTION
+            events.append("record")
+            recorded.append(values)
+            nonlocal fail_records
+            if fail_records:
+                fail_records -= 1
+                raise RuntimeError("cadence write rejected")
+
+    return Cadence
+
+
+@pytest.mark.asyncio
+async def test_a_failed_first_send_records_failed_with_unknown_counts(monkeypatch, caplog) -> None:
+    _enable(monkeypatch)
+    events: list[str] = []
+    recorded: list[dict] = []
+    maker = _Maker(events)
+    ids = [uuid.uuid4(), uuid.uuid4()]
+
+    async def eligible(_session: object, _settings: object):  # type: ignore[no-untyped-def]
+        events.append("eligible")
+        return ids, {}
+
+    monkeypatch.setattr(tasks, "get_sessionmaker", lambda: maker)
+    monkeypatch.setattr(tasks, "eligible_profile_ids", eligible)
+    monkeypatch.setattr(
+        "app.services.search_cadence.SearchCadenceService",
+        _cadence_with_claims(events, recorded, claims=[object()]),
+    )
+
+    def send(profile_id: str) -> None:
+        events.append("send-fail")
+        raise RuntimeError("broker password=s3cr3t")
+
+    with pytest.raises(RuntimeError, match="broker"):
+        await tasks.dispatch_waf_collection(enqueue=send)
+
+    assert recorded == [
+        {"outcome": "failed", "searches": None, "buckets": None, "splits": None}
+    ]
+    assert [e for e in events if e != "session"] == ["claim", "eligible", "send-fail", "record"]
+    # Neither the broker credential nor its error text is persisted or logged.
+    assert "s3cr3t" not in caplog.text and "password" not in caplog.text
+    assert "s3cr3t" not in str(recorded)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_later_send_keeps_counts_unknown(monkeypatch, caplog) -> None:
+    _enable(monkeypatch)
+    events: list[str] = []
+    recorded: list[dict] = []
+    ids = [uuid.uuid4(), uuid.uuid4()]
+
+    async def eligible(_session: object, _settings: object):  # type: ignore[no-untyped-def]
+        events.append("eligible")
+        return ids, {}
+
+    monkeypatch.setattr(tasks, "get_sessionmaker", lambda: _Maker(events))
+    monkeypatch.setattr(tasks, "eligible_profile_ids", eligible)
+    monkeypatch.setattr(
+        "app.services.search_cadence.SearchCadenceService",
+        _cadence_with_claims(events, recorded, claims=[object()]),
+    )
+
+    calls = 0
+
+    def send(profile_id: str) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("broker refused task")
+
+    with pytest.raises(RuntimeError, match="broker"):
+        await tasks.dispatch_waf_collection(enqueue=send)
+
+    assert recorded == [
+        {"outcome": "failed", "searches": None, "buckets": None, "splits": None}
+    ]
+    assert [e for e in events if e != "session"] == [
+        "claim", "eligible", "record",
+    ]
+    assert "broker refused task" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_eligibility_failure_records_failed_without_sending(monkeypatch) -> None:
+    _enable(monkeypatch)
+    events: list[str] = []
+    recorded: list[dict] = []
+    sent: list[str] = []
+
+    async def eligible(_session: object, _settings: object):  # type: ignore[no-untyped-def]
+        events.append("eligible")
+        raise ValueError("profile query failed")
+
+    monkeypatch.setattr(tasks, "get_sessionmaker", lambda: _Maker(events))
+    monkeypatch.setattr(tasks, "eligible_profile_ids", eligible)
+    monkeypatch.setattr(
+        "app.services.search_cadence.SearchCadenceService",
+        _cadence_with_claims(events, recorded, claims=[object()]),
+    )
+
+    with pytest.raises(ValueError, match="profile query failed"):
+        await tasks.dispatch_waf_collection(enqueue=sent.append)
+
+    assert sent == []
+    assert recorded == [
+        {"outcome": "failed", "searches": None, "buckets": None, "splits": None}
+    ]
+    assert [e for e in events if e != "session"] == ["claim", "eligible", "record"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_cadence_write_is_retried_as_failed_then_reraised(monkeypatch) -> None:
+    """A failed success-write cannot leave the old outcome on the row."""
+    _enable(monkeypatch)
+    events: list[str] = []
+    recorded: list[dict] = []
+    sent: list[str] = []
+
+    async def eligible(_session: object, _settings: object):  # type: ignore[no-untyped-def]
+        return [uuid.uuid4()], {}
+
+    monkeypatch.setattr(tasks, "get_sessionmaker", lambda: _Maker(events))
+    monkeypatch.setattr(tasks, "eligible_profile_ids", eligible)
+    monkeypatch.setattr(
+        "app.services.search_cadence.SearchCadenceService",
+        _cadence_with_claims(events, recorded, claims=[object()], fail_records=1),
+    )
+
+    with pytest.raises(RuntimeError, match="cadence write rejected"):
+        await tasks.dispatch_waf_collection(enqueue=sent.append)
+
+    assert len(sent) == 1
+    assert recorded == [
+        {"outcome": "dispatched", "searches": None, "buckets": None, "splits": None},
+        {"outcome": "failed", "searches": None, "buckets": None, "splits": None},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_next_slot_resumes_after_a_failed_dispatch(monkeypatch) -> None:
+    _enable(monkeypatch)
+    events: list[str] = []
+    recorded: list[dict] = []
+    sent: list[str] = []
+
+    async def eligible(_session: object, _settings: object):  # type: ignore[no-untyped-def]
+        return [uuid.uuid4()], {}
+
+    monkeypatch.setattr(tasks, "get_sessionmaker", lambda: _Maker(events))
+    monkeypatch.setattr(tasks, "eligible_profile_ids", eligible)
+    monkeypatch.setattr(
+        "app.services.search_cadence.SearchCadenceService",
+        _cadence_with_claims(events, recorded, claims=[object(), object()]),
+    )
+
+    def fail(_profile_id: str) -> None:
+        raise RuntimeError("broker down")
+
+    with pytest.raises(RuntimeError, match="broker down"):
+        await tasks.dispatch_waf_collection(enqueue=fail)
+    assert await tasks.dispatch_waf_collection(enqueue=sent.append) == {
+        "status": "ok", "dispatched": 1, "skipped": {},
+    }
+
+    assert recorded[-1] == {
+        "outcome": "dispatched", "searches": None, "buckets": None, "splits": None,
+    }
+    assert len(sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failed_dispatch_does_not_resend_in_the_same_slot(monkeypatch) -> None:
+    _enable(monkeypatch)
+    events: list[str] = []
+    recorded: list[dict] = []
+    sent: list[str] = []
+
+    async def eligible(_session: object, _settings: object):  # type: ignore[no-untyped-def]
+        return [uuid.uuid4()], {}
+
+    monkeypatch.setattr(tasks, "get_sessionmaker", lambda: _Maker(events))
+    monkeypatch.setattr(tasks, "eligible_profile_ids", eligible)
+    # Only the first tick owns the slot; the next tick sees the same claimed slot.
+    monkeypatch.setattr(
+        "app.services.search_cadence.SearchCadenceService",
+        _cadence_with_claims(events, recorded, claims=[object(), None]),
+    )
+
+    def fail(_profile_id: str) -> None:
+        raise RuntimeError("broker down")
+
+    with pytest.raises(RuntimeError, match="broker down"):
+        await tasks.dispatch_waf_collection(enqueue=fail)
+    assert await tasks.dispatch_waf_collection(enqueue=sent.append) == {
+        "status": "not_due", "family": "WAF_COLLECTION",
+    }
+    assert sent == []
+    assert len(recorded) == 1 and recorded[0]["outcome"] == "failed"
+
+
 @pytest.mark.asyncio
 async def test_the_per_source_task_is_not_gated(monkeypatch) -> None:
     """`collect_waf_source` runs whenever it is enqueued; it never claims a slot."""

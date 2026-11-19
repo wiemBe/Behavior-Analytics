@@ -133,6 +133,18 @@ def scheduling_record(log_source: LogSource) -> str:
 
 
 @dataclass
+class WafRunStage:
+    """Last lifecycle stage a source run reached.
+
+    Shared with ``run_waf_source`` so a failure raised mid-pipeline can name a
+    fixed stage code in its durable diagnostic. Only the code leaves the fold;
+    no exception text, query or raw value is carried here.
+    """
+
+    name: str = "setup"
+
+
+@dataclass
 class WafPipelineReport:
     profile_id: uuid.UUID
     log_source_id: uuid.UUID | None
@@ -268,6 +280,7 @@ class WafSourcePipeline:
         clock: Callable[[], datetime] | None = None,
         ariel_budget: WafArielBudget | None = None,
         enqueuer: AlertEnqueuer | None = None,
+        stage: WafRunStage | None = None,
     ) -> None:
         self.session = session
         self.provider = provider
@@ -275,6 +288,7 @@ class WafSourcePipeline:
         self._clock = clock or (lambda: datetime.now(UTC))
         self.ariel_budget = ariel_budget or WafArielBudget.for_session(session, self.settings)
         self._enqueuer = enqueuer
+        self.stage = stage or WafRunStage()
 
     async def run(self, profile: WafSourceProfile) -> WafPipelineReport:
         report = WafPipelineReport(profile.id, profile.log_source_id)
@@ -307,6 +321,7 @@ class WafSourcePipeline:
                 report.status = "locked"
                 return report
 
+            self.stage.name = "collect"
             collector = WafEndpointCollector(
                 self.session,
                 self.provider,
@@ -345,6 +360,7 @@ class WafSourcePipeline:
             evaluation_wm = await _watermark(
                 self.session, instance.id, evaluation_collector(log_source)
             )
+            self.stage.name = "evaluate"
             await self._evaluate(
                 log_source,
                 collection_wm,
@@ -352,6 +368,7 @@ class WafSourcePipeline:
                 report,
                 history_end=history_scope.anchor if history_scope is not None else None,
             )
+            self.stage.name = "train"
             await self._train(
                 log_source,
                 evaluation_wm,
@@ -932,9 +949,18 @@ def sanitized_error(exc: BaseException) -> str:
 
 
 async def record_waf_failure(
-    session: AsyncSession, profile_id: uuid.UUID, exc: BaseException, *, now: datetime
+    session: AsyncSession,
+    profile_id: uuid.UUID,
+    exc: BaseException,
+    *,
+    now: datetime,
+    stage: str = "setup",
 ) -> int | None:
-    """Make a failed run visible and return its QRadar source id when it exists."""
+    """Make a failed run visible and return its QRadar source id when it exists.
+
+    ``stage`` is one of the fixed lifecycle codes; it never carries exception
+    text, a query or a raw value.
+    """
     profile = await session.get(WafSourceProfile, profile_id)
     if profile is None:
         return None
@@ -948,6 +974,7 @@ async def record_waf_failure(
         **(wm.collection_metadata or {}),
         "last_failure_at": now.isoformat(),
         "last_error_class": type(exc).__name__,
+        "last_failure_stage": stage,
     }
     await session.flush()
     return log_source.qradar_id
@@ -995,7 +1022,11 @@ async def run_waf_source(
 
     Commits on success. On failure rolls back everything the run wrote, then
     records the failure in its own commit, so a failing source never leaves a
-    partial bucket behind and never affects another source's run.
+    partial bucket behind and never affects another source's run. Provider
+    construction is inside the guarded lifecycle: a setup failure is recorded
+    with a fixed stage code just like a collect, evaluate, train or commit one.
+    A close-only failure is logged but never turns a committed run into a
+    reported failure.
     """
     clock = clock or (lambda: datetime.now(UTC))
     profile = await session.get(WafSourceProfile, profile_id)
@@ -1004,10 +1035,12 @@ async def run_waf_source(
     instance = await session.get(QRadarInstance, profile.instance_id)
     if instance is None:
         return {"profile_id": str(profile_id), "status": "missing"}
-    provider = provider_factory(instance)
+    provider: QRadarProvider | None = None
+    stage = WafRunStage()
     instance_id = instance.id
     log_source_id = profile.log_source_id
     try:
+        provider = provider_factory(instance)
         report = await WafSourcePipeline(
             session,
             provider,
@@ -1015,7 +1048,9 @@ async def run_waf_source(
             clock=clock,
             ariel_budget=ariel_budget,
             enqueuer=enqueuer,
+            stage=stage,
         ).run(profile)
+        stage.name = "commit"
         await session.commit()
         skip = {
             "locked": SKIP_SOURCE_LOCKED, "capacity_unavailable": SKIP_GLOBAL_CAPACITY
@@ -1028,29 +1063,53 @@ async def run_waf_source(
     except Exception as exc:
         await session.rollback()
         failed_at = clock()
-        qradar_source_id = await record_waf_failure(
-            session, profile_id, exc, now=failed_at
-        )
-        if qradar_source_id is not None:
-            await HistoryBackfillRepository(session).write_step_errors(
-                instance_id,
-                HistoryFamily.WAF.value,
-                {str(qradar_source_id): exc},
-                at=failed_at,
-                required_state=HistoryState.READING.value,
+        error_class = type(exc).__name__
+        stage_name = stage.name
+        try:
+            qradar_source_id = await record_waf_failure(
+                session, profile_id, exc, now=failed_at, stage=stage_name
             )
-        await session.commit()
+            if qradar_source_id is not None:
+                await HistoryBackfillRepository(session).write_step_errors(
+                    instance_id,
+                    HistoryFamily.WAF.value,
+                    {str(qradar_source_id): exc},
+                    at=failed_at,
+                    required_state=HistoryState.READING.value,
+                )
+            await session.commit()
+        except Exception:
+            # Even a broken diagnostic cannot hide the original failure. Only
+            # its class and stage reach the log; no exception text is carried.
+            logger.warning(
+                "waf source failure diagnostic could not be recorded",
+                extra={"profile_id": str(profile_id), "error_class": error_class,
+                       "stage": stage_name},
+            )
+            raise
         logger.warning(
             "waf source run failed",
-            extra={"profile_id": str(profile_id), "error_class": type(exc).__name__},
+            extra={"profile_id": str(profile_id), "error_class": error_class,
+                   "stage": stage_name},
         )
         return {
             "profile_id": str(profile_id),
             "status": "failed",
-            "error_class": type(exc).__name__,
+            "error_class": error_class,
+            "stage": stage_name,
         }
     finally:
-        await provider.aclose()
+        if provider is not None:
+            try:
+                await provider.aclose()
+            except Exception as close_exc:
+                # The run already committed or recorded its failure; a close
+                # error alone must not rewrite that outcome as a rollback.
+                logger.warning(
+                    "waf source provider close failed",
+                    extra={"profile_id": str(profile_id),
+                           "error_class": type(close_exc).__name__},
+                )
 
 
 async def eligible_profile_ids(

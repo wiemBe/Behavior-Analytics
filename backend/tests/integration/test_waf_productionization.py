@@ -37,11 +37,12 @@ from app.models.waf import (
     WafSourceBucket,
     WafSourceProfile,
 )
-from app.providers.base import ProviderUnavailableError
+from app.providers.base import ProviderError, ProviderUnavailableError
 from app.providers.dto import LogSourceDTO, WafObservationBatch, WafRequestGroup
 from app.providers.mock import MockQRadarProvider
 from app.services.search_cadence import SearchCadenceService
 from app.services.waf_pipeline import (
+    WafSourcePipeline,
     eligible_profile_ids,
     evaluation_collector,
     run_waf_source,
@@ -821,3 +822,250 @@ async def test_evaluation_watermark_is_per_source(db_session) -> None:
     assert wm is not None and wm.watermark_at == T0
     assert (await db_session.execute(text("SELECT 1"))).scalar() == 1
     assert WafLogicalField.URL.value == "URL"
+
+
+# ============================================================ failure lifecycle
+class TestFailureLifecycle:
+    """Every guarded stage records a fixed, sanitized code on the source watermark."""
+
+    async def _watermark(self, session, qradar_id: int):  # type: ignore[no-untyped-def]
+        return await session.scalar(
+            select(CollectionWatermark).where(
+                CollectionWatermark.collector == f"waf_endpoint_metric:{qradar_id}"
+            )
+        )
+
+    async def test_a_factory_failure_records_setup_and_another_source_still_collects(
+        self, db_session, caplog
+    ) -> None:
+        settings = cfg()
+        instance = await make_instance(db_session)
+        ok_provider = StubWafProvider([batch(T0, [("/portal/login", "GET", 40)])])
+        good, _good_source = await source_with_profile(
+            db_session, ok_provider, settings, qradar_id=312, instance=instance
+        )
+        bad, _bad_source = await source_with_profile(
+            db_session, StubWafProvider(), settings, qradar_id=313, instance=instance
+        )
+        good_id, bad_id = good.id, bad.id
+
+        def boom(_instance: object):  # type: ignore[no-untyped-def]
+            raise RuntimeError("SEC=s3cr3t must not be persisted")
+
+        failed = await run_waf_source(
+            db_session, bad_id, provider_factory=boom, settings=settings,
+            clock=lambda: T0 + STEP + timedelta(seconds=5),
+        )
+        assert failed["status"] == "failed"
+        assert failed["stage"] == "setup"
+        assert failed["error_class"] == "RuntimeError"
+        assert "s3cr3t" not in caplog.text and "s3cr3t" not in str(failed)
+
+        wm = await self._watermark(db_session, 313)
+        assert wm is not None and wm.consecutive_failures == 1
+        assert wm.last_error == "RuntimeError"
+        assert wm.collection_metadata["last_failure_stage"] == "setup"
+        assert wm.collection_metadata["last_error_class"] == "RuntimeError"
+        assert "s3cr3t" not in json.dumps(wm.collection_metadata)
+
+        # The other source, on the same instance, is untouched by the setup fault.
+        assert (await run_at(db_session, good_id, ok_provider, settings, T0))["status"] == "ok"
+        assert await count(db_session, WafSourceBucket) == 1
+
+    async def test_a_missing_or_deleted_profile_is_not_a_failure(self, db_session) -> None:
+        settings = cfg()
+        missing_id = uuid.uuid4()
+        assert await run_waf_source(
+            db_session, missing_id, provider_factory=lambda _i: StubWafProvider(),
+            settings=settings,
+        ) == {"profile_id": str(missing_id), "status": "missing"}
+
+        provider = StubWafProvider()
+        profile, _ = await source_with_profile(db_session, provider, settings)
+        deleted_id = profile.id
+        await db_session.delete(profile)
+        await db_session.commit()
+        assert await run_waf_source(
+            db_session, deleted_id, provider_factory=lambda _i: StubWafProvider(),
+            settings=settings,
+        ) == {"profile_id": str(deleted_id), "status": "missing"}
+        assert await count(db_session, CollectionWatermark) == 0
+
+    async def test_a_collect_exception_records_the_collect_stage(self, db_session) -> None:
+        settings = cfg()
+        provider = StubWafProvider(error=ProviderUnavailableError("QRadar request timed out"))
+        profile, _ = await source_with_profile(db_session, provider, settings, qradar_id=313)
+        failed = await run_at(db_session, profile.id, provider, settings, T0)
+        assert failed["status"] == "failed" and failed["stage"] == "collect"
+        wm = await self._watermark(db_session, 313)
+        assert wm is not None and wm.collection_metadata["last_failure_stage"] == "collect"
+        assert await count(db_session, WafSourceBucket) == 0
+
+    async def test_an_evaluate_exception_rolls_back_the_bucket(
+        self, db_session, monkeypatch
+    ) -> None:
+        settings = cfg()
+        provider = StubWafProvider([batch(T0, [("/portal/login", "GET", 40)])])
+        profile, _ = await source_with_profile(db_session, provider, settings, qradar_id=313)
+
+        async def boom(*_a: object, **_k: object):  # type: ignore[no-untyped-def]
+            raise RuntimeError("evaluation exploded")
+
+        monkeypatch.setattr(WafSourcePipeline, "_evaluate", boom)
+        failed = await run_at(db_session, profile.id, provider, settings, T0)
+        assert failed["status"] == "failed" and failed["stage"] == "evaluate"
+        wm = await self._watermark(db_session, 313)
+        assert wm is not None and wm.collection_metadata["last_failure_stage"] == "evaluate"
+        assert await count(db_session, WafSourceBucket) == 0
+
+    async def test_a_train_exception_rolls_back_the_bucket(
+        self, db_session, monkeypatch
+    ) -> None:
+        settings = cfg()
+        provider = StubWafProvider([batch(T0, [("/portal/login", "GET", 40)])])
+        profile, _ = await source_with_profile(db_session, provider, settings, qradar_id=313)
+
+        async def boom(*_a: object, **_k: object):  # type: ignore[no-untyped-def]
+            raise RuntimeError("training exploded")
+
+        monkeypatch.setattr(WafSourcePipeline, "_train", boom)
+        failed = await run_at(db_session, profile.id, provider, settings, T0)
+        assert failed["status"] == "failed" and failed["stage"] == "train"
+        wm = await self._watermark(db_session, 313)
+        assert wm is not None and wm.collection_metadata["last_failure_stage"] == "train"
+        assert await count(db_session, WafSourceBucket) == 0
+
+    async def test_a_commit_exception_records_the_commit_stage(
+        self, db_session, monkeypatch
+    ) -> None:
+        settings = cfg()
+        provider = StubWafProvider([batch(T0, [("/portal/login", "GET", 40)])])
+        profile, _ = await source_with_profile(db_session, provider, settings, qradar_id=313)
+
+        real_commit = db_session.commit
+        calls = 0
+
+        async def flaky_commit():  # type: ignore[no-untyped-def]
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("commit rejected")
+            return await real_commit()
+
+        monkeypatch.setattr(db_session, "commit", flaky_commit)
+        failed = await run_at(db_session, profile.id, provider, settings, T0)
+        assert failed["status"] == "failed" and failed["stage"] == "commit"
+        wm = await self._watermark(db_session, 313)
+        assert wm is not None and wm.collection_metadata["last_failure_stage"] == "commit"
+        assert await count(db_session, WafSourceBucket) == 0
+
+    async def test_a_failing_failure_recorder_surfaces_and_logs_safely(
+        self, db_session, monkeypatch, caplog
+    ) -> None:
+        settings = cfg()
+        provider = StubWafProvider(error=ProviderUnavailableError("QRadar request timed out"))
+        profile, _ = await source_with_profile(db_session, provider, settings, qradar_id=313)
+
+        async def boom(*_a: object, **_k: object):  # type: ignore[no-untyped-def]
+            raise RuntimeError("recorder secret=do-not-log")
+
+        monkeypatch.setattr("app.services.waf_pipeline.record_waf_failure", boom)
+        with pytest.raises(RuntimeError, match="recorder secret"):
+            await run_at(db_session, profile.id, provider, settings, T0)
+        diagnostic = next(
+            r for r in caplog.records
+            if r.message == "waf source failure diagnostic could not be recorded"
+        )
+        assert diagnostic.error_class == "ProviderUnavailableError"
+        assert diagnostic.stage == "collect"
+        assert "secret=do-not-log" not in caplog.text
+        assert await count(db_session, WafSourceBucket) == 0
+
+    async def test_a_close_error_on_a_failed_run_does_not_mask_the_failure(
+        self, db_session, monkeypatch, caplog
+    ) -> None:
+        settings = cfg()
+        provider = StubWafProvider(error=ProviderUnavailableError("QRadar request timed out"))
+        profile, _ = await source_with_profile(db_session, provider, settings, qradar_id=313)
+
+        async def failing_close():  # type: ignore[no-untyped-def]
+            raise RuntimeError("close exploded")
+
+        monkeypatch.setattr(provider, "aclose", failing_close)
+        failed = await run_at(db_session, profile.id, provider, settings, T0)
+        assert failed["status"] == "failed" and failed["stage"] == "collect"
+        assert "waf source provider close failed" in caplog.text
+        wm = await self._watermark(db_session, 313)
+        assert wm is not None and wm.collection_metadata["last_failure_stage"] == "collect"
+
+    async def test_a_close_error_after_a_commit_keeps_the_success(
+        self, db_session, monkeypatch, caplog
+    ) -> None:
+        settings = cfg()
+        provider = StubWafProvider([batch(T0, [("/portal/login", "GET", 40)])])
+        profile, _ = await source_with_profile(db_session, provider, settings, qradar_id=313)
+
+        async def failing_close():  # type: ignore[no-untyped-def]
+            raise RuntimeError("close exploded")
+
+        monkeypatch.setattr(provider, "aclose", failing_close)
+        ok = await run_at(db_session, profile.id, provider, settings, T0)
+        assert ok["status"] == "ok"
+        assert "waf source provider close failed" in caplog.text
+        assert await count(db_session, WafSourceBucket) == 1
+        wm = await self._watermark(db_session, 313)
+        assert wm is not None and wm.consecutive_failures == 0
+        assert "last_failure_stage" not in (wm.collection_metadata or {})
+
+    async def test_an_aggregate_search_failure_status_has_no_aql(self, db_session) -> None:
+        settings = cfg()
+        provider = StubWafProvider(
+            error=ProviderError("Ariel aggregate search did not complete")
+        )
+        profile, _ = await source_with_profile(db_session, provider, settings, qradar_id=313)
+        failed = await run_at(db_session, profile.id, provider, settings, T0)
+        assert failed["status"] == "failed"
+        (status,) = await waf_source_statuses(
+            db_session, settings=settings, now=T0 + timedelta(minutes=10)
+        )
+        assert status.last_error == "ProviderError: Ariel aggregate search did not complete"
+        assert "explanation" not in status.last_error
+        assert "SELECT" not in status.last_error
+
+
+@pytest.mark.asyncio
+async def test_a_failed_dispatch_persists_a_failed_outcome(db_schema, monkeypatch, caplog) -> None:
+    """A send failure after claiming a slot must not leave the old success on the row."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.search_cadence import SearchCadenceSetting
+    from app.workers import tasks
+
+    settings = cfg()
+    engine = create_async_engine(db_schema)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(tasks, "get_sessionmaker", lambda: maker)
+    monkeypatch.setattr(tasks, "get_settings", lambda: settings)
+
+    async def eligible(_session: object, _settings: object):  # type: ignore[no-untyped-def]
+        return [uuid.uuid4()], {}
+
+    monkeypatch.setattr(tasks, "eligible_profile_ids", eligible)
+
+    def failing_send(_profile_id: str) -> None:
+        raise RuntimeError("broker credential=s3cr3t")
+
+    try:
+        with pytest.raises(RuntimeError, match="broker"):
+            await tasks.dispatch_waf_collection(enqueue=failing_send)
+        async with maker() as session:
+            row = await session.get(SearchCadenceSetting, SearchFamily.WAF_COLLECTION.value)
+            assert row is not None
+            assert row.last_run_outcome == "failed"
+            assert row.last_run_searches is None
+            assert row.last_run_buckets is None
+            assert row.last_run_splits is None
+            assert row.last_slot_start is not None  # the claimed slot is kept
+        assert "s3cr3t" not in caplog.text
+    finally:
+        await engine.dispose()
