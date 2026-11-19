@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import copy
 import re
+import sys
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -611,17 +612,29 @@ async def _custom_rules(
             "threshold_value": rule.threshold_value, "sustain_buckets": rule.sustain_buckets,
             "recovery_buckets": rule.recovery_buckets, "severity": rule.severity,
         }
-        missing = None
+        missing: list[str] = []
         if source_subject and row["log_source"] is None:
-            missing = "log source"
-        elif rule.waf_endpoint_id is not None and row["waf_endpoint"] is None:
-            missing = "WAF endpoint"
-        elif rule.ips_entity_id is not None and row["ips_entity"] is None:
-            missing = "IPS entity"
-        elif rule.pw_value_id is not None and row["pw_value"] is None:
-            missing = "property watch value"
-        if missing is not None:
-            _warn(row, missing)
+            missing.append("log source")
+        if rule.waf_endpoint_id is not None:
+            endpoint = row["waf_endpoint"]
+            if endpoint is None:
+                missing.append("WAF endpoint")
+            elif endpoint["log_source"] is None:
+                missing.append("WAF endpoint log source")
+        if rule.ips_entity_id is not None:
+            entity = row["ips_entity"]
+            if entity is None:
+                missing.append("IPS entity")
+            elif entity["log_source"] is None:
+                missing.append("IPS entity log source")
+        if rule.pw_value_id is not None:
+            value = row["pw_value"]
+            if value is None:
+                missing.append("property watch value")
+            elif value["watch"]["name"] is None:
+                missing.append("property watch")
+        for kind in missing:
+            _warn(row, kind)
         rows.append(row)
     return rows
 
@@ -678,14 +691,44 @@ def _widget_ref(
     return {"name": name} if name is not None else None
 
 
+def _supported(layout: Any) -> bool:
+    """Whether a stored layout carries a version this build reads.
+
+    A hand-edited row can hold a list or a dict at ``v``; a membership test on such a value
+    raises ``TypeError: unhashable type``. ``True`` is an ``int`` in Python but is not a layout
+    version.
+    """
+    version = layout.get("v") if isinstance(layout, Mapping) else None
+    return (
+        isinstance(version, int)
+        and not isinstance(version, bool)
+        and version in SUPPORTED_LAYOUT_VERSIONS
+    )
+
+
+def _skip_dashboard(dashboard: Dashboard, reason: str) -> None:
+    """Say on stderr that a dashboard was left out of the file, once, by name.
+
+    A skipped dashboard has no row in the file, so this line is the only trace it leaves. The
+    name is configuration, not a secret; the id is never printed.
+    """
+    print(f"warning: dashboard {dashboard.name!r} was not exported: {reason}",
+          file=sys.stderr)
+
+
 async def _dashboards(
     session: AsyncSession, instance: QRadarInstance, refs: dict[str, Any]
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], set[uuid.UUID]]:
     """A dashboard layout with every widget id rewritten to a local name ref.
 
     A null binding is not a missing ref and stays null. A dashboard whose opaque config still
     holds a UUID is skipped whole: the file must not carry an old id forward. A binding that no
     longer resolves keeps a null-named ref and warns, as slice 1d2 does for other rows.
+
+    A dashboard skipped for an unsupported layout version, a non-mapping layout or an opaque id
+    has no row in the file; one stderr line per skipped name is its only trace, and its id never
+    reaches that line. The returned ids are the dashboards that were exported, so a preference
+    cannot name one that is not in the file.
     """
     dashboards = (await session.scalars(
         select(Dashboard).order_by(Dashboard.owner_subject, Dashboard.name)
@@ -694,9 +737,7 @@ async def _dashboards(
         select(ScheduledSearch.id, ScheduledSearch.name))).all()}
     endpoint_ids: set[uuid.UUID] = set()
     for dashboard in dashboards:
-        if not isinstance(dashboard.layout, Mapping):
-            continue
-        if dashboard.layout.get("v") not in SUPPORTED_LAYOUT_VERSIONS:
+        if not _supported(dashboard.layout):
             continue
         for widget in dashboard.layout.get("widgets") or []:
             if isinstance(widget, Mapping) and widget.get("type") == "waf.endpoint_traffic":
@@ -705,9 +746,10 @@ async def _dashboards(
                     endpoint_ids.add(uuid.UUID(value))
     subject = await _subject_refs(session, instance, refs, endpoint_ids, set(), set())
     rows: list[dict[str, Any]] = []
+    exported: set[uuid.UUID] = set()
     for dashboard in dashboards:
-        if not isinstance(dashboard.layout, Mapping) or \
-                dashboard.layout.get("v") not in SUPPORTED_LAYOUT_VERSIONS:
+        if not _supported(dashboard.layout):
+            _skip_dashboard(dashboard, "layout version is not supported")
             continue
         layout = copy.deepcopy(dashboard.layout) if isinstance(dashboard.layout, dict) else {}
         missing: list[str] = []
@@ -737,6 +779,7 @@ async def _dashboards(
                 else:
                     config[key] = ref
         if skip:
+            _skip_dashboard(dashboard, "layout holds an opaque id")
             continue
         row: dict[str, Any] = {
             "owner_subject": dashboard.owner_subject, "name": dashboard.name,
@@ -748,14 +791,22 @@ async def _dashboards(
         for kind in missing:
             _warn(row, kind)
         rows.append(row)
-    return rows
+        exported.add(dashboard.id)
+    return rows, exported
 
 
-async def _dashboard_prefs(session: AsyncSession) -> list[dict[str, Any]]:
-    """The default dashboard by name: the stored UUID is not written."""
+async def _dashboard_prefs(
+    session: AsyncSession, exported_ids: set[uuid.UUID]
+) -> list[dict[str, Any]]:
+    """The default dashboard by name, and only when that dashboard was exported.
+
+    A preference naming a skipped dashboard would point at a name the file does not carry;
+    import would resolve it to nothing, so the preference is dropped here.
+    """
     rows = (await session.execute(
         select(UserDashboardPref.owner_subject, Dashboard.name)
         .join(Dashboard, Dashboard.id == UserDashboardPref.default_dashboard_id)
+        .where(Dashboard.id.in_(exported_ids))
         .order_by(UserDashboardPref.owner_subject)
     )).all()
     return [{"owner_subject": owner, "dashboard_name": name} for owner, name in rows]
@@ -789,6 +840,7 @@ async def export_document(
 ) -> dict[str, Any]:
     """The whole secret-free document for one console, its empty sections included."""
     refs = await _ref_maps(session, instance)
+    dashboards, dashboard_ids = await _dashboards(session, instance, refs)
     return build_document(
         product_version=read_version(),
         exported_at=exported_at,
@@ -814,7 +866,7 @@ async def export_document(
             "search_cadence": await _search_cadence(session),
             "scheduled_searches": await _scheduled_searches(session),
             "custom_rules": await _custom_rules(session, instance, refs),
-            "dashboards": await _dashboards(session, instance, refs),
-            "dashboard_prefs": await _dashboard_prefs(session),
+            "dashboards": dashboards,
+            "dashboard_prefs": await _dashboard_prefs(session, dashboard_ids),
         },
     )
