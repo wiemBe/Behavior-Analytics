@@ -15,7 +15,7 @@ from app.alerts.fingerprint import anomaly_fingerprint
 from app.alerts.routing import default_policy
 from app.alerts.service import AlertService
 from app.anomaly.thresholds import ThresholdResolver, direction_excluded
-from app.api.deps import ProviderDep, SessionDep, SettingsDep
+from app.api.deps import SessionDep, SettingsDep
 from app.fleet.review import review_classification
 from app.fleet.service import reclassify_instance
 from app.fleet.sources import load_rows
@@ -41,6 +41,7 @@ from app.schemas.fleet import (
     ClassificationOverrideIn,
     FleetSourceOut,
     FleetSourceRow,
+    FleetSyncQueued,
     fleet_source_out,
 )
 from app.schemas.log_source import (
@@ -48,7 +49,6 @@ from app.schemas.log_source import (
     LogSourceDetail,
     LogSourceSummary,
     LogSourceUpdate,
-    SyncResult,
     business_days_usable,
 )
 from app.schemas.pivot import PivotOut
@@ -61,7 +61,6 @@ from app.security.rbac import (
     Principal,
     require_permission,
 )
-from app.services.inventory_sync import InventorySyncService
 
 router = APIRouter(prefix="/log-sources", tags=["log-sources"])
 
@@ -313,23 +312,20 @@ async def update_log_source(
     return detail
 
 
-@router.post("/sync", response_model=SyncResult, status_code=status.HTTP_200_OK)
+@router.post("/sync", response_model=FleetSyncQueued, status_code=status.HTTP_202_ACCEPTED)
 async def sync_inventory(
-    session: SessionDep, provider: ProviderDep, principal: PrincipalDep
-) -> SyncResult:
-    """Pull the current log-source inventory from the configured provider.
+    session: SessionDep, settings: SettingsDep, principal: PrincipalDep
+) -> FleetSyncQueued:
+    """Queue the log-source inventory sync the beat runs, for every enabled console (admin:*).
 
-    Idempotent: creates new sources, refreshes QRadar-owned fields on existing
-    ones, leaves SOC metadata untouched.
-
-    Requires admin:*. It is an administrative action that drives QRadar API
-    load, not SOC metadata editing, and no role short of admin needs it; a
-    dedicated admin:inventory would add a permission nothing else would hold.
+    The task runs in a worker and only reads from QRadar. While any console's pass holds the
+    collector lock nothing is queued and ``already_running`` is true. No provider is built in
+    the request, so no QRadar call happens here.
     """
     _guard(principal, PERM_ADMIN)
-    svc = InventorySyncService(session, provider)
-    instance = await svc.ensure_default_instance()
-    return await svc.sync(instance)
+    from app.api.routes import fleet
+
+    return await fleet.fleet_sources_sync(session, settings, principal)
 
 
 async def _classification(

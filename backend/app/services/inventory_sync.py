@@ -13,7 +13,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import cast
 
-from sqlalchemy import ARRAY, String, Table, any_, delete, literal
+from sqlalchemy import ARRAY, String, Table, any_, delete, literal, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +27,7 @@ from app.models.enums import ClassificationReviewStatus, InstanceStatus, Severit
 from app.models.fleet import LogSourceGroup, LogSourceType
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
-from app.providers.base import ProviderError, QRadarProvider
+from app.providers.base import ProviderError, QRadarProvider, failure_kind
 from app.repositories.log_source import LogSourceRepository
 from app.schemas.log_source import SyncResult
 from app.security.sanitizer import sanitize_text
@@ -36,6 +36,11 @@ from app.services.entity_mentions import record_mentions
 from app.services.waf_pipeline import sanitized_error
 
 logger = logging.getLogger("app.services.inventory_sync")
+
+#: The PARTIAL reason when the type catalog could not be read. A fixed code, not the
+#: provider failure kind: the collector passes `failed_page=None` for a types failure and
+#: for a source-page failure alike, so the reason must name which one it was.
+FAILURE_TYPES_UNAVAILABLE = "types_unavailable"
 
 
 class InventorySyncService:
@@ -78,7 +83,20 @@ class InventorySyncService:
         instance.last_health_check_at = now
         instance.last_error = None
 
-        type_dtos = await self.provider.list_log_source_types()
+        types_failed_kind: str | None = None
+        try:
+            type_dtos = await self.provider.list_log_source_types()
+        except ProviderError as exc:
+            type_dtos = []
+            types_failed_kind = failure_kind(exc)
+            logger.warning(
+                "log source types could not be read; keeping the stored catalog",
+                extra={
+                    "instance_id": str(instance.id),
+                    "failure_kind": types_failed_kind,
+                    "error_class": type(exc).__name__,
+                },
+            )
         type_names = {t.type_id: t.name for t in type_dtos}
         try:
             group_dtos = await self.provider.list_log_source_groups()
@@ -125,6 +143,20 @@ class InventorySyncService:
                 },
             )
             await self.session.execute(type_statement, type_values)
+
+        if types_failed_kind is not None:
+            # Fail closed: classification reads the type facts. An empty list would strip
+            # every source of them and could reclassify an internal-type source during an
+            # outage of one small endpoint, so classify from the catalog already stored.
+            type_rows = list(
+                (
+                    await self.session.scalars(
+                        select(LogSourceType).where(
+                            LogSourceType.instance_id == instance.id
+                        )
+                    )
+                ).all()
+            )
 
         group_rows = [
             LogSourceGroup(
@@ -190,8 +222,11 @@ class InventorySyncService:
             # state live in their own table and are never assigned here.
             existing.name = sanitize_text(dto.name) or dto.name
             existing.description = sanitize_text(dto.description)
-            existing.type_id = dto.type_id
-            existing.type_name = sanitize_text(resolved_type)
+            # Fail closed: a type name that cannot be resolved (types endpoint down, or
+            # no matching type row) keeps whatever was stored rather than being guessed.
+            if resolved_type is not None:
+                existing.type_id = dto.type_id
+                existing.type_name = sanitize_text(resolved_type)
             existing.protocol_type_id = dto.protocol_type_id
             existing.enabled = dto.enabled
             existing.qradar_status = dto.status
@@ -267,17 +302,28 @@ class InventorySyncService:
             await AlertService(self.session, clock=self._clock).apply_bulk(alert_inputs, [])
 
         await self.session.flush()
+        # A types failure makes the pass incomplete even when every source page arrived:
+        # the type names the pass relies on did not, so absence of a type cannot be read
+        # from it. The walk's own failure (if any) keeps precedence in the reason; the
+        # types failure gets its own fixed code so it is not mistaken for a source page.
+        walk_failed = walk.failure_kind
+        if walk_failed is not None:
+            failure_kind_value = walk_failed
+        elif types_failed_kind is not None:
+            failure_kind_value = FAILURE_TYPES_UNAVAILABLE
+        else:
+            failure_kind_value = None
         return SyncResult(
             provider=type(self.provider).__name__,
             log_sources_seen=len(dtos),
             created=created,
             updated=updated,
             instance_version=info.version,
-            complete=walk.complete,
+            complete=walk.complete and types_failed_kind is None,
             pages_done=walk.pages_done,
             pages_failed=walk.pages_failed,
             failed_page=walk.failed_page,
-            failure_kind=walk.failure_kind,
+            failure_kind=failure_kind_value,
         )
 
     async def _record_mentions(
