@@ -1521,13 +1521,9 @@ class Settings(BaseSettings):
         # Phase A deployment today -- must not be refused startup over a WAF
         # setting it does not use. The retention task repeats the check at run
         # time, so a later settings change cannot slip past it.
-        if not (self.waf_collection_enabled and self.waf_retention_enabled):
-            return self
-        if self.waf_metric_retention_days <= self.baseline_lookback_days:
-            raise ValueError(
-                "WAF_METRIC_RETENTION_DAYS must exceed BASELINE_LOOKBACK_DAYS "
-                f"({self.waf_metric_retention_days} <= {self.baseline_lookback_days})"
-            )
+        problems = _waf_retention_covers_the_baseline_problems(self)
+        if problems:
+            raise ValueError(problems[0])
         return self
 
     @model_validator(mode="after")
@@ -1539,13 +1535,9 @@ class Settings(BaseSettings):
         on. Same rule as WAF: refused only when collection and retention are
         both on. The retention task repeats the check even if collection is off.
         """
-        if not (self.ips_collection_enabled and self.ips_retention_enabled):
-            return self
-        if self.ips_metric_retention_days <= self.ips_baseline_lookback_days:
-            raise ValueError(
-                "IPS_METRIC_RETENTION_DAYS must exceed IPS_BASELINE_LOOKBACK_DAYS "
-                f"({self.ips_metric_retention_days} <= {self.ips_baseline_lookback_days})"
-            )
+        problems = _ips_retention_covers_the_baseline_problems(self)
+        if problems:
+            raise ValueError(problems[0])
         return self
 
     @model_validator(mode="after")
@@ -1579,31 +1571,9 @@ class Settings(BaseSettings):
         above do: a deployment that collects no rule matches must not be refused
         startup over a repair setting it never uses.
         """
-        if not (self.rule_match_collection_enabled and self.rule_match_repair_enabled):
-            return self
-        if self.rule_match_repair_max_age_seconds < self.rule_match_window_seconds:
-            raise ValueError(
-                "RULE_MATCH_REPAIR_MAX_AGE_SECONDS must be at least one window "
-                f"({self.rule_match_repair_max_age_seconds} < "
-                f"{self.rule_match_window_seconds})"
-            )
-        if (
-            self.rule_match_repair_max_age_seconds
-            >= self.rule_match_retention_days * 86400
-        ):
-            raise ValueError(
-                "RULE_MATCH_REPAIR_MAX_AGE_SECONDS must stay inside "
-                "RULE_MATCH_RETENTION_DAYS "
-                f"({self.rule_match_repair_max_age_seconds} >= "
-                f"{self.rule_match_retention_days * 86400})"
-            )
-        if self.rule_match_repair_max_windows_per_run > self.rule_match_max_windows_per_run:
-            raise ValueError(
-                "RULE_MATCH_REPAIR_MAX_WINDOWS_PER_RUN must not exceed "
-                "RULE_MATCH_MAX_WINDOWS_PER_RUN "
-                f"({self.rule_match_repair_max_windows_per_run} > "
-                f"{self.rule_match_max_windows_per_run})"
-            )
+        problems = _rule_match_repair_bounds_are_consistent_problems(self)
+        if problems:
+            raise ValueError(problems[0])
         return self
 
     @model_validator(mode="after")
@@ -1613,13 +1583,9 @@ class Settings(BaseSettings):
         It would fail closed -- every new endpoint INSUFFICIENT_DATA forever --
         but silently. Refused only where WAF collection is on, as above.
         """
-        if not self.waf_collection_enabled:
-            return self
-        if self.waf_new_endpoint_history_days >= self.waf_metric_retention_days:
-            raise ValueError(
-                "WAF_NEW_ENDPOINT_HISTORY_DAYS must be below WAF_METRIC_RETENTION_DAYS "
-                f"({self.waf_new_endpoint_history_days} >= {self.waf_metric_retention_days})"
-            )
+        problems = _waf_novelty_history_is_retained_problems(self)
+        if problems:
+            raise ValueError(problems[0])
         return self
 
     @model_validator(mode="after")
@@ -1630,67 +1596,7 @@ class Settings(BaseSettings):
         that does not collect property watches must not be refused startup over a setting
         it does not use.
         """
-        if not self.pw_collection_enabled:
-            return self
-        problems: list[str] = []
-        if self.pw_max_rows_per_search > self.ariel_multi_bucket_max_rows:
-            problems.append(
-                "PW_MAX_ROWS_PER_SEARCH must not exceed ARIEL_MULTI_BUCKET_MAX_ROWS "
-                f"({self.pw_max_rows_per_search} > {self.ariel_multi_bucket_max_rows})"
-            )
-        if self.pw_max_searches_per_watch_per_tick > self.pw_max_searches_per_tick:
-            problems.append(
-                "PW_MAX_SEARCHES_PER_WATCH_PER_TICK must not exceed PW_MAX_SEARCHES_PER_TICK "
-                f"({self.pw_max_searches_per_watch_per_tick} > {self.pw_max_searches_per_tick})"
-            )
-        if self.pw_max_pinned_values > self.pw_max_active_values_per_watch:
-            problems.append(
-                "PW_MAX_PINNED_VALUES must not exceed PW_MAX_ACTIVE_VALUES_PER_WATCH "
-                f"({self.pw_max_pinned_values} > {self.pw_max_active_values_per_watch})"
-            )
-        if self.pw_baseline_lookback_days > self.pw_metric_retention_days:
-            problems.append(
-                "PW_BASELINE_LOOKBACK_DAYS must not exceed PW_METRIC_RETENTION_DAYS "
-                f"({self.pw_baseline_lookback_days} > {self.pw_metric_retention_days})"
-            )
-        # One visit asks for no recurrence, so it needs no week of lookback.
-        if (
-            self.pw_baseline_min_visits > 1
-            and self.pw_baseline_min_visits * 7 > self.pw_baseline_lookback_days
-        ):
-            problems.append(
-                "PW_BASELINE_MIN_VISITS weekly visits must fit in PW_BASELINE_LOOKBACK_DAYS "
-                f"({self.pw_baseline_min_visits} x 7 > {self.pw_baseline_lookback_days})"
-            )
-        if self.pw_new_value_history_days >= self.pw_metric_retention_days:
-            problems.append(
-                "PW_NEW_VALUE_HISTORY_DAYS must be below PW_METRIC_RETENTION_DAYS "
-                f"({self.pw_new_value_history_days} >= {self.pw_metric_retention_days})"
-            )
-        if self.pw_bootstrap_days < self.pw_new_value_history_days:
-            problems.append(
-                "PW_BOOTSTRAP_DAYS must not be below PW_NEW_VALUE_HISTORY_DAYS "
-                f"({self.pw_bootstrap_days} < {self.pw_new_value_history_days})"
-            )
-        if self.pw_bootstrap_days > self.pw_baseline_lookback_days:
-            problems.append(
-                "PW_BOOTSTRAP_DAYS must not exceed PW_BASELINE_LOOKBACK_DAYS "
-                f"({self.pw_bootstrap_days} > {self.pw_baseline_lookback_days})"
-            )
-        if self.pw_bootstrap_searches_per_tick > self.pw_max_searches_per_tick:
-            problems.append(
-                "PW_BOOTSTRAP_SEARCHES_PER_TICK must not exceed PW_MAX_SEARCHES_PER_TICK "
-                f"({self.pw_bootstrap_searches_per_tick} > {self.pw_max_searches_per_tick})"
-            )
-        bootstrap_hours = self.pw_bootstrap_days * 24 + self.pw_bootstrap_max_hours
-        retention_hours = self.pw_metric_retention_days * 24
-        if bootstrap_hours >= retention_hours:
-            problems.append(
-                "PW_BOOTSTRAP_DAYS and PW_BOOTSTRAP_MAX_HOURS must fit below "
-                "PW_METRIC_RETENTION_DAYS "
-                f"({self.pw_bootstrap_days} * 24 + {self.pw_bootstrap_max_hours} "
-                f">= {self.pw_metric_retention_days} * 24)"
-            )
+        problems = _pw_bounds_are_consistent_problems(self)
         if problems:
             raise ValueError("; ".join(problems))
         return self
@@ -1812,6 +1718,144 @@ class Settings(BaseSettings):
                 + "\n  - ".join(problems)
             )
         return self
+
+
+def _waf_retention_covers_the_baseline_problems(settings: Settings) -> list[str]:
+    if not (settings.waf_collection_enabled and settings.waf_retention_enabled):
+        return []
+    if settings.waf_metric_retention_days <= settings.baseline_lookback_days:
+        return [
+            "WAF_METRIC_RETENTION_DAYS must exceed BASELINE_LOOKBACK_DAYS "
+            f"({settings.waf_metric_retention_days} <= {settings.baseline_lookback_days})"
+        ]
+    return []
+
+
+def _ips_retention_covers_the_baseline_problems(settings: Settings) -> list[str]:
+    if not (settings.ips_collection_enabled and settings.ips_retention_enabled):
+        return []
+    if settings.ips_metric_retention_days <= settings.ips_baseline_lookback_days:
+        return [
+            "IPS_METRIC_RETENTION_DAYS must exceed IPS_BASELINE_LOOKBACK_DAYS "
+            f"({settings.ips_metric_retention_days} <= {settings.ips_baseline_lookback_days})"
+        ]
+    return []
+
+
+def _rule_match_repair_bounds_are_consistent_problems(settings: Settings) -> list[str]:
+    if not (settings.rule_match_collection_enabled and settings.rule_match_repair_enabled):
+        return []
+    problems: list[str] = []
+    if settings.rule_match_repair_max_age_seconds < settings.rule_match_window_seconds:
+        problems.append(
+            "RULE_MATCH_REPAIR_MAX_AGE_SECONDS must be at least one window "
+            f"({settings.rule_match_repair_max_age_seconds} < "
+            f"{settings.rule_match_window_seconds})"
+        )
+    if (
+        settings.rule_match_repair_max_age_seconds
+        >= settings.rule_match_retention_days * 86400
+    ):
+        problems.append(
+            "RULE_MATCH_REPAIR_MAX_AGE_SECONDS must stay inside "
+            "RULE_MATCH_RETENTION_DAYS "
+            f"({settings.rule_match_repair_max_age_seconds} >= "
+            f"{settings.rule_match_retention_days * 86400})"
+        )
+    if settings.rule_match_repair_max_windows_per_run > settings.rule_match_max_windows_per_run:
+        problems.append(
+            "RULE_MATCH_REPAIR_MAX_WINDOWS_PER_RUN must not exceed "
+            "RULE_MATCH_MAX_WINDOWS_PER_RUN "
+            f"({settings.rule_match_repair_max_windows_per_run} > "
+            f"{settings.rule_match_max_windows_per_run})"
+        )
+    return problems
+
+
+def _waf_novelty_history_is_retained_problems(settings: Settings) -> list[str]:
+    if not settings.waf_collection_enabled:
+        return []
+    if settings.waf_new_endpoint_history_days >= settings.waf_metric_retention_days:
+        return [
+            "WAF_NEW_ENDPOINT_HISTORY_DAYS must be below WAF_METRIC_RETENTION_DAYS "
+            f"({settings.waf_new_endpoint_history_days} >= {settings.waf_metric_retention_days})"
+        ]
+    return []
+
+
+def _pw_bounds_are_consistent_problems(settings: Settings) -> list[str]:
+    if not settings.pw_collection_enabled:
+        return []
+    problems: list[str] = []
+    if settings.pw_max_rows_per_search > settings.ariel_multi_bucket_max_rows:
+        problems.append(
+            "PW_MAX_ROWS_PER_SEARCH must not exceed ARIEL_MULTI_BUCKET_MAX_ROWS "
+            f"({settings.pw_max_rows_per_search} > {settings.ariel_multi_bucket_max_rows})"
+        )
+    if settings.pw_max_searches_per_watch_per_tick > settings.pw_max_searches_per_tick:
+        problems.append(
+            "PW_MAX_SEARCHES_PER_WATCH_PER_TICK must not exceed PW_MAX_SEARCHES_PER_TICK "
+            f"({settings.pw_max_searches_per_watch_per_tick} > {settings.pw_max_searches_per_tick})"
+        )
+    if settings.pw_max_pinned_values > settings.pw_max_active_values_per_watch:
+        problems.append(
+            "PW_MAX_PINNED_VALUES must not exceed PW_MAX_ACTIVE_VALUES_PER_WATCH "
+            f"({settings.pw_max_pinned_values} > {settings.pw_max_active_values_per_watch})"
+        )
+    if settings.pw_baseline_lookback_days > settings.pw_metric_retention_days:
+        problems.append(
+            "PW_BASELINE_LOOKBACK_DAYS must not exceed PW_METRIC_RETENTION_DAYS "
+            f"({settings.pw_baseline_lookback_days} > {settings.pw_metric_retention_days})"
+        )
+    # One visit asks for no recurrence, so it needs no week of lookback.
+    if (
+        settings.pw_baseline_min_visits > 1
+        and settings.pw_baseline_min_visits * 7 > settings.pw_baseline_lookback_days
+    ):
+        problems.append(
+            "PW_BASELINE_MIN_VISITS weekly visits must fit in PW_BASELINE_LOOKBACK_DAYS "
+            f"({settings.pw_baseline_min_visits} x 7 > {settings.pw_baseline_lookback_days})"
+        )
+    if settings.pw_new_value_history_days >= settings.pw_metric_retention_days:
+        problems.append(
+            "PW_NEW_VALUE_HISTORY_DAYS must be below PW_METRIC_RETENTION_DAYS "
+            f"({settings.pw_new_value_history_days} >= {settings.pw_metric_retention_days})"
+        )
+    if settings.pw_bootstrap_days < settings.pw_new_value_history_days:
+        problems.append(
+            "PW_BOOTSTRAP_DAYS must not be below PW_NEW_VALUE_HISTORY_DAYS "
+            f"({settings.pw_bootstrap_days} < {settings.pw_new_value_history_days})"
+        )
+    if settings.pw_bootstrap_days > settings.pw_baseline_lookback_days:
+        problems.append(
+            "PW_BOOTSTRAP_DAYS must not exceed PW_BASELINE_LOOKBACK_DAYS "
+            f"({settings.pw_bootstrap_days} > {settings.pw_baseline_lookback_days})"
+        )
+    if settings.pw_bootstrap_searches_per_tick > settings.pw_max_searches_per_tick:
+        problems.append(
+            "PW_BOOTSTRAP_SEARCHES_PER_TICK must not exceed PW_MAX_SEARCHES_PER_TICK "
+            f"({settings.pw_bootstrap_searches_per_tick} > {settings.pw_max_searches_per_tick})"
+        )
+    bootstrap_hours = settings.pw_bootstrap_days * 24 + settings.pw_bootstrap_max_hours
+    retention_hours = settings.pw_metric_retention_days * 24
+    if bootstrap_hours >= retention_hours:
+        problems.append(
+            "PW_BOOTSTRAP_DAYS and PW_BOOTSTRAP_MAX_HOURS must fit below "
+            "PW_METRIC_RETENTION_DAYS "
+            f"({settings.pw_bootstrap_days} * 24 + {settings.pw_bootstrap_max_hours} "
+            f">= {settings.pw_metric_retention_days} * 24)"
+        )
+    return problems
+
+
+def switch_dependent_problems(settings: Settings) -> list[str]:
+    problems: list[str] = []
+    problems.extend(_waf_retention_covers_the_baseline_problems(settings))
+    problems.extend(_ips_retention_covers_the_baseline_problems(settings))
+    problems.extend(_rule_match_repair_bounds_are_consistent_problems(settings))
+    problems.extend(_waf_novelty_history_is_retained_problems(settings))
+    problems.extend(_pw_bounds_are_consistent_problems(settings))
+    return problems
 
 
 @lru_cache
