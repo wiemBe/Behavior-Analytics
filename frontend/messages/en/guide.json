@@ -157,12 +157,24 @@
           "p": "**Dashboards** opens your saved dashboards, the shared ones and the templates. **Manage** holds rename, duplicate, share, default and delete."
         },
         {
+          "p": "Times are UTC. **Total EPS** is the mean EPS over the chosen range, summed over source classes, from complete intervals only; *expected* is the sum of the baselines of the classes that have one, and classes without a complete bucket are left out of the sum. In **Fleet EPS** the dashed line is the sum of per-source expected EPS, drawn only where every source has a reliable baseline; it is not a range. Shaded intervals were not measured, which is not zero traffic, and a step hatched as read from QRadar history is not judged."
+        },
+        {
+          "p": "**Log sources**: *judged* excludes sources with insufficient data, and *silent* means the detector saw no events where some were expected (a NO_EVENTS anomaly). **Open offenses** counts the latest collected snapshot; *critical* is a magnitude at or above the product's threshold, and an offense with no magnitude or no age is counted apart, in neither the critical or below count nor the over SLA count. **Active anomalies** counts the candidate, open and recovering states across log sources, WAF endpoints, IPS, property watches and rule matches; a log source without a baseline gets no verdict, so it raises none and is not counted. When a family could not be read the total reads *at least*."
+        },
+        {
+          "p": "**Anomalies by severity** reads the latest 200 anomalies; when the list was capped every count is a lower bound and an empty window is not a measured zero. Tables show the latest rows and the expanded view shows the rest of what the widget read; the owning page lists everything. **Log source health** categories: silent (no events where some were expected), exceeding expected volume (active spikes), newly discovered (not yet reviewed), conflicting class (classification rules disagree), unclassified (no rule matched), in maintenance (anomalies recorded, not notified). A floor on **Top log sources** means the class window has missing or partial intervals."
+        },
+        {
           "p": "In the expanded **Fleet EPS** widget, the **EMA 3**, **EMA 5**, **EMA 10** and **EMA 20** buttons overlay exponential moving averages of the observed fleet EPS line, with the same choice the other charts remember. The tile does not draw them. An average is for display only, and it stops at a step that was not fully collected rather than bridging the gap."
         }
       ],
       "states": [
         {
           "p": "**Template, not saved**; **Unsaved changes.**; **A dashboard holds at most 24 widgets.**; **Widen the window to customize**; a widget's stale or forbidden state."
+        },
+        {
+          "p": "**Not collected** on a fresh install: no source is monitored until monitoring is enabled on a log source, and the offense snapshot and inventory arrive with the first collections; nothing is drawn as zero. A failed read changes nothing; refresh from the top bar. **PW_COLLECTION_ENABLED is false** sends no property watch search, so no new bucket is drawn; the watch page shows the history. A widget that reads one watch, search, endpoint or source is set under **Customize**, then **Configure**; Apply stays off until every choice comes from what its read returned."
         }
       ]
     },

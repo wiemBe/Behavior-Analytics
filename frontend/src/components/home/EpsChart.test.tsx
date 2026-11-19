@@ -60,14 +60,14 @@ describe("EpsChart", () => {
     expect(screen.getByText(/Partial: 3 of 4 steps collected/)).toBeInTheDocument();
   });
 
-  it("labels the expected line and says it is not a range", () => {
+  it("labels the expected line and names the expected series", () => {
     res.state = ok(epsSeries(pts(5, 6)));
     render(<EpsChart />);
     const key = screen.getByRole("list", { name: "Chart key" });
     const item = within(key).getByText("Sum of per-source expected").closest("li")!;
-    expect(item).toHaveAttribute("title", expect.stringMatching(/not a range/));
+    expect(item).toHaveAttribute("title", expect.stringMatching(/where every source has a baseline/));
     expect(option().series.map((s) => s.name)).toContain("Sum of per-source expected");
-    expect(screen.getByText(/not a range/, { selector: ".sr-only" })).toBeInTheDocument();
+    expect(screen.getByText(/Dashed line: summed per-source expected EPS/, { selector: ".sr-only" })).toBeInTheDocument();
   });
 
   it("has no expected line, no key entry and says so when no baseline is reliable", () => {
@@ -95,7 +95,7 @@ describe("EpsChart", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     expect(screen.getByText("Not collected")).toBeInTheDocument();
     expect(screen.getByText(/No step of 3 has every in-scope source-interval complete/)).toBeInTheDocument();
-    expect(screen.getByText(/not zero traffic/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is drawn as zero/)).toBeInTheDocument();
   });
 
   it("links the title row to /fleet in every state", () => {

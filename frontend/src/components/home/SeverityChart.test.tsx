@@ -101,7 +101,7 @@ describe("SeverityChart", () => {
     expect(init).not.toHaveBeenCalled();
     expect(screen.queryByText(/No anomaly opened/)).not.toBeInTheDocument();
     expect(screen.getByText(/Truncated: first 1 of 400/)).toBeInTheDocument();
-    expect(screen.getByText(/not a measured zero/)).toBeInTheDocument();
+    expect(screen.getByText(/the list was capped/)).toBeInTheDocument();
   });
 
   it("does not count a list whose total contradicts the rows", () => {
@@ -109,7 +109,7 @@ describe("SeverityChart", () => {
     render(<SeverityChart />);
     expect(init).not.toHaveBeenCalled();
     expect(screen.queryByText(/No anomaly opened/)).not.toBeInTheDocument();
-    expect(screen.getByText(/total does not match the rows returned/)).toBeInTheDocument();
+    expect(screen.getByText(/total does not match the rows/)).toBeInTheDocument();
   });
 
   it("links the title row to the anomalies of the range", () => {

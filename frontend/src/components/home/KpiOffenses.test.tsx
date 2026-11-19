@@ -32,7 +32,7 @@ describe("KpiOffenses", () => {
     );
     mocks.states[PROBE] = withSnapshot();
     render(<KpiOffenses />);
-    expect(screen.getByRole("heading", { name: "Open offenses, latest snapshot" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Open offenses" })).toBeInTheDocument();
     expect(screen.getByText("open offenses")).toBeInTheDocument();
     const lines = screen.getAllByText((_, node) => node?.classList.contains("kpi-line") ?? false);
     expect(
@@ -47,7 +47,7 @@ describe("KpiOffenses", () => {
       Array.from(lines[2].querySelectorAll(".kpi-line-part"), (part) => part.textContent),
     ).toEqual(["5\u00a0unassigned \u00b7", "2\u00a0over SLA"]);
     expect(lines[2].textContent?.replaceAll("\u00a0", " ")).toBe("5 unassigned \u00b7 2 over SLA");
-    expect(screen.getByTitle(/magnitude of 7 or more/)).toBeInTheDocument();
+    expect(screen.getByTitle(/magnitude 7 or more/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View open offenses" })).toHaveAttribute(
       "href",
       "/offenses?status=OPEN",
@@ -67,7 +67,7 @@ describe("KpiOffenses", () => {
     render(<KpiOffenses />);
     expect(screen.getByText("—", { selector: ".kpi-value" })).toBeInTheDocument();
     expect(screen.getByText("Not collected")).toBeInTheDocument();
-    expect(screen.getByText("No offense snapshot has been collected yet.")).toBeInTheDocument();
+    expect(screen.getByText("No offense snapshot collected yet.")).toBeInTheDocument();
     expect(screen.queryByText(/critical/)).toBeNull();
   });
 
@@ -75,7 +75,7 @@ describe("KpiOffenses", () => {
     mocks.states[ANALYTICS] = ok(analytics({ active: 0 }));
     mocks.states[PROBE] = failed(500);
     render(<KpiOffenses />);
-    expect(screen.getByText(/Could not confirm that an offense snapshot exists/)).toBeInTheDocument();
+    expect(screen.getByText(/Offense snapshot could not be confirmed/)).toBeInTheDocument();
     expect(screen.queryByText("0", { selector: ".kpi-value" })).toBeNull();
   });
 
@@ -85,7 +85,7 @@ describe("KpiOffenses", () => {
     render(<KpiOffenses />);
     expect(screen.getByText("—", { selector: ".kpi-value" })).toBeInTheDocument();
     expect(screen.getByText("Not collected")).toBeInTheDocument();
-    expect(screen.getByText("No offense snapshot has been collected yet.")).toBeInTheDocument();
+    expect(screen.getByText("No offense snapshot collected yet.")).toBeInTheDocument();
     expect(screen.queryByText("0", { selector: ".kpi-value" })).toBeNull();
   });
 
@@ -94,7 +94,7 @@ describe("KpiOffenses", () => {
     render(<KpiOffenses />);
     expect(screen.getByText("—", { selector: ".kpi-value" })).toBeInTheDocument();
     expect(screen.getByText("Not collected")).toBeInTheDocument();
-    expect(screen.getByText("No offense snapshot has been collected yet.")).toBeInTheDocument();
+    expect(screen.getByText("No offense snapshot collected yet.")).toBeInTheDocument();
     expect(screen.queryByText(/Loading offenses/)).toBeNull();
     expect(screen.queryByText("0", { selector: ".kpi-value" })).toBeNull();
   });
@@ -114,7 +114,7 @@ describe("KpiOffenses", () => {
     mocks.states[ANALYTICS] = forbidden;
     render(<KpiOffenses />);
     expect(
-      screen.getByText("Your role cannot read offenses (permission read:offenses). Nothing was changed."),
+      screen.getByText("Your role cannot read offenses (permission read:offenses)."),
     ).toBeInTheDocument();
   });
 
@@ -126,7 +126,7 @@ describe("KpiOffenses", () => {
       "The offenses could not be read.",
     );
     expect(alert.querySelector(".widget-error-action")).toHaveTextContent(
-      "The backend did not answer. Nothing was changed. Use Refresh",
+      "The backend did not answer. Use Refresh",
     );
   });
 

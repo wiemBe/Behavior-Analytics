@@ -58,7 +58,7 @@ import {
 } from "@/widgets/DashboardSaveDialogs";
 import { useWidgetCopy } from "@/widgets/copy";
 import { columnsForWidth, type GridColumns } from "@/widgets/layout";
-import { SOC_OVERVIEW, templateByKey } from "@/widgets/templates";
+import { SOC_OVERVIEW } from "@/widgets/templates";
 import {
   useDashboard,
   type DashboardEditorSource,
@@ -212,15 +212,6 @@ function DashboardSession({
       ? copy.templateName(currentSource.template)
       : currentSource.dashboard.name;
   const templateShown = currentSource.kind === "template";
-  // A dashboard made from a template, with no description of its own, says what the template
-  // holds and which widget was left out. The line takes the row the header reserves for its
-  // qualifiers, so nothing below it moves.
-  const knownTemplate =
-    currentSource.kind === "saved" && !description
-      ? templateByKey(currentSource.dashboard.template_key)
-      : undefined;
-  const templateText = knownTemplate ? copy.templateDescription(knownTemplate) : undefined;
-
   const requestNavigation = useCallback(
     (action: () => void) => {
       if (!state.dirty) return action();
@@ -298,7 +289,6 @@ function DashboardSession({
       {templateShown ? (
         <>
           <span className="badge">{t("templateNotSaved")}</span>
-          <span className="dg-qualifier">{t("templateDescription")}</span>
         </>
       ) : null}
       {current.kind === "saved" && current.isDefault ? (
@@ -308,11 +298,6 @@ function DashboardSession({
         <span className="badge">{t("shared")}</span>
       ) : null}
       {access.note ? <span className="dg-qualifier">{access.note}</span> : null}
-      {templateText ? (
-        <span className="dg-template-desc" title={templateText}>
-          {templateText}
-        </span>
-      ) : null}
     </>
   );
   // A meta row that renders empty still occupies its min-height and separates the title from
@@ -320,8 +305,7 @@ function DashboardSession({
   const hasMeta =
     templateShown ||
     (current.kind === "saved" && (current.isDefault || current.visibility === "SHARED")) ||
-    access.note !== null ||
-    templateText !== undefined;
+    access.note !== null;
 
   return (
     <>
@@ -517,7 +501,6 @@ export function HomeDashboard() {
       {showTemplate ? (
         <>
           <span className="badge">{t("templateNotSaved")}</span>
-          <span className="dg-qualifier">{t("templateDescription")}</span>
         </>
       ) : null}
       {current?.kind === "saved" && current.isDefault ? (

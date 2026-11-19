@@ -60,7 +60,7 @@ export const PW_WIDGET_PERMISSION = "read:property_watches";
 
 /** Refused read, in English: names the permission and who grants it. */
 export const PW_WIDGET_FORBIDDEN =
-  "Your role cannot read property watches (permission read:property_watches). An administrator grants read:property_watches. Nothing was changed.";
+  "Your role cannot read property watches (permission read:property_watches).";
 
 interface Drawn {
   lines: PwValueSeries[];

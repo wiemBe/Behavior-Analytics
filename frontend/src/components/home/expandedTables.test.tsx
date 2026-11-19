@@ -63,7 +63,7 @@ describe("TopSources expanded", () => {
     card.unmount();
     render(inDialog(<TopSources />));
     expect(bodyRows()).toBe(15);
-    expect(screen.getByText(/Showing 15 of 15 sources/)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 15 of 15/)).toBeInTheDocument();
   });
 
   it("asks for the same reads whether expanded or not", () => {
@@ -97,7 +97,7 @@ describe("RecentAnomalies expanded", () => {
     card.unmount();
     render(inDialog(<RecentAnomalies />));
     expect(bodyRows()).toBe(5);
-    expect(screen.getByText(/^Showing 5 of 18\./)).toBeInTheDocument();
+    expect(screen.getByText(/^Showing 5 of 18;/)).toBeInTheDocument();
     expect(screen.queryByText(/latest 5 of 18/)).toBeNull();
   });
 
@@ -127,7 +127,7 @@ describe("RecentOffenses expanded", () => {
     card.unmount();
     render(inDialog(<RecentOffenses />));
     expect(bodyRows()).toBe(5);
-    expect(screen.getByText(/^Showing 5 of 12\./)).toBeInTheDocument();
+    expect(screen.getByText(/^Showing 5 of 12;/)).toBeInTheDocument();
   });
 
   it("keeps the request's limit at five when expanded", () => {

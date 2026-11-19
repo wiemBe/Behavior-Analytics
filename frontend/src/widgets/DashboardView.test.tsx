@@ -130,7 +130,7 @@ describe("DashboardView", () => {
       ],
     });
     expect(screen.getByRole("heading", { name: "Unsupported widget" })).toBeInTheDocument();
-    expect(screen.getByText(/type future\.widget that this version does not know/)).toBeInTheDocument();
+    expect(screen.getByText(/type future\.widget this version does not know/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Alpha" })).toBeInTheDocument();
   });
 
@@ -412,7 +412,7 @@ describe("catalog drawer", () => {
     mocks.me = { status: "error", httpStatus: 500 };
     const { dialog } = open();
     expect(within(dialog).getByRole("button", { name: "Add Charlie" })).toBeEnabled();
-    expect(within(dialog).getByText(/permissions could not be read/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Permissions unreadable/)).toBeInTheDocument();
   });
 
   it("moves focus in on open and returns it to the trigger on Escape", () => {

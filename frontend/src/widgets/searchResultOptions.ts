@@ -11,7 +11,7 @@ const byLabel = (a: { label: string }, b: { label: string }) => a.label.localeCo
 export const SEARCH_OPTIONS: OptionsSource = {
   messageKey: "scheduledSearches",
   what: "scheduled searches",
-  emptyReason: "No scheduled search exists yet, so there is nothing to chart.",
+  emptyReason: "No scheduled search exists yet.",
   read: () => ({
     key: "/searches",
     fetch: (signal) => api.searches(signal),
@@ -30,7 +30,7 @@ export const SEARCH_OPTIONS: OptionsSource = {
 export const SEARCH_METRIC_OPTIONS: OptionsSource = {
   messageKey: "searchMetricKeys",
   what: "metric keys",
-  emptyReason: "This search has stored no metric key yet.",
+  emptyReason: "This search stored no metric key yet.",
   dependsOn: "search_id",
   needs: "Choose a search first",
   read: (searchId) => {

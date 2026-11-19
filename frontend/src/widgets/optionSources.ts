@@ -31,7 +31,7 @@ export function endpointOptionLabel(
 export const MONITORED_SOURCES: OptionsSource = {
   messageKey: "monitoredSources",
   what: "monitored log sources",
-  emptyReason: "No log source is monitored yet, so there is no EPS to chart.",
+  emptyReason: "No log source is monitored yet.",
   read: () => {
     const read = homeReads.sourceBehaviors();
     return {
@@ -50,7 +50,7 @@ export const MONITORED_SOURCES: OptionsSource = {
 export const WAF_SOURCES: OptionsSource = {
   messageKey: "wafSources",
   what: "WAF sources",
-  emptyReason: "No WAF source has a behavior profile yet, so no endpoint is tracked.",
+  emptyReason: "No WAF source has a behavior profile yet.",
   read: () => {
     const read = homeReads.wafSources();
     return {
@@ -69,7 +69,7 @@ export const WAF_SOURCES: OptionsSource = {
 export const WAF_SOURCE_ENDPOINTS: OptionsSource = {
   messageKey: "wafSourceEndpoints",
   what: "endpoints",
-  emptyReason: "This source has tracked no endpoint yet.",
+  emptyReason: "This source tracks no endpoint yet.",
   dependsOn: "waf_source",
   needs: "Choose a WAF source first",
   read: (source) => {
@@ -94,7 +94,7 @@ export const WAF_SOURCE_ENDPOINTS: OptionsSource = {
 export const PROPERTY_WATCH_OPTIONS: OptionsSource = {
   messageKey: "propertyWatches",
   what: "property watches",
-  emptyReason: "No property watch exists yet, so there is nothing to chart.",
+  emptyReason: "No property watch exists yet.",
   read: () => ({
     key: "/property-watches",
     fetch: () => api.propertyWatches(),

@@ -22,10 +22,22 @@
   white-space: nowrap;
 }
 
-/* A name that is the row's key never truncates: it wraps, at most two lines in practice. */
+/* The search families table: four columns in a half-width widget leave a fixed layout no room for
+   the family name, which then breaks letter by letter. Auto layout sizes the name column to its
+   longest word. */
+.tw-table.cw-collection {
+  table-layout: auto;
+}
+.tw-table.cw-collection td.tw-name.cw-wrap {
+  max-width: none;
+}
+
+/* A name that is the row's key never truncates: it wraps, at most two lines in practice. It breaks
+   between words (`break-word`), not between letters (`anywhere`): the latter lets the auto table
+   layout squeeze the column to one letter per line in a narrow widget. */
 .tw-table td.tw-name.cw-wrap {
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   text-overflow: clip;
 }
 

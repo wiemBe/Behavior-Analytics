@@ -61,7 +61,7 @@ describe("KpiTotalEps", () => {
     expect(screen.getByText("1,000.00")).toBeInTheDocument();
     expect(screen.getByText("EPS")).toBeInTheDocument();
     // The definition is in the tooltip and the accessible description, not the body.
-    expect(screen.getByTitle("Mean over 24 h, complete intervals only.")).toBeInTheDocument();
+    expect(screen.getByTitle("Mean over 24 h, complete intervals.")).toBeInTheDocument();
     expect(screen.getByRole("article")).toHaveAccessibleDescription(/Mean EPS over 24 h/);
     expect(screen.getByText("largest: Firewall 80 %")).toBeInTheDocument();
     expect(screen.getByTitle("Firewall, 800.00 EPS of the total")).toBeInTheDocument();
@@ -129,12 +129,12 @@ describe("KpiTotalEps", () => {
     );
     render(<KpiTotalEps />);
     expect(
-      screen.getByTitle("Compared on baselined classes only: observed 90.00 EPS."),
+      screen.getByTitle("Baselined classes only: observed 90.00 EPS."),
     ).toHaveTextContent("expected 100.00 EPS · \u221210.0 %");
     expect(screen.getByText(/baselines 1 of 2 sources/)).toBeInTheDocument();
     // The "compared on those classes only" caveat is in the tooltip.
     expect(
-      screen.getByTitle("Compared on baselined classes only: observed 90.00 EPS."),
+      screen.getByTitle("Baselined classes only: observed 90.00 EPS."),
     ).toBeInTheDocument();
   });
 
@@ -175,7 +175,7 @@ describe("KpiTotalEps", () => {
     mocks.states[SUMMARY] = forbidden;
     render(<KpiTotalEps />);
     expect(
-      screen.getByText("Your role cannot read fleet EPS (permission read:fleet). Nothing was changed."),
+      screen.getByText("Your role cannot read fleet EPS (permission read:fleet)."),
     ).toBeInTheDocument();
   });
 
@@ -187,7 +187,7 @@ describe("KpiTotalEps", () => {
       "The fleet EPS could not be read.",
     );
     expect(alert.querySelector(".widget-error-action")).toHaveTextContent(
-      "HTTP 502. Nothing was changed. Use Refresh in the top bar",
+      "HTTP 502. Use Refresh in the top bar",
     );
   });
 

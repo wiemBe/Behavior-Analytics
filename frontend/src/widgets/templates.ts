@@ -30,7 +30,7 @@ export const SOC_OVERVIEW: DescribedDashboardTemplate = {
   version: 2,
   name: "SOC Overview",
   description:
-    "Fleet volume, source health, anomalies, offenses and the countries events come from.",
+    "Fleet volume, source health, anomalies, offenses, countries.",
   layout: {
     v: 1,
     range: "24h",
@@ -57,7 +57,7 @@ export const QRADAR_ADMINISTRATION: DescribedDashboardTemplate = {
   key: "qradar_administration",
   version: 1,
   name: "QRadar Administration",
-  description: "Search cadence, source classification, outage policy and detection evidence health.",
+  description: "Search cadence, classification, outage policy, evidence health.",
   layout: {
     v: 1,
     range: "24h",
@@ -78,7 +78,7 @@ export const BEHAVIORAL_ANALYTICS: DescribedDashboardTemplate = {
   version: 1,
   name: "Behavioral Analytics",
   description:
-    "Active anomalies, evidence health and the anomaly worklist. The observed-versus-expected chart is left out: it needs a log source chosen per dashboard.",
+    "Active anomalies, evidence health and the anomaly worklist.",
   layout: {
     v: 1,
     range: "24h",
@@ -97,7 +97,7 @@ export const LOG_SOURCE_MONITORING: DescribedDashboardTemplate = {
   key: "log_source_monitoring",
   version: 1,
   name: "Log Source Monitoring",
-  description: "Source verdicts, traffic mix, source classes and catch-all senders requiring review.",
+  description: "Source verdicts, traffic mix, classes, catch-all senders.",
   layout: {
     v: 1,
     range: "24h",
@@ -117,7 +117,7 @@ export const WAF_IPS_MONITORING: DescribedDashboardTemplate = {
   version: 1,
   name: "WAF / IPS Monitoring",
   description:
-    "WAF sources beside the latest WAF and IPS anomalies. The endpoint traffic chart is left out: it needs an endpoint chosen per dashboard.",
+    "WAF sources beside the latest WAF and IPS anomalies.",
   layout: {
     v: 1,
     range: "24h",
