@@ -138,7 +138,7 @@ describe("an IPS row among Phase A and WAF rows", () => {
 
   it("says evidence collection does not apply, rather than offering to request it", async () => {
     await renderPage({}, [ipsListItem()]);
-    expect(screen.getAllByText(/Evidence collection does not apply to IPS anomalies/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Evidence n\/a for IPS/).length).toBeGreaterThan(0);
   });
 });
 

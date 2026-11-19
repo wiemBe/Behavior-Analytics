@@ -102,8 +102,8 @@ describe("one table at a time", () => {
 
   it("names the dimensions that were not checked", () => {
     render(<DimensionExplorer dimensions={liveShape} />);
-    expect(screen.getByText(/1 dimension was not checked: Username/)).toBeInTheDocument();
-    expect(screen.getByText(/No conclusion about it follows/)).toBeInTheDocument();
+    expect(screen.getByText(/1 dimension not checked: Username/)).toBeInTheDocument();
+    expect(screen.queryByText(/No conclusion about it follows/)).not.toBeInTheDocument();
   });
 });
 
@@ -157,13 +157,13 @@ describe("default selection", () => {
 
   it("says so when no dimension analysis exists at all", () => {
     render(<DimensionExplorer dimensions={[]} />);
-    expect(screen.getByText(/No dimension analysis is stored/i)).toBeInTheDocument();
+    expect(screen.getByText(/No dimension analysis stored/i)).toBeInTheDocument();
   });
 
   it("refers a failed collection to the banner instead of restating it", () => {
     render(<DimensionExplorer dimensions={[]} evidenceStatus="FAILED" />);
-    expect(screen.getByText(/Evidence collection failed; see the notice above/i)).toBeInTheDocument();
-    expect(screen.queryByText(/No dimension analysis is stored/i)).toBeNull();
+    expect(screen.getByText(/^Evidence collection failed\.$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/No dimension analysis stored/i)).toBeNull();
   });
 });
 
@@ -201,7 +201,7 @@ describe("switching dimensions", () => {
 
     expect(screen.queryByRole("table")).toBeNull();
     expect(
-      screen.getByText(/No conclusion follows from the absence of contributors/i),
+      screen.getByText(/not populated by the parser; not checked/i),
     ).toBeInTheDocument();
   });
 

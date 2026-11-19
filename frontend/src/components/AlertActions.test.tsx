@@ -133,7 +133,7 @@ describe("AlertActions", () => {
   it("offers no actions once resolved", () => {
     render(<AlertActions alertId="a-1" status="RESOLVED" />);
     expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByText(/no further action is available/i)).toBeInTheDocument();
+    expect(screen.getByText(/Resolved\. No further action/i)).toBeInTheDocument();
   });
 
   describe("confirming a resolve", () => {

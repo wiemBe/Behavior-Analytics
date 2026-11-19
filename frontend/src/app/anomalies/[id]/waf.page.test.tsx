@@ -105,7 +105,7 @@ describe("failures", () => {
   it("says the anomaly does not exist on a 404", async () => {
     vi.spyOn(api, "anomaly").mockRejectedValue(new ApiError(404, "not found"));
     await renderPage("nope");
-    expect(screen.getByRole("alert")).toHaveTextContent("This anomaly does not exist.");
+    expect(screen.getByRole("alert")).toHaveTextContent("This anomaly does not exist or was removed.");
   });
 });
 

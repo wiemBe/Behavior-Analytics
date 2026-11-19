@@ -359,7 +359,7 @@ describe("deterministic summary", () => {
   it("adds the partial-evidence caveat", async () => {
     await renderPage();
     expect(
-      screen.getByText("Some QRadar fields were unavailable or truncated."),
+      screen.getByText("Some fields were unavailable or truncated."),
     ).toBeInTheDocument();
   });
 });
@@ -419,7 +419,7 @@ describe("primary metrics", () => {
   it("caveats a capped confidence where it is read", async () => {
     await renderPage();
     expect(
-      screen.getByText(/Confidence limited because baseline variability is zero/),
+      screen.getByText(/Confidence limited: baseline variability is zero/),
     ).toBeInTheDocument();
   });
 
@@ -539,7 +539,7 @@ describe("timeline", () => {
     vi.spyOn(api, "sourceMetrics").mockRejectedValue(new Error("ECONNREFUSED"));
     render(await AnomalyDetailPage({ params: Promise.resolve({ id: "b29f1227" }) }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent(/absent rather than empty/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/absent, not empty/i);
   });
 });
 
@@ -576,7 +576,7 @@ describe("what changed", () => {
       }),
     );
     expect(
-      screen.getByText(/No contributor comparison is available for a zero-event interval/),
+      screen.getByText(/No comparison for a zero-event interval/),
     ).toBeInTheDocument();
   });
 });
@@ -589,7 +589,7 @@ describe("evidence banner", () => {
 
   it("warns about truncation once, globally, naming the dimension", async () => {
     await renderPage();
-    const warning = screen.getByText(/Some results were limited to the top values/);
+    const warning = screen.getByText(/Limited to the top values/);
     expect(warning).toHaveTextContent("Source port");
   });
 });
@@ -756,7 +756,7 @@ describe("error states", () => {
   it("reports a forbidden response as a permission problem", async () => {
     vi.spyOn(api, "anomaly").mockRejectedValue(new ApiError(403, "forbidden"));
     render(await AnomalyDetailPage({ params: Promise.resolve({ id: "x" }) }));
-    expect(screen.getByRole("alert")).toHaveTextContent(/do not have permission/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/permission read:anomalies/i);
   });
 
   it("reports an expired session on 401", async () => {

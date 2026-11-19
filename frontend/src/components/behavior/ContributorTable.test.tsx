@@ -175,7 +175,7 @@ describe("truncated dimensions", () => {
   it("shows a compact truncation warning", () => {
     render(<ContributorTable dimension={truncated} />);
     expect(
-      screen.getByText(/top of the list, not the whole of it/i),
+      screen.getByText(/top values only/i),
     ).toBeInTheDocument();
   });
 
@@ -204,7 +204,7 @@ describe("unavailable and failed dimensions", () => {
       />,
     );
     expect(
-      screen.getByText(/No conclusion follows from the absence of contributors/i),
+      screen.getByText(/not populated by the parser; not checked/i),
     ).toBeInTheDocument();
   });
 
@@ -237,7 +237,7 @@ describe("unavailable and failed dimensions", () => {
   it("distinguishes a collected-but-empty dimension from an unchecked one", () => {
     render(<ContributorTable dimension={dimension({ contributors: [] })} />);
     expect(
-      screen.getByText(/collected and no value stood out as a contributor/i),
+      screen.getByText(/Collected; no value stood out/i),
     ).toBeInTheDocument();
   });
 });
@@ -295,7 +295,7 @@ describe("containment", () => {
   it("gives the table an accessible caption", () => {
     render(<ContributorTable dimension={dimension()} />);
     expect(
-      screen.getByText(/values ranked by their contribution to the change/i),
+      screen.getByText(/values by contribution to the change/i),
     ).toBeInTheDocument();
   });
 });

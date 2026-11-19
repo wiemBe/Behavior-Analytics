@@ -177,7 +177,7 @@ describe("offenses", () => {
     );
     const b = block("Offenses on this source");
     expect(within(b).getByText("1 of 34")).toBeInTheDocument();
-    expect(within(b).getByText(/The list holds the first 1 of 34/)).toBeInTheDocument();
+    expect(within(b).getByText(/First 1 of 34 offenses shown/)).toBeInTheDocument();
     expect(within(b).getByRole("table")).toBeInTheDocument();
   });
 
@@ -185,7 +185,7 @@ describe("offenses", () => {
     await show(ok(activity({ offenses: section([]) })));
     const b = block("Offenses on this source");
     expect(within(b).getByText(/No offense on this source in this window/)).toBeInTheDocument();
-    expect(within(b).getByText(/none that ended before offense collection started/)).toBeInTheDocument();
+    expect(within(b).getByText(/No offense on this source in this window/)).toBeInTheDocument();
     expect(within(b).queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -201,8 +201,9 @@ describe("offenses", () => {
       ),
     );
     const b = block("Offenses on this source");
-    expect(within(b).getByText(/Offense collection has not run for this console/)).toBeInTheDocument();
-    expect(within(b).getByText(/Ask an administrator/)).toBeInTheDocument();
+    expect(within(b).getByText(/Offense collection has not run, so none could be listed/)).toBeInTheDocument();
+    expect(within(b).getByText(/Empty would not mean none/)).toBeInTheDocument();
+    expect(within(b).queryByText(/Ask an administrator/)).not.toBeInTheDocument();
     expect(within(b).queryByText(/No offense on this source in this window/)).not.toBeInTheDocument();
     expect(within(b).queryByText("0")).not.toBeInTheDocument();
     expect(within(b).queryByRole("table")).not.toBeInTheDocument();
@@ -360,7 +361,7 @@ describe("rules", () => {
     expect(events).toHaveTextContent("Not measured");
     expect(events).toHaveTextContent("Not collected");
     expect(events).not.toHaveTextContent(/\b0\b/);
-    expect(within(b).getByText(/that is not zero/)).toBeInTheDocument();
+    expect(within(b).getByText(/"Not measured" is not zero/)).toBeInTheDocument();
   });
 
   it("a measured zero is a 0 with its measurement", async () => {
@@ -399,7 +400,7 @@ describe("rules", () => {
       ),
     );
     const b = block("Rules from those offenses");
-    expect(within(b).getByText(/offenses were not collected, so the rules that fired cannot be resolved/)).toBeInTheDocument();
+    expect(within(b).getByText(/which were not collected; none can be resolved/)).toBeInTheDocument();
     expect(within(b).queryByText(/name no rule/)).not.toBeInTheDocument();
     expect(within(b).queryByRole("table")).not.toBeInTheDocument();
   });
@@ -442,7 +443,7 @@ describe("the anomaly has no log source", () => {
     data.anchor.log_source_id = null;
     data.anchor.log_source_name = null;
     await show(ok(data));
-    expect(screen.getByText(/has no single log source/)).toBeInTheDocument();
+    expect(screen.getByText(/No single log source/)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.queryByText(/No offense/)).not.toBeInTheDocument();
   });
@@ -453,7 +454,7 @@ describe("loading, error and forbidden", () => {
     render(
       <RelatedActivitySection anomalyId="a-1" pad="6h" read={new Promise(() => {})} nowMs={NOW} />,
     );
-    expect(screen.getByRole("status")).toHaveTextContent("Reading the offenses, anomalies and rules");
+    expect(screen.getByRole("status")).toHaveTextContent("Reading related activity");
     expect(screen.getByRole("link", { name: "6 h" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("heading", { level: 2, name: "Related activity" })).toBeInTheDocument();
   });
@@ -462,7 +463,7 @@ describe("loading, error and forbidden", () => {
     await show({ kind: "failed", why: "error" });
     expect(screen.getByRole("alert")).toHaveTextContent(/could not be loaded/);
     expect(screen.getByRole("alert")).toHaveTextContent(/Reload the page/);
-    expect(screen.getByRole("alert")).toHaveTextContent(/rest of this page is unaffected/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/Reload the page to retry/);
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -478,6 +479,6 @@ describe("loading, error and forbidden", () => {
 
   it("not found is worded as not found", async () => {
     await show({ kind: "failed", why: "notFound" });
-    expect(screen.getByRole("alert")).toHaveTextContent(/was not found/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/not found/);
   });
 });

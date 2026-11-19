@@ -268,7 +268,7 @@ describe("summarizeAnomaly — contributor clause", () => {
 describe("summarizeAnomaly — caveat", () => {
   it("states the limitation on a partial package", () => {
     expect(summarizeAnomaly(anomaly({ evidence_status: "PARTIAL" })).caveat).toBe(
-      "Some QRadar fields were unavailable or truncated.",
+      "Some fields were unavailable or truncated.",
     );
   });
 

@@ -274,7 +274,6 @@ export function TriagePanel({ family, anomalyId, initial, access, me, alert, ext
   return (
     <section className="card triage" aria-labelledby={`${ids}-h`}>
       {heading}
-      <p className="subtitle triage-lead">{t("panel.lead")}</p>
 
       {conflict && (
         <div className="triage-conflict" role="alert">

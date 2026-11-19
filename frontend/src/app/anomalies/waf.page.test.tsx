@@ -253,8 +253,8 @@ describe("evidence in the list", () => {
     await renderPage({}, [wafListItem({ evidence_status: "NOT_REQUESTED" })]);
     const row = screen.getByText("GET /portal/login").closest("tr")!;
     expect(row).not.toHaveTextContent(/not requested/i);
-    expect(within(row).getByTitle("Evidence collection does not apply to WAF anomalies")).toHaveTextContent("—");
-    expect(row).toHaveTextContent("Evidence collection does not apply to WAF anomalies");
+    expect(within(row).getByTitle("Evidence n/a for WAF")).toHaveTextContent("—");
+    expect(row).toHaveTextContent("Evidence n/a for WAF");
   });
 });
 
