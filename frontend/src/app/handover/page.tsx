@@ -31,7 +31,6 @@ async function HandoverPage({
     <>
       <PageHeader
         title={compose ? t("compose.title") : t("title")}
-        description={compose ? t("compose.description") : t("description")}
         actions={compose ? undefined : <WriteLink />}
         guide={guideFor("/handover")}
       />

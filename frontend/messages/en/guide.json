@@ -463,7 +463,7 @@
       "answers": "What offenses is QRadar reporting, and what does each contain?",
       "body": [
         {
-          "p": "The page is a read-only view of offenses collected from QRadar. It issues no writes: offenses are triaged in QRadar, not here. The figures are **Active**, **Critical (mag 7+)** and **Over 24h SLA** at the default thresholds, plus **Unassigned** and **Oldest**. An offense with no magnitude or no age is counted apart from those figures and is not treated as zero."
+          "p": "The page is a read-only view of offenses collected from QRadar, and the line under the title says so: offense times and magnitudes are QRadar's as last collected. It issues no writes: offenses are triaged in QRadar, not here. With no offense snapshot, the figures read as an em dash and the page says it is not collected; an empty list with filters set is a measured empty result. The figures are **Active**, **Critical (mag 7+)** and **Over 24h SLA** at the default thresholds, plus **Unassigned** and **Oldest**. An offense with no magnitude or no age is counted apart from those figures and is not treated as zero."
         },
         {
           "p": "The filters are a search over description, source and assignee, and a status filter with **Open**, **Hidden** and **Closed**. The table columns are **ID**, **Description**, **Mag**, **Sev**, **Status**, **Assigned**, **Events**, **Started (UTC)** and **Age**. The detail page adds **Scores**, **Attributes**, **Entities**, **Categories**, contributing rule and log-source IDs, and **History**. A history entry is written only when the offense changes, so a stable offense has a single entry."
@@ -471,7 +471,7 @@
       ],
       "states": [
         {
-          "p": "**No offense snapshot has been collected yet.**; **No offenses match these filters.**; a missing or not-yet-collected offense; a failed history read."
+          "p": "**No offense snapshot yet.**; **No offenses match these filters.**; a missing or not-yet-collected offense; a failed history read."
         }
       ]
     },
@@ -495,12 +495,35 @@
         }
       ]
     },
+    "queue": {
+      "title": "Queue",
+      "answers": "What should I pick up next?",
+      "body": [
+        {
+          "p": "The queue lists what is new or changed since your last visit, and what is waiting, in the server's order: severity first, then the longest wait. It reads anomalies, alerts, offenses, source reviews and catch-all senders. The line at the top says which instant **New** and **Updated** are measured against: your stored marker (your last visit), the last 24 h on a first visit, or a time you chose with the **8 h**, **24 h** and **7 d** chips. A chip changes this view only; **Back to last visit** returns to the marker. Times are UTC, and **Waiting since (UTC)** carries the age beside the time."
+        },
+        {
+          "p": "Opening the queue moves your marker to now, once per visit, so the next visit compares with this one. The labels you saw stay put while you filter and page. The marker is not moved while a source failed to load (its rows were not seen), while a comparison time is chosen, or while the view is narrowed by a scope, filter or page: open the unfiltered first page to move it. If another session moved the marker, reload to compare with it. If the move itself fails, the labels on the page are unaffected."
+        },
+        {
+          "p": "Under **Sources**, each line names a source, its count and how many are new or updated, and links to the page that owns it. A source that did not load has no count: it is failed, not shown (the account lacks its permission), not collected (no console configured, or no collection completed yet), stale (the rows come from the last collection, which is timestamped) or partly read. A failed or not-collected source makes the total a lower bound, shown as \"at least\". **Mine** shows no offenses when the account has no QRadar username mapped. **Loaded** is the time the page was read."
+        },
+        {
+          "p": "**Mine**, **Unassigned** and **All** are scopes; the kind, family and severity chips and **New or updated only** narrow further, and **Clear filters** removes them. The address holds the whole view, so **Copy link** shares it. A filter value the page does not know is ignored and the page says so. The queue holds at most 1000 rows; past that, narrow it with a filter. An empty queue says which sources loaded; if a source could not be read, the empty list is not a clean result."
+        }
+      ],
+      "states": [
+        {
+          "p": "\"Nothing is waiting\" with the time every source loaded; \"No rows shown\" naming the sources that could not be read; \"Marker not moved\" with the reason; the per-source lines above."
+        }
+      ]
+    },
     "handover": {
       "title": "Handover",
       "answers": "What did the last shift leave, and how do I leave the next one a record?",
       "body": [
         {
-          "p": "A handover is a written record, frozen when it was saved. It holds the author, the time in UTC, a **Note**, the rows marked **Watch**, the other open rows the queue listed at that moment (**Open when this was written**) and what the author did in the window (**Acted on by {author} in this window**). It does not update afterwards: the rows show the state they had when the handover was written, and each links to the page where the live state is. Nothing can be edited or deleted; a correction is a new handover."
+          "p": "A handover is a written record, frozen when it was saved. It holds the author, the time in UTC, a **Note**, the rows marked **Watch**, the other open rows the queue listed at that moment (**Open when this was written**) and what the author did in the window (**Acted on by {author} in this window**). It does not update afterwards: the rows show the state they had when the handover was written, and each links to the page where the live state is. Nothing can be edited or deleted; a correction is a new handover. The age beside each time is the age when the handover was written; in the write form it is the age now."
         },
         {
           "p": "Each open row carries flags: **Unassigned**, **Over SLA**, **New** and **Updated**. A row appears once, so a watched row is under **Watch** and not again below. When the queue held more rows than were frozen, the count reads \"50 of N\", or \"50 of at least N\" when N is itself a lower bound, and **See all in the queue** opens the live queue."
@@ -509,7 +532,7 @@
           "p": "Under the lists, **Sources not read cleanly** names every source that was failed, forbidden, stale or not collected when the handover was written. A source in that list is missing rows, not empty: do not read the lists above it as the whole picture. **Earlier handovers** lists the older records, and **Show earlier** loads more."
         },
         {
-          "p": "Reading needs only a signed-in account. Writing needs the `anomaly:triage` permission: without it the page offers no **Write handover** button, and opening the write form directly says so and saves nothing. Saving a handover does not change any triage, alert or the queue's last-visit marker."
+          "p": "A source line shows a reason code behind **Details**. Reading needs only a signed-in account. Writing needs the `anomaly:triage` permission: without it the page offers no **Write handover** button, and opening the write form directly says so and saves nothing. Saving a handover does not change any triage, alert or the queue's last-visit marker. If the rows to freeze cannot be loaded, no row can be marked **Watch**, but saving the note still freezes the open rows as they are at that moment. A source that could not be read for the preview is marked as not read in the saved record."
         }
       ],
       "steps": [
@@ -520,7 +543,7 @@
       ],
       "states": [
         {
-          "p": "**No handover yet. The queue lists what is waiting.**; **The handover could not be loaded.** with **Retry**; **You cannot write a handover.** when the account lacks the permission. On the Dashboard, the **Latest handover** widget shows the author, the time, the start of the note and the number of watched rows, and, when a source was not read cleanly, a **Not read cleanly:** line naming it."
+          "p": "**No handover yet.**; **The handover could not be loaded.** with **Retry**; **You cannot write a handover.** when the account lacks the permission. On the Dashboard, the **Latest handover** widget shows the author, the time, the start of the note and the number of watched rows, and, when a source was not read cleanly, a **Not read cleanly:** line naming it."
         }
       ]
     },

@@ -96,7 +96,7 @@ describe("offense detail states", () => {
     await renderPage("99");
     expect(screen.getByRole("heading", { name: "Offense 99" })).toBeInTheDocument();
     expect(
-      screen.getByText(/not been collected\. It may be outside the collection window\./),
+      screen.getByText(/not collected; it may be outside the window\./),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to offenses" })).toHaveAttribute(
       "href",
@@ -120,7 +120,7 @@ describe("offense detail states", () => {
       screen.getByRole("heading", { name: "Offense 42", level: 1 }),
     ).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("The history could not be loaded.");
-    expect(screen.getByRole("alert")).toHaveTextContent("Reload the page");
+    expect(screen.getByRole("alert")).toHaveTextContent("Reload to retry");
     expect(screen.queryByText(/No history yet\./)).toBeNull();
   });
 
@@ -292,7 +292,7 @@ describe("offense detail failure roles", () => {
   it("gives an offense that was not collected a status role", async () => {
     vi.spyOn(api, "offense").mockRejectedValue(new ApiError(404, "missing"));
     await renderPage("99");
-    expect(screen.getByRole("status")).toHaveTextContent("not been collected");
+    expect(screen.getByRole("status")).toHaveTextContent("not collected");
   });
 
   it("gives any other read failure an alert role", async () => {
@@ -303,7 +303,7 @@ describe("offense detail failure roles", () => {
 
   it("gives a non-numeric id a recovery line and a way back", async () => {
     await renderPage("abc");
-    expect(screen.getByRole("alert")).toHaveTextContent("Open the offense from the list.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Offense ids are numbers.");
     expect(screen.getByRole("link", { name: "Back to offenses" })).toHaveAttribute(
       "href",
       "/offenses",

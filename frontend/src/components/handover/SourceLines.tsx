@@ -53,7 +53,12 @@ export function SourceLines({ lines, preview = false }: { lines: SourceLine[]; p
           return (
             <li key={`${line.scope}:${s.kind}`} className={`ho-source ho-source-${tone}`}>
               <span>{text}</span>
-              {s.reason_code && <span className="muted"> {t("source.reason", { code: s.reason_code })}</span>}
+              {s.reason_code && (
+                <details className="ho-details">
+                  <summary>{t("source.details")}</summary>
+                  <span className="muted">{t("source.reason", { code: s.reason_code })}</span>
+                </details>
+              )}
               {href && (
                 <>
                   {" "}

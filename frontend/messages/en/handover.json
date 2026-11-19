@@ -1,7 +1,7 @@
 {
   "title": "Handover",
   "meta": "Handover",
-  "description": "What did the last shift leave?",
+  "description": "Handover.",
   "boundary": {
     "title": "Handover",
     "loading": "the handover",
@@ -10,17 +10,17 @@
   "loading": "Loading the handover…",
   "retry": "Retry",
   "write": "Write handover",
-  "back": "Back to the latest handover",
+  "back": "Back to latest",
   "loadFailed": {
     "title": "The handover could not be loaded.",
-    "network": "The backend did not answer. Retry; if it keeps failing, check that the backend is reachable.",
-    "forbidden": "Your account may not read the handover log. Ask an administrator for access.",
+    "network": "The backend did not answer.",
+    "forbidden": "Your account may not read handovers.",
     "expired": "Your session has expired. Sign in again to continue.",
-    "server": "The backend failed while reading the handover. Retry; if it keeps failing, check the backend log.",
-    "notFound": "This handover does not exist. It may have been removed by retention."
+    "server": "The backend failed while reading the handover.",
+    "notFound": "This handover does not exist or was removed."
   },
   "empty": {
-    "text": "No handover yet. The queue lists what is waiting.",
+    "text": "No handover yet.",
     "queue": "Open the queue",
     "write": "Write the first handover"
   },
@@ -28,7 +28,7 @@
     "latest": "Latest handover",
     "this": "Handover",
     "by": "Written by {author}",
-    "window": "Covers what changed from {from} to {to}.",
+    "window": "Window {from} to {to}",
     "noteHeading": "Note",
     "watchHeading": "Watch",
     "watchCount": "{count} watched",
@@ -36,12 +36,12 @@
     "openCount": "{shown} of {total}",
     "openCountAtLeast": "{shown} of at least {total}",
     "openShown": "{count} open",
-    "openEmpty": "No open rows were frozen. Check the source lines below before reading this as an empty queue.",
-    "openEmptyClean": "No open rows were waiting when this was written.",
+    "openEmpty": "No open rows were frozen; see the sources below.",
+    "openEmptyClean": "No open rows when this was written.",
     "queueLink": "See all in the queue",
     "actedHeading": "Acted on by {author} in this window",
-    "actedEmpty": "No recorded action by {author} in this window.",
-    "actedUnread": "The actions of this window could not be listed. See the source lines below.",
+    "actedEmpty": "No actions recorded in this window.",
+    "actedUnread": "Actions could not be listed; see the sources below.",
     "sourcesHeading": "Sources not read cleanly",
     "droppedKind": {
       "anomaly": "anomaly",
@@ -50,7 +50,7 @@
       "source_review": "source review",
       "catchall_sender": "catch-all sender"
     },
-    "dropped": "Not frozen, because they were not in the snapshot: {keys}.",
+    "dropped": "Watched rows not frozen (not in snapshot): {keys}.",
     "previous": "Earlier handover",
     "table": {
       "label": "Open items frozen with this handover",
@@ -60,12 +60,12 @@
       "owner": "Owner",
       "flags": "Flags",
       "waiting": "Waiting since",
-      "waitedAt": "{age} when written",
-      "noSeverity": "This item has no severity.",
+      "waitedAt": "{age}",
+      "noSeverity": "No severity",
       "actedLabel": "Actions taken in this window",
       "action": "Action",
       "at": "Time",
-      "waitingNow": "{age} so far"
+      "waitingNow": "{age}"
     },
     "flag": {
       "unassigned": "Unassigned",
@@ -76,12 +76,13 @@
   },
   "source": {
     "open": "{name}",
-    "failed": "{name}: not read. It failed to load when this was written, so its rows are missing, not absent.",
-    "forbidden": "{name}: not read. The author's account lacks {permission}, so its rows are not in this record.",
-    "forbiddenUnknown": "{name}: not read. The author's account may not read it, so its rows are not in this record.",
-    "notCollected": "{name}: not collected when this was written, so its rows are missing, not absent.",
-    "stale": "{name}: read from data that was already old when this was written.",
-    "partial": "{name}: partly read. Some rows or fields are missing from this record.",
+    "failed": "{name}: failed to load; its rows are missing.",
+    "forbidden": "{name}: not read; the author lacked {permission}.",
+    "forbiddenUnknown": "{name}: not read; the author may not read it.",
+    "notCollected": "{name}: not collected when written; rows missing.",
+    "stale": "{name}: data was already old when written.",
+    "partial": "{name}: partly read; some rows missing.",
+    "details": "Details",
     "reason": "Reason: {code}.",
     "kind": {
       "triage": "Triage actions",
@@ -122,34 +123,34 @@
   "compose": {
     "title": "Write a handover",
     "forbiddenTitle": "You cannot write a handover.",
-    "forbidden": "Writing a handover needs the anomaly:triage permission. Nothing was saved. Ask an administrator for it.",
+    "forbidden": "Needs the anomaly:triage permission. Nothing was saved.",
     "verifying": "Checking your permissions…",
-    "unknownPerm": "Your permissions could not be read, so writing is off. Nothing was saved. Reload to try again.",
+    "unknownPerm": "Permissions unreadable; writing is off. Reload to retry.",
     "noteLabel": "Note",
-    "noteHint": "What the next shift needs to know. Notes cannot be edited or deleted; a correction is a new handover.",
+    "noteHint": "Notes cannot be edited or deleted.",
     "noteCount": "{count} of {max} characters",
     "noteCountOver": "{count} of {max} characters: {over} too many",
     "previewHeading": "Rows that will be frozen",
-    "previewLoading": "Reading the rows that would be frozen…",
-    "previewFailed": "The rows to freeze could not be loaded, so no row can be marked Watch. Retry. Saving the note still freezes the open rows as they are at that moment.",
-    "previewEmpty": "No open rows would be frozen right now.",
+    "previewLoading": "Loading rows…",
+    "previewFailed": "Rows to freeze could not be loaded; Watch is unavailable.",
+    "previewEmpty": "No open rows to freeze.",
     "watchColumn": "Watch",
     "watchRow": "Watch {title}",
     "watchCount": "{count} of {max} watched",
-    "watchLimit": "{max} rows are watched, the most a handover holds. Clear one to watch another.",
+    "watchLimit": "{max} rows watched, the maximum. Clear one to add another.",
     "save": "Save handover",
     "saving": "Saving…",
     "cancel": "Cancel",
     "saved": "Handover saved. It cannot be edited.",
-    "savedDropped": "Handover saved. {count} watched rows were not in the snapshot and were not frozen: {keys}.",
+    "savedDropped": "Handover saved. {count} watched rows not frozen (not in snapshot): {keys}.",
     "saveFailed": "The handover was not saved.",
-    "saveFailedNetwork": "The handover was not saved: the backend did not answer. Your note is still here. Retry.",
-    "saveFailedServer": "The handover was not saved: the backend failed. Your note is still here. Retry.",
-    "saveFailedExpired": "The handover was not saved: your session has expired. Sign in again; your note is still here.",
-    "saveFailedForbidden": "The handover was not saved. You need the anomaly:triage permission.",
+    "saveFailedNetwork": "Not saved: the backend did not answer. Your note is kept.",
+    "saveFailedServer": "Not saved: the backend failed. Your note is kept.",
+    "saveFailedExpired": "Not saved: session expired. Sign in again; your note is kept.",
+    "saveFailedForbidden": "Not saved. Needs the anomaly:triage permission.",
     "noteRequired": "Write a note before saving.",
-    "partial": "Some sources could not be read for this preview. The handover would be saved with them marked as not read.",
-    "description": "Freeze what is open now and leave a note for the next shift."
+    "partial": "Some sources were not read; they will be marked as such.",
+    "description": "Write a handover."
   },
   "widget": {
     "title": "Latest handover",
@@ -164,11 +165,11 @@
     "label": "Latest handover"
   },
   "preview": {
-    "failed": "{name}: not read. It failed to load for this preview, so its rows would be missing, not absent.",
-    "forbidden": "{name}: not read. Your account lacks {permission}, so its rows would not be in this handover.",
-    "forbiddenUnknown": "{name}: not read. Your account may not read it, so its rows would not be in this handover.",
-    "notCollected": "{name}: not collected for this preview, so its rows would be missing, not absent.",
-    "stale": "{name}: read from data that is already old, so this handover would carry that age.",
-    "partial": "{name}: partly read. Some rows or fields would be missing from this handover."
+    "failed": "{name}: failed to load; its rows would be missing.",
+    "forbidden": "{name}: not read; you lack {permission}.",
+    "forbiddenUnknown": "{name}: not read; you may not read it.",
+    "notCollected": "{name}: not collected; its rows would be missing.",
+    "stale": "{name}: data is already old.",
+    "partial": "{name}: partly read; some rows would be missing."
   }
 }

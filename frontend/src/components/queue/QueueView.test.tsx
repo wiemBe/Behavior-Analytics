@@ -93,14 +93,14 @@ describe("opening the queue moves the marker (D-59)", () => {
     expect(mocks.list).toHaveBeenCalledTimes(1);
     expect(mocks.list.mock.calls[0][0]).not.toContain("since=");
     expect(mocks.seen).toHaveBeenCalledWith({ as_of: AS_OF, expected: MARKER, all_sources_ok: true });
-    expect(await screen.findByText(/Your marker moved to 2026-11-07 12:00:00 UTC/)).toBeInTheDocument();
+    expect(await screen.findByText(/Marker moved to 2026-11-07 12:00:00 UTC/)).toBeInTheDocument();
   });
 
   it("sends expected null on a first visit", async () => {
     await open(page({ marker: { compare_from: "2026-11-06T12:00:00Z", kind: "DEFAULT_WINDOW", marked_at: null } }));
     await waitFor(() => expect(mocks.seen).toHaveBeenCalledTimes(1));
     expect(mocks.seen.mock.calls[0][0].expected).toBeNull();
-    expect(screen.getByText(/last 24 h — first visit/)).toBeInTheDocument();
+    expect(screen.getByText(/last 24 h, first visit/)).toBeInTheDocument();
   });
 
   it("posts when a source is forbidden or not collected: nothing failed to load", async () => {
@@ -122,28 +122,28 @@ describe("opening the queue moves the marker (D-59)", () => {
         sources: sources({ offense: { state: "FAILED", count: null, new_count: null, reason_code: "LOAD_FAILED" } }),
       }),
     );
-    expect(await screen.findByText(/Your marker was kept at 2026-11-07 06:12:00 UTC because Offenses did not load/)).toBeInTheDocument();
+    expect(await screen.findByText(/Marker kept at 2026-11-07 06:12:00 UTC: Offenses did not load/)).toBeInTheDocument();
     expect(mocks.seen).not.toHaveBeenCalled();
   });
 
   it("does not post under a chip override", async () => {
     await open(page({ marker: { compare_from: "2026-11-07T04:00:00Z", kind: "OVERRIDE", marked_at: MARKER } }), { compare: "8h" });
-    expect(await screen.findByText(/Your marker was not moved while a comparison time is chosen/)).toBeInTheDocument();
+    expect(await screen.findByText(/Marker not moved: a comparison time is chosen/)).toBeInTheDocument();
     expect(mocks.list.mock.calls[0][0]).toContain("since=");
-    expect(screen.getByText(/compared with 8 h ago/)).toBeInTheDocument();
+    expect(screen.getByText(/Since .* \(8 h ago\)/)).toBeInTheDocument();
     expect(mocks.seen).not.toHaveBeenCalled();
   });
 
   it("does not post from a narrowed view", async () => {
     await open(page(), { scope: "mine" });
-    expect(await screen.findByText(/narrowed by a scope, filter or page/)).toBeInTheDocument();
+    expect(await screen.findByText(/Marker not moved: this view is narrowed/)).toBeInTheDocument();
     expect(mocks.seen).not.toHaveBeenCalled();
   });
 
   it("keeps the New label on screen after the marker moved", async () => {
     await open(page());
     await waitFor(() => expect(mocks.seen).toHaveBeenCalledTimes(1));
-    await screen.findByText(/Your marker moved to/);
+    await screen.findByText(/Marker moved to/);
     const row = screen.getByRole("link", { name: /^New: / }).closest("tr")!;
     expect(within(row).getByText("New")).toBeInTheDocument();
     expect(mocks.list).toHaveBeenCalledTimes(1);
@@ -152,14 +152,14 @@ describe("opening the queue moves the marker (D-59)", () => {
   it("asks later loads of the visit to compare with the previous marker, not the moved one", async () => {
     const { rerender } = await open(page());
     await waitFor(() => expect(mocks.seen).toHaveBeenCalledTimes(1));
-    await screen.findByText(/Your marker moved to/);
+    await screen.findByText(/Marker moved to/);
     mocks.list.mockResolvedValue(page({ marker: { compare_from: MARKER, kind: "OVERRIDE", marked_at: AS_OF } }));
     rerender(view({ scope: "unassigned" }));
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
     expect(mocks.list.mock.calls[1][0]).toContain(`since=${encodeURIComponent(MARKER)}`);
     expect(mocks.seen).toHaveBeenCalledTimes(1);
     // The line still says "your last visit", not "compared with".
-    await screen.findByText(/since 2026-11-07 06:12:00 UTC \(your last visit\)/);
+    await screen.findByText(/Since 2026-11-07 06:12:00 UTC \(your last visit\)/);
   });
 });
 
@@ -183,13 +183,13 @@ describe("a conflicting marker", () => {
   it("words a source_failed refusal", async () => {
     mocks.seen.mockRejectedValueOnce(new ApiError(409, "x", { code: "queue.marker.source_failed", marker: {} }));
     await open(page());
-    expect(await screen.findByText(/did not move your marker because a source failed to load/)).toBeInTheDocument();
+    expect(await screen.findByText(/Marker not moved: a source failed to load/)).toBeInTheDocument();
   });
 
   it("words any other failure and keeps the labels", async () => {
     mocks.seen.mockRejectedValueOnce(new ApiError(500, "boom"));
     await open(page());
-    expect(await screen.findByText(/Your marker could not be moved/)).toBeInTheDocument();
+    expect(await screen.findByText(/Marker could not be moved/)).toBeInTheDocument();
     expect(screen.getByText("New")).toBeInTheDocument();
   });
 });
@@ -197,7 +197,7 @@ describe("a conflicting marker", () => {
 describe("the marker line", () => {
   it("states the last visit in UTC", async () => {
     await open(page());
-    expect(screen.getByText("Showing what changed since 2026-11-07 06:12:00 UTC (your last visit)")).toBeInTheDocument();
+    expect(screen.getByText("Since 2026-11-07 06:12:00 UTC (your last visit)")).toBeInTheDocument();
   });
 
   it("offers the three comparison chips and a way back while one is chosen", async () => {
@@ -225,19 +225,19 @@ describe("the sources strip", () => {
       }),
     );
     const strip = screen.getByRole("region", { name: "Sources" });
-    expect(within(strip).getByText(/Its rows are missing and the total below is a lower bound/)).toBeInTheDocument();
-    expect(within(strip).getByText(/Needs the read:alerts permission/)).toBeInTheDocument();
-    expect(within(strip).getByText(/No QRadar console is configured/)).toBeInTheDocument();
+    expect(within(strip).getByText(/Rows missing; total is a lower bound/)).toBeInTheDocument();
+    expect(within(strip).getByText(/Needs read:alerts/)).toBeInTheDocument();
+    expect(within(strip).getByText(/No console configured/)).toBeInTheDocument();
     expect(within(strip).getByText(/Last collected 4 h ago \(2026-11-07 08:00:00 UTC\)/)).toBeInTheDocument();
-    expect(within(strip).getByText(/alert link could not be looked up/)).toBeInTheDocument();
+    expect(within(strip).getByText(/alert links unavailable/)).toBeInTheDocument();
     expect(within(strip).queryByText(/0 waiting/)).toBeNull();
   });
 
   it("words the three partial reasons apart", async () => {
     for (const [code, text] of [
-      ["OWNER_UNMAPPED", /no QRadar username/],
-      ["ALERTS_NOT_READABLE", /lacks the read:alerts permission/],
-      ["ALERT_LINK_FAILED", /could not be looked up/],
+      ["OWNER_UNMAPPED", /No QRadar username/],
+      ["ALERTS_NOT_READABLE", /needs read:alerts/],
+      ["ALERT_LINK_FAILED", /alert links unavailable/],
     ] as const) {
       const { unmount } = await open(page({ sources: sources({ offense: { state: "PARTIAL", reason_code: code } }) }));
       expect(screen.getByRole("region", { name: "Sources" })).toHaveTextContent(text);
@@ -291,7 +291,7 @@ describe("the table", () => {
   it("says Showing 51–100 of N on a later page and warns past the 1000-row cap", async () => {
     await open(page({ total: 1500, offset: 50, items: Array.from({ length: 50 }, (_, i) => item({ id: `a${i}` })) }), { offset: "50" });
     expect(screen.getByText("Showing 51–100 of 1,500")).toBeInTheDocument();
-    expect(screen.getByText("The queue holds more than 1000 rows. Narrow it with a filter.")).toBeInTheDocument();
+    expect(screen.getByText("More than 1000 rows. Narrow with a filter.")).toBeInTheDocument();
   });
 });
 
@@ -326,7 +326,7 @@ describe("states", () => {
 
   it("says nothing is waiting in Mine, only when every readable source loaded", async () => {
     await open(page({ items: [], total: 0, sources: sources({ anomaly: { count: 0 } }) }), { scope: "mine" });
-    expect(screen.getByText(/Nothing is waiting in Mine\. Every source you may read loaded at 2026-11-07 12:00:00 UTC/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is waiting in Mine\. All sources loaded at 2026-11-07 12:00:00 UTC/)).toBeInTheDocument();
   });
 
   it("does not claim a clean queue over a source it could not read", async () => {
@@ -338,7 +338,7 @@ describe("states", () => {
         sources: sources({ offense: { state: "NOT_COLLECTED", count: null, new_count: null, reason_code: "NO_CONSOLE" } }),
       }),
     );
-    expect(screen.getByText(/that is not a clean result: Offenses could not be read in full/)).toBeInTheDocument();
+    expect(screen.getByText(/No rows shown; Offenses could not be read in full/)).toBeInTheDocument();
     expect(screen.queryByText(/Nothing is waiting/)).toBeNull();
   });
 
