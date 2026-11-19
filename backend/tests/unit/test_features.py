@@ -130,6 +130,21 @@ async def test_shared_noop_guards(write_context):
     session.delete.assert_not_called()
 
 
+async def test_shared_inert_unchanged_put_is_idempotent(write_context):
+    session, base, audit = write_context
+    key, required = "waf_alerting_enabled", "waf_collection_enabled"
+    inert = base.model_copy(update={key: True, required: False})
+    # Re-applying the effective value of an inert alerting switch changes nothing: no 422
+    # despite the unsatisfied dependency, and no row or audit for the no-op (audit F-A).
+    await writes.change(session, inert, {key: True}, actor="cli")
+    audit.assert_not_called()
+    # A real change to the same switch is still refused with the dependency code.
+    with pytest.raises(writes.FeatureError, match="feature_switch_dependency") as caught:
+        await writes.change(session, base, {key: True}, actor="cli")
+    assert caught.value.status == 422
+    audit.assert_not_called()
+
+
 async def test_shared_unreadable_guard(write_context, monkeypatch):
     from app.services.feature_switches import ResolvedFeatures, ResolvedSwitch
 

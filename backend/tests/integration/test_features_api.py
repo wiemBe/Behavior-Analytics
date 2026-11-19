@@ -30,7 +30,7 @@ from app.models.waf import WafSourceProfile
 from app.security.auth import get_principal
 from app.security.rbac import Principal
 from app.services import feature_management as writes
-from app.services.feature_overview import prerequisites
+from app.services.feature_overview import overview, prerequisites
 from app.services.feature_switches import (
     ALERTING_REQUIRES,
     FEATURE_KEYS,
@@ -291,6 +291,55 @@ async def test_prerequisites_constant_statements(db_session):
         for family in ("waf", "ips", "identity"):
             assert counts[family] == {"enabled": 50, "validated": 50, "total": 50}
         assert len(statements) == first == 5
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+
+async def test_overview_constant_statements(db_session):
+    console = QRadarInstance(name="counts", console_host="fixture.invalid", enabled=True)
+    db_session.add(console)
+    await db_session.flush()
+    statements = []
+    engine = db_session.bind.sync_engine
+
+    def record(*args):
+        statements.append(args[2])
+
+    async def add_profile(i):
+        source = LogSource(instance_id=console.id, qradar_id=i, name=f"source {i}")
+        db_session.add(source)
+        await db_session.flush()
+        db_session.add(WafSourceProfile(instance_id=console.id, log_source_id=source.id,
+                                       enabled=True, profile_version=1, validation_status="VALID",
+                                       url_property="URL", method_property="METHOD",
+                                       validated_profile_version=1))
+        db_session.add(IpsSourceProfile(instance_id=console.id, log_source_id=source.id,
+                                       enabled=True, validation_status="VALID",
+                                       validated_profile_version=1))
+        db_session.add(IdentitySourceProfile(instance_id=console.id, log_source_id=source.id,
+                                             enabled=True, validation_status="VALID",
+                                             event_id_property="EventID",
+                                             username_property="username",
+                                             validated_profile_version=1))
+        await db_session.flush()
+
+    await add_profile(1)
+    base = Settings(_env_file=None).model_copy(update=dict.fromkeys(FEATURE_KEYS, False))
+    principal = Principal("counts", permissions=frozenset({"admin:*"}))
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        body = await overview(db_session, base, principal)
+        counts = next(r["prerequisites"] for r in body["families"] if r["family"] == "waf")
+        assert counts == {"enabled": 1, "validated": 1, "total": 1}
+        first = len(statements)
+        for i in range(2, 51):
+            await add_profile(i)
+        statements.clear()
+        body = await overview(db_session, base, principal)
+        counts = next(r["prerequisites"] for r in body["families"] if r["family"] == "waf")
+        assert counts == {"enabled": 50, "validated": 50, "total": 50}
+        # The whole GET path, not just prerequisites(), stays at a constant statement count.
+        assert len(statements) == first
     finally:
         event.remove(engine, "before_cursor_execute", record)
 

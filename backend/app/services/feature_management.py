@@ -49,6 +49,11 @@ async def change(
     for key, enabled in changes.items():
         proposed[key] = fallback.values[key] if enabled is None else ResolvedSwitch(enabled, "db")
     for key in changes:
+        # An unchanged PUT writes no row and no audit (the loop below skips it), so it must
+        # not be refused for a dependency that the current effective state already tolerates:
+        # re-applying an inert alerting switch is idempotent, not a new enable (audit F-A).
+        if changes[key] is not None and current.values[key].enabled == changes[key]:
+            continue
         required = ALERTING_REQUIRES.get(key)
         if (proposed[key].enabled and required and not proposed[required].enabled
                 and (changes[key] is not None or rows[key] is not None)):
