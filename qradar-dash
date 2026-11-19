@@ -4937,7 +4937,7 @@ cmd_reset() {
 }
 
 cmd_config_export() {
-  local label="" instance="" output="" flag actor output_abs outdir tmp rc
+  local label="" instance="" output="" flag actor output_abs outdir rc
   while [ $# -gt 0 ]; do
     case "$1" in
       -h | --help) usage; return 0 ;;
@@ -4980,25 +4980,40 @@ cmd_config_export() {
   # The destination is born from a 0600 temp file under a restrictive umask. mv replaces an
   # existing file without a chmod after the write, so an old world-readable file cannot survive
   # as the export and no container byte reaches the destination until the export has succeeded.
+  # Container stderr is captured for refusals; both temp files are removed on every exit path.
   umask 077
-  tmp=$(mktemp "$outdir/.qradar-dash-config.XXXXXX" 2>/dev/null) || {
+  CFG_EXPORT_TMP=$(mktemp "$outdir/.qradar-dash-config.XXXXXX" 2>/dev/null) || {
     fail "config-export: cannot create a temporary file in $outdir; nothing was written."
     return 1
   }
+  CFG_EXPORT_ERR=$(mktemp "$outdir/.qradar-dash-config-err.XXXXXX" 2>/dev/null) || {
+    rm -f -- "$CFG_EXPORT_TMP"
+    fail "config-export: cannot create a temporary file in $outdir; nothing was written."
+    return 1
+  }
+  trap 'rm -f -- "$CFG_EXPORT_TMP" "$CFG_EXPORT_ERR"' EXIT
+  install_signal_traps
   set +e
-  dc "${args[@]}" >"$tmp" 2>/dev/null
+  dc "${args[@]}" >"$CFG_EXPORT_TMP" 2>"$CFG_EXPORT_ERR"
   rc=$?
   set -e
   if [ "$rc" -ne 0 ]; then
-    rm -f -- "$tmp"
-    fail "config-export failed in the backend container (exit $rc). No file was written; check ./qradar-dash logs backend and rerun."
-    return 1
+    fail "config-export failed in the backend container (exit $rc). No file was written."
+    if [ -s "$CFG_EXPORT_ERR" ]; then
+      tail -n 5 -- "$CFG_EXPORT_ERR" | sed 's/^/  | /' >&2
+    fi
+    trap - EXIT HUP INT TERM
+    rm -f -- "$CFG_EXPORT_TMP" "$CFG_EXPORT_ERR"
+    [ "$rc" -eq 2 ] && return 2 || return 1
   fi
-  if ! mv -f -- "$tmp" "$output_abs" 2>/dev/null; then
-    rm -f -- "$tmp"
+  if ! mv -f -- "$CFG_EXPORT_TMP" "$output_abs" 2>/dev/null; then
     fail "config-export: could not move the export into place at $output_abs; nothing was written."
+    trap - EXIT HUP INT TERM
+    rm -f -- "$CFG_EXPORT_TMP" "$CFG_EXPORT_ERR"
     return 1
   fi
+  trap - EXIT HUP INT TERM
+  rm -f -- "$CFG_EXPORT_ERR"
   say "$output_abs"
 }
 
