@@ -19,6 +19,7 @@ from app.api.routes import (
     custom_rules,
     dashboards,
     entities,
+    features,
     fleet,
     geo,
     handover,
@@ -250,3 +251,5 @@ api_router.include_router(
 api_router.include_router(
     property_watches.router, dependencies=[Depends(requires(PERM_PROPERTY_WATCH_READ))]
 )
+
+api_router.include_router(features.router)

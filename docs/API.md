@@ -22,6 +22,7 @@ capability or `admin:*`.
 | `/searches` | `read:searches` | `search:write`; execution also needs `search:execute` |
 | `/alerts` | `read:alerts` | `alert:ack` or `alert:resolve` |
 | `/admin/search-cadence` | `read:search_cadence` | `admin:search_cadence` |
+| `/admin/features` | `read:features` | `admin:features` |
 | `/offenses` | `read:offenses` | none |
 | `/rules` | `read:rules` | `rule:write` |
 | `/coverage` | `read:coverage` | `coverage:write` |
@@ -1009,3 +1010,9 @@ constructs a QRadar provider. A broker failure records `FAILED` with safe queue
 diagnostics. Refresh swaps complete snapshots atomically; failed refreshes retain
 the previous snapshot and its `as_of`. Complete names may seed the first snapshot
 with `PARTIAL` state and unknown applicability if expressions cannot complete.
+
+The Features API provides `GET /admin/features`, `PUT /admin/features/{key}` with
+`{"enabled": true|false}`, and `DELETE /admin/features/{key}` to restore the environment/default.
+Writes are validated, rate limited and audited; unchanged values create no row or audit.
+The response reports `runtime_switches_active: false` until S3 connects runtime consumers.
+The offline equivalent is `python -m app.cli.features show|set|reset|apply|env`.

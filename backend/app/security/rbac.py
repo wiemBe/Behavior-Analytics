@@ -115,6 +115,8 @@ PERM_ALERT_READ = "read:alerts"
 # operational control reserved for administrators, matching the WAF pattern.
 PERM_SEARCH_CADENCE_READ = "read:search_cadence"
 PERM_SEARCH_CADENCE_ADMIN = "admin:search_cadence"
+PERM_FEATURES_READ = "read:features"
+PERM_FEATURES_ADMIN = "admin:features"
 # Phase C. The fleet view maps every monitored source to a class, an owner-facing
 # review state and its volume, so it is guarded at the router like the other
 # inventory surfaces; `read:*` satisfies it. Classification rules decide which
