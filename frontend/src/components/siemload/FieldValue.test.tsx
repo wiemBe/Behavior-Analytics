@@ -41,7 +41,7 @@ describe("FieldValue", () => {
     shown({ state: "OK", value: null, reason_code: null, reason: null });
     expect(screen.queryByTestId("value")).not.toBeInTheDocument();
     expect(screen.getByText("Not collected")).toBeInTheDocument();
-    expect(screen.getByText("The backend sent no value.")).toBeInTheDocument();
+    expect(screen.getByText("No value sent.")).toBeInTheDocument();
   });
 
   it("links a forbidden field to QRadar access, and no other state", () => {

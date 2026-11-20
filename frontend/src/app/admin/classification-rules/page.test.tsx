@@ -29,9 +29,8 @@ describe("RulesPage", () => {
   it("keeps the counts and the order rule after the d40 text cut", async () => {
     vi.spyOn(fleetApi, "rules").mockResolvedValue([rule()]);
     render(await RulesPage());
-    expect(
-      screen.getByText("The first level that decides wins; within a level, the highest priority wins."),
-    ).toBeInTheDocument();
+    // The order is the list itself; the winning rule lives in the Guide.
+    expect(screen.queryByText(/highest level wins|first level that decides/i)).not.toBeInTheDocument();
     expect(document.body.textContent).toMatch(/1 rules?, \d+ built-in and \d+ custom\./);
     expect(document.body.textContent).not.toMatch(/higher priority/);
   });

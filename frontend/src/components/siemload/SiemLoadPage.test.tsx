@@ -84,7 +84,7 @@ describe("SiemLoadPage: states", () => {
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("The SIEM load could not be read.");
     expect(alert).toHaveTextContent("permission admin:*");
-    expect(alert).toHaveTextContent("Nothing was changed");
+    expect(alert).toHaveTextContent("lacks permission");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -132,7 +132,7 @@ describe("SiemLoadPage: states", () => {
   it("keeps the last answer and says the refresh failed, with the time the answer is from", () => {
     mocks.states[CURRENT] = okState(current(), { refreshFailed: { httpStatus: 500 } });
     render(<SiemLoadPage range="24h" />);
-    const note = screen.getByText(/The latest refresh failed/);
+    const note = screen.getByText(/Refresh failed/);
     expect(note).toHaveTextContent("(HTTP 500)");
     expect(note).toHaveTextContent("2026-11-02 10:15:03 UTC");
     expect(screen.getByText("Our load on QRadar")).toBeInTheDocument();
@@ -142,7 +142,7 @@ describe("SiemLoadPage: states", () => {
   it("says a failed refresh was rate limited, with the wait", () => {
     mocks.states[CURRENT] = okState(current(), { refreshFailed: { httpStatus: 429, retryAfter: 9 } });
     render(<SiemLoadPage range="24h" />);
-    expect(screen.getByText(/The latest refresh failed/)).toHaveTextContent("try again in 9");
+    expect(screen.getByText(/Refresh failed/)).toHaveTextContent("try again in 9");
   });
 
   it("shows no refresh note when the last refresh worked", () => {
@@ -159,8 +159,8 @@ describe("SiemLoadPage: states", () => {
       }),
     );
     render(<SiemLoadPage range="24h" />);
-    expect(screen.getByText("QRadar's health could not be read, so no figure is shown in its place.")).toBeInTheDocument();
-    expect(screen.getByText("The searches in flight could not be read, so no figure is shown in its place.")).toBeInTheDocument();
+    expect(screen.getByText("QRadar's health could not be read.")).toBeInTheDocument();
+    expect(screen.getByText("The searches in flight could not be read.")).toBeInTheDocument();
     expect(screen.getByRole("table", { name: /last 5, 15 and 60 minutes/ })).toBeInTheDocument();
   });
 
@@ -176,7 +176,7 @@ describe("SiemLoadPage: states", () => {
     delete old.qradar;
     mocks.states[CURRENT] = okState(old as ArielLoadCurrent);
     render(<SiemLoadPage range="24h" />);
-    expect(screen.getByText("QRadar's health could not be read, so no figure is shown in its place.")).toBeInTheDocument();
+    expect(screen.getByText("QRadar's health could not be read.")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /^Console/ })).not.toBeInTheDocument();
   });
 

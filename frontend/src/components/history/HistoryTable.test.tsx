@@ -43,7 +43,7 @@ describe("the history table reason cell", () => {
     });
 
     expect(cell).toHaveTextContent(
-      "Last step failed at 10-20 09:15 UTC (TimeoutError). The next collection retries.",
+      "Last step failed at 10-20 09:15 UTC (TimeoutError).",
     );
     const time = within(cell).getByText("10-20 09:15 UTC");
     expect(time.tagName).toBe("TIME");

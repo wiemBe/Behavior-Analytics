@@ -189,7 +189,6 @@ export function HostsTable({
         <p>
           <strong>{t("empty")}</strong>
         </p>
-        <p>{t("emptyHelp")}</p>
       </div>
     );
   }
@@ -236,7 +235,6 @@ export function HostsTable({
           ))}
         </table>
       </TableScroll>
-      <p className="sl-hint">{t("ratesNote")}</p>
     </>
   );
 }

@@ -54,7 +54,7 @@ describe("CallerSummary: the access check's cancelled probe", () => {
     expect(cells(rowOf("History")).slice(0, 5)).toEqual(["4", "0", "4", "0", "0"]);
   });
 
-  it("explains the rule only when the access check row is there", () => {
+  it("leaves the rule to the Guide: no sentence for it, with or without the access check row", () => {
     mocks.states["/admin/ariel-load?hours=24"] = okState(summary({ callers: [history] }));
     const { unmount } = render(<CallerSummary range="24h" />);
     expect(screen.queryByText(note)).not.toBeInTheDocument();
@@ -63,7 +63,8 @@ describe("CallerSummary: the access check's cancelled probe", () => {
       summary({ callers: [accessCheck, history] }),
     );
     render(<CallerSummary range="24h" />);
-    expect(screen.getByText(note)).toBeInTheDocument();
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+    expect(rowOf("Access check")).toBeInTheDocument();
   });
 });
 
@@ -95,7 +96,7 @@ describe("CallerSummary: the table", () => {
     expect(cells(rowOf("WAF collection")).slice(0, 5)).toEqual(["96", "90", "6", "0", "0"]);
   });
 
-  it("counts an abandoned search with the failures and the footnote says what it means", () => {
+  it("counts an abandoned search with the failures and prints no footnote", () => {
     mocks.states["/admin/ariel-load?hours=24"] = okState(
       summary({
         callers: [
@@ -109,9 +110,7 @@ describe("CallerSummary: the table", () => {
     );
     render(<CallerSummary range="24h" />);
     expect(cells(rowOf("IPS collection")).slice(0, 5)).toEqual(["10", "6", "4", "0", "0"]);
-    expect(
-      screen.getByText(/Abandoned searches are counted in Failed: their worker stopped before it recorded an end/),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/Abandoned searches are counted in Failed/)).not.toBeInTheDocument();
   });
 
   it("right-aligns every figure column and gives each figure its unit", () => {
@@ -171,10 +170,10 @@ describe("CallerSummary: the table", () => {
     expect(screen.getByRole("rowheader", { name: "NEW_ONE" })).toBeInTheDocument();
   });
 
-  it("states that percentiles cover completed searches only", () => {
+  it("prints no percentile footnote (the Guide says percentiles cover completed searches only)", () => {
     mocks.states["/admin/ariel-load?hours=24"] = okState(summary());
     render(<CallerSummary range="24h" />);
-    expect(screen.getByText(/Percentiles cover completed searches only/)).toBeInTheDocument();
+    expect(screen.queryByText(/Percentiles cover completed searches only/)).not.toBeInTheDocument();
   });
 
   it("shows the window it covers in UTC", () => {
@@ -225,7 +224,7 @@ describe("CallerSummary: states", () => {
     mocks.states["/admin/ariel-load?hours=24"] = { status: "forbidden", httpStatus: 403 };
     render(<CallerSummary range="24h" />);
     expect(screen.getByRole("alert")).toHaveTextContent("permission admin:*");
-    expect(screen.getByRole("alert")).toHaveTextContent("Nothing was changed");
+    expect(screen.getByRole("alert")).toHaveTextContent("lacks permission");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -238,7 +237,7 @@ describe("CallerSummary: states", () => {
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("The per-caller summary could not be read.");
     expect(alert).toHaveTextContent(sentence);
-    expect(alert).toHaveTextContent("Check that the backend is reachable");
+    expect(alert).toHaveTextContent("Check the backend, then try again.");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 

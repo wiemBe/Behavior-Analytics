@@ -49,7 +49,7 @@ describe("NotificationsTable", () => {
         hours={24}
       />,
     );
-    expect(screen.getByText("Plus 1,204 events in 31 further groups, not listed.")).toBeInTheDocument();
+    expect(screen.getByText("Plus 1,204 events in 31 groups, not listed.")).toBeInTheDocument();
   });
 
   it("says in words that a range that was looked at held no notification", () => {
@@ -60,7 +60,7 @@ describe("NotificationsTable", () => {
       />,
     );
     expect(
-      screen.getByText("QRadar logged no system notification in the last 24 h, other than information messages."),
+      screen.getByText("No system notification in the last 24 h, other than information messages."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
@@ -80,7 +80,7 @@ describe("NotificationsTable", () => {
         hours={24}
       />,
     );
-    expect(screen.getByText(/Only 10 h of the last 24 h were collected, so these counts can be low\./)).toBeInTheDocument();
+    expect(screen.getByText(/Only 10 h of 24 h collected: counts may be low\./)).toBeInTheDocument();
   });
 
   it("is not collected, with the reason, when no window in the range was measured", () => {
@@ -122,7 +122,7 @@ describe("NotificationsTable", () => {
       />,
     );
     expect(screen.getByRole("status")).toHaveTextContent("The Ariel search failed.");
-    expect(screen.getByRole("status")).toHaveTextContent("The list covers the windows before it.");
+    expect(screen.getByRole("status")).toHaveTextContent("Newest window not read; list covers earlier ones.");
     expect(screen.getByRole("row", { name: /Warning Message/ })).toBeInTheDocument();
   });
 

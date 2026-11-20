@@ -34,7 +34,6 @@ function InFlightFact({ part }: { part: ArielInFlight }) {
         {t("inFlightValue", { active: part.active.length })} ·{" "}
         {t("inFlightStale", { stale: part.stale.length })}
       </span>
-      <span className="sl-note">{t("inFlightNote", { seconds: part.stale_after_seconds })}</span>
     </>
   );
 }
@@ -46,7 +45,6 @@ function SlotsFact({ part }: { part: ArielSlots }) {
     return (
       <>
         <span className="sl-line">{t("slotsNotEnforced")}</span>
-        <span className="sl-note">{t("slotsNotEnforcedNote")}</span>
       </>
     );
   }
@@ -128,7 +126,6 @@ function WindowsTable({ part }: { part: ArielWindows }) {
         </table>
       </TableScroll>
       {part.minutes_60.submitted === 0 ? <p className="sl-hint">{t("noneSent")}</p> : null}
-      <p className="sl-hint">{t("windowsNote")}</p>
     </>
   );
 }

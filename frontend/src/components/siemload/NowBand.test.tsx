@@ -22,18 +22,18 @@ describe("NowBand", () => {
     expect(screen.getByText(/^As of/)).toHaveTextContent("2026-11-02 10:15:03 UTC");
   });
 
-  it("shows our searches in flight, active and stale, with the stale limit", () => {
+  it("shows our searches in flight, active and stale, without a stale-limit note", () => {
     band();
     const cell = value("Searches in flight");
     expect(cell).toHaveTextContent("2 active · 1 stale");
-    expect(cell).toHaveTextContent("Stale after 150 s without an end.");
+    expect(cell).not.toHaveTextContent("without an end");
   });
 
   it("shows the permit slots held against the cap, and what is kept back", () => {
     band();
     const cell = value("Permit slots held");
     expect(cell).toHaveTextContent("4 of 8 global");
-    expect(cell).toHaveTextContent("3 console-pool slots held across all consoles, cap 4 each");
+    expect(cell).toHaveTextContent("3 console-pool slots held, cap 4 each");
     expect(cell).toHaveTextContent("2 kept back for foreground work");
   });
 
@@ -99,9 +99,9 @@ describe("NowBand", () => {
     expect(screen.queryByText("No search was submitted in the last 60 minutes.")).not.toBeInTheDocument();
   });
 
-  it("explains how wall time and failed are counted", () => {
+  it("prints no wall-time footnote (the Guide says how wall time and failed are counted)", () => {
     band();
-    expect(screen.getByText(/covers completed searches only/)).toBeInTheDocument();
+    expect(screen.queryByText(/covers completed searches only/)).not.toBeInTheDocument();
   });
 });
 

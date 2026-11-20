@@ -189,13 +189,13 @@ describe("HealthTable: joining the two lists", () => {
     health(consoleLatest({ hosts: [metricsHost("other")] }), [hostEntry({ hostname: "qr-silent", members: [member({ hostname: "qr-silent" })] })]);
     const row = rowOf("qr-silent");
     expect(row).toHaveTextContent("Not collected");
-    expect(row).toHaveTextContent("No Health Metrics log source for this host answered in the window");
+    expect(row).toHaveTextContent("No Health Metrics source answered in the window.");
     expect(row.textContent).not.toMatch(/%|GiB| B\b/);
   });
 
   it("lists a host that sent Health Metrics but is not in the managed host list, below the table body", () => {
     health(consoleLatest({ hosts: [metricsHost("qr-console"), metricsHost("stranger", { diskPercent: 55 })] }));
-    const heading = screen.getByText(/Sent Health Metrics but not in the managed host list/);
+    const heading = screen.getByText(/Not in the managed host list/);
     const group = heading.closest("tbody") as HTMLElement;
     expect(within(group).getByText("stranger")).toBeInTheDocument();
     expect(group).toHaveTextContent("55.0 %");
@@ -210,28 +210,26 @@ describe("HealthTable: joining the two lists", () => {
 
   it("says the managed host list was not read when it was not, and still shows the metrics hosts", () => {
     health(consoleLatest(), [], false);
-    expect(screen.getByText(/not matched to it/)).toBeInTheDocument();
+    expect(screen.getByText(/Host list not read: hosts below are unmatched/)).toBeInTheDocument();
     expect(screen.getByText("qr-console")).toBeInTheDocument();
   });
 });
 
 describe("HealthTable: the window and its state", () => {
-  it("states the window once, in UTC, with its cadence", () => {
+  it("states the window once, in UTC, with when it was collected", () => {
     health(consoleLatest());
     const line = screen.getByText(/^Window/);
     expect(line).toHaveTextContent("2026-11-02 10:00:00 UTC");
     expect(line).toHaveTextContent("2026-11-02 10:15:00 UTC");
-    expect(line).toHaveTextContent("one window per 15 min");
+    expect(line).toHaveTextContent("collected 2026-11-02 10:16:10 UTC");
     expect(line).toHaveTextContent("2026-11-02 10:16:10 UTC");
     expect(screen.getAllByText(/^Window/)).toHaveLength(1);
   });
 
-  it("says in the window sentence that the busiest stage is the average, not the maximum", () => {
+  it("leaves the maximum-versus-average rule to the Guide: the window sentence carries only times", () => {
     health(consoleLatest());
     const line = screen.getByText(/^Window/);
-    expect(line).toHaveTextContent(
-      "Each figure is the maximum in that window, from QRadar's own Health Metrics, except the busiest stage, which is the window average.",
-    );
+    expect(line).not.toHaveTextContent(/maximum|average/);
   });
 
   it("shows a stale window's figures with the staleness said above them", () => {
@@ -249,8 +247,8 @@ describe("HealthTable: the window and its state", () => {
     ["STALE", null, "Stale."],
     ["STALE", "", "Stale."],
     ["STALE", "   ", "Stale."],
-    ["PARTIAL", null, "Partial. The figures marked ≥ are lower bounds."],
-    ["PARTIAL", "", "Partial. The figures marked ≥ are lower bounds."],
+    ["PARTIAL", null, "Partial. ≥ is a lower bound."],
+    ["PARTIAL", "", "Partial. ≥ is a lower bound."],
   ] as const)("says a %s window with reason %j without an empty tail", (state, reason, text) => {
     health(consoleLatest({ metrics: { state, reason_code: "stale", reason } }));
     expect(screen.getByRole("status").textContent?.trim()).toBe(text);
@@ -292,7 +290,7 @@ describe("HealthTable: the window and its state", () => {
     );
     expect(screen.getByText("Failed")).toHaveClass("crit");
     expect(screen.getByText("The Ariel search failed.")).toBeInTheDocument();
-    expect(screen.getByText(/The last window that was collected ended at/)).toHaveTextContent(
+    expect(screen.getByText(/Last window ended/)).toHaveTextContent(
       "2026-11-02 10:15:00 UTC",
     );
     expect(screen.queryByRole("table")).not.toBeInTheDocument();

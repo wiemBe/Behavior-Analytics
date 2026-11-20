@@ -79,7 +79,7 @@ describe("rows", () => {
     const row = rowOf("Anomaly explanations");
     expect(within(row).getByText("evidence up to 1 h 2 min")).toBeInTheDocument();
     // No bucket reads as a dash with its meaning on the title; no footnote.
-    expect(within(row).getByTitle("This family has no buckets")).toHaveTextContent("—");
+    expect(within(row).getByTitle("No buckets")).toHaveTextContent("—");
     expect(screen.queryByText(/a dash means the family has no buckets/i)).not.toBeInTheDocument();
   });
 
@@ -114,7 +114,7 @@ describe("rows", () => {
       />,
     );
     const row = within(screen.getAllByRole("row")[1]);
-    expect(row.getByText("Not retried after the failed run.")).toBeInTheDocument();
+    expect(row.getByText("Not retried after the failure.")).toBeInTheDocument();
     expect(row.queryByText(/backend sentence/)).not.toBeInTheDocument();
   });
 
@@ -122,7 +122,7 @@ describe("rows", () => {
     render(<SearchCadenceTable items={[failedRow("search_cadence.next_dispatch.other")]} />);
     const row = within(screen.getAllByRole("row")[1]);
     expect(row.getByText(/backend sentence/)).toBeInTheDocument();
-    expect(row.queryByText("Not retried after the failed run.")).not.toBeInTheDocument();
+    expect(row.queryByText("Not retried after the failure.")).not.toBeInTheDocument();
   });
 
   it("shows no reason for a row that did not fail", () => {
@@ -140,9 +140,9 @@ describe("rows", () => {
     const row = within(screen.getAllByRole("row")[1]);
     expect(row.getByText("—")).toHaveAttribute(
       "title",
-      "This family is off, so it has no next run.",
+      "Family off: no next run.",
     );
-    expect(row.queryByText("Not retried after the failed run.")).not.toBeInTheDocument();
+    expect(row.queryByText("Not retried after the failure.")).not.toBeInTheDocument();
     expect(row.queryByText(/backend sentence/)).not.toBeInTheDocument();
   });
 
@@ -169,7 +169,7 @@ describe("rows", () => {
     // A past computed instant for a family that has never run is not a next run.
     expect(within(row).getByText("—")).toHaveAttribute(
       "title",
-      "This family has not run, and no future run is scheduled.",
+      "Not run, none scheduled.",
     );
     expect(within(row).queryByText("10-12 10:00 UTC")).not.toBeInTheDocument();
   });
@@ -183,7 +183,7 @@ describe("rows", () => {
     const row = rowOf("Log source volume");
     expect(within(row).getByText("—")).toHaveAttribute(
       "title",
-      "This family is off, so it has no next run.",
+      "Family off: no next run.",
     );
     expect(within(row).queryByText("01-01 00:00 UTC")).not.toBeInTheDocument();
   });
@@ -206,7 +206,7 @@ describe("rows", () => {
     const counted = within(rowOf("Log source volume"));
     expect(counted.getByText("not counted")).toHaveAttribute(
       "title",
-      expect.stringMatching(/does not count its searches/i),
+      expect.stringMatching(/not counted yet/i),
     );
     expect(counted.queryByText("0")).not.toBeInTheDocument();
 
@@ -301,7 +301,7 @@ describe("changing a cadence", () => {
     await waitFor(() => expect(select).toBeEnabled());
     expect(select).toHaveValue("7200");
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Saved. Changed by admin@lab at 2026-10-12 09:30:00 UTC.",
+      "Saved by admin@lab at 2026-10-12 09:30:00 UTC.",
     );
     // The delay follows the new cadence: 2 h + 5 min + 2 min.
     expect(screen.getByText("up to 2 h 7 min")).toBeInTheDocument();
@@ -316,7 +316,7 @@ describe("changing a cadence", () => {
     await user.selectOptions(select, "15 min");
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/cannot change search cadence/i);
+    expect(alert).toHaveTextContent(/lacks permission/i);
     expect(alert).toHaveTextContent("admin:search_cadence");
     expect(select).toHaveValue("3600");
     expect(select).toBeEnabled();
@@ -449,7 +449,7 @@ describe("WAF fan-out row (FIX-71f)", () => {
     expect(row.getAllByText("not counted")).toHaveLength(1);
     expect(row.getByText("not counted")).toHaveAttribute(
       "title",
-      expect.stringMatching(/source task runs on its own/),
+      expect.stringMatching(/counted per source task/i),
     );
     // Unknown is not zero.
     expect(row.queryByText("0")).not.toBeInTheDocument();

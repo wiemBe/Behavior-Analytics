@@ -44,13 +44,13 @@ describe("HostsTable: single hosts", () => {
     for (const cell of cells.slice(2)) expect(cell).toHaveClass("num");
   });
 
-  it("names the units on the rate columns and says what the figures are", () => {
+  it("names the units on the rate columns and prints no rates footnote", () => {
     table([hostEntry()]);
     expect(screen.getByRole("columnheader", { name: /EPS \(events\/s\), previous month/ })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /FPM \(flows\/min\), previous month/ })).toBeInTheDocument();
     expect(screen.getAllByRole("columnheader", { name: "Average / peak" })).toHaveLength(2);
     expect(screen.getAllByRole("columnheader", { name: "Allocated of hardware limit" })).toHaveLength(2);
-    expect(screen.getByText(/counted once for an HA pair/)).toBeInTheDocument();
+    expect(screen.queryByText(/counted once for an HA pair/)).not.toBeInTheDocument();
   });
 
   it("warns about a single host that is not ACTIVE, with the status as QRadar wrote it", () => {
@@ -95,7 +95,7 @@ describe("HostsTable: HA pairs", () => {
     const body = group("ep-ha");
     expect(within(body).getAllByRole("row")).toHaveLength(3);
     expect(body).toHaveTextContent("Healthy pair");
-    expect(body).toHaveTextContent("The primary is active and the secondary is on standby, as expected.");
+    expect(body).toHaveTextContent("Primary active, secondary on standby.");
     const standby = within(body).getByText("ep-ha-b").closest("tr") as HTMLElement;
     expect(standby).toHaveTextContent("Secondary");
     expect(standby).toHaveTextContent("STANDBY");
@@ -124,7 +124,7 @@ describe("HostsTable: HA pairs", () => {
     const pill = body.querySelector(".pill.warn");
     expect(pill).toHaveTextContent("Degraded pair");
     expect(body.querySelector(".pill.crit")).toBeNull();
-    expect(body).toHaveTextContent("no failover is possible. Reported: ACTIVE / OFFLINE.");
+    expect(body).toHaveTextContent("no failover. Reported: ACTIVE / OFFLINE.");
     // The offline member is a fact, not an "expected standby".
     expect(body).not.toHaveTextContent("Standby, as expected");
   });
@@ -133,7 +133,7 @@ describe("HostsTable: HA pairs", () => {
     table([pairEntry("ha_failed_over", ["OFFLINE", "ACTIVE"])]);
     const body = group("ep-ha");
     expect(body.querySelector(".pill.warn")).toHaveTextContent("Failed over");
-    expect(body).toHaveTextContent("The secondary is running this host and the primary is not. Reported: OFFLINE / ACTIVE.");
+    expect(body).toHaveTextContent("The secondary runs this host, not the primary. Reported: OFFLINE / ACTIVE.");
   });
 
   it("takes the error tone only for a pair with no active member", () => {
@@ -148,7 +148,7 @@ describe("HostsTable: HA pairs", () => {
     table([pairEntry("unknown", ["ACTIVE", "Needs License"], { unclassified: ["ACTIVE", "Needs License"] })]);
     const body = group("ep-ha");
     expect(body.querySelector(".pill.warn")).toHaveTextContent("Unknown pair state");
-    expect(body).toHaveTextContent("QRadar reported ACTIVE / Needs License, which this platform does not classify");
+    expect(body).toHaveTextContent("Reported ACTIVE / Needs License: not classified, so not read as healthy.");
     expect(body).not.toHaveTextContent("Healthy pair");
   });
 
@@ -187,7 +187,7 @@ describe("HostsTable: the whole table", () => {
 
   it("says the host list was truncated, with the count read", () => {
     table([hostEntry()], { truncated: true, hosts: 100 });
-    expect(screen.getByRole("status")).toHaveTextContent("The table shows the first 100.");
+    expect(screen.getByRole("status")).toHaveTextContent("Showing the first 100 hosts; more exist.");
   });
 
   it("says an empty host list is empty and why", () => {

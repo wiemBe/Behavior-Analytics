@@ -29,7 +29,7 @@ describe("QRadarPanel: a console that answered", () => {
     panel([health({ cached: true, age_seconds: 22, cache_ttl_seconds: 30 })]);
     const line = screen.getByText(/Cached, 22 s old/);
     expect(line).toHaveTextContent("2026-11-02 10:14:41 UTC");
-    expect(line).toHaveTextContent("30 s");
+    expect(line).not.toHaveTextContent("30 s");
     expect(screen.queryByText(/Read from QRadar at/)).not.toBeInTheDocument();
   });
 
@@ -95,7 +95,7 @@ describe("QRadarPanel: a console that answered", () => {
       }),
     ]);
     const cell = value("EPS");
-    expect(cell).toHaveTextContent("Allocation is 0 EPS, so there is no share.");
+    expect(cell).toHaveTextContent("No share: allocation is 0 EPS.");
     expect(cell).not.toHaveTextContent("%");
     expect(cell).not.toHaveTextContent("Infinity");
   });
@@ -146,7 +146,7 @@ describe("QRadarPanel: a console that answered", () => {
     expect(value("Ours in flight")).toHaveTextContent("2");
     const held = value("Search ids held");
     expect(held).toHaveTextContent("214");
-    expect(held).toHaveTextContent("What QRadar holds for every user, not what it is running.");
+    expect(held).not.toHaveTextContent("What QRadar holds for every user");
   });
 
   it("calls Ariel not answering when our latest search found it unavailable", () => {
@@ -243,7 +243,7 @@ describe("QRadarPanel: reads that did not happen", () => {
     ["with no part at all", undefined],
   ])("says the health could not be read, %s, and shows no console", (_name, part) => {
     render(<QRadarPanel part={part} />);
-    expect(screen.getByText("QRadar's health could not be read, so no figure is shown in its place.")).toBeInTheDocument();
+    expect(screen.getByText("QRadar's health could not be read.")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /^Console/ })).not.toBeInTheDocument();
     if (part && !part.available) expect(screen.getByText(/the registered consoles could not be read/)).toBeInTheDocument();
   });

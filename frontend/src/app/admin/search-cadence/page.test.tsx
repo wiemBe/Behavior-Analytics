@@ -78,7 +78,7 @@ describe("search cadence page", () => {
     expect(alert).toHaveTextContent(/seed/i);
     // FIX-48: the copy names nine families; the catalog must still list nine.
     expect(Object.keys(FAMILY_INFO)).toHaveLength(9);
-    expect(alert).toHaveTextContent("All nine families");
+    expect(alert).toHaveTextContent("Migrations seed all nine families");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 

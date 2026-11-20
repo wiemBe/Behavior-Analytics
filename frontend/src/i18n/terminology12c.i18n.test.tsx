@@ -85,7 +85,7 @@ describe("the two English text fixes", () => {
     const empty = english.get("cadence.page.empty") ?? "";
     // FIX-48: nine families are seeded (the page lists nine); the Turkish
     // catalog is frozen, so the English copy names the number in words.
-    expect(empty).toContain("All nine families");
+    expect(empty).toContain("seed all nine families");
     expect(empty).not.toContain("All eight families");
     expect(empty).not.toContain("Four families");
     const trEmpty = turkish.get("cadence.page.empty") ?? "";

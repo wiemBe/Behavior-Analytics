@@ -1012,6 +1012,9 @@
         },
         {
           "p": "Each level has a table with **Priority**, **Pattern**, **Class**, **Origin**, **Enabled** and **Actions**. **Built-in** rules ship with the product and can only be switched **On** or **Off**. **Custom** rules can be edited and deleted. A rule matches a **Group id**, a **Type id**, a **Type name pattern**, a **Source name pattern** or an **Identifier pattern**; a pattern is a regular expression of at most 256 characters, and a priority runs from 0 to 10000."
+        },
+        {
+          "p": "The first level that decides wins, and within a level the highest priority wins. A rule that is off is skipped. A level with no rule leaves sources unclassified at that level until a rule is added. A numeric id is a type id; a pattern is a regular expression of at most 256 characters. Every add, edit, enable or disable re-classifies the sources it matches."
         }
       ],
       "steps": [
@@ -1043,12 +1046,15 @@
         },
         {
           "p": "The choices are every 5 minutes, 15 minutes, 30 minutes, 1 hour, 2 hours, 4 hours and 8 hours. By default every family runs every 5 minutes, except **WAF collection** and **IPS collection**, which run every 15 minutes because they cost the most searches per source."
+        },
+        {
+          "p": "**Max delay** is cadence + bucket + settle. Cadence changes when a family searches, not its bucket width; bucket width is the span of one stored bucket. A dash in **Bucket width** means the family has no buckets. **Not run since upgrade** and **not counted** are missing measurements, not zero: a family that does not count its searches yet, and a family whose source tasks run on their own and are counted per task, show **not counted**. A family that is off has no next run, and a family that has not run has none scheduled. A failed run is not retried before the next scheduled run."
         }
       ],
       "steps": [
         "Open **Administration**, then **Search cadence**.",
         "Change the cadence in the family's row. The change applies without a restart.",
-        "Read **Saved. Changed by {user} at** and the new next run."
+        "Read **Saved by {user} at** and the new next run."
       ],
       "states": [
         {
@@ -1068,7 +1074,10 @@
           "h": "How to read it"
         },
         {
-          "p": "The line at the top of each console reads **History backfill: not decided**, **No, history is not read** or **Yes**, with who recorded it and when. The table shows each family (**Source volume**, **WAF**, **IPS**, **Catch-all senders**, **Rule matches**) and scope with its **State**: **Not requested**, **Waiting**, **Reading**, **Complete**, **Partial**, **Unavailable**, **Not eligible**, **Switched off**, **Not started**, **Not read** or **Profile disabled**. **Window asked** is what was requested; **Window proved** is how far back QRadar was shown to hold events (the floor, in UTC), which can be less than asked for. **Gaps in what was read** are listed. A **Partial** scope is usable for learning and says why it stopped."
+          "p": "The line at the top of each console reads **History backfill: not decided**, **No, history is not read** or **Yes**, with who recorded it and when. The table shows each family (**Source volume**, **WAF**, **IPS**, **Catch-all senders**, **Rule matches**) and scope with its **State**: **Not requested**, **Waiting**, **Reading**, **Complete**, **Partial**, **Unavailable**, **Not eligible**, **Switched off**, **Not started**, **Not read** or **Profile disabled**. **Asked (days)** is what was requested; **Proved (floor)** is how far back QRadar was shown to hold events (the floor, in UTC), which can be less than asked for. **Gaps in what was read** are listed. A **Partial** scope is usable for learning and says why it stopped."
+        },
+        {
+          "p": "A family row that is not yet created is created at the next collection. A source whose profile is disabled is not collected, and a family with no configured source starts reading it when its profile is enabled. **Proved (floor)** is proved per source and is not in the console answer. **Asked (days)** is the window requested; **Through (UTC)** is the time read through, not a step time. A failed last step is retried at the next collection. Choosing **Read history now** again asks every family to read history at its next collection, including sources added since; nothing is read at once and nothing already read is deleted."
         }
       ],
       "steps": [
@@ -1080,7 +1089,7 @@
       ],
       "states": [
         {
-          "p": "**No QRadar console is enabled.**; **Reading was stopped before this started.**; **Last step failed at … (…). The next collection retries.**; the forbidden notice naming `read:history_backfill`, or `admin:history_backfill` for the change. If the server has the history backfill switch off, nothing is read, though the answer can still be recorded."
+          "p": "**No QRadar console is enabled.**; **Reading was stopped before this started.**; **Last step failed at … (…).** (the next collection retries it); the forbidden notice naming `read:history_backfill`, or `admin:history_backfill` for the change. If the server has the history backfill switch off, nothing is read, though the answer can still be recorded."
         }
       ],
       "permission": "`read:history_backfill` (to view); `admin:history_backfill` (to change)"
@@ -1121,6 +1130,18 @@
         },
         {
           "p": "These figures are read from QRadar's own Health Metrics and system notifications by the **QRadar health** search family, every 15 minutes by default (set on the Search cadence page), and stored. A figure is therefore as old as its window, which is stated above each table, and a window older than the cadence allows is marked **Stale** and kept with its time. Reading this page asks QRadar nothing for these figures."
+        },
+        {
+          "p": "**Searches in flight**: a search open longer than the stale limit (150 seconds by default) is listed as **Stale** because its worker probably stopped before it recorded an end. **Permit slots held**: when no permit cap applies the page says **Not enforced** and counts no slots. **Wall time** covers completed searches only; a dash means none completed. **Refused** searches never reached QRadar. **Search ids held** is what QRadar holds for every user, not what it is running. **Ariel** is judged from this platform's own latest searches, not from a QRadar status. A cached QRadar answer says how old it is; QRadar is asked again after the cache time (30 seconds by default)."
+        },
+        {
+          "p": "**Load by caller**: percentiles cover completed searches only. Totals cover every finished search; a total marked ≥ leaves out searches for which QRadar reported no figure, and a dash means none did. **Timeouts** are the part of **Failed** that ran out of time. Abandoned searches are counted in **Failed**: their worker stopped before it recorded an end, so they carry no measurement. An access check cancels its probe search unread; a cancelled probe is its normal end and is not counted in **Failed**. An empty window means no search was recorded in it."
+        },
+        {
+          "p": "**Managed hosts**: EPS and FPM are the managed host's own figures from the previous month, counted once for an HA pair; a dash means QRadar gave no figure. A healthy pair has the primary active and the secondary on standby. A degraded pair has one member active and the other not on standby, so no failover is possible. After a failover the secondary runs the host. An unclassified pair is shown as written and never read as healthy. When the host list is truncated the table shows the first hosts read and says more exist; an empty host list means the deployment returned none."
+        },
+        {
+          "p": "**Disk, system and pipeline**: the window sentence gives the window, when it was collected and nothing else; each figure is the maximum in that window, from QRadar's own Health Metrics, except the busiest stage, which is the window average. A host that sent Health Metrics but is not in the managed host list is listed apart and shown as QRadar sent it; when the managed host list was not read, every such host is unmatched. When collection is off (`QRADAR_HEALTH_COLLECTION_ENABLED`) the page shows the last window collected, or says none was ever collected. **System notifications**: if the windows cover less than the range, the counts may be low; if the newest window could not be read, the list covers the windows before it. **Trends**: a break in a line is a stretch with no stored window, not a value that held. When more hosts exist than the chart has colours for, the hosts with the highest peak are drawn and the others are named under the chart."
         }
       ],
       "steps": [
@@ -1133,7 +1154,7 @@
       ],
       "states": [
         {
-          "p": "**No QRadar console is enabled.**; **No search is in flight.**; **No search was submitted in the last 60 minutes.**; **No search was recorded in the last 24 h.**; a part the backend could not read, with its reason; a failed refresh keeps the last answer and says so; the forbidden notice naming `admin:*`; **Not collected**, **Failed**, **Stale** and **Partial** on the stored health, each with its reason (a partial window shows its figures marked ≥); **QRadar lists no managed host.**; **QRadar logged no system notification in the last 24 h**, said only of a range that was collected."
+          "p": "**No QRadar console is enabled.**; **No search is in flight.**; **No search was submitted in the last 60 minutes.**; **No search was recorded in the last 24 h.**; a part the backend could not read, with its reason; a failed refresh keeps the last answer and says so; the forbidden notice naming `admin:*`; **Not collected**, **Failed**, **Stale** and **Partial** on the stored health, each with its reason (a partial window shows its figures marked ≥); **QRadar lists no managed host.**; **No system notification in the last 24 h**, said only of a range that was collected."
         }
       ],
       "permission": "`admin:*`"
@@ -1178,7 +1199,7 @@
           "p": "Each console has its own section. The first line says what the check found: every API reachable, the refused APIs by name, that QRadar does not accept the token itself (HTTP 401), or that nothing was checked yet. The table lists the refused APIs first, then the ones that did not answer or were not checked, then the reachable ones. **Forbidden** is HTTP 403: the API exists and this token may not read it. **Not found** is HTTP 404: this QRadar version does not offer it. **Did not answer** is a network, TLS or timeout failure, and **Error** is any other answer. A dash in the HTTP column means QRadar sent no code. **Not checked yet** is not a result: it is never read as reachable. When the status changed since the check before, the row says what it was."
         },
         {
-          "p": "**What it feeds here** names what the API provides in this application and which collectors and pages stop working without it. Under **Covered calls and sources** are the calls that are not probed on their own and share this probe, and the IBM pages that were read for the entry."
+          "p": "**Feeds** names what the API provides in this application and which collectors and pages stop working without it. Under **Covered calls and sources** are the calls that are not probed on their own and share this probe, and the IBM pages that were read for the entry."
         },
         {
           "h": "What to ask for"
@@ -1191,6 +1212,9 @@
         },
         {
           "p": "**Check now** queues the check for every enabled console that uses the direct REST provider and answers at once. The page then reads the stored result every 5 seconds while a check runs, pauses while the tab is hidden, and stops after 3 minutes with a note that the check is still running in the worker. A check already running is not started twice, and the number of requests is limited. When an API becomes reachable that was not before, the check restarts the syncs that depend on it, and the page names them. A check that never ends is treated as not running after 10 minutes, so the next one can start."
+        },
+        {
+          "p": "The latest check lists the syncs it started, and each row shows the syncs the check just started. A console that is not on the direct REST provider is not checked. When QRadar does not accept the token (HTTP 401) the other statuses say nothing about what it may read until the token is replaced. **Not checked yet** appears until the first check, which runs at start-up; **Check now** runs it earlier. A refresh that failed keeps the previous read on the page and says so."
         }
       ],
       "steps": [

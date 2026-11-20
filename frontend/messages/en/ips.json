@@ -259,18 +259,18 @@
     "neverValidated": "never validated",
     "actions": "Actions",
     "remove": "Remove",
-    "notesLabel": "How to read the table",
-    "notes": "A profile change pauses collection until the new version validates, so “Version 5 not validated” means paused, not unhealthy. An older validation shows the version it checked.",
-    "noteDash": "A dash means never validated, not a failed validation."
+    "notesLabel": "Notes",
+    "notes": "See Guide.",
+    "noteDash": "See Guide."
   },
   "picker": {
     "add": "Add IPS source",
     "region": "Choose a log source",
-    "noInstance": "No QRadar instance known yet. Run a log-source sync first.",
+    "noInstance": "No QRadar instance known yet; run a log-source sync.",
     "searchLabel": "Name, type, identifier or QRadar ID",
     "searching": "Searching log sources…",
     "listFailed": "The log sources could not be listed.",
-    "forbiddenList": "Your role cannot list them (permission admin:ips).",
+    "forbiddenList": "Your role lacks permission admin:ips.",
     "emptyQuery": "No log source matches “{q}”.",
     "emptyLink": "Open inventory",
     "emptyAll": "Every known log source already has an IPS profile.",

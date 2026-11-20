@@ -10,34 +10,34 @@
   "page": {
     "title": "Classification rules",
     "description": "{total} rules, {builtIn} built-in and {custom} custom.",
-    "descriptionError": "The rules that decide a log source's class.",
+    "descriptionError": "Rules",
     "errorTitle": "Classification rules could not be shown.",
-    "forbidden": "Your role cannot read classification rules (permission read:fleet). Nothing was changed.",
+    "forbidden": "Your role lacks permission read:fleet.",
     "expired": "Your session has expired. Sign in again to continue.",
-    "failed": "Classification rules could not be loaded. The backend may be unreachable; check that it is running, then reload the page. Nothing was changed.",
+    "failed": "Classification rules could not be loaded. Check the backend, then reload.",
     "precedenceTitle": "Order of decision",
-    "precedenceNote": "The first level that decides wins; within a level, the highest priority wins."
+    "precedenceNote": "Highest level wins."
   },
   "precedence": {
     "override": {
       "title": "Operator override",
-      "detail": "the class chosen for one source"
+      "detail": "one source's chosen class"
     },
     "internal": {
       "title": "QRadar internal",
-      "detail": "the type is internal, or the identifier is 127.0.0.1"
+      "detail": "internal type, or identifier 127.0.0.1"
     },
     "group": {
       "title": "Group rules",
-      "detail": "a group the source is in, or any ancestor of it"
+      "detail": "a group of the source or its ancestors"
     },
     "type": {
       "title": "Type rules",
-      "detail": "the numeric type id, or a pattern on the type name"
+      "detail": "numeric type id or type-name pattern"
     },
     "name": {
       "title": "Name rules",
-      "detail": "a pattern on the source name or its identifier"
+      "detail": "source name or identifier pattern"
     },
     "unclassified": {
       "title": "Unclassified",
@@ -57,17 +57,17 @@
     "IDENTIFIER_REGEX": "Identifier pattern"
   },
   "hint": {
-    "regex": "A regular expression, at most 256 characters.",
-    "numeric": "A numeric id."
+    "regex": "Regex, up to 256 characters.",
+    "numeric": "Numeric id."
   },
   "failure": {
-    "forbidden": "Your role cannot change classification rules (permission admin:classification). Nothing was changed.",
+    "forbidden": "Your role lacks permission admin:classification.",
     "notChanged": "Not changed. {reason}"
   },
   "manager": {
     "levelEmptyTitle": "No {level} exist.",
-    "levelEmptyText": "Sources are not classified at this level until a rule is added below.",
-    "caption": "{level}, highest priority first. A rule that is off is skipped.",
+    "levelEmptyText": "Unclassified at this level until a rule is added.",
+    "caption": "{level}, highest priority first.",
     "priority": "Priority",
     "pattern": "Pattern",
     "class": "Class",
@@ -75,7 +75,7 @@
     "enabled": "Enabled",
     "actions": "Actions",
     "addTitle": "Add a custom rule",
-    "addNote": "Admin only, audited",
+    "addNote": "Admin only",
     "editAria": "Edit rule {pattern}",
     "targetClass": "Target class",
     "description": "Description",
@@ -96,10 +96,10 @@
     "delete": "Delete",
     "editRowAria": "Edit {label}",
     "deleteRowAria": "Delete {label}",
-    "enabledDone": "Enabled. Sources are re-classified.",
-    "disabledDone": "Disabled. Sources are re-classified.",
-    "saved": "Saved. Sources are re-classified.",
-    "added": "Rule added. Sources it matches are re-classified.",
-    "priorityHint": "0 to 10000. The highest priority at a level decides."
+    "enabledDone": "Enabled; sources re-classified.",
+    "disabledDone": "Disabled; sources re-classified.",
+    "saved": "Saved; sources re-classified.",
+    "added": "Rule added; matches re-classified.",
+    "priorityHint": "0 to 10000."
   }
 }

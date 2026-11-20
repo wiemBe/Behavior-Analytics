@@ -173,7 +173,7 @@ describe("the first-run dialog: what it says", () => {
     expect(row("Source volume")).toHaveTextContent("5 searches, about 0.1 hours");
     expect(row("WAF")).toHaveTextContent("2,100 searches, about 72 hours");
     expect(row("WAF")).toHaveTextContent("Reduced: 20 of 28 days fit in 72 hours");
-    expect(dialog).toHaveTextContent("These are estimates from a model, not measurements.");
+    expect(dialog).toHaveTextContent("Estimates from a model, not measurements.");
     // Each family lists its own assumptions, and a duplicate is dropped only within a family.
     const wafList = within(dialog).getByRole("list", { name: "Assumptions for WAF" });
     expect(within(wafList).getAllByRole("listitem")).toHaveLength(2);
@@ -222,9 +222,10 @@ describe("the first-run dialog: what it says", () => {
     expect(dialog).toHaveTextContent("Nothing old raises an alert.");
     expect(dialog).toHaveTextContent("Old data is used for learning only; it is never judged.");
     expect(dialog).toHaveTextContent(
-      "This sends read-only searches to QRadar for about 72 hours; the schedule you set in Search cadence still applies.",
+      "Sends read-only searches to QRadar for about 72 hours.",
     );
-    expect(dialog).toHaveTextContent("Property watches ask for history when you create the watch.");
+    expect(dialog).toHaveTextContent("WAF and IPS sources that already collected cannot read history.");
+    expect(dialog).not.toHaveTextContent("Property watches ask for history");
     expect(dialog.textContent).not.toMatch(/live|real-time|!/i);
   });
 
@@ -237,7 +238,7 @@ describe("the first-run dialog: what it says", () => {
     mount();
     const dialog = await screen.findByRole("dialog");
     await within(dialog).findByRole("button", { name: "Yes" });
-    expect(dialog).toHaveTextContent("how long it takes is not estimated");
+    expect(dialog).toHaveTextContent("duration not estimated");
     expect(dialog.textContent).not.toMatch(/about 0 hours/);
   });
 
@@ -272,7 +273,7 @@ describe("the first-run dialog: what it says", () => {
     const alert = await within(dialog).findByRole("alert");
     expect(alert).toHaveTextContent("The estimate could not be loaded.");
     expect(alert).toHaveTextContent("Nothing was changed");
-    expect(alert).toHaveTextContent("try again");
+    expect(alert).toHaveTextContent("Try again, or decide later");
     expect(dialog).not.toHaveTextContent("secret stack");
     expect(within(dialog).getByRole("button", { name: "Yes" })).toBeDisabled();
     await userEvent.click(within(alert).getByRole("button", { name: "Try again" }));
@@ -375,8 +376,7 @@ describe("the first-run dialog: asking and answering", () => {
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(await within(dialog).findByRole("button", { name: "Yes" }));
     const alert = await within(dialog).findByRole("alert");
-    expect(alert).toHaveTextContent("Your answer was not recorded.");
-    expect(alert).toHaveTextContent("A decision was recorded in the meantime.");
+    expect(alert).toHaveTextContent("Not recorded: a decision was recorded in the meantime.");
     expect(alert).toHaveTextContent("History backfill: No, history is not read. Recorded by bea");
     // The dialog stays so the recorded answer can be read, and the answers are gone.
     expect(within(dialog).queryByRole("button", { name: "Yes" })).not.toBeInTheDocument();
@@ -395,7 +395,7 @@ describe("the first-run dialog: asking and answering", () => {
     await userEvent.click(await within(dialog).findByRole("button", { name: "Yes" }));
     const alert = await within(dialog).findByRole("alert");
     expect(alert).toHaveTextContent("Nothing was changed.");
-    expect(alert).toHaveTextContent("try again");
+    expect(alert).toHaveTextContent("Check the backend, then try again.");
     expect(dialog).not.toHaveTextContent("psycopg2");
     await userEvent.click(within(dialog).getByRole("button", { name: "Yes" }));
     expect(decide).toHaveBeenCalledTimes(2);
@@ -454,7 +454,7 @@ describe("the first-run dialog: several consoles and a failed read", () => {
     const dialog = await screen.findByRole("dialog");
     const alert = within(dialog).getByRole("alert");
     expect(alert).toHaveTextContent("Nothing was changed.");
-    expect(alert).toHaveTextContent("try again");
+    expect(alert).toHaveTextContent("Check the backend, then try again.");
     expect(dialog).not.toHaveTextContent("boom");
     expect(window.sessionStorage.getItem(SHOWN_KEY)).toBeNull();
     await userEvent.click(within(alert).getByRole("button", { name: "Try again" }));

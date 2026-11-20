@@ -49,10 +49,10 @@ const tick = (seconds: number) =>
 describe("QRadar access page: the first screen", () => {
   it("says every API is reachable, with the last check in UTC and the interval in words", async () => {
     await open();
-    expect(screen.getByText("Every API the application uses is reachable with this token.")).toBeInTheDocument();
+    expect(screen.getByText("Every API is reachable.")).toBeInTheDocument();
     const section = screen.getByRole("region", { name: "qradar-lab" });
     expect(within(section).getByText(/Last checked/)).toHaveTextContent("2026-11-03 09:15:00 UTC");
-    expect(within(section).getByText(/Scheduled checks run every 6 h\./)).toBeInTheDocument();
+    expect(within(section).getByText(/Runs every 6 h\./)).toBeInTheDocument();
   });
 
   it("names the refused APIs and counts them", async () => {
@@ -77,7 +77,7 @@ describe("QRadar access page: the first screen", () => {
     );
     await open();
     const banner = screen.getByRole("alert");
-    expect(banner).toHaveTextContent("QRadar does not accept the token itself (HTTP 401).");
+    expect(banner).toHaveTextContent("QRadar does not accept the token (HTTP 401)");
     expect(banner).toHaveClass("crit");
     expect(screen.getByText("Token not accepted")).toHaveClass("crit");
   });
@@ -131,8 +131,8 @@ describe("QRadar access page: the first screen", () => {
       }),
     );
     await open();
-    expect(screen.getByText(/Not checked yet\. The first check runs at start-up/)).toBeInTheDocument();
-    expect(screen.getByText("No check has finished on this console yet.", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("Not checked yet.")).toBeInTheDocument();
+    expect(screen.getByText("No check finished yet.", { exact: false })).toBeInTheDocument();
     const row = screen.getByText("Log sources").closest("tr")!;
     expect(within(row).getByText("Not checked yet")).toBeInTheDocument();
     expect(within(row).queryByText("0")).not.toBeInTheDocument();
@@ -147,7 +147,7 @@ describe("QRadar access page: what to ask for", () => {
     const row = screen.getByText("Offenses").closest("tr")!;
     expect(
       within(row).getByText(
-        "IBM's role table suggests: Offenses. This is a hint. Confirm it with your QRadar administrator.",
+        "IBM's role table suggests: Offenses. Confirm with your QRadar administrator.",
       ),
     ).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("Required capability");
@@ -172,7 +172,7 @@ describe("QRadar access page: what to ask for", () => {
       }),
     );
     await open();
-    expect(screen.getByText("Required capability: Offenses (View). IBM states this for the API.")).toBeInTheDocument();
+    expect(screen.getByText("Required capability (IBM): Offenses (View).")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("suggests");
   });
 
@@ -202,9 +202,9 @@ describe("QRadar access page: what to ask for", () => {
     api.get.mockResolvedValue(access({ consoles: [consoleOf({ entries: REFUSED })] }));
     await open();
     const blocks = within(screen.getByText("Building blocks").closest("tr")!);
-    expect(blocks.getByText(/IBM documents no capability for this API/)).toBeInTheDocument();
+    expect(blocks.getByText(/IBM documents no capability/)).toBeInTheDocument();
     const pool = within(screen.getByText("License pool").closest("tr")!);
-    expect(pool.getByText(/QRadar answered 404/)).toBeInTheDocument();
+    expect(pool.getByText(/HTTP 404: this version lacks the API/)).toBeInTheDocument();
   });
 
   it("says the action once in the verdict box on a 401, and gives no row an ask block", async () => {
@@ -213,9 +213,9 @@ describe("QRadar access page: what to ask for", () => {
     );
     api.get.mockResolvedValue(access({ consoles: [consoleOf({ entries: rows })] }));
     await open();
-    const sentence = /The token itself was refused\. Replace or re-issue it, then press Check now\./;
+    const sentence = /Token refused\. Replace it, then press Check now\./;
     expect(screen.getAllByText(sentence)).toHaveLength(1);
-    expect(screen.getByRole("alert")).toHaveTextContent("Replace or re-issue it");
+    expect(screen.getByRole("alert")).toHaveTextContent("Replace it");
     const table = screen.getByRole("table", { name: "QRadar APIs checked on qradar-lab" });
     expect(within(table).queryByText("What to ask for")).not.toBeInTheDocument();
     expect(within(table).getAllByText("Token not accepted")).toHaveLength(5);
@@ -250,7 +250,7 @@ describe("QRadar access page: what to ask for", () => {
       }),
     );
     await open();
-    expect(screen.getByText(/QRadar answered 404/)).toBeInTheDocument();
+    expect(screen.getByText(/HTTP 404: this version lacks the API/)).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("suggests");
     expect(document.body).not.toHaveTextContent("Required capability");
     expect(document.body).not.toHaveTextContent("Admin");
@@ -300,7 +300,7 @@ describe("QRadar access page: Check now", () => {
     await user.click(screen.getByRole("button", { name: "Check now" }));
     expect(await screen.findByText("Check started on qradar-lab.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Check now" })).toBeDisabled();
-    expect(screen.getByText(/A check is running\. This page reads the result every 5 s\./)).toBeInTheDocument();
+    expect(screen.getByText(/Check running; refreshing every 5 s\./)).toBeInTheDocument();
 
     api.get.mockResolvedValue(
       access({
@@ -337,7 +337,7 @@ describe("QRadar access page: Check now", () => {
     await open();
     await user.click(screen.getByRole("button", { name: "Check now" }));
     expect(
-      await screen.findByText("A check was already running on qradar-lab. Nothing was queued for it."),
+      await screen.findByText("Already running on qradar-lab; nothing queued."),
     ).toBeInTheDocument();
   });
 
@@ -347,7 +347,7 @@ describe("QRadar access page: Check now", () => {
     await open();
     await user.click(screen.getByRole("button", { name: "Check now" }));
     expect(
-      await screen.findByText("The queue refused the check for qradar-lab. Nothing ran there. Try again in a minute."),
+      await screen.findByText("Queue refused the check for qradar-lab. Try again in a minute."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Check now" })).toBeEnabled();
   });
@@ -373,9 +373,8 @@ describe("QRadar access page: Check now", () => {
     api.check.mockRejectedValue(new ApiError(403, "no", "no"));
     await open();
     await user.click(screen.getByRole("button", { name: "Check now" }));
-    const text = await screen.findByText(/Your role cannot start a check/);
+    const text = await screen.findByText(/Your role lacks permission/);
     expect(text).toHaveTextContent("admin:*");
-    expect(text).toHaveTextContent("Nothing was started.");
   });
 
   it("says what failed for any other error on the POST", async () => {
@@ -384,7 +383,7 @@ describe("QRadar access page: Check now", () => {
     await open();
     await user.click(screen.getByRole("button", { name: "Check now" }));
     expect(
-      await screen.findByText("The check could not be requested (HTTP 500). Nothing ran. Try again."),
+      await screen.findByText("Check not requested (HTTP 500). Try again."),
     ).toBeInTheDocument();
   });
 
@@ -417,7 +416,7 @@ describe("QRadar access page: polling bounds", () => {
     await tick(POLL_LIMIT_SECONDS + POLL_SECONDS * 2);
     expect(api.get.mock.calls.length).toBe(POLL_LIMIT_SECONDS / POLL_SECONDS);
     expect(
-      screen.getByText(/The check is still running in the worker\. This page stopped reading after 3 min\./),
+      screen.getByText(/Check still running; reading stopped after 3 min\./),
     ).toBeInTheDocument();
     const reads = api.get.mock.calls.length;
     await tick(POLL_SECONDS * 10);
@@ -447,7 +446,7 @@ describe("QRadar access page: polling bounds", () => {
     await openFake(running());
     api.get.mockRejectedValue(new ApiError(502, "bad", "bad"));
     await tick(POLL_SECONDS);
-    expect(screen.getByText(/The last refresh failed\./)).toBeInTheDocument();
+    expect(screen.getByText(/Refresh failed\./)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "qradar-lab", level: 2 })).toBeInTheDocument();
   });
 });
@@ -468,7 +467,7 @@ describe("QRadar access page: other consoles and states", () => {
     render(<QRadarAccessPage />);
     await screen.findByRole("heading", { name: "qradar-prod", level: 2 });
     const lab = screen.getByRole("region", { name: "qradar-lab" });
-    expect(lab).toHaveTextContent("This console is not on the direct REST provider. Nothing is checked there.");
+    expect(lab).toHaveTextContent("Not on the direct REST provider; not checked.");
     expect(within(lab).queryByRole("table")).not.toBeInTheDocument();
     expect(within(lab).queryByText(/Not checked yet/)).not.toBeInTheDocument();
   });
@@ -509,7 +508,7 @@ describe("QRadar access page: other consoles and states", () => {
     api.get.mockRejectedValue(new ApiError(403, "no", "no"));
     render(<QRadarAccessPage />);
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("QRadar access cannot be shown to this account.");
+    expect(alert).toHaveTextContent("QRadar access cannot be shown.");
     expect(alert).toHaveTextContent("admin:*");
     expect(screen.queryByRole("button", { name: "Check now" })).not.toBeInTheDocument();
   });
@@ -521,7 +520,7 @@ describe("QRadar access page: other consoles and states", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Could not read the QRadar access results.");
     expect(alert).toHaveTextContent("The backend answered with HTTP 500.");
-    expect(alert).toHaveTextContent("nothing was sent to QRadar");
+    expect(alert).toHaveTextContent("Check the backend, then try again.");
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("heading", { name: "qradar-lab", level: 2 })).toBeInTheDocument();
   });

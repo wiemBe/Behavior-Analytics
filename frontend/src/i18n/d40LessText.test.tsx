@@ -21,15 +21,18 @@ async function guideText(id: string): Promise<string> {
 
 describe("D40-2 page text keeps the facts the analyst acts on", () => {
   it.each([
-    ["siemLoad", "page.description"],
     ["waf", "behavior.description"],
     ["cadence", "page.description"],
     ["mailAdmin", "page.description"],
-    ["qradarAccess", "page.description"],
     ["ips", "page.description"],
     ["outage", "page.description"],
   ])("%s %s says only that times are UTC", (ns, key) => {
     expect(get(ns, key)).toBe("Times are UTC.");
+  });
+
+  it("siemLoad and qradarAccess carry no page description at all (UIQ-8g2)", () => {
+    expect(((en as unknown as Tree).siemLoad as Tree).page).not.toHaveProperty("description");
+    expect(((en as unknown as Tree).qradarAccess as Tree).page).not.toHaveProperty("description");
   });
 
   it("keeps the time zone on the pages whose description still carries a fact", () => {
@@ -37,12 +40,12 @@ describe("D40-2 page text keeps the facts the analyst acts on", () => {
     expect(get("catchall", "page.description")).toContain("Times are UTC.");
   });
 
-  it("SIEM load keeps the stale threshold, the dash rule and the refused meaning", () => {
-    expect(get("siemLoad", "now.inFlightNote")).toContain("Stale after {seconds, number} s without an end.");
-    expect(get("siemLoad", "now.windowsNote")).toBe(
-      "Wall time covers completed searches only; a dash means none completed. Refused searches never reached QRadar.",
-    );
-    expect(get("siemLoad", "qradar.arielHeldNote")).toContain("not what it is running");
+  it("SIEM load keeps the stale threshold on the page and the dash rule and refused meaning in the guide", async () => {
+    expect(get("siemLoad", "flight.staleGroup")).toContain("Stale: older than {seconds, number} s.");
+    const guide = await guideText("siem-load");
+    expect(guide).toContain("covers completed searches only; a dash means none completed.");
+    expect(guide).toContain("searches never reached QRadar.");
+    expect(guide).toContain("not what it is running");
   });
 
   it("behavior banner keeps INSUFFICIENT_DATA and drops the third statement", () => {
@@ -62,7 +65,7 @@ describe("D40-2 page text keeps the facts the analyst acts on", () => {
   it("e-mail and QRadar access keep the read-only and secrecy facts", () => {
     expect(get("mailAdmin", "relay.status.note")).toBe("Configured means a host is set, not that the relay answers.");
     expect(get("mailAdmin", "relay.envNote")).toContain("The password is never shown.");
-    expect(get("qradarAccess", "check.note")).toContain("Nothing is written to QRadar.");
+    expect(get("qradarAccess", "check.note")).toContain("writes nothing");
   });
 
   it("the e-mail templates intro is gone from the catalog", () => {
