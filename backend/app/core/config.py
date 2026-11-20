@@ -11,6 +11,7 @@ import json
 import os
 import re
 from collections.abc import Mapping, Sequence
+from contextvars import ContextVar
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -25,7 +26,13 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    DotEnvSettingsSource,
+    NoDecode,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 from app.core.patterns import PROPERTY_NAME_PATTERN
 from app.models.enums import AlertPolicyMode, OutagePolicyMode
@@ -110,6 +117,16 @@ WAF_COLLECTION_ALIASES: dict[str, str] = {
     "WAF_CLIENT_COLLECTION_ENABLED": "WAF_COLLECTION_CLIENT_ENABLED",
 }
 
+#: Raw name -> value of the env file the current ``Settings`` construction resolved.
+#: ``settings_customise_sources`` fills it from pydantic-settings' own dotenv source,
+#: which is the only way to see an explicit ``_env_file`` as well as the configured
+#: one. ``__init__`` restores it when the construction ends, so it never leaks into a
+#: later validation. A ContextVar, not a module global: two threads constructing
+#: ``Settings`` must not compare each other's files.
+_ENV_FILE_VALUES: ContextVar[Mapping[str, str | None] | None] = ContextVar(
+    "settings_env_file_values", default=None
+)
+
 _TRUE_ENV_FLAGS = frozenset({"1", "true", "t", "yes", "y", "on"})
 _FALSE_ENV_FLAGS = frozenset({"0", "false", "f", "no", "n", "off"})
 
@@ -127,7 +144,7 @@ def _env_flag(value: str) -> bool | str:
     return value
 
 
-def _env_value(environ: Mapping[str, str], name: str) -> str | None:
+def _env_value(environ: Mapping[str, str | None], name: str) -> str | None:
     """Case-insensitive environment lookup (``Settings`` is case-insensitive too)."""
     wanted = name.upper()
     for key, value in environ.items():
@@ -314,7 +331,56 @@ class Settings(BaseSettings):
         # own name too, or Settings(qradar_host=...) silently falls back to
         # the default instead of validating what the caller passed.
         populate_by_name=True,
+        # Pydantic embeds the whole merged input (secrets included) as
+        # ``input_value={...}`` in a ``ValidationError``. Startup errors reach the
+        # console and the logs, so never echo secret values there (FIX-71c r2).
+        hide_input_in_errors=True,
     )
+
+    def __init__(self, **data: Any) -> None:
+        """Construct the settings, dropping the env file's raw values afterwards.
+
+        ``settings_customise_sources`` publishes the env file's raw name/value pairs
+        for ``_waf_breakdown_aliases_agree``; they describe this construction only,
+        so they are restored however it ends. A validation entry point that does not
+        collect sources (``model_validate``) therefore sees no file values at all,
+        exactly as before.
+        """
+        token = _ENV_FILE_VALUES.set(None)
+        try:
+            super().__init__(**data)
+        finally:
+            _ENV_FILE_VALUES.reset(token)
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Keep the default source order and publish the env file's raw values.
+
+        The dotenv source handed in is the one pydantic-settings built for this
+        construction, so an explicit ``_env_file`` is honoured and the file is parsed
+        exactly as validation will parse it. ``_waf_breakdown_aliases_agree`` needs
+        the raw names: pydantic compares field names, not the alias that supplied one.
+        """
+        if not isinstance(dotenv_settings, DotEnvSettingsSource):
+            raise RuntimeError(
+                "Settings requires pydantic-settings >= 2.16: the dotenv source must "
+                "be a DotEnvSettingsSource exposing _read_env_files()."
+            )
+        reader = getattr(dotenv_settings, "_read_env_files", None)
+        if not callable(reader):
+            raise RuntimeError(
+                "Settings requires pydantic-settings >= 2.16: DotEnvSettingsSource must "
+                "expose the _read_env_files() reader."
+            )
+        _ENV_FILE_VALUES.set(dict(reader()))
+        return init_settings, env_settings, dotenv_settings, file_secret_settings
 
     # --- core ---------------------------------------------------------------
     environment: Environment = Environment.DEVELOPMENT
@@ -1527,16 +1593,25 @@ class Settings(BaseSettings):
         """Refuse a canonical/alias pair that disagrees; accept one or both alike.
 
         ``AliasChoices`` silently takes the first name it finds, which would hide a
-        contradictory operator configuration. Read the raw environment so both
-        spellings are compared before the chosen value is used. An alias that is
-        set, alone or alongside the canonical name, still marks the field as
-        supplied -- pydantic records the field, not the alias, in
-        ``model_fields_set`` -- so OPS-DEFAULTS-1's provenance is unchanged.
+        contradictory operator configuration. Read the raw environment and the raw
+        env-file values so both spellings are compared before the chosen value is
+        used: a bare-metal `.env` is as real a source as ``os.environ``, and
+        pydantic-settings would otherwise resolve the pair inside the file silently.
+        A name set in both sources is compared by its environment value, which is the
+        source pydantic-settings ranks first. An alias that is set, alone or alongside
+        the canonical name, still marks the field as supplied -- pydantic records the
+        field, not the alias, in ``model_fields_set`` -- so OPS-DEFAULTS-1's
+        provenance is unchanged.
         """
-        environ: Mapping[str, str] = os.environ
+        file_values: Mapping[str, str | None] = _ENV_FILE_VALUES.get() or {}
+
+        def raw_value(name: str) -> str | None:
+            value = _env_value(os.environ, name)
+            return _env_value(file_values, name) if value is None else value
+
         for canonical, alias in WAF_COLLECTION_ALIASES.items():
-            canonical_value = _env_value(environ, canonical)
-            alias_value = _env_value(environ, alias)
+            canonical_value = raw_value(canonical)
+            alias_value = raw_value(alias)
             if canonical_value is None or alias_value is None:
                 continue
             if _env_flag(canonical_value) != _env_flag(alias_value):

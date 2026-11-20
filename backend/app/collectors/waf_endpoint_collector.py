@@ -59,7 +59,11 @@ is refused before any search: no bucket is invented for an unusable budget
 (FIX-71c). When splitting a truncated kind exhausts the cap, the report carries
 a typed `WafCollectionOutcome` (`PARTIAL_CAP`, or `BUDGET_STARVED` when no bucket
 completed) and the cap/due/collected counts are persisted on the watermark. A
-zero-bucket tick is therefore never an unexplained `ok/0`.
+zero-bucket tick is therefore never an unexplained `ok/0`. The same write carries
+`last_run_partial_reason` (`search_cap_reached` for a partial cap,
+`budget_exhausted` for a starved one), the bounded code the status read matches; a
+run with any other outcome removes it, so the key always describes the run named by
+`last_run_outcome`.
 
 **Breakdowns (Phase B.2).** A profile's `BreakdownPlan` may add up to three more
 bounded searches per bucket, under the same permit: requests by endpoint and
@@ -207,6 +211,20 @@ class WafCollectionOutcome(StrEnum):
     CONFIG_REFUSED = "config_refused"
 
 
+#: Bounded codes published as the watermark's ``last_run_partial_reason``.
+#: The status read (``services/waf_status.py``) matches exactly these two, so they
+#: are named once here and never built from the free-text budget sentence.
+PARTIAL_REASON_SEARCH_CAP = "search_cap_reached"
+PARTIAL_REASON_BUDGET_EXHAUSTED = "budget_exhausted"
+
+#: Cap outcomes that publish a partial reason. An outcome absent here is not a
+#: partial run and clears any reason an earlier tick left on the watermark.
+_PARTIAL_REASON_BY_OUTCOME: dict[WafCollectionOutcome, str] = {
+    WafCollectionOutcome.PARTIAL_CAP: PARTIAL_REASON_SEARCH_CAP,
+    WafCollectionOutcome.BUDGET_STARVED: PARTIAL_REASON_BUDGET_EXHAUSTED,
+}
+
+
 @dataclass
 class WafCollectionReport:
     instance_id: uuid.UUID
@@ -256,6 +274,30 @@ class WafCollectionReport:
     #: Breakdown -> buckets in which its search was truncated or failed.
     breakdown_lower_bound_buckets: dict[str, list[str]] = field(default_factory=dict)
     breakdown_failed_buckets: dict[str, list[str]] = field(default_factory=dict)
+
+
+def _apply_budget_diagnostics(
+    metadata: dict[str, Any], report: WafCollectionReport, now: datetime
+) -> None:
+    """Record this run's budget diagnostics, or clear the previous run's.
+
+    The watermark metadata is merged from the previous tick (``{**old, ...}``),
+    so a key that is only ever set would outlive the run that earned it: a clean
+    run would still publish an earlier cap reason and a reader would keep showing
+    a budget problem that has ended (FIX-71c r1). Each write path therefore sets
+    the keys its own run has and removes the ones it does not.
+    """
+    if report.budget_reason is not None:
+        metadata["last_budget_reason"] = report.budget_reason
+        metadata["last_budget_refusal_at"] = now.isoformat()
+    else:
+        metadata.pop("last_budget_reason", None)
+        metadata.pop("last_budget_refusal_at", None)
+    partial_reason = _PARTIAL_REASON_BY_OUTCOME.get(report.outcome)
+    if partial_reason is None:
+        metadata.pop("last_run_partial_reason", None)
+    else:
+        metadata["last_run_partial_reason"] = partial_reason
 
 
 @dataclass(frozen=True)
@@ -474,9 +516,7 @@ class WafEndpointCollector:
             "last_run_search_cap": self.settings.search_cadence_max_searches_per_tick,
             "last_run_outcome": report.outcome.value,
         }
-        if report.budget_reason is not None:
-            metadata["last_budget_reason"] = report.budget_reason
-            metadata["last_budget_refusal_at"] = now.isoformat()
+        _apply_budget_diagnostics(metadata, report, now)
         watermark.collection_metadata = metadata
 
     async def collect(
@@ -606,9 +646,7 @@ class WafEndpointCollector:
                 metadata["last_capacity_skip_at"] = now.isoformat()
             if report.provider_failure_class is not None:
                 metadata["last_provider_failure_class"] = report.provider_failure_class
-            if report.budget_reason is not None:
-                metadata["last_budget_reason"] = report.budget_reason
-                metadata["last_budget_refusal_at"] = now.isoformat()
+            _apply_budget_diagnostics(metadata, report, now)
             if (collected and not failed) or not intervals:
                 metadata["last_success_at"] = now.isoformat()
             watermark.collection_metadata = metadata

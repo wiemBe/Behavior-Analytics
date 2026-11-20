@@ -19,6 +19,8 @@ import pytest
 from sqlalchemy import event, inspect, select
 
 from app.collectors.waf_endpoint_collector import (
+    PARTIAL_REASON_BUDGET_EXHAUSTED,
+    PARTIAL_REASON_SEARCH_CAP,
     WafCollectionOutcome,
     WafCollectionReport,
     WafEndpointCollector,
@@ -796,9 +798,91 @@ class TestBudgetOutcome:
         assert list(starts) == [T0 + STEP * i for i in range(6)]
         wm = await db_session.scalar(select(CollectionWatermark).where(
             CollectionWatermark.collector == f"waf_endpoint_metric:{source.qradar_id}"))
-        # The earlier refusal reason persists beside the new successful outcome.
+        # FIX-71c r1: the earlier refusal's diagnostics do not outlive that run.
         assert wm.collection_metadata["last_run_outcome"] == "ok"
+        assert "last_budget_reason" not in wm.collection_metadata
+        assert "last_budget_refusal_at" not in wm.collection_metadata
+        assert "last_run_partial_reason" not in wm.collection_metadata
+
+
+class TestPartialReasonContract:
+    """FIX-71c r1: the watermark publishes the two reason codes the UI reads."""
+
+    async def test_a_partial_cap_publishes_search_cap_reached(self, db_session) -> None:
+        settings = cfg(**OUTCOMES_ON, waf_max_groups_per_bucket=10,
+                       waf_max_breakdown_groups_per_bucket=13,
+                       ariel_multi_bucket_max_rows=80,
+                       search_cadence_max_searches_per_tick=7)
+        provider = ScriptedWaf(traffic(14, flood_at=None, empty_at=None))
+        provider.derive_breakdowns()
+        _, source, instance, make = await make_source(db_session, provider, settings)
+        await make(after(1)).collect(instance, log_source=source)
+
+        report = await make(after(13)).collect(instance, log_source=source)
+
+        assert report.outcome is WafCollectionOutcome.PARTIAL_CAP
+        wm = await db_session.scalar(select(CollectionWatermark).where(
+            CollectionWatermark.collector == f"waf_endpoint_metric:{source.qradar_id}"))
+        assert wm.collection_metadata["last_run_partial_reason"] == PARTIAL_REASON_SEARCH_CAP
+        # The literal is the contract the status read matches; the constant names it.
+        assert wm.collection_metadata["last_run_partial_reason"] == "search_cap_reached"
+
+    async def test_a_starved_budget_publishes_budget_exhausted(self, db_session) -> None:
+        settings = cfg(waf_max_groups_per_bucket=10, ariel_multi_bucket_max_rows=1,
+                       search_cadence_max_searches_per_tick=2,
+                       waf_client_collection_enabled=True)
+        provider = ScriptedWaf(traffic(6, flood_at=None, empty_at=None))
+        provider.derive_breakdowns()
+        _, source, instance, make = await make_source(db_session, provider, settings)
+        await make(after(1)).collect(instance, log_source=source)
+
+        report = await make(after(6)).collect(instance, log_source=source)
+
+        assert report.outcome is WafCollectionOutcome.BUDGET_STARVED
+        wm = await db_session.scalar(select(CollectionWatermark).where(
+            CollectionWatermark.collector == f"waf_endpoint_metric:{source.qradar_id}"))
+        assert wm.collection_metadata["last_run_partial_reason"] == PARTIAL_REASON_BUDGET_EXHAUSTED
+        assert wm.collection_metadata["last_run_partial_reason"] == "budget_exhausted"
+
+    async def test_a_clean_run_clears_the_previous_budget_diagnostics(self, db_session) -> None:
+        partial = cfg(**OUTCOMES_ON, waf_max_groups_per_bucket=10,
+                      waf_max_breakdown_groups_per_bucket=13,
+                      ariel_multi_bucket_max_rows=80,
+                      search_cadence_max_searches_per_tick=7)
+        provider = ScriptedWaf(traffic(14, flood_at=None, empty_at=None))
+        provider.derive_breakdowns()
+        profile, source, instance, make = await make_source(db_session, provider, partial)
+        await make(after(1)).collect(instance, log_source=source)
+        first = await make(after(13)).collect(instance, log_source=source)
+        assert first.outcome is WafCollectionOutcome.PARTIAL_CAP
+
+        wm = await db_session.scalar(select(CollectionWatermark).where(
+            CollectionWatermark.collector == f"waf_endpoint_metric:{source.qradar_id}"))
+        assert wm.collection_metadata["last_run_partial_reason"] == PARTIAL_REASON_SEARCH_CAP
         assert wm.collection_metadata["last_budget_reason"]
+        assert wm.collection_metadata["last_budget_refusal_at"]
+
+        # A cap that fits the six remaining buckets: every kind completes, so the
+        # run is clean and must not keep describing the partial one before it.
+        wide = cfg(**OUTCOMES_ON, waf_max_groups_per_bucket=10,
+                   waf_max_breakdown_groups_per_bucket=13,
+                   ariel_multi_bucket_max_rows=80,
+                   search_cadence_max_searches_per_tick=64)
+        cleaner = WafEndpointCollector(
+            db_session, provider, mapping=WafFieldMapping.from_profile(profile),
+            profile_version=profile.profile_version, settings=wide,
+            clock=lambda: after(13), breakdowns=breakdown_plan(profile, wide),
+        )
+        second = await cleaner.collect(instance, log_source=source)
+
+        assert second.outcome is WafCollectionOutcome.OK
+        assert second.intervals_collected == 6
+        await db_session.refresh(wm)
+        assert wm.collection_metadata["last_run_outcome"] == "ok"
+        for stale in (
+            "last_budget_reason", "last_budget_refusal_at", "last_run_partial_reason"
+        ):
+            assert stale not in wm.collection_metadata
 
 
 class TestProviderFailure:

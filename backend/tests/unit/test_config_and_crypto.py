@@ -338,6 +338,107 @@ def test_contradictory_waf_breakdown_names_refuse_startup(
     assert "different values" in text
 
 
+@pytest.mark.parametrize(("canonical", "alias"), _WAF_ALIAS_PAIRS)
+def test_a_dotenv_file_with_contradictory_waf_names_refuses_startup(
+    clean_settings_env, monkeypatch, tmp_path, canonical, alias
+) -> None:
+    """FIX-71c r1: the env file is a source too, and is compared, not resolved.
+
+    A bare-metal `.env` holding both spellings used to pass silently: pydantic took
+    the canonical value and the alias never reached ``os.environ``. The file the
+    Settings class actually loads is now part of the comparison.
+    """
+    monkeypatch.delenv(canonical, raising=False)
+    monkeypatch.delenv(alias, raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"{canonical}=false\n{alias}=true\n", encoding="utf-8")
+    with pytest.raises(ValidationError) as caught:
+        Settings(_env_file=env_file)
+    text = str(caught.value)
+    assert canonical in text
+    assert alias in text
+    assert "different values" in text
+
+    # The same file with one value for both names is an ordinary configuration.
+    env_file.write_text(f"{canonical}=false\n{alias}=false\n", encoding="utf-8")
+    settings = Settings(_env_file=env_file)
+    field = canonical.lower()
+    assert getattr(settings, field) is False
+    assert field in settings.model_fields_set
+
+
+@pytest.mark.parametrize(("canonical", "alias"), _WAF_ALIAS_PAIRS)
+def test_env_beats_dotenv_file_for_waf_breakdown_alias(
+    clean_settings_env, monkeypatch, tmp_path, canonical, alias
+) -> None:
+    monkeypatch.delenv(canonical, raising=False)
+    monkeypatch.delenv(alias, raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"{canonical}=true\n{alias}=false\n", encoding="utf-8")
+    monkeypatch.setenv(alias, "true")
+    settings = Settings(_env_file=env_file)
+    field = canonical.lower()
+    assert getattr(settings, field) is True
+    assert field in settings.model_fields_set
+
+
+@pytest.mark.parametrize(("canonical", "alias"), _WAF_ALIAS_PAIRS)
+def test_settings_validation_error_hides_secret_marker_in_env(
+    clean_settings_env, monkeypatch, canonical, alias
+) -> None:
+    marker = "ZZZMARKER"
+    monkeypatch.setenv("SECRET_KEY", marker)
+    monkeypatch.setenv(canonical, "true")
+    monkeypatch.setenv(alias, "false")
+    with pytest.raises(ValidationError) as caught:
+        Settings(_env_file=None)
+    text = str(caught.value)
+    assert canonical in text
+    assert alias in text
+    assert marker not in text
+
+
+@pytest.mark.parametrize(("canonical", "alias"), _WAF_ALIAS_PAIRS)
+def test_settings_validation_error_hides_secret_marker_in_dotenv_file(
+    clean_settings_env, monkeypatch, tmp_path, canonical, alias
+) -> None:
+    marker = "ZZZMARKER"
+    monkeypatch.delenv(canonical, raising=False)
+    monkeypatch.delenv(alias, raising=False)
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        f"SECRET_KEY={marker}\n{canonical}=false\n{alias}=true\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError) as caught:
+        Settings(_env_file=env_file)
+    text = str(caught.value)
+    assert canonical in text
+    assert alias in text
+    assert marker not in text
+
+
+def test_settings_customise_sources_raises_on_non_dotenv_source() -> None:
+    """FIX-71c r2: a non-DotEnvSettingsSource must fail loudly, not skip."""
+
+    class StubSource:
+        pass
+
+    with pytest.raises(RuntimeError, match="pydantic-settings"):
+        Settings.settings_customise_sources(Settings, None, None, StubSource(), None)  # type: ignore[arg-type]
+
+
+def test_settings_customise_sources_raises_when_reader_missing() -> None:
+    """FIX-71c r2: a DotEnvSettingsSource without _read_env_files must fail loudly."""
+    from pydantic_settings import DotEnvSettingsSource
+
+    source = DotEnvSettingsSource(Settings)
+    source._read_env_files = None  # type: ignore[assignment]
+    with pytest.raises(RuntimeError, match="pydantic-settings"):
+        Settings.settings_customise_sources(Settings, None, None, source, None)  # type: ignore[arg-type]
+
+
 def test_unknown_setting_hints_name_the_canonical_for_a_transposition() -> None:
     """FIX-71i: a near-miss is told the canonical spelling, not an alias or a typo."""
     hints = unknown_setting_canonical_hints(
