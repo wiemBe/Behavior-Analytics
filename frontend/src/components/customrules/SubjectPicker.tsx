@@ -2,14 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 
 import {
-  customRuleDelayText,
   subjectKindInSentence,
   subjectKindLabel,
 } from "@/components/customrules/authoring";
-import { latencyCadence } from "@/components/cadence/CadenceLatency";
 import {
   loadIpsEntities,
   loadIpsSources,
@@ -26,7 +24,6 @@ import {
   type WafEndpointInventory,
   type WafSourceBehavior,
 } from "@/lib/api";
-import type { Locale } from "@/i18n/locale";
 import { asTextTranslator } from "@/i18n/textTranslator";
 
 interface SubjectValue {
@@ -64,12 +61,6 @@ function entityLabel(entity: IpsEntityInventory): string {
 export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel }: SubjectPickerProps) {
   const t = useTranslations("customRules.picker");
   const say = asTextTranslator(useTranslations());
-  const locale = useLocale() as Locale;
-  const pinCadence = latencyCadence(catalog.cadences?.find((c) => c.family === "PROPERTY_WATCH"));
-  const pinDelay = customRuleDelayText(pinCadence, locale, say);
-  const availability = pinDelay
-    ? t("availabilityKnown", { duration: pinDelay })
-    : t("availabilityUnknown");
   const kindId = useId();
   const searchId = useId();
   const parentId = useId();
@@ -349,9 +340,6 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
                   subjects: kind === "WAF_ENDPOINT" ? t("endpoints") : t("entities"),
                 })}
               </p>
-              <p>
-                {t("customSearchBefore")}<Link href="/searches/new">{t("customSearch")}</Link>.
-              </p>
             </div>
           )}
         </>
@@ -405,16 +393,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
               <p>
                 {t("noPinnedBefore")}<Link href={`/behavior/watches/${watchId}`}>{t("openWatch")}</Link>{t("noPinnedAfter")}
               </p>
-              <p>
-                {t("newPin", { availability })}
-              </p>
             </div>
-          )}
-          {watchId && pinnedValues.length > 0 && (
-            <p className="field-hint">
-              {t("onlyPinnedBefore")}<Link href={`/behavior/watches/${watchId}`}>{t("pinFirst")}</Link>
-              {t("onlyPinnedAfter", { availability })}
-            </p>
           )}
         </>
       )}

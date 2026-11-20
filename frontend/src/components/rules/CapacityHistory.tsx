@@ -18,7 +18,7 @@ import type { Locale } from "@/i18n/locale";
 
 import { formatCapacity } from "./ruleStatistics";
 
-export const CAPACITY_UNIT = "millions of events per second (QRadar's unit)";
+export const CAPACITY_UNIT = "M events/s";
 
 function Figure({ value, locale, missing }: { value: number | null; locale: Locale; missing: string }) {
   return value === null ? (
@@ -55,15 +55,9 @@ export function CapacityHistory({
           <p>
             <strong>{t("emptyTitle")}</strong>
           </p>
-          <p>
-            {t("emptyHelp")}
-          </p>
         </div>
       ) : (
         <>
-          <p className="subtitle">
-            {t("description", { unit: locale === "en" ? CAPACITY_UNIT : t("unit") })}
-          </p>
           <TableScroll label={t("label")}>
             <table className="stats-table stats-capacity">
               <caption className="sr-only">
@@ -73,10 +67,10 @@ export function CapacityHistory({
                 <tr>
                   <th scope="col">{t("benchmarked")}</th>
                   <th scope="col" className="num">
-                    {t("average")}
+                    {t("average")} ({t("unit")})
                   </th>
                   <th scope="col" className="num">
-                    {t("base")}
+                    {t("base")} ({t("unit")})
                   </th>
                   <th scope="col" className="num">
                     {t("host")}

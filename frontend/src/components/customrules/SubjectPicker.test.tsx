@@ -48,9 +48,9 @@ describe("custom-rule subject picker", () => {
     expect(screen.getByRole("searchbox", { name: "Find WAF endpoint" })).toBeInTheDocument();
     const source = await screen.findByRole("combobox", { name: "WAF source" });
     fireEvent.change(source, { target: { value: "waf-1" } });
-    await waitFor(() => expect(screen.getByText(/No admitted endpoints are available/)).toBeInTheDocument());
-    expect(screen.getByText(/Only admitted subjects/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "custom search" })).toHaveAttribute("href", "/searches/new");
+    await waitFor(() => expect(screen.getByText(/No admitted endpoints available/)).toBeInTheDocument());
+    expect(screen.queryByText(/Only admitted subjects/)).toBeNull();
+    expect(screen.queryByRole("link", { name: "custom search" })).toBeNull();
   });
 
   it("names a failed source inventory and the recovery action", async () => {
@@ -66,7 +66,7 @@ describe("custom-rule subject picker", () => {
       />,
     );
     expect(screen.getByRole("searchbox", { name: "Find log source" })).toBeInTheDocument();
-    expect(await screen.findByRole("alert")).toHaveTextContent("Check the backend");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Subjects failed to load");
   });
 
   it("offers only pinned property-watch values, renders hostile text inert and links to pin first", async () => {
@@ -98,13 +98,11 @@ describe("custom-rule subject picker", () => {
     expect(within(values).getByRole("option", { name: /<img/ })).toBeInTheDocument();
     expect(within(values).queryByRole("option", { name: "automatic" })).toBeNull();
     expect(container.querySelector("img")).toBeNull();
-    expect(screen.getByRole("link", { name: /pin it on the watch first/i })).toHaveAttribute(
-      "href",
-      `/behavior/watches/${watch().id}`,
-    );
+    expect(screen.queryByRole("link", { name: /pin it on the watch first/i })).toBeNull();
+    expect(screen.queryByText(/Only pinned values are listed/)).toBeNull();
   });
 
-  it("states the figure from the PROPERTY_WATCH cadence in the catalog", async () => {
+  it("states no collection-delay figure for the PROPERTY_WATCH cadence (the Guide holds it)", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
     vi.spyOn(api, "propertyWatchValues").mockResolvedValue(paged([]));
     render(
@@ -122,10 +120,11 @@ describe("custom-rule subject picker", () => {
     fireEvent.change(await screen.findByRole("combobox", { name: "Property watch" }), {
       target: { value: watch().id },
     });
-    expect(await screen.findByText(/which runs up to 1 h 7 min after the events arrive/)).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: "Pinned value" })).toBeInTheDocument();
+    expect(screen.queryByText(/which runs up to/)).toBeNull();
   });
 
-  it("explains that a fresh pin waits for the next collection tick", async () => {
+  it("says no value is pinned and links to the watch, without the collection-tick sentence", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
     vi.spyOn(api, "propertyWatchValues").mockResolvedValue(paged([]));
     render(
@@ -141,14 +140,15 @@ describe("custom-rule subject picker", () => {
     fireEvent.change(await screen.findByRole("combobox", { name: "Property watch" }), {
       target: { value: watch().id },
     });
-    expect(await screen.findByText(/new pin can be used in a rule after the next property-watch collection\./)).toBeInTheDocument();
+    expect(await screen.findByText(/No pinned value/)).toBeInTheDocument();
+    expect(screen.queryByText(/new pin/i)).toBeNull();
     expect(screen.getByRole("link", { name: /open the property watch/i })).toHaveAttribute(
       "href",
       `/behavior/watches/${watch().id}`,
     );
   });
 
-  it("says a just-pinned value is not listed yet, even when other pins are", async () => {
+  it("lists only pinned values even when other values exist", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
     vi.spyOn(api, "propertyWatchValues").mockResolvedValue(
       paged([value("pv-1", "svc-backup", { pinned: true }), value("pv-2", "alice")]),
@@ -166,7 +166,8 @@ describe("custom-rule subject picker", () => {
     fireEvent.change(await screen.findByRole("combobox", { name: "Property watch" }), {
       target: { value: watch().id },
     });
-    expect(await screen.findByText(/pinned just now is listed after the next/)).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "svc-backup" })).toBeInTheDocument();
+    expect(screen.queryByText(/pinned just now/)).toBeNull();
     expect(screen.queryByRole("option", { name: "alice" })).toBeNull();
   });
 });

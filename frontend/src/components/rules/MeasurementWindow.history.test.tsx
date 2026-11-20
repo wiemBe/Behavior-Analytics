@@ -28,7 +28,7 @@ describe("MeasurementWindow: windows read from QRadar history", () => {
   it("states n of m complete windows when some were read from history", () => {
     render(<MeasurementWindow window={win({ history_windows: 48 })} />);
     expect(region()).toHaveTextContent(
-      "48 of 168 complete windows were read from QRadar history, not judged.",
+      "48 of 168 windows read from QRadar history.",
     );
   });
 
@@ -38,7 +38,7 @@ describe("MeasurementWindow: windows read from QRadar history", () => {
         window={win({ complete: false, complete_windows: 100, history_windows: 20, reason: "Some windows are missing." })}
       />,
     );
-    expect(region()).toHaveTextContent("20 of 100 complete windows were read from QRadar history");
+    expect(region()).toHaveTextContent("20 of 100 windows read from QRadar history");
   });
 
   it("adds nothing for zero or an absent count", () => {

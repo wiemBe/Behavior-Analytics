@@ -18,14 +18,14 @@ beforeEach(() => {
 });
 
 describe("new custom rule page", () => {
-  it("shows the editor and latency statement to a writer", async () => {
+  it("shows the editor and no latency sentence to a writer", async () => {
     render(await NewCustomRulePage());
     expect(screen.getByRole("heading", { name: "New custom rule", level: 1 })).toBeInTheDocument();
     expect(screen.getByLabelText("custom rule editor")).toBeInTheDocument();
-    expect(screen.getAllByText((_, el) => el?.tagName === "P" && el.textContent === partsText(customRuleLatency()))).toHaveLength(1);
+    expect(screen.queryAllByText((_, el) => el?.tagName === "P" && el.textContent === partsText(customRuleLatency()))).toHaveLength(0);
   });
 
-  it("states the figure from the catalog's cadences", async () => {
+  it("states no latency figure whatever the catalog's cadences", async () => {
     vi.spyOn(api, "customRuleCatalog").mockResolvedValue(
       catalog({
         subject_kinds: [{ subject_kind: "WAF_ENDPOINT", column: "waf_endpoint_id", search_family: "WAF_COLLECTION" }],
@@ -33,11 +33,10 @@ describe("new custom rule page", () => {
       }),
     );
     render(await NewCustomRulePage());
-    expect(screen.getByText(/Rules are judged on collected 5-minute buckets, up to 12 min after the events arrive/)).toBeInTheDocument();
-    expect(screen.queryByText(/after each collection of their family/)).toBeNull();
+    expect(screen.queryByText(/Rules are judged on collected 5-minute buckets/)).toBeNull();
   });
 
-  it("links Search cadence only to a reader of read:search_cadence", async () => {
+  it("links no Search cadence on the new-rule page whatever the permission", async () => {
     render(await NewCustomRulePage());
     expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();
     cleanup();
@@ -46,18 +45,15 @@ describe("new custom rule page", () => {
       effective_permissions: [...writer.effective_permissions, "read:search_cadence"],
     });
     render(await NewCustomRulePage());
-    expect(screen.getByRole("link", { name: "Search cadence" })).toHaveAttribute(
-      "href",
-      "/admin/search-cadence",
-    );
+    expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();
   });
 
-  it("hides the editor from a reader and names both granting roles", async () => {
+  it("hides the editor from a reader and names the permission", async () => {
     vi.spyOn(api, "caller").mockResolvedValue(reader);
     render(await NewCustomRulePage());
     expect(screen.queryByLabelText("custom rule editor")).toBeNull();
     expect(screen.getByText("custom_rule:write").tagName).toBe("CODE");
-    expect(screen.getByText("detection_engineer").tagName).toBe("CODE");
+    expect(screen.queryByText("detection_engineer")).toBeNull();
   });
 
   it("hides the editor when permissions cannot be read", async () => {
@@ -76,7 +72,7 @@ describe("new custom rule page", () => {
   it("says the metric catalog failed and what to do", async () => {
     vi.spyOn(api, "customRuleCatalog").mockRejectedValue(new ApiError(500, "secret"));
     render(await NewCustomRulePage());
-    expect(screen.getByRole("alert")).toHaveTextContent("catalog of metrics and bounds is unavailable");
+    expect(screen.getByRole("alert")).toHaveTextContent("Metric catalog unavailable");
     expect(screen.queryByText("secret")).toBeNull();
   });
 });

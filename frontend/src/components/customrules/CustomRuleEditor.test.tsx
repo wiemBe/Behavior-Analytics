@@ -47,15 +47,14 @@ describe("custom-rule draft editor", () => {
     expect(screen.getByText("reason two")).toBeInTheDocument();
   });
 
-  it("names the configured cap and says to disable another rule", async () => {
+  it("names the configured cap", async () => {
     vi.spyOn(api, "updateCustomRule").mockRejectedValue(
       new ApiError(409, "Conflict", "at most 100 rules may be enabled at once"),
     );
     render(<CustomRuleEditor catalog={catalog()} mode="edit" rule={rule()} />);
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("configured limit is 100");
-    expect(alert).toHaveTextContent("Disable another rule");
+    expect(alert).toHaveTextContent("Limit: 100 enabled rules");
   });
 
   it("does not overwrite a version conflict and offers a reload", async () => {
@@ -68,7 +67,7 @@ describe("custom-rule draft editor", () => {
     );
     render(<CustomRuleEditor catalog={catalog()} mode="edit" rule={rule()} />);
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    expect(await screen.findByText(/changed by grace/)).toBeInTheDocument();
+    expect(await screen.findByText(/Changed by grace/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reload the current rule" }));
     expect(navigation.refresh).toHaveBeenCalled();
   });

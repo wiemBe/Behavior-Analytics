@@ -51,7 +51,12 @@ function RateBound({
 }
 
 function Bound({ lower, children }: { lower: boolean; children: string }) {
-  return lower ? <span>≥&nbsp;{children}</span> : <>{children}</>;
+  const t = useTranslations("rules.helpers");
+  return lower ? (
+    <span title={t("lowerBoundMeaning")}>≥&nbsp;{children}</span>
+  ) : (
+    <>{children}</>
+  );
 }
 
 export function MostMatched({
@@ -75,7 +80,6 @@ export function MostMatched({
   const backend = useBackendMessage();
   const reasonText =
     reason === null ? null : backend({ text: reason, code: reasonCode, params: reasonParams });
-  const anyLower = (rows ?? []).some((r) => r.lower_bound);
 
   return (
     <section aria-labelledby="stats-top">
@@ -104,7 +108,6 @@ export function MostMatched({
             <p>
               <strong>{reasonText ?? t("missingTitle")}</strong>
             </p>
-            <p>{t("missingHelp")}</p>
           </div>
         </div>
       ) : rows.length === 0 ? (
@@ -175,11 +178,6 @@ export function MostMatched({
               </tbody>
             </table>
           </TableScroll>
-          {anyLower && (
-            <p className="table-note">
-              <strong>≥</strong> {t("lowerNote", { meaning: say("rules.helpers.lowerBoundMeaning") })}
-            </p>
-          )}
         </>
       )}
     </section>

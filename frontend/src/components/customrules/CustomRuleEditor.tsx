@@ -340,7 +340,6 @@ export function CustomRuleEditor({
         <div className="cr-preview-head">
           <div>
             <h2 id="preview-title">{t("previewTitle")}</h2>
-            <p>{t("previewDescription")}</p>
           </div>
           <div className="cr-window">
             {labelWithTip("window", hoursId, t("window"), "end")}

@@ -65,7 +65,7 @@ export function SilentRules({
         <div className="banner" role="status">
           <div>
             <p>
-              <strong>{t("notJudged")}</strong> {t("notJudgedHelp")}
+              <strong>{t("notJudged")}</strong>
             </p>
             <p className="stats-window-reason">{(reason === null
               ? null
@@ -83,8 +83,7 @@ export function SilentRules({
                 })
               : silent.total === 0
                 ? t("none")
-                : t("count", { count: silent.total })}{" "}
-            {t("recency")}
+                : t("count", { count: silent.total })}
           </p>
 
           {silent.items.length > 0 && (
@@ -148,7 +147,6 @@ export function SilentRules({
                 })}
               </p>
               <div className="stats-excluded-detail">
-                <h3>{t("excludedHeading")}</h3>
                 <TableScroll label={t("excludedLabel")}>
                 <table className="stats-table stats-excluded-table">
                   <caption className="sr-only">{t("excludedCaption")}</caption>

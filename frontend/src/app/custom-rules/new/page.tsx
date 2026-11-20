@@ -3,8 +3,6 @@ import { getTranslations } from "next-intl/server";
 
 import { CustomRuleEditor } from "@/components/customrules/CustomRuleEditor";
 import { CustomRuleWriteNotice } from "@/components/customrules/CustomRuleWriteNotice";
-import { canReadSearchCadence } from "@/components/cadence/CadenceLatency";
-import { CustomRuleLatency } from "@/components/customrules/CustomRuleLatency";
 import { customRuleAccessFrom, type CustomRuleAccess } from "@/components/customrules/authoring";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
@@ -22,7 +20,6 @@ async function NewCustomRulePage() {
   const say = asTextTranslator(await getTranslations());
   let catalog: CustomRuleCatalog | null = null;
   let access: CustomRuleAccess = "unknown";
-  let canLink = false;
   let limited: string | null = null;
   let forbidden = false;
   let failed = false;
@@ -33,7 +30,6 @@ async function NewCustomRulePage() {
       api.caller().catch(() => null),
     ]);
     access = caller ? customRuleAccessFrom(caller) : "unknown";
-    canLink = canReadSearchCadence(caller);
   } catch (error) {
     if (error instanceof ApiError && error.status === 429) {
       limited = rateLimitedText(error, say);
@@ -63,7 +59,6 @@ async function NewCustomRulePage() {
         </div>
       ) : access === "writer" ? (
         <>
-          <CustomRuleLatency className="cr-latency" catalog={catalog} canLink={canLink} />
           <CustomRuleEditor catalog={catalog} mode="create" />
         </>
       ) : (

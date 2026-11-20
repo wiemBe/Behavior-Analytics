@@ -29,7 +29,7 @@ import { enumLabel } from "@/i18n/enumLabels";
 import type { Locale } from "@/i18n/locale";
 import { asTextTranslator } from "@/i18n/textTranslator";
 
-import { formatMatches, MISSING, windowWidthText } from "./ruleMatchFormat";
+import { formatMatches, MISSING } from "./ruleMatchFormat";
 
 function Figure({ value, lowerBound }: { value: number | null; lowerBound: boolean }) {
   const t = useTranslations("rules.matchBlock");
@@ -100,7 +100,7 @@ function Rows({ items }: { items: MatchAnomalyRow[] }) {
                 <td className="stats-wide-fact">{detector}</td>
                 <td className="num">
                   <Figure value={r.observed} lowerBound={truncated} />
-                  {truncated && <span className="cell-sub">{t("truncatedRow")}</span>}
+                  {truncated && <span className="sr-only"> ({t("truncatedRow")})</span>}
                 </td>
                 <td className="num">
                   <Figure value={r.expected} lowerBound={false} />
@@ -166,7 +166,7 @@ export function RuleMatchBlock({
       <div className="banner" role="status">
         <div>
           <p>
-            <strong>{t("notCollectedTitle")}</strong> {t("notCollectedHelp")}
+            <strong>{t("notCollectedTitle")}</strong>
           </p>
           {reason && <p className="stats-window-reason">{reason}</p>}
         </div>
@@ -184,7 +184,7 @@ export function RuleMatchBlock({
           <div className="banner warn" role="status">
             <div>
               <p>
-                <strong>{t("insufficientTitle")}</strong> {t("insufficientHelp")}
+                <strong>{t("insufficientTitle")}</strong>
               </p>
               {reason && (
                 <p className="stats-window-reason">
@@ -204,11 +204,6 @@ export function RuleMatchBlock({
               )}
             </div>
           </div>
-        )}
-        {span && (
-          <p className="subtitle">
-            {t("windowNote", { width: windowWidthText(span.window_seconds), days: span.days })}
-          </p>
         )}
         {data.items.length === 0 ? (
           <div className="notice">{insufficient ? t("emptyIncomplete") : t("empty")}</div>
@@ -236,7 +231,6 @@ export function RuleMatchBlock({
           {t("heading")}
         </h2>
       </div>
-      <p className="subtitle">{t("question")}</p>
       {body}
     </section>
   );

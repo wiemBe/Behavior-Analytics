@@ -207,7 +207,8 @@ describe("custom-rule routes in Turkish", () => {
     vi.spyOn(api, "customRules").mockResolvedValue([customRule()]);
     render(await CustomRulesPage());
     expect(screen.getByText("CUSTOM_RULES_ENABLED").tagName).toBe("CODE");
-    expect(screen.getByText("CUSTOM_RULES_ALERTING_ENABLED").tagName).toBe("CODE");
+    // One banner at most: with evaluation off the shadow-mode setting is not named.
+    expect(screen.queryByText("CUSTOM_RULES_ALERTING_ENABLED")).toBeNull();
   });
 
   it("renders forbidden detail and a reader-only new-rule state", async () => {

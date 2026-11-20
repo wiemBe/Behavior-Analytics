@@ -70,25 +70,25 @@ describe("custom-rule editor field help", () => {
     render(<CustomRuleEditor catalog={catalog()} mode="create" />);
     const button = screen.getByRole("button", { name: "About Sustain" });
     await user.hover(button);
-    expect(screen.getByRole("tooltip")).toHaveTextContent("How many breaching slices in a row");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Breaching buckets in a row");
     await user.unhover(button);
     expect(screen.queryByRole("tooltip")).toBeNull();
     await user.click(button);
     expect(screen.getByRole("tooltip")).toBeVisible();
   });
 
-  it("says in the metric text that an unmeasured slice is not a zero", async () => {
+  it("says in the metric text that an unmeasured bucket is not a zero", async () => {
     const user = userEvent.setup();
     render(<CustomRuleEditor catalog={catalog()} mode="create" />);
     await user.hover(screen.getByRole("button", { name: "About Metric" }));
-    expect(screen.getByRole("tooltip")).toHaveTextContent("is not a zero");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Unmeasured is not zero");
   });
 
   it("takes the window bounds from the catalog", async () => {
     const user = userEvent.setup();
     render(<CustomRuleEditor catalog={catalog({ preview_hours_min: 2, preview_hours_max: 96 })} mode="create" />);
     await user.hover(screen.getByRole("button", { name: "About Window" }));
-    expect(screen.getByRole("tooltip")).toHaveTextContent("from 2 to 96");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("2 to 96");
   });
 });
 

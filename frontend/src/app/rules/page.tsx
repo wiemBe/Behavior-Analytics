@@ -10,7 +10,6 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
-  healthMeaning,
   healthTone,
   isUnestablished,
 } from "@/lib/health";
@@ -105,7 +104,6 @@ async function RulesPage({
       <PageHeader
         guide={guideFor("/rules")}
         title={t("title")}
-        description={t("description")}
         actions={<Link href="/rules/statistics">{t("statisticsLink")}</Link>}
       />
 
@@ -124,8 +122,7 @@ async function RulesPage({
 
       {unestablished > 0 && (
         <div className="notice">
-          <strong>{t("summaryNoticeTitle", { count: formatCount(unestablished, locale) })}</strong>{" "}
-          {t("summaryNotice")}
+          {t("summaryNoticeTitle", { count: formatCount(unestablished, locale) })}
         </div>
       )}
 
@@ -169,7 +166,6 @@ async function RulesPage({
                 <th>{t("table.type")}</th>
                 <th>{t("table.enabled")}</th>
                 <th>{t("table.health")}</th>
-                <th>{t("table.meaning")}</th>
                 <th className="col-time">{t("table.lastFired")}</th>
                 <th className="num">{t("table.offenses")}</th>
               </tr>
@@ -202,7 +198,6 @@ async function RulesPage({
                       {r.health_status ? enumLabel(say, "ruleHealth", r.health_status) : "—"}
                     </span>
                   </td>
-                  <td className="muted cell-meaning">{healthMeaning(r.health_status, say)}</td>
                   <td>
                     {r.last_fired_at ? (
                       <UtcTime value={r.last_fired_at} wrapZone />

@@ -282,7 +282,6 @@ export function RuleMatchSectionView({
   return (
     <section className="match-section" aria-labelledby="rule-match-heading">
       <h3 id="rule-match-heading">{t("heading")}</h3>
-      <p className="subtitle">{t("question")}</p>
       {body}
     </section>
   );

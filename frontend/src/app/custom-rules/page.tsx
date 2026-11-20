@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
-import { canReadSearchCadence } from "@/components/cadence/CadenceLatency";
-import { CustomRuleLatency } from "@/components/customrules/CustomRuleLatency";
 import { RuleStatus } from "@/components/customrules/RuleStatus";
 import {
   conditionText,
@@ -22,9 +20,7 @@ import { enumLabel } from "@/i18n/enumLabels";
 import { withRouteMessages } from "@/i18n/RouteMessages";
 
 const EVALUATION_SETTING = "CUSTOM_RULES_ENABLED";
-const ALERTING_SETTING = "CUSTOM_RULES_ALERTING_ENABLED";
 const WRITE_PERMISSION = "custom_rule:write";
-const ENGINEER_ROLE = "detection_engineer";
 
 export async function generateMetadata() {
   const t = await getTranslations("customRules.meta");
@@ -39,7 +35,6 @@ async function CustomRulesPage() {
   let rules: CustomRule[] = [];
   let catalog: CustomRuleCatalog | null = null;
   let access: CustomRuleAccess = "unknown";
-  let canLink = false;
   let limited: string | null = null;
   let failed = false;
   let forbidden = false;
@@ -51,7 +46,6 @@ async function CustomRulesPage() {
       api.caller().catch(() => null),
     ]);
     access = caller ? customRuleAccessFrom(caller) : "unknown";
-    canLink = canReadSearchCadence(caller);
   } catch (error) {
     if (error instanceof ApiError && error.status === 429) {
       limited = rateLimitedText(error, say);
@@ -93,30 +87,29 @@ async function CustomRulesPage() {
       ) : (
         <>
           <div className="cr-page-notices">
-            {!catalog.evaluation_enabled && (
+            {!catalog.evaluation_enabled ? (
               <div className="banner warn" role="status">
-                {t("evaluationOffBefore")}<code>{EVALUATION_SETTING}</code>{t("evaluationOffAfter")}.
+                <div>
+                  <details>
+                    <summary>{t("evaluationOff")}</summary>
+                    <p>{t("evaluationOffBefore")}<code>{EVALUATION_SETTING}</code>{t("evaluationOffAfter")}.</p>
+                  </details>
+                </div>
               </div>
+            ) : (
+              catalog.alerting_mode === "shadow" && (
+                <p className="muted" role="status">{t("shadowNotice")}</p>
+              )
             )}
-            {catalog.alerting_mode === "shadow" && (
-              <div className="banner" role="status">
-                {t("shadowBefore")}<code>{ALERTING_SETTING}</code>{t("shadowAfter")}.
-              </div>
-            )}
-            <CustomRuleLatency className="cr-latency" catalog={catalog} canLink={canLink} />
           </div>
 
           {rules.length === 0 ? (
             <div className="notice">
               <p><strong>{t("emptyTitle")}</strong></p>
-              <p>{t("emptyHelp")}</p>
               {access === "writer" ? (
-                <p><Link href="/custom-rules/new">{t("emptyWriter")}</Link> {t("emptyWriterAfter")}</p>
+                <p><Link href="/custom-rules/new">{t("emptyWriter")}</Link></p>
               ) : (
-                <p>
-                  {t("emptyReaderBefore")}<code>{WRITE_PERMISSION}</code>{t("emptyReaderMiddle")}
-                  <code>{ENGINEER_ROLE}</code>{t("emptyReaderAfter")}.
-                </p>
+                <p>{t("emptyReaderBefore")}<code>{WRITE_PERMISSION}</code>.</p>
               )}
             </div>
           ) : (
@@ -148,7 +141,11 @@ async function CustomRulesPage() {
                         <td><span className={`pill pill-quiet ${sevTone(rule.severity)}`}>{enumLabel(say, "severityPill", rule.severity)}</span></td>
                         <td>{rule.enabled ? t("table.yes") : t("table.no")}</td>
                         <td className="num cell-when">
-                          {rule.last_evaluated_at ? <UtcTime value={rule.last_evaluated_at} /> : t("table.never")}
+                          {rule.last_evaluated_at ? (
+                            <UtcTime value={rule.last_evaluated_at} />
+                          ) : (
+                            <span className="muted" title={t("table.never")} aria-label={t("table.never")}>—</span>
+                          )}
                         </td>
                       </tr>
                     );
