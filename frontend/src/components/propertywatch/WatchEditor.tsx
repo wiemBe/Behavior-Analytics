@@ -223,10 +223,12 @@ export function WatchEditor({
       return;
     }
     const controller = new AbortController();
+    setPropertyOptions(null);
     setPropertyState("loading");
     api
       .propertyWatchPropertyOptions(draft.scopeKind, draft.scopeId, "", controller.signal)
       .then((options) => {
+        if (controller.signal.aborted) return;
         setPropertyOptions(options);
         setPropertyState("ready");
       })
@@ -463,7 +465,7 @@ export function WatchEditor({
               {t("propertyWatch.editor.propertyFailed")}
             </p>
           )}
-          {propertyOptions?.status === "UNAVAILABLE" && (
+          {propertyOptions?.status === "UNAVAILABLE" && !propertyOptions.catalog_status && (
             <div className="notice" role="status">
               <p><strong>{t("propertyWatch.editor.catalogUnavailableTitle")}</strong></p>
               <p>{propertyOptions.detail ?? t("propertyWatch.editor.catalogUnavailableFallback")}</p>
@@ -475,6 +477,8 @@ export function WatchEditor({
                 index={index}
                 value={property}
                 options={propertyOptions}
+                scopeKind={draft.scopeKind}
+                scopeId={draft.scopeId}
                 disabled={!draft.scopeId}
                 inputRef={(input) => {
                   propertyInputs.current[index] = input;

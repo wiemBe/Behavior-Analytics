@@ -10,13 +10,14 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.collectors import qradar_health_collector
 from app.collectors.qradar_health_collector import QRadarHealthCollector
 from app.core.config import get_settings
 from app.models.enums import SearchFamily
+from app.models.property_catalog import PropertyCatalogEntry
 from app.models.qradar_health import (
     QRadarHealthMetricBucket,
     QRadarHealthNotificationBucket,
@@ -25,12 +26,12 @@ from app.models.qradar_health import (
 )
 from app.models.search_cadence import SearchCadenceSetting
 from app.providers.base import ProviderUnavailableError
-from app.providers.dto import CustomPropertyDTO
 from app.providers.mock import MockQRadarProvider
 from app.security.rbac import Principal
 from app.services.qradar_health_retention import QRadarHealthRetention
-from tests.integration.factories import make_instance, make_log_source
+from tests.integration.factories import make_log_source
 from tests.integration.test_fleet_api import Client, run
+from tests.integration.test_property_catalog_names import catalog_instance
 from tests.integration.test_rule_match_collection import recorded_statements
 
 pytestmark = [
@@ -47,6 +48,10 @@ WINDOW = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
 ADMIN = Principal(subject="admin", permissions=frozenset({"admin:*"}))
 VIEWER = Principal(subject="viewer", permissions=frozenset({"read:*"}))
 CADENCE = 900
+
+
+async def make_instance(session, **kwargs):
+    return await catalog_instance(session, now=NOW, **kwargs)
 
 
 @pytest_asyncio.fixture
@@ -206,12 +211,10 @@ class TestRun:
     ) -> None:
         inst = await make_instance(db_session)
 
-        class NoValue(MockQRadarProvider):
-            async def list_custom_properties(self, *, log_source_type_id=None):  # type: ignore[no-untyped-def]
-                listed = await super().list_custom_properties()
-                return [p for p in listed if p.name != "Value"]
-
-        provider = NoValue(seed=1)
+        await db_session.execute(delete(PropertyCatalogEntry).where(
+            PropertyCatalogEntry.name == "Value"
+        ))
+        provider = MockQRadarProvider(seed=1)
         report = await collector(db_session, provider).collect(inst, slot=SLOT)
 
         run_row = await only_run(db_session)
@@ -928,9 +931,9 @@ class TestHistoryApi:
         assert one.statements == many.statements
 
 
-def test_a_custom_property_dto_is_what_the_check_reads() -> None:
-    # The collector compares names only; this pins that the DTO field is called `name`.
-    assert "name" in CustomPropertyDTO.model_fields
+def test_a_catalog_entry_is_what_the_check_reads() -> None:
+    # The collector compares names only; pin the stored name column it reads.
+    assert "name" in PropertyCatalogEntry.__table__.columns
 
 
 # ------------------------------------------------------------- HLT-5: carried total, collection off

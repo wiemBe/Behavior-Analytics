@@ -30,7 +30,7 @@ from app.providers.qradar_mcp import QRadarMCPProvider
 from app.providers.qradar_rest import QRadarRestProvider
 from app.security.auth import get_principal
 from app.security.rbac import Principal
-from app.services.property_catalog import PropertyCatalogService, get_property_catalog_service
+from app.services.property_catalog import PropertyCatalogService
 from tests.unit.test_qradar_rest_provider import build_provider
 
 PROPS = "/api/config/event_sources/custom_properties/regex_properties"
@@ -380,7 +380,6 @@ def _app_client(session, service, *, auth_provider: str = "disabled"):
         yield session
 
     app.dependency_overrides[get_session] = _session
-    app.dependency_overrides[get_property_catalog_service] = lambda: service
     if auth_provider != "oidc":
         app.dependency_overrides[get_principal] = lambda: Principal(
             subject="waf-admin", permissions=frozenset({"admin:waf"})

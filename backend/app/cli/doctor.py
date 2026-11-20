@@ -52,7 +52,7 @@ from app.models.monitoring import (
 from app.models.rule import RuleMatchWindow, RuleMatchWindowStatus
 from app.models.search_cadence import SearchCadenceSetting
 from app.providers.access_catalog import ACCESS_CATALOG
-from app.providers.base import CapabilityNotSupportedError, ProviderCapability, QRadarProvider
+from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider_for_instance
 from app.providers.tls import build_ssl_context
 from app.rules.matches import SKIPPED_REASON
@@ -1986,24 +1986,27 @@ class Doctor:
                 "property; no enabled QRadar instance is registered",
                 "OPS-R30",
             )
+        from app.services.property_catalog import stored_property_names
+
         findings: list[tuple[str, set[str] | str]] = []
         for instance in instances:
             try:
-                provider = self.provider_factory(instance)
-            except Exception as exc:
-                findings.append((instance.name, type(exc).__name__))
-                continue
-            try:
-                if not provider.supports(ProviderCapability.CUSTOM_PROPERTY_CATALOG):
-                    raise CapabilityNotSupportedError(
-                        f"{type(provider).__name__} does not support the custom-property catalog"
+                async with self.sessionmaker() as session:
+                    checked = await stored_property_names(
+                        session, instance_id=instance.id,
+                        names=[name for name in names.values() if name], now=self.now(),
+                        refresh_seconds=settings.qradar_property_catalog_refresh_seconds,
                     )
-                listed = await provider.list_custom_properties()
-                findings.append((instance.name, {item.name for item in listed}))
+                age = (
+                    f"{max(0, int((self.now() - checked.as_of).total_seconds()))} s"
+                    if checked.as_of else "unknown"
+                )
+                stamp = checked.as_of.astimezone(UTC).isoformat() if checked.as_of else "unknown"
+                console = f"{instance.name} [snapshot {checked.status}; age {age}; as of {stamp}]"
+                found = {name for name, present in checked.present.items() if present}
+                findings.append((console, found if checked.readable else "property_unreadable"))
             except Exception as exc:
                 findings.append((instance.name, type(exc).__name__))
-            finally:
-                await provider.aclose()
         any_absent = False
         lines: list[str] = []
         for direction in directions:

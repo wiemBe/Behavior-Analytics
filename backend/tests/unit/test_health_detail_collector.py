@@ -1,7 +1,7 @@
 """The two parts of the QRadar health collection, without a database (HLT-2).
 
-`_collect_metrics` and `_collect_notifications` use the provider and the settings only, so a
-mock provider is enough: the property check, a failed or rejected search and a truncated one.
+The property snapshot query is stubbed; provider searches remain exercised for failed,
+rejected and truncated answers.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from app.providers.base import (
 from app.providers.dto import CustomPropertyDTO
 from app.providers.mock import MockHealthSearch, MockQRadarProvider
 from app.providers.qradar_mcp import QRadarMCPProvider
+from tests.unit.test_property_catalog_names import name_session
 
 KEY = "sxvVvbfjEG8mA0m2m6b1cQ2E0N4l7rXqO4uJ6c8zY5A="
 START = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
@@ -35,7 +36,9 @@ END = datetime(2026, 11, 3, 12, 15, tzinfo=UTC)
 
 def collector(provider: MockQRadarProvider, **overrides: Any) -> QRadarHealthCollector:
     settings = Settings(encryption_key=KEY, **overrides)
-    return QRadarHealthCollector(cast(Any, None), provider, settings=settings)
+    return QRadarHealthCollector(
+        name_session(missing=getattr(provider, "_missing", set())), provider, settings=settings
+    )
 
 
 def report() -> QRadarHealthReport:
@@ -87,11 +90,12 @@ class TestMetricsPart:
     async def test_an_unreadable_catalog_fails_closed_the_same_way(self) -> None:
         provider = MockQRadarProvider(seed=1)
 
-        async def boom(*, log_source_type_id: int | None = None) -> list[CustomPropertyDTO]:
+        async def boom(*args: Any, **kwargs: Any) -> list[CustomPropertyDTO]:
             raise ProviderUnavailableError("down")
 
-        provider.list_custom_properties = boom  # type: ignore[method-assign]
-        outcome, folded = await collector(provider)._collect_metrics(START, END, report())
+        c = collector(provider)
+        c.session.execute.side_effect = boom
+        outcome, folded = await c._collect_metrics(START, END, report())
         assert outcome.state == "NOT_COLLECTED" and folded is None
         assert outcome.reason is not None
         assert outcome.reason.code == "qradar_health_detail.reason.property_unreadable"

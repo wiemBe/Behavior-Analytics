@@ -50,7 +50,7 @@ from app.providers.mock import MockQRadarProvider
 from app.security.auth import get_principal
 from app.security.rbac import Principal
 from app.services.ariel_permit import _ARIEL_PRIORITY
-from app.services.property_catalog import PropertyCatalogService, get_property_catalog_service
+from app.services.property_catalog import refresh_catalog_snapshot
 from app.services.property_watches import pinned_digest
 from app.services.seed import _ROLES
 from tests.integration.factories import make_instance, make_log_source
@@ -94,9 +94,11 @@ def _client(
     engine = create_async_engine(db_url, future=True, poolclass=NullPool)
     maker = async_sessionmaker(engine, expire_on_commit=False)
     statements: list[str] = []
+    queries: list[tuple[str, object]] = []
 
     def record(conn, cursor, statement, params, context, executemany):  # type: ignore[no-untyped-def]
         statements.append(statement)
+        queries.append((statement, params))
 
     event.listen(engine.sync_engine, "before_cursor_execute", record)
 
@@ -115,14 +117,13 @@ def _client(
     app = create_app()
     app.dependency_overrides[get_session] = _session
     app.dependency_overrides[get_settings] = lambda: settings
-    catalog = PropertyCatalogService(ttl_seconds=60)
-    app.dependency_overrides[get_property_catalog_service] = lambda: catalog
     if principal is not None:
         app.dependency_overrides[get_principal] = lambda: principal
     if provider is not None:
         app.dependency_overrides[get_provider_factory] = lambda: lambda _instance: provider
     client = TestClient(app)
     client.statements = statements  # type: ignore[attr-defined]
+    client.queries = queries  # type: ignore[attr-defined]
     return client
 
 
@@ -289,10 +290,11 @@ SCOPE_STATEMENTS = {"group": 6, "type": 4, "source": 4}
 OPTIONS_STATEMENTS = {"group": 3, "type": 2, "source": 1}
 #: What `property-options` costs, pinned: for a group scope, the group's existence check, the
 #: resolver's two bulk reads (the walk and its sources), and the instance row; for a type
-#: scope, the instance row alone. Flat at any number of groups or sources. With an explicit
+#: scope, the instance row alone. Both add one snapshot statement. Flat at any size.
+#: With an explicit
 #: `instance_id` there is no `_default_instance` statement; the editor's call (no
 #: `instance_id`) adds one (PW-5b §5 point 4, PW-3c item 6).
-PROPERTY_OPTIONS_STATEMENTS = {"group": 4, "type": 1}
+PROPERTY_OPTIONS_STATEMENTS = {"group": 5, "type": 2}
 
 
 # ----------------------------------------------------------------------------- guards
@@ -846,6 +848,7 @@ async def test_logs_and_audit_hold_no_pinned_or_seeded_value_text(
 # --------------------------------------------------------------------------- the reads
 async def test_catalog_scope_options_and_property_options(db_session, db_schema: str) -> None:
     world = await _seed(db_session)
+    await refresh_catalog_snapshot(db_session, world.instance.id, MockQRadarProvider)
     client = _client(db_schema, _principal("viewer"), provider=MockQRadarProvider(),
                      pw_collection_enabled=False, pw_alerting_enabled=False)
     catalog = client.get(f"{PREFIX}/catalog").json()
@@ -936,6 +939,7 @@ async def test_property_options_degrade_with_a_fixed_sentence(
     assert out.status_code == 200
     body = out.json()
     assert body["status"] == "UNAVAILABLE" and body["properties"] == []
+    assert body["catalog_status"] == "NEVER"
     assert body["normalized_fields"] == ["username"]
     assert "qradar.internal" not in out.text and "abcdef" not in out.text
 
@@ -1706,6 +1710,7 @@ async def test_property_options_costs_the_same_statements_at_every_size(
     for groups, sources in ((2, 10), (20, 200)):
         base = 5000 + groups
         instance = await _bulk_tree(db_session, groups=groups, sources=sources, base=base)
+        await refresh_catalog_snapshot(db_session, instance.id, MockQRadarProvider)
         reader.statements.clear()  # type: ignore[attr-defined]
         body = reader.get(
             f"{PREFIX}/property-options",
@@ -1722,6 +1727,7 @@ async def test_property_options_costs_the_same_statements_at_every_size(
     for sources in (10, 200):
         base = 6000 + sources
         instance = await _bulk_tree(db_session, groups=1, sources=sources, base=base)
+        await refresh_catalog_snapshot(db_session, instance.id, MockQRadarProvider)
         reader.statements.clear()  # type: ignore[attr-defined]
         body = reader.get(
             f"{PREFIX}/property-options",
@@ -1823,3 +1829,130 @@ async def test_property_options_refuse_a_group_that_does_not_resolve(
     fresh = client.get(f"{PREFIX}/property-options",
                        params={"scope_kind": "LOG_SOURCE_GROUP", "scope_id": GROUP_ID + 1})
     assert fresh.status_code == 200 and fresh.json()["scope_type_ids"] == [TYPE_ID]
+
+
+async def test_snapshot_options_sql_bounds_group_types_and_no_provider(
+    db_session, db_schema, capsys
+) -> None:
+    import time
+
+    from sqlalchemy import insert
+
+    from app.models.property_catalog import PropertyCatalogEntry, PropertyCatalogState
+
+    world = await _seed(db_session)
+    members = (await db_session.scalars(select(LogSource).where(
+        LogSource.instance_id == world.instance.id
+    ).order_by(LogSource.qradar_id))).all()
+    members[1].type_id = 2
+    now = datetime.now(UTC)
+    db_session.add(PropertyCatalogState(
+        instance_id=world.instance.id, status="COMPLETE", as_of=now,
+        applicability_complete=True, property_count=12000,
+    ))
+    await db_session.execute(insert(PropertyCatalogEntry), [{
+        "instance_id": world.instance.id, "qradar_id": i, "identifier": f"id-{i}",
+        "name": f"Property_{i:05}", "property_type": "string", "name_allowed": True,
+        "use_for_rule_engine": False, "auto_discovered": False,
+        "type_ids": [2, TYPE_ID] if i == 11999 else [2],
+    } for i in range(12000)])
+    await db_session.commit()
+    client = _client(db_schema, _principal("viewer"))
+
+    def forbidden_factory():
+        raise AssertionError("property options must not even resolve the provider dependency")
+
+    client.app.dependency_overrides[get_provider_factory] = forbidden_factory
+    params = {"scope_kind": "LOG_SOURCE_GROUP", "scope_id": GROUP_ID}
+    started = time.monotonic()
+    page = client.get(f"{PREFIX}/property-options", params=params)
+    elapsed = time.monotonic() - started
+    assert page.status_code == 200, page.text
+    body = page.json()
+    assert body["scope_type_ids"] == [2, TYPE_ID]
+    assert len(body["properties"]) == 200 and body["limit_reached"] is True
+    assert body["catalog_status"] == "COMPLETE"
+    # Stable order within the matching-type rank, including the numeric tie breaker.
+    assert body["properties"][0]["name"] == "Property_00000"
+    assert client.get(f"{PREFIX}/property-options", params=params).json() == body
+    client.queries.clear()
+    match = client.get(f"{PREFIX}/property-options", params={
+        **params, "q": "y_11999", "limit": 1,
+    }).json()
+    assert [p["name"] for p in match["properties"]] == ["Property_11999"]
+    assert match["properties"][0]["defined_on_type_ids"] == [2, TYPE_ID]
+    assert match["properties"][0]["covers_scope"] is True
+    assert body["properties"][0]["defined_on_type_ids"] == [2]
+    assert body["properties"][0]["covers_scope"] is False
+    statements = [(sql, values) for sql, values in client.queries
+                  if "property_catalog_entry" in sql]
+    assert len(statements) == 1
+    sql, values = statements[0]
+    assert "ILIKE" in sql and "LIMIT" in sql and "ORDER BY" in sql
+    assert "%y\\_11999%" in values and 1 in values
+    assert client.get(f"{PREFIX}/property-options", params={
+        **params, "q": "%",
+    }).json()["properties"] == [], "wildcards are literal text"
+    for bad_limit in (0, 201):
+        assert client.get(f"{PREFIX}/property-options", params={
+            **params, "limit": bad_limit,
+        }).status_code == 422
+    with capsys.disabled():
+        print(f"SCALE-2b: 12000 entries, 200 returned, one catalog SQL, {elapsed:.4f}s")
+
+
+@pytest.mark.parametrize("snapshot_status,old,complete,expected", [
+    (None, False, False, "NEVER"),
+    ("REFRESHING", False, False, "REFRESHING"),
+    ("FAILED", True, True, "FAILED"),
+    ("PARTIAL", True, False, "PARTIAL"),
+    ("COMPLETE", True, True, "STALE"),
+    ("COMPLETE", False, True, "COMPLETE"),
+])
+async def test_snapshot_options_states_and_queued_refresh(
+    db_session, db_schema, monkeypatch, snapshot_status, old, complete, expected
+) -> None:
+    from app.models.property_catalog import PropertyCatalogEntry, PropertyCatalogState
+    from app.workers.tasks import refresh_property_catalog
+
+    world = await _seed(db_session)
+    if snapshot_status:
+        as_of = datetime.now(UTC) - timedelta(hours=1 if old else 0)
+        db_session.add(PropertyCatalogState(
+            instance_id=world.instance.id, status=snapshot_status,
+            as_of=as_of if snapshot_status != "REFRESHING" else None,
+            applicability_complete=complete, last_started_at=datetime.now(UTC),
+        ))
+        if snapshot_status != "REFRESHING":
+            db_session.add(PropertyCatalogEntry(
+                instance_id=world.instance.id, qradar_id=1, identifier="id", name="Action",
+                property_type="string", name_allowed=True, use_for_rule_engine=False,
+                auto_discovered=False, type_ids=[TYPE_ID],
+            ))
+    await db_session.commit()
+    client = _client(db_schema, _principal("viewer"))
+
+    def forbidden_factory():
+        raise AssertionError("snapshot reads construct no provider")
+
+    client.app.dependency_overrides[get_provider_factory] = forbidden_factory
+    params = {"scope_kind": "LOG_SOURCE", "scope_id": str(world.source.id)}
+    response = client.get(f"{PREFIX}/property-options", params=params)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["catalog_status"] == expected
+    assert body["applicability_complete"] is complete
+    if expected in {"NEVER", "REFRESHING"}:
+        assert body["status"] == "UNAVAILABLE" and body["properties"] == []
+    elif not complete:
+        assert body["properties"][0]["defined_on_type_ids"] == []
+        assert body["properties"][0]["covers_scope"] is False
+    queued = []
+    monkeypatch.setattr(refresh_property_catalog, "delay", lambda ident: queued.append(ident))
+    for _ in range(2):
+        refreshed = client.get(f"{PREFIX}/property-options", params={
+            **params, "refresh": True,
+        }).json()
+        assert refreshed["catalog_status"] == "REFRESHING"
+        assert refreshed["properties"] == body["properties"]
+    assert queued == ([] if snapshot_status == "REFRESHING" else [str(world.instance.id)])

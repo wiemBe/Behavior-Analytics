@@ -280,6 +280,16 @@
     "propertyPlaceholder": "Type or choose a property",
     "propertyList": "Properties for property {index}",
     "notSelectable": "Not selectable: unsafe name",
+    "propertyLoading": "Loading property options…",
+    "propertyFailed": "Property options failed to load. Type again to retry.",
+    "snapshotNEVER": "Property catalog not collected. Names can still be typed.",
+    "snapshotREFRESHING": "Property catalog refreshing; showing the stored snapshot when available.",
+    "snapshotFAILED": "Property catalog refresh failed; stored names may be old.",
+    "snapshotSTALE": "Property catalog is stale; showing the stored snapshot.",
+    "snapshotCOMPLETE": "Property catalog complete.",
+    "snapshotPARTIAL": "Property catalog incomplete; applicability is unknown.",
+    "applicabilityUnknown": "Applicability unknown",
+    "limitReached": "Showing {count} of more — refine the search.",
     "noCatalogMatch": "No catalog match. The name can still be saved; preview shows whether it parses."
   },
   "valuesTable": {

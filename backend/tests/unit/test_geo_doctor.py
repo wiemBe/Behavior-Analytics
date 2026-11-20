@@ -13,13 +13,16 @@ from app.cli.doctor import Doctor, Status, render_text
 from app.core.config import Settings
 from app.providers.base import ProviderError
 from app.providers.mock import MockQRadarProvider
+from tests.unit.test_property_catalog_names import NOW, name_session
 
 KEY = "sxvVvbfjEG8mA0m2m6b1cQ2E0N4l7rXqO4uJ6c8zY5A="
 
 
 class _Maker:
-    def __call__(self) -> Any:  # pragma: no cover - the check reads consoles via the patch
-        raise AssertionError("the session is not used")
+    def __call__(self) -> Any:
+        session = name_session()
+        session.__aenter__.return_value = session
+        return session
 
 
 def doctor(
@@ -39,7 +42,8 @@ def doctor(
     built = Doctor(
         settings=settings,
         sessionmaker=cast(Any, _Maker()),
-        provider_factory=lambda _instance: provider or MockQRadarProvider(seed=1),
+        provider_factory=lambda _instance: (_ for _ in ()).throw(AssertionError("provider built")),
+        now=lambda: NOW,
     )
     if isinstance(consoles, BaseException):
         monkeypatch.setattr(built, "_enabled_instances", AsyncMock(side_effect=consoles))
@@ -47,7 +51,10 @@ def doctor(
         monkeypatch.setattr(
             built,
             "_enabled_instances",
-            AsyncMock(return_value=[SimpleNamespace(name=name) for name in consoles]),
+            AsyncMock(return_value=[
+                SimpleNamespace(name=name, id="00000000-0000-0000-0000-000000000001")
+                for name in consoles
+            ]),
         )
     return built
 
@@ -63,7 +70,8 @@ async def test_property_present_passes_and_names_the_property_and_console(
     result = await doctor(monkeypatch, consoles=["lab"]).check_geo_country_source()
     assert result.status is Status.PASS
     assert render_text([result]) == (
-        'PASS  geo_country_source property; SOURCE "Source Geographic Location" present on lab; '
+        'PASS  geo_country_source property; SOURCE "Source Geographic Location" present on lab '
+        '[snapshot COMPLETE; age 0 s; as of 2026-11-20T12:00:00+00:00]; '
         "DESTINATION not collected (no property)"
     )
 
@@ -95,6 +103,9 @@ async def test_an_unreadable_property_list_fails_without_the_error_text(
     provider.list_custom_properties = AsyncMock(  # type: ignore[method-assign]
         side_effect=ProviderError("token=planted-secret")
     )
+    from app.services import property_catalog
+
+    monkeypatch.setattr(property_catalog, "stored_property_names", provider.list_custom_properties)
     result = await doctor(
         monkeypatch, consoles=["lab"], provider=provider
     ).check_geo_country_source()

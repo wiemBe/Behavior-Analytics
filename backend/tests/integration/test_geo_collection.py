@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 
 from app.collectors.geo_collector import GeoCollector, watermark_name
 from app.core.config import get_settings
@@ -15,19 +15,24 @@ from app.geo.fold import GeoDirection
 from app.models.enums import SearchFamily
 from app.models.geo import GeoCountryBucket
 from app.models.monitoring import CollectionWatermark
+from app.models.property_catalog import PropertyCatalogState
 from app.models.search_cadence import SearchCadenceSetting
 from app.providers.base import ProviderCapability, ProviderError
 from app.providers.mock import MockQRadarProvider, geo_key
 from app.providers.qradar_mcp import QRadarMCPProvider
 from app.services.ariel_permit import ArielPermitUnavailable
 from app.services.geo_retention import GeoRetention
-from tests.integration.factories import make_instance
+from tests.integration.test_property_catalog_names import catalog_instance
 from tests.integration.test_rule_match_collection import recorded_statements
 
 pytestmark = pytest.mark.integration
 
 BUCKET = 300
 NOW = datetime(2026, 10, 13, 12, 10, tzinfo=UTC)
+
+
+async def make_instance(session, **kwargs):
+    return await catalog_instance(session, now=NOW, **kwargs)
 
 
 @pytest_asyncio.fixture
@@ -548,6 +553,7 @@ class TestPropertyMode:
         inst = await make_instance(db_session)
         provider = NoCatalog(steady([value("US")]))
 
+        await db_session.execute(update(PropertyCatalogState).values(status="FAILED"))
         report = await collector(db_session, provider, **PROPERTY_MODE).collect(inst)
 
         assert provider.geo_searches == [] and report.partial_failure
@@ -558,7 +564,7 @@ class TestPropertyMode:
         assert "planted-secret" not in (wm.last_error or "")
         assert wm.consecutive_failures == 1
 
-    async def test_a_console_without_the_catalog_capability_fails_closed(
+    async def test_a_console_without_a_snapshot_or_catalog_capability_fails_closed(
         self, db_session
     ) -> None:
         inst = await make_instance(db_session)
@@ -567,6 +573,7 @@ class TestPropertyMode:
             ProviderCapability.CUSTOM_PROPERTY_CATALOG
         }
 
+        await db_session.execute(update(PropertyCatalogState).values(status="NEVER", as_of=None))
         report = await collector(db_session, provider, **PROPERTY_MODE).collect(inst)
 
         assert provider.geo_searches == [] and report.partial_failure
