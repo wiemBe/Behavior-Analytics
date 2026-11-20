@@ -14,7 +14,12 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
 from app.api.routes.property_watches import CapacityConflict
-from app.core.config import Settings, get_settings, unknown_setting_names
+from app.core.config import (
+    Settings,
+    get_settings,
+    unknown_setting_canonical_hints,
+    unknown_setting_names,
+)
 from app.core.logging import configure_logging
 from app.core.rate_limit import apply_counted_window, default_limit, limiter
 from app.core.version import read_version
@@ -56,7 +61,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # across re-install and otherwise never applied.
     unknown = unknown_setting_names(os.environ)
     if unknown:
-        logger.warning("ignoring unknown settings: %s", ", ".join(unknown))
+        hints = unknown_setting_canonical_hints(os.environ)
+        rendered = ", ".join(
+            f"{name} (did you mean {hints[name]}?)" if name in hints else name for name in unknown
+        )
+        logger.warning("ignoring unknown settings: %s", rendered)
     logger.info(
         "starting qradar-observability",
         extra={"environment": str(settings.environment), "provider": str(settings.qradar_provider)},

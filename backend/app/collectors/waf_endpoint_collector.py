@@ -54,6 +54,17 @@ validation (docs/SEARCH-CADENCE.md section SC.6). A failed keyed breakdown is
 recorded FAILED for every bucket it covered, exactly as the per-bucket search
 records it, and does not stop the tick.
 
+A cap below one bucket's planned searches (one volume plus one per breakdown)
+is refused before any search: no bucket is invented for an unusable budget
+(FIX-71c). When splitting a truncated kind exhausts the cap, the report carries
+a typed `WafCollectionOutcome` (`PARTIAL_CAP`, or `BUDGET_STARVED` when no bucket
+completed) and the cap/due/collected counts are persisted on the watermark. A
+zero-bucket tick is therefore never an unexplained `ok/0`. The same write carries
+`last_run_partial_reason` (`search_cap_reached` for a partial cap,
+`budget_exhausted` for a starved one), the bounded code the status read matches; a
+run with any other outcome removes it, so the key always describes the run named by
+`last_run_outcome`.
+
 **Breakdowns (Phase B.2).** A profile's `BreakdownPlan` may add up to three more
 bounded searches per bucket, under the same permit: requests by endpoint and
 action, by endpoint and response code, and by endpoint and source IP. Each has
@@ -79,6 +90,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from typing import Any, cast
 
 from sqlalchemy import String, Table, delete, exists, func, select, text, update
@@ -181,6 +193,38 @@ def watermark_collector(log_source: LogSource) -> str:
     return f"{COLLECTOR_NAME}:{log_source.qradar_id}"
 
 
+class WafCollectionOutcome(StrEnum):
+    """Why a tick ended, from the collector's point of view.
+
+    FIX-71c: a per-tick cap can starve the first bucket without raising. Such a
+    run must not look like an ordinary ``ok/0``; the typed outcome and its reason
+    travel with the report and are persisted on the watermark.
+    """
+
+    OK = "ok"
+    #: A cap stopped the tick after some, but not all, due buckets completed.
+    PARTIAL_CAP = "partial_cap"
+    #: A cap stopped the tick before *any* due bucket's kinds all completed.
+    BUDGET_STARVED = "budget_starved"
+    #: The configured cap is below one bucket's planned searches; refused before
+    #: any search, so no bucket can be invented or half-collected.
+    CONFIG_REFUSED = "config_refused"
+
+
+#: Bounded codes published as the watermark's ``last_run_partial_reason``.
+#: The status read (``services/waf_status.py``) matches exactly these two, so they
+#: are named once here and never built from the free-text budget sentence.
+PARTIAL_REASON_SEARCH_CAP = "search_cap_reached"
+PARTIAL_REASON_BUDGET_EXHAUSTED = "budget_exhausted"
+
+#: Cap outcomes that publish a partial reason. An outcome absent here is not a
+#: partial run and clears any reason an earlier tick left on the watermark.
+_PARTIAL_REASON_BY_OUTCOME: dict[WafCollectionOutcome, str] = {
+    WafCollectionOutcome.PARTIAL_CAP: PARTIAL_REASON_SEARCH_CAP,
+    WafCollectionOutcome.BUDGET_STARVED: PARTIAL_REASON_BUDGET_EXHAUSTED,
+}
+
+
 @dataclass
 class WafCollectionReport:
     instance_id: uuid.UUID
@@ -209,6 +253,10 @@ class WafCollectionReport:
     provider_failure_class: str | None = None
     #: The per-tick search cap stopped the tick before every kind completed.
     search_cap_reached: bool = False
+    #: Typed reason the tick ended. OK is only a run with nothing abnormal.
+    outcome: WafCollectionOutcome = WafCollectionOutcome.OK
+    #: Safe, bounded diagnostic for a non-OK budget outcome; no query text.
+    budget_reason: str | None = None
     #: Wall time of the whole collection, including permit waits.
     duration_ms: int = 0
     #: Collection stopped because no global WAF Ariel permit freed up in time.
@@ -226,6 +274,30 @@ class WafCollectionReport:
     #: Breakdown -> buckets in which its search was truncated or failed.
     breakdown_lower_bound_buckets: dict[str, list[str]] = field(default_factory=dict)
     breakdown_failed_buckets: dict[str, list[str]] = field(default_factory=dict)
+
+
+def _apply_budget_diagnostics(
+    metadata: dict[str, Any], report: WafCollectionReport, now: datetime
+) -> None:
+    """Record this run's budget diagnostics, or clear the previous run's.
+
+    The watermark metadata is merged from the previous tick (``{**old, ...}``),
+    so a key that is only ever set would outlive the run that earned it: a clean
+    run would still publish an earlier cap reason and a reader would keep showing
+    a budget problem that has ended (FIX-71c r1). Each write path therefore sets
+    the keys its own run has and removes the ones it does not.
+    """
+    if report.budget_reason is not None:
+        metadata["last_budget_reason"] = report.budget_reason
+        metadata["last_budget_refusal_at"] = now.isoformat()
+    else:
+        metadata.pop("last_budget_reason", None)
+        metadata.pop("last_budget_refusal_at", None)
+    partial_reason = _PARTIAL_REASON_BY_OUTCOME.get(report.outcome)
+    if partial_reason is None:
+        metadata.pop("last_run_partial_reason", None)
+    else:
+        metadata["last_run_partial_reason"] = partial_reason
 
 
 @dataclass(frozen=True)
@@ -418,6 +490,35 @@ class WafEndpointCollector:
     def planned_breakdowns(self) -> frozenset[WafBreakdown]:
         return self.breakdowns.collect if self.breakdowns is not None else frozenset()
 
+    def _min_searches_for_one_bucket(self) -> int:
+        """One volume search plus one per planned breakdown (FIX-71c)."""
+        return 1 + len(self.planned_breakdowns())
+
+    def _record_budget(
+        self,
+        watermark: CollectionWatermark,
+        report: WafCollectionReport,
+        *,
+        intervals_due: int,
+        now: datetime,
+    ) -> None:
+        """Persist the cap/due/collected counts and a safe reason beside the cursor.
+
+        These keys are diagnostics, not measurements: they never fill a missing
+        bucket or flip a verdict. They let the next operator see why a tick ended
+        with nothing written (FIX-71c).
+        """
+        metadata = {
+            **(watermark.collection_metadata or {}),
+            "last_run_searches_sent": report.searches_sent,
+            "last_run_intervals": report.intervals_collected,
+            "last_run_intervals_due": intervals_due,
+            "last_run_search_cap": self.settings.search_cadence_max_searches_per_tick,
+            "last_run_outcome": report.outcome.value,
+        }
+        _apply_budget_diagnostics(metadata, report, now)
+        watermark.collection_metadata = metadata
+
     async def collect(
         self, instance: QRadarInstance, *, log_source: LogSource
     ) -> WafCollectionReport:
@@ -455,6 +556,23 @@ class WafEndpointCollector:
                 max_intervals=cadence_buckets + self.settings.collection_max_backfill_intervals,
             )
 
+            cap = self.settings.search_cadence_max_searches_per_tick
+            needed = self._min_searches_for_one_bucket()
+            if cap < needed:
+                # No split, retry or later tick can help: one bucket needs at
+                # least this many searches. Refuse before searching so a small
+                # cap can never report an unexplained ok/0 or invent a bucket.
+                report.outcome = WafCollectionOutcome.CONFIG_REFUSED
+                report.budget_reason = (
+                    f"search_cadence_max_searches_per_tick={cap} cannot collect one bucket; "
+                    f"needs {needed} searches (1 volume + {needed - 1} planned breakdowns)"
+                )
+                report.skipped_reason = report.budget_reason
+                self._record_budget(watermark, report, intervals_due=len(intervals), now=now)
+                watermark.last_run_at = now
+                await self.session.flush()
+                return report
+
             fetched_by_start = await self._fetch_window_under_permit(
                 log_source, intervals, interval, report
             )
@@ -476,6 +594,20 @@ class WafEndpointCollector:
                 # Only advances past an interval that completed.
                 last_done = start
                 collected += 1
+
+            if report.outcome is WafCollectionOutcome.OK and report.search_cap_reached:
+                # Splitting a truncated kind spent the budget. Name the outcome
+                # instead of returning a silent zero: the contiguous prefix is
+                # kept, and the reason says how many of the due buckets made it.
+                report.outcome = (
+                    WafCollectionOutcome.BUDGET_STARVED
+                    if collected == 0 and intervals
+                    else WafCollectionOutcome.PARTIAL_CAP
+                )
+                report.budget_reason = (
+                    f"per-tick search cap {cap} reached after {report.searches_sent} searches; "
+                    f"{collected} of {len(intervals)} due bucket(s) completed"
+                )
 
             watermark.watermark_at = last_done
             watermark.last_run_at = now
@@ -506,12 +638,15 @@ class WafEndpointCollector:
                 "last_run_duration_ms": report.duration_ms,
                 "last_run_intervals": collected,
                 "last_run_intervals_due": len(intervals),
+                "last_run_search_cap": cap,
+                "last_run_outcome": report.outcome.value,
                 "last_run_permit_wait_ms": report.permit_wait_ms,
             }
             if report.capacity_unavailable:
                 metadata["last_capacity_skip_at"] = now.isoformat()
             if report.provider_failure_class is not None:
                 metadata["last_provider_failure_class"] = report.provider_failure_class
+            _apply_budget_diagnostics(metadata, report, now)
             if (collected and not failed) or not intervals:
                 metadata["last_success_at"] = now.isoformat()
             watermark.collection_metadata = metadata

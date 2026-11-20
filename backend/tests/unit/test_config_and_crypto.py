@@ -10,14 +10,17 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from app.core.config import (
     EXAMPLE_PLACEHOLDERS,
     SETTINGS_ENV_ALLOWLIST,
+    WAF_COLLECTION_ALIASES,
     Environment,
     ProviderKind,
     Settings,
     _known_setting_env_names,
+    unknown_setting_canonical_hints,
     unknown_setting_names,
 )
 
@@ -298,6 +301,161 @@ def test_unknown_setting_names_on_a_crafted_environment() -> None:
     assert "GIT_SHA" in SETTINGS_ENV_ALLOWLIST
 
 
+_WAF_ALIAS_PAIRS = tuple(WAF_COLLECTION_ALIASES.items())
+
+
+@pytest.mark.parametrize(("canonical", "alias"), _WAF_ALIAS_PAIRS)
+def test_a_waf_breakdown_alias_is_accepted_and_counts_as_an_explicit_value(
+    clean_settings_env, monkeypatch, canonical, alias
+) -> None:
+    """FIX-71i: the transposed name is not ignored and marks the field as supplied."""
+    field = canonical.lower()
+    monkeypatch.delenv(alias, raising=False)
+    monkeypatch.setenv(alias, "false")
+    settings = Settings(_env_file=None)
+    assert getattr(settings, field) is False
+    assert field in settings.model_fields_set
+
+    # Both names with the same value are accepted, still with canonical provenance.
+    monkeypatch.setenv(canonical, "false")
+    agreeing = Settings(_env_file=None)
+    assert getattr(agreeing, field) is False
+    assert field in agreeing.model_fields_set
+
+
+@pytest.mark.parametrize(("canonical", "alias"), _WAF_ALIAS_PAIRS)
+def test_contradictory_waf_breakdown_names_refuse_startup(
+    clean_settings_env, monkeypatch, canonical, alias
+) -> None:
+    """FIX-71i: never silently pick one of two different operator values."""
+    monkeypatch.setenv(canonical, "true")
+    monkeypatch.setenv(alias, "false")
+    with pytest.raises(ValidationError) as caught:
+        Settings(_env_file=None)
+    text = str(caught.value)
+    assert canonical in text
+    assert alias in text
+    assert "different values" in text
+
+
+@pytest.mark.parametrize(("canonical", "alias"), _WAF_ALIAS_PAIRS)
+def test_a_dotenv_file_with_contradictory_waf_names_refuses_startup(
+    clean_settings_env, monkeypatch, tmp_path, canonical, alias
+) -> None:
+    """FIX-71c r1: the env file is a source too, and is compared, not resolved.
+
+    A bare-metal `.env` holding both spellings used to pass silently: pydantic took
+    the canonical value and the alias never reached ``os.environ``. The file the
+    Settings class actually loads is now part of the comparison.
+    """
+    monkeypatch.delenv(canonical, raising=False)
+    monkeypatch.delenv(alias, raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"{canonical}=false\n{alias}=true\n", encoding="utf-8")
+    with pytest.raises(ValidationError) as caught:
+        Settings(_env_file=env_file)
+    text = str(caught.value)
+    assert canonical in text
+    assert alias in text
+    assert "different values" in text
+
+    # The same file with one value for both names is an ordinary configuration.
+    env_file.write_text(f"{canonical}=false\n{alias}=false\n", encoding="utf-8")
+    settings = Settings(_env_file=env_file)
+    field = canonical.lower()
+    assert getattr(settings, field) is False
+    assert field in settings.model_fields_set
+
+
+@pytest.mark.parametrize(("canonical", "alias"), _WAF_ALIAS_PAIRS)
+def test_env_beats_dotenv_file_for_waf_breakdown_alias(
+    clean_settings_env, monkeypatch, tmp_path, canonical, alias
+) -> None:
+    monkeypatch.delenv(canonical, raising=False)
+    monkeypatch.delenv(alias, raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"{canonical}=true\n{alias}=false\n", encoding="utf-8")
+    monkeypatch.setenv(alias, "true")
+    settings = Settings(_env_file=env_file)
+    field = canonical.lower()
+    assert getattr(settings, field) is True
+    assert field in settings.model_fields_set
+
+
+@pytest.mark.parametrize(("canonical", "alias"), _WAF_ALIAS_PAIRS)
+def test_settings_validation_error_hides_secret_marker_in_env(
+    clean_settings_env, monkeypatch, canonical, alias
+) -> None:
+    marker = "ZZZMARKER"
+    monkeypatch.setenv("SECRET_KEY", marker)
+    monkeypatch.setenv(canonical, "true")
+    monkeypatch.setenv(alias, "false")
+    with pytest.raises(ValidationError) as caught:
+        Settings(_env_file=None)
+    text = str(caught.value)
+    assert canonical in text
+    assert alias in text
+    assert marker not in text
+
+
+@pytest.mark.parametrize(("canonical", "alias"), _WAF_ALIAS_PAIRS)
+def test_settings_validation_error_hides_secret_marker_in_dotenv_file(
+    clean_settings_env, monkeypatch, tmp_path, canonical, alias
+) -> None:
+    marker = "ZZZMARKER"
+    monkeypatch.delenv(canonical, raising=False)
+    monkeypatch.delenv(alias, raising=False)
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        f"SECRET_KEY={marker}\n{canonical}=false\n{alias}=true\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError) as caught:
+        Settings(_env_file=env_file)
+    text = str(caught.value)
+    assert canonical in text
+    assert alias in text
+    assert marker not in text
+
+
+def test_settings_customise_sources_raises_on_non_dotenv_source() -> None:
+    """FIX-71c r2: a non-DotEnvSettingsSource must fail loudly, not skip."""
+
+    class StubSource:
+        pass
+
+    with pytest.raises(RuntimeError, match="pydantic-settings"):
+        Settings.settings_customise_sources(Settings, None, None, StubSource(), None)  # type: ignore[arg-type]
+
+
+def test_settings_customise_sources_raises_when_reader_missing() -> None:
+    """FIX-71c r2: a DotEnvSettingsSource without _read_env_files must fail loudly."""
+    from pydantic_settings import DotEnvSettingsSource
+
+    source = DotEnvSettingsSource(Settings)
+    source._read_env_files = None  # type: ignore[assignment]
+    with pytest.raises(RuntimeError, match="pydantic-settings"):
+        Settings.settings_customise_sources(Settings, None, None, source, None)  # type: ignore[arg-type]
+
+
+def test_unknown_setting_hints_name_the_canonical_for_a_transposition() -> None:
+    """FIX-71i: a near-miss is told the canonical spelling, not an alias or a typo."""
+    hints = unknown_setting_canonical_hints(
+        {
+            "WAF_OUTCOME_ENABLED_COLLECTION": "x",
+            "WAF_CLIENT_ENABLED_COLLECTION": "x",
+            # A plain truncation and an extra segment are not near-misses here.
+            "CATCHALL_COLLECTION_ENABLE": "x",
+            "WAF_CLIENT_COLLECTION_ENABLED_TYPO": "x",
+        }
+    )
+    assert hints == {
+        "WAF_CLIENT_ENABLED_COLLECTION": "WAF_CLIENT_COLLECTION_ENABLED",
+        "WAF_OUTCOME_ENABLED_COLLECTION": "WAF_OUTCOME_COLLECTION_ENABLED",
+    }
+
+
 def test_settings_env_allowlist_matches_os_environ_reads() -> None:
     app = Path(__file__).resolve().parents[2] / "app"
     found: set[str] = set()
@@ -341,6 +499,40 @@ def test_startup_logs_unknown_setting_names_and_not_values(
         httpcore_logger.setLevel(saved_httpcore_level)
     assert "ignoring unknown settings:" in captured
     assert "CATCHALL_COLLECTION_ENABLE" in captured
+    assert planted not in captured
+
+
+def test_startup_log_names_the_canonical_for_a_near_miss(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """FIX-71i: the startup warning suggests the canonical name, never the value."""
+    from app.main import create_app
+
+    planted = "planted-near-miss-value-7c1e"
+    monkeypatch.setenv("WAF_OUTCOME_ENABLED_COLLECTION", planted)
+    root = logging.getLogger()
+    access = logging.getLogger("uvicorn.access")
+    httpx_logger = logging.getLogger("httpx")
+    httpcore_logger = logging.getLogger("httpcore")
+    saved = (
+        list(root.handlers), root.level, list(root.filters),
+        list(access.handlers), access.level, httpx_logger.level, httpcore_logger.level,
+    )
+    try:
+        with TestClient(create_app()) as client:
+            assert client.get("/api/v1/health/live").status_code == 200
+        captured = capsys.readouterr().out
+    finally:
+        root.handlers[:] = saved[0]
+        root.filters[:] = saved[2]
+        root.setLevel(saved[1])
+        access.handlers[:] = saved[3]
+        access.setLevel(saved[4])
+        httpx_logger.setLevel(saved[5])
+        httpcore_logger.setLevel(saved[6])
+    assert "ignoring unknown settings:" in captured
+    assert "WAF_OUTCOME_ENABLED_COLLECTION" in captured
+    assert "WAF_OUTCOME_COLLECTION_ENABLED" in captured
     assert planted not in captured
 
 

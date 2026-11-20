@@ -30,7 +30,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.cli import doctor_aql
 from app.cli.doctor_qradar_health import disk_line, human_bytes, pipeline_line
 from app.collectors.offense_collector import WATERMARK_STALLED_KEY
-from app.core.config import Environment, Settings, get_settings, unknown_setting_names
+from app.core.config import (
+    Environment,
+    Settings,
+    get_settings,
+    unknown_setting_canonical_hints,
+    unknown_setting_names,
+)
 from app.core.database import dispose_engine, get_sessionmaker
 from app.history.origin import is_live_clause
 from app.models.entity import EntityMentionBackfill
@@ -1366,17 +1372,23 @@ class Doctor:
     async def check_unknown_settings(self) -> CheckResult:
         """WARN when an environment name looks like a setting and is not one.
 
-        The message lists names and never values. A deployment with no such
-        names passes, including the ``NOTIFY_*`` names the notifier reads outside
-        ``Settings``. The ``SMTP_*`` names are ``Settings`` fields (MAIL-1).
+        The message lists names and never values. A name that transposed the
+        parts of a known setting also names the canonical spelling it probably
+        meant. A deployment with no such names passes, including the ``NOTIFY_*``
+        names the notifier reads outside ``Settings``. The ``SMTP_*`` names are
+        ``Settings`` fields (MAIL-1).
         """
         names = unknown_setting_names(self.environ)
         if not names:
             return CheckResult("unknown_settings", Status.PASS, "no unknown settings")
+        hints = unknown_setting_canonical_hints(self.environ)
+        rendered = ", ".join(
+            f"{name} (did you mean {hints[name]}?)" if name in hints else name for name in names
+        )
         return CheckResult(
             "unknown_settings",
             Status.WARN,
-            "ignored unknown settings: " + ", ".join(names),
+            "ignored unknown settings: " + rendered,
             "OPS-R62",
         )
 
