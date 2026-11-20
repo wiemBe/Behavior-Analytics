@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import ProviderKind, Settings, get_settings
 from app.core.database import get_engine
+from app.log_source_policy import source_pause_enabled
 from app.models.instance import QRadarInstance
 from app.providers.audit_sink import make_audit_sink
 from app.providers.base import QRadarProvider
@@ -41,6 +42,7 @@ def build_provider(settings: Settings | None = None) -> QRadarProvider:
                 base_url=settings.qradar_host,
                 sec_token=settings.resolve_qradar_token().get_secret_value(),
                 api_version=settings.qradar_api_version,
+                strict_source_enabled=source_pause_enabled(settings),
                 verify_ssl=settings.qradar_verify_ssl,
                 ca_bundle=settings.qradar_ca_bundle,
                 tls_allow_missing_aki=settings.qradar_tls_allow_missing_aki,
@@ -63,6 +65,7 @@ def build_provider(settings: Settings | None = None) -> QRadarProvider:
                 base_url=settings.mcp_base_url,
                 sec_token=settings.resolve_qradar_token().get_secret_value(),
                 timeout=settings.mcp_timeout_seconds,
+                strict_source_enabled=source_pause_enabled(settings),
             )
 
     raise ValueError(f"Unknown provider kind: {settings.qradar_provider}")
@@ -107,6 +110,7 @@ def build_provider_for_instance(
                 base_url=instance.console_host,
                 sec_token=token,
                 api_version=instance.api_version,
+                strict_source_enabled=source_pause_enabled(settings),
                 verify_ssl=instance.verify_ssl,
                 ca_bundle=instance.ca_bundle_path,
                 tls_allow_missing_aki=settings.qradar_tls_allow_missing_aki,
@@ -143,6 +147,7 @@ def build_provider_for_instance(
                 base_url=instance.mcp_base_url or settings.mcp_base_url,
                 sec_token=token,
                 timeout=settings.mcp_timeout_seconds,
+                strict_source_enabled=source_pause_enabled(settings),
                 # Without a session there is nowhere to persist to; the
                 # provider then falls back to log-only auditing rather than
                 # failing, so a caller that has no transaction can still read.

@@ -457,6 +457,7 @@ class QRadarRestProvider(QRadarProvider):
         pw_max_sources_per_search: int = 50,
         identity_max_sources_per_search: int = 50,
         permit: ArielPermitBudget | None = None,
+        strict_source_enabled: bool = False,
     ) -> None:
         if not verify_ssl:
             # Hard failure, not a warning. See config._production_hardening.
@@ -480,6 +481,7 @@ class QRadarRestProvider(QRadarProvider):
         self._identity_max_sources_per_search = max(1, int(identity_max_sources_per_search))
         self._clock = clock or (lambda: datetime.now(UTC))
         self._permit = permit
+        self._strict_source_enabled = strict_source_enabled
 
         if client is not None:
             self._client = client
@@ -3526,7 +3528,9 @@ class QRadarRestProvider(QRadarProvider):
             type_id=as_int(row.get("type_id")) or as_int(type_info.get("id")),
             type_name=(type_info.get("name") if isinstance(type_info.get("name"), str) else None),
             protocol_type_id=as_int(row.get("protocol_type_id")),
-            enabled=bool(row.get("enabled", True)),
+            enabled=(
+                row.get("enabled") if isinstance(row.get("enabled"), bool) else None
+            ) if self._strict_source_enabled else bool(row.get("enabled", True)),
             status=self._log_source_status(row),
             credibility=as_int(row.get("credibility")),
             target_event_collector_id=as_int(row.get("target_event_collector_id")),
