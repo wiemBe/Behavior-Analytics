@@ -257,9 +257,12 @@ class TestEquivalence:
         assert live_report.windows_attempted == 7
         assert history_report.history_windows_written == 7
         assert history_report.history_searches >= 1
-        # The floor was cut later than the asked start, so the reading is PARTIAL.
+        # The floor was cut after the asked start, so the reading is PARTIAL.
         assert history_report.history_state == "PARTIAL"
-        assert "later than the asked start" in history_report.history_reason
+        assert (
+            "QRadar holds less than asked (floor after the asked start)"
+            in history_report.history_reason
+        )
 
         live_facts = await window_facts(db_session, live)
         assert set(live_facts) == set(HISTORY_WINDOWS)
