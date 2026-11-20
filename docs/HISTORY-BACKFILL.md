@@ -245,6 +245,8 @@ so a reader never writes either by hand and a guard test can find them (§B.4.7)
 | R4 | `BaselineBuilder._load_clean_observations` (`baseline.py` `BaselineBuilder._load_clean_observations`) | EVIDENCE | reads both, **on purpose**: this is the learning |
 | R5 | F.1 `load_log_sources`, `load_fleet_classes` (`custom_rules/loaders.py` `load_log_sources`, `load_fleet_classes`) | LIVE only | the predicate. The F.1 engine seeds a kind's watermark when the kind has no watermark (`custom_rules/engine.py` `CustomRuleEngine._plans`) but a kind that already has one reads everything after it, so a history row after that watermark would be judged. The preview may read history (replay, persists nothing) |
 | R6 | fleet series, API charts (`fleet/series.py` `build_fleet_eps_series`, anomalies route `api/routes/anomalies.py` `source_metrics`) | DISPLAY | reads both and labels history in text ("read from QRadar history, not judged") |
+| R6a | `fleet/summary.py` `metric_grid_predicates` (shared with fleet series) | DISPLAY | D-90: tagged top-up rows contribute to fleet/class EPS and coverage only below the all-chunk cutoff kept in scope progress; prior cutoffs survive restarts |
+| R5a | `custom_rules/loaders.py` `load_fleet_classes`, consumed by `preview.py` `replay` and `evaluate.py` `_fleet` | LIVE / preview | D-90: the shared `fleet/summary.py` `topup_bucket_published` guard excludes unread top-up buckets before class sums and completeness are built; per-source previews remain evidence readers |
 | R7 | retention (`timescale.py`) | DELETE | by chunk time |
 
 - **Hand-off:** none to the collector. `CollectionWatermark` is untouched: live runs on, never paused. The state

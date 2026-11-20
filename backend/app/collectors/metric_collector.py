@@ -69,6 +69,7 @@ from app.history.planner import (
     StepBudget,
     fit_window,
     new_progress,
+    next_start,
     plan_step,
     settle_step,
 )
@@ -81,6 +82,7 @@ from app.history.progress_codec import (
 from app.history.reasons import message_wire, semicolon_reason
 from app.history.source_floors import SourceFloors
 from app.history.state import HistoryFamily, HistoryState, HistoryTrigger, next_state
+from app.history.topup import CHUNKS_KEY, CUTOFFS_KEY, TopupChunks
 from app.i18n.messages import MessageRef
 from app.models.enums import BucketCompleteness, SearchFamily
 from app.models.instance import QRadarInstance
@@ -927,6 +929,7 @@ class MetricCollector:
                 ]
                 adapter = {
                     **floors.encode(),
+                    CUTOFFS_KEY: previous.adapter.get(CUTOFFS_KEY, {}),
                     phase_a.REBUILD_PENDING_KEY: phase_a.pending_of(previous.adapter),
                     phase_a.TOPUP_SOURCES_KEY: [phase_a.source_key(qid) for qid in missing],
                 }
@@ -944,6 +947,16 @@ class MetricCollector:
             floors = SourceFloors.decode(adapter)
             first_step = False
         search_ids = _topup_ids(adapter, monitored)
+        # Small top-ups retain their whole-span publication contract (SCALE-2j).
+        # Once frozen, membership never follows the changing monitored-source map.
+        keys = _topup_source_keys(adapter)
+        if CHUNKS_KEY in adapter or (keys is not None and len(keys) > (
+            HISTORY_TOPUP_SOURCE_CHUNK_SIZE * settings.history_backfill_searches_per_tick
+        )):
+            return await self._history_topup_chunks(
+                instance, decision, row, progress, adapter, floors, monitored, ps,
+                now, live_searches, report,
+            )
 
         budget = history_search_budget(settings, used=live_searches)
         started = self._clock()
@@ -1081,6 +1094,103 @@ class MetricCollector:
             settlement.reason,
             message_wire(settlement.reason_message),
         )
+
+    async def _history_topup_chunks(
+        self, instance: QRadarInstance, decision: DecisionView, row: ScopeRowView,
+        progress: ScopeProgress, adapter: dict[str, Any], floors: SourceFloors,
+        monitored: dict[int, uuid.UUID], ps: PlannerSettings, now: datetime,
+        live_searches: int, report: HistoryReport,
+    ) -> dict[str, Any]:
+        """Publish disjoint source/span units, keeping the fleet frontier conservative."""
+        assert row.anchor is not None
+        start = next_start(progress, ps)
+        assert start is not None
+        state = TopupChunks.load(
+            adapter, _topup_source_keys(adapter) or [], start, row.anchor, ps.bucket,
+            HISTORY_TOPUP_SOURCE_CHUNK_SIZE,
+        )
+        previous_read = min(chunk["read"] for chunk in state.chunks)
+        budget = history_search_budget(self.settings, used=live_searches)
+        deadline = now + timedelta(seconds=self.settings.history_backfill_seconds_per_tick)
+        expired = now - progress.started_at > timedelta(hours=ps.max_hours)
+        failed: set[int] = set()
+        reason = row.reason or "Reading source chunks"
+        # Failed units go first next tick, then the smallest frontier. A failure
+        # cannot consume this whole tick by retrying in a tight loop.
+        while not expired and report.searches < budget and self._clock() < deadline:
+            pending = [i for i, chunk in enumerate(state.chunks)
+                       if chunk["read"] < state.buckets and i not in failed]
+            if not pending:
+                break
+            index = min(pending, key=lambda i: (
+                state.chunks[i]["error"] is None, state.chunks[i]["read"],
+            ))
+            chunk = state.chunks[index]
+            first = state.start + chunk["read"] * ps.bucket
+            width = progress.chunk_buckets or phase_a.planner_settings(
+                self.settings, monitored=len(chunk["ids"]), cadence_seconds=ps.cadence_seconds,
+            ).initial_chunk_buckets
+            count = min(width, state.buckets - chunk["read"])
+            with ariel_background_priority():
+                found = await self._search_window(
+                    first, count, ps.bucket_seconds, max_searches=budget - report.searches,
+                    deadline=deadline, qradar_ids=chunk["ids"],
+                )
+            report.searches += found.searches
+            deferred = isinstance(found.failure, ArielPermitUnavailable)
+            if isinstance(found.failure, ArielPermitUnavailable):
+                reason = ariel_history_deferred_reason(found.failure)
+            elif found.failure is not None:
+                chunk["error"] = type(found.failure).__name__
+                report.failure = report.failure or found.failure
+                failed.add(index)
+            elif found.completed:
+                chunk["error"] = None
+            chosen = set(chunk["ids"])
+            fold = phase_a.fold_step(
+                found.completed, monitored={q: s for q, s in monitored.items() if q in chosen},
+                floors=floors, read_start=progress.floor or progress.target_start,
+                target_start=progress.target_start, settings=ps, collector=COLLECTOR_NAME,
+                provider=type(self.provider).__name__,
+                aggregation=self.provider.event_count_aggregation,
+                telemetry=(t.value for t in self.provider.log_source_telemetry),
+                mock=self._collection_source == "mock",
+            )
+            token = progress.started_at.isoformat()
+            for metric in fold.rows:
+                metric["query_provenance"]["topup_reading"] = token
+            if fold.rows:
+                await self.session.execute(
+                    pg_insert(cast(Table, LogSourceMetric.__table__)).on_conflict_do_nothing(
+                        index_elements=["log_source_id", "bucket_start"]
+                    ), fold.rows,
+                )
+            floors = fold.floors
+            chunk["read"] += len(found.completed)
+            report.rows += len(fold.rows)
+            report.buckets += len(found.completed)  # source-chunk buckets, not fleet buckets
+            if found.capped or deferred:
+                break
+        read = min(chunk["read"] for chunk in state.chunks)
+        frontier = state.start + read * ps.bucket
+        progress = replace(
+            progress, through=frontier - ps.bucket if read else progress.through,
+            searches=progress.searches + report.searches,
+            buckets_read=progress.buckets_read + read - previous_read,
+        )
+        # Keep cutoffs across restarts: old partial rows must stay hidden even when
+        # a subsequent reading carries their sources' floors and skips those sources.
+        cutoffs = dict(adapter.get(CUTOFFS_KEY, {}))
+        cutoffs[progress.started_at.isoformat()] = frontier.isoformat()
+        adapter = {**adapter, **state.encode(), CUTOFFS_KEY: cutoffs}
+        if read == state.buckets or expired:
+            return self._finish_values(
+                instance, decision, row, progress, adapter, floors,
+                [str(q) for c in state.chunks for q in c["ids"] if q in monitored], ps,
+                HistoryTrigger.TIME_LIMIT if expired else HistoryTrigger.FINISHED_COMPLETE,
+                reason, now, rebuild_keys=_topup_source_keys(adapter),
+            )
+        return self._step_values(instance.id, row, progress, adapter, floors, ps, reason)
 
     def _plan_window(
         self,

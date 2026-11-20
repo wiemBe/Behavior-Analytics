@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.custom_rules.evaluate import BucketFacts
+from app.fleet.summary import topup_bucket_published
 from app.history.origin import is_live_clause
 from app.models.enums import (
     BucketCompleteness,
@@ -170,6 +171,7 @@ async def load_fleet_classes(
             .where(
                 monitored,
                 metric_class.in_(source_classes),
+                topup_bucket_published(),
                 LogSourceMetric.bucket_start > after,
                 LogSourceMetric.bucket_start <= through,
                 *([] if include_history else [is_live_clause(LogSourceMetric)]),
