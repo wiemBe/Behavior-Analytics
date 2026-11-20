@@ -12,9 +12,12 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any, cast
 
+from billiard.exceptions import SoftTimeLimitExceeded
+from celery import Task
 from redis import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -106,6 +109,7 @@ from app.workers.celery_app import (
     BEAT_HEARTBEAT_KEY,
     BEAT_HEARTBEAT_TTL_SECONDS,
     celery_app,
+    walk_time_limits,
 )
 
 logger = logging.getLogger("app.tasks")
@@ -130,6 +134,76 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(run_and_dispose())
 
 
+# A request-local marker survives asyncio.run unwinding (including a signal that
+# interrupts the event loop itself). A fresh transaction records the failed pass;
+# earlier committed pages/snapshots are untouched, and the watermark never advances.
+_WALK_COLLECTORS = {
+    "sync_log_sources": "log_source_inventory",
+    "sync_rule_inventory": "rule_inventory",
+    "collect_offenses": "offense_snapshot",
+}
+
+_WALK_TARGET: ContextVar[list[tuple[uuid.UUID, str]] | None] = ContextVar(
+    "walk_timeout_target", default=None
+)
+
+
+class WalkTask(Task):
+    abstract = True
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        target: list[tuple[uuid.UUID, str]] = []
+        token = _WALK_TARGET.set(target)
+        try:
+            return super().__call__(*args, **kwargs)
+        except SoftTimeLimitExceeded:
+            if target:
+                _run(_record_walk_timeout(*target[-1]))
+            raise
+        finally:
+            _WALK_TARGET.reset(token)
+
+
+def _walk_timeout_target(instance_id: uuid.UUID, collector: str) -> None:
+    target = _WALK_TARGET.get()
+    if target is not None:
+        target[:] = [(instance_id, collector)]
+
+
+async def _record_walk_timeout(instance_id: uuid.UUID, collector: str) -> None:
+    from app.models.property_catalog import PropertyCatalogState
+
+    now = datetime.now(UTC)
+    async with get_sessionmaker()() as session:
+        if collector == "property_catalog":
+            state = await session.get(PropertyCatalogState, instance_id)
+            if state is not None:
+                state.status = "FAILED"
+                state.last_completed_at = now
+                state.failure = {
+                    "kind": "time_limit", "endpoint": "task",
+                    "failure_class": "SoftTimeLimitExceeded",
+                }
+        else:
+            mark = await session.scalar(select(CollectionWatermark).where(
+                CollectionWatermark.instance_id == instance_id,
+                CollectionWatermark.collector == collector,
+            ))
+            if mark is None:
+                mark = CollectionWatermark(instance_id=instance_id, collector=collector)
+                session.add(mark)
+            mark.last_run_at = now
+            mark.last_error = "time_limit"
+            mark.consecutive_failures = (mark.consecutive_failures or 0) + 1
+            key = "offense_pass" if collector == "offense_snapshot" else "inventory_pass"
+            mark.collection_metadata = {
+                **(mark.collection_metadata or {}),
+                key: {"status": "FAILED", "failure_kind": "time_limit",
+                      "finished_at": now.isoformat()},
+            }
+        await session.commit()
+
+
 async def _effective_settings(task: str) -> tuple[Settings, str | None]:
     """The settings a run decides from: the feature switches resolved once (OPS-FLAGS S3a).
 
@@ -142,6 +216,8 @@ async def _effective_settings(task: str) -> tuple[Settings, str | None]:
     try:
         async with get_sessionmaker()() as session:
             resolved = await resolve(session, base)
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:
         resolved = unreadable_features()
     if resolved.reason is not None:
@@ -291,6 +367,9 @@ async def _for_each_instance(
             if rolled_back:
                 await session.refresh(instance)
                 rolled_back = False
+            collector = _WALK_COLLECTORS.get(run.__qualname__.split(".")[0])
+            if collector is not None:
+                _walk_timeout_target(instance.id, collector)
             provider = (
                 # audit_session wires the MCP audit sink to AuditLog; it is
                 # inert for the REST provider, which audits via telemetry.
@@ -301,6 +380,8 @@ async def _for_each_instance(
             try:
                 outcome = await run(session, instance, provider)
                 await session.commit()
+            except SoftTimeLimitExceeded:
+                raise
             except Exception as exc:
                 await session.rollback()
                 rolled_back = True
@@ -2368,7 +2449,7 @@ def collect_metrics_task(instance_name: str | None = None) -> dict:
     return _run(collect_metrics(instance_name))
 
 
-@celery_app.task(name="sync_log_sources")
+@celery_app.task(name="sync_log_sources", base=WalkTask, **walk_time_limits("sync_log_sources"))
 def sync_log_sources_task(instance_name: str | None = None) -> dict:
     return _run(sync_log_sources(instance_name))
 
@@ -2378,17 +2459,21 @@ def check_qradar_access_task(instance_name: str | None = None, claimed: bool = F
     return _run(check_qradar_access(instance_name, claimed))
 
 
-@celery_app.task(name="collect_offenses")
+@celery_app.task(name="collect_offenses", base=WalkTask, **walk_time_limits("collect_offenses"))
 def collect_offenses_task(instance_name: str | None = None) -> dict:
     return _run(collect_offenses(instance_name))
 
 
-@celery_app.task(name="sync_rule_inventory")
+@celery_app.task(
+    name="sync_rule_inventory", base=WalkTask, **walk_time_limits("sync_rule_inventory")
+)
 def sync_rule_inventory_task(instance_name: str | None = None) -> dict:
     return _run(sync_rule_inventory(instance_name))
 
 
-@celery_app.task(name="sync_instance_inventories")
+@celery_app.task(
+    name="sync_instance_inventories", base=WalkTask, **walk_time_limits("sync_instance_inventories")
+)
 def sync_instance_inventories_task(instance_id: str) -> dict:
     """One-shot kick. Not on the beat: the hourly entries already cover the fleet."""
     return _run(sync_instance_inventories(instance_id))
@@ -2629,7 +2714,9 @@ def apply_custom_rule_retention_task() -> dict:
     return _run(apply_custom_rule_retention())
 
 
-@celery_app.task(name="refresh_property_catalog")
+@celery_app.task(
+    name="refresh_property_catalog", base=WalkTask, **walk_time_limits("refresh_property_catalog")
+)
 def refresh_property_catalog(instance_id: str) -> None:
     _run(_refresh_property_catalog(uuid.UUID(instance_id)))
 
@@ -2637,6 +2724,7 @@ def refresh_property_catalog(instance_id: str) -> None:
 async def _refresh_property_catalog(instance_id: uuid.UUID) -> None:
     from app.services.property_catalog import refresh_catalog_snapshot
 
+    _walk_timeout_target(instance_id, "property_catalog")
     async with get_sessionmaker()() as session:
         instance = await session.get(QRadarInstance, instance_id)
         if instance is not None and instance.enabled:

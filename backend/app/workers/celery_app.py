@@ -12,10 +12,28 @@ import logging
 from celery import Celery
 from celery.signals import after_setup_logger, after_setup_task_logger, beat_init, worker_ready
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, install_redaction_filter
 
 settings = get_settings()
+
+QRADAR_WALKS_QUEUE = "qradar_walks"
+# These tasks page entire collections. The one-shot kick runs both inventories.
+WALK_WALL_CLOCKS = {
+    "sync_log_sources": ("log_source_walk_max_seconds",),
+    "refresh_property_catalog": ("qradar_property_catalog_walk_timeout_seconds",),
+    "sync_rule_inventory": ("rule_walk_max_seconds",),
+    "collect_offenses": ("offense_walk_max_seconds",),
+    "sync_instance_inventories": ("log_source_walk_max_seconds", "rule_walk_max_seconds"),
+}
+
+
+def walk_time_limits(name: str, config: Settings = settings) -> dict[str, float]:
+    # Leave 60 seconds for persistence/cleanup after the provider wall clock, then
+    # another 60 seconds before Celery kills a child that cannot handle the soft limit.
+    soft = sum(float(getattr(config, field)) for field in WALK_WALL_CLOCKS[name]) + 60
+    return {"soft_time_limit": soft, "time_limit": soft + 60}
+
 
 BEAT_HEARTBEAT_KEY = "qradar-observability:celery-beat-heartbeat"
 BEAT_HEARTBEAT_TTL_SECONDS = 180
@@ -37,6 +55,7 @@ celery_app = Celery(
 )
 
 celery_app.conf.update(
+    task_routes={name: {"queue": QRADAR_WALKS_QUEUE} for name in WALK_WALL_CLOCKS},
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],

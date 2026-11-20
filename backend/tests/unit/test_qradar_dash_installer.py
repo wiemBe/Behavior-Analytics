@@ -298,7 +298,7 @@ def test_production_images_require_the_installed_version() -> None:
         "${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; "
         "run ./qradar-dash install}"
     )
-    assert compose.count(required) == 8
+    assert compose.count(required) == 9
     assert "QRADAR_DASH_VERSION:-0.1.0" not in compose
 
 

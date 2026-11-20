@@ -1577,7 +1577,7 @@ cmd_install() {
       exit 3
     fi
   fi
-  local svc="backend celery-worker celery-beat frontend"
+  local svc="backend celery-worker celery-walker celery-beat frontend"
   if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then svc="$svc proxy"; fi
   # shellcheck disable=SC2086 # word splitting of the service list is intended
   if ! dc up -d --wait --wait-timeout 180 $svc; then
@@ -1585,7 +1585,7 @@ cmd_install() {
     fail "a service did not become healthy within 180 s: ${UNHEALTHY_DESC}. Next: ${UNHEALTHY_NEXT:-./qradar-dash logs backend} and ./qradar-dash doctor"
     exit 1
   fi
-  info "backend, worker, beat, frontend$([ "${ANS[EXTERNAL_PROXY]}" = no ] && echo ", proxy") are healthy"
+  info "backend, worker, walker, beat, frontend$([ "${ANS[EXTERNAL_PROXY]}" = no ] && echo ", proxy") are healthy"
   local api="http://127.0.0.1:${ANS[API_LOOPBACK_PORT]}/api/v1"
   local api_ready=yes code public_ok=yes
   if ! wait_ready "$api/health/ready" 60; then
@@ -2841,7 +2841,7 @@ RESTORE_STOPPED_SERVICES=()
 restore_stop_services() {
   local service running_text
   running_text=$(dc ps --services --status running) || return 1
-  for service in backend celery-worker celery-beat frontend proxy; do
+  for service in backend celery-worker celery-walker celery-beat frontend proxy; do
     if grep -qx "$service" <<<"$running_text"; then
       RESTORE_STOPPED_SERVICES+=("$service")
     fi
@@ -3022,7 +3022,7 @@ UPGRADE_SERVICES=()
 UPGRADE_CHECK_FAILURE=""
 
 set_upgrade_services() {
-  UPGRADE_SERVICES=(backend celery-worker celery-beat frontend)
+  UPGRADE_SERVICES=(backend celery-worker celery-walker celery-beat frontend)
   if doctor_profile_enabled proxy; then UPGRADE_SERVICES+=(proxy); fi
   # The backend is the MCP service's only client; one 'up -d --wait' recreates both and
   # waits for the healthcheck, so the argument order is not an ordering guarantee.
@@ -3417,7 +3417,7 @@ previous_images_are_local() { # previous_images_are_local MAP
 
 rollback_service_image() { # rollback_service_image SERVICE
   case "$1" in
-    celery-worker | celery-beat) say backend ;;
+    celery-worker | celery-walker | celery-beat) say backend ;;
     *) say "$1" ;;
   esac
 }
@@ -4296,7 +4296,7 @@ doctor_forwarded() {
 doctor_container_runbook() {
   case "$1" in
     backend | postgres) say OPS-R36 ;;
-    celery-worker) say OPS-R41 ;;
+    celery-worker | celery-walker) say OPS-R41 ;;
     celery-beat) say OPS-R9 ;;
   esac
 }

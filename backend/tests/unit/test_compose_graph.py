@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 REPO = Path(__file__).resolve().parents[3]
-DB_SERVICES = ("backend", "celery-worker", "celery-beat")
+DB_SERVICES = ("backend", "celery-worker", "celery-walker", "celery-beat")
 
 
 class _Override:

@@ -67,6 +67,7 @@ from app.workers.celery_app import (
     BEAT_HEARTBEAT_KEY,
     BEAT_HEARTBEAT_TTL_SECONDS,
     BEAT_INTERVAL_SECONDS,
+    QRADAR_WALKS_QUEUE,
     celery_app,
 )
 
@@ -86,6 +87,7 @@ _CHECK_RUNBOOKS = (
     ("batch_retention", "OPS-R14"),
     ("redis", "OPS-R9"),
     ("celery_workers", "OPS-R41"),
+    ("celery_walker", "OPS-R41"),
     ("celery_beat", "OPS-R9"),
     ("qradar_tls", "OPS-R4"),
     ("qradar_auth", "OPS-R1"),
@@ -759,6 +761,24 @@ class Doctor:
                 f"Celery inspect failed ({type(exc).__name__})",
                 "OPS-R41",
             )
+
+    async def check_celery_walker(self) -> CheckResult:
+        def consumers() -> dict[str, Any] | None:
+            return celery_app.control.inspect(timeout=2.0).active_queues()
+
+        try:
+            queues = await asyncio.to_thread(consumers)
+            if any(
+                queue.get("name") == QRADAR_WALKS_QUEUE
+                for entries in (queues or {}).values() for queue in entries
+            ):
+                return CheckResult(
+                    "celery_walker", Status.PASS, f"a worker consumes {QRADAR_WALKS_QUEUE}"
+                )
+            message = f"no worker consumes {QRADAR_WALKS_QUEUE}; start celery-walker"
+        except Exception as exc:
+            message = f"celery-walker queue inspection failed ({type(exc).__name__})"
+        return CheckResult("celery_walker", Status.FAIL, message, "OPS-R41")
 
     async def check_celery_beat(self) -> CheckResult:
         client = redis.from_url(self.settings.redis_url, decode_responses=True)
