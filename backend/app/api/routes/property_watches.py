@@ -30,17 +30,19 @@ rule pins one of its values.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import String, delete, exists, func, select
 from sqlalchemy import cast as sql_cast
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.alerts.dispatcher import NotificationDispatcher
 from app.alerts.routing import default_policy
@@ -75,6 +77,8 @@ from app.schemas.property_watch import (
     PinsIn,
     PinsOut,
     PreviewOut,
+    PreviewQueuedOut,
+    PreviewStatusOut,
     PropertyOptionsOut,
     PropertyWatchCreate,
     PropertyWatchOut,
@@ -94,9 +98,11 @@ from app.security.rbac import (
     Principal,
     require_permission,
 )
-from app.services import ariel_search_log as ariel_log
 from app.services import property_watches as svc
 from app.services.property_catalog import stored_watch_options
+from app.services.property_watch_preview import PreviewStore, get_preview_store
+
+logger = logging.getLogger("app.property_watches")
 
 router = APIRouter(prefix="/property-watches", tags=["property-watches"])
 
@@ -148,11 +154,22 @@ ProviderFactory = Callable[[QRadarInstance], QRadarProvider]
 
 
 def get_provider_factory() -> ProviderFactory:
-    """How the preview and the property picker reach a console. A test overrides this."""
+    """How a route would reach a console. No route builds a provider now: the preview does it
+    in its worker task (SCALE-2h3). Kept as the seam tests already override."""
     return build_provider_for_instance
 
 
 ProviderFactoryDep = Annotated[ProviderFactory, Depends(get_provider_factory)]
+
+PreviewStoreFactory = Callable[[Settings], PreviewStore]
+
+
+def get_preview_store_factory() -> PreviewStoreFactory:
+    """How the preview reaches its lock and its result record. A test overrides this."""
+    return get_preview_store
+
+
+PreviewStoreFactoryDep = Annotated[PreviewStoreFactory, Depends(get_preview_store_factory)]
 
 
 def _preview_limit() -> str:
@@ -1104,7 +1121,11 @@ async def value_series(
 
 
 # ------------------------------------------------------------------------------ preview
-@router.post("/{watch_id}/preview", response_model=PreviewOut)
+@router.post(
+    "/{watch_id}/preview",
+    response_model=PreviewQueuedOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 @limiter.limit(_preview_limit)
 async def preview_watch(
     request: Request,
@@ -1113,12 +1134,16 @@ async def preview_watch(
     session: SessionDep,
     principal: PrincipalDep,
     settings: EffectiveSettingsDep,
-    factory: ProviderFactoryDep,
-) -> PreviewOut:
-    """One real bounded run of the stored watch over the last closed hour.
+    store_factory: PreviewStoreFactoryDep,
+) -> PreviewQueuedOut:
+    """Queue one real bounded run of the stored watch over the last closed hour.
 
-    Two searches (totals and grouped), the search rate limit, nothing persisted, nothing
-    admitted. The response is marked ``PREVIEW`` and carries the generated AQL read-only.
+    The run is two searches (totals and grouped), which a request behind a 60 s proxy cannot
+    wait for, so the route only checks the watch, takes the watch's lock and queues the task:
+    it answers 202 with the id to poll and builds no provider. A second preview of the same
+    watch while one is queued or running is refused (409). The result is read from
+    `GET /{id}/preview/{preview_id}`; nothing of it is persisted but the audit row and the
+    search log. The response is marked ``PREVIEW`` and carries the generated AQL read-only.
     """
     _guard(principal)
     watch = await _load(session, watch_id)
@@ -1127,28 +1152,107 @@ async def preview_watch(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "QRadar instance not found")
     now = datetime.now(UTC)
     try:
-        scope_ids = await svc.preview_scope_ids(session, watch, settings, now)
+        await svc.preview_scope_ids(session, watch, settings, now)
     except svc.PreviewRefused as exc:
         raise CodedHTTPException(status.HTTP_409_CONFLICT, exc.ref) from exc
-    provider = factory(instance)
-    token = ariel_log.open_run_buffer()
+    store = store_factory(settings)
+    preview_id = str(uuid.uuid4())
+    not_queued = MessageRef("pw.preview.not_queued")
     try:
-        result = await svc.run_preview(watch, scope_ids, settings, provider, now=now)
-    except svc.PreviewRefused as exc:
-        raise CodedHTTPException(status.HTTP_409_CONFLICT, exc.ref) from exc
-    finally:
-        await ariel_log.finish_session_buffer(token, session)
-        await provider.aclose()
-    await record_audit(
-        session,
-        action="property_watch.preview",
-        actor=principal.subject,
-        object_type="property_watch",
-        object_id=str(watch.id),
-        outcome="FAILURE" if result.outcome == "NOT_MEASURED" else "SUCCESS",
-        detail=svc.preview_audit_counts(result),
+        held_since = await run_in_threadpool(store.acquire, watch.id, preview_id, now)
+    except Exception as exc:
+        raise CodedHTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, not_queued) from exc
+    if held_since is not None:
+        raise CodedHTTPException(
+            status.HTTP_409_CONFLICT,
+            MessageRef("pw.preview.conflict.running", {"since": held_since}),
+        )
+    try:
+        # The record exists before the task can start, so a fast worker finds it.
+        await run_in_threadpool(store.create, preview_id, watch.id, principal.subject, now)
+        from app.workers import tasks
+
+        tasks.run_property_watch_preview_task.apply_async(
+            args=[preview_id, str(watch.id), principal.subject], task_id=preview_id
+        )
+    except Exception as exc:
+        # Nothing will ever pick the preview up: free the watch rather than hold it.
+        try:
+            await run_in_threadpool(store.delete, preview_id)
+            await run_in_threadpool(store.release, watch.id, preview_id)
+        except Exception:
+            logger.warning("property-watch preview lock could not be released")
+        raise CodedHTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, not_queued) from exc
+    return PreviewQueuedOut(preview_id=preview_id, watch_id=watch.id, requested_at=now)
+
+
+@router.get("/{watch_id}/preview/{preview_id}", response_model=PreviewStatusOut)
+async def preview_status(
+    watch_id: uuid.UUID,
+    preview_id: str,
+    session: SessionDep,
+    principal: PrincipalDep,
+    settings: EffectiveSettingsDep,
+    store_factory: PreviewStoreFactoryDep,
+) -> PreviewStatusOut:
+    """The state of one queued preview, and its result once DONE. Requires property_watch:write.
+
+    The id is never trusted alone: a preview that belongs to another watch or was requested
+    by another user is 404. An id the store no longer holds (or never held) is EXPIRED: the
+    result lives only for `PW_PREVIEW_RESULT_TTL_SECONDS` after the run ends. FAILED carries
+    a catalog code, never an exception text.
+    """
+    _guard(principal)
+    await _load(session, watch_id)
+    store = store_factory(settings)
+    try:
+        record = await run_in_threadpool(store.get, preview_id)
+    except Exception as exc:
+        raise CodedHTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, MessageRef("pw.preview.store_unreadable")
+        ) from exc
+    if record is None:
+        return PreviewStatusOut(preview_id=preview_id, watch_id=watch_id, status="EXPIRED")
+    if record.get("watch_id") != str(watch_id) or record.get("requested_by") != principal.subject:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "preview not found")
+    requested_at = datetime.fromisoformat(record["requested_at"])
+    state = str(record["status"])
+    if store.is_lost(record, datetime.now(UTC)):
+        ref = MessageRef("pw.preview.worker_lost")
+        wire = ref.to_wire()
+        return PreviewStatusOut(
+            preview_id=preview_id,
+            watch_id=watch_id,
+            status="FAILED",
+            requested_at=requested_at,
+            reason=render(ref),
+            reason_code=cast(str, wire["code"]),
+            reason_params=cast(dict[str, Any], wire["params"]),
+        )
+    if state == "DONE":
+        return PreviewStatusOut(
+            preview_id=preview_id,
+            watch_id=watch_id,
+            status="DONE",
+            requested_at=requested_at,
+            result=PreviewOut.model_validate(record["result"]),
+        )
+    if state == "FAILED":
+        return PreviewStatusOut(
+            preview_id=preview_id,
+            watch_id=watch_id,
+            status="FAILED",
+            requested_at=requested_at,
+            reason=record.get("reason"),
+            reason_code=record.get("reason_code"),
+            reason_params=record.get("reason_params"),
+        )
+    return PreviewStatusOut(
+        preview_id=preview_id,
+        watch_id=watch_id,
+        status="RUNNING" if state == "RUNNING" else "QUEUED",
+        requested_at=requested_at,
     )
-    return result
 
 
 # --------------------------------------------------------------------------------- pins

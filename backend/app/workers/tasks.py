@@ -59,13 +59,17 @@ from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.monitoring import CollectionWatermark
+from app.models.property_watch import PropertyWatch
 from app.models.search import ScheduledSearch, SearchExecution
 from app.models.waf import WafSourceProfile
 from app.providers.base import ProviderCapability, QRadarProvider
 from app.providers.factory import build_provider, build_provider_for_instance
+from app.repositories.audit import record_audit
 from app.repositories.offense import OffenseRepository
 from app.rules.engine import RuleMatchEngine
 from app.rules.engine_tick import RuleEngineTick
+from app.services import ariel_search_log as ariel_log
+from app.services import property_watches as pw_svc
 from app.services.anomaly_fault_retention import AnomalyFaultRetention
 from app.services.ariel_permit import ArielPermitBudget
 from app.services.ariel_search_retention import ArielSearchRunRetention
@@ -87,6 +91,7 @@ from app.services.ips_profiles import IpsProfileService
 from app.services.ips_retention import IpsRetention
 from app.services.locks import CollectorAdvisoryLock
 from app.services.log_source_anomaly_retention import LogSourceAnomalyRetention
+from app.services.property_watch_preview import get_preview_store
 from app.services.pw_pipeline import PwInstancePipeline
 from app.services.pw_retention import PwRetention
 from app.services.qradar_access import (
@@ -1664,6 +1669,94 @@ async def run_manual_search(execution_id: str) -> dict:
     return {"status": "done", "execution_id": execution_id, "outcome": outcome}
 
 
+# ------------------------------------------------------------ property-watch preview
+async def run_property_watch_preview(
+    preview_id: str, watch_id: str, requested_by: str
+) -> dict:
+    """Run the preview the route queued, and leave its state in the preview store.
+
+    What the route used to do inline: the scope check, `run_preview` with the search-log
+    buffer, the provider closed in `finally`, the `property_watch.preview` audit. Nothing is
+    stored in PostgreSQL but that audit row and the search-log rows; the result lives in the
+    store under its expiry. The watch's lock is released last, in `finally`, and only by
+    its owner. A duplicate delivery finds the record no longer QUEUED and does nothing (and
+    does not touch the lock). Whatever happens, the record leaves this task DONE or FAILED
+    with a catalog code, never an exception text.
+    """
+    base = get_settings()
+    store = get_preview_store(base)
+    watch_uuid = uuid.UUID(watch_id)
+    record = store.get(preview_id)
+    if (
+        record is None
+        or record.get("status") != "QUEUED"
+        or record.get("watch_id") != watch_id
+        or record.get("requested_by") != requested_by
+    ):
+        return {"status": "not_queued", "preview_id": preview_id}
+    store.update(record, "RUNNING")
+    record = {**record, "status": "RUNNING"}
+
+    def failed(ref: MessageRef) -> dict:
+        wire = ref.to_wire()
+        store.update(
+            record, "FAILED", reason=render(ref), reason_code=wire["code"],
+            reason_params=wire["params"],
+        )
+        return {"status": "failed", "preview_id": preview_id, "reason_code": wire["code"]}
+
+    try:
+        settings, switch_reason = await _effective_settings("run_property_watch_preview")
+        if switch_reason is not None:
+            return failed(MessageRef("pw.preview.worker_failed"))
+        async with get_sessionmaker()() as session:
+            watch = await session.get(PropertyWatch, watch_uuid)
+            instance = (
+                await session.get(QRadarInstance, watch.instance_id) if watch is not None else None
+            )
+            if watch is None or instance is None:
+                return failed(MessageRef("pw.preview.watch_gone"))
+            now = datetime.now(UTC)
+            provider: QRadarProvider | None = None
+            token = ariel_log.open_run_buffer()
+            try:
+                scope_ids = await pw_svc.preview_scope_ids(session, watch, settings, now)
+                provider = build_provider_for_instance(instance)
+                result = await pw_svc.run_preview(watch, scope_ids, settings, provider, now=now)
+            except pw_svc.PreviewRefused as exc:
+                return failed(exc.ref)
+            finally:
+                try:
+                    await ariel_log.finish_session_buffer(token, session)
+                finally:
+                    if provider is not None:
+                        await provider.aclose()
+            await record_audit(
+                session,
+                action="property_watch.preview",
+                actor=requested_by,
+                object_type="property_watch",
+                object_id=str(watch.id),
+                outcome="FAILURE" if result.outcome == "NOT_MEASURED" else "SUCCESS",
+                detail=pw_svc.preview_audit_counts(result),
+            )
+            await session.commit()
+        store.update(record, "DONE", result=result.model_dump(mode="json"))
+        return {"status": "done", "preview_id": preview_id, "outcome": result.outcome}
+    except Exception as exc:
+        logger.warning("property-watch preview failed: %s", type(exc).__name__)
+        try:
+            return failed(MessageRef("pw.preview.worker_failed"))
+        except Exception:
+            logger.warning("property-watch preview state could not be written")
+            return {"status": "failed", "preview_id": preview_id}
+    finally:
+        try:
+            store.release(watch_uuid, preview_id)
+        except Exception:
+            logger.warning("property-watch preview lock could not be released")
+
+
 # ------------------------------------------------------------------ WAF (B.1)
 async def dispatch_waf_collection(enqueue: Callable[[str], object] | None = None) -> dict:
     """Enqueue one independent run per eligible WAF source, once per cadence slot.
@@ -2878,6 +2971,11 @@ def validate_identity_profile_task(profile_id: str, lock_retry_count: int = 0) -
 @celery_app.task(name="run_manual_search")
 def run_manual_search_task(execution_id: str) -> dict:
     return _run(run_manual_search(execution_id))
+
+
+@celery_app.task(name="run_property_watch_preview", ignore_result=True)
+def run_property_watch_preview_task(preview_id: str, watch_id: str, requested_by: str) -> dict:
+    return _run(run_property_watch_preview(preview_id, watch_id, requested_by))
 
 
 @celery_app.task(name="revalidate_identity_profiles")

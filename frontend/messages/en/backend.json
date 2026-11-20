@@ -925,12 +925,20 @@
       "record_count": "the history contains {records} bucket records for {expected} expected buckets"
     },
     "preview": {
+      "conflict": {
+        "running": "a preview of this watch has been queued or running since {since}"
+      },
       "cut_at_row_limit": "the grouped search was cut at the row limit and a preview does not split it; narrow the scope or preview a type or a source",
       "group_too_large": "the group resolves to {members} sources and a preview covers one search chunk of at most {max}; preview a smaller group, a type or a source",
       "lower_bound": "a bucket was cut at the row limit: its counts are lower bounds",
+      "not_queued": "the preview could not be queued, so nothing was sent to QRadar; try again shortly",
       "scope_unresolved": "{status}: {reason}",
       "search_failed": "a search failed, so its buckets were not measured",
-      "unsearchable": "the stored watch cannot be searched: {error}"
+      "store_unreadable": "the preview''s state could not be read; try again shortly",
+      "unsearchable": "the stored watch cannot be searched: {error}",
+      "watch_gone": "the watch or its console no longer exists, so the preview was not run",
+      "worker_failed": "the preview stopped because the worker failed before it finished; nothing was measured",
+      "worker_lost": "the preview did not finish: no worker reported back in time; nothing was measured"
     },
     "reference": {
       "kind_unknown": "unknown property reference kind",

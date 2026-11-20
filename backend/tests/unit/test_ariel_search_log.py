@@ -16,7 +16,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy.dialects import postgresql
 
 from app.anomaly.statistics import percentile
-from app.api.routes import property_watches as preview_routes
 from app.cli import ariel_load as cli
 from app.collectors.catchall_collector import CatchallCollector
 from app.collectors.ips_collector import IpsCollector
@@ -24,6 +23,7 @@ from app.collectors.metric_collector import MetricCollector
 from app.collectors.pw_collector import PwCollector
 from app.collectors.rule_match_collector import RuleMatchCollector
 from app.collectors.waf_endpoint_collector import WafEndpointCollector
+from app.core.config import get_settings
 from app.core.database import get_session
 from app.geo.fold import GeoDirection
 from app.i18n.messages import MessageRef, render
@@ -47,6 +47,8 @@ from app.services.aql_validator import AQLValidationError
 from app.services.ariel_errors import ArielTimeout
 from app.services.ariel_permit import ArielPermitUnavailable
 from app.services.search_executor import SearchExecutor
+from app.workers import tasks
+from tests.unit.pw_preview_fakes import FakeRedis, make_store
 from tests.unit.test_qradar_dash_support_bundle import (
     SupportBundleFixture,
     archive_files,
@@ -464,7 +466,8 @@ def test_history_and_preview_entries_declare_their_caller() -> None:
 
 
 @pytest.mark.asyncio
-async def test_preview_records_preview_and_the_route_flushes_once() -> None:
+async def test_preview_records_preview_and_the_task_flushes_once() -> None:
+    """SCALE-2h3: the preview runs in its worker task, which owns the one search-log flush."""
     mock = MockQRadarProvider()
     watch = PropertyWatch(
         id=uuid.uuid4(),
@@ -484,7 +487,18 @@ async def test_preview_records_preview_and_the_route_flushes_once() -> None:
         provider_kind="mock",
     )
     conn = _Conn()
-    session = _Session(
+
+    class _CommitSession(_Session):
+        async def commit(self) -> None:
+            return None
+
+        async def __aenter__(self) -> _CommitSession:
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None:
+            return None
+
+    session = _CommitSession(
         conn,
         {(PropertyWatch, watch.id): watch, (QRadarInstance, instance.id): instance},
     )
@@ -495,21 +509,24 @@ async def test_preview_records_preview_and_the_route_flushes_once() -> None:
     async def audit(*_args: object, **_kwargs: object) -> None:
         return None
 
-    app = create_app()
+    async def effective(_task: str) -> tuple[Any, None]:
+        return get_settings(), None
 
-    async def _session() -> AsyncIterator[_Session]:
-        yield session
-
-    app.dependency_overrides[get_session] = _session
-    app.dependency_overrides[get_principal] = lambda: ADMIN
-    app.dependency_overrides[preview_routes.get_provider_factory] = lambda: (
-        lambda _instance: mock
-    )
+    redis = FakeRedis()
+    store = make_store(get_settings(), redis)
+    preview_id = str(uuid.uuid4())
+    now = datetime.now(UTC)
+    assert store.acquire(watch.id, preview_id, now) is None
+    store.create(preview_id, watch.id, "admin", now)
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(preview_service, "preview_scope_ids", scope_ids)
-        patch.setattr(preview_routes, "record_audit", audit)
-        response = TestClient(app).post(f"/api/v1/property-watches/{watch.id}/preview")
-    assert response.status_code == 200, response.text
+        patch.setattr(tasks, "record_audit", audit)
+        patch.setattr(tasks, "_effective_settings", effective)
+        patch.setattr(tasks, "get_sessionmaker", lambda: lambda: session)
+        patch.setattr(tasks, "get_preview_store", lambda _settings: store)
+        patch.setattr(tasks, "build_provider_for_instance", lambda _instance: mock)
+        outcome = await tasks.run_property_watch_preview(preview_id, str(watch.id), "admin")
+    assert outcome["status"] == "done", outcome
     assert len(conn.statements) == 1
     stored = _inserted(conn.statements[0])
     assert len(stored) == 2

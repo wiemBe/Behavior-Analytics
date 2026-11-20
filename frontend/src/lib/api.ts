@@ -2946,6 +2946,27 @@ export interface PwPreview {
   queries: Array<{ search: "GROUPED" | "TOTALS"; text: string }>;
 }
 
+/** The 202 of a preview: the id to poll, never a result (SCALE-2h3). */
+export interface PwPreviewQueued {
+  preview_id: string;
+  watch_id: string;
+  requested_at: string;
+}
+
+export type PwPreviewState = "QUEUED" | "RUNNING" | "DONE" | "FAILED" | "EXPIRED";
+
+/** `GET /property-watches/{id}/preview/{preview_id}`: `result` only when DONE, `reason_code` only when FAILED. */
+export interface PwPreviewStatus {
+  preview_id: string;
+  watch_id: string;
+  status: PwPreviewState;
+  requested_at: string | null;
+  result: PwPreview | null;
+  reason: string | null;
+  reason_code: string | null;
+  reason_params: Record<string, unknown> | null;
+}
+
 export interface PwValueRef {
   watch_id: string;
   watch_name: string;
@@ -3566,7 +3587,9 @@ export const api = {
   deletePropertyWatch: (id: string) =>
     request<void>(`/property-watches/${id}`, { method: "DELETE" }),
   previewPropertyWatch: (id: string) =>
-    request<PwPreview>(`/property-watches/${id}/preview`, { method: "POST" }),
+    request<PwPreviewQueued>(`/property-watches/${id}/preview`, { method: "POST" }),
+  propertyWatchPreview: (id: string, previewId: string) =>
+    request<PwPreviewStatus>(`/property-watches/${id}/preview/${encodeURIComponent(previewId)}`),
   requestPropertyWatchHistory: (id: string, historyDays: number) =>
     request<PropertyWatch>(`/property-watches/${id}/history`, {
       method: "POST",

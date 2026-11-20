@@ -600,6 +600,25 @@
     "previewEmptyTitle": "No preview yet.",
     "previewEmptyBody": "Save disabled to preview the stored definition."
   },
+  "previewRun": {
+    "queuedLead": "Preview queued at",
+    "queuedTail": "A worker starts it shortly; this page checks every 5 seconds.",
+    "runningLead": "Preview running. Queued at",
+    "runningTail": "This page checks every 5 seconds.",
+    "readFailed": "The preview's progress could not be read. Checking again in 5 seconds.",
+    "failedTitle": "Preview did not finish.",
+    "failedFallback": "The worker reported no reason.",
+    "failedAction": "Save again to run a new preview.",
+    "expiredTitle": "This preview's result is no longer held.",
+    "expiredBody": "A result is kept only for a limited time after the run. Save again to run a new preview.",
+    "busyLead": "A preview of this watch has been queued or running since",
+    "busyAnonymous": "A preview of this watch is already queued or running.",
+    "busyTail": "The watch was saved. Wait for that preview to end, then save again.",
+    "forbiddenTitle": "The preview cannot be read with this account.",
+    "forbiddenBody": "Reading a preview needs the property_watch:write permission. Ask an administrator to grant it.",
+    "notFoundTitle": "The preview could not be found for this account.",
+    "notFoundBody": "A preview can be read only by the user who requested it, on the watch it was run for. Save again to run a new preview."
+  },
   "preview": {
     "summary": "{measured} measured, {lower} lower-bound, {unmeasured} unmeasured buckets.{reason}",
     "window": "Last closed hour: <start></start> to <end></end>.",
