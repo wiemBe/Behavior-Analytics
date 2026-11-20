@@ -662,6 +662,195 @@ backfill if you want the new console's past.
 
 For a scripted run use `--non-interactive --yes`; without `--yes` it refuses.
 
+### Carry the operator configuration across: `config-export` and `config-import`
+
+`reset` wipes the database, so every profile, policy, watch, dashboard and mail setting is gone
+with it. Two commands move that operator configuration as one secret-free JSON file (D-78):
+
+```text
+./qradar-dash config-export [--label LABEL] [--instance NAME] [--output FILE]
+./qradar-dash config-import FILE (--dry-run | --apply) [--non-interactive --yes]
+```
+
+Export writes the file on the host; import merges it into this site's database against the
+inventory written by `sync`, calling no QRadar API and deleting nothing.
+
+Run the steps in this order:
+
+1. **On the pre-production host, write the file before `reset`:**
+
+   ```bash
+   ./qradar-dash config-export --label preprod
+   ```
+
+   `--label` is recorded as `source_label` (letters, digits, `.`, `_`, `-`, up to 64 characters;
+   a console name that is not one needs `--label`, `backend/app/cli/config.py:68-83`;
+   `backend/app/config_transfer/document.py:56`). `--output FILE` defaults to
+   `qradar-dash-config.json` in the run directory, replaces any existing file with mode `0600`,
+   and prints the path on success (`qradar-dash:5008-5009, 5025-5026, 5050, 5058`).
+
+2. **Copy the file to the production host** over a protected channel, keeping mode `0600` on both
+   hosts. It holds no credentials, but it is an admin-level description of the site.
+
+3. **Wipe and reinstall against production:**
+
+   ```bash
+   ./qradar-dash reset
+   ./deploy/load-secrets.sh
+   ./qradar-dash install
+   ```
+
+   `reset` takes no backup unless `--backup` is passed. `install` registers the production console
+   (`qradar-dash:1601`).
+
+4. **Run the first sync and wait for the inventory to fill.** Import resolves names against local
+   rows, so a file imported before sync resolves nothing. Run log-source sync and rule sync
+   (`python -m app.cli.sync rules --instance <console name>`, or `all`;
+   `backend/app/cli/sync.py:36-47, 105-125`).
+
+5. **Read the plan with a dry run:**
+
+   ```bash
+   ./qradar-dash config-import qradar-dash-config.json --dry-run
+   ```
+
+   A dry run rolls back the plan and commits only its audit row (`"committed": false`), printing
+   the JSON report on stdout. The wrapper `config-import` has no `--instance` flag
+   (`qradar-dash:5071-5073`); with two or more consoles registered, use the in-container
+   `python -m app.cli.config import` form below with `--instance <console name>`. Both commands
+   target the sole registered console or `--instance NAME` and exit `2` if none or several are
+   registered without it (`backend/app/cli/config.py:42-64`).
+
+   Each row appears under one outcome, keyed by `key` (natural key fields joined with `|`):
+
+   | Outcome | Meaning |
+   |---|---|
+   | `created` | The target has no row for this natural key, so import writes it (a seed update to `search_cadence`, `ldap_config`, default log-source SOC fields, default built-in classification rules, or analytics-rule SOC fields that still matches its seed default is also reported as `created`). A created profile's reason is `inserted disabled and UNVALIDATED` (`backend/app/config_transfer/import_bundle.py:197-204, 313-317, 677-681, 1167-1171`). |
+   | `unchanged` | The stored row equals the file, ignoring `enabled` and validation columns, so a re-import is `unchanged` (`backend/app/config_transfer/import_bundle.py:407-413, 798-800, 841-842, 921-923, 972-975`). |
+   | `conflict` | The stored row differs from the file and is not an untouched seed default; it is left unmodified (`backend/app/config_transfer/import_bundle.py:1169, 411-413, 568-570, 735, 800, 842, 923, 972-973`). |
+   | `unresolved` | The row was skipped due to an ambiguous or missing reference (no match or multiple matches in the local inventory), an export `warnings` entry, a `duplicate natural key in the file`, a webhook URL failing the new host's egress guard (`destination URL failed the egress guard`; fix reachability or set `allow_private` / `allow_http` on the source and export again), or a section `not applied in this release` (`backend/app/config_transfer/import_bundle.py:555-558, 1177-1195`). |
+
+   Rows resolving to a single log source also carry `"local_id"` (`log_source.id`), which the IPS
+   HTTP routes take (`import_bundle.py:108-109, 1185-1192`; `report.py:20-25`). Import refuses the
+   whole file (exiting `2`) when it exceeds 5,000,000 bytes, is not valid JSON, has an unknown
+   top-level key or section, has `schema_version` other than `1`, or has a secret-shaped key
+   (`backend/app/cli/config.py:107, 179-181`; `document.py:20, 137-172`). Any other failure exits
+   `1` (including wrapper `config-export` if not installed or the directory is missing); a report
+   with `conflict` or `unresolved` rows exits `0` (`backend/app/cli/config.py:157, 182-186`;
+   `qradar-dash:5005-5014`).
+
+   The in-container forms print to stdout and read import JSON from stdin (`backend/app/cli/config.py:101, 107, 155`):
+
+   ```bash
+   umask 077
+   docker compose exec -T backend python -m app.cli.config export --label preprod [--instance <console name>] [--actor ACTOR] > qradar-dash-config.json
+   docker compose exec -T backend python -m app.cli.config import --dry-run [--instance <console name>] [--actor ACTOR] < qradar-dash-config.json
+   docker compose exec -T backend python -m app.cli.config import --apply --yes [--instance <console name>] [--actor ACTOR] < qradar-dash-config.json
+   ```
+
+   A shell `>` redirect uses the shell's umask rather than `0600`; run `umask 077` first or
+   `chmod 600 qradar-dash-config.json`. In-container `import --apply` without `--yes` exits `2`
+   (`backend/app/cli/config.py:175-176`).
+
+6. **Apply the import:**
+
+   ```bash
+   ./qradar-dash config-import qradar-dash-config.json --apply --non-interactive --yes
+   ```
+
+   `--apply` writes in one transaction. If an unhandled error rolls the transaction back, nothing
+   is committed, `"committed": false` is printed, and the command exits `1`
+   (`backend/app/cli/config.py:133-152`). On a TTY, `config-import FILE --apply` runs a dry run
+   first and asks you to type the console name (`"instance"`) before applying; anything else exits
+   `1` (`qradar-dash:5139-5176`). `--actor` defaults to the host user through the wrapper
+   (`qradar-dash:5016, 5111`).
+
+### What the file holds, and what it never holds
+
+It holds this product's operator configuration: log-source SOC fields, classification overrides and
+rules, analytics-rule SOC fields and explicit technique mappings, WAF, IPS and identity profiles,
+property watches, alert and outage policies, open suppressions, notification destinations and rules,
+e-mail templates and recipients, LDAP directory settings, search cadence, scheduled searches with
+their current AQL, custom rules, dashboards and dashboard preferences
+(`export_bundle.py:66-86, 157-719`).
+
+It never holds the QRadar token, any password or hash, webhook HMAC secret or headers, SMTP
+password, users, sessions, roles, or any measured data, baseline, anomaly or raw event. Export and
+import refuse any file containing a key in `SECRET_KEYS` (`sec_token`, `hashed_password`,
+`hmac_secret`, `headers`, `password`, `token`, `token_hash`, `smtp_password`, `authorization`),
+and allow `url` only inside `notification_destinations` (`document.py:42-52, 175-202`). A webhook
+destination travels with its `url`, `allow_http`, `allow_private` and
+`"secrets_omitted": ["hmac_secret", "headers"]` (`export_bundle.py:386-389`).
+
+### What the operator does after the import
+
+- **Profiles** arrive `enabled=false` and `UNVALIDATED`.
+  WAF and identity validate inline and enable via the CLI, requiring `--instance <console name>`
+  and `--log-source <QRadar integer log source id>` (not `local_id`;
+  `backend/app/cli/waf.py:60-70, 288-290`; `backend/app/cli/identity.py:49-63, 117-118`):
+
+  ```bash
+  docker compose exec -T backend python -m app.cli.waf validate \
+    --instance <console name> --log-source <QRadar log source id> [--json]
+  docker compose exec -T backend python -m app.cli.waf enable \
+    --instance <console name> --log-source <QRadar log source id>
+
+  docker compose exec -T backend python -m app.cli.identity validate \
+    --instance <console name> --log-source <QRadar log source id> [--json]
+  docker compose exec -T backend python -m app.cli.identity enable \
+    --instance <console name> --log-source <QRadar log source id>
+  ```
+
+  WAF and identity CLI `validate` run inline (read-only against QRadar) and exit `2` when the
+  profile is not `VALID` (`waf.py:154-169`; `identity.py:92-105`). `enable` refuses a profile that
+  is not `VALID` (`waf_profiles.py:158-169`; `identity/profiles.py:153-160`).
+  IPS has no CLI. Post to the HTTP routes from a host that can reach the backend, using the
+  `qd_session` cookie of an `admin:ips` operator, `{log_source_id}` set to `local_id`, and an
+  `Origin` (or `Referer`) matching `PUBLIC_ORIGIN` (`ips.py:203-209, 402-451`;
+  `router.py:185`; `csrf.py:47-55`):
+
+  ```bash
+  curl --fail -b qd_session=<session cookie> -H "Origin: $PUBLIC_ORIGIN" -X POST https://<host>/api/v1/ips/log-sources/<local_id>/profile/validate
+  curl --fail -b qd_session=<session cookie> -H "Origin: $PUBLIC_ORIGIN" -X POST https://<host>/api/v1/ips/log-sources/<local_id>/profile/enable
+  ```
+
+  Unlike the WAF and identity CLI `validate` commands (which run inline), the IPS (and WAF) HTTP
+  `validate` routes answer `202` and finish in a worker (`409` if one is pending); `enable` answers
+  `200` and refuses a profile that is not `VALID` (`ips.py:402-451`;
+  `ips_profiles.py:154-170, 303-316`). A profile does not collect until validated and enabled.
+
+- **Webhook destinations, property watches, custom rules, and scheduled searches** arrive
+  `enabled=false`, and their prior toggle is recorded in `enabled_on_source` in the file so you
+  can enable only those that were on. **Webhook destinations** have no HMAC secret and empty
+  headers (`import_bundle.py:558-563`); set `hmac_secret`, `headers` and `enabled=true` via
+  `PATCH /api/v1/admin/notifications/destinations/<id>` (permission `admin:notifications`) or the
+  admin UI (`notification_destinations.py:96, 290-293`; `rbac.py:173`). **Scheduled searches**
+  have `query_version=1` and one `SearchQueryVersion` (`change_note="initial version"`); their AQL
+  is validated on import and never executed (`import_bundle.py:818-836`). **Property watches**
+  have `history_days` omitted and `history_state=NOT_REQUESTED` (`import_bundle.py:785-789`);
+  start a new history bootstrap if you want QRadar's past.
+
+- **Notification rules, e-mail templates, and e-mail recipients** keep the `enabled` value from
+  the file (`import_bundle.py:589-596, 625-631, 649-655`).
+
+- **Dashboards** keep the pre-production `owner_subject`. Run both `UPDATE` statements only after
+  the last import; dashboards match on `(owner_subject, name)` (`import_bundle.py:964-975`), so
+  rehoming earlier creates duplicates on re-import:
+  ```sql
+  UPDATE dashboard SET owner_subject = '<new subject>' WHERE owner_subject = '<old subject>';
+  UPDATE user_dashboard_pref SET owner_subject = '<new subject>' WHERE owner_subject = '<old subject>';
+  ```
+
+- **Cadence and LDAP** update the seeded rows (`search_cadence`, `ldap_config`, reported as
+  `created`) only when `updated_by` is `NULL` and the row equals the seed default, bumping
+  `ldap_config.version` by 1 (`import_bundle.py:313-317, 672-682`).
+
+- **Rows waiting on collection.** A custom rule or dashboard bound to a WAF endpoint, IPS entity
+  or watch value that collection has not yet admitted is `unresolved`; run the same import again
+  after collection.
+
+- **SMTP** is not in the file; it is read from environment variables (`config.py:1278-1286`).
+
 ## Upgrade, backup and recovery
 
 Use the operator CLI rather than running migrations against a live old application:
