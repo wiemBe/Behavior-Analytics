@@ -26,7 +26,7 @@ async function ReportsPage({
   const params = await searchParams;
   return (
     <>
-      <PageHeader title={t("title")} description={t("description")} guide={guideFor("/reports")} />
+      <PageHeader title={t("title")} guide={guideFor("/reports")} />
       <ReportsView period={first(params.period)} start={first(params.start)} />
     </>
   );

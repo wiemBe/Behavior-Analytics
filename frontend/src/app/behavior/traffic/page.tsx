@@ -107,11 +107,7 @@ async function TrafficPageView({
 
   return (
     <>
-      <PageHeader
-        guide={guideFor("/behavior/traffic")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/behavior/traffic")} title={t("title")} />
       <TrafficControls
         query={query}
         sourceId={sourceId}

@@ -30,11 +30,7 @@ describe("new search page", () => {
     vi.spyOn(api, "caller").mockResolvedValue(writer);
     render(await NewSearchPage());
     expect(screen.getByRole("heading", { name: "New search", level: 1 })).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "A new search is saved disabled. Run it from its page to preview the result; only the saved query ever runs.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/A new search is saved disabled/)).toBeNull();
     expect(screen.queryByText(/Saved as a disabled version/)).toBeNull();
     expect(screen.getByRole("textbox", { name: "AQL" })).toBeInTheDocument();
     expect(screen.getAllByText(SEARCH_LATENCY_STATEMENT)).toHaveLength(1);

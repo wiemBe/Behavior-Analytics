@@ -12,7 +12,7 @@ import { TableScroll } from "@/components/ui/TableScroll";
 import { entityHref } from "@/lib/entities";
 import { formatCount, type FormatLocale } from "@/lib/format";
 
-import { TOP_N, VOLUME_NAME_FLOOR, isVolumeEvent, type NameRow } from "./identityFormat";
+import { type NameRow } from "./identityFormat";
 
 import "@/components/ui/controls.css";
 import "./identity.css";
@@ -58,7 +58,6 @@ export function IdentityNamesTable({
               <th scope="col">{t("username")}</th>
               <th scope="col" className="num">
                 {t("stored")}
-                <span className="cell-sub">{t("storedSub")}</span>
               </th>
               <th scope="col" className="num">
                 {t("buckets")}
@@ -84,10 +83,6 @@ export function IdentityNamesTable({
           {t("more", { shown: shown.length, total: formatCount(names.length, locale) })}
         </p>
       )}
-      <p className="subtitle">
-        {isVolumeEvent(eventId) ? t("noteVolume", { floor: VOLUME_NAME_FLOOR }) : t("noteRare")}{" "}
-        {t("noteTop", { top: TOP_N })}
-      </p>
     </div>
   );
 }

@@ -269,7 +269,7 @@ describe("the manual-run budget refusal", () => {
     render(<SearchRunControl searchId="s-1" />);
     await user.click(screen.getByRole("button", { name: "Run now" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The run did not start. Reload the page and try again.",
+      "The run did not start. Reload and try again.",
     );
   });
 });

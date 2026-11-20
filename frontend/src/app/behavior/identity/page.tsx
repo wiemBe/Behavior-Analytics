@@ -88,7 +88,7 @@ async function IdentityOverviewPage({
     const forbidden = err instanceof ApiError && err.status === 403;
     return (
       <>
-        <PageHeader guide={guideFor("/behavior/identity")} title={t("title")} description={t("description")} />
+        <PageHeader guide={guideFor("/behavior/identity")} title={t("title")} />
         <Problem title={forbidden ? t("forbiddenTitle") : t("failedTitle")} text={text} />
       </>
     );
@@ -97,7 +97,7 @@ async function IdentityOverviewPage({
   if (sources.length === 0) {
     return (
       <>
-        <PageHeader guide={guideFor("/behavior/identity")} title={t("title")} description={t("description")} />
+        <PageHeader guide={guideFor("/behavior/identity")} title={t("title")} />
         <div className="notice" role="status">
           <p>
             <strong>{t("emptyTitle")}</strong>
@@ -161,7 +161,7 @@ async function IdentityOverviewPage({
 
   return (
     <>
-      <PageHeader guide={guideFor("/behavior/identity")} title={t("title")} description={t("description")} />
+      <PageHeader guide={guideFor("/behavior/identity")} title={t("title")} />
       <div className="stack-6">
         <p className="identity-lead">
           {t.rich("lead", {
@@ -192,7 +192,6 @@ async function IdentityOverviewPage({
           <div className="identity-controls">
             <IdentityRangeSelector path="/behavior/identity" active={range} />
           </div>
-          <p className="subtitle">{t("countsNote")}</p>
           {sources.length > COUNTS_READ_CAP && (
             <p className="banner warn" role="status">
               {t("countsCapped", { cap: COUNTS_READ_CAP, total: sources.length })}

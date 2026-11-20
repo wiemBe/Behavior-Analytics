@@ -44,7 +44,7 @@ describe("GeoMap", () => {
   it("says what failed and what to do when the outlines cannot be loaded", () => {
     render(<GeoMap data={answer()} world={{ status: "error" }} locale="en" ariaLabel="x" />);
     expect(screen.getByRole("alert")).toHaveTextContent("The map outlines could not be loaded.");
-    expect(screen.getByRole("alert")).toHaveTextContent("The table has the same figures. Reload the page");
+    expect(screen.getByRole("alert")).toHaveTextContent("The table has the same figures.");
     expect(init).not.toHaveBeenCalled();
   });
 

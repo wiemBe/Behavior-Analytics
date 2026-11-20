@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Geography",
-    "description": "Events per country, by the country of their source or destination address.",
+    "description": "See Guide.",
     "loadingWhat": "the country counts",
     "errorWhat": "The country counts",
     "windowLine": "Last {window}: <start></start> to <end></end>.",
@@ -35,14 +35,14 @@
     "what": "the country counts",
     "link": "Geography",
     "linkAria": "Open the Geography page",
-    "unsupportedDirection": "The saved direction is not one this version knows; Source addresses are shown.",
+    "unsupportedDirection": "Unknown saved direction; Source addresses are shown.",
     "windowText": "{direction} · {range}"
   },
   "state": {
     "notCollectedLead": "Not collected.",
-    "notCollected": "Nothing has been collected for {direction} in this range, so no map is drawn. The QRadar property that carries the country may not be configured, or collection has not run in this range.",
+    "notCollected": "Nothing collected for {direction} in this range, so no map is drawn. The country property may not be configured.",
     "insufficientLead": "Insufficient data.",
-    "insufficient": "Buckets were collected for {direction}, but no address resolved to a country, so no map is drawn."
+    "insufficient": "Buckets were collected for {direction}, but no address resolved to a country; no map is drawn."
   },
   "map": {
     "aria": "Map of events by country, {direction}. Largest: {top}. The table lists every country.",
@@ -50,7 +50,7 @@
     "topItem": "{name} ({count})",
     "loadingOutlines": "Loading the map outlines…",
     "outlinesFailed": "The map outlines could not be loaded.",
-    "outlinesFailedAction": "The table has the same figures. Reload the page to try again.",
+    "outlinesFailedAction": "The table has the same figures.",
     "noData": "No data",
     "events": "{count} events",
     "eventsAtLeast": "At least {count} events",

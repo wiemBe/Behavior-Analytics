@@ -99,8 +99,9 @@ describe("Identity source", () => {
 
   it("says names below 3 events are not stored for 4625 and only the top 20 are kept", async () => {
     await renderPage();
-    expect(screen.getByText(/Names below 3 events in a bucket are not stored/)).toBeInTheDocument();
-    expect(screen.getByText(/Only the top 20 per bucket are kept/)).toBeInTheDocument();
+    expect(screen.queryByText(/Names below 3 events in a bucket are not stored/)).toBeNull();
+    expect(screen.queryByText(/Only the top 20 per bucket are kept/)).toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Events (at least)" })).toBeInTheDocument();
   });
 
   it("says every name is stored for a rare event, with no floor sentence", async () => {
@@ -108,7 +109,7 @@ describe("Identity source", () => {
       [point({ event_id: 1102, usernames: [{ rank: 1, username: "admin1", count: 1, truncated: false }] })],
       { params: { event: "1102" } },
     );
-    expect(screen.getByText(/Every name is stored from one event/)).toBeInTheDocument();
+    expect(screen.queryByText(/Every name is stored from one event/)).toBeNull();
     expect(screen.queryByText(/not stored, so/)).toBeNull();
   });
 
@@ -119,7 +120,7 @@ describe("Identity source", () => {
 
   it("warns that a cut name search leaves the list incomplete", async () => {
     await renderPage([point({ names_measurement: "TRUNCATED", admission_truncated: true, usernames: [] })]);
-    expect(screen.getByText(/name search in this range was cut/)).toBeInTheDocument();
+    expect(screen.getByText(/Name search cut or not run; a missing name is not proof of absence/)).toBeInTheDocument();
   });
 
   it("draws the chart in events per 5 minutes with no baseline", async () => {
@@ -128,7 +129,7 @@ describe("Identity source", () => {
     const option = setOption.mock.calls[0][0] as { yAxis: { name: string } };
     expect(option.yAxis.name).toBe("events per 5 min");
     expect(screen.getByRole("img", { name: /Counts of event 4625 Failed logon in events per 5 min/ })).toBeInTheDocument();
-    expect(screen.getByText(/No expected range is drawn/)).toBeInTheDocument();
+    expect(screen.queryByText(/No expected range is drawn/)).toBeNull();
   });
 
   it("draws no chart and no zero when nothing was measured", async () => {
@@ -152,7 +153,7 @@ describe("Identity source", () => {
 
   it("says a profile that is not collected, and still shows what was stored", async () => {
     await renderPage(names(), { profile: profile({ enabled: false }) });
-    expect(screen.getByText(/profile is not enabled, so the source is not collected/)).toBeInTheDocument();
+    expect(screen.getByText(/Profile not enabled: not collected, no verdicts/)).toBeInTheDocument();
   });
 });
 

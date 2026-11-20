@@ -62,7 +62,7 @@ describe("the period chips", () => {
 
   it("fall back to the default for an unknown period and say so", () => {
     mount({ period: "yearly" });
-    expect(screen.getByText("Ignored an unknown period; showing the last 7 days.")).toBeInTheDocument();
+    expect(screen.getByText("Unknown period ignored; showing the last 7 days.")).toBeInTheDocument();
     expect(mocks.summary).toHaveBeenCalledWith("last_7d", undefined);
   });
 });
@@ -98,7 +98,7 @@ describe("the calendar control", () => {
   it("never goes past the current month, and clamps a start in the future", () => {
     mount({ period: "calendar_month", start: "2026-12-01T00:00:00Z" });
     expect(mocks.summary).toHaveBeenCalledWith("calendar_month", "2026-11-01T00:00:00.000Z");
-    expect(screen.getByText("Ignored a start in the future; showing the current period.")).toBeInTheDocument();
+    expect(screen.getByText("Start in the future ignored; showing the current period.")).toBeInTheDocument();
     expect(screen.getByText("Next month").closest("a")).toBeNull();
     expect(screen.getByText("Month starting 2026-11-01 UTC")).toBeInTheDocument();
   });
@@ -290,7 +290,7 @@ describe("a partial family", () => {
     mount();
     await screen.findByRole("table", { name: /Anomalies opened in the period/ });
     const notes = screen.getAllByText(
-      "WAF: anomaly rows are kept for 180 days, so this period is counted only from 2026-11-06 00:00 UTC. Counts marked ≥ are lower bounds.",
+      "WAF: anomaly rows are kept 180 days, so counts start from 2026-11-06 00:00 UTC. Counts marked ≥ are lower bounds.",
     );
     expect(notes).toHaveLength(2);
   });
@@ -330,7 +330,7 @@ describe("a partial family", () => {
     expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual([
       "25 min",
       "22",
-      "Partial: older rows are no longer kept.",
+      "Partial: older rows are not kept.",
     ]);
   });
 });
@@ -349,7 +349,7 @@ describe("a forbidden block", () => {
   it("names the permission, offers no export, and leaves the other blocks standing", async () => {
     mount();
     const alerts = (await screen.findByRole("heading", { level: 2, name: "Alerts opened" })).closest("section")!;
-    expect(alerts).toHaveTextContent("You need the read:alerts permission to see this block.");
+    expect(alerts).toHaveTextContent("You need the read:alerts permission for this block.");
     expect(within(alerts).queryByRole("table")).toBeNull();
     expect(within(alerts).queryByRole("link", { name: "Export alerts CSV" })).toBeNull();
     expect(within(alerts).getByText("Forbidden")).toBeInTheDocument();
@@ -391,7 +391,7 @@ describe("a block whose own read failed", () => {
     );
     mount();
     const clocks = (await screen.findByRole("heading", { level: 2, name: "Time to act on anomalies" })).closest("section")!;
-    expect(clocks).toHaveTextContent("This block could not be read");
+    expect(clocks).toHaveTextContent("This block's query failed");
     expect(within(clocks).queryByRole("table")).toBeNull();
     expect(screen.getByRole("table", { name: /Alerts opened in the period/ })).toBeInTheDocument();
   });
@@ -469,7 +469,7 @@ describe("errors", () => {
     );
     mount({ period: "calendar_week" });
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The backend refused the period: start must not be in the future Choose another period.",
+      "The backend refused the period: start must not be in the future Choose another.",
     );
   });
 

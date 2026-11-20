@@ -76,7 +76,6 @@ export function ExecutionsTable({ executions }: { executions: SearchExecution[] 
   const backendMessage = useBackendMessage();
   const units = useTranslations("units") as unknown as Parameters<typeof formatRunDuration>[1];
   const locale = useLocale() as FormatLocale;
-  const anyTruncated = executions.some((e) => e.truncated);
   return (
     <>
       <TableScroll label={t("label")}>
@@ -137,12 +136,6 @@ export function ExecutionsTable({ executions }: { executions: SearchExecution[] 
           </tbody>
         </table>
       </TableScroll>
-      {anyTruncated && (
-        <ul className="table-notes" aria-label={t("notesLabel")}>
-          <li>{t("noteBound")}</li>
-          <li>{t("noteVerdict")}</li>
-        </ul>
-      )}
     </>
   );
 }

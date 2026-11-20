@@ -50,7 +50,7 @@ async function EntitiesPage({
   if (query.value === "") {
     return (
       <>
-        <PageHeader guide={guide} title={t("title")} description={t("description")} />
+        <PageHeader guide={guide} title={t("title")} />
         <div className="entities">
           <EntityForm value="" kind="ip" range={query.range} />
         </div>
@@ -65,7 +65,7 @@ async function EntitiesPage({
   if (query.valueTooLong) {
     return (
       <>
-        <PageHeader guide={guide} title={t("title")} description={t("description")} />
+        <PageHeader guide={guide} title={t("title")} />
         <div className="entities">
           <div className="notice" role="alert" id={REFUSAL_ID}>
             <p>{t("form.tooLong", { max: formatCount(ENTITY_VALUE_MAX, locale) })}</p>
@@ -97,7 +97,7 @@ async function EntitiesPage({
     const kindNeeded = code === KIND_REQUIRED_CODE;
     return (
       <>
-        <PageHeader guide={guide} title={typedTitle} description={t("description")} />
+        <PageHeader guide={guide} title={typedTitle} />
         <div className="entities">
           {refused ? (
             <div className="notice" role="alert" id={REFUSAL_ID}>
@@ -150,7 +150,6 @@ async function EntitiesPage({
       <PageHeader
         guide={guide}
         title={t("titleEntity", { kind: t(`kind.${entity.kind}`), value: entity.value_norm })}
-        description={t("description")}
       />
       <div className="entities">
         <EntityForm

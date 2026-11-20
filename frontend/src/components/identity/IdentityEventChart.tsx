@@ -128,7 +128,6 @@ export function IdentityEventChart({
           </li>
         )}
       </ul>
-      <p className="subtitle chart-note">{t("note")}</p>
     </div>
   );
 }

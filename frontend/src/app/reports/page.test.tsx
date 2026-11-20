@@ -18,7 +18,7 @@ describe("the reports route", () => {
   it("asks the question, with the guide link", async () => {
     render(await ReportsPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole("heading", { level: 1, name: "Reports" })).toBeInTheDocument();
-    expect(screen.getByText("How did the period go?")).toBeInTheDocument();
+    expect(screen.queryByText("How did the period go?")).toBeNull();
     expect(screen.getByTestId("view")).toHaveTextContent("view:default:-");
     expect(screen.getByRole("link", { name: /guide/i })).toHaveAttribute("href", expect.stringContaining("reports"));
   });

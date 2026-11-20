@@ -239,7 +239,6 @@ export function IdentityProfilePanel({
                     autoComplete="off"
                     required
                   />
-                  <p className="field-hint">{t("eventIdHelp")}</p>
                 </div>
                 <span className="outage-form-label">
                   <label htmlFor={ids.user}>{t("usernameProperty")}</label>

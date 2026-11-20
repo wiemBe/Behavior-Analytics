@@ -1,5 +1,5 @@
 {
   "title": "Configuration changes",
   "heading": "Configuration changes are not collected.",
-  "body": "A data model for them exists, but no collector or API fills it, so this page has nothing to show."
+  "body": "No collector or API fills the data model, so there is nothing to show. This is not a finding that nothing changed."
 }

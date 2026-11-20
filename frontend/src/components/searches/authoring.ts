@@ -34,7 +34,7 @@ export const SEARCH_FAILURE_ALERT_AFTER = 3;
  * `searches.editor.latency` message (a test pins that they are equal); the editor reads the message.
  */
 export const SEARCH_LATENCY_STATEMENT =
-  "This search runs in QRadar on its schedule; its result and any threshold breach appear after each run completes, not in real time. For alerting within seconds, use QRadar's own rules.";
+  "This search runs in QRadar on its schedule; results and any threshold breach appear after each run completes.";
 
 export const SEARCH_WRITE = "search:write";
 

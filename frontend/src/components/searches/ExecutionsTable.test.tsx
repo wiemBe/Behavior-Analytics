@@ -54,11 +54,10 @@ describe("ExecutionsTable truncated runs", () => {
     expect(cells[5]).not.toHaveTextContent("at least");
   });
 
-  it("explains the markers once, below the table, only when a run was truncated", () => {
-    const { rerender } = render(<ExecutionsTable executions={rows} />);
-    expect(screen.getByRole("list", { name: "Truncated runs" })).toBeInTheDocument();
-    rerender(<ExecutionsTable executions={[exec("c")]} />);
+  it("carries no footnote below the table; a truncated run is marked in its own cells", () => {
+    render(<ExecutionsTable executions={rows} />);
     expect(screen.queryByRole("list", { name: "Truncated runs" })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/at least/).length).toBeGreaterThan(0);
   });
 
   it("does not claim a number for a truncated run with no recorded count", () => {

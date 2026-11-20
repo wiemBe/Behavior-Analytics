@@ -80,11 +80,10 @@ async function IdentitySourcePage({
   const range = parseRange(raw.range);
   const window = windowOf(range, Date.now(), BUCKET_SECONDS);
   const path = `/behavior/identity/sources/${id}`;
-  const header = (title: string, description?: string) => (
+  const header = (title: string) => (
     <PageHeader
       guide={guideFor("/behavior/identity/sources/[id]")}
       title={title}
-      description={description ?? t("description")}
       actions={
         <Link href="/behavior/identity" className="action secondary button-link">
           {t("allSources")}
@@ -131,7 +130,7 @@ async function IdentitySourcePage({
         ]);
         return (
           <>
-            {header(source?.name ?? t("title"), t("noProfileDescription"))}
+            {header(source?.name ?? t("title"))}
             <IdentityProfilePanel logSourceId={id} profile={null} canAdmin={canAdmin} />
           </>
         );

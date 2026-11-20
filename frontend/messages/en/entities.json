@@ -2,7 +2,6 @@
   "title": "Entity timeline",
   "meta": "Entity timeline",
   "titleEntity": "{kind} {value}",
-  "description": "What this platform has already stored about one IP address, host or user: incident records and bounded top-contributor lists. It is not a search of raw events and not a QRadar search.",
   "boundary": {
     "title": "Entity timeline",
     "loading": "the entity timeline",
@@ -17,14 +16,14 @@
   "form": {
     "label": "Entity search",
     "value": "Value",
-    "valueHint": "An IP address, a host name or a user name.",
+    "valueHint": "IP address, host name or user name.",
     "kind": "What it is",
     "kindIp": "IP address",
     "kindHost": "Host",
     "kindUser": "User",
     "submit": "Show timeline",
-    "tooLong": "The value is longer than {max} characters, so no search was made. Shorten it and try again.",
-    "chooseKind": "Choose what “{value}” is, then show the timeline again."
+    "tooLong": "The value is longer than {max} characters; no search was made.",
+    "chooseKind": "Choose what “{value}” is."
   },
   "range": {
     "label": "Time range (UTC)",
@@ -38,13 +37,13 @@
   },
   "refused": {
     "title": "The backend refused this search.",
-    "generic": "The value, kind or window could not be accepted as typed.",
+    "generic": "The value, kind or window was not accepted.",
     "newest": "Open the newest page"
   },
   "page": {
-    "PARTIAL": "Some lanes below are bounded, stale, switched off or not collected. An empty result in them does not prove the entity was absent.",
-    "NOT_COLLECTED": "No lane measured this entity in this window, so nothing below is a finding about it.",
-    "TRUNCATED": "This list is one page. More stored mentions match this window than are shown, newest first.",
+    "PARTIAL": "Some lanes are bounded, stale, off or not collected. An empty result there is not proof of absence.",
+    "NOT_COLLECTED": "No lane measured this entity in this window; nothing below is a finding.",
+    "TRUNCATED": "One page of stored mentions; more match this window, newest first.",
     "OTHER": "This result is not complete."
   },
   "state": {
@@ -75,12 +74,12 @@
       "CATCHALL": "Catch-all senders",
       "PW_VALUE": "Property watch values"
     },
-    "noneProven": "Collection covered this window and the entity was not found.",
-    "notCounted": "Not counted on a paged list.",
-    "noReason": "No reason was recorded.",
-    "forbidden": "Not shown: this lane requires {permission}.",
+    "noneProven": "Collection covered this window; the entity was not found.",
+    "notCounted": "Not counted on a page.",
+    "noReason": "No reason recorded.",
+    "forbidden": "Not shown: needs {permission}.",
     "forbiddenUnknown": "Not shown: your role may not read this lane.",
-    "pagedNote": "This list is a page, so the counts above are for this page only.",
+    "pagedNote": "Paged list: counts are for this page only.",
     "notMeasured": "Not measured"
   },
   "items": {
@@ -115,7 +114,7 @@
   },
   "empty": {
     "none": "No stored mention of {value} in this window.",
-    "caution": "That is not a finding that it was absent. Read the status of each lane below: a lane that was not collected, or that stores only top contributors, cannot show absence."
+    "caution": "Not a finding of absence: a lane that was not collected, or keeps only top contributors, cannot show absence."
   },
   "dangling": "{count, plural, one {# stored record} other {# stored records}} could no longer be opened and {count, plural, one {is} other {are}} not listed.",
   "paging": {

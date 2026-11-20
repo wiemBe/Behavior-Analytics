@@ -226,7 +226,7 @@ describe("a NOT_COLLECTED answer", () => {
     expect(screen.getByText("Not collected.")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Nothing has been collected for source addresses in this range, so no map is drawn\. The QRadar property that carries the country may not be configured/,
+        /Nothing collected for source addresses in this range, so no map is drawn\. The country property may not be configured/,
       ),
     ).toBeInTheDocument();
   });
@@ -254,7 +254,7 @@ describe("an INSUFFICIENT_DATA answer", () => {
     expect(init).not.toHaveBeenCalled();
     expect(screen.getByText("Insufficient data.")).toBeInTheDocument();
     expect(
-      screen.getByText(/but no address resolved to a country, so no map is drawn\./),
+      screen.getByText(/but no address resolved to a country; no map is drawn\./),
     ).toBeInTheDocument();
     expect(screen.getByText("Unresolved").nextElementSibling).toHaveTextContent("40,100 events");
     // Said once: the state is the sentence, not the sentence and a qualifier repeating it.
