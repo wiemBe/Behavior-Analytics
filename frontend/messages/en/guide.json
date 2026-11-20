@@ -1111,6 +1111,9 @@
         },
         {
           "p": "A family row that is not yet created is created at the next collection. A source whose profile is disabled is not collected, and a family with no configured source starts reading it when its profile is enabled. **Proved (floor)** is proved per source and is not in the console answer. **Asked (days)** is the window requested; **Through (UTC)** is the time read through, not a step time. A failed last step is retried at the next collection. Choosing **Read history now** again asks every family to read history at its next collection, including sources added since; nothing is read at once and nothing already read is deleted."
+        },
+        {
+          "p": "A recorded answer changes no scope at once: each family applies it at its next collection. A window is fitted from the family's search budget per tick and its **Search cadence**; a scope that cannot fit seven days is **Unavailable**. A scope that already has live buckets cannot be preceded by history. A reading ends **Partial** when QRadar holds less than asked, when too many buckets would be lower bounds, or when the gap list is full. A failed search is retried; after a failure the search width halves."
         }
       ],
       "steps": [

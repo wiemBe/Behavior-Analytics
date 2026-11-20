@@ -305,7 +305,7 @@ class TestReading:
         assert scope.state == "COMPLETE"
         assert scope.days_target == WINDOW_DAYS
         assert scope.target_start == target
-        assert "fitted with no admitted entity yet" in (scope.reason or "")
+        assert "no admitted entity yet" in (scope.reason or "")
         assert_coded(scope)
         assert scope.floor == target
         assert scope.progress  # the scope has searched
@@ -568,7 +568,7 @@ class TestReading:
             for source_id in (500, 501)
         ]
         assert all(scope is not None and scope.days_target == 20 for scope in scopes)
-        assert all("fair share of 5 of the 10" in (scope.reason or "") for scope in scopes)
+        assert all("fitted to 5 of the 10" in (scope.reason or "") for scope in scopes)
         for scope in scopes:
             assert_coded(scope)
 
@@ -590,7 +590,7 @@ class TestReading:
             if item["family"] == "IPS"
         )
         assert ips["days_fitted"] == 20
-        assert "fair share of 5 of the 10" in " ".join(ips["assumptions"])
+        assert "each plan gets 5 of the 10" in " ".join(ips["assumptions"])
 
 
 class TestFloor:

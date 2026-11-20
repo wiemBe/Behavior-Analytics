@@ -205,7 +205,7 @@ def test_a_reading_with_no_event_of_a_monitored_source_is_unavailable() -> None:
     )
 
     assert trigger is HistoryTrigger.NOTHING_TO_READ
-    assert "no event" in reason.lower() or "holds no event" in reason
+    assert "no monitored source has an event in the window" in reason
 
 
 def test_a_cut_and_a_silent_source_turn_complete_into_partial_with_counts() -> None:

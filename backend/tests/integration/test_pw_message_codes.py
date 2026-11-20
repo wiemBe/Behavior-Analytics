@@ -133,7 +133,7 @@ async def test_reading_history_is_stored_with_its_code_and_cleared_at_the_hand_o
     await reload(db_session, watch)
     assert watch.last_status == PwWatchStatus.READING_HISTORY.value
     assert watch.last_status_reason == (
-        "Reading history from QRadar: 1.0 of 2.0 days; nothing is judged until it finishes"
+        "Reading history: 1.0 of 2.0 days; nothing is judged until done"
     )
     assert stored(watch) == {
         "code": "pw.status.reading_history",
@@ -157,7 +157,7 @@ async def test_not_applicable_is_stored_with_its_code(db_session) -> None:
     await reload(db_session, watch)
     assert watch.last_status == PwWatchStatus.NOT_APPLICABLE.value
     assert watch.last_status_reason == (
-        "the property parsed on no event in scope; the values are not measured"
+        "the property parsed on no event in scope; values not measured"
     )
     assert stored(watch) == {"code": "pw.status.not_applicable", "params": {}}
 

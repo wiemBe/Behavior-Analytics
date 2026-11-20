@@ -600,8 +600,8 @@ carries the reason and the console's current state:
 
 | Refusal | Reason |
 |---|---|
-| A `NO` on a console that already answered `YES` | "a Yes is never reversed; stop the reading instead" |
-| A decision recorded in the meantime | "a decision was recorded in the meantime; it is shown here" |
+| A `NO` on a console that already answered `YES` | "a Yes is never reversed; stop reading instead" |
+| A decision recorded in the meantime | "a decision was recorded meanwhile; shown here" |
 | "Read history now" or "Stop reading" on a console with no `YES` | "record Yes first: the console has no Yes answer to start or stop" |
 
 The console entry holds the decision (`answer`, `days`, who recorded it and when, and the two

@@ -625,11 +625,11 @@ observed, and reads the whole asked window until it has one. A WAF or an IPS sou
 before its first search: a WAF source from the endpoints its profile tracks and the searches one
 source may start in a tick, an IPS source from the entities its profile admits and a fair share of
 the searches its tick shares between its sources. A window that does not fit is shortened and the
-scope says why ("window reduced from 28 to 20 days: the estimate exceeded 72 hours"); below seven
+scope says why ("window reduced from 28 to 20 days: estimate exceeded 72 hours"); below seven
 days the scope is `UNAVAILABLE` — and every family but the catch-all makes no search at all, because
 its window is fitted before the first one. A source with nothing to fit yet — a WAF profile that
 tracks no endpoint yet, an IPS profile that admits no entity yet — is fitted with one and says so
-("fitted with no tracked endpoint yet; the 72-hour limit still bounds the reading").
+("no tracked endpoint yet; the 72-hour limit applies").
 
 ## Property-watch history bootstrap
 

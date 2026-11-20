@@ -595,8 +595,7 @@ def test_the_clauses_list_style_joins_with_a_semicolon_and_marks_the_history_cla
         },
     )
     assert render(ref) == (
-        "fitted with no tracked endpoint yet; the 72-hour limit still bounds the reading; "
-        "read 288 bucket(s)"
+        "no tracked endpoint yet; the 72-hour limit applies; read 288 bucket(s)"
     )
     styles = {
         (spec.code, name): param.style

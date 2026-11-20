@@ -28,7 +28,7 @@ from tests.unit.test_property_watch_detection import NOW, bucket
 
 EXPECTED: dict[str, tuple[str, str]] = {
     "no_status": ("UNKNOWN", "the watch has never established a collection status"),
-    "watch_blocked": ("UNKNOWN", "the watch is SCOPE_STALE: no value verdict is possible"),
+    "watch_blocked": ("UNKNOWN", "the watch is SCOPE_STALE: no value verdict"),
     "bucket_missing": ("UNKNOWN", "the bucket is missing: no count was measured"),
     "bucket_not_collected": ("UNKNOWN", "the bucket was NOT_COLLECTED: its count is not zero"),
     "bucket_membership": ("UNKNOWN", "membership changed during this bucket"),
@@ -37,26 +37,24 @@ EXPECTED: dict[str, tuple[str, str]] = {
         "the property parsed on none of this bucket's events: NOT_APPLICABLE",
     ),
     "no_baseline": ("UNKNOWN", "no value-events baseline for this weekday/hour cell yet"),
-    "baseline_version": ("UNKNOWN", "the baseline uses watch version 2, not the bucket's 1"),
+    "baseline_version": ("UNKNOWN", "baseline uses watch version 2, not the bucket's 1"),
     "baseline_few_visits": (
         "UNKNOWN",
         (
-            "the value-events baseline has 12 sample(s), but they come from too few"
-            " separate weekly visits of this weekday and hour: a baseline needs the"
-            " same hour from at least 2 different weeks"
+            "the value-events baseline has 12 sample(s) from too few weekly visits: it needs this "
+            "weekday and hour in at least 2 different weeks"
         ),
     ),
     "baseline_few_visits_one": (
         "UNKNOWN",
         (
-            "the value-events baseline has 12 sample(s), but they come from too few"
-            " separate weekly visits of this weekday and hour: a baseline needs the"
-            " same hour from at least 1 different week"
+            "the value-events baseline has 12 sample(s) from too few weekly visits: it needs this "
+            "weekday and hour in at least 1 different week"
         ),
     ),
     "baseline_samples": (
         "UNKNOWN",
-        "the value-events baseline has 5 sample(s), below the minimum of 8",
+        "baseline has 5 sample(s), below the minimum of 8",
     ),
     "count_unknown": ("UNKNOWN", "the value's count is unknown for this bucket, not zero"),
     "inputs_unsupported": (
@@ -80,8 +78,8 @@ EXPECTED: dict[str, tuple[str, str]] = {
         "UNKNOWN",
         (
             "12 events is below the 20 minimum; volume: the count is a lower bound:"
-            " an increase can be proven, normal behaviour cannot, so a normal"
-            " verdict cannot be concluded"
+            " an increase can be proven, normal behaviour cannot, so no normal"
+            " verdict"
         ),
     ),
     "spike_fired": (
@@ -129,7 +127,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
             " is unavailable (MAD=0); the value is below p05 80.00"
         ),
     ),
-    "last_seen_unknown": ("UNKNOWN", "when the value was last observed is not known"),
+    "last_seen_unknown": ("UNKNOWN", "last observation of the value is unknown"),
     "not_active": ("HEALTHY", "the value was not observed within the last 7 days"),
     "disappear_median_floor": (
         "HEALTHY",
@@ -154,21 +152,20 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "streak_short": (
         "HEALTHY",
-        "the value has 3 consecutive measured-zero bucket(s), below the required 6",
+        "3 consecutive measured-zero bucket(s), below the required 6",
     ),
     "disappeared_fired": (
         "ANOMALOUS",
         (
-            "the value had zero parsed events for 6 consecutive exact buckets; the"
-            " seasonal median is 100.0 events"
+            "zero parsed events for 6 consecutive exact buckets; seasonal median 100.0 events"
         ),
     ),
     "novelty_unestablished": ("UNKNOWN", "the value's first appearance was not established"),
     "established_hand_off": (
         "HEALTHY",
         (
-            "established value: first seen 2026-10-17T11:55:00+00:00 in the history"
-            " read before the watch went live at 2026-10-17T12:00:00+00:00"
+            "established value: first seen 2026-10-17T11:55:00+00:00 in history read before "
+            "go-live at 2026-10-17T12:00:00+00:00"
         ),
     ),
     "established_outside_window": (
@@ -180,7 +177,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     ),
     "pinned_never_new": (
         "HEALTHY",
-        "pinned values are operator-named and are never classified as new",
+        "pinned values are never classified as new",
     ),
     "learning_unknown": ("UNKNOWN", "learning: the watch's first collected bucket is unknown"),
     "learning_day": ("UNKNOWN", "learning: day 2 of 7"),
@@ -199,8 +196,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "admission_truncated": (
         "UNKNOWN",
         (
-            "the first-appearance bucket had truncated admission: the value"
-            " appeared in a flood and is not individually new"
+            "first-appearance bucket had truncated admission; the value arrived in a flood"
         ),
     ),
     "materiality_short": (
@@ -217,47 +213,46 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "new_fired": (
         "ANOMALOUS",
         (
-            "30 events across 2 buckets since first appearance; the value stayed"
-            " below 3 events in every bucket of the verified history"
+            "30 events across 2 buckets since first appearance; the value stayed below 3 events "
+            "in every verified-history bucket"
         ),
     ),
     "new_fired_lower": (
         "ANOMALOUS",
         (
-            "at least 40 events across 3 buckets since first appearance; the value"
-            " stayed below 3 events in every bucket of the verified history"
+            "at least 40 events across 3 buckets since first appearance; the value stayed below 3 "
+            "events in every verified-history bucket"
         ),
     ),
     "new_value_is_combination": (
         "HEALTHY",
-        "both tuple components were tracked before: this is classified only as a new combination",
+        "both components were tracked before: classified only as a new combination",
     ),
     "one_property": ("UNKNOWN", "a one-property watch has nothing to combine"),
     "components_missing": ("UNKNOWN", "the tuple's two component histories were not supplied"),
     "component_untracked": (
         "HEALTHY",
-        "at least one component was not previously tracked: this is classified only as a new value",
+        "at least one component was untracked: classified only as a new value",
     ),
     "component_untracked_below_admission": (
         "HEALTHY",
         (
-            "at least one component was not previously tracked (seen only below the"
-            " admission threshold): this is classified only as a new value"
+            "at least one component was seen only below the admission threshold: classified only "
+            "as a new value"
         ),
     ),
     "combination_fired": (
         "ANOMALOUS",
         (
-            "30 events across 2 buckets since first appearance; both components"
-            " were tracked before, but never together in the verified history"
+            "30 events across 2 buckets since first appearance; both components were tracked "
+            "before, never together in verified history"
         ),
     ),
     "combination_fired_lower": (
         "ANOMALOUS",
         (
-            "at least 40 events across 2 buckets since first appearance; both"
-            " components were tracked before, but never together in the verified"
-            " history"
+            "at least 40 events across 2 buckets since first appearance; both components were "
+            "tracked before, never together in verified history"
         ),
     ),
     "combination_materiality_short": (
@@ -344,10 +339,10 @@ def test_a_scope_decision_without_wording_falls_back_to_a_code() -> None:
     guard.decision = ScopeDecision(WafVerdictScope.NONE, None)
     for fallback, english in (
         ("inputs_unsupported", "the declared inputs do not support a verdict"),
-        ("novelty_inputs_unsupported", "the declared novelty inputs do not support a verdict"),
+        ("novelty_inputs_unsupported", "the declared inputs do not support a verdict"),
         (
             "combination_inputs_unsupported",
-            "the declared combination inputs do not support a verdict",
+            "the declared inputs do not support a verdict",
         ),
     ):
         evidence = guard.insufficient(guard.scope_reason(fallback)).evidence
@@ -361,13 +356,13 @@ def test_a_scope_decision_without_wording_falls_back_to_a_code() -> None:
 def test_the_claim_travels_inside_the_details_with_its_code() -> None:
     value = SCENARIOS["new_fired"]()
     assert value.extra["claim"] == (
-        "the value stayed below 3 events in every bucket of the verified history"
+        "the value stayed below 3 events in every verified-history bucket"
     )
     assert value.extra["claim_code"] == "pw.detector.claim_new_value"
     assert value.extra["claim_params"] == {"min_events": 3}
     combination = SCENARIOS["combination_fired"]()
     assert combination.extra["claim"] == (
-        "both components were tracked before, but never together in the verified history"
+        "both components were tracked before, never together in verified history"
     )
     assert combination.extra["claim_code"] == "pw.detector.claim_new_combination"
     assert combination.extra["claim_params"] == {}
@@ -421,7 +416,7 @@ def _verifier_cases() -> list[tuple[str, Any, str, str]]:
         (
             "not_divisible",
             _verify(rows, bucket_seconds=400),
-            "the history window is not divisible by the collection bucket width",
+            "the history window is not divisible by the bucket width",
             "pw.history_check.not_divisible",
         ),
         (
@@ -433,13 +428,13 @@ def _verifier_cases() -> list[tuple[str, Any, str, str]]:
         (
             "record_count",
             _verify([*rows, rows[0]]),
-            "the history contains 4 bucket records for 3 expected buckets",
+            "history has 4 bucket records for 3 expected",
             "pw.history_check.record_count",
         ),
         (
             "width",
             _verify([replace(rows[0], bucket_seconds=600), *rows[1:]]),
-            f"history bucket {stamp} used a different collection bucket width",
+            f"history bucket {stamp} had a different bucket width",
             "pw.history_check.bucket_width",
         ),
         (
@@ -476,7 +471,7 @@ def _verifier_cases() -> list[tuple[str, Any, str, str]]:
         (
             "coverage",
             _verify([low_history, *rows[1:]]),
-            f"history bucket {stamp} had parsing coverage below the floor",
+            f"history bucket {stamp} had coverage below the floor",
             "pw.history_check.bucket_coverage",
         ),
     ]
@@ -826,7 +821,7 @@ def test_the_status_sentences_of_the_collector_and_the_engine() -> None:
     from app.property_watch import engine
 
     assert pw_collector._NOT_APPLICABLE_REASON == (
-        "the property parsed on no event in scope; the values are not measured"
+        "the property parsed on no event in scope; values not measured"
     )
     assert render(engine._STATUS_OPEN) == "one or more value incidents are open"
     assert render(engine._STATUS_RECOVERING) == "one or more value incidents are recovering"
@@ -849,8 +844,7 @@ def test_set_reason_writes_the_text_and_the_code_together_and_clears_both() -> N
     }
     _set_reason(row, MessageRef("pw.status.not_applicable"))
     assert row == {
-        "last_status_reason": "the property parsed on no event in scope; the values are not "
-        "measured",
+        "last_status_reason": "the property parsed on no event in scope; values not measured",
         "last_status_reason_i18n": {"code": "pw.status.not_applicable", "params": {}},
     }
     _set_reason(row, None)
@@ -861,7 +855,7 @@ def test_set_reason_writes_the_text_and_the_code_together_and_clears_both() -> N
     assert row["last_status_reason_i18n"] == {"code": "pw.scope.source_missing", "params": {}}
 
 
-_READING = "Reading history from QRadar: {} days; nothing is judged until it finishes"
+_READING = "Reading history: {} days; nothing is judged until done"
 
 
 @pytest.mark.parametrize(

@@ -285,7 +285,7 @@ async def test_a_tick_that_settles_only_a_prefix_moves_through_only_past_it(db_s
     assert watch.history_end is None and watch.history_finished_at is None
     assert watch.last_status == PwWatchStatus.READING_HISTORY.value
     assert watch.last_status_reason == (
-        "Reading history from QRadar: 1.0 of 2.0 days; nothing is judged until it finishes"
+        "Reading history: 1.0 of 2.0 days; nothing is judged until done"
     )
     progress, _ = progress_of(watch)
     assert progress.searches == 2 and progress.buckets_read == 288

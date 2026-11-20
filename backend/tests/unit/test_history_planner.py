@@ -925,7 +925,7 @@ def test_window_is_shortened_to_the_largest_that_fits_and_it_is_stated() -> None
     assert heavy.hours <= SET.max_hours
     assert fit_window(28, lambda d: 400 * (d + 1), end=END, settings=SET).days_fitted == 20
     assert heavy.reason == (
-        "window reduced from 28 to 21 days: the estimate exceeded 72 hours"
+        "window reduced from 28 to 21 days: estimate exceeded 72 hours"
     )
     assert heavy.target_start == END - timedelta(days=21)  # the newest days
 

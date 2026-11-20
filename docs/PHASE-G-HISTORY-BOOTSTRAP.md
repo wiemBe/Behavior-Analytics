@@ -763,9 +763,8 @@ the first training pass uses the whole window.
 > five-minute samples of one visit are correlated, not a baseline
 > (`property_watch/baseline.py` `build_value_baseline`). The spike, drop and disappearance detectors read a cell
 > only when it is reliable (`property_watch/detectors.py` `_Guard.cell`); until then they answer
-> `INSUFFICIENT_DATA`, with the reason "the value-events baseline has N sample(s), but they come
-> from too few separate weekly visits of this weekday and hour: a baseline needs the same hour
-> from at least 2 different weeks" when the samples are enough but the visits are not.
+> `INSUFFICIENT_DATA`, with the reason "the value-events baseline has N sample(s) from too few
+> weekly visits: it needs this weekday and hour in at least 2 different weeks" when the samples are enough but the visits are not.
 > **A cell is therefore judged from the hand-off only after
 > `7 x pw_baseline_min_visits` days of history** — 14 days at the default of two visits, 28 days
 > at four visits. A shorter history keeps the volume detectors at `INSUFFICIENT_DATA` until the
@@ -814,7 +813,7 @@ All additive; nothing removed (`backend/app/api/routes/property_watches.py`,
 | `POST /property-watches/{id}/history` | `property_watch:write`. Body `{history_days}`; allowed only for a watch with no stored bucket of its current version (§H.5.5); audited as `property_watch.history_request` with the count, never a value |
 | `PropertyWatchOut.history` | `{state, days_requested, days_target, floor, through, end, days_read, searches, buckets_read, gaps, reason, started_at, finished_at}`; `days_read` and `days_target` computed from `history_through`, `history_floor` and the boundary, never invented. **No ETA** is returned: the cost table (§H.4.5) is a design figure, not a promise |
 | enable response (`PATCH {enabled: true}`) | the same `history` object, plus `history.estimate = {searches_min, searches_max, ticks_min, ticks_max, cadence_seconds}` from the static model (`rho` from the pins at the low end, from the ceiling plus the fold's cut at the high end). The 409 for a full tick budget names the free and the needed numbers |
-| `status` | the new `READING_HISTORY` is a watch status with a reason ("Reading history from QRadar: 9 of 28 days; nothing is judged until it finishes") |
+| `status` | the new `READING_HISTORY` is a watch status with a reason ("Reading history: 9 of 28 days; nothing is judged until done") |
 | `GET /property-watches/catalog` | gains `history: {enabled, days_default, days_max, searches_per_tick, seconds_per_tick, reading_count, searches_free}`, beside the existing `search_budget` and `budget_used` (`services/property_watches.py` `enabled_cost_total` and `history_catalog`) |
 | `GET .../buckets`, `.../series`, `.../values` | each bucket and point carries `origin`; `first_seen_at` of a value stays the history time |
 | `GET /anomalies/{id}` evidence | adds `history_buckets_from_history: n` next to `history_buckets_verified`, and `history_floor` |
@@ -824,7 +823,7 @@ All additive; nothing removed (`backend/app/api/routes/property_watches.py`,
 
 | State | Where it shows | Wording (no "live", no "real-time", no exclamation mark) |
 |---|---|---|
-| `READING` | the status pill on the list and the page header; the widget (`empty`) | "Reading history from QRadar: 9 of 28 days. Nothing is judged until it finishes." |
+| `READING` | the status pill on the list and the page header; the widget (`empty`) | "Reading history: 9 of 28 days. Nothing is judged until done." |
 | `COMPLETE` | one line in the honesty block | "History: 28 days read from QRadar on 2026-10-19, used for baselines and new-value checks. Those buckets were not judged." |
 | `PARTIAL` (Ariel holds less) | `EvidenceBanner`, state `PARTIAL` | "History: 9 of 28 days. QRadar holds events of this scope from 2026-10-10 09:00 UTC; earlier buckets are not claimed as zero." |
 | `PARTIAL` (a gap, a limit) | same | the reason: "buckets from 2026-10-12 14:00 to 2026-10-12 16:00 UTC could not be read after 3 attempts", "the reading did not finish in 72 hours" |

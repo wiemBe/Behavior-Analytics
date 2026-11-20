@@ -1132,7 +1132,7 @@ async def test_the_estimate_uses_the_seeded_counts(db_session, db_schema) -> Non
         assert item["hours"] > 0
         assert item["assumptions"]
     assert any(
-        "QRadar time per search not measured" in a for a in estimates["PHASE_A"]["assumptions"]
+        "QRadar search time not measured" in a for a in estimates["PHASE_A"]["assumptions"]
     )
 
 
@@ -1210,7 +1210,7 @@ async def test_the_waf_estimate_describes_the_same_fitted_window_as_the_adapter(
     assert waf["refused"] or waf["reduced"]
     assert "the WAF reading does not apply it" not in waf["reason"]
     assert "does not shorten its window or refuse it" not in waf["reason"]
-    assert "per-source" in waf["reason"]
+    assert "even 7 days exceed the 1-hour limit" in waf["reason"]
     assert "does not shorten" not in estimates["PHASE_A"]["reason"]
 
 
@@ -1322,7 +1322,7 @@ async def test_put_cannot_reverse_a_yes(db_session, db_schema) -> None:
     assert response.status_code == 409
     body = response.json()
     assert "never reversed" in body["detail"]
-    assert "stop the reading" in body["detail"]
+    assert "stop reading instead" in body["detail"]
     # The stored answer is unchanged.
     assert body["console"]["decision"]["answer"] == "YES"
     assert await audit_rows(db_session, "history_backfill.decide") == []

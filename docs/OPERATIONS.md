@@ -1324,8 +1324,7 @@ da IPS kaynağı kendi penceresini kendi biçimine göre sığdırır: WAF kayna
 sayısıyla ve bir kaynağın tick'te başlatabileceği arama sayısıyla, IPS kaynağı kabul ettiği varlık
 sayısıyla ve tick'in kaynaklar arasında paylaştığı aramaların adil bir payıyla. Sığmayan bir pencere
 kısalır ve kapsam gerekçesini söyler. Henüz endpoint ya da varlığı olmayan bir kaynak bir ile
-sığdırılır ve bunu da söyler ("fitted with no tracked endpoint yet; the 72-hour limit still bounds
-the reading").
+sığdırılır ve bunu da söyler ("no tracked endpoint yet; the 72-hour limit applies").
 
 ### Karar
 
@@ -1499,8 +1498,8 @@ kapıdan etkilenmez: onlar geçmişin kendisini kanıt olarak kullanır.
 
 Bir izlemenin `WAITING` ya da `NOT_ELIGIBLE` durumu yoktur: izleme hareketli bir sonla okur,
 çapası gerekmez. Okuma sürerken izlemenin durumu `READING_HISTORY` olur (rozet "Reading history")
-ve durumun gerekçesi ilerlemeyi söyler: "Reading history from QRadar: 3.2 of 28.0 days; nothing is
-judged until it finishes". Devralma anında bu durum temizlenir.
+ve durumun gerekçesi ilerlemeyi söyler: "Reading history: 3.2 of 28.0 days; nothing is
+judged until done". Devralma anında bu durum temizlenir.
 
 **Analist nerede görür.**
 
@@ -1524,14 +1523,13 @@ judged until it finishes". Devralma anında bu durum temizlenir.
   genişlik 12 kovadır (5 dakikalık kovalarda bir saat). En dar genişlikte üst üste
   `PW_BOOTSTRAP_MAX_FAILURES` (varsayılan 3) başarısızlık olunca o aralık bir boşluk olur:
   "search failed 3 times at the minimum width"; daha önce her denemede "a search failed at the
-  minimum width (1 of 3); the same span is tried again" yazılır. Boşluklar 20'yi aşarsa okuma
+  minimum width (1 of 3); retrying" yazılır. Boşluklar 20'yi aşarsa okuma
   `PARTIAL` olur: "more than 20 unreadable spans". Gerekçe bir aramanın başarısız olduğunu
   söyler: QRadar erişimini ve token'ı denetle (OPS-R1 ... OPS-R4), `./qradar-dash logs` ile arama
   hatalarına bak. Boşluklar aralıklarıyla listelenir; okunan diğer kovalar geçerlidir.
 - **Yoğunluk kapısı.** Okunan kovaların alt sınır olanlarının payı
   `PW_BOOTSTRAP_MAX_LOWER_BOUND_SHARE` (varsayılan %5) sınırını aşarsa okuma `PARTIAL` olur: "12%
-  of the buckets read are lower bounds (limit 5%): too many distinct values per bucket, so history
-  would be lower bounds". Alt sınır, tek kovada satır tavanına çarpmış bir aramanın sonucudur:
+  of the buckets read are lower bounds (limit 5%): too many distinct values per bucket". Alt sınır, tek kovada satır tavanına çarpmış bir aramanın sonucudur:
   saklanan satırlar tamdır, kuyruğu eksiktir; sayı bir alt sınırdır, sıfır değil. Bu bir arıza
   değildir: `PW_BOOTSTRAP_MAX_LOWER_BOUND_SHARE` (0.0 - 1.0) ile kapı gevşetilebilir ya da daha dar
   kapsamlı yeni bir izleme kurulabilir.

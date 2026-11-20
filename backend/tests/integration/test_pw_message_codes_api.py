@@ -156,8 +156,7 @@ async def test_the_history_request_refuses_with_codes(db_session, db_schema: str
     assert blocked.status_code == 409, blocked.text
     body = blocked.json()
     assert body["detail"] == (
-        "history is READING on this watch and cannot be requested again; "
-        "create a new watch to read history"
+        "history is READING on this watch; create a new watch to read history"
     )
     assert body["detail_code"] == "pw.history_change.already_requested"
     assert body["detail_params"] == {"state": "READING"}

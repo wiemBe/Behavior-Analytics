@@ -235,7 +235,7 @@ async def test_pipeline_applies_yes_and_live_ineligibility_before_collection(db_
     )
     assert scope is not None
     assert scope.state == HistoryState.READING.value
-    assert "fitted with no tracked endpoint yet" in (scope.reason or "")
+    assert "no tracked endpoint yet" in (scope.reason or "")
     assert_coded(scope)
 
     # A separate source that already has a LIVE row is classified before its next

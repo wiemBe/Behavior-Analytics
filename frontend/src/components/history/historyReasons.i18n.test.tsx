@@ -459,12 +459,12 @@ describe("the clause lists of the history codes, rendered from the real artifact
   it.each([
     [
       "history.finish.partial",
-      "reached the end; QRadar holds less than asked (the floor is later than the asked start); 2 span(s) could not be read",
+      "reached the end; QRadar holds less than asked (floor after the asked start); 2 span(s) could not be read",
       "sona ulaşıldı; QRadar istenenden azını tutuyor (taban, istenen başlangıçtan sonra); 2 aralık okunamadı",
     ],
     [
       "history.reason.joined",
-      "fitted with no tracked endpoint yet; the 72-hour limit still bounds the reading; read 288 bucket(s)",
+      "no tracked endpoint yet; the 72-hour limit applies; read 288 bucket(s)",
       `henüz izlenen endpoint yokken sığdırıldı; 72${NB}saatlik sınır okumayı yine de sınırlar; 288 zaman dilimi okundu`,
     ],
     [

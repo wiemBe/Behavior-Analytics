@@ -535,17 +535,16 @@ volume).
 > `d x 24 + history_backfill_max_hours < retention x 24`. Below seven days the family is
 > `UNAVAILABLE` with the reason in words. The estimate of §B.8 then fits the window to the budget:
 > source volume, catch-all and rule matches reduce it to the largest `D'` whose estimate fits
-> `history_backfill_max_hours` ("window reduced from 28 to 20 days: the estimate exceeded 72 hours")
+> `history_backfill_max_hours` ("window reduced from 28 to 20 days: estimate exceeded 72 hours")
 > and refuse below seven days. **WAF and IPS fit their window too, per source, at the scope's first
 > step**: a WAF source is fitted with the endpoints its profile tracks and the searches one source
 > may start in a tick; an IPS source is fitted with the entities its profile admits and a fair share
 > of the searches its tick shares between its sources. A window that does not fit is reduced and the
-> scope's reason says "window reduced from 28 to 20 days: the estimate exceeded 72 hours"; below
+> scope's reason says "window reduced from 28 to 20 days: estimate exceeded 72 hours"; below
 > seven days the scope is `UNAVAILABLE` with the estimate and **no search is made**. A source with
 > nothing to fit yet (a WAF profile that tracks no endpoint yet, an IPS profile that admits no entity
-> yet) is fitted with one and the scope says so ("fitted with no tracked endpoint yet; the 72-hour
-> limit still bounds the reading", "fitted with no admitted entity yet; the 72-hour limit still
-> bounds the reading"). The estimate of §B.10.2 models WAF and IPS per source and reports the
+> yet) is fitted with one and the scope says so ("no tracked endpoint yet; the 72-hour
+> limit applies", "no admitted entity yet; the 72-hour limit applies"). The estimate of §B.10.2 models WAF and IPS per source and reports the
 > smallest fitted window of the sources. The admin page says which window each family may read.
 
 At the scope's first step the estimate of §B.8 is computed for that scope, from the shape it has:
@@ -926,7 +925,7 @@ None of them takes an AQL or a window from the browser; `days` is the stored set
 
 > **As built.** An unknown or disabled console is a 404 that names nothing but the console. A
 > refused write is a 409 that says why and returns the console's current state: a `NO` on a
-> console that already answered `YES` ("a Yes is never reversed; stop the reading instead"), a
+> console that already answered `YES` ("a Yes is never reversed; stop reading instead"), a
 > decision recorded in the meantime, and "Read history now" or "Stop reading" on a console with no
 > `YES` ("record Yes first"). The decision returns 201 when the row was created and 200 when it
 > already existed or was upgraded; the two requests change no scope row and say so in their

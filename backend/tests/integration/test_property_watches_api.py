@@ -1206,7 +1206,7 @@ async def test_buckets_values_and_series_keep_gaps_and_zeros_honest(
     assert refused.status_code == 422 and "at most 12" in refused.text
     stranger = reader.get(f"{PREFIX}/{made['id']}/series",
                           params=[("value_ids", str(other_version.id))])
-    assert stranger.status_code == 422 and "not a tracked value" in stranger.text
+    assert stranger.status_code == 422 and "is not tracked in this watch" in stranger.text
     assert reader.get(f"{PREFIX}/{made['id']}/series").status_code == 422
 
 
@@ -1334,7 +1334,7 @@ async def test_a_preview_that_cannot_run_is_409_and_spends_nothing(
     group = _create(client, "wide", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
                     scope_group_id=GROUP_ID)
     wide = client.post(f"{PREFIX}/{group['id']}/preview")
-    assert wide.status_code == 409 and "covers one search chunk of at most 1" in wide.text
+    assert wide.status_code == 409 and "above the 1 one preview covers" in wide.text
     empty = _create(client, "empty", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
                     scope_group_id=GROUP_ID + 1)
     # Group 11 holds fw-2 only; empty it by pointing the source elsewhere.
