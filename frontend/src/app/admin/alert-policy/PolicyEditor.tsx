@@ -237,7 +237,6 @@ export function PolicyEditor({
   return (
     <form className="rule-form outage-form" onSubmit={(e) => void submit(e)} aria-label={title}>
       <p className="outage-form-title">{title}</p>
-      {editing && <p className="field-hint">{t("editor.fixed")}</p>}
       <div className="rule-form-grid">
         {editing ? (
           <>

@@ -21,11 +21,7 @@ async function Page() {
   const t = await getTranslations("mailAdmin.page");
   return (
     <>
-      <PageHeader
-        guide={guideFor("/admin/email")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/admin/email")} title={t("title")} />
       <EmailAdminPage />
     </>
   );

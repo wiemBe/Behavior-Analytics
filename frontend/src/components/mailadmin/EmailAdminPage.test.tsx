@@ -128,7 +128,7 @@ describe("the first screen: the relay", () => {
     const send = screen.getByRole("button", { name: "Send test message" });
     expect(send).toBeDisabled();
     expect(screen.getByLabelText("Send to")).toBeDisabled();
-    expect(send).toHaveAccessibleDescription(/No relay is configured, so nothing can be sent/);
+    expect(send).toHaveAccessibleDescription(/No relay is configured; set SMTP_HOST/);
     fireEvent.submit(send.closest("form")!);
     expect(api.sendTest).not.toHaveBeenCalled();
   });
@@ -174,7 +174,7 @@ describe("the first screen: the relay", () => {
     await screen.findByLabelText("Subject");
     // The test send stays off: it will not guess that a relay exists.
     expect(screen.getByRole("button", { name: "Send test message" })).toBeDisabled();
-    expect(screen.getByText(/relay settings could not be read/)).toBeInTheDocument();
+    expect(screen.getByText(/Relay settings could not be read/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     await screen.findByText("smtp.relay.example:587");
   });
@@ -220,9 +220,9 @@ describe("the template list", () => {
     expect(names).toEqual(["Default", ...ALERT_TYPES.map((type) => type.label)]);
     const defaultRow = rowFor("Default");
     expect(within(defaultRow).getAllByRole("cell")[1]).toHaveTextContent("No");
-    expect(within(defaultRow).getAllByRole("cell")[3]).toHaveTextContent("The shipped template");
+    expect(within(defaultRow).getAllByRole("cell")[3]).toHaveTextContent("Shipped");
     for (const type of ALERT_TYPES) {
-      expect(within(rowFor(type.label)).getAllByRole("cell")[3]).toHaveTextContent("The shipped template");
+      expect(within(rowFor(type.label)).getAllByRole("cell")[3]).toHaveTextContent("Shipped");
     }
   });
 
@@ -230,12 +230,12 @@ describe("the template list", () => {
     api.templates.mockResolvedValue(customisedList());
     await open();
     const cells = (name: string) => within(rowFor(name)).getAllByRole("cell").map((c) => c.textContent);
-    expect(cells("Default")).toEqual(["Default", "Yes", "Yes", "Its own template", expect.stringContaining("11-02 09:15 UTC")]);
+    expect(cells("Default")).toEqual(["Default", "Yes", "Yes", "Own template", expect.stringContaining("11-02 09:15 UTC")]);
     expect(cells("Default")[4]).toContain("a.rivera");
-    expect(cells("Log source")[3]).toBe("The default template");
-    expect(cells("WAF endpoint")[3]).toBe("Its own template");
+    expect(cells("Log source")[3]).toBe("Default");
+    expect(cells("WAF endpoint")[3]).toBe("Own template");
     // Stored but switched off: customised, not enabled, and it sends the default.
-    expect(cells("Custom rule").slice(1, 4)).toEqual(["Yes", "No", "The default template"]);
+    expect(cells("Custom rule").slice(1, 4)).toEqual(["Yes", "No", "Default"]);
     expect(rowFor("Default").querySelector("time")).toHaveAttribute("datetime", "2026-11-02T09:15:00Z");
   });
 
@@ -258,12 +258,12 @@ describe("the editor", () => {
     );
     await open();
     expect(screen.getByRole("heading", { level: 2, name: "Default template" })).toBeInTheDocument();
-    expect(screen.getByText(/No default template is stored, so alert e-mail sends the shipped template/)).toBeInTheDocument();
+    expect(screen.getByText(/No default template is stored; the shipped one is sent/)).toBeInTheDocument();
     await chooseTemplate("WAF endpoint");
     await screen.findByDisplayValue("Stored subject for waf_endpoint");
     expect(api.template).toHaveBeenCalledWith("waf_endpoint");
     expect(screen.getByRole("heading", { level: 2, name: "WAF endpoint template" })).toBeInTheDocument();
-    expect(screen.getByText(/This is the stored template for WAF endpoint alerts\./)).toBeInTheDocument();
+    expect(screen.getByText(/The stored template for WAF endpoint alerts\./)).toBeInTheDocument();
     expect(screen.getByText(/Saved/)).toHaveTextContent("by j.okafor");
     expect(within(templateTable()).getByRole("button", { name: "WAF endpoint" })).toHaveAttribute("aria-current", "true");
   });
@@ -277,7 +277,7 @@ describe("the editor", () => {
     await chooseTemplate("Log source");
     await screen.findByDisplayValue("From the default");
     expect(
-      screen.getByText(/Log source alerts have no template of their own, so they send the default template/),
+      screen.getByText(/Log source alerts send the default template/),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Use this template")).toBeChecked();
     // Nothing differs yet.
@@ -313,13 +313,13 @@ describe("the editor", () => {
     const group = screen.getByRole("group", { name: "Placeholders" });
     expect(within(group).getAllByRole("button")).toHaveLength(4);
     expect(within(group).getByText("The alert's page on this site.")).toBeInTheDocument();
-    expect(within(group).getByText(/Write it as \{\{ name \}\}/)).toBeInTheDocument();
+    expect(within(group).queryByText(/Write it as/)).not.toBeInTheDocument();
   });
 
   it("says the placeholder list could not be read, instead of drawing none", async () => {
     api.placeholders.mockRejectedValue(new ApiError(500, "x"));
     await open();
-    expect(screen.getByText(/placeholder list could not be read/)).toBeInTheDocument();
+    expect(screen.getByText(/Placeholders could not be read/)).toBeInTheDocument();
   });
 
   it("uses monospace text areas and no editor library", async () => {
@@ -348,7 +348,7 @@ describe("saving", () => {
     });
     expect(html().value).toBe("<p>kept</p>");
     expect(
-      screen.getByText(/The sanitiser changed the HTML you typed\. The editor now shows what is stored/),
+      screen.getByText(/The sanitiser changed your HTML; the editor shows what is stored/),
     ).toBeInTheDocument();
     // What is shown is what is stored: nothing is unsaved.
     expect(screen.getByRole("button", { name: "Save template" })).toBeDisabled();
@@ -517,8 +517,8 @@ describe("reset", () => {
     await open();
     await userEvent.click(screen.getByRole("button", { name: "Reset to the shipped template" }));
     const dialog = screen.getByText("Reset the Default template?").closest("[role=alert]") as HTMLElement;
-    expect(dialog).toHaveTextContent("goes back to the template shipped with the product");
-    expect(dialog).toHaveTextContent("Types with a template of their own keep it.");
+    expect(dialog).toHaveTextContent("e-mail returns to the shipped template");
+    expect(dialog).toHaveTextContent("e-mail returns to the shipped template.");
     expect(api.resetTemplate).not.toHaveBeenCalled();
     await userEvent.click(within(dialog).getByRole("button", { name: "Keep it" }));
     expect(api.resetTemplate).not.toHaveBeenCalled();
@@ -533,7 +533,7 @@ describe("reset", () => {
     await screen.findByDisplayValue("Stored subject for waf_endpoint");
     await userEvent.click(screen.getByRole("button", { name: "Remove this template" }));
     const dialog = screen.getByText("Reset the WAF endpoint template?").closest("[role=alert]") as HTMLElement;
-    expect(dialog).toHaveTextContent("These alerts then send the default template. The default is not changed.");
+    expect(dialog).toHaveTextContent("these alerts send the default.");
   });
 
   it("says a type falls back to the shipped template when no default is in use", async () => {
@@ -545,7 +545,7 @@ describe("reset", () => {
     await chooseTemplate("WAF endpoint");
     await screen.findByDisplayValue("Stored subject for waf_endpoint");
     await userEvent.click(screen.getByRole("button", { name: "Remove this template" }));
-    expect(screen.getByText(/These alerts then send the shipped template/)).toBeInTheDocument();
+    expect(screen.getByText(/these alerts send the shipped one/)).toBeInTheDocument();
   });
 
   it("adds that unsaved edits are lost too, when there are any", async () => {
@@ -554,7 +554,7 @@ describe("reset", () => {
     await open();
     edit(screen.getByLabelText("Subject"), "Changed");
     await userEvent.click(screen.getByRole("button", { name: "Reset to the shipped template" }));
-    expect(screen.getByText(/Your unsaved changes to it are lost as well\./)).toBeInTheDocument();
+    expect(screen.getByText(/Unsaved changes are lost too\./)).toBeInTheDocument();
   });
 
   it("deletes the row on confirmation, then shows what the key sends now", async () => {
@@ -693,7 +693,7 @@ describe("the test send", () => {
     const banner = (await screen.findByText("The relay accepted the test message.")).closest("[role=status]")!;
     expect(banner).toHaveClass("ok");
     expect(banner).toHaveTextContent(say("backend.email.test.sent"));
-    expect(banner).toHaveTextContent("Check the mailbox, including its junk folder.");
+    expect(banner).toHaveTextContent("Check the mailbox, junk folder included.");
     expect(api.sendTest).toHaveBeenCalledWith({
       subject: template("default").subject,
       html_body: "<p>unsaved</p>",
@@ -819,7 +819,7 @@ describe("recipients", () => {
     await recipientsTab();
     const env = screen.getByRole("list", { name: "From .env" });
     expect(env).toHaveTextContent("noc@example.org");
-    expect(screen.getByText(/They receive every alert, LOW and above, and cannot be changed here/)).toBeInTheDocument();
+    expect(screen.getByText(/every alert, LOW and above\. Read-only/)).toBeInTheDocument();
     expect(within(env).queryByRole("button")).not.toBeInTheDocument();
     expect(within(table()).queryByText("noc@example.org")).not.toBeInTheDocument();
   });
@@ -828,7 +828,7 @@ describe("recipients", () => {
     api.recipients.mockResolvedValue(recipientList({ recipients: [], from_env: [] }));
     await recipientsTab();
     const banner = screen.getByText("No alert e-mail is sent.").closest(".banner") as HTMLElement;
-    expect(banner).toHaveTextContent("No recipient is stored here and NOTIFY_EMAIL_RECIPIENTS in .env is empty.");
+    expect(banner).toHaveTextContent("No recipient is stored and NOTIFY_EMAIL_RECIPIENTS is empty.");
     expect(screen.queryByRole("table", { name: "Stored recipients" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add recipient" })).toBeInTheDocument();
   });
@@ -839,7 +839,7 @@ describe("recipients", () => {
     );
     await recipientsTab();
     expect(screen.getByText("No alert e-mail is sent.").closest(".banner")).toHaveTextContent(
-      "Every stored recipient is switched off",
+      "Every stored recipient is off",
     );
   });
 
@@ -847,7 +847,7 @@ describe("recipients", () => {
     api.recipients.mockResolvedValue(recipientList({ recipients: [], from_env: ["noc@example.org"] }));
     await recipientsTab();
     expect(screen.queryByText("No alert e-mail is sent.")).not.toBeInTheDocument();
-    expect(screen.getByText("No recipient is stored in the application.")).toBeInTheDocument();
+    expect(screen.getByText("No recipient is stored here.")).toBeInTheDocument();
   });
 
   it("says what failed when the recipients cannot be read, and offers to try again", async () => {

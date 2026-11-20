@@ -13,25 +13,21 @@ function classRowFor(name: string) {
 }
 
 describe("outage policy page", () => {
-  it("keeps the time zone and the NO_EVENTS limit of Record only after the d40 text cut", async () => {
+  it("carries neither the time-zone line nor the Record-only note: the Guide owns them", async () => {
     vi.spyOn(outagePolicyApi, "list").mockResolvedValue([row()]);
     vi.spyOn(outagePolicyApi, "summary").mockResolvedValue(SUMMARY);
     render(await OutagePolicyPage());
-    expect(screen.getByText("Times are UTC.")).toBeInTheDocument();
-    expect(document.body.textContent).toMatch(
-      /Only NO_EVENTS is affected; volume drops and spikes still alert\./,
-    );
+    expect(screen.queryByText("Times are UTC.")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/volume drops and spikes still alert/);
   });
 
-  it("has one h1, states what record only does once, and leads with the classes", async () => {
+  it("has one h1, no record-only note, and leads with the classes", async () => {
     vi.spyOn(outagePolicyApi, "list").mockResolvedValue([row()]);
     vi.spyOn(outagePolicyApi, "summary").mockResolvedValue(SUMMARY);
     render(await OutagePolicyPage());
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getAllByText(/still records the silence and its lifecycle/)).toHaveLength(1);
-    const text = document.body.textContent ?? "";
-    expect(text).toMatch(/it only stops the alert/);
-    expect(text).toMatch(/NO_EVENTS/);
+    expect(screen.queryByText(/still records the silence and its lifecycle/)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/it only stops the alert/);
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
     expect(headings).toEqual(["Classes", "Source overrides"]);
   });
@@ -41,10 +37,10 @@ describe("outage policy page", () => {
     vi.spyOn(outagePolicyApi, "summary").mockResolvedValue(SUMMARY);
     render(await OutagePolicyPage());
     expect(screen.getByRole("status")).toHaveTextContent(/No outage policy is set/);
-    expect(screen.getByRole("status")).toHaveTextContent(/Every monitored source raises an alert/);
+    expect(screen.getByRole("status")).toHaveTextContent(/every monitored source alerts when silent/);
     // Three classes with an enabled source; DNS has none and no row.
     expect(screen.getAllByRole("button", { name: /^Set policy for / })).toHaveLength(3);
-    expect(screen.getAllByText("From the default")).toHaveLength(3);
+    expect(screen.getAllByText("Default", { selector: ".cell-sub" })).toHaveLength(3);
     expect(screen.queryByRole("button", { name: /^Edit / })).toBeNull();
   });
 
@@ -54,13 +50,13 @@ describe("outage policy page", () => {
     render(await OutagePolicyPage());
     const fw = classRowFor("Firewall");
     expect(within(fw).getByText("Record only")).toBeInTheDocument();
-    expect(within(fw).getByText("From the class row")).toBeInTheDocument();
+    expect(within(fw).getByText("Class row")).toBeInTheDocument();
     expect(within(fw).getByText("6 buckets")).toBeInTheDocument();
     expect(within(fw).getByText("30 min")).toBeInTheDocument();
     expect(within(fw).getByText("12")).toBeInTheDocument();
     const linux = classRowFor("Linux");
     expect(within(linux).getByText("Alert")).toBeInTheDocument();
-    expect(within(linux).getByText("From the default")).toBeInTheDocument();
+    expect(within(linux).getByText("Default", { selector: ".cell-sub" })).toBeInTheDocument();
     expect(within(linux).getByText("Default · 1 bucket (5 min)")).toBeInTheDocument();
     // Monitored sources, as in every row: the unit is in the column header.
     expect(within(linux).getByText("8")).toBeInTheDocument();
@@ -108,7 +104,7 @@ describe("outage policy page", () => {
     render(await OutagePolicyPage());
     const badge = screen.getByText("Instance: qradar-lab-eu");
     const line = badge.closest("tr") as HTMLElement;
-    expect(within(line).getByText("A row for one instance")).toBeInTheDocument();
+    expect(within(line).getByText("Instance row")).toBeInTheDocument();
     expect(within(line).queryByRole("button", { name: /^Edit/ })).toBeNull();
     expect(within(line).getByRole("button", { name: /^Use the default for Linux/ })).toBeInTheDocument();
     // No count per instance, and the text says why rather than pointing at a class row.

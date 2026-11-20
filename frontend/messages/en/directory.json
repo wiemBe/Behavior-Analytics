@@ -6,11 +6,11 @@
     "title": "Directory",
     "errorWhat": "Directory",
     "loadingWhat": "the directory configuration",
-    "description": "Where directory accounts bind, and a connection test that stores nothing."
+    "description": "Directory"
   },
   "page": {
     "title": "Directory",
-    "description": "Where directory accounts bind, and a connection test that stores nothing.",
+    "description": "Directory",
     "forbidden": "Your role cannot change the directory (permission admin:auth).",
     "loadFailed": "The directory configuration could not be loaded.",
     "tryAgain": "Try again"
@@ -24,7 +24,7 @@
   },
   "unsaved": {
     "title": "No directory configuration is saved yet.",
-    "text": "Saving creates the first one. The version starts at 0 until that save."
+    "text": "Not saved yet"
   },
   "version": {
     "line": "Version {version}{hasSaved, select, yes {, last saved <time></time>} other {}}{hasBy, select, yes { by {name}} other {}}."
@@ -46,13 +46,13 @@
     "bindName": "Bind name: {name}",
     "timeout": "Timeout (seconds)",
     "searchBase": "User search base",
-    "searchBaseHint": "Optional. Empty sends no search base.",
+    "searchBaseHint": "Optional.",
     "saving": "Saving",
     "save": "Save directory"
   },
   "test": {
     "title": "Test connection",
-    "note": "The username and password are sent with the form above and then cleared. They are not saved.",
+    "note": "Credentials are sent once and not saved.",
     "username": "Test username",
     "password": "Test password",
     "testing": "Testing connection",

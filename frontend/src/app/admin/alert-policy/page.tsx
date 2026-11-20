@@ -75,11 +75,7 @@ async function AlertPolicyPage() {
 
   return (
     <>
-      <PageHeader
-        guide={guideFor("/admin/alert-policy")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/admin/alert-policy")} title={t("title")} />
       {failure ? (
         <div className="notice" role="alert">
           <p>

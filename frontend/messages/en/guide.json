@@ -979,6 +979,9 @@
         },
         {
           "p": "Quiet periods lists every condition held back now and every maintenance window. A quiet period holds back only the alert; incidents are always recorded and counted while quiet. It lasts 1, 7 or 30 days; to keep a condition silent for good, set a record-only policy on this page. It is created from an alert or an anomaly with Don't alert this again, with a reason, an owner and, for a planned change, the change or ticket reference. Quieting the whole source silences every detector of that source; otherwise only the condition's detector. Ending a quiet period resumes alerts from the next detection. Maintenance windows are set on the log source. Alerts that open anyway are listed on the anomaly as having broken through."
+        },
+        {
+          "p": "On **Alert policy**, a row sets what happens to a condition: **Alert** raises an alert, **Record only** records the incident and raises none, **Digest** records the incident and lists it in the daily e-mail. A source or class with no row is Alert. A family whose alerting switch is off raises nothing, whatever its policy. The most specific row applies: a source over its class, one console over all consoles, one detector over all detectors. A record-only outage policy wins: an alert policy can only digest or alert a silence the outage policy still pages. A row is identified by family, scope, detector and console; to change one of them, remove the row and add another. Removing a row affects only alerts raised from then on. The daily digest is e-mailed at the hour shown, in UTC, to the alert e-mail recipients; a run with nothing waiting sends nothing, and with e-mail unconfigured or no recipient the digest incidents are not e-mailed and the page says so."
         }
       ],
       "steps": [
@@ -990,7 +993,7 @@
       ],
       "states": [
         {
-          "p": "**No outage policy is set.**; **No class has a monitored source.**; **Fleet summary unavailable**, where the two count columns are blank and the policy is still complete; **Source no longer in inventory** on an override; the forbidden notice naming `admin:outage`. Every change is audited."
+          "p": "**No outage policy is set; every monitored source alerts when silent.**; **No class has a monitored source.**; **Fleet summary unavailable**, where the two count columns are blank and the policy is still complete; **Source no longer in inventory** on an override; the forbidden notice naming `admin:outage`. Every change is audited."
         }
       ]
     },
@@ -1233,6 +1236,9 @@
         },
         {
           "p": "A stored recipient gets alerts at or above its minimum severity, for every alert type or only the types you tick. Addresses from `NOTIFY_EMAIL_RECIPIENTS` in `.env` are listed apart: they receive every alert, LOW and above, and cannot be changed here. With no stored and no `.env` recipient no alert e-mail is sent, and the page says so."
+        },
+        {
+          "p": "Configured means a host is set, not that the relay answers; the test send is the check. The HTML field keeps only the HTML that is safe in an e-mail, and the editor then shows what was kept. A test result is one line; its reason, the next step and the code are under **Details**. For a refused connection, a timeout or a TLS failure, run `./qradar-dash doctor --check-smtp` on the server: it tests the connection without sending anything. After a change in `.env`, restart the backend and the worker. A relay accepting a message does not prove delivery: check the mailbox, junk folder included. Test messages are limited per minute, and the subject starts with `[Test]`."
         }
       ],
       "steps": [
@@ -1263,7 +1269,7 @@
           "p": "A rule adds destinations for the alerts it matches. It matches on a **Minimum severity** (that severity and every higher one; Info is not routed) and, optionally, on **Alert families** (none ticked means every family), **Owners**, **Source classes**, **QRadar log source group ids** and a UTC window. An empty clause matches any alert. Every matching rule adds its destinations, and one alert is never queued twice for the same destination. Priority only orders the list: lower numbers are listed first, and every matching rule applies. With no rule matching, alerts still go to the `.env` channels and the stored e-mail recipients."
         },
         {
-          "p": "**Stop the .env channels and e-mail recipients for the alerts this rule matches** turns those default routes off for the alerts that rule matches, and only those: such an alert goes to the destinations of its matching rules and to no `.env` channel or stored e-mail recipient. The page warns that matched alerts then reach only the destinations picked on the rule. Leave it off until those destinations replace e-mail and the `.env` channels."
+          "p": "**Stop .env channels and e-mail for matched alerts** turns those default routes off for the alerts that rule matches, and only those: such an alert goes to the destinations of its matching rules and to no `.env` channel or stored e-mail recipient. The page warns that matched alerts then reach only the destinations picked on the rule. Leave it off until those destinations replace e-mail and the `.env` channels."
         },
         {
           "p": "**Only inside a time window** uses **From** and **To** as 24-hour times, labelled **UTC**, read on the stored transition time: when the alert opened, was acknowledged or was resolved, not when the delivery ran. A start later than the end wraps past midnight, and the form says so. A start equal to the end is refused. No window means all day. A rule with no enabled destination delivers nothing and is skipped, so it cannot silence the defaults either. **Add rule** stays disabled until a destination exists, and at fifty rules, and the line under the button says why."
@@ -1291,18 +1297,21 @@
         },
         {
           "p": "A named destination receives the versioned payload: one JSON body per opened, acknowledged, resolved or test event, a stable idempotency key, the JSON content type, the `Idempotency-Key` header and, when a secret is set, an `X-QRadar-Dash-Signature: v1=<hex>` over the exact bytes. Delivery is at least once. Retries follow the `NOTIFY_*` settings. Redirects are never followed. Each socket operation idles out after 10 s, and the whole send stops at `NOTIFY_SEND_DEADLINE_SECONDS` (default 30 s). One dispatch run at a time; a second overlapping run skips. Only the status is read. The signed body carries no send-time timestamp; a receiver that needs replay protection stores the `Idempotency-Key`. The events, every field, the bodies and a signature check are in `docs/WEBHOOK-PAYLOAD.md`. The `.env` webhook URLs are trusted as given, a 3xx from them is a permanent failure, and that client does not read `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `SSL_CERT_FILE` or `SSL_CERT_DIR`."
+        },
+        {
+          "p": "Every matching rule applies, whatever its priority, and the `.env` channels and e-mail recipients keep working unless a matching rule stops them. Deleting a rule stops matched alerts going to its destinations; notifications already sent are not affected. Deleting a destination discards its stored URL, secret and headers, and a destination that a rule uses cannot be deleted. A test event is marked as a test and is not an alert. If the test refuses the address, tick the matching option on the destination, only for an endpoint you trust. A redirect is never followed, so enter the final address. A test waits 10 seconds for an answer. With **Allow HTTP**, the headers travel in clear text too. A destination with a signing secret signs every webhook with HMAC-SHA-256."
         }
       ],
       "steps": [
         "Open **Administration**, then **Notification routing**.",
         "Choose **Add destination**: a name, the **URL**, and **Allow HTTP** or **Allow private addresses** only if the peer is internal. Set a **Signing secret** when the peer verifies the signature, and give the peer the same value. It is not shown again.",
         "Choose **Send test** on that destination and read the outcome: the class and the status say whether the peer answered, redirected, timed out or refused the address.",
-        "Choose **Add rule**: a **Minimum severity**, at least one destination, and the optional filters and UTC window. Leave **Stop the .env channels and e-mail recipients for the alerts this rule matches** off at first.",
+        "Choose **Add rule**: a **Minimum severity**, at least one destination, and the optional filters and UTC window. Leave **Stop .env channels and e-mail for matched alerts** off at first.",
         "Read the first matching alerts under **Notification Delivery History** before you widen the rule."
       ],
       "states": [
         {
-          "p": "**No routing rules. Alerts still use the .env channels and e-mail recipients.**; **No webhook destinations. Alerts still use the .env channels and e-mail recipients.**; **Not tested**; **Notification routing cannot be shown to this account.**, naming `admin:notifications`; a part that could not be read, with **Try again**; **This site already has the maximum of {max} rules. Remove one to add another.**; **Add a destination first: a rule needs at least one.**; an address the guard refuses, shown as the server's sentence when it is saved."
+          "p": "**No routing rules; .env channels and e-mail still apply.**; **No webhook destinations; .env channels and e-mail still apply.**; **Not tested**; **Notification routing is not shown to this account.**, naming `admin:notifications`; a part that could not be read, with **Try again**; **The maximum of {max} rules is reached.**; **Add a destination first.**; an address the guard refuses, shown as the server's sentence when it is saved."
         }
       ],
       "permission": "`admin:notifications`"
@@ -1316,6 +1325,9 @@
         },
         {
           "p": "There is no user delete. Disabling an account is how access is removed: **Disable {name}** under **Manage** ends the account's sessions and refuses its next sign-in. The account row and its audit trail stay."
+        },
+        {
+          "p": "An initial or reset password is shown once, and the account must change it at the next sign-in. An LDAP account has no password here: the directory checks it, and creating the account first lets a role be assigned before the first sign-in. On the directory page, the test connection sends the typed username and password with the form once, then clears them; they are not saved. The version starts at 0 until the first save. An empty search base sends none, and an empty CA certificate uses the system trust store."
         }
       ],
       "steps": [

@@ -177,7 +177,7 @@ describe("UsersPage", () => {
     });
     expect(
       await screen.findByText(
-        "Created local user faye. The account must change the password at the next sign-in.",
+        "Created local user faye.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Correct-Horse-1")).toBeInTheDocument();
@@ -201,7 +201,7 @@ describe("UsersPage", () => {
     expect(api.createUser.mock.calls[0][0].password).toBeUndefined();
     expect(api.createUser.mock.calls[0][0].auth_source).toBe("LDAP");
     expect(
-      await screen.findByText("Pre-created LDAP user gina. The account has no password here."),
+      await screen.findByText("Pre-created LDAP user gina."),
     ).toBeInTheDocument();
   });
 
@@ -289,7 +289,7 @@ describe("UsersPage", () => {
     await user.click(within(reset).getByRole("button", { name: "Reset password for ada" }));
     expect(api.resetUserPassword).toHaveBeenCalledWith("1", "one-password");
     expect(
-      await screen.findByText("Reset the password for ada. The account must change it at the next sign-in."),
+      await screen.findByText("Reset the password for ada."),
     ).toBeInTheDocument();
     expect(screen.getByText("one-password")).toBeInTheDocument();
     expect(within(reset).getByLabelText("New password")).toHaveValue("");

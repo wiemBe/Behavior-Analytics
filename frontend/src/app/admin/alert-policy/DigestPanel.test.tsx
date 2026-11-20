@@ -19,14 +19,14 @@ describe("the digest panel", () => {
     expect(screen.getByText("Digest for 2026-11-06")).toBeInTheDocument();
     expect(screen.getByText("4 sources")).toBeInTheDocument();
     expect(document.body.textContent).toMatch(/2026-11-06 07:05 UTC|11-06 07:05 UTC/);
-    expect(said()).toHaveTextContent("The digest listed 4 sources and went to 3 recipients.");
+    expect(said()).toHaveTextContent("Listed 4 sources; sent to 3 recipients.");
     expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("EMPTY: says nothing was waiting, not that it failed", () => {
     show(digest({ last: run({ state: "EMPTY", item_count: 0, recipient_count: 3, sent_at: null }) }));
     expect(screen.getByText("Nothing to send")).toBeInTheDocument();
-    expect(said()).toHaveTextContent("No source had digest incidents waiting, so nothing was sent.");
+    expect(said()).toHaveTextContent("No digest incidents waiting; nothing sent.");
   });
 
   it("NOT_CONFIGURED: counts the sources whose incidents were not e-mailed and links to the e-mail settings", () => {
@@ -38,16 +38,16 @@ describe("the digest panel", () => {
       }),
     );
     expect(said()).toHaveTextContent(
-      "7 sources have digest incidents that are not e-mailed; e-mail is not configured.",
+      "7 sources not e-mailed: e-mail is not configured.",
     );
     expect(screen.getByRole("link", { name: "Set up e-mail" })).toHaveAttribute("href", "/admin/email");
     // Not repeated as a second "not configured now" line: the run already says so.
-    expect(document.body.textContent).not.toContain("E-mail is not configured now");
+    expect(document.body.textContent).not.toContain("the next digest will not be sent");
   });
 
   it("NOT_CONFIGURED with one source uses the singular", () => {
     show(digest({ last: run({ state: "NOT_CONFIGURED", item_count: 1, sent_at: null }) }));
-    expect(said()).toHaveTextContent("1 source has digest incidents that are not e-mailed");
+    expect(said()).toHaveTextContent("1 source not e-mailed: e-mail is not configured.");
   });
 
   it("NO_RECIPIENTS: same idea, linked to the recipients", () => {
@@ -57,7 +57,7 @@ describe("the digest panel", () => {
         last: run({ state: "NO_RECIPIENTS", item_count: 2, recipient_count: 0, sent_at: null }),
       }),
     );
-    expect(said()).toHaveTextContent("2 sources had digest incidents that were not e-mailed: no recipient");
+    expect(said()).toHaveTextContent("2 sources not e-mailed: no recipient is set.");
     expect(screen.getByRole("link", { name: "Manage recipients" })).toHaveAttribute(
       "href",
       "/admin/email#recipients",
@@ -68,7 +68,7 @@ describe("the digest panel", () => {
   it("FAILED: words the delivery code with the e-mail page's sentence and next step", () => {
     show(digest({ last: run({ state: "FAILED", error_code: "connection_refused", sent_at: null }) }));
     expect(screen.getByText("Delivery failed")).toBeInTheDocument();
-    expect(said()).toHaveTextContent("The digest (4 sources) was not delivered.");
+    expect(said()).toHaveTextContent("Not delivered (4 sources).");
     expect(said()).not.toHaveTextContent(/incidents are recorded|incidents were recorded/);
     expect(said()).toHaveTextContent(/doctor --check-smtp/);
     expect(screen.getByRole("link", { name: "Open the e-mail settings" })).toHaveAttribute(
@@ -80,12 +80,12 @@ describe("the digest panel", () => {
 
   it("FAILED with a code the page does not word still says it was not delivered", () => {
     show(digest({ last: run({ state: "FAILED", error_code: "brand_new_code", sent_at: null }) }));
-    expect(said()).toHaveTextContent("was not delivered. The relay reported an outcome");
+    expect(said()).toHaveTextContent("Not delivered (4 sources). The relay reported an outcome");
   });
 
   it("no run yet: says so and never draws an item count", () => {
     show(digest({ last: null, instances: [] }));
-    expect(said()).toHaveTextContent("No digest has run yet. The first is due at 07:00 UTC.");
+    expect(said()).toHaveTextContent("No digest has run yet. First due at 07:00 UTC.");
     expect(screen.queryByText("Sources listed")).toBeNull();
     expect(screen.queryByText(/0 sources/)).toBeNull();
     expect(screen.getByText("Daily at 07:00 UTC")).toBeInTheDocument();
@@ -93,12 +93,12 @@ describe("the digest panel", () => {
 
   it("warns that the next digest will not go out when e-mail was configured then and is not now", () => {
     show(digest({ email_configured: false }));
-    expect(said()).toHaveTextContent("E-mail is not configured now, so the next digest will not be sent.");
+    expect(said()).toHaveTextContent("E-mail is not configured; the next digest will not be sent.");
   });
 
   it("warns about an empty recipient list now after a run that had recipients", () => {
     show(digest({ recipient_count: 0 }));
-    expect(said()).toHaveTextContent("No recipient is set to receive alert e-mail now");
+    expect(said()).toHaveTextContent("No recipient is set; the next digest will not be sent.");
   });
 
   it("one console shows no per-console table; several do, with a never-run console as such", () => {

@@ -65,7 +65,6 @@ export function PreviewPane({
           {view.kind === "loading" ? t("updating") : t("update")}
         </button>
       </div>
-      <p className="mail-hint">{t("sampleNote")}</p>
 
       {view.kind === "failed" ? (
         <div className="banner warn" role="alert">

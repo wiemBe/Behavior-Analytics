@@ -8,7 +8,6 @@
 // ranks above it.
 
 import { useState } from "react";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
@@ -16,7 +15,7 @@ import { TableScroll } from "@/components/ui/TableScroll";
 import { UtcTime } from "@/components/ui/UtcTime";
 import { alertPolicyApi, type AlertPolicyRow } from "@/lib/api";
 import { enumLabel, type EnumTranslator } from "@/i18n/enumLabels";
-import { detectorGroup, isGone, removeFailure, shortId, touchesOutage } from "@/lib/alertPolicy";
+import { detectorGroup, isGone, removeFailure, shortId } from "@/lib/alertPolicy";
 import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { PolicyEditor } from "./PolicyEditor";
@@ -79,7 +78,6 @@ function PolicyRow({
       : row.source_class
         ? className(row.source_class)
         : "";
-  const note = touchesOutage(row);
 
   async function remove() {
     if (pending) return;
@@ -163,14 +161,6 @@ function PolicyRow({
           </td>
         )}
       </tr>
-      {note && (
-        <tr className="policy-note-row">
-          <td colSpan={canWrite ? 6 : 5}>
-            {t("table.outageNote")}{" "}
-            <Link href="/admin/outage-policy">{t("table.outageLink")}</Link>
-          </td>
-        </tr>
-      )}
       {canWrite && (editing || removing) && (
         <tr className="status-row">
           <td colSpan={6}>

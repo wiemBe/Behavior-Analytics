@@ -210,7 +210,6 @@ function Loaded({
 
   return (
     <>
-      <p className="nr-hint">{t("intro")}</p>
       {list.length === 0 ? (
         <p className="notice">{t("empty")}</p>
       ) : (

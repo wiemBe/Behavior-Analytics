@@ -101,7 +101,7 @@ describe("the preview at laptop widths", () => {
     await open();
     expect(stage().style.getPropertyValue("--mail-scale")).toBe("0.7");
     expect(screen.getByRole("status", { name: "" })).toBeDefined();
-    expect(screen.getByText("Shown at 70 % of its size, to fit the column.")).toBeInTheDocument();
+    expect(screen.getByText("Shown at 70 %.")).toBeInTheDocument();
     // Scaled, not reflowed: the frame carries no width of its own, the stylesheet keeps the layout
     // width and the scale does the rest.
     expect(screen.getByTitle("E-mail preview")).not.toHaveAttribute("width");
@@ -112,7 +112,7 @@ describe("the preview at laptop widths", () => {
     stageWidth = 560;
     await open();
     expect(stage().style.getPropertyValue("--mail-scale")).toBe("0.875");
-    expect(screen.getByText("Shown at 87 % of its size, to fit the column.")).toBeInTheDocument();
+    expect(screen.getByText("Shown at 87 %.")).toBeInTheDocument();
   });
 
   it("follows the column when it is resized", async () => {
@@ -121,7 +121,7 @@ describe("the preview at laptop widths", () => {
     stageWidth = 480;
     observers.forEach((notify) => notify());
     await waitFor(() => expect(stage().style.getPropertyValue("--mail-scale")).toBe("0.75"));
-    expect(screen.getByText("Shown at 75 % of its size, to fit the column.")).toBeInTheDocument();
+    expect(screen.getByText("Shown at 75 %.")).toBeInTheDocument();
   });
 
   it("shows it at actual size and back, the scrolling inside the preview only", async () => {
@@ -132,7 +132,7 @@ describe("the preview at laptop widths", () => {
     expect(stage()).toHaveClass("mail-stage-actual");
     expect(stage()).toHaveAttribute("tabindex", "0");
     expect(screen.getByRole("region", { name: "E-mail preview, scrollable" })).toBe(stage());
-    expect(screen.getByText(/Shown at actual size \(100 %\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Shown at 100 %/)).toBeInTheDocument();
     expect(screen.getByTitle("E-mail preview")).toHaveAttribute("sandbox", "");
     await userEvent.click(screen.getByRole("button", { name: "Fit to the column" }));
     expect(stage().style.getPropertyValue("--mail-scale")).toBe("0.7");

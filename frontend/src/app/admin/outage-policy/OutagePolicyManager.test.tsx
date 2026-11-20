@@ -30,7 +30,7 @@ describe("impact before saving", () => {
     expect(impact).toHaveTextContent(
       "12 monitored sources in Firewall will no longer raise outage alerts.",
     );
-    expect(impact).toHaveTextContent("1 source keeps alerting through its own override.");
+    expect(impact).toHaveTextContent("1 source keeps alerting (own override).");
   });
 
   it("states the opposite when switching back to ALERT", async () => {
@@ -192,7 +192,7 @@ describe("removing", () => {
     vi.spyOn(outagePolicyApi, "deleteSource").mockRejectedValue(new ApiError(404, "gone"));
     await user.click(screen.getByRole("button", { name: "Remove the override of PaSeries @ pa-fw-02" }));
     await user.click(screen.getByRole("button", { name: "Remove override" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(/already removed by someone else/);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/already removed/);
     expect(outagePolicyApi.list).toHaveBeenCalled();
     // The editor is closed: the stale confirmation is gone.
     expect(screen.queryByRole("button", { name: "Remove override" })).toBeNull();
@@ -246,7 +246,7 @@ describe("source override picker", () => {
     await user.click(screen.getByRole("button", { name: "Add override" }));
     await screen.findAllByRole("row");
     await user.type(screen.getByLabelText("Search by name or QRadar type"), "zzz");
-    expect(await screen.findByText(/name or type containing “zzz”/)).toBeInTheDocument();
+    expect(await screen.findByText(/matches “zzz”/)).toBeInTheDocument();
   });
 
   it("puts the action in the last column of every row", async () => {
@@ -280,7 +280,7 @@ describe("source override picker", () => {
     mount();
     vi.spyOn(fleetApi, "sources").mockResolvedValue(page(INVENTORY, 2500));
     await user.click(screen.getByRole("button", { name: "Add override" }));
-    expect(await screen.findByText(/2500 log sources match; showing the first 3/)).toBeInTheDocument();
+    expect(await screen.findByText(/2500 match; showing the first 3/)).toBeInTheDocument();
   });
 
   it("explains a failed search", async () => {
@@ -351,6 +351,6 @@ describe("reload after a change", () => {
     await user.click(screen.getByRole("button", { name: "Set policy for Linux" }));
     await user.click(screen.getByRole("radio", { name: "Record only" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/counts may be out of date/));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/counts may be stale/));
   });
 });

@@ -4,61 +4,61 @@
   },
   "page": {
     "title": "Administration",
-    "description": "Settings that control collection, source classification and outage alerting."
+    "description": "Administration"
   },
   "index": {
     "label": "Administration sections",
     "searchCadence": {
       "name": "Search cadence",
-      "description": "How often each search family queries QRadar"
+      "description": "How often each family queries QRadar"
     },
     "classification": {
       "name": "Classification rules",
-      "description": "Which rules decide a log source's class, and in what order"
+      "description": "Which rule sets a source's class"
     },
     "outage": {
       "name": "Outage alerts",
-      "description": "Which silent sources raise an alert, and which are only recorded"
+      "description": "Which silent sources alert or are only recorded"
     },
     "alertPolicy": {
       "name": "Alert policy",
-      "description": "Which sources and classes page a human, which are only recorded, and which go into the daily digest"
+      "description": "Which sources alert, record only, or digest"
     },
     "waf": {
       "name": "WAF sources",
-      "description": "Which QRadar properties each WAF source is read from"
+      "description": "Properties each WAF source is read from"
     },
     "ips": {
       "name": "IPS sources",
-      "description": "Which QRadar properties each IPS source is read from"
+      "description": "Properties each IPS source is read from"
     },
     "history": {
       "name": "History backfill",
-      "description": "What has been read from QRadar's past for the baselines, and what can still be"
+      "description": "What was read from QRadar's past"
     },
     "siemLoad": {
       "name": "SIEM load",
-      "description": "How much load this platform puts on QRadar, and how QRadar itself is doing"
+      "description": "Load on QRadar and its health"
     },
     "qradarAccess": {
       "name": "QRadar access",
-      "description": "Which QRadar APIs this site's token can reach, what each one feeds here, and what to ask the QRadar administrator for"
+      "description": "APIs the token can reach"
     },
     "alertEmail": {
       "name": "Alert e-mail",
-      "description": "What an alert e-mail looks like, who receives it, and whether the relay accepts it"
+      "description": "Templates, recipients and relay"
     },
     "notificationRouting": {
       "name": "Notification routing",
-      "description": "Which alerts go to which webhook, and where each webhook points"
+      "description": "Which alerts go to which webhook"
     },
     "users": {
       "name": "Users",
-      "description": "Who can sign in, and the roles an administrator assigned"
+      "description": "Who can sign in, with which roles"
     },
     "directory": {
       "name": "Directory",
-      "description": "Where directory accounts bind, and a connection test that stores nothing"
+      "description": "Directory sign-in and connection test"
     }
   }
 }

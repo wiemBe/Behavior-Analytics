@@ -93,23 +93,6 @@ export function AlertPolicyManager({
         <DigestPanel digest={digest} note={digest ? null : digestNote} />
       </section>
 
-      <section className="policy-modes" aria-labelledby="policy-modes-title">
-        <p className="policy-modes-title" id="policy-modes-title">
-          {t("modes.heading")}
-        </p>
-        <dl>
-          {(["ALERT", "RECORD_ONLY", "DIGEST"] as const).map((m) => (
-            <div key={m}>
-              <dt>{t(`mode.${m}`)}</dt>
-              <dd>{t(`modes.${m}`)}</dd>
-            </div>
-          ))}
-        </dl>
-        <p>
-          {t("modes.default")} {t("modes.precedence")}
-        </p>
-      </section>
-
       {flash && (
         <div
           className={`banner outage-note ${flash.kind}`}
@@ -160,7 +143,6 @@ export function AlertPolicyManager({
             <p>
               <strong>{t("empty.title")}</strong>
             </p>
-            <p>{t("empty.text")}</p>
           </div>
         ) : (
           <PolicyTable

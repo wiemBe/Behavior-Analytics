@@ -54,11 +54,7 @@ async function OutagePolicyPage() {
 
   return (
     <>
-      <PageHeader
-        guide={guideFor("/admin/outage-policy")}
-        title={t("title")}
-        description={t("description")}
-      />
+      <PageHeader guide={guideFor("/admin/outage-policy")} title={t("title")} />
 
       {failure ? (
         <div className="notice" role="alert">
@@ -71,14 +67,6 @@ async function OutagePolicyPage() {
         </div>
       ) : (
         <>
-          <div className="banner outage-note">
-            <p>
-              {t.rich("note", {
-                strong: (chunks) => <strong>{chunks}</strong>,
-                code: (chunks) => <code>{chunks}</code>,
-              })}
-            </p>
-          </div>
           <OutagePolicyManager
             initialRows={rows}
             initialSummary={summary}

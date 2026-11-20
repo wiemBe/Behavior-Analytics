@@ -529,7 +529,7 @@ describe("outage policy", () => {
     });
     expect(parseGrace("x", ENGLISH_OUTAGE)).toEqual({
       ok: false,
-      message: "Enter a whole number of buckets, or leave it blank for the default.",
+      message: "Enter a whole number of buckets, or leave blank.",
     });
   });
 
@@ -604,7 +604,7 @@ describe("outage policy", () => {
     });
     expect(readError(new ApiError(401, "x"), TR).text).toMatch(/^Oturumunuzun süresi doldu/);
     expect(readError(new Error("x"), TR).text).toMatch(/^Kesinti uyarısı politikası yüklenemedi/);
-    expect(readError(new ApiError(403, "x")).text).toMatch(/^Your role cannot read the outage alert policy/);
+    expect(readError(new ApiError(403, "x")).text).toMatch(/^Needs the admin:outage permission/);
   });
 
   it("orders classes by their Turkish labels", () => {
@@ -612,13 +612,13 @@ describe("outage policy", () => {
     expect(lines.map((l) => l.source_class)).toEqual(["FIREWALL", "LINUX", "PROXY"]);
   });
 
-  it("renders the page populated, with the note, the class table and the source overrides", async () => {
+  it("renders the page populated, without the note, the class table and the source overrides", async () => {
     vi.spyOn(outagePolicyApi, "list").mockResolvedValue([row({ silence_grace_buckets: 6 }), sourceRow()]);
     vi.spyOn(outagePolicyApi, "summary").mockResolvedValue(SUMMARY);
     render(await OutagePolicyPage());
     expect(screen.getByRole("heading", { level: 1, name: "Kesinti uyarıları" })).toBeInTheDocument();
-    expect(screen.getByText(/yalnızca kayıt/i, { selector: "strong" })).toBeInTheDocument();
-    expect(document.body.textContent).toMatch(/\/behavior/);
+    expect(screen.queryByText(/yalnızca kayıt/i, { selector: "strong" })).toBeNull();
+    expect(document.body.textContent).not.toMatch(/\/behavior/);
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
       "Sınıflar",
       "Kaynak bazlı geçersiz kılmalar",

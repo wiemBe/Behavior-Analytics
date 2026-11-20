@@ -332,7 +332,6 @@ export function ClassTable({
         <p>
           <strong>{t("emptyTitle")}</strong>
         </p>
-        <p>{t("emptyText")}</p>
       </div>
     );
   }

@@ -15,33 +15,32 @@ const SECTIONS = [
   {
     name: "Search cadence",
     href: "/admin/search-cadence",
-    description: "How often each search family queries QRadar",
+    description: "How often each family queries QRadar",
   },
   {
     name: "Classification rules",
     href: "/admin/classification-rules",
-    description: "Which rules decide a log source's class, and in what order",
+    description: "Which rule sets a source's class",
   },
   {
     name: "Outage alerts",
     href: "/admin/outage-policy",
-    description: "Which silent sources raise an alert, and which are only recorded",
+    description: "Which silent sources alert or are only recorded",
   },
   {
     name: "Alert policy",
     href: "/admin/alert-policy",
-    description:
-      "Which sources and classes page a human, which are only recorded, and which go into the daily digest",
+    description: "Which sources alert, record only, or digest",
   },
   {
     name: "WAF sources",
     href: "/admin/waf-sources",
-    description: "Which QRadar properties each WAF source is read from",
+    description: "Properties each WAF source is read from",
   },
   {
     name: "IPS sources",
     href: "/admin/ips-sources",
-    description: "Which QRadar properties each IPS source is read from",
+    description: "Properties each IPS source is read from",
   },
 ];
 
@@ -84,16 +83,16 @@ beforeEach(() => {
 });
 
 describe("administration hub", () => {
-  it("has exactly one h1, named Administration, and states what the page controls", () => {
+  it("has exactly one h1, named Administration, and no description line", () => {
     render(<AdminPage />);
     const h1s = screen.getAllByRole("heading", { level: 1 });
     expect(h1s).toHaveLength(1);
     expect(h1s[0]).toHaveTextContent("Administration");
     expect(
-      screen.getByText(
+      screen.queryByText(
         "Settings that control collection, source classification and outage alerting.",
       ),
-    ).toBeInTheDocument();
+    ).toBeNull();
   });
 
   it("lists exactly six sections while the session is unknown, in order, each a link", () => {
@@ -132,7 +131,7 @@ describe("administration hub", () => {
     expect(names()).toEqual([...SECTIONS.map((section) => section.name), "Users"]);
     expect(screen.getByRole("link", { name: "Users" })).toHaveAttribute("href", "/admin/users");
     expect(
-      screen.getByText("Who can sign in, and the roles an administrator assigned"),
+      screen.getByText("Who can sign in, with which roles"),
     ).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Directory" })).not.toBeInTheDocument();
   });
@@ -146,7 +145,7 @@ describe("administration hub", () => {
     expect(names()).toEqual([...SECTIONS.map((section) => section.name), "Directory"]);
     expect(screen.getByRole("link", { name: "Directory" })).toHaveAttribute("href", "/admin/directory");
     expect(
-      screen.getByText("Where directory accounts bind, and a connection test that stores nothing"),
+      screen.getByText("Directory sign-in and connection test"),
     ).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
   });

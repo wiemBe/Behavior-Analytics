@@ -8,7 +8,7 @@ import Loading from "./loading";
 import Page from "./page";
 
 describe("Alert e-mail route", () => {
-  it("has exactly one h1, a guide link, and states that times are UTC", async () => {
+  it("has exactly one h1, a guide link, and has no time-zone line", async () => {
     vi.spyOn(mailAdminApi, "settings").mockReturnValue(new Promise(() => {}));
     vi.spyOn(mailAdminApi, "templates").mockReturnValue(new Promise(() => {}));
     vi.spyOn(mailAdminApi, "placeholders").mockReturnValue(new Promise(() => {}));
@@ -18,7 +18,7 @@ describe("Alert e-mail route", () => {
     const h1s = screen.getAllByRole("heading", { level: 1 });
     expect(h1s).toHaveLength(1);
     expect(h1s[0]).toHaveTextContent("Alert e-mail");
-    expect(screen.getByText(/Times are UTC\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Times are UTC\./)).toBeNull();
     expect(screen.getByRole("link", { name: /guide/i })).toHaveAttribute("href", "/guide/alert-email");
     expect(document.body.textContent).not.toMatch(/real-time|\blive\b|!/i);
   });

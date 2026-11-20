@@ -154,7 +154,7 @@ describe("failures", () => {
     expect(invalid.field).toBe("detector");
     const other = saveFailure(new ApiError(500, "boom"), say);
     expect(other.field).toBeUndefined();
-    expect(other.text).toMatch(/^The policy was not saved: /);
+    expect(other.text).toMatch(/^Not saved: /);
   });
 
   it("removeFailure: 404 marks the list stale, 403 names the permission", () => {
@@ -162,6 +162,6 @@ describe("failures", () => {
     const forbidden = removeFailure(new ApiError(403, "x"), say);
     expect(forbidden).toMatchObject({ kind: "forbidden", gone: false });
     expect(forbidden.text).toContain("admin:outage");
-    expect(removeFailure(new ApiError(500, "x"), say).text).toMatch(/^The policy was not removed: /);
+    expect(removeFailure(new ApiError(500, "x"), say).text).toMatch(/^Not removed: /);
   });
 });
