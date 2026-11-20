@@ -118,6 +118,9 @@ HISTORY_TABLES = (
             "app.fleet.sources._Eps.__init__": Reader(
                 "R6 (UIQ-7a fleet source list)", ReaderKind.DISPLAY
             ),
+            "app.fleet.summary.topup_bucket_published": Reader(
+                "R6 (D-90 shared all-chunk frontier guard)", ReaderKind.DISPLAY
+            ),
             "app.fleet.summary.build_fleet_summary": Reader(
                 "R6 (not in the design table: fleet totals)", ReaderKind.DISPLAY
             ),

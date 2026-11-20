@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from sqlalchemy import ColumnElement, case, cast, func, literal, select, tuple_
+from sqlalchemy import ColumnElement, DateTime, case, cast, func, literal, select, tuple_
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +31,7 @@ from app.models.enums import (
     SourceClass,
 )
 from app.models.fleet import LogSourceClassification
+from app.models.history_backfill import HistoryBackfillScope
 from app.models.log_source import (
     LogSource,
     LogSourceAnomaly,
@@ -74,6 +75,21 @@ def in_monitored_grid(source_class: ColumnElement[str]) -> ColumnElement[bool]:
     return monitored_source() & (source_class != _INTERNAL)
 
 
+def topup_bucket_published() -> ColumnElement[bool]:
+    """Exclude chunk history until every frozen chunk has read that bucket."""
+    reading = LogSourceMetric.query_provenance["topup_reading"].astext
+    cutoff = cast(func.jsonb_extract_path_text(
+        HistoryBackfillScope.progress, "adapter", "topup_cutoffs", reading,
+    ), DateTime(timezone=True))
+    published = select(HistoryBackfillScope.instance_id).where(
+        HistoryBackfillScope.instance_id == LogSource.instance_id,
+        HistoryBackfillScope.family == "PHASE_A",
+        HistoryBackfillScope.scope_key == "",
+        LogSourceMetric.bucket_start < cutoff,
+    ).correlate(LogSource, LogSourceMetric).exists()
+    return reading.is_(None) | published
+
+
 def metric_grid_predicates(
     source_class: ColumnElement[str],
     *,
@@ -87,7 +103,10 @@ def metric_grid_predicates(
     a disabled source, an internal source, or another bucket width is not a cell,
     so it cannot move complete, partial, events, EPS or `complete_from_history`.
     """
+    # Chunk rows are useful per source immediately, but only the all-chunk frontier
+    # may feed a fleet/class measurement. The cutoff survives later top-ups.
     return (
+        topup_bucket_published(),
         in_monitored_grid(source_class),
         LogSourceMetric.bucket_seconds == bucket_seconds,
         LogSourceMetric.bucket_start >= window_start,
