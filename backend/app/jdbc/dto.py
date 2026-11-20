@@ -6,7 +6,7 @@ input-free repr and validation errors, so no raw parameter can leak.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -95,15 +95,47 @@ class JdbcConfigDTO(BaseModel):
         )
 
 
+class JdbcWalkState(StrEnum):
+    COMPLETE = "COMPLETE"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
+    NOT_COLLECTED = "NOT_COLLECTED"
+
+
+class JdbcWalkFailure(StrEnum):
+    AUTH = "auth"
+    TIMEOUT = "timeout"
+    RATE_LIMITED = "rate_limited"
+    UPSTREAM = "upstream"
+    NETWORK = "network"
+    MALFORMED = "malformed"
+    PAGE_CEILING = "page_ceiling"
+
+
+class JdbcRowRejection(StrEnum):
+    MALFORMED_ROW = "malformed_row"
+    WRONG_PROTOCOL = "wrong_protocol"
+    DUPLICATE_ID = "duplicate_id"
+    PARAMETERS_UNAVAILABLE = "parameters_unavailable"
+
+
 @dataclass(frozen=True)
 class JdbcConfigWalk:
-    """Safe configs and received list-page counts, including an empty terminator.
+    """Safe configs, received list-page/row counts and first fixed failure code.
 
-    Only a short page proves ``complete``; a failed page or a full page at the
-    ceiling does not. Per-config field availability is independent of this flag.
+    Rejected pages contribute counts but no configs. Only a successful short
+    terminator without any failure proves completeness, including empty.
     """
 
     configs: list[JdbcConfigDTO]
     pages_read: int = 0
     rows_read: int = 0
-    complete: bool = False
+    state: JdbcWalkState = JdbcWalkState.NOT_COLLECTED
+    failure_code: JdbcWalkFailure | None = None
+    pages_failed: int = 0
+    rejected_rows: dict[JdbcRowRejection, int] = field(default_factory=dict)
+    elapsed_seconds: float = 0.0
+
+    @property
+    def complete(self) -> bool:
+        return self.state is JdbcWalkState.COMPLETE
