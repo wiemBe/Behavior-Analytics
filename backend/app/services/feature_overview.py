@@ -133,5 +133,7 @@ async def overview(session: AsyncSession, base: Settings, principal: Principal) 
                                  "entries": [e.model_dump() for e in console.entries
                                              if e.id in ACCESS[name]]} for console in access]
                                 if can_access and not resolved.reason else None})
-    return {"runtime_switches_active": False, "reason": resolved.reason, "families": rows,
+    # S3a wires the workers; the API routes (S3b) still read `.env`, so the first stays false.
+    return {"runtime_switches_active": False, "worker_switches_active": True,
+            "reason": resolved.reason, "families": rows,
             "settings_problems": switch_dependent_problems(effective_settings(base, resolved))}

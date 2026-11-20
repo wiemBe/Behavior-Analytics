@@ -1014,5 +1014,6 @@ with `PARTIAL` state and unknown applicability if expressions cannot complete.
 The Features API provides `GET /admin/features`, `PUT /admin/features/{key}` with
 `{"enabled": true|false}`, and `DELETE /admin/features/{key}` to restore the environment/default.
 Writes are validated, rate limited and audited; unchanged values create no row or audit.
-The response reports `runtime_switches_active: false` until S3 connects runtime consumers.
+The response reports `worker_switches_active: true` (the Celery tasks read these switches each run) and
+`runtime_switches_active: false` until the API routes read them too (S3b).
 The offline equivalent is `python -m app.cli.features show|set|reset|apply|env`.

@@ -397,8 +397,10 @@ async def test_a_failed_dispatch_does_not_resend_in_the_same_slot(monkeypatch) -
 
 
 @pytest.mark.asyncio
-async def test_the_per_source_task_is_not_gated(monkeypatch) -> None:
-    """`collect_waf_source` runs whenever it is enqueued; it never claims a slot."""
+async def test_the_per_source_task_runs_while_the_switch_is_on_and_never_claims_a_slot(
+    monkeypatch,
+) -> None:
+    """With the effective WAF switch on, `collect_waf_source` runs; it never claims a slot."""
     seen: list[str] = []
 
     class Cadence:
@@ -417,3 +419,30 @@ async def test_the_per_source_task_is_not_gated(monkeypatch) -> None:
     pid = uuid.uuid4()
     assert await tasks.collect_waf_source(str(pid)) == {"status": "ok"}
     assert seen == [str(pid)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", [None, "feature_switch_unreadable"])
+async def test_the_per_source_task_is_gated_by_the_effective_switch(monkeypatch, reason) -> None:
+    """A switch turned off (or an unreadable table) after the fan-out stops the next source."""
+    off = get_settings().model_copy(update={"waf_collection_enabled": False})
+
+    async def effective(_task: str) -> tuple[object, str | None]:
+        return off, reason
+
+    async def must_not_run(*_a: object, **_k: object) -> dict:
+        raise AssertionError("a disabled family must not run the source")
+
+    def no_provider(*_a: object, **_k: object) -> object:
+        raise AssertionError("a disabled family must not build a provider")
+
+    monkeypatch.setattr(tasks, "_effective_settings", effective)
+    monkeypatch.setattr(tasks, "get_sessionmaker", lambda: _Maker())
+    monkeypatch.setattr(tasks, "run_waf_source", must_not_run)
+    monkeypatch.setattr(tasks, "build_provider_for_instance", no_provider)
+
+    pid = str(uuid.uuid4())
+    expected = {"status": "disabled", "profile_id": pid}
+    if reason:
+        expected["reason"] = reason
+    assert await tasks.collect_waf_source(pid) == expected

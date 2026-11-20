@@ -78,6 +78,7 @@ async def test_roundtrip_and_audit(api, db_session):
         assert (await client.put(f"{URL}/{key}", json={"enabled": True})).status_code == 204
     body = (await client.get(URL)).json()
     assert body["runtime_switches_active"] is False
+    assert body["worker_switches_active"] is True
     geo = next(r for r in body["families"] if r["family"] == "geo")
     assert geo["switches"][key]["source"] == "db"
     assert geo["switches"][key]["updated_by"] == "operator"

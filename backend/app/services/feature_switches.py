@@ -64,6 +64,14 @@ class ResolvedFeatures:
     reason: str | None = None
 
 
+def unreadable_features() -> ResolvedFeatures:
+    """Every switch off with ``UNREADABLE_REASON``: what a read that failed resolves to."""
+    return ResolvedFeatures(
+        values={key: ResolvedSwitch(False, "unreadable") for key in FEATURE_KEYS},
+        reason=UNREADABLE_REASON,
+    )
+
+
 def _from_environment(base: Settings) -> dict[str, ResolvedSwitch]:
     """The env file wins over the code default, exactly as before the table existed."""
     return {
@@ -97,10 +105,7 @@ async def resolve(session: AsyncSession, base: Settings) -> ResolvedFeatures:
             extra={"reason": UNREADABLE_REASON},
             exc_info=True,
         )
-        return ResolvedFeatures(
-            values={key: ResolvedSwitch(False, "unreadable") for key in FEATURE_KEYS},
-            reason=UNREADABLE_REASON,
-        )
+        return unreadable_features()
 
     unknown = sorted(row.key for row in rows if row.key not in values)
     for row in rows:
