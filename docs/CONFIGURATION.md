@@ -170,6 +170,8 @@ reference heading for them.
 | `LOG_SOURCE_PAGE_ATTEMPTS` | `3` | Attempts per page before it is skipped |
 | `LOG_SOURCE_WALK_MAX_SECONDS` | `600` | Wall-clock cap for the whole walk. Keep it below the sync interval |
 | `INVENTORY_NEW_SOURCE_ALERTS_ENABLED` | `true` | Open a review alert for a new non-internal log source |
+| `JDBC_COLLECTION_ENABLED` | `false` | Rollout gate: run the JDBC metadata collector and its queued refresh. Ships off; nothing collects yet unless a feature-switch row enables it. The read view still shows stored configurations while off. A row set under **Administration → Features** overrides this default when `FEATURE_SWITCHES_DB` is true |
+| `QRADAR_SOURCE_PAUSE_ENABLED` | `false` | D-52 QRadar-disabled source pauses, closure, guard predicates and the changed active-count filters. Ships off; off keeps today's behavior exactly. A row set under **Administration → Features** overrides this default when `FEATURE_SWITCHES_DB` is true |
 | `QRADAR_ACCESS_CHECK_INTERVAL_SECONDS` | `21600` | How often every console is asked which QRadar APIs the token can reach. Minimum `300` |
 | `OFFENSE_COLLECTION_INTERVAL_SECONDS` | `300` | Offense collection interval |
 | `OFFENSE_MAX_PAGES` | `20` | Pages of offenses walked per run |
