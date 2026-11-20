@@ -316,7 +316,7 @@ def test_begin_with_the_switch_off_is_partial_with_nothing_written() -> None:
         history_days=7, boundary=BOUNDARY, now=NOW, enabled=False, settings=PSET
     )
     assert begun.state is Ps.PARTIAL and begun.progress is None
-    assert begun.reason == "history reading is switched off; the scope starts live"
+    assert begun.reason == "history reading is off; the scope starts live"
     c = begun.columns
     assert c["collected_through"] is None and c["evaluated_through"] is None
     assert c["history_end"] is None and c["history_finished_at"] == NOW

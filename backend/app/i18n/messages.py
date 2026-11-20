@@ -1846,13 +1846,13 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # Watch status (stored in property_watch.last_status_reason_i18n).
     _msg(
         "pw.status.reading_history",
-        "Reading history from QRadar: {done} of {total} days; nothing is judged until it finishes",
+        "Reading history: {done} of {total} days; nothing is judged until done",
         {"done": _FIXED1, "total": _FIXED1},
         {"done": 3.46, "total": 7.0},
     ),
     _msg(
         "pw.status.not_applicable",
-        "the property parsed on no event in scope; the values are not measured",
+        "the property parsed on no event in scope; values not measured",
     ),
     _msg(
         "pw.status.latest_search_failed",
@@ -1923,7 +1923,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg("pw.reference.kind_unknown", "unknown property reference kind"),
     _msg(
         "pw.reference.not_an_object",
-        "a property reference is an object with a kind and a name",
+        "a property reference needs a kind and a name",
     ),
     _msg("pw.reference.name_not_text", "property reference name must be text"),
     _msg("pw.reference.pin_not_text", "a pinned value is text"),
@@ -1936,8 +1936,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.reference.pin_characters",
-        "a pinned value cannot hold a quote, a backslash, a control character or "
-        "leading or trailing whitespace",
+        "a pinned value cannot hold a quote, a backslash, a control character or edge whitespace",
     ),
     # Draft validation and the other 422 reasons of the watch routes.
     _msg(
@@ -2039,8 +2038,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg("pw.draft.no_instance", "no QRadar instance is registered"),
     _msg(
         "pw.draft.pinned_rows",
-        "the pinned values can return up to {rows} rows per bucket, above the {target} rows "
-        "one history search may carry; unpin values or request no history",
+        "pinned values can return up to {rows} rows per bucket, above the {target} rows a history "
+        "search carries; unpin values or request no history",
         {"rows": _PLAIN, "target": _PLAIN},
         {"rows": 9000, "target": 5000},
     ),
@@ -2068,15 +2067,14 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.draft.series_untracked",
-        "value {value} is not a tracked value of this watch's current version",
+        "value {value} is not tracked in this watch's current version",
         {"value": _TEXT},
         {"value": "5b0c8b0e-0000-4000-8000-000000000002"},
     ),
     # Changing the history request (409) and the bounded preview.
     _msg(
         "pw.history_change.already_requested",
-        "history is {state} on this watch and cannot be requested again; "
-        "create a new watch to read history",
+        "history is {state} on this watch; create a new watch to read history",
         {"state": ParamSpec(ParamKind.ENUM, enum_group="propertyWatchHistoryState")},
         {"state": "READING"},
     ),
@@ -2088,8 +2086,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.history_change.holds_buckets",
-        "this watch holds {stored} stored bucket(s) of its current version; "
-        "create a new watch to read history",
+        "this watch holds {stored} stored bucket(s); create a new watch to read history",
         {"stored": _PLAIN},
         {"stored": 288},
     ),
@@ -2107,8 +2104,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.preview.group_too_large",
-        "the group resolves to {members} sources and a preview covers one search chunk of "
-        "at most {max}; preview a smaller group, a type or a source",
+        "the group resolves to {members} sources, above the {max} one preview covers; preview a "
+        "smaller group, a type or a source",
         {"members": _PLAIN, "max": _PLAIN},
         {"members": 700, "max": 500},
     ),
@@ -2120,48 +2117,48 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.preview.search_failed",
-        "a search failed, so its buckets were not measured",
+        "a search failed; its buckets were not measured",
     ),
     # --- SCALE-2h3: the preview is a queued task (D-87, D-92; English only, D-45) ---
     _msg(
         "pw.preview.conflict.running",
-        "a preview of this watch has been queued or running since {since}",
+        "a preview of this watch is queued or running since {since}",
         {"since": _TEXT},
         {"since": "2026-11-20T10:00:00+00:00"},
     ),
     _fixed(
         "pw.preview.not_queued",
-        "the preview could not be queued, so nothing was sent to QRadar; try again shortly",
+        "preview not queued, nothing sent to QRadar; try again shortly",
     ),
     _fixed(
         "pw.preview.worker_failed",
-        "the preview stopped because the worker failed before it finished; nothing was measured",
+        "the preview stopped: the worker failed; nothing was measured",
     ),
     _fixed(
         "pw.preview.worker_lost",
-        "the preview did not finish: no worker reported back in time; nothing was measured",
+        "the preview timed out: no worker reported back; nothing was measured",
     ),
     _fixed(
         "pw.preview.store_unreadable",
-        "the preview's state could not be read; try again shortly",
+        "the preview's state is unreadable; try again shortly",
     ),
     _fixed(
         "pw.preview.watch_gone",
-        "the watch or its console no longer exists, so the preview was not run",
+        "the watch or its console no longer exists; preview not run",
     ),
     _msg(
         "pw.preview.cut_at_row_limit",
-        "the grouped search was cut at the row limit and a preview does not split it; "
-        "narrow the scope or preview a type or a source",
+        "the grouped search was cut at the row limit and a preview does not split it; narrow the "
+        "scope or preview a type or a source",
     ),
     _msg(
         "pw.preview.lower_bound",
-        "a bucket was cut at the row limit: its counts are lower bounds",
+        "a bucket hit the row limit: its counts are lower bounds",
     ),
     # The novelty history verifier (property_watch/history.py and the engine).
     _msg(
         "pw.history_check.not_divisible",
-        "the history window is not divisible by the collection bucket width",
+        "the history window is not divisible by the bucket width",
     ),
     _msg(
         "pw.history_check.bucket_never_collected",
@@ -2171,13 +2168,13 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.history_check.record_count",
-        "the history contains {records} bucket records for {expected} expected buckets",
+        "history has {records} bucket records for {expected} expected",
         {"records": _PLAIN, "expected": _PLAIN},
         {"records": 2017, "expected": 2016},
     ),
     _msg(
         "pw.history_check.bucket_width",
-        "history bucket {bucket} used a different collection bucket width",
+        "history bucket {bucket} had a different bucket width",
         {"bucket": _ISO},
         {"bucket": _PW_AT},
     ),
@@ -2208,7 +2205,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.history_check.bucket_coverage",
-        "history bucket {bucket} had parsing coverage below the floor",
+        "history bucket {bucket} had coverage below the floor",
         {"bucket": _ISO},
         {"bucket": _PW_AT},
     ),
@@ -2225,7 +2222,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.detector.watch_blocked",
-        "the watch is {status}: no value verdict is possible",
+        "the watch is {status}: no value verdict",
         {"status": ParamSpec(ParamKind.ENUM, enum_group="propertyWatchStatus")},
         {"status": "SCOPE_STALE"},
     ),
@@ -2245,29 +2242,27 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.detector.baseline_version",
-        "the baseline uses watch version {baseline}, not the bucket's {bucket}",
+        "baseline uses watch version {baseline}, not the bucket's {bucket}",
         {"baseline": _PLAIN, "bucket": _PLAIN},
         {"baseline": 1, "bucket": 2},
     ),
     _msg(
         "pw.detector.baseline_few_visits",
-        "the value-events baseline has {samples} sample(s), but they come from too few "
-        "separate weekly visits of this weekday and hour: a baseline needs the same hour "
-        "from at least {visits} different weeks",
+        "the value-events baseline has {samples} sample(s) from too few weekly visits: it needs "
+        "this weekday and hour in at least {visits} different weeks",
         {"samples": _PLAIN, "visits": _PLAIN},
         {"samples": 12, "visits": 2},
     ),
     _msg(
         "pw.detector.baseline_few_visits_one",
-        "the value-events baseline has {samples} sample(s), but they come from too few "
-        "separate weekly visits of this weekday and hour: a baseline needs the same hour "
-        "from at least 1 different week",
+        "the value-events baseline has {samples} sample(s) from too few weekly visits: it needs "
+        "this weekday and hour in at least 1 different week",
         {"samples": _PLAIN},
         {"samples": 12},
     ),
     _msg(
         "pw.detector.baseline_samples",
-        "the value-events baseline has {samples} sample(s), below the minimum of {minimum}",
+        "baseline has {samples} sample(s), below the minimum of {minimum}",
         {"samples": _PLAIN, "minimum": _PLAIN},
         {"samples": 5, "minimum": 8},
     ),
@@ -2293,7 +2288,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.detector.not_proven_lower_bound",
-        "{reason}; {scope}, so a normal verdict cannot be concluded",
+        "{reason}; {scope}, so no normal verdict",
         {
             "reason": ParamSpec(ParamKind.REF, ref_codes=_PW_NOT_PROVEN),
             "scope": _TEXT,
@@ -2470,7 +2465,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # Value disappeared.
     _msg(
         "pw.detector.last_seen_unknown",
-        "when the value was last observed is not known",
+        "last observation of the value is unknown",
     ),
     _msg(
         "pw.detector.not_active",
@@ -2492,8 +2487,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.detector.window_bucket_missing",
-        "the bucket at {at} inside the disappearance window was not supplied: "
-        "its count is not zero",
+        "the bucket at {at} inside the disappearance window was not supplied: its count is not "
+        "zero",
         {"at": _ISO},
         {"at": _PW_AT},
     ),
@@ -2515,15 +2510,14 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.detector.streak_short",
-        "the value has {streak} consecutive measured-zero bucket(s), below the "
-        "required {required}",
+        "{streak} consecutive measured-zero bucket(s), below the required {required}",
         {"streak": _PLAIN, "required": _PLAIN},
         {"streak": 3, "required": 6},
     ),
     _msg(
         "pw.detector.disappeared_fired",
-        "the value had zero parsed events for {streak} consecutive exact buckets; "
-        "the seasonal median is {median} events",
+        "zero parsed events for {streak} consecutive exact buckets; seasonal median {median} "
+        "events",
         {"streak": _PLAIN, "median": _FIXED1},
         {"streak": 6, "median": 120.0},
     ),
@@ -2534,8 +2528,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.detector.established_hand_off",
-        "established value: first seen {first_seen} in the history read before the "
-        "watch went live at {hand_off}",
+        "established value: first seen {first_seen} in history read before go-live at {hand_off}",
         {"first_seen": _ISO, "hand_off": _ISO},
         {"first_seen": _PW_AT, "hand_off": _PW_AT},
     ),
@@ -2548,7 +2541,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.detector.pinned_never_new",
-        "pinned values are operator-named and are never classified as new",
+        "pinned values are never classified as new",
     ),
     _msg(
         "pw.detector.learning_unknown",
@@ -2572,16 +2565,15 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.detector.novelty_inputs_unsupported",
-        "the declared novelty inputs do not support a verdict",
+        "the declared inputs do not support a verdict",
     ),
     _msg(
         "pw.detector.combination_inputs_unsupported",
-        "the declared combination inputs do not support a verdict",
+        "the declared inputs do not support a verdict",
     ),
     _msg(
         "pw.detector.admission_truncated",
-        "the first-appearance bucket had truncated admission: the value appeared in a "
-        "flood and is not individually new",
+        "first-appearance bucket had truncated admission; the value arrived in a flood",
     ),
     _msg(
         "pw.detector.materiality_short",
@@ -2635,18 +2627,17 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.detector.claim_new_value",
-        "the value stayed below {min_events} events in every bucket of the verified history",
+        "the value stayed below {min_events} events in every verified-history bucket",
         {"min_events": _PLAIN},
         {"min_events": 3},
     ),
     _msg(
         "pw.detector.claim_new_combination",
-        "both components were tracked before, but never together in the verified history",
+        "both components were tracked before, never together in verified history",
     ),
     _msg(
         "pw.detector.new_value_is_combination",
-        "both tuple components were tracked before: this is classified only as a "
-        "new combination",
+        "both components were tracked before: classified only as a new combination",
     ),
     _msg("pw.detector.one_property", "a one-property watch has nothing to combine"),
     _msg(
@@ -2655,13 +2646,12 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "pw.detector.component_untracked",
-        "at least one component was not previously tracked: "
-        "this is classified only as a new value",
+        "at least one component was untracked: classified only as a new value",
     ),
     _msg(
         "pw.detector.component_untracked_below_admission",
-        "at least one component was not previously tracked "
-        "(seen only below the admission threshold): this is classified only as a new value",
+        "at least one component was seen only below the admission threshold: classified only as a "
+        "new value",
     ),
     # --- end MSG-4b ---
     # --- MSG-7: alerts and custom-rule status reasons (Families 13 and 14) -------------------
@@ -5018,14 +5008,13 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg("history.scan.no_result", "no scan result was provided"),
     _msg(
         "history.scan.failed",
-        "the floor scan failed {failures} times; history is unavailable",
+        "floor scan failed {failures} times; history unavailable",
         {"failures": _PLAIN},
         {"failures": 3},
     ),
     _msg(
         "history.scan.retry",
-        "a scan search was {status}; it proves nothing, so it is retried "
-        "({failures} of {max_failures})",
+        "a scan search was {status}; retrying ({failures} of {max_failures})",
         {
             "status": ParamSpec(ParamKind.ENUM, enum_group="historyScanStatus"),
             "failures": _PLAIN,
@@ -5035,8 +5024,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.scan.too_recent",
-        "the first event is too recent to prove anything older: the margin of {margin} h "
-        "reaches the end of the window",
+        "the first event is too recent to rule out older events: the {margin} h margin reaches "
+        "the window end",
         {"margin": _PLAIN},
         {"margin": 24},
     ),
@@ -5048,8 +5037,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.scan.floor_found_late",
-        "QRadar holds events of the scope from {first}; history starts at {floor} "
-        "(later than the asked start)",
+        "QRadar holds events of the scope from {first}; history starts at {floor} (later than the "
+        "asked start)",
         {"first": _ISO, "floor": _ISO},
         {"first": _HB_B0, "floor": _HB_AT},
     ),
@@ -5057,7 +5046,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
         "history.scan.no_event_window",
         "no event of the scope in the whole window; nothing is written",
     ),
-    _msg("history.scan.no_event_span", "no event in the scanned span; scan the next one"),
+    _msg("history.scan.no_event_span", "no event in this span; scanning the next"),
     # The step plan; "history reading was switched off" is the state table's sentence
     # (`history.state.switched_off`), so the planner reuses that code.
     _msg("history.step.stopped", "history reading was stopped by an operator"),
@@ -5077,7 +5066,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # The finish verdict: a semicolon list of clause refs, joined exactly as before.
     _msg(
         "history.finish.floor_cut",
-        "QRadar holds less than asked (the floor is later than the asked start)",
+        "QRadar holds less than asked (floor after the asked start)",
     ),
     _msg(
         "history.finish.gaps",
@@ -5096,12 +5085,11 @@ REGISTRY: tuple[MessageSpec, ...] = (
             ]
         },
     ),
-    _msg("history.finish.complete", "reached the end with the whole asked window read"),
+    _msg("history.finish.complete", "reached the end; whole window read"),
     # The width notes of a settled step (§B.6.3).
     _msg(
         "history.width.released",
-        "{steps} clean steps brought the failure ceiling to the row fit of {fit}; "
-        "the ceiling is released",
+        "{steps} clean steps raised the failure ceiling to the row fit of {fit}; released",
         {"steps": _PLAIN, "fit": _PLAIN},
         {"steps": 3, "fit": 576},
     ),
@@ -5138,29 +5126,27 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.settle.failed_minimum",
-        "a search failed at the minimum width ({failures} of {max_failures}); "
-        "the same span is tried again",
+        "a search failed at the minimum width ({failures} of {max_failures}); retrying",
         {"failures": _PLAIN, "max_failures": _PLAIN},
         {"failures": 1, "max_failures": 3},
     ),
     _msg(
         "history.settle.failed_halve",
-        "a search of {buckets} buckets failed; the width halves to {width}",
+        "a {buckets}-bucket search failed; width halves to {width}",
         {"buckets": _PLAIN, "width": _PLAIN},
         {"buckets": 288, "width": 144},
     ),
     _msg(
         "history.settle.truncated_halve",
-        "a search of {buckets} buckets was truncated and keeps nothing; the width halves "
-        "to {width}",
+        "a {buckets}-bucket search was truncated; width halves to {width}",
         {"buckets": _PLAIN, "width": _PLAIN},
         {"buckets": 288, "width": 144},
     ),
     _msg("history.settle.budget_ended", "the budget ended before this span was searched"),
     _msg(
         "history.settle.density",
-        "{share} of the buckets read are lower bounds (limit {limit}): too many distinct "
-        "values per bucket, so history would be lower bounds",
+        "{share} of the buckets read are lower bounds (limit {limit}): too many distinct values "
+        "per bucket",
         {"share": _PERCENT, "limit": _PERCENT},
         {"share": 0.06, "limit": 0.05},
     ),
@@ -5178,20 +5164,20 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # `fit_window` (§B.6.5): the hours are `.1f`, a closed style reproduces them.
     _msg(
         "history.fit.reduced",
-        "window reduced from {asked} to {days} days: the estimate exceeded {limit} hours",
+        "window reduced from {asked} to {days} days: estimate exceeded {limit} hours",
         {"asked": _PLAIN, "days": _PLAIN, "limit": _PLAIN},
         {"asked": 28, "days": 21, "limit": 72},
     ),
     _msg(
         "history.fit.fits",
-        "the {days}-day window fits in an estimated {hours} hours",
+        "the {days}-day window fits in about {hours} hours",
         {"days": _PLAIN, "hours": _FIXED1},
         {"days": 28, "hours": 23.4},
     ),
     _msg(
         "history.fit.refused",
-        "even {days} days need about {hours} hours ({searches} searches, {ticks} ticks), "
-        "over the {limit}-hour limit; history is unavailable",
+        "even {days} days need about {hours} hours ({searches} searches, {ticks} ticks), over the "
+        "{limit}-hour limit; history is unavailable",
         {"days": _PLAIN, "hours": _FIXED1, "searches": _PLAIN, "ticks": _PLAIN, "limit": _PLAIN},
         {"days": 7, "hours": 90.0, "searches": 700, "ticks": 70, "limit": 72},
     ),
@@ -5204,8 +5190,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.window.limit_retention",
-        "{setting} is {days} days and {hours_setting} is {hours} hours, so the reading "
-        "would outlive the retention",
+        "{setting} is {days} days and {hours_setting} is {hours} hours: reading would outlive "
+        "retention",
         {"setting": _TEXT, "days": _PLAIN, "hours_setting": _TEXT, "hours": _PLAIN},
         {
             "setting": "RETENTION_LOG_SOURCE_METRIC_DAYS",
@@ -5244,8 +5230,8 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.window.unavailable",
-        "history unavailable: the window would be {days} days, below the {minimum}-day "
-        "minimum; {limits}",
+        "history unavailable: the window would be {days} days, below the {minimum}-day minimum; "
+        "{limits}",
         {
             "days": _PLAIN,
             "minimum": _PLAIN,
@@ -5267,7 +5253,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg("history.later_yes.not_possible", "not possible: this source already collected"),
     _msg("history.later_yes.has_scope", "not needed: this source has a history scope"),
     # The collection switch words of the admin page.
-    _msg("history.family.always_on", "source-volume collection is the platform's base collection"),
+    _msg("history.family.always_on", "source-volume collection is always on"),
     _msg(
         "history.family.switch_on",
         "{setting} is on",
@@ -5283,56 +5269,52 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # The first-step zero counts of the WAF and IPS collectors (stored on the scope row).
     _msg(
         "history.family.zero_endpoint",
-        "fitted with no tracked endpoint yet; the {limit}-hour limit still bounds the reading",
+        "no tracked endpoint yet; the {limit}-hour limit applies",
         {"limit": _PLAIN},
         {"limit": 72},
     ),
     _msg(
         "history.family.zero_entity",
-        "fitted with no admitted entity yet; the {limit}-hour limit still bounds the reading",
+        "no admitted entity yet; the {limit}-hour limit applies",
         {"limit": _PLAIN},
         {"limit": 72},
     ),
     _msg(
         "history.family.fair_share",
-        "fitted with a fair share of {share} of the {total} shared history searches per tick",
+        "fitted to {share} of the {total} shared searches per tick",
         {"share": _PLAIN, "total": _PLAIN},
         {"share": 3, "total": 10},
     ),
     # The per-source estimate summary (`estimate_source_family`).
     _msg(
         "history.estimate.all_refused",
-        "all {sources} sources are unavailable: even {days} days exceed the {limit}-hour "
-        "per-source limit",
+        "all {sources} sources unavailable: even {days} days exceed the {limit}-hour limit",
         {"sources": _PLAIN, "days": _PLAIN, "limit": _PLAIN},
         {"sources": 4, "days": 7, "limit": 72},
     ),
     _msg(
         "history.estimate.some_refused",
-        "{refused} of {sources} sources are unavailable because even 7 days exceed the "
-        "{limit}-hour per-source limit; the remaining source windows fit",
+        "{refused} of {sources} sources unavailable: even 7 days exceed the {limit}-hour limit; "
+        "the rest fit",
         {"refused": _PLAIN, "sources": _PLAIN, "limit": _PLAIN},
         {"refused": 1, "sources": 4, "limit": 72},
     ),
     _msg(
         "history.estimate.some_refused_reduced",
-        "{refused} of {sources} sources are unavailable because even 7 days exceed the "
-        "{limit}-hour per-source limit; the remaining source windows fit, with the smallest "
-        "reduced from {asked} to {days} days",
+        "{refused} of {sources} sources unavailable: even 7 days exceed the {limit}-hour limit; "
+        "the rest fit, the smallest reduced from {asked} to {days} days",
         {"refused": _PLAIN, "sources": _PLAIN, "limit": _PLAIN, "asked": _PLAIN, "days": _PLAIN},
         {"refused": 1, "sources": 4, "limit": 72, "asked": 28, "days": 21},
     ),
     _msg(
         "history.estimate.reduced",
-        "window reduced from {asked} to {days} days for the smallest per-source fit: the "
-        "estimate exceeded {limit} hours",
+        "window reduced from {asked} to {days} days: estimate exceeded {limit} hours",
         {"asked": _PLAIN, "days": _PLAIN, "limit": _PLAIN},
         {"asked": 28, "days": 21, "limit": 72},
     ),
     _msg(
         "history.estimate.all_fit",
-        "all {sources} per-source {days}-day windows fit; the console total is an estimated "
-        "{hours} hours",
+        "all {sources} {days}-day windows fit; about {hours} hours in total",
         {"sources": _PLAIN, "days": _PLAIN, "hours": _FIXED1},
         {"sources": 4, "days": 28, "hours": 61.2},
     ),
@@ -5351,28 +5333,27 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.estimate.planner_refused",
-        "no estimate: the planner refused the settings ({error})",
+        "no estimate: settings refused ({error})",
         {"error": _TEXT},
         {"error": "max_hours and cadence_seconds must be >= 1"},
     ),
     _msg(
         "history.estimate.no_monitored",
-        "no estimate: the console has no monitored log source yet",
+        "no estimate: no monitored log source yet",
     ),
-    _msg("history.estimate.no_waf", "no estimate: no WAF source is enabled on this console"),
-    _msg("history.estimate.no_ips", "no estimate: no IPS source is enabled on this console"),
+    _msg("history.estimate.no_waf", "no estimate: no WAF source enabled"),
+    _msg("history.estimate.no_ips", "no estimate: no IPS source enabled"),
     _msg(
         "history.estimate.no_catchall",
-        "no estimate: no catch-all bucket has been collected in the last {days} days",
+        "no estimate: no catch-all bucket in the last {days} days",
         {"days": _PLAIN},
         {"days": 7},
     ),
-    _msg("history.estimate.no_rules", "no estimate: the console has no enabled rule"),
+    _msg("history.estimate.no_rules", "no estimate: no enabled rule"),
     # The estimate compositions of the service.
     _msg(
         "history.estimate.empty_sources",
-        "{reason}; {count} source(s) fitted with no {noun} yet; the {limit}-hour limit still "
-        "bounds the reading",
+        "{reason}; {count} source(s) have no {noun} yet; the {limit}-hour limit applies",
         {
             "reason": ParamSpec(ParamKind.REF, ref_codes=_ESTIMATE_REASONS),
             "count": _PLAIN,
@@ -5415,41 +5396,39 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # The decision and request sentences of the admin surface.
     _msg(
         "history.request.start",
-        "Read history now is recorded. Each family applies it at its next collection; "
-        "no scope has changed yet.",
+        "Read history now is recorded; each family applies it at its next collection.",
     ),
     _msg(
         "history.request.stop",
-        "Stop reading is recorded. Each family ends its reading scopes at its next "
-        "collection; no scope has changed yet.",
+        "Stop reading is recorded; each family ends its scopes at its next collection.",
     ),
     _msg(
         "history.request.refused",
         "record Yes first: the console has no Yes answer to start or stop",
     ),
-    _msg("history.decide.never_reversed", "a Yes is never reversed; stop the reading instead"),
-    _msg("history.decide.meantime", "a decision was recorded in the meantime; it is shown here"),
+    _msg("history.decide.never_reversed", "a Yes is never reversed; stop reading instead"),
+    _msg("history.decide.meantime", "a decision was recorded meanwhile; shown here"),
     # The state table (`_TRANSITIONS`): one code per fixed sentence.
     _msg(
         "history.state.request_awaiting_anchor",
-        "history was requested, and the scope waits for its first live bucket (the anchor)",
+        "history requested; waiting for the scope's first live bucket",
     ),
     _msg(
         "history.state.request_ready",
-        "history was requested, and the scope can be planned at its next collection",
+        "history requested; planned at the next collection",
     ),
     _msg(
         "history.state.not_eligible_preceded",
-        "the scope already has live buckets, and a prepend would move first_seen_at (§B.5)",
+        "the scope already has live buckets; history cannot precede them",
     ),
     _msg("history.state.anchor_found", "the first live bucket exists; reading can start"),
     _msg(
         "history.state.not_eligible_late",
-        "the scope turned out to have live buckets that history cannot precede",
+        "the scope has live buckets that history cannot precede",
     ),
     _msg(
         "history.state.nothing_to_read_scan",
-        "QRadar holds no event of the scope in the window, or the floor scan could not be done",
+        "QRadar holds no event of the scope in the window, or the floor scan failed",
     ),
     _msg("history.state.nothing_to_read", "QRadar holds no event of the scope in the window"),
     _msg(
@@ -5458,25 +5437,24 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.state.finished_complete",
-        "the reading reached the end; the floor is within one bucket of the asked start "
-        "and no gap exists",
+        "reading reached the end; floor within one bucket of the asked start, no gap",
     ),
     _msg(
         "history.state.finished_partial",
-        "the reading reached the end, but QRadar holds less than asked or a gap exists",
+        "reading reached the end; QRadar holds less than asked or a gap exists",
     ),
     _msg(
         "history.state.density_gate",
-        "too many buckets would be lower bounds; reading further would store only those",
+        "reading further would store only lower bounds",
     ),
     _msg(
         "history.state.too_many_gaps",
-        "the gap list is full; the scope has too many unreadable spans",
+        "too many unreadable spans; the gap list is full",
     ),
-    _msg("history.state.time_limit", "the reading did not finish inside its time limit"),
+    _msg("history.state.time_limit", "reading did not finish inside its time limit"),
     _msg(
         "history.state.switched_off_start",
-        "history reading is switched off; the scope starts live",
+        "history reading is off; the scope starts live",
     ),
     _msg(
         "history.state.switched_off_waiting",
@@ -5487,13 +5465,13 @@ REGISTRY: tuple[MessageSpec, ...] = (
     _msg("history.state.stopped", "stopped by an operator"),
     _msg(
         "history.state.restart",
-        "the reading restarts: a new answer, a topped-up source or a new watch version",
+        "reading restarts: new answer, topped-up source or new watch version",
     ),
     # The lifecycle's own reasons (the scope rows the lifecycle writes itself).
     _msg(
         "history.lifecycle.not_eligible",
-        "this source already collected live data; history cannot be read before it "
-        "(disable the profile and create it again to read its history)",
+        "this source already collected live data; history cannot be read before it (disable the "
+        "profile and create it again to read its history)",
     ),
     _msg("history.lifecycle.restart", "read history now: topping up"),
     _msg(
@@ -5528,11 +5506,11 @@ REGISTRY: tuple[MessageSpec, ...] = (
     # The adapter finishes of Phase A and catch-all.
     _msg(
         "history.phase_a.no_event",
-        "QRadar holds no event of a monitored source in the window; nothing is written",
+        "no monitored source has an event in the window; nothing is written",
     ),
     _msg(
         "history.phase_a.no_monitored",
-        "no log source is monitored, so there is nothing to read history for",
+        "no log source is monitored; no history to read",
     ),
     _msg(
         "history.catchall.no_event",
@@ -5540,7 +5518,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.catchall.anchor_gone",
-        "the live anchor is gone: the history has no end to read up to",
+        "the live anchor is gone, so history has no end point",
     ),
     _msg(
         "history.catchall.unreadable",
@@ -5570,7 +5548,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.assumption.budget_waf",
-        "{per_source} history searches per source tick times {sources} sources at once",
+        "{per_source} searches per source per tick, {sources} sources",
         {"per_source": _PLAIN, "sources": _PLAIN},
         {"per_source": 10, "sources": 4},
     ),
@@ -5634,7 +5612,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.assumption.cadence",
-        "one tick every {interval} (the family's Search cadence)",
+        "one tick every {interval}",
         {
             "interval": ParamSpec(
                 ParamKind.REF,
@@ -5652,7 +5630,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.assumption.qradar_time",
-        "QRadar time per search not measured on this console",
+        "QRadar search time not measured here",
     ),
     _msg(
         "history.assumption.phase_a_rows",
@@ -5668,7 +5646,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.assumption.waf_breakdown",
-        "action, response code and source IP read over {days} days only",
+        "action, response code and source IP: {days} days only",
         {"days": _PLAIN},
         {"days": 7},
     ),
@@ -5693,15 +5671,14 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.assumption.ips_values",
-        "{source_ips} source IPs, {action_values} action values and {fanout} port fan-out "
-        "rows per source and bucket assumed",
+        "assumed per source and bucket: {source_ips} source IPs, {action_values} action values, "
+        "{fanout} port fan-out rows",
         {"source_ips": _PLAIN, "action_values": _PLAIN, "fanout": _PLAIN},
         {"source_ips": 50, "action_values": 3, "fanout": 10},
     ),
     _msg(
         "history.assumption.ips_fair_share",
-        "each per-source plan is fitted with a fair share of {share} of the {per_tick} "
-        "shared searches per tick",
+        "each plan gets {share} of the {per_tick} shared searches per tick",
         {"share": _PLAIN, "per_tick": _PLAIN},
         {"share": 3, "per_tick": 10},
     ),
@@ -5714,7 +5691,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.assumption.catchall_senders",
-        "{senders} senders per bucket (the mean of {buckets} of the last {days} days)",
+        "{senders} senders per bucket (mean of {buckets}, last {days} days)",
         {
             "senders": _PLAIN,
             "buckets": ParamSpec(
@@ -5737,7 +5714,7 @@ REGISTRY: tuple[MessageSpec, ...] = (
     ),
     _msg(
         "history.assumption.rules",
-        "{rules} enabled rules, every one assumed to match in each window",
+        "{rules} enabled rules, each assumed to match every window",
         {"rules": _PLAIN},
         {"rules": 40},
     ),

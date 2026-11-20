@@ -229,7 +229,7 @@ async def test_a_console_with_no_event_in_the_window_is_unavailable(db_session) 
     scope, _, _ = await read_all(db_session, console, provider, settings_for())
 
     assert scope.state == "UNAVAILABLE"
-    assert "no event" in scope.reason
+    assert "no monitored source has an event in the window" in scope.reason
     assert_coded(scope)
     assert await history_rows(db_session, console.instance) == []
 
@@ -967,7 +967,7 @@ async def test_a_provider_outage_marks_the_scope_and_the_next_step_clears_it(db_
     assert scope is not None and scope.state == "READING"
     assert scope.last_error_class == "ProviderUnavailableError"
     assert scope.last_error_at == FIRST_TICK + STEP
-    assert "the width halves to" in (scope.reason or "")
+    assert "width halves to" in (scope.reason or "")
     assert_coded(scope)
     progress = (await _decoded(db_session, console)).progress
     assert progress.chunk_buckets is not None and progress.chunk_buckets < 1333 // 2 + 1

@@ -378,7 +378,7 @@ class TestHistoryVerification:
         assert failed.complete is False
         assert failed.reason == (
             f"history bucket {low_history.bucket_start.isoformat()} "
-            "had parsing coverage below the floor"
+            "had coverage below the floor"
         )
 
         low_live = replace(low_history, origin=PwBucketOrigin.LIVE)
@@ -852,7 +852,7 @@ class TestReviewedGaps:
                     *recent[3:],
                 ),
             ),
-            "not known": replace(base, last_seen_at=None),
+            "last observation of the value is unknown": replace(base, last_seen_at=None),
         }
         for reason, ctx in cases.items():
             verdict = detect_value_disappeared(ctx)

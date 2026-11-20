@@ -313,6 +313,6 @@ def test_per_source_fit_refuses_the_family_only_when_every_source_is_refused() -
     )
 
     assert mixed.days_fitted == 28 and not mixed.refused
-    assert "1 of 2 sources are unavailable" in mixed.reason
+    assert "1 of 2 sources unavailable" in mixed.reason
     assert all_refused.days_fitted is None and all_refused.refused
-    assert "all 2 sources are unavailable" in all_refused.reason
+    assert "all 2 sources unavailable" in all_refused.reason

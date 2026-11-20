@@ -92,7 +92,7 @@ CASES: list[tuple[str, dict[str, Any], list[tuple[str, str]]]] = [
         [
             (
                 "pw.draft.property_invalid",
-                "property 2: a property reference is an object with a kind and a name",
+                "property 2: a property reference needs a kind and a name",
             )
         ],
     ),
@@ -164,7 +164,7 @@ CASES: list[tuple[str, dict[str, Any], list[tuple[str, str]]]] = [
             (
                 "pw.draft.pin_invalid",
                 "pinned value 1, part 2: a pinned value cannot hold a quote, a backslash, a "
-                "control character or leading or trailing whitespace",
+                "control character or edge whitespace",
             )
         ],
     ),
@@ -335,12 +335,12 @@ def test_no_reason_is_no_refusal() -> None:
         ),
         (
             routes._refusal("series_untracked", value="abc"),
-            "value abc is not a tracked value of this watch's current version",
+            "value abc is not tracked in this watch's current version",
         ),
         (
             routes._refusal("pinned_rows", rows=9000, target=5000),
-            "the pinned values can return up to 9000 rows per bucket, above the 5000 rows "
-            "one history search may carry; unpin values or request no history",
+            "pinned values can return up to 9000 rows per bucket, above the 5000 "
+            "rows a history search carries; unpin values or request no history",
         ),
     ],
 )
@@ -353,8 +353,7 @@ def test_the_route_reasons_keep_their_english(ref: MessageRef, english: str) -> 
     [
         (
             MessageRef("pw.history_change.already_requested", {"state": "READING"}),
-            "history is READING on this watch and cannot be requested again; "
-            "create a new watch to read history",
+            "history is READING on this watch; create a new watch to read history",
         ),
         (
             MessageRef(
@@ -371,8 +370,7 @@ def test_the_route_reasons_keep_their_english(ref: MessageRef, english: str) -> 
         ),
         (
             MessageRef("pw.history_change.holds_buckets", {"stored": 288}),
-            "this watch holds 288 stored bucket(s) of its current version; "
-            "create a new watch to read history",
+            "this watch holds 288 stored bucket(s); create a new watch to read history",
         ),
         (
             MessageRef(
@@ -383,8 +381,8 @@ def test_the_route_reasons_keep_their_english(ref: MessageRef, english: str) -> 
         ),
         (
             MessageRef("pw.preview.group_too_large", {"members": 700, "max": 500}),
-            "the group resolves to 700 sources and a preview covers one search chunk of at "
-            "most 500; preview a smaller group, a type or a source",
+            "the group resolves to 700 sources, above the 500 one preview covers; preview a "
+            "smaller group, a type or a source",
         ),
         (
             MessageRef("pw.preview.unsearchable", {"error": "unknown property reference kind"}),
@@ -392,7 +390,7 @@ def test_the_route_reasons_keep_their_english(ref: MessageRef, english: str) -> 
         ),
         (
             MessageRef("pw.preview.search_failed"),
-            "a search failed, so its buckets were not measured",
+            "a search failed; its buckets were not measured",
         ),
         (
             MessageRef("pw.preview.cut_at_row_limit"),
@@ -401,7 +399,7 @@ def test_the_route_reasons_keep_their_english(ref: MessageRef, english: str) -> 
         ),
         (
             MessageRef("pw.preview.lower_bound"),
-            "a bucket was cut at the row limit: its counts are lower bounds",
+            "a bucket hit the row limit: its counts are lower bounds",
         ),
     ],
 )
@@ -414,7 +412,7 @@ def test_the_history_change_and_preview_sentences_keep_their_english(
 def test_a_refused_preview_keeps_its_text_and_its_reference() -> None:
     ref = MessageRef("pw.preview.search_failed")
     refused = svc.PreviewRefused(ref)
-    assert str(refused) == "a search failed, so its buckets were not measured"
+    assert str(refused) == "a search failed; its buckets were not measured"
     assert refused.ref is ref
 
 

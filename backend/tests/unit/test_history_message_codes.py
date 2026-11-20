@@ -110,16 +110,16 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     (ref("history.scan.no_result"), "no scan result was provided"),
     (
         ref("history.scan.failed", failures=3),
-        "the floor scan failed 3 times; history is unavailable",
+        "floor scan failed 3 times; history unavailable",
     ),
     (
         ref("history.scan.retry", status="not_run", failures=2, max_failures=3),
-        "a scan search was not_run; it proves nothing, so it is retried (2 of 3)",
+        "a scan search was not_run; retrying (2 of 3)",
     ),
     (
         ref("history.scan.too_recent", margin=24),
-        "the first event is too recent to prove anything older: the margin of 24 h reaches "
-        "the end of the window",
+        "the first event is too recent to rule out older events: the 24 h margin reaches the "
+        "window end",
     ),
     (
         ref("history.scan.floor_found", first=ISO_FIRST, floor=ISO_FLOOR),
@@ -135,7 +135,7 @@ GOLDEN: list[tuple[MessageRef, str]] = [
         ref("history.scan.no_event_window"),
         "no event of the scope in the whole window; nothing is written",
     ),
-    (ref("history.scan.no_event_span"), "no event in the scanned span; scan the next one"),
+    (ref("history.scan.no_event_span"), "no event in this span; scanning the next"),
     (ref("history.step.stopped"), "history reading was stopped by an operator"),
     (ref("history.step.time_limit", hours=72), "the reading did not finish in 72 h"),
     (ref("history.step.wait_budget"), "waiting for search budget"),
@@ -148,8 +148,8 @@ GOLDEN: list[tuple[MessageRef, str]] = [
             "history.finish.partial",
             problems=[ref("history.finish.floor_cut"), ref("history.finish.gaps", count=2)],
         ),
-        "reached the end; QRadar holds less than asked (the floor is later than the asked "
-        "start); 2 span(s) could not be read",
+        "reached the end; QRadar holds less than asked (floor after the asked start); 2 span(s) "
+        "could not be read",
     ),
     (
         ref("history.finish.partial", problems=[ref("history.finish.gaps", count=1)]),
@@ -157,11 +157,11 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     ),
     (
         ref("history.finish.complete"),
-        "reached the end with the whole asked window read",
+        "reached the end; whole window read",
     ),
     (
         ref("history.width.released", steps=3, fit=320),
-        "3 clean steps brought the failure ceiling to the row fit of 320; the ceiling is released",
+        "3 clean steps raised the failure ceiling to the row fit of 320; released",
     ),
     (
         ref("history.width.ceiling_doubled", steps=3, ceiling=160),
@@ -182,15 +182,15 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     (ref("history.settle.too_many_gaps", count=20), "more than 20 unreadable spans"),
     (
         ref("history.settle.failed_minimum", failures=1, max_failures=3),
-        "a search failed at the minimum width (1 of 3); the same span is tried again",
+        "a search failed at the minimum width (1 of 3); retrying",
     ),
     (
         ref("history.settle.failed_halve", buckets=64, width=32),
-        "a search of 64 buckets failed; the width halves to 32",
+        "a 64-bucket search failed; width halves to 32",
     ),
     (
         ref("history.settle.truncated_halve", buckets=64, width=32),
-        "a search of 64 buckets was truncated and keeps nothing; the width halves to 32",
+        "a 64-bucket search was truncated; width halves to 32",
     ),
     (
         ref("history.settle.budget_ended"),
@@ -199,23 +199,23 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     (
         ref("history.settle.density", share=0.1, limit=0.05),
         "10\u00a0% of the buckets read are lower bounds (limit 5\u00a0%): too many distinct "
-        "values per bucket, so history would be lower bounds",
+        "values per bucket",
     ),
     (
         ref("history.fit.reduced", asked=28, days=21, limit=72),
-        "window reduced from 28 to 21 days: the estimate exceeded 72 hours",
+        "window reduced from 28 to 21 days: estimate exceeded 72 hours",
     ),
     (
         ref("history.fit.fits", days=28, hours=23.4),
-        "the 28-day window fits in an estimated 23.4 hours",
+        "the 28-day window fits in about 23.4 hours",
     ),
     (
         ref("history.fit.fits", days=7, hours=0.0),
-        "the 7-day window fits in an estimated 0.0 hours",
+        "the 7-day window fits in about 0.0 hours",
     ),
     (
         ref("history.fit.fits", days=28, hours=1260.0),
-        "the 28-day window fits in an estimated 1260.0 hours",
+        "the 28-day window fits in about 1260.0 hours",
     ),
     (
         ref("history.fit.refused", days=7, hours=90.04, searches=700, ticks=70, limit=72),
@@ -229,8 +229,8 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     (
         ref("history.window.reduced", asked=28, days=21, limits=[SETTING_21, RETENTION_22]),
         "window reduced from 28 to 21 days: BASELINE_LOOKBACK_DAYS is 21 days and "
-        "RETENTION_LOG_SOURCE_METRIC_DAYS is 22 days and HISTORY_BACKFILL_MAX_HOURS is "
-        "72 hours, so the reading would outlive the retention",
+        "RETENTION_LOG_SOURCE_METRIC_DAYS is 22 days and HISTORY_BACKFILL_MAX_HOURS is 72 hours: "
+        "reading would outlive retention",
     ),
     (
         ref("history.window.unavailable", days=5, minimum=7, limits=[SETTING_21]),
@@ -248,7 +248,7 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     ),
     (
         ref("history.family.always_on"),
-        "source-volume collection is the platform's base collection",
+        "source-volume collection is always on",
     ),
     (
         ref("history.family.feature_on", family="WAF collection"),
@@ -276,24 +276,23 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     ),
     (
         ref("history.family.zero_endpoint", limit=72),
-        "fitted with no tracked endpoint yet; the 72-hour limit still bounds the reading",
+        "no tracked endpoint yet; the 72-hour limit applies",
     ),
     (
         ref("history.family.zero_entity", limit=72),
-        "fitted with no admitted entity yet; the 72-hour limit still bounds the reading",
+        "no admitted entity yet; the 72-hour limit applies",
     ),
     (
         ref("history.family.fair_share", share=3, total=10),
-        "fitted with a fair share of 3 of the 10 shared history searches per tick",
+        "fitted to 3 of the 10 shared searches per tick",
     ),
     (
         ref("history.estimate.all_refused", sources=4, days=7, limit=72),
-        "all 4 sources are unavailable: even 7 days exceed the 72-hour per-source limit",
+        "all 4 sources unavailable: even 7 days exceed the 72-hour limit",
     ),
     (
         ref("history.estimate.some_refused", refused=1, sources=4, limit=72),
-        "1 of 4 sources are unavailable because even 7 days exceed the 72-hour per-source "
-        "limit; the remaining source windows fit",
+        "1 of 4 sources unavailable: even 7 days exceed the 72-hour limit; the rest fit",
     ),
     (
         ref(
@@ -304,17 +303,16 @@ GOLDEN: list[tuple[MessageRef, str]] = [
             asked=28,
             days=21,
         ),
-        "1 of 4 sources are unavailable because even 7 days exceed the 72-hour per-source "
-        "limit; the remaining source windows fit, with the smallest reduced from 28 to 21 days",
+        "1 of 4 sources unavailable: even 7 days exceed the 72-hour limit; the rest fit, the "
+        "smallest reduced from 28 to 21 days",
     ),
     (
         ref("history.estimate.reduced", asked=28, days=21, limit=72),
-        "window reduced from 28 to 21 days for the smallest per-source fit: the estimate "
-        "exceeded 72 hours",
+        "window reduced from 28 to 21 days: estimate exceeded 72 hours",
     ),
     (
         ref("history.estimate.all_fit", sources=4, days=28, hours=61.25),
-        "all 4 per-source 28-day windows fit; the console total is an estimated 61.2 hours",
+        "all 4 28-day windows fit; about 61.2 hours in total",
     ),
     (
         ref(
@@ -325,19 +323,19 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     ),
     (
         ref("history.estimate.planner_refused", error="max_hours must be >= 1"),
-        "no estimate: the planner refused the settings (max_hours must be >= 1)",
+        "no estimate: settings refused (max_hours must be >= 1)",
     ),
     (
         ref("history.estimate.no_monitored"),
-        "no estimate: the console has no monitored log source yet",
+        "no estimate: no monitored log source yet",
     ),
-    (ref("history.estimate.no_waf"), "no estimate: no WAF source is enabled on this console"),
-    (ref("history.estimate.no_ips"), "no estimate: no IPS source is enabled on this console"),
+    (ref("history.estimate.no_waf"), "no estimate: no WAF source enabled"),
+    (ref("history.estimate.no_ips"), "no estimate: no IPS source enabled"),
     (
         ref("history.estimate.no_catchall", days=7),
-        "no estimate: no catch-all bucket has been collected in the last 7 days",
+        "no estimate: no catch-all bucket in the last 7 days",
     ),
-    (ref("history.estimate.no_rules"), "no estimate: the console has no enabled rule"),
+    (ref("history.estimate.no_rules"), "no estimate: no enabled rule"),
     (
         ref(
             "history.estimate.empty_sources",
@@ -346,9 +344,8 @@ GOLDEN: list[tuple[MessageRef, str]] = [
             noun="tracked endpoint",
             limit=72,
         ),
-        "all 4 per-source 28-day windows fit; the console total is an estimated 61.2 hours; "
-        "2 source(s) fitted with no tracked endpoint yet; the 72-hour limit still bounds "
-        "the reading",
+        "all 4 28-day windows fit; about 61.2 hours in total; 2 source(s) have no tracked endpoint "
+        "yet; the 72-hour limit applies",
     ),
     (
         ref(
@@ -356,32 +353,30 @@ GOLDEN: list[tuple[MessageRef, str]] = [
             window=ref("history.window.reduced", asked=28, days=21, limits=[SETTING_21]),
             fit=ref("history.fit.fits", days=21, hours=45.0),
         ),
-        "window reduced from 28 to 21 days: BASELINE_LOOKBACK_DAYS is 21 days; the 21-day "
-        "window fits in an estimated 45.0 hours",
+        "window reduced from 28 to 21 days: BASELINE_LOOKBACK_DAYS is 21 days; the 21-day window "
+        "fits in about 45.0 hours",
     ),
     (
         ref("history.request.start"),
-        "Read history now is recorded. Each family applies it at its next collection; "
-        "no scope has changed yet.",
+        "Read history now is recorded; each family applies it at its next collection.",
     ),
     (
         ref("history.request.stop"),
-        "Stop reading is recorded. Each family ends its reading scopes at its next "
-        "collection; no scope has changed yet.",
+        "Stop reading is recorded; each family ends its scopes at its next collection.",
     ),
     (
         ref("history.request.refused"),
         "record Yes first: the console has no Yes answer to start or stop",
     ),
-    (ref("history.decide.never_reversed"), "a Yes is never reversed; stop the reading instead"),
+    (ref("history.decide.never_reversed"), "a Yes is never reversed; stop reading instead"),
     (
         ref("history.decide.meantime"),
-        "a decision was recorded in the meantime; it is shown here",
+        "a decision was recorded meanwhile; shown here",
     ),
     (
         ref("history.lifecycle.not_eligible"),
-        "this source already collected live data; history cannot be read before it "
-        "(disable the profile and create it again to read its history)",
+        "this source already collected live data; history cannot be read before it (disable the "
+        "profile and create it again to read its history)",
     ),
     (ref("history.lifecycle.restart"), "read history now: topping up"),
     (ref("history.lifecycle.stopped_by", by="ayse"), "stopped by ayse"),
@@ -400,11 +395,11 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     ),
     (
         ref("history.phase_a.no_event"),
-        "QRadar holds no event of a monitored source in the window; nothing is written",
+        "no monitored source has an event in the window; nothing is written",
     ),
     (
         ref("history.phase_a.no_monitored"),
-        "no log source is monitored, so there is nothing to read history for",
+        "no log source is monitored; no history to read",
     ),
     (
         ref("history.catchall.no_event"),
@@ -412,7 +407,7 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     ),
     (
         ref("history.catchall.anchor_gone"),
-        "the live anchor is gone: the history has no end to read up to",
+        "the live anchor is gone, so history has no end point",
     ),
     (
         ref("history.catchall.unreadable"),
@@ -435,7 +430,7 @@ GOLDEN: list[tuple[MessageRef, str]] = [
             shape=ref("history.assumption.shape_windows"),
             budget=ref("history.assumption.budget_waf", per_source=10, sources=4),
         ),
-        "hourly windows, 10 history searches per source tick times 4 sources at once",
+        "hourly windows, 10 searches per source per tick, 4 sources",
     ),
     (
         ref(
@@ -447,23 +442,23 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     ),
     (
         ref("history.assumption.cadence", interval=ref("history.interval.minute_one")),
-        "one tick every 1 minute (the family's Search cadence)",
+        "one tick every 1 minute",
     ),
     (
         ref("history.assumption.cadence", interval=ref("history.interval.minute_many", count=15)),
-        "one tick every 15 minutes (the family's Search cadence)",
+        "one tick every 15 minutes",
     ),
     (
         ref("history.assumption.cadence", interval=ref("history.interval.hour_many", count=2)),
-        "one tick every 2 hours (the family's Search cadence)",
+        "one tick every 2 hours",
     ),
     (
         ref("history.assumption.cadence", interval=ref("history.interval.day_one")),
-        "one tick every 1 day (the family's Search cadence)",
+        "one tick every 1 day",
     ),
     (
         ref("history.assumption.qradar_time"),
-        "QRadar time per search not measured on this console",
+        "QRadar search time not measured here",
     ),
     (
         ref("history.assumption.phase_a_rows", sources=120),
@@ -475,7 +470,7 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     ),
     (
         ref("history.assumption.waf_breakdown", days=7),
-        "action, response code and source IP read over 7 days only",
+        "action, response code and source IP: 7 days only",
     ),
     (
         ref(
@@ -495,12 +490,11 @@ GOLDEN: list[tuple[MessageRef, str]] = [
     ),
     (
         ref("history.assumption.ips_values", source_ips=50, action_values=3, fanout=10),
-        "50 source IPs, 3 action values and 10 port fan-out rows per source and bucket assumed",
+        "assumed per source and bucket: 50 source IPs, 3 action values, 10 port fan-out rows",
     ),
     (
         ref("history.assumption.ips_fair_share", share=3, per_tick=10),
-        "each per-source plan is fitted with a fair share of 3 of the 10 shared searches "
-        "per tick",
+        "each plan gets 3 of the 10 shared searches per tick",
     ),
     (
         ref(
@@ -509,7 +503,7 @@ GOLDEN: list[tuple[MessageRef, str]] = [
             buckets=ref("history.words.bucket_one"),
             days=7,
         ),
-        "12 senders per bucket (the mean of 1 live bucket of the last 7 days)",
+        "12 senders per bucket (mean of 1 live bucket, last 7 days)",
     ),
     (
         ref(
@@ -518,12 +512,12 @@ GOLDEN: list[tuple[MessageRef, str]] = [
             buckets=ref("history.words.bucket_many", count=2016),
             days=7,
         ),
-        "12 senders per bucket (the mean of 2016 live buckets of the last 7 days)",
+        "12 senders per bucket (mean of 2016 live buckets, last 7 days)",
     ),
     (ref("history.assumption.catchall_rows", rows=5000), "5000 rows per search"),
     (
         ref("history.assumption.rules", rules=40),
-        "40 enabled rules, every one assumed to match in each window",
+        "40 enabled rules, each assumed to match every window",
     ),
     (
         ref("history.assumption.rule_rows", rows=1000),
@@ -534,22 +528,22 @@ GOLDEN: list[tuple[MessageRef, str]] = [
 #: The state table as it read before MSG-8a, sentence by sentence.
 OLD_TRANSITIONS = {
     (HistoryState.NOT_REQUESTED, HistoryTrigger.REQUEST_AWAITING_ANCHOR): (
-        "history was requested, and the scope waits for its first live bucket (the anchor)"
+        "history requested; waiting for the scope's first live bucket"
     ),
     (HistoryState.NOT_REQUESTED, HistoryTrigger.REQUEST_READY): (
-        "history was requested, and the scope can be planned at its next collection"
+        "history requested; planned at the next collection"
     ),
     (HistoryState.NOT_REQUESTED, HistoryTrigger.NOT_ELIGIBLE): (
-        "the scope already has live buckets, and a prepend would move first_seen_at (§B.5)"
+        "the scope already has live buckets; history cannot precede them"
     ),
     (HistoryState.WAITING, HistoryTrigger.ANCHOR_FOUND): (
         "the first live bucket exists; reading can start"
     ),
     (HistoryState.WAITING, HistoryTrigger.NOT_ELIGIBLE): (
-        "the scope turned out to have live buckets that history cannot precede"
+        "the scope has live buckets that history cannot precede"
     ),
     (HistoryState.READING, HistoryTrigger.NOTHING_TO_READ): (
-        "QRadar holds no event of the scope in the window, or the floor scan could not be done"
+        "QRadar holds no event of the scope in the window, or the floor scan failed"
     ),
     (HistoryState.WAITING, HistoryTrigger.NOTHING_TO_READ): (
         "QRadar holds no event of the scope in the window"
@@ -558,23 +552,22 @@ OLD_TRANSITIONS = {
         "the estimate exceeds the time limit even at the smallest window"
     ),
     (HistoryState.READING, HistoryTrigger.FINISHED_COMPLETE): (
-        "the reading reached the end; the floor is within one bucket of the asked start "
-        "and no gap exists"
+        "reading reached the end; floor within one bucket of the asked start, no gap"
     ),
     (HistoryState.READING, HistoryTrigger.FINISHED_PARTIAL): (
-        "the reading reached the end, but QRadar holds less than asked or a gap exists"
+        "reading reached the end; QRadar holds less than asked or a gap exists"
     ),
     (HistoryState.READING, HistoryTrigger.DENSITY_GATE): (
-        "too many buckets would be lower bounds; reading further would store only those"
+        "reading further would store only lower bounds"
     ),
     (HistoryState.READING, HistoryTrigger.TOO_MANY_GAPS): (
-        "the gap list is full; the scope has too many unreadable spans"
+        "too many unreadable spans; the gap list is full"
     ),
     (HistoryState.READING, HistoryTrigger.TIME_LIMIT): (
-        "the reading did not finish inside its time limit"
+        "reading did not finish inside its time limit"
     ),
     (HistoryState.NOT_REQUESTED, HistoryTrigger.SWITCHED_OFF): (
-        "history reading is switched off; the scope starts live"
+        "history reading is off; the scope starts live"
     ),
     (HistoryState.WAITING, HistoryTrigger.SWITCHED_OFF): (
         "history reading was switched off while waiting"
@@ -585,7 +578,7 @@ OLD_TRANSITIONS = {
     ),
     (HistoryState.READING, HistoryTrigger.STOPPED_BY_OPERATOR): "stopped by an operator",
 }
-RESTART_TEXT = "the reading restarts: a new answer, a topped-up source or a new watch version"
+RESTART_TEXT = "reading restarts: new answer, topped-up source or new watch version"
 
 
 @pytest.mark.parametrize(("message", "english"), GOLDEN, ids=[g[0].code for g in GOLDEN])
@@ -697,7 +690,7 @@ def test_scan_sentences_carry_the_reference_that_renders_them() -> None:
     assert empty.reason_message.code == "history.scan.no_event_span"
     retry = interpret_scan(p, [ScanSpanResult(span, SearchStatus.NOT_RUN)], END, SET)
     assert retry.reason == (
-        "a scan search was not_run; it proves nothing, so it is retried (1 of 3)"
+        "a scan search was not_run; retrying (1 of 3)"
     )
     too_recent_end = T0 + timedelta(days=2)
     recent_span = plan_scan(p, too_recent_end, SET).span
@@ -724,7 +717,7 @@ def test_scan_sentences_carry_the_reference_that_renders_them() -> None:
         failed = interpret_scan(failing, [ScanSpanResult(span, SearchStatus.FAILED)], END, SET)
         _consistent(failed)
         failing = failed.progress
-    assert failed.reason == "the floor scan failed 3 times; history is unavailable"
+    assert failed.reason == "floor scan failed 3 times; history unavailable"
     _consistent(late, exact, empty, retry, recent)
     assert interpret_scan(p, [], END, SET).reason == "no scan result was provided"
     _consistent(interpret_scan(p, [], END, SET))
@@ -783,8 +776,8 @@ def test_the_finish_verdict_joins_its_clauses_exactly_as_before() -> None:
         settings=SET,
     )
     assert both.reason == (
-        "reached the end; QRadar holds less than asked (the floor is later than the asked "
-        "start); 1 span(s) could not be read"
+        "reached the end; QRadar holds less than asked (floor after the asked start); 1 span(s) "
+        "could not be read"
     )
     assert both.reason_message is not None
     assert render(both.reason_message) == both.reason
@@ -825,7 +818,7 @@ def test_settled_steps_carry_the_reference_that_renders_them() -> None:
     _consistent(*settled)
     rendered = [step.reason for step in settled]
     assert any(r.startswith("read 100 bucket(s); the width is 320 bucket(s)") for r in rendered)
-    assert any("the width halves to 32" in r for r in rendered)
+    assert any("width halves to 32" in r for r in rendered)
     assert any("(limit 5\u00a0%)" in r for r in rendered)
     assert any(r.startswith("a search failed at the minimum width (1 of 3)") for r in rendered)
     assert any("more than 20 unreadable spans" in r for r in rendered)
@@ -850,7 +843,7 @@ def test_the_width_notes_are_coded() -> None:
     _consistent(*notes)
     joined = " | ".join(n.reason for n in notes)
     assert "3 clean steps doubled the failure ceiling to 40" in joined
-    assert "3 clean steps brought the failure ceiling to the row fit of 320" in joined
+    assert "3 clean steps raised the failure ceiling to the row fit of 320" in joined
 
 
 def test_fit_window_sentences_carry_their_reference() -> None:
@@ -862,7 +855,7 @@ def test_fit_window_sentences_carry_their_reference() -> None:
     )
     fits = fit_window(28, lambda days: 100, end=END, settings=SET, searches_per_tick=10)
     _consistent(reduced, refused, fits)
-    assert fits.reason == "the 28-day window fits in an estimated 0.8 hours"
+    assert fits.reason == "the 28-day window fits in about 0.8 hours"
     assert refused.refused and refused.reason.startswith("even 7 days need about ")
     assert reduced.reason_message is not None
 
@@ -912,11 +905,11 @@ def test_the_estimate_summary_sentences_carry_their_reference() -> None:
     assert all_fit.reason_message is not None
     assert render(all_fit.reason_message) == all_fit.reason
     assert [render(m) for m in all_fit.assumption_codes] == list(all_fit.assumptions)
-    assert all_fit.assumptions == ("QRadar time per search not measured on this console",)
+    assert all_fit.assumptions == ("QRadar search time not measured here",)
     none = not_estimable(
         "WAF",
         days_requested=28,
-        reason="no estimate: no WAF source is enabled on this console",
+        reason="no estimate: no WAF source enabled",
         assumptions=[MessageRef("history.assumption.qradar_time")],
         message=MessageRef("history.estimate.no_waf"),
     )
@@ -1053,7 +1046,7 @@ def test_the_multi_source_finish_counts_sources_and_codes_the_sentence() -> None
     floors = SourceFloors()
     trigger, reason, wire = finish_with_sources_coded(
         HistoryTrigger.FINISHED_COMPLETE,
-        "reached the end with the whole asked window read",
+        "reached the end; whole window read",
         floors,
         known=["a", "b", "c"],
         target_start=T0,
