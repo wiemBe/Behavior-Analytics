@@ -196,6 +196,7 @@ class QRadarMCPProvider(QRadarProvider):
         max_response_bytes: int = MAX_RESPONSE_BYTES,
         client: httpx.AsyncClient | None = None,
         audit_sink: Callable[[dict], Awaitable[None]] | None = None,
+        strict_source_enabled: bool = False,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         # The pinned server authenticates every request, `initialize` included, against
@@ -209,6 +210,7 @@ class QRadarMCPProvider(QRadarProvider):
         # callers wire this to app.repositories.audit.record_audit; left None it
         # degrades to logging only, so the provider stays usable in unit tests.
         self._audit_sink = audit_sink
+        self._strict_source_enabled = strict_source_enabled
         self._client = client or httpx.AsyncClient(
             base_url=self._base_url,
             headers={"Accept": _ACCEPT},
@@ -883,8 +885,7 @@ class QRadarMCPProvider(QRadarProvider):
     # -------------------------------------------------------- normalization
     # The MCP service proxies QRadar's own JSON, so normalization matches the
     # REST provider's. Shared helpers keep the two from drifting apart.
-    @staticmethod
-    def _to_log_source(row: dict) -> LogSourceDTO | None:
+    def _to_log_source(self, row: dict) -> LogSourceDTO | None:
         qradar_id = as_int(row.get("id"))
         name = row.get("name")
         if qradar_id is None or not isinstance(name, str) or not name.strip():
@@ -905,7 +906,9 @@ class QRadarMCPProvider(QRadarProvider):
             type_id=as_int(row.get("type_id")) or as_int(type_info.get("id")),
             type_name=(type_info.get("name") if isinstance(type_info.get("name"), str) else None),
             protocol_type_id=as_int(row.get("protocol_type_id")),
-            enabled=bool(row.get("enabled", True)),
+            enabled=(
+                row.get("enabled") if isinstance(row.get("enabled"), bool) else None
+            ) if self._strict_source_enabled else bool(row.get("enabled", True)),
             status=(
                 str(status.get("status"))[:64]
                 if isinstance(status, dict) and status.get("status") is not None

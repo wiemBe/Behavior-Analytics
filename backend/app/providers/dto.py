@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from app.models.enums import IpsDimension, PwScopeKind
 
@@ -120,7 +120,7 @@ class LogSourceDTO(ProviderDTO):
     type_id: int | None = None
     type_name: str | None = None
     protocol_type_id: int | None = None
-    enabled: bool = True
+    enabled: StrictBool | None = None
     status: str | None = None
     credibility: int | None = None
     target_event_collector_id: int | None = None

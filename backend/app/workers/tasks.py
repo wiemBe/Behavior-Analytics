@@ -336,6 +336,7 @@ async def _for_each_instance(
     *,
     instance_id: uuid.UUID | None = None,
     needs_provider: bool = True,
+    provider_settings: Settings | None = None,
 ) -> dict:
     """Run `run` against every enabled instance, or one instance.
 
@@ -381,7 +382,13 @@ async def _for_each_instance(
             provider = (
                 # audit_session wires the MCP audit sink to AuditLog; it is
                 # inert for the REST provider, which audits via telemetry.
-                build_provider_for_instance(instance, audit_session=session)
+                (
+                    build_provider_for_instance(
+                        instance, settings=provider_settings, audit_session=session
+                    )
+                    if provider_settings is not None
+                    else build_provider_for_instance(instance, audit_session=session)
+                )
                 if needs_provider
                 else None
             )
@@ -447,7 +454,8 @@ async def sync_log_sources(
         }
 
     return await _for_each_instance(
-        run, instance_name, instance_id=_parse_instance_id(instance_id)
+        run, instance_name, instance_id=_parse_instance_id(instance_id),
+        provider_settings=settings,
     )
 
 

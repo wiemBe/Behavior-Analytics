@@ -22,6 +22,7 @@ from app.alerts.service import AlertInput, AlertService
 from app.core.config import Settings, get_settings
 from app.fleet.service import classify_sources
 from app.i18n.messages import MessageRef, render
+from app.log_source_policy import source_pause_enabled
 from app.models.entity import EntityMention
 from app.models.enums import ClassificationReviewStatus, InstanceStatus, Severity
 from app.models.fleet import LogSourceGroup, LogSourceType
@@ -210,6 +211,7 @@ class InventorySyncService:
                     instance_id=instance.id,
                     qradar_id=dto.qradar_id,
                     first_seen_at=now,
+                    enabled=False,
                 )
                 self.session.add(existing)
                 existing_by_qradar_id[dto.qradar_id] = existing
@@ -228,7 +230,10 @@ class InventorySyncService:
                 existing.type_id = dto.type_id
                 existing.type_name = sanitize_text(resolved_type)
             existing.protocol_type_id = dto.protocol_type_id
-            existing.enabled = dto.enabled
+            if dto.enabled is not None:
+                existing.enabled = dto.enabled
+            elif not source_pause_enabled(self.settings):
+                existing.enabled = True
             existing.qradar_status = dto.status
             existing.credibility = dto.credibility
             existing.target_event_collector_id = dto.target_event_collector_id
