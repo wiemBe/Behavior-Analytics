@@ -28,7 +28,15 @@ pytestmark = [
 ]
 
 ADMIN = Principal(subject="admin", permissions=frozenset({"admin:*"}))
-NOW = datetime.now(UTC)
+
+
+def now() -> datetime:
+    """The real clock, read when the test runs.
+
+    The route judges a pending marker stale against its own clock, so a marker seeded from
+    import time turns stale once a shard runs past the 900 s timeout (FIX-84).
+    """
+    return datetime.now(UTC)
 
 
 class Probe(MockQRadarProvider):
@@ -124,7 +132,7 @@ async def test_the_route_queues_and_builds_no_provider(
 async def test_a_second_request_is_refused_until_the_pending_marker_is_stale(
     db_session, db_schema, monkeypatch
 ) -> None:
-    since = NOW - timedelta(seconds=30)
+    since = now() - timedelta(seconds=30)
     profile, source = await seed_profile(
         db_session, validation_requested_at=since, validation_requested_by="first"
     )
@@ -142,7 +150,7 @@ async def test_a_second_request_is_refused_until_the_pending_marker_is_stale(
     assert (await _reload(db_session, profile_id)).validation_requested_by == "first"
 
     stale = await _reload(db_session, profile_id)
-    stale.validation_requested_at = NOW - timedelta(seconds=901)
+    stale.validation_requested_at = now() - timedelta(seconds=901)
     await db_session.commit()
     allowed = client.post(_url(source_id))
     assert allowed.status_code == 202, allowed.text
@@ -154,7 +162,7 @@ async def test_the_task_stores_valid_and_clears_the_marker(
     db_session, db_schema, monkeypatch
 ) -> None:
     profile, _ = await seed_profile(
-        db_session, validation_requested_at=NOW, validation_requested_by="requester"
+        db_session, validation_requested_at=now(), validation_requested_by="requester"
     )
     provider = Probe()
     _worker(db_schema, monkeypatch, provider)
@@ -185,7 +193,7 @@ async def test_a_provider_failure_is_never_valid_and_clears_the_marker(
         db_session,
         validation_status="INVALID",
         validation_report={"old": True},
-        validation_requested_at=NOW,
+        validation_requested_at=now(),
         validation_requested_by="requester",
     )
     provider = Probe(error=error)
@@ -218,7 +226,7 @@ async def test_a_failure_does_not_downgrade_a_collecting_profile(
         enabled=True,
         validation_status="VALID",
         validated_profile_version=1,
-        validation_requested_at=NOW,
+        validation_requested_at=now(),
         validation_requested_by="requester",
     )
     _worker(db_schema, monkeypatch, Probe(error=ProviderError("down")))
@@ -238,7 +246,7 @@ async def test_a_refused_mapping_is_stored_invalid(
     profile, _ = await seed_profile(
         db_session,
         enabled_event_ids=[1],
-        validation_requested_at=NOW,
+        validation_requested_at=now(),
         validation_requested_by="requester",
     )
     _worker(db_schema, monkeypatch, Probe())
@@ -256,7 +264,7 @@ async def test_an_unsupported_provider_stores_the_reason_and_stays_unvalidated(
     db_session, db_schema, monkeypatch
 ) -> None:
     profile, _ = await seed_profile(
-        db_session, validation_requested_at=NOW, validation_requested_by="requester"
+        db_session, validation_requested_at=now(), validation_requested_by="requester"
     )
     provider = Probe()
     provider.supports = lambda capability: False  # type: ignore[method-assign]
@@ -274,7 +282,7 @@ async def test_an_unsupported_provider_stores_the_reason_and_stays_unvalidated(
 async def test_a_deleted_source_and_an_unrequested_profile_do_nothing(
     db_session, db_schema, monkeypatch
 ) -> None:
-    profile, source = await seed_profile(db_session, validation_requested_at=NOW)
+    profile, source = await seed_profile(db_session, validation_requested_at=now())
     provider = Probe()
     _worker(db_schema, monkeypatch, provider)
 
@@ -316,7 +324,7 @@ async def test_a_mapping_change_during_the_probe_drops_the_result(
     db_session, db_schema, monkeypatch
 ) -> None:
     profile, _ = await seed_profile(
-        db_session, validation_requested_at=NOW, validation_requested_by="requester"
+        db_session, validation_requested_at=now(), validation_requested_by="requester"
     )
     profile_id = profile.id
     engine = create_async_engine(db_schema, poolclass=NullPool)
@@ -327,7 +335,7 @@ async def test_a_mapping_change_during_the_probe_drops_the_result(
             current = await other.get(IdentitySourceProfile, profile_id)
             assert current is not None
             current.profile_version = 2
-            current.validation_requested_at = NOW + timedelta(seconds=1)
+            current.validation_requested_at = now() + timedelta(seconds=1)
             current.validation_requested_by = "newer-admin"
             await other.commit()
 
