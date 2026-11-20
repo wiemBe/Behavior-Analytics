@@ -54,6 +54,7 @@ from app.identity.profiles import IdentityProfileError, IdentityProfileService
 from app.identity.retention import IdentityRetention
 from app.identity.revalidation import IdentityRevalidator, failure_token
 from app.jdbc.jobs import request_and_enqueue_jdbc_run, run_jdbc_collection
+from app.log_source_policy import active_source, source_pause_enabled
 from app.models.enums import AlertDigestState, EvidenceStatus, ExecutionStatus, Severity
 from app.models.identity_detection import IdentitySourceProfile
 from app.models.instance import QRadarInstance
@@ -1414,13 +1415,12 @@ async def evaluate_anomalies() -> dict:
         # Enqueue-only dispatcher: notifiers not needed to create rows.
         enqueuer = NotificationDispatcher(session, notifiers={}, policy=policy)
         engine = AnomalyEngine(session, settings=settings, enqueuer=enqueuer)
-        sources = list(
-            (
-                await session.scalars(
-                    select(LogSource).where(LogSource.monitoring_enabled.is_(True))
-                )
-            ).all()
-        )
+        selection = select(LogSource).where(LogSource.monitoring_enabled.is_(True))
+        if source_pause_enabled(settings):
+            # SQLAlchemy's InstrumentedAttribute is a ColumnElement at runtime;
+            # the stub for the shared predicate is narrower than the real call.
+            selection = selection.where(active_source(LogSource.enabled))  # type: ignore[arg-type]
+        sources = list((await session.scalars(selection)).all())
         opened = resolved = failed = given_up = 0
         for source in sources:
             report = await engine.evaluate_pending(source)
