@@ -432,13 +432,16 @@ async def sync_log_sources(
     settings, reason = await _effective_settings("sync_log_sources")
     if reason is not None:
         return _with_reason({"status": "disabled"}, reason)
+    # The switch is resolved once above; hand the derived value into `run` so it
+    # never re-reads a feature key (and never falls back to `.env`).
+    jdbc_collection_enabled = settings.jdbc_collection_enabled
 
     async def run(
         session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
     ) -> dict:
         assert provider is not None
         report = await LogSourceCollector(session, provider, settings=settings).sync(instance)
-        if report.status in ("COMPLETE", "PARTIAL") and settings.jdbc_collection_enabled:
+        if report.status in ("COMPLETE", "PARTIAL") and jdbc_collection_enabled:
             try:
                 await request_and_enqueue_jdbc_run(
                     session, instance.id, now=datetime.now(UTC),
