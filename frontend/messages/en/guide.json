@@ -366,13 +366,28 @@
       "answers": "Which watched property values are being counted, and which watches need attention?",
       "body": [
         {
-          "p": "A property watch counts the values of one or two QRadar properties in each 5-minute bucket, learns what is normal for each value, and reports a value that appears, disappears or changes. The list shows **Name**, **Status and reason**, **Scope**, **Properties**, **Coverage, last bucket**, **Open incidents**, **Last bucket (UTC)** and **Enabled**. Watches that need an analyst sort first."
+          "p": "A property watch counts the values of one or two QRadar properties in each 5-minute bucket, learns what is normal for each value, and reports a value that appears, disappears or changes. The list shows **Name**, **Status**, **Scope**, **Properties**, **Coverage (%)**, **Open**, **Last bucket** and **Enabled**. Watches that need an analyst sort first. A status line follows the pill only when the status is not OK or Disabled; the meanings are below."
         },
         {
-          "p": "The detail page draws the pinned values and the top values of the last bucket in events per bucket, with the scope's coverage, and lists the active incidents. **Edit watch** opens the editor. The header states the history state, the scope, the properties and the last collected bucket."
+          "p": "Statuses: **Never run** (no bucket collected yet, so nothing is judged); **Not enabled** (the collection switch is off, so no search is sent); **Disabled** (switched off; history and incidents are kept); **Scope empty** (the scope resolves to no synced log source); **Scope stale** (the synced inventory is older than the staleness limit, so no bucket is collected and open incidents hold); **Scope too large** (the scope needs more searches per run than one watch may use); **Not applicable** (the property parsed on no event in scope, so values are not measured and no verdict is given); **Stale** (no bucket stored within the cadence); **Reading history** (nothing is judged until the history read finishes); **Incident open** and **Recovering** (an incident is held open until it is confirmed); **OK** (the last collected bucket was judged)."
         },
         {
-          "p": "Two banners qualify the list: **COLLECTION OFF.** when `PW_COLLECTION_ENABLED` is false, so no search is sent for any watch, and **SHADOW MODE.** when incidents are recorded but nothing pages until `PW_ALERTING_ENABLED` is on. A watch that is disabled sends no search."
+          "p": "Watches are judged on collected 5-minute buckets, a set time after events arrive; the schedule is the PROPERTY_WATCH family's setting in **Search cadence**. This is not a seconds-level correlation engine: for alerting within seconds, use QRadar's own rules. A threshold rule on a pinned value can use a new pin after the next property-watch collection."
+        },
+        {
+          "p": "Two notices qualify the list: **COLLECTION OFF.** when `PW_COLLECTION_ENABLED` is false, so no search is sent for any watch whatever a row says, and **SHADOW MODE.** when incidents are recorded but nothing pages until `PW_ALERTING_ENABLED` is on. **SWITCHES NOT READ.** means the page could not say whether watches are being collected. Editing needs `property_watch:write`; reading needs `read:property_watches`."
+        },
+        {
+          "p": "The detail page draws the pinned values and the top values of the last bucket in events per 5-minute bucket, with the scope's coverage (the parsed share of the scope's events, with the coverage floor) in a lower panel, and lists the active incidents. **Edit watch** opens the editor. The header states the status, the history state when one was requested, the scope, the properties and the last collected bucket. The window buttons choose 1 hour to 7 days."
+        },
+        {
+          "p": "Reading the chart: gaps in a line are buckets that were not collected, values that were unknown in a lower-bound bucket, or times the value was not tracked. They are not zero events; a line at 0 is a measured zero. The expected range for the hour of the week is drawn as a band for one value at a time, so select a single value to see it. At most five values are drawn. Below the chart, the latest bucket's unparsed remainder says how many events in scope carried none of the property; they are counted there, never as a value and never as a zero."
+        },
+        {
+          "p": "The notice above the chart lists what is not known about the window: **HISTORY** state and **HISTORY GAP** (periods QRadar did not return, never claimed as zero), **TRUNCATED** (buckets that were lower bounds, so absent values are unknown), **PARTIAL** (buckets without a complete count, so the parsed share is unknown), **NOT COLLECTED** (gaps, not zero events), **ADMISSION** (values refused because the watch already tracks its maximum; they are counted in the bucket, not plotted) and **MEMBERSHIP CHANGED**. Buckets inside the grace window after a membership change are insufficient data, not normal."
+        },
+        {
+          "p": "In the values table, a **Learning** or **No baseline yet** tag means the expected range is not reliable yet; a value with no tag has a reliable baseline (168 reliable hour-of-week cells). Hover an events figure for what the reading means: counted, measured zero, unknown (a lower-bound bucket lacking the value) or not tracked then. An empty Incidents tab is not a statement that every value is normal, because values that are still learning and buckets that were lower bounds or not collected are not judged. The Definition tab holds the scope's membership, the version (a new scope or property set starts a new version; values of another version are never compared), the history facts and the cardinality caps: a value beyond a cap is counted in its bucket and never plotted or judged."
         },
         {
           "p": "The **EMA 3**, **EMA 5**, **EMA 10** and **EMA 20** buttons above the chart overlay exponential moving averages of the single selected value (the legend names it). With several values plotted no average is drawn, and the chart says so; your choice of periods is kept. The periods are counted in buckets, and the legend gives each one's span in time. All are off until you switch them on, and the browser remembers your choice, shared with the other charts. An average is drawn in your browser for display only. It takes no part in detection, and it stops at a bucket that was not fully observed, or counted only as a lower bound, rather than bridging the gap."
@@ -380,7 +395,7 @@
       ],
       "states": [
         {
-          "p": "**No bucket has been collected for this watch yet.**; a property that parsed on no event; **Not applicable**; partial buckets and lower bounds; a history reading in progress."
+          "p": "**Never run** (no bucket collected yet); a property that parsed on no event; **Not applicable**; partial buckets and lower bounds; a history reading in progress."
         }
       ]
     },
@@ -858,6 +873,18 @@
       "body": [
         {
           "p": "A property watch counts how many events carry each value of one or two QRadar properties, per 5-minute bucket, within a scope. The platform learns a baseline per value and raises incidents on changes. Values are stored in clear text. Reading watches needs `read:property_watches`; creating, editing, enabling and deleting need `property_watch:write`, which the admin and `detection_engineer` roles hold."
+        },
+        {
+          "p": "Detectors: **Value spike** (a value above its seasonal expected range), **Value drop** (an exact count below it), **Value disappeared** (a normally present value measured zero for several buckets) and **New value** (a material value absent from verified history appeared) need about a week of baseline or 7 days of history; **New combination** (two values each seen before appeared together for the first time) needs two properties and 7 days of component history. Each property added multiplies the combination space, which is why two is the limit."
+        },
+        {
+          "p": "Preview: saving stores the definition disabled and spends the stated number of bounded searches over the last closed hour; nothing is admitted or alerted. The result separates no events (measured silence), a property that parsed on none of the events, and a search that was not measured. The catalog of property types is a suggestion; the preview is the applicability check, and a typed name outside the catalog can still be saved after validation. The generated query text is read-only."
+        },
+        {
+          "p": "History: the reading happens once before collection begins and is used only for learning. Events whose property was not parsed then are not counted as history, a group's membership is today's rather than as it was, and nothing is judged until the reading finishes. The estimate gives a searches range and a collection-runs range; it is an estimate, not a completion promise. The request cannot change once history or collected buckets exist."
+        },
+        {
+          "p": "Pins: at most 10 values or full pairs by default; quotes and backslashes cannot be pinned. The most frequent other values are tracked automatically, up to 20 new values per 5 minutes and 200 in total by default. The exact descendant walk of a group is available after the first disabled save."
         }
       ],
       "steps": [
@@ -872,7 +899,7 @@
       ],
       "states": [
         {
-          "p": "**COLLECTION OFF** when the family switch `PW_COLLECTION_ENABLED` is false (the default): enabling stores the choice but nothing is collected; shadow mode when `PW_ALERTING_ENABLED` is false (the default), where incidents are recorded and no alert opens; **This watch is enabled. Saving here disables it until you enable it again**; a preview rate limit; **Delete** refused while a custom rule pins one of its values; the write notice when the role lacks `property_watch:write`."
+          "p": "**COLLECTION OFF** when the family switch `PW_COLLECTION_ENABLED` is false (the default): enabling stores the choice but nothing is collected; shadow mode when `PW_ALERTING_ENABLED` is false (the default), where incidents are recorded and no alert opens; **Enabled. Saving disables it until you enable it again**; a preview rate limit; **Delete** refused while a custom rule pins one of its values; the write notice when the role lacks `property_watch:write`."
         }
       ]
     },

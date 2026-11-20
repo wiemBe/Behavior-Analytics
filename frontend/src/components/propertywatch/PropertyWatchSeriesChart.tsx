@@ -333,7 +333,7 @@ export function PropertyWatchSeriesChart({
           </tbody>
         </table>
       )}
-      <p className={compact ? "sr-only" : "subtitle chart-note"}>
+      <p className="sr-only">
         {t("pwchart.chart.gaps")}
         {hasGap ? t("pwchart.chart.gapsMore") : ""}
         {t("pwchart.chart.notZero")}

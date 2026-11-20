@@ -62,8 +62,6 @@ export function WatchAqlSection({ read }: { read: AqlRead | null }) {
   const last = aql.last_bucket;
   return (
     <div className="stack-6">
-      <p className="subtitle">{t("note")}</p>
-
       <div>
         <h3 className="pw-subtitle">{t("currentDefinition")}</h3>
         {aql.current_unavailable ? (

@@ -76,7 +76,6 @@ function PreviewResult({
         : preview.outcome === "NOT_MEASURED"
           ? t("propertyWatch.preview.emptyNotMeasured")
           : t("propertyWatch.preview.emptyNoRows");
-  const types = propertyOptions?.scope_type_ids.length ?? 0;
 
   return (
     <div className="pw-preview-content">
@@ -154,9 +153,6 @@ function PreviewResult({
             : preview.property_parses === false
               ? t("propertyWatch.preview.notParses")
               : t("propertyWatch.preview.cannotDetermine")}
-        </p>
-        <p>
-          {t("propertyWatch.preview.catalogTypes", { count: types })}
         </p>
       </div>
       <div className="pw-query-list">
@@ -611,7 +607,7 @@ export function WatchEditor({
                     />
                     <span>
                       <strong>{copy.label}</strong>
-                      <span>{copy.claim} {copy.learning}</span>
+                      <span>{copy.claim}</span>
                     </span>
                   </label>
                   {combinationReason !== null && (
@@ -705,11 +701,6 @@ export function WatchEditor({
               })}
             </p>
           )}
-          <ul className="pw-history-limits">
-            <li>{t("propertyWatch.editor.historyLimitParsed")}</li>
-            <li>{t("propertyWatch.editor.historyLimitMembership")}</li>
-            <li>{t("propertyWatch.editor.historyLimitJudged")}</li>
-          </ul>
         </fieldset>
 
         <p className="pw-editor-summary">{summary}</p>

@@ -59,11 +59,11 @@
     "from": "From (UTC)",
     "to": "To (UTC)",
     "meaning": "Meaning",
-    "gaps": "Gaps in a line are buckets that were not collected",
-    "gapsMore": ", values that were unknown in a lower-bound bucket, or times the value was not tracked",
-    "notZero": ". They are not zero events; a line at 0 is a measured zero.",
-    "oneAtATime": " The expected range is drawn for one value at a time: select a single value to see its band.",
-    "dropped": " {count} more selected {count, plural, one {value is} other {values are}} not drawn; the chart shows at most {max}.",
-    "coveragePanel": " The lower panel is the share of the scope's events in which the property parsed."
+    "gaps": "Gaps are buckets not collected",
+    "gapsMore": ", unknown values in lower-bound buckets, or untracked times",
+    "notZero": ". Not zero events; a line at 0 is a measured zero.",
+    "oneAtATime": " Select one value to see its expected range.",
+    "dropped": " {count} more selected {count, plural, one {value is} other {values are}} not drawn; at most {max}.",
+    "coveragePanel": " Lower panel: parsed share of scope events."
   }
 }

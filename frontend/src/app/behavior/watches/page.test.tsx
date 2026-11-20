@@ -26,22 +26,22 @@ describe("the list states", () => {
     vi.spyOn(api, "propertyWatches").mockRejectedValue(new ApiError(403, "Forbidden"));
     await renderPage();
     expect(screen.getByRole("alert")).toHaveTextContent("read:property_watches");
-    expect(screen.getByRole("alert")).toHaveTextContent("forbidden for this account");
+    expect(screen.getByRole("alert")).toHaveTextContent("are forbidden");
   });
 
   it("says what failed and what to do, without the server's text", async () => {
     vi.spyOn(api, "propertyWatches").mockRejectedValue(new ApiError(500, "secret stack"));
     await renderPage();
     expect(screen.getByRole("alert")).toHaveTextContent("could not be loaded");
-    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
+    expect(screen.getByRole("alert")).toHaveTextContent("Reload to retry");
     expect(screen.queryByText(/secret stack/)).toBeNull();
   });
 
   it("explains an empty list: what a watch is, and that none exists", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([]);
     await renderPage();
-    expect(screen.getByText("No property watch exists yet.")).toBeInTheDocument();
-    expect(screen.getByText(/counts the values of one or two properties/)).toBeInTheDocument();
+    expect(screen.getByText("No property watch yet.")).toBeInTheDocument();
+    expect(screen.getByText(/Create one to track/)).toBeInTheDocument();
   });
 
   it("hides New watch from readers and names the permission that adds it", async () => {
@@ -74,7 +74,8 @@ describe("the notices", () => {
   it("names the alerting setting in shadow mode, and only then", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
     await renderPage();
-    expect(screen.getByText("PW_ALERTING_ENABLED").tagName).toBe("CODE");
+    expect(screen.getByText("SHADOW MODE.")).toBeInTheDocument();
+    expect(screen.getByText(/nothing pages/)).toBeInTheDocument();
   });
 
   it("says the switches were not read instead of implying collection is on", async () => {
@@ -85,10 +86,10 @@ describe("the notices", () => {
     expect(screen.queryByText("PW_COLLECTION_ENABLED")).toBeNull();
   });
 
-  it("states the latency once and never claims to be live", async () => {
+  it("states no latency sentence (the Guide holds it) and never claims to be live", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
     await renderPage();
-    expect(screen.getAllByText((_, el) => el?.tagName === "P" && el.textContent === partsText(pwLatency()))).toHaveLength(1);
+    expect(screen.queryAllByText((_, el) => el?.tagName === "P" && el.textContent === partsText(pwLatency()))).toHaveLength(0);
     const text = document.body.textContent ?? "";
     expect(text).not.toMatch(/\blive\b|real-time/i);
   });
@@ -97,15 +98,13 @@ describe("the notices", () => {
 describe("the latency figure", () => {
   const cadence = { family: "PROPERTY_WATCH" as const, cadence_seconds: 3600, bucket_seconds: 300, settle_seconds: 120 };
   const sentence = () =>
-    screen.getAllByText((_, el) => el?.tagName === "P" && (el.textContent ?? "").startsWith("Watches are judged"));
+    screen.queryAllByText((_, el) => el?.tagName === "P" && (el.textContent ?? "").startsWith("Watches are judged"));
 
   it("comes from the catalog's cadence, bucket and settle time", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
     vi.spyOn(api, "propertyWatchCatalog").mockResolvedValue(catalog({ cadence }));
     await renderPage();
-    expect(sentence()).toHaveLength(1);
-    expect(sentence()[0]).toHaveTextContent("collected 5-minute buckets, up to 1 h 7 min after the events arrive");
-    expect(sentence()[0]).not.toHaveTextContent("after each collection of their family");
+    expect(sentence()).toHaveLength(0);
   });
 
   it("follows a non-default settle time", async () => {
@@ -114,17 +113,16 @@ describe("the latency figure", () => {
       catalog({ cadence: { ...cadence, cadence_seconds: 900, settle_seconds: 600 } }),
     );
     await renderPage();
-    expect(sentence()[0]).toHaveTextContent("up to 30 min after the events arrive");
+    expect(sentence()).toHaveLength(0);
   });
 
-  it("names no number when the catalog has no cadence, or none could be read", async () => {
+  it("states no number whether or not the catalog has a cadence", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
     await renderPage();
-    expect(sentence()[0]).toHaveTextContent("after each collection of their family");
-    expect(sentence()[0].textContent).not.toMatch(/up to \d/);
+    expect(sentence()).toHaveLength(0);
   });
 
-  it("links Search cadence only for read:search_cadence, figure or not", async () => {
+  it("links Search cadence for no caller (the Guide holds the sentence)", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
     vi.spyOn(api, "propertyWatchCatalog").mockResolvedValue(catalog({ cadence }));
     vi.spyOn(api, "caller").mockResolvedValue({
@@ -137,8 +135,8 @@ describe("the latency figure", () => {
       subject: "analyst", email: null, permissions: [], effective_permissions: ["read:property_watches", "read:search_cadence"],
     });
     await renderPage();
-    expect(screen.getByRole("link", { name: "Search cadence" })).toHaveAttribute("href", "/admin/search-cadence");
-    expect(sentence()[0]).toHaveTextContent("up to 1 h 7 min");
+    expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();
+    expect(sentence()).toHaveLength(0);
   });
 });
 
@@ -167,8 +165,12 @@ describe("the table", () => {
     for (const r of rows()) {
       const cell = within(r).getAllByRole("cell")[1];
       expect(cell.querySelector(".pill")?.textContent).toBeTruthy();
-      expect(cell.textContent?.length).toBeGreaterThan(8);
+      if (!["w10", "w1"].includes(within(r).getAllByRole("cell")[0].textContent ?? "")) {
+        expect(cell.textContent?.length).toBeGreaterThan(8);
+      }
     }
+    const ok = rows().find((r) => within(r).getAllByRole("cell")[0].textContent === "w10")!;
+    expect(within(ok).getAllByRole("cell")[1]).not.toHaveTextContent("reason OK");
     const never = rows().find((r) => within(r).getAllByRole("cell")[0].textContent === "w11")!;
     expect(never).toHaveTextContent("Never run");
     expect(never).toHaveTextContent("not judged");
@@ -208,7 +210,7 @@ describe("the table", () => {
     expect(cov("unknown")).toHaveTextContent("—");
   });
 
-  it("shows the last bucket in UTC with the age after it, and 'no bucket yet' without one", async () => {
+  it("shows the last bucket in UTC with the age after it, and 'none yet' without one", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([
       watch({ id: "1", name: "ran", collected_through: "2026-10-18T08:55:00Z" }),
       watch({ id: "2", name: "idle", collected_through: null, status: null }),
@@ -220,14 +222,14 @@ describe("the table", () => {
     expect(time).toHaveAttribute("datetime", "2026-10-18T08:55:00Z");
     expect(within(ran).getAllByRole("cell")[6].querySelector(".cell-sub")).not.toBeNull();
     const idle = rows().find((r) => within(r).getAllByRole("cell")[0].textContent === "idle")!;
-    expect(idle).toHaveTextContent("no bucket yet");
+    expect(idle).toHaveTextContent("none yet");
   });
 
   it("right-aligns its figures, names itself, and links each watch by id", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch({ open_incidents: 0 })]);
     await renderPage();
     expect(screen.getByRole("table", { name: "Property watches" })).toBeInTheDocument();
-    for (const name of ["Coverage, last bucket", "Open incidents", "Last bucket (UTC)"]) {
+    for (const name of ["Coverage (%)", "Open", "Last bucket"]) {
       expect(screen.getByRole("columnheader", { name })).toHaveClass("num");
     }
     expect(screen.getByRole("link", { name: "VPN usernames" })).toHaveAttribute(

@@ -171,7 +171,7 @@ describe("the blocked New combination option (en)", () => {
     const box = combinationBox();
     expect(box).toBeDisabled();
     const reason = reasonFor(box);
-    expect(reason).toHaveTextContent("New-combination detection needs exactly two properties.");
+    expect(reason).toHaveTextContent("New combination needs two properties.");
     expect(within(reason.parentElement as HTMLElement).queryByRole("button")).toBeNull();
     expect(screen.queryByRole("button", { name: "Add a second property" })).toBeNull();
   });

@@ -244,14 +244,18 @@ export function WatchHonesty({
 }) {
   if (notes.length === 0) return null;
   return (
-    <div className="pw-honesty" role="group" aria-label={i18n.t("propertyWatch.honesty.groupLabel")}>
-      {notes.map((note, index) => (
-        <p key={`${note.label}-${index}`} className={`banner${note.tone ? ` ${note.tone}` : ""}`}>
-          <span>
+    <div
+      className={`pw-honesty banner${notes.some((n) => n.tone === "crit") ? " crit" : notes.some((n) => n.tone) ? " warn" : ""}`}
+      role="group"
+      aria-label={i18n.t("propertyWatch.honesty.groupLabel")}
+    >
+      <ul className="pw-honesty-list">
+        {notes.map((note, index) => (
+          <li key={`${note.label}-${index}`}>
             <strong>{note.label}.</strong> {note.text}
-          </span>
-        </p>
-      ))}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

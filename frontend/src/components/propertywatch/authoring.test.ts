@@ -27,15 +27,15 @@ describe("property-watch authoring semantics", () => {
 
   it("builds a deterministic summary from the form, never from free text", () => {
     expect(watchSummary(draftFromWatch(watch()))).toBe(
-      "Tracks username on DMZ firewalls (37 sources), counted on collected 5-minute buckets; 1 value always counted; value spike, new value detection on.",
+      "Counts username on DMZ firewalls (37 sources) per 5 minutes; 1 pin; detectors: value spike, new value.",
     );
   });
 
   it("states requested history deterministically and says nothing about it when off", () => {
     const without = draftFromWatch(watch());
-    expect(watchSummary(without)).not.toContain("history first");
+    expect(watchSummary(without)).not.toContain("days of history");
     expect(watchSummary({ ...without, historyDays: 28 })).toContain(
-      "reads 28 days of history first",
+      "reads 28 days of history",
     );
   });
 
@@ -81,16 +81,16 @@ describe("property-watch authoring semantics", () => {
     expect(reasons).toEqual(expect.arrayContaining([
       "Name is required.",
       "Choose a log source group.",
-      "A watch cannot name the same property twice.",
+      "Property named twice.",
       "A value is pinned twice.",
       "Choose at least one detector.",
     ]));
-    expect(reasons.some((reason) => reason.includes("Quotes"))).toBe(true);
+    expect(reasons.some((reason) => reason.includes("No quotes"))).toBe(true);
   });
 
   it("validates quotes, backslashes, controls, padding and length inline", () => {
     for (const value of ["O'Brien", 'say "no"', "a\\b", " padded", "padded ", "line\nbreak"]) {
-      expect(pinReason(value, 255)).toMatch(/cannot be pinned/);
+      expect(pinReason(value, 255)).toMatch(/No quotes/);
     }
     expect(pinReason("x".repeat(256), 255)).toMatch(/at most 255/);
     expect(pinReason("DENY", 255)).toBeNull();

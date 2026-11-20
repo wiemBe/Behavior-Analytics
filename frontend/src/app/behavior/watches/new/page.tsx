@@ -2,14 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
-import { CadenceLatency, canReadSearchCadence } from "@/components/cadence/CadenceLatency";
 import { PropertyWatchWriteNotice } from "@/components/propertywatch/PropertyWatchWriteNotice";
 import { WatchEditor } from "@/components/propertywatch/WatchEditor";
 import {
   propertyWatchAccessFrom,
   type PropertyWatchAccess,
 } from "@/components/propertywatch/authoring";
-import { pwLatencyFrom } from "@/components/propertywatch/pwFormat";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { guideFor } from "@/lib/guideRoutes";
 import { ApiError, api, rateLimitedText, type CallerInfo, type PropertyWatchCatalog } from "@/lib/api";
@@ -28,7 +26,6 @@ async function NewPropertyWatchPage() {
   const i18n = await getBehaviorI18n();
   let catalog: PropertyWatchCatalog | null = null;
   let access: PropertyWatchAccess = "unknown";
-  let canLink = false;
   let limited: string | null = null;
   let forbidden = false;
   let failed = false;
@@ -39,7 +36,6 @@ async function NewPropertyWatchPage() {
       api.caller().catch(() => null),
     ]);
     access = caller ? propertyWatchAccessFrom(caller) : "unknown";
-    canLink = canReadSearchCadence(caller);
   } catch (error) {
     if (error instanceof ApiError && error.status === 429) {
       limited = rateLimitedText(error, i18n.t);
@@ -73,7 +69,6 @@ async function NewPropertyWatchPage() {
         </div>
       ) : access === "writer" ? (
         <>
-          <CadenceLatency className="pw-latency" parts={pwLatencyFrom(catalog.cadence, i18n)} canLink={canLink} />
           <WatchEditor catalog={catalog} mode="create" />
         </>
       ) : (

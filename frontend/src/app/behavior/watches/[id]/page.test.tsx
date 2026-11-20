@@ -69,7 +69,7 @@ describe("the problem states", () => {
     vi.spyOn(api, "propertyWatch").mockRejectedValue(new ApiError(403, "Forbidden"));
     await renderPage();
     expect(screen.getByRole("alert")).toHaveTextContent("read:property_watches");
-    expect(screen.getByRole("alert")).toHaveTextContent("forbidden for this account");
+    expect(screen.getByRole("alert")).toHaveTextContent("is forbidden");
   });
 
   it("says the session expired on 401", async () => {
@@ -82,24 +82,24 @@ describe("the problem states", () => {
     vi.spyOn(api, "propertyWatch").mockRejectedValue(new ApiError(500, "stack trace"));
     await renderPage();
     expect(screen.getByRole("alert")).toHaveTextContent("could not be loaded");
-    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
+    expect(screen.getByRole("alert")).toHaveTextContent("Reload to retry");
     expect(screen.queryByText(/stack trace/)).toBeNull();
   });
 });
 
 describe("the header", () => {
-  it("names the watch, its scope, properties, bucket width, status with reason, and last bucket in UTC", async () => {
+  it("names the watch, its scope, properties, status and last bucket in UTC, without the bucket width or the OK reason", async () => {
     const { container } = await renderPage();
     expect(container.querySelector("h1")).toHaveTextContent("VPN usernames");
     const meta = container.querySelector(".page-meta")!;
     expect(meta).toHaveTextContent("Log source group: DMZ firewalls");
     expect(meta).toHaveTextContent("username");
-    expect(meta).toHaveTextContent("5-minute buckets");
+    expect(meta).not.toHaveTextContent("5-minute buckets");
     expect(meta).toHaveTextContent("OK");
-    expect(meta).toHaveTextContent("The last collected bucket was judged.");
+    expect(meta).not.toHaveTextContent("The last collected bucket was judged.");
     expect(meta.querySelector("time")).toHaveAttribute("datetime", iso(11));
     expect(meta).toHaveTextContent("UTC");
-    expect(meta).toHaveTextContent("History not requested");
+    expect(meta).not.toHaveTextContent("History not requested");
   });
 
   it("shows reading progress in the header", async () => {
@@ -111,7 +111,7 @@ describe("the header", () => {
       }),
     );
     const { container } = await renderPage();
-    expect(container.querySelector(".page-meta")).toHaveTextContent("9 of 28 days read. Nothing is judged until it finishes.");
+    expect(container.querySelector(".page-meta")).toHaveTextContent("9 of 28 days read; not judged yet.");
     expect(container.querySelector(".page-meta")?.textContent?.match(/Reading history/g)).toHaveLength(1);
   });
 

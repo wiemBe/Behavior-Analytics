@@ -33,17 +33,17 @@ describe("the honesty line", () => {
     [
       "READING",
       { state: "READING", days_requested: 28, days_read: 9 },
-      "Reading history from QRadar: 9 of 28 days. Nothing is judged until it finishes.",
+      "Reading history: 9 of 28 days.",
     ],
     [
       "COMPLETE",
       { state: "COMPLETE", days_requested: 28, days_read: 28, finished_at: "2026-10-19T12:00:00Z" },
-      "History: 28 days read from QRadar on 2026-10-19, used for baselines and new-value checks. Those buckets were not judged.",
+      "History: 28 days read on 2026-10-19.",
     ],
     [
       "UNAVAILABLE",
       { state: "UNAVAILABLE", days_requested: 28 },
-      "QRadar holds no events of this scope in the last 28 days. The watch learns forward.",
+      "No events in the last 28 days; learning forward.",
     ],
   ] as const)("states %s history without implying health", (_state, history, expected) => {
     const base = watch();
@@ -70,7 +70,7 @@ describe("the honesty line", () => {
         },
       }),
     }));
-    expect(asText(notes[0].text)).toContain("earlier buckets are not claimed as zero");
+    expect(asText(notes[0].text)).toContain("earlier is not zero");
     expect(asText(notes[0].text)).toContain("2026-10-10 09:00:00 UTC");
     expect(asText(notes.find((note) => note.label === "HISTORY GAP")?.text)).toContain(
       "could not be read (search failed 3 times at the minimum width).",
@@ -90,7 +90,7 @@ describe("the honesty line", () => {
   it("states a window with no bucket as an absence of collection", () => {
     const notes = honestyNotes(input({ buckets: [] }));
     expect(labels(notes)).toEqual(["NOT COLLECTED"]);
-    expect(notes[0].text).toMatch(/not because nothing happened/);
+    expect(notes[0].text).toMatch(/not zero events/);
   });
 
   it("says lower bounds are unknown, not zero", () => {
@@ -98,7 +98,7 @@ describe("the honesty line", () => {
     const notes = honestyNotes(input({ buckets }));
     expect(labels(notes)).toEqual(["TRUNCATED"]);
     expect(notes[0].text).toBe(
-      "4 of 12 collected buckets in this window are lower bounds; absent values in them are unknown, not zero.",
+      "4 of 12 buckets are lower bounds; absent values in them are unknown, not zero.",
     );
   });
 
@@ -125,10 +125,10 @@ describe("the honesty line", () => {
     expect(asText(note.text)).toContain(iso(6).slice(0, 10));
   });
 
-  it("names the collection setting when collection is off", () => {
+  it("states that collection is off", () => {
     const notes = honestyNotes(input({ catalog: catalog({ collection_enabled: false }) }));
     expect(notes[0].label).toBe("COLLECTION OFF");
-    expect(notes[0].text).toContain("PW_COLLECTION_ENABLED");
+    expect(notes[0].text).toContain("Collection is off");
   });
 
   it.each([

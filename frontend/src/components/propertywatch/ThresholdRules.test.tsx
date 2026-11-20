@@ -84,7 +84,7 @@ describe("the Threshold rules tab", () => {
   it("hides the create link and says why when the permissions could not be read", () => {
     render(<ThresholdRules rules={[]} access="unknown" />);
     expect(screen.queryByRole("link", { name: "New rule on a value" })).toBeNull();
-    expect(screen.getByText(/permissions could not be read/)).toBeInTheDocument();
+    expect(screen.getByText(/Permissions unreadable/)).toBeInTheDocument();
   });
 
   it("says the list could not be loaded when the watch read did not carry it", () => {

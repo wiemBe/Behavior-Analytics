@@ -64,9 +64,9 @@ describe("the values table", () => {
       history: { ...base.history, state: "COMPLETE", floor: "2026-10-10T09:00:00Z" },
     });
     expect(screen.getByRole("table").querySelector("caption")).toHaveTextContent(
-      "history read from QRadar, from 2026-10-10 09:00:00 UTC",
+      "history from 2026-10-10 09:00:00 UTC",
     );
-    expect(screen.getByRole("columnheader", { name: /First seen \(UTC; history read from 2026-/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "First seen (UTC)" })).toBeInTheDocument();
   });
 
   it("marks sort state and links the sortable headers", () => {
@@ -109,7 +109,7 @@ describe("the values table", () => {
   it("marks a pinned value, a cut value and a retired value", () => {
     table([value("a", "p", { pinned: true, truncated: true, active: false })]);
     expect(row("p")).toHaveTextContent("pinned");
-    expect(row("p")).toHaveTextContent("cut at the length limit");
+    expect(row("p")).toHaveTextContent("cut at length limit");
     expect(row("p")).toHaveTextContent("no longer tracked");
   });
 
@@ -149,7 +149,7 @@ describe("the values table at width", () => {
     const details = cell.querySelector("details.pw-value-full") as HTMLElement;
     expect(details).not.toHaveAttribute("open");
     // A summary is focusable and opens from the keyboard; a title attribute is not enough.
-    expect(within(details).getByText("Show the full value").tagName).toBe("SUMMARY");
+    expect(within(details).getByText("Show full value").tagName).toBe("SUMMARY");
     expect(details.querySelector(".pw-value-text")).toHaveTextContent(LONG);
   });
 
@@ -180,15 +180,15 @@ describe("the values table at width", () => {
     table();
     const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
     expect(headers).toEqual([
-      "Plot", "Value", "Events, latest bucket", "Expected range", "Share of parsed events", "First seen (UTC)",
+      "Plot", "Value", "Events, latest bucket", "Expected range", "Parsed share", "First seen (UTC)",
     ]);
   });
 
-  it("keeps the baseline state and the open incidents under the value", () => {
+  it("keeps the open incidents under the value, and no baseline line for a reliable baseline", () => {
     const v = value("a", "alice");
     table([v], { incidents: activeIncidentsByValue([incident({ pw_value: { ...incident().pw_value!, value_key: "alice" } })]) });
     const cell = document.querySelector("td.pw-value-cell") as HTMLElement;
-    expect(cell).toHaveTextContent("Baseline reliable (168 of 168 cells)");
+    expect(cell).not.toHaveTextContent("Baseline reliable");
     expect(cell).toHaveTextContent("Value spike · OPEN");
   });
 });

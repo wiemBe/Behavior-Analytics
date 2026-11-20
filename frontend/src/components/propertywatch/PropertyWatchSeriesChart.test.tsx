@@ -76,10 +76,10 @@ describe("PropertyWatchSeriesChart", () => {
   it("explains the band only when one value is plotted", () => {
     const { rerender } = render(<PropertyWatchSeriesChart series={[s(1)]} {...W} />);
     expect(screen.getByText("Expected range for the hour of the week")).toBeInTheDocument();
-    expect(screen.queryByText(/select a single value/)).toBeNull();
+    expect(screen.queryByText(/Select one value/)).toBeNull();
     rerender(<PropertyWatchSeriesChart series={[s(1), s(2)]} {...W} />);
     expect(screen.queryByText("Expected range for the hour of the week")).toBeNull();
-    expect(screen.getByText(/select a single value to see its band/)).toBeInTheDocument();
+    expect(screen.getByText(/Select one value to see its expected range/)).toBeInTheDocument();
   });
 
   it("keys the marks it drew: not collected, a lower bound, an incident", () => {
@@ -111,7 +111,7 @@ describe("PropertyWatchSeriesChart", () => {
 
   it("says a gap is not zero, as text", () => {
     render(<PropertyWatchSeriesChart series={[s(1)]} {...W} />);
-    expect(screen.getByText(/not zero events; a line at 0 is a measured zero/)).toBeInTheDocument();
+    expect(screen.getByText(/Not zero events; a line at 0 is a measured zero/)).toBeInTheDocument();
   });
 
   it("adds the parsed-share panel only when buckets are given, and not in compact form", () => {

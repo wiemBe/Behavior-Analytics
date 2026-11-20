@@ -18,8 +18,7 @@ describe("the Definition tab cadence", () => {
       />,
     );
     const cadence = screen.getByText(expected, { exact: false });
-    expect(cadence).toHaveTextContent("PROPERTY_WATCH family's setting");
-    expect(cadence).toHaveTextContent("buckets are five minutes wide");
+    expect(cadence).toHaveTextContent("(Search cadence)");
     expect(screen.getByRole("link", { name: "Search cadence" })).toHaveAttribute(
       "href",
       "/admin/search-cadence",
@@ -52,14 +51,14 @@ describe("the Definition tab history", () => {
     expect(screen.getByText("28 days")).toBeInTheDocument();
     expect(screen.getByText("History floor").closest("div")).toHaveTextContent("2026-10-10 09:00:00 UTC");
     expect(screen.getByRole("list", { name: "History gaps" })).toHaveTextContent("could not be read (search failed 3 times at the minimum width).");
-    expect(screen.getByText(/membership of a group is today's/)).toBeInTheDocument();
+    expect(screen.queryByText(/membership of a group is today's/)).toBeNull();
   });
 });
 
 describe("the coverage floor sentence", () => {
   it("spells the floor as a whole percent with U+00A0 before the sign", () => {
     render(<WatchDefinition watch={watch()} catalog={catalog()} scope={scope()} />);
-    const sentence = screen.getByText((_, node) => /coverage\s+floor is/.test(node?.textContent ?? "") && node?.tagName === "P");
-    expect(sentence.textContent).toContain("floor is 90\u00A0%:");
+    const sentence = screen.getByText((_, node) => /Coverage\s+floor/.test(node?.textContent ?? "") && node?.tagName === "P");
+    expect(sentence.textContent).toContain("floor 90\u00A0%;");
   });
 });
